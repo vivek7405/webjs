@@ -24,6 +24,18 @@ export default class HomeContentPage extends HTMLElement {
 
       <script type="module" src="/components/Button.js"></script>
       <client-button>Back</client-button>
+
+      <script type="module" src="/components/LitHTMLButton.js"></script>
+      <lit-html-button>Lit</lit-html-button>
+
+      <script type="module" src="/components/LitHTMLHello.js"></script>
+      <lit-html-hello>Lit</lit-html-hello>
+
+      <script type="module" src="/components/LitElementGreeting.js"></script>
+      <simple-greeting name="Vivek"></simple-greeting>
+
+      <script type="module" src="/components/SimpleHello.js"></script>
+      <simple-hello>Hey</simple-hello>
     `;
   }
 }
