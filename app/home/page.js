@@ -26,7 +26,9 @@ export default class HomePage extends HTMLElement {
       <p>{${JSON.stringify(json)}}</p>
       <p>{${JSON.stringify(json2)}}</p>
       <p>${notAsync}</p>
-      <div client-component="/components/Button.js">Click Me</div>
+
+      <script type="module" src="/components/Button.js"></script>
+      <client-button>Click Me</client-button>
     `;
   }
 }

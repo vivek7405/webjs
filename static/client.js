@@ -1,47 +1,3 @@
-// Load Client Components
-async function loadClientComponents() {
-  document
-    .querySelectorAll("[client-component]")
-    .forEach(async (placeholder) => {
-      const componentPath = placeholder.getAttribute("client-component");
-
-      if (componentPath) {
-        try {
-          console.log(`Loading client component from: ${componentPath}`);
-
-          // Dynamically import the client component module
-          const module = await import(componentPath);
-          const componentInstance = new module.default();
-
-          // Transfer any attributes from placeholder to component instance
-          Array.from(placeholder.attributes).forEach((attr) => {
-            if (attr.name !== "client-component") {
-              componentInstance.setAttribute(attr.name, attr.value);
-            }
-          });
-
-          // Preserve and move children from the placeholder to the component instance
-          while (placeholder.firstChild) {
-            componentInstance.appendChild(placeholder.firstChild);
-          }
-
-          // Replace the placeholder with the actual component
-          placeholder.replaceWith(componentInstance);
-        } catch (error) {
-          console.error(
-            `Error loading client component from ${componentPath}:`,
-            error
-          );
-        }
-      }
-    });
-}
-
-// Initialize client-only components when the DOM content is loaded
-document.addEventListener("DOMContentLoaded", loadClientComponents);
-
-///////////////////////////////////////////////////////////////////////////////
-
 // Function to fetch and inject page content into the correct layout's <slot>
 async function loadPageContentForLayout(path, clickedLink) {
   try {
@@ -99,9 +55,6 @@ async function loadPageContentForLayout(path, clickedLink) {
           slotElement.appendChild(node);
         });
         console.log(`Replaced content for path: ${path}`);
-
-        // Reinitialize any scripts or event listeners for the new content
-        reinitializeScripts();
       } else {
         console.warn("Slot element not found or content nodes are empty.");
       }
@@ -132,13 +85,6 @@ document.addEventListener("click", (event) => {
 window.addEventListener("popstate", () => {
   loadPageContentForLayout(location.pathname, document.body);
 });
-
-// Reinitialize any scripts or listeners as needed for the new content
-function reinitializeScripts() {
-  console.log("Reinitializing client-side scripts...");
-  // Add custom initialization logic here
-  loadClientComponents();
-}
 
 // Load initial page content
 loadPageContentForLayout(location.pathname, document.body);
