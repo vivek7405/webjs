@@ -123,6 +123,8 @@ async function getLayoutPaths(pathname, noLayout) {
       console.log(`Path to include: ${pathToInclude}`);
       if (pathToInclude) {
         layouts = layouts.filter(layout => layout.includes(pathToInclude));
+      } else {
+        layouts = [];
       }
     } catch (error) {
       console.error(`Error filtering layouts for noLayout ${noLayout}:`, error);
