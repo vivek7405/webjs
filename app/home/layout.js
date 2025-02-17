@@ -1,13 +1,13 @@
 import { html } from "../../utils/html-literal.js";
 
 export default class HomeLayout extends HTMLElement {
-  constructor() {
-    super();
-    this.attachShadow({ mode: "open" });
-  }
+  // constructor() {
+  //   super();
+  //   this.attachShadow({ mode: "open" });
+  // }
 
   connectedCallback() {
-    this.shadowRoot.innerHTML = html`
+    this.innerHTML = html`
       <div>
         <h2>Home Section</h2>
         <slot></slot>

@@ -1,13 +1,13 @@
 import { html } from "../utils/html-literal.js";
 
 export default class RootLayout extends HTMLElement {
-  constructor() {
-    super();
-    this.attachShadow({ mode: "open" });
-  }
+  // constructor() {
+  //   super();
+  //   this.attachShadow({ mode: "open" });
+  // }
 
   connectedCallback() {
-    this.shadowRoot.innerHTML = html`
+    this.innerHTML = html`
       <div>
         <nav>
           <a href="/" data-link>Root</a>
