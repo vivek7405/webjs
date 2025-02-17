@@ -12,6 +12,7 @@ export default class RootLayout extends HTMLElement {
         <nav>
           <a href="/" data-link>Root</a>
           <a href="/home" data-link>Home</a>
+          <a href="/home/1" data-link>Home 1</a>
           <a href="/about" data-link>About</a>
         </nav>
         <slot></slot>

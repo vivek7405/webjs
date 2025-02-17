@@ -4,36 +4,63 @@ import { html } from "./utils/html-literal.js";
 import { walk } from "https://deno.land/std@0.201.0/fs/walk.ts";
 import { posix } from "https://deno.land/std@0.201.0/path/mod.ts"; // Use posix for consistent path handling
 
-// Dynamically generate routes from the `app` folder
+// New helper function to match dynamic routes
+function matchDynamicRoute(pathname, routePath) {
+  const pathnameSegments = pathname.split('/').filter(Boolean);
+  const routeSegments = routePath.split('/').filter(Boolean);
+
+  if (pathnameSegments.length !== routeSegments.length) return null;
+
+  const params = {};
+
+  for (let i = 0; i < routeSegments.length; i++) {
+    const routeSegment = routeSegments[i];
+    const pathnameSegment = pathnameSegments[i];
+
+    if (routeSegment.startsWith('[') && routeSegment.endsWith(']')) {
+      const paramName = routeSegment.slice(1, -1);
+      params[paramName] = pathnameSegment;
+    } else if (routeSegment !== pathnameSegment) {
+      return null;
+    }
+  }
+
+  return params;
+}
+
+// Modified generateRoutes function
 async function generateRoutes() {
-  const routes = {};
+  const routes = new Map();
 
   for await (const entry of walk("./app", { includeDirs: false })) {
     if (entry.name === "page.js") {
-      // Generate route paths from file structure
       let routePath = posix.normalize(
         entry.path.replace(/^app/, "").replace(/\/page\.js$/, "")
-      ); // Normalize path to handle slashes correctly
+      );
 
-      // Map root index page to "/"
       if (routePath === "" || routePath === ".") {
         routePath = "/";
       }
 
-      routes[routePath] = entry.path;
+      routes.set(routePath, entry.path);
       console.log(`Route added: ${routePath} -> ${entry.path}`);
     }
   }
   return routes;
 }
 
-// Render components and handle missing files
-async function renderComponent(componentPath) {
+// Modified renderComponent function
+async function renderComponent(componentPath, params = {}) {
   try {
-    const { html: renderedContent } = await renderToString(
-      new URL(componentPath, import.meta.url)
-    );
-    return renderedContent;
+    const module = await import(new URL(componentPath, import.meta.url));
+    const Component = module.default;
+    const instance = new Component();
+
+    // Inject route params into the component
+    instance.params = params;
+
+    await instance.connectedCallback?.();
+    return instance.innerHTML || '';
   } catch (error) {
     console.error(`Error rendering component: ${componentPath}`, error);
     return `<div>Error loading component ${componentPath}</div>`;
@@ -45,39 +72,13 @@ async function renderWithLayouts(
   pathname,
   componentPath,
   noLayout,
+  params
 ) {
   // Start with the innermost content, which is the main page component
-  let content = await renderComponent(componentPath);
+  let content = await renderComponent(componentPath, params);
 
   // Get applicable layouts for the route, from outermost to innermost
   const layouts = await getLayoutPaths(pathname, noLayout);
-
-  // // If "no-layout" query parameter is present, exclude the clicked layout
-  // if (noLayout) {
-  //   // Filter out parent layouts that have pages
-  //   const filteredLayouts = layouts.filter((layoutPath) => {
-  //     const layoutDir = posix.dirname(layoutPath);
-  //     const pagePath = posix.join(layoutDir, 'page.js');
-  //     try {
-  //       Deno.statSync(pagePath);
-  //       return false; // Skip this layout if a page exists in the same directory
-  //     } catch {
-  //       return true; // Keep this layout if no page exists
-  //     }
-  //   });
-
-  //   // Apply the remaining layouts in the correct order
-  //   for (let i = filteredLayouts.length - 1; i >= 0; i--) {
-  //     const layoutPath = filteredLayouts[i];
-  //     const layoutContent = await renderComponent(layoutPath);
-  //     if (!layoutContent.includes("<slot>")) {
-  //       console.warn(`Layout ${layoutPath} missing <slot> placeholder.`);
-  //     }
-  //     content = layoutContent.replace("<slot>", `<slot>${content}`);
-  //   }
-
-  //   return content;
-  // }
 
   // If noLayout is false, apply all layouts as usual
   for (let i = layouts.length - 1; i >= 0; i--) {
@@ -167,15 +168,28 @@ serve(async (req) => {
   const url = new URL(req.url);
   const pathname = url.pathname;
   const noLayout = url.searchParams.has("no-layout");
-  // const clickedLayoutPath = url.searchParams.get("clicked-layout");
 
-  // Serve static files if the path has a file extension (e.g., .js, .css)
   if (pathname.match(/\.[a-zA-Z0-9]+$/)) {
     return await serveStaticFile(pathname);
   }
 
-  // Handle dynamic routes
-  const componentPath = routes[pathname];
+  // Find matching route including dynamic routes
+  let matchedPath;
+  let params = {};
+
+  for (const [routePath] of routes) {
+    const dynamicParams = matchDynamicRoute(pathname, routePath);
+    if (dynamicParams) {
+      matchedPath = routePath;
+      params = dynamicParams;
+      break;
+    } else if (routePath === pathname) {
+      matchedPath = routePath;
+      break;
+    }
+  }
+
+  const componentPath = routes.get(matchedPath);
   if (!componentPath) {
     return new Response("404 - Not Found", { status: 404 });
   }
@@ -186,6 +200,7 @@ serve(async (req) => {
       pathname,
       componentPath,
       noLayout,
+      params
     );
 
     return new Response(
