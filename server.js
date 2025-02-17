@@ -45,33 +45,39 @@ async function renderWithLayouts(
   pathname,
   componentPath,
   noLayout,
-  clickedLayoutPath = null
 ) {
   // Start with the innermost content, which is the main page component
   let content = await renderComponent(componentPath);
 
   // Get applicable layouts for the route, from outermost to innermost
-  const layouts = await getLayoutPaths(pathname);
+  const layouts = await getLayoutPaths(pathname, noLayout);
 
-  // If "no-layout" query parameter is present, exclude the clicked layout
-  if (noLayout) {
-    // Filter out the clicked layout path if provided
-    const filteredLayouts = layouts.filter(
-      (layoutPath) => layoutPath !== clickedLayoutPath
-    );
+  // // If "no-layout" query parameter is present, exclude the clicked layout
+  // if (noLayout) {
+  //   // Filter out parent layouts that have pages
+  //   const filteredLayouts = layouts.filter((layoutPath) => {
+  //     const layoutDir = posix.dirname(layoutPath);
+  //     const pagePath = posix.join(layoutDir, 'page.js');
+  //     try {
+  //       Deno.statSync(pagePath);
+  //       return false; // Skip this layout if a page exists in the same directory
+  //     } catch {
+  //       return true; // Keep this layout if no page exists
+  //     }
+  //   });
 
-    // Apply the remaining layouts in the correct order, wrapping from outermost to innermost
-    for (let i = filteredLayouts.length - 1; i >= 0; i--) {
-      const layoutPath = filteredLayouts[i];
-      const layoutContent = await renderComponent(layoutPath);
-      if (!layoutContent.includes("<slot>")) {
-        console.warn(`Layout ${layoutPath} missing <slot> placeholder.`);
-      }
-      content = layoutContent.replace("<slot>", `<slot>${content}`);
-    }
+  //   // Apply the remaining layouts in the correct order
+  //   for (let i = filteredLayouts.length - 1; i >= 0; i--) {
+  //     const layoutPath = filteredLayouts[i];
+  //     const layoutContent = await renderComponent(layoutPath);
+  //     if (!layoutContent.includes("<slot>")) {
+  //       console.warn(`Layout ${layoutPath} missing <slot> placeholder.`);
+  //     }
+  //     content = layoutContent.replace("<slot>", `<slot>${content}`);
+  //   }
 
-    return content;
-  }
+  //   return content;
+  // }
 
   // If noLayout is false, apply all layouts as usual
   for (let i = layouts.length - 1; i >= 0; i--) {
@@ -87,16 +93,17 @@ async function renderWithLayouts(
 }
 
 // Helper function to find all applicable layouts for a given route path
-async function getLayoutPaths(pathname) {
+async function getLayoutPaths(pathname, noLayout) {
   const segments = pathname.split("/").filter(Boolean);
-  const layouts = [];
+  let layouts = [];
   const uniquePaths = new Set();
 
-  // Traverse from root to innermost directory to collect layouts in correct order
+  // Traverse from either root or pathname to innermost directory
   for (let i = 0; i <= segments.length; i++) {
     const layoutPath = posix.normalize(
       `./app/${segments.slice(0, i).join("/")}/layout.js`
     );
+    console.log(`Layout path for segment ${segments[i]} index ${i}: ${layoutPath}`);
 
     // Check if layout exists and ensure uniqueness
     try {
@@ -110,6 +117,19 @@ async function getLayoutPaths(pathname) {
     }
   }
 
+  if (noLayout) {
+    try {
+      const pathToInclude = segments && segments.length > 0 ? `/${segments[segments.length - 1]}` : null;
+      console.log(`Path to include: ${pathToInclude}`);
+      if (pathToInclude) {
+        layouts = layouts.filter(layout => layout.includes(pathToInclude));
+      }
+    } catch (error) {
+      console.error(`Error filtering layouts for noLayout ${noLayout}:`, error);
+    }
+  }
+
+  console.log(`Layouts for ${pathname} for noLayout ${noLayout}:`, layouts);
   return layouts; // No need to reverse; order is correct
 }
 
@@ -124,10 +144,10 @@ async function serveStaticFile(pathname) {
       ext === "js"
         ? "application/javascript"
         : ext === "css"
-        ? "text/css"
-        : ext === "html"
-        ? "text/html"
-        : "text/plain";
+          ? "text/css"
+          : ext === "html"
+            ? "text/html"
+            : "text/plain";
 
     console.log(`Serving ${filePath} with Content-Type: ${contentType}`);
     return new Response(file, { headers: { "content-type": contentType } });
@@ -145,7 +165,7 @@ serve(async (req) => {
   const url = new URL(req.url);
   const pathname = url.pathname;
   const noLayout = url.searchParams.has("no-layout");
-  const clickedLayoutPath = url.searchParams.get("clicked-layout");
+  // const clickedLayoutPath = url.searchParams.get("clicked-layout");
 
   // Serve static files if the path has a file extension (e.g., .js, .css)
   if (pathname.match(/\.[a-zA-Z0-9]+$/)) {
@@ -164,7 +184,6 @@ serve(async (req) => {
       pathname,
       componentPath,
       noLayout,
-      clickedLayoutPath
     );
 
     return new Response(

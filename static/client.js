@@ -1,3 +1,40 @@
+// Hydrate scripts inserted dynamically as part of html content
+function loadScripts() {
+  // Find all script elements in the document
+  const scripts = document.querySelectorAll('script');
+
+  scripts.forEach(script => {
+    // Skip if the script has already been processed
+    if (script.hasAttribute('data-processed')) return;
+
+    // Create and append a new script element
+    const newScript = document.createElement('script');
+
+    // Copy all attributes
+    Array.from(script.attributes).forEach(attr => {
+      newScript.setAttribute(attr.name, attr.value);
+    });
+
+    // Handle both inline and external scripts
+    if (script.src) {
+      newScript.src = script.src;
+    } else {
+      newScript.textContent = script.textContent;
+    }
+
+    // Mark as processed to avoid re-processing
+    newScript.setAttribute('data-processed', 'true');
+
+    // Replace the old script with the new one
+    script.parentNode.replaceChild(newScript, script);
+  });
+}
+
+// Initialize client-only components when the DOM content is loaded
+document.addEventListener("DOMContentLoaded", loadScripts);
+
+///////////////////////////////////////////////////////////////////////////////
+
 // Function to fetch and inject page content into the correct layout's <slot>
 async function loadPageContentForLayout(path, clickedLink) {
   try {
@@ -7,7 +44,8 @@ async function loadPageContentForLayout(path, clickedLink) {
 
     // Determine the layout associated with the clicked link
     let layoutElement = clickedLink.closest("*:has(slot)");
-    let clickedLayoutPath = "";
+    console.log("Layout Element:", layoutElement);
+    // let clickedLayoutPath = "";
 
     if (!layoutElement) {
       // Fallback to a global search for any element with a <slot>
@@ -16,22 +54,24 @@ async function loadPageContentForLayout(path, clickedLink) {
       );
     }
 
-    if (layoutElement) {
-      // Dynamically infer the URL of the layout by using the element's script URL
-      const scriptElement = Array.from(
-        document.querySelectorAll("script")
-      ).find((script) => script.src && script.src.includes("/layout.js"));
+    // if (layoutElement) {
+    //   // Dynamically infer the URL of the layout by using the element's script URL
+    //   const scriptElement = Array.from(
+    //     document.querySelectorAll("script")
+    //   ).find((script) => script.src && script.src.includes("/layout.js"));
+    //   console.log("Script Element:", scriptElement);
 
-      if (scriptElement) {
-        // Use the script URL to determine the layout path
-        clickedLayoutPath = new URL(scriptElement.src).pathname;
-      }
-    }
+    //   if (scriptElement) {
+    //     // Use the script URL to determine the layout path
+    //     clickedLayoutPath = new URL(scriptElement.src).pathname;
+    //     console.log("Clicked Layout Path:", clickedLayoutPath);
+    //   }
+    // }
 
-    // Add the inferred "clicked-layout" to the URL if found
-    if (clickedLayoutPath) {
-      url.searchParams.set("clicked-layout", clickedLayoutPath);
-    }
+    // // Add the inferred "clicked-layout" to the URL if found
+    // if (clickedLayoutPath) {
+    //   url.searchParams.set("clicked-layout", clickedLayoutPath);
+    // }
 
     // Fetch the content of the clicked page
     const response = await fetch(url.toString());
@@ -45,6 +85,7 @@ async function loadPageContentForLayout(path, clickedLink) {
 
     if (layoutElement) {
       const slotElement = layoutElement.querySelector("slot");
+      console.log("Slot Element:", slotElement);
 
       if (slotElement) {
         // Clear the existing content of the slot
@@ -55,6 +96,9 @@ async function loadPageContentForLayout(path, clickedLink) {
           slotElement.appendChild(node);
         });
         console.log(`Replaced content for path: ${path}`);
+
+        // Reinitialize any scripts or event listeners for the new content
+        reinitializeScripts();
       } else {
         console.warn("Slot element not found or content nodes are empty.");
       }
@@ -86,5 +130,12 @@ window.addEventListener("popstate", () => {
   loadPageContentForLayout(location.pathname, document.body);
 });
 
+// Reinitialize any scripts or listeners as needed for the new content
+function reinitializeScripts() {
+  console.log("Reinitializing client-side scripts...");
+  // Add custom initialization logic here
+  loadScripts();
+}
+
 // Load initial page content
-loadPageContentForLayout(location.pathname, document.body);
+// loadPageContentForLayout(location.pathname, document.body);
