@@ -1,9 +1,9 @@
 import { html } from "../../utils/html-literal.js";
+import "../../components/Header.js";
 
 export default class HomePage extends HTMLElement {
   constructor() {
     super();
-    // this.attachShadow({ mode: "open" });
   }
 
   async connectedCallback() {
@@ -20,6 +20,8 @@ export default class HomePage extends HTMLElement {
     const json2 = await response2.json();
 
     this.innerHTML = html`
+      <shared-header></shared-header>
+
       <h1>Welcome to the Home Page</h1>
       <p>This content is server-rendered.</p>
       <p>Below content is from API:</p>
