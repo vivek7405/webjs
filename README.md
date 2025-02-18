@@ -1,2 +1,2 @@
 # webjs
-Internalized Javascript Framework based on Web Components
+Web Components based javascript framework built for learning how frameworks work!
