@@ -191,7 +191,8 @@ When you mark an action as `expose('METHOD /path', fn)`, you are declaring it pa
 
 ### Components (`components/*.js`)
 
-- Each file should define **one** custom element and call `Class.register()` at module top level.
+- Each file should define **one** custom element and call `Class.register(import.meta.url)` at module top level.
+  Passing `import.meta.url` lets the SSR shell emit a `<link rel="modulepreload">` so the browser can fetch the module without waiting for its parent to parse. Zero build step; big first-paint win.
 - Imported by pages (for SSR) and/or other components (for composition).
 - **Styling convention: shadow-DOM CSS via `static styles = css\`…\``, not inline `style="…"` attributes.** Any repeated visual chunk in pages (layout chrome, cards, muted labels, etc.) should become a component whose styles live in its shadow root. The example app's `<blog-shell>` and `<muted-text>` demonstrate this — pages emit semantic HTML with zero inline styles.
 
@@ -321,7 +322,30 @@ fallback flushes immediately; the resolved content streams in as a
 `<template>` + inline `__webjsResolve('id')` script when the promise lands.
 Nested Suspense is supported.
 
-### Bundling — `webjs build`
+### First-paint performance without a build step
+
+webjs stacks three zero-build optimizations that together replace what a
+traditional bundler buys you for the initial page load:
+
+1. **`<link rel="modulepreload">` per used component.** The SSR pass knows
+   every custom element in the final HTML; it emits a preload hint in the
+   `<head>` for each component module. The browser starts all fetches the
+   moment it parses the head — no ES-module waterfall.
+2. **HTTP/2 (ALPN over TLS).** `webjs start --http2 --cert … --key …` serves
+   everything over one multiplexed connection. N small module files no
+   longer mean N TCP handshakes.
+3. **103 Early Hints.** Before SSR even starts computing the response,
+   the server sends `103 Interim Response` with the page's module URLs as
+   `rel=modulepreload`. Chrome/Edge and edge proxies (Cloudflare, fly-proxy,
+   Fastly) forward these to the client, which begins fetching modules
+   *while the server is still rendering*.
+
+For most apps these three together produce first-paint performance
+comparable to a tree-shaken bundle — without running a bundler. For larger
+apps (many components) where request count still matters, `webjs build`
+is available as an opt-in.
+
+### Bundling — `webjs build` (optional)
 
 Runs esbuild over every client-facing module (components, pages, layouts,
 error, not-found) and writes a single `.webjs/bundle.js`. Prod serves the

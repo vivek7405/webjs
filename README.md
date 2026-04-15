@@ -105,7 +105,9 @@ export class Counter extends WebComponent {
     `;
   }
 }
-Counter.register();
+// Pass import.meta.url so the SSR shell can emit <link rel=modulepreload>
+// — breaks the ES-module waterfall without a bundler.
+Counter.register(import.meta.url);
 ```
 
 ```js
@@ -167,8 +169,11 @@ Pre-1.0 but production-shape. Hardening highlights:
 - Backend parity: `route.js` anywhere, `cookies()`/`headers()`, CORS,
   per-segment middleware, **built-in rate limiter**, `createRequestHandler`
   for embedding.
-- Performance: **`webjs build`** bundles components + pages via esbuild;
-  gzip/brotli on prod; ETag + long cache headers; streaming response bodies.
+- Performance (no-build default): automatic `<link rel="modulepreload">`
+  for every component on the page, 103 Early Hints before SSR starts,
+  HTTP/2 via `--http2 --cert … --key …`, gzip/brotli, ETag + long cache
+  headers, streaming response bodies. Optional `webjs build` bundles
+  everything via esbuild when request count still matters.
 - Ops: health probe, graceful shutdown (SIGTERM/SIGINT), JSON logger,
   process-level error handlers, SSE keepalive against proxy timeouts.
 - Tokens: HTML comments and `<script>`/`<style>` raw-text correctly parsed.
