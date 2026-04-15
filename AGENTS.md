@@ -11,9 +11,16 @@ recipes for common tasks. Keep it in sync whenever behaviour changes.
 A **no-build, web-components-first** framework modeled after Next.js App Router.
 
 - **No build step.** Source files are served to the browser as native ES modules.
-- **JSDoc, not TypeScript.** Authoring in plain `.js`; types live in doc comments.
+- **JSDoc or TypeScript.** Plain `.js` with JSDoc is the default; `.ts`/`.mts`
+  files are a supported first-class option — Node 23.6+ strips types at runtime
+  for server files, and the dev server strips types via esbuild when serving
+  browser-facing `.ts` files. No ahead-of-time build step either way.
 - **SSR + CSR by default.** Pages are server-rendered (real HTML, no hydration fallback). Interactive web components ship Declarative Shadow DOM and upgrade on the client.
-- **Server actions.** Any file ending `.server.js` (or starting with `'use server'`) exports functions the client imports and calls directly — the import is rewritten into an RPC stub.
+- **Server actions with rich types.** Any file ending `.server.js` / `.server.ts`
+  (or starting with `'use server'`) exports functions the client imports and
+  calls directly — the import is rewritten into an RPC stub. The RPC wire uses
+  **superjson**, so `Date`, `Map`, `Set`, `BigInt`, `undefined`, `URL`, `RegExp`
+  round-trip as their real types.
 
 ---
 
@@ -72,6 +79,7 @@ import { html, css, WebComponent, render, renderToString } from 'webjs';
 | `repeat(items, k, t)` | Keyed list directive — `${repeat(items, it => it.id, it => html\`...\`)}`. Preserves element identity / focus when items reorder. |
 | `Suspense({fallback, children})` | Streaming boundary — server flushes `fallback` immediately, streams `children` (a Promise<TemplateResult>) when it resolves. |
 | `connectWS(url, handlers)` | Client-side WebSocket with auto-reconnect, JSON parse/stringify, queued sends. |
+| `richFetch<T>(url, init?)` | Client-side fetch that adds `Accept: application/vnd.webjs+json`, encodes plain-object bodies via superjson, and decodes responses with rich types. |
 
 ### `html` — expression prefixes
 
@@ -427,6 +435,148 @@ Reference it via JSDoc:
   — usable in Express (`app.use((req, res) => …)`), Fastify, Deno, Bun, Workers.
 - Plug your own logger via `createRequestHandler({ logger })`. Any `{ info,
   warn, error }` shape works (pino, winston, etc.).
+
+## TypeScript without a build step
+
+Files ending in `.ts` / `.mts` are supported everywhere `.js` / `.mjs` are —
+same routing conventions, same server-action behaviour, same bundle
+participation. No `tsc` run is part of the user-visible workflow:
+
+- **Editor** (VS Code) runs the TypeScript language server continuously.
+  Red-squiggle on wrong types.
+- **CI** (optional) runs `tsc --noEmit` against `tsconfig.json` at the
+  app root — type-check only, zero generated files.
+- **Dev server** (runtime): when the browser requests a `.ts` file, the
+  dev server transforms via `esbuild.transform()` (~0.5–1ms per file,
+  cached by mtime) and serves JavaScript with an inline sourcemap.
+- **Node server-side** (runtime): Node 23.6+ natively strips types
+  from `.ts` / `.mts` modules on import. Pages, layouts, server actions
+  and route handlers all run unchanged.
+- **`webjs build`**: esbuild already handles `.ts` in its bundle entry
+  graph; no extra config needed.
+
+### Import convention
+
+Use explicit `.ts` extensions in imports. This is what Node's native
+TS support expects and matches the framework's resolution. For mixed
+codebases, `.js` imports that point at a `.ts` sibling also resolve
+in the dev server (fallback) — but prefer explicit `.ts` for clarity.
+
+```ts
+// modules/posts/queries/list-posts.server.ts
+import { prisma } from '../../../lib/prisma.js';         // JS file unchanged
+import { formatPost } from '../utils/slugify.ts';         // TS file
+```
+
+### Minimum viable `tsconfig.json`
+
+A `tsconfig.json` at the app root enables editor + CI checking. No emit,
+no separate build:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noEmit": true,
+    "checkJs": true,
+    "allowJs": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true
+  }
+}
+```
+
+### What doesn't work with Node's strip-types
+
+Node's runtime stripper handles **erasable syntax only**. The following
+don't run and need to be avoided (or moved into dev dependencies that
+pre-compile):
+
+- `enum`, `namespace`
+- Parameter properties (`constructor(public x: number)`)
+- Legacy decorators (`@foo` with emit)
+
+All other TS — `type`, `interface`, generics, `as`, conditional types,
+mapped types, template-literal types — run fine.
+
+## Full-stack type safety (actions + API routes)
+
+### Server actions — type-safe automatically
+
+Calling a server action from a client component resolves — at type-check
+time — to the action's real source file. The dev server's runtime stub
+replacement is invisible to the type checker. A typed action like:
+
+```ts
+// modules/posts/actions/create-post.server.ts
+export async function createPost(
+  input: { title: string; body: string },
+): Promise<ActionResult<PostFormatted>> { /* … */ }
+```
+
+…gives every client caller full inference:
+
+```ts
+// modules/posts/components/new-post.ts
+import { createPost } from '../actions/create-post.server.ts';
+const r = await createPost({ title, body });
+//        ^ Promise<ActionResult<PostFormatted>>
+if (r.success) r.data.title;   // ← PostFormatted.title: string
+```
+
+**Runtime reality matches the types** because the RPC wire is superjson:
+a `Date` on the server is a `Date` on the client, a `Map` is a `Map`, a
+`BigInt` is a `BigInt`. Supported types: everything superjson handles
+(Date, Map, Set, BigInt, undefined, URL, RegExp, Error, Decimal, plus
+any custom transformer you register). Class instances come through as
+plain objects — prototypes are lost, methods don't survive.
+
+### API routes — opt in via content negotiation
+
+`route.ts` handlers use standard JSON by default so external consumers
+(curl, mobile, third-party services) keep working unchanged. To opt
+into rich types for your own UI code:
+
+```ts
+// app/api/posts/route.ts — server side
+import { json } from '@webjs/server';
+import { listPosts } from '.../queries/list-posts.server.ts';
+
+export async function GET() {
+  return json(await listPosts());   // content-negotiates automatically
+}
+```
+
+```ts
+// caller — client side
+import { richFetch } from 'webjs';
+const posts = await richFetch<Post[]>('/api/posts');
+// posts[0].createdAt is a Date here (richFetch sends
+// Accept: application/vnd.webjs+json and superjson-parses the response).
+```
+
+The `json()` helper reads the in-flight Request via the AsyncLocalStorage
+context:
+- `Accept: application/vnd.webjs+json` → superjson-encoded response,
+  `Content-Type: application/vnd.webjs+json`, `Vary: Accept` for
+  correct shared-cache keying.
+- Otherwise → plain JSON with `Content-Type: application/json`.
+
+Request bodies can be parsed with the dual-format `readBody(req)`
+helper from `@webjs/server`.
+
+### TypeScript is not required
+
+If you prefer staying on JS + JSDoc: **same type safety at call sites,
+same tooling**. The TypeScript language server reads `@typedef` /
+`@param` / `@returns` annotations identically to `.ts` type syntax.
+Add `"checkJs": true` to `tsconfig.json` to enforce types in editor
++ CI. The framework doesn't care either way — pick what fits the
+codebase.
 
 ## Advanced features
 

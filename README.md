@@ -2,12 +2,17 @@
 
 A no-build, web-components-first, Next.js-inspired full-stack framework.
 SSR + CSR, file-based routing, API routes, server actions — plain JavaScript
-with JSDoc, zero bundler, ships ES modules straight to the browser.
+(JSDoc) or TypeScript, zero bundler, ships ES modules straight to the browser.
 
 ## Why
 
-- **No build.** Your `.js` files are served to the browser as ES modules.
-  Edit, refresh, done.
+- **No build.** `.js` or `.ts` files are served to the browser directly.
+  Edit, refresh, done. Node 23.6+ strips TS types at runtime on the server;
+  the dev server strips types via esbuild for files served to the browser.
+- **Full-stack type safety.** Import a server action from a client component
+  and TypeScript sees the real function signature. The RPC wire uses
+  superjson so `Date` / `Map` / `Set` / `BigInt` round-trip as their real
+  types — what the type says is what you get at runtime.
 - **Web components first.** Components define their own custom element +
   shadow-DOM styles. SSR emits Declarative Shadow DOM; the browser upgrades
   on connection — no hydration runtime in the critical path.
