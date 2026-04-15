@@ -61,7 +61,8 @@ import { html, css, WebComponent, render, renderToString } from 'webjs';
 | `renderToString`  | Server-side: **async** — render a value to an HTML string with DSD injection. Awaits Promise-valued holes and async component `render()` methods. |
 | `notFound()`      | Throw inside a page/layout/server action to return a 404 rendered via `not-found.js`. |
 | `redirect(url)`   | Throw inside a page/layout/server action to return a 307 (default) or 308 redirect. |
-| `expose(p, fn)`   | Tag a server action to ALSO be reachable at a REST path, e.g. `expose('POST /api/posts', fn)`. Same function, two callers (client components import + external HTTP). |
+| `expose(p, fn)`   | Tag a server action to ALSO be reachable at a REST path, e.g. `expose('POST /api/posts', fn)`. Optional `{ validate }` runs before the handler over HTTP. |
+| `repeat(items, k, t)` | Keyed list directive — `${repeat(items, it => it.id, it => html\`...\`)}`. Preserves element identity / focus when items reorder. |
 
 ### `html` — expression prefixes
 
@@ -162,6 +163,17 @@ Attribute changes auto-trigger re-render when the attribute is declared in
   export const createPost = expose('POST /api/posts', async ({ title, body }) => { … });
   ```
   When called over HTTP, the adapter merges `{ ...query, ...urlParams, ...jsonBody }` into a single object argument. This is the recommended way to surface a server action to external consumers — no `route.js` wrapper needed.
+- **Validate input**: pass a third arg `{ validate }`. The function runs before your handler over HTTP; throw to fail (→ 400 JSON with the message and any `issues`). Plays nicely with zod / valibot / hand-written validators:
+  ```js
+  expose('POST /api/posts', handler, { validate: Schema.parse });
+  ```
+  Validate runs only on the HTTP path. Direct client-component RPC calls bypass it (the function trusts its argument because the call is same-origin and CSRF-protected).
+
+### Internal RPC — security model
+
+- Every action call from a client component is a `POST /__webjs/action/<hash>/<fn>` with `x-webjs-csrf` and a matching `webjs_csrf` cookie issued on the first SSR response. Cross-origin attackers cannot read the cookie, so they cannot forge the header. CSRF mismatch → 403.
+- Errors thrown from action handlers are sanitised in production: only the thrown `message` is returned, never the stack. Internal errors (no message) collapse to "Internal server error". The full error is logged server-side.
+- `expose()`d REST endpoints are NOT CSRF-protected (they target external consumers). Apply auth via `middleware.js` or per-route checks.
 
 ### Components (`components/*.js`)
 
@@ -260,6 +272,21 @@ Reference it via JSDoc:
 
 ---
 
+## Production deployment
+
+- `webjs start` runs the production server: prod logger (one JSON object per
+  line on stdout), graceful shutdown on SIGTERM/SIGINT, ETag + cache headers
+  on static assets, gzip/brotli compression negotiated via `Accept-Encoding`.
+- Long-lived caching: `/__webjs/core/*` ships `Cache-Control: public, max-age=
+  31536000, immutable`. Other static files get `max-age=3600` + ETag.
+- Health probe: `GET /__webjs/health` and `/__webjs/ready` return `{status:"ok"}`
+  with `Cache-Control: no-store`. Wire these into your orchestrator.
+- Embed in another runtime: import `createRequestHandler({ appDir, dev })`
+  from `@webjs/server`. It returns `{ handle(req: Request) → Promise<Response> }`
+  — usable in Express (`app.use((req, res) => …)`), Fastify, Deno, Bun, Workers.
+- Plug your own logger via `createRequestHandler({ logger })`. Any `{ info,
+  warn, error }` shape works (pino, winston, etc.).
+
 ## Out of scope for v1
 
 Documented here so agents don't attempt them:
@@ -269,4 +296,6 @@ Documented here so agents don't attempt them:
 - Fine-grained HMR (we do full-page reload on file change).
 - Edge/worker runtime targets.
 - React Server Component tree serialisation (our server actions are plain RPC).
-- i18n, middleware chains, image optimisation.
+- i18n, image optimisation.
+- HTML template parser does not handle `<script>`/`<style>` raw-text or HTML
+  comments inside templates — write components for interactive bits.
