@@ -43,6 +43,34 @@ test('matches root, static, dynamic, and catch-all routes', async () => {
   }
 });
 
+test('attaches per-segment middleware chain to pages and apis', async () => {
+  const dir = await scaffold({
+    'app/middleware.js': 'export default (r, n) => n()',
+    'app/admin/middleware.js': 'export default (r, n) => n()',
+    'app/admin/page.js': 'export default () => ""',
+    'app/admin/api/stats/route.js': 'export const GET = () => ({})',
+    'app/about/page.js': 'export default () => ""', // no extra middleware
+  });
+  try {
+    const table = await buildRouteTable(dir);
+
+    const adminPage = table.pages.find((p) => p.routeDir === 'admin');
+    assert.ok(adminPage);
+    assert.equal(adminPage.middlewares.length, 2);
+    assert.match(adminPage.middlewares[0], /app\/middleware\.js$/);
+    assert.match(adminPage.middlewares[1], /app\/admin\/middleware\.js$/);
+
+    const aboutPage = table.pages.find((p) => p.routeDir === 'about');
+    assert.equal(aboutPage.middlewares.length, 1);
+
+    const adminApi = table.apis.find((a) => /stats/.test(a.file));
+    assert.ok(adminApi);
+    assert.equal(adminApi.middlewares.length, 2);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('attaches layouts from root down to page dir', async () => {
   const dir = await scaffold({
     'app/layout.js': 'export default () => ""',

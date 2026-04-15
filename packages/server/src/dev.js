@@ -272,12 +272,18 @@ async function handleCore(req, ctx) {
 
   // API route (route.js handler)
   const api = matchApi(state.routeTable, path);
-  if (api) return handleApi(api.route, api.params, req, dev);
+  if (api) {
+    const handler = () => handleApi(api.route, api.params, req, dev);
+    return runWithSegmentMiddleware(req, api.route.middlewares, handler, dev);
+  }
 
   // Page route (only for GET/HEAD)
   if (method === 'GET' || method === 'HEAD') {
     const page = matchPage(state.routeTable, path);
-    if (page) return ssrPage(page.route, page.params, url, { dev, appDir, req });
+    if (page) {
+      const handler = () => ssrPage(page.route, page.params, url, { dev, appDir, req });
+      return runWithSegmentMiddleware(req, page.route.middlewares, handler, dev);
+    }
   }
 
   // Fallback — content-negotiated 404
@@ -293,6 +299,37 @@ function wantsJson(req, path) {
   if (accept.includes('application/json') && !accept.includes('text/html')) return true;
   if (path.startsWith('/api/') || path.startsWith('/__webjs/')) return true;
   return false;
+}
+
+/**
+ * Chain segment-level middleware.js (outermost first) around a handler.
+ * Each middleware is `(req, next) => Response`. If any throws, log and 500.
+ *
+ * @param {Request} req
+ * @param {string[]} files   absolute paths of middleware.js files, outermost → innermost
+ * @param {() => Promise<Response>} terminal
+ * @param {boolean} dev
+ */
+async function runWithSegmentMiddleware(req, files, terminal, dev) {
+  if (!files || !files.length) return terminal();
+  const handlers = [];
+  for (const f of files) {
+    try {
+      const url = pathToFileURL(f).toString();
+      const bust = dev ? `?t=${Date.now()}-${Math.random().toString(36).slice(2)}` : '';
+      const mod = await import(url + bust);
+      if (typeof mod.default === 'function') handlers.push(mod.default);
+    } catch {
+      // Bad middleware file — skip; top-level error handler will catch real problems.
+    }
+  }
+  let i = 0;
+  const next = () => {
+    if (i >= handlers.length) return terminal();
+    const fn = handlers[i++];
+    return fn(req, next);
+  };
+  return next();
 }
 
 /**

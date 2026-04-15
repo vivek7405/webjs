@@ -11,6 +11,7 @@ import { walk } from './fs-walk.js';
  *   errors: string[],
  *   loadings: string[],
  *   metadataFiles: string[],
+ *   middlewares: string[],
  *   isCatchAll: boolean
  * }} PageRoute
  *
@@ -18,6 +19,7 @@ import { walk } from './fs-walk.js';
  *   pattern: RegExp,
  *   paramNames: string[],
  *   file: string,
+ *   middlewares: string[],
  * }} ApiRoute
  *
  * @typedef {{
@@ -59,6 +61,8 @@ export async function buildRouteTable(appDir) {
   const errors = new Map();
   /** @type {Map<string,string>} */
   const loadings = new Map();
+  /** @type {Map<string,string>} */
+  const middlewares = new Map();
   let notFound = null;
 
   for await (const file of walk(root)) {
@@ -81,6 +85,7 @@ export async function buildRouteTable(appDir) {
         errors: [],
         loadings: [],
         metadataFiles: [],
+        middlewares: [],
         isCatchAll,
       });
     } else if (base === 'layout.js') {
@@ -89,30 +94,45 @@ export async function buildRouteTable(appDir) {
       errors.set(dir, file);
     } else if (base === 'loading.js') {
       loadings.set(dir, file);
+    } else if (base === 'middleware.js') {
+      middlewares.set(dir, file);
     } else if (base === 'not-found.js' && dir === '.') {
       notFound = file;
     } else if (base === 'route.js') {
       // route.js can live anywhere under app/ (matches Next.js behaviour).
       const segs = dir === '.' ? [] : dir.split('/');
       const { pattern, paramNames } = segmentsToPattern(segs);
-      apis.push({ pattern, paramNames, file });
+      apis.push({ pattern, paramNames, file, routeDir: dir, middlewares: [] });
     }
   }
 
-  // Attach nested layouts / error / loading files (outermost first).
+  // Attach nested layouts / error / loading / middleware files (outermost first).
   for (const page of pages) {
-    const segs = page.routeDir === '.' ? [] : page.routeDir.split('/');
-    /** @type {string[]} */
-    const chainDirs = ['.'];
-    for (let i = 1; i <= segs.length; i++) chainDirs.push(segs.slice(0, i).join('/'));
+    const chainDirs = chainOf(page.routeDir);
     page.layouts = chainDirs.map((d) => layouts.get(d)).filter(Boolean);
     page.errors = chainDirs.map((d) => errors.get(d)).filter(Boolean);
     page.loadings = chainDirs.map((d) => loadings.get(d)).filter(Boolean);
+    page.middlewares = chainDirs.map((d) => middlewares.get(d)).filter(Boolean);
     page.metadataFiles = [...page.layouts, page.file];
+  }
+  for (const api of apis) {
+    /** @type any */
+    const a = api;
+    const chainDirs = chainOf(a.routeDir);
+    a.middlewares = chainDirs.map((d) => middlewares.get(d)).filter(Boolean);
   }
 
   pages.sort((a, b) => dynScore(a) - dynScore(b));
   return { pages, apis, notFound, appDir };
+}
+
+/** @param {string} routeDir */
+function chainOf(routeDir) {
+  const segs = routeDir === '.' ? [] : routeDir.split('/');
+  /** @type {string[]} */
+  const dirs = ['.'];
+  for (let i = 1; i <= segs.length; i++) dirs.push(segs.slice(0, i).join('/'));
+  return dirs;
 }
 
 /** @param {string} seg */
