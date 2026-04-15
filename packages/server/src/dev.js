@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { stat, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { createGzip, createBrotliCompress, constants as zlibConstants } from 'node:zlib';
 import { join, extname, resolve, dirname } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -91,12 +92,15 @@ export async function createRequestHandler(opts) {
  *   appDir: string,
  *   port?: number,
  *   dev?: boolean,
+ *   compress?: boolean,
  *   logger?: import('./logger.js').Logger,
  * }} opts
  */
 export async function startServer(opts) {
   const dev = !!opts.dev;
   const port = opts.port ?? 3000;
+  // Compression default: on in prod, off in dev (cheaper to debug raw bytes).
+  const compress = opts.compress ?? !dev;
   const logger = opts.logger || defaultLogger({ dev });
 
   /** @type {Set<import('node:http').ServerResponse>} */
@@ -143,7 +147,7 @@ export async function startServer(opts) {
 
       const webReq = toWebRequest(req, url);
       const resp = await app.handle(webReq);
-      await sendWebResponse(res, resp);
+      await sendWebResponse(res, resp, req, { compress });
     } catch (e) {
       logger.error('request pipeline threw', { err: e instanceof Error ? e.stack : String(e) });
       if (!res.headersSent) res.writeHead(500, { 'content-type': 'text/plain' });
@@ -328,8 +332,13 @@ function toWebRequest(req, url) {
   return new Request(url, /** @type any */ ({ method, headers, body, duplex: 'half' }));
 }
 
-/** @param {import('node:http').ServerResponse} res @param {Response} webRes */
-async function sendWebResponse(res, webRes) {
+/**
+ * @param {import('node:http').ServerResponse} res
+ * @param {Response} webRes
+ * @param {import('node:http').IncomingMessage} [req]
+ * @param {{ compress?: boolean }} [opts]
+ */
+async function sendWebResponse(res, webRes, req, opts) {
   /** @type {Record<string,string | string[]>} */
   const headers = {};
   // Preserve multi-value headers (Set-Cookie) via getSetCookie when available.
@@ -341,16 +350,58 @@ async function sendWebResponse(res, webRes) {
     if (k === 'set-cookie') return;
     headers[k] = v;
   });
+
+  // Negotiate compression.
+  let compressor = null;
+  if (opts?.compress && req && webRes.body && isCompressible(headers['content-type'])) {
+    const accept = String(req.headers['accept-encoding'] || '');
+    if (/(?:^|,\s*)br(?:;|,|$)/.test(accept)) {
+      compressor = createBrotliCompress({
+        params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 },
+      });
+      headers['content-encoding'] = 'br';
+    } else if (/(?:^|,\s*)gzip(?:;|,|$)/.test(accept)) {
+      compressor = createGzip({ level: 6 });
+      headers['content-encoding'] = 'gzip';
+    }
+    if (compressor) {
+      headers['vary'] = 'Accept-Encoding';
+      delete headers['content-length'];
+    }
+  }
+
   res.writeHead(webRes.status, headers);
-  const body = webRes.body;
-  if (!body) { res.end(); return; }
-  const reader = body.getReader();
+  if (!webRes.body) { res.end(); return; }
+
+  if (compressor) {
+    compressor.pipe(res);
+    const reader = webRes.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        compressor.write(value);
+      }
+    } finally {
+      compressor.end();
+    }
+    return;
+  }
+
+  const reader = webRes.body.getReader();
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     res.write(value);
   }
   res.end();
+}
+
+/** @param {string | string[] | undefined} contentType */
+function isCompressible(contentType) {
+  if (!contentType) return false;
+  const ct = Array.isArray(contentType) ? contentType[0] : contentType;
+  return /^(?:text\/|application\/(?:javascript|json|xml|wasm|manifest)|image\/svg\+xml)/i.test(ct);
 }
 
 /**
