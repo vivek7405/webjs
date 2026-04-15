@@ -17,3 +17,4 @@ export { notFound, redirect, isNotFound, isRedirect } from './src/nav.js';
 export { expose, getExposed } from './src/expose.js';
 export { repeat, isRepeat } from './src/repeat.js';
 export { Suspense, isSuspense } from './src/suspense.js';
+export { connectWS } from './src/websocket-client.js';

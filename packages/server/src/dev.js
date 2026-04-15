@@ -23,6 +23,7 @@ import {
 } from './actions.js';
 import { defaultLogger } from './logger.js';
 import { withRequest } from './context.js';
+import { attachWebSocket } from './websocket.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -111,7 +112,16 @@ export async function createRequestHandler(opts) {
     return { moduleUrls };
   }
 
-  return { handle, rebuild, routeFor, appDir, dev, logger };
+  return {
+    handle,
+    rebuild,
+    routeFor,
+    /** current route table getter — used by the WebSocket subsystem */
+    getRouteTable: () => state.routeTable,
+    appDir,
+    dev,
+    logger,
+  };
 }
 
 /**
@@ -216,6 +226,10 @@ export async function startServer(opts) {
       res.end(dev && e instanceof Error ? `webjs error: ${e.stack}` : 'Internal server error');
     }
   });
+
+  // WebSocket upgrade handling: any route.js that exports `WS` becomes a
+  // WebSocket endpoint at its URL.
+  attachWebSocket(server, () => app.getRouteTable(), { dev, logger });
 
   const scheme = opts.http2 && opts.cert && opts.key ? 'https' : 'http';
   server.listen(port, () => {

@@ -2,6 +2,7 @@ import { html, repeat, Suspense } from 'webjs';
 import '../components/counter.js';
 import '../components/new-post.js';
 import '../components/muted-text.js';
+import '../components/chat-box.js';
 import { listPosts } from '../actions/posts.server.js';
 
 async function slowStat() {
@@ -53,5 +54,9 @@ export default async function HomePage() {
     <h2>Interactive counter</h2>
     <p>Pure client-side state in a web component, server-rendered then hydrated:</p>
     <my-counter count="3"></my-counter>
+
+    <h2>Real-time chat</h2>
+    <p>Open this page in two browser windows — messages broadcast over WebSocket:</p>
+    <chat-box></chat-box>
   `;
 }

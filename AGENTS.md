@@ -64,6 +64,7 @@ import { html, css, WebComponent, render, renderToString } from 'webjs';
 | `expose(p, fn)`   | Tag a server action to ALSO be reachable at a REST path, e.g. `expose('POST /api/posts', fn)`. Optional `{ validate }` runs before the handler over HTTP. |
 | `repeat(items, k, t)` | Keyed list directive — `${repeat(items, it => it.id, it => html\`...\`)}`. Preserves element identity / focus when items reorder. |
 | `Suspense({fallback, children})` | Streaming boundary — server flushes `fallback` immediately, streams `children` (a Promise<TemplateResult>) when it resolves. |
+| `connectWS(url, handlers)` | Client-side WebSocket with auto-reconnect, JSON parse/stringify, queued sends. |
 
 ### `html` — expression prefixes
 
@@ -145,6 +146,25 @@ Attribute changes auto-trigger re-render when the attribute is declared in
   `app/webhook/route.js` → `/webhook`, `app/api/users/[id]/route.js` → `/api/users/:id`.
   The `app/api/…` convention is idiomatic, not required.
 - A folder cannot have both `page.js` and `route.js` (they'd conflict on the same URL).
+- **WebSocket support**: exporting a `WS` function from the same `route.js`
+  turns the URL into a WebSocket endpoint. The server handles the HTTP
+  `Upgrade` handshake; your function receives the `ws` object, the upgrade
+  `Request` (for cookies / headers / auth), and `{ params }`:
+  ```js
+  export function WS(ws, req, { params }) {
+    ws.on('message', (data) => ws.send('echo:' + data));
+    ws.on('close', () => { /* cleanup */ });
+  }
+  ```
+  In **dev mode**, the module is re-imported on each connection to pick up
+  edits — store shared state (e.g. connected clients Set) on `globalThis`
+  so it survives the reload:
+  ```js
+  const clients = globalThis.__my_clients ?? (globalThis.__my_clients = new Set());
+  ```
+  Client helper: `connectWS(url, { onOpen, onMessage, onClose, onError, reconnect })`
+  from `webjs` — auto-reconnect with exponential backoff, JSON parse/stringify,
+  queues sends while disconnected.
 
 ### Middleware (`middleware.js` at the app root)
 

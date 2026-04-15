@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "chokidar": "^3.6.0",
-    "webjs": "0.1.0"
+    "webjs": "0.1.0",
+    "ws": "^8.20.0"
   }
 }
