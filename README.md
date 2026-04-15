@@ -157,13 +157,21 @@ expressApp.use(async (req, res) => {
 
 ## Status
 
-Pre-1.0. The core architecture is stable; expect surface-area churn around
-ergonomics. See `AGENTS.md` for the full convention contract and the list
-of features deliberately deferred (streaming, bundling, RSC tree serialisation).
+Pre-1.0 but production-shape. Recent hardening pass added: CSRF on
+internal RPC, fine-grained client diffing (focus survives re-renders),
+keyed list reconciliation (`repeat`), schema validation hook on `expose`,
+cookies/headers helpers, CORS, gzip/brotli, ETag + cache headers, health
+probe, graceful shutdown, JSON logger, programmatic embedding, process
+error handlers, SSE keepalive, HTML comment support in templates.
+
+Deliberately deferred (see `AGENTS.md` "Out of scope"): streaming SSR,
+bundling/code-splitting, full HMR, edge-runtime targets, RSC tree
+serialisation, raw-text element parsing (`<script>`/`<style>` in templates).
 
 ## Tests
 
 ```sh
-npm test              # 42+ unit tests across renderer, router, actions,
-                      # csrf, expose, repeat, fine-grained client diffing
+npm test              # 48 unit tests across renderer (server + client),
+                      # router, actions, csrf, expose, repeat, context,
+                      # fine-grained diffing, comment parsing
 ```

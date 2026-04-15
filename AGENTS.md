@@ -175,6 +175,19 @@ Attribute changes auto-trigger re-render when the attribute is declared in
 - Errors thrown from action handlers are sanitised in production: only the thrown `message` is returned, never the stack. Internal errors (no message) collapse to "Internal server error". The full error is logged server-side.
 - `expose()`d REST endpoints are NOT CSRF-protected (they target external consumers). Apply auth via `middleware.js` or per-route checks.
 
+### Security checklist for `expose()`
+
+When you mark an action as `expose('METHOD /path', fn)`, you are declaring it part of your public API surface. Treat it like one:
+
+1. **Authenticate every mutating endpoint.** Cookie auth alone is not enough — without CSRF a malicious site can POST to your endpoint with the user's cookies. Either:
+   - Require a bearer token / API key (read via `headers().get('authorization')`).
+   - Add an explicit CSRF check in your `validate` or `middleware.js`.
+   - Reject browser POSTs by checking `headers().get('origin')` against an allow-list.
+2. **Use `validate`** — never trust the merged `{ ...query, ...params, ...body }` shape. A handler that does `db.user.update({ where: input.filter, data: input.data })` is a foot-gun.
+3. **Log responsibly.** The default `actionErrorResponse` returns the thrown `message` only in prod; never include user input in error messages, never include secrets.
+4. **Configure CORS narrowly.** `cors: true` is fine for genuinely public reads. For anything authenticated, prefer an explicit origin or list.
+5. **Rate-limit at the edge.** webjs ships no built-in rate limiter. Use a reverse proxy (nginx, fly, cloudflare) or write a small middleware over `headers()`/in-process counters.
+
 ### Components (`components/*.js`)
 
 - Each file should define **one** custom element and call `Class.register()` at module top level.
