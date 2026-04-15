@@ -1,6 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { renderToString, isNotFound, isRedirect } from 'webjs';
 import { importMapTag } from './importmap.js';
+import { readToken, newToken, cookieHeader } from './csrf.js';
 
 /**
  * SSR a matched page route to a Response.
@@ -16,7 +17,7 @@ import { importMapTag } from './importmap.js';
  * @param {import('./router.js').PageRoute} route
  * @param {Record<string,string>} params
  * @param {URL} url
- * @param {{ dev: boolean, appDir: string }} opts
+ * @param {{ dev: boolean, appDir: string, req?: Request }} opts
  * @returns {Promise<Response>}
  */
 export async function ssrPage(route, params, url, opts) {
@@ -33,10 +34,7 @@ export async function ssrPage(route, params, url, opts) {
     const body = await renderChain(route, ctx, opts.dev);
     const moduleUrls = [route.file, ...route.layouts].map((f) => toUrlPath(f, opts.appDir));
     const html = wrapInDocument(body, { metadata, moduleUrls, dev: opts.dev });
-    return new Response(html, {
-      status: 200,
-      headers: { 'content-type': 'text/html; charset=utf-8' },
-    });
+    return htmlResponse(html, 200, opts.req, url);
   } catch (err) {
     if (isRedirect(err)) {
       const e = /** @type any */ (err);
@@ -44,10 +42,7 @@ export async function ssrPage(route, params, url, opts) {
     }
     if (isNotFound(err)) {
       const html = await ssrNotFoundHtml(null, opts);
-      return new Response(html, {
-        status: 404,
-        headers: { 'content-type': 'text/html; charset=utf-8' },
-      });
+      return htmlResponse(html, 404, opts.req, url);
     }
     // Try nearest error.js (innermost → outermost).
     for (let i = route.errors.length - 1; i >= 0; i--) {
@@ -58,37 +53,51 @@ export async function ssrPage(route, params, url, opts) {
         const body = await renderToString(tree);
         const moduleUrls = [route.file, ...route.layouts].map((f) => toUrlPath(f, opts.appDir));
         const html = wrapInDocument(body, { metadata, moduleUrls, dev: opts.dev });
-        return new Response(html, {
-          status: 500,
-          headers: { 'content-type': 'text/html; charset=utf-8' },
-        });
+        return htmlResponse(html, 500, opts.req, url);
       } catch (nested) {
         // fall through to next error boundary
       }
     }
-    // Default: dev shows stack, prod shows a terse message.
-    const stack = err instanceof Error ? err.stack || err.message : String(err);
+    // Default: dev shows stack, prod shows a terse message (no stack trace leaks).
+    console.error('[webjs] unhandled render error:', err);
     const body = opts.dev
-      ? `<h1>Server error</h1><pre style="white-space:pre-wrap">${escapeHtml(stack)}</pre>`
-      : `<h1>Server error</h1>`;
-    return new Response(wrapInDocument(body, { metadata, moduleUrls: [], dev: opts.dev }), {
-      status: 500,
-      headers: { 'content-type': 'text/html; charset=utf-8' },
-    });
+      ? `<h1>Server error</h1><pre style="white-space:pre-wrap">${escapeHtml(
+          err instanceof Error ? err.stack || err.message : String(err)
+        )}</pre>`
+      : `<h1>Server error</h1><p>Something went wrong. Please try again.</p>`;
+    return htmlResponse(
+      wrapInDocument(body, { metadata, moduleUrls: [], dev: opts.dev }),
+      500,
+      opts.req,
+      url
+    );
   }
 }
 
 /**
  * 404 response for unmatched routes.
  * @param {string | null} notFoundFile
- * @param {{ dev: boolean, appDir: string }} opts
+ * @param {{ dev: boolean, appDir: string, req?: Request, url?: URL }} opts
  */
 export async function ssrNotFound(notFoundFile, opts) {
   const html = await ssrNotFoundHtml(notFoundFile, opts);
-  return new Response(html, {
-    status: 404,
-    headers: { 'content-type': 'text/html; charset=utf-8' },
-  });
+  return htmlResponse(html, 404, opts.req, opts.url);
+}
+
+/**
+ * Build an HTML Response and, if missing, attach the CSRF cookie.
+ * @param {string} html
+ * @param {number} status
+ * @param {Request | undefined} req
+ * @param {URL | undefined} url
+ */
+function htmlResponse(html, status, req, url) {
+  const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
+  if (req && !readToken(req)) {
+    const secure = url ? url.protocol === 'https:' : false;
+    headers.append('set-cookie', cookieHeader(newToken(), { secure }));
+  }
+  return new Response(html, { status, headers });
 }
 
 /* ------------ internals ------------ */

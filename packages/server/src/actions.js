@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { getExposed } from 'webjs';
 import { walk } from './fs-walk.js';
+import { verify as verifyCsrf, CSRF_COOKIE, CSRF_HEADER } from './csrf.js';
 
 /**
  * Server-actions subsystem.
@@ -113,14 +114,26 @@ export async function serveActionStub(idx, absFile) {
     fnNames.push('default');
   }
   const body = `// webjs: generated server-action stub for ${relative(idx.appDir, absFile)}\n` +
+    `function __csrf() {\n` +
+    `  const m = document.cookie.match(/(?:^|;\\s*)${CSRF_COOKIE}=([^;]+)/);\n` +
+    `  return m ? decodeURIComponent(m[1]) : '';\n` +
+    `}\n` +
     `async function __rpc(fn, args) {\n` +
     `  const res = await fetch(${JSON.stringify(`/__webjs/action/${hash}/`)} + fn, {\n` +
     `    method: 'POST',\n` +
-    `    headers: { 'content-type': 'application/json' },\n` +
+    `    headers: {\n` +
+    `      'content-type': 'application/json',\n` +
+    `      ${JSON.stringify(CSRF_HEADER)}: __csrf()\n` +
+    `    },\n` +
     `    credentials: 'same-origin',\n` +
     `    body: JSON.stringify(args)\n` +
     `  });\n` +
-    `  if (!res.ok) throw new Error('webjs action ' + fn + ' -> ' + res.status);\n` +
+    `  if (!res.ok) {\n` +
+    `    const errText = await res.text().catch(() => '');\n` +
+    `    let errMsg = 'webjs action ' + fn + ' -> ' + res.status;\n` +
+    `    try { const j = JSON.parse(errText); if (j && j.error) errMsg = j.error; } catch {}\n` +
+    `    throw new Error(errMsg);\n` +
+    `  }\n` +
     `  const ct = res.headers.get('content-type') || '';\n` +
     `  return ct.includes('application/json') ? res.json() : res.text();\n` +
     `}\n` +
@@ -142,6 +155,9 @@ export async function serveActionStub(idx, absFile) {
  * @param {Request} req
  */
 export async function invokeAction(idx, hash, fnName, req) {
+  if (!verifyCsrf(req)) {
+    return Response.json({ error: 'CSRF validation failed' }, { status: 403 });
+  }
   const file = idx.hashToFile.get(hash);
   if (!file) return new Response('Unknown action', { status: 404 });
   let args = [];
@@ -159,8 +175,7 @@ export async function invokeAction(idx, hash, fnName, req) {
     const result = await fn(...args);
     return Response.json(result ?? null);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return Response.json({ error: msg }, { status: 500 });
+    return actionErrorResponse(e, idx.dev);
   }
 }
 
@@ -216,9 +231,32 @@ export async function invokeExposedAction(idx, route, params, req) {
     if (result instanceof Response) return result;
     return Response.json(result ?? null);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return Response.json({ error: msg }, { status: 500 });
+    return actionErrorResponse(e, idx.dev);
   }
+}
+
+/**
+ * Return a JSON error response with dev-vs-prod sanitization.
+ * In prod we return only the error message (not the stack), and we log the
+ * full error server-side. Internal errors with no message become a generic
+ * 500.
+ *
+ * @param {unknown} err
+ * @param {boolean} dev
+ */
+function actionErrorResponse(err, dev) {
+  console.error('[webjs] action threw:', err);
+  if (dev) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    return Response.json({ error: msg, stack }, { status: 500 });
+  }
+  // Prod: only expose the thrown message (author-controlled), never the stack.
+  const msg =
+    err instanceof Error && typeof err.message === 'string' && err.message
+      ? err.message
+      : 'Internal server error';
+  return Response.json({ error: msg }, { status: 500 });
 }
 
 /**

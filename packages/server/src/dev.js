@@ -207,14 +207,14 @@ async function handleCore(req, ctx) {
   // 8. Page route (only for GET/HEAD)
   if (method === 'GET' || method === 'HEAD') {
     const page = matchPage(state.routeTable, path);
-    if (page) return ssrPage(page.route, page.params, url, { dev, appDir });
+    if (page) return ssrPage(page.route, page.params, url, { dev, appDir, req });
   }
 
   // 9. Fallback — content-negotiated 404
   if (wantsJson(req, path)) {
     return Response.json({ error: 'Not found', path }, { status: 404 });
   }
-  return ssrNotFound(state.routeTable.notFound, { dev, appDir });
+  return ssrNotFound(state.routeTable.notFound, { dev, appDir, req, url });
 }
 
 /** @param {Request} req @param {string} path */

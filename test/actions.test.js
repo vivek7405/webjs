@@ -55,14 +55,42 @@ test('stubs server module and invokes action by hash/fn', async () => {
     assert.match(stub, /\/__webjs\/action\/[a-f0-9]+\//);
 
     const hash = idx.fileToHash.get(file);
+    // Action RPC is CSRF-protected: must present matching cookie + header.
+    const tok = 'test-csrf-token';
     const req = new Request('http://x/__webjs/action/' + hash + '/add', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        cookie: `webjs_csrf=${tok}`,
+        'x-webjs-csrf': tok,
+      },
       body: JSON.stringify([2, 3]),
     });
     const res = await invokeAction(idx, hash, 'add', req);
     assert.equal(res.status, 200);
     assert.equal(await res.json(), 5);
+
+    // Without CSRF token → 403
+    const unsafe = new Request('http://x/__webjs/action/' + hash + '/add', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify([2, 3]),
+    });
+    const rejected = await invokeAction(idx, hash, 'add', unsafe);
+    assert.equal(rejected.status, 403);
+
+    // Mismatched header vs cookie → 403
+    const mismatched = new Request('http://x/__webjs/action/' + hash + '/add', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        cookie: `webjs_csrf=${tok}`,
+        'x-webjs-csrf': 'different',
+      },
+      body: JSON.stringify([2, 3]),
+    });
+    const rejected2 = await invokeAction(idx, hash, 'add', mismatched);
+    assert.equal(rejected2.status, 403);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
