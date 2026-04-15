@@ -1,4 +1,5 @@
-import { createServer } from 'node:http';
+import { createServer as createHttp1Server } from 'node:http';
+import { createSecureServer as createHttp2SecureServer } from 'node:http2';
 import { stat, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { createGzip, createBrotliCompress, constants as zlibConstants } from 'node:zlib';
@@ -102,6 +103,9 @@ export async function createRequestHandler(opts) {
  *   port?: number,
  *   dev?: boolean,
  *   compress?: boolean,
+ *   http2?: boolean,
+ *   cert?: string,   // absolute path to PEM cert — required with http2
+ *   key?: string,    // absolute path to PEM private key — required with http2
  *   logger?: import('./logger.js').Logger,
  * }} opts
  */
@@ -145,7 +149,7 @@ export async function startServer(opts) {
   }, 25_000);
   keepalive.unref();
 
-  const server = createServer(async (req, res) => {
+  const server = await makeHttpServer(opts, logger, async (req, res) => {
     try {
       const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
@@ -173,8 +177,12 @@ export async function startServer(opts) {
     }
   });
 
+  const scheme = opts.http2 && opts.cert && opts.key ? 'https' : 'http';
   server.listen(port, () => {
-    logger.info(`webjs ${dev ? 'dev' : 'prod'} server ready on http://localhost:${port}`);
+    logger.info(
+      `webjs ${dev ? 'dev' : 'prod'} server ready on ${scheme}://localhost:${port}` +
+      (scheme === 'https' ? ' (HTTP/2)' : '')
+    );
   });
 
   const shutdown = gracefulShutdown(server, sseClients, logger);
@@ -371,6 +379,31 @@ async function loadMiddleware(appDir, dev, logger) {
  * @param {import('./logger.js').Logger} logger
  */
 /**
+ * Create an HTTP server — h2 over TLS if cert/key are provided and
+ * `http2` is enabled, else plain HTTP/1.1 over TCP. h2 servers set
+ * `allowHTTP1: true` so clients that can't negotiate ALPN fall back
+ * cleanly.
+ *
+ * @param {{ http2?: boolean, cert?: string, key?: string }} opts
+ * @param {import('./logger.js').Logger} logger
+ * @param {(req: any, res: any) => void} handler
+ */
+async function makeHttpServer(opts, logger, handler) {
+  if (opts.http2 && opts.cert && opts.key) {
+    try {
+      const [cert, key] = await Promise.all([readFile(opts.cert), readFile(opts.key)]);
+      return createHttp2SecureServer({ cert, key, allowHTTP1: true }, handler);
+    } catch (e) {
+      logger.error('failed to load cert/key for HTTP/2', { err: String(e) });
+      logger.warn('falling back to HTTP/1.1 plain');
+    }
+  } else if (opts.http2) {
+    logger.warn('--http2 requested but --cert/--key not both provided; serving HTTP/1.1');
+  }
+  return createHttp1Server(handler);
+}
+
+/**
  * Install once-only process error handlers. Idempotent across multiple
  * `startServer` calls in the same process.
  *
@@ -425,7 +458,13 @@ function toWebRequest(req, url) {
   const method = (req.method || 'GET').toUpperCase();
   /** @type {Record<string,string>} */
   const headers = {};
-  for (const [k, v] of Object.entries(req.headers)) headers[k] = Array.isArray(v) ? v.join(',') : String(v ?? '');
+  for (const [k, v] of Object.entries(req.headers)) {
+    // Drop HTTP/2 pseudo-headers (`:method`, `:path`, `:scheme`, `:authority`) —
+    // they're parsed separately into req.method / req.url and are rejected
+    // by the standard Headers class if we pass them through verbatim.
+    if (k.startsWith(':')) continue;
+    headers[k] = Array.isArray(v) ? v.join(',') : String(v ?? '');
+  }
   let body;
   if (method !== 'GET' && method !== 'HEAD') {
     body = new ReadableStream({

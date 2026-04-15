@@ -6,13 +6,14 @@ import { startServer, buildBundle } from '@webjs/server';
 const [cmd, ...rest] = process.argv.slice(2);
 
 const USAGE = `webjs — commands:
-  webjs dev [--port 3000]        Start dev server with live reload
-  webjs build                    Bundle components + pages for production
-  webjs start [--port 3000]      Start production server (serves bundle if built)
-  webjs db generate              Run \`prisma generate\`
-  webjs db migrate [name]        Run \`prisma migrate dev\`
-  webjs db studio                Run \`prisma studio\`
-  webjs help                     Show this help`;
+  webjs dev   [--port 3000]                       Start dev server with live reload
+  webjs build                                     Bundle components + pages for production
+  webjs start [--port 3000]                       Start production server
+              [--http2 --cert <path> --key <path>]  Serve HTTP/2 over TLS (falls back to h1.1)
+  webjs db generate                               Run \`prisma generate\`
+  webjs db migrate [name]                         Run \`prisma migrate dev\`
+  webjs db studio                                 Run \`prisma studio\`
+  webjs help                                      Show this help`;
 
 /** @param {string[]} args */
 function flag(args, name, def) {
@@ -30,7 +31,10 @@ async function main() {
     }
     case 'start': {
       const port = Number(flag(rest, '--port', process.env.PORT || 3000));
-      await startServer({ appDir: process.cwd(), port, dev: false });
+      const http2 = rest.includes('--http2');
+      const cert = flag(rest, '--cert');
+      const key = flag(rest, '--key');
+      await startServer({ appDir: process.cwd(), port, dev: false, http2, cert, key });
       break;
     }
     case 'build': {
