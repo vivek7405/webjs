@@ -4,76 +4,151 @@ import '../components/blog-shell.js';
 /**
  * Root layout — globals + chrome.
  *
- * The `<style>` block lives in the light DOM, so its `:root` custom
- * properties inherit into every shadow root across the app. Components
- * reference tokens via `var(--fg)`, `var(--accent)`, etc.
+ * Three concerns live here, in this order:
+ *  1. The inline `<script>` that syncs `<html data-theme>` from localStorage
+ *     BEFORE any style applies. No FOUC when a user's saved theme differs
+ *     from their system preference.
+ *  2. The `<style>` block with design tokens (OKLCH palette, fluid type,
+ *     spacing + motion scale). Tokens inherit into every shadow root in
+ *     the app — components just `var(--accent)` etc.
+ *  3. The `<blog-shell>` custom element holds the page chrome and slots
+ *     the page content into its shadow DOM.
  *
  * @param {{ children: unknown }} props
  */
 export default function RootLayout({ children }) {
   return html`
+    <script>
+      (function(){
+        try {
+          var t = localStorage.getItem('webjs_theme');
+          if (t === 'light' || t === 'dark') {
+            document.documentElement.dataset.theme = t;
+          }
+        } catch (_) {}
+      })();
+    </script>
     <style>
       :root {
         color-scheme: light dark;
-        --fg:           #1c1917;
-        --fg-muted:     #57534e;
-        --fg-subtle:    #a8a29e;
-        --bg:           #fafaf9;
-        --bg-elev:      #ffffff;
-        --bg-subtle:    #f5f5f4;
-        --border:       rgba(0, 0, 0, 0.08);
-        --border-strong:rgba(0, 0, 0, 0.16);
-        --accent:       #dc2626;
-        --accent-hover: #b91c1c;
-        --accent-fg:    #ffffff;
-        --accent-tint:  rgba(220, 38, 38, 0.08);
-        --danger:       #dc2626;
-        --success:      #16a34a;
 
-        --font-sans:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        --font-serif:   'New York', Georgia, Cambria, 'Times New Roman', serif;
-        --font-mono:    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+        /* ---------- dark (default / follows OS if not overridden) ---------- */
+        --fg:            oklch(0.96 0.015 80);
+        --fg-muted:      oklch(0.72 0.02 75);
+        --fg-subtle:     oklch(0.55 0.02 75);
+        --bg:            oklch(0.13 0.012 60);
+        --bg-elev:       oklch(0.17 0.012 60);
+        --bg-subtle:     oklch(0.15 0.012 60);
+        --bg-sunken:     oklch(0.11 0.01 60);
+        --border:        oklch(0.26 0.015 65 / 0.9);
+        --border-strong: oklch(0.38 0.015 65 / 0.9);
+        --accent:        oklch(0.83 0.14 78);
+        --accent-hover:  oklch(0.9 0.14 78);
+        --accent-fg:     oklch(0.15 0.01 60);
+        --accent-tint:   oklch(0.83 0.14 78 / 0.14);
+        --danger:        oklch(0.7 0.19 25);
+        --success:       oklch(0.72 0.15 145);
+        --grain:         oklch(1 0 0 / 0.015);
+
+        --font-sans:   -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        --font-serif:  ui-serif, 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, Cambria, serif;
+        --font-mono:   ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+
+        --fs-display: clamp(2.6rem, 1.6rem + 3.2vw, 4.25rem);
+        --fs-h1:      clamp(2rem, 1.5rem + 1.6vw, 2.85rem);
+        --fs-h2:      clamp(1.35rem, 1.15rem + 0.7vw, 1.7rem);
+        --fs-lede:    clamp(1.05rem, 0.95rem + 0.3vw, 1.2rem);
 
         --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
-        --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 64px;
+        --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 72px;
 
-        --rad-sm: 4px; --rad: 8px; --rad-lg: 12px; --rad-xl: 16px;
+        --rad-sm: 6px; --rad: 10px; --rad-lg: 14px; --rad-xl: 20px;
 
-        --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
-        --shadow:    0 2px 8px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.03);
-        --shadow-lg: 0 16px 48px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
+        --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.25);
+        --shadow:    0 4px 24px oklch(0 0 0 / 0.35), 0 1px 2px oklch(0 0 0 / 0.2);
+        --shadow-lg: 0 24px 64px oklch(0 0 0 / 0.45), 0 4px 12px oklch(0 0 0 / 0.3);
 
-        --t-fast: 120ms ease-out;
-        --t:      180ms ease-out;
+        --t-fast: 140ms cubic-bezier(0.3, 0, 0.3, 1);
+        --t:      220ms cubic-bezier(0.3, 0, 0.3, 1);
+        --t-slow: 380ms cubic-bezier(0.3, 0, 0.3, 1);
       }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --fg:            #f5f5f4;
-          --fg-muted:      #a8a29e;
-          --fg-subtle:     #78716c;
-          --bg:            #0c0a09;
-          --bg-elev:       #1c1917;
-          --bg-subtle:     #171414;
-          --border:        rgba(255, 255, 255, 0.08);
-          --border-strong: rgba(255, 255, 255, 0.16);
-          --accent:        #f87171;
-          --accent-hover:  #fca5a5;
-          --accent-tint:   rgba(248, 113, 113, 0.12);
-          --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
-          --shadow:    0 4px 12px rgba(0,0,0,0.5);
-          --shadow-lg: 0 16px 48px rgba(0,0,0,0.6);
+
+      /* ---------- light — applied for explicit toggle + OS-light unless overridden ---------- */
+      :root[data-theme='light'],
+      @media (prefers-color-scheme: light) { :root:not([data-theme='dark']) {} }
+
+      :root[data-theme='light'],
+      @media all {
+        /* no-op wrapper so the following rule is actually picked up */
+      }
+      @media (prefers-color-scheme: light) {
+        :root:not([data-theme='dark']) {
+          --fg:            oklch(0.18 0.015 60);
+          --fg-muted:      oklch(0.42 0.02 65);
+          --fg-subtle:     oklch(0.62 0.015 70);
+          --bg:            oklch(0.985 0.008 80);
+          --bg-elev:       oklch(1 0 0);
+          --bg-subtle:     oklch(0.96 0.008 80);
+          --bg-sunken:     oklch(0.94 0.008 80);
+          --border:        oklch(0.88 0.01 75 / 0.95);
+          --border-strong: oklch(0.78 0.01 75 / 0.95);
+          --accent:        oklch(0.58 0.15 55);
+          --accent-hover:  oklch(0.5 0.15 55);
+          --accent-fg:     oklch(1 0 0);
+          --accent-tint:   oklch(0.58 0.15 55 / 0.1);
+          --grain:         oklch(0 0 0 / 0.02);
+          --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.05);
+          --shadow:    0 4px 24px oklch(0 0 0 / 0.06), 0 1px 2px oklch(0 0 0 / 0.04);
+          --shadow-lg: 0 24px 64px oklch(0 0 0 / 0.1), 0 4px 12px oklch(0 0 0 / 0.05);
         }
       }
+      :root[data-theme='light'] {
+        --fg:            oklch(0.18 0.015 60);
+        --fg-muted:      oklch(0.42 0.02 65);
+        --fg-subtle:     oklch(0.62 0.015 70);
+        --bg:            oklch(0.985 0.008 80);
+        --bg-elev:       oklch(1 0 0);
+        --bg-subtle:     oklch(0.96 0.008 80);
+        --bg-sunken:     oklch(0.94 0.008 80);
+        --border:        oklch(0.88 0.01 75 / 0.95);
+        --border-strong: oklch(0.78 0.01 75 / 0.95);
+        --accent:        oklch(0.58 0.15 55);
+        --accent-hover:  oklch(0.5 0.15 55);
+        --accent-fg:     oklch(1 0 0);
+        --accent-tint:   oklch(0.58 0.15 55 / 0.1);
+        --grain:         oklch(0 0 0 / 0.02);
+        --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.05);
+        --shadow:    0 4px 24px oklch(0 0 0 / 0.06), 0 1px 2px oklch(0 0 0 / 0.04);
+        --shadow-lg: 0 24px 64px oklch(0 0 0 / 0.1), 0 4px 12px oklch(0 0 0 / 0.05);
+      }
+
       *, *::before, *::after { box-sizing: border-box; }
       html, body { margin: 0; }
+      html { scroll-behavior: smooth; }
       body {
         background: var(--bg);
         color: var(--fg);
         font: 16px/1.65 var(--font-sans);
         -webkit-font-smoothing: antialiased;
         text-rendering: optimizeLegibility;
+        font-feature-settings: 'ss01', 'cv02';
+        transition: background var(--t-slow), color var(--t-slow);
+      }
+      body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: -1;
+        background:
+          radial-gradient(ellipse 80% 60% at 50% -10%, var(--accent-tint), transparent 60%),
+          radial-gradient(ellipse 50% 40% at 100% 100%, var(--accent-tint), transparent 70%);
+        opacity: 0.7;
       }
       ::selection { background: var(--accent-tint); color: var(--fg); }
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+      ::-webkit-scrollbar-track { background: transparent; }
     </style>
     <blog-shell>${children}</blog-shell>
   `;
