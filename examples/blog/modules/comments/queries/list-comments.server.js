@@ -1,6 +1,6 @@
 'use server';
 
-import { prisma } from '../../../lib/prisma.js';
+import { prisma } from '../../../lib/prisma.ts';
 
 /**
  * @param {{ postId: number }} input

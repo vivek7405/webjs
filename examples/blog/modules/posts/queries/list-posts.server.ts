@@ -1,6 +1,6 @@
 'use server';
 
-import { prisma } from '../../../lib/prisma.js';
+import { prisma } from '../../../lib/prisma.ts';
 import { formatPost } from '../utils/slugify.ts';
 import type { PostFormatted } from '../types.ts';
 

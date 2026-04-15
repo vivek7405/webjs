@@ -1,6 +1,6 @@
 'use server';
 
-import { destroySession } from '../../../lib/session.js';
+import { destroySession } from '../../../lib/session.ts';
 
 /**
  * Invalidate a session token.

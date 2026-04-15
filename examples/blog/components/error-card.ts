@@ -7,6 +7,7 @@ import { WebComponent, html, css } from 'webjs';
 export class ErrorCard extends WebComponent {
   static tag = 'error-card';
   static properties = { message: { type: String } };
+  message = '';
   static styles = css`
     :host {
       display: block;
@@ -46,7 +47,6 @@ export class ErrorCard extends WebComponent {
       color: var(--fg);
     }
   `;
-  constructor() { super(); this.message = ''; }
   render() {
     return html`
       <div class="rubric">Error</div>

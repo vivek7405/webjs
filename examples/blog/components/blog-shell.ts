@@ -1,5 +1,5 @@
 import { WebComponent, html, css } from 'webjs';
-import './theme-toggle.js';
+import './theme-toggle.ts';
 
 /**
  * `<blog-shell>` — editorial 2026 chrome. Warm-lit dark-default aesthetic,

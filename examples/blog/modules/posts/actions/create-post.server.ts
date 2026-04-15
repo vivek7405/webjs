@@ -1,6 +1,6 @@
 'use server';
 
-import { prisma } from '../../../lib/prisma.js';
+import { prisma } from '../../../lib/prisma.ts';
 import { slugify, formatPost } from '../utils/slugify.ts';
 import { currentUser } from '../../auth/queries/current-user.server.js';
 import type { PostFormatted, CreatePostInput } from '../types.ts';

@@ -1,7 +1,7 @@
 'use server';
 
 import { cookies } from '@webjs/server';
-import { getUserByToken, SESSION_COOKIE } from '../../../lib/session.js';
+import { getUserByToken, SESSION_COOKIE } from '../../../lib/session.ts';
 
 /**
  * Resolve the currently-logged-in user from the in-flight Request's

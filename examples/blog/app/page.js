@@ -1,6 +1,6 @@
 import { html, repeat, Suspense } from 'webjs';
-import '../components/counter.js';
-import '../components/muted-text.js';
+import '../components/counter.ts';
+import '../components/muted-text.ts';
 import '../modules/chat/components/chat-box.js';
 
 import { listPosts } from '../modules/posts/queries/list-posts.server.ts';

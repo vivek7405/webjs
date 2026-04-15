@@ -1,5 +1,5 @@
 import { html } from 'webjs';
-import '../components/blog-shell.js';
+import '../components/blog-shell.ts';
 
 /**
  * Root layout — globals + chrome.

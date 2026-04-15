@@ -7,8 +7,11 @@ import { WebComponent, html, css } from 'webjs';
  * `<html data-theme>`. The initial theme is set by the synchronous bootstrap
  * script in layout.js so there's no FOUC on page load.
  */
+type Theme = 'system' | 'light' | 'dark';
+
 export class ThemeToggle extends WebComponent {
   static tag = 'theme-toggle';
+  declare state: { theme: Theme };
   static styles = css`
     :host { display: inline-flex; }
     button {
@@ -50,13 +53,16 @@ export class ThemeToggle extends WebComponent {
 
   connectedCallback() {
     super.connectedCallback();
-    const saved =
-      (() => { try { return localStorage.getItem('webjs_theme'); } catch { return null; } })();
-    this.setState({ theme: saved === 'light' || saved === 'dark' ? saved : 'system' });
+    let saved: string | null = null;
+    try { saved = localStorage.getItem('webjs_theme'); } catch {}
+    const theme: Theme = saved === 'light' || saved === 'dark' ? saved : 'system';
+    this.setState({ theme });
   }
 
   cycle() {
-    const next = this.state.theme === 'system' ? 'light' : this.state.theme === 'light' ? 'dark' : 'system';
+    const next: Theme =
+      this.state.theme === 'system' ? 'light'
+      : this.state.theme === 'light' ? 'dark' : 'system';
     this.setState({ theme: next });
     try {
       if (next === 'system') localStorage.removeItem('webjs_theme');

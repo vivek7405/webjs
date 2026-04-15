@@ -1,5 +1,5 @@
 import { WebComponent, html, css, repeat, connectWS } from 'webjs';
-import '../../../components/muted-text.js';
+import '../../../components/muted-text.ts';
 
 /**
  * `<comments-thread>` — live thread. Editorial card list, mono meta,

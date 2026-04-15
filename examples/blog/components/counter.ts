@@ -7,6 +7,7 @@ import { WebComponent, html, css } from 'webjs';
 export class Counter extends WebComponent {
   static tag = 'my-counter';
   static properties = { count: { type: Number } };
+  count = 0;
   static styles = css`
     :host {
       display: inline-flex;
@@ -43,8 +44,7 @@ export class Counter extends WebComponent {
       color: var(--accent);
     }
   `;
-  constructor() { super(); this.count = 0; }
-  _bump(d) { this.count = (Number(this.count) || 0) + d; this.requestUpdate(); }
+  _bump(d: number) { this.count = (Number(this.count) || 0) + d; this.requestUpdate(); }
   render() {
     const v = Number(this.count) || 0;
     return html`

@@ -1,5 +1,5 @@
 import { cookies } from '@webjs/server';
-import { getUserByToken, SESSION_COOKIE } from '../../lib/session.js';
+import { getUserByToken, SESSION_COOKIE } from '../../lib/session.ts';
 
 /**
  * /dashboard/* access control. If no session → 302 to /login.

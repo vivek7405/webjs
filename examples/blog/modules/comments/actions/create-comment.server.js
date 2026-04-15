@@ -1,6 +1,6 @@
 'use server';
 
-import { prisma } from '../../../lib/prisma.js';
+import { prisma } from '../../../lib/prisma.ts';
 import { currentUser } from '../../auth/queries/current-user.server.js';
 import { publish } from '../utils/bus.js';
 import { formatComment } from '../queries/list-comments.server.js';

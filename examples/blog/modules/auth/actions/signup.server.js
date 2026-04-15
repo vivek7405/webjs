@@ -1,8 +1,8 @@
 'use server';
 
-import { prisma } from '../../../lib/prisma.js';
-import { hashPassword } from '../../../lib/password.js';
-import { createSession } from '../../../lib/session.js';
+import { prisma } from '../../../lib/prisma.ts';
+import { hashPassword } from '../../../lib/password.ts';
+import { createSession } from '../../../lib/session.ts';
 import { validateSignup } from '../utils/validate.js';
 
 /**

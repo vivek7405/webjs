@@ -1,5 +1,5 @@
 import { html, notFound } from 'webjs';
-import '../../../components/muted-text.js';
+import '../../../components/muted-text.ts';
 import '../../../modules/comments/components/comments-thread.js';
 
 import { getPost } from '../../../modules/posts/queries/get-post.server.ts';

@@ -1,5 +1,5 @@
 import { signup } from '../../../../modules/auth/actions/signup.server.js';
-import { sessionCookieHeader } from '../../../../lib/session.js';
+import { sessionCookieHeader } from '../../../../lib/session.ts';
 
 export async function POST(req) {
   const input = await req.json().catch(() => null);

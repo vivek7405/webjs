@@ -1,6 +1,6 @@
 import { cookies } from '@webjs/server';
 import { logout } from '../../../../modules/auth/actions/logout.server.js';
-import { SESSION_COOKIE, clearSessionCookieHeader } from '../../../../lib/session.js';
+import { SESSION_COOKIE, clearSessionCookieHeader } from '../../../../lib/session.ts';
 
 export async function POST() {
   await logout(cookies().get(SESSION_COOKIE));
