@@ -133,6 +133,15 @@ export async function startServer(opts) {
     }
   }
 
+  // SSE keepalive: send a comment frame every 25s to defeat proxy idle timeouts.
+  // Cheap (no event listeners on the client side) and safe — comments are ignored.
+  const keepalive = setInterval(() => {
+    for (const res of sseClients) {
+      try { res.write(`: ka\n\n`); } catch {}
+    }
+  }, 25_000);
+  keepalive.unref();
+
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -168,6 +177,11 @@ export async function startServer(opts) {
   const shutdown = gracefulShutdown(server, sseClients, logger);
   process.once('SIGINT', () => shutdown('SIGINT'));
   process.once('SIGTERM', () => shutdown('SIGTERM'));
+
+  // Catch-all process handlers — log, but don't tear the process down on a
+  // single mishandled promise. Uncaught exceptions are different: state may be
+  // corrupted, so log + start an orderly shutdown rather than continuing.
+  installProcessHandlers(logger, () => shutdown('uncaughtException'));
 
   return { server, close: () => new Promise((r) => server.close(() => r())) };
 }
@@ -308,6 +322,28 @@ async function loadMiddleware(appDir, dev, logger) {
  * @param {Set<import('node:http').ServerResponse>} sseClients
  * @param {import('./logger.js').Logger} logger
  */
+/**
+ * Install once-only process error handlers. Idempotent across multiple
+ * `startServer` calls in the same process.
+ *
+ * @param {import('./logger.js').Logger} logger
+ * @param {() => void} onFatal
+ */
+function installProcessHandlers(logger, onFatal) {
+  if (/** @type any */ (globalThis).__webjsProcHandlers) return;
+  /** @type any */ (globalThis).__webjsProcHandlers = true;
+  process.on('unhandledRejection', (reason) => {
+    logger.error('unhandledRejection', {
+      err: reason instanceof Error ? reason.stack || reason.message : String(reason),
+    });
+  });
+  process.on('uncaughtException', (err) => {
+    logger.error('uncaughtException', { err: err.stack || err.message });
+    // Begin orderly shutdown; process state may be corrupt.
+    try { onFatal(); } catch {}
+  });
+}
+
 function gracefulShutdown(server, sseClients, logger) {
   let shuttingDown = false;
   return (signal) => {
