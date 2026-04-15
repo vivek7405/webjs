@@ -2,30 +2,57 @@ import { html } from 'webjs';
 
 export const metadata = { title: 'About — webjs blog' };
 
-/**
- * `/about` — served from app/(marketing)/about/page.js.
- * The `(marketing)` folder is a **route group**: it appears in the
- * filesystem so we can group related pages and share a layout, but it
- * does NOT appear in the URL.
- */
 export default function About() {
   return html`
+    <style>
+      .lead {
+        font-size: 1.1rem;
+        color: var(--fg-muted);
+        margin: 0 0 var(--sp-6);
+        max-width: 56ch;
+      }
+      .features {
+        display: grid;
+        gap: var(--sp-3);
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        margin: var(--sp-5) 0;
+      }
+      .feature {
+        padding: var(--sp-4);
+        background: var(--bg-elev);
+        border: 1px solid var(--border);
+        border-radius: var(--rad);
+      }
+      .feature strong { display: block; margin-bottom: 4px; color: var(--fg); }
+      .feature span { font-size: 13px; color: var(--fg-muted); }
+    </style>
+
     <h1>About this demo</h1>
-    <p>
-      This blog exercises every feature of the webjs framework:
-      SSR with Declarative Shadow DOM, async Suspense-streamed boundaries,
-      fine-grained client renderer with keyed lists, server actions,
-      expose()'d REST endpoints, CORS, per-segment middleware,
-      rate limiting on auth endpoints, route groups (this page!),
-      private folders, WebSockets for real-time chat and live comments,
-      session-cookie auth, and Prisma-backed models.
+    <p class="lead">
+      A tiny blog built on <strong>webjs</strong> — a no-build, web-components-first,
+      Next.js-inspired framework. The blog exercises every feature the framework ships.
     </p>
+
+    <h2>Features on display</h2>
+    <div class="features">
+      <div class="feature"><strong>SSR + DSD</strong><span>Real server HTML, shadow DOM upgrades on connect.</span></div>
+      <div class="feature"><strong>Streaming Suspense</strong><span>Fallback flushes immediately; deferred content streams in.</span></div>
+      <div class="feature"><strong>Server actions</strong><span>Import a <code>.server.js</code> function from a component — it auto-RPCs.</span></div>
+      <div class="feature"><strong>WebSockets</strong><span>Live chat + live comments via the <code>WS</code> export on <code>route.js</code>.</span></div>
+      <div class="feature"><strong>Session auth</strong><span>scrypt + cookie session, CSRF on RPC, rate-limited auth endpoints.</span></div>
+      <div class="feature"><strong>Fine-grained renderer</strong><span>Focus and selection survive state updates.</span></div>
+      <div class="feature"><strong>Keyed lists</strong><span><code>repeat()</code> preserves element identity on reorder.</span></div>
+      <div class="feature"><strong>Route groups</strong><span>This page lives at <code>app/(marketing)/about/page.js</code>.</span></div>
+    </div>
+
+    <h2>Modules architecture</h2>
     <p>
-      The app is organised the same way as pilot-platform's Next.js build:
-      thin routes in <code>app/</code>, feature modules in <code>modules/</code>
-      (<code>actions/</code>, <code>queries/</code>, <code>utils/</code>,
-      <code>types.js</code>), cross-cutting infra in <code>lib/</code>.
+      Organised like a production Next.js app: thin adapters in <code>app/</code>,
+      feature modules in <code>modules/</code> (<code>actions/</code>, <code>queries/</code>,
+      <code>components/</code>, <code>utils/</code>, <code>types.js</code>),
+      cross-cutting infrastructure in <code>lib/</code>.
     </p>
+
     <p><a href="/">← Back to posts</a></p>
   `;
 }

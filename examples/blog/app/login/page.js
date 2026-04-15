@@ -1,17 +1,32 @@
-import { html } from 'webjs';
+import { html, redirect } from 'webjs';
 import '../../modules/auth/components/auth-forms.js';
 import { currentUser } from '../../modules/auth/queries/current-user.server.js';
-import { redirect } from 'webjs';
 
 export const metadata = { title: 'Sign in — webjs blog' };
 
 export default async function LoginPage({ searchParams }) {
-  // Already signed in? Send them where they were headed.
   const me = await currentUser();
   if (me) redirect(searchParams?.then || '/dashboard');
 
   return html`
-    <h1>Sign in</h1>
-    <auth-forms then=${searchParams?.then || '/dashboard'}></auth-forms>
+    <style>
+      .wrap {
+        max-width: 460px;
+        margin: var(--sp-6) auto;
+        text-align: center;
+      }
+      .wrap h1 {
+        margin: 0 0 var(--sp-2);
+      }
+      .wrap p {
+        color: var(--fg-muted);
+        margin: 0 0 var(--sp-6);
+      }
+    </style>
+    <div class="wrap">
+      <h1>Welcome back</h1>
+      <p>Sign in to write posts and join the conversation.</p>
+      <auth-forms then=${searchParams?.then || '/dashboard'}></auth-forms>
+    </div>
   `;
 }

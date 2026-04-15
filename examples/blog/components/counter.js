@@ -1,45 +1,57 @@
 import { WebComponent, html, css } from 'webjs';
 
 /**
- * `<my-counter count="3">` — stateful counter in shadow DOM.
- *
- * Reads state from the `count` property so SSR and CSR agree: the server
- * reads the attribute → property, renders, ships DSD; the browser upgrades
- * with the same property, rendering the same numeric value, then increments
- * on click.
+ * `<my-counter count="3">` — demo counter with clean styling.
+ * Showcases: shadow DOM styles, properties, events, state → re-render.
  */
 export class Counter extends WebComponent {
   static tag = 'my-counter';
   static properties = { count: { type: Number } };
   static styles = css`
-    :host { display: inline-flex; gap: 8px; align-items: center; font: inherit; }
-    button {
-      font: inherit; cursor: pointer;
-      padding: 4px 12px; border: 1px solid #888; border-radius: 6px;
-      background: #fff;
+    :host {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-2);
+      padding: var(--sp-2);
+      border-radius: var(--rad);
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
     }
-    button:hover { background: #f3f3f3; }
-    output { font-variant-numeric: tabular-nums; min-width: 2ch; text-align: center; }
+    button {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--rad);
+      border: 0;
+      background: transparent;
+      color: var(--fg-muted);
+      font: 600 18px/1 var(--font-sans);
+      cursor: pointer;
+      transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast);
+    }
+    button:hover { background: var(--bg-subtle); color: var(--fg); }
+    button:active { transform: scale(0.94); }
+    button:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    output {
+      min-width: 3ch;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      color: var(--fg);
+    }
   `;
 
-  constructor() {
-    super();
-    /** @type {number} */
-    this.count = 0;
-  }
-
-  /** @param {number} delta */
-  _bump(delta) {
-    this.count = (Number(this.count) || 0) + delta;
-    this.requestUpdate();
-  }
-
+  constructor() { super(); this.count = 0; }
+  _bump(delta) { this.count = (Number(this.count) || 0) + delta; this.requestUpdate(); }
   render() {
     const v = Number(this.count) || 0;
     return html`
-      <button @click=${() => this._bump(-1)}>−</button>
+      <button aria-label="Decrement" @click=${() => this._bump(-1)}>−</button>
       <output>${v}</output>
-      <button @click=${() => this._bump(1)}>+</button>
+      <button aria-label="Increment" @click=${() => this._bump(1)}>+</button>
     `;
   }
 }

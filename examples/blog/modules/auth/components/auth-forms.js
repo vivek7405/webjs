@@ -8,21 +8,89 @@ export class AuthForms extends WebComponent {
   static tag = 'auth-forms';
   static properties = { then: { type: String } };
   static styles = css`
-    :host { display: block; max-width: 420px; }
-    .tabs { display: flex; gap: 0; margin-bottom: 12px; border-bottom: 1px solid #ddd; }
+    :host { display: block; max-width: 420px; margin: 0 auto; }
+
+    .card {
+      padding: var(--sp-6);
+      background: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: var(--rad-lg);
+      box-shadow: var(--shadow);
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      margin-bottom: var(--sp-5);
+      padding: 4px;
+      border-radius: var(--rad);
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+    }
     .tabs button {
-      flex: 1; padding: 8px 12px; font: inherit; background: none; border: 0;
-      border-bottom: 2px solid transparent; cursor: pointer; color: #666;
+      padding: var(--sp-2) var(--sp-3);
+      font: 600 14px/1 var(--font-sans);
+      background: transparent;
+      color: var(--fg-muted);
+      border: 0;
+      border-radius: calc(var(--rad) - 4px);
+      cursor: pointer;
+      transition: color var(--t-fast), background var(--t-fast);
     }
-    .tabs button.active { color: #111; border-bottom-color: #111; font-weight: 600; }
-    form { display: grid; gap: 8px; }
-    input { padding: 8px; font: inherit; border: 1px solid #888; border-radius: 4px; }
+    .tabs button.active {
+      background: var(--bg-elev);
+      color: var(--fg);
+      box-shadow: var(--shadow-sm);
+    }
+
+    form { display: grid; gap: var(--sp-3); }
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--fg-muted);
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    input {
+      font: 15px/1.5 var(--font-sans);
+      padding: var(--sp-3);
+      border-radius: var(--rad);
+      border: 1px solid var(--border-strong);
+      background: var(--bg);
+      color: var(--fg);
+      transition: border-color var(--t-fast), box-shadow var(--t-fast);
+    }
+    input:focus {
+      outline: 0;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-tint);
+    }
     button[type="submit"] {
-      font: inherit; padding: 8px 12px; border: 0; border-radius: 4px;
-      background: #111; color: #fff; cursor: pointer;
+      margin-top: var(--sp-2);
+      font: 600 14px/1 var(--font-sans);
+      padding: var(--sp-3);
+      border-radius: var(--rad);
+      border: 0;
+      background: var(--accent);
+      color: var(--accent-fg);
+      cursor: pointer;
+      transition: background var(--t-fast), transform var(--t-fast);
     }
+    button[type="submit"]:hover { background: var(--accent-hover); }
+    button[type="submit"]:active { transform: translateY(1px); }
     button[type="submit"]:disabled { opacity: 0.5; cursor: progress; }
-    .err { color: #b00; margin: 0; }
+
+    .err {
+      margin: 0;
+      padding: var(--sp-3);
+      border-radius: var(--rad);
+      background: var(--accent-tint);
+      color: var(--danger);
+      font-size: 14px;
+    }
   `;
 
   constructor() {
@@ -33,7 +101,7 @@ export class AuthForms extends WebComponent {
 
   async onSubmit(e) {
     e.preventDefault();
-    const form = /** @type HTMLFormElement */ (e.currentTarget);
+    const form = e.currentTarget;
     const data = Object.fromEntries(new FormData(form));
     this.setState({ busy: true, error: null });
     try {
@@ -56,21 +124,33 @@ export class AuthForms extends WebComponent {
   render() {
     const { mode, busy, error } = this.state;
     return html`
-      <div class="tabs">
-        <button class=${mode === 'login' ? 'active' : ''} @click=${() => this.setState({ mode: 'login' })}>Sign in</button>
-        <button class=${mode === 'signup' ? 'active' : ''} @click=${() => this.setState({ mode: 'signup' })}>Sign up</button>
+      <div class="card">
+        <div class="tabs" role="tablist">
+          <button role="tab" class=${mode === 'login' ? 'active' : ''}
+                  @click=${() => this.setState({ mode: 'login', error: null })}>Sign in</button>
+          <button role="tab" class=${mode === 'signup' ? 'active' : ''}
+                  @click=${() => this.setState({ mode: 'signup', error: null })}>Create account</button>
+        </div>
+        <form @submit=${(e) => this.onSubmit(e)}>
+          ${mode === 'signup'
+            ? html`<label>Name (optional)
+                <input name="name" autocomplete="name" />
+              </label>`
+            : ''}
+          <label>Email
+            <input name="email" type="email" autocomplete="email" required />
+          </label>
+          <label>Password
+            <input name="password" type="password"
+                   autocomplete=${mode === 'login' ? 'current-password' : 'new-password'}
+                   minlength="8" required />
+          </label>
+          <button type="submit" ?disabled=${busy}>
+            ${busy ? '…' : (mode === 'login' ? 'Sign in' : 'Create account')}
+          </button>
+          ${error ? html`<p class="err">${error}</p>` : ''}
+        </form>
       </div>
-      <form @submit=${(e) => this.onSubmit(e)}>
-        ${mode === 'signup'
-          ? html`<input name="name" placeholder="Name (optional)" autocomplete="name" />`
-          : ''}
-        <input name="email" type="email" placeholder="Email" autocomplete="email" required />
-        <input name="password" type="password" placeholder="Password (min 8 chars)" autocomplete=${mode === "login" ? "current-password" : "new-password"} required />
-        <button type="submit" ?disabled=${busy}>
-          ${busy ? '…' : (mode === 'login' ? 'Sign in' : 'Create account')}
-        </button>
-        ${error ? html`<p class="err">${error}</p>` : ''}
-      </form>
     `;
   }
 }
