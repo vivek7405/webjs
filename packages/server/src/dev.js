@@ -92,7 +92,26 @@ export async function createRequestHandler(opts) {
     });
   }
 
-  return { handle, rebuild, appDir, dev, logger };
+  /**
+   * Lightweight lookup used by the HTTP layer to emit 103 Early Hints
+   * BEFORE running SSR: resolves a pathname to its page-route module URLs
+   * without loading them. Returns null for non-page paths.
+   *
+   * @param {string} pathname
+   */
+  function routeFor(pathname) {
+    const page = matchPage(state.routeTable, pathname);
+    if (!page) return null;
+    const moduleUrls = state.bundlePath
+      ? ['/__webjs/bundle.js']
+      : [page.route.file, ...page.route.layouts].map((f) => {
+          let rel = f.startsWith(appDir) ? f.slice(appDir.length) : f;
+          return rel.split('\\').join('/').replace(/^\/?/, '/');
+        });
+    return { moduleUrls };
+  }
+
+  return { handle, rebuild, routeFor, appDir, dev, logger };
 }
 
 /**
@@ -165,6 +184,27 @@ export async function startServer(opts) {
         sseClients.add(res);
         res.socket?.on('close', () => sseClients.delete(res));
         return;
+      }
+
+      // 103 Early Hints: before running SSR, send preload hints for the
+      // page's module URLs so the browser can begin fetching them while
+      // the server is still computing the body. Skipped in dev (file churn
+      // would send stale URLs after rebuilds) and for non-GET/HEAD.
+      if (
+        !dev &&
+        (req.method === 'GET' || req.method === 'HEAD') &&
+        typeof res.writeEarlyHints === 'function'
+      ) {
+        const match = app.routeFor(url.pathname);
+        if (match && match.moduleUrls.length) {
+          try {
+            res.writeEarlyHints({
+              link: match.moduleUrls.map((u) => `<${u}>; rel=modulepreload`),
+            });
+          } catch (e) {
+            logger.warn('writeEarlyHints failed', { err: String(e) });
+          }
+        }
       }
 
       const webReq = toWebRequest(req, url);
