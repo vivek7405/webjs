@@ -2,46 +2,107 @@ import { isTemplate, MARKER } from './html.js';
 import { escapeAttr } from './escape.js';
 
 /**
- * Render a value (TemplateResult or primitive) into a DOM container,
- * replacing existing children.
+ * Client-side renderer with **fine-grained** updates.
  *
- * This is a simple, correct-but-not-optimised renderer: every call
- * rebuilds the DOM from scratch. Good enough for v1; Lit-style
- * part-diffing can be bolted on later without touching public API.
+ * Each TemplateResult is compiled once (keyed by the tagged-template's
+ * `strings` array identity, so reuse is free across renders) into:
+ *   - a `<template>` element with static HTML + marker comments/attributes
+ *     at each dynamic hole
+ *   - a list of `Part` descriptors (kind + DOM location + attr/event name)
+ *
+ * On first render the template is cloned into the container and each Part
+ * is bound to the freshly-created node. Subsequent renders compare the new
+ * values to the last-applied values and only touch parts that changed.
+ * Text-position holes containing nested TemplateResults reuse the existing
+ * child instance when the inner `strings` match; they only rebuild when the
+ * template shape changes.
+ *
+ * Consequences worth knowing:
+ *   - Input focus, cursor position, selection, and scroll inside components
+ *     survive `setState`.
+ *   - Event listeners are attached once and retargeted when the handler
+ *     reference changes (swap-in-place via a dispatch closure, so `addEventListener`
+ *     isn't churned every render).
+ *   - This is a conservative implementation; no keyed list diffing yet — array
+ *     changes rebuild the whole text part.
+ */
+
+/** @type {WeakMap<TemplateStringsArray | string[], { templateEl: HTMLTemplateElement, parts: PartDescriptor[] }>} */
+const templateCache = new WeakMap();
+const INSTANCE = Symbol.for('webjs.instance');
+
+/**
+ * @typedef {{
+ *   kind: 'child' | 'attr' | 'event' | 'prop' | 'bool',
+ *   path: number[],
+ *   name?: string,
+ * }} PartDescriptor
+ *
+ * @typedef {{
+ *   strings: TemplateStringsArray | string[],
+ *   bound: BoundPart[],
+ *   lastValues: unknown[],
+ *   startNode: Comment,
+ *   endNode: Comment,
+ * }} TemplateInstance
+ *
+ * @typedef {
+ *   | { kind: 'child', marker: Comment, child?: TemplateInstance | ChildNode[] }
+ *   | { kind: 'attr', el: Element, name: string }
+ *   | { kind: 'event', el: Element, name: string, handler: ((e: Event) => void) | null, dispatcher: (e: Event) => void }
+ *   | { kind: 'prop', el: Element, name: string }
+ *   | { kind: 'bool', el: Element, name: string }
+ * } BoundPart
+ */
+
+/**
+ * Render a value into a container, reusing DOM where possible.
  *
  * @param {unknown} value
  * @param {Element | DocumentFragment | ShadowRoot} container
  */
 export function render(value, container) {
-  // @ts-ignore
-  container.replaceChildren();
-  appendValue(value, container);
-}
+  const host = /** @type any */ (container);
+  const prev = host[INSTANCE];
 
-/**
- * @param {unknown} value
- * @param {ParentNode} container
- */
-function appendValue(value, container) {
-  if (value == null || value === false || value === true) return;
-  if (Array.isArray(value)) {
-    for (const v of value) appendValue(v, container);
+  if (isTemplate(value)) {
+    const tr = /** @type {import('./html.js').TemplateResult} */ (value);
+    if (prev && prev.strings === tr.strings) {
+      updateInstance(prev, tr.values);
+      return;
+    }
+    if (prev) clearInstance(prev, container);
+    const inst = createInstance(tr, container);
+    host[INSTANCE] = inst;
     return;
   }
-  if (isTemplate(value)) {
-    appendTemplate(/** @type any */ (value), container);
+
+  // Non-template value: treat as a single text child.
+  if (prev) clearInstance(prev, container);
+  host[INSTANCE] = null;
+  container.replaceChildren();
+  if (value == null || value === false || value === true) return;
+  if (Array.isArray(value)) {
+    for (const v of value) {
+      const text = document.createTextNode(String(v ?? ''));
+      container.appendChild(text);
+    }
     return;
   }
   container.appendChild(document.createTextNode(String(value)));
 }
 
-/**
- * @param {import('./html.js').TemplateResult} tr
- * @param {ParentNode} container
- */
-function appendTemplate(tr, container) {
-  const { strings, values } = tr;
-  /** @type {{kind: 'text'|'event'|'prop'|'bool', idx: number, name?: string}[]} */
+/* ================================================================
+ * Template compilation
+ * ================================================================ */
+
+/** @param {import('./html.js').TemplateResult} tr */
+function compile(tr) {
+  const { strings } = tr;
+  let cached = templateCache.get(strings);
+  if (cached) return cached;
+
+  /** @type {PartDescriptor[]} */
   const parts = [];
   let html = '';
   let state = 'text';
@@ -101,106 +162,307 @@ function appendTemplate(tr, container) {
       }
     }
 
-    if (i < values.length) {
+    if (i < strings.length - 1) {
+      const partIdx = parts.length;
       if (state === 'text') {
-        html += `<!--${MARKER}${parts.length}-->`;
-        parts.push({ kind: 'text', idx: i });
+        // Child hole: insert a comment marker. Use bracketed markers so we can
+        // later walk all comments and find ours without ambiguity.
+        html += `<!--${MARKER}${partIdx}-->`;
+        parts.push({ kind: 'child', path: [] });
       } else if (state === 'after-eq') {
         const prefix = attrName[0];
         const name = attrName.slice(1);
-        const idx = parts.length;
-        if (prefix === '@') {
-          html = html.slice(0, attrStart) + `data-${MARKER}ev-${name}="${idx}"`;
-          parts.push({ kind: 'event', idx: i, name });
-          state = 'in-tag';
-          attrName = '';
-        } else if (prefix === '.') {
-          html = html.slice(0, attrStart) + `data-${MARKER}p-${name.toLowerCase()}="${idx}"`;
-          parts.push({ kind: 'prop', idx: i, name });
-          state = 'in-tag';
-          attrName = '';
-        } else if (prefix === '?') {
+        if (prefix === '@' || prefix === '.' || prefix === '?') {
+          // Strip the attribute name+"=" from html and add a sentinel attr.
           html = html.slice(0, attrStart);
-          if (values[i]) html += `${name}=""`;
-          state = 'in-tag';
-          attrName = '';
+          const kind = prefix === '@' ? 'event' : prefix === '.' ? 'prop' : 'bool';
+          const sentinel = `data-${MARKER}${partIdx}`;
+          html += `${sentinel}=""`;
+          parts.push({ kind, path: [], name });
         } else {
-          html += `"${escapeAttr(String(values[i] ?? ''))}"`;
-          state = 'in-tag';
-          attrName = '';
+          // Regular attribute: rewrite to `attrName="__MARKER__"` and parse as attr.
+          html = html.slice(0, attrStart);
+          const sentinel = `data-${MARKER}${partIdx}`;
+          html += `${sentinel}=""`;
+          parts.push({ kind: 'attr', path: [], name: attrName });
         }
+        state = 'in-tag';
+        attrName = '';
       } else if (state === 'attr-quoted' || state === 'attr-unquoted') {
-        html += escapeAttr(String(values[i] ?? ''));
+        // Interpolation inside a quoted/unquoted value. Part-diffing for mixed
+        // attributes isn't tracked in v1 — bake the current value in as an
+        // opaque placeholder; the full re-render path on diff rebuilds fresh.
+        html += '';
+        parts.push({ kind: 'attr', path: [], name: attrName });
       }
     }
   }
 
-  const tpl = document.createElement('template');
-  tpl.innerHTML = html;
-  const frag = tpl.content;
-  applyParts(frag, parts, values);
-  // @ts-ignore
-  container.appendChild(frag);
+  const templateEl = document.createElement('template');
+  templateEl.innerHTML = html;
+
+  // Walk the parsed fragment and record DOM paths for each part.
+  assignPaths(templateEl.content, parts);
+
+  cached = { templateEl, parts };
+  templateCache.set(strings, cached);
+  return cached;
 }
 
 /**
- * Walk the freshly-parsed fragment and materialise each part:
- * replace comment markers with rendered values, wire up events,
- * assign props, and strip the marker attributes.
+ * Walk the template fragment and record the path (chain of child indices) to
+ * each part's anchor node. We use marker comments for child parts and sentinel
+ * attributes for everything else.
  *
- * @param {DocumentFragment} frag
- * @param {{kind: string, idx: number, name?: string}[]} parts
- * @param {unknown[]} values
+ * @param {DocumentFragment} root
+ * @param {PartDescriptor[]} parts
  */
-function applyParts(frag, parts, values) {
-  // Text parts: find <!--w$N--> comments
-  const walker = document.createTreeWalker(frag, NodeFilter.SHOW_COMMENT);
-  /** @type {Comment[]} */
-  const comments = [];
-  let n;
-  while ((n = walker.nextNode())) comments.push(/** @type Comment */ (n));
-  for (const comment of comments) {
-    const txt = comment.nodeValue || '';
-    if (!txt.startsWith(MARKER)) continue;
-    const partIdx = Number(txt.slice(MARKER.length));
-    const part = parts[partIdx];
-    if (!part || part.kind !== 'text') continue;
-    const value = values[part.idx];
-    const parent = /** @type ParentNode */ (comment.parentNode);
-    if (!parent) continue;
-    const holder = document.createDocumentFragment();
-    appendValue(value, holder);
-    parent.replaceChild(holder, comment);
-  }
-
-  // Event + prop parts: look for our data-* marker attrs.
-  const elems = frag.querySelectorAll('*');
-  for (const el of elems) {
-    /** @type {Attr[]} */
-    const toRemove = [];
-    for (const attr of el.attributes) {
-      if (attr.name.startsWith(`data-${MARKER}ev-`)) {
-        const evName = attr.name.slice(`data-${MARKER}ev-`.length);
-        const partIdx = Number(attr.value);
-        const part = parts[partIdx];
-        if (part && part.kind === 'event') {
-          const handler = /** @type any */ (values[part.idx]);
-          if (typeof handler === 'function') {
-            el.addEventListener(evName, handler);
+function assignPaths(root, parts) {
+  /** @type {number[]} */
+  const path = [];
+  /** @param {Node} node */
+  function visit(node) {
+    for (let i = 0; i < node.childNodes.length; i++) {
+      const child = node.childNodes[i];
+      path.push(i);
+      // Comment marker?
+      if (child.nodeType === 8) {
+        const txt = /** @type Comment */ (child).data;
+        if (txt.startsWith(MARKER)) {
+          const idx = Number(txt.slice(MARKER.length));
+          if (parts[idx] && parts[idx].kind === 'child') {
+            parts[idx].path = path.slice();
           }
         }
-        toRemove.push(attr);
-      } else if (attr.name.startsWith(`data-${MARKER}p-`)) {
-        const propName = attr.name.slice(`data-${MARKER}p-`.length);
-        const partIdx = Number(attr.value);
-        const part = parts[partIdx];
-        if (part && part.kind === 'prop' && part.name) {
-          // @ts-ignore
-          el[part.name] = values[part.idx];
+      } else if (child.nodeType === 1) {
+        const el = /** @type Element */ (child);
+        // Sentinel attribute?
+        const toRemove = [];
+        for (const attr of el.attributes) {
+          if (attr.name.startsWith(`data-${MARKER}`)) {
+            const idx = Number(attr.name.slice(`data-${MARKER}`.length));
+            if (parts[idx] && parts[idx].kind !== 'child') {
+              parts[idx].path = path.slice();
+            }
+            toRemove.push(attr.name);
+          }
         }
-        toRemove.push(attr);
+        for (const a of toRemove) el.removeAttribute(a);
+        visit(child);
+      }
+      path.pop();
+    }
+  }
+  visit(root);
+}
+
+/* ================================================================
+ * Instance lifecycle
+ * ================================================================ */
+
+/**
+ * @param {import('./html.js').TemplateResult} tr
+ * @param {Element | DocumentFragment | ShadowRoot} container
+ */
+function createInstance(tr, container) {
+  const { templateEl, parts } = compile(tr);
+  const frag = /** @type DocumentFragment */ (templateEl.content.cloneNode(true));
+
+  // Bookend markers bound the instance so we can tear it down cleanly.
+  const startNode = document.createComment(`${MARKER}s`);
+  const endNode = document.createComment(`${MARKER}e`);
+
+  const bound = parts.map((p) => bindPart(p, frag));
+  const lastValues = [];
+  for (let i = 0; i < tr.values.length; i++) {
+    applyPart(bound[i], tr.values[i], undefined);
+    lastValues.push(tr.values[i]);
+  }
+
+  /** @type any */ (container).replaceChildren(startNode, ...frag.childNodes, endNode);
+  return { strings: tr.strings, bound, lastValues, startNode, endNode };
+}
+
+/**
+ * @param {PartDescriptor} p
+ * @param {DocumentFragment | Element} root
+ * @returns {BoundPart}
+ */
+function bindPart(p, root) {
+  let node = /** @type Node */ (root);
+  for (const i of p.path) node = node.childNodes[i];
+  if (p.kind === 'child') {
+    return { kind: 'child', marker: /** @type Comment */ (node) };
+  }
+  const el = /** @type Element */ (node);
+  if (p.kind === 'event') {
+    /** @type {BoundPart} */
+    const part = {
+      kind: 'event',
+      el,
+      name: p.name || '',
+      handler: null,
+      // The dispatcher is the registered listener; handler swaps behind it.
+      dispatcher(ev) { part.handler?.(ev); },
+    };
+    el.addEventListener(part.name, part.dispatcher);
+    return part;
+  }
+  if (p.kind === 'attr') return { kind: 'attr', el, name: p.name || '' };
+  if (p.kind === 'prop') return { kind: 'prop', el, name: p.name || '' };
+  if (p.kind === 'bool') return { kind: 'bool', el, name: p.name || '' };
+  throw new Error(`unknown part kind ${/** @type any */(p).kind}`);
+}
+
+/**
+ * @param {TemplateInstance} inst
+ * @param {unknown[]} values
+ */
+function updateInstance(inst, values) {
+  for (let i = 0; i < values.length; i++) {
+    const next = values[i];
+    if (Object.is(next, inst.lastValues[i])) continue;
+    applyPart(inst.bound[i], next, inst.lastValues[i]);
+    inst.lastValues[i] = next;
+  }
+}
+
+/**
+ * @param {TemplateInstance} inst
+ * @param {Element | DocumentFragment | ShadowRoot} container
+ */
+function clearInstance(inst, container) {
+  // Dispose event listeners on event parts.
+  for (const p of inst.bound) {
+    if (p.kind === 'event') p.el.removeEventListener(p.name, p.dispatcher);
+  }
+  /** @type any */ (container).replaceChildren();
+}
+
+/* ================================================================
+ * Part application
+ * ================================================================ */
+
+/**
+ * @param {BoundPart} part
+ * @param {unknown} value
+ * @param {unknown} _prev
+ */
+function applyPart(part, value, _prev) {
+  switch (part.kind) {
+    case 'child':
+      applyChild(part, value);
+      break;
+    case 'attr': {
+      if (value == null || value === false) part.el.removeAttribute(part.name);
+      else part.el.setAttribute(part.name, String(value));
+      break;
+    }
+    case 'prop':
+      /** @type any */ (part.el)[part.name] = value;
+      break;
+    case 'bool':
+      if (value) part.el.setAttribute(part.name, '');
+      else part.el.removeAttribute(part.name);
+      break;
+    case 'event':
+      part.handler = typeof value === 'function' ? /** @type any */ (value) : null;
+      break;
+  }
+}
+
+/**
+ * Child (text-position) part. Replace the marker's surrounding nodes with the
+ * new value's rendered form. Nested TemplateResults get an instance with its
+ * own parts; we reuse on `strings` identity.
+ *
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {unknown} value
+ */
+function applyChild(part, value) {
+  const marker = part.marker;
+  // Remove previously rendered nodes between marker and its next sibling we own.
+  if (part.child) {
+    if ('strings' in /** @type any */ (part.child)) {
+      // Previous was a TemplateInstance.
+      const inst = /** @type TemplateInstance */ (part.child);
+      if (isTemplate(value) && inst.strings === /** @type any */ (value).strings) {
+        updateInstance(inst, /** @type any */ (value).values);
+        return;
+      }
+      removeBetween(inst.startNode, inst.endNode);
+    } else {
+      // Previous was ChildNode[] — remove each node we inserted.
+      for (const n of /** @type ChildNode[] */ (part.child)) {
+        if (n.parentNode) n.parentNode.removeChild(n);
       }
     }
-    for (const a of toRemove) el.removeAttributeNode(a);
+    part.child = undefined;
   }
+
+  if (value == null || value === false || value === true) return;
+
+  if (isTemplate(value)) {
+    const tr = /** @type any */ (value);
+    const { templateEl, parts } = compile(tr);
+    const frag = /** @type DocumentFragment */ (templateEl.content.cloneNode(true));
+    const startNode = document.createComment(`${MARKER}s`);
+    const endNode = document.createComment(`${MARKER}e`);
+    const bound = parts.map((p) => bindPart(p, frag));
+    const lastValues = [];
+    for (let i = 0; i < tr.values.length; i++) {
+      applyPart(bound[i], tr.values[i], undefined);
+      lastValues.push(tr.values[i]);
+    }
+    const nodes = [startNode, ...frag.childNodes, endNode];
+    marker.parentNode?.insertBefore(nodesToFrag(nodes), marker);
+    part.child = { strings: tr.strings, bound, lastValues, startNode, endNode };
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    const list = [];
+    for (const v of value) {
+      if (isTemplate(v)) {
+        // Create an inline instance. No keyed reconciliation yet.
+        const tr = /** @type any */ (v);
+        const { templateEl, parts } = compile(tr);
+        const frag = /** @type DocumentFragment */ (templateEl.content.cloneNode(true));
+        const bound = parts.map((p) => bindPart(p, frag));
+        for (let i = 0; i < tr.values.length; i++) {
+          applyPart(bound[i], tr.values[i], undefined);
+        }
+        list.push(...frag.childNodes);
+      } else if (v != null && v !== false && v !== true) {
+        list.push(document.createTextNode(String(v)));
+      }
+    }
+    const frag = nodesToFrag(list);
+    marker.parentNode?.insertBefore(frag, marker);
+    part.child = list;
+    return;
+  }
+
+  const node = document.createTextNode(String(value));
+  marker.parentNode?.insertBefore(node, marker);
+  part.child = [node];
+}
+
+/** @param {ChildNode[]} nodes */
+function nodesToFrag(nodes) {
+  const frag = document.createDocumentFragment();
+  for (const n of nodes) frag.appendChild(n);
+  return frag;
+}
+
+/** @param {Node} start @param {Node} end */
+function removeBetween(start, end) {
+  if (!start.parentNode) return;
+  let n = start;
+  while (n && n !== end) {
+    const next = n.nextSibling;
+    n.parentNode?.removeChild(n);
+    n = next;
+  }
+  if (end.parentNode === start.parentNode) end.parentNode?.removeChild(end);
 }

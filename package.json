@@ -14,5 +14,8 @@
   "scripts": {
     "dev": "npm run dev --workspace=examples/blog",
     "test": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "linkedom": "^0.18.12"
   }
 }
