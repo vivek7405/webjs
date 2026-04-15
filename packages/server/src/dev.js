@@ -62,6 +62,9 @@ export async function createRequestHandler(opts) {
     routeTable: await buildRouteTable(appDir),
     actionIndex: await buildActionIndex(appDir, dev),
     middleware: await loadMiddleware(appDir, dev, logger),
+    bundlePath: !dev && (await exists(join(appDir, '.webjs/bundle.js')))
+      ? join(appDir, '.webjs/bundle.js')
+      : null,
     logger,
   };
 
@@ -218,6 +221,12 @@ async function handleCore(req, ctx) {
     return fileResponse(abs, { dev, immutable: !dev });
   }
 
+  // Prod bundle (if present)
+  if (state.bundlePath && (path === '/__webjs/bundle.js' || path === '/__webjs/bundle.js.map')) {
+    const abs = path.endsWith('.map') ? state.bundlePath + '.map' : state.bundlePath;
+    return fileResponse(abs, { dev: false, immutable: true });
+  }
+
   // Internal server-action RPC endpoint
   const actMatch = /^\/__webjs\/action\/([a-f0-9]+)\/([A-Za-z0-9_$]+)$/.exec(path);
   if (actMatch) {
@@ -281,7 +290,9 @@ async function handleCore(req, ctx) {
   if (method === 'GET' || method === 'HEAD') {
     const page = matchPage(state.routeTable, path);
     if (page) {
-      const handler = () => ssrPage(page.route, page.params, url, { dev, appDir, req });
+      const handler = () => ssrPage(page.route, page.params, url, {
+        dev, appDir, req, bundle: !!state.bundlePath,
+      });
       return runWithSegmentMiddleware(req, page.route.middlewares, handler, dev);
     }
   }

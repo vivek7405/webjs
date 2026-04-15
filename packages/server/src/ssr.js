@@ -17,7 +17,7 @@ import { readToken, newToken, cookieHeader } from './csrf.js';
  * @param {import('./router.js').PageRoute} route
  * @param {Record<string,string>} params
  * @param {URL} url
- * @param {{ dev: boolean, appDir: string, req?: Request }} opts
+ * @param {{ dev: boolean, appDir: string, req?: Request, bundle?: boolean }} opts
  * @returns {Promise<Response>}
  */
 export async function ssrPage(route, params, url, opts) {
@@ -33,7 +33,12 @@ export async function ssrPage(route, params, url, opts) {
   try {
     const suspenseCtx = { pending: [], nextId: 1 };
     const body = await renderChain(route, ctx, opts.dev, suspenseCtx);
-    const moduleUrls = [route.file, ...route.layouts].map((f) => toUrlPath(f, opts.appDir));
+    // When a production bundle is available, skip the per-file module imports
+    // in the shell and load the bundle instead — that's a single request for
+    // all components + page side-effects.
+    const moduleUrls = opts.bundle
+      ? ['/__webjs/bundle.js']
+      : [route.file, ...route.layouts].map((f) => toUrlPath(f, opts.appDir));
     return streamingHtmlResponse(
       wrapHead({ metadata, moduleUrls, dev: opts.dev, streaming: suspenseCtx.pending.length > 0 }),
       body,

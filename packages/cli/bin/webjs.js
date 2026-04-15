@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
-import { startServer } from '@webjs/server';
+import { startServer, buildBundle } from '@webjs/server';
 
 const [cmd, ...rest] = process.argv.slice(2);
 
 const USAGE = `webjs — commands:
   webjs dev [--port 3000]        Start dev server with live reload
-  webjs start [--port 3000]      Start production server
+  webjs build                    Bundle components + pages for production
+  webjs start [--port 3000]      Start production server (serves bundle if built)
   webjs db generate              Run \`prisma generate\`
   webjs db migrate [name]        Run \`prisma migrate dev\`
   webjs db studio                Run \`prisma studio\`
@@ -30,6 +31,18 @@ async function main() {
     case 'start': {
       const port = Number(flag(rest, '--port', process.env.PORT || 3000));
       await startServer({ appDir: process.cwd(), port, dev: false });
+      break;
+    }
+    case 'build': {
+      const t = Date.now();
+      const result = await buildBundle({
+        appDir: process.cwd(),
+        minify: rest.includes('--no-minify') ? false : true,
+        sourcemap: rest.includes('--no-sourcemap') ? false : true,
+      });
+      if (result.bundleFile) {
+        console.log(`webjs: bundled ${result.entries.length} entries → ${result.bundleFile} (${Date.now() - t}ms)`);
+      }
       break;
     }
     case 'db': {

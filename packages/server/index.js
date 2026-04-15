@@ -14,3 +14,4 @@ export { buildImportMap, importMapTag } from './src/importmap.js';
 export { headers, cookies, getRequest, withRequest } from './src/context.js';
 export { defaultLogger } from './src/logger.js';
 export { rateLimit, parseWindow } from './src/rate-limit.js';
+export { buildBundle } from './src/build.js';
