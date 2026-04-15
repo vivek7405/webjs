@@ -20,7 +20,7 @@ A **no-build, web-components-first** framework modeled after Next.js App Router.
 ## App layout (cannot be renamed)
 
 ```
-app/
+app/                        thin route adapters — import from modules/
   layout.js                 root layout, wraps every page
   page.js                   /
   error.js                  nested error boundary (catches render errors)
@@ -31,10 +31,16 @@ app/
   (group)/…                 route group — folder NOT in URL; still scopes layout/error
   _private/…                private folder — fully ignored by the router
   <path>/route.js           HTTP handler at /<path> — may live anywhere under app/
-  api/<path>/route.js       HTTP handler at /api/<path> (api/ is convention, not required)
-middleware.js               optional top-level middleware, runs on every request
-actions/*.server.js         server actions (RPC); individual exports may `expose()` a REST endpoint
-components/*.js             custom-element definitions
+  <segment>/middleware.js   per-segment middleware (auth gate, rate limit, …)
+middleware.js               root-level middleware (runs on every request)
+lib/                        cross-cutting infra (prisma.js, session.js, password.js, …)
+modules/                    feature-scoped business logic
+  <feature>/
+    actions/                mutations — one file per action, `'use server'`
+    queries/                reads — one file per query, `'use server'`
+    utils/                  internal helpers (formatters, pure fns)
+    types.js                JSDoc typedefs shared across the module
+components/*.js             presentational web components (shared UI)
 public/*                    static assets, served at /<name>
 prisma/schema.prisma        data models
 ```
@@ -218,6 +224,72 @@ When you mark an action as `expose('METHOD /path', fn)`, you are declaring it pa
 
 ---
 
+## Modules architecture (preferred for non-trivial apps)
+
+Feature-scoped modules keep business logic out of routes and off
+components. Conventions enforced across the example blog:
+
+### Layout
+
+- **`modules/<feature>/actions/*.server.js`** — mutations, one file per
+  function. Each exports a single named async function (e.g.
+  `create-post.server.js` exports `createPost`). Always start with the
+  `'use server'` pragma or the `.server.js` extension (the `.server.js`
+  extension is the recommended default — unambiguous in file listings).
+- **`modules/<feature>/queries/*.server.js`** — reads. Same shape as
+  actions; the split is so grep quickly shows what mutates vs. what
+  doesn't.
+- **`modules/<feature>/utils/*.js`** — pure helpers and formatters.
+  Importable from anywhere, no `'use server'`, no DB access.
+- **`modules/<feature>/types.js`** — JSDoc `@typedef` blocks for shapes
+  returned from actions/queries. File is effectively empty at runtime —
+  `export {};` keeps it a valid ES module.
+- **`lib/*.js`** — cross-cutting infra: `prisma.js` (singleton), auth
+  primitives (`password.js`, `session.js`), external-service clients.
+  Not feature-specific.
+
+### Return shape
+
+Actions that can fail with a user-facing error return the
+pilot-platform `ActionResult<T>` envelope so route adapters translate
+them mechanically:
+
+```js
+/**
+ * @template T
+ * @typedef {{ success: true, data: T }
+ *          | { success: false, error: string, status: number }} ActionResult
+ */
+```
+
+Route handler pattern:
+
+```js
+import { createPost } from '../../modules/posts/actions/create-post.server.js';
+
+export async function POST(req) {
+  const r = await createPost(await req.json());
+  if (!r.success) return Response.json({ error: r.error }, { status: r.status });
+  return Response.json(r.data);
+}
+```
+
+### Rules
+
+- **Routes must stay thin.** If a `route.js` has more than ~20 lines of
+  business logic, extract it into a module action.
+- **Client components import server modules via the normal import path.**
+  webjs rewrites the import into an RPC stub automatically — don't hand-
+  write `fetch()`.
+- **Server-only imports (`@prisma/client`, `node:*`, `lib/password.js`)
+  stay out of components/ and pages' top-level graphs** except through
+  `.server.js` files.
+- **One module, one feature.** If code naturally splits (e.g. `auth`,
+  `posts`, `comments`), give each its own module folder.
+- **Modules can depend on `lib/*` and on other modules' public exports.**
+  Prefer importing through a module's action/query files rather than
+  reaching into its `utils/`.
+
 ## Invariants (for both humans and agents)
 
 1. **Never import `@prisma/client`, `node:*`, or any server-only dependency from a file under `components/` or from a page's top-level module graph that isn't a server action.** The browser will try to load it and fail. Use a server action instead.
@@ -260,20 +332,47 @@ export default async function User({ params }) {
 export async function GET() { return { pong: Date.now() }; }
 ```
 
-### Add a server action
+### Add a server action (modules architecture)
 
 ```js
-// actions/users.server.js
+// modules/users/actions/update-profile.server.js
 'use server';
-import { db } from './_db.js';
-export async function getUser(id) { return db.user.findUnique({ where: { id } }); }
+import { prisma } from '../../../lib/prisma.js';
+import { currentUser } from '../queries/current-user.server.js';
+
+/**
+ * @param {{ name: string }} input
+ * @returns {Promise<import('../types.js').ActionResult<import('../types.js').PublicUser>>}
+ */
+export async function updateProfile(input) {
+  const me = await currentUser();
+  if (!me) return { success: false, error: 'Not signed in', status: 401 };
+  const name = String(input?.name || '').trim();
+  if (!name) return { success: false, error: 'name required', status: 400 };
+  const row = await prisma.user.update({ where: { id: me.id }, data: { name } });
+  return { success: true, data: { id: row.id, email: row.email, name: row.name, createdAt: row.createdAt } };
+}
 ```
 
-Then in any client component:
+Expose it via a thin route:
 
 ```js
-import { getUser } from '../actions/users.server.js';
-const u = await getUser(42); // actually a POST to /__webjs/action/…
+// app/api/users/me/route.js
+import { updateProfile } from '../../../../modules/users/actions/update-profile.server.js';
+export async function PATCH(req) {
+  const r = await updateProfile(await req.json());
+  if (!r.success) return Response.json({ error: r.error }, { status: r.status });
+  return Response.json(r.data);
+}
+```
+
+Or call it directly from a client component — the dev server rewrites
+the import into an RPC stub:
+
+```js
+import { updateProfile } from '../../../modules/users/actions/update-profile.server.js';
+const r = await updateProfile({ name: 'New name' });
+if (!r.success) this.setState({ error: r.error });
 ```
 
 ### Add a new component
