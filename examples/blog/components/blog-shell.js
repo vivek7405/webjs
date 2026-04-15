@@ -60,6 +60,7 @@ export class BlogShell extends WebComponent {
     return html`
       <header>
         <a href="/" data-brand>webjs blog</a>
+        <a href="/dashboard">Dashboard</a>
         <a href="/api/posts">/api/posts</a>
         <a href="/api/hello">/api/hello</a>
       </header>

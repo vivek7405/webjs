@@ -2,7 +2,7 @@ import { WebComponent, html, css } from 'webjs';
 // IMPORTANT: imported from a client component — the dev server rewrites this
 // `*.server.js` module into an RPC stub at load time, so the real implementation
 // never ships to the browser.
-import { createPost } from '../actions/posts.server.js';
+import { createPost } from '../modules/posts/actions/create-post.server.js';
 
 /**
  * `<new-post>` — form that creates a post via a server action.
@@ -32,11 +32,15 @@ export class NewPost extends WebComponent {
     const data = new FormData(form);
     this.setState({ busy: true, error: null });
     try {
-      const post = await createPost({
+      const result = await createPost({
         title: String(data.get('title') || ''),
         body: String(data.get('body') || ''),
       });
-      location.href = `/blog/${post.slug}`;
+      if (!result.success) {
+        this.setState({ busy: false, error: result.error });
+        return;
+      }
+      location.href = `/blog/${result.data.slug}`;
     } catch (err) {
       this.setState({ busy: false, error: err?.message || 'Failed' });
     }

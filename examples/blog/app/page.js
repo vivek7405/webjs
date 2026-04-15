@@ -1,31 +1,29 @@
 import { html, repeat, Suspense } from 'webjs';
 import '../components/counter.js';
-import '../components/new-post.js';
-import '../components/muted-text.js';
 import '../components/chat-box.js';
-import { listPosts } from '../actions/posts.server.js';
+import '../components/muted-text.js';
 
-async function slowStat() {
-  await new Promise((r) => setTimeout(r, 400));
-  return html`<muted-text>posts rendered at ${new Date().toLocaleTimeString()}</muted-text>`;
-}
+import { listPosts } from '../modules/posts/queries/list-posts.server.js';
+import { currentUser } from '../modules/auth/queries/current-user.server.js';
 
 export const metadata = {
   title: 'webjs blog — home',
-  description: 'A tiny blog built on webjs',
+  description: 'A tiny full-feature demo of the webjs framework',
   openGraph: { title: 'webjs blog', type: 'website' },
 };
 
-/**
- * Home page — lists posts from the database and shows interactive bits.
- * Runs ONLY on the server; the TemplateResult is serialised and shipped.
- */
+async function slowStat() {
+  await new Promise((r) => setTimeout(r, 400));
+  return html`<muted-text>posts list rendered at ${new Date().toLocaleTimeString()}</muted-text>`;
+}
+
 export default async function HomePage() {
-  const posts = await listPosts();
+  const [me, posts] = await Promise.all([currentUser(), listPosts()]);
   return html`
     <h1>Posts</h1>
+
     ${posts.length === 0
-      ? html`<p><em>No posts yet — create one below.</em></p>`
+      ? html`<p><em>No posts yet — <a href="/dashboard/posts/new">write the first one</a>.</em></p>`
       : html`
           <ul>
             ${repeat(
@@ -34,7 +32,10 @@ export default async function HomePage() {
               (p) => html`
                 <li>
                   <a href="/blog/${p.slug}">${p.title}</a>
-                  <muted-text>(${new Date(p.createdAt).toLocaleDateString()})</muted-text>
+                  <muted-text>
+                    by ${p.authorName || 'someone'}
+                    · ${new Date(p.createdAt).toLocaleDateString()}
+                  </muted-text>
                 </li>
               `
             )}
@@ -48,8 +49,9 @@ export default async function HomePage() {
 
     <hr />
 
-    <h2>New post</h2>
-    <new-post></new-post>
+    ${me
+      ? html`<p>Signed in as <strong>${me.name || me.email}</strong>. <a href="/dashboard">Your dashboard →</a></p>`
+      : html`<p><a href="/login">Sign in</a> or <a href="/login?then=/dashboard/posts/new">sign up</a> to write posts.</p>`}
 
     <h2>Interactive counter</h2>
     <p>Pure client-side state in a web component, server-rendered then hydrated:</p>
