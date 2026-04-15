@@ -85,3 +85,15 @@ test('async component render is awaited', async () => {
 test('ignores null/false/undefined values', async () => {
   assert.equal(await renderToString(html`<p>${null}${false}${undefined}x</p>`), '<p>x</p>');
 });
+
+test('HTML comments are passed through; holes inside comments do not break parsing', async () => {
+  const out = await renderToString(html`<!-- skip ${'me'} --><p>after ${'value'}</p>`);
+  assert.match(out, /<!-- skip me -->/);
+  assert.match(out, /<p>after value<\/p>/);
+});
+
+test('comment containing > does not exit early', async () => {
+  const out = await renderToString(html`<!-- a > b --><span>${'x'}</span>`);
+  assert.match(out, /<!-- a > b -->/);
+  assert.match(out, /<span>x<\/span>/);
+});

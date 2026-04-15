@@ -34,7 +34,7 @@ const INSTANCE = Symbol.for('webjs.instance');
 
 /**
  * @typedef {{
- *   kind: 'child' | 'attr' | 'event' | 'prop' | 'bool',
+ *   kind: 'child' | 'attr' | 'event' | 'prop' | 'bool' | 'noop',
  *   path: number[],
  *   name?: string,
  * }} PartDescriptor
@@ -110,6 +110,7 @@ function compile(tr) {
   let attrName = '';
   let attrStart = 0;
   let attrQuote = '';
+  let commentDashes = 0;
 
   for (let i = 0; i < strings.length; i++) {
     const s = strings[i];
@@ -122,8 +123,24 @@ function compile(tr) {
           break;
         case 'tag-open':
           html += c;
-          if (c === '!' || c === '/' || /[a-zA-Z]/.test(c)) state = 'tag-name';
+          if (c === '!') state = 'bang-1';
+          else if (c === '/' || /[a-zA-Z]/.test(c)) state = 'tag-name';
           else state = 'text';
+          break;
+        case 'bang-1':
+          html += c;
+          state = c === '-' ? 'bang-dash' : 'tag-name';
+          break;
+        case 'bang-dash':
+          html += c;
+          if (c === '-') { state = 'comment'; commentDashes = 0; }
+          else state = 'tag-name';
+          break;
+        case 'comment':
+          html += c;
+          if (c === '-') commentDashes += 1;
+          else if (c === '>' && commentDashes >= 2) { state = 'text'; commentDashes = 0; }
+          else commentDashes = 0;
           break;
         case 'tag-name':
           html += c;
@@ -165,6 +182,16 @@ function compile(tr) {
 
     if (i < strings.length - 1) {
       const partIdx = parts.length;
+      if (state === 'comment') {
+        // Holes inside <!-- ... --> bake in at compile time: comments are inert,
+        // so updates wouldn't change anything visible. Stringify the *first*
+        // value here; subsequent renders may have different values for this
+        // hole but the comment is frozen.
+        html += String(values[i] ?? '');
+        commentDashes = 0;
+        parts.push({ kind: 'noop', path: [] });
+        continue;
+      }
       if (state === 'text') {
         // Child hole: insert a comment marker. Use bracketed markers so we can
         // later walk all comments and find ours without ambiguity.
@@ -290,6 +317,7 @@ function createInstance(tr, container) {
  * @returns {BoundPart}
  */
 function bindPart(p, root) {
+  if (p.kind === 'noop') return /** @type any */ ({ kind: 'noop' });
   let node = /** @type Node */ (root);
   for (const i of p.path) node = node.childNodes[i];
   if (p.kind === 'child') {
@@ -368,6 +396,9 @@ function applyPart(part, value, _prev) {
       break;
     case 'event':
       part.handler = typeof value === 'function' ? /** @type any */ (value) : null;
+      break;
+    case 'noop':
+      // intentionally empty — used for holes inside HTML comments
       break;
   }
 }

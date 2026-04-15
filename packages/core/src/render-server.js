@@ -48,6 +48,7 @@ async function renderTemplate(tr) {
   let attrName = '';
   let attrStart = 0;
   let attrQuote = '';
+  let commentDashes = 0;
 
   for (let i = 0; i < strings.length; i++) {
     const s = strings[i];
@@ -60,8 +61,24 @@ async function renderTemplate(tr) {
           break;
         case 'tag-open':
           out += c;
-          if (c === '!' || c === '/' || /[a-zA-Z]/.test(c)) state = 'tag-name';
+          if (c === '!') state = 'bang-1';
+          else if (c === '/' || /[a-zA-Z]/.test(c)) state = 'tag-name';
           else state = 'text';
+          break;
+        case 'bang-1':
+          out += c;
+          state = c === '-' ? 'bang-dash' : 'tag-name';
+          break;
+        case 'bang-dash':
+          out += c;
+          if (c === '-') { state = 'comment'; commentDashes = 0; }
+          else state = 'tag-name';
+          break;
+        case 'comment':
+          out += c;
+          if (c === '-') commentDashes += 1;
+          else if (c === '>' && commentDashes >= 2) { state = 'text'; commentDashes = 0; }
+          else commentDashes = 0;
           break;
         case 'tag-name':
           out += c;
@@ -107,7 +124,12 @@ async function renderTemplate(tr) {
       if (val && typeof /** @type any */ (val).then === 'function') {
         val = await val;
       }
-      if (state === 'text') {
+      if (state === 'comment') {
+        // Holes inside <!-- comments --> are emitted raw (no escaping; comments
+        // are inert and not rendered by browsers).
+        out += String(val ?? '');
+        commentDashes = 0;
+      } else if (state === 'text') {
         out += await render(val);
       } else if (state === 'after-eq') {
         const prefix = attrName[0];
