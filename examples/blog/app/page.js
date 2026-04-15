@@ -1,8 +1,13 @@
-import { html, repeat } from 'webjs';
+import { html, repeat, Suspense } from 'webjs';
 import '../components/counter.js';
 import '../components/new-post.js';
 import '../components/muted-text.js';
 import { listPosts } from '../actions/posts.server.js';
+
+async function slowStat() {
+  await new Promise((r) => setTimeout(r, 400));
+  return html`<muted-text>posts rendered at ${new Date().toLocaleTimeString()}</muted-text>`;
+}
 
 export const metadata = {
   title: 'webjs blog — home',
@@ -34,6 +39,11 @@ export default async function HomePage() {
             )}
           </ul>
         `}
+
+    <p>${Suspense({
+      fallback: html`<muted-text>(computing timestamp…)</muted-text>`,
+      children: slowStat(),
+    })}</p>
 
     <hr />
 

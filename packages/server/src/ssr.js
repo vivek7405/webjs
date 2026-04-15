@@ -31,10 +31,17 @@ export async function ssrPage(route, params, url, opts) {
   const metadata = await collectMetadata(route, ctx, opts.dev);
 
   try {
-    const body = await renderChain(route, ctx, opts.dev);
+    const suspenseCtx = { pending: [], nextId: 1 };
+    const body = await renderChain(route, ctx, opts.dev, suspenseCtx);
     const moduleUrls = [route.file, ...route.layouts].map((f) => toUrlPath(f, opts.appDir));
-    const html = wrapInDocument(body, { metadata, moduleUrls, dev: opts.dev });
-    return htmlResponse(html, 200, opts.req, url);
+    return streamingHtmlResponse(
+      wrapHead({ metadata, moduleUrls, dev: opts.dev, streaming: suspenseCtx.pending.length > 0 }),
+      body,
+      suspenseCtx,
+      200,
+      opts.req,
+      url
+    );
   } catch (err) {
     if (isRedirect(err)) {
       const e = /** @type any */ (err);
@@ -119,7 +126,7 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
   });
 }
 
-async function renderChain(route, ctx, dev) {
+async function renderChain(route, ctx, dev, suspenseCtx) {
   const page = await loadModule(route.file, dev);
   if (!page.default) throw new Error(`Page ${route.file} must have a default export`);
   let tree = await page.default(ctx);
@@ -128,7 +135,7 @@ async function renderChain(route, ctx, dev) {
     if (!mod.default) continue;
     tree = await mod.default({ ...ctx, children: tree });
   }
-  return renderToString(tree);
+  return renderToString(tree, { ssr: true, suspenseCtx });
 }
 
 /**
@@ -157,13 +164,28 @@ async function collectMetadata(route, ctx, dev) {
 }
 
 /**
+ * Buffered wrapper (error / not-found paths; no Suspense streaming).
  * @param {string} body
  * @param {{ metadata: Record<string,any>, moduleUrls: string[], dev: boolean }} opts
  */
 function wrapInDocument(body, opts) {
+  return wrapHead({ ...opts, streaming: false }) + body + `\n</body>\n</html>`;
+}
+
+/**
+ * Produce the `<!doctype…><body>` prefix. If `streaming` is true, injects
+ * the tiny client-side resolver that swaps Suspense fallback nodes for
+ * streamed-in real content.
+ *
+ * @param {{ metadata: Record<string,any>, moduleUrls: string[], dev: boolean, streaming: boolean }} opts
+ */
+function wrapHead(opts) {
   const imports = opts.moduleUrls.map((u) => `import ${JSON.stringify(u)};`).join('\n');
   const boot = imports ? `<script type="module">\n${imports}\n</script>` : '';
   const reload = opts.dev ? `<script type="module" src="/__webjs/reload.js"></script>` : '';
+  const suspenseBoot = opts.streaming
+    ? `<script>window.__webjsResolve=function(id){var t=document.querySelector('template[data-webjs-resolve="'+id+'"]');var b=document.getElementById(id);if(t&&b){b.replaceWith(t.content.cloneNode(true));t.remove();}};</script>`
+    : '';
 
   const m = opts.metadata || {};
   const metaTags = [];
@@ -187,11 +209,73 @@ ${metaTags.join('\n')}
 ${importMapTag()}
 ${boot}
 ${reload}
+${suspenseBoot}
 </head>
 <body>
-${body}
-</body>
-</html>`;
+`;
+}
+
+/**
+ * Build a streaming Response. Degrades to a single-flush response when
+ * there are no pending Suspense boundaries.
+ *
+ * @param {string} headHtml
+ * @param {string} bodyHtml
+ * @param {{ pending: {id: string, promise: Promise<unknown>}[], nextId: number }} ctx
+ * @param {number} status
+ * @param {Request | undefined} req
+ * @param {URL | undefined} url
+ */
+function streamingHtmlResponse(headHtml, bodyHtml, ctx, status, req, url) {
+  const encoder = new TextEncoder();
+  const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
+  if (req && !readToken(req)) {
+    const secure = url ? url.protocol === 'https:' : false;
+    headers.append('set-cookie', cookieHeader(newToken(), { secure }));
+  }
+
+  if (!ctx.pending.length) {
+    return new Response(headHtml + bodyHtml + '\n</body>\n</html>', { status, headers });
+  }
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      controller.enqueue(encoder.encode(headHtml + bodyHtml));
+      try {
+        // Loop: resolve all currently-pending promises in parallel; nested
+        // Suspense inside resolved content adds more pending entries.
+        while (ctx.pending.length) {
+          const batch = ctx.pending.slice();
+          ctx.pending.length = 0;
+          const settled = await Promise.all(
+            batch.map(async (p) => {
+              try {
+                const resolved = await p.promise;
+                const sub = { pending: [], nextId: ctx.nextId };
+                const html = await renderToString(resolved, { ssr: true, suspenseCtx: sub });
+                ctx.nextId = sub.nextId;
+                for (const n of sub.pending) ctx.pending.push(n);
+                return { id: p.id, html };
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                return { id: p.id, html: `<p>error: ${escapeHtml(msg)}</p>` };
+              }
+            })
+          );
+          for (const r of settled) {
+            const chunk =
+              `<template data-webjs-resolve="${r.id}">${r.html}</template>` +
+              `<script>window.__webjsResolve&&__webjsResolve("${r.id}")</script>`;
+            controller.enqueue(encoder.encode(chunk));
+          }
+        }
+      } finally {
+        controller.enqueue(encoder.encode('\n</body>\n</html>'));
+        controller.close();
+      }
+    },
+  });
+  return new Response(stream, { status, headers });
 }
 
 /**

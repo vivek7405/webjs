@@ -3,6 +3,7 @@ import { escapeText, escapeAttr } from './escape.js';
 import { lookup, allTags } from './registry.js';
 import { stylesToString, isCSS } from './css.js';
 import { isRepeat } from './repeat.js';
+import { isSuspense } from './suspense.js';
 
 /**
  * Render a TemplateResult (or any renderable value) to an HTML string.
@@ -11,37 +12,65 @@ import { isRepeat } from './repeat.js';
  * methods may be async, and data-fetching inside nested components is
  * awaited before the final string is emitted.
  *
+ * If `opts.suspenseCtx` is provided, Suspense boundaries encountered during
+ * the render will push `{ id, promise }` into `opts.suspenseCtx.pending`
+ * and their fallback HTML is emitted immediately. The caller is responsible
+ * for streaming each resolved promise afterwards. Without a suspenseCtx,
+ * Suspense still works but we fall back to emitting only the fallback
+ * (the promise is dropped — appropriate for static pre-render).
+ *
+ * @typedef {{ pending: {id: string, promise: Promise<unknown>}[], nextId: number }} SuspenseCtx
+ *
  * @param {unknown} value
- * @param {{ ssr?: boolean }} [opts] when opts.ssr is true (default), Declarative Shadow DOM is injected for registered custom elements
+ * @param {{ ssr?: boolean, suspenseCtx?: SuspenseCtx }} [opts]
  * @returns {Promise<string>}
  */
 export async function renderToString(value, opts = { ssr: true }) {
-  const html = await render(value);
-  return opts && opts.ssr === false ? html : await injectDSD(html);
+  const ctx = opts && opts.suspenseCtx;
+  const html = await render(value, ctx);
+  return opts && opts.ssr === false ? html : await injectDSD(html, ctx);
 }
 
-/** @param {unknown} value @returns {Promise<string>} */
-async function render(value) {
+/**
+ * @param {unknown} value
+ * @param {SuspenseCtx} [ctx]
+ * @returns {Promise<string>}
+ */
+async function render(value, ctx) {
   if (value == null || value === false || value === true) return '';
   if (value && typeof /** @type any */ (value).then === 'function') {
     value = await value;
-    return render(value);
+    return render(value, ctx);
   }
   if (Array.isArray(value)) {
-    const parts = await Promise.all(value.map(render));
+    const parts = await Promise.all(value.map((v) => render(v, ctx)));
     return parts.join('');
   }
   if (isRepeat(value)) {
     const r = /** @type any */ (value);
-    const parts = await Promise.all(r.items.map((it, i) => render(r.templateFn(it, i))));
+    const parts = await Promise.all(r.items.map((it, i) => render(r.templateFn(it, i), ctx)));
     return parts.join('');
   }
-  if (isTemplate(value)) return renderTemplate(/** @type any */ (value));
+  if (isSuspense(value)) {
+    const s = /** @type any */ (value);
+    const fallback = await render(s.fallback, ctx);
+    if (ctx) {
+      const id = `s${ctx.nextId++}`;
+      ctx.pending.push({ id, promise: Promise.resolve(s.children) });
+      return `<webjs-boundary id="${id}">${fallback}</webjs-boundary>`;
+    }
+    return fallback;
+  }
+  if (isTemplate(value)) return renderTemplate(/** @type any */ (value), ctx);
   return escapeText(String(value));
 }
 
-/** @param {import('./html.js').TemplateResult} tr @returns {Promise<string>} */
-async function renderTemplate(tr) {
+/**
+ * @param {import('./html.js').TemplateResult} tr
+ * @param {SuspenseCtx} [ctx]
+ * @returns {Promise<string>}
+ */
+async function renderTemplate(tr, ctx) {
   const { strings, values } = tr;
   let out = '';
   let state = 'text';
@@ -130,7 +159,7 @@ async function renderTemplate(tr) {
         out += String(val ?? '');
         commentDashes = 0;
       } else if (state === 'text') {
-        out += await render(val);
+        out += await render(val, ctx);
       } else if (state === 'after-eq') {
         const prefix = attrName[0];
         const name = attrName.slice(1);
@@ -162,9 +191,10 @@ async function renderTemplate(tr) {
  * Awaits each component's render() so async components are fully resolved.
  *
  * @param {string} html
+ * @param {SuspenseCtx} [ctx]
  * @returns {Promise<string>}
  */
-async function injectDSD(html) {
+async function injectDSD(html, ctx) {
   const tags = allTags();
   if (!tags.length) return html;
   const pattern = new RegExp(
@@ -188,7 +218,7 @@ async function injectDSD(html) {
       applyAttrsToInstance(instance, attrMap, Cls);
       let tpl = instance.render ? instance.render() : '';
       if (tpl && typeof tpl.then === 'function') tpl = await tpl;
-      const inner = await render(tpl);
+      const inner = await render(tpl, ctx);
       /** @type {any} */
       const rawStyles = /** @type any */ (Cls).styles;
       const styleList = Array.isArray(rawStyles) ? rawStyles : rawStyles && isCSS(rawStyles) ? [rawStyles] : [];
