@@ -2,7 +2,7 @@ import { html, notFound } from 'webjs';
 import '../../../components/muted-text.js';
 import '../../../modules/comments/components/comments-thread.js';
 
-import { getPost } from '../../../modules/posts/queries/get-post.server.js';
+import { getPost } from '../../../modules/posts/queries/get-post.server.ts';
 import { listComments } from '../../../modules/comments/queries/list-comments.server.js';
 import { currentUser } from '../../../modules/auth/queries/current-user.server.js';
 

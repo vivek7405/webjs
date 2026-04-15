@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noEmit": true,
+    "checkJs": true,
+    "allowJs": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "jsx": "preserve"
+  },
+  "include": [
+    "app/**/*",
+    "components/**/*",
+    "modules/**/*",
+    "lib/**/*",
+    "middleware.js",
+    "middleware.ts"
+  ],
+  "exclude": ["node_modules", ".webjs", "prisma/migrations"]
+}

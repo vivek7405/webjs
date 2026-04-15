@@ -1,13 +1,11 @@
 'use server';
 
 import { prisma } from '../../../lib/prisma.js';
-import { formatPost } from '../utils/slugify.js';
+import { formatPost } from '../utils/slugify.ts';
+import type { PostFormatted } from '../types.ts';
 
-/**
- * List the most recent posts (newest first), with author info denormalised.
- * @returns {Promise<Array<import('../types.js').PostFormatted>>}
- */
-export async function listPosts() {
+/** List the most recent posts, newest first, with author info denormalised. */
+export async function listPosts(): Promise<PostFormatted[]> {
   const rows = await prisma.post.findMany({
     orderBy: { createdAt: 'desc' },
     include: { author: { select: { name: true, email: true } } },

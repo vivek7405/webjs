@@ -3,7 +3,7 @@ import '../components/counter.js';
 import '../components/muted-text.js';
 import '../modules/chat/components/chat-box.js';
 
-import { listPosts } from '../modules/posts/queries/list-posts.server.js';
+import { listPosts } from '../modules/posts/queries/list-posts.server.ts';
 import { currentUser } from '../modules/auth/queries/current-user.server.js';
 
 export const metadata = {

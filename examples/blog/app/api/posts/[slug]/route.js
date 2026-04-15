@@ -1,5 +1,5 @@
-import { getPost } from '../../../../modules/posts/queries/get-post.server.js';
-import { deletePost } from '../../../../modules/posts/actions/delete-post.server.js';
+import { getPost } from '../../../../modules/posts/queries/get-post.server.ts';
+import { deletePost } from '../../../../modules/posts/actions/delete-post.server.ts';
 
 export async function GET(_req, { params }) {
   const post = await getPost({ slug: params.slug });

@@ -1,11 +1,11 @@
 import { WebComponent, html, css } from 'webjs';
-// Server action — auto-rewritten to an RPC stub on the client.
-import { createPost } from '../actions/create-post.server.js';
+// Server action — dev server rewrites this import into an RPC stub for the
+// browser. At type-check time TS resolves the real source so createPost's
+// input + return types flow across the RPC boundary.
+import { createPost } from '../actions/create-post.server.ts';
 
-/**
- * `<new-post>` — editorial compose form. Big serif title input, roomy body
- * area, monospace field labels, warm-amber publish button.
- */
+type State = { busy: boolean; error: string | null };
+
 export class NewPost extends WebComponent {
   static tag = 'new-post';
   static styles = css`
@@ -79,28 +79,39 @@ export class NewPost extends WebComponent {
     }
   `;
 
-  constructor() { super(); this.state = { busy: false, error: null }; }
+  declare state: State;
 
-  async onSubmit(e) {
+  constructor() {
+    super();
+    this.state = { busy: false, error: null };
+  }
+
+  async onSubmit(e: SubmitEvent) {
     e.preventDefault();
-    const data = new FormData(e.currentTarget);
+    const form = e.currentTarget as HTMLFormElement;
+    const data = new FormData(form);
     this.setState({ busy: true, error: null });
     try {
-      const r = await createPost({
+      const result = await createPost({
         title: String(data.get('title') || ''),
         body:  String(data.get('body')  || ''),
       });
-      if (!r.success) { this.setState({ busy: false, error: r.error }); return; }
-      location.href = `/blog/${r.data.slug}`;
+      if (!result.success) {
+        this.setState({ busy: false, error: result.error });
+        return;
+      }
+      // TS knows result.data is PostFormatted here.
+      location.href = `/blog/${result.data.slug}`;
     } catch (err) {
-      this.setState({ busy: false, error: err?.message || 'Failed' });
+      const msg = err instanceof Error ? err.message : String(err);
+      this.setState({ busy: false, error: msg });
     }
   }
 
   render() {
     const { busy, error } = this.state;
     return html`
-      <form @submit=${(e) => this.onSubmit(e)}>
+      <form @submit=${(e: SubmitEvent) => this.onSubmit(e)}>
         <label>
           Title
           <input name="title" placeholder="A bold title…" required autofocus />

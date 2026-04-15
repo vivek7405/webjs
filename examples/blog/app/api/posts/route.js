@@ -10,8 +10,8 @@
  *     real `Date` objects.
  */
 import { json } from '@webjs/server';
-import { listPosts } from '../../../modules/posts/queries/list-posts.server.js';
-import { createPost } from '../../../modules/posts/actions/create-post.server.js';
+import { listPosts } from '../../../modules/posts/queries/list-posts.server.ts';
+import { createPost } from '../../../modules/posts/actions/create-post.server.ts';
 
 export async function GET() {
   return json(await listPosts());
