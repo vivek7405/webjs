@@ -65,7 +65,7 @@ export class AuthForms extends WebComponent {
           ? html`<input name="name" placeholder="Name (optional)" autocomplete="name" />`
           : ''}
         <input name="email" type="email" placeholder="Email" autocomplete="email" required />
-        <input name="password" type="password" placeholder="Password (min 8 chars)" autocomplete="${mode === 'login' ? 'current-password' : 'new-password'}" required />
+        <input name="password" type="password" placeholder="Password (min 8 chars)" autocomplete=${mode === "login" ? "current-password" : "new-password"} required />
         <button type="submit" ?disabled=${busy}>
           ${busy ? '…' : (mode === 'login' ? 'Sign in' : 'Create account')}
         </button>

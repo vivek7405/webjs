@@ -94,6 +94,38 @@ test('nested template diffing reuses child element on value-only change', () => 
   assert.equal(postEm.textContent, '2');
 });
 
+test('quoted attribute interpolation does not crash re-renders', () => {
+  const el = document.createElement('div');
+  // Reproduces the bug where a hole inside a quoted attr value
+  // (e.g. class="foo ${bar}") used to bind a broken path and throw on update.
+  const view = (cls) =>
+    html`<div data-x="${cls}"><button class=${cls} @click=${() => {}}>b</button></div>`;
+  render(view('a'), el);
+  assert.doesNotThrow(() => render(view('b'), el));
+  // Unquoted attr part DID update.
+  assert.equal(el.querySelector('button').getAttribute('class'), 'b');
+});
+
+test('tab-toggle pattern: click handler flips a sibling class without crashing', () => {
+  // Mirrors the auth-forms tab toggle shape that was crashing on click.
+  const el = document.createElement('div');
+  let mode = 'a';
+  const view = () =>
+    html`<div>
+      <button class=${mode === 'a' ? 'active' : ''} @click=${() => { mode = 'a'; render(view(), el); }}>A</button>
+      <button class=${mode === 'b' ? 'active' : ''} @click=${() => { mode = 'b'; render(view(), el); }}>B</button>
+    </div>`;
+  render(view(), el);
+  const buttons = Array.from(el.querySelectorAll('button'));
+  assert.equal(buttons[0].getAttribute('class'), 'active');
+  assert.equal(buttons[1].getAttribute('class'), '');
+  // Click "B" — should not throw, should update classes.
+  assert.doesNotThrow(() => buttons[1].click());
+  const after = Array.from(el.querySelectorAll('button'));
+  assert.equal(after[0].getAttribute('class'), '');
+  assert.equal(after[1].getAttribute('class'), 'active');
+});
+
 test('swapping templates tears down and rebuilds DOM', () => {
   const el = document.createElement('div');
   render(html`<p>A</p>`, el);

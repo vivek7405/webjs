@@ -239,11 +239,14 @@ function compile(tr) {
         state = 'in-tag';
         attrName = '';
       } else if (state === 'attr-quoted' || state === 'attr-unquoted') {
-        // Interpolation inside a quoted/unquoted value. Part-diffing for mixed
-        // attributes isn't tracked in v1 — bake the current value in as an
-        // opaque placeholder; the full re-render path on diff rebuilds fresh.
-        html += '';
-        parts.push({ kind: 'attr', path: [], name: attrName });
+        // Interpolation inside a quoted attribute value (`attr="a${x}b"`) or
+        // unquoted mixed value (`attr=a${x}b`). Fine-grained updates aren't
+        // tracked in v1 — use the unquoted single-hole form `attr=${x}` for
+        // values that need to update. Here we record a noop part so the
+        // values[] length stays aligned with parts[], but the attribute text
+        // in the compiled template is left as-is (SSR already wrote the right
+        // value; the client just won't re-sync this attribute on re-render).
+        parts.push({ kind: 'noop', path: [] });
       }
     }
   }
