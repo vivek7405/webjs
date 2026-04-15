@@ -1,5 +1,5 @@
 import { html } from 'webjs';
-import '../../components/auth-forms.js';
+import '../../modules/auth/components/auth-forms.js';
 import { currentUser } from '../../modules/auth/queries/current-user.server.js';
 import { redirect } from 'webjs';
 

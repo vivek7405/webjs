@@ -1,6 +1,6 @@
 import { html, notFound } from 'webjs';
 import '../../../components/muted-text.js';
-import '../../../components/comments-thread.js';
+import '../../../modules/comments/components/comments-thread.js';
 
 import { getPost } from '../../../modules/posts/queries/get-post.server.js';
 import { listComments } from '../../../modules/comments/queries/list-comments.server.js';

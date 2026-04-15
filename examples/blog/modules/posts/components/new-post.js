@@ -2,7 +2,7 @@ import { WebComponent, html, css } from 'webjs';
 // IMPORTANT: imported from a client component — the dev server rewrites this
 // `*.server.js` module into an RPC stub at load time, so the real implementation
 // never ships to the browser.
-import { createPost } from '../modules/posts/actions/create-post.server.js';
+import { createPost } from '../actions/create-post.server.js';
 
 /**
  * `<new-post>` — form that creates a post via a server action.

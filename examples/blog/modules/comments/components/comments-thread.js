@@ -1,5 +1,5 @@
 import { WebComponent, html, css, repeat, connectWS } from 'webjs';
-import './muted-text.js';
+import '../../../components/muted-text.js';
 
 /**
  * `<comments-thread post-id="42" initial="[{...}]" ?signed-in>` — live

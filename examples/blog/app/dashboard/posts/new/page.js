@@ -1,5 +1,5 @@
 import { html } from 'webjs';
-import '../../../../components/new-post.js';
+import '../../../../modules/posts/components/new-post.js';
 
 export const metadata = { title: 'New post — webjs blog' };
 

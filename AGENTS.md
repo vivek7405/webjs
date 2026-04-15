@@ -34,13 +34,14 @@ app/                        thin route adapters — import from modules/
   <segment>/middleware.js   per-segment middleware (auth gate, rate limit, …)
 middleware.js               root-level middleware (runs on every request)
 lib/                        cross-cutting infra (prisma.js, session.js, password.js, …)
-modules/                    feature-scoped business logic
+modules/                    feature-scoped code (actions + queries + UI)
   <feature>/
     actions/                mutations — one file per action, `'use server'`
     queries/                reads — one file per query, `'use server'`
+    components/             feature-owned web components (e.g. <auth-forms>, <comments-thread>)
     utils/                  internal helpers (formatters, pure fns)
     types.js                JSDoc typedefs shared across the module
-components/*.js             presentational web components (shared UI)
+components/*.js             SHARED presentational primitives (chrome, typography, icons)
 public/*                    static assets, served at /<name>
 prisma/schema.prisma        data models
 ```
@@ -239,6 +240,12 @@ components. Conventions enforced across the example blog:
 - **`modules/<feature>/queries/*.server.js`** — reads. Same shape as
   actions; the split is so grep quickly shows what mutates vs. what
   doesn't.
+- **`modules/<feature>/components/*.js`** — web components that belong
+  conceptually to one feature (`modules/auth/components/auth-forms.js`,
+  `modules/comments/components/comments-thread.js`). Pages import them
+  directly from the module. Shared UI primitives that aren't feature-
+  specific (chrome, typography helpers, reusable cards) stay in the
+  top-level `components/` dir.
 - **`modules/<feature>/utils/*.js`** — pure helpers and formatters.
   Importable from anywhere, no `'use server'`, no DB access.
 - **`modules/<feature>/types.js`** — JSDoc `@typedef` blocks for shapes
