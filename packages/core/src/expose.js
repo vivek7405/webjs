@@ -12,7 +12,7 @@
  * });
  * ```
  *
- * The action is now reachable two ways, both backed by the exact same code:
+ * The action is reachable two ways, both backed by the exact same code:
  *   - from a client component:   `import { createPost } from '.../posts.server.js'`
  *   - from curl / another service: `POST /api/posts` with a JSON body
  *
@@ -22,14 +22,19 @@
  *   - For methods with a body (POST/PUT/PATCH/DELETE), the parsed JSON body
  *     is merged on top of params/query. The function receives ONE argument:
  *     the merged object.
+ *   - If `opts.validate` is provided, it runs BEFORE the function and can
+ *     transform / reject the input. Throw to fail (→ 400 response). Return
+ *     value replaces the input. Works cleanly with zod, valibot, or any
+ *     parser that throws: `expose('...', fn, { validate: Schema.parse })`.
  *   - Return value becomes a JSON `Response`; throw or return a `Response`
  *     directly for full control.
  *
  * @param {string} pattern e.g. `"POST /api/posts"` or `"GET /api/posts/:slug"`
  * @param {Function} fn the async implementation
+ * @param {{ validate?: (input: any) => any }} [opts]
  * @returns {Function} same function, tagged with HTTP metadata
  */
-export function expose(pattern, fn) {
+export function expose(pattern, fn, opts) {
   const match = /^\s*([A-Z]+)\s+(\/\S*)\s*$/.exec(pattern);
   if (!match) {
     throw new Error(
@@ -37,7 +42,11 @@ export function expose(pattern, fn) {
     );
   }
   const [, method, path] = match;
-  /** @type any */ (fn).__webjsHttp = { method, path };
+  /** @type any */ (fn).__webjsHttp = {
+    method,
+    path,
+    validate: opts && typeof opts.validate === 'function' ? opts.validate : null,
+  };
   return fn;
 }
 

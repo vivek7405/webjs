@@ -15,12 +15,19 @@ test('expose() tags the function and parses pattern', () => {
   const fn = async (x) => x + 1;
   const exposed = expose('POST /api/add', fn);
   assert.equal(exposed, fn);
-  assert.deepEqual(getExposed(fn), { method: 'POST', path: '/api/add' });
+  assert.deepEqual(getExposed(fn), { method: 'POST', path: '/api/add', validate: null });
 });
 
 test('expose() rejects malformed patterns', () => {
   assert.throws(() => expose('POST', () => {}), /bad pattern/);
   assert.throws(() => expose('/api/x', () => {}), /bad pattern/);
+});
+
+test('expose() records validate hook when provided', () => {
+  const fn = async (x) => x;
+  const schema = (i) => { if (!i.ok) throw new Error('bad'); return i; };
+  expose('POST /api/x', fn, { validate: schema });
+  assert.equal(getExposed(fn).validate, schema);
 });
 
 async function scaffold(files) {
@@ -74,6 +81,67 @@ test('action scanner discovers expose()d routes and invokes them over HTTP', asy
     const getReq = new Request('http://x/api/value/42');
     const getRes = await invokeExposedAction(idx, get.route, get.params, getReq);
     assert.deepEqual(await getRes.json(), { id: 42 });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('validate hook rejects bad input with 400 before handler runs', async () => {
+  const dir = await scaffold({
+    'actions/guarded.server.js': `
+      import { expose } from 'webjs';
+      let called = 0;
+      export const make = expose(
+        'POST /api/make',
+        async ({ name }) => { called++; return { name, called }; },
+        { validate: (i) => {
+            if (!i || typeof i.name !== 'string' || !i.name) throw new Error('name required');
+            return { name: i.name.trim() };
+          }
+        }
+      );
+    `,
+    'package.json': JSON.stringify({ name: 'tmp', type: 'module' }),
+  });
+  try {
+    const modulesDir = join(dir, 'node_modules');
+    await mkdir(modulesDir, { recursive: true });
+    const { symlink } = await import('node:fs/promises');
+    const realWebjs = new URL('../packages/core', import.meta.url).pathname;
+    await symlink(realWebjs, join(modulesDir, 'webjs'), 'dir').catch(() => {});
+
+    const idx = await buildActionIndex(dir, true);
+    const m = matchExposedAction(idx, 'POST', '/api/make');
+    assert.ok(m);
+
+    // Missing name → 400
+    const bad = await invokeExposedAction(
+      idx,
+      m.route,
+      m.params,
+      new Request('http://x/api/make', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+    );
+    assert.equal(bad.status, 400);
+    const badJson = await bad.json();
+    assert.match(badJson.error, /name required/);
+
+    // Good input passes + handler runs
+    const ok = await invokeExposedAction(
+      idx,
+      m.route,
+      m.params,
+      new Request('http://x/api/make', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: '  hello  ' }),
+      })
+    );
+    assert.equal(ok.status, 200);
+    assert.deepEqual(await ok.json(), { name: 'hello', called: 1 });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

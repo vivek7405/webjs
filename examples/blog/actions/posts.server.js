@@ -30,23 +30,44 @@ export const getPost = expose('GET /api/posts/:slug', async ({ slug }) => {
 });
 
 /**
+ * Validate and normalise createPost input. Any throw here turns into a 400
+ * JSON response at the edge, before the function runs.
+ *
+ * @param {unknown} input
+ * @returns {{ title: string, body: string }}
+ */
+function validateCreatePost(input) {
+  if (!input || typeof input !== 'object') throw new Error('Expected an object');
+  const obj = /** @type {Record<string, unknown>} */ (input);
+  const title = typeof obj.title === 'string' ? obj.title.trim() : '';
+  const body = typeof obj.body === 'string' ? obj.body.trim() : '';
+  if (!title) throw new Error('title is required');
+  if (!body) throw new Error('body is required');
+  if (title.length > 200) throw new Error('title too long');
+  if (body.length > 20_000) throw new Error('body too long');
+  return { title, body };
+}
+
+/**
  * Create a post. Slug is derived from the title.
  *
- * Exposed as POST /api/posts. The body is parsed as JSON and merged into the
- * function's single object argument.
+ * Exposed as POST /api/posts. `validate` runs before the handler — it's the
+ * single place that decides what "valid input" looks like and is shared by
+ * both callers (client-component RPC and external HTTP).
  *
  * @param {{ title: string, body: string }} input
  */
-export const createPost = expose('POST /api/posts', async (input) => {
-  const title = String(input.title || '').trim();
-  const body = String(input.body || '').trim();
-  if (!title || !body) throw new Error('Title and body are required');
-  const base = slugify(title) || 'post';
-  let slug = base;
-  let n = 1;
-  while (await db.post.findUnique({ where: { slug } })) slug = `${base}-${++n}`;
-  return db.post.create({ data: { title, body, slug } });
-});
+export const createPost = expose(
+  'POST /api/posts',
+  async (input) => {
+    const base = slugify(input.title) || 'post';
+    let slug = base;
+    let n = 1;
+    while (await db.post.findUnique({ where: { slug } })) slug = `${base}-${++n}`;
+    return db.post.create({ data: { title: input.title, body: input.body, slug } });
+  },
+  { validate: validateCreatePost }
+);
 
 /** @param {string} s */
 function slugify(s) {

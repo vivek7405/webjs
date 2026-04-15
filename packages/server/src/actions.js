@@ -26,6 +26,7 @@ import { verify as verifyCsrf, CSRF_COOKIE, CSRF_HEADER } from './csrf.js';
  *   paramNames: string[],
  *   file: string,
  *   fnName: string,
+ *   validate: ((input: any) => any) | null,
  * }} ExposedRoute
  *
  * @typedef {{
@@ -65,7 +66,14 @@ export async function buildActionIndex(appDir, dev) {
         const http = getExposed(fn);
         if (!http) continue;
         const { pattern, paramNames } = pathToPattern(http.path);
-        httpRoutes.push({ method: http.method, pattern, paramNames, file, fnName: name });
+        httpRoutes.push({
+          method: http.method,
+          pattern,
+          paramNames,
+          file,
+          fnName: name,
+          validate: http.validate || null,
+        });
       }
     } catch (e) {
       console.error(`[webjs] failed to scan server module ${file}:`, e);
@@ -222,7 +230,20 @@ export async function invokeExposedAction(idx, route, params, req) {
       }
     }
   }
-  const arg = { ...query, ...params, ...body };
+  let arg = { ...query, ...params, ...body };
+  if (route.validate) {
+    try {
+      arg = route.validate(arg);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // Many schema libs (zod, valibot) throw structured errors — pass their
+      // `issues` array through when present for easier client-side handling.
+      const issues = e && typeof e === 'object' && 'issues' in e
+        ? /** @type any */ (e).issues
+        : undefined;
+      return Response.json({ error: msg, issues }, { status: 400 });
+    }
+  }
   const mod = await loadModule(route.file, idx.dev);
   const fn = mod[route.fnName];
   if (typeof fn !== 'function') return new Response(`Unknown action ${route.fnName}`, { status: 404 });
