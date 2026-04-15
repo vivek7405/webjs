@@ -15,9 +15,13 @@ import {
   serveActionStub,
   invokeAction,
   matchExposedAction,
+  matchAllAtPath,
   invokeExposedAction,
+  buildPreflightResponse,
+  withCors,
 } from './actions.js';
 import { defaultLogger } from './logger.js';
+import { withRequest } from './context.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -69,17 +73,19 @@ export async function createRequestHandler(opts) {
   }
 
   /** @param {Request} req */
-  async function handle(req) {
-    const next = () => handleCore(req, { state, appDir, coreDir, dev });
-    if (state.middleware) {
-      try {
-        return await state.middleware(req, next);
-      } catch (e) {
-        logger.error('middleware threw', { err: String(e) });
-        return new Response('Server error', { status: 500 });
+  function handle(req) {
+    return withRequest(req, async () => {
+      const next = () => handleCore(req, { state, appDir, coreDir, dev });
+      if (state.middleware) {
+        try {
+          return await state.middleware(req, next);
+        } catch (e) {
+          logger.error('middleware threw', { err: String(e) });
+          return new Response('Server error', { status: 500 });
+        }
       }
-    }
-    return next();
+      return next();
+    });
   }
 
   return { handle, rebuild, appDir, dev, logger };
@@ -205,10 +211,27 @@ async function handleCore(req, ctx) {
     return invokeAction(state.actionIndex, actMatch[1], actMatch[2], req);
   }
 
-  // expose()d server actions (first-class REST)
-  const exposed = matchExposedAction(state.actionIndex, method, path);
-  if (exposed) {
-    return invokeExposedAction(state.actionIndex, exposed.route, exposed.params, req);
+  // expose()d server actions (first-class REST), with optional CORS support.
+  if (method === 'OPTIONS') {
+    const allAtPath = matchAllAtPath(state.actionIndex, path);
+    if (allAtPath.length) {
+      const corsRoute = allAtPath.find((r) => r.cors);
+      const methods = [...new Set(allAtPath.map((r) => r.method))];
+      if (corsRoute) {
+        // Preflight: respond with cors headers + the union of methods at this path.
+        const preflight = buildPreflightResponse(corsRoute, req);
+        const newHeaders = new Headers(preflight.headers);
+        newHeaders.set('access-control-allow-methods', `${methods.join(', ')}, OPTIONS`);
+        return new Response(null, { status: preflight.status, headers: newHeaders });
+      }
+      return new Response(null, { status: 204, headers: { allow: `${methods.join(', ')}, OPTIONS` } });
+    }
+  } else {
+    const exposed = matchExposedAction(state.actionIndex, method, path);
+    if (exposed) {
+      const resp = await invokeExposedAction(state.actionIndex, exposed.route, exposed.params, req);
+      return withCors(resp, exposed.route, req);
+    }
   }
 
   // Static: /public/*

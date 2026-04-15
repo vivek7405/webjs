@@ -29,9 +29,22 @@
  *   - Return value becomes a JSON `Response`; throw or return a `Response`
  *     directly for full control.
  *
+ *
+ * `cors` toggles browser CORS support for cross-origin callers:
+ *   - `true`             — allow any origin (`*`), reflects requested headers
+ *   - string             — allow that single origin (sets `Access-Control-Allow-Credentials: true`)
+ *   - string[]           — allow-list; non-matching origins are not granted
+ *   - { origin, credentials, maxAge, headers } — full control
+ *
+ * When CORS is enabled, an `OPTIONS` preflight at the same path is auto-served
+ * with `Access-Control-Allow-Methods: <route's method>, OPTIONS`.
+ *
  * @param {string} pattern e.g. `"POST /api/posts"` or `"GET /api/posts/:slug"`
  * @param {Function} fn the async implementation
- * @param {{ validate?: (input: any) => any }} [opts]
+ * @param {{
+ *   validate?: (input: any) => any,
+ *   cors?: boolean | string | string[] | { origin: string | string[], credentials?: boolean, maxAge?: number, headers?: string[] }
+ * }} [opts]
  * @returns {Function} same function, tagged with HTTP metadata
  */
 export function expose(pattern, fn, opts) {
@@ -46,8 +59,29 @@ export function expose(pattern, fn, opts) {
     method,
     path,
     validate: opts && typeof opts.validate === 'function' ? opts.validate : null,
+    cors: opts && 'cors' in opts ? normaliseCors(opts.cors) : null,
   };
   return fn;
+}
+
+/** @param {any} c */
+function normaliseCors(c) {
+  if (!c) return null;
+  if (c === true) {
+    return { origin: '*', credentials: false, maxAge: 86400, headers: null };
+  }
+  if (typeof c === 'string') {
+    return { origin: c, credentials: true, maxAge: 86400, headers: null };
+  }
+  if (Array.isArray(c)) {
+    return { origin: c, credentials: true, maxAge: 86400, headers: null };
+  }
+  return {
+    origin: c.origin,
+    credentials: !!c.credentials,
+    maxAge: typeof c.maxAge === 'number' ? c.maxAge : 86400,
+    headers: Array.isArray(c.headers) ? c.headers : null,
+  };
 }
 
 /** @param {unknown} fn */

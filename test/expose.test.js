@@ -15,7 +15,7 @@ test('expose() tags the function and parses pattern', () => {
   const fn = async (x) => x + 1;
   const exposed = expose('POST /api/add', fn);
   assert.equal(exposed, fn);
-  assert.deepEqual(getExposed(fn), { method: 'POST', path: '/api/add', validate: null });
+  assert.deepEqual(getExposed(fn), { method: 'POST', path: '/api/add', validate: null, cors: null });
 });
 
 test('expose() rejects malformed patterns', () => {
@@ -28,6 +28,17 @@ test('expose() records validate hook when provided', () => {
   const schema = (i) => { if (!i.ok) throw new Error('bad'); return i; };
   expose('POST /api/x', fn, { validate: schema });
   assert.equal(getExposed(fn).validate, schema);
+});
+
+test('expose() normalises cors option', () => {
+  const f1 = expose('GET /a', async () => 1, { cors: true });
+  assert.deepEqual(getExposed(f1).cors, { origin: '*', credentials: false, maxAge: 86400, headers: null });
+
+  const f2 = expose('GET /b', async () => 1, { cors: 'https://example.com' });
+  assert.deepEqual(getExposed(f2).cors, { origin: 'https://example.com', credentials: true, maxAge: 86400, headers: null });
+
+  const f3 = expose('GET /c', async () => 1, { cors: { origin: ['a', 'b'], maxAge: 60, credentials: false } });
+  assert.deepEqual(getExposed(f3).cors, { origin: ['a', 'b'], credentials: false, maxAge: 60, headers: null });
 });
 
 async function scaffold(files) {

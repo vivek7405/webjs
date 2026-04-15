@@ -15,9 +15,11 @@ const db = globalThis.__webjs_prisma ?? (globalThis.__webjs_prisma = new PrismaC
  *
  * @returns {Promise<Array<import('@prisma/client').Post>>}
  */
-export const listPosts = expose('GET /api/posts', async () => {
-  return db.post.findMany({ orderBy: { createdAt: 'desc' } });
-});
+export const listPosts = expose(
+  'GET /api/posts',
+  async () => db.post.findMany({ orderBy: { createdAt: 'desc' } }),
+  { cors: true } // Demo: allow any origin to read the post feed.
+);
 
 /**
  * Look up a post by slug.

@@ -27,6 +27,7 @@ import { verify as verifyCsrf, CSRF_COOKIE, CSRF_HEADER } from './csrf.js';
  *   file: string,
  *   fnName: string,
  *   validate: ((input: any) => any) | null,
+ *   cors: { origin: string | string[], credentials: boolean, maxAge: number, headers: string[] | null } | null,
  * }} ExposedRoute
  *
  * @typedef {{
@@ -73,6 +74,7 @@ export async function buildActionIndex(appDir, dev) {
           file,
           fnName: name,
           validate: http.validate || null,
+          cors: http.cors || null,
         });
       }
     } catch (e) {
@@ -188,7 +190,8 @@ export async function invokeAction(idx, hash, fnName, req) {
 }
 
 /**
- * Try to match an incoming request against an expose()d action route.
+ * Match an incoming request against an expose()d action route.
+ * Returns the single matched route+params for normal methods.
  * @param {ActionIndex} idx
  * @param {string} method
  * @param {string} pathname
@@ -204,6 +207,68 @@ export function matchExposedAction(idx, method, pathname) {
     return { route: r, params };
   }
   return null;
+}
+
+/**
+ * Find ALL exposed routes at a given path (any method). Used to build OPTIONS
+ * preflight responses and Allow headers.
+ * @param {ActionIndex} idx
+ * @param {string} pathname
+ */
+export function matchAllAtPath(idx, pathname) {
+  const out = [];
+  for (const r of idx.httpRoutes) {
+    if (r.pattern.exec(pathname)) out.push(r);
+  }
+  return out;
+}
+
+/**
+ * Build CORS response headers given a route's CORS config + the request.
+ * Returns null if CORS isn't configured for this route.
+ *
+ * @param {ExposedRoute} route
+ * @param {Request} req
+ */
+export function corsHeadersFor(route, req) {
+  if (!route.cors) return null;
+  const cfg = route.cors;
+  const origin = req.headers.get('origin') || '';
+  const allowed = matchOrigin(cfg.origin, origin);
+  if (!allowed && origin) return null;
+  const h = new Headers();
+  h.set('access-control-allow-origin', allowed === true ? '*' : allowed || origin);
+  if (cfg.credentials) h.set('access-control-allow-credentials', 'true');
+  h.append('vary', 'Origin');
+  return h;
+}
+
+/** @param {ExposedRoute} route @param {Request} req */
+export function buildPreflightResponse(route, req) {
+  const headers = corsHeadersFor(route, req);
+  if (!headers) return new Response(null, { status: 403 });
+  headers.set('access-control-allow-methods', `${route.method}, OPTIONS`);
+  const reqHdrs =
+    route.cors?.headers?.join(',') || req.headers.get('access-control-request-headers') || 'content-type';
+  headers.set('access-control-allow-headers', reqHdrs);
+  headers.set('access-control-max-age', String(route.cors?.maxAge ?? 86400));
+  return new Response(null, { status: 204, headers });
+}
+
+/** Apply CORS headers (if any) to an existing response. */
+export function withCors(resp, route, req) {
+  const h = corsHeadersFor(route, req);
+  if (!h) return resp;
+  const newHeaders = new Headers(resp.headers);
+  h.forEach((v, k) => newHeaders.set(k, v));
+  return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers: newHeaders });
+}
+
+/** @param {string|string[]} configured @param {string} origin */
+function matchOrigin(configured, origin) {
+  if (configured === '*') return true;
+  if (Array.isArray(configured)) return configured.includes(origin) ? origin : null;
+  return configured === origin ? origin : null;
 }
 
 /**

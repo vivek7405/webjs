@@ -11,3 +11,5 @@ export {
   invokeAction,
 } from './src/actions.js';
 export { buildImportMap, importMapTag } from './src/importmap.js';
+export { headers, cookies, getRequest, withRequest } from './src/context.js';
+export { defaultLogger } from './src/logger.js';
