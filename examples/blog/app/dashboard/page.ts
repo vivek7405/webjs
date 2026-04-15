@@ -6,7 +6,8 @@ import { listPosts } from '../../modules/posts/queries/list-posts.server.ts';
 export const metadata = { title: 'Dashboard — webjs blog' };
 
 export default async function Dashboard() {
-  const me = await currentUser();
+  // Per-segment middleware.ts guarantees an authed user here.
+  const me = (await currentUser())!;
   const posts = await listPosts();
   const mine = posts.filter((p) => p.authorId === me.id);
   return html`

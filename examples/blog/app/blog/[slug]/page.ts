@@ -6,15 +6,16 @@ import { getPost } from '../../../modules/posts/queries/get-post.server.ts';
 import { listComments } from '../../../modules/comments/queries/list-comments.server.ts';
 import { currentUser } from '../../../modules/auth/queries/current-user.server.ts';
 
-/** @param {{ params: { slug: string } }} ctx */
-export async function generateMetadata({ params }) {
+type Ctx = { params: { slug: string } };
+
+export async function generateMetadata({ params }: Ctx) {
   const post = await getPost({ slug: params.slug });
   return post
     ? { title: `${post.title} — webjs blog` }
     : { title: 'Not found — webjs blog' };
 }
 
-export default async function PostPage({ params }) {
+export default async function PostPage({ params }: Ctx) {
   const post = await getPost({ slug: params.slug });
   if (!post) notFound();
 

@@ -4,19 +4,15 @@ import '../components/blog-shell.ts';
 /**
  * Root layout — globals + chrome.
  *
- * Three concerns live here, in this order:
- *  1. The inline `<script>` that syncs `<html data-theme>` from localStorage
- *     BEFORE any style applies. No FOUC when a user's saved theme differs
- *     from their system preference.
- *  2. The `<style>` block with design tokens (OKLCH palette, fluid type,
- *     spacing + motion scale). Tokens inherit into every shadow root in
- *     the app — components just `var(--accent)` etc.
- *  3. The `<blog-shell>` custom element holds the page chrome and slots
- *     the page content into its shadow DOM.
- *
- * @param {{ children: unknown }} props
+ * Three concerns, in document order:
+ *  1. Inline `<script>` that syncs `<html data-theme>` from localStorage
+ *     BEFORE any style applies (no FOUC on the occasional mismatch
+ *     between saved theme and OS preference).
+ *  2. `<style>` with design tokens (OKLCH palette, fluid type scale,
+ *     spacing + motion). Tokens inherit into every shadow root.
+ *  3. `<blog-shell>` holds page chrome and slots children.
  */
-export default function RootLayout({ children }) {
+export default function RootLayout({ children }: { children: unknown }) {
   return html`
     <script>
       (function(){

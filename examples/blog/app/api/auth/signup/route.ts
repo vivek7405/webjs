@@ -1,7 +1,7 @@
 import { signup } from '../../../../modules/auth/actions/signup.server.ts';
 import { sessionCookieHeader } from '../../../../lib/session.ts';
 
-export async function POST(req) {
+export async function POST(req: Request) {
   const input = await req.json().catch(() => null);
   const result = await signup(input);
   if (!result.success) return Response.json({ error: result.error }, { status: result.status });

@@ -7,7 +7,10 @@ import { getUserByToken, SESSION_COOKIE } from '../../lib/session.ts';
  * Per-segment middleware demo: this file only fires on requests under
  * /dashboard/, never on /blog/… or /api/….
  */
-export default async function requireAuth(req, next) {
+export default async function requireAuth(
+  req: Request,
+  next: () => Promise<Response>,
+): Promise<Response> {
   const user = await getUserByToken(cookies().get(SESSION_COOKIE));
   if (!user) {
     const to = encodeURIComponent(new URL(req.url).pathname);

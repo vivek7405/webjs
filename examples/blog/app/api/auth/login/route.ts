@@ -1,7 +1,7 @@
 import { login } from '../../../../modules/auth/actions/login.server.ts';
 import { sessionCookieHeader } from '../../../../lib/session.ts';
 
-export async function POST(req) {
+export async function POST(req: Request) {
   const input = await req.json().catch(() => null);
   const result = await login(input);
   if (!result.success) return Response.json({ error: result.error }, { status: result.status });

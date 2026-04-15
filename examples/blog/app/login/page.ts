@@ -4,7 +4,9 @@ import { currentUser } from '../../modules/auth/queries/current-user.server.ts';
 
 export const metadata = { title: 'Sign in — webjs blog' };
 
-export default async function LoginPage({ searchParams }) {
+type Ctx = { searchParams?: Record<string, string> };
+
+export default async function LoginPage({ searchParams }: Ctx) {
   const me = await currentUser();
   if (me) redirect(searchParams?.then || '/dashboard');
 
