@@ -1,10 +1,10 @@
 import { html, notFound } from 'webjs';
 import '../../../components/muted-text.ts';
-import '../../../modules/comments/components/comments-thread.js';
+import '../../../modules/comments/components/comments-thread.ts';
 
 import { getPost } from '../../../modules/posts/queries/get-post.server.ts';
-import { listComments } from '../../../modules/comments/queries/list-comments.server.js';
-import { currentUser } from '../../../modules/auth/queries/current-user.server.js';
+import { listComments } from '../../../modules/comments/queries/list-comments.server.ts';
+import { currentUser } from '../../../modules/auth/queries/current-user.server.ts';
 
 /** @param {{ params: { slug: string } }} ctx */
 export async function generateMetadata({ params }) {

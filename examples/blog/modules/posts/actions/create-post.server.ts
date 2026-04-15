@@ -2,7 +2,7 @@
 
 import { prisma } from '../../../lib/prisma.ts';
 import { slugify, formatPost } from '../utils/slugify.ts';
-import { currentUser } from '../../auth/queries/current-user.server.js';
+import { currentUser } from '../../auth/queries/current-user.server.ts';
 import type { PostFormatted, CreatePostInput } from '../types.ts';
 
 /**

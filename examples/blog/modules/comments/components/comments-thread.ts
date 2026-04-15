@@ -1,5 +1,8 @@
 import { WebComponent, html, css, repeat, connectWS } from 'webjs';
 import '../../../components/muted-text.ts';
+import type { CommentFormatted } from '../types.ts';
+
+type State = { comments: CommentFormatted[]; busy: boolean; error: string | null };
 
 /**
  * `<comments-thread>` — live thread. Editorial card list, mono meta,
@@ -12,6 +15,11 @@ export class CommentsThread extends WebComponent {
     initial:  { type: Object },
     signedIn: { type: Boolean },
   };
+  postId: string = '';
+  initial: CommentFormatted[] = [];
+  signedIn: boolean = false;
+  declare state: State;
+  _conn: ReturnType<typeof connectWS> | null = null;
   static styles = css`
     :host { display: block; }
 
@@ -110,11 +118,7 @@ export class CommentsThread extends WebComponent {
 
   constructor() {
     super();
-    this.postId = '';
-    this.initial = [];
-    this.signedIn = false;
     this.state = { comments: [], busy: false, error: null };
-    this._conn = null;
   }
 
   connectedCallback() {
@@ -122,7 +126,7 @@ export class CommentsThread extends WebComponent {
     const seeded = Array.isArray(this.initial) ? this.initial : [];
     this.setState({ comments: seeded });
     this._conn = connectWS(`/api/comments/${this.postId}`, {
-      onMessage: (msg) => {
+      onMessage: (msg: CommentFormatted) => {
         const cur = this.state.comments;
         if (cur.some((c) => c.id === msg.id)) return;
         this.setState({ comments: [...cur, msg] });
@@ -131,9 +135,10 @@ export class CommentsThread extends WebComponent {
   }
   disconnectedCallback() { this._conn?.close(); }
 
-  async onSubmit(e) {
+  async onSubmit(e: SubmitEvent) {
     e.preventDefault();
-    const input = e.currentTarget.querySelector('input');
+    const form = e.currentTarget as HTMLFormElement;
+    const input = form.querySelector('input') as HTMLInputElement;
     const body = input.value.trim();
     if (!body) return;
     this.setState({ busy: true, error: null });
@@ -150,7 +155,8 @@ export class CommentsThread extends WebComponent {
       input.value = '';
       this.setState({ busy: false });
     } catch (err) {
-      this.setState({ busy: false, error: err.message });
+      const msg = err instanceof Error ? err.message : String(err);
+      this.setState({ busy: false, error: msg });
     }
   }
 

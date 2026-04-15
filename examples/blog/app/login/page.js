@@ -1,6 +1,6 @@
 import { html, redirect } from 'webjs';
-import '../../modules/auth/components/auth-forms.js';
-import { currentUser } from '../../modules/auth/queries/current-user.server.js';
+import '../../modules/auth/components/auth-forms.ts';
+import { currentUser } from '../../modules/auth/queries/current-user.server.ts';
 
 export const metadata = { title: 'Sign in — webjs blog' };
 

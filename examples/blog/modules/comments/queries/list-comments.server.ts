@@ -1,22 +1,18 @@
 'use server';
 
 import { prisma } from '../../../lib/prisma.ts';
+import type { CommentFormatted } from '../types.ts';
 
-/**
- * @param {{ postId: number }} input
- * @returns {Promise<Array<import('../types.js').CommentFormatted>>}
- */
-export async function listComments({ postId }) {
+export async function listComments(input: { postId: number }): Promise<CommentFormatted[]> {
   const rows = await prisma.comment.findMany({
-    where: { postId },
+    where: { postId: input.postId },
     orderBy: { createdAt: 'asc' },
     include: { author: { select: { name: true, email: true } } },
   });
   return rows.map(formatComment);
 }
 
-/** @param {any} c */
-export function formatComment(c) {
+export function formatComment(c: any): CommentFormatted {
   return {
     id: c.id,
     postId: c.postId,

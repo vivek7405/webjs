@@ -3,16 +3,16 @@
 import { prisma } from '../../../lib/prisma.ts';
 import { hashPassword } from '../../../lib/password.ts';
 import { createSession } from '../../../lib/session.ts';
-import { validateSignup } from '../utils/validate.js';
+import { validateSignup } from '../utils/validate.ts';
+import type { ActionResult, PublicUser } from '../types.ts';
 
 /**
  * Register a new user + open a session. The session token is returned for
  * the caller (route handler) to set as a cookie on the HTTP response.
- *
- * @param {unknown} input
- * @returns {Promise<import('../types.js').ActionResult<{ user: import('../types.js').PublicUser, token: string }>>}
  */
-export async function signup(input) {
+export async function signup(
+  input: unknown,
+): Promise<ActionResult<{ user: PublicUser; token: string }>> {
   let parsed;
   try { parsed = validateSignup(input); }
   catch (e) {

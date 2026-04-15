@@ -3,10 +3,12 @@
  * the same rules for a better UX.
  */
 
-/** @param {unknown} input */
-export function validateSignup(input) {
+export type SignupInput = { email: string; password: string; name: string | null };
+export type LoginInput = { email: string; password: string };
+
+export function validateSignup(input: unknown): SignupInput {
   if (!input || typeof input !== 'object') throw new Error('Expected an object');
-  const obj = /** @type {Record<string, unknown>} */ (input);
+  const obj = input as Record<string, unknown>;
   const email = typeof obj.email === 'string' ? obj.email.trim().toLowerCase() : '';
   const password = typeof obj.password === 'string' ? obj.password : '';
   const name = typeof obj.name === 'string' ? obj.name.trim() || null : null;
@@ -17,10 +19,9 @@ export function validateSignup(input) {
   return { email, password, name };
 }
 
-/** @param {unknown} input */
-export function validateLogin(input) {
+export function validateLogin(input: unknown): LoginInput {
   if (!input || typeof input !== 'object') throw new Error('Expected an object');
-  const obj = /** @type {Record<string, unknown>} */ (input);
+  const obj = input as Record<string, unknown>;
   const email = typeof obj.email === 'string' ? obj.email.trim().toLowerCase() : '';
   const password = typeof obj.password === 'string' ? obj.password : '';
   if (!email || !password) throw new Error('Email and password required');

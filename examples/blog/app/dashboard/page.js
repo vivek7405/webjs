@@ -1,6 +1,6 @@
 import { html, repeat } from 'webjs';
 import '../../components/muted-text.ts';
-import { currentUser } from '../../modules/auth/queries/current-user.server.js';
+import { currentUser } from '../../modules/auth/queries/current-user.server.ts';
 import { listPosts } from '../../modules/posts/queries/list-posts.server.ts';
 
 export const metadata = { title: 'Dashboard — webjs blog' };

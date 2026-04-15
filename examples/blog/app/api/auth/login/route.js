@@ -1,4 +1,4 @@
-import { login } from '../../../../modules/auth/actions/login.server.js';
+import { login } from '../../../../modules/auth/actions/login.server.ts';
 import { sessionCookieHeader } from '../../../../lib/session.ts';
 
 export async function POST(req) {

@@ -1,6 +1,6 @@
-import { listComments } from '../../../../modules/comments/queries/list-comments.server.js';
-import { createComment } from '../../../../modules/comments/actions/create-comment.server.js';
-import { subscribe } from '../../../../modules/comments/utils/bus.js';
+import { listComments } from '../../../../modules/comments/queries/list-comments.server.ts';
+import { createComment } from '../../../../modules/comments/actions/create-comment.server.ts';
+import { subscribe } from '../../../../modules/comments/utils/bus.ts';
 
 export async function GET(_req, { params }) {
   const postId = Number(params.postId);

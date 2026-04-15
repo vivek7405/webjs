@@ -1,5 +1,5 @@
 import { cookies } from '@webjs/server';
-import { logout } from '../../../../modules/auth/actions/logout.server.js';
+import { logout } from '../../../../modules/auth/actions/logout.server.ts';
 import { SESSION_COOKIE, clearSessionCookieHeader } from '../../../../lib/session.ts';
 
 export async function POST() {

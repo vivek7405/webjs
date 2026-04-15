@@ -1,5 +1,11 @@
 import { WebComponent, html, css, connectWS } from 'webjs';
 
+type Line = { id: number; text: string; kind: 'say' | 'meta' };
+type State = { lines: Line[]; connected: boolean; count: number };
+type ChatMessage =
+  | { kind: 'say'; text: string; at: number }
+  | { kind: 'join' | 'leave'; count: number };
+
 /**
  * `<chat-box>` — terminal-leaning live chat panel against /api/chat.
  */
@@ -96,11 +102,13 @@ export class ChatBox extends WebComponent {
     button:disabled { opacity: 0.5; cursor: not-allowed; }
   `;
 
+  declare state: State;
+  _conn: ReturnType<typeof connectWS> | null = null;
+  _nextId = 0;
+
   constructor() {
     super();
     this.state = { lines: [], connected: false, count: 0 };
-    this._conn = null;
-    this._nextId = 0;
   }
 
   connectedCallback() {
@@ -108,7 +116,7 @@ export class ChatBox extends WebComponent {
     this._conn = connectWS('/api/chat', {
       onOpen:  () => this.setState({ connected: true }),
       onClose: () => this.setState({ connected: false }),
-      onMessage: (msg) => {
+      onMessage: (msg: ChatMessage) => {
         const lines = this.state.lines.slice();
         if (msg.kind === 'say') {
           lines.push({ id: ++this._nextId, text: msg.text, kind: 'say' });
@@ -127,9 +135,10 @@ export class ChatBox extends WebComponent {
   }
   disconnectedCallback() { this._conn?.close(); this._conn = null; }
 
-  onSubmit(e) {
+  onSubmit(e: SubmitEvent) {
     e.preventDefault();
-    const input = e.currentTarget.querySelector('input');
+    const form = e.currentTarget as HTMLFormElement;
+    const input = form.querySelector('input') as HTMLInputElement;
     const text = input.value.trim();
     if (!text || !this._conn) return;
     this._conn.send({ text });

@@ -3,15 +3,13 @@
 import { prisma } from '../../../lib/prisma.ts';
 import { verifyPassword } from '../../../lib/password.ts';
 import { createSession } from '../../../lib/session.ts';
-import { validateLogin } from '../utils/validate.js';
+import { validateLogin } from '../utils/validate.ts';
+import type { ActionResult, PublicUser } from '../types.ts';
 
-/**
- * Authenticate by email + password; open a new session.
- *
- * @param {unknown} input
- * @returns {Promise<import('../types.js').ActionResult<{ user: import('../types.js').PublicUser, token: string }>>}
- */
-export async function login(input) {
+/** Authenticate by email + password; open a new session. */
+export async function login(
+  input: unknown,
+): Promise<ActionResult<{ user: PublicUser; token: string }>> {
   let parsed;
   try { parsed = validateLogin(input); }
   catch (e) {

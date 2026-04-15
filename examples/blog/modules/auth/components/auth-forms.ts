@@ -4,9 +4,14 @@ import { WebComponent, html, css } from 'webjs';
  * `<auth-forms>` — tabbed sign-in / sign-up, 2026 spotlight style.
  * Pill-switcher, serif heading, mono field labels, amber CTA.
  */
+type Mode = 'login' | 'signup';
+type State = { mode: Mode; busy: boolean; error: string | null };
+
 export class AuthForms extends WebComponent {
   static tag = 'auth-forms';
   static properties = { then: { type: String } };
+  then: string = '/dashboard';
+  declare state: State;
   static styles = css`
     :host { display: block; }
     .card {
@@ -94,13 +99,12 @@ export class AuthForms extends WebComponent {
 
   constructor() {
     super();
-    this.then = '/dashboard';
     this.state = { mode: 'login', busy: false, error: null };
   }
 
-  async onSubmit(e) {
+  async onSubmit(e: SubmitEvent) {
     e.preventDefault();
-    const data = Object.fromEntries(new FormData(e.currentTarget));
+    const data = Object.fromEntries(new FormData(e.currentTarget as HTMLFormElement));
     this.setState({ busy: true, error: null });
     try {
       const url = this.state.mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
@@ -115,7 +119,8 @@ export class AuthForms extends WebComponent {
       }
       location.href = this.then || '/dashboard';
     } catch (err) {
-      this.setState({ busy: false, error: err.message });
+      const msg = err instanceof Error ? err.message : String(err);
+      this.setState({ busy: false, error: msg });
     }
   }
 

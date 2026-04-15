@@ -1,10 +1,10 @@
 import { html, repeat, Suspense } from 'webjs';
 import '../components/counter.ts';
 import '../components/muted-text.ts';
-import '../modules/chat/components/chat-box.js';
+import '../modules/chat/components/chat-box.ts';
 
 import { listPosts } from '../modules/posts/queries/list-posts.server.ts';
-import { currentUser } from '../modules/auth/queries/current-user.server.js';
+import { currentUser } from '../modules/auth/queries/current-user.server.ts';
 
 export const metadata = {
   title: 'webjs blog',

@@ -2,7 +2,7 @@
  * /api/chat — global broadcast chat.
  * GET returns a status snapshot; WS upgrades to a live connection.
  */
-import { clients, broadcast } from '../../../modules/chat/utils/clients.js';
+import { clients, broadcast } from '../../../modules/chat/utils/clients.ts';
 
 export async function GET() {
   return new Response(
