@@ -137,7 +137,8 @@ interactivity, action serves both internal RPC and external REST.
 ```sh
 cd examples/blog
 npx prisma migrate deploy
-npx webjs start --port 8080   # JSON logs to stdout, gzip/brotli, ETag, …
+npx webjs build                     # bundles components+pages to .webjs/bundle.js
+npx webjs start --port 8080         # JSON logs, gzip/brotli, ETag, streaming, …
 ```
 
 Health endpoint: `GET /__webjs/health`. Graceful shutdown on `SIGTERM`.
@@ -157,21 +158,32 @@ expressApp.use(async (req, res) => {
 
 ## Status
 
-Pre-1.0 but production-shape. Recent hardening pass added: CSRF on
-internal RPC, fine-grained client diffing (focus survives re-renders),
-keyed list reconciliation (`repeat`), schema validation hook on `expose`,
-cookies/headers helpers, CORS, gzip/brotli, ETag + cache headers, health
-probe, graceful shutdown, JSON logger, programmatic embedding, process
-error handlers, SSE keepalive, HTML comment support in templates.
+Pre-1.0 but production-shape. Hardening highlights:
 
-Deliberately deferred (see `AGENTS.md` "Out of scope"): streaming SSR,
-bundling/code-splitting, full HMR, edge-runtime targets, RSC tree
-serialisation, raw-text element parsing (`<script>`/`<style>` in templates).
+- Security: CSRF on RPC, prod error sanitisation, `expose()` validate hook.
+- Rendering: fine-grained client diffing (focus/cursor survive setState),
+  keyed list reconciliation (`repeat`), **streaming SSR with Suspense**
+  (fallback flushes immediately; deferred content streams as it resolves).
+- Backend parity: `route.js` anywhere, `cookies()`/`headers()`, CORS,
+  per-segment middleware, **built-in rate limiter**, `createRequestHandler`
+  for embedding.
+- Performance: **`webjs build`** bundles components + pages via esbuild;
+  gzip/brotli on prod; ETag + long cache headers; streaming response bodies.
+- Ops: health probe, graceful shutdown (SIGTERM/SIGINT), JSON logger,
+  process-level error handlers, SSE keepalive against proxy timeouts.
+- Tokens: HTML comments and `<script>`/`<style>` raw-text correctly parsed.
+- Edge-portable CSRF uses Web Crypto — `createRequestHandler.handle(req)`
+  runs anywhere Request/Response work.
+
+Deliberately deferred (see `AGENTS.md`): per-route code splitting,
+Vite-grade HMR with state preservation, RSC Flight protocol, full edge
+runtime portability (file-system loader on Workers), i18n, image opt.
 
 ## Tests
 
 ```sh
-npm test              # 48 unit tests across renderer (server + client),
-                      # router, actions, csrf, expose, repeat, context,
-                      # fine-grained diffing, comment parsing
+npm test              # 60 unit tests across renderer (server + client),
+                      # router, actions, csrf, expose, repeat, Suspense,
+                      # context, fine-grained diffing, rate-limit,
+                      # comment + rawtext parsing, segment middleware
 ```

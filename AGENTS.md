@@ -63,6 +63,7 @@ import { html, css, WebComponent, render, renderToString } from 'webjs';
 | `redirect(url)`   | Throw inside a page/layout/server action to return a 307 (default) or 308 redirect. |
 | `expose(p, fn)`   | Tag a server action to ALSO be reachable at a REST path, e.g. `expose('POST /api/posts', fn)`. Optional `{ validate }` runs before the handler over HTTP. |
 | `repeat(items, k, t)` | Keyed list directive — `${repeat(items, it => it.id, it => html\`...\`)}`. Preserves element identity / focus when items reorder. |
+| `Suspense({fallback, children})` | Streaming boundary — server flushes `fallback` immediately, streams `children` (a Promise<TemplateResult>) when it resolves. |
 
 ### `html` — expression prefixes
 
@@ -300,15 +301,129 @@ Reference it via JSDoc:
 - Plug your own logger via `createRequestHandler({ logger })`. Any `{ info,
   warn, error }` shape works (pino, winston, etc.).
 
-## Out of scope for v1
+## Advanced features
 
-Documented here so agents don't attempt them:
+### Streaming SSR / Suspense
 
-- Streaming SSR / Suspense.
-- Bundling, minification, code-splitting.
-- Fine-grained HMR (we do full-page reload on file change).
-- Edge/worker runtime targets.
-- React Server Component tree serialisation (our server actions are plain RPC).
-- i18n, image optimisation.
-- HTML template parser does not handle `<script>`/`<style>` raw-text or HTML
-  comments inside templates — write components for interactive bits.
+```js
+import { html, Suspense } from 'webjs';
+
+export default function Page() {
+  return html`
+    <h1>Catalogue</h1>
+    ${Suspense({ fallback: html`<p>Loading…</p>`, children: fetchExpensive() })}
+  `;
+}
+```
+
+TTFB = time to render everything *outside* the Suspense boundary. The
+fallback flushes immediately; the resolved content streams in as a
+`<template>` + inline `__webjsResolve('id')` script when the promise lands.
+Nested Suspense is supported.
+
+### Bundling — `webjs build`
+
+Runs esbuild over every client-facing module (components, pages, layouts,
+error, not-found) and writes a single `.webjs/bundle.js`. Prod serves the
+bundle with `Cache-Control: immutable, max-age=1y`; the SSR shell imports
+only the bundle, collapsing N HTTP requests into one on first paint.
+
+  webjs build                        # default: minified + sourcemap
+  webjs build --no-minify            # for debugging
+  webjs build --no-sourcemap         # smaller deploy
+
+One bundle for the whole app — no per-route code splitting in v1.
+
+### Rate limiting — `rateLimit()`
+
+In-memory fixed-window limiter, shaped as middleware:
+
+```js
+import { rateLimit } from '@webjs/server';
+export default rateLimit({ window: '1m', max: 60 });    // 60 req/min
+export default rateLimit({
+  window: '10s', max: 10,
+  key: req => `login:${req.headers.get('x-forwarded-for') || 'anon'}`,
+});
+```
+
+Single-process only — use Redis or edge rate-limiting for multi-instance.
+
+### Per-segment middleware
+
+`middleware.js` can live at any level under `app/` and only applies to its
+subtree. Chain runs outermost → innermost, root sibling → app root first,
+then segment-scoped files.
+
+### Raw-text templates
+
+`<script>` and `<style>` are now parsed as raw-text — `<` and `>` inside
+them aren't tag starts. Holes interpolate verbatim (no HTML escaping).
+
+## Runtime targets
+
+### Node (default)
+
+`startServer({ appDir })` — opens an `http.Server`, installs SIGTERM/SIGINT
+handlers, enables chokidar file watching in dev.
+
+### Embedded / other runtimes
+
+Import `createRequestHandler` and adapt the platform's Request/Response:
+
+```js
+// Express
+import express from 'express';
+import { createRequestHandler } from '@webjs/server';
+const webjs = await createRequestHandler({ appDir });
+app.use(async (req, res) => {
+  const webReq = new Request(`http://${req.headers.host}${req.url}`, {
+    method: req.method, headers: req.headers, body: req.method === 'GET' ? null : req,
+  });
+  const r = await webjs.handle(webReq);
+  res.status(r.status);
+  r.headers.forEach((v, k) => res.setHeader(k, v));
+  r.body?.pipeTo(new WritableStream({ write: c => res.write(c), close: () => res.end() }));
+});
+```
+
+### Edge runtimes (Cloudflare Workers, Deno Deploy, Bun)
+
+**Partially supported.** The pieces that port today:
+- `createRequestHandler(...).handle(Request)` — fully runtime-agnostic.
+- CSRF uses Web Crypto (`crypto.getRandomValues`) — works on all edge runtimes.
+- Server actions, `expose()`, `cookies()`/`headers()`, middleware, CORS, Suspense.
+
+**What doesn't port yet:**
+- File-system module loading. Edge runtimes don't have `node:fs`; app code
+  must be bundled ahead-of-time. Needs: a build step that inlines
+  `app/**/*.js` into the handler. **Not shipped in v1.**
+- Compression: uses `node:zlib`. On edge use `CompressionStream` (web-std).
+  We'd need to detect the runtime and swap. **Not shipped in v1.**
+- Chokidar file watching: dev-only, Node-only. Edge is prod-deploy only anyway.
+
+Realistic path to edge today: deploy a Node server to a compute platform
+that runs Node (Fly, Render, Cloud Run). True edge (Workers) requires the
+missing build step above.
+
+## Deliberately deferred
+
+These features are *explicitly not* in v1 and agents should not try to
+implement them as part of other tasks without a separate design pass:
+
+- **Per-route code splitting.** `webjs build` produces one bundle for the
+  whole app. Splitting per route would need a dependency graph analysis
+  pass and router-coordinated preload hints.
+- **Vite-grade HMR with state preservation.** Web components can only be
+  registered once (`customElements.define` throws on redefinition), so true
+  component HMR requires either scoped registries (not widely supported) or
+  tag-name versioning (invasive). We do full-page reload instead. Data
+  reloads are near-instant via chokidar → SSE.
+- **React Server Components Flight protocol.** Our server actions already
+  cover "call a server function from the client"; Flight is React's specific
+  wire format for serializing server-rendered component trees. Re-implementing
+  it would fight our web-components model and duplicate years of React work.
+  Use `Suspense` + streaming for progressive rendering instead.
+- **Edge-runtime bundling / full portability.** See above.
+- **i18n, image optimisation.** Outside the scope of the core framework;
+  layer libraries on top.

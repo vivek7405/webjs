@@ -1,4 +1,7 @@
-import { randomBytes } from 'node:crypto';
+// Use Web Crypto (globalThis.crypto) for random + hash — works on Node >=20,
+// Deno, Bun, Cloudflare Workers. Avoids the node:crypto import and keeps
+// CSRF portable across runtimes.
+const webCrypto = /** @type {Crypto} */ (globalThis.crypto);
 
 /**
  * Double-submit cookie CSRF protection for `/__webjs/action/*` RPC endpoints.
@@ -29,7 +32,11 @@ const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 /** @returns {string} a 128-bit hex token */
 export function newToken() {
-  return randomBytes(16).toString('hex');
+  const bytes = new Uint8Array(16);
+  webCrypto.getRandomValues(bytes);
+  let s = '';
+  for (const b of bytes) s += b.toString(16).padStart(2, '0');
+  return s;
 }
 
 /**
