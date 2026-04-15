@@ -31,4 +31,4 @@ export class ErrorCard extends WebComponent {
     `;
   }
 }
-ErrorCard.register();
+ErrorCard.register(import.meta.url);

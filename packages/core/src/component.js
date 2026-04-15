@@ -49,10 +49,18 @@ export class WebComponent extends Base {
    */
   static styles = null;
 
-  /** Register this class with the element registry. */
-  static register() {
+  /**
+   * Register this class with the element registry.
+   * Pass `import.meta.url` from the defining module to enable automatic
+   * `<link rel="modulepreload">` hints in SSR:
+   *
+   *     MyCounter.register(import.meta.url);
+   *
+   * @param {string} [moduleUrl]
+   */
+  static register(moduleUrl) {
     if (!this.tag) throw new Error('WebComponent subclass is missing a static `tag`');
-    register(this.tag, this);
+    register(this.tag, this, moduleUrl);
   }
 
   /** @returns {string[]} */

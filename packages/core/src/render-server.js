@@ -1,6 +1,6 @@
 import { isTemplate } from './html.js';
 import { escapeText, escapeAttr } from './escape.js';
-import { lookup, allTags } from './registry.js';
+import { lookup, lookupModuleUrl, allTags } from './registry.js';
 import { stylesToString, isCSS } from './css.js';
 import { isRepeat } from './repeat.js';
 import { isSuspense } from './suspense.js';
@@ -230,6 +230,9 @@ async function injectDSD(html, ctx) {
     const [match, tag, attrs, selfClose] = m;
     const Cls = lookup(tag);
     if (!Cls) continue;
+    // Track which custom elements actually appeared — used by SSR to emit
+    // `<link rel="modulepreload">` hints for their module URLs.
+    if (ctx && ctx.usedComponents) ctx.usedComponents.add(tag);
     const opening = selfClose ? `<${tag}${attrs}>` : match;
     if (/** @type any */ (Cls).shadow === false) {
       edits.push({ start: m.index, end: m.index + match.length, text: opening });

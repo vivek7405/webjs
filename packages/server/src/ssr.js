@@ -1,5 +1,5 @@
-import { pathToFileURL } from 'node:url';
-import { renderToString, isNotFound, isRedirect } from 'webjs';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { renderToString, isNotFound, isRedirect, lookupModuleUrl } from 'webjs';
 import { importMapTag } from './importmap.js';
 import { readToken, newToken, cookieHeader } from './csrf.js';
 
@@ -31,7 +31,7 @@ export async function ssrPage(route, params, url, opts) {
   const metadata = await collectMetadata(route, ctx, opts.dev);
 
   try {
-    const suspenseCtx = { pending: [], nextId: 1 };
+    const suspenseCtx = { pending: [], nextId: 1, usedComponents: new Set() };
     const body = await renderChain(route, ctx, opts.dev, suspenseCtx);
     // When a production bundle is available, skip the per-file module imports
     // in the shell and load the bundle instead — that's a single request for
@@ -39,8 +39,19 @@ export async function ssrPage(route, params, url, opts) {
     const moduleUrls = opts.bundle
       ? ['/__webjs/bundle.js']
       : [route.file, ...route.layouts].map((f) => toUrlPath(f, opts.appDir));
+    // Emit <link rel="modulepreload"> for every custom element that actually
+    // rendered. Skipped in bundle mode (the bundle already contains them).
+    const preloads = opts.bundle
+      ? []
+      : componentPreloads(suspenseCtx.usedComponents, opts.appDir);
     return streamingHtmlResponse(
-      wrapHead({ metadata, moduleUrls, dev: opts.dev, streaming: suspenseCtx.pending.length > 0 }),
+      wrapHead({
+        metadata,
+        moduleUrls,
+        dev: opts.dev,
+        streaming: suspenseCtx.pending.length > 0,
+        preloads,
+      }),
       body,
       suspenseCtx,
       200,
@@ -182,7 +193,11 @@ function wrapInDocument(body, opts) {
  * the tiny client-side resolver that swaps Suspense fallback nodes for
  * streamed-in real content.
  *
- * @param {{ metadata: Record<string,any>, moduleUrls: string[], dev: boolean, streaming: boolean }} opts
+ * Also emits `<link rel="modulepreload">` for every component that rendered
+ * (breaks the ES-module waterfall without a bundler) and any user-declared
+ * `metadata.preload` entries.
+ *
+ * @param {{ metadata: Record<string,any>, moduleUrls: string[], dev: boolean, streaming: boolean, preloads?: string[] }} opts
  */
 function wrapHead(opts) {
   const imports = opts.moduleUrls.map((u) => `import ${JSON.stringify(u)};`).join('\n');
@@ -203,6 +218,26 @@ function wrapHead(opts) {
       metaTags.push(`<meta property="og:${escapeAttr(k)}" content="${escapeAttr(String(v))}">`);
     }
   }
+
+  // Preload hints: page modules themselves + every discovered component
+  // module, then any custom `metadata.preload` entries (fonts, images, etc.)
+  const linkTags = [];
+  for (const url of opts.moduleUrls) {
+    linkTags.push(`<link rel="modulepreload" href="${escapeAttr(url)}">`);
+  }
+  for (const url of opts.preloads || []) {
+    linkTags.push(`<link rel="modulepreload" href="${escapeAttr(url)}">`);
+  }
+  if (Array.isArray(m.preload)) {
+    for (const p of m.preload) {
+      if (!p || !p.href) continue;
+      const attrs = Object.entries(p)
+        .map(([k, v]) => `${k}="${escapeAttr(String(v))}"`)
+        .join(' ');
+      linkTags.push(`<link rel="preload" ${attrs}>`);
+    }
+  }
+
   const title = m.title || 'webjs app';
 
   return `<!doctype html>
@@ -212,12 +247,35 @@ function wrapHead(opts) {
 ${metaTags.join('\n')}
 <title>${escapeHtml(title)}</title>
 ${importMapTag()}
+${linkTags.join('\n')}
 ${boot}
 ${reload}
 ${suspenseBoot}
 </head>
 <body>
 `;
+}
+
+/**
+ * Translate a Set of custom element tag names used on the page into browser
+ * URLs for modulepreload. Components that didn't pass a module URL to
+ * `register()` are skipped silently (no harm, just no preload hint).
+ *
+ * @param {Set<string>} usedTags
+ * @param {string} appDir
+ */
+function componentPreloads(usedTags, appDir) {
+  const out = [];
+  for (const tag of usedTags) {
+    const fileUrl = lookupModuleUrl(tag);
+    if (!fileUrl) continue;
+    try {
+      const abs = fileURLToPath(fileUrl);
+      if (!abs.startsWith(appDir)) continue;
+      out.push(toUrlPath(abs, appDir));
+    } catch { /* ignore */ }
+  }
+  return out;
 }
 
 /**

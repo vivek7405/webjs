@@ -70,4 +70,4 @@ export class BlogShell extends WebComponent {
     `;
   }
 }
-BlogShell.register();
+BlogShell.register(import.meta.url);

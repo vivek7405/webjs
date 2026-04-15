@@ -43,4 +43,4 @@ export class Counter extends WebComponent {
     `;
   }
 }
-Counter.register();
+Counter.register(import.meta.url);

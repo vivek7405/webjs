@@ -16,4 +16,4 @@ export class MutedText extends WebComponent {
     return html`<slot></slot>`;
   }
 }
-MutedText.register();
+MutedText.register(import.meta.url);
