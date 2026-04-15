@@ -1,0 +1,33 @@
+# deps
+node_modules/
+
+# build / caches
+dist/
+build/
+out/
+.cache/
+.webjs/
+
+# env
+.env
+.env.*
+!.env.example
+
+# prisma local db
+**/dev.db
+**/dev.db-journal
+
+# logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editors
+.vscode/
+.idea/
+
+# test artifacts
+coverage/

@@ -1,0 +1,12 @@
+{
+  "name": "@webjs/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "webjs CLI — dev, start, create, db",
+  "bin": {
+    "webjs": "bin/webjs.js"
+  },
+  "dependencies": {
+    "@webjs/server": "0.1.0"
+  }
+}

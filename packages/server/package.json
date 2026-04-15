@@ -1,0 +1,14 @@
+{
+  "name": "@webjs/server",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "webjs dev/prod server: SSR, router, API, server actions, live reload",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "webjs": "0.1.0"
+  }
+}

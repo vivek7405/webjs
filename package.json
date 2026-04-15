@@ -1,0 +1,18 @@
+{
+  "name": "webjs-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "webjs — a no-build, web-components-first, Next.js-inspired framework",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "npm run dev --workspace=examples/blog",
+    "test": "node --test test/*.test.js"
+  }
+}

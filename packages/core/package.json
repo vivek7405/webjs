@@ -1,0 +1,17 @@
+{
+  "name": "webjs",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "webjs core runtime — html/css tags, WebComponent base, isomorphic renderers",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./src/render-client.js",
+    "./server": "./src/render-server.js",
+    "./component": "./src/component.js",
+    "./registry": "./src/registry.js"
+  },
+  "files": [
+    "index.js",
+    "src"
+  ]
+}
