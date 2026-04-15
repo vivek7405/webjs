@@ -33,7 +33,7 @@ export default async function PostPage({ params }) {
         margin-bottom: var(--sp-5);
         transition: color var(--t-fast);
       }
-      .back:hover { color: var(--fg); border-bottom: 0 !important; }
+      .back:hover { color: var(--fg); }
 
       article h1 {
         margin: 0 0 var(--sp-3);

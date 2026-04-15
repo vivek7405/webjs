@@ -13,7 +13,7 @@ export default function NewPostPage() {
         font-size: 13px;
         margin-bottom: var(--sp-4);
       }
-      .back:hover { color: var(--fg); border-bottom: 0 !important; }
+      .back:hover { color: var(--fg); }
     </style>
     <a class="back" href="/dashboard">← Dashboard</a>
     <h1>Write a new post</h1>

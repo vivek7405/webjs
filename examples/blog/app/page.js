@@ -101,7 +101,7 @@ export default async function HomePage() {
         text-decoration: none;
         transition: background var(--t-fast);
       }
-      .cta-link:hover { background: var(--accent-hover); border-bottom: 0 !important; }
+      .cta-link:hover { background: var(--accent-hover); }
     </style>
 
     <section class="hero">

@@ -97,13 +97,14 @@ export class BlogShell extends WebComponent {
     ::slotted(p)   { margin: 0 0 var(--sp-4); }
     ::slotted(ul), ::slotted(ol) { padding-left: var(--sp-5); margin: 0 0 var(--sp-4); }
     ::slotted(li)  { margin: var(--sp-2) 0; }
-    ::slotted(a)   {
+    ::slotted(a) {
       color: var(--accent);
-      text-decoration: none;
-      border-bottom: 1px solid transparent;
-      transition: border-color var(--t-fast);
+      text-decoration: underline;
+      text-decoration-color: transparent;
+      text-underline-offset: 3px;
+      transition: text-decoration-color var(--t-fast), color var(--t-fast);
     }
-    ::slotted(a:hover) { border-bottom-color: var(--accent); }
+    ::slotted(a:hover) { text-decoration-color: currentColor; }
     ::slotted(hr) {
       margin: var(--sp-7) 0;
       border: 0;

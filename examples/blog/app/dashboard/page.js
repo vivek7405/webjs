@@ -32,13 +32,13 @@ export default async function Dashboard() {
         background: var(--accent);
         color: var(--accent-fg);
       }
-      .toolbar a.primary:hover { background: var(--accent-hover); border-bottom: 0 !important; }
+      .toolbar a.primary:hover { background: var(--accent-hover); }
       .toolbar a.secondary {
         background: var(--bg-elev);
         border: 1px solid var(--border-strong);
         color: var(--fg-muted);
       }
-      .toolbar a.secondary:hover { color: var(--fg); border-color: var(--fg-muted); border-bottom: 0 !important; }
+      .toolbar a.secondary:hover { color: var(--fg); border-color: var(--fg-muted); }
 
       .posts { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--sp-3); }
       .posts li {
@@ -50,7 +50,7 @@ export default async function Dashboard() {
         gap: var(--sp-3);
       }
       .posts a { text-decoration: none; color: var(--fg); font-weight: 600; }
-      .posts a:hover { color: var(--accent); border-bottom: 0 !important; }
+      .posts a:hover { color: var(--accent); }
 
       .empty {
         padding: var(--sp-6);
