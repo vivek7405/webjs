@@ -73,7 +73,11 @@ export async function buildRouteTable(appDir) {
     // Private folders (any segment starting with _) are excluded from routing.
     if (dir !== '.' && dir.split('/').some((s) => s.startsWith('_'))) continue;
 
-    if (base === 'page.js') {
+    // Match `<name>.<js|mjs|ts|mts>` conventions. Stem is the name without ext.
+    const stem = stemOf(base);
+    if (!stem) continue;
+
+    if (stem === 'page') {
       const segs = dir === '.' ? [] : dir.split('/');
       const { pattern, paramNames, isCatchAll } = segmentsToPattern(segs);
       pages.push({
@@ -88,18 +92,18 @@ export async function buildRouteTable(appDir) {
         middlewares: [],
         isCatchAll,
       });
-    } else if (base === 'layout.js') {
+    } else if (stem === 'layout') {
       layouts.set(dir, file);
-    } else if (base === 'error.js') {
+    } else if (stem === 'error') {
       errors.set(dir, file);
-    } else if (base === 'loading.js') {
+    } else if (stem === 'loading') {
       loadings.set(dir, file);
-    } else if (base === 'middleware.js') {
+    } else if (stem === 'middleware') {
       middlewares.set(dir, file);
-    } else if (base === 'not-found.js' && dir === '.') {
+    } else if (stem === 'not-found' && dir === '.') {
       notFound = file;
-    } else if (base === 'route.js') {
-      // route.js can live anywhere under app/ (matches Next.js behaviour).
+    } else if (stem === 'route') {
+      // route.js / route.ts can live anywhere under app/ (matches Next.js).
       const segs = dir === '.' ? [] : dir.split('/');
       const { pattern, paramNames } = segmentsToPattern(segs);
       apis.push({ pattern, paramNames, file, routeDir: dir, middlewares: [] });
@@ -124,6 +128,19 @@ export async function buildRouteTable(appDir) {
 
   pages.sort((a, b) => dynScore(a) - dynScore(b));
   return { pages, apis, notFound, appDir };
+}
+
+/**
+ * Return the bare name of a file without the accepted JS/TS extension.
+ * `page.js` / `page.mjs` / `page.ts` / `page.mts` → `page`.
+ * Returns null for anything else (images, CSS, etc. don't participate in routing).
+ *
+ * @param {string} base
+ * @returns {string | null}
+ */
+function stemOf(base) {
+  const m = /^([A-Za-z0-9_.-]+)\.(?:m?[jt]s)$/.exec(base);
+  return m ? m[1] : null;
 }
 
 /** @param {string} routeDir */

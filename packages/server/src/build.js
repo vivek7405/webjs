@@ -89,15 +89,17 @@ async function collectClientEntries(appDir) {
   /** @type {string[]} */
   const out = [];
   for await (const file of walk(appDir)) {
-    if (!file.endsWith('.js') && !file.endsWith('.mjs')) continue;
-    if (/\.server\.(js|mjs)$/.test(file)) continue;
+    if (!/\.m?[jt]s$/.test(file)) continue;
+    if (/\.server\.m?[jt]s$/.test(file)) continue;
     const name = basename(file);
     const rel = relative(appDir, file).split(sep).join('/');
     if (rel.startsWith('.webjs/')) continue;
-    if (name === 'route.js' || name === 'middleware.js' || name === 'webjs.config.js') continue;
-    // Include components wholesale, plus page/layout/not-found/error inside app/.
-    if (rel.startsWith('components/')) out.push(file);
-    else if (rel.startsWith('app/') && /^(page|layout|not-found|error)\.js$/.test(name)) out.push(file);
+    if (/^(route|middleware)\.m?[jt]s$/.test(name)) continue;
+    if (name === 'webjs.config.js' || name === 'webjs.config.ts') continue;
+    // Include components wholesale (top-level + module-scoped),
+    // plus page/layout/not-found/error inside app/.
+    if (rel.startsWith('components/') || /\/components\//.test(rel)) out.push(file);
+    else if (rel.startsWith('app/') && /^(page|layout|not-found|error)\.m?[jt]s$/.test(name)) out.push(file);
   }
   return out;
 }

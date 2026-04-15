@@ -54,7 +54,7 @@ export async function buildActionIndex(appDir, dev) {
   /** @type {ExposedRoute[]} */
   const httpRoutes = [];
 
-  for await (const file of walk(appDir, (p) => p.endsWith('.js') || p.endsWith('.mjs'))) {
+  for await (const file of walk(appDir, (p) => /\.m?[jt]s$/.test(p))) {
     if (!(await isServerFile(file))) continue;
     const h = hashFile(file);
     hashToFile.set(h, file);
@@ -92,7 +92,7 @@ export function hashFile(file) {
 
 /** @param {string} file */
 export async function isServerFile(file) {
-  if (/\.server\.(js|mjs)$/.test(file)) return true;
+  if (/\.server\.m?[jt]s$/.test(file)) return true;
   try {
     const text = await readFile(file, 'utf8');
     const head = text.split('\n').slice(0, 5).join('\n');

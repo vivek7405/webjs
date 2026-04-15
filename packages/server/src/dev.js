@@ -3,7 +3,7 @@ import { createSecureServer as createHttp2SecureServer } from 'node:http2';
 import { stat, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { createGzip, createBrotliCompress, constants as zlibConstants } from 'node:zlib';
-import { join, extname, resolve, dirname } from 'node:path';
+import { join, extname, resolve, dirname, relative, sep } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -29,6 +29,8 @@ const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
   '.mjs': 'application/javascript; charset=utf-8',
+  '.ts': 'application/javascript; charset=utf-8',
+  '.mts': 'application/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
@@ -40,6 +42,13 @@ const MIME = {
   '.ico': 'image/x-icon',
   '.txt': 'text/plain; charset=utf-8',
 };
+
+/**
+ * Cache of esbuild-transformed `.ts` / `.mts` source.
+ * Keyed by absolute file path; entries expire when mtime changes.
+ * @type {Map<string, { mtimeMs: number, code: string, map: string | null }>}
+ */
+const TS_CACHE = new Map();
 
 /**
  * Create a reusable, framework-agnostic request handler for a webjs app.
@@ -327,15 +336,31 @@ async function handleCore(req, ctx) {
   }
 
   // User source modules (served as ES modules, with action-file rewriting)
-  if (method === 'GET' && /\.(js|mjs|css|svg|png|jpg|jpeg|gif|webp|json|ico|txt)$/.test(path)) {
-    const abs = join(appDir, path);
+  if (method === 'GET' && /\.(js|mjs|ts|mts|css|svg|png|jpg|jpeg|gif|webp|json|ico|txt)$/.test(path)) {
+    let abs = join(appDir, path);
+    // When the browser asks for `.js`, allow falling through to a sibling
+    // `.ts` (the TypeScript-with-"allowImportingTsExtensions: false" pattern).
+    if (!(await exists(abs)) && /\.js$/.test(abs)) {
+      const tsAbs = abs.replace(/\.js$/, '.ts');
+      if (await exists(tsAbs)) abs = tsAbs;
+      else {
+        const mtsAbs = abs.replace(/\.js$/, '.mts');
+        if (await exists(mtsAbs)) abs = mtsAbs;
+      }
+    }
     if (abs.startsWith(appDir) && (await exists(abs))) {
-      const serverFile = resolveServerModule(state.actionIndex, path);
+      const serverFile = resolveServerModule(state.actionIndex, path) ||
+        // Also recognise stub requests for the .ts form.
+        (abs !== join(appDir, path) ? resolveServerModule(state.actionIndex, '/' + relative(appDir, abs).split(sep).join('/')) : null);
       if (serverFile) {
         const stub = await serveActionStub(state.actionIndex, serverFile);
         return new Response(stub, {
           headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' },
         });
+      }
+      // TypeScript source: esbuild-strip types, cache by mtime.
+      if (/\.m?ts$/.test(abs)) {
+        return tsResponse(abs, dev);
       }
       return fileResponse(abs, { dev, immutable: false });
     }
@@ -634,6 +659,50 @@ async function fileResponse(abs, opts) {
 
 async function exists(p) {
   try { await stat(p); return true; } catch { return false; }
+}
+
+/**
+ * Serve a `.ts` / `.mts` source file as JavaScript. Types are stripped via
+ * esbuild's transform() (microseconds per file). Result is cached by mtime
+ * so subsequent requests are instant; a file edit invalidates naturally.
+ *
+ * @param {string} abs
+ * @param {boolean} dev
+ */
+async function tsResponse(abs, dev) {
+  let esbuild;
+  try { ({ transform: esbuild } = await import('esbuild')); }
+  catch {
+    return new Response(
+      '/* esbuild missing — run `npm i -D esbuild` to enable TypeScript sources */',
+      { status: 500, headers: { 'content-type': 'application/javascript; charset=utf-8' } }
+    );
+  }
+  const st = await stat(abs);
+  const cached = TS_CACHE.get(abs);
+  if (cached && cached.mtimeMs === st.mtimeMs) {
+    return new Response(cached.code, {
+      headers: {
+        'content-type': 'application/javascript; charset=utf-8',
+        'cache-control': dev ? 'no-cache' : 'public, max-age=3600',
+      },
+    });
+  }
+  const source = await readFile(abs, 'utf8');
+  const result = await esbuild(source, {
+    loader: abs.endsWith('.mts') ? 'ts' : 'ts',
+    format: 'esm',
+    target: 'es2022',
+    sourcemap: 'inline',
+    sourcefile: abs,
+  });
+  TS_CACHE.set(abs, { mtimeMs: st.mtimeMs, code: result.code, map: null });
+  return new Response(result.code, {
+    headers: {
+      'content-type': 'application/javascript; charset=utf-8',
+      'cache-control': dev ? 'no-cache' : 'public, max-age=3600',
+    },
+  });
 }
 
 function debounce(fn, ms) {
