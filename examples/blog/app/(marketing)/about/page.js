@@ -22,9 +22,18 @@ export default function About() {
         background: var(--bg-elev);
         border: 1px solid var(--border);
         border-radius: var(--rad);
+        /* Let the grid track (minmax 220px 1fr) win over intrinsic
+           child width, and break unbreakable tokens (file paths,
+           URLs) so they don't push the tile wider than its column. */
+        min-width: 0;
+        overflow-wrap: anywhere;
       }
       .feature strong { display: block; margin-bottom: 4px; color: var(--fg); }
-      .feature span { font-size: 13px; color: var(--fg-muted); }
+      .feature span   { font-size: 13px; color: var(--fg-muted); }
+      .feature code   {
+        /* code with no natural break points wraps on any character. */
+        word-break: break-word;
+      }
     </style>
 
     <h1>About this demo</h1>
