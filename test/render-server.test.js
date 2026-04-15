@@ -55,6 +55,18 @@ test('awaits async template (page-style)', async () => {
   assert.equal(await renderToString(page), '<p>data</p>');
 });
 
+test('DSD injection handles attribute values containing slashes', async () => {
+  class SlashTag extends WebComponent {
+    static tag = 'slash-tag';
+    static properties = { href: { type: String } };
+    render() { return html`<a href=${this.href}>x</a>`; }
+  }
+  SlashTag.register();
+  const out = await renderToString(html`<slash-tag href="/some/path"></slash-tag>`);
+  // The opening tag must have DSD injected even though the attribute has /.
+  assert.match(out, /<slash-tag href="\/some\/path"><template shadowrootmode="open">/);
+});
+
 test('custom element injects declarative shadow DOM', async () => {
   class Greet extends WebComponent {
     static tag = 'g-reet';
