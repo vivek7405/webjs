@@ -10,7 +10,9 @@ import {
   serveActionStub,
   invokeAction,
   isServerFile,
+  RPC_CONTENT_TYPE,
 } from '../packages/server/src/actions.js';
+import { stringify as sjStringify, parse as sjParse } from 'superjson';
 
 async function scaffold(files) {
   const dir = await mkdtemp(join(tmpdir(), 'webjs-'));
@@ -21,6 +23,41 @@ async function scaffold(files) {
   }
   return dir;
 }
+
+test('superjson wire format round-trips Date / Map / BigInt across invokeAction', async () => {
+  const dir = await scaffold({
+    'actions/rich.server.js': `
+      export async function now() { return new Date(1234567890000); }
+      export async function bag() {
+        return { big: 9007199254740993n, set: new Set(['a','b']), map: new Map([[1, 'one']]) };
+      }
+    `,
+  });
+  try {
+    const idx = await buildActionIndex(dir, true);
+    const file = resolveServerModule(idx, '/actions/rich.server.js');
+    const hash = idx.fileToHash.get(file);
+    const tok = 't';
+    const headers = { 'content-type': RPC_CONTENT_TYPE, cookie: `webjs_csrf=${tok}`, 'x-webjs-csrf': tok };
+    const r1 = await invokeAction(idx, hash, 'now',
+      new Request('http://x/__webjs/action/' + hash + '/now',
+        { method: 'POST', headers, body: sjStringify([]) }));
+    const d = sjParse(await r1.text());
+    assert.ok(d instanceof Date, 'Date survived the wire');
+    assert.equal(d.getTime(), 1234567890000);
+
+    const r2 = await invokeAction(idx, hash, 'bag',
+      new Request('http://x/__webjs/action/' + hash + '/bag',
+        { method: 'POST', headers, body: sjStringify([]) }));
+    const bag = sjParse(await r2.text());
+    assert.equal(typeof bag.big, 'bigint');
+    assert.equal(bag.big, 9007199254740993n);
+    assert.ok(bag.set instanceof Set); assert.ok(bag.set.has('a'));
+    assert.ok(bag.map instanceof Map); assert.equal(bag.map.get(1), 'one');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test('detects *.server.js and "use server" pragma files', async () => {
   const dir = await scaffold({
@@ -60,21 +97,22 @@ test('stubs server module and invokes action by hash/fn', async () => {
     const req = new Request('http://x/__webjs/action/' + hash + '/add', {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
+        'content-type': RPC_CONTENT_TYPE,
         cookie: `webjs_csrf=${tok}`,
         'x-webjs-csrf': tok,
       },
-      body: JSON.stringify([2, 3]),
+      body: sjStringify([2, 3]),
     });
     const res = await invokeAction(idx, hash, 'add', req);
     assert.equal(res.status, 200);
-    assert.equal(await res.json(), 5);
+    assert.equal(res.headers.get('content-type'), RPC_CONTENT_TYPE);
+    assert.equal(sjParse(await res.text()), 5);
 
     // Without CSRF token → 403
     const unsafe = new Request('http://x/__webjs/action/' + hash + '/add', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify([2, 3]),
+      headers: { 'content-type': RPC_CONTENT_TYPE },
+      body: sjStringify([2, 3]),
     });
     const rejected = await invokeAction(idx, hash, 'add', unsafe);
     assert.equal(rejected.status, 403);
@@ -83,11 +121,11 @@ test('stubs server module and invokes action by hash/fn', async () => {
     const mismatched = new Request('http://x/__webjs/action/' + hash + '/add', {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
+        'content-type': RPC_CONTENT_TYPE,
         cookie: `webjs_csrf=${tok}`,
         'x-webjs-csrf': 'different',
       },
-      body: JSON.stringify([2, 3]),
+      body: sjStringify([2, 3]),
     });
     const rejected2 = await invokeAction(idx, hash, 'add', mismatched);
     assert.equal(rejected2.status, 403);

@@ -292,6 +292,17 @@ async function handleCore(req, ctx) {
     return fileResponse(abs, { dev, immutable: !dev });
   }
 
+  // Vendored packages (only superjson in v1) — served from node_modules so
+  // browsers can resolve bare specifiers in the import map.
+  if (path.startsWith('/__webjs/vendor/superjson/')) {
+    const rel = path.slice('/__webjs/vendor/superjson/'.length);
+    const root = locatePackageDir(appDir, 'superjson');
+    if (!root) return new Response('superjson not installed', { status: 404 });
+    const abs = resolve(root, rel);
+    if (!abs.startsWith(root)) return new Response('forbidden', { status: 403 });
+    return fileResponse(abs, { dev, immutable: !dev });
+  }
+
   // Prod bundle (if present)
   if (state.bundlePath && (path === '/__webjs/bundle.js' || path === '/__webjs/bundle.js.map')) {
     const abs = path.endsWith('.map') ? state.bundlePath + '.map' : state.bundlePath;
@@ -726,6 +737,29 @@ function locateCoreDir(appDir) {
   } catch {}
   const here = fileURLToPath(import.meta.url);
   return resolve(here, '..', '..', '..', 'core');
+}
+
+/**
+ * Find an npm package's installed root folder in the app's node_modules graph.
+ * @param {string} appDir
+ * @param {string} pkgName
+ * @returns {string | null}
+ */
+function locatePackageDir(appDir, pkgName) {
+  // Many packages lock down `./package.json` in their exports field, so we
+  // resolve the bare specifier (always exported) and trim back to the
+  // folder named pkgName.
+  const match = '/node_modules/' + pkgName + '/';
+  const tryFrom = (from) => {
+    const require = createRequire(from);
+    const entry = require.resolve(pkgName).split(sep).join('/');
+    const at = entry.lastIndexOf(match);
+    if (at < 0) return null;
+    return entry.slice(0, at + match.length - 1).split('/').join(sep);
+  };
+  try { const d = tryFrom(join(appDir, 'package.json')); if (d) return d; } catch {}
+  try { const d = tryFrom(fileURLToPath(import.meta.url)); if (d) return d; } catch {}
+  return null;
 }
 
 const RELOAD_CLIENT_JS = `// webjs dev reload client

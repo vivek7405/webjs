@@ -5,6 +5,21 @@ import { join, relative, sep } from 'node:path';
 import { getExposed } from 'webjs';
 import { walk } from './fs-walk.js';
 import { verify as verifyCsrf, CSRF_COOKIE, CSRF_HEADER } from './csrf.js';
+import { stringify as sjStringify, parse as sjParse } from 'superjson';
+
+/**
+ * Internal RPC wire-format content type. Distinguishes webjs action
+ * responses (superjson) from plain `application/json` so the stub can
+ * pick the right parser and external JSON consumers aren't confused.
+ */
+export const RPC_CONTENT_TYPE = 'application/vnd.webjs+json';
+
+/** Build a superjson Response with webjs content-type. */
+function rpcResponse(payload, init = {}) {
+  const headers = new Headers(init.headers || {});
+  headers.set('content-type', RPC_CONTENT_TYPE);
+  return new Response(sjStringify(payload), { ...init, headers });
+}
 
 /**
  * Server-actions subsystem.
@@ -124,6 +139,7 @@ export async function serveActionStub(idx, absFile) {
     fnNames.push('default');
   }
   const body = `// webjs: generated server-action stub for ${relative(idx.appDir, absFile)}\n` +
+    `import { stringify as __sjStringify, parse as __sjParse } from 'superjson';\n` +
     `function __csrf() {\n` +
     `  const m = document.cookie.match(/(?:^|;\\s*)${CSRF_COOKIE}=([^;]+)/);\n` +
     `  return m ? decodeURIComponent(m[1]) : '';\n` +
@@ -132,20 +148,22 @@ export async function serveActionStub(idx, absFile) {
     `  const res = await fetch(${JSON.stringify(`/__webjs/action/${hash}/`)} + fn, {\n` +
     `    method: 'POST',\n` +
     `    headers: {\n` +
-    `      'content-type': 'application/json',\n` +
+    `      'content-type': ${JSON.stringify(RPC_CONTENT_TYPE)},\n` +
     `      ${JSON.stringify(CSRF_HEADER)}: __csrf()\n` +
     `    },\n` +
     `    credentials: 'same-origin',\n` +
-    `    body: JSON.stringify(args)\n` +
+    `    body: __sjStringify(args)\n` +
     `  });\n` +
-    `  if (!res.ok) {\n` +
-    `    const errText = await res.text().catch(() => '');\n` +
-    `    let errMsg = 'webjs action ' + fn + ' -> ' + res.status;\n` +
-    `    try { const j = JSON.parse(errText); if (j && j.error) errMsg = j.error; } catch {}\n` +
-    `    throw new Error(errMsg);\n` +
-    `  }\n` +
     `  const ct = res.headers.get('content-type') || '';\n` +
-    `  return ct.includes('application/json') ? res.json() : res.text();\n` +
+    `  const text = await res.text();\n` +
+    `  const parsed = ct.includes(${JSON.stringify(RPC_CONTENT_TYPE)})\n` +
+    `    ? __sjParse(text)\n` +
+    `    : (ct.includes('application/json') ? JSON.parse(text) : text);\n` +
+    `  if (!res.ok) {\n` +
+    `    const msg = (parsed && parsed.error) || ('webjs action ' + fn + ' -> ' + res.status);\n` +
+    `    throw new Error(msg);\n` +
+    `  }\n` +
+    `  return parsed;\n` +
     `}\n` +
     fnNames
       .map((name) =>
@@ -166,24 +184,24 @@ export async function serveActionStub(idx, absFile) {
  */
 export async function invokeAction(idx, hash, fnName, req) {
   if (!verifyCsrf(req)) {
-    return Response.json({ error: 'CSRF validation failed' }, { status: 403 });
+    return rpcResponse({ error: 'CSRF validation failed' }, { status: 403 });
   }
   const file = idx.hashToFile.get(hash);
-  if (!file) return new Response('Unknown action', { status: 404 });
+  if (!file) return rpcResponse({ error: 'Unknown action' }, { status: 404 });
   let args = [];
   try {
     const body = await req.text();
-    args = body ? JSON.parse(body) : [];
+    args = body ? sjParse(body) : [];
     if (!Array.isArray(args)) args = [args];
   } catch {
-    return new Response('Invalid JSON body', { status: 400 });
+    return rpcResponse({ error: 'Invalid request body' }, { status: 400 });
   }
   const mod = await loadModule(file, idx.dev);
   const fn = fnName === 'default' ? mod.default : mod[fnName];
-  if (typeof fn !== 'function') return new Response(`Unknown action ${fnName}`, { status: 404 });
+  if (typeof fn !== 'function') return rpcResponse({ error: `Unknown action ${fnName}` }, { status: 404 });
   try {
     const result = await fn(...args);
-    return Response.json(result ?? null);
+    return rpcResponse(result ?? null);
   } catch (e) {
     return actionErrorResponse(e, idx.dev);
   }
@@ -335,14 +353,14 @@ function actionErrorResponse(err, dev) {
   if (dev) {
     const msg = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : undefined;
-    return Response.json({ error: msg, stack }, { status: 500 });
+    return rpcResponse({ error: msg, stack }, { status: 500 });
   }
   // Prod: only expose the thrown message (author-controlled), never the stack.
   const msg =
     err instanceof Error && typeof err.message === 'string' && err.message
       ? err.message
       : 'Internal server error';
-  return Response.json({ error: msg }, { status: 500 });
+  return rpcResponse({ error: msg }, { status: 500 });
 }
 
 /**
