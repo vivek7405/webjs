@@ -102,3 +102,54 @@ test('swapping templates tears down and rebuilds DOM', () => {
   assert.equal(pre.parentNode, null, 'previous element removed');
   assert.equal(el.querySelector('span').textContent, 'B');
 });
+
+test('repeat() reconciles by key: matching items reuse element identity', async () => {
+  const { repeat } = await import('../packages/core/src/repeat.js');
+  const el = document.createElement('div');
+  const view = (items) =>
+    html`<ul>${repeat(items, (it) => it.id, (it) => html`<li>${it.label}</li>`)}</ul>`;
+
+  render(view([{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }]), el);
+  const [preA, preB] = Array.from(el.querySelectorAll('li'));
+  assert.equal(preA.textContent, 'A');
+  assert.equal(preB.textContent, 'B');
+
+  // Swap labels; same keys → same elements, updated text.
+  render(view([{ id: 'a', label: 'Aaa' }, { id: 'b', label: 'Bbb' }]), el);
+  const [postA, postB] = Array.from(el.querySelectorAll('li'));
+  assert.strictEqual(postA, preA);
+  assert.strictEqual(postB, preB);
+  assert.equal(postA.textContent, 'Aaa');
+  assert.equal(postB.textContent, 'Bbb');
+});
+
+test('repeat() reorder moves nodes, preserves identity', async () => {
+  const { repeat } = await import('../packages/core/src/repeat.js');
+  const el = document.createElement('div');
+  const view = (items) =>
+    html`<ul>${repeat(items, (it) => it.id, (it) => html`<li>${it.label}</li>`)}</ul>`;
+
+  render(view([{ id: 1, label: 'one' }, { id: 2, label: 'two' }, { id: 3, label: 'three' }]), el);
+  const [li1, li2, li3] = Array.from(el.querySelectorAll('li'));
+  render(view([{ id: 3, label: 'three' }, { id: 1, label: 'one' }, { id: 2, label: 'two' }]), el);
+  const after = Array.from(el.querySelectorAll('li'));
+  assert.strictEqual(after[0], li3);
+  assert.strictEqual(after[1], li1);
+  assert.strictEqual(after[2], li2);
+});
+
+test('repeat() removal drops only removed keys', async () => {
+  const { repeat } = await import('../packages/core/src/repeat.js');
+  const el = document.createElement('div');
+  const view = (items) =>
+    html`<ul>${repeat(items, (it) => it.id, (it) => html`<li>${it.label}</li>`)}</ul>`;
+
+  render(view([{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }]), el);
+  const [preA, preB, preC] = Array.from(el.querySelectorAll('li'));
+  render(view([{ id: 'a', label: 'A' }, { id: 'c', label: 'C' }]), el);
+  const after = Array.from(el.querySelectorAll('li'));
+  assert.equal(after.length, 2);
+  assert.strictEqual(after[0], preA);
+  assert.strictEqual(after[1], preC);
+  assert.equal(preB.parentNode, null);
+});

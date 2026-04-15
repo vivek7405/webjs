@@ -1,5 +1,6 @@
 import { isTemplate, MARKER } from './html.js';
 import { escapeAttr } from './escape.js';
+import { isRepeat } from './repeat.js';
 
 /**
  * Client-side renderer with **fine-grained** updates.
@@ -381,9 +382,27 @@ function applyPart(part, value, _prev) {
  */
 function applyChild(part, value) {
   const marker = part.marker;
+
+  // Repeat directive — keyed reconciliation. Keep previous state when both
+  // old and new are repeats; otherwise tear down and rebuild.
+  if (isRepeat(value)) {
+    if (part.child && /** @type any */ (part.child).kind === 'repeat') {
+      reconcileRepeat(part, value);
+      return;
+    }
+    teardownChild(part);
+    const state = { kind: 'repeat', map: new Map() };
+    part.child = state;
+    applyRepeatFresh(marker, state, value);
+    return;
+  }
+
   // Remove previously rendered nodes between marker and its next sibling we own.
   if (part.child) {
-    if ('strings' in /** @type any */ (part.child)) {
+    if (/** @type any */ (part.child).kind === 'repeat') {
+      teardownRepeat(/** @type any */ (part.child));
+      part.child = undefined;
+    } else if ('strings' in /** @type any */ (part.child)) {
       // Previous was a TemplateInstance.
       const inst = /** @type TemplateInstance */ (part.child);
       if (isTemplate(value) && inst.strings === /** @type any */ (value).strings) {
@@ -391,13 +410,14 @@ function applyChild(part, value) {
         return;
       }
       removeBetween(inst.startNode, inst.endNode);
+      part.child = undefined;
     } else {
       // Previous was ChildNode[] — remove each node we inserted.
       for (const n of /** @type ChildNode[] */ (part.child)) {
         if (n.parentNode) n.parentNode.removeChild(n);
       }
+      part.child = undefined;
     }
-    part.child = undefined;
   }
 
   if (value == null || value === false || value === true) return;
@@ -465,4 +485,167 @@ function removeBetween(start, end) {
     n = next;
   }
   if (end.parentNode === start.parentNode) end.parentNode?.removeChild(end);
+}
+
+/* ================================================================
+ * Keyed list (repeat) support
+ * ================================================================ */
+
+/**
+ * Build a TemplateInstance whose nodes (including bookends) live in a
+ * document fragment that the caller will insert wherever it wants.
+ * @param {import('./html.js').TemplateResult} tr
+ * @returns {{ inst: TemplateInstance, frag: DocumentFragment }}
+ */
+function buildDetached(tr) {
+  const { templateEl, parts } = compile(tr);
+  const frag = /** @type DocumentFragment */ (templateEl.content.cloneNode(true));
+  const startNode = document.createComment(`${MARKER}s`);
+  const endNode = document.createComment(`${MARKER}e`);
+  const bound = parts.map((p) => bindPart(p, frag));
+  const lastValues = [];
+  for (let i = 0; i < tr.values.length; i++) {
+    applyPart(bound[i], tr.values[i], undefined);
+    lastValues.push(tr.values[i]);
+  }
+  const outFrag = document.createDocumentFragment();
+  outFrag.appendChild(startNode);
+  while (frag.firstChild) outFrag.appendChild(frag.firstChild);
+  outFrag.appendChild(endNode);
+  return {
+    inst: { strings: tr.strings, bound, lastValues, startNode, endNode },
+    frag: outFrag,
+  };
+}
+
+/** @param {TemplateInstance} inst */
+function disposeInstance(inst) {
+  for (const p of inst.bound) {
+    if (p.kind === 'event') p.el.removeEventListener(p.name, p.dispatcher);
+  }
+}
+
+/**
+ * Initial fresh render of a repeat directive. Inserts all items' nodes
+ * immediately before the part's marker comment.
+ *
+ * @param {Comment} marker
+ * @param {{ kind: 'repeat', map: Map<any, TemplateInstance> }} state
+ * @param {any} value
+ */
+function applyRepeatFresh(marker, state, value) {
+  const { items, keyFn, templateFn } = value;
+  const parent = marker.parentNode;
+  if (!parent) return;
+  const bulk = document.createDocumentFragment();
+  for (let i = 0; i < items.length; i++) {
+    const key = keyFn(items[i], i);
+    const tr = templateFn(items[i], i);
+    if (!isTemplate(tr)) continue;
+    const { inst, frag } = buildDetached(/** @type any */ (tr));
+    state.map.set(key, inst);
+    bulk.appendChild(frag);
+  }
+  parent.insertBefore(bulk, marker);
+}
+
+/**
+ * Keyed reconciliation. For each key in the new list:
+ *   - hit: update the existing instance in place (if template shape matches),
+ *     then move its nodes into position
+ *   - miss: build a new instance and insert
+ * Finally drop instances whose keys aren't in the new list.
+ *
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {any} value
+ */
+function reconcileRepeat(part, value) {
+  const marker = part.marker;
+  const parent = marker.parentNode;
+  if (!parent) return;
+  const state = /** @type {{ kind: 'repeat', map: Map<any, TemplateInstance> }} */ (part.child);
+  const { items, keyFn, templateFn } = value;
+
+  const newMap = new Map();
+
+  // Walk the new list and position each item's nodes immediately before the marker.
+  for (let i = 0; i < items.length; i++) {
+    const key = keyFn(items[i], i);
+    const tr = templateFn(items[i], i);
+    if (!isTemplate(tr)) continue;
+    const existing = state.map.get(key);
+    if (existing && existing.strings === /** @type any */ (tr).strings) {
+      updateInstance(existing, /** @type any */ (tr).values);
+      // Move nodes before marker preserving element identity.
+      moveRange(existing.startNode, existing.endNode, parent, marker);
+      newMap.set(key, existing);
+      state.map.delete(key);
+    } else {
+      if (existing) {
+        disposeInstance(existing);
+        removeBetween(existing.startNode, existing.endNode);
+        state.map.delete(key);
+      }
+      const { inst, frag } = buildDetached(/** @type any */ (tr));
+      parent.insertBefore(frag, marker);
+      newMap.set(key, inst);
+    }
+  }
+
+  // Remove any keys that remain in the old map.
+  for (const inst of state.map.values()) {
+    disposeInstance(inst);
+    removeBetween(inst.startNode, inst.endNode);
+  }
+  state.map = newMap;
+}
+
+/** @param {{ kind: 'repeat', map: Map<any, TemplateInstance> }} state */
+function teardownRepeat(state) {
+  for (const inst of state.map.values()) {
+    disposeInstance(inst);
+    removeBetween(inst.startNode, inst.endNode);
+  }
+  state.map.clear();
+}
+
+/**
+ * Collect [start .. end] (inclusive) and insert immediately before `anchor`.
+ * Browsers treat insertBefore of an already-connected node as a move and
+ * preserve element identity + focus.
+ *
+ * @param {Node} start
+ * @param {Node} end
+ * @param {Node} parent
+ * @param {Node} anchor
+ */
+function moveRange(start, end, parent, anchor) {
+  // No-op if the range is already immediately before the anchor.
+  if (end.nextSibling === anchor && start.parentNode === parent) return;
+  const frag = document.createDocumentFragment();
+  let n = start;
+  while (n) {
+    const next = n.nextSibling;
+    frag.appendChild(n);
+    if (n === end) break;
+    n = next;
+  }
+  parent.insertBefore(frag, anchor);
+}
+
+/** @param {Extract<BoundPart, {kind:'child'}>} part */
+function teardownChild(part) {
+  if (!part.child) return;
+  if (/** @type any */ (part.child).kind === 'repeat') {
+    teardownRepeat(/** @type any */ (part.child));
+  } else if ('strings' in /** @type any */ (part.child)) {
+    const inst = /** @type TemplateInstance */ (part.child);
+    disposeInstance(inst);
+    removeBetween(inst.startNode, inst.endNode);
+  } else {
+    for (const n of /** @type ChildNode[] */ (part.child)) {
+      if (n.parentNode) n.parentNode.removeChild(n);
+    }
+  }
+  part.child = undefined;
 }

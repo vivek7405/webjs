@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html, repeat } from 'webjs';
 import '../components/counter.js';
 import '../components/new-post.js';
 import '../components/muted-text.js';
@@ -22,7 +22,9 @@ export default async function HomePage() {
       ? html`<p><em>No posts yet — create one below.</em></p>`
       : html`
           <ul>
-            ${posts.map(
+            ${repeat(
+              posts,
+              (p) => p.id,
               (p) => html`
                 <li>
                   <a href="/blog/${p.slug}">${p.title}</a>

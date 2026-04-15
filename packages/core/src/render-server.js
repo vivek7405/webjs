@@ -2,6 +2,7 @@ import { isTemplate } from './html.js';
 import { escapeText, escapeAttr } from './escape.js';
 import { lookup, allTags } from './registry.js';
 import { stylesToString, isCSS } from './css.js';
+import { isRepeat } from './repeat.js';
 
 /**
  * Render a TemplateResult (or any renderable value) to an HTML string.
@@ -28,6 +29,11 @@ async function render(value) {
   }
   if (Array.isArray(value)) {
     const parts = await Promise.all(value.map(render));
+    return parts.join('');
+  }
+  if (isRepeat(value)) {
+    const r = /** @type any */ (value);
+    const parts = await Promise.all(r.items.map((it, i) => render(r.templateFn(it, i))));
     return parts.join('');
   }
   if (isTemplate(value)) return renderTemplate(/** @type any */ (value));
