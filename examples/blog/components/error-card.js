@@ -1,7 +1,8 @@
 import { WebComponent, html, css } from 'webjs';
 
 /**
- * `<error-card message="…">` — surfaces a render error in a muted card.
+ * `<error-card message="…">` — inline error surface, uses the accent tint
+ * for a muted alarm.
  */
 export class ErrorCard extends WebComponent {
   static tag = 'error-card';
@@ -9,26 +10,36 @@ export class ErrorCard extends WebComponent {
   static styles = css`
     :host {
       display: block;
-      padding: var(--sp-5);
+      padding: var(--sp-5) var(--sp-6);
       border-radius: var(--rad-lg);
-      background: var(--accent-tint);
-      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+      background: color-mix(in oklch, var(--bg-elev) 85%, var(--accent));
+      border: 1px solid color-mix(in oklch, var(--border-strong) 50%, var(--accent));
       color: var(--fg);
-      font: 15px/1.55 var(--font-sans);
+      box-shadow: var(--shadow);
+    }
+    .rubric {
+      font: 600 11px/1 var(--font-mono);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: var(--sp-2);
     }
     h2 {
-      margin: 0 0 var(--sp-2);
-      font-size: 1.1rem;
+      font-family: var(--font-serif);
+      font-size: 1.4rem;
       font-weight: 700;
-      color: var(--accent);
-      letter-spacing: -0.01em;
+      letter-spacing: -0.02em;
+      margin: 0 0 var(--sp-3);
     }
     p  { margin: 0 0 var(--sp-3); color: var(--fg-muted); }
     a {
       color: var(--accent);
-      text-decoration: none;
-      border-bottom: 1px solid currentColor;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      text-decoration-color: color-mix(in oklch, var(--accent) 40%, transparent);
+      transition: text-decoration-color var(--t-fast);
     }
+    a:hover { text-decoration-color: currentColor; }
     code {
       font-family: var(--font-mono);
       font-size: 0.9em;
@@ -38,9 +49,10 @@ export class ErrorCard extends WebComponent {
   constructor() { super(); this.message = ''; }
   render() {
     return html`
+      <div class="rubric">Error</div>
       <h2>Something went wrong</h2>
       <p><code>${this.message}</code></p>
-      <p><a href="/">← Home</a></p>
+      <p><a href="/">← Back home</a></p>
     `;
   }
 }

@@ -1,7 +1,7 @@
 import { WebComponent, html, css, connectWS } from 'webjs';
 
 /**
- * `<chat-box>` — global chat against /api/chat over WebSocket.
+ * `<chat-box>` — terminal-leaning live chat panel against /api/chat.
  */
 export class ChatBox extends WebComponent {
   static tag = 'chat-box';
@@ -13,6 +13,7 @@ export class ChatBox extends WebComponent {
       background: var(--bg-elev);
       box-shadow: var(--shadow);
       overflow: hidden;
+      font-family: var(--font-sans);
     }
     .status {
       display: flex;
@@ -21,33 +22,41 @@ export class ChatBox extends WebComponent {
       padding: var(--sp-3) var(--sp-4);
       border-bottom: 1px solid var(--border);
       background: var(--bg-subtle);
-      font-size: 13px;
-      color: var(--fg-muted);
+      font: 600 10px/1 var(--font-mono);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--fg-subtle);
     }
     .dot {
-      width: 8px; height: 8px; border-radius: 50%;
+      width: 7px; height: 7px; border-radius: 50%;
       background: var(--fg-subtle);
     }
-    .dot.on  { background: var(--success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 20%, transparent); }
+    .dot.on {
+      background: var(--success);
+      box-shadow: 0 0 0 3px color-mix(in oklch, var(--success) 30%, transparent);
+    }
     .dot.off { background: var(--accent); }
 
     .log {
-      height: 200px;
+      height: 220px;
       overflow-y: auto;
-      padding: var(--sp-3) var(--sp-4);
-      font-size: 14px;
-      line-height: 1.5;
+      padding: var(--sp-4);
+      font: 14px/1.6 var(--font-sans);
       scroll-behavior: smooth;
+      background: var(--bg-sunken);
     }
-    .log p { margin: 0 0 var(--sp-2); }
+    .log p { margin: 0 0 var(--sp-2); color: var(--fg); }
     .log em {
-      font-style: normal;
-      color: var(--fg-subtle);
-      font-size: 12px;
-      letter-spacing: 0.02em;
+      font: 500 10px/1.4 var(--font-mono);
+      letter-spacing: 0.15em;
       text-transform: uppercase;
+      color: var(--fg-subtle);
+      font-style: normal;
     }
-    .empty { color: var(--fg-subtle); font-style: italic; }
+    .empty {
+      color: var(--fg-subtle);
+      font-style: italic;
+    }
 
     form {
       display: flex;
@@ -72,16 +81,17 @@ export class ChatBox extends WebComponent {
       box-shadow: 0 0 0 3px var(--accent-tint);
     }
     button {
-      font: 600 14px/1 var(--font-sans);
+      font: 600 12px/1 var(--font-sans);
+      letter-spacing: 0.02em;
       padding: var(--sp-2) var(--sp-4);
-      border-radius: var(--rad);
+      border-radius: 999px;
       border: 0;
       background: var(--accent);
       color: var(--accent-fg);
       cursor: pointer;
       transition: background var(--t-fast), transform var(--t-fast);
     }
-    button:hover { background: var(--accent-hover); }
+    button:hover  { background: var(--accent-hover); }
     button:active { transform: translateY(1px); }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
   `;
@@ -96,7 +106,7 @@ export class ChatBox extends WebComponent {
   connectedCallback() {
     super.connectedCallback();
     this._conn = connectWS('/api/chat', {
-      onOpen: () => this.setState({ connected: true }),
+      onOpen:  () => this.setState({ connected: true }),
       onClose: () => this.setState({ connected: false }),
       onMessage: (msg) => {
         const lines = this.state.lines.slice();
@@ -115,7 +125,6 @@ export class ChatBox extends WebComponent {
       },
     });
   }
-
   disconnectedCallback() { this._conn?.close(); this._conn = null; }
 
   onSubmit(e) {
@@ -132,7 +141,7 @@ export class ChatBox extends WebComponent {
     return html`
       <div class="status">
         <span class=${connected ? 'dot on' : 'dot off'}></span>
-        ${connected ? html`live · ${count} online` : html`reconnecting…`}
+        ${connected ? html`Live · ${count} online` : html`Reconnecting…`}
       </div>
       <div class="log">
         ${lines.length === 0
@@ -140,8 +149,7 @@ export class ChatBox extends WebComponent {
           : lines.map((l) =>
               l.kind === 'meta'
                 ? html`<p><em>${l.text}</em></p>`
-                : html`<p>${l.text}</p>`
-            )}
+                : html`<p>${l.text}</p>`)}
       </div>
       <form @submit=${(e) => this.onSubmit(e)}>
         <input placeholder=${connected ? 'Say hi…' : 'Disconnected'}

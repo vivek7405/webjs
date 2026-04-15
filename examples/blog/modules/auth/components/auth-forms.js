@@ -1,40 +1,39 @@
 import { WebComponent, html, css } from 'webjs';
 
 /**
- * `<auth-forms then="/dashboard">` — tabbed login + signup.
- * Posts to /api/auth/{login,signup}; on success navigates to `then`.
+ * `<auth-forms>` — tabbed sign-in / sign-up, 2026 spotlight style.
+ * Pill-switcher, serif heading, mono field labels, amber CTA.
  */
 export class AuthForms extends WebComponent {
   static tag = 'auth-forms';
   static properties = { then: { type: String } };
   static styles = css`
-    :host { display: block; max-width: 420px; margin: 0 auto; }
-
+    :host { display: block; }
     .card {
-      padding: var(--sp-6);
+      padding: var(--sp-7) var(--sp-6);
       background: var(--bg-elev);
       border: 1px solid var(--border);
-      border-radius: var(--rad-lg);
+      border-radius: var(--rad-xl);
       box-shadow: var(--shadow);
     }
 
     .tabs {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 0;
-      margin-bottom: var(--sp-5);
       padding: 4px;
-      border-radius: var(--rad);
+      margin-bottom: var(--sp-5);
+      border-radius: 999px;
       background: var(--bg-subtle);
       border: 1px solid var(--border);
     }
     .tabs button {
-      padding: var(--sp-2) var(--sp-3);
-      font: 600 14px/1 var(--font-sans);
+      padding: 10px 12px;
+      font: 600 12px/1 var(--font-sans);
+      letter-spacing: 0.02em;
       background: transparent;
       color: var(--fg-muted);
       border: 0;
-      border-radius: calc(var(--rad) - 4px);
+      border-radius: 999px;
       cursor: pointer;
       transition: color var(--t-fast), background var(--t-fast);
     }
@@ -44,19 +43,18 @@ export class AuthForms extends WebComponent {
       box-shadow: var(--shadow-sm);
     }
 
-    form { display: grid; gap: var(--sp-3); }
-    label {
+    form   { display: grid; gap: var(--sp-4); }
+    label  {
       display: grid;
       gap: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--fg-muted);
-      letter-spacing: 0.02em;
+      font: 600 10px/1 var(--font-mono);
+      letter-spacing: 0.15em;
       text-transform: uppercase;
+      color: var(--fg-subtle);
     }
     input {
       font: 15px/1.5 var(--font-sans);
-      padding: var(--sp-3);
+      padding: var(--sp-3) var(--sp-4);
       border-radius: var(--rad);
       border: 1px solid var(--border-strong);
       background: var(--bg);
@@ -68,28 +66,29 @@ export class AuthForms extends WebComponent {
       border-color: var(--accent);
       box-shadow: 0 0 0 3px var(--accent-tint);
     }
-    button[type="submit"] {
+    button[type='submit'] {
       margin-top: var(--sp-2);
-      font: 600 14px/1 var(--font-sans);
+      font: 600 13px/1 var(--font-sans);
+      letter-spacing: 0.02em;
       padding: var(--sp-3);
-      border-radius: var(--rad);
+      border-radius: 999px;
       border: 0;
       background: var(--accent);
       color: var(--accent-fg);
       cursor: pointer;
       transition: background var(--t-fast), transform var(--t-fast);
     }
-    button[type="submit"]:hover { background: var(--accent-hover); }
-    button[type="submit"]:active { transform: translateY(1px); }
-    button[type="submit"]:disabled { opacity: 0.5; cursor: progress; }
+    button[type='submit']:hover  { background: var(--accent-hover); }
+    button[type='submit']:active { transform: translateY(1px); }
+    button[type='submit']:disabled { opacity: 0.5; cursor: progress; }
 
     .err {
       margin: 0;
       padding: var(--sp-3);
       border-radius: var(--rad);
-      background: var(--accent-tint);
-      color: var(--danger);
-      font-size: 14px;
+      background: color-mix(in oklch, var(--bg-elev) 80%, var(--accent));
+      color: var(--accent);
+      font: 13px/1.4 var(--font-mono);
     }
   `;
 
@@ -101,8 +100,7 @@ export class AuthForms extends WebComponent {
 
   async onSubmit(e) {
     e.preventDefault();
-    const form = e.currentTarget;
-    const data = Object.fromEntries(new FormData(form));
+    const data = Object.fromEntries(new FormData(e.currentTarget));
     this.setState({ busy: true, error: null });
     try {
       const url = this.state.mode === 'login' ? '/api/auth/login' : '/api/auth/signup';

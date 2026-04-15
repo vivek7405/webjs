@@ -2,27 +2,27 @@ import { WebComponent, html, css, repeat, connectWS } from 'webjs';
 import '../../../components/muted-text.js';
 
 /**
- * `<comments-thread post-id="42" initial="[{…}]" ?signed-in>` — live
- * comment thread for a post.
+ * `<comments-thread>` — live thread. Editorial card list, mono meta,
+ * warm accent CTA, empty-state hint.
  */
 export class CommentsThread extends WebComponent {
   static tag = 'comments-thread';
   static properties = {
-    postId: { type: String },
-    initial: { type: Object },
+    postId:   { type: String },
+    initial:  { type: Object },
     signedIn: { type: Boolean },
   };
   static styles = css`
     :host { display: block; }
 
     .empty {
-      padding: var(--sp-5);
+      padding: var(--sp-6);
       text-align: center;
       color: var(--fg-subtle);
-      font-style: italic;
+      font: italic 14px/1.6 var(--font-serif);
       border: 1px dashed var(--border);
       border-radius: var(--rad-lg);
-      margin-bottom: var(--sp-4);
+      margin-bottom: var(--sp-5);
     }
 
     ul {
@@ -30,23 +30,30 @@ export class CommentsThread extends WebComponent {
       padding: 0;
       margin: 0 0 var(--sp-5);
       display: grid;
-      gap: var(--sp-3);
+      gap: var(--sp-4);
     }
     li {
-      padding: var(--sp-4);
+      padding: var(--sp-4) var(--sp-5);
       background: var(--bg-elev);
       border: 1px solid var(--border);
       border-radius: var(--rad);
-      box-shadow: var(--shadow-sm);
     }
     .meta {
-      font-size: 12px;
+      display: flex;
+      gap: var(--sp-2);
+      align-items: baseline;
+      font: 600 10px/1 var(--font-mono);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
       color: var(--fg-subtle);
-      margin-bottom: 4px;
-      letter-spacing: 0.02em;
+      margin-bottom: 6px;
     }
-    .meta strong { color: var(--fg); font-weight: 600; text-transform: none; letter-spacing: 0; }
-    .body { color: var(--fg); font-size: 15px; line-height: 1.5; }
+    .meta strong { color: var(--fg); font-weight: 700; letter-spacing: 0.08em; }
+    .meta .sep   { color: var(--fg-subtle); }
+    .body {
+      font: 15px/1.65 var(--font-serif);
+      color: var(--fg);
+    }
 
     form {
       display: flex;
@@ -55,7 +62,6 @@ export class CommentsThread extends WebComponent {
       background: var(--bg-elev);
       border: 1px solid var(--border);
       border-radius: var(--rad);
-      box-shadow: var(--shadow-sm);
     }
     input {
       flex: 1;
@@ -73,32 +79,33 @@ export class CommentsThread extends WebComponent {
       box-shadow: 0 0 0 3px var(--accent-tint);
     }
     button {
-      font: 600 14px/1 var(--font-sans);
+      font: 600 12px/1 var(--font-sans);
+      letter-spacing: 0.02em;
       padding: var(--sp-2) var(--sp-4);
-      border-radius: var(--rad);
+      border-radius: 999px;
       border: 0;
       background: var(--accent);
       color: var(--accent-fg);
       cursor: pointer;
       transition: background var(--t-fast), transform var(--t-fast);
     }
-    button:hover { background: var(--accent-hover); }
+    button:hover  { background: var(--accent-hover); }
     button:active { transform: translateY(1px); }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .signin {
-      padding: var(--sp-4);
+      padding: var(--sp-5);
       color: var(--fg-muted);
       background: var(--bg-subtle);
       border: 1px dashed var(--border);
       border-radius: var(--rad);
       text-align: center;
-      font-size: 14px;
+      font: italic 14px/1.6 var(--font-serif);
     }
-    .signin a { color: var(--accent); text-decoration: none; font-weight: 600; }
-    .signin a:hover { text-decoration: underline; }
+    .signin a { color: var(--accent); font-weight: 600; text-decoration: none; font-style: normal; }
+    .signin a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
-    .err { margin-top: var(--sp-2); color: var(--danger); font-size: 13px; }
+    .err { margin-top: var(--sp-2); color: var(--accent); font: 12px/1.4 var(--font-mono); }
   `;
 
   constructor() {
@@ -114,7 +121,6 @@ export class CommentsThread extends WebComponent {
     super.connectedCallback();
     const seeded = Array.isArray(this.initial) ? this.initial : [];
     this.setState({ comments: seeded });
-
     this._conn = connectWS(`/api/comments/${this.postId}`, {
       onMessage: (msg) => {
         const cur = this.state.comments;
@@ -123,7 +129,6 @@ export class CommentsThread extends WebComponent {
       },
     });
   }
-
   disconnectedCallback() { this._conn?.close(); }
 
   async onSubmit(e) {
@@ -154,19 +159,16 @@ export class CommentsThread extends WebComponent {
     return html`
       ${comments.length === 0
         ? html`<div class="empty">No comments yet — be the first.</div>`
-        : html`<ul>${repeat(
-            comments,
-            (c) => c.id,
-            (c) => html`
-              <li>
-                <div class="meta">
-                  <strong>${c.authorName}</strong>
-                  · ${new Date(c.createdAt).toLocaleString()}
-                </div>
-                <div class="body">${c.body}</div>
-              </li>
-            `
-          )}</ul>`}
+        : html`<ul>${repeat(comments, (c) => c.id, (c) => html`
+            <li>
+              <div class="meta">
+                <strong>${c.authorName}</strong>
+                <span class="sep">·</span>
+                <span>${new Date(c.createdAt).toLocaleString()}</span>
+              </div>
+              <div class="body">${c.body}</div>
+            </li>`)}
+          </ul>`}
 
       ${this.signedIn
         ? html`<form @submit=${(e) => this.onSubmit(e)}>
