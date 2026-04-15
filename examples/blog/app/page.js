@@ -14,154 +14,190 @@ export const metadata = {
 
 async function slowStat() {
   await new Promise((r) => setTimeout(r, 400));
-  return html`<muted-text>posts loaded at ${new Date().toLocaleTimeString()}</muted-text>`;
+  return html`<muted-text>posts loaded · ${new Date().toLocaleTimeString()}</muted-text>`;
 }
 
 export default async function HomePage() {
   const [me, posts] = await Promise.all([currentUser(), listPosts()]);
   return html`
     <style>
-      .hero { margin: 0 0 var(--sp-7); }
-      .hero h1 { margin: 0 0 var(--sp-3); }
-      .hero p { font-size: 1.1rem; color: var(--fg-muted); margin: 0; max-width: 56ch; }
-
-      .posts { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--sp-4); }
-      .post-card {
+      .rubric {
         display: block;
-        padding: var(--sp-4) var(--sp-5);
-        background: var(--bg-elev);
-        border: 1px solid var(--border);
-        border-radius: var(--rad-lg);
-        text-decoration: none;
-        color: inherit;
-        box-shadow: var(--shadow-sm);
-        transition: border-color var(--t), box-shadow var(--t), transform var(--t);
+        font: 600 11px/1 var(--font-mono);
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: var(--sp-4);
       }
-      .post-card:hover {
-        border-color: var(--border-strong);
-        box-shadow: var(--shadow);
-        transform: translateY(-1px);
+      .hero {
+        margin: 0 0 var(--sp-8);
       }
-      .post-card h3 {
-        margin: 0 0 4px;
-        font-size: 1.1rem;
+      .hero h1 {
+        font-size: var(--fs-display);
+        line-height: 1.02;
+        letter-spacing: -0.035em;
         font-weight: 700;
-        color: var(--fg);
-        letter-spacing: -0.01em;
+        margin: 0 0 var(--sp-4);
+        text-wrap: balance;
       }
-      .post-card .preview {
+      .hero p {
+        font-size: var(--fs-lede);
+        line-height: 1.5;
         color: var(--fg-muted);
+        max-width: 56ch;
+        margin: 0;
+      }
+      .hero .accent-letter { color: var(--accent); font-style: italic; }
+
+      /* ---------- editorial post feed (no cards) ---------- */
+      .feed { list-style: none; padding: 0; margin: 0; }
+      .feed li { border-top: 1px solid var(--border); }
+      .feed li:last-child { border-bottom: 1px solid var(--border); }
+      .feed a {
+        display: grid;
+        grid-template-columns: 44px 1fr auto;
+        gap: var(--sp-4);
+        align-items: baseline;
+        padding: var(--sp-5) 0;
+        color: inherit;
+        text-decoration: none;
+        transition: padding var(--t);
+      }
+      .feed a:hover { padding-left: var(--sp-2); }
+      .feed .num {
+        font: 500 11px/1 var(--font-mono);
+        letter-spacing: 0.1em;
+        color: var(--fg-subtle);
+        padding-top: 6px;
+      }
+      .feed .title-row { display: grid; gap: 4px; min-width: 0; }
+      .feed h3 {
+        font-family: var(--font-serif);
+        font-size: 1.45rem;
+        line-height: 1.2;
+        letter-spacing: -0.02em;
+        font-weight: 600;
+        margin: 0;
+        color: var(--fg);
+        transition: color var(--t-fast);
+      }
+      .feed a:hover h3 { color: var(--accent); }
+      .feed .preview {
         font-size: 14px;
-        margin: 6px 0 var(--sp-2);
+        line-height: 1.55;
+        color: var(--fg-muted);
+        margin: 0;
         display: -webkit-box;
-        -webkit-line-clamp: 2;
+        -webkit-line-clamp: 1;
         -webkit-box-orient: vertical;
         overflow: hidden;
       }
+      .feed .arrow {
+        font-family: var(--font-mono);
+        color: var(--fg-subtle);
+        transition: color var(--t-fast), transform var(--t);
+      }
+      .feed a:hover .arrow { color: var(--accent); transform: translateX(4px); }
 
-      .empty-posts {
-        padding: var(--sp-7);
+      .empty-feed {
+        padding: var(--sp-8);
         text-align: center;
         color: var(--fg-muted);
-        background: var(--bg-elev);
-        border: 1px dashed var(--border);
-        border-radius: var(--rad-lg);
-      }
-
-      .section-head {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        margin-top: var(--sp-7);
-        margin-bottom: var(--sp-4);
-        padding-bottom: var(--sp-2);
+        border-top: 1px solid var(--border);
         border-bottom: 1px solid var(--border);
       }
-      .section-head h2 { margin: 0; font-size: 1.15rem; }
-      .section-head small { color: var(--fg-subtle); font-size: 13px; }
 
-      .welcome {
-        padding: var(--sp-4);
-        background: var(--accent-tint);
-        border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+      .banner {
+        padding: var(--sp-5);
+        background: color-mix(in oklch, var(--bg-elev) 50%, transparent);
+        border: 1px solid var(--border);
         border-radius: var(--rad);
         font-size: 14px;
-        margin-bottom: var(--sp-6);
+        margin: var(--sp-5) 0 var(--sp-7);
+        color: var(--fg-muted);
       }
-      .welcome a { color: var(--accent); font-weight: 600; }
+      .banner strong { color: var(--fg); }
+      .banner a { color: var(--accent); font-weight: 600; text-decoration: none; }
+      .banner a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
-      .cta-link {
-        display: inline-block;
-        padding: var(--sp-2) var(--sp-4);
-        background: var(--accent);
-        color: var(--accent-fg);
-        border-radius: var(--rad);
-        font-size: 14px;
-        font-weight: 600;
-        text-decoration: none;
-        transition: background var(--t-fast);
+      .section {
+        margin-top: var(--sp-8);
+        padding-top: var(--sp-5);
+        border-top: 1px solid var(--border);
       }
-      .cta-link:hover { background: var(--accent-hover); }
+      .section h2 {
+        font-family: var(--font-serif);
+        font-size: 1.6rem;
+        letter-spacing: -0.02em;
+        font-weight: 700;
+        margin: 0 0 var(--sp-2);
+      }
+      .section p { color: var(--fg-muted); margin: 0 0 var(--sp-4); font-size: 14px; }
+
+      .stat {
+        font: 500 11px/1 var(--font-mono);
+        letter-spacing: 0.15em;
+        color: var(--fg-subtle);
+        text-transform: uppercase;
+      }
     </style>
 
     <section class="hero">
-      <h1>A framework demo — with real posts, chat, and auth</h1>
+      <span class="rubric">● the webjs demo</span>
+      <h1>A blog, a chat, a login — all in <span class="accent-letter">one</span> tiny framework.</h1>
       <p>
-        Everything here runs on webjs: server-rendered web components,
-        file-based routes, server actions, Suspense-streamed boundaries,
-        live WebSocket comments and chat. Zero bundler.
+        Every line of this page runs on webjs: server-rendered web components, file-based routes,
+        server actions, streaming Suspense, live WebSockets. Zero bundler. Authored in plain JavaScript
+        with JSDoc.
       </p>
     </section>
 
     ${me
-      ? html`<p class="welcome">
-          Welcome back, <strong>${me.name || me.email}</strong>.
-          <a href="/dashboard">Go to your dashboard →</a>
-        </p>`
-      : html`<p class="welcome">
-          <a href="/login">Sign in</a> or
-          <a href="/login?then=/dashboard/posts/new">create an account</a>
-          to write posts and comment.
-        </p>`}
+      ? html`<p class="banner">Welcome back, <strong>${me.name || me.email}</strong>. <a href="/dashboard">Your dashboard →</a></p>`
+      : html`<p class="banner"><a href="/login">Sign in</a> or <a href="/login?then=/dashboard/posts/new">create an account</a> to write posts and comment.</p>`}
 
-    <div class="section-head">
-      <h2>Latest posts</h2>
-      <small>${posts.length} total</small>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin:var(--sp-6) 0 var(--sp-2)">
+      <span class="rubric" style="margin:0">Latest posts</span>
+      <span class="stat">${posts.length.toString().padStart(2, '0')} total</span>
     </div>
 
     ${posts.length === 0
-      ? html`<div class="empty-posts">
-          <p><strong>No posts yet.</strong></p>
-          <p><a class="cta-link" href="/dashboard/posts/new">Write the first one →</a></p>
+      ? html`<div class="empty-feed">
+          <p>No posts yet.</p>
+          <p><a href="/dashboard/posts/new">Write the first one →</a></p>
         </div>`
-      : html`<ul class="posts">
-          ${repeat(posts, (p) => p.id, (p) => html`
+      : html`<ul class="feed">
+          ${repeat(posts, (p) => p.id, (p, i) => html`
             <li>
-              <a class="post-card" href="/blog/${p.slug}">
-                <h3>${p.title}</h3>
-                <div class="preview">${p.body}</div>
-                <muted-text>by ${p.authorName || 'someone'} · ${new Date(p.createdAt).toLocaleDateString()}</muted-text>
+              <a href="/blog/${p.slug}">
+                <span class="num">${(i + 1).toString().padStart(2, '0')}</span>
+                <div class="title-row">
+                  <h3>${p.title}</h3>
+                  <p class="preview">${p.body}</p>
+                  <muted-text>${p.authorName || 'someone'} · ${new Date(p.createdAt).toLocaleDateString()}</muted-text>
+                </div>
+                <span class="arrow">→</span>
               </a>
-            </li>
-          `)}
+            </li>`)}
         </ul>`}
 
-    <p>${Suspense({
-      fallback: html`<muted-text>(computing timestamp…)</muted-text>`,
+    <p style="margin-top:var(--sp-5);">${Suspense({
+      fallback: html`<muted-text>computing timestamp…</muted-text>`,
       children: slowStat(),
     })}</p>
 
-    <div class="section-head">
+    <section class="section">
+      <span class="rubric">● client-side state</span>
       <h2>Interactive counter</h2>
-      <small>client-side state, shadow DOM</small>
-    </div>
-    <p><muted-text>SSR'd then hydrated. Clicking updates state without losing focus.</muted-text></p>
-    <my-counter count="3"></my-counter>
+      <p>Pure client-side state in a web component. SSR'd with the initial value, hydrated on connect, clicks don't lose focus.</p>
+      <my-counter count="3"></my-counter>
+    </section>
 
-    <div class="section-head">
-      <h2>Real-time chat</h2>
-      <small>WebSocket · all tabs see it</small>
-    </div>
-    <chat-box></chat-box>
+    <section class="section">
+      <span class="rubric">● real-time · websocket</span>
+      <h2>Live chat</h2>
+      <p>Open this page in two windows — messages broadcast across every connected client.</p>
+      <chat-box></chat-box>
+    </section>
   `;
 }

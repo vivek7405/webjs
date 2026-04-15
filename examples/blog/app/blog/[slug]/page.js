@@ -23,64 +23,114 @@ export default async function PostPage({ params }) {
     currentUser(),
   ]);
 
+  const date = new Date(post.createdAt);
+  const readingMin = Math.max(1, Math.round(post.body.split(/\s+/).length / 220));
+
   return html`
     <style>
       .back {
         display: inline-block;
-        color: var(--fg-muted);
+        margin-bottom: var(--sp-7);
+        color: var(--fg-subtle);
         text-decoration: none;
-        font-size: 13px;
-        margin-bottom: var(--sp-5);
+        font: 500 11px/1 var(--font-mono);
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
         transition: color var(--t-fast);
       }
       .back:hover { color: var(--fg); }
 
-      article h1 {
-        margin: 0 0 var(--sp-3);
-        letter-spacing: -0.02em;
+      article header {
+        margin-bottom: var(--sp-7);
       }
-      article .byline {
+      .rubric {
+        display: block;
+        font: 600 11px/1 var(--font-mono);
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: var(--sp-4);
+      }
+      article h1 {
+        font-family: var(--font-serif);
+        font-size: var(--fs-display);
+        line-height: 1.02;
+        letter-spacing: -0.035em;
+        font-weight: 700;
+        margin: 0 0 var(--sp-5);
+        text-wrap: balance;
+      }
+      .byline {
         display: flex;
         align-items: center;
-        gap: var(--sp-2);
-        padding-bottom: var(--sp-5);
-        margin-bottom: var(--sp-6);
+        gap: var(--sp-3);
+        padding: var(--sp-4) 0;
+        border-top: 1px solid var(--border);
         border-bottom: 1px solid var(--border);
+        font: 500 11px/1.4 var(--font-mono);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--fg-subtle);
       }
+      .byline strong { color: var(--fg); font-weight: 700; }
+      .byline .sep  { color: var(--fg-subtle); }
+
       article .body {
-        font-size: 17px;
+        font-family: var(--font-serif);
+        font-size: 1.14rem;
         line-height: 1.75;
         color: var(--fg);
         white-space: pre-wrap;
+        margin: var(--sp-6) 0;
       }
       article .body::first-letter {
-        font-size: 3.4em;
-        font-weight: 800;
+        font-size: 4em;
+        font-weight: 700;
         line-height: 0.9;
         float: left;
-        margin: 8px 10px 0 0;
+        margin: 10px 14px 0 0;
         color: var(--accent);
+        font-family: var(--font-serif);
       }
 
-      .comments-section h2 {
+      .comments-section {
         margin-top: var(--sp-8);
+        padding-top: var(--sp-6);
+        border-top: 1px solid var(--border);
+      }
+      .comments-section h2 {
+        font-family: var(--font-serif);
+        font-size: 1.5rem;
+        letter-spacing: -0.02em;
+        margin: 0 0 var(--sp-4);
+      }
+      .comments-section h2 small {
+        font: 500 11px/1 var(--font-mono);
+        letter-spacing: 0.15em;
+        color: var(--fg-subtle);
+        margin-left: var(--sp-2);
+        text-transform: uppercase;
       }
     </style>
 
-    <a class="back" href="/">← All posts</a>
+    <a class="back" href="/">← Posts</a>
     <article>
-      <h1>${post.title}</h1>
-      <div class="byline">
-        <muted-text>
-          by <strong>${post.authorName || 'someone'}</strong>
-          · ${new Date(post.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
-        </muted-text>
-      </div>
+      <header>
+        <span class="rubric">● post</span>
+        <h1>${post.title}</h1>
+        <div class="byline">
+          <span>By <strong>${post.authorName || 'someone'}</strong></span>
+          <span class="sep">·</span>
+          <span>${date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+          <span class="sep">·</span>
+          <span>${readingMin} min read</span>
+        </div>
+      </header>
       <div class="body">${post.body}</div>
     </article>
 
     <div class="comments-section">
-      <h2>Comments · ${comments.length}</h2>
+      <h2>Comments <small>${comments.length.toString().padStart(2, '0')} total</small></h2>
       <comments-thread
         post-id=${String(post.id)}
         initial=${JSON.stringify(comments)}
