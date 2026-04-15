@@ -97,3 +97,20 @@ test('comment containing > does not exit early', async () => {
   assert.match(out, /<!-- a > b -->/);
   assert.match(out, /<span>x<\/span>/);
 });
+
+test('<style> content is raw-text — angle brackets are not parsed as tags', async () => {
+  const out = await renderToString(html`<style>a > b { color: ${'red'}; }</style><p>after</p>`);
+  assert.match(out, /<style>a > b \{ color: red; \}<\/style>/);
+  assert.match(out, /<p>after<\/p>/);
+});
+
+test('<script> content is raw-text — interpolated verbatim', async () => {
+  const out = await renderToString(html`<script>var x = ${42}; if (x < 10) {}</script><p>k</p>`);
+  assert.match(out, /<script>var x = 42; if \(x < 10\) \{\}<\/script>/);
+  assert.match(out, /<p>k<\/p>/);
+});
+
+test('uppercase </SCRIPT> still closes raw-text (case-insensitive)', async () => {
+  const out = await renderToString(html`<script>x<1</SCRIPT><p>hi</p>`);
+  assert.match(out, /<\/SCRIPT><p>hi<\/p>/);
+});

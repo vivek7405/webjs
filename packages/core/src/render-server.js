@@ -78,6 +78,8 @@ async function renderTemplate(tr, ctx) {
   let attrStart = 0;
   let attrQuote = '';
   let commentDashes = 0;
+  let currentTag = '';   // lowercased tag name currently being parsed
+  let rawTail = '';      // rolling lowercased tail, tracks </script>/</style>
 
   for (let i = 0; i < strings.length; i++) {
     const s = strings[i];
@@ -91,7 +93,8 @@ async function renderTemplate(tr, ctx) {
         case 'tag-open':
           out += c;
           if (c === '!') state = 'bang-1';
-          else if (c === '/' || /[a-zA-Z]/.test(c)) state = 'tag-name';
+          else if (c === '/') { state = 'tag-name'; currentTag = ''; }
+          else if (/[a-zA-Z]/.test(c)) { state = 'tag-name'; currentTag = c.toLowerCase(); }
           else state = 'text';
           break;
         case 'bang-1':
@@ -111,16 +114,30 @@ async function renderTemplate(tr, ctx) {
           break;
         case 'tag-name':
           out += c;
-          if (c === '>') state = 'text';
-          else if (/\s/.test(c)) state = 'in-tag';
+          if (c === '>') {
+            state = isRawtextTag(currentTag) ? 'rawtext' : 'text';
+            if (state === 'rawtext') rawTail = '';
+          } else if (/\s/.test(c)) state = 'in-tag';
+          else currentTag += c.toLowerCase();
           break;
         case 'in-tag':
           out += c;
-          if (c === '>') state = 'text';
-          else if (!/\s/.test(c) && c !== '/') {
+          if (c === '>') {
+            state = isRawtextTag(currentTag) ? 'rawtext' : 'text';
+            if (state === 'rawtext') rawTail = '';
+          } else if (!/\s/.test(c) && c !== '/') {
             state = 'attr-name';
             attrName = c;
             attrStart = out.length - 1;
+          }
+          break;
+        case 'rawtext':
+          out += c;
+          rawTail = (rawTail + c.toLowerCase()).slice(-9);
+          if (rawTail.endsWith('</script>') || rawTail.endsWith('</style>')) {
+            state = 'text';
+            rawTail = '';
+            currentTag = '';
           }
           break;
         case 'attr-name':
@@ -158,6 +175,12 @@ async function renderTemplate(tr, ctx) {
         // are inert and not rendered by browsers).
         out += String(val ?? '');
         commentDashes = 0;
+      } else if (state === 'rawtext') {
+        // Inside <script> / <style>: emit the value as-is (no HTML escaping).
+        // Author is responsible for not closing the tag with user-controlled
+        // data — the usual caveat for CSS/JS interpolation.
+        out += String(val ?? '');
+        rawTail = '';
       } else if (state === 'text') {
         out += await render(val, ctx);
       } else if (state === 'after-eq') {
@@ -245,6 +268,11 @@ async function injectDSD(html, ctx) {
 /** @param {string} s */
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** @param {string} tag */
+function isRawtextTag(tag) {
+  return tag === 'script' || tag === 'style';
 }
 
 /**

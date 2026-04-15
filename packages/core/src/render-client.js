@@ -111,6 +111,8 @@ function compile(tr) {
   let attrStart = 0;
   let attrQuote = '';
   let commentDashes = 0;
+  let currentTag = '';
+  let rawTail = '';
 
   for (let i = 0; i < strings.length; i++) {
     const s = strings[i];
@@ -124,7 +126,8 @@ function compile(tr) {
         case 'tag-open':
           html += c;
           if (c === '!') state = 'bang-1';
-          else if (c === '/' || /[a-zA-Z]/.test(c)) state = 'tag-name';
+          else if (c === '/') { state = 'tag-name'; currentTag = ''; }
+          else if (/[a-zA-Z]/.test(c)) { state = 'tag-name'; currentTag = c.toLowerCase(); }
           else state = 'text';
           break;
         case 'bang-1':
@@ -144,16 +147,30 @@ function compile(tr) {
           break;
         case 'tag-name':
           html += c;
-          if (c === '>') state = 'text';
-          else if (/\s/.test(c)) state = 'in-tag';
+          if (c === '>') {
+            state = (currentTag === 'script' || currentTag === 'style') ? 'rawtext' : 'text';
+            if (state === 'rawtext') rawTail = '';
+          } else if (/\s/.test(c)) state = 'in-tag';
+          else currentTag += c.toLowerCase();
           break;
         case 'in-tag':
           html += c;
-          if (c === '>') state = 'text';
-          else if (!/\s/.test(c) && c !== '/') {
+          if (c === '>') {
+            state = (currentTag === 'script' || currentTag === 'style') ? 'rawtext' : 'text';
+            if (state === 'rawtext') rawTail = '';
+          } else if (!/\s/.test(c) && c !== '/') {
             state = 'attr-name';
             attrName = c;
             attrStart = html.length - 1;
+          }
+          break;
+        case 'rawtext':
+          html += c;
+          rawTail = (rawTail + c.toLowerCase()).slice(-9);
+          if (rawTail.endsWith('</script>') || rawTail.endsWith('</style>')) {
+            state = 'text';
+            rawTail = '';
+            currentTag = '';
           }
           break;
         case 'attr-name':
@@ -183,12 +200,17 @@ function compile(tr) {
     if (i < strings.length - 1) {
       const partIdx = parts.length;
       if (state === 'comment') {
-        // Holes inside <!-- ... --> bake in at compile time: comments are inert,
-        // so updates wouldn't change anything visible. Stringify the *first*
-        // value here; subsequent renders may have different values for this
-        // hole but the comment is frozen.
+        // Holes inside <!-- ... --> bake in at compile time: comments are inert.
         html += String(values[i] ?? '');
         commentDashes = 0;
+        parts.push({ kind: 'noop', path: [] });
+        continue;
+      }
+      if (state === 'rawtext') {
+        // Inside <script>/<style>: bake the value verbatim. Fine-grained
+        // updates of script/style bodies aren't meaningful in v1.
+        html += String(values[i] ?? '');
+        rawTail = '';
         parts.push({ kind: 'noop', path: [] });
         continue;
       }
