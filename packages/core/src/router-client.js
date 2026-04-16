@@ -210,10 +210,41 @@ function swapBody(newBody) {
     const children = [...newShell.childNodes].filter(
       (n) => !(n instanceof HTMLTemplateElement && /** @type any */ (n).getAttribute('shadowrootmode'))
     );
-    currentShell.replaceChildren(...children);
+    swapSlotContent(currentShell, children);
   } else {
     // Different structure — full swap.
-    document.body.innerHTML = newBody.innerHTML;
+    const doSwap = () => { document.body.innerHTML = newBody.innerHTML; };
+    if (/** @type any */ (document).startViewTransition) {
+      /** @type any */ (document).startViewTransition(doSwap);
+    } else {
+      doSwap();
+    }
+  }
+}
+
+/**
+ * Swap the light-DOM children of the layout shell. Uses View Transitions
+ * API when available for a smooth cross-fade; falls back to a visibility
+ * toggle that hides the shell during the swap and forces a layout reflow
+ * before showing it, preventing the browser from painting the empty state
+ * between replaceChildren removing old nodes and inserting new ones.
+ *
+ * @param {Element} shell
+ * @param {ChildNode[]} children
+ */
+function swapSlotContent(shell, children) {
+  const doSwap = () => shell.replaceChildren(...children);
+
+  if (/** @type any */ (document).startViewTransition) {
+    /** @type any */ (document).startViewTransition(doSwap);
+  } else {
+    // Fallback: hide during swap to prevent the one-frame empty-slot flash.
+    const s = /** @type HTMLElement */ (shell).style;
+    s.visibility = 'hidden';
+    doSwap();
+    // Force synchronous layout so the browser finishes positioning before show.
+    void /** @type HTMLElement */ (shell).offsetHeight;
+    s.visibility = '';
   }
 }
 
