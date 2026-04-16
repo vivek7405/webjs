@@ -5,7 +5,8 @@
   "description": "webjs dev/prod server: SSR, router, API, server actions, live reload",
   "main": "index.js",
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./check": "./src/check.js"
   },
   "dependencies": {
     "chokidar": "^3.6.0",

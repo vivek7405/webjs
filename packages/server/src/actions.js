@@ -5,20 +5,24 @@ import { join, relative, sep } from 'node:path';
 import { getExposed } from 'webjs';
 import { walk } from './fs-walk.js';
 import { verify as verifyCsrf, CSRF_COOKIE, CSRF_HEADER } from './csrf.js';
-import { stringify as sjStringify, parse as sjParse } from 'superjson';
+import { getSerializer } from './serializer.js';
 
 /**
  * Internal RPC wire-format content type. Distinguishes webjs action
- * responses (superjson) from plain `application/json` so the stub can
- * pick the right parser and external JSON consumers aren't confused.
+ * responses from plain `application/json` so the stub can pick the right
+ * parser and external JSON consumers aren't confused.
+ *
+ * Uses the content type from the active serializer (defaults to
+ * `application/vnd.webjs+json` with the superjson default).
  */
 export const RPC_CONTENT_TYPE = 'application/vnd.webjs+json';
 
-/** Build a superjson Response with webjs content-type. */
+/** Build a serialized Response with webjs content-type. */
 function rpcResponse(payload, init = {}) {
+  const s = getSerializer();
   const headers = new Headers(init.headers || {});
-  headers.set('content-type', RPC_CONTENT_TYPE);
-  return new Response(sjStringify(payload), { ...init, headers });
+  headers.set('content-type', s.contentType);
+  return new Response(s.serialize(payload), { ...init, headers });
 }
 
 /**
@@ -191,7 +195,7 @@ export async function invokeAction(idx, hash, fnName, req) {
   let args = [];
   try {
     const body = await req.text();
-    args = body ? sjParse(body) : [];
+    args = body ? getSerializer().deserialize(body) : [];
     if (!Array.isArray(args)) args = [args];
   } catch {
     return rpcResponse({ error: 'Invalid request body' }, { status: 400 });
