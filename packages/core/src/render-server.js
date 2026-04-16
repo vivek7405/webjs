@@ -312,7 +312,7 @@ function applyAttrsToInstance(instance, attrs, Cls) {
       continue;
     }
     if (def.type === Number) instance[propName] = Number(raw);
-    else if (def.type === Boolean) instance[propName] = raw !== 'false' && raw !== '';
+    else if (def.type === Boolean) instance[propName] = raw !== 'false';
     else if (def.type === Object || def.type === Array) {
       try { instance[propName] = JSON.parse(raw); } catch { instance[propName] = raw; }
     } else instance[propName] = raw;
