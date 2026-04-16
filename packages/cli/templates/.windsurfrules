@@ -32,8 +32,8 @@ The user should never have to ask for tests or documentation.
 
 ## Git rules
 
-- COMMIT OFTEN. After each logical unit of work — don't accumulate changes.
-  Committing is automatic, the user should never have to ask.
+- COMMIT AND PUSH OFTEN. After each logical unit of work — don't accumulate
+  changes. Always `git push` after committing. This is automatic.
 - Meaningful commit messages: what changed and why
 - NEVER add Co-Authored-By or AI attribution trailers to commits
 - Work on feature branches, never push directly to main

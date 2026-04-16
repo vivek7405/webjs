@@ -22,8 +22,8 @@ If running without interactive approval (sandbox, auto-approve, etc.):
 ## Mandatory workflow
 
 Every code change must include:
-1. Commits — COMMIT OFTEN after each logical unit of work. Don't accumulate
-   changes. Committing is automatic, the user should never have to ask.
+1. Commit and push — COMMIT AND PUSH after each logical unit of work.
+   Always `git push` after committing. Don't accumulate changes. Automatic.
 2. Unit tests in test/unit/*.test.ts (server actions, components, utilities)
 3. E2E tests in test/e2e/*.test.ts for user-facing features (Puppeteer)
 4. Documentation updates (AGENTS.md for API, docs/ for user guides)

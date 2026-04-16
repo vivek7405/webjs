@@ -24,12 +24,12 @@ commit messages, fix failing tests and violations. Same quality bar.
 **Every change to this framework MUST include — automatically, without the
 user asking:**
 
-### 1. Commit often
+### 1. Commit and push often
 
-**Commit after each logical unit of work** — a completed feature, a
-passing test, a doc update. Don't accumulate 50 files of uncommitted
-changes. Small focused commits with meaningful messages. No AI
-attribution trailers.
+**Commit AND push after each logical unit of work** — a completed
+feature, a passing test, a doc update. Don't accumulate uncommitted
+or unpushed changes. Small focused commits with meaningful messages.
+No AI attribution trailers. Always `git push` after committing.
 
 ### 2. Tests
 

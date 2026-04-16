@@ -16,13 +16,13 @@ This file instructs AI coding agents on how to work in this project.
 **CRITICAL: Every code change MUST include the following — automatically,
 without the user having to ask:**
 
-### 1. Commit often (mandatory, never skip)
+### 1. Commit and push often (mandatory, never skip)
 
-**Commit after each logical unit of work** — a completed feature, a
-passing test, a doc update. Don't accumulate many files of uncommitted
-changes. Small focused commits with meaningful messages. No AI
-attribution trailers. Committing is automatic — the user should never
-have to ask.
+**Commit AND push after each logical unit of work** — a completed
+feature, a passing test, a doc update. Don't accumulate uncommitted
+or unpushed changes. Small focused commits with meaningful messages.
+No AI attribution trailers. Always `git push` after committing.
+This is automatic — the user should never have to ask.
 
 ### 2. Tests (mandatory, never skip)
 

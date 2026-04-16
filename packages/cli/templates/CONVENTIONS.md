@@ -26,9 +26,10 @@ even if the user doesn't explicitly ask.**
 
 ### Every code change must include:
 
-1. **Commits** — Commit after each logical unit of work. Small, focused
-   commits with meaningful messages. Don't accumulate dozens of changed
-   files. Committing is automatic — the user should never have to ask.
+1. **Commit and push** — Commit AND push after each logical unit of work.
+   Small, focused commits with meaningful messages. Always `git push`
+   after committing. Don't accumulate uncommitted or unpushed changes.
+   This is automatic — the user should never have to ask.
 
 2. **Tests** — Unit test for logic, E2E test for user-facing behavior.
    See the "Testing" section below for what type of test each change needs.
