@@ -1,57 +1,81 @@
 # CLAUDE.md
 
-This repo's authoritative contract for AI agents (and humans) is
-**[`AGENTS.md`](./AGENTS.md)**. Read it before editing anything under this
-repository — it defines:
+**Do not duplicate content here.** This file points to authoritative sources
+and defines the AI-driven development workflow for the webjs framework itself.
 
-- What webjs is and what it is not (see _"What webjs is"_ and _"Deliberately deferred"_).
-- File-system conventions (routing, layouts, errors, middleware, server actions, components).
-- The public API surface exported from `webjs` and `@webjs/server`.
-- The `html` tag's expression-prefix rules (`@event`, `.prop`, `?bool`, plain).
-- Invariants that must hold (e.g. do not import `@prisma/client` from a
-  client component; custom element tag names must contain a hyphen; event/
-  prop/bool holes must be unquoted; `setState` not direct mutation).
-- Recipes for common tasks (new page, dynamic route, API route, server
-  action, component, DB model).
-- Security checklist for `expose()` endpoints.
-- Advanced features: streaming Suspense, bundling, rate limiting,
-  per-segment middleware, raw-text templates, HTTP/2, 103 Early Hints,
-  WebSockets.
-- Runtime targets (Node / embedded / edge) and what currently ports.
+## Required reading
 
-## Quick reminders for Claude
+1. **[`AGENTS.md`](./AGENTS.md)** — The authoritative contract. Defines: what
+   webjs is, file conventions, public API surface, directives, lifecycle,
+   controllers, context, task, invariants, recipes, security, testing,
+   conventions, advanced features. **Read it before editing anything.**
 
-- **Before implementing any change**, consult `AGENTS.md` — many apparent
-  "gaps" are deliberate choices documented there. Don't re-implement
-  something marked deferred without explicit instruction.
-- **No build step by default.** Source files are served to the browser as
-  ES modules. Never introduce a bundler/compile step in the critical path.
-  `webjs build` is the one opt-in exception (production bundle).
-- **JSDoc types, not TypeScript.** Type info lives in `@param` / `@returns`
-  / `@typedef` doc comments. Do not add `.ts` files.
-- **Web components first.** Repeated visual chunks should become components
-  with shadow-DOM scoped styles via `static styles = css\`…\``, not inline
-  `style="…"` attributes on tags.
-- **When writing code, follow CODE-style in AGENTS.md**: minimal comments,
-  `register(import.meta.url)` on every component, shadow DOM by default,
-  server-only code in `.server.js` or `'use server'` files.
-- **Tests**: `npm test` at the repo root runs the full suite
-  (`node --test test/*.test.js`). Keep it green; add tests when adding
-  non-trivial behaviour.
-- **Commits**: do NOT add a `Co-Authored-By: Claude…` trailer (the user
-  has opted out).
+## AI-driven development workflow (non-negotiable)
+
+**Before starting ANY work:**
+1. `git branch --show-current` — if on `main`, create a feature branch
+2. `git fetch origin && git log HEAD..origin/main --oneline` — rebase if behind
+3. Verify the branch matches the task at hand
+
+**Autonomous mode (sandbox/bypass):** Don't ask questions. Auto-create
+branches, auto-rebase, auto-merge + delete feature branches, auto-generate
+commit messages, fix failing tests and violations. Same quality bar.
+
+**Every change to this framework MUST include — automatically, without the
+user asking:**
+
+### 1. Tests
+
+- **Unit tests** in `test/*.test.js` for any new/changed functionality
+- **E2E tests** in `test/e2e.test.mjs` for user-facing features
+- Run `npm test` after every change. Run `npm run test:e2e` for E2E.
+- Never report work as done with failing tests.
+
+### 2. Documentation
+
+When adding or modifying framework features, update:
+
+- **`AGENTS.md`** — API surface, directive table, lifecycle docs, recipes
+- **`docs/`** — Add or update the relevant documentation page
+- **`website/`** — Update the landing page for marketable features
+- **`examples/blog/`** — Update the blog to use the new feature so E2E
+  tests exercise it
+- **`packages/cli/templates/`** — Update CONVENTIONS.md/CLAUDE.md templates
+  if the change affects what scaffolded apps should know
+
+### 3. Convention validation
+
+Run `npx webjs check` on the blog example after changes.
+
+## Framework-specific reminders
+
+- **No build step by default.** Never introduce a bundler in the critical path.
+- **JSDoc types in framework code** (packages/). Do not add `.ts` files there.
+- **TypeScript in examples/apps** (examples/blog, docs, website). `.ts` is fine.
+- **Web components first.** Shadow DOM scoped styles via `static styles = css`.
+- **Commits**: do NOT add a `Co-Authored-By: Claude…` trailer.
 
 ## Common commands
 
 ```sh
 npm install                          # workspace-linked deps
-npm test                             # run all tests
-cd examples/blog
-npx prisma migrate dev --name <name> # scaffold DB migration
-npx webjs dev                        # dev server with live reload
-npx webjs build                      # (optional) prod bundle via esbuild
-npx webjs start --port 3000          # production server
+npm test                             # run unit tests (153 tests)
+npm run test:e2e                     # run E2E tests (9 tests, needs chromium)
+cd examples/blog && npx webjs dev    # dev server with live reload
+cd website && npm run dev            # website + docs + blog together
 ```
 
-If any of the above goes stale, the source of truth is the `scripts` in
-`package.json` at the repo root and `examples/blog/package.json`.
+## Reference codebases
+
+Cloned locally at `~/Documents/Projects/` for architectural reference:
+
+- **`lit`** — [Lit](https://lit.dev): web-component-first JS library.
+  Compare: rendering, hydration, component lifecycle, directives.
+- **`remix`** — [Remix](https://remix.run) v3: AI-first web framework
+  (under active development). Compare: module loading, streaming SSR,
+  hydration data delivery.
+- **`turbo`** — [Turbo](https://turbo.hotwired.dev): Turbo Drive library.
+  Compare: link interception, body swap, history, View Transitions.
+- **`next.js`** — [Next.js](https://nextjs.org): React framework with
+  App Router. Compare: file conventions, routing, layouts, metadata,
+  loading states, streaming SSR. webjs's router is at near-parity.

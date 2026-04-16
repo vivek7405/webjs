@@ -6,15 +6,18 @@ export const metadata = {
 };
 
 const FEATURES = [
-  { icon: '🤖', title: 'AI-First Development', desc: 'Designed from the ground up for AI agents. AGENTS.md contract, predictable file conventions, explicit exports, one-file-per-function actions — LLMs can read, understand, and modify a webjs app without guesswork.' },
-  { icon: '⚡', title: 'No Build Step', desc: 'Source files are served to the browser as native ES modules. Edit a .ts file, refresh, see it. No webpack, no Vite, no compile step. AI agents can modify code and see results immediately — no build pipeline to debug.' },
-  { icon: '🧱', title: 'Web Components First', desc: 'Components use shadow DOM + Declarative Shadow DOM for real SSR. The browser upgrades them on connect — no hydration runtime in the critical path.' },
-  { icon: '📁', title: 'Next.js-Style Routing', desc: 'File-based routing inspired by Next.js App Router. page.ts, layout.ts, route.ts, error.ts, middleware.ts, [params], (groups), _private folders.' },
+  { icon: '🤖', title: 'AI-First Development', desc: 'Designed from the ground up for AI agents. AGENTS.md contract, cross-agent guardrails (.cursorrules, .windsurfrules, copilot-instructions.md), auto-generated tests and docs, opinionated conventions — LLMs produce production-quality code without guesswork.' },
+  { icon: '⚡', title: 'No Build Step', desc: 'Source files are served to the browser as native ES modules. Edit a .ts file, refresh, see it. No webpack, no Vite, no compile step. Auto-vendor bundling for npm packages via import maps.' },
+  { icon: '🧱', title: 'Web Components First', desc: 'Full lifecycle (shouldUpdate, willUpdate, firstUpdated, updated), reactive controllers, context protocol, client-side error boundaries. Shadow DOM + Declarative Shadow DOM for real SSR. Selective hydration for below-the-fold components.' },
+  { icon: '📁', title: 'Next.js-Style Routing', desc: 'File-based routing at parity with Next.js App Router. page.ts, layout.ts, route.ts, error.ts, loading.ts (auto-Suspense), not-found.ts (nested), middleware.ts, [param], [...slug], [[...optional]], (groups), metadata routes (sitemap.ts, robots.ts).' },
   { icon: '🔄', title: 'Server Actions + superjson', desc: 'Import a .server.ts function from a client component — it auto-rewrites into a type-safe RPC stub. Date, Map, Set, BigInt round-trip as their real types.' },
   { icon: '🌊', title: 'Streaming SSR + Suspense', desc: 'Fallback content flushes immediately. Deferred data streams in as it resolves. TTFB measured in milliseconds, not seconds.' },
   { icon: '🔌', title: 'WebSocket Built In', desc: 'Export a WS function from any route.ts and it becomes a WebSocket endpoint. connectWS() on the client auto-reconnects with exponential backoff.' },
-  { icon: '🛡️', title: 'Production Batteries', desc: 'CSRF on RPC, gzip/brotli, HTTP/2, 103 Early Hints, modulepreload, rate limiting, health probes, graceful shutdown, pluggable JSON logger.' },
+  { icon: '🛡️', title: 'Production Batteries', desc: 'CSRF on RPC, gzip/brotli, HTTP/2, 103 Early Hints, modulepreload with transitive deps, lazy component loading, rate limiting, health probes, graceful shutdown.' },
   { icon: '📝', title: 'TypeScript or JSDoc', desc: 'Full-stack type safety with .ts files (Node strips types natively) or JSDoc annotations. Zero compile step either way.' },
+  { icon: '🧪', title: 'Testing Built In', desc: 'webjs test runs unit + E2E tests. webjs check validates conventions. webjs create scaffolds test directories and example tests. AI agents auto-generate tests with every feature.' },
+  { icon: '🔀', title: 'Git Workflow Guardrails', desc: 'Branch checking before edits, merge approval with delete/keep prompt, no AI attribution in commits, auto-rebase before work. Enforced via hooks for Claude Code, config files for Cursor/Windsurf/Copilot.' },
+  { icon: '📐', title: 'Opinionated Conventions', desc: 'Modules architecture, one-function-per-file actions, CONVENTIONS.md with overridable rules, webjs check validator. AI agents produce consistent code across teams.' },
 ];
 
 export default function LandingPage() {
@@ -195,16 +198,17 @@ export default function LandingPage() {
 
     <section class="hero">
       <div class="rubric"><span class="name">webjs</span> <span class="sep">—</span> ai-first web framework</div>
-      <h1>The web framework AI agents can read, write, and ship.</h1>
+      <h1>The web framework where AI agents write production code.</h1>
       <p>
         webjs is an AI-first, no-build, web-components-first framework inspired by Next.js.
-        Predictable conventions, one function per file, explicit types, zero hidden magic —
-        designed so LLMs and humans build full-stack apps at the same speed.
+        Cross-agent guardrails enforce tests, docs, branch hygiene, and conventions automatically —
+        AI agents deliver production-quality code without being asked.
+        Works with Claude Code, Cursor, Windsurf, Copilot, and any AI coding assistant.
       </p>
       <div class="hero-actions">
-        <a class="primary" href="http://localhost:4000/docs/getting-started">Get Started</a>
-        <a class="secondary" href="https://github.com/vivek7405/webjs">GitHub</a>
-        <a class="secondary" href="http://localhost:3456">Example Blog</a>
+        <a class="primary" href="http://localhost:4000/docs/getting-started" target="_blank">Get Started</a>
+        <a class="secondary" href="https://github.com/vivek7405/webjs" target="_blank">GitHub</a>
+        <a class="secondary" href="http://localhost:3456" target="_blank">Example Blog</a>
       </div>
     </section>
 
@@ -263,30 +267,50 @@ middleware.ts              → global auth</pre>
       <h2>Built for AI agents</h2>
       <div class="mode-grid">
         <div class="mode-card">
-          <div class="rubric">AGENTS.md</div>
-          <h3>The machine-readable contract</h3>
+          <div class="rubric">Cross-agent guardrails</div>
+          <h3>Every AI agent, same standards</h3>
           <p>
-            Every webjs app ships an <code>AGENTS.md</code> at its root — a structured
-            document listing file conventions, the public API surface, invariants to preserve,
-            and step-by-step recipes for common tasks. AI coding assistants read it before
-            making any change, so they never guess.
+            <code>webjs create</code> scaffolds config files for Claude Code
+            (<code>.claude/settings.json</code> + hooks), Cursor (<code>.cursorrules</code>),
+            Windsurf (<code>.windsurfrules</code>), and GitHub Copilot
+            (<code>.github/copilot-instructions.md</code>). Every agent gets the same
+            rules: auto-generate tests, auto-update docs, check branch before coding,
+            ask before merging, no AI attribution in commits.
           </p>
         </div>
         <div class="mode-card">
-          <div class="rubric">Why AI-first</div>
-          <h3>Conventions LLMs understand</h3>
+          <div class="rubric">AGENTS.md</div>
+          <h3>The machine-readable contract</h3>
           <p>
-            One file per action. One file per query. Explicit <code>.server.ts</code>
-            boundary. No magic re-exports, no barrel files, no implicit config.
-            An AI agent can grep for a function, understand its scope, modify it, and
-            verify the change — without loading the entire codebase into context.
+            Every webjs app ships <code>AGENTS.md</code> with the full API surface,
+            directive decision guide, lifecycle hooks, controller patterns, and
+            step-by-step recipes. <code>CONVENTIONS.md</code> adds overridable
+            project rules. AI agents read both before making any change.
+          </p>
+        </div>
+        <div class="mode-card">
+          <div class="rubric">Autonomous mode</div>
+          <h3>Sandbox-safe defaults</h3>
+          <p>
+            In bypass-permissions mode, agents auto-decide: create feature branches,
+            rebase before starting, generate meaningful commits, fix failing tests,
+            delete feature branches after merge. Same quality bar — no blocking on questions.
+          </p>
+        </div>
+        <div class="mode-card">
+          <div class="rubric">Testing &amp; conventions</div>
+          <h3>Quality enforced, not requested</h3>
+          <p>
+            <code>webjs test</code> runs unit + E2E tests. <code>webjs check</code>
+            validates conventions (actions in modules, components registered, tests exist).
+            AI agents run both automatically — the user never has to ask for tests or docs.
           </p>
         </div>
       </div>
     </section>
 
     <footer>
-      <p><a href="https://github.com/vivek7405/webjs">GitHub</a> · <a href="http://localhost:4000/docs/getting-started">Docs</a> · <a href="http://localhost:4000/docs/ai-first">AI-First</a> · <a href="http://localhost:3456">Example Blog</a></p>
+      <p><a href="https://github.com/vivek7405/webjs" target="_blank">GitHub</a> · <a href="http://localhost:4000/docs/getting-started" target="_blank">Docs</a> · <a href="http://localhost:4000/docs/ai-first" target="_blank">AI-First</a> · <a href="http://localhost:3456" target="_blank">Example Blog</a></p>
     </footer>
   `;
 }
