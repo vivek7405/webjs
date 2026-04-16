@@ -1,7 +1,9 @@
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { renderToString, isNotFound, isRedirect, lookupModuleUrl } from 'webjs';
+import { resolve } from 'node:path';
+import { renderToString, isNotFound, isRedirect, lookupModuleUrl, isLazy } from 'webjs';
 import { importMapTag } from './importmap.js';
 import { readToken, newToken, cookieHeader } from './csrf.js';
+import { transitiveDeps } from './module-graph.js';
 
 /**
  * SSR a matched page route to a Response.
@@ -17,7 +19,7 @@ import { readToken, newToken, cookieHeader } from './csrf.js';
  * @param {import('./router.js').PageRoute} route
  * @param {Record<string,string>} params
  * @param {URL} url
- * @param {{ dev: boolean, appDir: string, req?: Request, bundle?: boolean }} opts
+ * @param {{ dev: boolean, appDir: string, req?: Request, bundle?: boolean, moduleGraph?: import('./module-graph.js').ModuleGraph }} opts
  * @returns {Promise<Response>}
  */
 export async function ssrPage(route, params, url, opts) {
@@ -40,10 +42,23 @@ export async function ssrPage(route, params, url, opts) {
       ? ['/__webjs/bundle.js']
       : [route.file, ...route.layouts].map((f) => toUrlPath(f, opts.appDir));
     // Emit <link rel="modulepreload"> for every custom element that actually
-    // rendered. Skipped in bundle mode (the bundle already contains them).
+    // rendered PLUS their transitive dependencies (from the module graph).
+    // Skipped in bundle mode (the bundle already contains them).
+    // URLs are deduplicated so the browser never sees the same preload twice.
+    // Lazy components are excluded from preloads and instead loaded via
+    // IntersectionObserver when they enter the viewport.
+    const { eager: eagerComponents, lazy: lazyComponents } = opts.bundle
+      ? { eager: [], lazy: {} }
+      : componentPreloads(suspenseCtx.usedComponents, opts.appDir);
     const preloads = opts.bundle
       ? []
-      : componentPreloads(suspenseCtx.usedComponents, opts.appDir);
+      : deduplicatedPreloads(
+          eagerComponents,
+          moduleUrls,
+          opts.moduleGraph,
+          [route.file, ...route.layouts],
+          opts.appDir,
+        );
     return streamingHtmlResponse(
       wrapHead({
         metadata,
@@ -51,6 +66,7 @@ export async function ssrPage(route, params, url, opts) {
         dev: opts.dev,
         streaming: suspenseCtx.pending.length > 0,
         preloads,
+        lazyComponents,
       }),
       body,
       suspenseCtx,
@@ -146,6 +162,23 @@ async function renderChain(route, ctx, dev, suspenseCtx) {
   const page = await loadModule(route.file, dev);
   if (!page.default) throw new Error(`Page ${route.file} must have a default export`);
   let tree = await page.default(ctx);
+
+  // If the route has a loading.ts file, wrap the page in a Suspense boundary
+  // with the loading content as the fallback. This mirrors Next.js's automatic
+  // Suspense wrapping when loading.tsx is present.
+  if (route.loadings && route.loadings.length > 0) {
+    // Use the innermost (closest) loading file
+    const loadingFile = route.loadings[route.loadings.length - 1];
+    try {
+      const loadingMod = await loadModule(loadingFile, dev);
+      if (loadingMod.default) {
+        const { Suspense } = await import('webjs');
+        const fallback = await loadingMod.default(ctx);
+        tree = Suspense({ fallback, children: Promise.resolve(tree) });
+      }
+    } catch { /* loading file failed — skip, render page directly */ }
+  }
+
   for (let i = route.layouts.length - 1; i >= 0; i--) {
     const mod = await loadModule(route.layouts[i], dev);
     if (!mod.default) continue;
@@ -197,14 +230,33 @@ function wrapInDocument(body, opts) {
  * (breaks the ES-module waterfall without a bundler) and any user-declared
  * `metadata.preload` entries.
  *
- * @param {{ metadata: Record<string,any>, moduleUrls: string[], dev: boolean, streaming: boolean, preloads?: string[] }} opts
+ * @param {{ metadata: Record<string,any>, moduleUrls: string[], dev: boolean, streaming: boolean, preloads?: string[], lazyComponents?: Record<string, string> }} opts
  */
 function wrapHead(opts) {
   const imports = opts.moduleUrls.map((u) => `import ${JSON.stringify(u)};`).join('\n');
-  const boot = imports ? `<script type="module">\n${imports}\n</script>` : '';
+  // Lazy-loader boot script: loads the IntersectionObserver-based lazy loader
+  // and registers tag → URL pairs for below-the-fold components.
+  const lazyEntries = opts.lazyComponents && Object.keys(opts.lazyComponents).length
+    ? opts.lazyComponents
+    : null;
+  const lazyBoot = lazyEntries
+    ? `\nimport { observeLazy } from 'webjs/lazy-loader';\nobserveLazy(${JSON.stringify(lazyEntries)});`
+    : '';
+  const boot = (imports || lazyBoot) ? `<script type="module">\n${imports}${lazyBoot}\n</script>` : '';
   const reload = opts.dev ? `<script type="module" src="/__webjs/reload.js"></script>` : '';
+  // Suspense resolver: a single script that auto-resolves streamed-in
+  // <template data-webjs-resolve> elements. Uses a MutationObserver to
+  // detect new templates as they stream in — no per-chunk inline scripts.
   const suspenseBoot = opts.streaming
-    ? `<script>window.__webjsResolve=function(id){var t=document.querySelector('template[data-webjs-resolve="'+id+'"]');var b=document.getElementById(id);if(t&&b){b.replaceWith(t.content.cloneNode(true));t.remove();}};</script>`
+    ? `<script>(function(){` +
+      `function r(id){var t=document.querySelector('template[data-webjs-resolve="'+id+'"]');` +
+      `var b=document.getElementById(id);if(t&&b){b.replaceWith(t.content.cloneNode(true));t.remove();}}` +
+      `window.__webjsResolve=r;` +
+      `if(typeof MutationObserver!=='undefined'){` +
+      `new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes.forEach(function(n){` +
+      `if(n.nodeType===1&&n.tagName==='TEMPLATE'&&n.dataset.webjsResolve){r(n.dataset.webjsResolve);}` +
+      `});});}).observe(document.documentElement,{childList:true,subtree:true});}` +
+      `})()</script>`
     : '';
 
   const m = opts.metadata || {};
@@ -261,21 +313,76 @@ ${suspenseBoot}
  * URLs for modulepreload. Components that didn't pass a module URL to
  * `register()` are skipped silently (no harm, just no preload hint).
  *
+ * Returns separate eager and lazy lists. Lazy components (static lazy = true)
+ * are NOT preloaded — they're loaded by the IntersectionObserver-based
+ * lazy-loader when the element enters the viewport.
+ *
  * @param {Set<string>} usedTags
  * @param {string} appDir
+ * @returns {{ eager: string[], lazy: Record<string, string> }}
  */
 function componentPreloads(usedTags, appDir) {
-  const out = [];
+  const eager = [];
+  /** @type {Record<string, string>} */
+  const lazy = {};
   for (const tag of usedTags) {
     const fileUrl = lookupModuleUrl(tag);
     if (!fileUrl) continue;
     try {
       const abs = fileURLToPath(fileUrl);
       if (!abs.startsWith(appDir)) continue;
-      out.push(toUrlPath(abs, appDir));
+      const url = toUrlPath(abs, appDir);
+      if (isLazy(tag)) {
+        lazy[tag] = url;
+      } else {
+        eager.push(url);
+      }
     } catch { /* ignore */ }
   }
-  return out;
+  return { eager, lazy };
+}
+
+/**
+ * Merge component preloads with transitive dependencies from the module
+ * graph, then deduplicate against the already-imported module URLs.
+ *
+ * @param {string[]} componentUrls  direct component module URLs
+ * @param {string[]} moduleUrls     boot script imports (page + layouts)
+ * @param {import('./module-graph.js').ModuleGraph | undefined} graph
+ * @param {string[]} entryFiles     absolute paths of page + layout files
+ * @param {string} appDir
+ * @returns {string[]}
+ */
+function deduplicatedPreloads(componentUrls, moduleUrls, graph, entryFiles, appDir) {
+  const seen = new Set(moduleUrls);
+  const result = [];
+
+  // Add direct component URLs
+  for (const url of componentUrls) {
+    if (seen.has(url)) continue;
+    seen.add(url);
+    result.push(url);
+  }
+
+  // Add transitive deps from the module graph
+  if (graph) {
+    // Combine entry files + component files for graph lookup
+    const allEntries = [...entryFiles];
+    for (const url of componentUrls) {
+      // Convert URL back to absolute path for graph lookup
+      const abs = resolve(appDir, url.startsWith('/') ? url.slice(1) : url);
+      allEntries.push(abs);
+    }
+    const deps = transitiveDeps(graph, allEntries, appDir);
+    for (const dep of deps) {
+      const url = toUrlPath(dep, appDir);
+      if (seen.has(url)) continue;
+      seen.add(url);
+      result.push(url);
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -326,6 +433,9 @@ function streamingHtmlResponse(headHtml, bodyHtml, ctx, status, req, url) {
             })
           );
           for (const r of settled) {
+            // Emit just the <template> — the MutationObserver-based resolver
+            // in the boot script detects it and swaps it into the placeholder.
+            // Falls back to the __webjsResolve global for browsers without MO.
             const chunk =
               `<template data-webjs-resolve="${r.id}">${r.html}</template>` +
               `<script>window.__webjsResolve&&__webjsResolve("${r.id}")</script>`;

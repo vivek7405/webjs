@@ -24,6 +24,9 @@ import {
 import { defaultLogger } from './logger.js';
 import { withRequest } from './context.js';
 import { attachWebSocket } from './websocket.js';
+import { scanBareImports, vendorImportMapEntries, serveVendorBundle, clearVendorCache } from './vendor.js';
+import { buildModuleGraph, transitiveDeps } from './module-graph.js';
+import { setVendorEntries } from './importmap.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -69,6 +72,13 @@ export async function createRequestHandler(opts) {
   const logger = opts.logger || defaultLogger({ dev });
   const coreDir = locateCoreDir(appDir);
 
+  // Scan for bare npm imports and register vendor import map entries.
+  const bareImports = await scanBareImports(appDir);
+  setVendorEntries(vendorImportMapEntries(bareImports));
+
+  // Build module dependency graph for transitive preload hints.
+  const moduleGraph = await buildModuleGraph(appDir);
+
   const state = {
     routeTable: await buildRouteTable(appDir),
     actionIndex: await buildActionIndex(appDir, dev),
@@ -77,12 +87,19 @@ export async function createRequestHandler(opts) {
       ? join(appDir, '.webjs/bundle.js')
       : null,
     logger,
+    bareImports,
+    moduleGraph,
   };
 
   async function rebuild() {
     state.routeTable = await buildRouteTable(appDir);
     state.actionIndex = await buildActionIndex(appDir, dev);
     state.middleware = await loadMiddleware(appDir, dev, logger);
+    // Re-scan bare imports and module graph on rebuild
+    clearVendorCache();
+    state.bareImports = await scanBareImports(appDir);
+    setVendorEntries(vendorImportMapEntries(state.bareImports));
+    state.moduleGraph = await buildModuleGraph(appDir);
     opts.onReload?.();
   }
 
@@ -299,11 +316,13 @@ async function handleCore(req, ctx) {
     return fileResponse(abs, { dev, immutable: !dev });
   }
 
-  // Vendored superjson — served as a single pre-bundled ESM file so its
-  // transitive deps (copy-anything, is-what) don't need their own
-  // import-map entries. Bundled lazily on first request via esbuild.
-  if (path === '/__webjs/vendor/superjson.js') {
-    return serveBundledSuperjson(appDir, dev);
+  // Vendor bundles: /__webjs/vendor/<pkg>.js
+  // superjson uses its legacy bundler; all other npm packages go through
+  // the generic auto-bundler (Vite-style optimizeDeps).
+  if (path.startsWith('/__webjs/vendor/') && path.endsWith('.js')) {
+    const pkgName = decodeURIComponent(path.slice('/__webjs/vendor/'.length, -'.js'.length));
+    if (pkgName === 'superjson') return serveBundledSuperjson(appDir, dev);
+    return serveVendorBundle(pkgName, appDir, dev);
   }
 
   // Prod bundle (if present)
@@ -380,6 +399,32 @@ async function handleCore(req, ctx) {
     }
   }
 
+  // Metadata routes: /sitemap.xml, /robots.txt, /icon, /opengraph-image, etc.
+  if (method === 'GET' && state.routeTable.metadataRoutes) {
+    const meta = state.routeTable.metadataRoutes.find((r) => r.urlPath === path);
+    if (meta) {
+      try {
+        const mod = await import(pathToFileURL(meta.file).toString() + (dev ? `?t=${Date.now()}` : ''));
+        if (mod.default) {
+          const result = await mod.default();
+          // If the function returns a Response, use it directly.
+          if (result instanceof Response) return result;
+          // If it returns a string, determine content type from the URL path.
+          const ct = path.endsWith('.xml') ? 'application/xml; charset=utf-8'
+            : path.endsWith('.txt') ? 'text/plain; charset=utf-8'
+            : path.endsWith('.json') ? 'application/json; charset=utf-8'
+            : 'application/octet-stream';
+          return new Response(typeof result === 'string' ? result : JSON.stringify(result), {
+            headers: { 'content-type': ct, 'cache-control': dev ? 'no-cache' : 'public, max-age=3600' },
+          });
+        }
+      } catch (e) {
+        if (dev) console.error(`[webjs] metadata route error (${meta.stem}):`, e);
+        return new Response('Internal error', { status: 500 });
+      }
+    }
+  }
+
   // API route (route.js handler)
   const api = matchApi(state.routeTable, path);
   if (api) {
@@ -392,7 +437,7 @@ async function handleCore(req, ctx) {
     const page = matchPage(state.routeTable, path);
     if (page) {
       const handler = () => ssrPage(page.route, page.params, url, {
-        dev, appDir, req, bundle: !!state.bundlePath,
+        dev, appDir, req, bundle: !!state.bundlePath, moduleGraph: state.moduleGraph,
       });
       return runWithSegmentMiddleware(req, page.route.middlewares, handler, dev);
     }
