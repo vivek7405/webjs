@@ -5,12 +5,36 @@ export const metadata = { title: 'API Routes — webjs' };
 export default function ApiRoutes() {
   return html`
     <h1>API Routes</h1>
-    <p>API routes are <code>route.ts</code> files that export named HTTP method handlers. They follow the same file-based routing as pages but produce JSON (or any <code>Response</code>) instead of HTML. A <code>route.ts</code> can live <strong>anywhere under <code>app/</code></strong> -- not just in an <code>api/</code> subdirectory.</p>
+    <p>API routes are <code>route.ts</code> files that export named async functions for each HTTP method you want to handle. They follow the same file-based routing as pages but produce JSON (or any <code>Response</code>) instead of HTML.</p>
 
-    <h2>Basic Structure</h2>
-    <p>Create a <code>route.ts</code> file and export functions named after the HTTP methods you want to handle:</p>
+    <blockquote>A <code>route.ts</code> can live <strong>anywhere under <code>app/</code></strong> -- not just inside an <code>api/</code> subdirectory. <code>app/webhook/route.ts</code> maps to <code>/webhook</code>, <code>app/stripe/checkout/route.ts</code> maps to <code>/stripe/checkout</code>, and so on.</blockquote>
 
+    <h2>Supported Methods</h2>
+    <p>Export one or more named async functions from a <code>route.ts</code> file:</p>
+    <ul>
+      <li><strong>GET</strong> -- read a resource</li>
+      <li><strong>POST</strong> -- create a resource</li>
+      <li><strong>PUT</strong> -- replace a resource</li>
+      <li><strong>PATCH</strong> -- partially update a resource</li>
+      <li><strong>DELETE</strong> -- remove a resource</li>
+    </ul>
+    <p>If a request arrives with a method that has no matching export, webjs returns <code>405 Method Not Allowed</code> with an <code>Allow</code> header listing the available methods.</p>
+
+    <h2>Handler Signature</h2>
+    <p>Every handler receives two arguments:</p>
+    <pre>export async function GET(
+  req: Request,
+  { params }: { params: Record&lt;string, string&gt; }
+): Promise&lt;Response | object&gt;</pre>
+    <ul>
+      <li><strong>req</strong> -- a standard Web API <code>Request</code>. Read headers, cookies, URL, query params, body.</li>
+      <li><strong>params</strong> -- an object containing dynamic route segment values (from <code>[slug]</code> folder names).</li>
+    </ul>
+    <p>Return a <code>Response</code> for full control over status, headers, and body. Or return a plain object (or array, number, null) and webjs wraps it with <code>Response.json()</code> automatically.</p>
+
+    <h2>Basic Example</h2>
     <pre>// app/api/hello/route.ts
+
 export async function GET(req: Request) {
   return Response.json({ message: 'Hello from webjs!' });
 }
@@ -20,32 +44,17 @@ export async function POST(req: Request) {
   return Response.json({ received: body });
 }</pre>
 
-    <p>Supported method exports: <code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, <code>DELETE</code>. If a request arrives with a method that has no matching export, webjs returns <code>405 Method Not Allowed</code> with an <code>Allow</code> header listing the available methods.</p>
+    <h2>Routes Outside app/api/</h2>
+    <p>There is nothing special about the <code>api/</code> directory. A <code>route.ts</code> file anywhere in the <code>app/</code> tree becomes an API endpoint at the corresponding URL path:</p>
+    <pre>app/
+  api/
+    users/route.ts          # GET /api/users
+  webhook/route.ts          # POST /webhook
+  stripe/checkout/route.ts  # POST /stripe/checkout
+  health/route.ts           # GET /health</pre>
 
-    <h2>Request and Response (Standard Web APIs)</h2>
-    <p>Handlers receive a standard <a href="https://developer.mozilla.org/en-US/docs/Web/API/Request">Request</a> object and should return a standard <a href="https://developer.mozilla.org/en-US/docs/Web/API/Response">Response</a>. No framework-specific request/response wrappers -- it is the same API you would use in a Service Worker, Cloudflare Worker, or Deno.</p>
-
-    <pre>export async function POST(req: Request) {
-  // Read headers
-  const auth = req.headers.get('authorization');
-
-  // Read URL / query params
-  const url = new URL(req.url);
-  const page = url.searchParams.get('page') || '1';
-
-  // Read body (JSON, FormData, text, etc.)
-  const data = await req.json();
-
-  // Return any valid Response
-  return new Response(JSON.stringify({ ok: true }), {
-    status: 201,
-    headers: { 'content-type': 'application/json', 'x-custom': 'value' },
-  });
-}</pre>
-
-    <h2>Dynamic Params</h2>
+    <h2>Dynamic Params via [slug] Folders</h2>
     <p>Dynamic route segments work identically to page routes. A folder named <code>[slug]</code> captures that segment into <code>params.slug</code>:</p>
-
     <pre>// app/api/posts/[slug]/route.ts
 type Ctx = { params: { slug: string } };
 
@@ -59,21 +68,20 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   await db.post.delete({ where: { slug: params.slug } });
   return Response.json({ deleted: true });
 }</pre>
-
-    <p>Catch-all segments (<code>[...rest]</code>) work too:</p>
-
+    <p>Catch-all segments (<code>[...rest]</code>) work too -- <code>params.rest</code> is the full remaining path as a string:</p>
     <pre>// app/api/files/[...path]/route.ts
 type Ctx = { params: { path: string } };
 
 export async function GET(_req: Request, { params }: Ctx) {
   // params.path is "images/photo.jpg" for /api/files/images/photo.jpg
   const file = await readFile(join(STORAGE_DIR, params.path));
-  return new Response(file, { headers: { 'content-type': 'application/octet-stream' } });
+  return new Response(file, {
+    headers: { 'content-type': 'application/octet-stream' },
+  });
 }</pre>
 
     <h2>Returning Objects (Auto-JSON)</h2>
-    <p>If a handler returns a plain object (or array, null, etc.) instead of a <code>Response</code>, webjs automatically wraps it with <code>Response.json()</code>:</p>
-
+    <p>If a handler returns a plain object or array instead of a <code>Response</code>, webjs wraps it with <code>Response.json()</code>:</p>
     <pre>export async function GET() {
   const posts = await db.post.findMany();
   return posts;  // Automatically becomes Response.json(posts)
@@ -84,16 +92,14 @@ export async function POST(req: Request) {
   const post = await db.post.create({ data });
   return post;  // { id: 1, title: "Hello", createdAt: "2026-04-15T..." }
 }</pre>
-
-    <p>When you need control over the status code, headers, or streaming, return a <code>Response</code> directly.</p>
+    <p>When you need control over status code, headers, or streaming, return a <code>Response</code> directly.</p>
 
     <h2>json() Helper -- Content Negotiation</h2>
-    <p>The <code>json()</code> helper from <code>@webjs/server</code> adds smart content negotiation. It checks the incoming request's <code>Accept</code> header and responds differently:</p>
+    <p>The <code>json()</code> helper from <code>@webjs/server</code> adds smart content negotiation. It inspects the incoming request's <code>Accept</code> header and responds accordingly:</p>
     <ul>
-      <li>If the client sent <code>Accept: application/vnd.webjs+json</code> (e.g. via <code>richFetch()</code>), the response is encoded with superjson so that <code>Date</code>, <code>Map</code>, <code>Set</code>, and <code>BigInt</code> survive the round trip.</li>
+      <li>If the client sent <code>Accept: application/vnd.webjs+json</code> (e.g. via <code>richFetch()</code>), the response is encoded with <strong>superjson</strong> so that <code>Date</code>, <code>Map</code>, <code>Set</code>, and <code>BigInt</code> survive the round trip.</li>
       <li>Otherwise, the response is plain <code>application/json</code> -- standard for curl, mobile apps, and third-party consumers.</li>
     </ul>
-
     <pre>// app/api/posts/route.ts
 import { json } from '@webjs/server';
 
@@ -111,12 +117,10 @@ export async function POST(req: Request) {
   const post = await db.post.create({ data: input });
   return json(post, { status: 201 });
 }</pre>
-
-    <p>The helper reads the in-flight Request from an <code>AsyncLocalStorage</code> context (set up by the request pipeline), so you do not need to pass the request explicitly.</p>
+    <p>The helper reads the in-flight Request from an <code>AsyncLocalStorage</code> context set up by the request pipeline, so you do not need to pass the request explicitly.</p>
 
     <h2>readBody() -- Parsing Rich Request Bodies</h2>
     <p>The <code>readBody()</code> helper from <code>@webjs/server</code> is the inverse of <code>json()</code>. It parses the request body as superjson when the client sent the <code>application/vnd.webjs+json</code> content type, and as plain JSON otherwise:</p>
-
     <pre>import { json, readBody } from '@webjs/server';
 
 export async function POST(req: Request) {
@@ -129,7 +133,6 @@ export async function POST(req: Request) {
 
     <h2>richFetch() -- Typed Client Calls</h2>
     <p>On the client side, <code>richFetch()</code> from <code>webjs</code> is a drop-in replacement for <code>fetch()</code> that enables the superjson round trip:</p>
-
     <pre>import { richFetch } from 'webjs';
 
 // GET with rich types
@@ -148,11 +151,10 @@ const newPost = await richFetch('/api/posts', {
 try {
   const data = await richFetch('/api/protected');
 } catch (err) {
-  console.log(err.status);  // e.g. 401
-  console.log(err.body);    // parsed error response body
-  console.log(err.message); // error message from response or status fallback
+  console.log(err.status);   // e.g. 401
+  console.log(err.body);     // parsed error response body
+  console.log(err.message);  // error message from response or status fallback
 }</pre>
-
     <p><code>richFetch</code> automatically:</p>
     <ul>
       <li>Sets <code>Accept: application/vnd.webjs+json</code> on outgoing requests</li>
@@ -163,7 +165,6 @@ try {
 
     <h2>WebSocket: Export WS</h2>
     <p>Any <code>route.ts</code> can also export a <code>WS</code> function to handle WebSocket connections at the same URL. See the <a href="/docs/websockets">WebSockets</a> documentation for full details.</p>
-
     <pre>// app/api/chat/route.ts
 import type { WebSocket } from 'ws';
 
@@ -175,31 +176,29 @@ export function WS(ws: WebSocket, req: Request) {
   ws.on('message', (data) =&gt; ws.send('echo: ' + data));
 }</pre>
 
-    <h2>Middleware on API Routes</h2>
+    <h2>Per-Segment Middleware on API Routes</h2>
     <p>API routes participate in the same per-segment middleware chain as pages. A <code>middleware.ts</code> file in a directory applies to all routes (page and API) under that directory:</p>
-
     <pre>// app/api/auth/middleware.ts
 import { rateLimit } from '@webjs/server';
 
 // 5 requests per 10 seconds per IP on all /api/auth/* routes
 export default rateLimit({ window: '10s', max: 5 });</pre>
-
-    <p>Middleware is a function <code>(req: Request, next: () =&gt; Promise&lt;Response&gt;) =&gt; Promise&lt;Response&gt;</code>. It can modify the request, short-circuit with its own response, or call <code>next()</code> to continue to the handler:</p>
-
+    <p>Middleware is a function <code>(req: Request, next: () =&gt; Promise&lt;Response&gt;) =&gt; Promise&lt;Response&gt;</code>. It can inspect the request, short-circuit with its own response, or call <code>next()</code> to continue to the handler:</p>
     <pre>// app/api/admin/middleware.ts
-export default async function authGuard(req: Request, next: () =&gt; Promise&lt;Response&gt;) {
+export default async function authGuard(
+  req: Request,
+  next: () =&gt; Promise&lt;Response&gt;,
+) {
   const token = req.headers.get('authorization')?.replace('Bearer ', '');
   if (!token || !await verifyToken(token)) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
   return next();
 }</pre>
-
     <p>Middleware files nest. If you have <code>app/middleware.ts</code>, <code>app/api/middleware.ts</code>, and <code>app/api/admin/middleware.ts</code>, a request to <code>/api/admin/users</code> runs all three in outermost-to-innermost order.</p>
 
     <h2>Rate Limiting</h2>
     <p>webjs ships a built-in in-memory fixed-window rate limiter, shaped as a middleware:</p>
-
     <pre>import { rateLimit } from '@webjs/server';
 
 // In a middleware.ts file:
@@ -211,43 +210,27 @@ export default rateLimit({
   },
   message: 'Slow down!',  // Optional: custom error message
 });</pre>
-
     <p>When the limit is exceeded, the response is <code>429 Too Many Requests</code> with headers:</p>
     <ul>
-      <li><code>Retry-After</code>: seconds until the window resets</li>
-      <li><code>X-RateLimit-Limit</code>: the configured max</li>
-      <li><code>X-RateLimit-Remaining</code>: requests left in the current window</li>
-      <li><code>X-RateLimit-Reset</code>: Unix timestamp when the window resets</li>
+      <li><code>Retry-After</code> -- seconds until the window resets</li>
+      <li><code>X-RateLimit-Limit</code> -- the configured max</li>
+      <li><code>X-RateLimit-Remaining</code> -- requests left in the current window</li>
+      <li><code>X-RateLimit-Reset</code> -- Unix timestamp when the window resets</li>
     </ul>
-    <p>These rate-limit headers are also added to successful responses so clients can monitor their usage.</p>
+    <p>These rate-limit headers are also added to successful responses so clients can monitor their usage. The default key function extracts the client IP from <code>X-Forwarded-For</code>, <code>CF-Connecting-IP</code>, or <code>X-Real-IP</code> headers (in that order). For multi-instance deployments, use an external rate limiter (Redis, nginx, Cloudflare).</p>
 
-    <p>The default key function extracts the client IP from <code>X-Forwarded-For</code>, <code>CF-Connecting-IP</code>, or <code>X-Real-IP</code> headers (in that order). For multi-instance deployments, use an external rate limiter (Redis, nginx, Cloudflare) instead of the in-memory store.</p>
-
-    <h2>CORS: expose() vs route.ts</h2>
-    <p>There are two patterns for CORS in webjs, suited to different use cases:</p>
-
-    <table>
-      <thead>
-        <tr><th>Pattern</th><th>Where CORS is configured</th><th>Best for</th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><code>expose()</code></td>
-          <td>Per-function via the <code>cors</code> option</td>
-          <td>Server actions that double as public REST endpoints. CORS is automatic per-route, including OPTIONS preflight handling.</td>
-        </tr>
-        <tr>
-          <td><code>route.ts</code></td>
-          <td>Manually in the handler or via middleware</td>
-          <td>Full-control API routes. Set <code>Access-Control-*</code> headers yourself or write a shared middleware that applies CORS to a group of routes.</td>
-        </tr>
-      </tbody>
-    </table>
-
+    <h2>CORS on expose()d Endpoints</h2>
+    <p>There are two patterns for CORS in webjs:</p>
+    <ol>
+      <li><strong>expose() with cors option</strong> -- per-function CORS for server actions that double as REST endpoints. Preflight <code>OPTIONS</code> handling is automatic.</li>
+      <li><strong>route.ts with middleware</strong> -- manual CORS via a shared middleware that applies to all routes in a segment.</li>
+    </ol>
     <p>Example CORS middleware for route.ts files:</p>
-
     <pre>// app/api/public/middleware.ts
-export default async function cors(req: Request, next: () =&gt; Promise&lt;Response&gt;) {
+export default async function cors(
+  req: Request,
+  next: () =&gt; Promise&lt;Response&gt;,
+) {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
@@ -264,60 +247,120 @@ export default async function cors(req: Request, next: () =&gt; Promise&lt;Respo
   return resp;
 }</pre>
 
-    <h2>Backend-Only Usage Pattern</h2>
-    <p>webjs works as a <strong>pure API framework</strong> with no pages or components. If your <code>app/</code> directory contains only <code>route.ts</code> and <code>middleware.ts</code> files (no <code>page.ts</code>, no <code>layout.ts</code>), webjs serves only API routes. No SSR, no import maps, no client JS. This is ideal for microservices, backends for mobile apps, or REST APIs.</p>
+    <h2>Backend-Only Usage</h2>
+    <p>webjs works as a <strong>pure API framework</strong> with no pages or components. If your <code>app/</code> directory contains only <code>route.ts</code> and <code>middleware.ts</code> files (no <code>page.ts</code>, no <code>layout.ts</code>), webjs serves only API routes. No SSR, no import maps, no client JS. This is ideal for microservices, backends for mobile apps, or REST APIs. See <a href="/docs/backend-only">Backend-Only Mode</a> for a full guide.</p>
 
-    <pre>my-api/
-├── app/
-│   ├── api/
-│   │   ├── users/
-│   │   │   ├── route.ts         # GET /api/users, POST /api/users
-│   │   │   └── [id]/
-│   │   │       └── route.ts     # GET /api/users/:id, PUT, DELETE
-│   │   ├── auth/
-│   │   │   ├── login/
-│   │   │   │   └── route.ts     # POST /api/auth/login
-│   │   │   └── middleware.ts    # rate limiting
-│   │   └── chat/
-│   │       └── route.ts         # WS /api/chat
-│   └── middleware.ts            # global auth check
-├── middleware.ts                # top-level: logging, request ID
-├── package.json
-└── tsconfig.json</pre>
+    <h2>Complete CRUD Example</h2>
+    <p>Here is a full route.ts implementing GET, POST, and DELETE for a resource:</p>
+    <pre>// app/api/posts/route.ts
+import { json, readBody } from '@webjs/server';
 
-    <pre>// app/api/users/route.ts
-import { json } from '@webjs/server';
-
+// GET /api/posts -- list all posts, with pagination
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const page = Number(url.searchParams.get('page') || '1');
   const limit = 20;
-  const users = await db.user.findMany({
-    skip: (page - 1) * limit,
-    take: limit,
+
+  const [posts, total] = await Promise.all([
+    db.post.findMany({
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+    }),
+    db.post.count(),
+  ]);
+
+  return json({
+    posts,
+    page,
+    totalPages: Math.ceil(total / limit),
+    total,
   });
-  return json(users);
 }
 
+// POST /api/posts -- create a new post
 export async function POST(req: Request) {
-  const body = await req.json();
-  const user = await db.user.create({ data: body });
-  return json(user, { status: 201 });
+  const data = await readBody(req);
+
+  if (!data.title || typeof data.title !== 'string') {
+    return Response.json(
+      { error: 'title is required' },
+      { status: 400 },
+    );
+  }
+
+  const post = await db.post.create({
+    data: {
+      title: data.title,
+      body: data.body || '',
+      slug: data.title.toLowerCase().replace(/\\s+/g, '-'),
+    },
+  });
+
+  return json(post, { status: 201 });
+}
+
+// DELETE /api/posts -- delete posts by IDs
+export async function DELETE(req: Request) {
+  const { ids } = await req.json();
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return Response.json(
+      { error: 'ids array is required' },
+      { status: 400 },
+    );
+  }
+
+  const result = await db.post.deleteMany({
+    where: { id: { in: ids } },
+  });
+
+  return json({ deleted: result.count });
 }</pre>
 
-    <p>Start it with <code>npx webjs dev</code> or <code>npx webjs start</code> -- the same CLI, the same file conventions. Unmatched paths return a JSON 404 instead of an HTML page when the request accepts JSON.</p>
+    <h3>Single-Resource Route (Dynamic Params)</h3>
+    <pre>// app/api/posts/[slug]/route.ts
+import { json, readBody } from '@webjs/server';
+
+type Ctx = { params: { slug: string } };
+
+export async function GET(_req: Request, { params }: Ctx) {
+  const post = await db.post.findUnique({
+    where: { slug: params.slug },
+    include: { author: true },
+  });
+  if (!post) return Response.json({ error: 'Not found' }, { status: 404 });
+  return json(post);
+}
+
+export async function PUT(req: Request, { params }: Ctx) {
+  const data = await readBody(req);
+  const post = await db.post.update({
+    where: { slug: params.slug },
+    data: { title: data.title, body: data.body },
+  });
+  return json(post);
+}
+
+export async function DELETE(_req: Request, { params }: Ctx) {
+  await db.post.delete({ where: { slug: params.slug } });
+  return new Response(null, { status: 204 });
+}</pre>
 
     <h2>Summary</h2>
     <ul>
-      <li><code>route.ts</code> files export HTTP method handlers (<code>GET</code>, <code>POST</code>, etc.)</li>
-      <li>Handlers receive a standard <code>Request</code> and return a standard <code>Response</code> (or a plain object for auto-JSON)</li>
-      <li>Dynamic segments and catch-all segments work via <code>[param]</code> and <code>[...rest]</code> folders</li>
-      <li><code>json()</code> from <code>@webjs/server</code> adds content negotiation (plain JSON vs superjson)</li>
-      <li><code>readBody()</code> parses incoming request bodies with the same negotiation</li>
-      <li><code>richFetch()</code> on the client enables typed, rich-type API calls</li>
-      <li><code>WS</code> exports add WebSocket support to any route</li>
-      <li>Per-segment <code>middleware.ts</code> files apply to all routes underneath</li>
-      <li>The built-in <code>rateLimit()</code> middleware provides fixed-window rate limiting out of the box</li>
+      <li><code>route.ts</code> files export named async functions: <code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, <code>DELETE</code></li>
+      <li>They can live anywhere under <code>app/</code>, not just in <code>app/api/</code></li>
+      <li>Handler signature: <code>(req: Request, { params }) =&gt; Response | object</code></li>
+      <li>Dynamic params via <code>[slug]</code> folder names, catch-all via <code>[...rest]</code></li>
+      <li>Return a <code>Response</code> for full control, or return a plain object for auto-JSON</li>
+      <li><code>json()</code> from <code>@webjs/server</code> provides content negotiation (plain JSON vs superjson)</li>
+      <li><code>readBody()</code> parses incoming superjson or JSON based on content type</li>
+      <li><code>richFetch()</code> on the client for typed API calls with rich types</li>
+      <li>Export <code>WS</code> from the same <code>route.ts</code> for WebSocket support</li>
+      <li>Per-segment <code>middleware.ts</code> applies to all routes underneath</li>
+      <li><code>rateLimit()</code> from <code>@webjs/server</code> for built-in rate limiting</li>
+      <li>CORS via <code>expose()</code> options or custom middleware on <code>route.ts</code> files</li>
       <li>webjs works as a backend-only API framework when no page files are present</li>
     </ul>
   `;
