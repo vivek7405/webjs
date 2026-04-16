@@ -18,7 +18,7 @@ and defines the AI-driven development workflow for the webjs framework itself.
 3. Verify the branch matches the task at hand
 
 **Autonomous mode (sandbox/bypass):** Don't ask questions. Auto-create
-branches, auto-rebase, auto-merge + delete feature branches, auto-generate
+branches, auto-rebase, auto-generate
 commit messages, fix failing tests and violations. Same quality bar.
 
 **Every change to this framework MUST include — automatically, without the

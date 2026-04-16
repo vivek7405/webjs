@@ -16,7 +16,7 @@ FIRST, before writing any code:
 
 If running without interactive approval, auto-decide:
 - On main? Auto-create feature/<task-slug> branch
-- Parent behind? Auto-rebase. Merge? Auto-merge + delete feature branches.
+- Parent behind? Auto-rebase. Merge? ALWAYS ask user — never autonomous.
 - Auto-generate commit messages. Fix failing tests and violations.
 Quality bar stays the same — no blocking on questions.
 

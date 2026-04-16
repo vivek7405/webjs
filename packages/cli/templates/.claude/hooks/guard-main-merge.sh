@@ -22,14 +22,8 @@ if [ -z "$COMMAND" ]; then
   exit 0
 fi
 
-# Respect bypass/dangerous mode.
-SETTINGS="$HOME/.claude/settings.json"
-if [ -f "$SETTINGS" ]; then
-  BYPASS=$(jq -r '.skipDangerousModePermissionPrompt // false' "$SETTINGS" 2>/dev/null)
-  if [ "$BYPASS" = "true" ]; then
-    exit 0
-  fi
-fi
+# Merge guard NEVER respects bypass mode. Merging is irreversible and
+# always requires explicit user approval, regardless of settings.
 
 # Normalize whitespace so multi-line / heredoc commands match the same way.
 NORMALIZED=$(printf '%s' "$COMMAND" | tr -s '[:space:]' ' ')

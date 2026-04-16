@@ -20,7 +20,7 @@ FIRST, before writing any code:
 If running without interactive approval, auto-decide:
 - On main? Auto-create feature/<task-slug> branch
 - Parent has new commits? Auto-rebase before starting
-- Merge? Auto-merge, auto-delete feature/fix branches
+- Merge? ALWAYS ask user — merging is never autonomous, even in bypass mode
 - Commit message? Auto-generate (meaningful, no AI attribution)
 - Tests failing? Fix them. Convention violations? Fix them.
 Quality bar stays the same — just no blocking on questions.

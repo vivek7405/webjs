@@ -65,8 +65,8 @@ using these defaults:**
 |---|---|---|
 | On `main`, need a branch | Auto-create `feature/<task-slug>` | Never pollute main |
 | Parent branch has new commits | Auto-rebase before starting | Avoid conflicts |
-| Ready to merge | Auto-merge (no prompt) | User opted into autonomy |
-| Delete branch after merge? | **Delete** feature/fix branches, **keep** long-lived branches (dev, staging, release/*) | Feature branches are disposable |
+| Ready to merge | **ALWAYS ask user** — merging is never autonomous | Merges are irreversible |
+| Delete branch after merge? | **ALWAYS ask user** — include in the merge prompt | User decides |
 | Commit message | Auto-generate meaningful message | Never ask "what should the message be?" |
 | Tests failing | Fix them, don't ask | User expects working code |
 | Convention violations | Fix them, don't ask | User expects clean code |
