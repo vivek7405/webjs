@@ -181,7 +181,7 @@ export default function LandingPage() {
     </style>
 
     <section class="hero">
-      <div class="rubric">● ai-first · open source framework</div>
+      <div class="rubric">● webjs: ai-first framework</div>
       <h1>The framework AI agents can read, write, and ship.</h1>
       <p>
         webjs is an AI-first, no-build, web-components-first framework inspired by Next.js.

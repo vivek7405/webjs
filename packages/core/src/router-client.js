@@ -202,7 +202,14 @@ function swapBody(newBody) {
   ) {
     // Same layout shell — swap only the light-DOM children (page content).
     // Keep the shell element itself (and its shadow root with chrome).
-    const children = [...newShell.childNodes];
+    //
+    // Filter out <template shadowrootmode="open"> — that's the Declarative
+    // Shadow DOM from SSR. On client navigation the shadow root already
+    // exists; inserting the DSD template as light DOM would add a stale
+    // invisible element that can confuse slot projection and cause a flash.
+    const children = [...newShell.childNodes].filter(
+      (n) => !(n instanceof HTMLTemplateElement && /** @type any */ (n).getAttribute('shadowrootmode'))
+    );
     currentShell.replaceChildren(...children);
   } else {
     // Different structure — full swap.
