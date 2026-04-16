@@ -1,12 +1,13 @@
 import { html } from 'webjs';
 
 export const metadata = {
-  title: 'webjs — a no-build, web-components-first full-stack framework',
-  description: 'Server-rendered web components, file-based routing, server actions, TypeScript with zero bundler.',
+  title: 'webjs — AI-first, no-build, web-components-first full-stack framework',
+  description: 'Designed for AI agents to read and write. Server-rendered web components, file-based routing, server actions, TypeScript with zero bundler.',
 };
 
 const FEATURES = [
-  { icon: '⚡', title: 'No Build Step', desc: 'Source files are served to the browser as native ES modules. Edit a .ts file, refresh, see it. No webpack, no Vite, no compile step in the hot loop.' },
+  { icon: '🤖', title: 'AI-First Development', desc: 'Designed from the ground up for AI agents. AGENTS.md contract, predictable file conventions, explicit exports, one-file-per-function actions — LLMs can read, understand, and modify a webjs app without guesswork.' },
+  { icon: '⚡', title: 'No Build Step', desc: 'Source files are served to the browser as native ES modules. Edit a .ts file, refresh, see it. No webpack, no Vite, no compile step. AI agents can modify code and see results immediately — no build pipeline to debug.' },
   { icon: '🧱', title: 'Web Components First', desc: 'Components use shadow DOM + Declarative Shadow DOM for real SSR. The browser upgrades them on connect — no hydration runtime in the critical path.' },
   { icon: '📁', title: 'Next.js-Style Routing', desc: 'File-based routing inspired by Next.js App Router. page.ts, layout.ts, route.ts, error.ts, middleware.ts, [params], (groups), _private folders.' },
   { icon: '🔄', title: 'Server Actions + superjson', desc: 'Import a .server.ts function from a client component — it auto-rewrites into a type-safe RPC stub. Date, Map, Set, BigInt round-trip as their real types.' },
@@ -180,12 +181,12 @@ export default function LandingPage() {
     </style>
 
     <section class="hero">
-      <div class="rubric">● open source framework</div>
-      <h1>Build full-stack apps with web components. No bundler required.</h1>
+      <div class="rubric">● ai-first · open source framework</div>
+      <h1>The framework AI agents can read, write, and ship.</h1>
       <p>
-        webjs is a no-build, web-components-first framework inspired by Next.js.
-        Server-rendered pages, file-based routing, type-safe server actions,
-        streaming Suspense, WebSockets — all in plain TypeScript with zero compile step.
+        webjs is an AI-first, no-build, web-components-first framework inspired by Next.js.
+        Predictable conventions, one function per file, explicit types, zero hidden magic —
+        designed so LLMs and humans build full-stack apps at the same speed.
       </p>
       <div class="hero-actions">
         <a class="primary" href="/docs/getting-started">Get Started</a>
@@ -244,8 +245,34 @@ middleware.ts              → global auth</pre>
       </div>
     </section>
 
+    <section class="modes">
+      <h2>Built for AI agents</h2>
+      <div class="mode-grid">
+        <div class="mode-card">
+          <div class="rubric">AGENTS.md</div>
+          <h3>The machine-readable contract</h3>
+          <p>
+            Every webjs app ships an <code>AGENTS.md</code> at its root — a structured
+            document listing file conventions, the public API surface, invariants to preserve,
+            and step-by-step recipes for common tasks. AI coding assistants read it before
+            making any change, so they never guess.
+          </p>
+        </div>
+        <div class="mode-card">
+          <div class="rubric">Why AI-first</div>
+          <h3>Conventions LLMs understand</h3>
+          <p>
+            One file per action. One file per query. Explicit <code>.server.ts</code>
+            boundary. No magic re-exports, no barrel files, no implicit config.
+            An AI agent can grep for a function, understand its scope, modify it, and
+            verify the change — without loading the entire codebase into context.
+          </p>
+        </div>
+      </div>
+    </section>
+
     <footer>
-      <p>webjs is open source · <a href="https://github.com/vivek7405/webjs">GitHub</a> · <a href="/docs/getting-started">Docs</a></p>
+      <p>webjs is open source · <a href="https://github.com/vivek7405/webjs">GitHub</a> · <a href="/docs/getting-started">Docs</a> · <a href="/docs/ai-first">AI-First Development</a></p>
     </footer>
   `;
 }

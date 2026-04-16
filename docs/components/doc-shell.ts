@@ -6,6 +6,7 @@ const NAV_SECTIONS = [
     title: 'Getting Started',
     items: [
       { href: '/docs/getting-started', label: 'Introduction' },
+      { href: '/docs/ai-first', label: 'AI-First Development' },
       { href: '/docs/architecture', label: 'Architecture' },
       { href: '/docs/configuration', label: 'Configuration' },
     ],

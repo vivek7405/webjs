@@ -143,8 +143,12 @@ async function performNavigation(href, isPopState) {
     // Merge <head>.
     mergeHead(doc.head);
 
-    // Swap <body>.
-    document.body.innerHTML = doc.body.innerHTML;
+    // Swap body content intelligently: if both old and new body share the
+    // same outermost custom element (the layout shell), swap only that
+    // element's light-DOM children (the page content). This preserves the
+    // layout chrome (header, sidebar, footer) so it doesn't flicker.
+    // Falls back to full body swap if structures differ.
+    swapBody(doc.body);
 
     // Re-run scripts (browser ignores scripts set via innerHTML).
     reactivateScripts(document.body);
@@ -171,6 +175,56 @@ async function performNavigation(href, isPopState) {
   } finally {
     document.documentElement.removeAttribute('data-navigating');
   }
+}
+
+/**
+ * Swap body content, preserving shared layout elements to avoid flicker.
+ *
+ * Strategy: find the outermost custom element in both the current and new
+ * body. If they're the same tag name (e.g. both <blog-shell> or <doc-shell>),
+ * the layout is shared — swap only the light-DOM children of that element
+ * (the page content projected through <slot>). The shadow root (header,
+ * sidebar, footer) stays untouched.
+ *
+ * If the structure differs (different layout or no custom element), fall
+ * back to replacing the entire body innerHTML.
+ *
+ * @param {HTMLElement} newBody
+ */
+function swapBody(newBody) {
+  const currentShell = findLayoutShell(document.body);
+  const newShell = findLayoutShell(newBody);
+
+  if (
+    currentShell &&
+    newShell &&
+    currentShell.tagName === newShell.tagName
+  ) {
+    // Same layout shell — swap only the light-DOM children (page content).
+    // Keep the shell element itself (and its shadow root with chrome).
+    const children = [...newShell.childNodes];
+    currentShell.replaceChildren(...children);
+  } else {
+    // Different structure — full swap.
+    document.body.innerHTML = newBody.innerHTML;
+  }
+}
+
+/**
+ * Walk body's direct children looking for the first custom element
+ * (a tag with a hyphen in its name). In webjs apps this is typically
+ * the layout shell: <blog-shell>, <doc-shell>, etc.
+ *
+ * Skips <script>, <style>, text nodes, and comments.
+ *
+ * @param {HTMLElement} body
+ * @returns {Element | null}
+ */
+function findLayoutShell(body) {
+  for (const child of body.children) {
+    if (child.tagName.includes('-')) return child;
+  }
+  return null;
 }
 
 /** @param {HTMLHeadElement} newHead */
