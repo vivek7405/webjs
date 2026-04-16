@@ -182,7 +182,7 @@ export default function LandingPage() {
 
     <section class="hero">
       <div class="rubric">webjs - ai-first web framework</div>
-      <h1>The framework AI agents can read, write, and ship.</h1>
+      <h1>The web framework AI agents can read, write, and ship.</h1>
       <p>
         webjs is an AI-first, no-build, web-components-first framework inspired by Next.js.
         Predictable conventions, one function per file, explicit types, zero hidden magic —
