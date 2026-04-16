@@ -152,8 +152,18 @@ export class CommentsThread extends WebComponent {
         const j = await r.json().catch(() => ({}));
         throw new Error(j.error || `${r.status}`);
       }
+      // Add the comment from the POST response immediately — don't rely
+      // solely on the WebSocket to deliver it. WS handles OTHER users'
+      // comments arriving live; the dedup check in onMessage prevents
+      // the same comment from appearing twice.
+      const created = await r.json().catch(() => null);
+      const cur = this.state.comments;
+      if (created && !cur.some((c) => c.id === created.id)) {
+        this.setState({ comments: [...cur, created], busy: false });
+      } else {
+        this.setState({ busy: false });
+      }
       input.value = '';
-      this.setState({ busy: false });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.setState({ busy: false, error: msg });
