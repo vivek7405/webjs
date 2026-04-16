@@ -212,30 +212,17 @@ async function performNavigation(href, isPopState) {
 
 
 /**
- * Swap the light-DOM children of the layout shell without ever leaving
- * the slot empty (which causes a one-frame layout collapse + header flash).
+ * Swap the light-DOM children of the layout shell.
  *
- * Strategy: append new content first, THEN remove old content. The slot
- * always has at least one set of assigned nodes. Both mutations happen
- * synchronously (no await between), so the browser never paints the
- * doubled state either — JS runs to completion before the next paint.
- *
- * Uses View Transitions API when available for extra visual polish.
+ * replaceChildren is a single atomic DOM operation — the browser doesn't
+ * paint between removing old and inserting new. Uses View Transitions API
+ * when available for a smooth cross-fade visual effect.
  *
  * @param {Element} shell
  * @param {ChildNode[]} children
  */
 function swapSlotContent(shell, children) {
-  const doSwap = () => {
-    // Snapshot old children BEFORE appending new ones.
-    const old = [...shell.childNodes];
-    // Append new content into a fragment (single DOM mutation).
-    const frag = document.createDocumentFragment();
-    for (const c of children) frag.appendChild(c);
-    shell.appendChild(frag);
-    // Now remove old children. Slot transitions old→new without empty state.
-    for (const n of old) n.remove();
-  };
+  const doSwap = () => shell.replaceChildren(...children);
 
   if (/** @type any */ (document).startViewTransition) {
     /** @type any */ (document).startViewTransition(doSwap);
