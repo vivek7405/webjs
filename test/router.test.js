@@ -131,3 +131,84 @@ test('matches route.js anywhere under app/, not only /api', async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('optional catch-all [[...slug]] matches with and without params', async () => {
+  const dir = await scaffold({
+    'app/docs/[[...slug]]/page.js': 'export default () => ""',
+  });
+  try {
+    const table = await buildRouteTable(dir);
+    // Matches /docs (no params)
+    const root = matchPage(table, '/docs');
+    assert.ok(root, '/docs should match optional catch-all');
+    // Matches /docs/getting-started
+    const one = matchPage(table, '/docs/getting-started');
+    assert.ok(one, '/docs/getting-started should match');
+    assert.equal(one.params.slug, 'getting-started');
+    // Matches /docs/a/b/c
+    const deep = matchPage(table, '/docs/a/b/c');
+    assert.ok(deep, '/docs/a/b/c should match');
+    assert.equal(deep.params.slug, 'a/b/c');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('nested not-found.js files are collected per segment', async () => {
+  const dir = await scaffold({
+    'app/page.js': 'export default () => ""',
+    'app/not-found.js': 'export default () => "root 404"',
+    'app/dashboard/page.js': 'export default () => ""',
+    'app/dashboard/not-found.js': 'export default () => "dashboard 404"',
+  });
+  try {
+    const table = await buildRouteTable(dir);
+    assert.ok(table.notFound, 'root not-found should exist');
+    assert.ok(table.notFounds.get('.'), 'root not-found in map');
+    assert.ok(table.notFounds.get('dashboard'), 'dashboard not-found in map');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('metadata routes are detected (sitemap, robots)', async () => {
+  const dir = await scaffold({
+    'app/page.js': 'export default () => ""',
+    'app/sitemap.js': 'export default () => "<urlset></urlset>"',
+    'app/robots.js': 'export default () => "User-agent: *\\nAllow: /"',
+  });
+  try {
+    const table = await buildRouteTable(dir);
+    assert.ok(table.metadataRoutes.length >= 2, `Expected >=2 metadata routes, got ${table.metadataRoutes.length}`);
+    const sitemap = table.metadataRoutes.find((r) => r.stem === 'sitemap');
+    assert.ok(sitemap, 'sitemap route should exist');
+    assert.equal(sitemap.urlPath, '/sitemap.xml');
+    const robots = table.metadataRoutes.find((r) => r.stem === 'robots');
+    assert.ok(robots, 'robots route should exist');
+    assert.equal(robots.urlPath, '/robots.txt');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loading.js files are attached to page routes', async () => {
+  const dir = await scaffold({
+    'app/page.js': 'export default () => ""',
+    'app/loading.js': 'export default () => "Loading..."',
+    'app/dashboard/page.js': 'export default () => ""',
+    'app/dashboard/loading.js': 'export default () => "Dashboard loading..."',
+  });
+  try {
+    const table = await buildRouteTable(dir);
+    const root = matchPage(table, '/');
+    assert.ok(root);
+    assert.ok(root.route.loadings.length >= 1, 'root page should have loading');
+    const dash = matchPage(table, '/dashboard');
+    assert.ok(dash);
+    assert.ok(dash.route.loadings.length >= 1, 'dashboard page should have loading');
+    // Dashboard inherits root loading AND has its own
+    assert.ok(dash.route.loadings.length >= 2, 'dashboard should have nested loadings');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
