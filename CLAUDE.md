@@ -24,14 +24,21 @@ commit messages, fix failing tests and violations. Same quality bar.
 **Every change to this framework MUST include — automatically, without the
 user asking:**
 
-### 1. Tests
+### 1. Commit often
+
+**Commit after each logical unit of work** — a completed feature, a
+passing test, a doc update. Don't accumulate 50 files of uncommitted
+changes. Small focused commits with meaningful messages. No AI
+attribution trailers.
+
+### 2. Tests
 
 - **Unit tests** in `test/*.test.js` for any new/changed functionality
 - **E2E tests** in `test/e2e.test.mjs` for user-facing features
 - Run `npm test` after every change. Run `npm run test:e2e` for E2E.
 - Never report work as done with failing tests.
 
-### 2. Documentation
+### 3. Documentation
 
 When adding or modifying framework features, update:
 
@@ -43,7 +50,7 @@ When adding or modifying framework features, update:
 - **`packages/cli/templates/`** — Update CONVENTIONS.md/CLAUDE.md templates
   if the change affects what scaffolded apps should know
 
-### 3. Convention validation
+### 4. Convention validation
 
 Run `npx webjs check` on the blog example after changes.
 
