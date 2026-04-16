@@ -140,18 +140,43 @@ async function performNavigation(href, isPopState) {
     }
     const doc = PARSER.parseFromString(html, 'text/html');
 
-    // Merge <head>.
-    mergeHead(doc.head);
+    // Swap content: if both pages share the same layout shell (e.g.
+    // <blog-shell>), swap ONLY the slot content (page-specific light DOM).
+    // The layout (header, sidebar, footer, theme toggle) stays completely
+    // mounted — no DOM touch, no style recalc, no flicker.
+    //
+    // We deliberately DON'T call mergeHead or reactivateScripts when the
+    // layout is shared: the import map stays, cached modules stay, the
+    // layout's scripts already ran. Only the <title> is updated.
+    const currentShell = findLayoutShell(document.body);
+    const newShell = findLayoutShell(doc.body);
 
-    // Swap body content intelligently: if both old and new body share the
-    // same outermost custom element (the layout shell), swap only that
-    // element's light-DOM children (the page content). This preserves the
-    // layout chrome (header, sidebar, footer) so it doesn't flicker.
-    // Falls back to full body swap if structures differ.
-    swapBody(doc.body);
+    if (currentShell && newShell && currentShell.tagName === newShell.tagName) {
+      // Same layout — minimal swap: title + slot content only.
+      const newTitle = doc.querySelector('title');
+      if (newTitle) document.title = newTitle.textContent || '';
 
-    // Re-run scripts (browser ignores scripts set via innerHTML).
-    reactivateScripts(document.body);
+      const children = [...newShell.childNodes].filter(
+        (n) => !(n instanceof HTMLTemplateElement && /** @type any */ (n).getAttribute('shadowrootmode'))
+      );
+      swapSlotContent(currentShell, children);
+
+      // Run only page-specific inline scripts (inside the new content),
+      // not layout-level scripts.
+      reactivateScripts(currentShell);
+    } else {
+      // Different layout structure — full swap.
+      mergeHead(doc.head);
+      const doSwap = () => {
+        document.body.innerHTML = doc.body.innerHTML;
+        reactivateScripts(document.body);
+      };
+      if (/** @type any */ (document).startViewTransition) {
+        /** @type any */ (document).startViewTransition(doSwap);
+      } else {
+        doSwap();
+      }
+    }
 
     // Update URL.
     if (!isPopState) {
@@ -177,50 +202,6 @@ async function performNavigation(href, isPopState) {
   }
 }
 
-/**
- * Swap body content, preserving shared layout elements to avoid flicker.
- *
- * Strategy: find the outermost custom element in both the current and new
- * body. If they're the same tag name (e.g. both <blog-shell> or <doc-shell>),
- * the layout is shared — swap only the light-DOM children of that element
- * (the page content projected through <slot>). The shadow root (header,
- * sidebar, footer) stays untouched.
- *
- * If the structure differs (different layout or no custom element), fall
- * back to replacing the entire body innerHTML.
- *
- * @param {HTMLElement} newBody
- */
-function swapBody(newBody) {
-  const currentShell = findLayoutShell(document.body);
-  const newShell = findLayoutShell(newBody);
-
-  if (
-    currentShell &&
-    newShell &&
-    currentShell.tagName === newShell.tagName
-  ) {
-    // Same layout shell — swap only the light-DOM children (page content).
-    // Keep the shell element itself (and its shadow root with chrome).
-    //
-    // Filter out <template shadowrootmode="open"> — that's the Declarative
-    // Shadow DOM from SSR. On client navigation the shadow root already
-    // exists; inserting the DSD template as light DOM would add a stale
-    // invisible element that can confuse slot projection and cause a flash.
-    const children = [...newShell.childNodes].filter(
-      (n) => !(n instanceof HTMLTemplateElement && /** @type any */ (n).getAttribute('shadowrootmode'))
-    );
-    swapSlotContent(currentShell, children);
-  } else {
-    // Different structure — full swap.
-    const doSwap = () => { document.body.innerHTML = newBody.innerHTML; };
-    if (/** @type any */ (document).startViewTransition) {
-      /** @type any */ (document).startViewTransition(doSwap);
-    } else {
-      doSwap();
-    }
-  }
-}
 
 /**
  * Swap the light-DOM children of the layout shell without ever leaving
