@@ -1,15 +1,16 @@
 /**
  * Build the import map JSON injected into every SSR HTML document.
- * Lets users write bare specifiers (`import { html } from 'webjs'`,
- * `import { parse } from 'superjson'`) without relative paths or a bundler.
+ *
+ * superjson is mapped to a single pre-bundled ESM file (its transitive deps
+ * copy-anything + is-what are inlined by esbuild on first request) so only
+ * ONE fetch is needed and no extra bare-specifier entries leak into the map.
  */
 export function buildImportMap() {
   return {
     imports: {
       'webjs':     '/__webjs/core/index.js',
       'webjs/':    '/__webjs/core/src/',
-      'superjson': '/__webjs/vendor/superjson/dist/index.js',
-      'superjson/': '/__webjs/vendor/superjson/dist/',
+      'superjson': '/__webjs/vendor/superjson.js',
     },
   };
 }

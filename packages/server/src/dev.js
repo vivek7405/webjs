@@ -299,15 +299,11 @@ async function handleCore(req, ctx) {
     return fileResponse(abs, { dev, immutable: !dev });
   }
 
-  // Vendored packages (only superjson in v1) — served from node_modules so
-  // browsers can resolve bare specifiers in the import map.
-  if (path.startsWith('/__webjs/vendor/superjson/')) {
-    const rel = path.slice('/__webjs/vendor/superjson/'.length);
-    const root = locatePackageDir(appDir, 'superjson');
-    if (!root) return new Response('superjson not installed', { status: 404 });
-    const abs = resolve(root, rel);
-    if (!abs.startsWith(root)) return new Response('forbidden', { status: 403 });
-    return fileResponse(abs, { dev, immutable: !dev });
+  // Vendored superjson — served as a single pre-bundled ESM file so its
+  // transitive deps (copy-anything, is-what) don't need their own
+  // import-map entries. Bundled lazily on first request via esbuild.
+  if (path === '/__webjs/vendor/superjson.js') {
+    return serveBundledSuperjson(appDir, dev);
   }
 
   // Prod bundle (if present)
@@ -687,6 +683,45 @@ async function exists(p) {
  * @param {string} abs
  * @param {boolean} dev
  */
+/** @type {string | null} */
+let _superjsonBundle = null;
+
+/**
+ * Serve superjson as a single self-contained ESM file. All transitive deps
+ * (copy-anything, is-what) are inlined by esbuild so the browser only ever
+ * fetches one file and no bare-specifier imports leak.
+ */
+async function serveBundledSuperjson(appDir, dev) {
+  if (!_superjsonBundle) {
+    let build;
+    try { ({ build } = await import('esbuild')); }
+    catch {
+      return new Response('/* esbuild missing */', {
+        status: 500,
+        headers: { 'content-type': 'application/javascript; charset=utf-8' },
+      });
+    }
+    const entryPoint = locatePackageDir(appDir, 'superjson');
+    if (!entryPoint) return new Response('superjson not found', { status: 404 });
+    const result = await build({
+      entryPoints: [join(entryPoint, 'dist', 'index.js')],
+      bundle: true,
+      format: 'esm',
+      target: 'es2022',
+      platform: 'browser',
+      write: false,
+      minify: !dev,
+    });
+    _superjsonBundle = result.outputFiles[0].text;
+  }
+  return new Response(_superjsonBundle, {
+    headers: {
+      'content-type': 'application/javascript; charset=utf-8',
+      'cache-control': dev ? 'no-cache' : 'public, max-age=31536000, immutable',
+    },
+  });
+}
+
 async function tsResponse(abs, dev) {
   let esbuild;
   try { ({ transform: esbuild } = await import('esbuild')); }
