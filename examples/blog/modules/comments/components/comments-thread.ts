@@ -180,8 +180,8 @@ export class CommentsThread extends WebComponent {
 
       ${this.signedIn
         ? html`<div class="compose">
-            <input placeholder="Add a comment…" ?disabled=${busy} autocomplete="off" />
-            <button ?disabled=${busy} @click=${() => this.postComment()}>Post</button>
+            <input placeholder="Add a comment…" autocomplete="off" />
+            <button onclick="this.getRootNode().host.postComment()">Post</button>
           </div>
           ${error ? html`<p class="err">${error}</p>` : ''}`
         : html`<p class="signin">
