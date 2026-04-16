@@ -1,5 +1,6 @@
 import { WebComponent, html, css } from 'webjs';
 import './theme-toggle.ts';
+import './doc-search.ts';
 
 const NAV_SECTIONS = [
   {
@@ -189,6 +190,7 @@ export class DocShell extends WebComponent {
           </a>
           <theme-toggle></theme-toggle>
         </div>
+        <doc-search></doc-search>
         <nav>
           ${NAV_SECTIONS.map(s => html`
             <div class="section-title">${s.title}</div>

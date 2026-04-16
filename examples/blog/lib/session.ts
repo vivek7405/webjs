@@ -38,7 +38,7 @@ export async function getUserByToken(
   });
   if (!s) return null;
   if (s.expiresAt <= new Date()) {
-    await prisma.session.delete({ where: { token } }).catch(() => {});
+    await prisma.session.delete({ where: { token } }).catch(() => { });
     return null;
   }
   return s.user;
