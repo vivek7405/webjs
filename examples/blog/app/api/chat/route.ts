@@ -14,7 +14,9 @@ export async function GET() {
 
 export function WS(ws: WebSocket) {
   clients.add(ws);
-  broadcast({ kind: 'join', count: clients.size }, ws);
+  // Broadcast to ALL clients INCLUDING the joiner — everyone needs the
+  // updated count. Without this, the joining client shows "0 online".
+  broadcast({ kind: 'join', count: clients.size });
   ws.on('message', (data) => {
     let msg: { text?: string };
     try { msg = JSON.parse(data.toString()); } catch { msg = { text: data.toString() }; }
