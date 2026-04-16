@@ -16,7 +16,15 @@ This file instructs AI coding agents on how to work in this project.
 **CRITICAL: Every code change MUST include the following — automatically,
 without the user having to ask:**
 
-### 1. Tests (mandatory, never skip)
+### 1. Commit often (mandatory, never skip)
+
+**Commit after each logical unit of work** — a completed feature, a
+passing test, a doc update. Don't accumulate many files of uncommitted
+changes. Small focused commits with meaningful messages. No AI
+attribution trailers. Committing is automatic — the user should never
+have to ask.
+
+### 2. Tests (mandatory, never skip)
 
 - **New server action or query** → add unit test in `test/unit/<module>.test.ts`
 - **New or modified component** → add unit test (SSR rendering via `renderToString`)
@@ -28,7 +36,7 @@ After writing code, ALWAYS run `npx webjs test`. If E2E-relevant,
 also run `npx webjs test --e2e`. Never report a task as done with
 failing tests.
 
-### 2. Documentation (mandatory, never skip)
+### 3. Documentation (mandatory, never skip)
 
 When adding or modifying features, update:
 
@@ -42,7 +50,7 @@ If this project has a **docs/** directory, also:
 If this project has a **website/** directory, also:
 - Update the website landing page if the feature is user-facing/marketable.
 
-### 3. Convention validation
+### 4. Convention validation
 
 After making changes, run `npx webjs check` and fix any violations before
 reporting the task as done.

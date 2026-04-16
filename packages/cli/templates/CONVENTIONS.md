@@ -26,12 +26,16 @@ even if the user doesn't explicitly ask.**
 
 ### Every code change must include:
 
-1. **Tests** — Unit test for logic, E2E test for user-facing behavior.
+1. **Commits** — Commit after each logical unit of work. Small, focused
+   commits with meaningful messages. Don't accumulate dozens of changed
+   files. Committing is automatic — the user should never have to ask.
+
+2. **Tests** — Unit test for logic, E2E test for user-facing behavior.
    See the "Testing" section below for what type of test each change needs.
    Run `npx webjs test` after every change. Never mark work as done with
    failing tests.
 
-2. **Documentation updates** — When adding or modifying features:
+3. **Documentation updates** — When adding or modifying features:
    - Update `AGENTS.md` if the change affects the framework API surface.
    - Update `CONVENTIONS.md` only if the change introduces a new convention.
    - If a `docs/` directory exists, add or update the relevant doc page.
