@@ -8,10 +8,10 @@ export default function RootLayout({ children }: { children: unknown }) {
       (function(){
         try {
           var t = localStorage.getItem('webjs_theme');
-          document.documentElement.dataset.theme = (t === 'dark') ? 'dark' : 'light';
-        } catch (_) {
-          document.documentElement.dataset.theme = 'light';
-        }
+          if (t === 'light' || t === 'dark') {
+            document.documentElement.dataset.theme = t;
+          }
+        } catch (_) {}
       })();
     </script>
     <style>

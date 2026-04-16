@@ -48,14 +48,14 @@ export class ThemeToggle extends WebComponent {
 
   constructor() {
     super();
-    this.state = { theme: 'light' };
+    this.state = { theme: 'system' };
   }
 
   connectedCallback() {
     super.connectedCallback();
     let saved: string | null = null;
     try { saved = localStorage.getItem('webjs_theme'); } catch {}
-    const theme: Theme = saved === 'light' || saved === 'dark' ? saved : 'light';
+    const theme: Theme = saved === 'light' || saved === 'dark' ? saved : 'system';
     this.setState({ theme });
   }
 

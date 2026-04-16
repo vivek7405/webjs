@@ -130,10 +130,10 @@ export default function RootLayout({ children }: { children: unknown }) {
       (function(){
         try {
           var t = localStorage.getItem('webjs_theme');
-          document.documentElement.dataset.theme = (t === 'dark') ? 'dark' : 'light';
-        } catch (_) {
-          document.documentElement.dataset.theme = 'light';
-        }
+          if (t === 'light' || t === 'dark') {
+            document.documentElement.dataset.theme = t;
+          }
+        } catch (_) {}
       })();
     </script>
     <style>
@@ -224,21 +224,26 @@ export class ThemeToggle extends WebComponent {
 
   constructor() {
     super();
-    this.state = { theme: 'light' };
+    this.state = { theme: 'system' };
   }
 
   connectedCallback() {
     super.connectedCallback();
     let saved: string | null = null;
     try { saved = localStorage.getItem('webjs_theme'); } catch {}
-    this.setState({ theme: saved === 'dark' ? 'dark' : 'light' });
+    this.setState({ theme: saved === 'light' || saved === 'dark' ? saved : 'system' });
   }
 
   cycle() {
-    const next: Theme = this.state.theme === 'light' ? 'dark' : 'light';
+    const next: Theme = this.state.theme === 'system' ? 'light'
+      : this.state.theme === 'light' ? 'dark' : 'system';
     this.setState({ theme: next });
-    try { localStorage.setItem('webjs_theme', next); } catch {}
-    document.documentElement.dataset.theme = next;
+    try {
+      if (next === 'system') localStorage.removeItem('webjs_theme');
+      else localStorage.setItem('webjs_theme', next);
+    } catch {}
+    if (next === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = next;
   }
 
   render() {
