@@ -1,0 +1,16 @@
+{
+  "name": "@webjs/docs",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "webjs dev --port 4000",
+    "start": "webjs start --port 4000",
+    "build": "webjs build"
+  },
+  "dependencies": {
+    "@webjs/cli": "0.1.0",
+    "@webjs/server": "0.1.0",
+    "webjs": "0.1.0"
+  }
+}

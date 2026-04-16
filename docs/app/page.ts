@@ -1,0 +1,251 @@
+import { html } from 'webjs';
+
+export const metadata = {
+  title: 'webjs — a no-build, web-components-first full-stack framework',
+  description: 'Server-rendered web components, file-based routing, server actions, TypeScript with zero bundler.',
+};
+
+const FEATURES = [
+  { icon: '⚡', title: 'No Build Step', desc: 'Source files are served to the browser as native ES modules. Edit a .ts file, refresh, see it. No webpack, no Vite, no compile step in the hot loop.' },
+  { icon: '🧱', title: 'Web Components First', desc: 'Components use shadow DOM + Declarative Shadow DOM for real SSR. The browser upgrades them on connect — no hydration runtime in the critical path.' },
+  { icon: '📁', title: 'Next.js-Style Routing', desc: 'File-based routing inspired by Next.js App Router. page.ts, layout.ts, route.ts, error.ts, middleware.ts, [params], (groups), _private folders.' },
+  { icon: '🔄', title: 'Server Actions + superjson', desc: 'Import a .server.ts function from a client component — it auto-rewrites into a type-safe RPC stub. Date, Map, Set, BigInt round-trip as their real types.' },
+  { icon: '🌊', title: 'Streaming SSR + Suspense', desc: 'Fallback content flushes immediately. Deferred data streams in as it resolves. TTFB measured in milliseconds, not seconds.' },
+  { icon: '🔌', title: 'WebSocket Built In', desc: 'Export a WS function from any route.ts and it becomes a WebSocket endpoint. connectWS() on the client auto-reconnects with exponential backoff.' },
+  { icon: '🛡️', title: 'Production Batteries', desc: 'CSRF on RPC, gzip/brotli, HTTP/2, 103 Early Hints, modulepreload, rate limiting, health probes, graceful shutdown, pluggable JSON logger.' },
+  { icon: '📝', title: 'TypeScript or JSDoc', desc: 'Full-stack type safety with .ts files (Node strips types natively) or JSDoc annotations. Zero compile step either way.' },
+];
+
+export default function LandingPage() {
+  return html`
+    <style>
+      .hero {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: var(--sp-8) var(--sp-5) var(--sp-7);
+        text-align: center;
+      }
+      .hero .rubric {
+        font: 600 11px/1 var(--font-mono);
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: var(--sp-4);
+      }
+      .hero h1 {
+        font: 700 var(--fs-display)/1.05 var(--font-serif);
+        letter-spacing: -0.03em;
+        margin: 0 0 var(--sp-5);
+        text-wrap: balance;
+      }
+      .hero p {
+        font-size: var(--fs-lede);
+        line-height: 1.55;
+        color: var(--fg-muted);
+        max-width: 60ch;
+        margin: 0 auto var(--sp-6);
+      }
+      .hero-actions {
+        display: flex;
+        gap: var(--sp-3);
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      .hero-actions a {
+        display: inline-block;
+        padding: var(--sp-3) var(--sp-5);
+        border-radius: 999px;
+        font: 600 14px/1 var(--font-sans);
+        text-decoration: none;
+        transition: background var(--t-fast), border-color var(--t-fast);
+      }
+      .hero-actions .primary {
+        background: var(--accent);
+        color: var(--accent-fg);
+      }
+      .hero-actions .primary:hover { background: var(--accent-hover); }
+      .hero-actions .secondary {
+        background: transparent;
+        color: var(--fg-muted);
+        border: 1px solid var(--border-strong);
+      }
+      .hero-actions .secondary:hover { color: var(--fg); border-color: var(--fg-muted); }
+
+      .install {
+        max-width: 520px;
+        margin: 0 auto var(--sp-8);
+        padding: var(--sp-4);
+        background: var(--bg-sunken);
+        border: 1px solid var(--border);
+        border-radius: var(--rad);
+        font: 14px/1.6 var(--font-mono);
+        color: var(--fg-muted);
+        text-align: left;
+        overflow-x: auto;
+      }
+      .install .comment { color: var(--fg-subtle); }
+      .install .cmd { color: var(--fg); }
+
+      .features {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 0 var(--sp-5) var(--sp-8);
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: var(--sp-4);
+      }
+      .feature {
+        padding: var(--sp-5);
+        background: var(--bg-elev);
+        border: 1px solid var(--border);
+        border-radius: var(--rad-lg);
+        transition: border-color var(--t), box-shadow var(--t);
+      }
+      .feature:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
+      .feature .icon { font-size: 24px; margin-bottom: var(--sp-2); }
+      .feature h3 {
+        font-size: 1rem;
+        font-weight: 700;
+        margin: 0 0 var(--sp-2);
+        color: var(--fg);
+      }
+      .feature p {
+        font-size: 14px;
+        line-height: 1.55;
+        color: var(--fg-muted);
+        margin: 0;
+      }
+
+      .modes {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 0 var(--sp-5) var(--sp-8);
+      }
+      .modes h2 {
+        font: 700 var(--fs-h2)/1.2 var(--font-serif);
+        letter-spacing: -0.02em;
+        text-align: center;
+        margin: 0 0 var(--sp-5);
+      }
+      .mode-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--sp-4);
+      }
+      @media (max-width: 600px) { .mode-grid { grid-template-columns: 1fr; } }
+      .mode-card {
+        padding: var(--sp-5) var(--sp-6);
+        background: var(--bg-elev);
+        border: 1px solid var(--border);
+        border-radius: var(--rad-lg);
+      }
+      .mode-card .rubric {
+        font: 600 10px/1 var(--font-mono);
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: var(--sp-2);
+      }
+      .mode-card h3 {
+        font: 700 1.2rem/1.25 var(--font-serif);
+        margin: 0 0 var(--sp-3);
+      }
+      .mode-card p {
+        font-size: 14px;
+        line-height: 1.6;
+        color: var(--fg-muted);
+        margin: 0 0 var(--sp-3);
+      }
+      .mode-card pre {
+        margin: 0;
+        padding: var(--sp-3);
+        border-radius: var(--rad-sm);
+        background: var(--bg-sunken);
+        border: 1px solid var(--border);
+        font: 13px/1.5 var(--font-mono);
+        overflow-x: auto;
+      }
+
+      footer {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: var(--sp-7) var(--sp-5);
+        border-top: 1px solid var(--border);
+        text-align: center;
+        font-size: 13px;
+        color: var(--fg-subtle);
+      }
+      footer a { color: var(--accent); text-decoration: none; }
+      footer a:hover { text-decoration: underline; }
+    </style>
+
+    <section class="hero">
+      <div class="rubric">● open source framework</div>
+      <h1>Build full-stack apps with web components. No bundler required.</h1>
+      <p>
+        webjs is a no-build, web-components-first framework inspired by Next.js.
+        Server-rendered pages, file-based routing, type-safe server actions,
+        streaming Suspense, WebSockets — all in plain TypeScript with zero compile step.
+      </p>
+      <div class="hero-actions">
+        <a class="primary" href="/docs/getting-started">Get Started</a>
+        <a class="secondary" href="https://github.com/vivek7405/webjs">GitHub</a>
+      </div>
+    </section>
+
+    <div class="install">
+      <span class="comment"># quickstart</span><br>
+      <span class="cmd">git clone https://github.com/vivek7405/webjs</span><br>
+      <span class="cmd">cd webjs && npm install</span><br>
+      <span class="cmd">cd examples/blog</span><br>
+      <span class="cmd">npx prisma migrate dev --name init</span><br>
+      <span class="cmd">npx webjs dev</span><br>
+      <span class="comment"># → http://localhost:3000</span>
+    </div>
+
+    <div class="features">
+      ${FEATURES.map(f => html`
+        <div class="feature">
+          <div class="icon">${f.icon}</div>
+          <h3>${f.title}</h3>
+          <p>${f.desc}</p>
+        </div>
+      `)}
+    </div>
+
+    <section class="modes">
+      <h2>One framework, two modes</h2>
+      <div class="mode-grid">
+        <div class="mode-card">
+          <div class="rubric">Full-Stack</div>
+          <h3>Pages + API + Components</h3>
+          <p>
+            SSR pages with web components, server actions, Prisma, auth,
+            WebSockets, streaming. Everything you need for a complete app.
+          </p>
+          <pre>app/page.ts          → SSR page
+app/api/posts/route.ts → REST endpoint
+components/counter.ts  → interactive UI
+actions/posts.server.ts → server action</pre>
+        </div>
+        <div class="mode-card">
+          <div class="rubric">Backend-Only</div>
+          <h3>Just API Routes</h3>
+          <p>
+            Skip pages entirely. Use webjs as a lightweight API framework
+            with file-based routing, middleware, rate limiting, WebSockets,
+            and TypeScript — zero frontend required.
+          </p>
+          <pre>app/api/users/route.ts     → CRUD
+app/api/auth/middleware.ts → rate limit
+app/api/chat/route.ts      → WebSocket
+middleware.ts              → global auth</pre>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <p>webjs is open source · <a href="https://github.com/vivek7405/webjs">GitHub</a> · <a href="/docs/getting-started">Docs</a></p>
+    </footer>
+  `;
+}
