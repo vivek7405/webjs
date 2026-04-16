@@ -4,6 +4,7 @@ import { lookup, lookupModuleUrl, allTags } from './registry.js';
 import { stylesToString, isCSS } from './css.js';
 import { isRepeat } from './repeat.js';
 import { isSuspense } from './suspense.js';
+import { isUnsafeHTML, isLive } from './directives.js';
 
 /**
  * Render a TemplateResult (or any renderable value) to an HTML string.
@@ -41,6 +42,14 @@ async function render(value, ctx) {
   if (value && typeof /** @type any */ (value).then === 'function') {
     value = await value;
     return render(value, ctx);
+  }
+  // unsafeHTML — inject raw HTML string without escaping.
+  if (isUnsafeHTML(value)) {
+    return String(/** @type any */ (value).value ?? '');
+  }
+  // live() — on the server, just unwrap and render the inner value.
+  if (isLive(value)) {
+    return render(/** @type any */ (value).value, ctx);
   }
   if (Array.isArray(value)) {
     const parts = await Promise.all(value.map((v) => render(v, ctx)));
@@ -322,4 +331,290 @@ function applyAttrsToInstance(instance, attrs, Cls) {
 /** @param {string} s */
 function camelCase(s) {
   return s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+// ---------------------------------------------------------------------------
+// Streaming renderer
+// ---------------------------------------------------------------------------
+
+/**
+ * Render a TemplateResult (or any renderable value) to a `ReadableStream`
+ * that yields HTML chunks as strings.
+ *
+ * Works identically to {@link renderToString} but streams partial HTML as
+ * it is rendered — avoiding buffering the entire page in memory. For
+ * Suspense boundaries, the fallback is yielded immediately and resolved
+ * content is streamed afterwards at the end of the response.
+ *
+ * **AI hint:** Use `renderToStream` when you want to pipe SSR output
+ * directly into a `Response` for streaming delivery (e.g. HTTP chunked
+ * transfer). It accepts the same arguments as `renderToString`.
+ *
+ * @param {unknown} value  A TemplateResult, string, array, or any renderable.
+ * @param {{ ssr?: boolean, suspenseCtx?: SuspenseCtx }} [opts]
+ * @returns {ReadableStream<string>}
+ */
+export function renderToStream(value, opts = { ssr: true }) {
+  const ctx = opts && opts.suspenseCtx;
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        if (opts && opts.ssr === false) {
+          // No DSD injection — just stream the raw rendered chunks.
+          await streamRender(value, ctx, controller);
+        } else {
+          // Render to string first to run DSD injection (which operates on
+          // the full HTML), then enqueue the result. This matches the
+          // semantics of renderToString but still gives us a stream.
+          const html = await render(value, ctx);
+          const full = await injectDSD(html, ctx);
+          controller.enqueue(full);
+        }
+
+        // Stream resolved Suspense boundaries after the main content.
+        if (ctx && ctx.pending.length) {
+          await streamSuspenseBoundaries(ctx, controller);
+        }
+        controller.close();
+      } catch (err) {
+        controller.error(err);
+      }
+    },
+  });
+}
+
+/**
+ * Recursively render a value, enqueuing HTML chunks into the stream
+ * controller as they become available.
+ *
+ * @param {unknown} value
+ * @param {SuspenseCtx} [ctx]
+ * @param {ReadableStreamDefaultController<string>} controller
+ */
+async function streamRender(value, ctx, controller) {
+  if (value == null || value === false || value === true) return;
+  if (value && typeof /** @type any */ (value).then === 'function') {
+    value = await value;
+    return streamRender(value, ctx, controller);
+  }
+  if (isUnsafeHTML(value)) {
+    controller.enqueue(String(/** @type any */ (value).value ?? ''));
+    return;
+  }
+  if (isLive(value)) {
+    return streamRender(/** @type any */ (value).value, ctx, controller);
+  }
+  if (Array.isArray(value)) {
+    for (const v of value) await streamRender(v, ctx, controller);
+    return;
+  }
+  if (isRepeat(value)) {
+    const r = /** @type any */ (value);
+    for (let i = 0; i < r.items.length; i++) {
+      await streamRender(r.templateFn(r.items[i], i), ctx, controller);
+    }
+    return;
+  }
+  if (isSuspense(value)) {
+    const s = /** @type any */ (value);
+    if (ctx) {
+      const id = `s${ctx.nextId++}`;
+      controller.enqueue(`<webjs-boundary id="${id}">`);
+      await streamRender(s.fallback, ctx, controller);
+      controller.enqueue(`</webjs-boundary>`);
+      ctx.pending.push({ id, promise: Promise.resolve(s.children) });
+    } else {
+      await streamRender(s.fallback, ctx, controller);
+    }
+    return;
+  }
+  if (isTemplate(value)) {
+    await streamTemplate(/** @type any */ (value), ctx, controller);
+    return;
+  }
+  controller.enqueue(escapeText(String(value)));
+}
+
+/**
+ * Stream a TemplateResult by yielding each static string piece and
+ * processing each value hole incrementally.
+ *
+ * @param {import('./html.js').TemplateResult} tr
+ * @param {SuspenseCtx} [ctx]
+ * @param {ReadableStreamDefaultController<string>} controller
+ */
+async function streamTemplate(tr, ctx, controller) {
+  const { strings, values } = tr;
+  let state = 'text';
+  let attrName = '';
+  let attrStart = 0;
+  let attrQuote = '';
+  let commentDashes = 0;
+  let currentTag = '';
+  let rawTail = '';
+  // Buffer used for attribute handling where we may need to backtrack.
+  let buf = '';
+
+  for (let i = 0; i < strings.length; i++) {
+    const s = strings[i];
+    for (let j = 0; j < s.length; j++) {
+      const c = s[j];
+      switch (state) {
+        case 'text':
+          buf += c;
+          if (c === '<') state = 'tag-open';
+          break;
+        case 'tag-open':
+          buf += c;
+          if (c === '!') state = 'bang-1';
+          else if (c === '/') { state = 'tag-name'; currentTag = ''; }
+          else if (/[a-zA-Z]/.test(c)) { state = 'tag-name'; currentTag = c.toLowerCase(); }
+          else state = 'text';
+          break;
+        case 'bang-1':
+          buf += c;
+          state = c === '-' ? 'bang-dash' : 'tag-name';
+          break;
+        case 'bang-dash':
+          buf += c;
+          if (c === '-') { state = 'comment'; commentDashes = 0; }
+          else state = 'tag-name';
+          break;
+        case 'comment':
+          buf += c;
+          if (c === '-') commentDashes += 1;
+          else if (c === '>' && commentDashes >= 2) { state = 'text'; commentDashes = 0; }
+          else commentDashes = 0;
+          break;
+        case 'tag-name':
+          buf += c;
+          if (c === '>') {
+            state = isRawtextTag(currentTag) ? 'rawtext' : 'text';
+            if (state === 'rawtext') rawTail = '';
+          } else if (/\s/.test(c)) state = 'in-tag';
+          else currentTag += c.toLowerCase();
+          break;
+        case 'in-tag':
+          buf += c;
+          if (c === '>') {
+            state = isRawtextTag(currentTag) ? 'rawtext' : 'text';
+            if (state === 'rawtext') rawTail = '';
+          } else if (!/\s/.test(c) && c !== '/') {
+            state = 'attr-name';
+            attrName = c;
+            attrStart = buf.length - 1;
+          }
+          break;
+        case 'rawtext':
+          buf += c;
+          rawTail = (rawTail + c.toLowerCase()).slice(-9);
+          if (rawTail.endsWith('</script>') || rawTail.endsWith('</style>')) {
+            state = 'text';
+            rawTail = '';
+            currentTag = '';
+          }
+          break;
+        case 'attr-name':
+          if (c === '=') { state = 'after-eq'; buf += c; }
+          else if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; buf += c; }
+          else if (c === '>') { state = 'text'; attrName = ''; buf += c; }
+          else { attrName += c; buf += c; }
+          break;
+        case 'after-eq':
+          if (c === '"' || c === "'") { state = 'attr-quoted'; attrQuote = c; buf += c; }
+          else if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; buf += c; }
+          else if (c === '>') { state = 'text'; attrName = ''; buf += c; }
+          else { state = 'attr-unquoted'; buf += c; }
+          break;
+        case 'attr-unquoted':
+          if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; buf += c; }
+          else if (c === '>') { state = 'text'; attrName = ''; buf += c; }
+          else buf += c;
+          break;
+        case 'attr-quoted':
+          buf += c;
+          if (c === attrQuote) { state = 'in-tag'; attrName = ''; }
+          break;
+      }
+    }
+
+    // Flush the buffer before processing the value hole — but only when
+    // we're in text state (in attribute states we may need the buffer for
+    // backtracking).
+    if (i < values.length) {
+      let val = values[i];
+      if (val && typeof /** @type any */ (val).then === 'function') {
+        val = await val;
+      }
+      if (state === 'comment') {
+        buf += String(val ?? '');
+        commentDashes = 0;
+      } else if (state === 'rawtext') {
+        buf += String(val ?? '');
+        rawTail = '';
+      } else if (state === 'text') {
+        // Flush the buffered static content before streaming the value.
+        if (buf) { controller.enqueue(buf); buf = ''; }
+        await streamRender(val, ctx, controller);
+      } else if (state === 'after-eq') {
+        const prefix = attrName[0];
+        const name = attrName.slice(1);
+        if (prefix === '@' || prefix === '.') {
+          buf = buf.slice(0, attrStart);
+          state = 'in-tag';
+          attrName = '';
+        } else if (prefix === '?') {
+          buf = buf.slice(0, attrStart);
+          if (val) buf += `${name}=""`;
+          state = 'in-tag';
+          attrName = '';
+        } else {
+          buf += `"${escapeAttr(String(val ?? ''))}"`;
+          state = 'in-tag';
+          attrName = '';
+        }
+      } else if (state === 'attr-quoted' || state === 'attr-unquoted') {
+        buf += escapeAttr(String(val ?? ''));
+      }
+    }
+  }
+
+  // Flush any remaining buffer content.
+  if (buf) controller.enqueue(buf);
+}
+
+/**
+ * After the main HTML has been streamed, resolve pending Suspense promises
+ * and stream their replacement content as out-of-order `<template>` tags
+ * with tiny inline scripts that swap the fallback for the resolved HTML.
+ *
+ * @param {SuspenseCtx} ctx
+ * @param {ReadableStreamDefaultController<string>} controller
+ */
+async function streamSuspenseBoundaries(ctx, controller) {
+  while (ctx.pending.length) {
+    const batch = ctx.pending.splice(0);
+    await Promise.all(
+      batch.map(async ({ id, promise }) => {
+        try {
+          const resolved = await promise;
+          const html = await render(resolved, ctx);
+          const full = await injectDSD(html, ctx);
+          controller.enqueue(
+            `<template data-webjs-resolve="${id}">${full}</template>` +
+            `<script>` +
+            `(function(){` +
+            `var t=document.currentScript.previousElementSibling;` +
+            `var b=document.getElementById("${id}");` +
+            `if(b&&t){b.innerHTML=t.innerHTML;t.remove()}` +
+            `document.currentScript.remove()` +
+            `})()` +
+            `</script>`
+          );
+        } catch (err) {
+          console.error(`[webjs] Suspense boundary "${id}" rejected:`, err);
+        }
+      })
+    );
+  }
 }

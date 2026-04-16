@@ -1,6 +1,7 @@
 import { isTemplate, MARKER } from './html.js';
 import { escapeAttr } from './escape.js';
 import { isRepeat } from './repeat.js';
+import { isUnsafeHTML, isLive } from './directives.js';
 
 /**
  * Client-side renderer with **fine-grained** updates.
@@ -403,6 +404,16 @@ function clearInstance(inst, container) {
  * @param {unknown} _prev
  */
 function applyPart(part, value, _prev) {
+  // Unwrap live() — dirty-check against the live DOM value, not the
+  // last rendered value. Essential for <input> two-way binding.
+  if (isLive(value)) {
+    const liveVal = /** @type any */ (value).value;
+    if (part.kind === 'prop' && /** @type any */ (part.el)[part.name] === liveVal) return;
+    if (part.kind === 'attr' && part.el.getAttribute(part.name) === String(liveVal)) return;
+    if (part.kind === 'bool' && part.el.hasAttribute(part.name) === !!liveVal) return;
+    value = liveVal;
+  }
+
   switch (part.kind) {
     case 'child':
       applyChild(part, value);
@@ -438,6 +449,20 @@ function applyPart(part, value, _prev) {
  */
 function applyChild(part, value) {
   const marker = part.marker;
+
+  // unsafeHTML directive — inject raw HTML string as DOM nodes.
+  if (isUnsafeHTML(value)) {
+    teardownChild(part);
+    const htmlStr = String(/** @type any */ (value).value ?? '');
+    const template = document.createElement('template');
+    template.innerHTML = htmlStr;
+    const nodes = [...template.content.childNodes];
+    const frag = document.createDocumentFragment();
+    for (const n of nodes) frag.appendChild(n);
+    marker.parentNode?.insertBefore(frag, marker);
+    part.child = nodes;
+    return;
+  }
 
   // Repeat directive — keyed reconciliation. Keep previous state when both
   // old and new are repeats; otherwise tear down and rebuild.
