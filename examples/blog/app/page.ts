@@ -144,7 +144,7 @@ export default async function HomePage() {
 
     <section class="hero">
       <span class="rubric">● the webjs demo</span>
-      <h1>A blog, a chat, a login — all in <span class="accent-letter">one</span> tiny framework.</h1>
+      <h1>Full-stack in <span class="accent-letter">zero</span> build steps.</h1>
       <p>
         Every line of this page runs on webjs: server-rendered web components, file-based routes,
         server actions, streaming Suspense, live WebSockets. Zero bundler. Authored in plain JavaScript
