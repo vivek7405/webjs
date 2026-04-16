@@ -148,22 +148,17 @@ export class CommentsThread extends WebComponent {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ body }),
       });
+      const text = await r.text();
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
-        throw new Error(j.error || `${r.status}`);
+        let msg = `${r.status}`;
+        try { const j = JSON.parse(text); if (j.error) msg = j.error; } catch {}
+        throw new Error(msg);
       }
-      // Add the comment from the POST response immediately — don't rely
-      // solely on the WebSocket to deliver it. WS handles OTHER users'
-      // comments arriving live; the dedup check in onMessage prevents
-      // the same comment from appearing twice.
-      const created = await r.json().catch(() => null);
-      const cur = this.state.comments;
-      if (created && !cur.some((c) => c.id === created.id)) {
-        this.setState({ comments: [...cur, created], busy: false });
-      } else {
-        this.setState({ busy: false });
-      }
-      input.value = '';
+      // Reload the page so SSR renders the new comment from the DB.
+      // This is more reliable than trying to patch the shadow DOM's
+      // conditional branch in-place; WS still handles OTHER users'
+      // comments arriving live between reloads.
+      location.reload();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.setState({ busy: false, error: msg });
