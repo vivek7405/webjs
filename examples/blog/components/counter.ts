@@ -8,6 +8,10 @@ export class Counter extends WebComponent {
   static tag = 'my-counter';
   static properties = { count: { type: Number } };
   count = 0;
+  connectedCallback() {
+    super.connectedCallback();
+    console.log('[webjs] counter connected — JS is alive');
+  }
   static styles = css`
     :host {
       display: inline-flex;
