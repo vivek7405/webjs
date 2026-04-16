@@ -32,7 +32,21 @@
  *     Use `navigate(url)` from this module instead.
  */
 
-const PARSER = typeof DOMParser !== 'undefined' ? new DOMParser() : null;
+/**
+ * Parse HTML into a Document. Prefers Document.parseHTMLUnsafe (processes
+ * Declarative Shadow DOM) over DOMParser (does NOT process DSD). Without
+ * the DSD-aware parser, custom elements in the parsed HTML won't have
+ * shadow roots — their layout/styles are missing on client navigation.
+ */
+function parseHTML(html) {
+  if (typeof Document !== 'undefined' && typeof Document.parseHTMLUnsafe === 'function') {
+    return Document.parseHTMLUnsafe(html);
+  }
+  if (typeof DOMParser !== 'undefined') {
+    return new DOMParser().parseFromString(html, 'text/html');
+  }
+  return null;
+}
 
 let enabled = false;
 
@@ -142,11 +156,11 @@ async function performNavigation(href, isPopState) {
       return;
     }
     const html = await resp.text();
-    if (!PARSER) {
+    const doc = parseHTML(html);
+    if (!doc) {
       location.href = href;
       return;
     }
-    const doc = PARSER.parseFromString(html, 'text/html');
 
     // Swap content: if both pages share the same layout shell (e.g.
     // <blog-shell>), swap ONLY the slot content (page-specific light DOM).
@@ -174,9 +188,12 @@ async function performNavigation(href, isPopState) {
       reactivateScripts(currentShell);
     } else {
       // Different layout structure — full swap.
+      // Move nodes directly from the parsed doc (preserves DSD shadow roots)
+      // instead of re-serializing via innerHTML (which drops shadow roots).
       mergeHead(doc.head);
+      const newChildren = [...doc.body.childNodes];
       const doSwap = () => {
-        document.body.innerHTML = doc.body.innerHTML;
+        document.body.replaceChildren(...newChildren);
         reactivateScripts(document.body);
       };
       if (/** @type any */ (document).startViewTransition) {
