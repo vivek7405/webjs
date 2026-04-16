@@ -150,7 +150,7 @@ export class ChatBox extends WebComponent {
     return html`
       <div class="status">
         <span class=${connected ? 'dot on' : 'dot off'}></span>
-        ${connected ? html`Live · ${count} online` : html`Reconnecting…`}
+        ${connected ? html`Live · ${Math.max(0, count - 1)} other${count - 1 !== 1 ? 's' : ''} online` : html`Reconnecting…`}
       </div>
       <div class="log">
         ${lines.length === 0
