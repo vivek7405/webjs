@@ -66,6 +66,7 @@ export class BlogShell extends WebComponent {
       max-width: 760px;
       margin: 0 auto;
       padding: var(--sp-8) clamp(var(--sp-4), 5vw, var(--sp-6)) var(--sp-7);
+      min-height: 100vh;
     }
 
     footer {

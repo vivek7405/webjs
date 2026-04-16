@@ -223,28 +223,35 @@ function swapBody(newBody) {
 }
 
 /**
- * Swap the light-DOM children of the layout shell. Uses View Transitions
- * API when available for a smooth cross-fade; falls back to a visibility
- * toggle that hides the shell during the swap and forces a layout reflow
- * before showing it, preventing the browser from painting the empty state
- * between replaceChildren removing old nodes and inserting new ones.
+ * Swap the light-DOM children of the layout shell without ever leaving
+ * the slot empty (which causes a one-frame layout collapse + header flash).
+ *
+ * Strategy: append new content first, THEN remove old content. The slot
+ * always has at least one set of assigned nodes. Both mutations happen
+ * synchronously (no await between), so the browser never paints the
+ * doubled state either — JS runs to completion before the next paint.
+ *
+ * Uses View Transitions API when available for extra visual polish.
  *
  * @param {Element} shell
  * @param {ChildNode[]} children
  */
 function swapSlotContent(shell, children) {
-  const doSwap = () => shell.replaceChildren(...children);
+  const doSwap = () => {
+    // Snapshot old children BEFORE appending new ones.
+    const old = [...shell.childNodes];
+    // Append new content into a fragment (single DOM mutation).
+    const frag = document.createDocumentFragment();
+    for (const c of children) frag.appendChild(c);
+    shell.appendChild(frag);
+    // Now remove old children. Slot transitions old→new without empty state.
+    for (const n of old) n.remove();
+  };
 
   if (/** @type any */ (document).startViewTransition) {
     /** @type any */ (document).startViewTransition(doSwap);
   } else {
-    // Fallback: hide during swap to prevent the one-frame empty-slot flash.
-    const s = /** @type HTMLElement */ (shell).style;
-    s.visibility = 'hidden';
     doSwap();
-    // Force synchronous layout so the browser finishes positioning before show.
-    void /** @type HTMLElement */ (shell).offsetHeight;
-    s.visibility = '';
   }
 }
 
