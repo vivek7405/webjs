@@ -268,7 +268,14 @@ export async function startServer(opts) {
 async function handleCore(req, ctx) {
   const { state, appDir, coreDir, dev } = ctx;
   const url = new URL(req.url);
-  const path = url.pathname;
+  // Decode percent-encoded characters so filesystem lookups match real
+  // filenames. Dynamic route segments like `[slug]` and route groups like
+  // `(marketing)` contain chars that browsers percent-encode in URLs
+  // (`%5B`, `%5D`, `%28`, `%29`). Without decoding, the server joins the
+  // encoded path with the app directory → file not found → 404 → no JS
+  // loads → no interactivity.
+  let path;
+  try { path = decodeURIComponent(url.pathname); } catch { path = url.pathname; }
   const method = req.method.toUpperCase();
 
   // Health / readiness probes for orchestrators (k8s, fly, etc.)
