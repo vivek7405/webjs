@@ -172,6 +172,45 @@ A **no-build, web-components-first** framework modeled after Next.js App Router.
 
 ---
 
+## Framework source — where to find it
+
+The webjs framework code lives in `node_modules/` in the user's project:
+
+```
+node_modules/
+  webjs/                          ← core: html, css, WebComponent, render, directives
+    src/
+      html.js                     ← tagged template → TemplateResult
+      component.js                ← WebComponent base class (lifecycle, controllers, properties)
+      render-client.js            ← client-side fine-grained DOM renderer
+      render-server.js            ← async SSR renderer (renderToString, renderToStream)
+      directives.js               ← unsafeHTML, live
+      repeat.js                   ← keyed list reconciliation
+      context.js                  ← Context Protocol (ContextProvider, ContextConsumer)
+      task.js                     ← Task controller (async data with states)
+      router-client.js            ← Turbo Drive–style client router
+      suspense.js                 ← streaming Suspense boundary
+      lazy-loader.js              ← IntersectionObserver–based lazy module loading
+  @webjs/server/                  ← server: SSR, router, actions, dev server
+    src/
+      dev.js                      ← request handler, file serving, TS transforms
+      router.js                   ← file-based route scanner + matcher
+      ssr.js                      ← SSR pipeline (layouts, metadata, Suspense streaming)
+      actions.js                  ← server action scanner, RPC endpoints, expose()
+      serializer.js               ← pluggable wire format (superjson default)
+      check.js                    ← convention validator (webjs check)
+      vendor.js                   ← auto-bundle npm deps for browser
+      module-graph.js             ← dependency graph for transitive preloads
+  @webjs/cli/                     ← CLI: dev, start, build, test, check, create
+```
+
+**AI agents: when debugging framework behaviour** (e.g., "why doesn't my
+component hydrate?" or "why is SSR missing my layout?"), read the relevant
+source file above. The code is plain JS with JSDoc — no build artifacts,
+no minification. What you read is what runs.
+
+---
+
 ## App layout (cannot be renamed)
 
 ```
