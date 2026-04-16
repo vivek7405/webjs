@@ -272,7 +272,7 @@ middleware.ts              → global auth</pre>
     </section>
 
     <footer>
-      <p>webjs is open source · <a href="https://github.com/vivek7405/webjs">GitHub</a> · <a href="/docs/getting-started">Docs</a> · <a href="/docs/ai-first">AI-First Development</a></p>
+      <p><a href="https://github.com/vivek7405/webjs">GitHub</a> · <a href="/docs/getting-started">Docs</a> · <a href="/docs/ai-first">AI-First Development</a></p>
     </footer>
   `;
 }

@@ -3,7 +3,7 @@
 import { prisma } from '../../../lib/prisma.ts';
 import { currentUser } from '../../auth/queries/current-user.server.ts';
 import { publish } from '../utils/bus.ts';
-import { formatComment } from '../queries/list-comments.server.ts';
+import { formatComment } from '../utils/format.ts';
 import type { ActionResult } from '../../auth/types.ts';
 import type { CommentFormatted } from '../types.ts';
 

@@ -3,15 +3,8 @@
 import { prisma } from '../../../lib/prisma.ts';
 import { slugify, formatPost } from '../utils/slugify.ts';
 import { currentUser } from '../../auth/queries/current-user.server.ts';
-import type { PostFormatted, CreatePostInput } from '../types.ts';
-
-/**
- * ActionResult envelope — mirrors pilot-platform's convention.
- * Keeping it local for now; a shared types.ts would also work.
- */
-export type ActionResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string; status: number };
+import type { ActionResult } from '../../auth/types.ts';
+import type { PostFormatted } from '../types.ts';
 
 /**
  * Create a post authored by the currently-logged-in user. Reads the user
@@ -45,6 +38,3 @@ export async function createPost(
   });
   return { success: true, data: formatPost(row) };
 }
-
-// Keep the CreatePostInput type exported for explicit consumers.
-export type { CreatePostInput };

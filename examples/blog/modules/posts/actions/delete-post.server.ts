@@ -2,7 +2,7 @@
 
 import { prisma } from '../../../lib/prisma.ts';
 import { currentUser } from '../../auth/queries/current-user.server.ts';
-import type { ActionResult } from './create-post.server.ts';
+import type { ActionResult } from '../../auth/types.ts';
 
 export async function deletePost(
   input: { slug: string },
