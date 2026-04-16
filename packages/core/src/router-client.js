@@ -79,7 +79,10 @@ function onClick(e) {
   if (e.defaultPrevented || e.button !== 0) return;
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 
-  const anchor = findAnchor(e.target);
+  // Use composedPath() to find the <a> element — this crosses shadow DOM
+  // boundaries. e.target alone is retargeted to the shadow host, so links
+  // inside shadow roots (nav bars, sidebars) would never be found.
+  const anchor = findAnchorInPath(e);
   if (!anchor) return;
   if (anchor.hasAttribute('download')) return;
   if (anchor.hasAttribute('data-no-router')) return;
@@ -102,13 +105,18 @@ function onPopState(_e) {
   performNavigation(location.href, true);
 }
 
-/** @param {EventTarget | null} el */
-function findAnchor(el) {
-  while (el && el !== document.body) {
-    // Walk through shadow DOM if needed.
-    if (/** @type any */ (el).host) el = /** @type any */ (el).host;
+/**
+ * Find the nearest <a> in the event's composed path. composedPath() crosses
+ * shadow DOM boundaries — essential because nav links typically live inside
+ * the layout shell's shadow root. e.target alone is retargeted to the shadow
+ * host and would miss the <a> entirely.
+ *
+ * @param {MouseEvent} e
+ * @returns {HTMLAnchorElement | null}
+ */
+function findAnchorInPath(e) {
+  for (const el of e.composedPath()) {
     if (el instanceof HTMLAnchorElement) return el;
-    el = /** @type any */ (el).parentElement || /** @type any */ (el).parentNode;
   }
   return null;
 }
