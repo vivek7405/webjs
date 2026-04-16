@@ -1,24 +1,32 @@
 # CLAUDE.md — webjs blog example
 
-Read **[AGENTS.md](./AGENTS.md)** before editing anything. It has the full
-file layout, conventions, invariants, and recipes.
+**Do not duplicate content.** Reference the authoritative sources below.
 
-## Quick reminders
+## Required reading
 
-- **No build step.** Edit `.ts`, restart `npx webjs dev`, refresh.
-- **One function per file** for actions and queries.
-- **Routes are thin** — import from `modules/`, don't put logic in `app/api/`.
-- **Never import server-only deps** from components or pages — use `.server.ts`.
-- **ActionResult<T>** envelope for every action that can fail.
-- **globalThis** for dev singletons (Prisma, WS clients, pub/sub bus).
-- **register(import.meta.url)** on every component.
+1. **[AGENTS.md](./AGENTS.md)** — File layout, conventions, invariants, recipes.
+2. **[../../AGENTS.md](../../AGENTS.md)** — Full webjs framework API reference
+   (directives, lifecycle, controllers, context, task, testing, conventions).
 
-## Common commands
+## AI-driven development workflow (non-negotiable)
+
+**Every code change MUST include — automatically, without the user asking:**
+
+1. **Tests** — Unit test for new actions/queries/components. E2E test for
+   user-facing features. Run `npm test` from repo root after every change.
+2. **Documentation** — Update `AGENTS.md` if adding new modules/conventions.
+3. **Convention check** — Run `npx webjs check` and fix violations.
+
+The user should never have to say "also write tests" or "update the docs."
+
+## Quick reference
 
 ```sh
 npx webjs dev              # dev server
-npx webjs start            # prod server
+npx webjs test             # run tests
+npx webjs test --e2e       # run with E2E
+npx webjs check            # validate conventions
 npx prisma migrate dev     # DB migration
-npx prisma generate        # regenerate client
-npm test                   # framework tests (from repo root)
 ```
+
+All conventions, API details, and recipes → see **AGENTS.md** files above.

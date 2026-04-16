@@ -19,30 +19,30 @@ export default function RootLayout({ children }: { children: unknown }) {
       (function(){
         try {
           var t = localStorage.getItem('webjs_theme');
-          if (t === 'light' || t === 'dark') {
-            document.documentElement.dataset.theme = t;
-          }
-        } catch (_) {}
+          document.documentElement.dataset.theme = (t === 'dark') ? 'dark' : 'light';
+        } catch (_) {
+          document.documentElement.dataset.theme = 'light';
+        }
       })();
     </script>
     <style>
       :root {
         color-scheme: light dark;
 
-        /* ---------- dark (default / follows OS if not overridden) ---------- */
-        --fg:            oklch(0.96 0.015 80);
-        --fg-muted:      oklch(0.72 0.02 75);
-        --fg-subtle:     oklch(0.55 0.02 75);
-        --bg:            oklch(0.13 0.012 60);
-        --bg-elev:       oklch(0.17 0.012 60);
-        --bg-subtle:     oklch(0.15 0.012 60);
-        --bg-sunken:     oklch(0.11 0.01 60);
-        --border:        oklch(0.26 0.015 65 / 0.9);
-        --border-strong: oklch(0.38 0.015 65 / 0.9);
-        --accent:        oklch(0.83 0.14 78);
-        --accent-hover:  oklch(0.9 0.14 78);
-        --accent-fg:     oklch(0.15 0.01 60);
-        --accent-tint:   oklch(0.83 0.14 78 / 0.14);
+        /* ---------- dark (applied when data-theme="dark") ---------- */
+        --fg:            oklch(0.96 0.015 60);
+        --fg-muted:      oklch(0.72 0.02 60);
+        --fg-subtle:     oklch(0.55 0.02 60);
+        --bg:            oklch(0.14 0.01 55);
+        --bg-elev:       oklch(0.18 0.01 55);
+        --bg-subtle:     oklch(0.16 0.01 55);
+        --bg-sunken:     oklch(0.11 0.008 55);
+        --border:        oklch(0.26 0.012 55 / 0.9);
+        --border-strong: oklch(0.38 0.012 55 / 0.9);
+        --accent:        oklch(0.78 0.14 55);
+        --accent-hover:  oklch(0.85 0.14 55);
+        --accent-fg:     oklch(0.15 0.01 55);
+        --accent-tint:   oklch(0.78 0.14 55 / 0.14);
         --danger:        oklch(0.7 0.19 25);
         --success:       oklch(0.72 0.15 145);
         --grain:         oklch(1 0 0 / 0.015);

@@ -8,10 +8,10 @@ export default function RootLayout({ children }: { children: unknown }) {
       (function(){
         try {
           var t = localStorage.getItem('webjs_theme');
-          if (t === 'light' || t === 'dark') {
-            document.documentElement.dataset.theme = t;
-          }
-        } catch (_) {}
+          document.documentElement.dataset.theme = (t === 'dark') ? 'dark' : 'light';
+        } catch (_) {
+          document.documentElement.dataset.theme = 'light';
+        }
       })();
     </script>
     <style>
@@ -55,37 +55,37 @@ export default function RootLayout({ children }: { children: unknown }) {
 
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme='light']) {
-          --fg:            oklch(0.96 0.015 80);
-          --fg-muted:      oklch(0.72 0.02 75);
-          --fg-subtle:     oklch(0.55 0.02 75);
-          --bg:            oklch(0.13 0.012 60);
-          --bg-elev:       oklch(0.17 0.012 60);
-          --bg-subtle:     oklch(0.15 0.012 60);
-          --bg-sunken:     oklch(0.11 0.01 60);
-          --border:        oklch(0.26 0.015 65 / 0.9);
-          --border-strong: oklch(0.38 0.015 65 / 0.9);
-          --accent:        oklch(0.83 0.14 78);
-          --accent-hover:  oklch(0.9 0.14 78);
-          --accent-fg:     oklch(0.15 0.01 60);
-          --accent-tint:   oklch(0.83 0.14 78 / 0.12);
+          --fg:            oklch(0.96 0.015 60);
+          --fg-muted:      oklch(0.72 0.02 60);
+          --fg-subtle:     oklch(0.55 0.02 60);
+          --bg:            oklch(0.14 0.01 55);
+          --bg-elev:       oklch(0.18 0.01 55);
+          --bg-subtle:     oklch(0.16 0.01 55);
+          --bg-sunken:     oklch(0.11 0.008 55);
+          --border:        oklch(0.26 0.012 55 / 0.9);
+          --border-strong: oklch(0.38 0.012 55 / 0.9);
+          --accent:        oklch(0.78 0.14 55);
+          --accent-hover:  oklch(0.85 0.14 55);
+          --accent-fg:     oklch(0.15 0.01 55);
+          --accent-tint:   oklch(0.78 0.14 55 / 0.12);
           --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.3);
           --shadow:    0 4px 24px oklch(0 0 0 / 0.4);
         }
       }
       :root[data-theme='dark'] {
-        --fg:            oklch(0.96 0.015 80);
-        --fg-muted:      oklch(0.72 0.02 75);
-        --fg-subtle:     oklch(0.55 0.02 75);
-        --bg:            oklch(0.13 0.012 60);
-        --bg-elev:       oklch(0.17 0.012 60);
-        --bg-subtle:     oklch(0.15 0.012 60);
-        --bg-sunken:     oklch(0.11 0.01 60);
-        --border:        oklch(0.26 0.015 65 / 0.9);
-        --border-strong: oklch(0.38 0.015 65 / 0.9);
-        --accent:        oklch(0.83 0.14 78);
-        --accent-hover:  oklch(0.9 0.14 78);
-        --accent-fg:     oklch(0.15 0.01 60);
-        --accent-tint:   oklch(0.83 0.14 78 / 0.12);
+        --fg:            oklch(0.96 0.015 60);
+        --fg-muted:      oklch(0.72 0.02 60);
+        --fg-subtle:     oklch(0.55 0.02 60);
+        --bg:            oklch(0.14 0.01 55);
+        --bg-elev:       oklch(0.18 0.01 55);
+        --bg-subtle:     oklch(0.16 0.01 55);
+        --bg-sunken:     oklch(0.11 0.008 55);
+        --border:        oklch(0.26 0.012 55 / 0.9);
+        --border-strong: oklch(0.38 0.012 55 / 0.9);
+        --accent:        oklch(0.78 0.14 55);
+        --accent-hover:  oklch(0.85 0.14 55);
+        --accent-fg:     oklch(0.15 0.01 55);
+        --accent-tint:   oklch(0.78 0.14 55 / 0.12);
         --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.3);
         --shadow:    0 4px 24px oklch(0 0 0 / 0.4);
       }
@@ -143,9 +143,9 @@ export default function RootLayout({ children }: { children: unknown }) {
         webjs
       </a>
       <nav>
-        <a href="http://localhost:4000/docs/getting-started">Docs</a>
-        <a href="http://localhost:3456">Blog Demo</a>
-        <a href="https://github.com/vivek7405/webjs">GitHub</a>
+        <a href="http://localhost:4000/docs/getting-started" target="_blank">Docs</a>
+        <a href="http://localhost:3456" target="_blank">Blog Demo</a>
+        <a href="https://github.com/vivek7405/webjs" target="_blank">GitHub</a>
         <theme-toggle></theme-toggle>
       </nav>
     </header>

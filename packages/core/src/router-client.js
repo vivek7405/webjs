@@ -182,10 +182,6 @@ async function performNavigation(href, isPopState) {
         (n) => !(n instanceof HTMLTemplateElement && /** @type any */ (n).getAttribute('shadowrootmode'))
       );
       swapSlotContent(currentShell, children);
-
-      // Run only page-specific inline scripts (inside the new content),
-      // not layout-level scripts.
-      reactivateScripts(currentShell);
     } else {
       // Different layout structure — full swap.
       // Move nodes directly from the parsed doc (preserves DSD shadow roots)
@@ -239,7 +235,10 @@ async function performNavigation(href, isPopState) {
  * @param {ChildNode[]} children
  */
 function swapSlotContent(shell, children) {
-  const doSwap = () => shell.replaceChildren(...children);
+  const doSwap = () => {
+    shell.replaceChildren(...children);
+    reactivateScripts(shell);
+  };
 
   if (/** @type any */ (document).startViewTransition) {
     /** @type any */ (document).startViewTransition(doSwap);

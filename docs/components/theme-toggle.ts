@@ -48,14 +48,14 @@ export class ThemeToggle extends WebComponent {
 
   constructor() {
     super();
-    this.state = { theme: 'system' };
+    this.state = { theme: 'light' };
   }
 
   connectedCallback() {
     super.connectedCallback();
     let saved: string | null = null;
     try { saved = localStorage.getItem('webjs_theme'); } catch {}
-    const theme: Theme = saved === 'light' || saved === 'dark' ? saved : 'system';
+    const theme: Theme = saved === 'light' || saved === 'dark' ? saved : 'light';
     this.setState({ theme });
   }
 
@@ -83,10 +83,11 @@ export class ThemeToggle extends WebComponent {
     `;
   }
 }
-ThemeToggle.register(import.meta.url);
 
 const ICONS = {
   sun: html`<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M3 12h2M19 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>`,
   moon: html`<svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>`,
   system: html`<svg viewBox="0 0 24 24"><path d="M3 5h18v11H3zM8 20h8M12 16v4"/></svg>`,
 };
+
+ThemeToggle.register(import.meta.url);
