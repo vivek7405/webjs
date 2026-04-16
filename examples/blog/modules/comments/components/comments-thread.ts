@@ -135,10 +135,10 @@ export class CommentsThread extends WebComponent {
   }
   disconnectedCallback() { this._conn?.close(); }
 
-  async postComment() {
-    const root = this.shadowRoot ?? this;
-    const input = root.querySelector('input') as HTMLInputElement | null;
-    if (!input) return;
+  async onSubmit(e: SubmitEvent) {
+    e.preventDefault();
+    const form = e.currentTarget as HTMLFormElement;
+    const input = form.querySelector('input') as HTMLInputElement;
     const body = input.value.trim();
     if (!body) return;
     this.setState({ busy: true, error: null });
@@ -148,14 +148,18 @@ export class CommentsThread extends WebComponent {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ body }),
       });
-      const text = await r.text();
       if (!r.ok) {
-        let msg = `${r.status}`;
-        try { const j = JSON.parse(text); if (j.error) msg = j.error; } catch {}
-        throw new Error(msg);
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || `${r.status}`);
       }
-      // Reload to let SSR render the new comment from the DB.
-      location.reload();
+      const created: CommentFormatted = await r.json();
+      const cur = this.state.comments;
+      if (!cur.some((c) => c.id === created.id)) {
+        this.setState({ comments: [...cur, created], busy: false, error: null });
+      } else {
+        this.setState({ busy: false });
+      }
+      input.value = '';
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.setState({ busy: false, error: msg });
@@ -179,10 +183,10 @@ export class CommentsThread extends WebComponent {
           </ul>`}
 
       ${this.signedIn
-        ? html`<div class="compose">
-            <input placeholder="Add a comment…" autocomplete="off" />
-            <button @click=${() => this.postComment()}>Post</button>
-          </div>
+        ? html`<form class="compose" @submit=${(e: SubmitEvent) => this.onSubmit(e)}>
+            <input placeholder="Add a comment…" ?disabled=${busy} autocomplete="off" />
+            <button type="submit" ?disabled=${busy}>Post</button>
+          </form>
           ${error ? html`<p class="err">${error}</p>` : ''}`
         : html`<p class="signin">
             <a href=${signinHref()}>Sign in</a> to comment.
