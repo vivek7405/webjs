@@ -1,0 +1,52 @@
+# Windsurf Rules — webjs app
+
+You are working on a webjs app — an AI-first, no-build, web-components-first
+framework. Read AGENTS.md for the full API reference and CONVENTIONS.md for
+project-specific conventions before writing any code.
+
+## Before starting ANY work
+
+FIRST, before writing any code:
+1. Check `git branch --show-current`.
+   - If on main/master: create a feature branch before editing.
+   - If on a feature branch: verify it matches the current task.
+2. Sync: `git fetch origin && git rebase origin/main` if behind.
+
+## Autonomous mode (sandbox / no-prompt)
+
+If running without interactive approval, auto-decide:
+- On main? Auto-create feature/<task-slug> branch
+- Parent behind? Auto-rebase. Merge? Auto-merge + delete feature branches.
+- Auto-generate commit messages. Fix failing tests and violations.
+Quality bar stays the same — no blocking on questions.
+
+## Mandatory workflow (never skip)
+
+Every code change must include:
+1. Unit tests in test/unit/*.test.ts
+2. E2E tests in test/e2e/*.test.ts for user-facing features
+3. Documentation updates (AGENTS.md, docs/, website/ if they exist)
+4. Convention check: `npx webjs check` must pass
+
+The user should never have to ask for tests or documentation.
+
+## Git rules
+
+- Commit after each logical unit of work (small, focused commits)
+- Meaningful commit messages: what changed and why
+- NEVER add Co-Authored-By or AI attribution trailers to commits
+- Work on feature branches, never push directly to main
+- Create pull requests for review
+- NEVER merge any branch without explicit user permission. Always ask:
+  "Ready to merge <branch> into <target>? Delete or keep <branch> after?"
+  Wait for approval AND the delete/keep preference. Applies to ALL merges.
+- Run `npx webjs test` before every commit
+
+## Framework specifics
+
+- No build step: ES modules served directly
+- Web components with shadow DOM by default
+- One function per server action file (*.server.ts)
+- Use webjs directives: classMap, styleMap, ref, when, choose, guard, etc.
+- Use Context for cross-component data, Task for async data in components
+- Full API reference in AGENTS.md

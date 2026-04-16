@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-import { resolve } from 'node:path';
+import { resolve, join, dirname } from 'node:path';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const [cmd, ...rest] = process.argv.slice(2);
 
 const USAGE = `webjs — commands:
@@ -9,6 +11,9 @@ const USAGE = `webjs — commands:
   webjs build                                     Bundle components + pages for production
   webjs start [--port 3000]                       Start production server
               [--http2 --cert <path> --key <path>]  Serve HTTP/2 over TLS (falls back to h1.1)
+  webjs test  [--e2e]                             Run unit tests (+ E2E with --e2e)
+  webjs check                                     Validate app against conventions
+  webjs create <name>                             Scaffold a new webjs app
   webjs db generate                               Run \`prisma generate\`
   webjs db migrate [name]                         Run \`prisma migrate dev\`
   webjs db studio                                 Run \`prisma studio\`
@@ -95,6 +100,103 @@ async function main() {
       if (!prismaArgs) { console.error('Unknown db subcommand.\n' + USAGE); process.exit(1); }
       const child = spawn('npx', ['prisma', ...prismaArgs], { stdio: 'inherit', cwd: process.cwd() });
       child.on('exit', (code) => process.exit(code ?? 0));
+      break;
+    }
+    case 'test': {
+      const e2e = rest.includes('--e2e');
+      const cwd = process.cwd();
+
+      // Discover test files
+      const { existsSync } = await import('node:fs');
+      const { readdir } = await import('node:fs/promises');
+
+      const testFiles = [];
+
+      // Unit tests: test/unit/*.test.{js,ts}
+      const unitDir = join(cwd, 'test', 'unit');
+      if (existsSync(unitDir)) {
+        const files = await readdir(unitDir);
+        for (const f of files) {
+          if (/\.test\.(js|ts|mjs|mts)$/.test(f)) testFiles.push(join(unitDir, f));
+        }
+      }
+
+      // Also check root test/*.test.{js,ts} (flat layout)
+      const testDir = join(cwd, 'test');
+      if (existsSync(testDir)) {
+        const files = await readdir(testDir);
+        for (const f of files) {
+          if (/\.test\.(js|ts|mjs|mts)$/.test(f) && !f.startsWith('e2e')) {
+            const full = join(testDir, f);
+            if (!testFiles.includes(full)) testFiles.push(full);
+          }
+        }
+      }
+
+      // E2E tests: test/e2e/*.test.{js,ts}
+      if (e2e) {
+        const e2eDir = join(cwd, 'test', 'e2e');
+        if (existsSync(e2eDir)) {
+          const files = await readdir(e2eDir);
+          for (const f of files) {
+            if (/\.test\.(js|ts|mjs|mts)$/.test(f)) testFiles.push(join(e2eDir, f));
+          }
+        }
+      }
+
+      if (testFiles.length === 0) {
+        console.log('webjs test: no test files found.');
+        console.log('  Expected: test/unit/*.test.ts or test/e2e/*.test.ts');
+        console.log('  Run: webjs create <name> to scaffold a project with example tests.');
+        break;
+      }
+
+      const env = { ...process.env };
+      if (e2e) env.WEBJS_E2E = '1';
+
+      console.log(`webjs test: running ${testFiles.length} test file(s)${e2e ? ' (including E2E)' : ''}…\n`);
+      const child = spawn(process.execPath, ['--test', ...testFiles], {
+        stdio: 'inherit',
+        cwd,
+        env,
+      });
+      child.on('exit', (code) => process.exit(code ?? 0));
+      break;
+    }
+    case 'check': {
+      const { checkConventions, RULES } = await import('@webjs/server/check');
+      const violations = await checkConventions(process.cwd());
+
+      if (rest.includes('--rules')) {
+        console.log('webjs check — available rules:\n');
+        for (const r of RULES) {
+          console.log(`  ${r.name.padEnd(30)} ${r.description}`);
+        }
+        break;
+      }
+
+      if (violations.length === 0) {
+        console.log('webjs check: all conventions pass ✓');
+      } else {
+        console.log(`webjs check: ${violations.length} violation(s) found\n`);
+        for (const v of violations) {
+          console.log(`  ✗ [${v.rule}] ${v.file}`);
+          console.log(`    ${v.message}`);
+          if (v.fix) console.log(`    Fix: ${v.fix}`);
+          console.log();
+        }
+        process.exit(1);
+      }
+      break;
+    }
+    case 'create': {
+      const name = rest[0];
+      if (!name) {
+        console.error('Usage: webjs create <app-name>');
+        process.exit(1);
+      }
+      const { scaffoldApp } = await import('../lib/create.js');
+      await scaffoldApp(name, process.cwd());
       break;
     }
     case 'help':

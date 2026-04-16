@@ -15,7 +15,8 @@
   },
   "scripts": {
     "dev": "npm run dev --workspace=examples/blog",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:e2e": "WEBJS_E2E=1 node --test test/e2e.test.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.0",
