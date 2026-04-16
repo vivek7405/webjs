@@ -8,7 +8,8 @@
     "./client": "./src/render-client.js",
     "./server": "./src/render-server.js",
     "./component": "./src/component.js",
-    "./registry": "./src/registry.js"
+    "./registry": "./src/registry.js",
+    "./client-router": "./src/router-client.js"
   },
   "files": [
     "index.js",

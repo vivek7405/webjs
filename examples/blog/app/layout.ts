@@ -1,4 +1,5 @@
 import { html } from 'webjs';
+import 'webjs/client-router';
 import '../components/blog-shell.ts';
 
 /**

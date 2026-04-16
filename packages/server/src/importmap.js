@@ -8,9 +8,10 @@
 export function buildImportMap() {
   return {
     imports: {
-      'webjs':     '/__webjs/core/index.js',
-      'webjs/':    '/__webjs/core/src/',
-      'superjson': '/__webjs/vendor/superjson.js',
+      'webjs':              '/__webjs/core/index.js',
+      'webjs/':             '/__webjs/core/src/',
+      'webjs/client-router': '/__webjs/core/src/router-client.js',
+      'superjson':          '/__webjs/vendor/superjson.js',
     },
   };
 }

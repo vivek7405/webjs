@@ -1,4 +1,5 @@
 import { html } from 'webjs';
+import 'webjs/client-router';
 
 export default function RootLayout({ children }: { children: unknown }) {
   return html`

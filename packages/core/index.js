@@ -19,3 +19,4 @@ export { repeat, isRepeat } from './src/repeat.js';
 export { Suspense, isSuspense } from './src/suspense.js';
 export { connectWS } from './src/websocket-client.js';
 export { richFetch } from './src/rich-fetch.js';
+export { enableClientRouter, disableClientRouter, navigate } from './src/router-client.js';
