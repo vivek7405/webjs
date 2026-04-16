@@ -2,15 +2,14 @@
 #
 # guard-branch-context.sh — Claude Code PreToolUse hook
 #
-# Fires before Edit and Write tool calls. If the current branch is `main`
-# or `master`, asks the user for confirmation before allowing file edits.
-#
-# Respects bypass/dangerous mode — user has opted into full autonomy.
+# Rules:
+#   - On main/master → ask (agent should create a feature branch first)
+#   - On any other branch → allow (feature branches are free to edit)
+#   - Bypass mode → allow everything
 
-# Read the tool input from stdin
 INPUT=$(cat /dev/stdin)
 
-# Respect bypass/dangerous mode
+# Bypass mode — full autonomy
 SETTINGS="$HOME/.claude/settings.json"
 if [ -f "$SETTINGS" ]; then
   BYPASS=$(jq -r '.skipDangerousModePermissionPrompt // false' "$SETTINGS" 2>/dev/null)
@@ -19,21 +18,15 @@ if [ -f "$SETTINGS" ]; then
   fi
 fi
 
-# Check if we're in a git repo
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   exit 0
 fi
 
-# Get current branch
 BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+[ -z "$BRANCH" ] && exit 0
 
-if [ -z "$BRANCH" ]; then
-  exit 0
-fi
-
-# If on main or master, ask before allowing edits
 if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
-  jq -n --arg reason "guard-branch-context: You are on the '$BRANCH' branch. Create a feature branch before editing (e.g., git checkout -b feature/<name>). Approve to continue on '$BRANCH'." '{
+  jq -n --arg reason "You are on '$BRANCH'. Create a feature branch first (git checkout -b feature/<name>), or approve to edit on '$BRANCH'." '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "ask",
@@ -43,5 +36,4 @@ if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
   exit 0
 fi
 
-# Not on main — allow
 exit 0
