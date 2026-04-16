@@ -52,8 +52,8 @@ When running without interactive approval, agents must NOT ask questions.
 Instead, auto-decide using best practices:
 - On `main`? → Auto-create `feature/<task-slug>` branch
 - Parent branch has new commits? → Auto-rebase before starting
-- Ready to merge? → **ALWAYS ask user**, even in bypass mode. Merging
-  is never autonomous. Ask: "Merge <branch> into <target>? Delete or keep?"
+- Ready to merge? → Auto-merge, delete feature/fix branches, keep
+  long-lived branches (dev, staging, release/*)
 - Commit message? → Auto-generate: what changed and why
 - Tests failing? → Fix them, don't report the failure and stop
 - Convention violations? → Fix them silently

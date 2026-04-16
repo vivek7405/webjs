@@ -16,7 +16,7 @@ FIRST, before writing any code:
 
 If running without interactive approval (sandbox, auto-approve, etc.):
 - On main? Auto-create feature/<task-slug> branch
-- Parent behind? Auto-rebase. Merge? ALWAYS ask user — never autonomous.
+- Parent behind? Auto-rebase. Merge? Auto-merge + delete feature branches.
 - Auto-generate meaningful commit messages. Fix tests and violations.
 
 ## Mandatory workflow
