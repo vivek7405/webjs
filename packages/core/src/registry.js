@@ -6,7 +6,7 @@
  * hints. On the browser we also call customElements.define so the tag
  * upgrades after hydration.
  *
- * @typedef {{ cls: typeof import('./component.js').WebComponent, moduleUrl: string | null }} RegistryEntry
+ * @typedef {{ cls: typeof import('./component.js').WebComponent, moduleUrl: string | null, lazy: boolean }} RegistryEntry
  */
 
 /** @type {Map<string, RegistryEntry>} */
@@ -25,12 +25,13 @@ const isBrowser = typeof window !== 'undefined' && typeof customElements !== 'un
  * @param {string} [moduleUrl]
  */
 export function register(tag, cls, moduleUrl) {
+  const lazy = /** @type {any} */ (cls).lazy === true;
   const entry = registry.get(tag);
   if (entry) {
     if (!entry.moduleUrl && moduleUrl) entry.moduleUrl = moduleUrl;
     return;
   }
-  registry.set(tag, { cls, moduleUrl: moduleUrl || null });
+  registry.set(tag, { cls, moduleUrl: moduleUrl || null, lazy });
   if (isBrowser && !customElements.get(tag)) {
     customElements.define(tag, /** @type {any} */ (cls));
   }
@@ -44,6 +45,11 @@ export function lookup(tag) {
 /** @param {string} tag */
 export function lookupModuleUrl(tag) {
   return registry.get(tag)?.moduleUrl || null;
+}
+
+/** @param {string} tag */
+export function isLazy(tag) {
+  return registry.get(tag)?.lazy === true;
 }
 
 export function allTags() {
