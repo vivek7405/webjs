@@ -182,9 +182,9 @@ export default async function HomePage() {
         </ul>`}
 
     <p style="margin-top:var(--sp-5);">${Suspense({
-      fallback: html`<muted-text>computing timestamp…</muted-text>`,
-      children: slowStat(),
-    })}</p>
+        fallback: html`<muted-text>computing timestamp…</muted-text>`,
+        children: slowStat(),
+      })}</p>
 
     <section class="section">
       <span class="rubric">● client-side state</span>

@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
-import { startServer, buildBundle } from '@webjs/server';
 
 const [cmd, ...rest] = process.argv.slice(2);
 
@@ -25,11 +24,49 @@ function flag(args, name, def) {
 async function main() {
   switch (cmd) {
     case 'dev': {
-      const port = Number(flag(rest, '--port', process.env.PORT || 3000));
-      await startServer({ appDir: process.cwd(), port, dev: true });
+      // If we're already inside the --watch child, start the server directly.
+      if (process.env.__WEBJS_DEV_CHILD === '1') {
+        const { startServer } = await import('@webjs/server');
+        const port = Number(flag(rest, '--port', process.env.PORT || 3000));
+        await startServer({ appDir: process.cwd(), port, dev: true });
+        break;
+      }
+
+      // Otherwise, spawn ourselves as a child with node --watch.
+      // This restarts the process on file changes, guaranteeing a fresh
+      // Node ESM module cache. Without this, edits to transitively-imported
+      // modules (actions, queries, components, utils) don't take effect
+      // because Node caches ESM by URL with no public invalidation API.
+      // Build watch paths from directories that exist in the project.
+      const { existsSync } = await import('node:fs');
+      const watchPaths = [];
+      for (const dir of ['app', 'components', 'modules', 'lib', 'actions']) {
+        if (existsSync(dir)) watchPaths.push('--watch-path', dir);
+      }
+      // Watch root middleware/config if present
+      for (const f of ['middleware.ts', 'middleware.js']) {
+        if (existsSync(f)) watchPaths.push('--watch-path', f);
+      }
+
+      const child = spawn(
+        process.execPath,
+        [
+          '--watch',
+          '--watch-preserve-output',
+          ...watchPaths,
+          ...process.argv.slice(1),
+        ],
+        {
+          stdio: 'inherit',
+          cwd: process.cwd(),
+          env: { ...process.env, __WEBJS_DEV_CHILD: '1' },
+        },
+      );
+      child.on('exit', (code) => process.exit(code ?? 0));
       break;
     }
     case 'start': {
+      const { startServer } = await import('@webjs/server');
       const port = Number(flag(rest, '--port', process.env.PORT || 3000));
       const http2 = rest.includes('--http2');
       const cert = flag(rest, '--cert');
@@ -38,6 +75,7 @@ async function main() {
       break;
     }
     case 'build': {
+      const { buildBundle } = await import('@webjs/server');
       const t = Date.now();
       const result = await buildBundle({
         appDir: process.cwd(),
