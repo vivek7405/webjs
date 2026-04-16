@@ -27,11 +27,24 @@ export default function LandingPage() {
         text-align: center;
       }
       .hero .rubric {
-        font: 600 11px/1 var(--font-mono);
-        letter-spacing: 0.2em;
+        font: 600 13px/1 var(--font-mono);
+        letter-spacing: 0.15em;
         text-transform: uppercase;
+        color: var(--fg-muted);
+        margin-bottom: var(--sp-5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .hero .rubric .name {
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
         color: var(--accent);
-        margin-bottom: var(--sp-4);
+      }
+      .hero .rubric .sep {
+        color: var(--fg-subtle);
       }
       .hero h1 {
         font: 700 var(--fs-display)/1.05 var(--font-serif);
@@ -181,7 +194,7 @@ export default function LandingPage() {
     </style>
 
     <section class="hero">
-      <div class="rubric">webjs - ai-first web framework</div>
+      <div class="rubric"><span class="name">webjs</span> <span class="sep">—</span> ai-first web framework</div>
       <h1>The web framework AI agents can read, write, and ship.</h1>
       <p>
         webjs is an AI-first, no-build, web-components-first framework inspired by Next.js.
@@ -191,6 +204,7 @@ export default function LandingPage() {
       <div class="hero-actions">
         <a class="primary" href="/docs/getting-started">Get Started</a>
         <a class="secondary" href="https://github.com/vivek7405/webjs">GitHub</a>
+        <a class="secondary" href="http://localhost:3456">Example Blog</a>
       </div>
     </section>
 
@@ -272,7 +286,7 @@ middleware.ts              → global auth</pre>
     </section>
 
     <footer>
-      <p><a href="https://github.com/vivek7405/webjs">GitHub</a> · <a href="/docs/getting-started">Docs</a> · <a href="/docs/ai-first">AI-First Development</a></p>
+      <p><a href="https://github.com/vivek7405/webjs">GitHub</a> · <a href="/docs/getting-started">Docs</a> · <a href="/docs/ai-first">AI-First</a> · <a href="http://localhost:3456">Example Blog</a></p>
     </footer>
   `;
 }
