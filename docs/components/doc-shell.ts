@@ -17,6 +17,8 @@ const NAV_SECTIONS = [
     items: [
       { href: '/docs/routing', label: 'Routing' },
       { href: '/docs/components', label: 'Components' },
+      { href: '/docs/lifecycle', label: 'Lifecycle Hooks' },
+      { href: '/docs/directives', label: 'Directives' },
       { href: '/docs/ssr', label: 'Server-Side Rendering' },
       { href: '/docs/styling', label: 'Styling' },
       { href: '/docs/suspense', label: 'Streaming & Suspense' },
@@ -36,10 +38,14 @@ const NAV_SECTIONS = [
   {
     title: 'Advanced',
     items: [
+      { href: '/docs/controllers', label: 'Reactive Controllers' },
+      { href: '/docs/context', label: 'Context Protocol' },
+      { href: '/docs/task', label: 'Task (Async Data)' },
       { href: '/docs/typescript', label: 'TypeScript' },
       { href: '/docs/middleware', label: 'Middleware' },
       { href: '/docs/deployment', label: 'Deployment' },
       { href: '/docs/testing', label: 'Testing' },
+      { href: '/docs/conventions', label: 'Conventions & AI Workflow' },
     ],
   },
 ];
@@ -66,6 +72,24 @@ export class DocShell extends WebComponent {
       border-right: 1px solid var(--border);
       background: var(--bg-subtle);
       font-size: 14px;
+      scrollbar-width: thin;
+      scrollbar-color: transparent transparent;
+      transition: scrollbar-color 0.3s;
+    }
+    aside:hover {
+      scrollbar-color: var(--border-strong) transparent;
+    }
+    aside::-webkit-scrollbar { width: 6px; }
+    aside::-webkit-scrollbar-track { background: transparent; }
+    aside::-webkit-scrollbar-thumb {
+      background: transparent;
+      border-radius: 999px;
+    }
+    aside:hover::-webkit-scrollbar-thumb {
+      background: var(--border-strong);
+    }
+    aside::-webkit-scrollbar-thumb:hover {
+      background: var(--fg-subtle);
     }
     .brand {
       display: flex;

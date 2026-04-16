@@ -81,8 +81,22 @@ export async function createPost(
     <h3>7. JSDoc or TypeScript — Agent's Choice</h3>
     <p>Some AI agents work better with TypeScript; others prefer JSDoc. webjs supports both equally. The type-checking story is identical either way — the TS language server reads both. An agent can generate whichever format it's more fluent in.</p>
 
-    <h3>8. CLAUDE.md for Claude Code</h3>
-    <p>The repo includes a <code>CLAUDE.md</code> at the root — a file specifically for Claude Code (and similar tools) that points at <code>AGENTS.md</code> and lists quick-reference invariants: no-build default, JSDoc-not-TS-by-default, web-components-first styling, common commands. Claude reads it automatically on every session.</p>
+    <h3>8. Cross-Agent Config Files</h3>
+    <p><code>webjs create</code> scaffolds guardrail config files for every major AI coding agent:</p>
+    <ul>
+      <li><code>CLAUDE.md</code> + <code>.claude/settings.json</code> + hooks — Claude Code</li>
+      <li><code>.cursorrules</code> — Cursor</li>
+      <li><code>.windsurfrules</code> — Windsurf</li>
+      <li><code>.github/copilot-instructions.md</code> — GitHub Copilot</li>
+      <li><code>AGENTS.md</code> + <code>CONVENTIONS.md</code> — all agents</li>
+    </ul>
+    <p>Every agent gets the same rules: check the branch before coding, sync with parent before starting, auto-generate tests, auto-update docs, ask before merging (with delete/keep prompt), no AI attribution in commits.</p>
+
+    <h3>9. Autonomous Mode</h3>
+    <p>In sandbox or bypass-permissions mode, agents auto-decide using best-practice defaults: create feature branches, rebase before starting, fix failing tests, generate meaningful commits, delete feature branches after merge. Same quality bar — no blocking on questions.</p>
+
+    <h3>10. Automatic Tests and Docs</h3>
+    <p>In a webjs project, the user never has to say "also write tests" or "also update the docs." Agents do this automatically with every code change. The convention is enforced via <code>CONVENTIONS.md</code>, <code>webjs test</code>, and <code>webjs check</code>.</p>
 
     <h2>What an AI Agent Can Do with webjs</h2>
     <p>Given a webjs app + AGENTS.md, an AI coding assistant can:</p>
@@ -113,12 +127,15 @@ export async function createPost(
     <pre>                       webjs        Next.js       Express
 ──────────────────────────────────────────────────────────
 AGENTS.md contract     ✅ built-in   ❌ none       ❌ none
+Cross-agent configs    ✅ 5 agents   ❌ none       ❌ none
+Auto tests + docs      ✅ enforced   ❌ manual     ❌ manual
+Branch guardrails      ✅ hooks      ❌ none       ❌ none
+Convention validator   ✅ webjs check ❌ none      ❌ none
 File = function        ✅ one/file   ⚠️ varies     ❌ free-form
 No build transforms    ✅ none       ❌ SWC/webpack ✅ none
 Explicit server bound. ✅ .server.ts ⚠️ 'use srv'  n/a
 Typed RPC (no schema)  ✅ superjson  ⚠️ Flight     ❌ manual
-Predictable file layout✅ convention ✅ convention  ❌ free-form
-One-grep discoverability✅ always    ⚠️ usually    ❌ depends</pre>
+Autonomous mode        ✅ defaults   ❌ n/a        ❌ n/a</pre>
 
     <h2>The AGENTS.md File</h2>
     <p>Here's what a webjs app's <code>AGENTS.md</code> contains (the blog example ships a complete one):</p>

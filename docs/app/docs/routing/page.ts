@@ -528,8 +528,8 @@ export default async function ProtectedPage() {
     <!-- ===== LOADING ===== -->
     <h2>Loading UI (<code>loading.ts</code>)</h2>
     <p>
-      The <code>loading.ts</code> file convention is <strong>reserved for future
-      Suspense integration</strong>. When placed in a route folder, it defines a loading
+      The <code>loading.ts</code> file convention provides <strong>automatic
+      Suspense boundaries</strong>. When placed in a route folder, it defines a loading
       UI that will be shown while the page's async content is being resolved.
     </p>
 
@@ -546,7 +546,7 @@ export default function Loading() {
 }</pre>
 
     <p>
-      Currently, webjs recognizes <code>loading.ts</code> files in the route table and
+      webjs automatically wraps the page in a Suspense boundary with the loading content as the fallback. The page content streams in when ready, replacing the loading UI. webjs recognizes <code>loading.ts</code> files in the route table and
       associates them with their routes (outermost to innermost, mirroring the layout
       chain), but the automatic Suspense wrapping is not yet active. The file is included
       in the route scan today so your loading UIs are ready when streaming Suspense

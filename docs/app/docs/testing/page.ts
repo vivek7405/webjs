@@ -109,16 +109,67 @@ test('WS echo works', async () =&gt; {
   server.close();
 });</pre>
 
+    <h2>webjs test command</h2>
+    <p>The CLI provides a built-in test runner:</p>
+    <pre># Run unit tests
+npx webjs test
+
+# Run unit + E2E tests (requires Puppeteer + Chromium)
+npx webjs test --e2e</pre>
+
+    <p>It discovers test files automatically:</p>
+    <ul>
+      <li><code>test/unit/*.test.{ts,js}</code> — unit tests</li>
+      <li><code>test/e2e/*.test.{ts,js}</code> — E2E tests (with <code>--e2e</code> flag)</li>
+      <li><code>test/*.test.{ts,js}</code> — root-level tests (flat layout)</li>
+    </ul>
+
+    <h2>E2E Tests with Puppeteer</h2>
+    <p>E2E tests launch a real browser to test full user flows:</p>
+    <pre>import { test, describe, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+
+describe('Contact form', () =&gt; {
+  // Setup: start dev server + Puppeteer browser
+  before(async () =&gt; { /* ... */ });
+  after(async () =&gt; { /* cleanup */ });
+
+  test('user can submit the form', async () =&gt; {
+    await page.goto(baseUrl + '/contact');
+    await page.type('input[name="email"]', 'test@example.com');
+    await page.click('button[type="submit"]');
+    // Assert success message appears
+  });
+});</pre>
+
+    <h2>Convention Validation</h2>
+    <p><code>webjs check</code> validates your app against conventions:</p>
+    <pre># Check all conventions
+npx webjs check
+
+# List available rules
+npx webjs check --rules</pre>
+    <p>Rules include: actions in modules, one function per action file, components have <code>.register()</code>, no server imports in client code, tests exist for modules, tag names have hyphens.</p>
+    <p>Override rules in <code>package.json</code>:</p>
+    <pre>{ "webjs": { "conventions": { "tests-exist": false } } }</pre>
+
     <h2>Recommended Test Structure</h2>
     <pre>test/
-  render-server.test.js   # SSR output
-  render-client.test.js   # client diffing (linkedom)
-  router.test.js          # route matching
-  actions.test.js         # server action RPC + CSRF
-  csrf.test.js            # token generation + verification
-  expose.test.js          # expose() + validate hook
-  suspense.test.js        # Suspense boundary rendering
-  rate-limit.test.js      # rateLimit middleware
-  websocket.test.js       # WS upgrade + handler</pre>
+  unit/
+    auth.test.ts            # module-level unit tests
+    posts.test.ts
+  e2e/
+    auth-flow.test.ts       # browser-level E2E tests
+    blog-flow.test.ts</pre>
+
+    <h2>AI Agent Testing Convention</h2>
+    <p>In a webjs project, AI agents are expected to write tests automatically with every code change. The convention is defined in <code>CONVENTIONS.md</code>:</p>
+    <ul>
+      <li><strong>New server action</strong> → unit test required</li>
+      <li><strong>New component</strong> → unit test (SSR rendering) required</li>
+      <li><strong>New page or route</strong> → E2E test required</li>
+      <li><strong>Bug fix</strong> → regression test required</li>
+    </ul>
+    <p>The user should never have to ask for tests — they are part of every deliverable.</p>
   `;
 }
