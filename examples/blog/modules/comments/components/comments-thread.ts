@@ -63,7 +63,7 @@ export class CommentsThread extends WebComponent {
       color: var(--fg);
     }
 
-    form {
+    .compose {
       display: flex;
       gap: var(--sp-2);
       padding: var(--sp-3);
@@ -135,10 +135,10 @@ export class CommentsThread extends WebComponent {
   }
   disconnectedCallback() { this._conn?.close(); }
 
-  async onSubmit(e: SubmitEvent) {
-    e.preventDefault();
-    const form = e.currentTarget as HTMLFormElement;
-    const input = form.querySelector('input') as HTMLInputElement;
+  async postComment() {
+    const root = this.shadowRoot ?? this;
+    const input = root.querySelector('input') as HTMLInputElement | null;
+    if (!input) return;
     const body = input.value.trim();
     if (!body) return;
     this.setState({ busy: true, error: null });
@@ -154,10 +154,7 @@ export class CommentsThread extends WebComponent {
         try { const j = JSON.parse(text); if (j.error) msg = j.error; } catch {}
         throw new Error(msg);
       }
-      // Reload the page so SSR renders the new comment from the DB.
-      // This is more reliable than trying to patch the shadow DOM's
-      // conditional branch in-place; WS still handles OTHER users'
-      // comments arriving live between reloads.
+      // Reload to let SSR render the new comment from the DB.
       location.reload();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -182,10 +179,10 @@ export class CommentsThread extends WebComponent {
           </ul>`}
 
       ${this.signedIn
-        ? html`<form @submit=${(e) => this.onSubmit(e)}>
+        ? html`<div class="compose">
             <input placeholder="Add a comment…" ?disabled=${busy} autocomplete="off" />
-            <button ?disabled=${busy}>Post</button>
-          </form>
+            <button ?disabled=${busy} @click=${() => this.postComment()}>Post</button>
+          </div>
           ${error ? html`<p class="err">${error}</p>` : ''}`
         : html`<p class="signin">
             <a href=${signinHref()}>Sign in</a> to comment.
