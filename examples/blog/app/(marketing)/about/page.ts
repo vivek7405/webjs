@@ -99,7 +99,7 @@ export default function About() {
     <h1>A full-stack demo, at framework scale.</h1>
     <p class="lead">
       A tiny blog built on <strong>webjs</strong> — a no-build, web-components-first,
-      Next.js-inspired framework. Every feature the framework ships with is exercised
+      NextJs-inspired framework. Every feature the framework ships with is exercised
       here in under a thousand lines.
     </p>
 

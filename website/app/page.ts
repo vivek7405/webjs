@@ -1,7 +1,7 @@
 import { html } from 'webjs';
 
 export const metadata = {
-  title: 'webjs — AI-first, no-build, web-components-first full-stack framework',
+  title: 'webjs — AI-first, no-build, web-components-first framework inspired by NextJs and Lit',
   description: 'Designed for AI agents to read and write. Server-rendered web components, file-based routing, server actions, TypeScript with zero bundler.',
 };
 
@@ -9,7 +9,7 @@ const FEATURES = [
   { icon: '🤖', title: 'AI-First Development', desc: 'Designed from the ground up for AI agents. AGENTS.md contract, cross-agent guardrails (.cursorrules, .windsurfrules, copilot-instructions.md), auto-generated tests and docs, opinionated conventions — LLMs produce production-quality code without guesswork.' },
   { icon: '⚡', title: 'No Build Step', desc: 'Source files are served to the browser as native ES modules. Edit a .ts file, refresh, see it. No webpack, no Vite, no compile step. Auto-vendor bundling for npm packages via import maps.' },
   { icon: '🧱', title: 'Web Components First', desc: 'Full lifecycle (shouldUpdate, willUpdate, firstUpdated, updated), reactive controllers, context protocol, client-side error boundaries. Shadow DOM + Declarative Shadow DOM for real SSR. Selective hydration for below-the-fold components.' },
-  { icon: '📁', title: 'Next.js-Style Routing', desc: 'File-based routing at parity with Next.js App Router. page.ts, layout.ts, route.ts, error.ts, loading.ts (auto-Suspense), not-found.ts (nested), middleware.ts, [param], [...slug], [[...optional]], (groups), metadata routes (sitemap.ts, robots.ts).' },
+  { icon: '📁', title: 'NextJs-Style Routing', desc: 'File-based routing at parity with NextJs App Router. page.ts, layout.ts, route.ts, error.ts, loading.ts (auto-Suspense), not-found.ts (nested), middleware.ts, [param], [...slug], [[...optional]], (groups), metadata routes (sitemap.ts, robots.ts).' },
   { icon: '🔄', title: 'Server Actions + superjson', desc: 'Import a .server.ts function from a client component — it auto-rewrites into a type-safe RPC stub. Date, Map, Set, BigInt round-trip as their real types.' },
   { icon: '🌊', title: 'Streaming SSR + Suspense', desc: 'Fallback content flushes immediately. Deferred data streams in as it resolves. TTFB measured in milliseconds, not seconds.' },
   { icon: '🔌', title: 'WebSocket Built In', desc: 'Export a WS function from any route.ts and it becomes a WebSocket endpoint. connectWS() on the client auto-reconnects with exponential backoff.' },
@@ -200,7 +200,7 @@ export default function LandingPage() {
       <div class="rubric"><span class="name">webjs</span> <span class="sep">—</span> ai-first web framework</div>
       <h1>The web framework where AI agents write production code.</h1>
       <p>
-        webjs is an AI-first, no-build, web-components-first framework inspired by Next.js.
+        webjs is an AI-first, no-build, web-components-first framework inspired by NextJs and Lit.
         Cross-agent guardrails enforce tests, docs, branch hygiene, and conventions automatically —
         AI agents deliver production-quality code without being asked.
         Works with Claude Code, Cursor, Windsurf, Copilot, and any AI coding assistant.

@@ -30,7 +30,7 @@ export default async function Home() {
     <h2>The SSR Pipeline</h2>
     <p>When the server receives a GET request for a page URL, the pipeline runs in this order:</p>
     <ol>
-      <li><strong>Route match</strong> -- the router scans the <code>app/</code> directory tree (at startup) and matches the URL pathname against the file-based route table. Dynamic segments (<code>[slug]</code>), catch-all segments (<code>[...rest]</code>), and route groups (<code>(marketing)</code>) all follow Next.js App Router conventions.</li>
+      <li><strong>Route match</strong> -- the router scans the <code>app/</code> directory tree (at startup) and matches the URL pathname against the file-based route table. Dynamic segments (<code>[slug]</code>), catch-all segments (<code>[...rest]</code>), and route groups (<code>(marketing)</code>) all follow NextJs App Router conventions.</li>
       <li><strong>103 Early Hints</strong> -- before SSR begins, the server calls <code>res.writeEarlyHints()</code> with <code>&lt;link rel="modulepreload"&gt;</code> headers for every module URL that the page will need (the page file itself, its layout chain, and any web component modules discovered on a previous render). This lets the browser start fetching scripts while the server is still computing HTML.</li>
       <li><strong>Segment middleware</strong> -- if any <code>middleware.ts</code> files exist on the path from root to the matched route, they execute outermost-first as a chain: <code>(req, next) =&gt; Response</code>.</li>
       <li><strong>Load page module</strong> -- the server dynamically imports the matched <code>page.ts</code> file. In dev mode, a cache-busting query string is appended to the import URL so edits take effect immediately without restarting.</li>

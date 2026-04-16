@@ -101,7 +101,7 @@ modules/
 ## Architecture: Routes
 
 <!-- OVERRIDE -->
-Routes live under `app/` and follow Next.js App Router conventions:
+Routes live under `app/` and follow NextJs App Router conventions:
 
 - `app/page.ts` — Homepage
 - `app/<segment>/page.ts` — Static route

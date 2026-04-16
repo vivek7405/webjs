@@ -3,7 +3,7 @@
 **The web framework AI agents can read, write, and ship.**
 
 AI-first, no-build, web-components-first full-stack framework. TypeScript
-or JSDoc, file-based routing inspired by Next.js, type-safe server actions
+or JSDoc, file-based routing inspired by NextJs and Lit, type-safe server actions
 with superjson, streaming SSR, WebSockets, client-side router — zero
 bundler, zero compile step.
 
@@ -13,7 +13,7 @@ bundler, zero compile step.
 - **No build.** `.ts` files served directly. Node 23.6+ strips types at runtime; the dev server strips types via esbuild for the browser (~1ms/file, cached). Edit, refresh, done.
 - **Web components.** Shadow DOM + Declarative Shadow DOM for real SSR. Components paint before JS loads. No hydration runtime.
 - **Full-stack type safety.** Import a `.server.ts` function from a component — TypeScript sees the real signature. superjson on the wire preserves `Date`, `Map`, `Set`, `BigInt`.
-- **Next.js-style routing.** `page.ts`, `layout.ts`, `route.ts`, `error.ts`, `middleware.ts`, `[params]`, `(groups)`, `_private`. Layouts persist across navigations.
+- **NextJs-style routing.** `page.ts`, `layout.ts`, `route.ts`, `error.ts`, `middleware.ts`, `[params]`, `(groups)`, `_private`. Layouts persist across navigations.
 - **Client router.** Turbo-Drive-style link interception. Shadow-DOM-aware via `composedPath()`. Layouts stay mounted, only page content swaps. No white flash.
 - **WebSockets built in.** Export `WS` from `route.ts` → WebSocket endpoint. `connectWS()` on the client auto-reconnects.
 - **Backend-only mode.** Skip pages entirely — use webjs as a lightweight API framework with file routing, middleware, rate limiting, and TypeScript.

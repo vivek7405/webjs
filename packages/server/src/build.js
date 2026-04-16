@@ -15,7 +15,7 @@ import { walk } from './fs-walk.js';
  *   - One bundle for the whole app (no per-route code splitting). For apps
  *     with 50+ component files this is still usually a better bet than
  *     unbundled ES-module waterfalls on a cold cache — but it's not what
- *     Next.js does.
+ *     NextJs does.
  *   - `.server.js` files and API route handlers are NEVER bundled; they
  *     stay on the server. Any accidental import of one from a page/component
  *     is left as-is and would be caught at runtime in dev.

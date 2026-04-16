@@ -369,7 +369,7 @@ function actionErrorResponse(err, dev) {
 
 /**
  * Convert an `expose()` path like `/api/posts/:slug` to a regex + param list.
- * Also accepts Next.js-style `[slug]` brackets for familiarity.
+ * Also accepts NextJs-style `[slug]` brackets for familiarity.
  * @param {string} path
  */
 function pathToPattern(path) {

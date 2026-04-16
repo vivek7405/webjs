@@ -162,7 +162,7 @@ or "also commit". That is the default behaviour in a webjs project.
 
 ## What webjs is
 
-A **no-build, web-components-first** framework modeled after Next.js App Router.
+A **no-build, web-components-first** framework inspired by NextJs and Lit.
 
 - **No build step.** Source files are served to the browser as native ES modules.
 - **JSDoc or TypeScript.** Plain `.js` with JSDoc is the default; `.ts`/`.mts`

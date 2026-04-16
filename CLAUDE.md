@@ -83,6 +83,6 @@ Cloned locally at `~/Documents/Projects/` for architectural reference:
   hydration data delivery.
 - **`turbo`** — [Turbo](https://turbo.hotwired.dev): Turbo Drive library.
   Compare: link interception, body swap, history, View Transitions.
-- **`next.js`** — [Next.js](https://nextjs.org): React framework with
+- **`next.js`** — [NextJs](https://nextjs.org): React framework with
   App Router. Compare: file conventions, routing, layouts, metadata,
   loading states, streaming SSR. webjs's router is at near-parity.

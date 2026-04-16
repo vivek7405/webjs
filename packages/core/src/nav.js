@@ -1,5 +1,5 @@
 /**
- * Server-side navigation helpers, modelled after Next.js.
+ * Server-side navigation helpers, modelled after NextJs.
  *
  * Usage (inside a server-only module: page, layout, API route, server action):
  *

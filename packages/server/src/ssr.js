@@ -8,7 +8,7 @@ import { transitiveDeps } from './module-graph.js';
 /**
  * SSR a matched page route to a Response.
  *
- * Mirrors Next.js semantics:
+ * Mirrors NextJs semantics:
  *   - Page + layout default exports can be async.
  *   - `metadata` named export on layouts/pages is merged (page > innermost layout > … > root).
  *   - `notFound()` and `redirect()` thrown anywhere in the chain are caught
@@ -164,7 +164,7 @@ async function renderChain(route, ctx, dev, suspenseCtx) {
   let tree = await page.default(ctx);
 
   // If the route has a loading.ts file, wrap the page in a Suspense boundary
-  // with the loading content as the fallback. This mirrors Next.js's automatic
+  // with the loading content as the fallback. This mirrors NextJs's automatic
   // Suspense wrapping when loading.tsx is present.
   if (route.loadings && route.loadings.length > 0) {
     // Use the innermost (closest) loading file

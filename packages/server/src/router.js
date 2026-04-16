@@ -37,7 +37,7 @@ import { walk } from './fs-walk.js';
 /**
  * Scan `<appDir>/app` and build a route table.
  *
- * Supported file conventions (Next.js App Router–compatible):
+ * Supported file conventions (NextJs App Router–compatible):
  *   app/page.js                     → /
  *   app/about/page.js               → /about
  *   app/blog/[slug]/page.js         → /blog/:slug
@@ -135,7 +135,7 @@ export async function buildRouteTable(appDir) {
       const urlPath = METADATA_URL_MAP[stem] || `/${stem}`;
       metadataRoutes.push({ stem, file, urlPath });
     } else if (stem === 'route') {
-      // route.js / route.ts can live anywhere under app/ (matches Next.js).
+      // route.js / route.ts can live anywhere under app/ (matches NextJs).
       const segs = dir === '.' ? [] : dir.split('/');
       const { pattern, paramNames } = segmentsToPattern(segs);
       apis.push({ pattern, paramNames, file, routeDir: dir, middlewares: [] });

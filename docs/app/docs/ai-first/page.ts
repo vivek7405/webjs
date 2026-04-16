@@ -62,7 +62,7 @@ modules/posts/queries/get-post.server.ts      → exports getPost()</pre>
 
     <h3>5. Explicit Server Boundary</h3>
     <p>The <code>.server.ts</code> extension is a visible, greppable marker that says "this code runs only on the server." An AI agent never accidentally puts a database call in a component — the naming convention prevents it. And the framework enforces it: <code>.server.ts</code> files are rewritten to RPC stubs for the browser.</p>
-    <p>Compare with Next.js where <code>'use client'</code> / <code>'use server'</code> directives are easy to forget and their scope rules are subtle. The <code>.server.ts</code> convention is filename-level — you can't accidentally import server code without the filename literally telling you.</p>
+    <p>Compare with NextJs where <code>'use client'</code> / <code>'use server'</code> directives are easy to forget and their scope rules are subtle. The <code>.server.ts</code> convention is filename-level — you can't accidentally import server code without the filename literally telling you.</p>
 
     <h3>6. Typed RPC Without Schema</h3>
     <p>When an AI agent writes a server action:</p>
@@ -124,7 +124,7 @@ export async function createPost(
 
     <h2>Comparison: AI-Friendliness</h2>
     <blockquote>This is an opinionated comparison. Every framework has trade-offs.</blockquote>
-    <pre>                       webjs        Next.js       Express
+    <pre>                       webjs        NextJs       Express
 ──────────────────────────────────────────────────────────
 AGENTS.md contract     ✅ built-in   ❌ none       ❌ none
 Cross-agent configs    ✅ 5 agents   ❌ none       ❌ none
