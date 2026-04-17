@@ -132,6 +132,14 @@ Routes live under `app/` and follow NextJs App Router conventions:
 - `app/**/error.ts` — Error boundary
 - `app/**/middleware.ts` — Per-segment middleware
 
+**Special route files:**
+- `app/**/error.ts` — Error boundary. Default export receives `{ error }`, returns `TemplateResult`. Nearest boundary catches errors from pages below it.
+- `app/**/loading.ts` — Loading state. Auto-wraps the sibling page in a `Suspense` boundary. Shown while async page functions resolve.
+- `app/**/not-found.ts` — 404 page. Nearest wins when `notFound()` is thrown.
+- `app/sitemap.ts` — Dynamic sitemap at `/sitemap.xml`. Export a function returning an array of `{ url, lastModified }`.
+- `app/robots.ts` — Dynamic robots.txt at `/robots.txt`.
+- `app/manifest.ts` — Web app manifest at `/manifest.json`.
+
 **Rules:**
 - A folder cannot have both `page.ts` and `route.ts`
 - Page/layout default exports must be functions (possibly async)
@@ -250,6 +258,62 @@ global CSS, Tailwind utility classes, or `<style>` in the render template.
 
 Both are fully SSR'd — shadow DOM uses Declarative Shadow DOM, light DOM
 renders content directly as HTML. Both hydrate without flash on the client.
+
+---
+
+## Rate limiting & middleware
+
+<!-- OVERRIDE -->
+Use `rateLimit()` as per-segment middleware to protect routes:
+
+```ts
+// app/api/auth/middleware.ts — protect auth endpoints
+import { rateLimit } from '@webjs/server';
+export default rateLimit({ window: '10s', max: 5 });
+```
+
+Place `middleware.ts` at any route level — it applies to that subtree only.
+Chain runs outermost → innermost.
+
+---
+
+## Lazy loading
+
+<!-- OVERRIDE -->
+For below-the-fold components with heavy JS, defer loading until visible:
+
+```ts
+class HeavyChart extends WebComponent {
+  static tag = 'heavy-chart';
+  static lazy = true;  // module loaded on scroll, not on page load
+  // ...
+}
+```
+
+SSR content is visible immediately — only the JS download is deferred.
+**Do NOT use** for above-the-fold or critical UI (navigation, forms).
+
+---
+
+## expose() — REST endpoints from server actions
+
+<!-- OVERRIDE -->
+Tag a server action to also be reachable over HTTP:
+
+```ts
+import { expose } from 'webjs';
+export const createPost = expose('POST /api/posts', async ({ title, body }) => {
+  return prisma.post.create({ data: { title, body } });
+});
+```
+
+The same function works via RPC (from components) and HTTP (for external
+callers). Use `expose()` when mobile apps, webhooks, or third parties need
+to call your action. For internal-only actions, plain server actions are
+simpler and CSRF-protected.
+
+**Security:** `expose()`d endpoints are NOT CSRF-protected. Authenticate
+via bearer tokens, API keys, or auth middleware.
 
 ---
 

@@ -19,6 +19,10 @@ TypeScript with zero build step, real SSR with Declarative Shadow DOM.
 - **WebSockets built in.** Export `WS` from `route.ts` → WebSocket endpoint. `connectWS()` on the client auto-reconnects.
 - **Backend-only mode.** Skip pages entirely — use webjs as a lightweight API framework with file routing, middleware, rate limiting, and TypeScript.
 - **Built-in essentials.** Auth, sessions, caching, WebSocket broadcast, rate limiting — all built in. Set `REDIS_URL` to scale.
+- **Lazy loading.** `static lazy = true` defers module download until the component scrolls into the viewport. SSR content stays visible — only the JS is lazy.
+- **Error boundaries & loading states.** `error.ts` catches render failures at any route level. `loading.ts` auto-wraps pages in Suspense boundaries.
+- **Metadata routes.** `sitemap.ts`, `robots.ts`, `manifest.ts`, `icon.ts`, `opengraph-image.ts` — dynamic SEO/PWA metadata from functions, not static files.
+- **`expose()` for REST.** Tag a server action with `expose('POST /api/posts', fn)` to make it reachable over HTTP and via RPC. Optional input validation.
 - **Production ready.** CSRF, gzip/brotli, HTTP/2, 103 Early Hints, CSP nonces, modulepreload, rate limiting, health probes, graceful shutdown, streaming Suspense.
 
 ## Quickstart
@@ -133,10 +137,13 @@ The docs site is built on webjs itself:
 cd docs && npx webjs dev --port 4000
 ```
 
-18 pages covering: getting started, AI-first development, routing,
-components, SSR, styling, Suspense, server actions, API routes,
+35 pages covering: getting started, AI-first development, routing,
+components, SSR, styling, Suspense, loading states, error handling,
+client router, server actions, expose() REST endpoints, API routes,
 WebSockets, database, authentication, TypeScript, middleware,
-deployment, backend-only mode, testing, configuration.
+rate limiting, lazy loading, metadata routes, caching, sessions,
+controllers, context protocol, task, deployment, backend-only mode,
+testing, conventions, configuration.
 
 ## Status
 

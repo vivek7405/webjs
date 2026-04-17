@@ -513,6 +513,80 @@ DOM component is silently ignored.
 - Default export receives `{ error, ...ctx }` and returns a `TemplateResult`.
 - Catches errors thrown during render of the sibling page or any deeper segment (not 404/redirect sentinels — those are handled separately).
 - Nearest boundary wins: innermost `error.js` on the route's folder chain is tried first.
+- If an error boundary itself throws, the next-outer boundary catches it.
+- In production, only `error.message` is sent to the client — never the stack trace. Log server-side for debugging.
+
+```js
+// app/error.ts — root error boundary
+import { html } from 'webjs';
+
+export default function ErrorPage({ error }: { error: Error }) {
+  return html`
+    <h1>Something went wrong</h1>
+    <p>${error.message}</p>
+    <a href="/">Go home</a>
+  `;
+}
+```
+
+**When to use:** any route segment where a data-fetching failure or render error should show a user-friendly page instead of crashing the whole app. Place `error.ts` at the level you want to isolate — `app/error.ts` for the whole app, `app/blog/error.ts` for just blog pages.
+
+### Loading states (`app/**/loading.js`)
+
+A `loading.js` file is the automatic Suspense boundary for its sibling page. The framework wraps the page in `Suspense({ fallback: <your loading component>, children: <async page> })`. The fallback is flushed to the browser immediately while the page function resolves.
+
+```js
+// app/blog/loading.ts — shown while blog pages load
+import { html } from 'webjs';
+
+export default function Loading() {
+  return html`
+    <div class="skeleton">
+      <div style="height:2rem;width:60%;background:var(--bg-subtle);border-radius:4px;margin-bottom:1rem"></div>
+      <div style="height:1rem;width:100%;background:var(--bg-subtle);border-radius:4px;margin-bottom:0.5rem"></div>
+      <div style="height:1rem;width:80%;background:var(--bg-subtle);border-radius:4px"></div>
+    </div>
+  `;
+}
+```
+
+**When to use:** any page with slow data fetching (DB queries, external APIs). The user sees the loading UI instantly instead of a blank screen.
+
+**When NOT to use:** fast pages that render in <100ms — the loading state flashes and disappears, which is worse UX. For client-side loading within a component, use the [Task controller](#task) instead.
+
+**`loading.js` vs inline `Suspense()`:**
+- `loading.js` — automatic, wraps the entire page. One file, zero code changes in the page.
+- `Suspense()` — manual, place anywhere in a template. Multiple independent boundaries in one page, each resolving separately.
+
+### Metadata routes
+
+Special files that generate SEO and PWA metadata. Place at the root of `app/` (or any static, non-dynamic segment). Each exports a (possibly async) function:
+
+```js
+// app/sitemap.ts → serves /sitemap.xml
+export default async function sitemap() {
+  const posts = await prisma.post.findMany({ select: { slug: true, updatedAt: true } });
+  return [
+    { url: 'https://example.com/', lastModified: new Date() },
+    ...posts.map(p => ({ url: `https://example.com/blog/${p.slug}`, lastModified: p.updatedAt })),
+  ];
+}
+
+// app/robots.ts → serves /robots.txt
+export default function robots() {
+  return {
+    rules: [{ userAgent: '*', allow: '/' }],
+    sitemap: 'https://example.com/sitemap.xml',
+  };
+}
+
+// app/manifest.ts → serves /manifest.json
+export default function manifest() {
+  return { name: 'My App', short_name: 'App', start_url: '/', display: 'standalone' };
+}
+```
+
+Supported files: `sitemap.js`, `robots.js`, `manifest.js`, `icon.js`, `apple-icon.js`, `opengraph-image.js`, `twitter-image.js`. Must live at root or static segments — not inside `[dynamic]` folders.
 
 ### Custom components (`components/*.js`)
 
@@ -1145,8 +1219,14 @@ traditional bundler buys you for the initial page load:
 
 4. **Lazy component loading (opt-in).** Components with `static lazy = true`
    are excluded from modulepreload and loaded on-demand via
-   `IntersectionObserver` when the element enters the viewport. Ideal for
-   below-the-fold widgets (charts, maps, carousels).
+   `IntersectionObserver` (200px root margin) when the element enters the
+   viewport. The SSR-rendered DSD content is visible immediately — only the
+   JS module is deferred. Ideal for below-the-fold widgets (charts, maps,
+   carousels). For even more control, `static hydrate = 'visible'` defers
+   the component's `connectedCallback` activation (not just the module
+   download) until the element is visible. Use both together for maximum
+   deferral. **Do NOT use** for above-the-fold or critical UI (navigation,
+   auth forms) — those must hydrate eagerly.
 5. **Auto-vendor bundling (Vite-style optimizeDeps).** At startup the server
    scans client-reachable source for bare npm import specifiers. Each
    discovered package is bundled into a single ESM file via esbuild and
@@ -1173,24 +1253,67 @@ One bundle for the whole app — no per-route code splitting in v1.
 
 ### Rate limiting — `rateLimit()`
 
-In-memory fixed-window limiter, shaped as middleware:
+Fixed-window limiter shaped as middleware. Place it in `middleware.ts` at whatever route level you want to protect:
 
 ```js
+// app/api/auth/middleware.ts — protect login/signup from brute force
 import { rateLimit } from '@webjs/server';
-export default rateLimit({ window: '1m', max: 60 });    // 60 req/min
+export default rateLimit({ window: '10s', max: 5 });
+
+// app/api/middleware.ts — general API rate limit
+import { rateLimit } from '@webjs/server';
+export default rateLimit({ window: '1m', max: 60 });
+
+// Custom key: rate limit per authenticated user instead of IP
+import { rateLimit } from '@webjs/server';
 export default rateLimit({
-  window: '10s', max: 10,
-  key: req => `login:${req.headers.get('x-forwarded-for') || 'anon'}`,
+  window: '1m', max: 30,
+  key: async (req) => {
+    const session = await auth(req);
+    return session?.user?.id ?? 'anon';
+  },
 });
 ```
 
-Single-process only — use Redis or edge rate-limiting for multi-instance.
+**Options:** `window` (duration: `'10s'`, `'1m'`, `'1h'`, or ms), `max` (requests per window, default 60), `key` (string prefix or `(req) => string` function, default: client IP from `x-forwarded-for`/`cf-connecting-ip`/`x-real-ip`), `message` (429 error text), `store` (override cache store).
+
+**When exceeded:** returns `429 Too Many Requests` with JSON body `{ "error": "Too Many Requests" }` and standard headers: `x-ratelimit-limit`, `x-ratelimit-remaining`, `x-ratelimit-reset`, `retry-after`.
+
+**Scaling:** in-memory by default (single-process). Set `REDIS_URL` → rate limits are shared across all instances automatically via the pluggable cache store.
 
 ### Per-segment middleware
 
 `middleware.js` can live at any level under `app/` and only applies to its
 subtree. Chain runs outermost → innermost, root sibling → app root first,
 then segment-scoped files.
+
+### Client router — Turbo Drive-style navigation
+
+`import 'webjs/client-router'` enables SPA-style navigation without full page reloads. Intercepts same-origin `<a>` clicks (including inside shadow DOM via `composedPath()`), fetches the target HTML, and swaps DOM content.
+
+**How it works:**
+1. Fetches the target URL's HTML via `fetch()`.
+2. Parses with `Document.parseHTMLUnsafe()` (preserves Declarative Shadow DOM).
+3. If both pages share the same layout shell (e.g. `<blog-shell>`), swaps only the slot content — layout stays fully mounted (no flicker, no style recalc).
+4. If layout differs, replaces the entire `<body>` and merges `<head>`.
+5. Upgrades custom elements, re-runs scripts, updates URL via `pushState`, scrolls to top.
+6. Dispatches `webjs:navigate` event on `document`.
+
+**Programmatic navigation:**
+```js
+import { navigate } from 'webjs/client-router';
+await navigate('/about');                    // push to history
+await navigate('/login', { replace: true }); // replace history entry
+```
+
+**Opt out per link:** add `data-no-router` to force a full page navigation:
+```html
+<a href="/legacy" data-no-router>Full reload</a>
+```
+
+**Loading indicator:** `<html>` gets `data-navigating` attribute during fetch — use CSS to show a progress bar.
+
+**When to use:** always — it's enabled by default in the scaffold layout. **When NOT to use:** links with `download`, `target="_blank"`, external origins — these are automatically skipped.
 
 ### Raw-text templates
 

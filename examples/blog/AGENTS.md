@@ -64,6 +64,27 @@ components/                  shared UI primitives
 prisma/schema.prisma         User, Session, Post, Comment
 ```
 
+## Feature usage in this app
+
+### Rate limiting
+`app/api/auth/middleware.ts` applies `rateLimit({ window: '10s', max: 5 })` to all auth endpoints — 5 requests per 10 seconds per IP. Exceeding returns 429 with `retry-after` header. Uses the global cache store (memory in dev, Redis if `REDIS_URL` is set).
+
+### Error boundaries
+`app/error.ts` catches any unhandled error during page rendering. Receives `{ error }` and renders a user-friendly error card. Nested error boundaries are supported — place `error.ts` deeper in the route tree to isolate failures.
+
+### Client router
+The layout (`app/layout.ts`) imports `webjs/client-router` — all `<a>` links navigate via fetch + DOM swap. The `<blog-shell>` layout stays mounted across navigations (header, footer, theme state preserved). Only page content swaps.
+
+### Middleware
+- `middleware.ts` (root) — request logging on every route.
+- `app/dashboard/middleware.ts` — auth gate: redirects to `/login` if no session.
+- `app/api/auth/middleware.ts` — rate limiting on auth endpoints.
+
+### WebSockets
+- `app/api/chat/route.ts` exports `WS` for the live chat.
+- `app/api/comments/[postId]/route.ts` exports `WS` for live comment threads.
+- Client components use `connectWS()` for auto-reconnecting WebSocket connections.
+
 ## Conventions
 
 - **One exported function per action/query file.** Name the file after the function.
