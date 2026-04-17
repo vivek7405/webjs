@@ -94,6 +94,8 @@ export async function scaffoldApp(name, cwd) {
     'test/unit/example.test.ts',
     'test/browser/example.test.js',
     'web-test-runner.config.js',
+    // Git hooks (blocks commits on main)
+    '.hooks/pre-commit',
     // Claude Code config + hooks
     '.claude.json',
     '.claude/settings.json',
@@ -122,6 +124,9 @@ export async function scaffoldApp(name, cwd) {
     const hookPath = join(appDir, '.claude', 'hooks', hook);
     if (existsSync(hookPath)) await chmod(hookPath, 0o755);
   }
+  // Make git pre-commit hook executable
+  const preCommitPath = join(appDir, '.hooks', 'pre-commit');
+  if (existsSync(preCommitPath)) await chmod(preCommitPath, 0o755);
 
   // --- App files ---
 
@@ -262,6 +267,14 @@ export class ThemeToggle extends WebComponent {
 
 ThemeToggle.register(import.meta.url);
 `);
+
+  // --- Git init + configure hooks directory ---
+  const { execSync } = await import('node:child_process');
+  try {
+    execSync('git init', { cwd: appDir, stdio: 'pipe' });
+    // Tell git to use .hooks/ as the hooks directory (tracked in the repo)
+    execSync('git config core.hooksPath .hooks', { cwd: appDir, stdio: 'pipe' });
+  } catch { /* git not available — skip */ }
 
   // --- Print success ---
 

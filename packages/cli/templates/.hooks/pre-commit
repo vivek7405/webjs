@@ -1,0 +1,24 @@
+#!/bin/bash
+#
+# pre-commit hook — blocks commits on main/master.
+#
+# No AI agent, no editor, no human can commit to main directly.
+# Create a feature branch first. This is git-level enforcement.
+#
+# To bypass in emergencies: git commit --no-verify
+
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
+  echo ""
+  echo "ERROR: Cannot commit directly to '$BRANCH'."
+  echo ""
+  echo "Create a feature branch first:"
+  echo "  git checkout -b feature/<name>"
+  echo ""
+  echo "To bypass (emergencies only): git commit --no-verify"
+  echo ""
+  exit 1
+fi
+
+exit 0
