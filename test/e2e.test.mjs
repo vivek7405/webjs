@@ -258,40 +258,61 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     assert.equal(after, 4, `Counter should be 4 after increment, got: ${after}`);
   });
 
-  test('counter works after multiple navigations with delays', async () => {
+  test('counter works after multiple navigations with random delays', { timeout: 120000 }, async () => {
     // This replicates the exact user-reported bug: navigate around the blog
-    // for a while (with pauses between navigations), then come back to the
-    // landing page — the counter should still work.
-    await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
-    await sleep(3000);
+    // for about a minute (with varied, realistic pauses between navigations),
+    // then come back to the landing page — the counter should still work.
+    //
+    // Delays are randomized between 3–10s to mimic real browsing behavior
+    // where the user reads content, scrolls, and clicks at irregular intervals.
+    const delay = () => sleep(3000 + Math.floor(Math.random() * 7000));
 
-    // Navigation 1: Home → About (wait)
+    await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await delay();
+
+    // Navigation 1: Home → About (read the about page for a while)
     await clickNavLink(page, 'About');
-    await sleep(3000);
+    await delay();
     assert.ok(page.url().includes('/about'), 'Should be on /about');
 
-    // Navigation 2: About → Home via brand link (wait)
+    // Navigation 2: About → Home via brand link (browse the post list)
     await clickBrandLink(page);
-    await sleep(3000);
+    await delay();
 
-    // Navigation 3: Home → About again (wait)
+    // Navigation 3: Home → About again (re-read something)
     await clickNavLink(page, 'About');
-    await sleep(3000);
+    await delay();
     assert.ok(page.url().includes('/about'), 'Should be on /about again');
 
-    // Navigation 4: About → Home via Posts nav link (wait)
+    // Navigation 4: About → Home via Posts nav link (different link, same dest)
     await clickNavLink(page, 'Posts');
-    await sleep(3000);
+    await delay();
 
-    // Navigation 5: Home → About once more (wait)
+    // Navigation 5: Home → About once more (third visit to about)
     await clickNavLink(page, 'About');
-    await sleep(3000);
+    await delay();
 
-    // Navigation 6: Back to Home (the scenario that triggered the bug)
+    // Navigation 6: About → Home via brand
     await clickBrandLink(page);
-    await sleep(3000);
+    await delay();
 
-    // The counter MUST be upgraded and functional
+    // Navigation 7: Home → About (keep going)
+    await clickNavLink(page, 'About');
+    await delay();
+
+    // Navigation 8: About → Home via Posts
+    await clickNavLink(page, 'Posts');
+    await delay();
+
+    // Navigation 9: Home → About (one more round trip)
+    await clickNavLink(page, 'About');
+    await delay();
+
+    // Navigation 10: Back to Home (the scenario that triggered the bug)
+    await clickBrandLink(page);
+    await delay();
+
+    // The counter MUST be upgraded and functional after all that browsing
     const val = await getCounterValue(page);
     assert.equal(typeof val, 'number', `Counter value should be a number, got: ${typeof val}`);
     assert.equal(val, 3, `Counter should be 3, got: ${val}`);
