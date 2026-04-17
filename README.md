@@ -4,8 +4,8 @@
 
 Full-stack web framework inspired by NextJs, Lit, and Rails. Sessions,
 background jobs, file storage, pub/sub, caching — set `REDIS_URL` and
-everything scales horizontally. No config files. TypeScript with zero
-build step. Web components with real SSR.
+everything scales horizontally. Web components first, TypeScript with
+zero build step, real SSR with Declarative Shadow DOM.
 
 ## Why webjs
 

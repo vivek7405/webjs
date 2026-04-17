@@ -2,7 +2,7 @@ import { html } from 'webjs';
 
 export const metadata = {
   title: 'webjs — AI-first, batteries-included, convention-over-configuration web framework',
-  description: 'Convention over configuration. Batteries included. Designed for AI agents. Sessions, jobs, pub/sub, storage, cache — set REDIS_URL and everything scales. Inspired by NextJs, Lit, and Rails.',
+  description: 'AI-first, batteries-included, web-components-first framework. Convention over configuration — set REDIS_URL and everything scales. Sessions, jobs, pub/sub, storage, cache built in.',
 };
 
 const FEATURES = [
@@ -202,7 +202,7 @@ export default function LandingPage() {
       <p>
         Convention over configuration, batteries included, designed for AI agents.
         Sessions, background jobs, file storage, pub/sub, caching — set <code>REDIS_URL</code> and
-        everything scales horizontally. No config files. Inspired by NextJs, Lit, and Rails.
+        everything scales horizontally. Web components first, no build step, real SSR.
       </p>
       <div class="hero-actions">
         <a class="primary" href="http://localhost:4000/docs/getting-started" target="_blank">Get Started</a>

@@ -167,7 +167,7 @@ framework inspired by NextJs, Lit, and Rails.
 
 - **Convention over configuration.** Set `REDIS_URL` and sessions, cache,
   rate limiting, pub/sub, and background jobs all use Redis automatically.
-  Set `S3_BUCKET` for cloud file storage. No config files needed.
+  Set `S3_BUCKET` for cloud file storage. Environment variables, not config files.
 - **Batteries included.** Sessions, background jobs, file storage, pub/sub,
   cache store, rate limiting — all built in with pluggable adapters.
 - **No build step.** Source files are served to the browser as native ES modules.
