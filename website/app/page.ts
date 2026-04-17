@@ -200,7 +200,7 @@ export default function LandingPage() {
       <div class="rubric"><span class="name">webjs</span> <span class="sep">—</span> ai-first web framework</div>
       <h1>The web framework where AI agents write production code.</h1>
       <p>
-        webjs is an AI-first, no-build, web-components-first framework inspired by NextJs and Lit.
+        webjs is an AI-first, no-build, web-components-first framework inspired by Lit and NextJs.
         Cross-agent guardrails enforce tests, docs, branch hygiene, and conventions automatically —
         AI agents deliver production-quality code without being asked.
         Works with Claude Code, Cursor, Windsurf, Copilot, and any AI coding assistant.

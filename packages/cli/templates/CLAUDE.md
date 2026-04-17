@@ -28,12 +28,12 @@ This is automatic — the user should never have to ask.
 
 - **New server action or query** → add unit test in `test/unit/<module>.test.ts`
 - **New or modified component** → add unit test (SSR rendering via `renderToString`)
-- **New or modified page/route** → add E2E test in `test/e2e/<feature>.test.ts`
+- **New or modified page/route** → add E2E test in `test/browser/<feature>.test.ts`
 - **Bug fix** → add regression test proving the fix
 - **Refactor** → run existing tests, ensure they pass
 
 After writing code, ALWAYS run `npx webjs test`. If E2E-relevant,
-also run `npx webjs test --e2e`. Never report a task as done with
+also run `npx webjs test --browser`. Never report a task as done with
 failing tests.
 
 ### 3. Documentation (mandatory, never skip)
@@ -60,7 +60,7 @@ reporting the task as done.
 ```sh
 npx webjs dev              # dev server with live reload
 npx webjs test             # run unit tests
-npx webjs test --e2e       # run unit + E2E tests
+npx webjs test --browser       # run unit + E2E tests
 npx webjs check            # validate conventions
 npx webjs build            # (optional) production bundle
 npx webjs start            # production server

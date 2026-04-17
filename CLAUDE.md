@@ -34,8 +34,8 @@ No AI attribution trailers. Always `git push` after committing.
 ### 2. Tests
 
 - **Unit tests** in `test/*.test.js` for any new/changed functionality
-- **E2E tests** in `test/e2e.test.mjs` for user-facing features
-- Run `npm test` after every change. Run `npm run test:e2e` for E2E.
+- **E2E tests** in `test/browser/` for user-facing features
+- Run `npm test` after every change. Run `npm run test:browser` for E2E.
 - Never report work as done with failing tests.
 
 ### 3. Documentation
@@ -67,7 +67,7 @@ Run `npx webjs check` on the blog example after changes.
 ```sh
 npm install                          # workspace-linked deps
 npm test                             # run unit tests (153 tests)
-npm run test:e2e                     # run E2E tests (9 tests, needs chromium)
+npm run test:browser                     # run E2E tests (9 tests, needs chromium)
 cd examples/blog && npx webjs dev    # dev server with live reload
 cd website && npm run dev            # website + docs + blog together
 ```

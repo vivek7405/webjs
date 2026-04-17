@@ -136,7 +136,7 @@ bypass/autonomous mode).
    their config files.
 
 7. **Run tests before committing.** `npx webjs test` must pass. If the
-   change is user-facing, `npx webjs test --e2e` must also pass.
+   change is user-facing, `npx webjs test --browser` must also pass.
 
 ### What "automatically" means — a concrete example
 
@@ -1088,13 +1088,15 @@ test('component renders heading', async () => {
 });
 ```
 
-### E2E tests — `test/e2e/*.test.{ts,js}`
+### Browser tests — `test/browser/*.test.js`
 
 ```sh
-webjs test --e2e        # runs unit + E2E tests
+webjs test --browser        # browser tests only (WTR + Playwright)
 ```
 
-E2E tests use Puppeteer to launch a real browser and test full user flows.
+Browser tests run in real Chromium via Web Test Runner (WTR) + Playwright.
+Full Shadow DOM, events, adoptedStyleSheets, IntersectionObserver — everything
+works because it's a real browser, not a fake DOM.
 
 ### Convention: always write tests
 

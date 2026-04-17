@@ -56,7 +56,8 @@ export async function scaffoldApp(name, cwd) {
       build: 'webjs build',
       start: 'webjs start',
       test: 'webjs test',
-      'test:e2e': 'webjs test --e2e',
+      'test:server': 'webjs test --server',
+      'test:browser': 'webjs test --browser',
       check: 'webjs check',
     },
     dependencies: {
@@ -66,7 +67,9 @@ export async function scaffoldApp(name, cwd) {
     },
     devDependencies: {
       esbuild: '^0.28.0',
-      'puppeteer-core': '^24.0.0',
+      '@web/test-runner': '^0.20.0',
+      '@web/test-runner-playwright': '^0.11.0',
+      'playwright': '^1.59.0',
     },
   }, null, 2) + '\n');
 
@@ -89,7 +92,8 @@ export async function scaffoldApp(name, cwd) {
     'CONVENTIONS.md',
     'CLAUDE.md',
     'test/unit/example.test.ts',
-    'test/e2e/example.test.ts',
+    'test/browser/example.test.js',
+    'web-test-runner.config.js',
     // Claude Code hooks
     '.claude/settings.json',
     '.claude/hooks/guard-main-merge.sh',
@@ -265,7 +269,8 @@ ThemeToggle.register(import.meta.url);
     components/theme-toggle.ts
     modules/
     test/unit/example.test.ts
-    test/e2e/example.test.ts
+    test/browser/example.test.js
+    web-test-runner.config.js
     CONVENTIONS.md, AGENTS.md, CLAUDE.md
     package.json, tsconfig.json, .editorconfig
     .claude/settings.json, .claude/hooks/   ← Claude Code guardrails

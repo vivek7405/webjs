@@ -11,7 +11,7 @@ const USAGE = `webjs — commands:
   webjs build                                     Bundle components + pages for production
   webjs start [--port 3000]                       Start production server
               [--http2 --cert <path> --key <path>]  Serve HTTP/2 over TLS (falls back to h1.1)
-  webjs test  [--e2e]                             Run unit tests (+ E2E with --e2e)
+  webjs test  [--server|--browser]                 Run server + browser tests
   webjs check                                     Validate app against conventions
   webjs create <name>                             Scaffold a new webjs app
   webjs db generate                               Run \`prisma generate\`
@@ -103,64 +103,74 @@ async function main() {
       break;
     }
     case 'test': {
-      const e2e = rest.includes('--e2e');
       const cwd = process.cwd();
-
-      // Discover test files
       const { existsSync } = await import('node:fs');
-      const { readdir } = await import('node:fs/promises');
 
-      const testFiles = [];
+      // Two test runners:
+      //   1. node:test for server-side tests (test/server/*.test.ts, test/unit/*.test.ts)
+      //   2. WTR + Playwright for browser tests (test/browser/*.test.js)
+      //
+      // `webjs test`          → runs both
+      // `webjs test --server` → server tests only (node:test)
+      // `webjs test --browser` → browser tests only (WTR + Playwright)
 
-      // Unit tests: test/unit/*.test.{js,ts}
-      const unitDir = join(cwd, 'test', 'unit');
-      if (existsSync(unitDir)) {
-        const files = await readdir(unitDir);
-        for (const f of files) {
-          if (/\.test\.(js|ts|mjs|mts)$/.test(f)) testFiles.push(join(unitDir, f));
-        }
-      }
+      const serverOnly = rest.includes('--server');
+      const browserOnly = rest.includes('--browser');
+      const runServer = !browserOnly;
+      const runBrowser = !serverOnly;
 
-      // Also check root test/*.test.{js,ts} (flat layout)
-      const testDir = join(cwd, 'test');
-      if (existsSync(testDir)) {
-        const files = await readdir(testDir);
-        for (const f of files) {
-          if (/\.test\.(js|ts|mjs|mts)$/.test(f) && !f.startsWith('e2e')) {
-            const full = join(testDir, f);
-            if (!testFiles.includes(full)) testFiles.push(full);
-          }
-        }
-      }
+      // --- Server tests (node:test) ---
+      if (runServer) {
+        const { readdir } = await import('node:fs/promises');
+        const testFiles = [];
 
-      // E2E tests: test/e2e/*.test.{js,ts}
-      if (e2e) {
-        const e2eDir = join(cwd, 'test', 'e2e');
-        if (existsSync(e2eDir)) {
-          const files = await readdir(e2eDir);
+        for (const dir of ['test/server', 'test/unit', 'test']) {
+          const fullDir = join(cwd, dir);
+          if (!existsSync(fullDir)) continue;
+          const files = await readdir(fullDir);
           for (const f of files) {
-            if (/\.test\.(js|ts|mjs|mts)$/.test(f)) testFiles.push(join(e2eDir, f));
+            if (/\.test\.(js|ts|mjs|mts)$/.test(f)) {
+              const full = join(fullDir, f);
+              if (!testFiles.includes(full)) testFiles.push(full);
+            }
+          }
+        }
+
+        if (testFiles.length > 0) {
+          console.log(`webjs test: running ${testFiles.length} server test file(s)…\n`);
+          const child = spawn(process.execPath, ['--test', ...testFiles], {
+            stdio: 'inherit', cwd, env: { ...process.env },
+          });
+          const code = await new Promise(r => child.on('exit', r));
+          if (code !== 0) process.exit(code ?? 1);
+        }
+      }
+
+      // --- Browser tests (WTR + Playwright) ---
+      if (runBrowser) {
+        const wtrConfig = join(cwd, 'web-test-runner.config.js');
+        if (existsSync(wtrConfig) || existsSync(join(cwd, 'web-test-runner.config.mjs'))) {
+          console.log(`\nwebjs test: running browser tests (WTR + Playwright)…\n`);
+          const child = spawn('npx', ['wtr'], {
+            stdio: 'inherit', cwd, env: { ...process.env },
+          });
+          const code = await new Promise(r => child.on('exit', r));
+          if (code !== 0) process.exit(code ?? 1);
+        } else if (!serverOnly) {
+          // No WTR config — check for test/browser directory
+          const browserDir = join(cwd, 'test', 'browser');
+          if (existsSync(browserDir)) {
+            console.log(`\nwebjs test: running browser tests (WTR + Playwright)…\n`);
+            const child = spawn('npx', ['wtr', '--files', 'test/browser/**/*.test.js'], {
+              stdio: 'inherit', cwd, env: { ...process.env },
+            });
+            const code = await new Promise(r => child.on('exit', r));
+            if (code !== 0) process.exit(code ?? 1);
           }
         }
       }
 
-      if (testFiles.length === 0) {
-        console.log('webjs test: no test files found.');
-        console.log('  Expected: test/unit/*.test.ts or test/e2e/*.test.ts');
-        console.log('  Run: webjs create <name> to scaffold a project with example tests.');
-        break;
-      }
-
-      const env = { ...process.env };
-      if (e2e) env.WEBJS_E2E = '1';
-
-      console.log(`webjs test: running ${testFiles.length} test file(s)${e2e ? ' (including E2E)' : ''}…\n`);
-      const child = spawn(process.execPath, ['--test', ...testFiles], {
-        stdio: 'inherit',
-        cwd,
-        env,
-      });
-      child.on('exit', (code) => process.exit(code ?? 0));
+      console.log('\nwebjs test: done ✓');
       break;
     }
     case 'check': {

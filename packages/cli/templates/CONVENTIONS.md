@@ -141,7 +141,7 @@ test/
 
 **Naming:** `test/unit/<module-name>.test.ts` (e.g., `test/unit/auth.test.ts`)
 
-### E2E tests — `test/e2e/`
+### E2E tests — `test/browser/`
 
 ```
 test/
@@ -149,12 +149,12 @@ test/
     <feature>.test.ts     Browser-level tests per feature
 ```
 
-- Run with: `WEBJS_E2E=1 webjs test` or `WEBJS_E2E=1 node --test test/e2e/*.test.ts`
-- Use Puppeteer for browser automation
+- Run with: `WEBJS_E2E=1 webjs test` or `WEBJS_E2E=1 node --test test/browser/*.test.ts`
+- Use WTR + Playwright for browser automation
 - Test full user flows: navigation, form submission, auth, real-time features
 - Each test file starts the dev server, runs tests, tears down
 
-**Naming:** `test/e2e/<feature>.test.ts` (e.g., `test/e2e/auth-flow.test.ts`)
+**Naming:** `test/browser/<feature>.test.ts` (e.g., `test/browser/auth-flow.test.ts`)
 
 ### When to write tests
 
