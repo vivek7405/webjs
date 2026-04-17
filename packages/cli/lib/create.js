@@ -94,6 +94,8 @@ export async function scaffoldApp(name, cwd) {
     'test/unit/example.test.ts',
     'test/browser/example.test.js',
     'web-test-runner.config.js',
+    // Environment variables
+    '.env.example',
     // Git hooks (blocks commits on main)
     '.hooks/pre-commit',
     // Claude Code config + hooks
