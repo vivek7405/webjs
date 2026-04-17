@@ -141,28 +141,28 @@ test/
 
 **Naming:** `test/unit/<module-name>.test.ts` (e.g., `test/unit/auth.test.ts`)
 
-### E2E tests — `test/browser/`
+### Browser tests — `test/browser/`
 
 ```
 test/
-  e2e/
-    <feature>.test.ts     Browser-level tests per feature
+  browser/
+    <feature>.test.js     Real-browser tests per feature
 ```
 
-- Run with: `WEBJS_E2E=1 webjs test` or `WEBJS_E2E=1 node --test test/browser/*.test.ts`
-- Use WTR + Playwright for browser automation
-- Test full user flows: navigation, form submission, auth, real-time features
-- Each test file starts the dev server, runs tests, tears down
+- Run with: `webjs test --browser` or `npx wtr`
+- Uses **Web Test Runner (WTR) + Playwright** — tests run in real Chromium
+- Full Shadow DOM, events, adoptedStyleSheets, IntersectionObserver
+- Test components, user interactions, navigation, form submission
 
-**Naming:** `test/browser/<feature>.test.ts` (e.g., `test/browser/auth-flow.test.ts`)
+**Naming:** `test/browser/<feature>.test.js` (e.g., `test/browser/auth.test.js`)
 
 ### When to write tests
 
-| Change | Unit test | E2E test |
-|--------|-----------|----------|
-| New server action | Required | Optional |
-| New component | Required (SSR output) | If interactive |
-| New page/route | Optional | Required |
+| Change | Server test (node:test) | Browser test (WTR) |
+|--------|------------------------|-------------------|
+| New server action | Required | — |
+| New component | Required (SSR output) | Required (interaction) |
+| New page/route | — | Required |
 | Bug fix | Required (regression) | If user-facing |
 | Refactor | Existing tests must pass | Existing tests must pass |
 

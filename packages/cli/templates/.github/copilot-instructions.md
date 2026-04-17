@@ -24,8 +24,8 @@ If running without interactive approval (sandbox, auto-approve, etc.):
 Every code change must include:
 1. Commit and push — COMMIT AND PUSH after each logical unit of work.
    Always `git push` after committing. Don't accumulate changes. Automatic.
-2. Unit tests in test/unit/*.test.ts (server actions, components, utilities)
-3. E2E tests in test/e2e/*.test.ts for user-facing features (Puppeteer)
+2. Server tests in test/unit/*.test.ts (node:test for actions, queries, utilities)
+3. Browser tests in test/browser/*.test.js (WTR + Playwright, real Chromium)
 4. Documentation updates (AGENTS.md for API, docs/ for user guides)
 5. Convention validation: `npx webjs check` must pass
 

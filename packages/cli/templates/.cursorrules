@@ -27,9 +27,9 @@ Quality bar stays the same — just no blocking on questions.
 
 ## Mandatory workflow (never skip)
 
-1. TESTS: Every code change must include unit tests (test/unit/) and E2E
-   tests (test/e2e/) for user-facing features. Run `npx webjs test` after
-   every change. Never deliver code without passing tests.
+1. TESTS: Server tests in test/unit/ (node:test), browser tests in
+   test/browser/ (WTR + Playwright, real Chromium). Run `npx webjs test`
+   after every change. Never deliver code without passing tests.
 
 2. DOCS: Update AGENTS.md for API changes. Update docs/ and website/ if
    they exist. The user should never have to ask for tests or docs.

@@ -23,8 +23,8 @@ Quality bar stays the same — no blocking on questions.
 ## Mandatory workflow (never skip)
 
 Every code change must include:
-1. Unit tests in test/unit/*.test.ts
-2. E2E tests in test/e2e/*.test.ts for user-facing features
+1. Server tests in test/unit/*.test.ts (node:test)
+2. Browser tests in test/browser/*.test.js (WTR + Playwright, real Chromium)
 3. Documentation updates (AGENTS.md, docs/, website/ if they exist)
 4. Convention check: `npx webjs check` must pass
 
