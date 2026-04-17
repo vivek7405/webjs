@@ -10,6 +10,7 @@ type State = { comments: CommentFormatted[]; busy: boolean; error: string | null
  */
 export class CommentsThread extends WebComponent {
   static tag = 'comments-thread';
+  static shadow = false;
   static properties = {
     postId:   { type: String },
     initial:  { type: Object },

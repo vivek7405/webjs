@@ -9,6 +9,7 @@ type State = { mode: Mode; busy: boolean; error: string | null };
 
 export class AuthForms extends WebComponent {
   static tag = 'auth-forms';
+  static shadow = false;
   static properties = { then: { type: String } };
   then: string = '/dashboard';
   declare state: State;
