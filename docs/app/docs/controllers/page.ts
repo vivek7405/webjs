@@ -24,8 +24,8 @@ export default function Controllers() {
     <ul>
       <li><strong>hostConnected()</strong> — Called when the host component's <code>connectedCallback</code> fires. Set up subscriptions, timers, and event listeners here.</li>
       <li><strong>hostDisconnected()</strong> — Called when the host component's <code>disconnectedCallback</code> fires. Clean up resources.</li>
-      <li><strong>hostUpdate()</strong> — Called before the host's <code>render()</code> method, after <code>willUpdate()</code>. Pre-render controller logic.</li>
-      <li><strong>hostUpdated()</strong> — Called after the host's <code>render()</code> method, before <code>firstUpdated()</code>/<code>updated()</code>. Post-render controller logic.</li>
+      <li><strong>hostUpdate()</strong> — Called before the host's <code>render()</code> method. Pre-render controller logic.</li>
+      <li><strong>hostUpdated()</strong> — Called after the host's <code>render()</code> method, before <code>firstUpdated()</code>. Post-render controller logic.</li>
     </ul>
 
     <p>All methods are optional. Implement only the ones your controller needs.</p>
