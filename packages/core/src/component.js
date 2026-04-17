@@ -360,16 +360,23 @@ export class WebComponent extends Base {
     } else {
       this._renderRoot = this;
       // Light DOM: inject scoped styles as a <style> element if not already present.
-      // Uses the tag name as a scope so styles don't leak globally.
+      // Inject scoped styles for light DOM components into <head>.
+      //
+      // `data-webjs-styles-for="tag-name"` identifies which component
+      // owns the <style> block. Prevents duplicate injection when
+      // multiple instances of the same component appear on a page.
+      //
+      // AI agents: do NOT set this attribute manually. The framework
+      // handles it automatically for light DOM components with
+      // `static styles = css`.
       const styles = Ctor.styles;
       const list = Array.isArray(styles) ? styles : isCSS(styles) ? [styles] : [];
-      if (list.length && !document.querySelector(`style[data-webjs="${Ctor.tag}"]`)) {
+      if (list.length && !document.querySelector(`style[data-webjs-styles-for="${Ctor.tag}"]`)) {
         const tag = Ctor.tag;
         const cssText = list.map(s => s.cssText || s.toString()).join('\n');
-        // Replace :host with the tag name for light DOM scoping
         const scoped = cssText.replace(/:host/g, tag);
         const style = document.createElement('style');
-        style.setAttribute('data-webjs', tag);
+        style.setAttribute('data-webjs-styles-for', tag);
         style.textContent = scoped;
         document.head.appendChild(style);
       }
