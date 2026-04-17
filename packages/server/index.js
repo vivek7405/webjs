@@ -17,11 +17,14 @@ export { headers, cookies, getRequest, withRequest } from './src/context.js';
 export { defaultLogger } from './src/logger.js';
 export { rateLimit, parseWindow } from './src/rate-limit.js';
 export { memoryStore, redisStore, autoStore, getStore, setStore } from './src/cache.js';
+export { cache, revalidateTag, revalidatePath } from './src/cache-fn.js';
 export { session, cookieSession, storeSession, getSession } from './src/session.js';
 export { memoryPubSub, redisPubSub, autoPubSub, getPubSub, setPubSub } from './src/pubsub.js';
-export { defineJob, enqueue, memoryQueue, redisQueue, autoQueue, getQueue, setQueue, startWorker } from './src/jobs.js';
-export { diskStorage, s3Storage, autoStorage, getStorage, setStorage } from './src/storage.js';
+export { broadcast } from './src/broadcast.js';
 export { json, readBody } from './src/json.js';
 export { buildBundle } from './src/build.js';
 export { attachWebSocket } from './src/websocket.js';
 export { getSerializer, setSerializer, defaultSerializer } from './src/serializer.js';
+
+// Auth — NextAuth-style
+export { createAuth, Credentials, Google, GitHub } from './src/auth.js';

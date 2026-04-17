@@ -936,22 +936,27 @@ codebase.
 
 ## Batteries included — `import { … } from '@webjs/server'`
 
-webjs is batteries-included for production. Convention over configuration:
-**set `REDIS_URL` in the environment and everything scales horizontally.**
-No config file needed.
+Convention over configuration: **set `REDIS_URL` and everything scales.**
 
-### Cache store
+### Caching (NextJs-style)
 
 ```js
-import { getStore } from '@webjs/server';
-const store = getStore(); // auto: REDIS_URL → Redis, otherwise → memory
-await store.set('key', 'value', 60000); // TTL in ms
-await store.get('key');
-await store.increment('counter', 60000); // atomic counter with TTL
+import { cache, revalidateTag } from '@webjs/server';
+
+// Function-level caching — auto-keyed by arguments
+export const listPosts = cache(
+  async () => prisma.post.findMany({ orderBy: { createdAt: 'desc' } }),
+  { revalidate: 60, tags: ['posts'] }
+);
+
+// Invalidate from a server action
+export async function createPost(input) {
+  await prisma.post.create({ data: input });
+  revalidateTag('posts'); // clears all caches tagged 'posts'
+}
 ```
 
-Used internally by rate limiter, sessions, and jobs. You can use it
-directly for app-level caching.
+The low-level `getStore()` is also available for custom caching needs.
 
 ### Sessions
 
@@ -970,68 +975,77 @@ Cookie sessions (default): signed + encrypted, no server state.
 Store sessions (with Redis): session ID in cookie, data in Redis.
 Requires `SESSION_SECRET` environment variable.
 
-### Background jobs
+### Authentication (NextAuth-style)
 
 ```js
-import { defineJob, enqueue } from '@webjs/server';
+// lib/auth.ts — create once
+import { createAuth, Credentials, Google, GitHub } from '@webjs/server';
 
-// Define a job handler (runs in the background)
-defineJob('send-email', async (data, { signal }) => {
-  await sendEmail(data.to, data.subject, data.body);
+export const { auth, signIn, signOut, handlers } = createAuth({
+  providers: [
+    Credentials({
+      async authorize(credentials) {
+        const user = await prisma.user.findUnique({ where: { email: credentials.email } });
+        if (!user || !verifyPassword(credentials.password, user.passwordHash)) return null;
+        return { id: user.id, name: user.name, email: user.email, role: user.role };
+      },
+    }),
+    Google(),  // reads AUTH_GOOGLE_ID, AUTH_GOOGLE_SECRET from env
+    GitHub(),  // reads AUTH_GITHUB_ID, AUTH_GITHUB_SECRET from env
+  ],
+  secret: process.env.AUTH_SECRET,
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) { token.sub = user.id; token.role = user.role; }
+      return token;
+    },
+    async session({ session, token }) {
+      session.user.id = token.sub;
+      session.user.role = token.role;
+      return session;
+    },
+  },
 });
 
-// Enqueue from any server action
-await enqueue('send-email', { to: 'user@example.com', subject: 'Welcome' });
+// In any page or action:
+const session = await auth();
+if (!session) throw redirect('/login');
 ```
 
-Convention: REDIS_URL → jobs survive restarts (Redis queue).
-No REDIS_URL → in-process queue (dev mode, jobs lost on restart).
+JWT sessions by default (stateless, scales horizontally). OAuth
+providers (Google, GitHub) handle the full redirect flow.
 
-### Pub/Sub (WebSocket scaling)
+### Broadcast (WebSocket scaling)
 
 ```js
-import { getPubSub } from '@webjs/server';
-const ps = getPubSub(); // auto: REDIS_URL → Redis, otherwise → memory
+// app/api/chat/route.ts
+import { broadcast } from '@webjs/server';
 
-// Publish from any server action or route
-ps.publish('chat', JSON.stringify({ user: 'alice', text: 'hello' }));
-
-// Subscribe in a WebSocket handler
-ps.subscribe('chat', (msg) => ws.send(msg));
+export function WS(ws, req) {
+  ws.on('message', (data) => {
+    broadcast('/api/chat', data); // reaches ALL clients on this route
+  });
+}
 ```
 
-With Redis, messages reach WebSocket clients on ALL server instances.
-
-### File storage
-
-```js
-import { getStorage } from '@webjs/server';
-const store = getStorage(); // auto: S3_BUCKET → S3, otherwise → disk
-
-// Upload
-const key = await store.put('avatars/user-123.jpg', fileBuffer);
-
-// Get URL
-const url = store.url(key); // /__webjs/uploads/... or https://s3...
-```
-
-Convention: `S3_BUCKET` + `AWS_REGION` → S3. Otherwise → local `./uploads/`.
+With `REDIS_URL`, broadcast reaches clients on ALL server instances.
+The developer writes WebSocket handlers — the framework handles
+cross-instance delivery invisibly.
 
 ### Environment variables (convention over configuration)
 
 | Variable | Effect |
 |---|---|
-| `REDIS_URL` | Cache, sessions, rate limiter, pub/sub, and job queue all use Redis |
-| `SESSION_SECRET` | Required for session signing (any random string, 32+ chars) |
-| `S3_BUCKET` | File storage uses S3 instead of local disk |
-| `AWS_REGION` | AWS region for S3 (default: `us-east-1`) |
-| `AWS_ACCESS_KEY_ID` | S3 credentials |
-| `AWS_SECRET_ACCESS_KEY` | S3 credentials |
+| `REDIS_URL` | Cache, sessions, rate limiter, and pub/sub all use Redis |
+| `AUTH_SECRET` | Required for auth JWT signing (32+ random chars) |
+| `AUTH_GOOGLE_ID` | Google OAuth client ID |
+| `AUTH_GOOGLE_SECRET` | Google OAuth client secret |
+| `AUTH_GITHUB_ID` | GitHub OAuth client ID |
+| `AUTH_GITHUB_SECRET` | GitHub OAuth client secret |
 | `PORT` | Server port (default: 3000) |
 
-**Zero config for development.** Everything works with memory/cookie/disk
-defaults. For production, set `REDIS_URL` and optionally `S3_BUCKET` —
-that's it.
+**Zero config for development.** Everything works with memory/cookie
+defaults. For production, set `REDIS_URL` — that's it.
 
 ---
 

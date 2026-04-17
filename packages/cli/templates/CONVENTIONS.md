@@ -82,10 +82,10 @@ variables control infrastructure — no config files needed:
 
 | Environment variable | Effect |
 |---|---|
-| `REDIS_URL` | Cache, sessions, rate limiting, pub/sub, and jobs all use Redis |
-| `SESSION_SECRET` | Required for session signing (32+ random chars) |
-| `S3_BUCKET` | File storage uses S3 instead of local disk |
-| `AWS_REGION` | AWS region for S3 (default: us-east-1) |
+| `REDIS_URL` | Cache, sessions, rate limiting, and pub/sub all use Redis |
+| `AUTH_SECRET` | Required for auth JWT signing (32+ random chars) |
+| `AUTH_GOOGLE_ID` | Google OAuth client ID (optional) |
+| `AUTH_GITHUB_ID` | GitHub OAuth client ID (optional) |
 | `PORT` | Server port (default: 3000) |
 
 **Development:** zero env vars needed. Everything works with memory/cookie/disk.

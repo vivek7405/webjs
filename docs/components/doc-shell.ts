@@ -38,11 +38,10 @@ const NAV_SECTIONS = [
   {
     title: 'Infrastructure',
     items: [
-      { href: '/docs/cache', label: 'Cache Store' },
+      { href: '/docs/cache', label: 'Caching' },
       { href: '/docs/sessions', label: 'Sessions' },
-      { href: '/docs/jobs', label: 'Background Jobs' },
-      { href: '/docs/pubsub', label: 'Pub/Sub' },
-      { href: '/docs/storage', label: 'File Storage' },
+      { href: '/docs/auth', label: 'Authentication' },
+      { href: '/docs/pubsub', label: 'Pub/Sub & Broadcast' },
     ],
   },
   {
