@@ -1,8 +1,8 @@
 import { html } from 'webjs';
 
 export const metadata = {
-  title: 'webjs — AI-first, batteries-included, web-components-first framework',
-  description: 'AI-first, batteries-included, web-components-first framework. Opinionated defaults — set REDIS_URL and everything scales. cache() for queries, Session class, NextAuth-style auth, WebSocket broadcast, rate limiting built in.',
+  title: 'webjs — AI-first, web-components-first, no-build web framework',
+  description: 'AI-first, web-components-first framework. File-based routing, server actions, streaming SSR — built on web standards. Designed for AI agents to read, write, and ship.',
 };
 
 const FEATURES = [
@@ -197,12 +197,12 @@ export default function LandingPage() {
     </style>
 
     <section class="hero">
-      <div class="rubric"><span class="name">webjs</span> <span class="sep">—</span> ai-first · batteries-included · web-components-first</div>
+      <div class="rubric"><span class="name">webjs</span> <span class="sep">—</span> ai-first · web-components-first · no build</div>
       <h1>The web framework where AI agents write production code.</h1>
       <p>
-        AI-first, batteries included, web components first. cache() for queries,
-        Session class, NextAuth-style auth, WebSocket broadcast, rate limiting —
-        set <code>REDIS_URL</code> and everything scales. Sensible defaults, all overridable. No build step, real SSR.
+        Web components first. File-based routing, server actions, streaming SSR —
+        built on web standards with no build step. Batteries included: auth, sessions,
+        caching, WebSockets. Designed for AI agents to read, write, and ship.
       </p>
       <div class="hero-actions">
         <a class="primary" href="http://localhost:4000/docs/getting-started" target="_blank">Get Started</a>
