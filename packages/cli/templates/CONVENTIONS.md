@@ -230,6 +230,22 @@ MyWidget.register(import.meta.url);
 
 ---
 
+## Components: Shadow DOM vs Light DOM
+
+<!-- OVERRIDE -->
+
+| Component type | Use | Why |
+|---|---|---|
+| Layout shells (blog-shell, doc-shell) | Shadow DOM (`static shadow = true`) | Need `<slot>` for children, scoped styles for chrome |
+| Self-contained widgets (theme-toggle, counter) | Shadow DOM | Reusable, need style encapsulation |
+| App-level UI (forms, cards, lists) | Light DOM (`static shadow = false`) | Global CSS works, simpler, no slots needed |
+| Third-party components | Their choice | They manage their own shadow roots |
+
+Both are fully SSR'd — shadow DOM uses Declarative Shadow DOM, light DOM
+renders content directly as HTML. Both hydrate without flash on the client.
+
+---
+
 ## Server actions
 
 <!-- OVERRIDE -->

@@ -256,6 +256,44 @@ InlineAlert.register(import.meta.url);</pre>
 
     <p>With <code>shadow = false</code>, <code>static styles</code> are <strong>not</strong> adopted (there is no shadow root to adopt them into). Style the component via regular document stylesheets instead.</p>
 
+    <h3>When to Use Shadow vs Light DOM</h3>
+    <p>Both shadow DOM and light DOM components are <strong>fully SSR'd</strong>. Shadow DOM renders via Declarative Shadow DOM (<code>&lt;template shadowrootmode="open"&gt;</code>); light DOM renders content directly as HTML. Both hydrate on the client without flash.</p>
+
+    <table>
+      <thead>
+        <tr><th>Component type</th><th>Use</th><th>Why</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Layout shells (blog-shell, doc-shell)</td><td>Shadow DOM (<code>static shadow = true</code>)</td><td>Need <code>&lt;slot&gt;</code> for children, scoped styles for chrome</td></tr>
+        <tr><td>Self-contained widgets (theme-toggle, counter)</td><td>Shadow DOM</td><td>Reusable, need style encapsulation</td></tr>
+        <tr><td>App-level UI (forms, cards, lists)</td><td>Light DOM (<code>static shadow = false</code>)</td><td>Global CSS works, simpler, no slots needed</td></tr>
+        <tr><td>Third-party components</td><td>Their choice</td><td>They manage their own shadow roots</td></tr>
+      </tbody>
+    </table>
+
+    <p>Light DOM example:</p>
+
+    <pre>class AppCard extends WebComponent {
+  static tag = 'app-card';
+  static shadow = false;  // light DOM — global styles apply
+
+  static properties = {
+    heading: { type: String },
+  };
+
+  heading = '';
+
+  render() {
+    return html\`
+      &lt;div class="card"&gt;
+        &lt;h3&gt;\${this.heading}&lt;/h3&gt;
+        &lt;p&gt;This content lives in the light DOM and inherits document styles.&lt;/p&gt;
+      &lt;/div&gt;
+    \`;
+  }
+}
+AppCard.register(import.meta.url);</pre>
+
     <h2>Slots: Content Projection</h2>
     <p>Slots are how a parent passes content into a shadow DOM component. If you are coming from React, think of the default slot as <code>children</code>.</p>
 

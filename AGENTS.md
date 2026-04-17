@@ -471,6 +471,16 @@ class MyEl extends WebComponent {
 | `hasChanged` | `(newVal, oldVal) => boolean` | strict `!==` | Custom change detection |
 | `converter` | `{ fromAttribute?, toAttribute? }` | type-based | Custom attribute ↔ property serialization |
 
+#### Shadow DOM vs Light DOM
+
+| Component type | Use | Why |
+|---|---|---|
+| Layout shells (blog-shell, doc-shell) | Shadow DOM (`static shadow = true`) | Need `<slot>` for children, scoped styles for chrome |
+| Self-contained widgets (theme-toggle, counter) | Shadow DOM | Reusable, need style encapsulation |
+| App-level UI (forms, cards, lists) | Light DOM (`static shadow = false`) | Global CSS works, simpler, no slots needed |
+
+Both modes are fully SSR'd (shadow DOM via Declarative Shadow DOM, light DOM as direct HTML) and hydrate without flash.
+
 #### Helper methods
 
 | Method | Purpose |
