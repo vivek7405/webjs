@@ -49,8 +49,11 @@ const MIME = {
 /**
  * Cache of esbuild-transformed `.ts` / `.mts` source.
  * Keyed by absolute file path; entries expire when mtime changes.
+ * Capped at 500 entries to prevent unbounded memory growth in
+ * long-running production servers.
  * @type {Map<string, { mtimeMs: number, code: string, map: string | null }>}
  */
+const TS_CACHE_MAX = 500;
 const TS_CACHE = new Map();
 
 /**
@@ -794,6 +797,11 @@ async function tsResponse(abs, dev) {
     sourcemap: 'inline',
     sourcefile: abs,
   });
+  // Evict oldest entry if cache is full (simple FIFO — Map preserves insertion order).
+  if (TS_CACHE.size >= TS_CACHE_MAX) {
+    const oldest = TS_CACHE.keys().next().value;
+    TS_CACHE.delete(oldest);
+  }
   TS_CACHE.set(abs, { mtimeMs: st.mtimeMs, code: result.code, map: null });
   return new Response(result.code, {
     headers: {

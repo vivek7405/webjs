@@ -59,6 +59,8 @@ export async function ssrPage(route, params, url, opts) {
           [route.file, ...route.layouts],
           opts.appDir,
         );
+    // Extract CSP nonce from request headers (if present).
+    const nonce = opts.req ? getNonce(opts.req) : undefined;
     return streamingHtmlResponse(
       wrapHead({
         metadata,
@@ -67,6 +69,7 @@ export async function ssrPage(route, params, url, opts) {
         streaming: suspenseCtx.pending.length > 0,
         preloads,
         lazyComponents,
+        nonce,
       }),
       body,
       suspenseCtx,
@@ -230,25 +233,25 @@ function wrapInDocument(body, opts) {
  * (breaks the ES-module waterfall without a bundler) and any user-declared
  * `metadata.preload` entries.
  *
- * @param {{ metadata: Record<string,any>, moduleUrls: string[], dev: boolean, streaming: boolean, preloads?: string[], lazyComponents?: Record<string, string> }} opts
+ * @param {{ metadata: Record<string,any>, moduleUrls: string[], dev: boolean, streaming: boolean, preloads?: string[], lazyComponents?: Record<string, string>, nonce?: string }} opts
  */
 function wrapHead(opts) {
+  // CSP nonce: if provided, all inline <script> tags get nonce="…" so they
+  // pass strict Content-Security-Policy headers. The nonce is extracted from
+  // the request's CSP header by the caller.
+  const n = opts.nonce ? ` nonce="${escapeAttr(opts.nonce)}"` : '';
+
   const imports = opts.moduleUrls.map((u) => `import ${JSON.stringify(u)};`).join('\n');
-  // Lazy-loader boot script: loads the IntersectionObserver-based lazy loader
-  // and registers tag → URL pairs for below-the-fold components.
   const lazyEntries = opts.lazyComponents && Object.keys(opts.lazyComponents).length
     ? opts.lazyComponents
     : null;
   const lazyBoot = lazyEntries
     ? `\nimport { observeLazy } from 'webjs/lazy-loader';\nobserveLazy(${JSON.stringify(lazyEntries)});`
     : '';
-  const boot = (imports || lazyBoot) ? `<script type="module">\n${imports}${lazyBoot}\n</script>` : '';
-  const reload = opts.dev ? `<script type="module" src="/__webjs/reload.js"></script>` : '';
-  // Suspense resolver: a single script that auto-resolves streamed-in
-  // <template data-webjs-resolve> elements. Uses a MutationObserver to
-  // detect new templates as they stream in — no per-chunk inline scripts.
+  const boot = (imports || lazyBoot) ? `<script type="module"${n}>\n${imports}${lazyBoot}\n</script>` : '';
+  const reload = opts.dev ? `<script type="module"${n} src="/__webjs/reload.js"></script>` : '';
   const suspenseBoot = opts.streaming
-    ? `<script>(function(){` +
+    ? `<script${n}>(function(){` +
       `function r(id){var t=document.querySelector('template[data-webjs-resolve="'+id+'"]');` +
       `var b=document.getElementById(id);if(t&&b){b.replaceWith(t.content.cloneNode(true));t.remove();}}` +
       `window.__webjsResolve=r;` +
@@ -470,6 +473,18 @@ function toUrlPath(file, appDir) {
   rel = rel.split('\\').join('/');
   if (!rel.startsWith('/')) rel = '/' + rel;
   return rel;
+}
+
+/**
+ * Extract a CSP nonce from the request's Content-Security-Policy header.
+ * Matches `'nonce-<base64>'` in the script-src directive.
+ * @param {Request} req
+ * @returns {string | undefined}
+ */
+function getNonce(req) {
+  const csp = req.headers.get('content-security-policy') || '';
+  const match = /\bnonce-([A-Za-z0-9+/=]+)/.exec(csp);
+  return match ? match[1] : undefined;
 }
 
 /** @param {string} s */

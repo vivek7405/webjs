@@ -28,6 +28,7 @@ import { createRequire } from 'node:module';
  * @type {Map<string, string>}
  */
 const vendorCache = new Map();
+const VENDOR_CACHE_MAX = 100;
 
 /**
  * Set of package names known to be built-in / already mapped.
@@ -149,6 +150,10 @@ export async function bundlePackage(pkgName, appDir, dev) {
       external: [...BUILTIN],
     });
     const code = result.outputFiles[0].text;
+    if (vendorCache.size >= VENDOR_CACHE_MAX) {
+      const oldest = vendorCache.keys().next().value;
+      vendorCache.delete(oldest);
+    }
     vendorCache.set(pkgName, code);
     return code;
   } catch (e) {
