@@ -13,7 +13,8 @@ const USAGE = `webjs — commands:
               [--http2 --cert <path> --key <path>]  Serve HTTP/2 over TLS (falls back to h1.1)
   webjs test  [--server|--browser]                 Run server + browser tests
   webjs check                                     Validate app against conventions
-  webjs create <name>                             Scaffold a new webjs app
+  webjs create <name> [--template full-stack|api]  Scaffold a new webjs app
+  webjs generate <type> <name>                    Generate code (page, module, action, query, component, route)
   webjs db generate                               Run \`prisma generate\`
   webjs db migrate [name]                         Run \`prisma migrate dev\`
   webjs db studio                                 Run \`prisma studio\`
@@ -202,11 +203,18 @@ async function main() {
     case 'create': {
       const name = rest[0];
       if (!name) {
-        console.error('Usage: webjs create <app-name>');
+        console.error('Usage: webjs create <app-name> [--template full-stack|api]');
         process.exit(1);
       }
+      const template = flag(rest, '--template', 'full-stack');
       const { scaffoldApp } = await import('../lib/create.js');
-      await scaffoldApp(name, process.cwd());
+      await scaffoldApp(name, process.cwd(), { template });
+      break;
+    }
+    case 'generate':
+    case 'g': {
+      const { generate } = await import('../lib/generate.js');
+      await generate(rest, process.cwd());
       break;
     }
     case 'help':

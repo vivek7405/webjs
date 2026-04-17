@@ -23,14 +23,16 @@ const TEMPLATES = resolve(__dirname, '..', 'templates');
  * @param {string} name  App directory name
  * @param {string} cwd   Current working directory
  */
-export async function scaffoldApp(name, cwd) {
+export async function scaffoldApp(name, cwd, opts = {}) {
+  const template = opts.template || 'full-stack';
+  const isApi = template === 'api';
   const appDir = join(cwd, name);
   if (existsSync(appDir)) {
     console.error(`Error: directory '${name}' already exists.`);
     process.exit(1);
   }
 
-  console.log(`\nwebjs create: scaffolding '${name}'...\n`);
+  console.log(`\nwebjs create: scaffolding '${name}' (${template})...\n`);
 
   // Create directory structure
   const dirs = [
@@ -130,7 +132,67 @@ export async function scaffoldApp(name, cwd) {
   const preCommitPath = join(appDir, '.hooks', 'pre-commit');
   if (existsSync(preCommitPath)) await chmod(preCommitPath, 0o755);
 
-  // --- App files ---
+  // --- App files (template-specific) ---
+
+  if (isApi) {
+    // API-only template: no layout, no page, no components.
+    // Just a health route and an example module with route wrapper.
+    await mkdir(join(appDir, 'app', 'api', 'health'), { recursive: true });
+    await mkdir(join(appDir, 'app', 'api', 'users'), { recursive: true });
+    await writeFile(join(appDir, 'app', 'api', 'health', 'route.ts'), `export async function GET() {
+  return Response.json({ status: 'ok', timestamp: Date.now() });
+}
+`);
+    await mkdir(join(appDir, 'modules', 'users', 'actions'), { recursive: true });
+    await mkdir(join(appDir, 'modules', 'users', 'queries'), { recursive: true });
+
+    await writeFile(join(appDir, 'modules', 'users', 'queries', 'list-users.server.ts'), `'use server';
+
+export async function listUsers() {
+  // TODO: replace with real data source
+  return [
+    { id: '1', name: 'Alice', email: 'alice@example.com' },
+    { id: '2', name: 'Bob', email: 'bob@example.com' },
+  ];
+}
+`);
+    await writeFile(join(appDir, 'modules', 'users', 'actions', 'create-user.server.ts'), `'use server';
+
+export async function createUser(input: { name: string; email: string }) {
+  // TODO: validate input, persist to database
+  return { success: true, data: { id: Date.now().toString(), ...input } };
+}
+`);
+    await writeFile(join(appDir, 'app', 'api', 'users', 'route.ts'), `/**
+ * /api/users — thin route wrapper over typed server actions.
+ * Business logic lives in modules/users/, not here.
+ */
+import { listUsers } from '../../../../modules/users/queries/list-users.server.ts';
+import { createUser } from '../../../../modules/users/actions/create-user.server.ts';
+
+export async function GET() {
+  return Response.json(await listUsers());
+}
+
+export async function POST(req: Request) {
+  const body = await req.json();
+  return Response.json(await createUser(body));
+}
+`);
+    await writeFile(join(appDir, 'modules', 'users', 'types.ts'), `export interface User {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export type ActionResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: string; status: number };
+`);
+  }
+
+  if (!isApi) {
+    // Full-stack template: layout + page + theme toggle
 
   await writeFile(join(appDir, 'app', 'layout.ts'), `import { html } from 'webjs';
 import 'webjs/client-router';
@@ -269,6 +331,13 @@ export class ThemeToggle extends WebComponent {
 
 ThemeToggle.register(import.meta.url);
 `);
+  } // end if (!isApi)
+
+  // --- AGENTS.md (always copy) ---
+  const agentsSrc2 = resolve(__dirname, '..', '..', '..', 'AGENTS.md');
+  if (!existsSync(join(appDir, 'AGENTS.md')) && existsSync(agentsSrc2)) {
+    await cp(agentsSrc2, join(appDir, 'AGENTS.md'));
+  }
 
   // --- Git init + configure hooks directory ---
   const { execSync } = await import('node:child_process');
@@ -280,21 +349,25 @@ ThemeToggle.register(import.meta.url);
 
   // --- Print success ---
 
-  console.log(`  ${name}/
+  if (isApi) {
+    console.log(`  ${name}/
+    app/api/health/route.ts
+    app/api/users/route.ts               ← thin wrapper over server actions
+    modules/users/actions/create-user.server.ts
+    modules/users/queries/list-users.server.ts
+    modules/users/types.ts
+    CONVENTIONS.md, AGENTS.md, CLAUDE.md
+    package.json, tsconfig.json
+`);
+  } else {
+    console.log(`  ${name}/
     app/layout.ts, page.ts
     components/theme-toggle.ts
     modules/
-    test/unit/example.test.ts
-    test/browser/example.test.js
-    web-test-runner.config.js
     CONVENTIONS.md, AGENTS.md, CLAUDE.md
-    package.json, tsconfig.json, .editorconfig
-    .claude/settings.json, .claude/hooks/   ← Claude Code guardrails
-    .cursorrules                            ← Cursor AI guardrails
-    .windsurfrules                          ← Windsurf AI guardrails
-    .github/copilot-instructions.md         ← GitHub Copilot guardrails
-    .github/pull_request_template.md        ← PR template
+    package.json, tsconfig.json
 `);
+  }
   console.log(`Next steps:
   cd ${name}
   npm install
