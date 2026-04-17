@@ -17,6 +17,7 @@ export { headers, cookies, getRequest, withRequest } from './src/context.js';
 export { defaultLogger } from './src/logger.js';
 export { rateLimit, parseWindow } from './src/rate-limit.js';
 export { memoryStore, redisStore, getStore, setStore } from './src/cache.js';
+export { cache } from './src/cache-fn.js';
 export { session, cookieSession, storeSession, getSession } from './src/session.js';
 export { broadcast } from './src/broadcast.js';
 export { json, readBody } from './src/json.js';
