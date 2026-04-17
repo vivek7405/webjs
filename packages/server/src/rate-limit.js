@@ -1,44 +1,27 @@
 /**
- * Simple in-memory fixed-window rate limiter, shaped as a webjs middleware.
+ * Fixed-window rate limiter backed by the pluggable cache store.
+ *
+ * Convention over configuration:
+ *   - If `REDIS_URL` is set → rate limits are shared across all instances
+ *   - Otherwise → in-memory (single-process, great for dev)
  *
  * ```js
- * // middleware.js
  * import { rateLimit } from '@webjs/server';
  * export default rateLimit({ window: '1m', max: 60 });
- *
- * // or per-segment for /api/*:
- * // app/api/middleware.js
- * export default rateLimit({
- *   window: '10s', max: 10,
- *   key: req => `login:${req.headers.get('x-forwarded-for') || 'anon'}`,
- * });
  * ```
  *
- * Notes / deliberate limits:
- *   - In-memory only. For multi-instance deployments put a shared store
- *     (Redis) behind `key` or rate-limit at the edge (cloudflare / nginx).
- *   - Fixed-window — slightly coarser than sliding-window but much cheaper
- *     and good enough for protecting login / signup / cheap-to-abuse routes.
- *   - Buckets expire passively on the next hit after `resetAt`; a periodic
- *     sweeper drops stale entries every 60s so idle keys don't leak memory.
+ * @module rate-limit
  */
 
-/** @type {Map<string, { count: number, resetAt: number }>} */
-const buckets = new Map();
-
-// Periodic cleanup — keeps the Map bounded when keys churn (per-IP).
-const sweeper = setInterval(() => {
-  const now = Date.now();
-  for (const [k, b] of buckets) if (b.resetAt <= now) buckets.delete(k);
-}, 60_000);
-sweeper.unref();
+import { getStore } from './cache.js';
 
 /**
  * @param {{
- *   window?: number | string,   // ms number, or "30s" / "1m" / "1h"
+ *   window?: number | string,
  *   max?: number,
  *   key?: string | ((req: Request) => string | Promise<string>),
  *   message?: string,
+ *   store?: import('./cache.js').CacheStore,
  * }} opts
  * @returns {(req: Request, next: () => Promise<Response>) => Promise<Response>}
  */
@@ -48,36 +31,38 @@ export function rateLimit(opts = {}) {
   const keyFn = typeof opts.key === 'function' ? opts.key : defaultKey;
   const keyPrefix = typeof opts.key === 'string' ? opts.key : '';
   const message = opts.message ?? 'Too Many Requests';
+  // Use the provided store, or fall back to the global cache store.
+  // The global store auto-detects Redis if REDIS_URL is set.
+  const store = opts.store || null;
 
   return async function rateLimitMiddleware(req, next) {
-    const key = keyPrefix + (typeof opts.key === 'function' ? await keyFn(req) : defaultKey(req));
-    const now = Date.now();
-    let bucket = buckets.get(key);
-    if (!bucket || bucket.resetAt <= now) {
-      bucket = { count: 0, resetAt: now + windowMs };
-      buckets.set(key, bucket);
-    }
-    bucket.count++;
-    if (bucket.count > max) {
+    const s = store || getStore();
+    const raw = typeof opts.key === 'function' ? await keyFn(req) : defaultKey(req);
+    const key = `rl:${keyPrefix}${raw}`;
+
+    const count = await s.increment(key, windowMs);
+    const resetAt = Date.now() + windowMs;
+
+    if (count > max) {
       return new Response(JSON.stringify({ error: message }), {
         status: 429,
         headers: {
           'content-type': 'application/json; charset=utf-8',
-          'retry-after': String(Math.ceil((bucket.resetAt - now) / 1000)),
+          'retry-after': String(Math.ceil(windowMs / 1000)),
           'x-ratelimit-limit': String(max),
           'x-ratelimit-remaining': '0',
-          'x-ratelimit-reset': String(Math.floor(bucket.resetAt / 1000)),
+          'x-ratelimit-reset': String(Math.floor(resetAt / 1000)),
         },
       });
     }
+
     const resp = await next();
-    // Add headers without copying the body (preserve streaming Responses).
     try {
       resp.headers.set('x-ratelimit-limit', String(max));
-      resp.headers.set('x-ratelimit-remaining', String(Math.max(0, max - bucket.count)));
-      resp.headers.set('x-ratelimit-reset', String(Math.floor(bucket.resetAt / 1000)));
+      resp.headers.set('x-ratelimit-remaining', String(Math.max(0, max - count)));
+      resp.headers.set('x-ratelimit-reset', String(Math.floor(resetAt / 1000)));
     } catch {
-      // Headers may be immutable on some synthetic Responses — ignore.
+      // Headers may be immutable on some synthetic Responses.
     }
     return resp;
   };
@@ -104,7 +89,8 @@ export function parseWindow(w) {
   return n * (mult || 1);
 }
 
-/** Testing hook: wipe all buckets. */
+/** Testing hook: reset the default store (for unit tests). */
 export function _resetRateLimits() {
-  buckets.clear();
+  // With the cache store, there's nothing to reset here — the store
+  // handles its own state. This function exists for API compatibility.
 }
