@@ -473,13 +473,19 @@ class MyEl extends WebComponent {
 
 #### Shadow DOM vs Light DOM
 
-| Component type | Use | Why |
+| Use case | Mode | Why |
 |---|---|---|
-| Layout shells (blog-shell, doc-shell) | Shadow DOM (`static shadow = true`) | Need `<slot>` for children, scoped styles for chrome |
-| Self-contained widgets (theme-toggle, counter) | Shadow DOM | Reusable, need style encapsulation |
-| App-level UI (forms, cards, lists) | Light DOM (`static shadow = false`) | Global CSS works, simpler, no slots needed |
+| Components with `static styles = css` | Shadow DOM (default) | `adoptedStyleSheets` requires a shadow root. Bare selectors are scoped. |
+| Components using `<slot>` for children | Shadow DOM | Slots only work in shadow DOM |
+| Components styled with global/Tailwind CSS | Light DOM (`static shadow = false`) | No `static styles`. Global stylesheets apply directly. |
 
-Both modes are fully SSR'd (shadow DOM via Declarative Shadow DOM, light DOM as direct HTML) and hydrate without flash.
+Both modes are fully SSR'd (shadow DOM via Declarative Shadow DOM,
+light DOM as direct HTML with `<!--webjs-hydrate-->` marker) and
+hydrate without flash on the client.
+
+**The rule: if you use `static styles`, use shadow DOM. If you use
+global CSS, use light DOM.** Don't mix — `static styles` on a light
+DOM component is silently ignored.
 
 #### Helper methods
 

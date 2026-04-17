@@ -264,9 +264,9 @@ InlineAlert.register(import.meta.url);</pre>
         <tr><th>Component type</th><th>Use</th><th>Why</th></tr>
       </thead>
       <tbody>
-        <tr><td>Layout shells (blog-shell, doc-shell)</td><td>Shadow DOM (<code>static shadow = true</code>)</td><td>Need <code>&lt;slot&gt;</code> for children, scoped styles for chrome</td></tr>
-        <tr><td>Self-contained widgets (theme-toggle, counter)</td><td>Shadow DOM</td><td>Reusable, need style encapsulation</td></tr>
-        <tr><td>App-level UI (forms, cards, lists)</td><td>Light DOM (<code>static shadow = false</code>)</td><td>Global CSS works, simpler, no slots needed</td></tr>
+        <tr><td>Components with <code>static styles = css</code></td><td>Shadow DOM (default)</td><td><code>adoptedStyleSheets</code> requires a shadow root. Bare selectors are scoped.</td></tr>
+        <tr><td>Components using <code>&lt;slot&gt;</code> for children</td><td>Shadow DOM</td><td>Slots only work in shadow DOM</td></tr>
+        <tr><td>Components styled with global/Tailwind CSS</td><td>Light DOM (<code>static shadow = false</code>)</td><td>No <code>static styles</code>. Global stylesheets apply directly.</td></tr>
         <tr><td>Third-party components</td><td>Their choice</td><td>They manage their own shadow roots</td></tr>
       </tbody>
     </table>
