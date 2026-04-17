@@ -24,13 +24,28 @@ TypeScript with zero build step, real SSR with Declarative Shadow DOM.
 ## Quickstart
 
 ```sh
+# scaffold a new app
+npx webjs create my-app              # full-stack (pages + API + components)
+npx webjs create my-api --template api  # backend-only (routes + modules, no SSR)
+
+# or run the example
 git clone https://github.com/vivek7405/webjs
 cd webjs && npm install
-
 cd examples/blog
 npx prisma migrate dev --name init
 npx webjs dev
 # → http://localhost:3000
+```
+
+### Code generators
+
+```sh
+webjs generate page <path>                # → app/<path>/page.ts
+webjs generate module <name>              # → modules/<name>/{actions,queries,components,utils,types.ts}
+webjs generate action <module>/<name>     # → modules/<module>/actions/<name>.server.ts
+webjs generate query <module>/<name>      # → modules/<module>/queries/<name>.server.ts
+webjs generate component <tag-name>       # → components/<tag-name>.ts
+webjs generate route <path>               # → app/<path>/route.ts
 ```
 
 ## Repo layout

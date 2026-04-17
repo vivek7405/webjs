@@ -25,7 +25,27 @@ npx webjs dev
     <p>Open the blog in a browser. You'll see a full-featured app with posts, comments, live chat, auth, and a counter — all built on webjs.</p>
 
     <h2>Create a New App</h2>
-    <p>To start from scratch, create a directory with this structure:</p>
+
+    <h3>Using the scaffold</h3>
+    <pre># full-stack app (pages + API + components)
+webjs create my-app
+
+# backend-only API (route handlers + modules, no pages/components/SSR)
+webjs create my-app --template api</pre>
+
+    <p>The <code>--template api</code> scaffold generates thin route handlers that wrap typed server actions. Business logic lives in <code>modules/</code>, routes just import and call the action/query — giving you file-based routing for URL structure plus type-safe server actions for logic.</p>
+
+    <h3>Code generators</h3>
+    <p>Once inside a project, generate files that follow conventions:</p>
+    <pre>webjs generate page &lt;path&gt;                # → app/&lt;path&gt;/page.ts
+webjs generate module &lt;name&gt;              # → modules/&lt;name&gt;/{actions,queries,components,utils,types.ts}
+webjs generate action &lt;module&gt;/&lt;name&gt;     # → modules/&lt;module&gt;/actions/&lt;name&gt;.server.ts
+webjs generate query &lt;module&gt;/&lt;name&gt;      # → modules/&lt;module&gt;/queries/&lt;name&gt;.server.ts
+webjs generate component &lt;tag-name&gt;       # → components/&lt;tag-name&gt;.ts
+webjs generate route &lt;path&gt;               # → app/&lt;path&gt;/route.ts</pre>
+
+    <h3>Manual setup</h3>
+    <p>To start from scratch without the scaffold, create a directory with this structure:</p>
     <pre>my-app/
 ├── app/
 │   ├── layout.ts     # root layout wrapping every page

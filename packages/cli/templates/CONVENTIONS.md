@@ -334,3 +334,35 @@ export default {
 
 Run `webjs check` to validate your app against these conventions.
 Run `webjs check --fix` to see suggested fixes for violations.
+
+---
+
+## Scaffold & generators
+
+Use the built-in generators to create files that follow these conventions:
+
+```sh
+webjs generate page <path>                # → app/<path>/page.ts
+webjs generate module <name>              # → modules/<name>/{actions,queries,components,utils,types.ts}
+webjs generate action <module>/<name>     # → modules/<module>/actions/<name>.server.ts
+webjs generate query <module>/<name>      # → modules/<module>/queries/<name>.server.ts
+webjs generate component <tag-name>       # → components/<tag-name>.ts
+webjs generate route <path>               # → app/<path>/route.ts
+```
+
+**Route-wrapping pattern (especially for `--template api` apps):**
+Routes are thin wrappers over typed server actions. Business logic lives in
+`modules/`, routes just import and call the action/query:
+
+```ts
+// app/api/users/route.ts — thin wrapper
+import { listUsers } from '../../../modules/users/queries/list-users.server.ts';
+import { createUser } from '../../../modules/users/actions/create-user.server.ts';
+
+export async function GET() { return Response.json(await listUsers()); }
+export async function POST(req: Request) {
+  const result = await createUser(await req.json());
+  if (!result.success) return Response.json({ error: result.error }, { status: result.status });
+  return Response.json(result.data, { status: 201 });
+}
+```

@@ -17,7 +17,7 @@ const FEATURES = [
   { icon: '📝', title: 'TypeScript or JSDoc', desc: 'Full-stack type safety with .ts files (Node strips types natively) or JSDoc annotations. Zero compile step either way.' },
   { icon: '🧪', title: 'Testing Built In', desc: 'webjs test runs server + browser tests (WTR + Playwright). webjs check validates conventions. webjs create scaffolds test directories and example tests. AI agents auto-generate tests with every feature.' },
   { icon: '🔀', title: 'Git Workflow Guardrails', desc: 'Branch checking before edits, merge approval with delete/keep prompt, no AI attribution in commits, auto-rebase before work. Enforced via hooks for Claude Code, config files for Cursor/Windsurf/Copilot.' },
-  { icon: '📐', title: 'Opinionated Conventions', desc: 'Modules architecture, one-function-per-file actions, CONVENTIONS.md with overridable rules, webjs check validator. AI agents produce consistent code across teams.' },
+  { icon: '📐', title: 'Opinionated Conventions', desc: 'Modules architecture, one-function-per-file actions, CONVENTIONS.md with overridable rules, webjs check validator. Built-in generators: webjs generate page, module, action, query, component, route. AI agents produce consistent code across teams.' },
 ];
 
 export default function LandingPage() {
@@ -212,13 +212,13 @@ export default function LandingPage() {
     </section>
 
     <div class="install">
-      <span class="comment"># quickstart</span><br>
-      <span class="cmd">git clone https://github.com/vivek7405/webjs</span><br>
-      <span class="cmd">cd webjs && npm install</span><br>
-      <span class="cmd">cd examples/blog</span><br>
-      <span class="cmd">npx prisma migrate dev --name init</span><br>
-      <span class="cmd">npx webjs dev</span><br>
-      <span class="comment"># → http://localhost:3000</span>
+      <span class="comment"># scaffold a new app</span><br>
+      <span class="cmd">npx webjs create my-app</span><br>
+      <span class="cmd">cd my-app && npx webjs dev</span><br>
+      <span class="comment"># → http://localhost:3000</span><br>
+      <br>
+      <span class="comment"># or backend-only API</span><br>
+      <span class="cmd">npx webjs create my-api --template api</span>
     </div>
 
     <div class="features">
