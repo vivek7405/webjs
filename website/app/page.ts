@@ -200,10 +200,9 @@ export default function LandingPage() {
       <div class="rubric"><span class="name">webjs</span> <span class="sep">—</span> ai-first · web-components-first · no build</div>
       <h1>The web framework where AI agents write production code.</h1>
       <p>
-        Built on web standards — web components, Shadow DOM, standard Request/Response.
-        End-to-end type safety from server actions to client components.
-        No build step, no bundler, no compile. Edit a file, refresh, see it.
-        AI agents read the code, understand it, and ship features autonomously.
+        The web framework that gets out of your way. Web components, server actions,
+        streaming SSR — all on web standards. No bundler, no config, no magic.
+        Your AI agent reads the code and ships.
       </p>
       <div class="hero-actions">
         <a class="primary" href="http://localhost:4000/docs/getting-started" target="_blank">Get Started</a>
