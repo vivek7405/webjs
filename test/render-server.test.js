@@ -126,3 +126,142 @@ test('uppercase </SCRIPT> still closes raw-text (case-insensitive)', async () =>
   const out = await renderToString(html`<script>x<1</SCRIPT><p>hi</p>`);
   assert.match(out, /<\/SCRIPT><p>hi<\/p>/);
 });
+
+// ---------------------------------------------------------------------------
+// Nested DSD injection — all four shadow/light DOM combinations
+// ---------------------------------------------------------------------------
+
+test('nested DSD: shadow parent → shadow child gets DSD with inline styles', async () => {
+  class A1Child extends WebComponent {
+    static tag = 'ss-child';
+    static styles = css`:host { display: inline-flex; width: 36px; height: 36px; }`;
+    render() { return html`<button>X</button>`; }
+  }
+  A1Child.register();
+
+  class A1Parent extends WebComponent {
+    static tag = 'ss-parent';
+    static styles = css`:host { display: block; }`;
+    render() { return html`<div><ss-child></ss-child></div>`; }
+  }
+  A1Parent.register();
+
+  const out = await renderToString(html`<ss-parent></ss-parent>`);
+
+  // Parent has DSD
+  assert.match(out, /<ss-parent><template shadowrootmode="open">/);
+  assert.match(out, /<style>:host \{ display: block; \}<\/style>/);
+
+  // Child inside parent's DSD also has its own DSD with styles
+  assert.match(out, /<ss-child><template shadowrootmode="open">/);
+  assert.match(out, /width: 36px; height: 36px/);
+  assert.match(out, /<button>X<\/button>/);
+});
+
+test('nested DSD: shadow parent → light child gets hydration marker', async () => {
+  class B1Child extends WebComponent {
+    static tag = 'sl-child';
+    static shadow = false;
+    render() { return html`<span>light content</span>`; }
+  }
+  B1Child.register();
+
+  class B1Parent extends WebComponent {
+    static tag = 'sl-parent';
+    static styles = css`:host { display: block; }`;
+    render() { return html`<sl-child></sl-child>`; }
+  }
+  B1Parent.register();
+
+  const out = await renderToString(html`<sl-parent></sl-parent>`);
+
+  // Parent has DSD
+  assert.match(out, /<sl-parent><template shadowrootmode="open">/);
+
+  // Light DOM child inside parent's DSD gets hydration marker, no DSD template
+  assert.match(out, /<sl-child><!--webjs-hydrate--><span>light content<\/span>/);
+  assert.ok(!out.includes('<sl-child><template shadowrootmode'));
+});
+
+test('nested DSD: light parent → shadow child gets DSD with inline styles', async () => {
+  class C1Child extends WebComponent {
+    static tag = 'ls-child';
+    static styles = css`button { color: red; }`;
+    render() { return html`<button>click</button>`; }
+  }
+  C1Child.register();
+
+  class C1Parent extends WebComponent {
+    static tag = 'ls-parent';
+    static shadow = false;
+    render() { return html`<div><ls-child></ls-child></div>`; }
+  }
+  C1Parent.register();
+
+  const out = await renderToString(html`<ls-parent></ls-parent>`);
+
+  // Parent is light DOM — hydration marker, no DSD template
+  assert.match(out, /<ls-parent><!--webjs-hydrate-->/);
+
+  // Shadow child inside light parent gets its own DSD with styles
+  assert.match(out, /<ls-child><template shadowrootmode="open">/);
+  assert.match(out, /<style>button \{ color: red; \}<\/style>/);
+  assert.match(out, /<button>click<\/button>/);
+});
+
+test('nested DSD: light parent → light child gets hydration marker', async () => {
+  class D1Child extends WebComponent {
+    static tag = 'll-child';
+    static shadow = false;
+    render() { return html`<em>inner light</em>`; }
+  }
+  D1Child.register();
+
+  class D1Parent extends WebComponent {
+    static tag = 'll-parent';
+    static shadow = false;
+    render() { return html`<ll-child></ll-child>`; }
+  }
+  D1Parent.register();
+
+  const out = await renderToString(html`<ll-parent></ll-parent>`);
+
+  // Both are light DOM — hydration markers, no DSD templates
+  assert.match(out, /<ll-parent><!--webjs-hydrate-->/);
+  assert.match(out, /<ll-child><!--webjs-hydrate--><em>inner light<\/em>/);
+  assert.ok(!out.includes('<ll-child><template shadowrootmode'));
+  assert.ok(!out.includes('<ll-parent><template shadowrootmode'));
+});
+
+test('nested DSD: three levels deep — shadow → shadow → shadow', async () => {
+  class DeepLeaf extends WebComponent {
+    static tag = 'deep-leaf';
+    static styles = css`.leaf { color: green; }`;
+    render() { return html`<span class="leaf">leaf</span>`; }
+  }
+  DeepLeaf.register();
+
+  class DeepMid extends WebComponent {
+    static tag = 'deep-mid';
+    static styles = css`:host { padding: 8px; }`;
+    render() { return html`<deep-leaf></deep-leaf>`; }
+  }
+  DeepMid.register();
+
+  class DeepRoot extends WebComponent {
+    static tag = 'deep-root';
+    static styles = css`:host { display: block; }`;
+    render() { return html`<deep-mid></deep-mid>`; }
+  }
+  DeepRoot.register();
+
+  const out = await renderToString(html`<deep-root></deep-root>`);
+
+  // All three levels have DSD with their own styles
+  assert.match(out, /<deep-root><template shadowrootmode="open">/);
+  assert.match(out, /<deep-mid><template shadowrootmode="open">/);
+  assert.match(out, /<deep-leaf><template shadowrootmode="open">/);
+  assert.match(out, /\.leaf \{ color: green; \}/);
+  assert.match(out, /padding: 8px/);
+  assert.match(out, /<span class="leaf">leaf<\/span>/);
+});
