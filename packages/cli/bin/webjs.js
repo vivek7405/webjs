@@ -13,7 +13,7 @@ const USAGE = `webjs — commands:
               [--http2 --cert <path> --key <path>]  Serve HTTP/2 over TLS (falls back to h1.1)
   webjs test  [--server|--browser]                 Run server + browser tests
   webjs check                                     Validate app against conventions
-  webjs create <name> [--template full-stack|api]  Scaffold a new webjs app
+  webjs create <name> [--template full-stack|api|saas]  Scaffold a new webjs app
   webjs db generate                               Run \`prisma generate\`
   webjs db migrate [name]                         Run \`prisma migrate dev\`
   webjs db studio                                 Run \`prisma studio\`

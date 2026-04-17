@@ -26,7 +26,8 @@ TypeScript with zero build step, real SSR with Declarative Shadow DOM.
 ```sh
 # scaffold a new app
 npx webjs create my-app              # full-stack (pages + API + components)
-npx webjs create my-api --template api  # backend-only (routes + modules, no SSR)
+npx webjs create my-api --template api
+webjs create my-app --template saas   # auth + dashboard + Prisma  # backend-only (routes + modules, no SSR)
 
 # or run the example
 git clone https://github.com/vivek7405/webjs

@@ -26,6 +26,7 @@ const TEMPLATES = resolve(__dirname, '..', 'templates');
 export async function scaffoldApp(name, cwd, opts = {}) {
   const template = opts.template || 'full-stack';
   const isApi = template === 'api';
+  const isSaas = template === 'saas';
   const appDir = join(cwd, name);
   if (existsSync(appDir)) {
     console.error(`Error: directory '${name}' already exists.`);
@@ -66,12 +67,14 @@ export async function scaffoldApp(name, cwd, opts = {}) {
       webjs: 'latest',
       '@webjs/server': 'latest',
       '@webjs/cli': 'latest',
+      ...(isSaas ? { '@prisma/client': '^6.0.0' } : {}),
     },
     devDependencies: {
       esbuild: '^0.28.0',
       '@web/test-runner': '^0.20.0',
       '@web/test-runner-playwright': '^0.11.0',
       'playwright': '^1.59.0',
+      ...(isSaas ? { prisma: '^6.0.0' } : {}),
     },
   }, null, 2) + '\n');
 
@@ -192,7 +195,7 @@ export type ActionResult<T> =
   }
 
   if (!isApi) {
-    // Full-stack template: layout + page + theme toggle
+    // Full-stack and SaaS templates: layout + page + theme toggle
 
   await writeFile(join(appDir, 'app', 'layout.ts'), `import { html } from 'webjs';
 import 'webjs/client-router';
@@ -333,6 +336,12 @@ ThemeToggle.register(import.meta.url);
 `);
   } // end if (!isApi)
 
+  // --- SaaS template extras: auth, dashboard, prisma ---
+  if (isSaas) {
+    const { writeSaasFiles } = await import('./saas-template.js');
+    await writeSaasFiles(appDir);
+  }
+
   // --- AGENTS.md (always copy) ---
   const agentsSrc2 = resolve(__dirname, '..', '..', '..', 'AGENTS.md');
   if (!existsSync(join(appDir, 'AGENTS.md')) && existsSync(agentsSrc2)) {
@@ -353,11 +362,19 @@ ThemeToggle.register(import.meta.url);
     console.log(`  ${name}/
     app/api/health/route.ts
     app/api/users/route.ts               ← thin wrapper over server actions
-    modules/users/actions/create-user.server.ts
-    modules/users/queries/list-users.server.ts
-    modules/users/types.ts
+    modules/users/{actions,queries,types.ts}
     CONVENTIONS.md, AGENTS.md, CLAUDE.md
-    package.json, tsconfig.json
+`);
+  } else if (isSaas) {
+    console.log(`  ${name}/
+    app/layout.ts, page.ts, login/, signup/
+    app/dashboard/{page,settings,middleware}.ts  ← protected
+    app/api/auth/[...path]/route.ts      ← auth API
+    modules/auth/{actions,queries,types.ts}
+    lib/{auth,prisma,password}.ts
+    prisma/schema.prisma                 ← User model
+    components/theme-toggle.ts
+    CONVENTIONS.md, AGENTS.md, CLAUDE.md
 `);
   } else {
     console.log(`  ${name}/
@@ -365,12 +382,11 @@ ThemeToggle.register(import.meta.url);
     components/theme-toggle.ts
     modules/
     CONVENTIONS.md, AGENTS.md, CLAUDE.md
-    package.json, tsconfig.json
 `);
   }
   console.log(`Next steps:
   cd ${name}
-  npm install
+  npm install${isSaas ? '\n  npx prisma migrate dev --name init' : ''}
   npx webjs dev
 
 AI-driven development (enforced for all AI agents):
