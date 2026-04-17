@@ -360,29 +360,9 @@ export class WebComponent extends Base {
     } else {
       this._renderRoot = this;
       // Light DOM: inject scoped styles as a <style> element if not already present.
-      // Inject scoped styles for light DOM components into <head>.
-      //
-      // `data-webjs-styles-for="tag-name"` identifies which component
-      // owns the <style> block. Prevents duplicate injection when
-      // multiple instances of the same component appear on a page.
-      //
-      // AI agents: do NOT set this attribute manually. The framework
-      // handles it automatically for light DOM components with
-      // `static styles = css`.
-      const styles = Ctor.styles;
-      const list = Array.isArray(styles) ? styles : isCSS(styles) ? [styles] : [];
-      if (list.length && !document.querySelector(`style[data-webjs-styles-for="${Ctor.tag}"]`)) {
-        const tag = Ctor.tag;
-        const cssText = list.map(s => s.cssText || s.toString()).join('\n');
-        // Scope all CSS rules to the component's tag name.
-        // `:host` → tag name. All other selectors → prefixed with tag name.
-        // e.g., `input { color: red }` → `comments-thread input { color: red }`
-        const scoped = scopeCSS(cssText, tag);
-        const style = document.createElement('style');
-        style.setAttribute('data-webjs-styles-for', tag);
-        style.textContent = scoped;
-        document.head.appendChild(style);
-      }
+      // Light DOM: no style injection. `static styles` is for shadow DOM.
+      // Light DOM components use global CSS, Tailwind, or inline <style>
+      // in their render() template.
     }
 
     // Notify all controllers that the host is connected.
@@ -626,39 +606,6 @@ export class WebComponent extends Base {
 }
 
 /** @param {string} s */
-/**
- * Scope CSS rules to a tag name for light DOM components.
- * - `:host` → `tagName`
- * - Other selectors → `tagName selector` (descendant scope)
- * - `@media` and `@keyframes` blocks are passed through
- *
- * @param {string} css
- * @param {string} tag
- * @returns {string}
- */
-function scopeCSS(css, tag) {
-  // Replace :host with the tag name
-  let result = css.replace(/:host/g, tag);
-  // Prefix non-:host top-level selectors with the tag name.
-  // Match: selector { ... } — but not @-rules, not already-prefixed selectors
-  result = result.replace(
-    /(?:^|\})\s*([^@{}][^{]*?)\s*\{/g,
-    (match, selector) => {
-      // Skip if already scoped (starts with the tag name)
-      const trimmed = selector.trim();
-      if (trimmed.startsWith(tag)) return match;
-      // Scope each comma-separated selector
-      const scoped = trimmed.split(',').map(s => {
-        const sel = s.trim();
-        if (!sel || sel.startsWith(tag) || sel.startsWith('@')) return sel;
-        return `${tag} ${sel}`;
-      }).join(', ');
-      return match.replace(trimmed, scoped);
-    }
-  );
-  return result;
-}
-
 function hyphenate(s) {
   return s.replace(/([A-Z])/g, '-$1').toLowerCase();
 }

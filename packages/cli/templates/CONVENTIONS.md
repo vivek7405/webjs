@@ -236,15 +236,17 @@ MyWidget.register(import.meta.url);
 
 | Component type | Use | Why |
 |---|---|---|
-| Layout shells (blog-shell, doc-shell) | Shadow DOM (default) | Need `<slot>` for children, scoped styles for chrome |
-| Self-contained widgets (theme-toggle, counter) | Shadow DOM | Reusable, need style encapsulation |
-| App-level UI (forms, cards, lists) | Light DOM (`static shadow = false`) | Global CSS works, Tailwind works, simpler |
+| Components with scoped styles (`static styles`) | Shadow DOM (default) | `static styles = css` uses `adoptedStyleSheets` — requires shadow DOM |
+| Layout shells that wrap children | Shadow DOM | Need `<slot>` for content projection |
+| Components using global/Tailwind CSS | Light DOM (`static shadow = false`) | Global stylesheets apply directly, Tailwind works |
 | Third-party components | Their choice | They manage their own shadow roots |
 
-`static styles = css` works for both. For light DOM, the framework
-auto-scopes all CSS selectors by prefixing with the tag name
-(e.g., `input { }` → `comments-thread input { }`). `:host` is
-replaced with the tag name. No style leakage.
+**Shadow DOM** = scoped styles via `static styles = css`. The browser
+enforces isolation. Use `:host`, bare selectors, anything — nothing leaks.
+
+**Light DOM** = global styles. Don't use `static styles`. Style via
+global CSS, Tailwind utility classes, or `<style>` in the render template.
+`document.querySelector` finds elements. No `<slot>` needed.
 
 Both are fully SSR'd — shadow DOM uses Declarative Shadow DOM, light DOM
 renders content directly as HTML. Both hydrate without flash on the client.

@@ -8,7 +8,6 @@ type State = { busy: boolean; error: string | null };
 
 export class NewPost extends WebComponent {
   static tag = 'new-post';
-  static shadow = false;
   static styles = css`
     :host { display: block; }
     form {
