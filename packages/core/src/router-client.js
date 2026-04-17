@@ -194,7 +194,8 @@ async function performNavigation(href, isPopState) {
         upgradeCustomElements(document.body);
       };
       if (/** @type any */ (document).startViewTransition) {
-        /** @type any */ (document).startViewTransition(doSwap);
+        const t = /** @type any */ (document).startViewTransition(doSwap);
+        t.finished.then(() => upgradeCustomElements(document.body)).catch(() => {});
       } else {
         doSwap();
       }
@@ -243,7 +244,11 @@ function swapSlotContent(shell, children) {
   };
 
   if (/** @type any */ (document).startViewTransition) {
-    /** @type any */ (document).startViewTransition(doSwap);
+    const t = /** @type any */ (document).startViewTransition(doSwap);
+    // After the View Transition completes, run another upgrade pass.
+    // During transitions the DOM may not be fully "settled" when the
+    // callback runs synchronously — a deferred pass catches stragglers.
+    t.finished.then(() => upgradeCustomElements(shell)).catch(() => {});
   } else {
     doSwap();
   }
@@ -327,12 +332,29 @@ function mergeHead(newHead) {
  */
 function upgradeCustomElements(container) {
   if (typeof customElements === 'undefined') return;
-  // upgrade() is a no-op on already-upgraded elements, safe to call on all.
-  if (container.tagName && container.tagName.includes('-')) {
-    customElements.upgrade(container);
-  }
-  for (const el of container.querySelectorAll('*')) {
-    if (el.tagName.includes('-')) customElements.upgrade(el);
+  upgradeTree(container);
+}
+
+/**
+ * Recursively upgrade custom elements, traversing into shadow roots.
+ * `querySelectorAll('*')` only searches the light DOM — it won't find
+ * elements like `<theme-toggle>` inside `<blog-shell>`'s shadow root.
+ * This recursive walker ensures every nested custom element is upgraded
+ * regardless of DOM boundary.
+ *
+ * @param {Element | DocumentFragment} root
+ */
+function upgradeTree(root) {
+  const els = root instanceof Element
+    ? [root, ...root.querySelectorAll('*')]
+    : [...root.querySelectorAll('*')];
+  for (const el of els) {
+    if (el.tagName && el.tagName.includes('-')) {
+      customElements.upgrade(el);
+      // After upgrade, the element may now have a shadow root with
+      // nested custom elements — recurse into it.
+      if (el.shadowRoot) upgradeTree(el.shadowRoot);
+    }
   }
 }
 
