@@ -2,7 +2,7 @@ import { html } from 'webjs';
 
 export const metadata = {
   title: 'webjs — AI-first, batteries-included, web-components-first framework',
-  description: 'AI-first, batteries-included, web-components-first framework. Opinionated defaults — set REDIS_URL and everything scales. Sessions, jobs, pub/sub, storage, cache built in.',
+  description: 'AI-first, batteries-included, web-components-first framework. Opinionated defaults — set REDIS_URL and everything scales. cache() for queries, Session class, NextAuth-style auth, WebSocket broadcast, rate limiting built in.',
 };
 
 const FEATURES = [
@@ -13,7 +13,7 @@ const FEATURES = [
   { icon: '🔄', title: 'Server Actions + superjson', desc: 'Import a .server.ts function from a client component — it auto-rewrites into a type-safe RPC stub. Date, Map, Set, BigInt round-trip as their real types.' },
   { icon: '🌊', title: 'Streaming SSR + Suspense', desc: 'Fallback content flushes immediately. Deferred data streams in as it resolves. TTFB measured in milliseconds, not seconds.' },
   { icon: '🔌', title: 'WebSocket Built In', desc: 'Export a WS function from any route.ts and it becomes a WebSocket endpoint. connectWS() on the client auto-reconnects with exponential backoff.' },
-  { icon: '🛡️', title: 'Batteries Included', desc: 'Caching (NextJs-style cache + revalidateTag), sessions, NextAuth-style auth (OAuth + credentials + JWT), WebSocket broadcast, rate limiting — set REDIS_URL and everything scales.' },
+  { icon: '🛡️', title: 'Batteries Included', desc: 'cache() for server-side query caching with TTL + invalidate(), HTTP Cache-Control for pages, Session class with SessionStorage interface (cookie or store-backed), NextAuth-style auth (OAuth + credentials + JWT), WebSocket broadcast, rate limiting — set REDIS_URL and everything scales.' },
   { icon: '📝', title: 'TypeScript or JSDoc', desc: 'Full-stack type safety with .ts files (Node strips types natively) or JSDoc annotations. Zero compile step either way.' },
   { icon: '🧪', title: 'Testing Built In', desc: 'webjs test runs server + browser tests (WTR + Playwright). webjs check validates conventions. webjs create scaffolds test directories and example tests. AI agents auto-generate tests with every feature.' },
   { icon: '🔀', title: 'Git Workflow Guardrails', desc: 'Branch checking before edits, merge approval with delete/keep prompt, no AI attribution in commits, auto-rebase before work. Enforced via hooks for Claude Code, config files for Cursor/Windsurf/Copilot.' },
@@ -200,9 +200,9 @@ export default function LandingPage() {
       <div class="rubric"><span class="name">webjs</span> <span class="sep">—</span> ai-first · batteries-included · web-components-first</div>
       <h1>The web framework where AI agents write production code.</h1>
       <p>
-        AI-first, batteries included, web components first. Auth, sessions, caching,
-        pub/sub, rate limiting — set <code>REDIS_URL</code> and everything scales.
-        Sensible defaults, all overridable. No build step, real SSR.
+        AI-first, batteries included, web components first. cache() for queries,
+        Session class, NextAuth-style auth, WebSocket broadcast, rate limiting —
+        set <code>REDIS_URL</code> and everything scales. Sensible defaults, all overridable. No build step, real SSR.
       </p>
       <div class="hero-actions">
         <a class="primary" href="http://localhost:4000/docs/getting-started" target="_blank">Get Started</a>

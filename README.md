@@ -2,10 +2,11 @@
 
 **AI-first. Batteries included. Web components first.**
 
-Full-stack web framework inspired by NextJs, Lit, and Rails. Sessions,
-background jobs, file storage, pub/sub, caching — set `REDIS_URL` and
-everything scales horizontally. Web components first, TypeScript with
-zero build step, real SSR with Declarative Shadow DOM.
+Full-stack web framework inspired by NextJs, Lit, and Rails. `cache()` for
+queries, HTTP Cache-Control for pages, Session class with SessionStorage,
+NextAuth-style auth with providers, WebSocket broadcast, rate limiting — set
+`REDIS_URL` and everything scales horizontally. Web components first,
+TypeScript with zero build step, real SSR with Declarative Shadow DOM.
 
 ## Why webjs
 
@@ -17,7 +18,7 @@ zero build step, real SSR with Declarative Shadow DOM.
 - **Client router.** Turbo-Drive-style link interception. Shadow-DOM-aware via `composedPath()`. Layouts stay mounted, only page content swaps. No white flash.
 - **WebSockets built in.** Export `WS` from `route.ts` → WebSocket endpoint. `connectWS()` on the client auto-reconnects.
 - **Backend-only mode.** Skip pages entirely — use webjs as a lightweight API framework with file routing, middleware, rate limiting, and TypeScript.
-- **Batteries included.** Sessions, background jobs, file storage, pub/sub, cache — all built in. Set `REDIS_URL` → everything scales across instances. Opinionated defaults, like Rails.
+- **Batteries included.** `cache()` for server-side query caching, HTTP `Cache-Control` for pages, `Session` class with `SessionStorage` interface, NextAuth-style `createAuth()` with OAuth + credentials + JWT, WebSocket `broadcast()`, `rateLimit()` — all built in. Set `REDIS_URL` → everything scales across instances.
 - **Production ready.** CSRF, gzip/brotli, HTTP/2, 103 Early Hints, CSP nonces, modulepreload, rate limiting, health probes, graceful shutdown, streaming Suspense.
 
 ## Quickstart
@@ -137,8 +138,8 @@ deployment, backend-only mode, testing, configuration.
 Pre-1.0. 70 unit tests. Key features:
 
 - **Core:** SSR with DSD, fine-grained client renderer, `repeat()`, `Suspense()`, client router with `composedPath()` for shadow DOM
-- **Data:** server actions + superjson (Date/Map/Set/BigInt survive the wire), `expose()` for REST, `json()` + `richFetch()` for content-negotiated APIs
-- **Server:** file router, per-segment middleware, `rateLimit()`, WebSockets, CSRF, compression, HTTP/2, 103 Early Hints, health probes, graceful shutdown
+- **Data:** server actions + superjson (Date/Map/Set/BigInt survive the wire), `expose()` for REST, `json()` + `richFetch()` for content-negotiated APIs, `cache()` for server-side query caching with TTL + `invalidate()`
+- **Server:** file router, per-segment middleware, `rateLimit()`, WebSockets + `broadcast()`, CSRF, compression, HTTP/2, 103 Early Hints, health probes, graceful shutdown, `Session` class with `SessionStorage` (cookie or store-backed), NextAuth-style `createAuth()` (Credentials, Google, GitHub)
 - **DX:** TypeScript with zero build, `AGENTS.md` contract, `CLAUDE.md`, live reload in dev, optional esbuild bundle for prod
 
 ## License

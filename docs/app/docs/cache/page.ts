@@ -1,106 +1,104 @@
 import { html } from 'webjs';
 
-export const metadata = { title: 'Cache Store — webjs' };
+export const metadata = { title: 'Caching — webjs' };
 
 export default function Cache() {
   return html`
-    <h1>Cache Store</h1>
-    <p>webjs ships a pluggable cache store that follows the <strong>opinionated defaults</strong> philosophy: zero config in development, set one environment variable for production. The cache backs the rate limiter, sessions, and background jobs internally, but you can also use it directly for application-level caching.</p>
+    <h1>Caching</h1>
+    <p>webjs provides two complementary caching layers: <code>cache()</code> for server-side query result caching, and HTTP <code>Cache-Control</code> headers for page-level browser/CDN caching. Both follow the <strong>opinionated defaults</strong> philosophy — zero config in development, set <code>REDIS_URL</code> for production scaling.</p>
 
-    <h2>Zero-Config Convention</h2>
-    <p>In development, webjs uses an in-memory store automatically — no setup required. When you deploy to production, set <code>REDIS_URL</code> and webjs switches to Redis without any code changes:</p>
+    <h2>cache() — Server-Side Query Caching</h2>
+    <p>Wrap any async function with <code>cache()</code> to cache its return value on the server. Same function + same arguments = cached result until TTL expires or you call <code>invalidate()</code>.</p>
 
-    <pre># Development — nothing to configure
-# webjs uses memoryStore automatically
+    <pre>import { cache } from '@webjs/server';
 
-# Production — set one env var
-REDIS_URL=redis://localhost:6379</pre>
+export const listPosts = cache(
+  async () => {
+    return prisma.post.findMany({ orderBy: { createdAt: 'desc' } });
+  },
+  { key: 'posts', ttl: 60 }
+);
 
-    <p>That is it. No config file, no adapter registration, no provider wiring. The framework detects <code>REDIS_URL</code> at startup and selects the appropriate backend.</p>
+// Call it normally — first call hits DB, subsequent calls serve cache
+const posts = await listPosts();</pre>
 
-    <h2>Stores</h2>
-    <h3>memoryStore (default)</h3>
-    <p>An in-process Map-based store. Fast, zero dependencies, perfect for development and single-instance deployments. Data is lost on restart — this is intentional for dev.</p>
+    <h3>Options</h3>
+    <ul>
+      <li><code>key</code> (required) — cache key prefix. Combined with serialized arguments to form the full key.</li>
+      <li><code>ttl</code> (optional) — time-to-live in seconds. Default: 60.</li>
+    </ul>
 
-    <h3>redisStore (production)</h3>
-    <p>A Redis-backed store suitable for multi-instance deployments. Activated automatically when <code>REDIS_URL</code> is present. Supports TTL, atomic increments, and all the features the built-in subsystems rely on.</p>
+    <h3>Invalidation</h3>
+    <p>The cached function has an <code>invalidate()</code> method. Call it after mutations to clear the cache:</p>
 
-    <h2>API</h2>
-    <p>Import the cache from <code>@webjs/server</code>:</p>
+    <pre>import { listPosts } from '../queries/list-posts.server.ts';
 
-    <pre>import { cache } from '@webjs/server';</pre>
-
-    <h3>cache.get(key)</h3>
-    <p>Returns the cached value or <code>undefined</code> if the key does not exist or has expired.</p>
-
-    <pre>const user = await cache.get('user:42');
-// { id: 42, name: 'Ada' } or undefined</pre>
-
-    <h3>cache.set(key, value, ttl?)</h3>
-    <p>Stores a value. The optional <code>ttl</code> is in seconds — omit it for no expiry.</p>
-
-    <pre>// Cache for 5 minutes
-await cache.set('user:42', { id: 42, name: 'Ada' }, 300);
-
-// Cache indefinitely
-await cache.set('config:features', { darkMode: true });</pre>
-
-    <h3>cache.delete(key)</h3>
-    <p>Removes a key from the store.</p>
-
-    <pre>await cache.delete('user:42');</pre>
-
-    <h3>cache.increment(key, amount?)</h3>
-    <p>Atomically increments a numeric value. Returns the new count. If the key does not exist it is initialized to 0 before incrementing. This is the primitive the rate limiter uses internally.</p>
-
-    <pre>const count = await cache.increment('api:hits:192.168.1.1');
-// 1, 2, 3, ...</pre>
-
-    <h2>Example: Caching an Expensive Query</h2>
-    <pre>// app/api/dashboard/route.server.js
-import { cache } from '@webjs/server';
-import { prisma } from '../../lib/db.server.js';
-
-export async function GET(req) {
-  const key = 'dashboard:stats';
-  let stats = await cache.get(key);
-
-  if (!stats) {
-    stats = await prisma.order.aggregate({
-      _sum: { total: true },
-      _count: { id: true },
-    });
-    await cache.set(key, stats, 60); // cache 1 minute
-  }
-
-  return Response.json(stats);
+export async function createPost(input) {
+  await prisma.post.create({ data: input });
+  await listPosts.invalidate();  // next call to listPosts() will hit DB
 }</pre>
 
-    <h2>Internal Usage</h2>
-    <p>The cache store is not just for application code. Several framework subsystems use it as their backing store:</p>
-    <ul>
-      <li><strong>Rate limiter</strong> — uses <code>cache.increment()</code> with TTL to track request counts per window.</li>
-      <li><strong>Sessions</strong> — <code>storeSession</code> persists session data in the cache when using server-side sessions.</li>
-      <li><strong>Background jobs</strong> — the job queue stores pending and in-progress jobs in the cache.</li>
-    </ul>
-    <p>Because they all share the same store, switching from memory to Redis upgrades everything at once.</p>
+    <p>Invalidation clears the no-args cache key. Argument-specific keys (from calls with different arguments) expire naturally via TTL. For full invalidation of parameterized queries, use a short TTL.</p>
 
-    <h2>Explicit Store Selection</h2>
-    <p>If you need to override the auto-detection (for example, to use Redis in a test environment without setting <code>REDIS_URL</code>), you can configure the store explicitly:</p>
+    <h2>HTTP Cache-Control — Page-Level Caching</h2>
+    <p>For page-level caching served to browsers and CDNs, use the <code>metadata.cacheControl</code> export in any <code>page.ts</code>:</p>
 
-    <pre>// webjs.config.js
-import { redisStore } from '@webjs/server';
-
-export default {
-  cache: redisStore({ url: 'redis://test-redis:6379' }),
+    <pre>// app/posts/page.ts
+export const metadata = {
+  title: 'Posts',
+  cacheControl: 'public, max-age=60, stale-while-revalidate=300',
 };</pre>
 
-    <p>This is rarely needed. The convention — <code>REDIS_URL</code> present means Redis, absent means memory — covers the vast majority of deployments.</p>
+    <p>This sets the standard <code>Cache-Control</code> header on the HTTP response. Browsers and CDNs cache the rendered page without any server-side state.</p>
+
+    <h2>Low-Level Cache Store</h2>
+    <p>Both <code>cache()</code> and the rate limiter are built on a pluggable cache store. You can use it directly for custom caching needs:</p>
+
+    <pre>import { getStore, setStore, redisStore } from '@webjs/server';
+
+// Get the default store (memoryStore in dev)
+const store = getStore();
+
+// Read/write raw values
+await store.set('user:42', JSON.stringify({ name: 'Ada' }), 300_000); // TTL in ms
+const raw = await store.get('user:42');
+await store.delete('user:42');
+
+// Atomic increment (used by rate limiter)
+const count = await store.increment('api:hits:192.168.1.1', 60_000);</pre>
+
+    <h3>Stores</h3>
+    <h4>memoryStore (default)</h4>
+    <p>In-process LRU Map. Fast, zero dependencies, single-instance only. Data is lost on restart — intentional for dev.</p>
+
+    <h4>redisStore (production)</h4>
+    <p>Redis-backed store for multi-instance deployments. Set it explicitly at app startup:</p>
+
+    <pre>import { setStore, redisStore } from '@webjs/server';
+setStore(redisStore({ url: process.env.REDIS_URL }));</pre>
+
+    <h3>Store API</h3>
+    <ul>
+      <li><code>store.get(key)</code> — returns the cached string or <code>null</code>.</li>
+      <li><code>store.set(key, value, ttlMs?)</code> — stores a string value with optional TTL in milliseconds.</li>
+      <li><code>store.delete(key)</code> — removes a key.</li>
+      <li><code>store.increment(key, ttlMs?)</code> — atomically increments a counter. Returns the new value. Creates the key with value 1 if it does not exist.</li>
+    </ul>
+
+    <h2>Internal Usage</h2>
+    <p>Several framework subsystems use the cache store as their backing store:</p>
+    <ul>
+      <li><strong>cache()</strong> — server-side function result caching.</li>
+      <li><strong>Rate limiter</strong> — uses <code>store.increment()</code> with TTL to track request counts per window.</li>
+      <li><strong>Sessions</strong> — <code>storeSessionStorage()</code> persists session data in the cache when using server-side sessions.</li>
+      <li><strong>Auth</strong> — database session strategy stores auth sessions in the cache store.</li>
+    </ul>
+    <p>Because they all share the same store, switching from memory to Redis upgrades everything at once.</p>
 
     <h2>Next Steps</h2>
     <ul>
       <li><a href="/docs/sessions">Sessions</a> — session middleware built on the cache store</li>
-      <li><a href="/docs/jobs">Background Jobs</a> — job queues backed by the same store</li>
+      <li><a href="/docs/authentication">Authentication</a> — NextAuth-style auth with providers</li>
       <li><a href="/docs/middleware">Middleware</a> — rate limiting and other middleware that uses the cache</li>
     </ul>
   `;

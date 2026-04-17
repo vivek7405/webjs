@@ -3,6 +3,7 @@
 import { prisma } from '../../../lib/prisma.ts';
 import { slugify, formatPost } from '../utils/slugify.ts';
 import { currentUser } from '../../auth/queries/current-user.server.ts';
+import { listPosts } from '../queries/list-posts.server.ts';
 import type { ActionResult } from '../../auth/types.ts';
 import type { PostFormatted } from '../types.ts';
 
@@ -36,5 +37,6 @@ export async function createPost(
     data: { title, body, slug, authorId: me.id },
     include: { author: { select: { name: true, email: true } } },
   });
+  await listPosts.invalidate();
   return { success: true, data: formatPost(row) };
 }
