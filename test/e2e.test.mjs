@@ -376,6 +376,182 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     assert.equal(await getCounterValue(page), 4, 'Counter should increment after rapid nav');
   });
 
+  // ---------------------------------------------------------------------------
+  // Nested DSD: all four shadow/light DOM nesting combinations
+  //
+  // The /test-nesting page renders four sections, each with a parent component
+  // nesting a child component in a different shadow/light DOM combination.
+  // These tests verify:
+  //   1. SSR emits correct DSD templates / hydration markers
+  //   2. Components upgrade and render content after JS loads
+  //   3. Inline styles from DSD are applied (no layout shift)
+  // ---------------------------------------------------------------------------
+
+  test('nested DSD: shadow parent → shadow child renders with DSD and styles', async () => {
+    await page.goto(`${baseUrl}/test-nesting`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(2000);
+
+    const result = await page.evaluate(() => {
+      const section = document.querySelector('#shadow-shadow');
+      const parent = section?.querySelector('shadow-parent');
+      if (!parent) return { error: 'shadow-parent not found' };
+
+      const parentHasShadow = !!parent.shadowRoot;
+      const parentDiv = parent.shadowRoot?.querySelector('[data-testid="shadow-parent"]');
+
+      const child = parent.shadowRoot?.querySelector('shadow-inner');
+      const childHasShadow = !!child?.shadowRoot;
+      const childText = child?.shadowRoot?.querySelector('[data-testid="shadow-inner"]')?.textContent;
+
+      // Check that the child's shadow root has adopted styles (inline <style>
+      // from SSR was replaced by adoptedStyleSheets on upgrade)
+      const childHasAdoptedStyles = (child?.shadowRoot?.adoptedStyleSheets?.length || 0) > 0;
+
+      return { parentHasShadow, parentDiv: !!parentDiv, childHasShadow, childText, childHasAdoptedStyles };
+    });
+
+    assert.ok(!result.error, result.error);
+    assert.ok(result.parentHasShadow, 'Shadow parent should have a shadow root');
+    assert.ok(result.parentDiv, 'Shadow parent should render its content');
+    assert.ok(result.childHasShadow, 'Shadow child nested in shadow parent should have a shadow root');
+    assert.equal(result.childText, 'shadow-inner OK', 'Shadow child should render its text');
+    assert.ok(result.childHasAdoptedStyles, 'Shadow child should have adopted styles');
+  });
+
+  test('nested DSD: shadow parent → light child renders with hydration marker', async () => {
+    const result = await page.evaluate(() => {
+      const section = document.querySelector('#shadow-light');
+      const parent = section?.querySelector('shadow-parent');
+      if (!parent) return { error: 'shadow-parent not found' };
+
+      const parentHasShadow = !!parent.shadowRoot;
+      const child = parent.shadowRoot?.querySelector('light-inner');
+      const childHasShadow = !!child?.shadowRoot;
+      // Light DOM child renders directly into its own element (no shadow root)
+      const childText = child?.querySelector('[data-testid="light-inner"]')?.textContent;
+
+      return { parentHasShadow, childExists: !!child, childHasShadow, childText };
+    });
+
+    assert.ok(!result.error, result.error);
+    assert.ok(result.parentHasShadow, 'Shadow parent should have a shadow root');
+    assert.ok(result.childExists, 'Light child should exist inside shadow parent');
+    assert.ok(!result.childHasShadow, 'Light child should NOT have a shadow root');
+    assert.equal(result.childText, 'light-inner OK', 'Light child should render its text');
+  });
+
+  test('nested DSD: light parent → shadow child renders with DSD and styles', async () => {
+    const result = await page.evaluate(() => {
+      const section = document.querySelector('#light-shadow');
+      const parent = section?.querySelector('light-parent');
+      if (!parent) return { error: 'light-parent not found' };
+
+      const parentHasShadow = !!parent.shadowRoot;
+      // Light DOM parent renders into itself
+      const parentDiv = parent.querySelector('[data-testid="light-parent"]');
+      const child = parent.querySelector('shadow-inner');
+      const childHasShadow = !!child?.shadowRoot;
+      const childText = child?.shadowRoot?.querySelector('[data-testid="shadow-inner"]')?.textContent;
+      const childHasAdoptedStyles = (child?.shadowRoot?.adoptedStyleSheets?.length || 0) > 0;
+
+      return { parentHasShadow, parentDiv: !!parentDiv, childHasShadow, childText, childHasAdoptedStyles };
+    });
+
+    assert.ok(!result.error, result.error);
+    assert.ok(!result.parentHasShadow, 'Light parent should NOT have a shadow root');
+    assert.ok(result.parentDiv, 'Light parent should render its content');
+    assert.ok(result.childHasShadow, 'Shadow child nested in light parent should have a shadow root');
+    assert.equal(result.childText, 'shadow-inner OK', 'Shadow child should render its text');
+    assert.ok(result.childHasAdoptedStyles, 'Shadow child should have adopted styles');
+  });
+
+  test('nested DSD: light parent → light child renders with hydration marker', async () => {
+    const result = await page.evaluate(() => {
+      const section = document.querySelector('#light-light');
+      const parent = section?.querySelector('light-parent');
+      if (!parent) return { error: 'light-parent not found' };
+
+      const parentHasShadow = !!parent.shadowRoot;
+      const child = parent.querySelector('light-inner');
+      const childHasShadow = !!child?.shadowRoot;
+      const childText = child?.querySelector('[data-testid="light-inner"]')?.textContent;
+
+      return { parentHasShadow, childExists: !!child, childHasShadow, childText };
+    });
+
+    assert.ok(!result.error, result.error);
+    assert.ok(!result.parentHasShadow, 'Light parent should NOT have a shadow root');
+    assert.ok(result.childExists, 'Light child should exist inside light parent');
+    assert.ok(!result.childHasShadow, 'Light child should NOT have a shadow root');
+    assert.equal(result.childText, 'light-inner OK', 'Light child should render its text');
+  });
+
+  test('nested DSD: SSR output has inline styles for shadow components before JS', async () => {
+    // Fetch raw HTML without executing JS to verify SSR output directly
+    const html = await page.evaluate(async (url) => {
+      const resp = await fetch(url);
+      return resp.text();
+    }, `${baseUrl}/test-nesting`);
+
+    // shadow-parent should have DSD with <style>
+    assert.match(html, /<shadow-parent[^>]*><template shadowrootmode="open"><style>/,
+      'shadow-parent should have DSD with inline <style>');
+
+    // shadow-inner nested inside should also have DSD with <style>
+    assert.match(html, /<shadow-inner><template shadowrootmode="open"><style>/,
+      'shadow-inner nested inside parent should have DSD with inline <style>');
+
+    // light-parent should have hydration marker, NOT DSD
+    assert.match(html, /<light-parent[^>]*><!--webjs-hydrate-->/,
+      'light-parent should have hydration marker');
+    assert.ok(!html.includes('<light-parent><template shadowrootmode'),
+      'light-parent should NOT have DSD template');
+
+    // light-inner should have hydration marker, NOT DSD
+    assert.match(html, /<light-inner><!--webjs-hydrate-->/,
+      'light-inner should have hydration marker');
+    assert.ok(!html.includes('<light-inner><template shadowrootmode'),
+      'light-inner should NOT have DSD template');
+
+    // Verify the inline styles contain actual CSS (not empty)
+    assert.match(html, /shadow-inner><template shadowrootmode="open"><style>[^<]+<\/style>/,
+      'shadow-inner DSD should contain non-empty inline styles');
+  });
+
+  test('nested DSD: no duplicate <style> tags after hydration (SSR style removed)', async () => {
+    await page.goto(`${baseUrl}/test-nesting`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(2000);
+
+    const result = await page.evaluate(() => {
+      const checks = [];
+
+      // Check all shadow-inner instances
+      for (const el of document.querySelectorAll('shadow-inner')) {
+        if (!el.shadowRoot) continue;
+        const styleTags = el.shadowRoot.querySelectorAll('style').length;
+        const adoptedSheets = el.shadowRoot.adoptedStyleSheets?.length || 0;
+        checks.push({ tag: 'shadow-inner', styleTags, adoptedSheets });
+      }
+
+      // Check all shadow-parent instances
+      for (const el of document.querySelectorAll('shadow-parent')) {
+        if (!el.shadowRoot) continue;
+        const styleTags = el.shadowRoot.querySelectorAll('style').length;
+        const adoptedSheets = el.shadowRoot.adoptedStyleSheets?.length || 0;
+        checks.push({ tag: 'shadow-parent', styleTags, adoptedSheets });
+      }
+
+      return checks;
+    });
+
+    for (const check of result) {
+      assert.equal(check.styleTags, 0,
+        `${check.tag} should have 0 inline <style> tags after hydration (SSR style removed)`);
+      assert.ok(check.adoptedSheets > 0,
+        `${check.tag} should have adoptedStyleSheets after hydration`);
+    }
+  });
+
   test('theme toggle still works after navigations that test counter', async () => {
     // Verify that upgradeCustomElements doesn't break other components
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
