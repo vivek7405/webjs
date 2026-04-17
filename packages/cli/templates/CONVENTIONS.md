@@ -156,6 +156,18 @@ test/
 
 **Naming:** `test/browser/<feature>.test.js` (e.g., `test/browser/auth.test.js`)
 
+### Debugging with Playwright MCP
+
+This project includes a Playwright MCP server (`.claude.json`). When
+debugging UI issues, AI agents can use the Playwright MCP tools to:
+- Navigate to pages in a real browser
+- Click elements, fill forms, interact with the UI
+- Take screenshots to see what the user sees
+- Inspect the accessibility tree for element discovery
+
+Use `Playwright MCP` tools instead of writing one-shot Bash scripts
+with puppeteer or playwright imports.
+
 ### When to write tests
 
 | Change | Server test (node:test) | Browser test (WTR) |

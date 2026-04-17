@@ -94,7 +94,8 @@ export async function scaffoldApp(name, cwd) {
     'test/unit/example.test.ts',
     'test/browser/example.test.js',
     'web-test-runner.config.js',
-    // Claude Code hooks
+    // Claude Code config + hooks
+    '.claude.json',
     '.claude/settings.json',
     '.claude/hooks/guard-main-merge.sh',
     '.claude/hooks/guard-branch-context.sh',

@@ -215,6 +215,12 @@ component hydrate?" or "why is SSR missing my layout?"), read the relevant
 source file above. The code is plain JS with JSDoc — no build artifacts,
 no minification. What you read is what runs.
 
+**For UI debugging**, use the Playwright MCP server (configured in
+`.claude.json`). It gives you direct browser control: navigate pages,
+click elements, take screenshots, inspect the accessibility tree. Use
+Playwright MCP tools instead of writing one-shot Bash scripts with
+browser automation imports.
+
 ---
 
 ## App layout (cannot be renamed)
