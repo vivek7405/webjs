@@ -191,6 +191,7 @@ async function performNavigation(href, isPopState) {
       const doSwap = () => {
         document.body.replaceChildren(...newChildren);
         reactivateScripts(document.body);
+        upgradeCustomElements(document.body);
       };
       if (/** @type any */ (document).startViewTransition) {
         /** @type any */ (document).startViewTransition(doSwap);
@@ -238,6 +239,7 @@ function swapSlotContent(shell, children) {
   const doSwap = () => {
     shell.replaceChildren(...children);
     reactivateScripts(shell);
+    upgradeCustomElements(shell);
   };
 
   if (/** @type any */ (document).startViewTransition) {
@@ -304,6 +306,33 @@ function mergeHead(newHead) {
     if (!currentSet.has(el.outerHTML)) {
       currentHead.appendChild(el.cloneNode(true));
     }
+  }
+}
+
+/**
+ * Explicitly upgrade custom elements inside a container.
+ *
+ * `Document.parseHTMLUnsafe()` creates elements in a detached document whose
+ * `customElements` registry is empty. When those nodes are moved to the live
+ * document via `replaceChildren`, the browser *should* upgrade them — but in
+ * practice (Chromium) the upgrade can fail silently for elements that were
+ * already "constructed" as plain HTMLElement in the parsed document. Calling
+ * `customElements.upgrade()` forces the browser to run the proper constructor
+ * and trigger `connectedCallback` → `_activate()` → first render.
+ *
+ * The call is a no-op on elements that are already upgraded, so it's safe to
+ * call unconditionally on every custom element in the subtree.
+ *
+ * @param {Element} container
+ */
+function upgradeCustomElements(container) {
+  if (typeof customElements === 'undefined') return;
+  // upgrade() is a no-op on already-upgraded elements, safe to call on all.
+  if (container.tagName && container.tagName.includes('-')) {
+    customElements.upgrade(container);
+  }
+  for (const el of container.querySelectorAll('*')) {
+    if (el.tagName.includes('-')) customElements.upgrade(el);
   }
 }
 
