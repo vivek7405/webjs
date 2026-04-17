@@ -6,6 +6,7 @@ import { WebComponent, html, css } from 'webjs';
  */
 export class ErrorCard extends WebComponent {
   static tag = 'error-card';
+  static shadow = false;
   static properties = { message: { type: String } };
   message = '';
   static styles = css`

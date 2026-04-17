@@ -11,6 +11,7 @@ type ChatMessage =
  */
 export class ChatBox extends WebComponent {
   static tag = 'chat-box';
+  static shadow = false;
   static styles = css`
     :host {
       display: block;
