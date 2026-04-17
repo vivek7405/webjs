@@ -154,33 +154,28 @@ export function redisStore(opts = {}) {
   };
 }
 
-/**
- * Auto-detect the best cache store based on environment.
- * Convention over configuration: REDIS_URL → Redis, otherwise → memory.
- *
- * @returns {CacheStore}
- */
-export function autoStore() {
-  if (process.env.REDIS_URL) {
-    return redisStore();
-  }
-  return memoryStore();
-}
-
 /** @type {CacheStore | null} */
 let _defaultStore = null;
 
 /**
- * Get the default cache store (auto-detected on first call).
+ * Get the default cache store. Memory store unless explicitly set via
+ * `setStore()`. No auto-detection — the user decides.
+ *
  * @returns {CacheStore}
  */
 export function getStore() {
-  if (!_defaultStore) _defaultStore = autoStore();
+  if (!_defaultStore) _defaultStore = memoryStore();
   return _defaultStore;
 }
 
 /**
- * Override the default cache store.
+ * Set the default cache store. Call this at app startup to use Redis:
+ *
+ * ```js
+ * import { setStore, redisStore } from '@webjs/server';
+ * setStore(redisStore({ url: process.env.REDIS_URL }));
+ * ```
+ *
  * @param {CacheStore} store
  */
 export function setStore(store) {

@@ -1,29 +1,25 @@
 /**
- * Publish/subscribe for live comments — thin wrapper around the framework's
- * {@link getPubSub} from `@webjs/server`.
+ * Simple in-process publish/subscribe for live comments.
  *
- * Uses string channels of the form `comments:<postId>` and JSON-serialises
- * each comment. In dev mode this is in-process memory; set `REDIS_URL` for
- * multi-instance deployments (handled transparently by the framework).
+ * Single-instance only. For multi-instance deployments, replace with
+ * Redis pub/sub or a message broker — the framework doesn't abstract
+ * this; the user decides their infrastructure.
  */
-import { getPubSub } from '@webjs/server';
 import type { CommentFormatted } from '../types.ts';
 
 type Subscriber = (comment: CommentFormatted) => void;
 
-const channelFor = (postId: number) => `comments:${postId}`;
+const subs = globalThis.__commentSubs ?? (globalThis.__commentSubs = new Map<number, Set<Subscriber>>());
 
-/** Subscribe to new comments for a given postId. Returns an unsubscribe fn. */
 export function subscribe(postId: number, fn: Subscriber): () => void {
-  const ps = getPubSub();
-  const channel = channelFor(postId);
-  const handler = (message: string) => {
-    try { fn(JSON.parse(message)); } catch { /* bad payload — skip */ }
-  };
-  ps.subscribe(channel, handler);
-  return () => { ps.unsubscribe(channel, handler); };
+  let set = subs.get(postId);
+  if (!set) { set = new Set(); subs.set(postId, set); }
+  set.add(fn);
+  return () => { set!.delete(fn); if (set!.size === 0) subs.delete(postId); };
 }
 
 export function publish(postId: number, comment: CommentFormatted): void {
-  getPubSub().publish(channelFor(postId), JSON.stringify(comment));
+  const set = subs.get(postId);
+  if (!set) return;
+  for (const fn of set) fn(comment);
 }

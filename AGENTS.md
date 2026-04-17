@@ -165,10 +165,9 @@ or "also commit". That is the default behaviour in a webjs project.
 An **AI-first, batteries-included, web-components-first** framework
 inspired by NextJs, Lit, and Rails.
 
-- **Sensible defaults, overridable.** Set `REDIS_URL` and cache, sessions,
-  rate limiting, and pub/sub all use Redis automatically. No config files —
-  environment variables control infrastructure. Override any convention
-  via CONVENTIONS.md.
+- **Sensible defaults, overridable.** Memory store for dev, Redis when
+  you configure it. HTTP caching via standard `Cache-Control` headers.
+  Override any convention via CONVENTIONS.md.
 - **Batteries included.** Sessions, background jobs, file storage, pub/sub,
   cache store, rate limiting — all built in with pluggable adapters.
 - **No build step.** Source files are served to the browser as native ES modules.
@@ -939,25 +938,41 @@ codebase.
 
 Opinionated defaults: **set `REDIS_URL` and everything scales.**
 
-### Caching (NextJs-style)
+### Caching (HTTP standards, like Remix)
+
+webjs uses standard HTTP caching — `Cache-Control` headers on responses.
+Let browsers, CDNs, and reverse proxies handle caching. No framework
+cache layer to debug.
 
 ```js
-import { cache, revalidateTag } from '@webjs/server';
-
-// Function-level caching — auto-keyed by arguments
-export const listPosts = cache(
-  async () => prisma.post.findMany({ orderBy: { createdAt: 'desc' } }),
-  { revalidate: 60, tags: ['posts'] }
-);
-
-// Invalidate from a server action
-export async function createPost(input) {
-  await prisma.post.create({ data: input });
-  revalidateTag('posts'); // clears all caches tagged 'posts'
+// In a route handler — set Cache-Control
+export async function GET() {
+  const posts = await prisma.post.findMany();
+  return new Response(JSON.stringify(posts), {
+    headers: {
+      'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
+      'Content-Type': 'application/json',
+    },
+  });
 }
+
+// In an SSR page — use metadata for cache headers
+export const metadata = {
+  cacheControl: 'public, max-age=60',
+};
 ```
 
-The low-level `getStore()` is also available for custom caching needs.
+For app-level caching (database query results, expensive computations),
+use the cache store directly:
+
+```js
+import { getStore } from '@webjs/server';
+const store = getStore(); // memory by default
+
+// For Redis: configure explicitly at app startup
+import { setStore, redisStore } from '@webjs/server';
+setStore(redisStore({ url: process.env.REDIS_URL }));
+```
 
 ### Sessions
 
@@ -1016,7 +1031,7 @@ if (!session) throw redirect('/login');
 JWT sessions by default (stateless, scales horizontally). OAuth
 providers (Google, GitHub) handle the full redirect flow.
 
-### Broadcast (WebSocket scaling)
+### WebSocket broadcast
 
 ```js
 // app/api/chat/route.ts
@@ -1024,29 +1039,37 @@ import { broadcast } from '@webjs/server';
 
 export function WS(ws, req) {
   ws.on('message', (data) => {
-    broadcast('/api/chat', data); // reaches ALL clients on this route
+    broadcast('/api/chat', data); // sends to all connected clients
   });
 }
 ```
 
-With `REDIS_URL`, broadcast reaches clients on ALL server instances.
-The developer writes WebSocket handlers — the framework handles
-cross-instance delivery invisibly.
+Single-instance broadcast. For multi-instance, the user adds Redis
+pub/sub themselves — no framework magic.
 
-### Environment variables (opinionated defaults)
+### Environment variables
 
 | Variable | Effect |
 |---|---|
-| `REDIS_URL` | Cache, sessions, rate limiter, and pub/sub all use Redis |
 | `AUTH_SECRET` | Required for auth JWT signing (32+ random chars) |
-| `AUTH_GOOGLE_ID` | Google OAuth client ID |
-| `AUTH_GOOGLE_SECRET` | Google OAuth client secret |
-| `AUTH_GITHUB_ID` | GitHub OAuth client ID |
-| `AUTH_GITHUB_SECRET` | GitHub OAuth client secret |
+| `AUTH_GOOGLE_ID` | Google OAuth client ID (optional) |
+| `AUTH_GITHUB_ID` | GitHub OAuth client ID (optional) |
 | `PORT` | Server port (default: 3000) |
 
-**Zero config for development.** Everything works with memory/cookie
-defaults. For production, set `REDIS_URL` — that's it.
+### Scaling to multiple instances
+
+webjs defaults are single-instance (memory stores). For horizontal
+scaling, the user explicitly configures Redis where needed:
+
+```js
+// app startup — explicit, no magic
+import { setStore, redisStore } from '@webjs/server';
+setStore(redisStore({ url: process.env.REDIS_URL }));
+// Now rate limiter and sessions share state across instances
+```
+
+This is a one-time setup. The user decides what scales via Redis
+and what stays in-memory.
 
 ---
 

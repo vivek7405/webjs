@@ -204,8 +204,7 @@ export function storeSession(opts = {}) {
  * @param {{ maxAge?: number }} [opts]
  * @returns {SessionStore}
  */
-function autoSessionStore(opts = {}) {
-  if (process.env.REDIS_URL) return storeSession(opts);
+function defaultSessionStore(opts = {}) {
   return cookieSession(opts);
 }
 
@@ -237,7 +236,7 @@ export function session(opts = {}) {
 
   const cookieName = opts.cookieName || 'webjs.sid';
   const maxAge = opts.maxAge || 86400_000;
-  const store = opts.store || autoSessionStore({ maxAge });
+  const store = opts.store || defaultSessionStore({ maxAge });
   const isCookieStore = /** @type {any} */ (store)._type === 'cookie';
 
   const cookieOpts = {

@@ -41,7 +41,6 @@ const NAV_SECTIONS = [
       { href: '/docs/cache', label: 'Caching' },
       { href: '/docs/sessions', label: 'Sessions' },
       { href: '/docs/auth', label: 'Authentication' },
-      { href: '/docs/pubsub', label: 'Pub/Sub & Broadcast' },
     ],
   },
   {
