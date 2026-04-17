@@ -36,6 +36,16 @@ const NAV_SECTIONS = [
     ],
   },
   {
+    title: 'Infrastructure',
+    items: [
+      { href: '/docs/cache', label: 'Cache Store' },
+      { href: '/docs/sessions', label: 'Sessions' },
+      { href: '/docs/jobs', label: 'Background Jobs' },
+      { href: '/docs/pubsub', label: 'Pub/Sub' },
+      { href: '/docs/storage', label: 'File Storage' },
+    ],
+  },
+  {
     title: 'Advanced',
     items: [
       { href: '/docs/controllers', label: 'Reactive Controllers' },

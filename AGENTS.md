@@ -162,8 +162,14 @@ or "also commit". That is the default behaviour in a webjs project.
 
 ## What webjs is
 
-A **no-build, web-components-first** framework inspired by NextJs and Lit.
+An **AI-first, batteries-included, convention-over-configuration** web
+framework inspired by NextJs, Lit, and Rails.
 
+- **Convention over configuration.** Set `REDIS_URL` and sessions, cache,
+  rate limiting, pub/sub, and background jobs all use Redis automatically.
+  Set `S3_BUCKET` for cloud file storage. No config files needed.
+- **Batteries included.** Sessions, background jobs, file storage, pub/sub,
+  cache store, rate limiting — all built in with pluggable adapters.
 - **No build step.** Source files are served to the browser as native ES modules.
 - **JSDoc or TypeScript.** Plain `.js` with JSDoc is the default; `.ts`/`.mts`
   files are a supported first-class option — Node 23.6+ strips types at runtime

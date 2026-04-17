@@ -1,11 +1,11 @@
 # webjs
 
-**The web framework AI agents can read, write, and ship.**
+**AI-first. Batteries included. Convention over configuration.**
 
-AI-first, no-build, web-components-first full-stack framework. TypeScript
-or JSDoc, file-based routing inspired by NextJs and Lit, type-safe server actions
-with superjson, streaming SSR, WebSockets, client-side router — zero
-bundler, zero compile step.
+Full-stack web framework inspired by NextJs, Lit, and Rails. Sessions,
+background jobs, file storage, pub/sub, caching — set `REDIS_URL` and
+everything scales horizontally. No config files. TypeScript with zero
+build step. Web components with real SSR.
 
 ## Why webjs
 
@@ -17,7 +17,8 @@ bundler, zero compile step.
 - **Client router.** Turbo-Drive-style link interception. Shadow-DOM-aware via `composedPath()`. Layouts stay mounted, only page content swaps. No white flash.
 - **WebSockets built in.** Export `WS` from `route.ts` → WebSocket endpoint. `connectWS()` on the client auto-reconnects.
 - **Backend-only mode.** Skip pages entirely — use webjs as a lightweight API framework with file routing, middleware, rate limiting, and TypeScript.
-- **Production batteries.** CSRF, gzip/brotli, HTTP/2, 103 Early Hints, modulepreload, rate limiting, health probes, graceful shutdown, streaming Suspense.
+- **Batteries included.** Sessions, background jobs, file storage, pub/sub, cache — all built in. Set `REDIS_URL` → everything scales across instances. Convention over configuration, like Rails.
+- **Production ready.** CSRF, gzip/brotli, HTTP/2, 103 Early Hints, CSP nonces, modulepreload, rate limiting, health probes, graceful shutdown, streaming Suspense.
 
 ## Quickstart
 

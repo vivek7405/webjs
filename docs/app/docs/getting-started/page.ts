@@ -5,7 +5,7 @@ export const metadata = { title: 'Getting Started — webjs' };
 export default function GettingStarted() {
   return html`
     <h1>Getting Started</h1>
-    <p>webjs is a <strong>no-build, web-components-first</strong> full-stack framework inspired by NextJs and Lit. You can use it as a full-stack framework with server-rendered pages, or as a lightweight backend-only API framework — the same file conventions work either way.</p>
+    <p>webjs is a <strong>AI-first, batteries-included, convention-over-configuration</strong> web framework inspired by NextJs, Lit, and Rails. You can use it as a full-stack framework with server-rendered pages, or as a lightweight backend-only API framework — the same file conventions work either way.</p>
 
     <h2>Prerequisites</h2>
     <ul>

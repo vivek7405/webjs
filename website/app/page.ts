@@ -1,8 +1,8 @@
 import { html } from 'webjs';
 
 export const metadata = {
-  title: 'webjs — AI-first, no-build, web-components-first framework inspired by NextJs and Lit',
-  description: 'Designed for AI agents to read and write. Server-rendered web components, file-based routing, server actions, TypeScript with zero bundler.',
+  title: 'webjs — AI-first, batteries-included, convention-over-configuration web framework',
+  description: 'Convention over configuration. Batteries included. Designed for AI agents. Sessions, jobs, pub/sub, storage, cache — set REDIS_URL and everything scales. Inspired by NextJs, Lit, and Rails.',
 };
 
 const FEATURES = [
@@ -197,13 +197,12 @@ export default function LandingPage() {
     </style>
 
     <section class="hero">
-      <div class="rubric"><span class="name">webjs</span> <span class="sep">—</span> ai-first web framework</div>
+      <div class="rubric"><span class="name">webjs</span> <span class="sep">—</span> ai-first · batteries-included · convention-over-configuration</div>
       <h1>The web framework where AI agents write production code.</h1>
       <p>
-        webjs is an AI-first, no-build, web-components-first framework inspired by Lit and NextJs.
-        Cross-agent guardrails enforce tests, docs, branch hygiene, and conventions automatically —
-        AI agents deliver production-quality code without being asked.
-        Works with Claude Code, Cursor, Windsurf, Copilot, and any AI coding assistant.
+        Convention over configuration, batteries included, designed for AI agents.
+        Sessions, background jobs, file storage, pub/sub, caching — set <code>REDIS_URL</code> and
+        everything scales horizontally. No config files. Inspired by NextJs, Lit, and Rails.
       </p>
       <div class="hero-actions">
         <a class="primary" href="http://localhost:4000/docs/getting-started" target="_blank">Get Started</a>

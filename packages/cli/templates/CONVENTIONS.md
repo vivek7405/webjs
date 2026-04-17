@@ -74,6 +74,25 @@ docs" — that is the agent's default behavior in a webjs project.
 
 ---
 
+## Convention over configuration
+
+<!-- OVERRIDE -->
+webjs follows convention over configuration, like Rails. Environment
+variables control infrastructure — no config files needed:
+
+| Environment variable | Effect |
+|---|---|
+| `REDIS_URL` | Cache, sessions, rate limiting, pub/sub, and jobs all use Redis |
+| `SESSION_SECRET` | Required for session signing (32+ random chars) |
+| `S3_BUCKET` | File storage uses S3 instead of local disk |
+| `AWS_REGION` | AWS region for S3 (default: us-east-1) |
+| `PORT` | Server port (default: 3000) |
+
+**Development:** zero env vars needed. Everything works with memory/cookie/disk.
+**Production:** set `REDIS_URL` + `SESSION_SECRET`. That's it.
+
+---
+
 ## Architecture: Modules
 
 <!-- OVERRIDE -->

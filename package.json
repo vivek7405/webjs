@@ -2,7 +2,7 @@
   "name": "webjs-monorepo",
   "private": true,
   "version": "0.1.0",
-  "description": "webjs — an AI-first, no-build, web-components-first framework inspired by NextJs and Lit",
+  "description": "webjs — an AI-first, batteries-included, convention-over-configuration web framework inspired by NextJs, Lit, and Rails",
   "type": "module",
   "workspaces": [
     "packages/*",
