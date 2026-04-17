@@ -91,14 +91,15 @@ function defaultHasChanged(a, b) {
  *  - `static shadow` — set false to render into light DOM instead of shadow
  *  - `render()` — returns a TemplateResult
  *
- * Lifecycle hooks (called in order during each update cycle):
- *  1. `shouldUpdate(changedProperties)` — return false to skip this render
- *  2. `willUpdate(changedProperties)` — pre-render computation (read-only)
- *  3. controllers' `hostUpdate()`
- *  4. `render()` + DOM commit
- *  5. controllers' `hostUpdated()`
- *  6. `firstUpdated(changedProperties)` — once, after the very first render
- *  7. `updated(changedProperties)` — after every render
+ * Lifecycle (called in order during each update cycle):
+ *  1. controllers' `hostUpdate()`
+ *  2. `render()` + DOM commit (with error boundary)
+ *  3. controllers' `hostUpdated()`
+ *  4. `firstUpdated()` — once, after the very first render
+ *
+ * "Less is more" — only hooks with no native workaround are included.
+ * Use `render()` for derived state. Use `firstUpdated()` for one-time
+ * DOM setup. Use `this.shadowRoot.querySelector()` for element refs.
  *
  * Usage:
  * ```js
@@ -210,21 +211,6 @@ export class WebComponent extends Base {
      * @type {boolean}
      */
     this.__firstRendered = false;
-
-    /**
-     * Snapshot of `this.state` taken after every render cycle.
-     * Used to compute `changedProperties` on the next update.
-     * @type {Record<string, unknown> | null}
-     */
-    this.__previousState = null;
-
-    /**
-     * Keys that have been explicitly changed via `setState()` since the
-     * last render, mapped to their old values at the time of the call.
-     * Consumed (and cleared) at the start of `_performRender`.
-     * @type {Map<string, unknown>}
-     */
-    this.__changedKeys = new Map();
 
     // Install reactive property accessors for `static properties` declarations.
     this._initializeProperties();
@@ -440,25 +426,10 @@ export class WebComponent extends Base {
   /**
    * Shallow-merge new state and schedule a re-render.
    *
-   * Tracks which keys changed and their previous values so the lifecycle
-   * hooks (`shouldUpdate`, `willUpdate`, `updated`, `firstUpdated`)
-   * receive an accurate `changedProperties` Map.
-   *
    * @param {Record<string, unknown>} patch
    */
   setState(patch) {
-    const prev = this.state;
-    for (const key of Object.keys(patch)) {
-      // Only record the *first* old value per key within a batch.
-      if (!this.__changedKeys.has(key)) {
-        this.__changedKeys.set(key, prev[key]);
-      }
-    }
-    this.state = { ...prev, ...patch };
-    this.requestUpdate();
-  }
-
-  requestUpdate() {
+    this.state = { ...this.state, ...patch };
     if (this._scheduled || !this._connected) return;
     this._scheduled = true;
     queueMicrotask(() => {
@@ -468,74 +439,33 @@ export class WebComponent extends Base {
   }
 
   /**
-   * Core update cycle. Integrates lifecycle hooks and controller callbacks
-   * in the following order:
-   *
-   * 1. Build `changedProperties` — a `Map<string, unknown>` mapping each
-   *    changed state key to its **old** value.
-   * 2. `shouldUpdate(changedProperties)` — return `false` to bail out.
-   * 3. `willUpdate(changedProperties)` — read-only pre-render phase.
-   * 4. Controllers' `hostUpdate()`.
-   * 5. `render()` + DOM commit via `clientRender`.
-   * 6. Store state snapshot for next comparison.
-   * 7. Controllers' `hostUpdated()`.
-   * 8. `firstUpdated(changedProperties)` — once, on the first render only.
-   * 9. `updated(changedProperties)`.
-   *
-   * Fully backward-compatible: components that don't override any lifecycle
-   * hook get the same behaviour as before — `shouldUpdate` defaults to
-   * `true`, the other hooks are no-ops.
+   * Manually schedule a re-render. Used by controllers to trigger
+   * host updates from external events.
+   */
+  requestUpdate() {
+    this.setState({});
+  }
+
+  /**
+   * Core update cycle:
+   *   1. Controllers' hostUpdate()
+   *   2. render() + DOM commit (with error boundary)
+   *   3. Controllers' hostUpdated()
+   *   4. firstUpdated() — once, on the first render only
    */
   _performRender() {
     if (!this._renderRoot) return;
 
-    // --- 1. Build changedProperties ---
-    /** @type {Map<string, unknown>} */
-    const changedProperties = new Map(this.__changedKeys);
-
-    // Also detect changes by diffing against the previous state snapshot
-    // (catches direct `this.state = { ... }` patterns and initial renders).
-    if (this.__previousState) {
-      for (const key of Object.keys(this.state)) {
-        if (!changedProperties.has(key) && this.state[key] !== this.__previousState[key]) {
-          changedProperties.set(key, this.__previousState[key]);
-        }
-      }
-      // Keys that were in previousState but not in current state (deleted).
-      for (const key of Object.keys(this.__previousState)) {
-        if (!changedProperties.has(key) && !(key in this.state)) {
-          changedProperties.set(key, this.__previousState[key]);
-        }
-      }
-    } else {
-      // First render: every current state key is "changed from undefined".
-      for (const key of Object.keys(this.state)) {
-        if (!changedProperties.has(key)) {
-          changedProperties.set(key, undefined);
-        }
-      }
-    }
-
-    // Clear the per-setState tracker for the next batch.
-    this.__changedKeys = new Map();
-
-    // --- 2. shouldUpdate ---
-    if (!this.shouldUpdate(changedProperties)) return;
-
-    // --- 3. willUpdate + hostUpdate ---
-    this.willUpdate(changedProperties);
+    // --- 1. hostUpdate ---
     for (const c of this.__controllers) {
       if (c.hostUpdate) c.hostUpdate();
     }
 
-    // --- 4. render + DOM commit (with error boundary) ---
+    // --- 2. render + DOM commit (with error boundary) ---
     try {
       const tpl = this.render();
       clientRender(tpl, this._renderRoot);
     } catch (error) {
-      // Client-side error boundary: catch render errors so one broken
-      // component doesn't crash the entire page. Subclasses can override
-      // renderError() to show a fallback UI.
       console.error(`[webjs] render error in <${/** @type any */ (this.constructor).tag || this.tagName}>:`, error);
       try {
         const fallback = this.renderError(/** @type {Error} */ (error));
@@ -543,26 +473,18 @@ export class WebComponent extends Base {
       } catch (fallbackError) {
         console.error(`[webjs] renderError() also threw:`, fallbackError);
       }
-      // Still snapshot state and run lifecycle so the component can recover
-      // on the next setState.
     }
 
-    // --- 5. State snapshot ---
-    this.__previousState = { ...this.state };
-
-    // --- 6. hostUpdated ---
+    // --- 3. hostUpdated ---
     for (const c of this.__controllers) {
       if (c.hostUpdated) c.hostUpdated();
     }
 
-    // --- 7. firstUpdated (once) ---
+    // --- 4. firstUpdated (once) ---
     if (!this.__firstRendered) {
       this.__firstRendered = true;
-      this.firstUpdated(changedProperties);
+      this.firstUpdated();
     }
-
-    // --- 8. updated ---
-    this.updated(changedProperties);
   }
 
   // ---------------------------------------------------------------------------
@@ -570,82 +492,21 @@ export class WebComponent extends Base {
   // ---------------------------------------------------------------------------
 
   /**
-   * Called before every render to decide whether the update should proceed.
-   *
-   * **When to override:** use this to skip expensive renders when only
-   * irrelevant state has changed. For example, a component that shows a
-   * tooltip might skip re-rendering when only a background-data key
-   * changed.
-   *
-   * **Why it exists:** mirrors Lit's `shouldUpdate`. Prevents unnecessary
-   * DOM work and downstream side effects.
-   *
-   * @param {Map<string, unknown>} changedProperties
-   *   Map of state keys that changed since the last render. Values are the
-   *   **previous** (old) values.
-   * @returns {boolean} Return `false` to skip this render cycle entirely.
-   *   Default implementation always returns `true`.
-   */
-  shouldUpdate(changedProperties) {
-    return true;
-  }
-
-  /**
-   * Called after `shouldUpdate` returns `true` but *before* `render()`.
-   *
-   * **When to override:** use this for derived-state computation that
-   * depends on changed properties — e.g. recomputing a filtered list,
-   * formatting dates, or resolving a lookup. Do NOT write to the DOM here;
-   * the old DOM is still in place.
-   *
-   * **Why it exists:** mirrors Lit's `willUpdate`. Provides a clean
-   * pre-render phase where you can read old DOM and prepare values that
-   * `render()` will use, without triggering another update cycle.
-   *
-   * @param {Map<string, unknown>} changedProperties
-   *   Map of state keys that changed. Values are the **previous** values.
-   */
-  willUpdate(changedProperties) {}
-
-  /**
    * Called exactly once, after the component's very first render completes
    * and the DOM is live.
    *
-   * **When to override:** use this for one-time post-render setup that
-   * requires DOM access — auto-focusing an input, measuring layout,
-   * initializing a third-party library on a DOM node, or starting an
-   * IntersectionObserver.
+   * **When to use:** one-time post-render setup that requires DOM access —
+   * auto-focusing an input, measuring layout, initializing a third-party
+   * library on a DOM node. `connectedCallback` fires before the first
+   * render, so querying shadow children there yields nothing.
    *
-   * **Why it exists:** mirrors Lit's `firstUpdated`. Many setup tasks must
-   * wait until the shadow DOM is populated; `connectedCallback` fires
-   * before the first render, so querying shadow children there yields
-   * nothing.
-   *
-   * @param {Map<string, unknown>} changedProperties
-   *   Map of state keys that were set for the initial render. Values are
-   *   `undefined` (there was no previous value).
+   * ```js
+   * firstUpdated() {
+   *   this.shadowRoot.querySelector('input')?.focus();
+   * }
+   * ```
    */
-  firstUpdated(changedProperties) {}
-
-  /**
-   * Called after every render (including the first) once the DOM is up to
-   * date.
-   *
-   * **When to override:** use this for post-render side effects —
-   * scrolling to an element, focusing conditionally, synchronizing with
-   * an external imperative API, or logging analytics events.
-   *
-   * **Why it exists:** mirrors Lit's `updated`. Running side effects
-   * after the DOM has been committed avoids layout thrashing and ensures
-   * `query()` / `queryAll()` return up-to-date elements.
-   *
-   * **Caution:** calling `setState()` inside `updated()` will schedule
-   * another render. Guard it behind a condition to avoid infinite loops.
-   *
-   * @param {Map<string, unknown>} changedProperties
-   *   Map of state keys that changed. Values are the **previous** values.
-   */
-  updated(changedProperties) {}
+  firstUpdated() {}
 
   // ---------------------------------------------------------------------------
   // Reactive controllers
@@ -699,65 +560,6 @@ export class WebComponent extends Base {
    */
   removeController(controller) {
     this.__controllers.delete(controller);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Query helpers
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Convenience wrapper around `querySelector` that automatically targets
-   * the component's render root (shadow root or light DOM, depending on
-   * `static shadow`).
-   *
-   * **When to use:** in `firstUpdated()`, `updated()`, event handlers, or
-   * any post-render code where you need a reference to a rendered child
-   * element — e.g. to focus an input, read a measurement, or pass a node
-   * to a third-party library.
-   *
-   * **Why it exists:** saves the repetitive
-   * `this.shadowRoot?.querySelector(…) ?? this.querySelector(…)` pattern
-   * and respects the `static shadow = false` option automatically.
-   *
-   * ```js
-   * firstUpdated() {
-   *   this.query('input')?.focus();
-   * }
-   * ```
-   *
-   * @param {string} selector  CSS selector string
-   * @returns {Element | null}
-   */
-  query(selector) {
-    const root = this._renderRoot || this.shadowRoot || this;
-    return root.querySelector(selector);
-  }
-
-  /**
-   * Convenience wrapper around `querySelectorAll` that automatically targets
-   * the component's render root (shadow root or light DOM, depending on
-   * `static shadow`).
-   *
-   * **When to use:** when you need all matching elements — e.g. iterating
-   * over a list of rendered items to measure their heights or attach
-   * imperative behaviours.
-   *
-   * **Why it exists:** same rationale as `query()` — respects the render
-   * root automatically and reduces boilerplate.
-   *
-   * ```js
-   * updated() {
-   *   const items = this.queryAll('.item');
-   *   items.forEach(el => el.classList.toggle('visible', true));
-   * }
-   * ```
-   *
-   * @param {string} selector  CSS selector string
-   * @returns {NodeListOf<Element>}
-   */
-  queryAll(selector) {
-    const root = this._renderRoot || this.shadowRoot || this;
-    return root.querySelectorAll(selector);
   }
 
   /**

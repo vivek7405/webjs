@@ -313,8 +313,8 @@ syntax sugar — they write code that works, not code that looks pretty.
 | Optional attribute | `attr=${val ?? null}` (null removes the attribute) |
 | Conditional rendering | `${cond ? html\`…\` : html\`…\`}` |
 | Multi-branch | `${status === 'ok' ? html\`✓\` : status === 'err' ? html\`✗\` : html\`…\`}` |
-| Memoization | Compute in `willUpdate()`, store on `this` |
-| Element reference | `this.query('#el')` in `firstUpdated()` or `updated()` |
+| Memoization | Compute in `render()` before the template, store on `this` |
+| Element reference | `this.shadowRoot.querySelector('#el')` in `firstUpdated()` |
 | Preserve DOM (tabs) | CSS `display:none` / `visibility:hidden` |
 | Async data in component | `Task` controller with `task.render()` |
 | Async data in page | `async` page function (just `await`) |
@@ -416,17 +416,16 @@ The update cycle runs in this order when `setState()` or a property change trigg
 
 | Hook | When | Use for |
 |---|---|---|
-| `shouldUpdate(changed)` | Before render | Return `false` to skip. Default: `true`. |
-| `willUpdate(changed)` | Before render, after shouldUpdate | Pre-render computation. Read-only (don't set state here). |
 | *controllers'* `hostUpdate()` | Before render | Controller pre-render logic. |
 | `render()` | Render phase | Return `TemplateResult`. |
 | *controllers'* `hostUpdated()` | After render | Controller post-render logic. |
-| `firstUpdated(changed)` | After first render only | One-time DOM setup (focus, measure, attach third-party libs). |
-| `updated(changed)` | After every render | Post-render side effects (sync external state, analytics). |
+| `firstUpdated()` | After first render only | One-time DOM setup (focus, measure, attach third-party libs). |
 
-`changed` is a `Map<string, unknown>` — keys are state property names, values are the **old** values.
-
-**AI hint for lifecycle:** Most components only need `render()`. Add `firstUpdated` for one-time DOM work (canvas init, focus). Add `updated` for syncing external systems. Add `shouldUpdate` for performance optimization on frequent updates.
+**"Less is more":** Most components only need `render()`. Add `firstUpdated`
+for one-time DOM work (canvas init, focus). For pre-render computation,
+do it at the top of `render()`. For post-render side effects, use
+`queueMicrotask()` after `setState()`. No `shouldUpdate`, `willUpdate`,
+`updated`, or `changedProperties` — AI agents don't need those abstractions.
 
 #### ReactiveControllers
 
@@ -468,11 +467,10 @@ class MyEl extends WebComponent {
 
 #### Helper methods
 
-| Method | Returns | Purpose |
-|---|---|---|
-| `this.query(sel)` | `Element \| null` | `querySelector` on the render root (shadow or light DOM) |
-| `this.queryAll(sel)` | `NodeList` | `querySelectorAll` on the render root |
-| `this.requestUpdate()` | void | Manually schedule a re-render (used by controllers) |
+| Method | Purpose |
+|---|---|
+| `this.requestUpdate()` | Manually schedule a re-render (used by controllers) |
+| `this.shadowRoot.querySelector(sel)` | Query elements in shadow DOM (native API) |
 
 ---
 
