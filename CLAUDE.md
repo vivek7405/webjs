@@ -74,15 +74,9 @@ npm run test:browser                     # run E2E tests (9 tests, needs chromiu
 cd examples/blog && npx webjs dev    # dev server with live reload
 cd website && npm run dev            # website + docs + blog together
 
-# scaffold & generate
+# scaffold
 webjs create <name>                  # full-stack app (default)
 webjs create <name> --template api   # backend-only API app
-webjs generate page <path>           # → app/<path>/page.ts
-webjs generate module <name>         # → modules/<name>/{actions,queries,components,utils,types.ts}
-webjs generate action <mod>/<name>   # → modules/<mod>/actions/<name>.server.ts
-webjs generate query <mod>/<name>    # → modules/<mod>/queries/<name>.server.ts
-webjs generate component <tag-name>  # → components/<tag-name>.ts
-webjs generate route <path>          # → app/<path>/route.ts
 ```
 
 ## Reference codebases

@@ -774,17 +774,6 @@ server actions. Business logic lives in `modules/`, routes just import and
 call the action/query. This gives you file-based routing for URL structure
 plus type-safe server actions for logic.
 
-**Code generators:**
-
-```sh
-webjs generate page <path>                # → app/<path>/page.ts
-webjs generate module <name>              # → modules/<name>/{actions,queries,components,utils,types.ts}
-webjs generate action <module>/<name>     # → modules/<module>/actions/<name>.server.ts
-webjs generate query <module>/<name>      # → modules/<module>/queries/<name>.server.ts
-webjs generate component <tag-name>       # → components/<tag-name>.ts
-webjs generate route <path>               # → app/<path>/route.ts
-```
-
 ### Add a database model
 
 Edit `prisma/schema.prisma`, then run:

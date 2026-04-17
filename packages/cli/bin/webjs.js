@@ -14,7 +14,6 @@ const USAGE = `webjs — commands:
   webjs test  [--server|--browser]                 Run server + browser tests
   webjs check                                     Validate app against conventions
   webjs create <name> [--template full-stack|api]  Scaffold a new webjs app
-  webjs generate <type> <name>                    Generate code (page, module, action, query, component, route)
   webjs db generate                               Run \`prisma generate\`
   webjs db migrate [name]                         Run \`prisma migrate dev\`
   webjs db studio                                 Run \`prisma studio\`
@@ -209,12 +208,6 @@ async function main() {
       const template = flag(rest, '--template', 'full-stack');
       const { scaffoldApp } = await import('../lib/create.js');
       await scaffoldApp(name, process.cwd(), { template });
-      break;
-    }
-    case 'generate':
-    case 'g': {
-      const { generate } = await import('../lib/generate.js');
-      await generate(rest, process.cwd());
       break;
     }
     case 'help':

@@ -337,17 +337,13 @@ Run `webjs check --fix` to see suggested fixes for violations.
 
 ---
 
-## Scaffold & generators
+## Scaffold
 
-Use the built-in generators to create files that follow these conventions:
+Create new projects with `webjs create`:
 
 ```sh
-webjs generate page <path>                # → app/<path>/page.ts
-webjs generate module <name>              # → modules/<name>/{actions,queries,components,utils,types.ts}
-webjs generate action <module>/<name>     # → modules/<module>/actions/<name>.server.ts
-webjs generate query <module>/<name>      # → modules/<module>/queries/<name>.server.ts
-webjs generate component <tag-name>       # → components/<tag-name>.ts
-webjs generate route <path>               # → app/<path>/route.ts
+webjs create <name>                  # full-stack (default)
+webjs create <name> --template api   # backend-only API
 ```
 
 **Route-wrapping pattern (especially for `--template api` apps):**
