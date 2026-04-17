@@ -5,7 +5,7 @@ export const metadata = { title: 'Pub/Sub — webjs' };
 export default function PubSub() {
   return html`
     <h1>Pub/Sub</h1>
-    <p>webjs includes a publish/subscribe system designed for scaling WebSocket connections across multiple server instances. Following the <strong>convention over configuration</strong> philosophy: in-memory pub/sub for development, automatic switch to Redis pub/sub in production.</p>
+    <p>webjs includes a publish/subscribe system designed for scaling WebSocket connections across multiple server instances. Following the <strong>opinionated defaults</strong> philosophy: in-memory pub/sub for development, automatic switch to Redis pub/sub in production.</p>
 
     <h2>Zero-Config Convention</h2>
     <pre># Development — nothing to configure

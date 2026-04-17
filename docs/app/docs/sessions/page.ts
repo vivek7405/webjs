@@ -5,7 +5,7 @@ export const metadata = { title: 'Sessions — webjs' };
 export default function Sessions() {
   return html`
     <h1>Sessions</h1>
-    <p>webjs provides session middleware that follows the <strong>convention over configuration</strong> principle: signed cookie sessions in development with zero setup, automatic upgrade to Redis-backed sessions in production when <code>REDIS_URL</code> is set.</p>
+    <p>webjs provides session middleware that follows the <strong>opinionated defaults</strong> principle: signed cookie sessions in development with zero setup, automatic upgrade to Redis-backed sessions in production when <code>REDIS_URL</code> is set.</p>
 
     <h2>Zero-Config Convention</h2>
     <p>Sessions work out of the box. The only requirement is <code>SESSION_SECRET</code> — the key used to sign (and optionally encrypt) session cookies:</p>

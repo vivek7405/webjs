@@ -1,8 +1,8 @@
 import { html } from 'webjs';
 
 export const metadata = {
-  title: 'webjs — AI-first, batteries-included, convention-over-configuration web framework',
-  description: 'AI-first, batteries-included, web-components-first framework. Convention over configuration — set REDIS_URL and everything scales. Sessions, jobs, pub/sub, storage, cache built in.',
+  title: 'webjs — AI-first, batteries-included, web-components-first framework',
+  description: 'AI-first, batteries-included, web-components-first framework. Opinionated defaults — set REDIS_URL and everything scales. Sessions, jobs, pub/sub, storage, cache built in.',
 };
 
 const FEATURES = [
@@ -197,12 +197,12 @@ export default function LandingPage() {
     </style>
 
     <section class="hero">
-      <div class="rubric"><span class="name">webjs</span> <span class="sep">—</span> ai-first · batteries-included · convention-over-configuration</div>
+      <div class="rubric"><span class="name">webjs</span> <span class="sep">—</span> ai-first · batteries-included · web-components-first</div>
       <h1>The web framework where AI agents write production code.</h1>
       <p>
-        Convention over configuration, batteries included, designed for AI agents.
-        Sessions, background jobs, file storage, pub/sub, caching — set <code>REDIS_URL</code> and
-        everything scales horizontally. Web components first, no build step, real SSR.
+        AI-first, batteries included, web components first. Auth, sessions, caching,
+        pub/sub, rate limiting — set <code>REDIS_URL</code> and everything scales.
+        Sensible defaults, all overridable. No build step, real SSR.
       </p>
       <div class="hero-actions">
         <a class="primary" href="http://localhost:4000/docs/getting-started" target="_blank">Get Started</a>

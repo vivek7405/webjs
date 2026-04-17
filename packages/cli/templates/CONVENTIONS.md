@@ -74,10 +74,10 @@ docs" — that is the agent's default behavior in a webjs project.
 
 ---
 
-## Convention over configuration
+## Sensible defaults
 
 <!-- OVERRIDE -->
-webjs follows convention over configuration, like Rails. Environment
+webjs uses sensible defaults. Environment
 variables control infrastructure — no config files needed:
 
 | Environment variable | Effect |

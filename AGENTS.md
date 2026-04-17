@@ -162,12 +162,13 @@ or "also commit". That is the default behaviour in a webjs project.
 
 ## What webjs is
 
-An **AI-first, batteries-included, convention-over-configuration** web
-framework inspired by NextJs, Lit, and Rails.
+An **AI-first, batteries-included, web-components-first** framework
+inspired by NextJs, Lit, and Rails.
 
-- **Convention over configuration.** Set `REDIS_URL` and sessions, cache,
-  rate limiting, pub/sub, and background jobs all use Redis automatically.
-  Set `S3_BUCKET` for cloud file storage. Environment variables, not config files.
+- **Sensible defaults, overridable.** Set `REDIS_URL` and cache, sessions,
+  rate limiting, and pub/sub all use Redis automatically. No config files —
+  environment variables control infrastructure. Override any convention
+  via CONVENTIONS.md.
 - **Batteries included.** Sessions, background jobs, file storage, pub/sub,
   cache store, rate limiting — all built in with pluggable adapters.
 - **No build step.** Source files are served to the browser as native ES modules.
@@ -936,7 +937,7 @@ codebase.
 
 ## Batteries included — `import { … } from '@webjs/server'`
 
-Convention over configuration: **set `REDIS_URL` and everything scales.**
+Opinionated defaults: **set `REDIS_URL` and everything scales.**
 
 ### Caching (NextJs-style)
 
@@ -1032,7 +1033,7 @@ With `REDIS_URL`, broadcast reaches clients on ALL server instances.
 The developer writes WebSocket handlers — the framework handles
 cross-instance delivery invisibly.
 
-### Environment variables (convention over configuration)
+### Environment variables (opinionated defaults)
 
 | Variable | Effect |
 |---|---|

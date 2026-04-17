@@ -56,7 +56,7 @@ Run `npx webjs check` on the blog example after changes.
 
 ## Framework philosophy
 
-- **Convention over configuration.** `REDIS_URL` → everything scales. No config files.
+- **Opinionated defaults.** `REDIS_URL` → everything scales. No config files.
 - **Batteries included.** Sessions, jobs, pub/sub, storage, cache — all built in.
 - **Less is more** for abstractions (directives, lifecycle hooks) — only what has no native workaround.
 - **No build step by default.** Never introduce a bundler in the critical path.

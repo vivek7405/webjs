@@ -5,7 +5,7 @@ export const metadata = { title: 'Cache Store — webjs' };
 export default function Cache() {
   return html`
     <h1>Cache Store</h1>
-    <p>webjs ships a pluggable cache store that follows the <strong>convention over configuration</strong> philosophy: zero config in development, set one environment variable for production. The cache backs the rate limiter, sessions, and background jobs internally, but you can also use it directly for application-level caching.</p>
+    <p>webjs ships a pluggable cache store that follows the <strong>opinionated defaults</strong> philosophy: zero config in development, set one environment variable for production. The cache backs the rate limiter, sessions, and background jobs internally, but you can also use it directly for application-level caching.</p>
 
     <h2>Zero-Config Convention</h2>
     <p>In development, webjs uses an in-memory store automatically — no setup required. When you deploy to production, set <code>REDIS_URL</code> and webjs switches to Redis without any code changes:</p>
