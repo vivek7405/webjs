@@ -2,11 +2,15 @@
  * Pluggable cache store — the foundation for rate limiting, sessions,
  * and any feature that needs shared state across requests.
  *
- * Convention over configuration:
- *   - If `REDIS_URL` is in the environment → RedisStore (scales horizontally)
- *   - Otherwise → MemoryStore (fast, single-process, great for dev)
+ * Default: in-memory LRU (single-process, great for dev).
+ * For production horizontal scaling, the user explicitly switches to Redis:
  *
- * No config file needed for the common case.
+ * ```js
+ * import { setStore, redisStore } from '@webjs/server';
+ * setStore(redisStore({ url: process.env.REDIS_URL }));
+ * ```
+ *
+ * No magic, no auto-detection. The user decides.
  *
  * @module cache
  */

@@ -1,25 +1,21 @@
 /**
- * Session middleware — pluggable store with convention-over-configuration.
+ * Session middleware — explicit, no magic.
  *
- * Two strategies:
- *   - **Cookie session** (default when no Redis): session data is JSON-serialized,
+ * Two strategies (user chooses):
+ *   - **Cookie session** (default): session data is JSON-serialized,
  *     signed with HMAC-SHA256, and stored directly in the cookie. No server state.
  *     Good for small payloads (< 4 KB total). Zero infrastructure.
- *   - **Store session**: a random session ID lives in the cookie; actual data is
- *     kept in a {@link import('./cache.js').CacheStore}. Scales to any payload
- *     size and allows server-side invalidation.
+ *   - **Store session**: pass `storeSession()` as the `store` option.
+ *     A random session ID lives in the cookie; actual data is kept in
+ *     a cache store. Use with Redis for horizontal scaling.
  *
- * Convention over configuration:
- *   - `REDIS_URL` in the environment  → StoreSession (data in Redis)
- *   - Otherwise                       → CookieSession (data in cookie)
- *
- * The `SESSION_SECRET` env var is **required** — it signs the cookie to prevent
- * tampering. Generate a long random string (`openssl rand -base64 32`).
+ * The `secret` option (or `SESSION_SECRET` env var) is **required** — it signs
+ * the cookie to prevent tampering.
  *
  * ```js
- * // middleware.js
+ * // middleware.js — cookie session (default, stateless)
  * import { session } from '@webjs/server';
- * export default session();                  // auto-detects strategy
+ * export default session({ secret: process.env.SESSION_SECRET });
  *
  * // handler.js
  * import { getSession } from '@webjs/server';
@@ -193,14 +189,8 @@ export function storeSession(opts = {}) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Auto-detect
-// ---------------------------------------------------------------------------
-
 /**
- * Auto-detect the best session store based on environment.
- * `REDIS_URL` present → server-side store (via cache), otherwise → cookie store.
- *
+ * Default session store — cookie-based, no server state.
  * @param {{ maxAge?: number }} [opts]
  * @returns {SessionStore}
  */
