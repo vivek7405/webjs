@@ -350,13 +350,23 @@ export class WebComponent extends Base {
     this._connected = true;
     const Ctor = /** @type any */ (this.constructor);
     if (Ctor.shadow !== false) {
+      const hadSSRShadow = !!this.shadowRoot;
       if (!this.shadowRoot) {
         /** @type any */ (this).attachShadow({ mode: 'open' });
       }
       this._renderRoot = this.shadowRoot;
       const styles = Ctor.styles;
       const list = Array.isArray(styles) ? styles : isCSS(styles) ? [styles] : [];
-      if (list.length) adoptStyles(this._renderRoot, list);
+      if (list.length) {
+        // If the shadow root came from Declarative Shadow DOM (SSR), it
+        // contains an inline <style> tag. Remove it before switching to
+        // adoptedStyleSheets to avoid duplicate styles.
+        if (hadSSRShadow) {
+          const ssrStyle = this.shadowRoot.querySelector('style');
+          if (ssrStyle) ssrStyle.remove();
+        }
+        adoptStyles(this._renderRoot, list);
+      }
     } else {
       this._renderRoot = this;
       // Light DOM: static styles is not supported (no shadow root for

@@ -254,7 +254,10 @@ async function injectDSD(html, ctx) {
       applyAttrsToInstance(instance, attrMap, Cls);
       let tpl = instance.render ? instance.render() : '';
       if (tpl && typeof tpl.then === 'function') tpl = await tpl;
-      const inner = await render(tpl, ctx);
+      // Render the template to HTML, then recursively inject DSD for
+      // any nested custom elements (e.g. <theme-toggle> inside <blog-shell>).
+      const rawInner = await render(tpl, ctx);
+      const inner = await injectDSD(rawInner, ctx);
 
       if (isShadow) {
         // Shadow DOM: wrap in Declarative Shadow DOM template

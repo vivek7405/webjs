@@ -61,14 +61,6 @@ export class BlogShell extends WebComponent {
     }
     .nav a:hover { color: var(--fg); }
 
-    /* Reserve space for theme-toggle before it upgrades to prevent
-       header height shift (CLS). Matches the button size in theme-toggle. */
-    .nav theme-toggle {
-      display: inline-flex;
-      width: 36px;
-      height: 36px;
-    }
-
     main {
       display: block;
       max-width: 760px;
