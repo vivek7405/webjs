@@ -1,5 +1,6 @@
 'use server';
 
+import { getStore } from '@webjs/server';
 import { prisma } from '../../../lib/prisma.ts';
 import { slugify, formatPost } from '../utils/slugify.ts';
 import { currentUser } from '../../auth/queries/current-user.server.ts';
@@ -36,5 +37,6 @@ export async function createPost(
     data: { title, body, slug, authorId: me.id },
     include: { author: { select: { name: true, email: true } } },
   });
+  await getStore().delete('posts:list');
   return { success: true, data: formatPost(row) };
 }

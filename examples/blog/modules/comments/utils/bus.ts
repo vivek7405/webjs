@@ -1,37 +1,29 @@
 /**
- * Per-process publish/subscribe for live comments. Single-tenant; for
- * multi-process deployments swap for Redis pub/sub or Postgres LISTEN.
+ * Publish/subscribe for live comments — thin wrapper around the framework's
+ * {@link getPubSub} from `@webjs/server`.
  *
- * Stored on globalThis so dev-mode module re-imports share the same bus
- * across connections (same pattern as Prisma / chat clients).
+ * Uses string channels of the form `comments:<postId>` and JSON-serialises
+ * each comment. In dev mode this is in-process memory; set `REDIS_URL` for
+ * multi-instance deployments (handled transparently by the framework).
  */
+import { getPubSub } from '@webjs/server';
 import type { CommentFormatted } from '../types.ts';
 
 type Subscriber = (comment: CommentFormatted) => void;
 
-declare global {
-  var __webjs_comments_bus: Map<number, Set<Subscriber>> | undefined;
-}
-
-const topics: Map<number, Set<Subscriber>> =
-  globalThis.__webjs_comments_bus ??
-  (globalThis.__webjs_comments_bus = new Map());
+const channelFor = (postId: number) => `comments:${postId}`;
 
 /** Subscribe to new comments for a given postId. Returns an unsubscribe fn. */
 export function subscribe(postId: number, fn: Subscriber): () => void {
-  let subs = topics.get(postId);
-  if (!subs) { subs = new Set(); topics.set(postId, subs); }
-  subs.add(fn);
-  return () => {
-    subs!.delete(fn);
-    if (!subs!.size) topics.delete(postId);
+  const ps = getPubSub();
+  const channel = channelFor(postId);
+  const handler = (message: string) => {
+    try { fn(JSON.parse(message)); } catch { /* bad payload — skip */ }
   };
+  ps.subscribe(channel, handler);
+  return () => { ps.unsubscribe(channel, handler); };
 }
 
 export function publish(postId: number, comment: CommentFormatted): void {
-  const subs = topics.get(postId);
-  if (!subs) return;
-  for (const fn of subs) {
-    try { fn(comment); } catch { /* one bad subscriber shouldn't stop the rest */ }
-  }
+  getPubSub().publish(channelFor(postId), JSON.stringify(comment));
 }
