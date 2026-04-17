@@ -13,7 +13,7 @@ const FEATURES = [
   { icon: '🔄', title: 'Server Actions + superjson', desc: 'Import a .server.ts function from a client component — it auto-rewrites into a type-safe RPC stub. Date, Map, Set, BigInt round-trip as their real types.' },
   { icon: '🌊', title: 'Streaming SSR + Suspense', desc: 'Fallback content flushes immediately. Deferred data streams in as it resolves. TTFB measured in milliseconds, not seconds.' },
   { icon: '🔌', title: 'WebSocket Built In', desc: 'Export a WS function from any route.ts and it becomes a WebSocket endpoint. connectWS() on the client auto-reconnects with exponential backoff.' },
-  { icon: '🛡️', title: 'Batteries Included', desc: 'cache() for server-side query caching with TTL + invalidate(), HTTP Cache-Control for pages, Session class with SessionStorage interface (cookie or store-backed), NextAuth-style auth (OAuth + credentials + JWT), WebSocket broadcast, rate limiting — set REDIS_URL and everything scales.' },
+  { icon: '🛡️', title: 'Built-in Essentials', desc: 'Auth (OAuth + credentials + JWT), sessions (cookie or Redis-backed), cache() for queries, HTTP Cache-Control for pages, WebSocket broadcast, rate limiting — the building blocks every app needs, without third-party dependencies.' },
   { icon: '📝', title: 'TypeScript or JSDoc', desc: 'Full-stack type safety with .ts files (Node strips types natively) or JSDoc annotations. Zero compile step either way.' },
   { icon: '🧪', title: 'Testing Built In', desc: 'webjs test runs server + browser tests (WTR + Playwright). webjs check validates conventions. webjs create scaffolds test directories and example tests. AI agents auto-generate tests with every feature.' },
   { icon: '🔀', title: 'Git Workflow Guardrails', desc: 'Branch checking before edits, merge approval with delete/keep prompt, no AI attribution in commits, auto-rebase before work. Enforced via hooks for Claude Code, config files for Cursor/Windsurf/Copilot.' },
@@ -201,8 +201,8 @@ export default function LandingPage() {
       <h1>The web framework where AI agents write production code.</h1>
       <p>
         Web components first. File-based routing, server actions, streaming SSR —
-        built on web standards with no build step. Batteries included: auth, sessions,
-        caching, WebSockets. Designed for AI agents to read, write, and ship.
+        built on web standards with no build step. Auth, sessions, caching, WebSockets
+        built in. Designed for AI agents to read, write, and ship.
       </p>
       <div class="hero-actions">
         <a class="primary" href="http://localhost:4000/docs/getting-started" target="_blank">Get Started</a>

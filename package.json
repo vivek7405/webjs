@@ -2,7 +2,7 @@
   "name": "webjs-monorepo",
   "private": true,
   "version": "0.1.0",
-  "description": "webjs — AI-first, batteries-included, web-components-first framework.",
+  "description": "webjs — AI-first, web-components-first framework.",
   "type": "module",
   "workspaces": [
     "packages/*",

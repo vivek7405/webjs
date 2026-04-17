@@ -57,7 +57,7 @@ Run `npx webjs check` on the blog example after changes.
 ## Framework philosophy
 
 - **Opinionated defaults.** `REDIS_URL` → everything scales. No config files.
-- **Batteries included.** `cache()` for server-side query caching, HTTP `Cache-Control` for pages, `Session` class with `SessionStorage` interface (cookie or store-backed), NextAuth-style `createAuth()` with OAuth + credentials + JWT, WebSocket `broadcast()`, `rateLimit()` — all built in.
+- **Built-in essentials: auth (OAuth + credentials + JWT), sessions (cookie or Redis), cache() for queries, HTTP Cache-Control, WebSocket broadcast(), rateLimit().
 - **Less is more** for abstractions (directives, lifecycle hooks) — only what has no native workaround.
 - **No build step by default.** Never introduce a bundler in the critical path.
 - **JSDoc types in framework code** (packages/). Do not add `.ts` files there.

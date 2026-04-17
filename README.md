@@ -1,6 +1,6 @@
 # webjs
 
-**AI-first. Batteries included. Web components first.**
+**AI-first. Web components first.**
 
 Full-stack web framework inspired by NextJs, Lit, and Rails. `cache()` for
 queries, HTTP Cache-Control for pages, Session class with SessionStorage,
@@ -18,7 +18,7 @@ TypeScript with zero build step, real SSR with Declarative Shadow DOM.
 - **Client router.** Turbo-Drive-style link interception. Shadow-DOM-aware via `composedPath()`. Layouts stay mounted, only page content swaps. No white flash.
 - **WebSockets built in.** Export `WS` from `route.ts` → WebSocket endpoint. `connectWS()` on the client auto-reconnects.
 - **Backend-only mode.** Skip pages entirely — use webjs as a lightweight API framework with file routing, middleware, rate limiting, and TypeScript.
-- **Batteries included.** `cache()` for server-side query caching, HTTP `Cache-Control` for pages, `Session` class with `SessionStorage` interface, NextAuth-style `createAuth()` with OAuth + credentials + JWT, WebSocket `broadcast()`, `rateLimit()` — all built in. Set `REDIS_URL` → everything scales across instances.
+- **Built-in essentials.** Auth, sessions, caching, WebSocket broadcast, rate limiting — all built in. Set `REDIS_URL` to scale.
 - **Production ready.** CSRF, gzip/brotli, HTTP/2, 103 Early Hints, CSP nonces, modulepreload, rate limiting, health probes, graceful shutdown, streaming Suspense.
 
 ## Quickstart

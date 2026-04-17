@@ -162,13 +162,13 @@ or "also commit". That is the default behaviour in a webjs project.
 
 ## What webjs is
 
-An **AI-first, batteries-included, web-components-first** framework
+An **AI-first, web-components-first** framework
 inspired by NextJs, Lit, and Rails.
 
 - **Sensible defaults, overridable.** Memory store for dev, Redis when
   you configure it. HTTP caching via standard `Cache-Control` headers.
   Override any convention via CONVENTIONS.md.
-- **Batteries included.** Sessions, background jobs, file storage, pub/sub,
+- **Built-in essentials.** Auth, sessions, caching,
   cache store, rate limiting — all built in with pluggable adapters.
 - **No build step.** Source files are served to the browser as native ES modules.
 - **JSDoc or TypeScript.** Plain `.js` with JSDoc is the default; `.ts`/`.mts`
@@ -934,7 +934,7 @@ Add `"checkJs": true` to `tsconfig.json` to enforce types in editor
 + CI. The framework doesn't care either way — pick what fits the
 codebase.
 
-## Batteries included — `import { … } from '@webjs/server'`
+## Built-in essentials — `import { … } from '@webjs/server'`
 
 Opinionated defaults: **set `REDIS_URL` and everything scales.**
 
