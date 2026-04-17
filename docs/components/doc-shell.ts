@@ -219,7 +219,7 @@ export class DocShell extends WebComponent {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--sp-5)">
           <a class="brand" href="/">
             <span class="brand-mark"></span>
-            webjs
+            webjs docs
           </a>
           <theme-toggle></theme-toggle>
         </div>
