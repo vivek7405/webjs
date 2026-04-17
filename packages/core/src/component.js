@@ -359,10 +359,15 @@ export class WebComponent extends Base {
       if (list.length) adoptStyles(this._renderRoot, list);
     } else {
       this._renderRoot = this;
-      // Light DOM: inject scoped styles as a <style> element if not already present.
-      // Light DOM: no style injection. `static styles` is for shadow DOM.
-      // Light DOM components use global CSS, Tailwind, or inline <style>
-      // in their render() template.
+      // Light DOM: static styles is not supported (no shadow root for
+      // adoptedStyleSheets). Warn if the developer set both.
+      if (Ctor.styles) {
+        console.warn(
+          `[webjs] <${Ctor.tag}> has static shadow = false AND static styles. ` +
+          `static styles only works with shadow DOM (adoptedStyleSheets). ` +
+          `For light DOM, use global CSS or <style> in render().`
+        );
+      }
     }
 
     // Notify all controllers that the host is connected.
