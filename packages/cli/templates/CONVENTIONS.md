@@ -236,10 +236,17 @@ MyWidget.register(import.meta.url);
 
 | Component type | Use | Why |
 |---|---|---|
-| Layout shells (blog-shell, doc-shell) | Shadow DOM (`static shadow = true`) | Need `<slot>` for children, scoped styles for chrome |
+| Layout shells (blog-shell, doc-shell) | Shadow DOM (default) | Need `<slot>` for children, scoped styles for chrome |
 | Self-contained widgets (theme-toggle, counter) | Shadow DOM | Reusable, need style encapsulation |
-| App-level UI (forms, cards, lists) | Light DOM (`static shadow = false`) | Global CSS works, simpler, no slots needed |
+| Components with bare element selectors (input, button, ul) | Shadow DOM | Bare selectors would leak to the whole page without shadow boundary |
+| Simple display components with class-based selectors only | Light DOM (`static shadow = false`) | Global CSS works, Tailwind works, simpler |
 | Third-party components | Their choice | They manage their own shadow roots |
+
+**When NOT to use light DOM:** If your `static styles` contains bare element
+selectors like `input { }`, `button { }`, `ul { }`, `h2 { }` — keep shadow
+DOM. These selectors would affect every matching element on the page.
+Light DOM is safe when styles use class selectors (`.card`, `.tab`) or the
+tag name (`:host`).
 
 Both are fully SSR'd — shadow DOM uses Declarative Shadow DOM, light DOM
 renders content directly as HTML. Both hydrate without flash on the client.
