@@ -77,6 +77,7 @@ cd website && npm run dev            # website + docs + blog together
 # scaffold
 webjs create <name>                  # full-stack app (default)
 webjs create <name> --template api   # backend-only API app
+webjs create <name> --template saas  # auth + dashboard + Prisma User model
 ```
 
 ## Reference codebases

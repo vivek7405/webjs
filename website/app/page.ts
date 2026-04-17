@@ -218,7 +218,10 @@ export default function LandingPage() {
       <span class="comment"># → http://localhost:3000</span><br>
       <br>
       <span class="comment"># or backend-only API</span><br>
-      <span class="cmd">npx webjs create my-api --template api</span>
+      <span class="cmd">npx webjs create my-api --template api</span><br>
+      <br>
+      <span class="comment"># or SaaS starter (auth + dashboard + Prisma)</span><br>
+      <span class="cmd">npx webjs create my-app --template saas</span>
     </div>
 
     <div class="features">

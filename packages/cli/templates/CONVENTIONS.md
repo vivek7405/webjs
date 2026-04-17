@@ -344,6 +344,7 @@ Create new projects with `webjs create`:
 ```sh
 webjs create <name>                  # full-stack (default)
 webjs create <name> --template api   # backend-only API
+webjs create <name> --template saas  # auth + dashboard + Prisma User model
 ```
 
 **Route-wrapping pattern (especially for `--template api` apps):**

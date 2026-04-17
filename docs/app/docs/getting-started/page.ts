@@ -31,9 +31,14 @@ npx webjs dev
 webjs create my-app
 
 # backend-only API (route handlers + modules, no pages/components/SSR)
-webjs create my-app --template api</pre>
+webjs create my-app --template api
+
+# SaaS starter (auth + dashboard + Prisma User model + modules)
+webjs create my-app --template saas</pre>
 
     <p>The <code>--template api</code> scaffold generates thin route handlers that wrap typed server actions. Business logic lives in <code>modules/</code>, routes just import and call the action/query — giving you file-based routing for URL structure plus type-safe server actions for logic.</p>
+
+    <p>The <code>--template saas</code> scaffold includes login + signup pages, a dashboard with auth middleware guard, settings page, auth API route, <code>createAuth()</code> with Credentials provider, Prisma User model with password hashing, and a modules architecture (<code>modules/auth/{actions,queries,types.ts}</code>, <code>lib/{auth,prisma,password}.ts</code>).</p>
 
     <h3>Manual setup</h3>
     <p>To start from scratch without the scaffold, create a directory with this structure:</p>

@@ -767,6 +767,7 @@ Then use it as `<hello-world></hello-world>` in any page or component.
 ```sh
 webjs create <name>                  # full-stack (default): layout, page, components, modules
 webjs create <name> --template api   # backend-only API: route handlers, modules, no pages/components/SSR
+webjs create <name> --template saas  # auth + dashboard + Prisma User model + modules
 ```
 
 The `--template api` scaffold produces thin route handlers that wrap typed
