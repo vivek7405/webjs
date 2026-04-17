@@ -22,12 +22,16 @@ const NAV_SECTIONS = [
       { href: '/docs/ssr', label: 'Server-Side Rendering' },
       { href: '/docs/styling', label: 'Styling' },
       { href: '/docs/suspense', label: 'Streaming & Suspense' },
+      { href: '/docs/loading-states', label: 'Loading States' },
+      { href: '/docs/error-handling', label: 'Error Handling' },
+      { href: '/docs/client-router', label: 'Client Router' },
     ],
   },
   {
     title: 'Data & Backend',
     items: [
       { href: '/docs/server-actions', label: 'Server Actions' },
+      { href: '/docs/expose', label: 'expose() — REST Endpoints' },
       { href: '/docs/api-routes', label: 'API Routes' },
       { href: '/docs/websockets', label: 'WebSockets' },
       { href: '/docs/database', label: 'Database (Prisma)' },
@@ -40,7 +44,9 @@ const NAV_SECTIONS = [
     items: [
       { href: '/docs/cache', label: 'Caching' },
       { href: '/docs/sessions', label: 'Sessions' },
-      { href: '/docs/auth', label: 'Authentication' },
+      { href: '/docs/auth', label: 'Auth (Providers)' },
+      { href: '/docs/rate-limiting', label: 'Rate Limiting' },
+      { href: '/docs/metadata-routes', label: 'Metadata Routes' },
     ],
   },
   {
@@ -49,6 +55,7 @@ const NAV_SECTIONS = [
       { href: '/docs/controllers', label: 'Reactive Controllers' },
       { href: '/docs/context', label: 'Context Protocol' },
       { href: '/docs/task', label: 'Task (Async Data)' },
+      { href: '/docs/lazy-loading', label: 'Lazy Loading' },
       { href: '/docs/typescript', label: 'TypeScript' },
       { href: '/docs/middleware', label: 'Middleware' },
       { href: '/docs/deployment', label: 'Deployment' },
