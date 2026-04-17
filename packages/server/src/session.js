@@ -1,5 +1,9 @@
 /**
- * Session middleware with Remix-style Session class.
+ * Session middleware with Remix-style Session class and SessionStorage interface.
+ *
+ * Storage owns the Session lifecycle:
+ *   `storage.read(cookie) → Session`
+ *   `storage.save(session) → cookie | null | ''`
  *
  * ```js
  * // middleware.ts
@@ -26,86 +30,62 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 /**
  * A session holds data for a specific user across multiple requests.
  *
- * API modeled after Remix's Session class: `get`, `set`, `has`, `unset`,
- * `flash`, `destroy`, `regenerateId`.
+ * Modeled after Remix's Session: get, set, has, unset, flash, destroy,
+ * regenerateId.
  */
 export class Session {
-  /** @type {string} */
   #id;
-  /** @type {Map<string, unknown>} */
   #data;
-  /** @type {Map<string, unknown>} */
   #flash;
-  /** @type {boolean} */
   #dirty = false;
-  /** @type {boolean} */
   #destroyed = false;
-  /** @type {string | undefined} */
   #deleteId;
 
   /**
    * @param {string} [id]
-   * @param {Record<string, unknown>} [data]
-   * @param {Record<string, unknown>} [flash]
+   * @param {{ data?: Record<string, unknown>, flash?: Record<string, unknown> }} [initial]
    */
-  constructor(id, data, flash) {
+  constructor(id, initial) {
     this.#id = id || randomBytes(24).toString('base64url');
-    this.#data = new Map(Object.entries(data || {}));
-    this.#flash = new Map(Object.entries(flash || {}));
+    this.#data = new Map(Object.entries(initial?.data || {}));
+    this.#flash = new Map(Object.entries(initial?.flash || {}));
     if (this.#flash.size > 0) this.#dirty = true;
   }
 
-  /** The session ID. */
   get id() { return this.#id; }
-
-  /** Whether session data has been modified. */
   get dirty() { return this.#dirty; }
-
-  /** Whether the session has been destroyed. */
   get destroyed() { return this.#destroyed; }
-
-  /** Session ID to delete (set after regenerateId with deleteOld=true). */
   get deleteId() { return this.#deleteId; }
 
-  /**
-   * Get a session value. Also reads flash data (one-time values).
-   * @param {string} key
-   * @returns {unknown}
-   */
+  /** Serialized data for storage. */
+  get data() {
+    return {
+      data: Object.fromEntries(this.#data),
+      flash: Object.fromEntries(this.#flash),
+    };
+  }
+
+  /** @param {string} key @returns {unknown} */
   get(key) {
     if (this.#destroyed) return undefined;
     return this.#data.get(key) ?? this.#flash.get(key);
   }
 
-  /**
-   * Set a session value.
-   * @param {string} key
-   * @param {unknown} value
-   */
+  /** @param {string} key @param {unknown} value */
   set(key, value) {
     if (this.#destroyed) throw new Error('Session has been destroyed');
-    if (value == null) {
-      this.#data.delete(key);
-    } else {
-      this.#data.set(key, value);
-    }
+    if (value == null) this.#data.delete(key);
+    else this.#data.set(key, value);
     this.#dirty = true;
   }
 
-  /**
-   * Check if a key exists in the session.
-   * @param {string} key
-   * @returns {boolean}
-   */
+  /** @param {string} key @returns {boolean} */
   has(key) {
     if (this.#destroyed) return false;
     return this.#data.has(key) || this.#flash.has(key);
   }
 
-  /**
-   * Remove a value from the session.
-   * @param {string} key
-   */
+  /** @param {string} key */
   unset(key) {
     if (this.#destroyed) throw new Error('Session has been destroyed');
     this.#data.delete(key);
@@ -113,17 +93,8 @@ export class Session {
   }
 
   /**
-   * Set a value that exists for one request only. After the next request
-   * reads it, it's gone. Use for form validation errors, success messages.
-   *
-   * ```js
-   * // After form submit:
-   * s.flash('error', 'Email is required');
-   * // Redirect → next page reads s.get('error') once → gone
-   * ```
-   *
-   * @param {string} key
-   * @param {unknown} value
+   * Set a value that exists for one request only.
+   * @param {string} key @param {unknown} value
    */
   flash(key, value) {
     if (this.#destroyed) throw new Error('Session has been destroyed');
@@ -131,10 +102,7 @@ export class Session {
     this.#dirty = true;
   }
 
-  /**
-   * Destroy the session. Clears all data and marks for deletion.
-   * Use for logout.
-   */
+  /** Destroy the session. Use for logout. */
   destroy() {
     this.#destroyed = true;
     this.#data.clear();
@@ -143,10 +111,8 @@ export class Session {
   }
 
   /**
-   * Regenerate the session ID. Call after login to prevent session
-   * fixation attacks.
-   *
-   * @param {boolean} [deleteOld=false] Delete the old session from storage
+   * Regenerate the session ID. Call after login to prevent session fixation.
+   * @param {boolean} [deleteOld=false]
    */
   regenerateId(deleteOld = false) {
     if (this.#destroyed) throw new Error('Session has been destroyed');
@@ -154,36 +120,100 @@ export class Session {
     this.#id = randomBytes(24).toString('base64url');
     this.#dirty = true;
   }
-
-  /**
-   * Serialize session data for storage. Flash data moves to the next
-   * request's flash slot; current flash is consumed.
-   * @returns {{ data: Record<string, unknown>, flash: Record<string, unknown> }}
-   */
-  _serialize() {
-    return {
-      data: Object.fromEntries(this.#data),
-      flash: Object.fromEntries(this.#flash),
-    };
-  }
 }
+
+// ---------------------------------------------------------------------------
+// SessionStorage interface
+// ---------------------------------------------------------------------------
+
+/**
+ * @typedef {Object} SessionStorage
+ * @property {(cookie: string | null) => Promise<Session>} read
+ *   Create or restore a Session from the raw (unsigned) cookie value.
+ * @property {(session: Session) => Promise<string | null>} save
+ *   Persist session and return the raw cookie value to sign and set.
+ *   Returns `null` if no cookie change needed, `''` to clear the cookie.
+ */
+
+/**
+ * Cookie-based session storage. All data lives in the cookie itself.
+ * Stateless — no server storage needed.
+ *
+ * @returns {SessionStorage}
+ */
+export function cookieSessionStorage() {
+  return {
+    async read(cookie) {
+      if (cookie) {
+        try {
+          const parsed = JSON.parse(cookie);
+          return new Session(parsed.id, { data: parsed.data, flash: parsed.flash });
+        } catch {}
+      }
+      return new Session();
+    },
+    async save(session) {
+      if (session.destroyed) return '';
+      if (!session.dirty) return null;
+      return JSON.stringify({ id: session.id, ...session.data });
+    },
+  };
+}
+
+/**
+ * Server-side session storage. Session ID in cookie, data in cache store.
+ *
+ * @param {{ store?: import('./cache.js').CacheStore, maxAge?: number }} [opts]
+ * @returns {SessionStorage}
+ */
+export function storeSessionStorage(opts = {}) {
+  const store = opts.store || getStore();
+  const maxAge = opts.maxAge || 86400_000;
+
+  return {
+    async read(cookie) {
+      if (cookie) {
+        const raw = await store.get(`session:${cookie}`);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            return new Session(cookie, { data: parsed.data, flash: parsed.flash });
+          } catch {}
+        }
+      }
+      return new Session();
+    },
+    async save(session) {
+      if (session.deleteId) await store.delete(`session:${session.deleteId}`);
+      if (session.destroyed) {
+        await store.delete(`session:${session.id}`);
+        return '';
+      }
+      if (!session.dirty) return null;
+      await store.set(`session:${session.id}`, JSON.stringify(session.data), maxAge);
+      return session.id;
+    },
+  };
+}
+
+// Backwards-compatible aliases
+export const cookieSession = cookieSessionStorage;
+export const storeSession = storeSessionStorage;
 
 // ---------------------------------------------------------------------------
 // Cookie helpers
 // ---------------------------------------------------------------------------
 
 function sign(value, secret) {
-  const sig = createHmac('sha256', secret).update(value).digest('base64url');
-  return `${value}.${sig}`;
+  return `${value}.${createHmac('sha256', secret).update(value).digest('base64url')}`;
 }
 
 function unsign(input, secret) {
   const idx = input.lastIndexOf('.');
   if (idx < 1) return null;
   const value = input.slice(0, idx);
-  const sig = input.slice(idx + 1);
   const expected = createHmac('sha256', secret).update(value).digest('base64url');
-  const sigBuf = Buffer.from(sig);
+  const sigBuf = Buffer.from(input.slice(idx + 1));
   const expBuf = Buffer.from(expected);
   if (sigBuf.length !== expBuf.length) return null;
   if (!timingSafeEqual(sigBuf, expBuf)) return null;
@@ -211,46 +241,6 @@ function serializeCookie(name, value, opts) {
   return str;
 }
 
-function clearCookie(name, opts) {
-  return `${name}=; Max-Age=0; Path=${opts.path || '/'}`;
-}
-
-// ---------------------------------------------------------------------------
-// Session stores
-// ---------------------------------------------------------------------------
-
-/**
- * Cookie-based session store. Data lives in the cookie itself.
- * @param {{ maxAge?: number }} [opts]
- */
-export function cookieSession(opts = {}) {
-  return { _type: 'cookie', _maxAge: opts.maxAge || 86400_000 };
-}
-
-/**
- * Server-side session store. ID in cookie, data in cache store.
- * @param {{ store?: import('./cache.js').CacheStore, maxAge?: number }} [opts]
- */
-export function storeSession(opts = {}) {
-  const store = opts.store || getStore();
-  const maxAge = opts.maxAge || 86400_000;
-  return {
-    _type: 'store',
-    _maxAge: maxAge,
-    async load(id) {
-      const raw = await store.get(`session:${id}`);
-      if (!raw) return null;
-      try { return JSON.parse(raw); } catch { return null; }
-    },
-    async save(id, data, ttl) {
-      await store.set(`session:${id}`, JSON.stringify(data), ttl || maxAge);
-    },
-    async destroy(id) {
-      await store.delete(`session:${id}`);
-    },
-  };
-}
-
 // ---------------------------------------------------------------------------
 // WeakMap for attaching Session to Request
 // ---------------------------------------------------------------------------
@@ -263,10 +253,11 @@ const sessionMap = new WeakMap();
 // ---------------------------------------------------------------------------
 
 /**
- * Session middleware.
+ * Session middleware. Storage owns the Session lifecycle:
+ * `storage.read(cookie) → Session`, `storage.save(session) → cookie`.
  *
  * @param {{
- *   store?: any,
+ *   storage?: SessionStorage,
  *   cookieName?: string,
  *   secret?: string,
  *   maxAge?: number,
@@ -280,13 +271,10 @@ export function session(opts = {}) {
   const secret = opts.secret || process.env.SESSION_SECRET;
   if (!secret) throw new Error('session() requires secret option or SESSION_SECRET env var');
 
+  const storage = opts.storage || cookieSessionStorage();
   const cookieName = opts.cookieName || 'webjs.sid';
-  const maxAge = opts.maxAge || 86400_000;
-  const store = opts.store || cookieSession({ maxAge });
-  const isCookie = store._type === 'cookie';
-
   const cookieOpts = {
-    maxAge,
+    maxAge: opts.maxAge || 86400_000,
     path: opts.path || '/',
     httpOnly: opts.httpOnly,
     secure: opts.secure,
@@ -296,67 +284,29 @@ export function session(opts = {}) {
   return async function sessionMiddleware(req, next) {
     const cookies = parseCookies(req.headers.get('cookie') || '');
     const rawCookie = cookies[cookieName] || '';
+    const unsigned = rawCookie ? unsign(rawCookie, secret) : null;
 
-    let data = {};
-    let flash = {};
-    let sessionId = '';
-
-    if (rawCookie) {
-      if (isCookie) {
-        const unsigned = unsign(rawCookie, secret);
-        if (unsigned) {
-          try {
-            const parsed = JSON.parse(Buffer.from(unsigned, 'base64url').toString('utf8'));
-            data = parsed.data || parsed;
-            flash = parsed.flash || {};
-          } catch {}
-        }
-      } else {
-        sessionId = unsign(rawCookie, secret) || '';
-        if (sessionId) {
-          const loaded = await store.load(sessionId);
-          if (loaded) {
-            data = loaded.data || loaded;
-            flash = loaded.flash || {};
-          }
-        }
-      }
-    }
-
-    const s = new Session(sessionId || undefined, data, flash);
+    // Storage creates the Session
+    const s = await storage.read(unsigned);
     sessionMap.set(req, s);
 
     const resp = await next();
 
-    // Handle destroyed sessions
-    if (s.destroyed) {
-      if (!isCookie && sessionId) await store.destroy(sessionId);
+    // Storage serializes the Session
+    const cookieValue = await storage.save(s);
+
+    if (cookieValue === '') {
+      // Destroyed — clear the cookie
       try {
-        resp.headers.append('set-cookie', clearCookie(cookieName, cookieOpts));
+        resp.headers.append('set-cookie', `${cookieName}=; Max-Age=0; Path=${cookieOpts.path}`);
       } catch {}
-      return resp;
-    }
-
-    // Handle regenerateId with deleteOld
-    if (s.deleteId && !isCookie) {
-      await store.destroy(s.deleteId);
-    }
-
-    // Write session if dirty
-    if (s.dirty) {
-      const serialized = s._serialize();
-      let cookieValue;
-      if (isCookie) {
-        const json = JSON.stringify(serialized);
-        cookieValue = sign(Buffer.from(json).toString('base64url'), secret);
-      } else {
-        await store.save(s.id, serialized, maxAge);
-        cookieValue = sign(s.id, secret);
-      }
+    } else if (cookieValue !== null) {
+      // Changed — sign and set
       try {
-        resp.headers.append('set-cookie', serializeCookie(cookieName, cookieValue, cookieOpts));
+        resp.headers.append('set-cookie', serializeCookie(cookieName, sign(cookieValue, secret), cookieOpts));
       } catch {}
     }
+    // null = no change
 
     return resp;
   };
@@ -367,14 +317,13 @@ export function session(opts = {}) {
 // ---------------------------------------------------------------------------
 
 /**
- * Get the Session for the current request. Must be called inside a handler
- * that runs after the session() middleware.
+ * Get the Session for the current request.
  *
  * ```js
  * const s = getSession(req);
- * const userId = s.get('userId');
- * s.set('lastSeen', Date.now());
- * s.flash('message', 'Settings saved!');
+ * s.get('userId');
+ * s.set('userId', user.id);
+ * s.flash('message', 'Saved!');
  * ```
  *
  * @param {Request} req

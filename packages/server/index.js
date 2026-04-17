@@ -18,7 +18,7 @@ export { defaultLogger } from './src/logger.js';
 export { rateLimit, parseWindow } from './src/rate-limit.js';
 export { memoryStore, redisStore, getStore, setStore } from './src/cache.js';
 export { cache } from './src/cache-fn.js';
-export { Session, session, cookieSession, storeSession, getSession } from './src/session.js';
+export { Session, session, cookieSessionStorage, storeSessionStorage, cookieSession, storeSession, getSession } from './src/session.js';
 export { broadcast } from './src/broadcast.js';
 export { json, readBody } from './src/json.js';
 export { buildBundle } from './src/build.js';
