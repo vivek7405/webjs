@@ -74,6 +74,19 @@ export function render(value, container) {
       return;
     }
     if (prev) clearInstance(prev, container);
+
+    // Light DOM hydration: if container has SSR content (marked by
+    // <!--webjs-hydrate-->), adopt the existing DOM instead of replacing.
+    // This prevents flash — the server-rendered content stays in place,
+    // we just compile the template, bind parts to existing nodes, and
+    // attach event listeners.
+    const firstChild = container.firstChild;
+    if (firstChild && firstChild.nodeType === 8 && /** @type {Comment} */ (firstChild).data === 'webjs-hydrate') {
+      const inst = hydrateInstance(tr, container);
+      host[INSTANCE] = inst;
+      return;
+    }
+
     const inst = createInstance(tr, container);
     host[INSTANCE] = inst;
     return;
@@ -334,6 +347,62 @@ function createInstance(tr, container) {
   }
 
   /** @type any */ (container).replaceChildren(startNode, ...frag.childNodes, endNode);
+  return { strings: tr.strings, bound, lastValues, startNode, endNode };
+}
+
+/**
+ * Hydrate an existing server-rendered DOM. Instead of cloning a template
+ * and replacing children, walk the existing DOM, locate marker comments,
+ * and bind parts to the existing nodes. Event listeners are attached;
+ * text/attribute content is left untouched (already correct from SSR).
+ *
+ * @param {import('./html.js').TemplateResult} tr
+ * @param {Element | DocumentFragment | ShadowRoot} container
+ * @returns {TemplateInstance}
+ */
+function hydrateInstance(tr, container) {
+  const { parts } = compile(tr);
+
+  // Remove the hydration marker
+  const hydrateMarker = container.firstChild;
+  if (hydrateMarker && hydrateMarker.nodeType === 8 && /** @type {Comment} */ (hydrateMarker).data === 'webjs-hydrate') {
+    hydrateMarker.remove();
+  }
+
+  // Find or create bookend markers in the existing DOM
+  let startNode = null;
+  let endNode = null;
+  for (const child of container.childNodes) {
+    if (child.nodeType === 8) {
+      const data = /** @type {Comment} */ (child).data;
+      if (data === `${MARKER}s`) startNode = child;
+      if (data === `${MARKER}e`) endNode = child;
+    }
+  }
+  if (!startNode) {
+    startNode = document.createComment(`${MARKER}s`);
+    container.insertBefore(startNode, container.firstChild);
+  }
+  if (!endNode) {
+    endNode = document.createComment(`${MARKER}e`);
+    container.appendChild(endNode);
+  }
+
+  // Bind parts to existing DOM nodes. For each part descriptor, walk
+  // the container's children to find the corresponding node using the
+  // path recorded during compilation.
+  const bound = parts.map((p) => bindPart(p, container));
+  const lastValues = [];
+  for (let i = 0; i < tr.values.length; i++) {
+    // Only commit event handlers and property bindings — attributes
+    // and text are already correct from SSR.
+    const part = bound[i];
+    if (part.kind === 'event' || part.kind === 'prop') {
+      applyPart(part, tr.values[i], undefined);
+    }
+    lastValues.push(tr.values[i]);
+  }
+
   return { strings: tr.strings, bound, lastValues, startNode, endNode };
 }
 

@@ -247,26 +247,34 @@ async function injectDSD(html, ctx) {
     // `<link rel="modulepreload">` hints for their module URLs.
     if (ctx && ctx.usedComponents) ctx.usedComponents.add(tag);
     const opening = selfClose ? `<${tag}${attrs}>` : match;
-    if (/** @type any */ (Cls).shadow === false) {
-      edits.push({ start: m.index, end: m.index + match.length, text: opening });
-      continue;
-    }
     try {
+      const isShadow = /** @type any */ (Cls).shadow !== false;
       const instance = new /** @type any */ (Cls)();
       const attrMap = parseAttrs(attrs);
       applyAttrsToInstance(instance, attrMap, Cls);
       let tpl = instance.render ? instance.render() : '';
       if (tpl && typeof tpl.then === 'function') tpl = await tpl;
       const inner = await render(tpl, ctx);
-      /** @type {any} */
-      const rawStyles = /** @type any */ (Cls).styles;
-      const styleList = Array.isArray(rawStyles) ? rawStyles : rawStyles && isCSS(rawStyles) ? [rawStyles] : [];
-      const styleStr = stylesToString(styleList);
-      edits.push({
-        start: m.index,
-        end: m.index + match.length,
-        text: `${opening}<template shadowrootmode="open">${styleStr}${inner}</template>`,
-      });
+
+      if (isShadow) {
+        // Shadow DOM: wrap in Declarative Shadow DOM template
+        /** @type {any} */
+        const rawStyles = /** @type any */ (Cls).styles;
+        const styleList = Array.isArray(rawStyles) ? rawStyles : rawStyles && isCSS(rawStyles) ? [rawStyles] : [];
+        const styleStr = stylesToString(styleList);
+        edits.push({
+          start: m.index,
+          end: m.index + match.length,
+          text: `${opening}<template shadowrootmode="open">${styleStr}${inner}</template>`,
+        });
+      } else {
+        // Light DOM: render content directly as children, add hydration marker
+        edits.push({
+          start: m.index,
+          end: m.index + match.length,
+          text: `${opening}<!--webjs-hydrate-->${inner}`,
+        });
+      }
     } catch (e) {
       console.error(`[webjs] SSR failed for <${tag}>:`, e);
     }

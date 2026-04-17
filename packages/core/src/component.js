@@ -366,8 +366,13 @@ export class WebComponent extends Base {
       if (c.hostConnected) c.hostConnected();
     }
 
+    // For both shadow and light DOM: proceed with _performRender().
+    // The client renderer detects SSR content (<!--webjs-hydrate--> for
+    // light DOM, existing shadow root for shadow DOM) and hydrates
+    // instead of replacing — binding events without touching the DOM.
     this._performRender();
   }
+
 
   /**
    * Called when the element is removed from the DOM.
