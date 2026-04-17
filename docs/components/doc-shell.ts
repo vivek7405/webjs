@@ -138,6 +138,7 @@ export class DocShell extends WebComponent {
       font: 700 var(--fs-h1)/1.1 var(--font-serif);
       letter-spacing: -0.025em;
       margin: 0 0 var(--sp-4);
+      color: var(--accent);
     }
     ::slotted(h2) {
       font: 700 var(--fs-h2)/1.2 var(--font-serif);
@@ -145,11 +146,13 @@ export class DocShell extends WebComponent {
       margin: var(--sp-7) 0 var(--sp-3);
       padding-top: var(--sp-5);
       border-top: 1px solid var(--border);
+      color: var(--accent);
     }
     ::slotted(h3) {
       font-size: 1.1rem;
       font-weight: 700;
       margin: var(--sp-5) 0 var(--sp-2);
+      color: var(--accent);
     }
     ::slotted(p) { margin: 0 0 var(--sp-4); line-height: 1.7; }
     ::slotted(ul), ::slotted(ol) { padding-left: var(--sp-5); margin: 0 0 var(--sp-4); }
