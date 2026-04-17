@@ -15,7 +15,7 @@ const FEATURES = [
   { icon: '🔌', title: 'WebSocket Built In', desc: 'Export a WS function from any route.ts and it becomes a WebSocket endpoint. connectWS() on the client auto-reconnects with exponential backoff.' },
   { icon: '🛡️', title: 'Production Batteries', desc: 'CSRF on RPC, gzip/brotli, HTTP/2, 103 Early Hints, modulepreload with transitive deps, lazy component loading, rate limiting, health probes, graceful shutdown.' },
   { icon: '📝', title: 'TypeScript or JSDoc', desc: 'Full-stack type safety with .ts files (Node strips types natively) or JSDoc annotations. Zero compile step either way.' },
-  { icon: '🧪', title: 'Testing Built In', desc: 'webjs test runs unit + E2E tests. webjs check validates conventions. webjs create scaffolds test directories and example tests. AI agents auto-generate tests with every feature.' },
+  { icon: '🧪', title: 'Testing Built In', desc: 'webjs test runs server + browser tests (WTR + Playwright). webjs check validates conventions. webjs create scaffolds test directories and example tests. AI agents auto-generate tests with every feature.' },
   { icon: '🔀', title: 'Git Workflow Guardrails', desc: 'Branch checking before edits, merge approval with delete/keep prompt, no AI attribution in commits, auto-rebase before work. Enforced via hooks for Claude Code, config files for Cursor/Windsurf/Copilot.' },
   { icon: '📐', title: 'Opinionated Conventions', desc: 'Modules architecture, one-function-per-file actions, CONVENTIONS.md with overridable rules, webjs check validator. AI agents produce consistent code across teams.' },
 ];
@@ -301,7 +301,7 @@ middleware.ts              → global auth</pre>
           <div class="rubric">Testing &amp; conventions</div>
           <h3>Quality enforced, not requested</h3>
           <p>
-            <code>webjs test</code> runs unit + E2E tests. <code>webjs check</code>
+            <code>webjs test</code> runs server + browser tests (WTR + Playwright). <code>webjs check</code>
             validates conventions (actions in modules, components registered, tests exist).
             AI agents run both automatically — the user never has to ask for tests or docs.
           </p>

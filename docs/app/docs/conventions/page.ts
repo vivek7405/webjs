@@ -60,7 +60,7 @@ webjs check --rules</pre>
     <p>Run <code>webjs check</code> before every commit. AI agents run it automatically as part of their workflow.</p>
 
     <h2>webjs test</h2>
-    <p>webjs ships a testing setup based on <code>node:test</code> and Puppeteer.</p>
+    <p>webjs ships a testing setup based on <code>node:test</code> and WTR + Playwright.</p>
 
     <h3>Unit Tests</h3>
     <pre># Run all unit tests
@@ -89,9 +89,9 @@ test('action validates input', async () =&gt; {
     <pre># Run unit + E2E tests
 webjs test --e2e
 
-# Test files live in test/e2e/*.test.{ts,js}</pre>
+# Test files live in test/browser/*.test.{ts,js}</pre>
 
-    <p>E2E tests use Puppeteer to launch a real browser and test complete user flows — navigation, form submission, auth, and live interactions.</p>
+    <p>E2E tests use WTR + Playwright to launch a real browser and test complete user flows — navigation, form submission, auth, and live interactions.</p>
 
     <h3>Convention: Always Write Tests</h3>
     <p>When implementing any feature, tests are mandatory:</p>
@@ -180,7 +180,7 @@ After merging, should &lt;branch&gt; be deleted or kept?</pre>
       <li><code>app/</code> with root layout + page</li>
       <li><code>modules/</code> skeleton for feature-scoped code</li>
       <li><code>components/</code> with a theme toggle component</li>
-      <li><code>test/unit/</code> and <code>test/e2e/</code> with example tests</li>
+      <li><code>test/unit/</code> and <code>test/browser/</code> with example tests</li>
       <li><code>CONVENTIONS.md</code> — editable project conventions</li>
       <li><code>AGENTS.md</code> — full framework API reference</li>
       <li><code>CLAUDE.md</code> — quick reminders for Claude Code</li>
@@ -198,7 +198,7 @@ After merging, should &lt;branch&gt; be deleted or kept?</pre>
 modules/contact/actions/send-message.server.ts # the server action
 modules/contact/types.ts                       # type definitions
 test/unit/contact.test.ts                      # unit test for the action
-test/e2e/contact.test.ts                       # E2E test for the form flow
+test/browser/contact.test.ts                       # E2E test for the form flow
 AGENTS.md                                      # updated if new API/conventions
 docs/app/docs/contact/page.ts                  # doc page (if docs/ exists)</pre>
 

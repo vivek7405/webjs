@@ -52,31 +52,28 @@ test('matches dynamic routes', async () =&gt; {
   assert.deepEqual(m.params, { slug: 'hello' });
 });</pre>
 
-    <h2>Client Renderer Tests (linkedom)</h2>
-    <p>For testing the client-side fine-grained renderer without a real browser, use <code>linkedom</code> as a DOM shim:</p>
-    <pre>import { before, test } from 'node:test';
-import { parseHTML } from 'linkedom';
+    <h2>Browser Tests (WTR + Playwright)</h2>
+    <p>Client-side tests run in <strong>real Chromium</strong> via Web Test Runner + Playwright. No fake DOM — full Shadow DOM, events, adoptedStyleSheets, everything works.</p>
+    <pre>// test/browser/renderer.test.js — runs in real Chromium
+import { html } from '../../packages/core/src/html.js';
+import { render } from '../../packages/core/src/render-client.js';
 
-before(() =&gt; {
-  const { window } = parseHTML('&lt;!doctype html&gt;&lt;html&gt;&lt;body&gt;&lt;/body&gt;&lt;/html&gt;');
-  globalThis.document = window.document;
-  globalThis.HTMLElement = window.HTMLElement;
-  // ... other globals
-});
+suite('Client renderer', () =&gt; {
+  test('preserves element identity on re-render', () =&gt; {
+    const el = document.createElement('div');
+    const view = (n) =&gt; html\`&lt;p&gt;\${n}&lt;/p&gt;\`;
+    render(view(1), el);
+    const pre = el.querySelector('p');
+    render(view(2), el);
+    assert.strictEqual(el.querySelector('p'), pre);
+  });
 
-let html, render;
-before(async () =&gt; {
-  ({ html } = await import('webjs'));
-  ({ render } = await import('webjs/client'));
-});
-
-test('preserves element identity on re-render', () =&gt; {
-  const el = document.createElement('div');
-  const view = (n) =&gt; html\`&lt;p&gt;\${n}&lt;/p&gt;\`;
-  render(view(1), el);
-  const pre = el.querySelector('p');
-  render(view(2), el);
-  assert.strictEqual(el.querySelector('p'), pre);
+  test('Shadow DOM works', () =&gt; {
+    const host = document.createElement('div');
+    const shadow = host.attachShadow({ mode: 'open' });
+    render(html\`&lt;p&gt;inside shadow&lt;/p&gt;\`, shadow);
+    assert.ok(shadow.querySelector('p'));
+  });
 });</pre>
 
     <h2>API Route Tests</h2>
@@ -114,23 +111,23 @@ test('WS echo works', async () =&gt; {
     <pre># Run unit tests
 npx webjs test
 
-# Run unit + E2E tests (requires Puppeteer + Chromium)
-npx webjs test --e2e</pre>
+# Run unit + browser tests (WTR + Playwright)
+npx webjs test --browser</pre>
 
     <p>It discovers test files automatically:</p>
     <ul>
       <li><code>test/unit/*.test.{ts,js}</code> — unit tests</li>
-      <li><code>test/e2e/*.test.{ts,js}</code> — E2E tests (with <code>--e2e</code> flag)</li>
+      <li><code>test/browser/*.test.{ts,js}</code> — E2E tests (with <code>--browser</code> flag)</li>
       <li><code>test/*.test.{ts,js}</code> — root-level tests (flat layout)</li>
     </ul>
 
-    <h2>E2E Tests with Puppeteer</h2>
+    <h2>Browser Tests (WTR + Playwright)</h2>
     <p>E2E tests launch a real browser to test full user flows:</p>
     <pre>import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 describe('Contact form', () =&gt; {
-  // Setup: start dev server + Puppeteer browser
+  // Tests run in real Chromium via Playwright
   before(async () =&gt; { /* ... */ });
   after(async () =&gt; { /* cleanup */ });
 
@@ -156,11 +153,12 @@ npx webjs check --rules</pre>
     <h2>Recommended Test Structure</h2>
     <pre>test/
   unit/
-    auth.test.ts            # module-level unit tests
+    auth.test.ts            # server tests (node:test)
     posts.test.ts
-  e2e/
-    auth-flow.test.ts       # browser-level E2E tests
-    blog-flow.test.ts</pre>
+  browser/
+    components.test.js      # browser tests (WTR + Playwright)
+    navigation.test.js
+web-test-runner.config.js   # WTR config</pre>
 
     <h2>AI Agent Testing Convention</h2>
     <p>In a webjs project, AI agents are expected to write tests automatically with every code change. The convention is defined in <code>CONVENTIONS.md</code>:</p>
