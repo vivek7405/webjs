@@ -75,7 +75,8 @@ export async function ssrPage(route, params, url, opts) {
       suspenseCtx,
       200,
       opts.req,
-      url
+      url,
+      metadata,
     );
   } catch (err) {
     if (isRedirect(err)) {
@@ -132,9 +133,13 @@ export async function ssrNotFound(notFoundFile, opts) {
  * @param {number} status
  * @param {Request | undefined} req
  * @param {URL | undefined} url
+ * @param {Record<string, any>} [metadata]
  */
-function htmlResponse(html, status, req, url) {
+function htmlResponse(html, status, req, url, metadata) {
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
+  if (metadata?.cacheControl) {
+    headers.set('cache-control', metadata.cacheControl);
+  }
   if (req && !readToken(req)) {
     const secure = url ? url.protocol === 'https:' : false;
     headers.append('set-cookie', cookieHeader(newToken(), { secure }));
@@ -398,10 +403,15 @@ function deduplicatedPreloads(componentUrls, moduleUrls, graph, entryFiles, appD
  * @param {number} status
  * @param {Request | undefined} req
  * @param {URL | undefined} url
+ * @param {Record<string, any>} [metadata]
  */
-function streamingHtmlResponse(headHtml, bodyHtml, ctx, status, req, url) {
+function streamingHtmlResponse(headHtml, bodyHtml, ctx, status, req, url, metadata) {
   const encoder = new TextEncoder();
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
+  // Cache-Control from page/layout metadata — standard HTTP caching
+  if (metadata?.cacheControl) {
+    headers.set('cache-control', metadata.cacheControl);
+  }
   if (req && !readToken(req)) {
     const secure = url ? url.protocol === 'https:' : false;
     headers.append('set-cookie', cookieHeader(newToken(), { secure }));
