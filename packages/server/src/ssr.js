@@ -19,7 +19,7 @@ import { transitiveDeps } from './module-graph.js';
  * @param {import('./router.js').PageRoute} route
  * @param {Record<string,string>} params
  * @param {URL} url
- * @param {{ dev: boolean, appDir: string, req?: Request, bundle?: boolean, moduleGraph?: import('./module-graph.js').ModuleGraph }} opts
+ * @param {{ dev: boolean, appDir: string, req?: Request, bundle?: boolean, moduleGraph?: import('./module-graph.js').ModuleGraph, serverFiles?: Map<string,string> | Set<string> }} opts
  * @returns {Promise<Response>}
  */
 export async function ssrPage(route, params, url, opts) {
@@ -58,6 +58,7 @@ export async function ssrPage(route, params, url, opts) {
           opts.moduleGraph,
           [route.file, ...route.layouts],
           opts.appDir,
+          opts.serverFiles,
         );
     // Extract CSP nonce from request headers (if present).
     const nonce = opts.req ? getNonce(opts.req) : undefined;
@@ -398,13 +399,26 @@ function componentPreloads(usedTags, appDir) {
  * @param {string} appDir
  * @returns {string[]}
  */
-function deduplicatedPreloads(componentUrls, moduleUrls, graph, entryFiles, appDir) {
+function deduplicatedPreloads(componentUrls, moduleUrls, graph, entryFiles, appDir, serverFiles) {
   const seen = new Set(moduleUrls);
   const result = [];
 
+  // Server-only modules are never useful to preload: they're imported by
+  // pages/layouts on the server, or surfaced to client components as
+  // generated RPC stubs that load lazily on first call. Preloading them
+  // wastes a roundtrip and pollutes the network tab with server-named files.
+  //
+  // Detection is belt-and-suspenders: filename suffix catches `.server.*`;
+  // the `serverFiles` set (built from the action index) also catches files
+  // that opted in via `'use server'` directive without the suffix.
+  const byName = (url) => /\.server\.m?[jt]s$/.test(url);
+  const byIndex = serverFiles
+    ? (abs) => (serverFiles.has ? serverFiles.has(abs) : false)
+    : () => false;
+
   // Add direct component URLs
   for (const url of componentUrls) {
-    if (seen.has(url)) continue;
+    if (seen.has(url) || byName(url)) continue;
     seen.add(url);
     result.push(url);
   }
@@ -420,8 +434,9 @@ function deduplicatedPreloads(componentUrls, moduleUrls, graph, entryFiles, appD
     }
     const deps = transitiveDeps(graph, allEntries, appDir);
     for (const dep of deps) {
+      if (byIndex(dep)) continue;
       const url = toUrlPath(dep, appDir);
-      if (seen.has(url)) continue;
+      if (seen.has(url) || byName(url)) continue;
       seen.add(url);
       result.push(url);
     }

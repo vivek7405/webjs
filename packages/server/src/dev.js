@@ -441,6 +441,7 @@ async function handleCore(req, ctx) {
     if (page) {
       const handler = () => ssrPage(page.route, page.params, url, {
         dev, appDir, req, bundle: !!state.bundlePath, moduleGraph: state.moduleGraph,
+        serverFiles: state.actionIndex.fileToHash,
       });
       return runWithSegmentMiddleware(req, page.route.middlewares, handler, dev);
     }

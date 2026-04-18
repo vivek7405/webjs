@@ -178,3 +178,60 @@ test('ssrPage: no data-layout wrapper when route has no layouts', async () => {
   assert.ok(!body.includes('data-layout='),
     `no layouts → no wrapper, got: ${body.slice(0, 400)}`);
 });
+
+test('ssrPage: modulepreload never points at server-only files', async () => {
+  // Set up a page that imports a .server.ts AND a 'use server' plain .ts.
+  // Both files should be excluded from the <link rel="modulepreload"> set:
+  // they're server-imports, and the client only ever sees a safe RPC stub
+  // served lazily on first import, never a preload.
+  const sub = mkdtempSync(join(tmpDir, 'route-'));
+  const appDir = join(sub, 'app');
+  mkdirSync(appDir, { recursive: true });
+
+  const serverSuffix = join(appDir, 'query.server.ts');
+  writeFileSync(serverSuffix,
+    `export async function list() { return []; }\n`);
+
+  const useServerPlain = join(appDir, 'db.ts');
+  writeFileSync(useServerPlain,
+    `'use server';\nexport async function q() { return null; }\n`);
+
+  const pageFile = join(appDir, 'page.ts');
+  writeFileSync(pageFile,
+    `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+    `import { list } from './query.server.ts';\n` +
+    `import { q } from './db.ts';\n` +
+    `export default async function Page() {\n` +
+    `  await list(); await q();\n` +
+    `  return html\`<p>hi</p>\`;\n` +
+    `}\n`);
+
+  // Build a minimal module graph mirroring the imports above.
+  const moduleGraph = new Map([
+    [pageFile, new Set([serverSuffix, useServerPlain])],
+    [serverSuffix, new Set()],
+    [useServerPlain, new Set()],
+  ]);
+
+  // serverFiles mimics the action index (abs-path keyed).
+  const serverFiles = new Map([
+    [serverSuffix, 'hashA'],
+    [useServerPlain, 'hashB'],
+  ]);
+
+  const route = { file: pageFile, layouts: [], errors: [], metadataFiles: [] };
+  const url = new URL('http://localhost/');
+  const resp = await ssrPage(route, {}, url, {
+    dev: false,
+    appDir,
+    moduleGraph,
+    serverFiles,
+  });
+  const body = await resp.text();
+
+  const preloads = (body.match(/modulepreload[^>]*href="[^"]*"/g) || []).join('\n');
+  assert.ok(!/\.server\.ts"/.test(preloads),
+    `.server.ts should not be preloaded; got preloads:\n${preloads}`);
+  assert.ok(!/\bdb\.ts"/.test(preloads),
+    `'use server' plain file should not be preloaded; got preloads:\n${preloads}`);
+});
