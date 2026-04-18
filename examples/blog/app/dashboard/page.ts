@@ -11,131 +11,31 @@ export default async function Dashboard() {
   const posts = await listPosts();
   const mine = posts.filter((p) => p.authorId === me.id);
   return html`
-    <style>
-      .rubric {
-        display: block;
-        font: 600 11px/1 var(--font-mono);
-        letter-spacing: 0.2em;
-        text-transform: uppercase;
-        color: var(--accent);
-        margin-bottom: var(--sp-3);
-      }
-      .greeting h1 {
-        font-family: var(--font-serif);
-        font-size: clamp(2rem, 1.5rem + 1.8vw, 2.8rem);
-        line-height: 1.08;
-        letter-spacing: -0.03em;
-        font-weight: 700;
-        margin: 0 0 var(--sp-3);
-      }
-      .greeting p { color: var(--fg-muted); margin: 0 0 var(--sp-6); }
-      .greeting strong { color: var(--fg); }
-
-      .toolbar {
-        display: flex;
-        gap: var(--sp-3);
-        margin-bottom: var(--sp-8);
-      }
-      .toolbar a {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: var(--sp-3) var(--sp-5);
-        font: 600 13px/1 var(--font-sans);
-        letter-spacing: 0.02em;
-        border-radius: 999px;
-        text-decoration: none;
-        transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
-      }
-      .toolbar a.primary {
-        background: var(--accent);
-        color: var(--accent-fg);
-      }
-      .toolbar a.primary:hover { background: var(--accent-hover); }
-      .toolbar a.secondary {
-        background: transparent;
-        border: 1px solid var(--border-strong);
-        color: var(--fg-muted);
-      }
-      .toolbar a.secondary:hover { color: var(--fg); border-color: var(--fg-muted); }
-
-      .section-head {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        margin-bottom: var(--sp-4);
-      }
-      .section-head h2 {
-        font-family: var(--font-serif);
-        font-size: 1.5rem;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        margin: 0;
-      }
-      .section-head small {
-        font: 500 11px/1 var(--font-mono);
-        letter-spacing: 0.15em;
-        color: var(--fg-subtle);
-        text-transform: uppercase;
-      }
-
-      .posts { list-style: none; padding: 0; margin: 0; }
-      .posts li {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        gap: var(--sp-4);
-        padding: var(--sp-4) 0;
-        border-bottom: 1px solid var(--border);
-      }
-      .posts li:first-child { border-top: 1px solid var(--border); }
-      .posts a {
-        font-family: var(--font-serif);
-        font-size: 1.1rem;
-        text-decoration: none;
-        color: var(--fg);
-        font-weight: 600;
-        letter-spacing: -0.01em;
-        transition: color var(--t-fast);
-      }
-      .posts a:hover { color: var(--accent); }
-
-      .empty {
-        padding: var(--sp-7);
-        text-align: center;
-        border: 1px dashed var(--border);
-        border-radius: var(--rad-lg);
-        color: var(--fg-muted);
-        font: italic 15px/1.6 var(--font-serif);
-      }
-      .empty a { color: var(--accent); font-weight: 600; text-decoration: none; font-style: normal; }
-      .empty a:hover { text-decoration: underline; text-underline-offset: 3px; }
-    </style>
-
-    <section class="greeting">
-      <span class="rubric">● signed in</span>
-      <h1>Hello, ${me.name || me.email.split('@')[0]}.</h1>
-      <p>You are ${me.name ? html`<strong>${me.email}</strong>` : ''}${me.name ? ' · ' : ''}a member since ${new Date(me.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}.</p>
+    <section>
+      <span class="block font-mono text-[11px] leading-none font-semibold tracking-[0.2em] uppercase text-accent mb-3">● signed in</span>
+      <h1 class="font-serif text-[clamp(2rem,1.5rem+1.8vw,2.8rem)] leading-[1.08] tracking-[-0.03em] font-bold m-0 mb-3">Hello, ${me.name || me.email.split('@')[0]}.</h1>
+      <p class="text-fg-muted m-0 mb-8">You are ${me.name ? html`<strong class="text-fg">${me.email}</strong>` : ''}${me.name ? ' · ' : ''}a member since ${new Date(me.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}.</p>
     </section>
 
-    <div class="toolbar">
-      <a class="primary" href="/dashboard/posts/new">+ New post</a>
-      <a class="secondary" href="#" data-logout>Log out</a>
+    <div class="flex gap-3 mb-18">
+      <a href="/dashboard/posts/new" class="inline-flex items-center gap-1.5 px-6 py-3 font-sans font-semibold text-[13px] leading-none tracking-[0.02em] rounded-full no-underline transition-[background,border-color,color] duration-fast bg-accent text-accent-fg hover:bg-accent-hover">+ New post</a>
+      <a href="#" data-logout class="inline-flex items-center gap-1.5 px-6 py-3 font-sans font-semibold text-[13px] leading-none tracking-[0.02em] rounded-full no-underline transition-[background,border-color,color] duration-fast bg-transparent border border-border-strong text-fg-muted hover:text-fg hover:border-fg-muted">Log out</a>
     </div>
 
-    <div class="section-head">
-      <h2>Your posts</h2>
-      <small>${mine.length.toString().padStart(2, '0')} published</small>
+    <div class="flex items-baseline justify-between mb-4">
+      <h2 class="font-serif text-[1.5rem] font-bold tracking-[-0.02em] m-0">Your posts</h2>
+      <small class="font-mono text-[11px] leading-none font-medium tracking-[0.15em] text-fg-subtle uppercase">${mine.length.toString().padStart(2, '0')} published</small>
     </div>
 
     ${mine.length === 0
-      ? html`<div class="empty">
-          You haven't published anything yet. <a href="/dashboard/posts/new">Write your first post →</a>
+      ? html`<div class="py-12 text-center border border-dashed border-border rounded-[14px] text-fg-muted italic font-serif text-[15px] leading-[1.6]">
+          You haven't published anything yet.
+          <a href="/dashboard/posts/new" class="text-accent font-semibold no-underline not-italic hover:underline hover:underline-offset-[3px]">Write your first post →</a>
         </div>`
-      : html`<ul class="posts">
+      : html`<ul class="list-none p-0 m-0">
           ${repeat(mine, (p) => p.id, (p) => html`
-            <li>
-              <a href="/blog/${p.slug}">${p.title}</a>
+            <li class="flex items-baseline justify-between gap-4 py-4 border-b border-border first:border-t">
+              <a href="/blog/${p.slug}" class="font-serif text-[1.1rem] no-underline text-fg font-semibold tracking-[-0.01em] transition-colors duration-fast hover:text-accent">${p.title}</a>
               <muted-text>${new Date(p.createdAt).toLocaleDateString()}</muted-text>
             </li>`)}
         </ul>`}

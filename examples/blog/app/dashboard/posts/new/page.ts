@@ -5,38 +5,9 @@ export const metadata = { title: 'New post — webjs blog' };
 
 export default function NewPostPage() {
   return html`
-    <style>
-      .back {
-        display: inline-block;
-        margin-bottom: var(--sp-5);
-        color: var(--fg-subtle);
-        text-decoration: none;
-        font: 500 11px/1 var(--font-mono);
-        letter-spacing: 0.15em;
-        text-transform: uppercase;
-        transition: color var(--t-fast);
-      }
-      .back:hover { color: var(--fg); }
-      .rubric {
-        display: block;
-        font: 600 11px/1 var(--font-mono);
-        letter-spacing: 0.2em;
-        text-transform: uppercase;
-        color: var(--accent);
-        margin-bottom: var(--sp-3);
-      }
-      h1 {
-        font-family: var(--font-serif);
-        font-size: clamp(2rem, 1.5rem + 1.6vw, 2.6rem);
-        line-height: 1.08;
-        letter-spacing: -0.03em;
-        font-weight: 700;
-        margin: 0 0 var(--sp-6);
-      }
-    </style>
-    <a class="back" href="/dashboard">← Dashboard</a>
-    <span class="rubric">● compose</span>
-    <h1>A new post.</h1>
+    <a href="/dashboard" class="inline-block mb-6 text-fg-subtle no-underline font-mono text-[11px] leading-none font-medium tracking-[0.15em] uppercase transition-colors duration-fast hover:text-fg">← Dashboard</a>
+    <span class="block font-mono text-[11px] leading-none font-semibold tracking-[0.2em] uppercase text-accent mb-3">● compose</span>
+    <h1 class="font-serif text-[clamp(2rem,1.5rem+1.6vw,2.6rem)] leading-[1.08] tracking-[-0.03em] font-bold m-0 mb-8">A new post.</h1>
     <new-post></new-post>
   `;
 }

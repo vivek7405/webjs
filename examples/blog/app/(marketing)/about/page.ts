@@ -15,112 +15,42 @@ const FEATURES = [
 
 export default function About() {
   return html`
-    <style>
-      .rubric {
-        display: block;
-        font: 600 11px/1 var(--font-mono);
-        letter-spacing: 0.2em;
-        text-transform: uppercase;
-        color: var(--accent);
-        margin-bottom: var(--sp-4);
-      }
-      h1 {
-        font-family: var(--font-serif);
-        font-size: var(--fs-display);
-        line-height: 1.02;
-        letter-spacing: -0.035em;
-        font-weight: 700;
-        margin: 0 0 var(--sp-5);
-        text-wrap: balance;
-      }
-      .lead {
-        font: 1.15rem/1.5 var(--font-sans);
-        color: var(--fg-muted);
-        max-width: 56ch;
-        margin: 0 0 var(--sp-8);
-      }
-
-      h2 {
-        font-family: var(--font-serif);
-        font-size: 1.6rem;
-        letter-spacing: -0.02em;
-        margin: var(--sp-8) 0 var(--sp-4);
-      }
-
-      .features {
-        display: grid;
-        gap: 0;
-        border-top: 1px solid var(--border);
-      }
-      .feat {
-        display: grid;
-        grid-template-columns: minmax(0, 0.9fr) minmax(0, 2fr);
-        gap: var(--sp-5);
-        padding: var(--sp-4) 0;
-        border-bottom: 1px solid var(--border);
-        min-width: 0;
-      }
-      .feat .label {
-        font: 600 11px/1.4 var(--font-mono);
-        letter-spacing: 0.1em;
-        color: var(--accent);
-        text-transform: uppercase;
-      }
-      .feat .note {
-        font-family: var(--font-serif);
-        font-size: 1rem;
-        line-height: 1.6;
-        color: var(--fg);
-        margin: 0;
-      }
-
-      .card {
-        margin-top: var(--sp-7);
-        padding: var(--sp-5) var(--sp-6);
-        background: var(--bg-elev);
-        border: 1px solid var(--border);
-        border-radius: var(--rad-lg);
-      }
-      .card p { margin: 0; font-size: 15px; color: var(--fg-muted); }
-      .card strong { color: var(--fg); }
-      .card code {
-        font-family: var(--font-mono);
-        font-size: 0.88em;
-        padding: 2px 6px;
-        border-radius: var(--rad-sm);
-        background: var(--bg-subtle);
-        border: 1px solid var(--border);
-        word-break: break-word;
-        overflow-wrap: anywhere;
-      }
-    </style>
-
-    <span class="rubric">● about</span>
-    <h1>A full-stack demo, at framework scale.</h1>
-    <p class="lead">
-      A tiny blog built on <strong>webjs</strong> — a no-build, web-components-first,
+    <span class="block font-mono text-[11px] leading-none font-semibold tracking-[0.2em] uppercase text-accent mb-4">● about</span>
+    <h1 class="font-serif text-display leading-[1.02] tracking-[-0.035em] font-bold m-0 mb-6 text-balance">A full-stack demo, at framework scale.</h1>
+    <p class="text-[1.15rem] leading-[1.5] font-sans text-fg-muted max-w-[56ch] m-0 mb-18">
+      A tiny blog built on <strong class="text-fg">webjs</strong> — a no-build, web-components-first,
       NextJs-inspired framework. Every feature the framework ships with is exercised
       here in under a thousand lines.
     </p>
 
-    <h2>What's on display</h2>
-    <div class="features">
+    <h2 class="font-serif text-[1.6rem] tracking-[-0.02em] mt-18 mb-4">What's on display</h2>
+    <div class="grid gap-0 border-t border-border">
       ${FEATURES.map((f) => html`
-        <div class="feat">
-          <div class="label">${f.label}</div>
-          <p class="note">${f.note}</p>
+        <div class="grid grid-cols-[minmax(0,0.9fr)_minmax(0,2fr)] gap-6 py-4 border-b border-border min-w-0">
+          <div class="font-mono text-[11px] leading-[1.4] font-semibold tracking-[0.1em] text-accent uppercase">${f.label}</div>
+          <p class="font-serif text-base leading-[1.6] text-fg m-0">${f.note}</p>
         </div>
       `)}
     </div>
 
-    <div class="card">
-      <p>
-        <strong>Modules architecture.</strong> Feature modules live under <code>modules/</code> with
-        their own <code>actions/</code>, <code>queries/</code>, <code>components/</code>, and
-        <code>types.js</code>. Routes in <code>app/</code> are thin adapters.
+    <div class="mt-12 px-8 py-6 bg-bg-elev border border-border rounded-[14px]">
+      <p class="m-0 text-[15px] text-fg-muted">
+        <strong class="text-fg">Modules architecture.</strong> Feature modules live under
+        <code class="font-mono text-[0.88em] px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border break-words [overflow-wrap:anywhere]">modules/</code> with
+        their own
+        <code class="font-mono text-[0.88em] px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border break-words [overflow-wrap:anywhere]">actions/</code>,
+        <code class="font-mono text-[0.88em] px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border break-words [overflow-wrap:anywhere]">queries/</code>,
+        <code class="font-mono text-[0.88em] px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border break-words [overflow-wrap:anywhere]">components/</code>,
+        and
+        <code class="font-mono text-[0.88em] px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border break-words [overflow-wrap:anywhere]">types.js</code>.
+        Routes in
+        <code class="font-mono text-[0.88em] px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border break-words [overflow-wrap:anywhere]">app/</code>
+        are thin adapters.
       </p>
     </div>
 
-    <p style="margin-top:var(--sp-7)"><a href="/">← Back to posts</a></p>
+    <p class="mt-12">
+      <a href="/" class="text-accent underline underline-offset-[3px] decoration-transparent hover:decoration-current transition-colors duration-fast">← Back to posts</a>
+    </p>
   `;
 }
