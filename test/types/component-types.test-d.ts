@@ -1,10 +1,10 @@
 /**
- * Compile-time type tests for `defineComponent` + `defineProp`.
+ * Compile-time type tests for webjs WebComponent intelligence.
  *
  * This file is NOT executed by `node:test`. It is consumed by tsserver in
- * your editor and by any TypeScript project that adds this workspace to its
- * `paths`. If any of the inference rules regress, the errors surface as
- * red squiggles here.
+ * your editor and by any TypeScript project that adds this workspace to
+ * its `paths`. If the WebComponent typing regresses, the errors surface
+ * as red squiggles here.
  *
  * To verify manually:
  *   npx -p typescript@5.6 tsc --noEmit --target esnext --moduleResolution bundler \
@@ -13,12 +13,9 @@
 
 import {
   WebComponent,
-  defineComponent,
-  defineProp,
   html,
-  type PropertyValue,
-  type PropertyValues,
   type PropertyDeclaration,
+  type ReactiveController,
 } from 'webjs';
 
 /* ------------- Helper: compile-time assertion ------------- */
@@ -27,97 +24,78 @@ type Assert<T extends true> = T;
 type Equal<X, Y> =
   (<T>() => T extends X ? 1 : 2) extends (<T>() => T extends Y ? 1 : 2) ? true : false;
 
-/* ------------- PropertyValue<D>: constructor-based inference ------------- */
+/* ------------- `declare`-typed fields work alongside static properties ------------- */
 
-type T1 = Assert<Equal<PropertyValue<{ type: NumberConstructor }>, number>>;
-type T2 = Assert<Equal<PropertyValue<{ type: StringConstructor }>, string>>;
-type T3 = Assert<Equal<PropertyValue<{ type: BooleanConstructor }>, boolean>>;
-type T4 = Assert<Equal<PropertyValue<{ type: ArrayConstructor }>, unknown[]>>;
-type T5 = Assert<Equal<PropertyValue<{ type: ObjectConstructor }>, Record<string, unknown>>>;
+class Student {
+  id = '';
+  name = '';
+}
 
-/* ------------- PropertyValue<D>: class-constructor inference ------------- */
+class StudentCard extends WebComponent {
+  static tag = 'student-card';
+  static properties = { student: { type: Object } };
+  declare student: Student;
+  render() {
+    // this.student is a real Student — method access, property access, all typed.
+    const _s: string = this.student.name;
+    return html`<p>${this.student.name}</p>`;
+  }
+}
 
-class User { id = ''; name = ''; }
-type T6 = Assert<Equal<PropertyValue<{ type: typeof User }>, User>>;
+const card = new StudentCard();
+type _Student = Assert<Equal<typeof card.student, Student>>;
 
-/* ------------- PropertyValue<D>: converter-based inference ------------- */
+/* ------------- Framework APIs are typed on `this` ------------- */
 
-type T7 = Assert<Equal<
-  PropertyValue<{ type: ObjectConstructor; converter: { fromAttribute: (v: string | null) => Date } }>,
-  Date
->>;
-
-/* ------------- PropertyValues<P>: whole-map inference ------------- */
-
-const sample = defineProp<number>({ type: Number });
-type T8 = Assert<Equal<PropertyValue<typeof sample>, number>>;
-
-type Props = {
-  count: { type: NumberConstructor };
-  label: { type: StringConstructor };
-  active: { type: BooleanConstructor };
-};
-type T9 = Assert<Equal<
-  PropertyValues<Props>,
-  { count: number; label: string; active: boolean }
->>;
-
-/* ------------- defineComponent: full inference end-to-end ------------- */
-
-class Counter extends defineComponent({
-  count: { type: Number, reflect: true },
-  label: { type: String },
-  active: { type: Boolean },
-}) {
+class Counter extends WebComponent {
   static tag = 'my-counter';
-  render() {
-    // These should typecheck WITHOUT a single `declare` line.
-    const _n: number = this.count;
-    const _s: string = this.label;
-    const _b: boolean = this.active;
-    return html`<p>${this.label}: ${this.count} ${this.active ? 'on' : 'off'}</p>`;
-  }
-}
-
-// Instance-level assignment respects the inferred types.
-const c = new Counter();
-const _cn: number = c.count;
-const _cs: string = c.label;
-const _cb: boolean = c.active;
-
-/* ------------- defineProp<T>: phantom-typed class shape ------------- */
-
-class Profile extends defineComponent({
-  user: defineProp<User>({ type: Object }),
-}) {
-  static tag = 'user-profile';
-  render() {
-    const _u: User = this.user;
-    return html`<span>${this.user.name}</span>`;
-  }
-}
-
-/* ------------- Backwards-compat: bare WebComponent + declare still works ------------- */
-
-class Legacy extends WebComponent {
-  static tag = 'my-legacy';
   static properties = { count: { type: Number } };
   declare count: number;
-  render() {
-    const _n: number = this.count;
+
+  bump() {
+    // All of these are typed via the .d.ts overlay.
+    this.setState({ foo: 'bar' });
+    this.requestUpdate();
+    const _s: Record<string, unknown> = this.state;
     return html`<p>${this.count}</p>`;
   }
 }
 
-/* ------------- Negative: wrong descriptor rejected at class body ------------- */
-// Uncomment to verify: `count` should be a number, not a string.
-//
-// class Bad extends defineComponent({ count: { type: Number } }) {
-//   static tag = 'bad-counter';
-//   render() {
-//     const _s: string = this.count;  // ← expected error: Type 'number' is not assignable to type 'string'.
-//     return html`${this.count}`;
-//   }
-// }
+/* ------------- PropertyDeclaration shape accepts the expected fields ------------- */
+
+const decl: PropertyDeclaration = {
+  type: Number,
+  reflect: true,
+  state: false,
+  attribute: 'data-count',
+  hasChanged: (a, b) => a !== b,
+  converter: {
+    fromAttribute: (v) => Number(v),
+    toAttribute: (v) => String(v),
+  },
+};
+void decl; // silence "unused" for the fixture
+
+/* ------------- ReactiveController shape ------------- */
+
+const ctrl: ReactiveController = {
+  hostConnected() {},
+  hostDisconnected() {},
+  hostUpdate() {},
+  hostUpdated() {},
+};
+void ctrl;
+
+/* ------------- Augmenting HTMLElementTagNameMap gives querySelector typing ------------- */
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'student-card': StudentCard;
+    'my-counter': Counter;
+  }
+}
+
+const el = document.querySelector('student-card');
+type _ElType = Assert<Equal<typeof el, StudentCard | null>>;
 
 export {};

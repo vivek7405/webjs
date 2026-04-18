@@ -212,16 +212,14 @@ with puppeteer or playwright imports.
 <!-- OVERRIDE -->
 
 ```ts
-import { defineComponent, html } from 'webjs';
+import { WebComponent, html } from 'webjs';
 
-export class MyWidget extends defineComponent({
-  label: { type: String },
-  count: { type: Number },
-}) {
+export class MyWidget extends WebComponent {
   static tag = 'my-widget';
-  // `this.label: string` and `this.count: number` are inferred — no
-  // `declare` boilerplate. Light DOM is the default; Tailwind classes
-  // apply directly.
+  static properties = { label: { type: String }, count: { type: Number } };
+  declare label: string;
+  declare count: number;
+  // Light DOM is the default; Tailwind utility classes apply directly.
 
   render() {
     return html`
@@ -234,10 +232,14 @@ export class MyWidget extends defineComponent({
 MyWidget.register(import.meta.url);
 ```
 
-Prefer `defineComponent(...)` over plain `WebComponent` when you have
-properties — it's the recommended pattern for TypeScript apps. Pure JS
-consumers can still subclass `WebComponent` directly and set
-`static properties` manually.
+`static properties` is the runtime declaration (reactive accessor,
+attribute coercion, reflection). `declare` types the field for
+TypeScript without emitting a class-field initializer that would
+clobber the reactive accessor at construction time. The two
+declarations together give you full intelligence in any tsserver-backed
+editor — see the Editor Setup docs for `ts-lit-plugin` setup that
+extends this to tag / attribute intelligence inside `html\`…\``
+templates.
 
 **Rules:**
 - One component per file
