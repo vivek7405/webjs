@@ -20,9 +20,3 @@ export class ErrorCard extends WebComponent {
   }
 }
 ErrorCard.register(import.meta.url);
-
-declare global {
-  interface HTMLElementTagNameMap {
-    'error-card': ErrorCard;
-  }
-}
