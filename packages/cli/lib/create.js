@@ -195,11 +195,44 @@ export type ActionResult<T> =
   }
 
   if (!isApi) {
-    // Full-stack and SaaS templates: layout + page + theme toggle
+    // Full-stack and SaaS templates: layout + page + theme toggle + Tailwind
+
+    // Copy the Tailwind browser runtime + _utils/ui.ts helpers from the
+    // scaffold templates directory so the app boots with the exact blog
+    // example architecture: light DOM + Tailwind + JS helpers.
+    const publicDir = join(appDir, 'public');
+    await mkdir(publicDir, { recursive: true });
+    const tailwindSrc = join(TEMPLATES, 'public', 'tailwind-browser.js');
+    if (existsSync(tailwindSrc)) {
+      await cp(tailwindSrc, join(publicDir, 'tailwind-browser.js'));
+    }
+
+    const utilsDir = join(appDir, 'app', '_utils');
+    await mkdir(utilsDir, { recursive: true });
+    const uiSrc = join(TEMPLATES, 'app', '_utils', 'ui.ts');
+    if (existsSync(uiSrc)) {
+      await cp(uiSrc, join(utilsDir, 'ui.ts'));
+    }
 
   await writeFile(join(appDir, 'app', 'layout.ts'), `import { html } from 'webjs';
 import 'webjs/client-router';
 import '../components/theme-toggle.ts';
+
+/**
+ * Root layout — globals + chrome.
+ *
+ * Light DOM + Tailwind by default. Design tokens live in :root and are
+ * mapped into the Tailwind palette via @theme, so classes like
+ * text-fg, bg-bg-elev, font-serif, duration-fast, text-display all work.
+ *
+ * Nav + footer links repeat the same class bundle, so they're extracted
+ * into small JS helpers below. Each helper runs at SSR time inside
+ * html\\\`\\\`, producing static HTML in the response — no client runtime.
+ */
+
+const navLink = (href: string, label: string) => html\`
+  <a href=\${href} class="text-fg-muted no-underline font-medium text-[13px] leading-none tracking-[0.005em] transition-colors duration-fast hover:text-fg">\${label}</a>
+\`;
 
 export default function RootLayout({ children }: { children: unknown }) {
   return html\`
@@ -213,41 +246,104 @@ export default function RootLayout({ children }: { children: unknown }) {
         } catch (_) {}
       })();
     </script>
+    <script src="/public/tailwind-browser.js"></script>
+    <style type="text/tailwindcss">
+      @theme {
+        --color-fg:            var(--fg);
+        --color-fg-muted:      var(--fg-muted);
+        --color-fg-subtle:     var(--fg-subtle);
+        --color-bg:            var(--bg);
+        --color-bg-elev:       var(--bg-elev);
+        --color-bg-subtle:     var(--bg-subtle);
+        --color-border:        var(--border);
+        --color-border-strong: var(--border-strong);
+        --color-accent:        var(--accent);
+        --color-accent-hover:  var(--accent-hover);
+        --color-accent-fg:     var(--accent-fg);
+        --color-accent-tint:   var(--accent-tint);
+        --font-sans:  var(--font-sans);
+        --font-serif: var(--font-serif);
+        --font-mono:  var(--font-mono);
+        --text-display: clamp(2.6rem, 1.6rem + 3.2vw, 4.25rem);
+        --text-h1:      clamp(2rem, 1.5rem + 1.6vw, 2.85rem);
+        --text-h2:      clamp(1.35rem, 1.15rem + 0.7vw, 1.7rem);
+        --text-lede:    clamp(1.05rem, 0.95rem + 0.3vw, 1.2rem);
+        --duration-fast: 140ms;
+        --duration-slow: 380ms;
+      }
+    </style>
     <style>
       :root {
         color-scheme: light dark;
-        --fg: oklch(0.18 0.015 60);
-        --fg-muted: oklch(0.42 0.02 65);
-        --bg: oklch(0.985 0.008 80);
-        --bg-elev: oklch(1 0 0);
-        --border: oklch(0.88 0.01 75 / 0.95);
-        --accent: oklch(0.58 0.15 55);
-        --accent-fg: oklch(1 0 0);
-        --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+        /* ---------- dark (default) ---------- */
+        --fg:            oklch(0.96 0.015 60);
+        --fg-muted:      oklch(0.72 0.02 60);
+        --fg-subtle:     oklch(0.55 0.02 60);
+        --bg:            oklch(0.14 0.01 55);
+        --bg-elev:       oklch(0.18 0.01 55);
+        --bg-subtle:     oklch(0.16 0.01 55);
+        --border:        oklch(0.26 0.012 55 / 0.9);
+        --border-strong: oklch(0.38 0.012 55 / 0.9);
+        --accent:        oklch(0.78 0.14 55);
+        --accent-hover:  oklch(0.85 0.14 55);
+        --accent-fg:     oklch(0.15 0.01 55);
+        --accent-tint:   oklch(0.78 0.14 55 / 0.14);
+        --font-sans:   -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        --font-serif:  ui-serif, 'Iowan Old Style', Palatino, Georgia, serif;
+        --font-mono:   ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
-      :root[data-theme='dark'] {
-        --fg: oklch(0.96 0.015 60);
-        --fg-muted: oklch(0.72 0.02 60);
-        --bg: oklch(0.14 0.01 55);
-        --bg-elev: oklch(0.18 0.01 55);
-        --border: oklch(0.26 0.012 55 / 0.9);
-        --accent: oklch(0.78 0.14 55);
-        --accent-fg: oklch(0.15 0.01 55);
+      :root[data-theme='light'] {
+        --fg:            oklch(0.18 0.015 60);
+        --fg-muted:      oklch(0.42 0.02 65);
+        --fg-subtle:     oklch(0.62 0.015 70);
+        --bg:            oklch(0.985 0.008 80);
+        --bg-elev:       oklch(1 0 0);
+        --bg-subtle:     oklch(0.96 0.008 80);
+        --border:        oklch(0.88 0.01 75 / 0.95);
+        --border-strong: oklch(0.78 0.01 75 / 0.95);
+        --accent:        oklch(0.58 0.15 55);
+        --accent-hover:  oklch(0.5 0.15 55);
+        --accent-fg:     oklch(1 0 0);
+        --accent-tint:   oklch(0.58 0.15 55 / 0.1);
       }
-      *, *::before, *::after { box-sizing: border-box; }
+      @media (prefers-color-scheme: light) {
+        :root:not([data-theme='dark']) {
+          --fg:            oklch(0.18 0.015 60);
+          --fg-muted:      oklch(0.42 0.02 65);
+          --fg-subtle:     oklch(0.62 0.015 70);
+          --bg:            oklch(0.985 0.008 80);
+          --bg-elev:       oklch(1 0 0);
+          --bg-subtle:     oklch(0.96 0.008 80);
+          --border:        oklch(0.88 0.01 75 / 0.95);
+          --border-strong: oklch(0.78 0.01 75 / 0.95);
+          --accent:        oklch(0.58 0.15 55);
+          --accent-hover:  oklch(0.5 0.15 55);
+          --accent-fg:     oklch(1 0 0);
+          --accent-tint:   oklch(0.58 0.15 55 / 0.1);
+        }
+      }
+      /* Body + pseudo-elements utility classes can't reach. */
       html, body { margin: 0; }
       body {
         background: var(--bg);
         color: var(--fg);
         font: 16px/1.65 var(--font-sans);
+        -webkit-font-smoothing: antialiased;
       }
+      ::selection { background: var(--accent-tint); color: var(--fg); }
     </style>
-    <header style="display:flex;align-items:center;justify-content:space-between;max-width:800px;margin:0 auto;padding:16px 24px">
-      <a href="/" style="font-weight:700;color:var(--fg);text-decoration:none">${name}</a>
-      <theme-toggle></theme-toggle>
+
+    <header class="sticky top-0 z-20 flex items-center gap-6 px-4 sm:px-6 py-3 border-b border-border bg-[color-mix(in_oklch,var(--bg)_75%,transparent)] backdrop-blur-[18px]">
+      <a href="/" class="mr-auto inline-flex items-center gap-2 no-underline text-fg font-semibold text-[15px] leading-none tracking-tight">
+        <span>${name}</span>
+      </a>
+      <nav class="flex gap-4 items-center">
+        \${navLink('/', 'Home')}
+        <theme-toggle></theme-toggle>
+      </nav>
     </header>
-    <main style="max-width:800px;margin:0 auto;padding:24px">
+
+    <main class="block max-w-[760px] mx-auto px-4 sm:px-6 pt-[72px] pb-12 min-h-screen">
       \${children}
     </main>
   \`;
@@ -255,6 +351,7 @@ export default function RootLayout({ children }: { children: unknown }) {
 `);
 
   await writeFile(join(appDir, 'app', 'page.ts'), `import { html } from 'webjs';
+import { rubric, displayH1, accentLink } from './_utils/ui.ts';
 
 export const metadata = {
   title: '${name} — built with webjs',
@@ -262,10 +359,25 @@ export const metadata = {
 
 export default function Home() {
   return html\`
-    <h1>Welcome to ${name}</h1>
-    <p>Edit <code>app/page.ts</code> to get started.</p>
-    <p>Run <code>npx webjs test</code> to run tests.</p>
-    <p>Run <code>npx webjs check</code> to validate conventions.</p>
+    <section class="mb-18">
+      \${rubric('welcome')}
+      \${displayH1(html\`Hello from <span class="text-accent italic">${name}</span>.\`)}
+      <p class="text-lede leading-[1.5] text-fg-muted max-w-[56ch] m-0">
+        Edit <code class="font-mono text-[0.9em]">app/page.ts</code> to get started.
+        Run \${accentLink('#', 'npx webjs test')} to run tests and
+        \${accentLink('#', 'npx webjs check')} to validate conventions.
+      </p>
+    </section>
+
+    <section class="mt-18 pt-6 border-t border-border">
+      <h2 class="font-serif text-[1.6rem] tracking-[-0.02em] font-bold m-0 mb-2">Light DOM + Tailwind</h2>
+      <p class="text-fg-muted text-sm m-0 mb-4">
+        Components render into light DOM by default. Tailwind utility classes
+        apply directly. Set <code class="font-mono text-[0.9em]">static shadow = true</code>
+        on a component when you need scoped styles, &lt;slot&gt; projection,
+        or third-party-embed isolation.
+      </p>
+    </section>
   \`;
 }
 `);
@@ -279,25 +391,23 @@ export default function Home() {
 
   // --- Theme toggle component ---
 
-  await writeFile(join(appDir, 'components', 'theme-toggle.ts'), `import { WebComponent, html, css } from 'webjs';
+  await writeFile(join(appDir, 'components', 'theme-toggle.ts'), `import { WebComponent, html } from 'webjs';
 
-type Theme = 'light' | 'dark';
+type Theme = 'system' | 'light' | 'dark';
 
+/**
+ * <theme-toggle> — light DOM component styled with Tailwind utilities.
+ *
+ * Light DOM is the default: no static shadow = true, no static styles.
+ * Because this component has no custom CSS (only Tailwind classes,
+ * which are already unique by construction), the class-prefix rule
+ * doesn't apply here. If you ever add a <style> block, prefix every
+ * selector with 'theme-toggle' (e.g. .theme-toggle__btn or
+ * \`theme-toggle .btn\`).
+ */
 export class ThemeToggle extends WebComponent {
   static tag = 'theme-toggle';
   declare state: { theme: Theme };
-  static styles = css\`
-    :host { display: inline-flex; }
-    button {
-      padding: 6px 12px;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      background: var(--bg-elev);
-      color: var(--fg-muted);
-      cursor: pointer;
-      font: 12px/1 var(--font-mono);
-    }
-  \`;
 
   constructor() {
     super();
@@ -325,8 +435,12 @@ export class ThemeToggle extends WebComponent {
 
   render() {
     return html\`
-      <button @click=\${() => this.cycle()}>
-        \${this.state.theme === 'light' ? 'Light' : 'Dark'}
+      <button
+        class="inline-flex items-center px-3 py-1.5 rounded-full border border-border bg-bg-elev text-fg-muted font-mono text-[11px] leading-none tracking-wider uppercase duration-fast hover:text-fg hover:border-border-strong"
+        @click=\${() => this.cycle()}
+      >
+        \${this.state.theme === 'system' ? 'Auto'
+          : this.state.theme === 'light' ? 'Light' : 'Dark'}
       </button>
     \`;
   }
@@ -378,8 +492,10 @@ ThemeToggle.register(import.meta.url);
 `);
   } else {
     console.log(`  ${name}/
-    app/layout.ts, page.ts
-    components/theme-toggle.ts
+    app/layout.ts, page.ts       ← light DOM + Tailwind + @theme tokens
+    app/_utils/ui.ts             ← JS helpers for repeated class bundles
+    public/tailwind-browser.js   ← Tailwind runtime
+    components/theme-toggle.ts   ← light DOM web component
     modules/
     CONVENTIONS.md, AGENTS.md, CLAUDE.md
 `);

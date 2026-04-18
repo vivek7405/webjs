@@ -13,18 +13,19 @@ export default function Conventions() {
     <ul>
       <li><strong>Module architecture</strong> — where actions, queries, and components go.</li>
       <li><strong>Testing rules</strong> — when unit vs E2E tests are required.</li>
-      <li><strong>Component patterns</strong> — shadow DOM, <code>register()</code>, scoped styles.</li>
+      <li><strong>Component patterns</strong> — light DOM by default with Tailwind; shadow DOM opt-in; <code>register()</code>; the class-prefix rule for light-DOM custom CSS.</li>
+      <li><strong>Styling convention</strong> — Tailwind browser runtime + <code>@theme</code> tokens; JS helpers in <code>app/_utils/ui.ts</code> to dedupe repeated class bundles; no <code>@apply</code>.</li>
       <li><strong>Server action patterns</strong> — one function per file, <code>ActionResult</code> envelope.</li>
       <li><strong>Code style</strong> — TypeScript extensions, const/let preferences, async/await patterns.</li>
     </ul>
 
     <h3>How to Override</h3>
-    <p>Sections in <code>CONVENTIONS.md</code> marked with <code>&lt;!-- OVERRIDE --&gt;</code> are customization points. Edit these to match your team's preferences. For example, if you prefer light DOM components by default:</p>
+    <p>Sections in <code>CONVENTIONS.md</code> marked with <code>&lt;!-- OVERRIDE --&gt;</code> are customization points. Edit these to match your team's preferences. For example, if you prefer shadow DOM components by default (the scaffold defaults to light DOM + Tailwind):</p>
 
     <pre># Component patterns  &lt;!-- OVERRIDE --&gt;
 
-- Use light DOM by default (static shadow = false)
-- Shadow DOM only for components that need style encapsulation
+- Opt in to shadow DOM (static shadow = true) for every component
+- Author styles via static styles = css`...`
 - Always call register(import.meta.url)</pre>
 
     <p>AI agents read <code>CONVENTIONS.md</code> before every task and follow the overrides. You can also disable specific convention rules in <code>package.json</code>:</p>

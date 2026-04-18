@@ -222,61 +222,12 @@ static styles = css\`
 
     <blockquote>This is fundamentally different from React CSS-in-JS solutions that require runtime injection or build tooling. webjs uses the platform: shadow DOM gives you scoping, CSS custom properties give you theming, and there is nothing to configure.</blockquote>
 
-    <h2>Shadow DOM</h2>
-    <p>Shadow DOM is <strong>enabled by default</strong>. Every component gets its own shadow root, which means:</p>
-    <ul>
-      <li>Styles declared in <code>static styles</code> are scoped — they cannot leak out and document styles cannot leak in (except CSS custom properties, which inherit by design).</li>
-      <li>The component's internal DOM is encapsulated. <code>document.querySelector</code> from outside will not reach elements inside the shadow root.</li>
-      <li>Content from the parent is projected into the component via <code>&lt;slot&gt;</code> elements.</li>
-    </ul>
-
-    <h3>Opting Out: Light DOM</h3>
-    <p>Set <code>static shadow = false</code> to render directly into the element (light DOM). This is useful for components that need to participate in the parent's CSS cascade, or for layout primitives that should not create a style boundary:</p>
-
-    <pre>class InlineAlert extends WebComponent {
-  static tag = 'inline-alert';
-  static shadow = false;  // renders into light DOM
-
-  static properties = {
-    type: { type: String },
-  };
-
-  type = 'info';
-
-  render() {
-    return html\`
-      &lt;div class="alert alert--\${this.type}"&gt;
-        \${this.type === 'warning' ? '⚠ ' : ''}
-        This content lives in light DOM.
-      &lt;/div&gt;
-    \`;
-  }
-}
-InlineAlert.register(import.meta.url);</pre>
-
-    <p>With <code>shadow = false</code>, <code>static styles</code> are <strong>not</strong> adopted (there is no shadow root to adopt them into). Style the component via regular document stylesheets instead.</p>
-
-    <h3>When to Use Shadow vs Light DOM</h3>
-    <p>Both shadow DOM and light DOM components are <strong>fully SSR'd</strong>. Shadow DOM renders via Declarative Shadow DOM (<code>&lt;template shadowrootmode="open"&gt;</code>); light DOM renders content directly as HTML. Both hydrate on the client without flash.</p>
-
-    <table>
-      <thead>
-        <tr><th>Component type</th><th>Use</th><th>Why</th></tr>
-      </thead>
-      <tbody>
-        <tr><td>Components with <code>static styles = css</code></td><td>Shadow DOM (default)</td><td><code>adoptedStyleSheets</code> requires a shadow root. Bare selectors are scoped.</td></tr>
-        <tr><td>Components using <code>&lt;slot&gt;</code> for children</td><td>Shadow DOM</td><td>Slots only work in shadow DOM</td></tr>
-        <tr><td>Components styled with global/Tailwind CSS</td><td>Light DOM (<code>static shadow = false</code>)</td><td>No <code>static styles</code>. Global stylesheets apply directly.</td></tr>
-        <tr><td>Third-party components</td><td>Their choice</td><td>They manage their own shadow roots</td></tr>
-      </tbody>
-    </table>
-
-    <p>Light DOM example:</p>
+    <h2>Light DOM (default)</h2>
+    <p>Light DOM is the default because global CSS and Tailwind utility classes apply directly — no <code>:host</code>, no <code>::part</code>, no CSS-variable plumbing. The browser renders a plain custom element with normal children. This is the mode the blog example uses everywhere except when shadow DOM buys something specific.</p>
 
     <pre>class AppCard extends WebComponent {
   static tag = 'app-card';
-  static shadow = false;  // light DOM — global styles apply
-
+  // static shadow = false is the default — no need to declare it.
   static properties = {
     heading: { type: String },
   };
@@ -285,14 +236,87 @@ InlineAlert.register(import.meta.url);</pre>
 
   render() {
     return html\`
-      &lt;div class="card"&gt;
-        &lt;h3&gt;\${this.heading}&lt;/h3&gt;
-        &lt;p&gt;This content lives in the light DOM and inherits document styles.&lt;/p&gt;
+      &lt;div class="rounded-lg border border-border bg-bg-elev p-6"&gt;
+        &lt;h3 class="font-serif text-lg mb-2"&gt;\${this.heading}&lt;/h3&gt;
+        &lt;p class="text-fg-muted"&gt;Tailwind utility classes apply directly.&lt;/p&gt;
       &lt;/div&gt;
     \`;
   }
 }
 AppCard.register(import.meta.url);</pre>
+
+    <h3>Class-prefix rule for custom CSS</h3>
+    <p>Tailwind utilities are unique by construction, so most light-DOM components need zero custom CSS. If you <em>do</em> author a <code>&lt;style&gt;</code> block or import a stylesheet, <strong>every class selector MUST be prefixed with the component's tag name</strong>. Otherwise two components with a <code>.card</code> or <code>.header</code> class will style each other.</p>
+
+    <pre>// Pattern A — BEM-ish class names prefixed with tag
+class MyCard extends WebComponent {
+  static tag = 'my-card';
+  render() {
+    return html\`
+      &lt;style&gt;
+        .my-card__body  { padding: 16px; }
+        .my-card__title { font-weight: 600; }
+      &lt;/style&gt;
+      &lt;div class="my-card__body"&gt;&lt;h3 class="my-card__title"&gt;\${t}&lt;/h3&gt;&lt;/div&gt;
+    \`;
+  }
+}
+
+// Pattern B — descendant selector rooted at the tag
+class MyCard extends WebComponent {
+  static tag = 'my-card';
+  render() {
+    return html\`
+      &lt;style&gt;
+        my-card .body  { padding: 16px; }
+        my-card .title { font-weight: 600; }
+      &lt;/style&gt;
+      &lt;div class="body"&gt;&lt;h3 class="title"&gt;\${t}&lt;/h3&gt;&lt;/div&gt;
+    \`;
+  }
+}</pre>
+
+    <h2>Shadow DOM (opt-in)</h2>
+    <p>Set <code>static shadow = true</code> when you want one of these:</p>
+    <ul>
+      <li>Scoped styles via <code>static styles = css\`...\`</code> (adopted via <code>adoptedStyleSheets</code>) without prefix discipline.</li>
+      <li><code>&lt;slot&gt;</code> content projection with the full slot semantics (<code>::slotted</code>, named slots).</li>
+      <li>Third-party embed isolation — your component looks right in any host page, regardless of their CSS.</li>
+    </ul>
+
+    <pre>class Card extends WebComponent {
+  static tag = 'my-card';
+  static shadow = true;                 // opt in
+  static styles = css\`
+    :host { display: block; padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
+    h3 { margin: 0 0 8px; }
+    p  { color: var(--fg-muted); margin: 0; }
+  \`;
+  render() {
+    return html\`
+      &lt;h3&gt;&lt;slot name="title"&gt;&lt;/slot&gt;&lt;/h3&gt;
+      &lt;p&gt;&lt;slot&gt;&lt;/slot&gt;&lt;/p&gt;
+    \`;
+  }
+}
+Card.register(import.meta.url);</pre>
+
+    <p><code>static styles</code> on a light-DOM component is silently ignored — there's no shadow root to adopt them into. If you see your styles failing, check whether you forgot <code>static shadow = true</code>.</p>
+
+    <h3>Mode summary</h3>
+    <p>Both modes are <strong>fully SSR'd</strong>. Shadow DOM renders via Declarative Shadow DOM (<code>&lt;template shadowrootmode="open"&gt;</code>); light DOM renders content directly as HTML with a <code>&lt;!--webjs-hydrate--&gt;</code> marker. Both hydrate on the client without flash.</p>
+
+    <table>
+      <thead>
+        <tr><th>Component type</th><th>Mode</th><th>Why</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Global / Tailwind utility classes, simple composition</td><td><strong>Light DOM</strong> (default)</td><td>Utilities apply directly. No host plumbing.</td></tr>
+        <tr><td><code>static styles = css\`\`</code> scoped styles</td><td>Shadow DOM</td><td><code>adoptedStyleSheets</code> needs a shadow root.</td></tr>
+        <tr><td><code>&lt;slot&gt;</code> content projection</td><td>Shadow DOM</td><td>Slots only exist inside shadow roots.</td></tr>
+        <tr><td>Third-party embed needing isolation</td><td>Shadow DOM</td><td>CSS can't leak in or out.</td></tr>
+      </tbody>
+    </table>
 
     <h2>Slots: Content Projection</h2>
     <p>Slots are how a parent passes content into a shadow DOM component. If you are coming from React, think of the default slot as <code>children</code>.</p>

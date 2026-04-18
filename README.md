@@ -12,8 +12,10 @@ TypeScript with zero build step, real SSR with Declarative Shadow DOM.
 
 - **AI-first.** Predictable file conventions, one function per file, explicit `.server.ts` boundary, `AGENTS.md` contract — designed so LLMs modify code without loading the entire codebase into context.
 - **No build.** `.ts` files served directly. Node 23.6+ strips types at runtime; the dev server strips types via esbuild for the browser (~1ms/file, cached). Edit, refresh, done.
-- **Web components.** Shadow DOM + Declarative Shadow DOM for real SSR. Components paint before JS loads. No hydration runtime.
+- **Web components, light DOM by default.** Pages and components render as light DOM so global CSS and Tailwind utilities apply directly — no `::part`, no `:host`, no CSS-var plumbing. Shadow DOM is opt-in (`static shadow = true`) when you need scoped styles or real `<slot>` projection. Both modes SSR fully, no hydration runtime.
+- **Tailwind CSS by default.** The scaffold ships with the Tailwind browser runtime + `@theme` design tokens. Custom CSS still works — the framework has no Tailwind dependency. Light-DOM components that author their own CSS must prefix selectors with the tag name (e.g. `.my-card__body`) so styles don't leak across components.
 - **Full-stack type safety.** Import a `.server.ts` function from a component — TypeScript sees the real signature. superjson on the wire preserves `Date`, `Map`, `Set`, `BigInt`.
+- **Server-file source is unreachable from the browser.** Framework invariant: any file ending `.server.{js,ts}` or starting with `'use server'` is always served as an RPC stub, never its real source. Enforced in the HTTP layer with regression tests.
 - **NextJs-style routing.** `page.ts`, `layout.ts`, `route.ts`, `error.ts`, `middleware.ts`, `[params]`, `(groups)`, `_private`. Layouts persist across navigations.
 - **Client router.** Turbo-Drive-style link interception. Shadow-DOM-aware via `composedPath()`. Layouts stay mounted, only page content swaps. No white flash.
 - **WebSockets built in.** Export `WS` from `route.ts` → WebSocket endpoint. `connectWS()` on the client auto-reconnects.
@@ -79,28 +81,31 @@ export default async function Home() {
 ```
 
 ```ts
-// components/counter.ts — interactive web component with shadow DOM
-import { WebComponent, html, css } from 'webjs';
+// components/counter.ts — interactive web component, light DOM + Tailwind
+import { WebComponent, html } from 'webjs';
 
 export class Counter extends WebComponent {
   static tag = 'my-counter';
+  // Light DOM is the default; Tailwind utility classes apply directly.
   static properties = { count: { type: Number } };
-  static styles = css`
-    :host { display: inline-flex; gap: 8px; }
-    button { font: inherit; padding: 4px 12px; }
-  `;
   count = 0;
 
   render() {
     return html`
-      <button @click=${() => { this.count--; this.requestUpdate(); }}>−</button>
-      <output>${this.count}</output>
-      <button @click=${() => { this.count++; this.requestUpdate(); }}>+</button>
+      <div class="inline-flex items-center gap-2 font-mono">
+        <button class="px-3 py-1 rounded border border-border hover:bg-bg-elev" @click=${() => { this.count--; this.requestUpdate(); }}>−</button>
+        <output class="min-w-[2ch] text-center">${this.count}</output>
+        <button class="px-3 py-1 rounded border border-border hover:bg-bg-elev" @click=${() => { this.count++; this.requestUpdate(); }}>+</button>
+      </div>
     `;
   }
 }
 Counter.register(import.meta.url);
 ```
+
+Need scoped styles, `<slot>` projection, or embed-ready isolation? Opt
+in to shadow DOM with `static shadow = true` and author styles via
+`static styles = css\`…\``.
 
 ```ts
 // modules/posts/queries/list-posts.server.ts — one function per file
@@ -147,9 +152,9 @@ testing, conventions, configuration.
 
 ## Status
 
-Pre-1.0. 70 unit tests. Key features:
+Pre-1.0. 246 unit tests, 21 browser tests. Key features:
 
-- **Core:** SSR with DSD, fine-grained client renderer, `repeat()`, `Suspense()`, client router with `composedPath()` for shadow DOM
+- **Core:** SSR with DSD (opt-in) + light-DOM hydration (default), fine-grained client renderer, `repeat()`, `Suspense()`, client router with `composedPath()` for shadow DOM, mixed-attribute interpolation, MutationObserver upgrade safety net
 - **Data:** server actions + superjson (Date/Map/Set/BigInt survive the wire), `expose()` for REST, `json()` + `richFetch()` for content-negotiated APIs, `cache()` for server-side query caching with TTL + `invalidate()`
 - **Server:** file router, per-segment middleware, `rateLimit()`, WebSockets + `broadcast()`, CSRF, compression, HTTP/2, 103 Early Hints, health probes, graceful shutdown, `Session` class with `SessionStorage` (cookie or store-backed), NextAuth-style `createAuth()` (Credentials, Google, GitHub)
 - **DX:** TypeScript with zero build, `AGENTS.md` contract, `CLAUDE.md`, live reload in dev, optional esbuild bundle for prod

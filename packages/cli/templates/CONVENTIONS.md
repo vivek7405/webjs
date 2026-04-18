@@ -212,16 +212,18 @@ with puppeteer or playwright imports.
 <!-- OVERRIDE -->
 
 ```ts
-import { WebComponent, html, css } from 'webjs';
+import { WebComponent, html } from 'webjs';
 
 export class MyWidget extends WebComponent {
   static tag = 'my-widget';
-  static styles = css`
-    :host { display: block; }
-  `;
+  // Light DOM is the default — Tailwind utility classes apply directly.
 
   render() {
-    return html`<p>Hello</p>`;
+    return html`
+      <div class="p-4 border border-border rounded-lg">
+        <p class="font-serif text-fg">Hello</p>
+      </div>
+    `;
   }
 }
 MyWidget.register(import.meta.url);
@@ -229,8 +231,11 @@ MyWidget.register(import.meta.url);
 
 **Rules:**
 - One component per file
-- Shadow DOM by default (`static shadow = true`)
-- Styles via `static styles = css\`...\``, never inline `style="..."` on host
+- **Light DOM by default.** Opt in to shadow DOM with `static shadow = true` when you need scoped styles, `<slot>` projection, or third-party-embed isolation.
+- Prefer Tailwind utility classes for styling. They're unique by construction (`p-4`, `font-semibold`) so they can't collide across components.
+- **If a light-DOM component authors its own custom CSS (a `<style>` block in `render()` or an imported stylesheet), every class selector MUST be prefixed with the component's tag name.** Either pattern works — pick one and stay consistent:
+  - `.my-widget__body`, `.my-widget__title` (BEM-ish)
+  - `my-widget .body`, `my-widget .title` (descendant selector)
 - Tag name must contain a hyphen (HTML spec)
 - Always call `.register(import.meta.url)` — enables modulepreload hints
 - Use `setState()` for state changes, never mutate `this.state` directly
@@ -238,26 +243,84 @@ MyWidget.register(import.meta.url);
 
 ---
 
-## Components: Shadow DOM vs Light DOM
+## Components: Light DOM (default) vs Shadow DOM (opt-in)
 
 <!-- OVERRIDE -->
 
-| Component type | Use | Why |
+| Use case | Mode | How |
 |---|---|---|
-| Components with scoped styles (`static styles`) | Shadow DOM (default) | `static styles = css` uses `adoptedStyleSheets` — requires shadow DOM |
-| Layout shells that wrap children | Shadow DOM | Need `<slot>` for content projection |
-| Components using global/Tailwind CSS | Light DOM (`static shadow = false`) | Global stylesheets apply directly, Tailwind works |
-| Third-party components | Their choice | They manage their own shadow roots |
+| Global / Tailwind CSS, simple composition | **Light DOM** (default) | Write `class="..."` in your template. Plain children, global styles apply. |
+| Scoped styles via `static styles = css\`\`` | Shadow DOM | Set `static shadow = true`. `adoptedStyleSheets` scopes bare selectors. |
+| `<slot>` content projection | Shadow DOM | Slots only work inside shadow roots. |
+| Third-party embed isolation | Shadow DOM | CSS can't leak in or out. |
 
-**Shadow DOM** = scoped styles via `static styles = css`. The browser
-enforces isolation. Use `:host`, bare selectors, anything — nothing leaks.
+**Light DOM** = the component renders as plain HTML. Global CSS and
+Tailwind utility classes apply directly. Use `document.querySelector`
+to find elements. No `:host`, no `::part`, no CSS-variable plumbing.
 
-**Light DOM** = global styles. Don't use `static styles`. Style via
-global CSS, Tailwind utility classes, or `<style>` in the render template.
-`document.querySelector` finds elements. No `<slot>` needed.
+**Shadow DOM** = opt-in style encapsulation. Declare `static shadow = true`
+and author styles via `static styles = css\`...\`` (adopted via
+`adoptedStyleSheets`). The browser enforces the boundary; nothing leaks
+in or out.
 
-Both are fully SSR'd — shadow DOM uses Declarative Shadow DOM, light DOM
-renders content directly as HTML. Both hydrate without flash on the client.
+Both modes are fully SSR'd. Light DOM emits content as direct children
+with a `<!--webjs-hydrate-->` marker. Shadow DOM emits a
+`<template shadowrootmode="open">` that the browser attaches automatically.
+Both hydrate without flash on the client.
+
+---
+
+## Styling: Tailwind + JS helpers
+
+<!-- OVERRIDE -->
+
+The scaffold ships with the **Tailwind CSS browser runtime** + `@theme`
+design tokens defined in the root layout. Every colour, font family,
+fluid type scale value, and motion duration is declared once in `@theme`
+and available everywhere via utility classes (`text-fg`, `bg-bg-elev`,
+`font-serif`, `duration-fast`, `text-display`).
+
+**Dedup repeated Tailwind class bundles with JS helpers, not `@apply`.**
+When the same string of classes appears in 2+ places, extract it into a
+small function in `app/_utils/ui.ts`:
+
+```ts
+// app/_utils/ui.ts
+import { html } from 'webjs';
+
+export function rubric(label: string) {
+  return html`
+    <span class="block font-mono text-[11px] leading-none font-semibold tracking-[0.2em] uppercase text-accent mb-4">● ${label}</span>
+  `;
+}
+```
+
+Consume:
+
+```ts
+// app/page.ts
+import { rubric } from './_utils/ui.ts';
+
+export default function Home() {
+  return html`
+    ${rubric('welcome')}
+    <h1 class="font-serif text-display">Hello</h1>
+  `;
+}
+```
+
+Helpers run at SSR time inside `html\`\``, so the output is identical
+to writing the classes inline — no client-side runtime.
+
+**Why not `@apply`?** `@apply` hides which utilities back a class and
+creates a second source of truth. JS helpers keep the class bundle
+visible at the definition site and compose naturally with conditional
+classes and active states.
+
+**Custom CSS is still supported** — plain `<style>` blocks, CSS modules,
+or a build-step pipeline. The framework has no hard dependency on Tailwind.
+If you mix custom CSS into a light-DOM component, apply the class-prefix
+rule (see Components section above).
 
 ---
 
