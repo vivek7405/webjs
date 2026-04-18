@@ -139,6 +139,12 @@ export default function RootLayout({ children }: { children: unknown }) {
         --shadow-lg: 0 24px 64px oklch(0 0 0 / 0.1), 0 4px 12px oklch(0 0 0 / 0.05);
       }
 
+      /* Global focus styles for form inputs — plain CSS, no Tailwind dependency */
+      input:focus, textarea:focus, select:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-tint);
+      }
       *, *::before, *::after { box-sizing: border-box; }
       html, body { margin: 0; }
       html { scroll-behavior: smooth; }
