@@ -8,4 +8,4 @@ export class LightInner extends WebComponent {
     return html`<span data-testid="light-inner">light-inner OK</span>`;
   }
 }
-LightInner.register(import.meta.url);
+LightInner.register();

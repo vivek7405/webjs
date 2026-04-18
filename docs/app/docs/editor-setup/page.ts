@@ -57,7 +57,7 @@ export class StudentCard extends WebComponent {
     return html\`&lt;p&gt;\${this.student.name}&lt;/p&gt;\`;
   }
 }
-StudentCard.register(import.meta.url);</pre>
+StudentCard.register();</pre>
 
     <p>Inside the class, <code>this.student</code> is a real <code>Student</code> — hover, autocomplete, type-checking all work. <code>this.setState</code>, <code>this.state</code>, <code>this.requestUpdate</code>, and all lifecycle hooks are typed by the framework's <code>.d.ts</code> overlay.</p>
 

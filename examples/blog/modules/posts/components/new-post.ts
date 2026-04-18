@@ -70,4 +70,4 @@ export class NewPost extends WebComponent {
     `;
   }
 }
-NewPost.register(import.meta.url);
+NewPost.register();

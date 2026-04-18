@@ -19,4 +19,4 @@ export class ErrorCard extends WebComponent {
     `;
   }
 }
-ErrorCard.register(import.meta.url);
+ErrorCard.register();

@@ -13,6 +13,7 @@ export {
 export { buildImportMap, importMapTag, setVendorEntries } from './src/importmap.js';
 export { scanBareImports, extractPackageName, bundlePackage, vendorImportMapEntries, clearVendorCache, serveVendorBundle } from './src/vendor.js';
 export { buildModuleGraph, transitiveDeps } from './src/module-graph.js';
+export { scanComponents, primeComponentRegistry, extractComponents } from './src/component-scanner.js';
 export { headers, cookies, getRequest, withRequest } from './src/context.js';
 export { defaultLogger } from './src/logger.js';
 export { rateLimit, parseWindow } from './src/rate-limit.js';

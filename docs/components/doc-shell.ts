@@ -245,4 +245,4 @@ export class DocShell extends WebComponent {
     `;
   }
 }
-DocShell.register(import.meta.url);
+DocShell.register();

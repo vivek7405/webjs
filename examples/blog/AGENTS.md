@@ -98,7 +98,7 @@ The layout (`app/layout.ts`) imports `webjs/client-router` — all `<a>` links n
 ## Invariants
 
 1. Never import `@prisma/client` or `node:*` from components or pages.
-2. Custom element tags must contain a hyphen. Set `static tag`, call `register(import.meta.url)`.
+2. Custom element tags must contain a hyphen. Set `static tag`, call `register()`.
 3. Event/property/boolean holes in `html` must be unquoted: `@click=${fn}`, not `@click="${fn}"`.
 4. Use `setState()`, not direct `this.state` mutation.
 5. Pages/layouts are server-only functions returning TemplateResult.
@@ -117,7 +117,7 @@ Import from auth/types.ts for ActionResult<T>.
 
 ### Add a component
 Create `modules/<feature>/components/<name>.ts` or `components/<name>.ts`.
-Extend WebComponent. Set `static tag`. Call `register(import.meta.url)`.
+Extend WebComponent. Set `static tag`. Call `register()`.
 
 ### Add a database model
 Edit `prisma/schema.prisma`. Run `npx webjs db migrate <name>` then `npx webjs db generate`.

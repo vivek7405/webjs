@@ -84,4 +84,4 @@ export class ChatBox extends WebComponent {
     `;
   }
 }
-ChatBox.register(import.meta.url);
+ChatBox.register();

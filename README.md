@@ -100,7 +100,7 @@ export class Counter extends WebComponent {
     `;
   }
 }
-Counter.register(import.meta.url);
+Counter.register();
 ```
 
 Need scoped styles, `<slot>` projection, or embed-ready isolation? Opt

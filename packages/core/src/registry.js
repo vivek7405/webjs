@@ -16,25 +16,56 @@ const isBrowser = typeof window !== 'undefined' && typeof customElements !== 'un
 
 /**
  * Register a tag → component class mapping.
- * Passing `moduleUrl` (typically `import.meta.url` from the component file)
- * lets the SSR shell emit a `<link rel="modulepreload">` for the module —
- * eliminating a round-trip on first paint without a bundler.
+ *
+ * Module URLs (used by SSR to emit `<link rel="modulepreload">` hints
+ * so first paint doesn't wait on a fresh fetch for each component) are
+ * derived server-side by scanning the app tree at boot — see
+ * `primeModuleUrl`. Callers don't pass URLs here anymore.
  *
  * @param {string} tag
  * @param {typeof import('./component.js').WebComponent} cls
- * @param {string} [moduleUrl]
  */
-export function register(tag, cls, moduleUrl) {
+export function register(tag, cls) {
   const lazy = /** @type {any} */ (cls).lazy === true;
   const entry = registry.get(tag);
   if (entry) {
-    if (!entry.moduleUrl && moduleUrl) entry.moduleUrl = moduleUrl;
+    // Keep the existing moduleUrl if present (set via primeModuleUrl
+    // before this call); just update the class pointer.
+    entry.cls = cls;
+    entry.lazy = lazy;
     return;
   }
-  registry.set(tag, { cls, moduleUrl: moduleUrl || null, lazy });
+  registry.set(tag, { cls, moduleUrl: null, lazy });
   if (isBrowser && !customElements.get(tag)) {
     customElements.define(tag, /** @type {any} */ (cls));
   }
+}
+
+/**
+ * Server-side: record the browser-visible URL for a component's module
+ * BEFORE the module is imported. Populated at server boot by scanning
+ * the app tree for `class … extends WebComponent { static tag = '…' }`
+ * declarations. The SSR pipeline reads these via `lookupModuleUrl`
+ * when emitting `modulepreload` hints.
+ *
+ * Safe to call before `register()` — the tag entry is created lazily
+ * and later merged with the class pointer when the module evaluates.
+ *
+ * @param {string} tag
+ * @param {string} moduleUrl
+ */
+export function primeModuleUrl(tag, moduleUrl) {
+  if (isBrowser) return;
+  const entry = registry.get(tag);
+  if (entry) {
+    entry.moduleUrl = moduleUrl;
+    return;
+  }
+  registry.set(tag, {
+    cls: /** @type any */ (null),
+    moduleUrl,
+    lazy: false,
+  });
 }
 
 /** @param {string} tag */

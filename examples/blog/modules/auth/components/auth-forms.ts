@@ -84,4 +84,4 @@ export class AuthForms extends WebComponent {
     `;
   }
 }
-AuthForms.register(import.meta.url);
+AuthForms.register();

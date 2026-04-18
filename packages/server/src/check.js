@@ -55,7 +55,7 @@ export const RULES = [
   {
     name: 'components-have-register',
     description:
-      'Component files that define a class extending WebComponent must call .register(import.meta.url).',
+      'Component files that define a class extending WebComponent must call .register() — the module URL is derived server-side at boot.',
   },
   {
     name: 'no-server-imports-in-components',
@@ -312,13 +312,14 @@ export async function checkConventions(appDir, opts) {
       if (!isComponentFile(rel)) continue;
       // Check if it defines a class extending WebComponent
       if (!/class\s+\w+\s+extends\s+WebComponent/.test(content)) continue;
-      // Check for .register(import.meta.url)
-      if (/\.register\(\s*import\.meta\.url\s*\)/.test(content)) continue;
+      // Check for a `.register(` call on the class. Args are optional —
+      // the server-side scanner derives the module URL from the file path.
+      if (/\.register\(\s*\)/.test(content)) continue;
       violations.push({
         rule: 'components-have-register',
         file: rel,
-        message: 'Component extends WebComponent but does not call .register(import.meta.url)',
-        fix: 'Add ClassName.register(import.meta.url) after the class definition',
+        message: 'Component extends WebComponent but does not call .register()',
+        fix: 'Add ClassName.register() after the class definition',
       });
     }
   }

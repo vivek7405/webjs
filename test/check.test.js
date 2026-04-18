@@ -21,7 +21,7 @@ test('tag-name-has-hyphen: flags component without hyphen in tag', async () => {
 class BadComp extends WebComponent {
   static tag = 'badcomp';
 }
-BadComp.register(import.meta.url);
+BadComp.register();
 `,
     );
 
@@ -44,7 +44,7 @@ test('tag-name-has-hyphen: passes for valid hyphenated tag', async () => {
 class GoodComp extends WebComponent {
   static tag = 'good-comp';
 }
-GoodComp.register(import.meta.url);
+GoodComp.register();
 `,
     );
 
@@ -88,7 +88,7 @@ test('components-have-register: passes when register is called', async () => {
 class GoodComp extends WebComponent {
   static tag = 'good-comp';
 }
-GoodComp.register(import.meta.url);
+GoodComp.register();
 `,
     );
 
@@ -120,7 +120,7 @@ test('rule override disables a rule', async () => {
 class BadComp extends WebComponent {
   static tag = 'badcomp';
 }
-BadComp.register(import.meta.url);
+BadComp.register();
 `,
     );
 

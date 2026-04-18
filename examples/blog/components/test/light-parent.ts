@@ -17,4 +17,4 @@ export class LightParent extends WebComponent {
       : html`<div data-testid="light-parent"><shadow-inner></shadow-inner></div>`;
   }
 }
-LightParent.register(import.meta.url);
+LightParent.register();

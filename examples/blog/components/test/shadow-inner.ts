@@ -12,4 +12,4 @@ export class ShadowInner extends WebComponent {
     return html`<span data-testid="shadow-inner">shadow-inner OK</span>`;
   }
 }
-ShadowInner.register(import.meta.url);
+ShadowInner.register();

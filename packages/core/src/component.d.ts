@@ -61,7 +61,7 @@ export interface ReactiveController {
  *       declare student: Student;
  *       render() { return html`<p>${this.student.name}</p>`; }
  *     }
- *     StudentCard.register(import.meta.url);
+ *     StudentCard.register();
  *
  * The `declare` field has no runtime cost — it tells TypeScript the
  * field's type without emitting a class-field initializer that would
@@ -78,7 +78,7 @@ export abstract class WebComponent extends HTMLElement {
   static properties: Record<string, PropertyDeclaration>;
   static styles: CSSResult | CSSResult[] | null;
   static lazy?: boolean;
-  static register(moduleUrl?: string): void;
+  static register(): void;
   static readonly observedAttributes: string[];
 
   /** Instance-level reactive state. Prefer `setState()` to mutate. */

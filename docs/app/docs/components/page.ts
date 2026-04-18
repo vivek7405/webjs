@@ -36,7 +36,7 @@ class MyCounter extends WebComponent {
   }
 }
 
-MyCounter.register(import.meta.url);</pre>
+MyCounter.register();</pre>
 
     <p>That is a complete, working component. Import it from a page or layout and use it like any HTML element:</p>
 
@@ -85,7 +85,7 @@ export default function Home() {
     \`;
   }
 }
-UserCard.register(import.meta.url);</pre>
+UserCard.register();</pre>
 
     <h3>Attribute-to-Property Coercion</h3>
     <p>When an attribute changes on the DOM element, webjs coerces the string value to the declared type:</p>
@@ -146,7 +146,7 @@ UserCard.register(import.meta.url);</pre>
     \`;
   }
 }
-TodoList.register(import.meta.url);</pre>
+TodoList.register();</pre>
 
     <h3>How setState Works</h3>
     <ul>
@@ -189,7 +189,7 @@ class StyledCard extends WebComponent {
     \`;
   }
 }
-StyledCard.register(import.meta.url);</pre>
+StyledCard.register();</pre>
 
     <h3>How Styles Are Applied</h3>
     <ul>
@@ -243,7 +243,7 @@ static styles = css\`
     \`;
   }
 }
-AppCard.register(import.meta.url);</pre>
+AppCard.register();</pre>
 
     <h3>Class-prefix rule for custom CSS</h3>
     <p>Tailwind utilities are unique by construction, so most light-DOM components need zero custom CSS. If you <em>do</em> author a <code>&lt;style&gt;</code> block or import a stylesheet, <strong>every class selector MUST be prefixed with the component's tag name</strong>. Otherwise two components with a <code>.card</code> or <code>.header</code> class will style each other.</p>
@@ -299,7 +299,7 @@ class MyCard extends WebComponent {
     \`;
   }
 }
-Card.register(import.meta.url);</pre>
+Card.register();</pre>
 
     <p><code>static styles</code> on a light-DOM component is silently ignored — there's no shadow root to adopt them into. If you see your styles failing, check whether you forgot <code>static shadow = true</code>.</p>
 
@@ -371,7 +371,7 @@ html\`
     \`;
   }
 }
-PageLayout.register(import.meta.url);
+PageLayout.register();
 
 // Usage: assign content to named slots with the slot="" attribute
 html\`
@@ -491,10 +491,10 @@ render() {
 
     <p>During SSR, <code>?disabled=\${true}</code> emits <code>disabled=""</code> and <code>?disabled=\${false}</code> emits nothing — matching how the browser interprets boolean attributes.</p>
 
-    <h2>register(import.meta.url)</h2>
+    <h2>register()</h2>
     <p>Every component must call <code>register()</code> after its class definition. This static method does two things:</p>
 
-    <pre>MyCounter.register(import.meta.url);</pre>
+    <pre>MyCounter.register();</pre>
 
     <ol>
       <li><strong>Registers with <code>customElements.define()</code></strong> — on the browser, this tells the browser to upgrade all <code>&lt;my-counter&gt;</code> elements with the <code>MyCounter</code> class. On the server, it stores the class in an internal registry so <code>renderToString</code> can look it up.</li>
@@ -504,7 +504,7 @@ render() {
     <p>You can omit <code>import.meta.url</code> and just call <code>MyCounter.register()</code>, but you lose the modulepreload optimization.</p>
 
     <pre>// With module URL — recommended
-Counter.register(import.meta.url);
+Counter.register();
 
 // Without module URL — works but no modulepreload hint
 Counter.register();</pre>
@@ -553,7 +553,7 @@ Counter.register();</pre>
     \`;
   }
 }
-UserProfile.register(import.meta.url);</pre>
+UserProfile.register();</pre>
 
     <p>On the client, <code>render()</code> is called synchronously. If you need async data on the client, fetch it in <code>connectedCallback()</code> and call <code>setState()</code> when the data arrives.</p>
 
@@ -622,7 +622,7 @@ class TaskList extends WebComponent {
     \`;
   }
 }
-TaskList.register(import.meta.url);</pre>
+TaskList.register();</pre>
 
     <h3>How repeat() Works</h3>
     <ul>
@@ -701,13 +701,13 @@ class ChatBox extends WebComponent {
     \`;
   }
 }
-ChatBox.register(import.meta.url);</pre>
+ChatBox.register();</pre>
 
     <h2>Quick Reference</h2>
     <ul>
       <li><strong>Extend</strong> <code>WebComponent</code> and set <code>static tag</code>, <code>static properties</code>, <code>static styles</code>.</li>
       <li><strong>Implement</strong> <code>render()</code> returning <code>html\`...\`</code>.</li>
-      <li><strong>Register</strong> with <code>ClassName.register(import.meta.url)</code>.</li>
+      <li><strong>Register</strong> with <code>ClassName.register()</code>.</li>
       <li><strong>State</strong> — use <code>this.setState({...})</code> for shallow merge + batched re-render.</li>
       <li><strong>Events</strong> — <code>@click</code>, <code>@submit</code>, <code>@input</code> in templates. Stable dispatchers, no listener churn.</li>
       <li><strong>Bindings</strong> — <code>attr=\${v}</code> for attributes, <code>.prop=\${v}</code> for properties, <code>?bool=\${v}</code> for booleans.</li>

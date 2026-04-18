@@ -111,7 +111,7 @@ modules/
 **Rules:**
 - One exported function per server action/query file
 - Server actions must use `'use server'` pragma or `.server.ts` extension
-- Components must call `Class.register(import.meta.url)`
+- Components must call `Class.register()`
 - Never import `@prisma/client`, `node:*`, or `lib/` directly from components — use server actions
 - Routes (`app/**/page.ts`, `app/**/route.ts`) must be thin: import logic from modules
 
@@ -229,7 +229,7 @@ export class MyWidget extends WebComponent {
     `;
   }
 }
-MyWidget.register(import.meta.url);
+MyWidget.register();
 ```
 
 `static properties` is the runtime declaration (reactive accessor,
@@ -249,7 +249,7 @@ templates.
   - `.my-widget__body`, `.my-widget__title` (BEM-ish)
   - `my-widget .body`, `my-widget .title` (descendant selector)
 - Tag name must contain a hyphen (HTML spec)
-- Always call `.register(import.meta.url)` — enables modulepreload hints
+- Always call `.register()` — enables modulepreload hints
 - Use `setState()` for state changes, never mutate `this.state` directly
 - Use lifecycle hooks (`firstUpdated`, `updated`) only when needed
 

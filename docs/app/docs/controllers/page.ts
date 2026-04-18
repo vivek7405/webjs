@@ -79,7 +79,7 @@ class LazyImage extends WebComponent {
     \`;
   }
 }
-LazyImage.register(import.meta.url);</pre>
+LazyImage.register();</pre>
 
     <h2>Example: FetchController</h2>
     <p>A reusable controller that fetches data from a URL and exposes loading/error/data states:</p>
@@ -137,7 +137,7 @@ class UserList extends WebComponent {
     \`;
   }
 }
-UserList.register(import.meta.url);</pre>
+UserList.register();</pre>
 
     <h2>Multiple Controllers on One Component</h2>
     <p>Controllers compose naturally. A single component can use any number of controllers:</p>
@@ -159,7 +159,7 @@ UserList.register(import.meta.url);</pre>
     return html\`&lt;div&gt;\${this.#data.data?.summary}&lt;/div&gt;\`;
   }
 }
-DashboardWidget.register(import.meta.url);</pre>
+DashboardWidget.register();</pre>
 
     <h2>Built-in Controllers</h2>
     <p>webjs ships three controllers out of the box:</p>
