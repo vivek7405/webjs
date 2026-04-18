@@ -47,7 +47,7 @@ export class NewPost extends WebComponent {
         <label class="grid gap-2 font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle">
           Title
           <input name="title" placeholder="A bold title…" required autofocus
-                 class="font-serif text-xl font-bold tracking-tight border border-border-strong rounded-lg py-3 px-4 ${inputCls}" />
+                 class="font-serif text-xl font-bold tracking-tight border border-accent rounded-lg py-3 px-4 ${inputCls}" />
         </label>
         <label class="grid gap-2 font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle">
           Body
