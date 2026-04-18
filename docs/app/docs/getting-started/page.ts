@@ -91,22 +91,21 @@ export default function Home() {
 }</pre>
 
     <h3>components/counter.ts</h3>
-    <pre>import { WebComponent, html, css } from 'webjs';
+    <p>Components render into light DOM by default — Tailwind utility classes apply directly. Set <code>static shadow = true</code> when you want scoped styles or <code>&lt;slot&gt;</code> projection.</p>
+    <pre>import { WebComponent, html } from 'webjs';
 
 export class Counter extends WebComponent {
   static tag = 'my-counter';
   static properties = { count: { type: Number } };
-  static styles = css\`
-    :host { display: inline-flex; gap: 8px; }
-    button { font: inherit; padding: 4px 12px; }
-  \`;
   count = 0;
 
   render() {
     return html\`
-      &lt;button @click=\${() =&gt; { this.count--; this.requestUpdate(); }}&gt;−&lt;/button&gt;
-      &lt;span&gt;\${this.count}&lt;/span&gt;
-      &lt;button @click=\${() =&gt; { this.count++; this.requestUpdate(); }}&gt;+&lt;/button&gt;
+      &lt;div class="inline-flex items-center gap-2 font-mono"&gt;
+        &lt;button class="px-3 py-1 rounded border border-border hover:bg-bg-elev" @click=\${() =&gt; { this.count--; this.requestUpdate(); }}&gt;−&lt;/button&gt;
+        &lt;output class="min-w-[2ch] text-center"&gt;\${this.count}&lt;/output&gt;
+        &lt;button class="px-3 py-1 rounded border border-border hover:bg-bg-elev" @click=\${() =&gt; { this.count++; this.requestUpdate(); }}&gt;+&lt;/button&gt;
+      &lt;/div&gt;
     \`;
   }
 }
@@ -122,7 +121,7 @@ Counter.register(import.meta.url);</pre>
     <ul>
       <li><strong>Server-side:</strong> Node 23.6+ strips TypeScript types at runtime. Your <code>.ts</code> pages and server actions run directly.</li>
       <li><strong>Client-side:</strong> The dev server transforms <code>.ts</code> files via esbuild (~1ms/file, cached by mtime) before serving to the browser.</li>
-      <li><strong>SSR:</strong> Pages are rendered to HTML strings on the server. Web components emit Declarative Shadow DOM so the browser paints before JS loads.</li>
+      <li><strong>SSR:</strong> Pages are rendered to HTML strings on the server. Light-DOM components serialize as plain children with a <code>&lt;!--webjs-hydrate--&gt;</code> marker; shadow-DOM components (opt-in) emit Declarative Shadow DOM so scoped styles paint before JS loads.</li>
       <li><strong>Hydration:</strong> When JS loads, custom elements upgrade and become interactive. The fine-grained renderer preserves focus, cursor position, and form state across state updates.</li>
     </ul>
 

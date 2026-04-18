@@ -175,7 +175,23 @@ inspired by NextJs, Lit, and Rails.
   files are a supported first-class option — Node 23.6+ strips types at runtime
   for server files, and the dev server strips types via esbuild when serving
   browser-facing `.ts` files. No ahead-of-time build step either way.
-- **SSR + CSR by default.** Pages are server-rendered (real HTML, no hydration fallback). Interactive web components ship Declarative Shadow DOM and upgrade on the client.
+- **SSR + CSR by default.** Pages are server-rendered (real HTML, no
+  hydration fallback). Interactive web components render as light DOM
+  by default — global CSS and Tailwind utility classes apply directly.
+  Shadow DOM is opt-in via `static shadow = true` and ships Declarative
+  Shadow DOM for components that need scoped styles or true slotting.
+- **Tailwind CSS is the default styling convention.** The scaffold and
+  examples use the Tailwind browser runtime + `@theme` design tokens.
+  Custom CSS (plain `<style>` blocks, module files, PostCSS) remains
+  fully supported — the framework has no hard dependency on Tailwind.
+  When a light-DOM component does author custom CSS, every selector
+  MUST be prefixed with the component's tag name (e.g. `.my-card__body`
+  or `my-card .body`) so styles don't leak to siblings or ancestors.
+- **JS helpers for DRY'ing up repeated Tailwind classes.** Instead of
+  `@apply` or CSS modules, extract repeated class bundles into small
+  JS helper functions that return `html\`...\`` fragments. They run at
+  SSR time — output HTML is identical to inline classes, no client-side
+  runtime. Scaffold shipped example: `app/_utils/ui.ts`.
 - **Server actions with rich types.** Any file ending `.server.js` / `.server.ts`
   (or starting with `'use server'`) exports functions the client imports and
   calls directly — the import is rewritten into an RPC stub. The RPC wire uses
@@ -397,7 +413,7 @@ Event/property/boolean-prefixed attributes **must be unquoted**.
 ```js
 class MyThing extends WebComponent {
   static tag = 'my-thing';           // required
-  static shadow = true;              // false = render into light DOM
+  static shadow = false;             // default: light DOM. Set true for scoped shadow DOM
   static lazy = false;               // true = load module on viewport entry (IntersectionObserver)
   static properties = {              // attribute → property coercion
     count: { type: Number, reflect: true },
@@ -478,21 +494,84 @@ class MyEl extends WebComponent {
 | `hasChanged` | `(newVal, oldVal) => boolean` | strict `!==` | Custom change detection |
 | `converter` | `{ fromAttribute?, toAttribute? }` | type-based | Custom attribute ↔ property serialization |
 
-#### Shadow DOM vs Light DOM
+#### Light DOM (default) vs Shadow DOM (opt-in)
 
-| Use case | Mode | Why |
+Light DOM is the default because global CSS and Tailwind utility classes
+apply directly — no `::part`, no `:host`, no CSS-var plumbing, no
+`adoptedStyleSheets` needed. The browser renders a plain element with
+normal children, and hydration replaces SSR content in place.
+
+| Use case | Mode | How |
 |---|---|---|
-| Components with `static styles = css` | Shadow DOM (default) | `adoptedStyleSheets` requires a shadow root. Bare selectors are scoped. |
-| Components using `<slot>` for children | Shadow DOM | Slots only work in shadow DOM |
-| Components styled with global/Tailwind CSS | Light DOM (`static shadow = false`) | No `static styles`. Global stylesheets apply directly. |
+| Global / Tailwind CSS, simple composition | **Light DOM** (default) | Just use `class="..."` in your `html\`...\`` template. Children are plain light-DOM children. |
+| Scoped styles via `static styles = css\`\`` | Shadow DOM | Set `static shadow = true`. `adoptedStyleSheets` + bare selectors are scoped. |
+| `<slot>` content projection | Shadow DOM | Slots only exist inside shadow roots. |
+| Third-party embeds needing isolation | Shadow DOM | CSS can't leak in or out. |
 
-Both modes are fully SSR'd (shadow DOM via Declarative Shadow DOM,
-light DOM as direct HTML with `<!--webjs-hydrate-->` marker) and
-hydrate without flash on the client.
+Both modes are fully SSR'd (shadow DOM via Declarative Shadow DOM, light
+DOM as direct HTML with a `<!--webjs-hydrate-->` marker) and hydrate
+without flash on the client.
 
-**The rule: if you use `static styles`, use shadow DOM. If you use
-global CSS, use light DOM.** Don't mix — `static styles` on a light
-DOM component is silently ignored.
+##### Class-prefix rule for light-DOM components
+
+If a light-DOM component authors its own custom CSS (a `<style>` block
+inside `render()`, or an imported stylesheet), every class selector MUST
+be prefixed with the component's tag name. Otherwise two components that
+happen to use `.card` or `.header` will style each other — the whole
+reason people reach for shadow DOM.
+
+Pick one of these two patterns and stick to it per component:
+
+```ts
+// Pattern A — BEM-ish class names prefixed with tag
+class MyCard extends WebComponent {
+  static tag = 'my-card';
+  render() {
+    return html`
+      <style>
+        .my-card__body { padding: 16px; }
+        .my-card__title { font-weight: 600; }
+      </style>
+      <div class="my-card__body">
+        <h3 class="my-card__title"><slot name="title"></slot></h3>
+      </div>
+    `;
+  }
+}
+
+// Pattern B — descendant selector rooted at the tag
+class MyCard extends WebComponent {
+  static tag = 'my-card';
+  render() {
+    return html`
+      <style>
+        my-card .body  { padding: 16px; }
+        my-card .title { font-weight: 600; }
+      </style>
+      <div class="body">
+        <h3 class="title"><slot name="title"></slot></h3>
+      </div>
+    `;
+  }
+}
+```
+
+Prefer Tailwind utility classes first — they're already unique by
+construction (`p-4`, `font-semibold`, etc.). Drop down to custom CSS
+only when Tailwind can't express it, and apply the prefix rule every
+time.
+
+##### When to opt in to shadow DOM
+
+Set `static shadow = true` when:
+- You author styles via `static styles = css\`...\`` and want them
+  `adoptedStyleSheets`-scoped without a prefix discipline.
+- You need `<slot>` to project children with the slot projection
+  semantics (`::slotted`, named slots).
+- You're publishing a component for third parties who won't have your
+  Tailwind build, and you need the embed to look right in any host.
+
+`static styles` on a light-DOM component is silently ignored.
 
 #### Helper methods
 
@@ -758,6 +837,77 @@ export async function POST(req) {
   Prefer importing through a module's action/query files rather than
   reaching into its `utils/`.
 
+## Styling convention — Tailwind + `_utils/ui.ts` helpers
+
+**Default stack:** Tailwind CSS (browser runtime) with `@theme` tokens
+defined in the root layout. Every palette colour, font family, fluid
+type token, and motion duration is declared once in `@theme` and
+consumed everywhere via utility classes (`text-fg`, `bg-bg-elev`,
+`font-serif`, `duration-fast`, `text-display`).
+
+**DRY pattern:** When the same bundle of Tailwind classes repeats
+across 2+ places, extract it into a JS helper in `app/_utils/ui.ts`.
+The helper runs during SSR and returns an `html\`...\`` fragment —
+the browser receives fully materialised HTML with all classes inline,
+no client-side runtime, no diff from writing the classes by hand.
+
+Scaffold example (`app/_utils/ui.ts`):
+
+```ts
+import { html } from 'webjs';
+
+/** `● label` kicker — small caps, accent colour, above headings. */
+export function rubric(label: string, mb: 'sm' | 'md' = 'md') {
+  const mbCls = mb === 'sm' ? 'mb-3' : 'mb-4';
+  return html`
+    <span class="block font-mono text-[11px] leading-none font-semibold tracking-[0.2em] uppercase text-accent ${mbCls}">● ${label}</span>
+  `;
+}
+
+/** "← label" back link — small caps, muted. */
+export function backLink(href: string, label: string) {
+  return html`
+    <a href=${href} class="inline-block mb-12 text-fg-subtle no-underline font-mono text-[11px] leading-none font-medium tracking-[0.15em] uppercase transition-colors duration-fast hover:text-fg">← ${label}</a>
+  `;
+}
+```
+
+Consume:
+
+```ts
+// app/blog/[slug]/page.ts
+import { rubric, backLink } from '../../_utils/ui.ts';
+
+export default function Post({ params }) {
+  return html`
+    ${backLink('/', 'Posts')}
+    ${rubric('post')}
+    <h1 class="font-serif text-display ...">${title}</h1>
+  `;
+}
+```
+
+**When to extract, when to keep inline:**
+
+| Repeats | Action |
+|---|---|
+| Once | Inline the classes. |
+| 2–3 times, identical | Extract to `_utils/ui.ts`. |
+| Varies by 1–2 props | Extract with a small parameter (`mb: 'sm' \| 'md'`). |
+| Radically different per call site | Keep inline, don't force-fit. |
+
+**Why not `@apply`?** `@apply` hides which utilities a class uses from
+the reader and creates a second source of truth. JS helpers keep the
+class bundle visible at the definition site and compose naturally with
+other props (conditional classes, active states, etc.).
+
+**Custom CSS is still supported** — plain `<style>` blocks, CSS
+modules, or a build-step pipeline. The framework has no hard dependency
+on Tailwind. If you mix custom CSS into a light-DOM component, apply
+the class-prefix rule documented in the Shadow-vs-Light DOM section.
+
+---
+
 ## Invariants (for both humans and agents)
 
 1. **Never import `@prisma/client`, `node:*`, or any server-only dependency from a file under `components/` or from a page's top-level module graph that isn't a server action.** The browser will try to load it and fail. Use a server action instead.
@@ -766,6 +916,7 @@ export async function POST(req) {
 4. **Event (`@`), property (`.`), and boolean (`?`) holes in `html` must be unquoted** — e.g. `@click=${fn}`, never `@click="${fn}"`.
 5. **Do not mutate `this.state` directly** — use `setState`. State reads are fine.
 6. **Page and layout default exports must be functions.** They return a value (usually a `TemplateResult`); they do not call `render()` themselves.
+7. **Light-DOM components with custom CSS MUST prefix every class selector with their tag name** (e.g. `.my-card__body`, or `my-card .body` as a descendant selector). Tailwind utilities are already unique by construction, so prefer them; drop to custom CSS only when a utility can't express the rule.
 
 ---
 
