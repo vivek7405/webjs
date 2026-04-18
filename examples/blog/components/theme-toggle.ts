@@ -10,7 +10,6 @@ import { WebComponent, html } from 'webjs';
 type Theme = 'system' | 'light' | 'dark';
 
 export class ThemeToggle extends WebComponent {
-  static tag = 'theme-toggle';
   declare state: { theme: Theme };
 
   constructor() {
@@ -60,4 +59,4 @@ const ICONS = {
   system: html`<svg class="w-4 h-4 stroke-current fill-none" style="stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><path d="M3 5h18v11H3zM8 20h8M12 16v4"/></svg>`,
 };
 
-ThemeToggle.register();
+customElements.define('theme-toggle', ThemeToggle);

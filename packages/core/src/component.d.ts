@@ -56,12 +56,11 @@ export interface ReactiveController {
  * each field with a sibling `declare foo: Foo`:
  *
  *     class StudentCard extends WebComponent {
- *       static tag = 'student-card';
  *       static properties = { student: { type: Object } };
  *       declare student: Student;
  *       render() { return html`<p>${this.student.name}</p>`; }
  *     }
- *     StudentCard.register();
+ *     customElements.define('student-card', StudentCard);
  *
  * The `declare` field has no runtime cost — it tells TypeScript the
  * field's type without emitting a class-field initializer that would
@@ -72,13 +71,11 @@ export interface ReactiveController {
  * intelligence inside `html\`…\`` templates.
  */
 export abstract class WebComponent extends HTMLElement {
-  static tag: string;
   static shadow: boolean;
   static hydrate: 'visible' | undefined;
   static properties: Record<string, PropertyDeclaration>;
   static styles: CSSResult | CSSResult[] | null;
   static lazy?: boolean;
-  static register(): void;
   static readonly observedAttributes: string[];
 
   /** Instance-level reactive state. Prefer `setState()` to mutate. */

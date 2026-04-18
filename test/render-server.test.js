@@ -57,12 +57,11 @@ test('awaits async template (page-style)', async () => {
 
 test('DSD injection handles attribute values containing slashes', async () => {
   class SlashTag extends WebComponent {
-    static tag = 'slash-tag';
     static shadow = true;
     static properties = { href: { type: String } };
     render() { return html`<a href=${this.href}>x</a>`; }
   }
-  SlashTag.register();
+  customElements.define('slash-tag', SlashTag);
   const out = await renderToString(html`<slash-tag href="/some/path"></slash-tag>`);
   // The opening tag must have DSD injected even though the attribute has /.
   assert.match(out, /<slash-tag href="\/some\/path"><template shadowrootmode="open">/);
@@ -70,12 +69,11 @@ test('DSD injection handles attribute values containing slashes', async () => {
 
 test('custom element injects declarative shadow DOM', async () => {
   class Greet extends WebComponent {
-    static tag = 'g-reet';
     static shadow = true;
     static styles = css`span { color: red; }`;
     render() { return html`<span>hi ${'you'}</span>`; }
   }
-  Greet.register();
+  customElements.define('g-reet', Greet);
   const out = await renderToString(html`<g-reet></g-reet>`);
   assert.match(out, /<g-reet><template shadowrootmode="open">/);
   assert.match(out, /<style>span \{ color: red; \}<\/style>/);
@@ -85,14 +83,13 @@ test('custom element injects declarative shadow DOM', async () => {
 
 test('async component render is awaited', async () => {
   class AsyncGreet extends WebComponent {
-    static tag = 'async-greet';
     static shadow = true;
     async render() {
       const name = await Promise.resolve('async world');
       return html`<span>hi ${name}</span>`;
     }
   }
-  AsyncGreet.register();
+  customElements.define('async-greet', AsyncGreet);
   const out = await renderToString(html`<async-greet></async-greet>`);
   assert.match(out, /<span>hi async world<\/span>/);
 });
@@ -136,20 +133,18 @@ test('uppercase </SCRIPT> still closes raw-text (case-insensitive)', async () =>
 
 test('nested DSD: shadow parent → shadow child gets DSD with inline styles', async () => {
   class A1Child extends WebComponent {
-    static tag = 'ss-child';
     static shadow = true;
     static styles = css`:host { display: inline-flex; width: 36px; height: 36px; }`;
     render() { return html`<button>X</button>`; }
   }
-  A1Child.register();
+  customElements.define('ss-child', A1Child);
 
   class A1Parent extends WebComponent {
-    static tag = 'ss-parent';
     static shadow = true;
     static styles = css`:host { display: block; }`;
     render() { return html`<div><ss-child></ss-child></div>`; }
   }
-  A1Parent.register();
+  customElements.define('ss-parent', A1Parent);
 
   const out = await renderToString(html`<ss-parent></ss-parent>`);
 
@@ -165,19 +160,17 @@ test('nested DSD: shadow parent → shadow child gets DSD with inline styles', a
 
 test('nested DSD: shadow parent → light child gets hydration marker', async () => {
   class B1Child extends WebComponent {
-    static tag = 'sl-child';
     static shadow = false;
     render() { return html`<span>light content</span>`; }
   }
-  B1Child.register();
+  customElements.define('sl-child', B1Child);
 
   class B1Parent extends WebComponent {
-    static tag = 'sl-parent';
     static shadow = true;
     static styles = css`:host { display: block; }`;
     render() { return html`<sl-child></sl-child>`; }
   }
-  B1Parent.register();
+  customElements.define('sl-parent', B1Parent);
 
   const out = await renderToString(html`<sl-parent></sl-parent>`);
 
@@ -191,19 +184,17 @@ test('nested DSD: shadow parent → light child gets hydration marker', async ()
 
 test('nested DSD: light parent → shadow child gets DSD with inline styles', async () => {
   class C1Child extends WebComponent {
-    static tag = 'ls-child';
     static shadow = true;
     static styles = css`button { color: red; }`;
     render() { return html`<button>click</button>`; }
   }
-  C1Child.register();
+  customElements.define('ls-child', C1Child);
 
   class C1Parent extends WebComponent {
-    static tag = 'ls-parent';
     static shadow = false;
     render() { return html`<div><ls-child></ls-child></div>`; }
   }
-  C1Parent.register();
+  customElements.define('ls-parent', C1Parent);
 
   const out = await renderToString(html`<ls-parent></ls-parent>`);
 
@@ -218,18 +209,16 @@ test('nested DSD: light parent → shadow child gets DSD with inline styles', as
 
 test('nested DSD: light parent → light child gets hydration marker', async () => {
   class D1Child extends WebComponent {
-    static tag = 'll-child';
     static shadow = false;
     render() { return html`<em>inner light</em>`; }
   }
-  D1Child.register();
+  customElements.define('ll-child', D1Child);
 
   class D1Parent extends WebComponent {
-    static tag = 'll-parent';
     static shadow = false;
     render() { return html`<ll-child></ll-child>`; }
   }
-  D1Parent.register();
+  customElements.define('ll-parent', D1Parent);
 
   const out = await renderToString(html`<ll-parent></ll-parent>`);
 
@@ -242,28 +231,25 @@ test('nested DSD: light parent → light child gets hydration marker', async () 
 
 test('nested DSD: three levels deep — shadow → shadow → shadow', async () => {
   class DeepLeaf extends WebComponent {
-    static tag = 'deep-leaf';
     static shadow = true;
     static styles = css`.leaf { color: green; }`;
     render() { return html`<span class="leaf">leaf</span>`; }
   }
-  DeepLeaf.register();
+  customElements.define('deep-leaf', DeepLeaf);
 
   class DeepMid extends WebComponent {
-    static tag = 'deep-mid';
     static shadow = true;
     static styles = css`:host { padding: 8px; }`;
     render() { return html`<deep-leaf></deep-leaf>`; }
   }
-  DeepMid.register();
+  customElements.define('deep-mid', DeepMid);
 
   class DeepRoot extends WebComponent {
-    static tag = 'deep-root';
     static shadow = true;
     static styles = css`:host { display: block; }`;
     render() { return html`<deep-mid></deep-mid>`; }
   }
-  DeepRoot.register();
+  customElements.define('deep-root', DeepRoot);
 
   const out = await renderToString(html`<deep-root></deep-root>`);
 

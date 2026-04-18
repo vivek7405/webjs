@@ -16,7 +16,6 @@ export default function TaskPage() {
 import { Task } from 'webjs/task';
 
 class UserProfile extends WebComponent {
-  static tag = 'user-profile';
   static properties = { userId: { type: String } };
 
   userId = '';
@@ -41,7 +40,7 @@ class UserProfile extends WebComponent {
     });
   }
 }
-UserProfile.register();</pre>
+customElements.define('user-profile', UserProfile);</pre>
 
     <h2>Task States</h2>
     <p>A task is always in one of four states, exposed as <code>TaskStatus</code> constants:</p>
@@ -136,7 +135,6 @@ handleSubmit(e) {
     <p>The <code>args</code> function is called on every host update. When the returned array differs from the previous one (shallow comparison per element), the task re-runs. This creates a reactive chain: property change triggers host update, host update evaluates <code>args</code>, changed args trigger the task.</p>
 
     <pre>class SearchResults extends WebComponent {
-  static tag = 'search-results';
   static properties = {
     query: { type: String },
     page:  { type: Number },
@@ -165,7 +163,7 @@ handleSubmit(e) {
     });
   }
 }
-SearchResults.register();</pre>
+customElements.define('search-results', SearchResults);</pre>
 
     <h2>When to Use Task vs Async Page Functions</h2>
 
@@ -191,7 +189,6 @@ SearchResults.register();</pre>
 import { Task } from 'webjs/task';
 
 class LiveSearch extends WebComponent {
-  static tag = 'live-search';
 
   static styles = css\`
     :host { display: block; }
@@ -247,7 +244,7 @@ class LiveSearch extends WebComponent {
     \`;
   }
 }
-LiveSearch.register();</pre>
+customElements.define('live-search', LiveSearch);</pre>
 
     <h2>Next Steps</h2>
     <ul>

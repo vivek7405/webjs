@@ -7,7 +7,6 @@ import { createPost } from '../actions/create-post.server.ts';
 type State = { busy: boolean; error: string | null };
 
 export class NewPost extends WebComponent {
-  static tag = 'new-post';
 
   declare state: State;
 
@@ -70,4 +69,4 @@ export class NewPost extends WebComponent {
     `;
   }
 }
-NewPost.register();
+customElements.define('new-post', NewPost);

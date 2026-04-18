@@ -53,9 +53,9 @@ export const RULES = [
       'Each .server.{js,ts} file should export exactly one async function (one-function-per-file convention).',
   },
   {
-    name: 'components-have-register',
+    name: 'components-have-define',
     description:
-      'Component files that define a class extending WebComponent must call .register() — the module URL is derived server-side at boot.',
+      'Component files that define a class extending WebComponent must register the class with customElements.define(). The server-side scanner derives the module URL from the file path at boot.',
   },
   {
     name: 'no-server-imports-in-components',
@@ -306,20 +306,19 @@ export async function checkConventions(appDir, opts) {
     }
   }
 
-  // --- Rule: components-have-register ---
-  if (isRuleEnabled('components-have-register', overrides)) {
+  // --- Rule: components-have-define ---
+  if (isRuleEnabled('components-have-define', overrides)) {
     for (const { rel, content } of files) {
       if (!isComponentFile(rel)) continue;
       // Check if it defines a class extending WebComponent
       if (!/class\s+\w+\s+extends\s+WebComponent/.test(content)) continue;
-      // Check for a `.register(` call on the class. Args are optional —
-      // the server-side scanner derives the module URL from the file path.
-      if (/\.register\(\s*\)/.test(content)) continue;
+      // Check for a customElements.define(...) call.
+      if (/\bcustomElements\.define\s*\(/.test(content)) continue;
       violations.push({
-        rule: 'components-have-register',
+        rule: 'components-have-define',
         file: rel,
-        message: 'Component extends WebComponent but does not call .register()',
-        fix: 'Add ClassName.register() after the class definition',
+        message: 'Component extends WebComponent but does not register with customElements.define()',
+        fix: "Add customElements.define('tag-name', ClassName) after the class definition",
       });
     }
   }
@@ -390,8 +389,8 @@ export async function checkConventions(appDir, opts) {
   if (isRuleEnabled('tag-name-has-hyphen', overrides)) {
     for (const { rel, content } of files) {
       if (!isComponentFile(rel)) continue;
-      // Match static tag = '...' or static tag = "..."
-      const tagRe = /static\s+tag\s*=\s*(['"])([^'"]+)\1/g;
+      // Match customElements.define('...', ...) calls.
+      const tagRe = /\bcustomElements\.define\s*\(\s*(['"])([^'"]+)\1/g;
       let match;
       while ((match = tagRe.exec(content)) !== null) {
         const tagName = match[2];

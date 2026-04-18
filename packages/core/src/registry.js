@@ -1,55 +1,123 @@
 /**
  * Isomorphic custom element registry.
  *
- * On the server it's a plain Map used by renderToString to inject
- * Declarative Shadow DOM for known components + emit `modulepreload`
- * hints. On the browser we also call customElements.define so the tag
- * upgrades after hydration.
+ * The authoring pattern is the web-standard one:
  *
- * @typedef {{ cls: typeof import('./component.js').WebComponent, moduleUrl: string | null, lazy: boolean }} RegistryEntry
+ *   class Counter extends WebComponent { … }
+ *   customElements.define('my-counter', Counter);
+ *
+ * On the browser `customElements` is the native registry; we attach a
+ * thin wrapper that mirrors each registration into our own map so SSR
+ * / router / lazy-loading code can look up `tag → Class` without
+ * dipping into the platform registry.
+ *
+ * On the server there is no native `customElements`; we install a
+ * minimal shim on `globalThis` that just records the registration.
+ *
+ * @typedef {{ cls: typeof import('./component.js').WebComponent, moduleUrl: string | null, lazy: boolean, tag: string }} RegistryEntry
  */
 
 /** @type {Map<string, RegistryEntry>} */
 const registry = new Map();
+/** @type {WeakMap<Function, string>} */
+const classToTag = new WeakMap();
 
-const isBrowser = typeof window !== 'undefined' && typeof customElements !== 'undefined';
+const isBrowser =
+  typeof window !== 'undefined' && typeof customElements !== 'undefined';
+
+/* ------------------------------------------------------------------
+ * define(tag, cls): called internally by the server-side customElements
+ * shim AND by the browser wrapper below. Populates our bookkeeping and,
+ * on the browser, delegates to the native customElements.define.
+ * ------------------------------------------------------------------ */
 
 /**
- * Register a tag → component class mapping.
- *
- * Module URLs (used by SSR to emit `<link rel="modulepreload">` hints
- * so first paint doesn't wait on a fresh fetch for each component) are
- * derived server-side by scanning the app tree at boot — see
- * `primeModuleUrl`. Callers don't pass URLs here anymore.
+ * @param {string} tag
+ * @param {typeof import('./component.js').WebComponent} cls
+ */
+function registerInternal(tag, cls) {
+  if (!tag || typeof tag !== 'string' || !tag.includes('-')) {
+    throw new Error(
+      `customElements.define: tag "${tag}" must contain a hyphen (HTML spec)`,
+    );
+  }
+  const lazy = /** @type {any} */ (cls).lazy === true;
+  const entry = registry.get(tag);
+  if (entry) {
+    entry.cls = cls;
+    entry.lazy = lazy;
+  } else {
+    registry.set(tag, { cls, moduleUrl: null, lazy, tag });
+  }
+  classToTag.set(cls, tag);
+}
+
+/* ------------------------------------------------------------------
+ * Browser: wrap native customElements.define so every registration
+ * also lands in our map. The native behaviour (upgrading matching
+ * elements + preventing double-define) is preserved.
+ * ------------------------------------------------------------------ */
+
+if (isBrowser) {
+  const native = customElements.define.bind(customElements);
+  /** @type {any} */ (customElements).define = function (tag, cls, options) {
+    if (!customElements.get(tag)) native(tag, cls, options);
+    registerInternal(tag, cls);
+  };
+}
+
+/* ------------------------------------------------------------------
+ * Server: install a minimal customElements shim on globalThis so
+ * `customElements.define('x', X)` at the bottom of a component module
+ * is a legal no-op that populates our registry. Idempotent.
+ * ------------------------------------------------------------------ */
+
+if (!isBrowser) {
+  const g = /** @type {any} */ (globalThis);
+  if (!g.customElements) {
+    g.customElements = {
+      define(tag, cls) {
+        registerInternal(tag, cls);
+      },
+      get(tag) {
+        return registry.get(tag)?.cls;
+      },
+      /** No-op: server never upgrades real elements. */
+      upgrade() {},
+      /** Resolves immediately — SSR never waits for upgrade. */
+      whenDefined(tag) {
+        const e = registry.get(tag);
+        return Promise.resolve(e?.cls);
+      },
+    };
+  }
+}
+
+/* ------------------------------------------------------------------
+ * Public API — unchanged signature surface.
+ * ------------------------------------------------------------------ */
+
+/**
+ * @deprecated Low-level internal — prefer `customElements.define(tag, cls)`.
+ * Kept as a minimal wrapper for back-compat with any framework code that
+ * calls it directly.
  *
  * @param {string} tag
  * @param {typeof import('./component.js').WebComponent} cls
  */
 export function register(tag, cls) {
-  const lazy = /** @type {any} */ (cls).lazy === true;
-  const entry = registry.get(tag);
-  if (entry) {
-    // Keep the existing moduleUrl if present (set via primeModuleUrl
-    // before this call); just update the class pointer.
-    entry.cls = cls;
-    entry.lazy = lazy;
-    return;
-  }
-  registry.set(tag, { cls, moduleUrl: null, lazy });
-  if (isBrowser && !customElements.get(tag)) {
-    customElements.define(tag, /** @type {any} */ (cls));
+  if (isBrowser) {
+    /** @type any */ (customElements).define(tag, cls);
+  } else {
+    registerInternal(tag, cls);
   }
 }
 
 /**
  * Server-side: record the browser-visible URL for a component's module
- * BEFORE the module is imported. Populated at server boot by scanning
- * the app tree for `class … extends WebComponent { static tag = '…' }`
- * declarations. The SSR pipeline reads these via `lookupModuleUrl`
- * when emitting `modulepreload` hints.
- *
- * Safe to call before `register()` — the tag entry is created lazily
- * and later merged with the class pointer when the module evaluates.
+ * BEFORE the module is imported. Populated at server boot by the
+ * component scanner so `lookupModuleUrl` works for modulepreload hints
+ * without forcing every component file to be eagerly imported.
  *
  * @param {string} tag
  * @param {string} moduleUrl
@@ -65,6 +133,7 @@ export function primeModuleUrl(tag, moduleUrl) {
     cls: /** @type any */ (null),
     moduleUrl,
     lazy: false,
+    tag,
   });
 }
 
@@ -81,6 +150,11 @@ export function lookupModuleUrl(tag) {
 /** @param {string} tag */
 export function isLazy(tag) {
   return registry.get(tag)?.lazy === true;
+}
+
+/** Reverse lookup: class → tag. Used for framework warnings / logs. */
+export function tagOf(cls) {
+  return classToTag.get(cls);
 }
 
 export function allTags() {

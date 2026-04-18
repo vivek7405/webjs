@@ -89,7 +89,6 @@ import { createPost } from '../actions/posts.server.ts';
 //                        ^-- TS sees: (input: { title: string; body: string }) => Promise&lt;Post&gt;
 
 export class PostForm extends WebComponent {
-  static tag = 'post-form';
   static styles = css\`:host { display: block; }\`;
 
   async handleSubmit(e: Event) {
@@ -112,7 +111,7 @@ export class PostForm extends WebComponent {
     \`;
   }
 }
-PostForm.register();</pre>
+customElements.define('post-form', PostForm);</pre>
 
     <h2>The superjson Wire Format</h2>
     <p>Server actions use <strong>superjson</strong> for serialisation, not plain <code>JSON.stringify</code>. The content type is <code>application/vnd.webjs+json</code>. This means rich JavaScript types survive the round trip:</p>
@@ -280,7 +279,6 @@ import { WebComponent, html, css } from 'webjs';
 import { addTodo, listTodos } from '../actions/todos.server.ts';
 
 export class TodoApp extends WebComponent {
-  static tag = 'todo-app';
   static properties = {};
   static styles = css\`
     :host { display: block; max-width: 400px; }
@@ -323,7 +321,7 @@ export class TodoApp extends WebComponent {
     \`;
   }
 }
-TodoApp.register();
+customElements.define('todo-app', TodoApp);
 
 // 3. Call the REST endpoint from curl
 // curl -X POST http://localhost:3000/api/todos \\

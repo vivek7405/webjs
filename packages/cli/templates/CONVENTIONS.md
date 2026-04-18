@@ -111,7 +111,7 @@ modules/
 **Rules:**
 - One exported function per server action/query file
 - Server actions must use `'use server'` pragma or `.server.ts` extension
-- Components must call `Class.register()`
+- Components must call `customElements.define('tag', Class)`
 - Never import `@prisma/client`, `node:*`, or `lib/` directly from components — use server actions
 - Routes (`app/**/page.ts`, `app/**/route.ts`) must be thin: import logic from modules
 
@@ -215,7 +215,6 @@ with puppeteer or playwright imports.
 import { WebComponent, html } from 'webjs';
 
 export class MyWidget extends WebComponent {
-  static tag = 'my-widget';
   static properties = { label: { type: String }, count: { type: Number } };
   declare label: string;
   declare count: number;
@@ -229,7 +228,7 @@ export class MyWidget extends WebComponent {
     `;
   }
 }
-MyWidget.register();
+customElements.define('my-widget', MyWidget);
 ```
 
 `static properties` is the runtime declaration (reactive accessor,
@@ -249,7 +248,7 @@ templates.
   - `.my-widget__body`, `.my-widget__title` (BEM-ish)
   - `my-widget .body`, `my-widget .title` (descendant selector)
 - Tag name must contain a hyphen (HTML spec)
-- Always call `.register()` — enables modulepreload hints
+- Always call `customElements.define('tag', Class)` — the standard DOM API
 - Use `setState()` for state changes, never mutate `this.state` directly
 - Use lifecycle hooks (`firstUpdated`, `updated`) only when needed
 
@@ -359,7 +358,6 @@ For below-the-fold components with heavy JS, defer loading until visible:
 
 ```ts
 class HeavyChart extends WebComponent {
-  static tag = 'heavy-chart';
   static lazy = true;  // module loaded on scroll, not on page load
   // ...
 }

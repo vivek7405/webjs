@@ -8,19 +8,16 @@ import { setVendorEntries, buildImportMap } from '../packages/server/src/importm
 // --- Lazy flag in registry ---
 
 test('registry: non-lazy component has lazy=false', () => {
-  class EagerComp extends WebComponent {
-    static tag = 'test-eager-comp';
-  }
-  register('test-eager-comp', EagerComp, 'file:///fake/eager.js');
+  class EagerComp extends WebComponent {}
+  register('test-eager-comp', EagerComp);
   assert.equal(isLazy('test-eager-comp'), false);
 });
 
 test('registry: lazy component has lazy=true', () => {
   class LazyComp extends WebComponent {
-    static tag = 'test-lazy-comp';
     static lazy = true;
   }
-  register('test-lazy-comp', LazyComp, 'file:///fake/lazy.js');
+  register('test-lazy-comp', LazyComp);
   assert.equal(isLazy('test-lazy-comp'), true);
 });
 

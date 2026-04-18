@@ -72,7 +72,6 @@ export default async function PostPage({ params }: { params: { slug: string } })
     <p>Override <code>renderError(error)</code> in any <code>WebComponent</code> to catch errors from that component's <code>render()</code> method:</p>
 
     <pre>class MyWidget extends WebComponent {
-  static tag = 'my-widget';
 
   render() {
     // If this throws, renderError() is called instead

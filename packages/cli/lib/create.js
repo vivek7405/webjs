@@ -410,7 +410,6 @@ type Theme = 'system' | 'light' | 'dark';
  * \`theme-toggle .btn\`).
  */
 export class ThemeToggle extends WebComponent {
-  static tag = 'theme-toggle';
   declare state: { theme: Theme };
 
   constructor() {
@@ -450,7 +449,7 @@ export class ThemeToggle extends WebComponent {
   }
 }
 
-ThemeToggle.register();
+customElements.define('theme-toggle', ThemeToggle);
 `);
   } // end if (!isApi)
 

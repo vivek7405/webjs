@@ -5,7 +5,6 @@ import { WebComponent, html } from 'webjs';
  * for a muted alarm.
  */
 export class ErrorCard extends WebComponent {
-  static tag = 'error-card';
   static properties = { message: { type: String } };
   declare message: string;
   render() {
@@ -19,4 +18,4 @@ export class ErrorCard extends WebComponent {
     `;
   }
 }
-ErrorCard.register();
+customElements.define('error-card', ErrorCard);

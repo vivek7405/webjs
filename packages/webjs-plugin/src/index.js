@@ -299,11 +299,9 @@ function init(modules) {
   }
 
   /**
-   * Extract webjs components from a single source file. Matches any
-   * class with a `static tag = '<tag-name>'` literal whose value contains
-   * a hyphen. We don't hard-require `extends WebComponent` — that would
-   * miss test fixtures and plain `HTMLElement` subclasses that follow
-   * the convention.
+   * Extract webjs components from a single source file by scanning for
+   * `customElements.define('<tag>', <ClassName>)` calls and matching
+   * the class identifier back to a class declaration in the same file.
    *
    * @param {import('typescript').SourceFile} sf
    * @returns {Map<string, ComponentRef>}
@@ -312,19 +310,37 @@ function init(modules) {
     /** @type {Map<string, ComponentRef>} */
     const out = new Map();
 
-    function visit(node) {
+    // First pass: index every local class declaration by its identifier
+    // text so the define-call pass can resolve class references without
+    // a type-checker lookup.
+    /** @type {Map<string, { span: import('typescript').TextSpan }>} */
+    const localClasses = new Map();
+    function indexClasses(node) {
       if (ts.isClassDeclaration(node) && node.name) {
-        const tag = readStaticTag(node);
-        if (tag && tag.includes('-')) {
-          const nameNode = node.name;
-          out.set(tag, {
-            fileName: sf.fileName,
-            className: nameNode.text,
-            classNameSpan: {
-              start: nameNode.getStart(sf),
-              length: nameNode.getWidth(sf),
-            },
-          });
+        localClasses.set(node.name.text, {
+          span: {
+            start: node.name.getStart(sf),
+            length: node.name.getWidth(sf),
+          },
+        });
+      }
+      ts.forEachChild(node, indexClasses);
+    }
+    indexClasses(sf);
+
+    // Second pass: find customElements.define(tag, Class) calls.
+    function visit(node) {
+      if (ts.isCallExpression(node)) {
+        const match = readDefineCall(node);
+        if (match && match.tag.includes('-')) {
+          const local = localClasses.get(match.className);
+          if (local) {
+            out.set(match.tag, {
+              fileName: sf.fileName,
+              className: match.className,
+              classNameSpan: local.span,
+            });
+          }
         }
       }
       ts.forEachChild(node, visit);
@@ -334,25 +350,34 @@ function init(modules) {
   }
 
   /**
-   * Read the literal string value of `static tag = '…'` inside a class
-   * declaration. Returns undefined if absent or not a plain literal.
+   * Match `customElements.define('tag', ClassIdent)` and return the
+   * extracted pair. Handles both `customElements.define(...)` and
+   * `window.customElements.define(...)` forms.
    *
-   * @param {import('typescript').ClassDeclaration} node
-   * @returns {string | undefined}
+   * @param {import('typescript').CallExpression} call
+   * @returns {{ tag: string, className: string } | undefined}
    */
-  function readStaticTag(node) {
-    for (const member of node.members) {
-      if (!ts.isPropertyDeclaration(member)) continue;
-      const modifiers = /** @type any */ (member).modifiers || [];
-      const isStatic = modifiers.some((m) => m.kind === ts.SyntaxKind.StaticKeyword);
-      if (!isStatic) continue;
-      if (!ts.isIdentifier(member.name) || member.name.text !== 'tag') continue;
-      const init = member.initializer;
-      if (!init) continue;
-      if (ts.isStringLiteralLike(init)) return init.text;
-      // Allow `static tag: string = 'foo'` — same AST.
+  function readDefineCall(call) {
+    const callee = call.expression;
+    if (!ts.isPropertyAccessExpression(callee)) return undefined;
+    if (callee.name.text !== 'define') return undefined;
+
+    // Object side must be `customElements` (or `window.customElements`).
+    const obj = callee.expression;
+    if (ts.isIdentifier(obj)) {
+      if (obj.text !== 'customElements') return undefined;
+    } else if (ts.isPropertyAccessExpression(obj)) {
+      if (obj.name.text !== 'customElements') return undefined;
+    } else {
+      return undefined;
     }
-    return undefined;
+
+    const [tagArg, classArg] = call.arguments;
+    if (!tagArg || !classArg) return undefined;
+    if (!ts.isStringLiteralLike(tagArg)) return undefined;
+    if (!ts.isIdentifier(classArg)) return undefined;
+
+    return { tag: tagArg.text, className: classArg.text };
   }
 }
 

@@ -13,7 +13,6 @@ export default function Components() {
     <pre>import { WebComponent, html, css } from 'webjs';
 
 class MyCounter extends WebComponent {
-  static tag = 'my-counter';
 
   static properties = {
     count: { type: Number },
@@ -36,7 +35,7 @@ class MyCounter extends WebComponent {
   }
 }
 
-MyCounter.register();</pre>
+customElements.define('my-counter', MyCounter);</pre>
 
     <p>That is a complete, working component. Import it from a page or layout and use it like any HTML element:</p>
 
@@ -47,20 +46,19 @@ export default function Home() {
 }</pre>
 
     <h2>Tag Names</h2>
-    <p>The HTML spec requires that custom element names contain a <strong>hyphen</strong>. This is how the browser distinguishes <code>&lt;my-counter&gt;</code> from built-in elements like <code>&lt;div&gt;</code>. Set the tag via the <code>static tag</code> field:</p>
+    <p>The HTML spec requires that custom element names contain a <strong>hyphen</strong>. This is how the browser distinguishes <code>&lt;my-counter&gt;</code> from built-in elements like <code>&lt;div&gt;</code>. Register the component with the standard <code>customElements.define()</code> API at the bottom of the file:</p>
 
     <pre>class UserCard extends WebComponent {
-  static tag = 'user-card';  // must contain a hyphen
   // ...
-}</pre>
+}
+customElements.define('user-card', UserCard);</pre>
 
-    <p>If you forget the hyphen, the browser will throw when the element is registered. If you forget <code>static tag</code> entirely, <code>register()</code> throws with a clear error message.</p>
+    <p>If you forget the hyphen, the browser throws at <code>customElements.define</code> time with a clear error message.</p>
 
     <h2>Properties</h2>
     <p>The <code>static properties</code> object declares which HTML attributes the component observes, along with their type for coercion. The browser's <code>observedAttributes</code> list is auto-derived from the property names — you never write it by hand.</p>
 
     <pre>class UserCard extends WebComponent {
-  static tag = 'user-card';
 
   static properties = {
     name:     { type: String },
@@ -85,7 +83,7 @@ export default function Home() {
     \`;
   }
 }
-UserCard.register();</pre>
+customElements.define('user-card', UserCard);</pre>
 
     <h3>Attribute-to-Property Coercion</h3>
     <p>When an attribute changes on the DOM element, webjs coerces the string value to the declared type:</p>
@@ -105,7 +103,6 @@ UserCard.register();</pre>
     <p>For internal, non-attribute state, use <code>this.state</code> and <code>this.setState()</code>. This pattern will feel familiar if you have used React class components.</p>
 
     <pre>class TodoList extends WebComponent {
-  static tag = 'todo-list';
 
   constructor() {
     super();
@@ -146,7 +143,7 @@ UserCard.register();</pre>
     \`;
   }
 }
-TodoList.register();</pre>
+customElements.define('todo-list', TodoList);</pre>
 
     <h3>How setState Works</h3>
     <ul>
@@ -165,7 +162,6 @@ this.setState({ label: 'hello' });
     <pre>import { WebComponent, html, css } from 'webjs';
 
 class StyledCard extends WebComponent {
-  static tag = 'styled-card';
   static styles = css\`
     :host {
       display: block;
@@ -189,7 +185,7 @@ class StyledCard extends WebComponent {
     \`;
   }
 }
-StyledCard.register();</pre>
+customElements.define('styled-card', StyledCard);</pre>
 
     <h3>How Styles Are Applied</h3>
     <ul>
@@ -226,7 +222,6 @@ static styles = css\`
     <p>Light DOM is the default because global CSS and Tailwind utility classes apply directly — no <code>:host</code>, no <code>::part</code>, no CSS-variable plumbing. The browser renders a plain custom element with normal children. This is the mode the blog example uses everywhere except when shadow DOM buys something specific.</p>
 
     <pre>class AppCard extends WebComponent {
-  static tag = 'app-card';
   // static shadow = false is the default — no need to declare it.
   static properties = {
     heading: { type: String },
@@ -243,14 +238,13 @@ static styles = css\`
     \`;
   }
 }
-AppCard.register();</pre>
+customElements.define('app-card', AppCard);</pre>
 
     <h3>Class-prefix rule for custom CSS</h3>
     <p>Tailwind utilities are unique by construction, so most light-DOM components need zero custom CSS. If you <em>do</em> author a <code>&lt;style&gt;</code> block or import a stylesheet, <strong>every class selector MUST be prefixed with the component's tag name</strong>. Otherwise two components with a <code>.card</code> or <code>.header</code> class will style each other.</p>
 
     <pre>// Pattern A — BEM-ish class names prefixed with tag
 class MyCard extends WebComponent {
-  static tag = 'my-card';
   render() {
     return html\`
       &lt;style&gt;
@@ -264,7 +258,6 @@ class MyCard extends WebComponent {
 
 // Pattern B — descendant selector rooted at the tag
 class MyCard extends WebComponent {
-  static tag = 'my-card';
   render() {
     return html\`
       &lt;style&gt;
@@ -285,7 +278,6 @@ class MyCard extends WebComponent {
     </ul>
 
     <pre>class Card extends WebComponent {
-  static tag = 'my-card';
   static shadow = true;                 // opt in
   static styles = css\`
     :host { display: block; padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
@@ -299,7 +291,7 @@ class MyCard extends WebComponent {
     \`;
   }
 }
-Card.register();</pre>
+customElements.define('my-card', Card);
 
     <p><code>static styles</code> on a light-DOM component is silently ignored — there's no shadow root to adopt them into. If you see your styles failing, check whether you forgot <code>static shadow = true</code>.</p>
 
@@ -326,7 +318,6 @@ Card.register();</pre>
 
     <pre>// Component definition
 class AppShell extends WebComponent {
-  static tag = 'app-shell';
   // ...
   render() {
     return html\`
@@ -350,7 +341,6 @@ html\`
     <p>Use <code>&lt;slot name="..."&gt;</code> to route different pieces of content to different parts of a component:</p>
 
     <pre>class PageLayout extends WebComponent {
-  static tag = 'page-layout';
   static styles = css\`
     .sidebar { float: left; width: 200px; }
     .content { margin-left: 220px; }
@@ -371,7 +361,7 @@ html\`
     \`;
   }
 }
-PageLayout.register();
+customElements.define('page-layout', PageLayout);
 
 // Usage: assign content to named slots with the slot="" attribute
 html\`
@@ -491,25 +481,20 @@ render() {
 
     <p>During SSR, <code>?disabled=\${true}</code> emits <code>disabled=""</code> and <code>?disabled=\${false}</code> emits nothing — matching how the browser interprets boolean attributes.</p>
 
-    <h2>register()</h2>
-    <p>Every component must call <code>register()</code> after its class definition. This static method does two things:</p>
+    <h2>customElements.define()</h2>
+    <p>Register the component with the web-standard <code>customElements.define()</code> API at the bottom of the file:</p>
 
-    <pre>MyCounter.register();</pre>
+    <pre>customElements.define('my-counter', MyCounter);</pre>
 
-    <ol>
-      <li><strong>Registers with <code>customElements.define()</code></strong> — on the browser, this tells the browser to upgrade all <code>&lt;my-counter&gt;</code> elements with the <code>MyCounter</code> class. On the server, it stores the class in an internal registry so <code>renderToString</code> can look it up.</li>
-      <li><strong>Stores the module URL</strong> — passing <code>import.meta.url</code> lets the SSR shell emit <code>&lt;link rel="modulepreload"&gt;</code> hints for the component's JavaScript file. This eliminates a network round-trip: the browser starts fetching the module <strong>before</strong> the HTML parser encounters the custom element tag, so the component upgrades faster.</li>
-    </ol>
+    <p>webjs wraps the native API (and installs a compatible shim on the server) so the same line works in both environments:</p>
+    <ul>
+      <li><strong>Browser</strong> — tells the browser to upgrade all <code>&lt;my-counter&gt;</code> elements with the <code>MyCounter</code> class, and mirrors the mapping into webjs's internal registry.</li>
+      <li><strong>Server</strong> — stores the class in the internal registry so <code>renderToString</code> can look it up for Declarative Shadow DOM injection.</li>
+    </ul>
 
-    <p>You can omit <code>import.meta.url</code> and just call <code>MyCounter.register()</code>, but you lose the modulepreload optimization.</p>
+    <p>Module URLs for <code>&lt;link rel="modulepreload"&gt;</code> hints are discovered separately, by a server-side scanner that walks the app tree at boot and derives the file path for each discovered tag. No per-component <code>import.meta.url</code> argument needed.</p>
 
-    <pre>// With module URL — recommended
-Counter.register();
-
-// Without module URL — works but no modulepreload hint
-Counter.register();</pre>
-
-    <blockquote>Always call <code>register()</code> at the module's top level, outside the class body. This ensures the component is registered as soon as the module is imported, both on server and client.</blockquote>
+    <blockquote>Always call <code>customElements.define</code> at the module's top level, outside the class body. The component registers as soon as the module is imported, both on server and client.</blockquote>
 
     <h2>Server Rendering</h2>
     <p>webjs components are server-rendered using <strong>Declarative Shadow DOM</strong>. When the server renders a page containing <code>&lt;my-counter count="5"&gt;&lt;/my-counter&gt;</code>, the output looks like:</p>
@@ -528,7 +513,7 @@ Counter.register();</pre>
 
     <h3>How SSR Works</h3>
     <ul>
-      <li>The server imports the component module, which calls <code>register()</code> and stores the class in the registry.</li>
+      <li>The server imports the component module, which calls <code>customElements.define()</code> and stores the class in the registry.</li>
       <li>During <code>renderToString()</code>, the server scans the output HTML for registered custom element tags.</li>
       <li>For each match, it creates a temporary instance, applies attributes from the HTML, calls <code>render()</code>, and wraps the result in a <code>&lt;template shadowrootmode="open"&gt;</code> block with the component's styles.</li>
       <li>The browser parses this as a native declarative shadow root — the content is visible <strong>before any JavaScript loads</strong>.</li>
@@ -539,7 +524,6 @@ Counter.register();</pre>
     <p>On the server, <code>render()</code> can be async. This lets you fetch data inside a component:</p>
 
     <pre>class UserProfile extends WebComponent {
-  static tag = 'user-profile';
   static properties = { userId: { type: String } };
 
   userId = '';
@@ -553,7 +537,7 @@ Counter.register();</pre>
     \`;
   }
 }
-UserProfile.register();</pre>
+customElements.define('user-profile', UserProfile);</pre>
 
     <p>On the client, <code>render()</code> is called synchronously. If you need async data on the client, fetch it in <code>connectedCallback()</code> and call <code>setState()</code> when the data arrives.</p>
 
@@ -584,7 +568,6 @@ UserProfile.register();</pre>
     <pre>import { WebComponent, html, css, repeat } from 'webjs';
 
 class TaskList extends WebComponent {
-  static tag = 'task-list';
 
   constructor() {
     super();
@@ -622,7 +605,7 @@ class TaskList extends WebComponent {
     \`;
   }
 }
-TaskList.register();</pre>
+customElements.define('task-list', TaskList);</pre>
 
     <h3>How repeat() Works</h3>
     <ul>
@@ -642,7 +625,6 @@ TaskList.register();</pre>
     <pre>import { WebComponent, html, css, repeat, connectWS } from 'webjs';
 
 class ChatBox extends WebComponent {
-  static tag = 'chat-box';
 
   static styles = css\`
     :host { display: block; border: 1px solid var(--border); border-radius: var(--rad-lg); }
@@ -701,13 +683,13 @@ class ChatBox extends WebComponent {
     \`;
   }
 }
-ChatBox.register();</pre>
+customElements.define('chat-box', ChatBox);</pre>
 
     <h2>Quick Reference</h2>
     <ul>
       <li><strong>Extend</strong> <code>WebComponent</code> and set <code>static tag</code>, <code>static properties</code>, <code>static styles</code>.</li>
       <li><strong>Implement</strong> <code>render()</code> returning <code>html\`...\`</code>.</li>
-      <li><strong>Register</strong> with <code>ClassName.register()</code>.</li>
+      <li><strong>Register</strong> with <code>customElements.define('tag', ClassName)</code>.</li>
       <li><strong>State</strong> — use <code>this.setState({...})</code> for shallow merge + batched re-render.</li>
       <li><strong>Events</strong> — <code>@click</code>, <code>@submit</code>, <code>@input</code> in templates. Stable dispatchers, no listener churn.</li>
       <li><strong>Bindings</strong> — <code>attr=\${v}</code> for attributes, <code>.prop=\${v}</code> for properties, <code>?bool=\${v}</code> for booleans.</li>
