@@ -61,3 +61,9 @@ const ICONS = {
 };
 
 ThemeToggle.register(import.meta.url);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'theme-toggle': ThemeToggle;
+  }
+}

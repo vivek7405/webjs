@@ -439,61 +439,49 @@ Mutate state with `this.setState({...})` — it batches a re-render via microtas
 Attribute changes auto-trigger re-render when the attribute is declared in
 `static properties`.
 
-#### Typed props with `defineComponent` (TypeScript — recommended)
+#### Typed props in TypeScript — the `declare` pattern
 
-For full type inference on `this.<prop>` without writing a `declare`
-field for every property, use the `defineComponent()` factory. It's a
-thin wrapper that sets `static properties` and threads the descriptor
-map through to TypeScript's type system:
+Two-line pattern per property: the runtime descriptor in
+`static properties`, and a compile-time `declare` field that types
+the auto-generated accessor. `declare` emits nothing at runtime, so
+TypeScript's class-field initializer doesn't clobber the reactive
+accessor the framework installs via `Object.defineProperty`.
 
 ```ts
-import { defineComponent, defineProp, html } from 'webjs';
+import { WebComponent, html } from 'webjs';
 
-class Counter extends defineComponent({
-  count: { type: Number, reflect: true },
-  label: { type: String },
-  active: { type: Boolean },
-}) {
-  static tag = 'my-counter';
-  // this.count: number, this.label: string, this.active: boolean — inferred
+class StudentCard extends WebComponent {
+  static tag = 'student-card';
+  static properties = { student: { type: Object } };   // runtime: tracked + coerced
+  declare student: Student;                             // compile-time: typed
   render() {
-    return html`<p>${this.label}: ${this.count} (${this.active ? 'on' : 'off'})</p>`;
+    return html`<p>${this.student.name}</p>`;
   }
 }
-Counter.register(import.meta.url);
+StudentCard.register(import.meta.url);
 ```
 
-For a property whose value type can't be derived from the constructor
-alone (e.g. `type: Object` with a specific shape, or a converter
-returning a user-defined class), use `defineProp<T>()`:
+Built-in constructors (`String`, `Number`, `Boolean`, `Array`, `Object`)
+feed the default attribute coercion. For anything the default doesn't
+parse correctly (Date, Map, Set, discriminated unions) supply a custom
+`converter: { fromAttribute, toAttribute }`.
 
-```ts
-class Profile extends defineComponent({
-  user: defineProp<User>({ type: Object }),
-}) {
-  static tag = 'user-profile';
-  // this.user: User
-  render() { return html`${this.user.name}`; }
-}
-```
+**Why `declare` is needed:** the framework installs a reactive
+getter/setter on `this` inside the constructor via
+`Object.defineProperty`. Without `declare`, TypeScript emits
+`student = undefined` after `super()`, clobbering the accessor. The
+`.d.ts` overlay shipped with the framework makes every other class
+member (`this.setState`, `this.state`, `this.requestUpdate`, lifecycle
+hooks) fully typed — only the reactive properties need the
+`declare` line, and only in TypeScript files.
 
-Plain-JS classes still work — the legacy pattern is identical to what
-the snippet above shows. Use `declare <name>: <Type>` if you want
-type-only fields for the editor without duplicating at runtime:
-
-```ts
-class Legacy extends WebComponent {
-  static tag = 'x-legacy';
-  static properties = { count: { type: Number } };
-  declare count: number;           // compile-time only
-  render() { return html`${this.count}`; }
-}
-```
-
-Editor intellisense (VS Code + Neovim + any tsserver client) works
-out-of-the-box from the `.d.ts` overlay shipped with the package. See
-the [Editor Setup](docs/app/docs/editor-setup/page.ts) doc page for
-<code>tsconfig</code>, Neovim LSP, and tagged-template autocomplete.
+**Editor intelligence** — autocomplete on `this.<prop>`, go-to-definition
+for `<student-card>` tags inside `html\`\`` templates, type-checking
+on attribute values, and `document.querySelector('student-card')`
+returning `StudentCard | null` all work across VS Code and Neovim. See
+the [Editor Setup](docs/app/docs/editor-setup/page.ts) doc for the
+one-time `tsconfig` + `ts-lit-plugin` + `HTMLElementTagNameMap`
+augmentation setup.
 
 #### Lifecycle hooks
 

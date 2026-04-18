@@ -88,6 +88,10 @@ export async function scaffoldApp(name, cwd, opts = {}) {
       noEmit: true,
       allowImportingTsExtensions: true,
       skipLibCheck: true,
+      // ts-lit-plugin gives tag/attribute intelligence inside html`` templates
+      // (autocomplete, type-check, go-to-definition for <my-element>).
+      // Install: `npm i -D ts-lit-plugin`. Remove this plugin entry if you don't want it.
+      plugins: [{ name: 'ts-lit-plugin', strict: true }],
     },
   }, null, 2) + '\n');
 
@@ -447,6 +451,16 @@ export class ThemeToggle extends WebComponent {
 }
 
 ThemeToggle.register(import.meta.url);
+
+// Tells TypeScript that <theme-toggle> in the DOM is a ThemeToggle instance.
+// Enables: document.querySelector('theme-toggle') → ThemeToggle | null,
+//          document.createElement('theme-toggle') → ThemeToggle,
+//          and ts-lit-plugin attribute/tag intelligence inside html\`\`.
+declare global {
+  interface HTMLElementTagNameMap {
+    'theme-toggle': ThemeToggle;
+  }
+}
 `);
   } // end if (!isApi)
 

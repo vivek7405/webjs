@@ -8,7 +8,7 @@
 
 export { html, isTemplate, MARKER } from './src/html.js';
 export { css, isCSS, adoptStyles, stylesToString } from './src/css.js';
-export { WebComponent, defineComponent, defineProp } from './src/component.js';
+export { WebComponent } from './src/component.js';
 export { register, lookup, lookupModuleUrl, isLazy, allTags } from './src/registry.js';
 export { renderToString, renderToStream } from './src/render-server.js';
 export { render } from './src/render-client.js';

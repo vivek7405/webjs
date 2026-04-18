@@ -1,17 +1,13 @@
-import { defineComponent, html } from 'webjs';
+import { WebComponent, html } from 'webjs';
 
 /**
  * `<my-counter>` — demo counter with the current design system.
  * Tabular monospace output; warm-accent focus ring.
- *
- * Uses `defineComponent` so `this.count` is typed as `number` without
- * a `declare` line — the descriptor is the single source of truth for
- * both runtime and compile-time types.
  */
-export class Counter extends defineComponent({
-  count: { type: Number },
-}) {
+export class Counter extends WebComponent {
   static tag = 'my-counter';
+  static properties = { count: { type: Number } };
+  declare count: number;
   _bump(d: number) { this.count = (Number(this.count) || 0) + d; this.requestUpdate(); }
   render() {
     const v = Number(this.count) || 0;
@@ -31,3 +27,9 @@ export class Counter extends defineComponent({
   }
 }
 Counter.register(import.meta.url);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'my-counter': Counter;
+  }
+}

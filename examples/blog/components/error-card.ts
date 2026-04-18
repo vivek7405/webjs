@@ -7,7 +7,7 @@ import { WebComponent, html } from 'webjs';
 export class ErrorCard extends WebComponent {
   static tag = 'error-card';
   static properties = { message: { type: String } };
-  message = '';
+  declare message: string;
   render() {
     return html`
       <div class="block p-5 px-6 rounded-lg bg-bg-elev/85 border border-border-strong/50 text-fg shadow">
@@ -20,3 +20,9 @@ export class ErrorCard extends WebComponent {
   }
 }
 ErrorCard.register(import.meta.url);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'error-card': ErrorCard;
+  }
+}
