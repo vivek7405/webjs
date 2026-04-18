@@ -212,22 +212,32 @@ with puppeteer or playwright imports.
 <!-- OVERRIDE -->
 
 ```ts
-import { WebComponent, html } from 'webjs';
+import { defineComponent, html } from 'webjs';
 
-export class MyWidget extends WebComponent {
+export class MyWidget extends defineComponent({
+  label: { type: String },
+  count: { type: Number },
+}) {
   static tag = 'my-widget';
-  // Light DOM is the default — Tailwind utility classes apply directly.
+  // `this.label: string` and `this.count: number` are inferred — no
+  // `declare` boilerplate. Light DOM is the default; Tailwind classes
+  // apply directly.
 
   render() {
     return html`
       <div class="p-4 border border-border rounded-lg">
-        <p class="font-serif text-fg">Hello</p>
+        <p class="font-serif text-fg">${this.label}: ${this.count}</p>
       </div>
     `;
   }
 }
 MyWidget.register(import.meta.url);
 ```
+
+Prefer `defineComponent(...)` over plain `WebComponent` when you have
+properties — it's the recommended pattern for TypeScript apps. Pure JS
+consumers can still subclass `WebComponent` directly and set
+`static properties` manually.
 
 **Rules:**
 - One component per file
