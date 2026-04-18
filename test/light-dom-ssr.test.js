@@ -33,6 +33,7 @@ test('light DOM SSR includes hydration marker', async () => {
 test('shadow DOM component SSR still uses DSD', async () => {
   class ShadowComp extends WebComponent {
     static tag = 'test-shadow-comp';
+    static shadow = true;
     render() { return html`<p>shadow content</p>`; }
   }
   ShadowComp.register();
@@ -54,6 +55,7 @@ test('mixed page with both shadow and light DOM', async () => {
 
   class MixShadow extends WebComponent {
     static tag = 'test-mix-shadow';
+    static shadow = true;
     static styles = css`p { color: blue; }`;
     render() { return html`<p>shadow part</p>`; }
   }

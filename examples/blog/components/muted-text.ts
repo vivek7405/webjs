@@ -1,19 +1,13 @@
-import { WebComponent, html, css } from 'webjs';
-
 /**
  * `<muted-text>` — small all-caps mono rubric for timestamps and meta.
  * Use for everything that isn't prose: dates, authors, labels, statuses.
+ *
+ * Pure HTMLElement — no render step. Children are preserved as-is;
+ * Tailwind utility classes are applied directly to the host.
  */
-export class MutedText extends WebComponent {
-  static tag = 'muted-text';
-  static styles = css`
-    :host {
-      color: var(--fg-subtle);
-      font: 500 11px/1.4 var(--font-mono);
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-    }
-  `;
-  render() { return html`<slot></slot>`; }
+class MutedText extends HTMLElement {
+  connectedCallback() {
+    this.classList.add('text-fg-subtle', 'font-mono', 'text-[11px]', 'font-medium', 'leading-snug', 'tracking-[0.12em]', 'uppercase');
+  }
 }
-MutedText.register(import.meta.url);
+customElements.define('muted-text', MutedText);

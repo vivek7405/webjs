@@ -8,6 +8,7 @@ import './light-inner.ts';
  */
 export class ShadowParent extends WebComponent {
   static tag = 'shadow-parent';
+  static shadow = true;
   static properties = { child: { type: String } };
   child: string = 'shadow';
   static styles = css`
