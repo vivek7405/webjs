@@ -2,6 +2,14 @@ import { html } from 'webjs';
 import 'webjs/client-router';
 import '../components/theme-toggle.ts';
 
+const navLink = (href: string, label: string) => html`
+  <a href=${href} class="text-fg-muted no-underline font-medium text-[13px] leading-none tracking-[0.005em] transition-colors duration-fast hover:text-fg">${label}</a>
+`;
+
+const footerLink = (href: string, label: string) => html`
+  <a href=${href} class="text-inherit no-underline transition-colors duration-fast hover:text-fg-muted">${label}</a>
+`;
+
 /**
  * Root layout — globals + chrome.
  *
@@ -171,9 +179,9 @@ export default function RootLayout({ children }: { children: unknown }) {
         <span>blog</span>
       </a>
       <nav class="flex gap-4 items-center">
-        <a href="/" class="text-fg-muted no-underline font-medium text-[13px] leading-none tracking-[0.005em] transition-colors duration-fast hover:text-fg">Posts</a>
-        <a href="/about" class="text-fg-muted no-underline font-medium text-[13px] leading-none tracking-[0.005em] transition-colors duration-fast hover:text-fg">About</a>
-        <a href="/dashboard" class="text-fg-muted no-underline font-medium text-[13px] leading-none tracking-[0.005em] transition-colors duration-fast hover:text-fg">Dashboard</a>
+        ${navLink('/', 'Posts')}
+        ${navLink('/about', 'About')}
+        ${navLink('/dashboard', 'Dashboard')}
         <theme-toggle></theme-toggle>
       </nav>
     </header>
@@ -185,9 +193,9 @@ export default function RootLayout({ children }: { children: unknown }) {
     <footer class="max-w-[760px] mx-auto px-4 sm:px-6 pt-12 pb-[72px] border-t border-border flex justify-between flex-wrap gap-3 text-fg-subtle font-mono text-[11px] leading-[1.4] tracking-[0.12em] uppercase">
       <span><span class="text-accent">&#9679;</span>&nbsp; webjs / demo</span>
       <span>
-        <a href="/api/posts" class="text-inherit no-underline transition-colors duration-fast hover:text-fg-muted">api</a>
+        ${footerLink('/api/posts', 'api')}
         &nbsp;&middot;&nbsp;
-        <a href="/__webjs/health" class="text-inherit no-underline transition-colors duration-fast hover:text-fg-muted">health</a>
+        ${footerLink('/__webjs/health', 'health')}
       </span>
     </footer>
   `;
