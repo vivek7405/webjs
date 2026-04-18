@@ -10,7 +10,7 @@
  * The plugin recognises the web-standard convention:
  *
  *     class Counter extends WebComponent { … }
- *     customElements.define('my-counter', Counter);
+ *     Counter.register('my-counter');
  */
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -78,7 +78,7 @@ test('resolves <my-counter> inside html`` to the Counter class', () => {
       `export class Counter extends WebComponent {\n` +
       `  render() { return html\`<output></output>\`; }\n` +
       `}\n` +
-      `customElements.define('my-counter', Counter);\n`,
+      `Counter.register('my-counter');\n`,
     '/page.ts':
       `import { html } from 'webjs';\n` +
       `import './counter.ts';\n` +
@@ -105,7 +105,7 @@ test('resolves closing tag </my-counter> just like the opening tag', () => {
       `export class Counter extends WebComponent {\n` +
       `  render() {}\n` +
       `}\n` +
-      `customElements.define('my-counter', Counter);\n`,
+      `Counter.register('my-counter');\n`,
     '/page.ts':
       `import { html } from 'webjs';\n` +
       `export default function P() {\n` +
@@ -126,7 +126,7 @@ test('returns nothing for unknown tag names', () => {
       `export class Counter extends WebComponent {\n` +
       `  render() {}\n` +
       `}\n` +
-      `customElements.define('my-counter', Counter);\n`,
+      `Counter.register('my-counter');\n`,
     '/page.ts':
       `import { html } from 'webjs';\n` +
       `export default function P() {\n` +
@@ -144,7 +144,7 @@ test('ignores plain HTML tags (no hyphen → not a custom element)', () => {
       `export class Counter extends WebComponent {\n` +
       `  render() {}\n` +
       `}\n` +
-      `customElements.define('my-counter', Counter);\n`,
+      `Counter.register('my-counter');\n`,
     '/page.ts':
       `import { html } from 'webjs';\n` +
       `export default function P() {\n` +
@@ -162,7 +162,7 @@ test('ignores code inside ${...} holes (not part of the template markup)', () =>
       `export class Counter extends WebComponent {\n` +
       `  render() {}\n` +
       `}\n` +
-      `customElements.define('my-counter', Counter);\n`,
+      `Counter.register('my-counter');\n`,
     '/page.ts':
       `import { html } from 'webjs';\n` +
       `const label = 'my-counter';\n` +

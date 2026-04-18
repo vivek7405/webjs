@@ -108,7 +108,7 @@ export class Counter extends WebComponent {
     \`;
   }
 }
-customElements.define('my-counter', Counter);</pre>
+Counter.register('my-counter');</pre>
 
     <h3>Run it</h3>
     <pre>npx webjs dev

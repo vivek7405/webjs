@@ -11,4 +11,4 @@ export class ShadowInner extends WebComponent {
     return html`<span data-testid="shadow-inner">shadow-inner OK</span>`;
   }
 }
-customElements.define('shadow-inner', ShadowInner);
+ShadowInner.register('shadow-inner');

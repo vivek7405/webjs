@@ -69,4 +69,4 @@ export class NewPost extends WebComponent {
     `;
   }
 }
-customElements.define('new-post', NewPost);
+NewPost.register('new-post');

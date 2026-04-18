@@ -151,4 +151,4 @@ export class DocSearch extends WebComponent {
     `;
   }
 }
-customElements.define('doc-search', DocSearch);
+DocSearch.register('doc-search');

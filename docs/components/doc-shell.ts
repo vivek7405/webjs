@@ -244,4 +244,4 @@ export class DocShell extends WebComponent {
     `;
   }
 }
-customElements.define('doc-shell', DocShell);
+DocShell.register('doc-shell');

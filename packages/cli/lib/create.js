@@ -449,7 +449,7 @@ export class ThemeToggle extends WebComponent {
   }
 }
 
-customElements.define('theme-toggle', ThemeToggle);
+ThemeToggle.register('theme-toggle');
 `);
   } // end if (!isApi)
 

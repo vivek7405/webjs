@@ -100,7 +100,7 @@ export class CommentsThread extends WebComponent {
     `;
   }
 }
-customElements.define('comments-thread', CommentsThread);
+CommentsThread.register('comments-thread');
 
 function signinHref() {
   if (typeof location !== 'undefined') {

@@ -37,7 +37,7 @@ test('extractComponents: finds customElements.define(tag, Class) calls', () => {
     export class Counter extends WebComponent {
       render() {}
     }
-    customElements.define('my-counter', Counter);
+    Counter.register('my-counter');
   `;
   const comps = extractComponents(src);
   assert.equal(comps.length, 1);
@@ -47,18 +47,18 @@ test('extractComponents: finds customElements.define(tag, Class) calls', () => {
 
 test('extractComponents: accepts single and double quotes', () => {
   assert.deepEqual(
-    extractComponents(`customElements.define("my-el", MyEl);`),
+    extractComponents(`MyEl.register("my-el");`),
     [{ tag: 'my-el', className: 'MyEl' }],
   );
   assert.deepEqual(
-    extractComponents(`customElements.define('my-el', MyEl);`),
+    extractComponents(`MyEl.register('my-el');`),
     [{ tag: 'my-el', className: 'MyEl' }],
   );
 });
 
 test('extractComponents: ignores tags without hyphens (HTML spec)', () => {
   assert.deepEqual(
-    extractComponents(`customElements.define('foo', Foo);`),
+    extractComponents(`Foo.register('foo');`),
     [],
   );
 });
@@ -67,8 +67,8 @@ test('extractComponents: handles multiple components per file', () => {
   const src = `
     class A extends WebComponent {}
     class B extends WebComponent {}
-    customElements.define('a-el', A);
-    customElements.define('b-el', B);
+    A.register('a-el');
+    B.register('b-el');
   `;
   const comps = extractComponents(src);
   assert.equal(comps.length, 2);
@@ -79,10 +79,10 @@ test('scanComponents: walks an app tree and derives browser-visible URLs', async
   const dir = await scaffold({
     'components/counter.ts':
       `export class Counter extends WebComponent { render() {} }\n` +
-      `customElements.define('my-counter', Counter);\n`,
+      `Counter.register('my-counter');\n`,
     'modules/posts/components/new-post.ts':
       `export class NewPost extends WebComponent { render() {} }\n` +
-      `customElements.define('new-post', NewPost);\n`,
+      `NewPost.register('new-post');\n`,
   });
   try {
     const comps = await scanComponents(dir);
@@ -97,13 +97,13 @@ test('scanComponents: walks an app tree and derives browser-visible URLs', async
 test('scanComponents: skips .server.ts, .test.ts, and node_modules', async () => {
   const dir = await scaffold({
     'components/real.ts':
-      `export class Real extends WebComponent {}\ncustomElements.define('real-el', Real);\n`,
+      `export class Real extends WebComponent {}\nReal.register('real-el');\n`,
     'components/fake.server.ts':
-      `export class Hidden extends WebComponent {}\ncustomElements.define('hidden-server', Hidden);\n`,
+      `export class Hidden extends WebComponent {}\nHidden.register('hidden-server');\n`,
     'components/fake.test.ts':
-      `export class AlsoHidden extends WebComponent {}\ncustomElements.define('hidden-test', AlsoHidden);\n`,
+      `export class AlsoHidden extends WebComponent {}\nAlsoHidden.register('hidden-test');\n`,
     'node_modules/something/mod.ts':
-      `export class NodeMod extends WebComponent {}\ncustomElements.define('node-mod', NodeMod);\n`,
+      `export class NodeMod extends WebComponent {}\nNodeMod.register('node-mod');\n`,
   });
   try {
     const comps = await scanComponents(dir);
@@ -124,7 +124,7 @@ test('findOrphanComponents: flags class extending WebComponent with no customEle
       `export class Good extends WebComponent {\n` +
       `  render() {}\n` +
       `}\n` +
-      `customElements.define('good-el', Good);\n`,
+      `Good.register('good-el');\n`,
   });
   try {
     const orphans = await findOrphanComponents(dir);
@@ -151,7 +151,7 @@ test('primeComponentRegistry: lookupModuleUrl returns URL after priming', async 
   const dir = await scaffold({
     'components/widget.ts':
       `export class Widget extends WebComponent { render() {} }\n` +
-      `customElements.define('scan-widget', Widget);\n`,
+      `Widget.register('scan-widget');\n`,
   });
   try {
     await primeComponentRegistry(dir);

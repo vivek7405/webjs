@@ -318,7 +318,7 @@ export class LiveChat extends WebComponent {
     \`;
   }
 }
-customElements.define('live-chat', LiveChat);</pre>
+LiveChat.register('live-chat');</pre>
 
     <p>Use it in a page:</p>
     <pre>// app/chat/page.ts
@@ -447,7 +447,7 @@ export class LiveComments extends WebComponent {
     \`;
   }
 }
-customElements.define('live-comments', LiveComments);</pre>
+LiveComments.register('live-comments');</pre>
 
     <p>Usage in a page:</p>
     <pre>// app/posts/[slug]/page.ts

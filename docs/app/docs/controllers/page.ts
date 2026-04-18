@@ -78,7 +78,7 @@ class LazyImage extends WebComponent {
     \`;
   }
 }
-customElements.define('lazy-image', LazyImage);</pre>
+LazyImage.register('lazy-image');</pre>
 
     <h2>Example: FetchController</h2>
     <p>A reusable controller that fetches data from a URL and exposes loading/error/data states:</p>
@@ -135,7 +135,7 @@ class UserList extends WebComponent {
     \`;
   }
 }
-customElements.define('user-list', UserList);</pre>
+UserList.register('user-list');</pre>
 
     <h2>Multiple Controllers on One Component</h2>
     <p>Controllers compose naturally. A single component can use any number of controllers:</p>
@@ -156,7 +156,7 @@ customElements.define('user-list', UserList);</pre>
     return html\`&lt;div&gt;\${this.#data.data?.summary}&lt;/div&gt;\`;
   }
 }
-customElements.define('dashboard-widget', DashboardWidget);</pre>
+DashboardWidget.register('dashboard-widget');</pre>
 
     <h2>Built-in Controllers</h2>
     <p>webjs ships three controllers out of the box:</p>

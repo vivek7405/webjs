@@ -15,6 +15,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
   }
   if (!customElements.get('muted-text')) {
-    customElements.define('muted-text', MutedText);
+    MutedText.register('muted-text');
   }
 }
