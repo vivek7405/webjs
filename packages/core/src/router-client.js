@@ -50,12 +50,37 @@ function parseHTML(html) {
 
 let enabled = false;
 
+/**
+ * Global MutationObserver that upgrades any custom element inserted into the
+ * document. This is the safety net — if replaceChildren, View Transitions,
+ * or any other DOM operation inserts elements that the browser fails to
+ * auto-upgrade, this observer catches them.
+ */
+let upgradeObserver = null;
+function ensureUpgradeObserver() {
+  if (upgradeObserver || typeof MutationObserver === 'undefined' || typeof customElements === 'undefined') return;
+  upgradeObserver = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        const el = /** @type {Element} */ (node);
+        if (el.tagName?.includes('-')) customElements.upgrade(el);
+        for (const child of el.querySelectorAll('*')) {
+          if (child.tagName?.includes('-')) customElements.upgrade(child);
+        }
+      }
+    }
+  });
+  upgradeObserver.observe(document.body, { childList: true, subtree: true });
+}
+
 /** Enable the client router. Idempotent. */
 export function enableClientRouter() {
   if (enabled || typeof document === 'undefined') return;
   enabled = true;
   document.addEventListener('click', onClick, true);
   window.addEventListener('popstate', onPopState);
+  ensureUpgradeObserver();
 }
 
 /** Disable the client router. */
@@ -173,15 +198,33 @@ async function performNavigation(href, isPopState) {
     const currentShell = findLayoutShell(document.body);
     const newShell = findLayoutShell(doc.body);
 
-    if (currentShell && newShell && currentShell.tagName === newShell.tagName) {
-      // Same layout — minimal swap: title + slot content only.
-      const newTitle = doc.querySelector('title');
-      if (newTitle) document.title = newTitle.textContent || '';
+    if (currentShell && newShell &&
+        (currentShell.tagName === newShell.tagName ||
+         (currentShell.getAttribute('data-layout') && currentShell.getAttribute('data-layout') === newShell.getAttribute('data-layout')))) {
+      // Same layout — update title + add any new head elements (modulepreloads,
+      // scripts for newly-needed components). DON'T remove existing head
+      // elements — runtime-generated content like Tailwind CSS must survive.
+      addNewHeadElements(doc.head);
 
-      const children = [...newShell.childNodes].filter(
+      // For data-layout shells, swap only the <main> element's children
+      // (header and footer stay mounted). For custom element shells with
+      // shadow DOM, swap all non-DSD children (the old slot content).
+      const currentMain = currentShell.hasAttribute('data-layout')
+        ? currentShell.querySelector('main')
+        : currentShell;
+      const newMain = newShell.hasAttribute('data-layout')
+        ? newShell.querySelector('main')
+        : newShell;
+      const target = currentMain || currentShell;
+      const source = newMain || newShell;
+      const children = [...source.childNodes].filter(
         (n) => !(n instanceof HTMLTemplateElement && /** @type any */ (n).getAttribute('shadowrootmode'))
       );
-      swapSlotContent(currentShell, children);
+      swapSlotContent(target, children);
+      // Forward any streamed Suspense resolvers that sit outside the layout
+      // wrapper (they're emitted at body level, after </div>). Without this,
+      // the new page's fallback boundary never gets its deferred content.
+      forwardSuspenseResolvers(doc.body);
     } else {
       // Different layout structure — full swap.
       // Move nodes directly from the parsed doc (preserves DSD shadow roots)
@@ -237,27 +280,21 @@ async function performNavigation(href, isPopState) {
  * @param {ChildNode[]} children
  */
 function swapSlotContent(shell, children) {
-  const doSwap = () => {
-    shell.replaceChildren(...children);
-    reactivateScripts(shell);
-    upgradeCustomElements(shell);
-  };
-
-  if (/** @type any */ (document).startViewTransition) {
-    const t = /** @type any */ (document).startViewTransition(doSwap);
-    // After the View Transition completes, run another upgrade pass.
-    // During transitions the DOM may not be fully "settled" when the
-    // callback runs synchronously — a deferred pass catches stragglers.
-    t.finished.then(() => upgradeCustomElements(shell)).catch(() => {});
-  } else {
-    doSwap();
-  }
+  shell.replaceChildren(...children);
+  reactivateScripts(shell);
+  upgradeCustomElements(shell);
+  // Schedule a deferred upgrade pass — some browsers delay custom element
+  // upgrades when elements are inserted during layout/paint. A microtask
+  // pass catches any stragglers.
+  queueMicrotask(() => upgradeCustomElements(shell));
 }
 
 /**
- * Walk body's direct children looking for the first custom element
- * (a tag with a hyphen in its name). In webjs apps this is typically
- * the layout shell: <blog-shell>, <doc-shell>, etc.
+ * Walk body's direct children looking for the layout shell.
+ *
+ * Detection order:
+ *   1. An element with `data-layout` attribute (light DOM shells).
+ *   2. A custom element (tag name with a hyphen: <blog-shell>, etc.).
  *
  * Skips <script>, <style>, text nodes, and comments.
  *
@@ -265,10 +302,45 @@ function swapSlotContent(shell, children) {
  * @returns {Element | null}
  */
 function findLayoutShell(body) {
+  // data-layout attribute (light DOM convention)
+  const marked = body.querySelector(':scope > [data-layout]');
+  if (marked) return marked;
+  // Custom element fallback (shadow DOM convention)
   for (const child of body.children) {
     if (child.tagName.includes('-')) return child;
   }
   return null;
+}
+
+/**
+ * Add-only head merge for same-layout navigations. Updates the title and
+ * adds new elements (modulepreloads, scripts) without removing existing
+ * ones — runtime-generated content like Tailwind CSS styles must survive.
+ *
+ * @param {HTMLHeadElement} newHead
+ */
+function addNewHeadElements(newHead) {
+  const newTitle = newHead.querySelector('title');
+  if (newTitle) document.title = newTitle.textContent || '';
+
+  const currentSet = new Set();
+  for (const el of document.head.children) currentSet.add(el.outerHTML);
+
+  for (const el of newHead.children) {
+    if (el.tagName === 'SCRIPT' && el.getAttribute('type') === 'importmap') continue;
+    if (el.tagName === 'BASE') continue;
+    if (el.tagName === 'TITLE') continue;
+    if (!currentSet.has(el.outerHTML)) {
+      if (el.tagName === 'SCRIPT') {
+        const script = document.createElement('script');
+        for (const attr of el.attributes) script.setAttribute(attr.name, attr.value);
+        script.textContent = el.textContent;
+        document.head.appendChild(script);
+      } else {
+        document.head.appendChild(el.cloneNode(true));
+      }
+    }
+  }
 }
 
 /** @param {HTMLHeadElement} newHead */
@@ -309,7 +381,15 @@ function mergeHead(newHead) {
     if (el.tagName === 'BASE') continue;
     if (el.tagName === 'TITLE') continue;
     if (!currentSet.has(el.outerHTML)) {
-      currentHead.appendChild(el.cloneNode(true));
+      if (el.tagName === 'SCRIPT') {
+        // Scripts must be recreated (not cloned) to execute.
+        const script = document.createElement('script');
+        for (const attr of el.attributes) script.setAttribute(attr.name, attr.value);
+        script.textContent = el.textContent;
+        currentHead.appendChild(script);
+      } else {
+        currentHead.appendChild(el.cloneNode(true));
+      }
     }
   }
 }
@@ -358,6 +438,21 @@ function upgradeTree(root) {
   }
 }
 
+/**
+ * Copy streamed Suspense resolver templates + scripts from the fetched
+ * document body onto the live document body. The `<template>` elements carry
+ * a `data-webjs-resolve="<id>"` attribute; the suspense boot's
+ * MutationObserver watches for them and replaces the matching
+ * `<webjs-boundary id="<id>">` with the template content.
+ *
+ * @param {HTMLElement} fetchedBody
+ */
+function forwardSuspenseResolvers(fetchedBody) {
+  for (const tpl of fetchedBody.querySelectorAll('template[data-webjs-resolve]')) {
+    document.body.appendChild(tpl.cloneNode(true));
+  }
+}
+
 /** Re-run `<script>` tags in a container (innerHTML doesn't execute them). */
 function reactivateScripts(container) {
   for (const old of container.querySelectorAll('script')) {
@@ -369,3 +464,11 @@ function reactivateScripts(container) {
     old.replaceWith(script);
   }
 }
+
+// Internal helpers re-exported for unit testing (underscore prefix signals
+// "not part of the public API — may change without notice").
+export {
+  findLayoutShell as _findLayoutShell,
+  addNewHeadElements as _addNewHeadElements,
+  mergeHead as _mergeHead,
+};

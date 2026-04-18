@@ -33,6 +33,7 @@ test('light DOM SSR includes hydration marker', async () => {
 test('shadow DOM component SSR still uses DSD', async () => {
   class ShadowComp extends WebComponent {
     static tag = 'test-shadow-comp';
+    static shadow = true;
     render() { return html`<p>shadow content</p>`; }
   }
   ShadowComp.register();
@@ -54,6 +55,7 @@ test('mixed page with both shadow and light DOM', async () => {
 
   class MixShadow extends WebComponent {
     static tag = 'test-mix-shadow';
+    static shadow = true;
     static styles = css`p { color: blue; }`;
     render() { return html`<p>shadow part</p>`; }
   }
@@ -90,5 +92,37 @@ test('light DOM async render works', async () => {
   const out = await renderToString(html`<test-async-light></test-async-light>`);
   assert.match(out, /<!--webjs-hydrate-->/);
   assert.match(out, /<div>async result<\/div>/);
+  assert.doesNotMatch(out, /<template shadowrootmode="open">/);
+});
+
+test('WebComponent.shadow defaults to false (light DOM is the default)', () => {
+  assert.equal(WebComponent.shadow, false);
+});
+
+test('component without explicit static shadow uses light DOM (inherits default)', async () => {
+  class DefaultShadow extends WebComponent {
+    static tag = 'test-default-shadow';
+    // No `static shadow =` declaration — should inherit WebComponent.shadow (false).
+    render() { return html`<p>default</p>`; }
+  }
+  DefaultShadow.register();
+  assert.equal(DefaultShadow.shadow, false, 'inherited default should be false');
+
+  const out = await renderToString(html`<test-default-shadow></test-default-shadow>`);
+  // Default is light DOM: content rendered as direct children with hydration marker.
+  assert.match(out, /<!--webjs-hydrate-->/);
+  assert.doesNotMatch(out, /<template shadowrootmode="open">/);
+});
+
+test('component with shadow = "open" (truthy but not === true) stays light DOM', async () => {
+  // The DSD injection check is `shadow === true` — any other truthy value means light.
+  class NotTrueShadow extends WebComponent {
+    static tag = 'test-not-true-shadow';
+    static shadow = /** @type any */ ('open');
+    render() { return html`<p>still light</p>`; }
+  }
+  NotTrueShadow.register();
+  const out = await renderToString(html`<test-not-true-shadow></test-not-true-shadow>`);
+  // shadow is not strictly === true, so no DSD injection.
   assert.doesNotMatch(out, /<template shadowrootmode="open">/);
 });

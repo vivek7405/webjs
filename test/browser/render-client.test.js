@@ -143,6 +143,53 @@ suite('Client renderer', () => {
     assert.equal(el.querySelector('b').textContent, 'bold');
     assert.ok(el.querySelector('i'), 'should have <i> element');
   });
+
+  test('mixed attr: single hole with surrounding static text', () => {
+    const el = document.createElement('div');
+    const view = (cls) => html`<div class="pre ${cls} post">x</div>`;
+    render(view('mid'), el);
+    assert.equal(el.querySelector('div').getAttribute('class'), 'pre mid post');
+    render(view('new'), el);
+    assert.equal(el.querySelector('div').getAttribute('class'), 'pre new post');
+  });
+
+  test('mixed attr: multiple holes in one attribute all update', () => {
+    const el = document.createElement('div');
+    const view = (a, b) => html`<div data-x="a ${a} b ${b} c">x</div>`;
+    render(view('1', '2'), el);
+    assert.equal(el.querySelector('div').getAttribute('data-x'), 'a 1 b 2 c');
+    render(view('3', '4'), el);
+    assert.equal(el.querySelector('div').getAttribute('data-x'), 'a 3 b 4 c');
+  });
+
+  test('mixed attr: element identity preserved across updates', () => {
+    const el = document.createElement('div');
+    const view = (a) => html`<section data-foo="x ${a} y">k</section>`;
+    render(view('1'), el);
+    const pre = el.querySelector('section');
+    render(view('2'), el);
+    assert.strictEqual(el.querySelector('section'), pre);
+    assert.equal(pre.getAttribute('data-foo'), 'x 2 y');
+  });
+
+  test('mixed attr: coexists with event and boolean parts on same element', () => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    let clicked = 0;
+    const view = (cls, disabled) => html`
+      <button class="btn ${cls} end" ?disabled=${disabled} @click=${() => { clicked++; }}>Go</button>
+    `;
+    render(view('primary', false), el);
+    const btn = el.querySelector('button');
+    assert.equal(btn.getAttribute('class'), 'btn primary end');
+    assert.ok(!btn.hasAttribute('disabled'));
+    btn.click();
+    assert.equal(clicked, 1);
+    render(view('secondary', true), el);
+    assert.equal(btn.getAttribute('class'), 'btn secondary end');
+    assert.ok(btn.hasAttribute('disabled'));
+    el.remove();
+  });
 });
 
 suite('Shadow DOM (real browser)', () => {

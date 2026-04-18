@@ -8,7 +8,7 @@ import './light-inner.ts';
  */
 export class LightParent extends WebComponent {
   static tag = 'light-parent';
-  static shadow = false;
+
   static properties = { child: { type: String } };
   child: string = 'shadow';
   render() {

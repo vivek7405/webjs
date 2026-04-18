@@ -248,7 +248,7 @@ async function injectDSD(html, ctx) {
     if (ctx && ctx.usedComponents) ctx.usedComponents.add(tag);
     const opening = selfClose ? `<${tag}${attrs}>` : match;
     try {
-      const isShadow = /** @type any */ (Cls).shadow !== false;
+      const isShadow = /** @type any */ (Cls).shadow === true;
       const instance = new /** @type any */ (Cls)();
       const attrMap = parseAttrs(attrs);
       applyAttrsToInstance(instance, attrMap, Cls);

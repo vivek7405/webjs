@@ -1,9 +1,10 @@
 import { html } from 'webjs';
+import { displayH1 } from './_utils/ui.ts';
 
 export default function NotFound() {
   return html`
-    <h1>404</h1>
-    <p>Page not found.</p>
-    <p><a href="/">← Home</a></p>
+    ${displayH1('404')}
+    <p class="text-lede text-fg-muted m-0 mb-4">Page not found.</p>
+    <p class="m-0"><a href="/" class="text-accent underline underline-offset-[3px] decoration-transparent hover:decoration-current transition-colors duration-fast">← Home</a></p>
   `;
 }

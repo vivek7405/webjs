@@ -1,4 +1,4 @@
-import { WebComponent, html, css } from 'webjs';
+import { WebComponent, html } from 'webjs';
 // Server action — dev server rewrites this import into an RPC stub for the
 // browser. At type-check time TS resolves the real source so createPost's
 // input + return types flow across the RPC boundary.
@@ -8,76 +8,6 @@ type State = { busy: boolean; error: string | null };
 
 export class NewPost extends WebComponent {
   static tag = 'new-post';
-  static styles = css`
-    :host { display: block; }
-    form {
-      display: grid;
-      gap: var(--sp-5);
-      padding: var(--sp-6) clamp(var(--sp-4), 4vw, var(--sp-6));
-      background: var(--bg-elev);
-      border: 1px solid var(--border);
-      border-radius: var(--rad-lg);
-      box-shadow: var(--shadow);
-    }
-    label {
-      display: grid;
-      gap: var(--sp-2);
-      font: 600 10px/1 var(--font-mono);
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      color: var(--fg-subtle);
-    }
-    input[name='title'] {
-      font: 700 clamp(1.4rem, 1.1rem + 1vw, 1.75rem)/1.15 var(--font-serif);
-      letter-spacing: -0.02em;
-      color: var(--fg);
-      background: transparent;
-      border: 0;
-      border-bottom: 1px solid var(--border-strong);
-      padding: var(--sp-3) 0;
-      transition: border-color var(--t-fast);
-    }
-    textarea {
-      font: 16px/1.65 var(--font-serif);
-      resize: vertical;
-      min-height: 220px;
-      color: var(--fg);
-      background: transparent;
-      border: 1px solid var(--border-strong);
-      border-radius: var(--rad);
-      padding: var(--sp-4);
-      transition: border-color var(--t-fast), box-shadow var(--t-fast);
-    }
-    input:focus, textarea:focus {
-      outline: 0;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-tint);
-    }
-    input[name='title']:focus { box-shadow: none; }
-    button {
-      justify-self: start;
-      font: 600 13px/1 var(--font-sans);
-      letter-spacing: 0.02em;
-      padding: var(--sp-3) var(--sp-5);
-      border-radius: 999px;
-      border: 0;
-      background: var(--accent);
-      color: var(--accent-fg);
-      cursor: pointer;
-      transition: background var(--t-fast), transform var(--t-fast);
-    }
-    button:hover  { background: var(--accent-hover); }
-    button:active { transform: translateY(1px); }
-    button:disabled { opacity: 0.5; cursor: progress; }
-    .err {
-      margin: 0;
-      padding: var(--sp-3);
-      border-radius: var(--rad);
-      background: color-mix(in oklch, var(--bg-elev) 80%, var(--accent));
-      color: var(--accent);
-      font: 13px/1.4 var(--font-mono);
-    }
-  `;
 
   declare state: State;
 
@@ -86,16 +16,27 @@ export class NewPost extends WebComponent {
     this.state = { busy: false, error: null };
   }
 
+  firstUpdated() {
+    const titleInput = this.querySelector<HTMLInputElement>('input[name="title"]');
+    titleInput?.focus();
+  }
+
   async onSubmit(e: SubmitEvent) {
     e.preventDefault();
-    const form = e.currentTarget as HTMLFormElement;
+    // Use querySelector as a fallback — e.currentTarget can be null in
+    // some re-render scenarios with light DOM event delegation.
+    const form = (e.currentTarget || this.querySelector('form')) as HTMLFormElement;
+    if (!form) return;
     const data = new FormData(form);
+    const title = String(data.get('title') || '');
+    const body = String(data.get('body') || '');
+    if (!title || !body) {
+      this.setState({ error: 'Title and body are required' });
+      return;
+    }
     this.setState({ busy: true, error: null });
     try {
-      const result = await createPost({
-        title: String(data.get('title') || ''),
-        body:  String(data.get('body')  || ''),
-      });
+      const result = await createPost({ title, body });
       if (!result.success) {
         this.setState({ busy: false, error: result.error });
         return;
@@ -111,17 +52,20 @@ export class NewPost extends WebComponent {
   render() {
     const { busy, error } = this.state;
     return html`
-      <form @submit=${(e: SubmitEvent) => this.onSubmit(e)}>
-        <label>
+      <form class="grid gap-5 p-6 px-[clamp(1rem,4vw,1.5rem)] bg-bg-elev border border-border rounded-xl shadow" @submit=${(e: SubmitEvent) => this.onSubmit(e)}>
+        <label class="grid gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-fg-subtle">
           Title
-          <input name="title" placeholder="A bold title…" required autofocus />
+          <input class="font-serif font-bold text-[clamp(1.4rem,calc(1.1rem+1vw),1.75rem)] leading-tight tracking-tight text-fg bg-transparent border-0 border-b border-border-strong py-3 px-0 transition-colors duration-150 focus:outline-none focus:border-accent"
+                 name="title" placeholder="A bold title…" required />
         </label>
-        <label>
+        <label class="grid gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-fg-subtle">
           Body
-          <textarea name="body" placeholder="Write your post — markdown not required." required></textarea>
+          <textarea class="font-serif text-base leading-relaxed resize-y min-h-[220px] text-fg bg-transparent border border-border-strong rounded p-4 transition-all duration-150 focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-tint)]"
+                    name="body" placeholder="Write your post — markdown not required." required></textarea>
         </label>
-        <button ?disabled=${busy}>${busy ? 'Publishing…' : 'Publish'}</button>
-        ${error ? html`<p class="err">${error}</p>` : ''}
+        <button class="justify-self-start font-sans text-[13px] font-semibold tracking-[0.02em] py-3 px-5 rounded-full border-0 bg-accent text-accent-fg cursor-pointer transition-all duration-150 hover:bg-accent-hover active:translate-y-px disabled:opacity-50 disabled:cursor-progress"
+                ?disabled=${busy}>${busy ? 'Publishing…' : 'Publish'}</button>
+        ${error ? html`<p class="m-0 p-3 rounded bg-[color-mix(in_oklch,var(--bg-elev)_80%,var(--accent))] text-accent font-mono text-[13px] leading-snug">${error}</p>` : ''}
       </form>
     `;
   }

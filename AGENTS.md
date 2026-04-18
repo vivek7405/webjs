@@ -181,6 +181,13 @@ inspired by NextJs, Lit, and Rails.
   calls directly — the import is rewritten into an RPC stub. The RPC wire uses
   **superjson**, so `Date`, `Map`, `Set`, `BigInt`, `undefined`, `URL`, `RegExp`
   round-trip as their real types.
+- **Server-file source is unreachable from the browser (framework invariant).**
+  The HTTP layer independently re-verifies every JS/TS request against the
+  server-file predicate (filename suffix OR `'use server'` directive) before
+  serving bytes. A server file always responds with a generated RPC stub,
+  never its source — this holds regardless of index state, file-system
+  race conditions, or developer error. Enforced in `dev.js`; regression
+  tests in `test/server-file-guardrail.test.js`.
 
 ---
 

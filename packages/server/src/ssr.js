@@ -19,7 +19,7 @@ import { transitiveDeps } from './module-graph.js';
  * @param {import('./router.js').PageRoute} route
  * @param {Record<string,string>} params
  * @param {URL} url
- * @param {{ dev: boolean, appDir: string, req?: Request, bundle?: boolean, moduleGraph?: import('./module-graph.js').ModuleGraph }} opts
+ * @param {{ dev: boolean, appDir: string, req?: Request, bundle?: boolean, moduleGraph?: import('./module-graph.js').ModuleGraph, serverFiles?: Map<string,string> | Set<string> }} opts
  * @returns {Promise<Response>}
  */
 export async function ssrPage(route, params, url, opts) {
@@ -58,6 +58,7 @@ export async function ssrPage(route, params, url, opts) {
           opts.moduleGraph,
           [route.file, ...route.layouts],
           opts.appDir,
+          opts.serverFiles,
         );
     // Extract CSP nonce from request headers (if present).
     const nonce = opts.req ? getNonce(opts.req) : undefined;
@@ -137,9 +138,9 @@ export async function ssrNotFound(notFoundFile, opts) {
  */
 function htmlResponse(html, status, req, url, metadata) {
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
-  if (metadata?.cacheControl) {
-    headers.set('cache-control', metadata.cacheControl);
-  }
+  // Default: no caching. Pages are dynamic by default — the developer
+  // opts in to caching explicitly via metadata.cacheControl.
+  headers.set('cache-control', metadata?.cacheControl || 'no-store');
   if (req && !readToken(req)) {
     const secure = url ? url.protocol === 'https:' : false;
     headers.append('set-cookie', cookieHeader(newToken(), { secure }));
@@ -192,7 +193,16 @@ async function renderChain(route, ctx, dev, suspenseCtx) {
     if (!mod.default) continue;
     tree = await mod.default({ ...ctx, children: tree });
   }
-  return renderToString(tree, { ssr: true, suspenseCtx });
+  let body = await renderToString(tree, { ssr: true, suspenseCtx });
+  // Wrap the outermost layout's output in a data-layout element so the
+  // client router can detect same-layout navigations and swap only the
+  // page content (keeping header/footer/nav mounted). The layout identity
+  // is derived from the outermost layout file path.
+  if (route.layouts.length > 0) {
+    const layoutId = route.layouts[0].replace(/^.*\/app\//, '').replace(/\.[jt]sx?$/, '');
+    body = `<div data-layout="${layoutId}">${body}</div>`;
+  }
+  return body;
 }
 
 /**
@@ -221,12 +231,40 @@ async function collectMetadata(route, ctx, dev) {
 }
 
 /**
+ * Extract leading `<script>` and `<style>` tags from the body HTML and
+ * hoist them into `<head>`. Ensures blocking scripts (e.g. Tailwind
+ * browser runtime, theme bootstrap) run before any body content renders.
+ *
+ * @param {string} headHtml
+ * @param {string} bodyHtml
+ * @returns {{ head: string, body: string }}
+ */
+function hoistHeadTags(headHtml, bodyHtml) {
+  const hoisted = [];
+  const re = /^\s*(<(?:script|style)[\s>][\s\S]*?<\/(?:script|style)>)/i;
+  let remaining = bodyHtml;
+  let m;
+  while ((m = re.exec(remaining)) !== null) {
+    hoisted.push(m[1]);
+    remaining = remaining.slice(m[0].length);
+  }
+  if (!hoisted.length) return { head: headHtml, body: bodyHtml };
+  const newHead = headHtml.replace('</head>', hoisted.join('\n') + '\n</head>');
+  return { head: newHead, body: remaining };
+}
+
+// Internal helper re-exported for unit testing.
+export { hoistHeadTags as _hoistHeadTags };
+
+/**
  * Buffered wrapper (error / not-found paths; no Suspense streaming).
  * @param {string} body
  * @param {{ metadata: Record<string,any>, moduleUrls: string[], dev: boolean }} opts
  */
 function wrapInDocument(body, opts) {
-  return wrapHead({ ...opts, streaming: false }) + body + `\n</body>\n</html>`;
+  const headHtml = wrapHead({ ...opts, streaming: false });
+  const { head, body: bodyOut } = hoistHeadTags(headHtml, body);
+  return head + bodyOut + `\n</body>\n</html>`;
 }
 
 /**
@@ -361,13 +399,26 @@ function componentPreloads(usedTags, appDir) {
  * @param {string} appDir
  * @returns {string[]}
  */
-function deduplicatedPreloads(componentUrls, moduleUrls, graph, entryFiles, appDir) {
+function deduplicatedPreloads(componentUrls, moduleUrls, graph, entryFiles, appDir, serverFiles) {
   const seen = new Set(moduleUrls);
   const result = [];
 
+  // Server-only modules are never useful to preload: they're imported by
+  // pages/layouts on the server, or surfaced to client components as
+  // generated RPC stubs that load lazily on first call. Preloading them
+  // wastes a roundtrip and pollutes the network tab with server-named files.
+  //
+  // Detection is belt-and-suspenders: filename suffix catches `.server.*`;
+  // the `serverFiles` set (built from the action index) also catches files
+  // that opted in via `'use server'` directive without the suffix.
+  const byName = (url) => /\.server\.m?[jt]s$/.test(url);
+  const byIndex = serverFiles
+    ? (abs) => (serverFiles.has ? serverFiles.has(abs) : false)
+    : () => false;
+
   // Add direct component URLs
   for (const url of componentUrls) {
-    if (seen.has(url)) continue;
+    if (seen.has(url) || byName(url)) continue;
     seen.add(url);
     result.push(url);
   }
@@ -383,8 +434,9 @@ function deduplicatedPreloads(componentUrls, moduleUrls, graph, entryFiles, appD
     }
     const deps = transitiveDeps(graph, allEntries, appDir);
     for (const dep of deps) {
+      if (byIndex(dep)) continue;
       const url = toUrlPath(dep, appDir);
-      if (seen.has(url)) continue;
+      if (seen.has(url) || byName(url)) continue;
       seen.add(url);
       result.push(url);
     }
@@ -406,24 +458,24 @@ function deduplicatedPreloads(componentUrls, moduleUrls, graph, entryFiles, appD
  * @param {Record<string, any>} [metadata]
  */
 function streamingHtmlResponse(headHtml, bodyHtml, ctx, status, req, url, metadata) {
+  const { head, body: hoistedBody } = hoistHeadTags(headHtml, bodyHtml);
   const encoder = new TextEncoder();
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
-  // Cache-Control from page/layout metadata — standard HTTP caching
-  if (metadata?.cacheControl) {
-    headers.set('cache-control', metadata.cacheControl);
-  }
+  // Default: no caching. Pages are dynamic by default — the developer
+  // opts in to caching explicitly via metadata.cacheControl.
+  headers.set('cache-control', metadata?.cacheControl || 'no-store');
   if (req && !readToken(req)) {
     const secure = url ? url.protocol === 'https:' : false;
     headers.append('set-cookie', cookieHeader(newToken(), { secure }));
   }
 
   if (!ctx.pending.length) {
-    return new Response(headHtml + bodyHtml + '\n</body>\n</html>', { status, headers });
+    return new Response(head + hoistedBody + '\n</body>\n</html>', { status, headers });
   }
 
   const stream = new ReadableStream({
     async start(controller) {
-      controller.enqueue(encoder.encode(headHtml + bodyHtml));
+      controller.enqueue(encoder.encode(head + hoistedBody));
       try {
         // Loop: resolve all currently-pending promises in parallel; nested
         // Suspense inside resolved content adds more pending entries.

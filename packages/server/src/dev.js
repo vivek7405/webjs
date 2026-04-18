@@ -12,7 +12,6 @@ import { ssrPage, ssrNotFound } from './ssr.js';
 import { handleApi } from './api.js';
 import {
   buildActionIndex,
-  resolveServerModule,
   serveActionStub,
   invokeAction,
   matchExposedAction,
@@ -20,6 +19,8 @@ import {
   invokeExposedAction,
   buildPreflightResponse,
   withCors,
+  isServerFile,
+  hashFile,
 } from './actions.js';
 import { defaultLogger } from './logger.js';
 import { withRequest } from './context.js';
@@ -385,11 +386,26 @@ async function handleCore(req, ctx) {
       }
     }
     if (abs.startsWith(appDir) && (await exists(abs))) {
-      const serverFile = resolveServerModule(state.actionIndex, path) ||
-        // Also recognise stub requests for the .ts form.
-        (abs !== join(appDir, path) ? resolveServerModule(state.actionIndex, '/' + relative(appDir, abs).split(sep).join('/')) : null);
-      if (serverFile) {
-        const stub = await serveActionStub(state.actionIndex, serverFile);
+      // Server-file guardrail: a file is server-only if its name matches
+      // `.server.{js,ts,mjs,mts}` OR the source starts with `'use server'`.
+      // Such files MUST NEVER be served as source to the browser — they
+      // contain secrets, DB queries, and privileged logic. Always return a
+      // generated RPC stub instead.
+      //
+      // We re-verify via `isServerFile(abs)` on every request (not just the
+      // action-index snapshot taken at boot). This catches files created
+      // after boot, files that flipped their `'use server'` status, or any
+      // race between scan completion and request — the guardrail is an
+      // independent check, not a cache lookup.
+      if (await isServerFile(abs)) {
+        // Lazily ensure the index knows about this file so serveActionStub
+        // can mint a stable hash and function list.
+        if (!state.actionIndex.fileToHash.has(abs)) {
+          const h = hashFile(abs);
+          state.actionIndex.fileToHash.set(abs, h);
+          state.actionIndex.hashToFile.set(h, abs);
+        }
+        const stub = await serveActionStub(state.actionIndex, abs);
         return new Response(stub, {
           headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' },
         });
@@ -441,6 +457,7 @@ async function handleCore(req, ctx) {
     if (page) {
       const handler = () => ssrPage(page.route, page.params, url, {
         dev, appDir, req, bundle: !!state.bundlePath, moduleGraph: state.moduleGraph,
+        serverFiles: state.actionIndex.fileToHash,
       });
       return runWithSegmentMiddleware(req, page.route.middlewares, handler, dev);
     }

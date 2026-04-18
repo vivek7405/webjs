@@ -58,6 +58,7 @@ test('awaits async template (page-style)', async () => {
 test('DSD injection handles attribute values containing slashes', async () => {
   class SlashTag extends WebComponent {
     static tag = 'slash-tag';
+    static shadow = true;
     static properties = { href: { type: String } };
     render() { return html`<a href=${this.href}>x</a>`; }
   }
@@ -70,6 +71,7 @@ test('DSD injection handles attribute values containing slashes', async () => {
 test('custom element injects declarative shadow DOM', async () => {
   class Greet extends WebComponent {
     static tag = 'g-reet';
+    static shadow = true;
     static styles = css`span { color: red; }`;
     render() { return html`<span>hi ${'you'}</span>`; }
   }
@@ -84,6 +86,7 @@ test('custom element injects declarative shadow DOM', async () => {
 test('async component render is awaited', async () => {
   class AsyncGreet extends WebComponent {
     static tag = 'async-greet';
+    static shadow = true;
     async render() {
       const name = await Promise.resolve('async world');
       return html`<span>hi ${name}</span>`;
@@ -134,6 +137,7 @@ test('uppercase </SCRIPT> still closes raw-text (case-insensitive)', async () =>
 test('nested DSD: shadow parent → shadow child gets DSD with inline styles', async () => {
   class A1Child extends WebComponent {
     static tag = 'ss-child';
+    static shadow = true;
     static styles = css`:host { display: inline-flex; width: 36px; height: 36px; }`;
     render() { return html`<button>X</button>`; }
   }
@@ -141,6 +145,7 @@ test('nested DSD: shadow parent → shadow child gets DSD with inline styles', a
 
   class A1Parent extends WebComponent {
     static tag = 'ss-parent';
+    static shadow = true;
     static styles = css`:host { display: block; }`;
     render() { return html`<div><ss-child></ss-child></div>`; }
   }
@@ -168,6 +173,7 @@ test('nested DSD: shadow parent → light child gets hydration marker', async ()
 
   class B1Parent extends WebComponent {
     static tag = 'sl-parent';
+    static shadow = true;
     static styles = css`:host { display: block; }`;
     render() { return html`<sl-child></sl-child>`; }
   }
@@ -186,6 +192,7 @@ test('nested DSD: shadow parent → light child gets hydration marker', async ()
 test('nested DSD: light parent → shadow child gets DSD with inline styles', async () => {
   class C1Child extends WebComponent {
     static tag = 'ls-child';
+    static shadow = true;
     static styles = css`button { color: red; }`;
     render() { return html`<button>click</button>`; }
   }
@@ -236,6 +243,7 @@ test('nested DSD: light parent → light child gets hydration marker', async () 
 test('nested DSD: three levels deep — shadow → shadow → shadow', async () => {
   class DeepLeaf extends WebComponent {
     static tag = 'deep-leaf';
+    static shadow = true;
     static styles = css`.leaf { color: green; }`;
     render() { return html`<span class="leaf">leaf</span>`; }
   }
@@ -243,6 +251,7 @@ test('nested DSD: three levels deep — shadow → shadow → shadow', async () 
 
   class DeepMid extends WebComponent {
     static tag = 'deep-mid';
+    static shadow = true;
     static styles = css`:host { padding: 8px; }`;
     render() { return html`<deep-leaf></deep-leaf>`; }
   }
@@ -250,6 +259,7 @@ test('nested DSD: three levels deep — shadow → shadow → shadow', async () 
 
   class DeepRoot extends WebComponent {
     static tag = 'deep-root';
+    static shadow = true;
     static styles = css`:host { display: block; }`;
     render() { return html`<deep-mid></deep-mid>`; }
   }

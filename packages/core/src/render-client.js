@@ -35,9 +35,11 @@ const INSTANCE = Symbol.for('webjs.instance');
 
 /**
  * @typedef {{
- *   kind: 'child' | 'attr' | 'event' | 'prop' | 'bool' | 'noop',
+ *   kind: 'child' | 'attr' | 'attr-mixed' | 'event' | 'prop' | 'bool' | 'noop',
  *   path: number[],
  *   name?: string,
+ *   statics?: string[],
+ *   group?: number[],
  * }} PartDescriptor
  *
  * @typedef {{
@@ -51,6 +53,7 @@ const INSTANCE = Symbol.for('webjs.instance');
  * @typedef {
  *   | { kind: 'child', marker: Comment, child?: TemplateInstance | ChildNode[] }
  *   | { kind: 'attr', el: Element, name: string }
+ *   | { kind: 'attr-mixed', el: Element, name: string, statics: string[], group: number[] }
  *   | { kind: 'event', el: Element, name: string, handler: ((e: Event) => void) | null, dispatcher: (e: Event) => void }
  *   | { kind: 'prop', el: Element, name: string }
  *   | { kind: 'bool', el: Element, name: string }
@@ -122,6 +125,8 @@ function compile(tr) {
   let attrStart = 0;
   let attrQuote = '';
   let commentDashes = 0;
+  /** @type {{ name: string, firstPartIdx: number } | null} */
+  let mixedAttr = null;
   let currentTag = '';
   let rawTail = '';
 
@@ -205,6 +210,46 @@ function compile(tr) {
           html += c;
           if (c === attrQuote) { state = 'in-tag'; attrName = ''; }
           break;
+        case 'skip-attr':
+          // Consume mixed-attribute chars without appending to html.
+          // The attribute was replaced with a sentinel on the first hole.
+          if (c === attrQuote) {
+            // Closing quote — finalize the attr-mixed part.
+            if (mixedAttr) {
+              const idx0 = mixedAttr.firstPartIdx;
+              const group = [];
+              for (let k = idx0; k < parts.length; k++) {
+                if (parts[k].kind === 'noop' || parts[k].kind === 'attr-mixed') group.push(k);
+              }
+              // Build statics from the template strings array.
+              // For `attr="a ${x} b ${y} c"`, group=[idx0,idx1].
+              // statics[0] = tail of strings[idx0] after the `="`
+              // statics[1] = strings[idx1] (between holes)
+              // statics[n] = prefix of strings[last+1] up to closing quote
+              const statics = [];
+              const s0 = strings[group[0]];
+              const qp = s0.lastIndexOf(attrQuote);
+              statics.push(qp >= 0 ? s0.slice(qp + 1) : s0);
+              for (let k = 1; k < group.length; k++) {
+                statics.push(strings[group[k]]);
+              }
+              const sLast = strings[group[group.length - 1] + 1];
+              const eq = sLast.indexOf(attrQuote);
+              statics.push(eq >= 0 ? sLast.slice(0, eq) : sLast);
+
+              parts[idx0] = {
+                kind: 'attr-mixed',
+                path: [],
+                name: mixedAttr.name,
+                statics,
+                group,
+              };
+              mixedAttr = null;
+            }
+            state = 'in-tag';
+            attrName = '';
+          }
+          break;
       }
     }
 
@@ -250,13 +295,16 @@ function compile(tr) {
         state = 'in-tag';
         attrName = '';
       } else if (state === 'attr-quoted' || state === 'attr-unquoted') {
-        // Interpolation inside a quoted attribute value (`attr="a${x}b"`) or
-        // unquoted mixed value (`attr=a${x}b`). Fine-grained updates aren't
-        // tracked in v1 — use the unquoted single-hole form `attr=${x}` for
-        // values that need to update. Here we record a noop part so the
-        // values[] length stays aligned with parts[], but the attribute text
-        // in the compiled template is left as-is (SSR already wrote the right
-        // value; the client just won't re-sync this attribute on re-render).
+        // First hole inside a quoted attribute value — start mixed-attr tracking.
+        // Replace the entire attribute with a sentinel (same as regular attr).
+        html = html.slice(0, attrStart);
+        const sentinel = `data-${MARKER}${partIdx}`;
+        html += `${sentinel}=""`;
+        mixedAttr = { name: attrName, firstPartIdx: partIdx };
+        parts.push({ kind: 'noop', path: [] }); // patched to attr-mixed at close-quote
+        state = 'skip-attr';
+      } else if (state === 'skip-attr') {
+        // Subsequent hole in the same mixed attribute.
         parts.push({ kind: 'noop', path: [] });
       }
     }
@@ -339,7 +387,7 @@ function createInstance(tr, container) {
   const bound = parts.map((p) => bindPart(p, frag));
   const lastValues = [];
   for (let i = 0; i < tr.values.length; i++) {
-    applyPart(bound[i], tr.values[i], undefined);
+    applyPart(bound[i], tr.values[i], undefined, tr.values);
     lastValues.push(tr.values[i]);
   }
 
@@ -374,6 +422,7 @@ function bindPart(p, root) {
     return part;
   }
   if (p.kind === 'attr') return { kind: 'attr', el, name: p.name || '' };
+  if (p.kind === 'attr-mixed') return { kind: 'attr-mixed', el, name: p.name || '', statics: p.statics || [], group: p.group || [] };
   if (p.kind === 'prop') return { kind: 'prop', el, name: p.name || '' };
   if (p.kind === 'bool') return { kind: 'bool', el, name: p.name || '' };
   throw new Error(`unknown part kind ${/** @type any */(p).kind}`);
@@ -387,7 +436,7 @@ function updateInstance(inst, values) {
   for (let i = 0; i < values.length; i++) {
     const next = values[i];
     if (Object.is(next, inst.lastValues[i])) continue;
-    applyPart(inst.bound[i], next, inst.lastValues[i]);
+    applyPart(inst.bound[i], next, inst.lastValues[i], values);
     inst.lastValues[i] = next;
   }
 }
@@ -413,7 +462,7 @@ function clearInstance(inst, container) {
  * @param {unknown} value
  * @param {unknown} _prev
  */
-function applyPart(part, value, _prev) {
+function applyPart(part, value, _prev, allValues) {
   // Unwrap live() — dirty-check against the live DOM value, not the
   // last rendered value. Essential for <input> two-way binding.
   if (isLive(value)) {
@@ -443,6 +492,17 @@ function applyPart(part, value, _prev) {
     case 'event':
       part.handler = typeof value === 'function' ? /** @type any */ (value) : null;
       break;
+    case 'attr-mixed': {
+      // Reconstruct the attribute from static pieces + all dynamic values.
+      const mp = /** @type {{ statics: string[], group: number[] }} */ (/** @type any */ (part));
+      let val = mp.statics[0];
+      for (let j = 0; j < mp.group.length; j++) {
+        val += String((allValues ? allValues[mp.group[j]] : value) ?? '');
+        val += mp.statics[j + 1] || '';
+      }
+      part.el.setAttribute(part.name, val);
+      break;
+    }
     case 'noop':
       // intentionally empty — used for holes inside HTML comments
       break;
@@ -522,7 +582,7 @@ function applyChild(part, value) {
     const bound = parts.map((p) => bindPart(p, frag));
     const lastValues = [];
     for (let i = 0; i < tr.values.length; i++) {
-      applyPart(bound[i], tr.values[i], undefined);
+      applyPart(bound[i], tr.values[i], undefined, tr.values);
       lastValues.push(tr.values[i]);
     }
     const nodes = [startNode, ...frag.childNodes, endNode];
@@ -541,7 +601,7 @@ function applyChild(part, value) {
         const frag = /** @type DocumentFragment */ (templateEl.content.cloneNode(true));
         const bound = parts.map((p) => bindPart(p, frag));
         for (let i = 0; i < tr.values.length; i++) {
-          applyPart(bound[i], tr.values[i], undefined);
+          applyPart(bound[i], tr.values[i], undefined, tr.values);
         }
         list.push(...frag.childNodes);
       } else if (v != null && v !== false && v !== true) {
@@ -596,7 +656,7 @@ function buildDetached(tr) {
   const bound = parts.map((p) => bindPart(p, frag));
   const lastValues = [];
   for (let i = 0; i < tr.values.length; i++) {
-    applyPart(bound[i], tr.values[i], undefined);
+    applyPart(bound[i], tr.values[i], undefined, tr.values);
     lastValues.push(tr.values[i]);
   }
   const outFrag = document.createDocumentFragment();
