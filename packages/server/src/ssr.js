@@ -221,12 +221,45 @@ async function collectMetadata(route, ctx, dev) {
 }
 
 /**
+ * Extract top-level `<script>` and `<style>` tags from the body HTML and
+ * move them into `<head>`. This lets layouts and pages write `<script>` and
+ * `<style>` tags naturally in their templates — the SSR pipeline hoists them
+ * so they load before any body content renders (critical for Tailwind CSS
+ * browser runtime, theme bootstrap scripts, etc.).
+ *
+ * Only hoists tags that appear BEFORE the first non-script/style content
+ * (i.e. leading tags, not tags embedded deep in the page).
+ *
+ * @param {string} headHtml  The `<head>…</head><body>` prefix.
+ * @param {string} bodyHtml  The body content.
+ * @returns {{ head: string, body: string }}
+ */
+function hoistHeadTags(headHtml, bodyHtml) {
+  const hoisted = [];
+  // Match leading <script …>…</script> and <style …>…</style> tags at the
+  // start of the body (possibly separated by whitespace).
+  const re = /^\s*(<(?:script|style)[\s>][\s\S]*?<\/(?:script|style)>)/i;
+  let remaining = bodyHtml;
+  let m;
+  while ((m = re.exec(remaining)) !== null) {
+    hoisted.push(m[1]);
+    remaining = remaining.slice(m[0].length);
+  }
+  if (!hoisted.length) return { head: headHtml, body: bodyHtml };
+  // Insert hoisted tags just before </head>.
+  const newHead = headHtml.replace('</head>', hoisted.join('\n') + '\n</head>');
+  return { head: newHead, body: remaining };
+}
+
+/**
  * Buffered wrapper (error / not-found paths; no Suspense streaming).
  * @param {string} body
  * @param {{ metadata: Record<string,any>, moduleUrls: string[], dev: boolean }} opts
  */
 function wrapInDocument(body, opts) {
-  return wrapHead({ ...opts, streaming: false }) + body + `\n</body>\n</html>`;
+  const headHtml = wrapHead({ ...opts, streaming: false });
+  const { head, body: bodyOut } = hoistHeadTags(headHtml, body);
+  return head + bodyOut + `\n</body>\n</html>`;
 }
 
 /**
@@ -406,6 +439,9 @@ function deduplicatedPreloads(componentUrls, moduleUrls, graph, entryFiles, appD
  * @param {Record<string, any>} [metadata]
  */
 function streamingHtmlResponse(headHtml, bodyHtml, ctx, status, req, url, metadata) {
+  // Hoist leading <script> and <style> tags from the body into <head> so
+  // they load before any content renders (e.g. Tailwind CSS browser runtime).
+  const { head, body: hoistedBody } = hoistHeadTags(headHtml, bodyHtml);
   const encoder = new TextEncoder();
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
   // Cache-Control from page/layout metadata — standard HTTP caching
@@ -418,12 +454,12 @@ function streamingHtmlResponse(headHtml, bodyHtml, ctx, status, req, url, metada
   }
 
   if (!ctx.pending.length) {
-    return new Response(headHtml + bodyHtml + '\n</body>\n</html>', { status, headers });
+    return new Response(head + hoistedBody + '\n</body>\n</html>', { status, headers });
   }
 
   const stream = new ReadableStream({
     async start(controller) {
-      controller.enqueue(encoder.encode(headHtml + bodyHtml));
+      controller.enqueue(encoder.encode(head + hoistedBody));
       try {
         // Loop: resolve all currently-pending promises in parallel; nested
         // Suspense inside resolved content adds more pending entries.
