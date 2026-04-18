@@ -16,12 +16,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const HTML_MODULE_URL = pathToFileURL(
   resolve(__dirname, '../packages/core/src/html.js')
 ).toString();
+const WEBJS_MODULE_URL = pathToFileURL(
+  resolve(__dirname, '../packages/core/index.js')
+).toString();
 
-let _hoistHeadTags, ssrPage;
+let _hoistHeadTags, ssrPage, ssrNotFound;
 let tmpDir;
 
 before(async () => {
-  ({ _hoistHeadTags, ssrPage } = await import('../packages/server/src/ssr.js'));
+  ({ _hoistHeadTags, ssrPage, ssrNotFound } = await import('../packages/server/src/ssr.js'));
   tmpDir = mkdtempSync(join(tmpdir(), 'webjs-ssr-test-'));
 });
 
@@ -234,4 +237,295 @@ test('ssrPage: modulepreload never points at server-only files', async () => {
     `.server.ts should not be preloaded; got preloads:\n${preloads}`);
   assert.ok(!/\bdb\.ts"/.test(preloads),
     `'use server' plain file should not be preloaded; got preloads:\n${preloads}`);
+});
+
+/* ------------ ssrNotFound + not-found.js rendering ------------ */
+
+test('ssrNotFound: no notFound file → plain 404 fallback', async () => {
+  const resp = await ssrNotFound(null, { dev: false, appDir: tmpDir });
+  assert.equal(resp.status, 404);
+  const body = await resp.text();
+  assert.ok(body.includes('404 — Not found'));
+});
+
+test('ssrNotFound: renders the user-supplied not-found.js module', async () => {
+  const sub = mkdtempSync(join(tmpDir, 'nf-'));
+  const notFoundFile = join(sub, 'not-found.js');
+  writeFileSync(notFoundFile,
+    `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+    `export default function NotFound() { return html\`<p>custom missing</p>\`; }\n`);
+  const resp = await ssrNotFound(notFoundFile, { dev: false, appDir: sub });
+  assert.equal(resp.status, 404);
+  const body = await resp.text();
+  assert.ok(body.includes('<p>custom missing</p>'));
+});
+
+test('ssrNotFound: not-found.js that throws falls back to an inline error body', async () => {
+  const sub = mkdtempSync(join(tmpDir, 'nf-err-'));
+  const notFoundFile = join(sub, 'not-found.js');
+  writeFileSync(notFoundFile,
+    `export default function NotFound() { throw new Error('boom'); }\n`);
+  const resp = await ssrNotFound(notFoundFile, { dev: false, appDir: sub });
+  assert.equal(resp.status, 404);
+  const body = await resp.text();
+  assert.ok(body.includes('404 — Not found'));
+  assert.ok(body.includes('boom'));
+});
+
+/* ------------ ssrPage: redirect / notFound / error boundaries ------------ */
+
+test('ssrPage: redirect() thrown during render → 3xx Response with location', async () => {
+  const { route, appDir } = await makeRoute({
+    pageSrc:
+      `import { redirect } from ${JSON.stringify(WEBJS_MODULE_URL)};\n` +
+      `export default function Page() { redirect('/login'); }\n`,
+  });
+  const url = new URL('http://localhost/old');
+  const resp = await ssrPage(route, {}, url, { dev: false, appDir });
+  assert.ok(resp.status >= 300 && resp.status < 400, `got status ${resp.status}`);
+  assert.equal(resp.headers.get('location'), '/login');
+});
+
+test('ssrPage: notFound() thrown during render → 404 Response', async () => {
+  const { route, appDir } = await makeRoute({
+    pageSrc:
+      `import { notFound } from ${JSON.stringify(WEBJS_MODULE_URL)};\n` +
+      `export default function Page() { notFound(); }\n`,
+  });
+  const resp = await ssrPage(route, {}, new URL('http://localhost/'), { dev: false, appDir });
+  assert.equal(resp.status, 404);
+});
+
+test('ssrPage: error.js boundary catches a render throw and returns 500', async () => {
+  const sub = mkdtempSync(join(tmpDir, 'err-'));
+  const appDir = join(sub, 'app');
+  mkdirSync(appDir, { recursive: true });
+
+  const pageFile = join(appDir, 'page.js');
+  writeFileSync(pageFile,
+    `export default function Page() { throw new Error('kaboom'); }\n`);
+
+  const errorFile = join(appDir, 'error.js');
+  writeFileSync(errorFile,
+    `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+    `export default function Err({ error }) {\n` +
+    `  return html\`<p>Handled: \${error.message}</p>\`;\n` +
+    `}\n`);
+
+  const route = { file: pageFile, layouts: [], errors: [errorFile], metadataFiles: [] };
+  const resp = await ssrPage(route, {}, new URL('http://localhost/'), { dev: false, appDir });
+  assert.equal(resp.status, 500);
+  const body = await resp.text();
+  assert.ok(body.includes('Handled: kaboom'));
+});
+
+test('ssrPage: error.js that itself throws falls through to the default 500', async () => {
+  const sub = mkdtempSync(join(tmpDir, 'errfb-'));
+  const appDir = join(sub, 'app');
+  mkdirSync(appDir, { recursive: true });
+
+  const pageFile = join(appDir, 'page.js');
+  writeFileSync(pageFile,
+    `export default function Page() { throw new Error('outer'); }\n`);
+
+  const errorFile = join(appDir, 'error.js');
+  writeFileSync(errorFile,
+    `export default function Err() { throw new Error('boundary-broke'); }\n`);
+
+  const route = { file: pageFile, layouts: [], errors: [errorFile], metadataFiles: [] };
+  // Silence the intentional console.error from the unhandled-render path
+  const prev = console.error;
+  console.error = () => {};
+  try {
+    const resp = await ssrPage(route, {}, new URL('http://localhost/'), { dev: false, appDir });
+    assert.equal(resp.status, 500);
+    const body = await resp.text();
+    // Prod default: terse message, no stack.
+    assert.ok(body.includes('Something went wrong'));
+    assert.ok(!body.includes('boundary-broke'));
+  } finally { console.error = prev; }
+});
+
+test('ssrPage: dev=true exposes the error stack, prod hides it', async () => {
+  const { route, appDir } = await makeRoute({
+    pageSrc:
+      `export default function Page() { throw new Error('stacky'); }\n`,
+  });
+  const prev = console.error;
+  console.error = () => {};
+  try {
+    const dev = await ssrPage(route, {}, new URL('http://localhost/'), { dev: true, appDir });
+    const devBody = await dev.text();
+    assert.ok(devBody.includes('stacky'));
+
+    const prod = await ssrPage(route, {}, new URL('http://localhost/'), { dev: false, appDir });
+    const prodBody = await prod.text();
+    assert.ok(!prodBody.includes('stacky'));
+    assert.ok(prodBody.includes('Something went wrong'));
+  } finally { console.error = prev; }
+});
+
+/* ------------ metadata: generateMetadata fn, openGraph, preload links ------------ */
+
+test('ssrPage: metadata.generateMetadata(ctx) is called and merged', async () => {
+  const sub = mkdtempSync(join(tmpDir, 'metagen-'));
+  const appDir = join(sub, 'app');
+  mkdirSync(appDir, { recursive: true });
+
+  const pageFile = join(appDir, 'page.js');
+  writeFileSync(pageFile,
+    `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+    `export async function generateMetadata(ctx) {\n` +
+    `  return { title: 'Dyn ' + (ctx.params.id || 'x') };\n` +
+    `}\n` +
+    `export default function Page() { return html\`<p>ok</p>\`; }\n`);
+
+  const route = { file: pageFile, layouts: [], errors: [], metadataFiles: [pageFile] };
+  const resp = await ssrPage(route, { id: '42' }, new URL('http://localhost/'), { dev: false, appDir });
+  const body = await resp.text();
+  assert.ok(body.includes('<title>Dyn 42</title>'));
+});
+
+test('ssrPage: metadata.openGraph emits og:* meta tags', async () => {
+  const sub = mkdtempSync(join(tmpDir, 'og-'));
+  const appDir = join(sub, 'app');
+  mkdirSync(appDir, { recursive: true });
+
+  const pageFile = join(appDir, 'page.js');
+  writeFileSync(pageFile,
+    `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+    `export const metadata = {\n` +
+    `  title: 'Blog',\n` +
+    `  description: 'A blog',\n` +
+    `  themeColor: '#ff0000',\n` +
+    `  viewport: 'width=device-width, initial-scale=2',\n` +
+    `  openGraph: { title: 'OG Blog', image: '/cover.png' },\n` +
+    `  preload: [ { href: '/font.woff2', as: 'font', type: 'font/woff2', crossorigin: 'anonymous' } ],\n` +
+    `};\n` +
+    `export default function Page() { return html\`<p>ok</p>\`; }\n`);
+
+  const route = { file: pageFile, layouts: [], errors: [], metadataFiles: [pageFile] };
+  const resp = await ssrPage(route, {}, new URL('http://localhost/'), { dev: false, appDir });
+  const body = await resp.text();
+  assert.ok(body.includes('<meta name="description" content="A blog">'));
+  assert.ok(body.includes('<meta name="theme-color" content="#ff0000">'));
+  assert.ok(body.includes('<meta property="og:title" content="OG Blog">'));
+  assert.ok(body.includes('<meta property="og:image" content="/cover.png">'));
+  assert.ok(/<meta name="viewport"[^>]*initial-scale=2/.test(body));
+  assert.ok(/<link rel="preload"[^>]*href="\/font\.woff2"/.test(body));
+  assert.ok(/<link rel="preload"[^>]*as="font"/.test(body));
+});
+
+test('ssrPage: a metadata file that throws is silently skipped', async () => {
+  const sub = mkdtempSync(join(tmpDir, 'metaerr-'));
+  const appDir = join(sub, 'app');
+  mkdirSync(appDir, { recursive: true });
+
+  const pageFile = join(appDir, 'page.js');
+  writeFileSync(pageFile,
+    `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+    `export default function Page() { return html\`<p>ok</p>\`; }\n`);
+
+  const brokenMeta = join(appDir, 'broken.js');
+  writeFileSync(brokenMeta,
+    `export function generateMetadata() { throw new Error('meta boom'); }\n`);
+
+  const route = { file: pageFile, layouts: [], errors: [], metadataFiles: [brokenMeta, pageFile] };
+  const resp = await ssrPage(route, {}, new URL('http://localhost/'), { dev: false, appDir });
+  assert.equal(resp.status, 200);
+  const body = await resp.text();
+  assert.ok(body.includes('<p>ok</p>'));
+});
+
+/* ------------ loading.ts → automatic Suspense wrap ------------ */
+
+test('ssrPage: loading.js wraps the page in Suspense (fallback in initial HTML)', async () => {
+  const sub = mkdtempSync(join(tmpDir, 'loading-'));
+  const appDir = join(sub, 'app');
+  mkdirSync(appDir, { recursive: true });
+
+  const pageFile = join(appDir, 'page.js');
+  writeFileSync(pageFile,
+    `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+    `export default async function Page() {\n` +
+    `  await new Promise(r => setTimeout(r, 10));\n` +
+    `  return html\`<p>ready</p>\`;\n` +
+    `}\n`);
+
+  const loadingFile = join(appDir, 'loading.js');
+  writeFileSync(loadingFile,
+    `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+    `export default function Loading() { return html\`<p>loading…</p>\`; }\n`);
+
+  const route = { file: pageFile, layouts: [], errors: [], metadataFiles: [], loadings: [loadingFile] };
+  const resp = await ssrPage(route, {}, new URL('http://localhost/'), { dev: false, appDir });
+  assert.equal(resp.status, 200);
+  const body = await resp.text();
+  assert.ok(body.includes('loading…'), 'fallback should appear in initial HTML');
+  assert.ok(body.includes('ready'), 'resolved content streamed in');
+  // Streaming flush inserts a <template data-webjs-resolve="..."> chunk.
+  assert.ok(/data-webjs-resolve/.test(body));
+});
+
+test('ssrPage: loading.js that fails to load → page renders without Suspense', async () => {
+  const sub = mkdtempSync(join(tmpDir, 'loading-err-'));
+  const appDir = join(sub, 'app');
+  mkdirSync(appDir, { recursive: true });
+
+  const pageFile = join(appDir, 'page.js');
+  writeFileSync(pageFile,
+    `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+    `export default function Page() { return html\`<p>ok</p>\`; }\n`);
+
+  const loadingFile = join(appDir, 'loading.js');
+  writeFileSync(loadingFile, `throw new Error('cannot load');\n`);
+
+  const route = { file: pageFile, layouts: [], errors: [], metadataFiles: [], loadings: [loadingFile] };
+  const resp = await ssrPage(route, {}, new URL('http://localhost/'), { dev: false, appDir });
+  assert.equal(resp.status, 200);
+  const body = await resp.text();
+  assert.ok(body.includes('<p>ok</p>'));
+});
+
+/* ------------ CSP nonce + CSRF cookie ------------ */
+
+test('ssrPage: CSP nonce on request → nonce attribute on injected scripts', async () => {
+  const { route, appDir } = await makeRoute({
+    pageSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export default function Page() { return html\`<p>ok</p>\`; }\n`,
+  });
+  const req = new Request('http://localhost/', {
+    headers: { 'content-security-policy': "script-src 'nonce-abc123XYZ' 'self'" },
+  });
+  const resp = await ssrPage(route, {}, new URL('http://localhost/'), { dev: false, appDir, req });
+  const body = await resp.text();
+  assert.ok(body.includes('nonce="abc123XYZ"'));
+});
+
+test('ssrPage: response attaches a csrf set-cookie when request has no token', async () => {
+  const { route, appDir } = await makeRoute({
+    pageSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export default function Page() { return html\`<p>ok</p>\`; }\n`,
+  });
+  const req = new Request('http://localhost/');
+  const resp = await ssrPage(route, {}, new URL('http://localhost/'), { dev: false, appDir, req });
+  const setCookie = resp.headers.get('set-cookie');
+  assert.ok(setCookie && /csrf/i.test(setCookie), `expected csrf cookie, got ${setCookie}`);
+});
+
+/* ------------ bundle mode skips per-file preloads ------------ */
+
+test('ssrPage: bundle=true emits /__webjs/bundle.js import and no per-file preloads', async () => {
+  const { route, appDir } = await makeRoute({
+    pageSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export default function Page() { return html\`<p>ok</p>\`; }\n`,
+  });
+  const resp = await ssrPage(route, {}, new URL('http://localhost/'), { dev: false, appDir, bundle: true });
+  const body = await resp.text();
+  assert.ok(body.includes('/__webjs/bundle.js'), 'bundle import present');
+  const pageImports = body.match(/modulepreload[^>]*href="[^"]*page\.js"/g) || [];
+  assert.equal(pageImports.length, 0, 'no per-file preloads in bundle mode');
 });

@@ -109,13 +109,20 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     assert.ok(title.toLowerCase().includes('blog'), `Expected blog title, got: ${title}`);
   });
 
-  test('components have shadow roots from SSR (DSD)', async () => {
-    const hasShadowRoots = await page.evaluate(() => {
-      const shell = document.querySelector('blog-shell');
-      const toggle = shell?.shadowRoot?.querySelector('theme-toggle');
-      return !!shell?.shadowRoot && !!toggle?.shadowRoot;
+  test('layout renders a data-layout wrapper around page content', async () => {
+    // Light-DOM shell: the router uses the data-layout wrapper to detect
+    // same-layout navigations (instead of a custom-element shell).
+    await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(1000);
+    const markers = await page.evaluate(() => {
+      const wrapper = document.querySelector('[data-layout]');
+      const hasNav = !!document.querySelector('header nav');
+      const hasMain = !!document.querySelector('main');
+      return { hasWrapper: !!wrapper, layoutId: wrapper?.getAttribute('data-layout'), hasNav, hasMain };
     });
-    assert.ok(hasShadowRoots, 'blog-shell and theme-toggle should have shadow roots from DSD');
+    assert.ok(markers.hasWrapper, 'data-layout wrapper should be present');
+    assert.ok(markers.hasNav, '<header> <nav> should render in the layout');
+    assert.ok(markers.hasMain, '<main> should render in the layout');
   });
 
   test('import map includes all framework entries', async () => {
@@ -140,12 +147,20 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     assert.ok(preloads.length > 0, 'Should have at least one modulepreload');
   });
 
-  test('blog-shell component renders with shadow DOM', async () => {
-    const hasShadow = await page.evaluate(() => {
-      const shell = document.querySelector('blog-shell');
-      return !!shell?.shadowRoot;
+  test('theme-toggle custom element is upgraded (light DOM)', async () => {
+    await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(2000);
+    const status = await page.evaluate(() => {
+      const tt = document.querySelector('theme-toggle');
+      return {
+        exists: !!tt,
+        upgraded: !!tt && tt._connected === true,
+        hasButton: !!tt?.querySelector('button'),
+      };
     });
-    assert.ok(hasShadow, 'blog-shell should have a shadow root');
+    assert.ok(status.exists, 'theme-toggle should exist');
+    assert.ok(status.upgraded, 'theme-toggle should be upgraded (connectedCallback ran)');
+    assert.ok(status.hasButton, 'theme-toggle should render its button');
   });
 
   test('theme toggle cycles through themes', async () => {
@@ -159,11 +174,10 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     const before = await page.evaluate(() => document.documentElement.dataset.theme);
     assert.equal(before, 'light', 'Theme should be light after reload');
 
-    // Click toggle: light → dark
+    // Click toggle: light → dark (light DOM — toggle + button live in document)
     await page.evaluate(() => {
-      const shell = document.querySelector('blog-shell');
-      const toggle = shell?.shadowRoot?.querySelector('theme-toggle');
-      toggle?.shadowRoot?.querySelector('button')?.click();
+      const toggle = document.querySelector('theme-toggle');
+      toggle?.querySelector('button')?.click();
     });
     await sleep(300);
 
@@ -179,10 +193,9 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
     await sleep(2000);
 
-    // Click "About" link in the nav
+    // Click "About" link in the layout nav (light DOM now).
     await page.evaluate(() => {
-      const shell = document.querySelector('blog-shell');
-      for (const a of shell?.shadowRoot?.querySelectorAll('a') || []) {
+      for (const a of document.querySelectorAll('nav a')) {
         if (a.textContent.trim() === 'About') { a.click(); break; }
       }
     });
@@ -343,16 +356,17 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       if (!counter) return { exists: false };
       return {
         exists: true,
-        hasShadowRoot: !!counter.shadowRoot,
+        // Counter is light DOM — no shadowRoot; render root is the element itself.
         hasRenderRoot: counter._renderRoot !== null && counter._renderRoot !== undefined,
+        renderRootIsSelf: counter._renderRoot === counter,
         isConnected: counter._connected === true,
         tagName: counter.tagName,
       };
     });
 
     assert.ok(status.exists, 'Counter element should exist in the DOM');
-    assert.ok(status.hasShadowRoot, 'Counter should have a shadow root');
     assert.ok(status.hasRenderRoot, 'Counter._renderRoot should not be null (element must be upgraded)');
+    assert.ok(status.renderRootIsSelf, 'Counter light-DOM render root is the element itself');
     assert.ok(status.isConnected, 'Counter._connected should be true');
   });
 
@@ -552,6 +566,173 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     }
   });
 
+  // ---------------------------------------------------------------------------
+  // Additional coverage: dynamic routes, 404, auth redirect, metadata,
+  // browser history, Suspense streaming, server-side /api round-trip.
+  // ---------------------------------------------------------------------------
+
+  test('dynamic route: /blog/[slug] renders the post title in <head>', async () => {
+    await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(1500);
+    // Use any post href rendered on the home page.
+    const href = await page.evaluate(() => {
+      const a = document.querySelector('main ul a[href^="/blog/"]');
+      return a?.getAttribute('href');
+    });
+    assert.ok(href, 'homepage should list at least one /blog/... link');
+    await page.goto(baseUrl + href, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(1000);
+    const title = await page.title();
+    assert.ok(title.toLowerCase().includes('blog'),
+      `slug page title should mention "blog", got: ${title}`);
+    const hasArticle = await page.evaluate(() => !!document.querySelector('article'));
+    assert.ok(hasArticle, 'slug page should render an <article>');
+  });
+
+  test('dynamic route: unknown slug hits notFound() → 404 page', async () => {
+    const resp = await page.goto(
+      baseUrl + '/blog/this-post-definitely-does-not-exist-xyz-98765',
+      { waitUntil: 'domcontentloaded', timeout: 10000 },
+    );
+    assert.equal(resp.status(), 404);
+    const body = await page.evaluate(() =>
+      document.body.textContent.toLowerCase());
+    assert.ok(/not found|404/.test(body),
+      `custom 404 page should render a "not found" message; got: ${body.slice(0, 200)}`);
+  });
+
+  test('dashboard middleware redirects unauthenticated requests to /login', async () => {
+    const resp = await page.goto(baseUrl + '/dashboard', {
+      waitUntil: 'domcontentloaded',
+      timeout: 10000,
+    });
+    assert.equal(resp.status(), 200);
+    assert.ok(page.url().includes('/login'),
+      `unauthenticated /dashboard should redirect to /login; final url: ${page.url()}`);
+    // `then` query parameter should be set so post-login returns to /dashboard.
+    assert.ok(page.url().includes('then='),
+      'redirect should carry a ?then= parameter');
+  });
+
+  test('login page renders the <auth-forms> custom element', async () => {
+    await page.goto(baseUrl + '/login', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(1500);
+    const ok = await page.evaluate(() => {
+      const af = document.querySelector('auth-forms');
+      return { exists: !!af, hasInputs: !!af?.querySelector('input') };
+    });
+    assert.ok(ok.exists, '<auth-forms> should be present on /login');
+    assert.ok(ok.hasInputs, '<auth-forms> should render form inputs');
+  });
+
+  test('metadata: <title> and <meta description> update per route', async () => {
+    await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(500);
+    const home = await page.evaluate(() => ({
+      title: document.title,
+      description: document.querySelector('meta[name="description"]')?.getAttribute('content'),
+    }));
+    assert.ok(home.title.toLowerCase().includes('blog'));
+    assert.ok(home.description && home.description.length > 0, 'homepage has a description meta');
+
+    await page.goto(baseUrl + '/login', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(500);
+    const login = await page.evaluate(() => ({ title: document.title }));
+    assert.ok(login.title.toLowerCase().includes('sign in'),
+      `/login <title> should mention "sign in"; got: ${login.title}`);
+  });
+
+  test('browser history: back button after client nav returns to previous page', async () => {
+    await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(1500);
+    await clickNavLink(page, 'About');
+    await sleep(2000);
+    assert.ok(page.url().endsWith('/about'), 'navigated to /about');
+
+    await page.goBack({ waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(1000);
+    assert.ok(page.url() === baseUrl + '/' || page.url() === baseUrl,
+      `back should return to homepage, got: ${page.url()}`);
+
+    await page.goForward({ waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(1000);
+    assert.ok(page.url().endsWith('/about'), 'forward returns to /about');
+  });
+
+  test('Suspense streaming: fallback appears first, resolved content follows', async () => {
+    // The home page has <Suspense> around `slowStat()` which sleeps 400ms
+    // before resolving with a timestamp wrapped in <muted-text>.
+    await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(2000); // Enough for the deferred chunk to stream in.
+    const hasStat = await page.evaluate(() => {
+      // "posts loaded" is part of the resolved Suspense content.
+      return document.body.textContent.includes('posts loaded');
+    });
+    assert.ok(hasStat, 'resolved Suspense content should eventually render');
+  });
+
+  test('/api/posts GET returns an array of posts', async () => {
+    const resp = await page.goto(baseUrl + '/api/posts', { timeout: 5000 });
+    assert.equal(resp.status(), 200);
+    const data = await resp.json();
+    assert.ok(Array.isArray(data), '/api/posts should return an array');
+  });
+
+  test('POST /api/posts without auth is rejected', async () => {
+    const result = await page.evaluate(async (url) => {
+      const r = await fetch(url + '/api/posts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title: 'x', body: 'y' }),
+      });
+      return { status: r.status };
+    }, baseUrl);
+    assert.ok(result.status >= 400 && result.status < 500,
+      `unauthenticated POST should be 4xx, got ${result.status}`);
+  });
+
+  test('404 for unknown pathname serves text/html', async () => {
+    const resp = await page.goto(baseUrl + '/nothing-here-abcxyz', {
+      waitUntil: 'domcontentloaded',
+      timeout: 5000,
+    });
+    assert.equal(resp.status(), 404);
+    const ct = resp.headers()['content-type'];
+    assert.ok(ct && ct.includes('text/html'), `expected html 404, got ${ct}`);
+  });
+
+  test('same-origin link with download attribute is NOT intercepted by router', async () => {
+    await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(1500);
+    const intercepted = await page.evaluate(async () => {
+      const a = document.createElement('a');
+      a.href = '/favicon.ico';
+      a.setAttribute('download', '');
+      document.body.appendChild(a);
+      let fetched = false;
+      const orig = window.fetch;
+      window.fetch = async (...args) => { fetched = true; return orig(...args); };
+      const ev = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+      a.dispatchEvent(ev);
+      window.fetch = orig;
+      a.remove();
+      return fetched;
+    });
+    assert.equal(intercepted, false,
+      'downloads should bypass the router (let the browser handle)');
+  });
+
+  test('CSRF cookie is set on first GET response', async () => {
+    // Fresh context → clear cookies.
+    await page.deleteCookie(...(await page.cookies()));
+    const resp = await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    assert.equal(resp.status(), 200);
+    const cookies = await page.cookies();
+    const csrf = cookies.find((c) => /csrf/i.test(c.name));
+    assert.ok(csrf, `expected a csrf cookie; got: ${cookies.map(c => c.name).join(', ')}`);
+    assert.ok(csrf.value && csrf.value.length > 10, 'csrf cookie should have a non-trivial value');
+  });
+
   test('theme toggle still works after navigations that test counter', async () => {
     // Verify that upgradeCustomElements doesn't break other components
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
@@ -564,14 +745,17 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     await sleep(2000);
 
     // Theme toggle should still cycle
-    const before = await page.evaluate(() => document.documentElement.dataset.theme);
+    const before = await page.evaluate(() =>
+      document.documentElement.dataset.theme || 'system',
+    );
     await page.evaluate(() => {
-      const shell = document.querySelector('blog-shell');
-      const toggle = shell?.shadowRoot?.querySelector('theme-toggle');
-      toggle?.shadowRoot?.querySelector('button')?.click();
+      const toggle = document.querySelector('theme-toggle');
+      toggle?.querySelector('button')?.click();
     });
     await sleep(300);
-    const after = await page.evaluate(() => document.documentElement.dataset.theme);
+    const after = await page.evaluate(() =>
+      document.documentElement.dataset.theme || 'system',
+    );
     assert.notEqual(before, after, 'Theme should change after toggle click post-navigation');
   });
 });
@@ -588,9 +772,10 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
  */
 async function getCounterValue(p) {
   return p.evaluate(() => {
+    // <my-counter> is a light-DOM component; children live on the element itself.
     const counter = document.querySelector('my-counter');
-    if (!counter?.shadowRoot) return null;
-    const output = counter.shadowRoot.querySelector('output');
+    if (!counter) return null;
+    const output = counter.querySelector('output');
     if (!output) return null;
     return parseInt(output.textContent.trim(), 10);
   });
@@ -604,7 +789,7 @@ async function getCounterValue(p) {
 async function clickCounterButton(p, label) {
   await p.evaluate((lbl) => {
     const counter = document.querySelector('my-counter');
-    const btn = counter?.shadowRoot?.querySelector(`button[aria-label="${lbl}"]`);
+    const btn = counter?.querySelector(`button[aria-label="${lbl}"]`);
     btn?.click();
   }, label);
 }
@@ -616,21 +801,20 @@ async function clickCounterButton(p, label) {
  */
 async function clickNavLink(p, text) {
   await p.evaluate((t) => {
-    const shell = document.querySelector('blog-shell');
-    for (const a of shell?.shadowRoot?.querySelectorAll('a') || []) {
+    for (const a of document.querySelectorAll('header nav a')) {
       if (a.textContent.trim() === t) { a.click(); return; }
     }
   }, text);
 }
 
 /**
- * Click the brand link ("webjs / blog") to navigate back to the homepage.
+ * Click the brand link ("webjs / blog") — the first <a> in the header that
+ * points at '/', sitting before the nav.
  * @param {import('puppeteer-core').Page} p
  */
 async function clickBrandLink(p) {
   await p.evaluate(() => {
-    const shell = document.querySelector('blog-shell');
-    const brand = shell?.shadowRoot?.querySelector('a.brand');
+    const brand = document.querySelector('header > a[href="/"]');
     brand?.click();
   });
 }

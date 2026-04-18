@@ -256,16 +256,18 @@ function compile(tr) {
     if (i < strings.length - 1) {
       const partIdx = parts.length;
       if (state === 'comment') {
-        // Holes inside <!-- ... --> bake in at compile time: comments are inert.
-        html += String(values[i] ?? '');
+        // Holes inside <!-- ... --> are dropped. Comments are inert and
+        // the compile cache is keyed on `strings`, so per-render values
+        // can't be baked in anyway.
         commentDashes = 0;
         parts.push({ kind: 'noop', path: [] });
         continue;
       }
       if (state === 'rawtext') {
-        // Inside <script>/<style>: bake the value verbatim. Fine-grained
-        // updates of script/style bodies aren't meaningful in v1.
-        html += String(values[i] ?? '');
+        // Inside <script>/<style>: per-render interpolation isn't supported;
+        // the compile cache would lock in whatever was first rendered. The
+        // hole is dropped and authors should set body text via a child part
+        // outside the raw-text container, or inline style/script directly.
         rawTail = '';
         parts.push({ kind: 'noop', path: [] });
         continue;

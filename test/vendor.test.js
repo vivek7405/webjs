@@ -8,6 +8,9 @@ import {
   extractPackageName,
   scanBareImports,
   vendorImportMapEntries,
+  bundlePackage,
+  serveVendorBundle,
+  clearVendorCache,
 } from '../packages/server/src/vendor.js';
 
 // --- extractPackageName ---
@@ -111,4 +114,89 @@ test('vendorImportMapEntries: skips built-ins', () => {
   assert.ok(!('webjs' in entries));
   assert.ok(!('superjson' in entries));
   assert.ok('dayjs' in entries);
+});
+
+// --- extractPackageName: edge cases ---
+
+test('extractPackageName: __webjs-prefixed specifier returns null', () => {
+  // The implementation treats specifiers starting with "__" as non-bundleable
+  // (framework-internal URLs like /__webjs/...).
+  assert.equal(extractPackageName('__webjs/vendor/x'), null);
+});
+
+test('extractPackageName: lone @scope with no package name returns null', () => {
+  assert.equal(extractPackageName('@scope'), null);
+});
+
+// --- bundlePackage + serveVendorBundle ---
+//
+// These exercise the esbuild path against a tiny, dependency-free package
+// that's already installed in node_modules (`picocolors`). A single esbuild
+// invocation usually completes in ~50–150ms.
+
+test('bundlePackage: bundles a real package → ESM source', async () => {
+  clearVendorCache();
+  const code = await bundlePackage('picocolors', process.cwd(), false);
+  assert.equal(typeof code, 'string');
+  assert.ok(code.length > 0, 'bundle should be non-empty');
+  // ESM bundles should export something.
+  assert.ok(/export\s*(?:default|{)/.test(code), 'expected ESM exports');
+});
+
+test('bundlePackage: second call hits the in-memory cache', async () => {
+  // Prime
+  const first = await bundlePackage('picocolors', process.cwd(), false);
+  // Second call should return the exact same cached string without rebuilding
+  const second = await bundlePackage('picocolors', process.cwd(), false);
+  assert.equal(first, second);
+});
+
+test('bundlePackage: unknown package → null', async () => {
+  clearVendorCache();
+  const code = await bundlePackage('this-pkg-definitely-does-not-exist-xyz', process.cwd(), false);
+  assert.equal(code, null);
+});
+
+test('clearVendorCache: subsequent bundlePackage call re-builds', async () => {
+  await bundlePackage('picocolors', process.cwd(), false);   // populates cache
+  clearVendorCache();
+  // Re-build should still work (and return a string).
+  const code = await bundlePackage('picocolors', process.cwd(), false);
+  assert.equal(typeof code, 'string');
+  assert.ok(code.length > 0);
+});
+
+test('serveVendorBundle: known package → 200 JS response with cache headers', async () => {
+  clearVendorCache();
+  const resp = await serveVendorBundle('picocolors', process.cwd(), false);
+  assert.equal(resp.status, 200);
+  assert.equal(
+    resp.headers.get('content-type'),
+    'application/javascript; charset=utf-8',
+  );
+  assert.equal(
+    resp.headers.get('cache-control'),
+    'public, max-age=31536000, immutable',
+  );
+  const body = await resp.text();
+  assert.ok(body.length > 0);
+});
+
+test('serveVendorBundle: dev=true uses no-cache', async () => {
+  clearVendorCache();
+  const resp = await serveVendorBundle('picocolors', process.cwd(), true);
+  assert.equal(resp.status, 200);
+  assert.equal(resp.headers.get('cache-control'), 'no-cache');
+});
+
+test('serveVendorBundle: unknown package → 404 JS response', async () => {
+  clearVendorCache();
+  const resp = await serveVendorBundle('this-pkg-does-not-exist-abc', process.cwd(), false);
+  assert.equal(resp.status, 404);
+  assert.equal(
+    resp.headers.get('content-type'),
+    'application/javascript; charset=utf-8',
+  );
+  const body = await resp.text();
+  assert.ok(body.includes('this-pkg-does-not-exist-abc'));
 });

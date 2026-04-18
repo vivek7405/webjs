@@ -242,3 +242,175 @@ test('mixed attr: coexists with other part kinds on the same element', () => {
   assert.equal(btn.getAttribute('class'), 'btn secondary active');
   assert.equal(btn.textContent, 'Stop');
 });
+
+/* ------------ non-template child values, hydration marker, unsafeHTML ------------ */
+
+test('render: non-template primitive renders as text', () => {
+  const el = document.createElement('div');
+  render('plain string', el);
+  assert.equal(el.textContent, 'plain string');
+  render(42, el);
+  assert.equal(el.textContent, '42');
+});
+
+test('render: null / true / false render nothing', () => {
+  const el = document.createElement('div');
+  render(null, el);
+  assert.equal(el.childNodes.length, 0);
+  render(false, el);
+  assert.equal(el.childNodes.length, 0);
+  render(true, el);
+  assert.equal(el.childNodes.length, 0);
+});
+
+test('render: array of primitives renders as concatenated text nodes', () => {
+  const el = document.createElement('div');
+  render(['a', 'b', 'c'], el);
+  assert.equal(el.textContent, 'abc');
+  assert.equal(el.childNodes.length, 3);
+});
+
+test('render: template → non-template transition clears instance state', () => {
+  const el = document.createElement('div');
+  render(html`<p>${'x'}</p>`, el);
+  assert.ok(el.querySelector('p'));
+  render('just text', el);
+  assert.equal(el.querySelector('p'), null);
+  assert.equal(el.textContent, 'just text');
+});
+
+test('render: webjs-hydrate marker comment is removed before initial render', () => {
+  const el = document.createElement('div');
+  const marker = document.createComment('webjs-hydrate');
+  el.appendChild(marker);
+  assert.equal(el.childNodes.length, 1);
+  render(html`<p>hi</p>`, el);
+  // Marker should be gone; the rendered <p> replaces it.
+  assert.ok(el.querySelector('p'));
+  const stillHas = Array.from(el.childNodes).some(
+    (n) => n.nodeType === 8 && n.data === 'webjs-hydrate',
+  );
+  assert.ok(!stillHas, 'hydrate marker should be removed');
+});
+
+test('render: unsafeHTML injects raw markup as real DOM nodes', async () => {
+  const { unsafeHTML } = await import('../packages/core/src/directives.js');
+  const el = document.createElement('div');
+  render(html`<section>${unsafeHTML('<b>bold</b><i>italic</i>')}</section>`, el);
+  const section = el.querySelector('section');
+  assert.ok(section.querySelector('b'));
+  assert.ok(section.querySelector('i'));
+  assert.equal(section.querySelector('b').textContent, 'bold');
+});
+
+test('render: unsafeHTML update replaces prior injected nodes', async () => {
+  const { unsafeHTML } = await import('../packages/core/src/directives.js');
+  const el = document.createElement('div');
+  const view = (raw) => html`<section>${unsafeHTML(raw)}</section>`;
+  render(view('<b>first</b>'), el);
+  assert.ok(el.querySelector('b'));
+  render(view('<em>second</em>'), el);
+  assert.equal(el.querySelector('b'), null);
+  assert.equal(el.querySelector('em').textContent, 'second');
+});
+
+/* ------------ live() directive short-circuit for input binding ------------ */
+
+test('render: live() short-circuits when DOM value already matches (prop)', async () => {
+  const { live } = await import('../packages/core/src/directives.js');
+  const el = document.createElement('div');
+  render(html`<input .value=${live('a')}>`, el);
+  const input = el.querySelector('input');
+  assert.equal(input.value, 'a');
+  // Simulate user typing; then re-render with the same virtual value.
+  input.value = 'a';
+  render(html`<input .value=${live('a')}>`, el);
+  assert.equal(input.value, 'a');
+});
+
+test('render: live() on attr — no-op when attribute already matches', async () => {
+  const { live } = await import('../packages/core/src/directives.js');
+  const el = document.createElement('div');
+  render(html`<input class=${live('x')}>`, el);
+  const input = el.querySelector('input');
+  assert.equal(input.getAttribute('class'), 'x');
+  render(html`<input class=${live('x')}>`, el);
+  assert.equal(input.getAttribute('class'), 'x');
+});
+
+test('render: live() on boolean attr — no-op when state already matches', async () => {
+  const { live } = await import('../packages/core/src/directives.js');
+  const el = document.createElement('div');
+  render(html`<input ?disabled=${live(true)}>`, el);
+  const input = el.querySelector('input');
+  assert.ok(input.hasAttribute('disabled'));
+  render(html`<input ?disabled=${live(true)}>`, el);
+  assert.ok(input.hasAttribute('disabled'));
+});
+
+/* ------------ template parser edge cases ------------ */
+
+test('parser: HTML comments with an interpolation bake in at compile time', () => {
+  const el = document.createElement('div');
+  render(html`<!-- comment ${'inert'} --><p>ok</p>`, el);
+  assert.ok(el.querySelector('p'));
+});
+
+test('parser: script/style raw-text holes are baked verbatim', () => {
+  const el = document.createElement('div');
+  render(html`<style>.cls-${'x'} { color: red; }</style><p>page</p>`, el);
+  assert.ok(el.querySelector('p'));
+  // Style tag is present with the baked-in text.
+  assert.ok(el.querySelector('style'));
+});
+
+test('parser: unquoted attribute with a hole updates correctly', () => {
+  const el = document.createElement('div');
+  const view = (v) => html`<input type=text value=${v}>`;
+  render(view('hello'), el);
+  const input = el.querySelector('input');
+  assert.equal(input.getAttribute('value'), 'hello');
+  render(view('world'), el);
+  assert.equal(input.getAttribute('value'), 'world');
+});
+
+test('parser: closing tag `</div>` in template parses without crashing', () => {
+  const el = document.createElement('div');
+  render(html`<div>${'a'}</div><span>${'b'}</span>`, el);
+  assert.equal(el.querySelector('div').textContent, 'a');
+  assert.equal(el.querySelector('span').textContent, 'b');
+});
+
+/* ------------ teardown / clear paths ------------ */
+
+test('render: re-render with null after a repeat drops all repeat children', async () => {
+  const { repeat } = await import('../packages/core/src/repeat.js');
+  const el = document.createElement('div');
+  render(html`<ul>${repeat([{ id: 1, t: 'a' }, { id: 2, t: 'b' }], (it) => it.id, (it) => html`<li>${it.t}</li>`)}</ul>`, el);
+  assert.equal(el.querySelectorAll('li').length, 2);
+  render(html`<ul>${null}</ul>`, el);
+  assert.equal(el.querySelectorAll('li').length, 0);
+});
+
+test('render: swapping a template child with an unsafeHTML child swaps nodes', async () => {
+  const { unsafeHTML } = await import('../packages/core/src/directives.js');
+  const el = document.createElement('div');
+  render(html`<section>${html`<p>tpl</p>`}</section>`, el);
+  assert.ok(el.querySelector('p'));
+  render(html`<section>${unsafeHTML('<b>raw</b>')}</section>`, el);
+  assert.equal(el.querySelector('p'), null);
+  assert.ok(el.querySelector('b'));
+});
+
+test('render: event handler set to null detaches callback', () => {
+  const el = document.createElement('div');
+  let clicks = 0;
+  const view = (fn) => html`<button @click=${fn}>x</button>`;
+  render(view(() => { clicks++; }), el);
+  const btn = el.querySelector('button');
+  btn.click();
+  assert.equal(clicks, 1);
+  render(view(null), el);
+  btn.click();
+  assert.equal(clicks, 1, 'null handler → click ignored');
+});
