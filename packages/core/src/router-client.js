@@ -201,9 +201,8 @@ async function performNavigation(href, isPopState) {
     if (currentShell && newShell &&
         (currentShell.tagName === newShell.tagName ||
          (currentShell.getAttribute('data-layout') && currentShell.getAttribute('data-layout') === newShell.getAttribute('data-layout')))) {
-      // Same layout — minimal swap: title + page content only.
-      const newTitle = doc.querySelector('title');
-      if (newTitle) document.title = newTitle.textContent || '';
+      // Same layout — swap page content + merge head for new modules.
+      mergeHead(doc.head);
 
       // For data-layout shells, swap only the <main> element's children
       // (header and footer stay mounted). For custom element shells with
@@ -345,7 +344,15 @@ function mergeHead(newHead) {
     if (el.tagName === 'BASE') continue;
     if (el.tagName === 'TITLE') continue;
     if (!currentSet.has(el.outerHTML)) {
-      currentHead.appendChild(el.cloneNode(true));
+      if (el.tagName === 'SCRIPT') {
+        // Scripts must be recreated (not cloned) to execute.
+        const script = document.createElement('script');
+        for (const attr of el.attributes) script.setAttribute(attr.name, attr.value);
+        script.textContent = el.textContent;
+        currentHead.appendChild(script);
+      } else {
+        currentHead.appendChild(el.cloneNode(true));
+      }
     }
   }
 }
