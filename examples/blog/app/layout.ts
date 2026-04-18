@@ -226,35 +226,34 @@ export default function RootLayout({ children }: { children: unknown }) {
       main article { margin: 0; }
     </style>
 
-    <!-- Shell: header -->
-    <header class="sticky top-0 z-20 flex items-center gap-6 px-[clamp(var(--sp-4),4vw,var(--sp-6))] py-3 border-b border-border bg-[color-mix(in_oklch,var(--bg)_75%,transparent)] backdrop-blur-[18px] backdrop-saturate-[180%]">
-      <a href="/" class="mr-auto inline-flex items-center gap-2 no-underline text-fg font-semibold text-[15px] leading-none tracking-tight">
-        <span class="inline-block w-[22px] h-[22px] rounded-[6px] bg-gradient-to-br from-accent to-[color-mix(in_oklch,var(--accent)_55%,var(--fg))] shadow-[inset_0_0_0_1px_oklch(1_0_0/0.15),0_1px_4px_var(--accent-tint)]"></span>
-        <span>webjs</span>
-        <span class="text-fg-subtle mx-1 font-normal">/</span>
-        <span>blog</span>
-      </a>
-      <nav class="flex gap-4 items-center">
-        <a href="/" class="text-fg-muted no-underline font-medium text-[13px] leading-none tracking-[0.005em] transition-colors duration-[140ms] hover:text-fg">Posts</a>
-        <a href="/about" class="text-fg-muted no-underline font-medium text-[13px] leading-none tracking-[0.005em] transition-colors duration-[140ms] hover:text-fg">About</a>
-        <a href="/dashboard" class="text-fg-muted no-underline font-medium text-[13px] leading-none tracking-[0.005em] transition-colors duration-[140ms] hover:text-fg">Dashboard</a>
-        <theme-toggle></theme-toggle>
-      </nav>
-    </header>
+    <div data-layout>
+      <header class="sticky top-0 z-20 flex items-center gap-6 px-[clamp(var(--sp-4),4vw,var(--sp-6))] py-3 border-b border-border bg-[color-mix(in_oklch,var(--bg)_75%,transparent)] backdrop-blur-[18px] backdrop-saturate-[180%]">
+        <a href="/" class="mr-auto inline-flex items-center gap-2 no-underline text-fg font-semibold text-[15px] leading-none tracking-tight">
+          <span class="inline-block w-[22px] h-[22px] rounded-[6px] bg-gradient-to-br from-accent to-[color-mix(in_oklch,var(--accent)_55%,var(--fg))] shadow-[inset_0_0_0_1px_oklch(1_0_0/0.15),0_1px_4px_var(--accent-tint)]"></span>
+          <span>webjs</span>
+          <span class="text-fg-subtle mx-1 font-normal">/</span>
+          <span>blog</span>
+        </a>
+        <nav class="flex gap-4 items-center">
+          <a href="/" class="text-fg-muted no-underline font-medium text-[13px] leading-none tracking-[0.005em] transition-colors duration-[140ms] hover:text-fg">Posts</a>
+          <a href="/about" class="text-fg-muted no-underline font-medium text-[13px] leading-none tracking-[0.005em] transition-colors duration-[140ms] hover:text-fg">About</a>
+          <a href="/dashboard" class="text-fg-muted no-underline font-medium text-[13px] leading-none tracking-[0.005em] transition-colors duration-[140ms] hover:text-fg">Dashboard</a>
+          <theme-toggle></theme-toggle>
+        </nav>
+      </header>
 
-    <!-- Shell: main content -->
-    <main class="block max-w-[760px] mx-auto px-[clamp(var(--sp-4),5vw,var(--sp-6))] pt-[72px] pb-[48px] min-h-screen">
-      ${children}
-    </main>
+      <main class="block max-w-[760px] mx-auto px-[clamp(var(--sp-4),5vw,var(--sp-6))] pt-[72px] pb-[48px] min-h-screen">
+        ${children}
+      </main>
 
-    <!-- Shell: footer -->
-    <footer class="max-w-[760px] mx-auto px-[clamp(var(--sp-4),5vw,var(--sp-6))] pt-[48px] pb-[72px] border-t border-border flex justify-between flex-wrap gap-3 text-fg-subtle font-mono text-[11px] leading-[1.4] tracking-[0.12em] uppercase">
-      <span><span class="text-accent">&#9679;</span>&nbsp; webjs / demo</span>
-      <span>
-        <a href="/api/posts" class="text-inherit no-underline transition-colors duration-[140ms] hover:text-fg-muted">api</a>
-        &nbsp;&middot;&nbsp;
-        <a href="/__webjs/health" class="text-inherit no-underline transition-colors duration-[140ms] hover:text-fg-muted">health</a>
-      </span>
-    </footer>
+      <footer class="max-w-[760px] mx-auto px-[clamp(var(--sp-4),5vw,var(--sp-6))] pt-[48px] pb-[72px] border-t border-border flex justify-between flex-wrap gap-3 text-fg-subtle font-mono text-[11px] leading-[1.4] tracking-[0.12em] uppercase">
+        <span><span class="text-accent">&#9679;</span>&nbsp; webjs / demo</span>
+        <span>
+          <a href="/api/posts" class="text-inherit no-underline transition-colors duration-[140ms] hover:text-fg-muted">api</a>
+          &nbsp;&middot;&nbsp;
+          <a href="/__webjs/health" class="text-inherit no-underline transition-colors duration-[140ms] hover:text-fg-muted">health</a>
+        </span>
+      </footer>
+    </div>
   `;
 }

@@ -173,15 +173,28 @@ async function performNavigation(href, isPopState) {
     const currentShell = findLayoutShell(document.body);
     const newShell = findLayoutShell(doc.body);
 
-    if (currentShell && newShell && currentShell.tagName === newShell.tagName) {
-      // Same layout — minimal swap: title + slot content only.
+    if (currentShell && newShell &&
+        (currentShell.tagName === newShell.tagName ||
+         (currentShell.hasAttribute('data-layout') && newShell.hasAttribute('data-layout')))) {
+      // Same layout — minimal swap: title + page content only.
       const newTitle = doc.querySelector('title');
       if (newTitle) document.title = newTitle.textContent || '';
 
-      const children = [...newShell.childNodes].filter(
+      // For data-layout shells, swap only the <main> element's children
+      // (header and footer stay mounted). For custom element shells with
+      // shadow DOM, swap all non-DSD children (the old slot content).
+      const currentMain = currentShell.hasAttribute('data-layout')
+        ? currentShell.querySelector('main')
+        : currentShell;
+      const newMain = newShell.hasAttribute('data-layout')
+        ? newShell.querySelector('main')
+        : newShell;
+      const target = currentMain || currentShell;
+      const source = newMain || newShell;
+      const children = [...source.childNodes].filter(
         (n) => !(n instanceof HTMLTemplateElement && /** @type any */ (n).getAttribute('shadowrootmode'))
       );
-      swapSlotContent(currentShell, children);
+      swapSlotContent(target, children);
     } else {
       // Different layout structure — full swap.
       // Move nodes directly from the parsed doc (preserves DSD shadow roots)
@@ -255,9 +268,11 @@ function swapSlotContent(shell, children) {
 }
 
 /**
- * Walk body's direct children looking for the first custom element
- * (a tag with a hyphen in its name). In webjs apps this is typically
- * the layout shell: <blog-shell>, <doc-shell>, etc.
+ * Walk body's direct children looking for the layout shell.
+ *
+ * Detection order:
+ *   1. An element with `data-layout` attribute (light DOM shells).
+ *   2. A custom element (tag name with a hyphen: <blog-shell>, etc.).
  *
  * Skips <script>, <style>, text nodes, and comments.
  *
@@ -265,6 +280,10 @@ function swapSlotContent(shell, children) {
  * @returns {Element | null}
  */
 function findLayoutShell(body) {
+  // data-layout attribute (light DOM convention)
+  const marked = body.querySelector(':scope > [data-layout]');
+  if (marked) return marked;
+  // Custom element fallback (shadow DOM convention)
   for (const child of body.children) {
     if (child.tagName.includes('-')) return child;
   }

@@ -221,12 +221,37 @@ async function collectMetadata(route, ctx, dev) {
 }
 
 /**
+ * Extract leading `<script>` and `<style>` tags from the body HTML and
+ * hoist them into `<head>`. Ensures blocking scripts (e.g. Tailwind
+ * browser runtime, theme bootstrap) run before any body content renders.
+ *
+ * @param {string} headHtml
+ * @param {string} bodyHtml
+ * @returns {{ head: string, body: string }}
+ */
+function hoistHeadTags(headHtml, bodyHtml) {
+  const hoisted = [];
+  const re = /^\s*(<(?:script|style)[\s>][\s\S]*?<\/(?:script|style)>)/i;
+  let remaining = bodyHtml;
+  let m;
+  while ((m = re.exec(remaining)) !== null) {
+    hoisted.push(m[1]);
+    remaining = remaining.slice(m[0].length);
+  }
+  if (!hoisted.length) return { head: headHtml, body: bodyHtml };
+  const newHead = headHtml.replace('</head>', hoisted.join('\n') + '\n</head>');
+  return { head: newHead, body: remaining };
+}
+
+/**
  * Buffered wrapper (error / not-found paths; no Suspense streaming).
  * @param {string} body
  * @param {{ metadata: Record<string,any>, moduleUrls: string[], dev: boolean }} opts
  */
 function wrapInDocument(body, opts) {
-  return wrapHead({ ...opts, streaming: false }) + body + `\n</body>\n</html>`;
+  const headHtml = wrapHead({ ...opts, streaming: false });
+  const { head, body: bodyOut } = hoistHeadTags(headHtml, body);
+  return head + bodyOut + `\n</body>\n</html>`;
 }
 
 /**
@@ -406,6 +431,7 @@ function deduplicatedPreloads(componentUrls, moduleUrls, graph, entryFiles, appD
  * @param {Record<string, any>} [metadata]
  */
 function streamingHtmlResponse(headHtml, bodyHtml, ctx, status, req, url, metadata) {
+  const { head, body: hoistedBody } = hoistHeadTags(headHtml, bodyHtml);
   const encoder = new TextEncoder();
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
   // Cache-Control from page/layout metadata — standard HTTP caching
@@ -418,12 +444,12 @@ function streamingHtmlResponse(headHtml, bodyHtml, ctx, status, req, url, metada
   }
 
   if (!ctx.pending.length) {
-    return new Response(headHtml + bodyHtml + '\n</body>\n</html>', { status, headers });
+    return new Response(head + hoistedBody + '\n</body>\n</html>', { status, headers });
   }
 
   const stream = new ReadableStream({
     async start(controller) {
-      controller.enqueue(encoder.encode(headHtml + bodyHtml));
+      controller.enqueue(encoder.encode(head + hoistedBody));
       try {
         // Loop: resolve all currently-pending promises in parallel; nested
         // Suspense inside resolved content adds more pending entries.
