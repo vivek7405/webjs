@@ -18,6 +18,13 @@ export class NewPost extends WebComponent {
     this.state = { busy: false, error: null };
   }
 
+  firstUpdated() {
+    // Defer focus so Tailwind CDN has time to generate focus styles.
+    requestAnimationFrame(() => {
+      this.querySelector<HTMLInputElement>('input[name="title"]')?.focus();
+    });
+  }
+
   async onSubmit(e: SubmitEvent) {
     e.preventDefault();
     const form = e.currentTarget as HTMLFormElement;
@@ -46,8 +53,8 @@ export class NewPost extends WebComponent {
       <form @submit=${(e: SubmitEvent) => this.onSubmit(e)} class="grid gap-5 p-6 bg-bg-elev border border-border rounded-xl shadow-lg">
         <label class="grid gap-2 font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle">
           Title
-          <input name="title" placeholder="A bold title…" required autofocus
-                 class="font-serif text-xl font-bold tracking-tight border border-accent rounded-lg py-3 px-4 ${inputCls}" />
+          <input name="title" placeholder="A bold title…" required
+                 class="font-serif text-xl font-bold tracking-tight border border-border-strong rounded-lg py-3 px-4 ${inputCls}" />
         </label>
         <label class="grid gap-2 font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle">
           Body
