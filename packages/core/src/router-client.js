@@ -149,7 +149,6 @@ async function performNavigation(href, isPopState) {
     const resp = await fetch(href, {
       headers: { 'x-webjs-router': '1' },
       credentials: 'same-origin',
-      cache: 'no-store',
     });
     if (!resp.ok) {
       // Fall back to full navigation on error.

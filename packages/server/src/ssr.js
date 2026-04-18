@@ -137,9 +137,9 @@ export async function ssrNotFound(notFoundFile, opts) {
  */
 function htmlResponse(html, status, req, url, metadata) {
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
-  if (metadata?.cacheControl) {
-    headers.set('cache-control', metadata.cacheControl);
-  }
+  // Default: no caching. Pages are dynamic by default — the developer
+  // opts in to caching explicitly via metadata.cacheControl.
+  headers.set('cache-control', metadata?.cacheControl || 'no-store');
   if (req && !readToken(req)) {
     const secure = url ? url.protocol === 'https:' : false;
     headers.append('set-cookie', cookieHeader(newToken(), { secure }));
@@ -443,10 +443,9 @@ function streamingHtmlResponse(headHtml, bodyHtml, ctx, status, req, url, metada
   const { head, body: hoistedBody } = hoistHeadTags(headHtml, bodyHtml);
   const encoder = new TextEncoder();
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
-  // Cache-Control from page/layout metadata — standard HTTP caching
-  if (metadata?.cacheControl) {
-    headers.set('cache-control', metadata.cacheControl);
-  }
+  // Default: no caching. Pages are dynamic by default — the developer
+  // opts in to caching explicitly via metadata.cacheControl.
+  headers.set('cache-control', metadata?.cacheControl || 'no-store');
   if (req && !readToken(req)) {
     const secure = url ? url.protocol === 'https:' : false;
     headers.append('set-cookie', cookieHeader(newToken(), { secure }));
