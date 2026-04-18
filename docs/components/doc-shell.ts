@@ -57,6 +57,7 @@ const NAV_SECTIONS = [
       { href: '/docs/task', label: 'Task (Async Data)' },
       { href: '/docs/lazy-loading', label: 'Lazy Loading' },
       { href: '/docs/typescript', label: 'TypeScript' },
+      { href: '/docs/editor-setup', label: 'Editor Setup (Neovim, VS Code)' },
       { href: '/docs/middleware', label: 'Middleware' },
       { href: '/docs/deployment', label: 'Deployment' },
       { href: '/docs/testing', label: 'Testing' },
