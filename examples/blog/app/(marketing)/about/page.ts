@@ -1,4 +1,5 @@
 import { html } from 'webjs';
+import { rubric, displayH1, codeChip } from '../../_utils/ui.ts';
 
 export const metadata = { title: 'About — webjs blog' };
 
@@ -15,8 +16,8 @@ const FEATURES = [
 
 export default function About() {
   return html`
-    <span class="block font-mono text-[11px] leading-none font-semibold tracking-[0.2em] uppercase text-accent mb-4">● about</span>
-    <h1 class="font-serif text-display leading-[1.02] tracking-[-0.035em] font-bold m-0 mb-6 text-balance">A full-stack demo, at framework scale.</h1>
+    ${rubric('about')}
+    ${displayH1('A full-stack demo, at framework scale.')}
     <p class="text-[1.15rem] leading-[1.5] font-sans text-fg-muted max-w-[56ch] m-0 mb-18">
       A tiny blog built on <strong class="text-fg">webjs</strong> — a no-build, web-components-first,
       NextJs-inspired framework. Every feature the framework ships with is exercised
@@ -36,15 +37,8 @@ export default function About() {
     <div class="mt-12 px-8 py-6 bg-bg-elev border border-border rounded-[14px]">
       <p class="m-0 text-[15px] text-fg-muted">
         <strong class="text-fg">Modules architecture.</strong> Feature modules live under
-        <code class="font-mono text-[0.88em] px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border break-words [overflow-wrap:anywhere]">modules/</code> with
-        their own
-        <code class="font-mono text-[0.88em] px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border break-words [overflow-wrap:anywhere]">actions/</code>,
-        <code class="font-mono text-[0.88em] px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border break-words [overflow-wrap:anywhere]">queries/</code>,
-        <code class="font-mono text-[0.88em] px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border break-words [overflow-wrap:anywhere]">components/</code>,
-        and
-        <code class="font-mono text-[0.88em] px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border break-words [overflow-wrap:anywhere]">types.js</code>.
-        Routes in
-        <code class="font-mono text-[0.88em] px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border break-words [overflow-wrap:anywhere]">app/</code>
+        ${codeChip('modules/')} with their own ${codeChip('actions/')}, ${codeChip('queries/')},
+        ${codeChip('components/')}, and ${codeChip('types.js')}. Routes in ${codeChip('app/')}
         are thin adapters.
       </p>
     </div>

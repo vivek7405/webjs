@@ -5,6 +5,7 @@ import '../modules/chat/components/chat-box.ts';
 
 import { listPosts } from '../modules/posts/queries/list-posts.server.ts';
 import { currentUser } from '../modules/auth/queries/current-user.server.ts';
+import { rubric, stat, banner, accentLink, sectionH2 } from './_utils/ui.ts';
 
 export const metadata = {
   title: 'webjs blog',
@@ -21,7 +22,7 @@ export default async function HomePage() {
   const [me, posts] = await Promise.all([currentUser(), listPosts()]);
   return html`
     <section class="mb-18">
-      <span class="block font-mono text-[11px] leading-none font-semibold tracking-[0.2em] uppercase text-accent mb-4">● the webjs demo</span>
+      ${rubric('the webjs demo')}
       <h1 class="font-serif text-display leading-[1.02] tracking-[-0.035em] font-bold m-0 mb-4 text-balance">
         Full-stack in <span class="text-accent italic">zero</span> build steps.
       </h1>
@@ -33,26 +34,18 @@ export default async function HomePage() {
     </section>
 
     ${me
-      ? html`<p class="p-6 bg-[color-mix(in_oklch,var(--bg-elev)_50%,transparent)] border border-border rounded-[10px] text-sm my-6 mb-12 text-fg-muted">
-          Welcome back, <strong class="text-fg font-bold">${me.name || me.email}</strong>.
-          <a href="/dashboard" class="text-accent font-semibold no-underline hover:underline hover:underline-offset-[3px]">Your dashboard →</a>
-        </p>`
-      : html`<p class="p-6 bg-[color-mix(in_oklch,var(--bg-elev)_50%,transparent)] border border-border rounded-[10px] text-sm my-6 mb-12 text-fg-muted">
-          <a href="/login" class="text-accent font-semibold no-underline hover:underline hover:underline-offset-[3px]">Sign in</a>
-          or
-          <a href="/login?then=/dashboard/posts/new" class="text-accent font-semibold no-underline hover:underline hover:underline-offset-[3px]">create an account</a>
-          to write posts and comment.
-        </p>`}
+      ? banner(html`Welcome back, <strong class="text-fg font-bold">${me.name || me.email}</strong>. ${accentLink('/dashboard', 'Your dashboard →')}`)
+      : banner(html`${accentLink('/login', 'Sign in')} or ${accentLink('/login?then=/dashboard/posts/new', 'create an account')} to write posts and comment.`)}
 
     <div class="flex items-baseline justify-between mt-8 mb-2">
       <span class="block font-mono text-[11px] leading-none font-semibold tracking-[0.2em] uppercase text-accent">Latest posts</span>
-      <span class="font-mono text-[11px] leading-none font-medium tracking-[0.15em] uppercase text-fg-subtle">${posts.length.toString().padStart(2, '0')} total</span>
+      ${stat(`${posts.length.toString().padStart(2, '0')} total`)}
     </div>
 
     ${posts.length === 0
       ? html`<div class="py-18 text-center text-fg-muted border-y border-border">
           <p class="m-0 mb-4">No posts yet.</p>
-          <p class="m-0"><a href="/dashboard/posts/new" class="text-accent no-underline hover:underline hover:underline-offset-[3px]">Write the first one →</a></p>
+          <p class="m-0">${accentLink('/dashboard/posts/new', 'Write the first one →')}</p>
         </div>`
       : html`<ul class="list-none p-0 m-0">
           ${repeat(posts, (p) => p.id, (p, i) => html`
@@ -75,15 +68,15 @@ export default async function HomePage() {
       })}</p>
 
     <section class="mt-18 pt-6 border-t border-border">
-      <span class="block font-mono text-[11px] leading-none font-semibold tracking-[0.2em] uppercase text-accent mb-4">● client-side state</span>
-      <h2 class="font-serif text-[1.6rem] tracking-[-0.02em] font-bold m-0 mb-2">Interactive counter</h2>
+      ${rubric('client-side state')}
+      ${sectionH2('Interactive counter')}
       <p class="text-fg-muted m-0 mb-4 text-sm">Pure client-side state in a web component. SSR'd with the initial value, hydrated on connect, clicks don't lose focus.</p>
       <my-counter count="3"></my-counter>
     </section>
 
     <section class="mt-18 pt-6 border-t border-border">
-      <span class="block font-mono text-[11px] leading-none font-semibold tracking-[0.2em] uppercase text-accent mb-4">● real-time · websocket</span>
-      <h2 class="font-serif text-[1.6rem] tracking-[-0.02em] font-bold m-0 mb-2">Live chat</h2>
+      ${rubric('real-time · websocket')}
+      ${sectionH2('Live chat')}
       <p class="text-fg-muted m-0 mb-4 text-sm">Open this page in two windows — messages broadcast across every connected client.</p>
       <chat-box></chat-box>
     </section>

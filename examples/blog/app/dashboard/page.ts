@@ -2,6 +2,7 @@ import { html, repeat } from 'webjs';
 import '../../components/muted-text.ts';
 import { currentUser } from '../../modules/auth/queries/current-user.server.ts';
 import { listPosts } from '../../modules/posts/queries/list-posts.server.ts';
+import { rubric, clampH1, stat, accentLink } from '../_utils/ui.ts';
 
 export const metadata = { title: 'Dashboard — webjs blog' };
 
@@ -12,8 +13,8 @@ export default async function Dashboard() {
   const mine = posts.filter((p) => p.authorId === me.id);
   return html`
     <section>
-      <span class="block font-mono text-[11px] leading-none font-semibold tracking-[0.2em] uppercase text-accent mb-3">● signed in</span>
-      <h1 class="font-serif text-[clamp(2rem,1.5rem+1.8vw,2.8rem)] leading-[1.08] tracking-[-0.03em] font-bold m-0 mb-3">Hello, ${me.name || me.email.split('@')[0]}.</h1>
+      ${rubric('signed in', 'sm')}
+      ${clampH1(`Hello, ${me.name || me.email.split('@')[0]}.`)}
       <p class="text-fg-muted m-0 mb-8">You are ${me.name ? html`<strong class="text-fg">${me.email}</strong>` : ''}${me.name ? ' · ' : ''}a member since ${new Date(me.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}.</p>
     </section>
 
@@ -24,13 +25,13 @@ export default async function Dashboard() {
 
     <div class="flex items-baseline justify-between mb-4">
       <h2 class="font-serif text-[1.5rem] font-bold tracking-[-0.02em] m-0">Your posts</h2>
-      <small class="font-mono text-[11px] leading-none font-medium tracking-[0.15em] text-fg-subtle uppercase">${mine.length.toString().padStart(2, '0')} published</small>
+      ${stat(`${mine.length.toString().padStart(2, '0')} published`)}
     </div>
 
     ${mine.length === 0
       ? html`<div class="py-12 text-center border border-dashed border-border rounded-[14px] text-fg-muted italic font-serif text-[15px] leading-[1.6]">
           You haven't published anything yet.
-          <a href="/dashboard/posts/new" class="text-accent font-semibold no-underline not-italic hover:underline hover:underline-offset-[3px]">Write your first post →</a>
+          ${accentLink('/dashboard/posts/new', 'Write your first post →')}
         </div>`
       : html`<ul class="list-none p-0 m-0">
           ${repeat(mine, (p) => p.id, (p) => html`

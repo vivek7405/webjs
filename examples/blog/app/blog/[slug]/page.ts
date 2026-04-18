@@ -5,6 +5,7 @@ import '../../../modules/comments/components/comments-thread.ts';
 import { getPost } from '../../../modules/posts/queries/get-post.server.ts';
 import { listComments } from '../../../modules/comments/queries/list-comments.server.ts';
 import { currentUser } from '../../../modules/auth/queries/current-user.server.ts';
+import { rubric, backLink, displayH1, stat } from '../../_utils/ui.ts';
 
 type Ctx = { params: { slug: string } };
 
@@ -28,12 +29,12 @@ export default async function PostPage({ params }: Ctx) {
   const readingMin = Math.max(1, Math.round(post.body.split(/\s+/).length / 220));
 
   return html`
-    <a href="/" class="inline-block mb-12 text-fg-subtle no-underline font-mono text-[11px] leading-none font-medium tracking-[0.15em] uppercase transition-colors duration-fast hover:text-fg">← Posts</a>
+    ${backLink('/', 'Posts')}
 
     <article>
       <header class="mb-12">
-        <span class="block font-mono text-[11px] leading-none font-semibold tracking-[0.2em] uppercase text-accent mb-4">● post</span>
-        <h1 class="font-serif text-display leading-[1.02] tracking-[-0.035em] font-bold m-0 mb-6 text-balance">${post.title}</h1>
+        ${rubric('post')}
+        ${displayH1(post.title)}
         <div class="flex items-center gap-3 py-4 border-y border-border font-mono text-[11px] leading-[1.4] font-medium tracking-[0.1em] uppercase text-fg-subtle">
           <span>By <strong class="text-fg font-bold">${post.authorName || 'someone'}</strong></span>
           <span class="text-fg-subtle">·</span>
@@ -47,8 +48,7 @@ export default async function PostPage({ params }: Ctx) {
 
     <div class="mt-18 pt-8 border-t border-border">
       <h2 class="font-serif text-[1.5rem] tracking-[-0.02em] m-0 mb-4">
-        Comments
-        <small class="font-mono text-[11px] leading-none font-medium tracking-[0.15em] text-fg-subtle ml-2 uppercase">${comments.length.toString().padStart(2, '0')} total</small>
+        Comments ${stat(`${comments.length.toString().padStart(2, '0')} total`, 'ml-2')}
       </h2>
       <comments-thread
         post-id=${String(post.id)}
