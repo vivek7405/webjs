@@ -48,19 +48,18 @@ export class NewPost extends WebComponent {
 
   render() {
     const { busy, error } = this.state;
-    const titleCls = 'font-serif text-xl font-bold tracking-tight border border-border-strong rounded-lg py-3 px-4 text-fg bg-transparent transition-all duration-150 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent-tint';
-    const bodyCls = 'font-serif text-base leading-relaxed resize-y min-h-[220px] border border-border-strong rounded-lg p-4 text-fg bg-transparent transition-all duration-150 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent-tint';
+    const inputCls = 'text-fg bg-transparent transition-all duration-150 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent-tint';
     return html`
       <form @submit=${(e: SubmitEvent) => this.onSubmit(e)} class="grid gap-5 p-6 bg-bg-elev border border-border rounded-xl shadow-lg">
         <label class="grid gap-2 font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle">
           Title
           <input name="title" placeholder="A bold title…" required
-                 class=${titleCls} />
+                 class="font-serif text-xl font-bold tracking-tight border border-border-strong rounded-lg py-3 px-4 ${inputCls}" />
         </label>
         <label class="grid gap-2 font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle">
           Body
           <textarea name="body" placeholder="Write your post — markdown not required." required
-                    class=${bodyCls}></textarea>
+                    class="font-serif text-base leading-relaxed resize-y min-h-[220px] border border-border-strong rounded-lg p-4 ${inputCls}"></textarea>
         </label>
         <button ?disabled=${busy} class="justify-self-start text-[13px] font-semibold tracking-wide py-3 px-5 rounded-full border-0 bg-accent text-accent-fg cursor-pointer transition-all duration-150 hover:bg-accent-hover active:translate-y-px disabled:opacity-50 disabled:cursor-progress">
           ${busy ? 'Publishing…' : 'Publish'}
