@@ -77,8 +77,8 @@ test('ContextProvider: responds to context-request with value', () => {
   const ctx = createContext('color');
   const provider = new ContextProvider(host, { context: ctx, initialValue: 'red' });
 
-  // Simulate hostConnected — starts listening.
-  provider.hostConnected();
+  // Simulate onMount — starts listening.
+  provider.onMount();
 
   let received;
   const event = new ContextRequestEvent(ctx, (value) => { received = value; });
@@ -87,7 +87,7 @@ test('ContextProvider: responds to context-request with value', () => {
   assert.equal(received, 'red');
   assert.equal(provider.value, 'red');
 
-  provider.hostDisconnected();
+  provider.onUnmount();
 });
 
 test('ContextProvider: ignores requests for a different context', () => {
@@ -95,21 +95,21 @@ test('ContextProvider: ignores requests for a different context', () => {
   const ctxA = createContext('a');
   const ctxB = createContext('b');
   const provider = new ContextProvider(host, { context: ctxA, initialValue: 42 });
-  provider.hostConnected();
+  provider.onMount();
 
   let received;
   const event = new ContextRequestEvent(ctxB, (value) => { received = value; });
   host.dispatchEvent(event);
 
   assert.equal(received, undefined);
-  provider.hostDisconnected();
+  provider.onUnmount();
 });
 
 test('ContextProvider: setValue notifies subscribers', () => {
   const { host } = createMockHost();
   const ctx = createContext('count');
   const provider = new ContextProvider(host, { context: ctx, initialValue: 0 });
-  provider.hostConnected();
+  provider.onMount();
 
   const values = [];
   const event = new ContextRequestEvent(ctx, (value) => { values.push(value); }, true);
@@ -123,14 +123,14 @@ test('ContextProvider: setValue notifies subscribers', () => {
   provider.setValue(2);
   assert.deepEqual(values, [0, 1, 2]);
 
-  provider.hostDisconnected();
+  provider.onUnmount();
 });
 
 test('ContextProvider: setValue with same value is a no-op', () => {
   const { host } = createMockHost();
   const ctx = createContext('val');
   const provider = new ContextProvider(host, { context: ctx, initialValue: 'x' });
-  provider.hostConnected();
+  provider.onMount();
 
   const values = [];
   const event = new ContextRequestEvent(ctx, (v) => { values.push(v); }, true);
@@ -139,14 +139,14 @@ test('ContextProvider: setValue with same value is a no-op', () => {
   provider.setValue('x'); // same value — should not notify
   assert.deepEqual(values, ['x']);
 
-  provider.hostDisconnected();
+  provider.onUnmount();
 });
 
 test('ContextProvider: subscriber can unsubscribe', () => {
   const { host } = createMockHost();
   const ctx = createContext('unsub');
   const provider = new ContextProvider(host, { context: ctx, initialValue: 'a' });
-  provider.hostConnected();
+  provider.onMount();
 
   const values = [];
   let unsub;
@@ -163,29 +163,29 @@ test('ContextProvider: subscriber can unsubscribe', () => {
   // After unsubscribe, no new values should arrive.
   assert.deepEqual(values, ['a']);
 
-  provider.hostDisconnected();
+  provider.onUnmount();
 });
 
 // ---------------------------------------------------------------------------
 // ContextConsumer
 // ---------------------------------------------------------------------------
 
-test('ContextConsumer: dispatches context-request on hostConnected', () => {
+test('ContextConsumer: dispatches context-request on onMount', () => {
   const { host } = createMockHost();
   const ctx = createContext('theme');
 
   // Set up a provider first.
   const provider = new ContextProvider(host, { context: ctx, initialValue: 'dark' });
-  provider.hostConnected();
+  provider.onMount();
 
   // Create consumer on the same host (in a real app it would be a descendant).
   const consumer = new ContextConsumer(host, { context: ctx, subscribe: true });
-  consumer.hostConnected();
+  consumer.onMount();
 
   assert.equal(consumer.value, 'dark');
 
-  provider.hostDisconnected();
-  consumer.hostDisconnected();
+  provider.onUnmount();
+  consumer.onUnmount();
 });
 
 test('ContextConsumer: receives updated value when provider calls setValue', () => {
@@ -193,10 +193,10 @@ test('ContextConsumer: receives updated value when provider calls setValue', () 
   const ctx = createContext('lang');
 
   const provider = new ContextProvider(host, { context: ctx, initialValue: 'en' });
-  provider.hostConnected();
+  provider.onMount();
 
   const consumer = new ContextConsumer(host, { context: ctx, subscribe: true });
-  consumer.hostConnected();
+  consumer.onMount();
 
   assert.equal(consumer.value, 'en');
   const beforeCount = getUpdateCount();
@@ -205,23 +205,23 @@ test('ContextConsumer: receives updated value when provider calls setValue', () 
   assert.equal(consumer.value, 'fr');
   assert.ok(getUpdateCount() > beforeCount, 'requestUpdate should have been called');
 
-  provider.hostDisconnected();
-  consumer.hostDisconnected();
+  provider.onUnmount();
+  consumer.onUnmount();
 });
 
-test('ContextConsumer: hostDisconnected unsubscribes', () => {
+test('ContextConsumer: onUnmount unsubscribes', () => {
   const { host, getUpdateCount } = createMockHost();
   const ctx = createContext('size');
 
   const provider = new ContextProvider(host, { context: ctx, initialValue: 10 });
-  provider.hostConnected();
+  provider.onMount();
 
   const consumer = new ContextConsumer(host, { context: ctx, subscribe: true });
-  consumer.hostConnected();
+  consumer.onMount();
 
   assert.equal(consumer.value, 10);
 
-  consumer.hostDisconnected();
+  consumer.onUnmount();
   const countAfterDisconnect = getUpdateCount();
 
   provider.setValue(20);
@@ -229,7 +229,7 @@ test('ContextConsumer: hostDisconnected unsubscribes', () => {
   assert.equal(consumer.value, 10);
   assert.equal(getUpdateCount(), countAfterDisconnect);
 
-  provider.hostDisconnected();
+  provider.onUnmount();
 });
 
 test('ContextConsumer: subscribe false does a one-shot read', () => {
@@ -237,10 +237,10 @@ test('ContextConsumer: subscribe false does a one-shot read', () => {
   const ctx = createContext('once');
 
   const provider = new ContextProvider(host, { context: ctx, initialValue: 'snap' });
-  provider.hostConnected();
+  provider.onMount();
 
   const consumer = new ContextConsumer(host, { context: ctx, subscribe: false });
-  consumer.hostConnected();
+  consumer.onMount();
 
   assert.equal(consumer.value, 'snap');
 
@@ -248,5 +248,5 @@ test('ContextConsumer: subscribe false does a one-shot read', () => {
   // Non-subscribing consumer should not receive updates.
   assert.equal(consumer.value, 'snap');
 
-  provider.hostDisconnected();
+  provider.onUnmount();
 });

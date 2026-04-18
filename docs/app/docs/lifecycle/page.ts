@@ -10,9 +10,9 @@ export default function Lifecycle() {
     <h2>The Update Cycle</h2>
     <p>When <code>setState()</code> or a property change triggers a re-render:</p>
     <ol>
-      <li>Controllers' <code>hostUpdate()</code></li>
+      <li>Controllers' <code>beforeRender()</code></li>
       <li><code>render()</code> + DOM commit (with error boundary)</li>
-      <li>Controllers' <code>hostUpdated()</code></li>
+      <li>Controllers' <code>afterRender()</code></li>
       <li><code>firstUpdated()</code> — once, on the first render only</li>
     </ol>
 

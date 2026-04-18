@@ -131,7 +131,7 @@ export const TaskStatus = /** @type {const} */ ({
  *   or any other signal-aware API.
  *
  * - **`args`** is a function that returns an array. It is re-evaluated
- *   on every `hostUpdate()`. When `autoRun` is true (the default) and
+ *   on every `beforeRender()`. When `autoRun` is true (the default) and
  *   the args have changed (shallow identity comparison per element),
  *   the task automatically re-runs. This is how search-as-you-type and
  *   reactive data loading work.
@@ -325,7 +325,7 @@ export class Task {
    * Called before the host renders. When `autoRun` is enabled, checks
    * whether `args()` have changed and re-runs the task if so.
    */
-  hostUpdate() {
+  beforeRender() {
     if (!this._autoRun) return;
 
     const nextArgs = this._argsFn();
@@ -341,19 +341,19 @@ export class Task {
    * Called after the host has rendered. Currently a no-op; required by
    * the ReactiveController interface.
    */
-  hostUpdated() {}
+  afterRender() {}
 
   /**
    * Called when the host connects to the DOM. Currently a no-op —
-   * initial run (if autoRun) happens on the first `hostUpdate()`.
+   * initial run (if autoRun) happens on the first `beforeRender()`.
    */
-  hostConnected() {}
+  onMount() {}
 
   /**
    * Called when the host disconnects from the DOM. Aborts any in-flight
    * task to prevent updates to an unmounted component.
    */
-  hostDisconnected() {
+  onUnmount() {
     this.abort();
   }
 

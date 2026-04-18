@@ -487,9 +487,9 @@ The update cycle runs in this order when `setState()` or a property change trigg
 
 | Hook | When | Use for |
 |---|---|---|
-| *controllers'* `hostUpdate()` | Before render | Controller pre-render logic. |
+| *controllers'* `beforeRender()` | Before render | Controller pre-render logic. |
 | `render()` | Render phase | Return `TemplateResult`. |
-| *controllers'* `hostUpdated()` | After render | Controller post-render logic. |
+| *controllers'* `afterRender()` | After render | Controller post-render logic. |
 | `firstUpdated()` | After first render only | One-time DOM setup (focus, measure, attach third-party libs). |
 
 **"Less is more":** Most components only need `render()`. Add `firstUpdated`
@@ -510,11 +510,11 @@ class FetchController {
     this.data = null;
     host.addController(this);     // ← register
   }
-  async hostConnected() {
+  async onMount() {
     this.data = await (await fetch(this.url)).json();
     this.host.requestUpdate();
   }
-  hostDisconnected() { /* cleanup */ }
+  onUnmount() { /* cleanup */ }
 }
 
 // Usage in any component:

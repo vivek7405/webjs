@@ -22,10 +22,10 @@ export default function Controllers() {
     <p>A controller is any object that implements some or all of these methods:</p>
 
     <ul>
-      <li><strong>hostConnected()</strong> — Called when the host component's <code>connectedCallback</code> fires. Set up subscriptions, timers, and event listeners here.</li>
-      <li><strong>hostDisconnected()</strong> — Called when the host component's <code>disconnectedCallback</code> fires. Clean up resources.</li>
-      <li><strong>hostUpdate()</strong> — Called before the host's <code>render()</code> method. Pre-render controller logic.</li>
-      <li><strong>hostUpdated()</strong> — Called after the host's <code>render()</code> method, before <code>firstUpdated()</code>. Post-render controller logic.</li>
+      <li><strong>onMount()</strong> — Called when the host component's <code>connectedCallback</code> fires. Set up subscriptions, timers, and event listeners here.</li>
+      <li><strong>onUnmount()</strong> — Called when the host component's <code>disconnectedCallback</code> fires. Clean up resources.</li>
+      <li><strong>beforeRender()</strong> — Called before the host's <code>render()</code> method. Pre-render controller logic.</li>
+      <li><strong>afterRender()</strong> — Called after the host's <code>render()</code> method, before <code>firstUpdated()</code>. Post-render controller logic.</li>
     </ul>
 
     <p>All methods are optional. Implement only the ones your controller needs.</p>
@@ -42,7 +42,7 @@ export default function Controllers() {
     host.addController(this);  // register with the host
   }
 
-  hostConnected() {
+  onMount() {
     this._observer = new IntersectionObserver(
       ([entry]) =&gt; {
         this.isVisible = entry.isIntersecting;
@@ -53,7 +53,7 @@ export default function Controllers() {
     this._observer.observe(this.host);
   }
 
-  hostDisconnected() {
+  onUnmount() {
     this._observer?.disconnect();
     this._observer = null;
   }
@@ -93,7 +93,7 @@ LazyImage.register('lazy-image');</pre>
     host.addController(this);
   }
 
-  async hostConnected() {
+  async onMount() {
     this.loading = true;
     this.host.requestUpdate();
 
@@ -111,7 +111,7 @@ LazyImage.register('lazy-image');</pre>
     }
   }
 
-  hostDisconnected() {
+  onUnmount() {
     // Could abort an in-flight request here if using AbortController
   }
 }</pre>

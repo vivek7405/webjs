@@ -19,18 +19,18 @@ const isBrowser = typeof window !== 'undefined' && typeof HTMLElement !== 'undef
  * **Why it exists:** mirrors Lit's `ReactiveController` protocol so
  * ecosystem controllers are interoperable.
  *
- * @property {() => void} [hostConnected]
+ * @property {() => void} [onMount]
  *   Called when the host element is inserted into the DOM
  *   (`connectedCallback`). Use for subscriptions, observers, timers.
- * @property {() => void} [hostDisconnected]
+ * @property {() => void} [onUnmount]
  *   Called when the host element is removed from the DOM
  *   (`disconnectedCallback`). Use for cleanup: unsubscribe, disconnect
  *   observers, clear timers.
- * @property {() => void} [hostUpdate]
+ * @property {() => void} [beforeRender]
  *   Called just before the host renders (inside `_performRender`, after
  *   `willUpdate` but before `render()`). Use for reading layout or
  *   preparing data that the render depends on.
- * @property {() => void} [hostUpdated]
+ * @property {() => void} [afterRender]
  *   Called after the host has rendered and the DOM is up to date. Use for
  *   post-render side effects that depend on the new DOM (measuring,
  *   focusing, scrolling).
@@ -92,9 +92,9 @@ function defaultHasChanged(a, b) {
  *  - `render()` — returns a TemplateResult
  *
  * Lifecycle (called in order during each update cycle):
- *  1. controllers' `hostUpdate()`
+ *  1. controllers' `beforeRender()`
  *  2. `render()` + DOM commit (with error boundary)
- *  3. controllers' `hostUpdated()`
+ *  3. controllers' `afterRender()`
  *  4. `firstUpdated()` — once, after the very first render
  *
  * "Less is more" — only hooks with no native workaround are included.
@@ -382,7 +382,7 @@ export class WebComponent extends Base {
 
     // Notify all controllers that the host is connected.
     for (const c of this.__controllers) {
-      if (c.hostConnected) c.hostConnected();
+      if (c.onMount) c.onMount();
     }
 
     // For both shadow and light DOM: proceed with _performRender().
@@ -409,7 +409,7 @@ export class WebComponent extends Base {
       this.__hydrationObserver = null;
     }
     for (const c of this.__controllers) {
-      if (c.hostDisconnected) c.hostDisconnected();
+      if (c.onUnmount) c.onUnmount();
     }
   }
 
@@ -472,17 +472,17 @@ export class WebComponent extends Base {
 
   /**
    * Core update cycle:
-   *   1. Controllers' hostUpdate()
+   *   1. Controllers' beforeRender()
    *   2. render() + DOM commit (with error boundary)
-   *   3. Controllers' hostUpdated()
+   *   3. Controllers' afterRender()
    *   4. firstUpdated() — once, on the first render only
    */
   _performRender() {
     if (!this._renderRoot) return;
 
-    // --- 1. hostUpdate ---
+    // --- 1. beforeRender ---
     for (const c of this.__controllers) {
-      if (c.hostUpdate) c.hostUpdate();
+      if (c.beforeRender) c.beforeRender();
     }
 
     // --- 2. render + DOM commit (with error boundary) ---
@@ -499,9 +499,9 @@ export class WebComponent extends Base {
       }
     }
 
-    // --- 3. hostUpdated ---
+    // --- 3. afterRender ---
     for (const c of this.__controllers) {
-      if (c.hostUpdated) c.hostUpdated();
+      if (c.afterRender) c.afterRender();
     }
 
     // --- 4. firstUpdated (once) ---
@@ -553,20 +553,20 @@ export class WebComponent extends Base {
    *     this.host = host;
    *     host.addController(this);
    *   }
-   *   hostConnected() { window.addEventListener('mousemove', this._onMove); }
-   *   hostDisconnected() { window.removeEventListener('mousemove', this._onMove); }
+   *   onMount() { window.addEventListener('mousemove', this._onMove); }
+   *   onUnmount() { window.removeEventListener('mousemove', this._onMove); }
    * }
    * ```
    *
    * If the host is already connected when the controller is added, the
-   * controller's `hostConnected()` is called immediately.
+   * controller's `onMount()` is called immediately.
    *
    * @param {ReactiveController} controller
    */
   addController(controller) {
     this.__controllers.add(controller);
-    if (this._connected && controller.hostConnected) {
-      controller.hostConnected();
+    if (this._connected && controller.onMount) {
+      controller.onMount();
     }
   }
 
@@ -577,7 +577,7 @@ export class WebComponent extends Base {
    * than the component's — e.g. a controller that tracks a specific
    * resource and should be swapped out when the resource changes.
    *
-   * The controller's `hostDisconnected()` is NOT called by `removeController`;
+   * The controller's `onUnmount()` is NOT called by `removeController`;
    * if cleanup is needed, call it yourself before removing.
    *
    * @param {ReactiveController} controller
