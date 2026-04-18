@@ -8,7 +8,7 @@ test('light DOM component SSR renders content as direct children', async () => {
     static shadow = false;
     render() { return html`<p>light content</p>`; }
   }
-  customElements.define('test-light-comp', LightComp);
+  LightComp.register('test-light-comp');
 
   const out = await renderToString(html`<test-light-comp></test-light-comp>`);
   assert.match(out, /<p>light content<\/p>/);
@@ -21,7 +21,7 @@ test('light DOM SSR includes hydration marker', async () => {
     static shadow = false;
     render() { return html`<span>marked</span>`; }
   }
-  customElements.define('test-light-marker', LightMarker);
+  LightMarker.register('test-light-marker');
 
   const out = await renderToString(html`<test-light-marker></test-light-marker>`);
   assert.match(out, /<!--webjs-hydrate-->/);
@@ -33,7 +33,7 @@ test('shadow DOM component SSR still uses DSD', async () => {
     static shadow = true;
     render() { return html`<p>shadow content</p>`; }
   }
-  customElements.define('test-shadow-comp', ShadowComp);
+  ShadowComp.register('test-shadow-comp');
 
   const out = await renderToString(html`<test-shadow-comp></test-shadow-comp>`);
   assert.match(out, /<template shadowrootmode="open">/);
@@ -47,14 +47,14 @@ test('mixed page with both shadow and light DOM', async () => {
     static shadow = false;
     render() { return html`<em>light part</em>`; }
   }
-  customElements.define('test-mix-light', MixLight);
+  MixLight.register('test-mix-light');
 
   class MixShadow extends WebComponent {
     static shadow = true;
     static styles = css`p { color: blue; }`;
     render() { return html`<p>shadow part</p>`; }
   }
-  customElements.define('test-mix-shadow', MixShadow);
+  MixShadow.register('test-mix-shadow');
 
   const out = await renderToString(
     html`<div><test-mix-light></test-mix-light><test-mix-shadow></test-mix-shadow></div>`
@@ -81,7 +81,7 @@ test('light DOM async render works', async () => {
       return html`<div>${data}</div>`;
     }
   }
-  customElements.define('test-async-light', AsyncLight);
+  AsyncLight.register('test-async-light');
 
   const out = await renderToString(html`<test-async-light></test-async-light>`);
   assert.match(out, /<!--webjs-hydrate-->/);
@@ -98,7 +98,7 @@ test('component without explicit static shadow uses light DOM (inherits default)
     // No `static shadow =` declaration — should inherit WebComponent.shadow (false).
     render() { return html`<p>default</p>`; }
   }
-  customElements.define('test-default-shadow', DefaultShadow);
+  DefaultShadow.register('test-default-shadow');
   assert.equal(DefaultShadow.shadow, false, 'inherited default should be false');
 
   const out = await renderToString(html`<test-default-shadow></test-default-shadow>`);
@@ -113,7 +113,7 @@ test('component with shadow = "open" (truthy but not === true) stays light DOM',
     static shadow = /** @type any */ ('open');
     render() { return html`<p>still light</p>`; }
   }
-  customElements.define('test-not-true-shadow', NotTrueShadow);
+  NotTrueShadow.register('test-not-true-shadow');
   const out = await renderToString(html`<test-not-true-shadow></test-not-true-shadow>`);
   // shadow is not strictly === true, so no DSD injection.
   assert.doesNotMatch(out, /<template shadowrootmode="open">/);

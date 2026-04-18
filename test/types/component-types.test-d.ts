@@ -40,7 +40,7 @@ class StudentCard extends WebComponent {
     return html`<p>${this.student.name}</p>`;
   }
 }
-customElements.define('student-card', StudentCard);
+StudentCard.register('student-card');
 
 const card = new StudentCard();
 type _Student = Assert<Equal<typeof card.student, Student>>;
@@ -59,7 +59,7 @@ class Counter extends WebComponent {
     return html`<p>${this.count}</p>`;
   }
 }
-customElements.define('my-counter', Counter);
+Counter.register('my-counter');
 
 /* ------------- PropertyDeclaration shape accepts the expected fields ------------- */
 

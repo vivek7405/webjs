@@ -89,4 +89,4 @@ const ICONS = {
   system: html`<svg viewBox="0 0 24 24"><path d="M3 5h18v11H3zM8 20h8M12 16v4"/></svg>`,
 };
 
-customElements.define('theme-toggle', ThemeToggle);
+ThemeToggle.register('theme-toggle');

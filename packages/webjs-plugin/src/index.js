@@ -328,10 +328,12 @@ function init(modules) {
     }
     indexClasses(sf);
 
-    // Second pass: find customElements.define(tag, Class) calls.
+    // Second pass: find registration calls. Both patterns are accepted:
+    //   Counter.register('my-counter')                       // idiomatic
+    //   customElements.define('my-counter', Counter)         // native
     function visit(node) {
       if (ts.isCallExpression(node)) {
-        const match = readDefineCall(node);
+        const match = readDefineCall(node) || readRegisterCall(node);
         if (match && match.tag.includes('-')) {
           const local = localClasses.get(match.className);
           if (local) {
@@ -347,6 +349,23 @@ function init(modules) {
     }
     visit(sf);
     return out;
+  }
+
+  /**
+   * Match `Counter.register('my-counter')` where the LHS identifier is
+   * a locally-declared class and the sole argument is a string literal.
+   *
+   * @param {import('typescript').CallExpression} call
+   * @returns {{ tag: string, className: string } | undefined}
+   */
+  function readRegisterCall(call) {
+    const callee = call.expression;
+    if (!ts.isPropertyAccessExpression(callee)) return undefined;
+    if (callee.name.text !== 'register') return undefined;
+    if (!ts.isIdentifier(callee.expression)) return undefined;
+    const [arg] = call.arguments;
+    if (!arg || !ts.isStringLiteralLike(arg)) return undefined;
+    return { tag: arg.text, className: callee.expression.text };
   }
 
   /**

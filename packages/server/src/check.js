@@ -53,9 +53,9 @@ export const RULES = [
       'Each .server.{js,ts} file should export exactly one async function (one-function-per-file convention).',
   },
   {
-    name: 'components-have-define',
+    name: 'components-have-register',
     description:
-      'Component files that define a class extending WebComponent must register the class with customElements.define(). The server-side scanner derives the module URL from the file path at boot.',
+      'Component files that define a class extending WebComponent must register the class with ClassName.register(\'tag\') (or customElements.define). The server-side scanner derives the module URL from the file path at boot.',
   },
   {
     name: 'no-server-imports-in-components',
@@ -306,19 +306,22 @@ export async function checkConventions(appDir, opts) {
     }
   }
 
-  // --- Rule: components-have-define ---
-  if (isRuleEnabled('components-have-define', overrides)) {
+  // --- Rule: components-have-register ---
+  if (isRuleEnabled('components-have-register', overrides)) {
     for (const { rel, content } of files) {
       if (!isComponentFile(rel)) continue;
       // Check if it defines a class extending WebComponent
       if (!/class\s+\w+\s+extends\s+WebComponent/.test(content)) continue;
-      // Check for a customElements.define(...) call.
+      // Accept either registration pattern:
+      //   Counter.register('tag')                    — webjs idiom
+      //   customElements.define('tag', Counter)      — native
+      if (/\b[A-Z][A-Za-z0-9_$]*\.register\s*\(\s*['"]/.test(content)) continue;
       if (/\bcustomElements\.define\s*\(/.test(content)) continue;
       violations.push({
-        rule: 'components-have-define',
+        rule: 'components-have-register',
         file: rel,
-        message: 'Component extends WebComponent but does not register with customElements.define()',
-        fix: "Add customElements.define('tag-name', ClassName) after the class definition",
+        message: "Component extends WebComponent but is never registered. Call ClassName.register('tag-name') at the bottom of the file.",
+        fix: "Add `ClassName.register('tag-name')` after the class definition",
       });
     }
   }
@@ -389,18 +392,24 @@ export async function checkConventions(appDir, opts) {
   if (isRuleEnabled('tag-name-has-hyphen', overrides)) {
     for (const { rel, content } of files) {
       if (!isComponentFile(rel)) continue;
-      // Match customElements.define('...', ...) calls.
-      const tagRe = /\bcustomElements\.define\s*\(\s*(['"])([^'"]+)\1/g;
-      let match;
-      while ((match = tagRe.exec(content)) !== null) {
-        const tagName = match[2];
-        if (!tagName.includes('-')) {
-          violations.push({
-            rule: 'tag-name-has-hyphen',
-            file: rel,
-            message: `Custom element tag "${tagName}" must contain a hyphen`,
-            fix: `Rename to a hyphenated tag name, e.g. "app-${tagName}" or "${tagName}-element"`,
-          });
+      const patterns = [
+        // Class.register('tag')
+        /\b[A-Z][A-Za-z0-9_$]*\.register\s*\(\s*(['"])([^'"]+)\1/g,
+        // customElements.define('tag', Class)
+        /\bcustomElements\.define\s*\(\s*(['"])([^'"]+)\1/g,
+      ];
+      for (const re of patterns) {
+        let match;
+        while ((match = re.exec(content)) !== null) {
+          const tagName = match[2];
+          if (!tagName.includes('-')) {
+            violations.push({
+              rule: 'tag-name-has-hyphen',
+              file: rel,
+              message: `Custom element tag "${tagName}" must contain a hyphen`,
+              fix: `Rename to a hyphenated tag name, e.g. "app-${tagName}" or "${tagName}-element"`,
+            });
+          }
         }
       }
     }

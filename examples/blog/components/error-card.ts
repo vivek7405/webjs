@@ -18,4 +18,4 @@ export class ErrorCard extends WebComponent {
     `;
   }
 }
-customElements.define('error-card', ErrorCard);
+ErrorCard.register('error-card');

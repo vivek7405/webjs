@@ -83,4 +83,4 @@ export class ChatBox extends WebComponent {
     `;
   }
 }
-customElements.define('chat-box', ChatBox);
+ChatBox.register('chat-box');

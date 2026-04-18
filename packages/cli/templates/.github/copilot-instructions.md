@@ -43,7 +43,7 @@ Every code change must include:
 ## Code patterns
 
 - Tagged template: html`<div>${value}</div>` with css`...` for styles
-- Components: extend WebComponent, use static tag/styles/properties, call customElements.define('tag', Class)
+- Components: extend WebComponent, use static tag/styles/properties, call Class.register('tag')
 - Server actions: *.server.ts files with one exported async function each
 - Directives: import { classMap, styleMap, ref, when, ... } from 'webjs/directives'
 - Context: import { createContext, ContextProvider, ContextConsumer } from 'webjs/context'

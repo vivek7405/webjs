@@ -40,7 +40,7 @@ class UserProfile extends WebComponent {
     });
   }
 }
-customElements.define('user-profile', UserProfile);</pre>
+UserProfile.register('user-profile');</pre>
 
     <h2>Task States</h2>
     <p>A task is always in one of four states, exposed as <code>TaskStatus</code> constants:</p>
@@ -163,7 +163,7 @@ handleSubmit(e) {
     });
   }
 }
-customElements.define('search-results', SearchResults);</pre>
+SearchResults.register('search-results');</pre>
 
     <h2>When to Use Task vs Async Page Functions</h2>
 
@@ -244,7 +244,7 @@ class LiveSearch extends WebComponent {
     \`;
   }
 }
-customElements.define('live-search', LiveSearch);</pre>
+LiveSearch.register('live-search');</pre>
 
     <h2>Next Steps</h2>
     <ul>

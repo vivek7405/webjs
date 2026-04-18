@@ -60,7 +60,7 @@ export interface ReactiveController {
  *       declare student: Student;
  *       render() { return html`<p>${this.student.name}</p>`; }
  *     }
- *     customElements.define('student-card', StudentCard);
+ *     StudentCard.register('student-card');
  *
  * The `declare` field has no runtime cost — it tells TypeScript the
  * field's type without emitting a class-field initializer that would
@@ -76,6 +76,8 @@ export abstract class WebComponent extends HTMLElement {
   static properties: Record<string, PropertyDeclaration>;
   static styles: CSSResult | CSSResult[] | null;
   static lazy?: boolean;
+  /** Register this class as a custom element under `tag`. Tag must contain a hyphen. */
+  static register(tag: string): void;
   static readonly observedAttributes: string[];
 
   /** Instance-level reactive state. Prefer `setState()` to mutate. */

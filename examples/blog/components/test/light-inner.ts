@@ -7,4 +7,4 @@ export class LightInner extends WebComponent {
     return html`<span data-testid="light-inner">light-inner OK</span>`;
   }
 }
-customElements.define('light-inner', LightInner);
+LightInner.register('light-inner');

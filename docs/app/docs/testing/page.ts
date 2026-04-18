@@ -146,7 +146,7 @@ npx webjs check
 
 # List available rules
 npx webjs check --rules</pre>
-    <p>Rules include: actions in modules, one function per action file, components have <code>customElements.define()</code>, no server imports in client code, tests exist for modules, tag names have hyphens.</p>
+    <p>Rules include: actions in modules, one function per action file, components have <code>Class.register('tag')</code>, no server imports in client code, tests exist for modules, tag names have hyphens.</p>
     <p>Override rules in <code>package.json</code>:</p>
     <pre>{ "webjs": { "conventions": { "tests-exist": false } } }</pre>
 

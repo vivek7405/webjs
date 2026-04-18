@@ -24,8 +24,12 @@ import { walk } from './fs-walk.js';
 import { primeModuleUrl } from 'webjs';
 
 /**
- * Recognise `customElements.define('tag-name', ClassName)` calls. Both
- * single and double quotes; whitespace is flexible.
+ * Recognise either registration pattern:
+ *
+ *     Counter.register('my-counter')           // idiomatic webjs
+ *     customElements.define('my-counter', Counter)  // native DOM API
+ *
+ * Both single and double quotes; whitespace is flexible.
  *
  * @param {string} src
  * @returns {Array<{ className: string, tag: string }>}
@@ -33,9 +37,19 @@ import { primeModuleUrl } from 'webjs';
 export function extractComponents(src) {
   /** @type {Array<{ className: string, tag: string }>} */
   const results = [];
-  const re = /\bcustomElements\.define\s*\(\s*['"]([^'"\n]+)['"]\s*,\s*([A-Z][A-Za-z0-9_$]*)\b/g;
+  // Pattern A: Class.register('tag')
+  const registerRe = /\b([A-Z][A-Za-z0-9_$]*)\.register\s*\(\s*['"]([^'"\n]+)['"]\s*\)/g;
   let m;
-  while ((m = re.exec(src)) !== null) {
+  while ((m = registerRe.exec(src)) !== null) {
+    const className = m[1];
+    const tag = m[2];
+    if (tag.includes('-')) {
+      results.push({ className, tag });
+    }
+  }
+  // Pattern B: customElements.define('tag', Class)
+  const defineRe = /\bcustomElements\.define\s*\(\s*['"]([^'"\n]+)['"]\s*,\s*([A-Z][A-Za-z0-9_$]*)\b/g;
+  while ((m = defineRe.exec(src)) !== null) {
     const tag = m[1];
     const className = m[2];
     if (tag.includes('-')) {
@@ -114,6 +128,9 @@ export async function findOrphanComponents(appDir) {
     // Find every class that extends WebComponent (exact name — we trust
     // the framework convention).
     const classRe = /\b(?:export\s+)?(?:default\s+)?class\s+([A-Z][A-Za-z0-9_$]*)\s+extends\s+WebComponent\b/g;
+    // A class counts as "registered" if either Class.register('tag') or
+    // customElements.define('tag', Class) appears in the file.
+    const registerRe = /\b([A-Z][A-Za-z0-9_$]*)\.register\s*\(\s*['"][^'"]+['"]\s*\)/g;
     const defineRe = /\bcustomElements\.define\s*\(\s*['"][^'"]+['"]\s*,\s*([A-Z][A-Za-z0-9_$]*)\b/g;
 
     const declared = new Set();
@@ -121,11 +138,12 @@ export async function findOrphanComponents(appDir) {
     while ((m = classRe.exec(src)) !== null) declared.add(m[1]);
     if (declared.size === 0) continue;
 
-    const defined = new Set();
-    while ((m = defineRe.exec(src)) !== null) defined.add(m[1]);
+    const registered = new Set();
+    while ((m = registerRe.exec(src)) !== null) registered.add(m[1]);
+    while ((m = defineRe.exec(src)) !== null) registered.add(m[1]);
 
     for (const cls of declared) {
-      if (!defined.has(cls)) {
+      if (!registered.has(cls)) {
         orphans.push({ className: cls, file });
       }
     }

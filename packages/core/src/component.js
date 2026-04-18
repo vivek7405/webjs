@@ -160,6 +160,22 @@ export class WebComponent extends Base {
    */
   static styles = null;
 
+  /**
+   * Register this class as a custom element under `tag`.
+   *
+   *     class Counter extends WebComponent { … }
+   *     Counter.register('my-counter');
+   *
+   * Delegates to `customElements.define` (or the server-side shim) via the
+   * internal registry. The module URL for `<link rel="modulepreload">`
+   * hints is derived server-side by scanning the app tree — no need to
+   * pass `import.meta.url`.
+   *
+   * @param {string} tag  Must contain a hyphen (HTML spec).
+   */
+  static register(tag) {
+    register(tag, this);
+  }
 
   /**
    * Returns the list of attribute names the browser should observe.

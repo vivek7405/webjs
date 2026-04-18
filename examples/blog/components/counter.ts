@@ -25,4 +25,4 @@ export class Counter extends WebComponent {
     `;
   }
 }
-customElements.define('my-counter', Counter);
+Counter.register('my-counter');

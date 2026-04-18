@@ -34,7 +34,7 @@ class HeavyChart extends WebComponent {
     return html${'`'}&lt;canvas&gt;&lt;/canvas&gt;${'`'};
   }
 }
-customElements.define('heavy-chart', HeavyChart);</pre>
+HeavyChart.register('heavy-chart');</pre>
 
     <h2>How it works</h2>
     <ol>

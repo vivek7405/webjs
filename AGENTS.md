@@ -308,7 +308,7 @@ import { html, css, WebComponent, render, renderToString } from 'webjs';
 | `html`            | Tagged template literal producing a `TemplateResult`. Use in pages, layouts, and component `render()`. |
 | `css`             | Tagged template literal producing a `CSSResult`. Assign to `static styles` on components. |
 | `WebComponent`    | Base class for interactive components. |
-| `register(tag,C)` | Register a tag → class. Called automatically by `customElements.define('tag', Class)`. |
+| `register(tag,C)` | Register a tag → class. Called automatically by `Class.register('tag')`. |
 | `render(v, el)`   | Client-side: render a value into a DOM element. |
 | `renderToString`  | Server-side: **async** — render a value to an HTML string with DSD injection. Awaits Promise-valued holes and async component `render()` methods. |
 | `notFound()`      | Throw inside a page/layout/server action to return a 404 rendered via `not-found.js`. |
@@ -431,7 +431,7 @@ class MyThing extends WebComponent {
     return html`…`;
   }
 }
-customElements.define('my-thing', MyThing);
+MyThing.register('my-thing');
 ```
 
 Mutate state with `this.setState({...})` — it batches a re-render via microtask.
@@ -456,7 +456,7 @@ class StudentCard extends WebComponent {
     return html`<p>${this.student.name}</p>`;
   }
 }
-customElements.define('student-card', StudentCard);
+StudentCard.register('student-card');
 ```
 
 Built-in constructors (`String`, `Number`, `Boolean`, `Array`, `Object`)
@@ -798,7 +798,7 @@ When you mark an action as `expose('METHOD /path', fn)`, you are declaring it pa
 
 ### Components (`components/*.js`)
 
-- Each file should define **one** custom element and call `customElements.define('tag', Class)` at module top level.
+- Each file should define **one** custom element and call `Class.register('tag')` at module top level.
   Passing `import.meta.url` lets the SSR shell emit a `<link rel="modulepreload">` so the browser can fetch the module without waiting for its parent to parse. Zero build step; big first-paint win.
 - Imported by pages (for SSR) and/or other components (for composition).
 - **Styling convention: shadow-DOM CSS via `static styles = css\`…\``, not inline `style="…"` attributes.** Any repeated visual chunk in pages (layout chrome, cards, muted labels, etc.) should become a component whose styles live in its shadow root. The example app's `<blog-shell>` and `<muted-text>` demonstrate this — pages emit semantic HTML with zero inline styles.
@@ -952,7 +952,7 @@ the class-prefix rule documented in the Shadow-vs-Light DOM section.
 
 1. **Never import `@prisma/client`, `node:*`, or any server-only dependency from a file under `components/` or from a page's top-level module graph that isn't a server action.** The browser will try to load it and fail. Use a server action instead.
 2. **Every `*.server.js` export must be an `async` JSON-safe function.** Arguments/results are serialised over the wire.
-3. **Custom element tag names must contain a hyphen** (HTML spec). Set `static tag`, call `customElements.define('tag', Class)`.
+3. **Custom element tag names must contain a hyphen** (HTML spec). Set `static tag`, call `Class.register('tag')`.
 4. **Event (`@`), property (`.`), and boolean (`?`) holes in `html` must be unquoted** — e.g. `@click=${fn}`, never `@click="${fn}"`.
 5. **Do not mutate `this.state` directly** — use `setState`. State reads are fine.
 6. **Page and layout default exports must be functions.** They return a value (usually a `TemplateResult`); they do not call `render()` themselves.
@@ -1042,7 +1042,10 @@ import { WebComponent, html } from 'webjs';
 export class HelloWorld extends WebComponent {
   render() { return html`<p>Hello!</p>`; }
 }
-customElements.define('hello-wcustomElements.define('my-customElements.define('my-card', HelloWorld);Then use it as `<hello-world></hello-world>` in any page or component.
+HelloWorld.register('hello-world');
+```
+
+Then use it as `<hello-world></hello-world>` in any page or component.
 
 ### Scaffold commands
 

@@ -83,4 +83,4 @@ export class AuthForms extends WebComponent {
     `;
   }
 }
-customElements.define('auth-forms', AuthForms);
+AuthForms.register('auth-forms');

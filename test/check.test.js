@@ -19,7 +19,7 @@ test('tag-name-has-hyphen: flags component without hyphen in tag', async () => {
       join(appDir, 'components', 'bad.js'),
       `import { WebComponent } from 'webjs';
 class BadComp extends WebComponent {}
-customElements.define('badcomp', BadComp);
+BadComp.register('badcomp');
 `,
     );
 
@@ -40,7 +40,7 @@ test('tag-name-has-hyphen: passes for valid hyphenated tag', async () => {
       join(appDir, 'components', 'good.js'),
       `import { WebComponent } from 'webjs';
 class GoodComp extends WebComponent {}
-customElements.define('good-comp', GoodComp);
+GoodComp.register('good-comp');
 `,
     );
 
@@ -52,7 +52,7 @@ customElements.define('good-comp', GoodComp);
   }
 });
 
-test('components-have-define: flags component missing customElements.define call', async () => {
+test('components-have-register: flags component with no register() call', async () => {
   const appDir = await makeTempApp();
   try {
     await mkdir(join(appDir, 'components'), { recursive: true });
@@ -64,15 +64,15 @@ class NoReg extends WebComponent {}
     );
 
     const violations = await checkConventions(appDir);
-    const v = violations.find((v) => v.rule === 'components-have-define');
-    assert.ok(v, 'expected components-have-define violation');
-    assert.ok(v.message.includes('customElements.define'));
+    const v = violations.find((v) => v.rule === 'components-have-register');
+    assert.ok(v, 'expected components-have-register violation');
+    assert.ok(v.message.includes('register'));
   } finally {
     await rm(appDir, { recursive: true, force: true });
   }
 });
 
-test('components-have-define: passes when customElements.define is called', async () => {
+test('components-have-register: passes with Class.register("tag")', async () => {
   const appDir = await makeTempApp();
   try {
     await mkdir(join(appDir, 'components'), { recursive: true });
@@ -80,13 +80,33 @@ test('components-have-define: passes when customElements.define is called', asyn
       join(appDir, 'components', 'good.js'),
       `import { WebComponent } from 'webjs';
 class GoodComp extends WebComponent {}
-customElements.define('good-comp', GoodComp);
+GoodComp.register('good-comp');
 `,
     );
 
     const violations = await checkConventions(appDir);
-    const v = violations.find((v) => v.rule === 'components-have-define');
-    assert.equal(v, undefined, 'should not flag component with customElements.define');
+    const v = violations.find((v) => v.rule === 'components-have-register');
+    assert.equal(v, undefined, 'should not flag component with Class.register()');
+  } finally {
+    await rm(appDir, { recursive: true, force: true });
+  }
+});
+
+test('components-have-register: passes with customElements.define fallback', async () => {
+  const appDir = await makeTempApp();
+  try {
+    await mkdir(join(appDir, 'components'), { recursive: true });
+    await writeFile(
+      join(appDir, 'components', 'native.js'),
+      `import { WebComponent } from 'webjs';
+class NativeComp extends WebComponent {}
+customElements.define('native-comp', NativeComp);
+`,
+    );
+
+    const violations = await checkConventions(appDir);
+    const v = violations.find((v) => v.rule === 'components-have-register');
+    assert.equal(v, undefined, 'should not flag native-API registration');
   } finally {
     await rm(appDir, { recursive: true, force: true });
   }
@@ -110,7 +130,7 @@ test('rule override disables a rule', async () => {
       join(appDir, 'components', 'bad.js'),
       `import { WebComponent } from 'webjs';
 class BadComp extends WebComponent {}
-customElements.define('badcomp', BadComp);
+BadComp.register('badcomp');
 `,
     );
 
