@@ -25,7 +25,7 @@ export default function RootLayout({ children }: { children: unknown }) {
         } catch (_) {}
       })();
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="/public/tailwind-browser.js"></script>
     <style type="text/tailwindcss">
       @theme {
         --color-fg: var(--fg);

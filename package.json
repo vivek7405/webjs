@@ -27,5 +27,8 @@
     "linkedom": "^0.18.12",
     "playwright": "^1.59.1",
     "puppeteer-core": "^24.41.0"
+  },
+  "dependencies": {
+    "@tailwindcss/browser": "^4.2.2"
   }
 }
