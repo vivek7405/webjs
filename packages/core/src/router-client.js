@@ -149,6 +149,7 @@ async function performNavigation(href, isPopState) {
     const resp = await fetch(href, {
       headers: { 'x-webjs-router': '1' },
       credentials: 'same-origin',
+      cache: 'no-store',
     });
     if (!resp.ok) {
       // Fall back to full navigation on error.
@@ -250,21 +251,13 @@ async function performNavigation(href, isPopState) {
  * @param {ChildNode[]} children
  */
 function swapSlotContent(shell, children) {
-  const doSwap = () => {
-    shell.replaceChildren(...children);
-    reactivateScripts(shell);
-    upgradeCustomElements(shell);
-  };
-
-  if (/** @type any */ (document).startViewTransition) {
-    const t = /** @type any */ (document).startViewTransition(doSwap);
-    // After the View Transition completes, run another upgrade pass.
-    // During transitions the DOM may not be fully "settled" when the
-    // callback runs synchronously — a deferred pass catches stragglers.
-    t.finished.then(() => upgradeCustomElements(shell)).catch(() => {});
-  } else {
-    doSwap();
-  }
+  shell.replaceChildren(...children);
+  reactivateScripts(shell);
+  upgradeCustomElements(shell);
+  // Schedule a deferred upgrade pass — some browsers delay custom element
+  // upgrades when elements are inserted during layout/paint. A microtask
+  // pass catches any stragglers.
+  queueMicrotask(() => upgradeCustomElements(shell));
 }
 
 /**
