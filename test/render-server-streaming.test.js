@@ -196,6 +196,127 @@ test('renderToStream: error during render rejects the stream', async () => {
   assert.ok(threw, 'broken template should reject the stream');
 });
 
+/* ---------------- streamTemplate parser: attribute / comment / rawtext ---------------- */
+
+test('renderToStream: quoted attribute interpolation is HTML-escaped', async () => {
+  const stream = renderToStream(
+    html`<div class="${'foo"bar'}">x</div>`,
+    { ssr: false },
+  );
+  const out = await streamText(stream);
+  // Quote inside value must be encoded.
+  assert.ok(!/class="foo"bar"/.test(out), 'raw quote must not leak into output');
+  assert.ok(out.includes('&quot;') || out.includes('&#34;'), `missing escaped quote in ${out}`);
+});
+
+test('renderToStream: unquoted attribute with hole renders as quoted attr', async () => {
+  const stream = renderToStream(
+    html`<input value=${'hi'}>`,
+    { ssr: false },
+  );
+  const out = await streamText(stream);
+  assert.match(out, /value="hi"/);
+});
+
+test('renderToStream: boolean attr (?disabled) — true emits attribute, false omits', async () => {
+  const on = await streamText(renderToStream(
+    html`<button ?disabled=${true}>x</button>`, { ssr: false }));
+  assert.match(on, /<button\s+disabled=""\s*>/);
+
+  const off = await streamText(renderToStream(
+    html`<button ?disabled=${false}>x</button>`, { ssr: false }));
+  assert.ok(!/disabled/.test(off), `disabled should be absent; got ${off}`);
+});
+
+test('renderToStream: event attr (@click) is omitted from HTML output', async () => {
+  const stream = renderToStream(
+    html`<button @click=${() => {}}>x</button>`,
+    { ssr: false },
+  );
+  const out = await streamText(stream);
+  assert.ok(!/@click/.test(out));
+  assert.ok(!/onclick/.test(out.toLowerCase()));
+});
+
+test('renderToStream: property attr (.value) is omitted from HTML output', async () => {
+  const stream = renderToStream(
+    html`<input .value=${'hi'}>`,
+    { ssr: false },
+  );
+  const out = await streamText(stream);
+  // Property binding doesn't surface as HTML attribute.
+  assert.ok(!/\.value/.test(out));
+  assert.ok(!/value="hi"/.test(out), `.value shouldn't emit a value attribute; got: ${out}`);
+});
+
+test('renderToStream: comment body with a hole → hole value baked into comment text', async () => {
+  const stream = renderToStream(
+    html`<!-- user is ${'alice'} --><p>ok</p>`,
+    { ssr: false },
+  );
+  const out = await streamText(stream);
+  assert.match(out, /<!-- user is alice -->/);
+  assert.match(out, /<p>ok<\/p>/);
+});
+
+test('renderToStream: <style> rawtext preserves interpolated CSS verbatim', async () => {
+  const stream = renderToStream(
+    html`<style>.a-${'x'} { color: red; }</style><p>ok</p>`,
+    { ssr: false },
+  );
+  const out = await streamText(stream);
+  assert.match(out, /\.a-x\s*\{\s*color:\s*red;\s*\}/);
+  // Raw text shouldn't be HTML-escaped (no &lt; &gt;)
+  assert.doesNotMatch(out, /&lt;/);
+});
+
+test('renderToStream: <script> rawtext preserves interpolated JS verbatim', async () => {
+  const stream = renderToStream(
+    html`<script>window.k = ${'foo'};</script><p>ok</p>`,
+    { ssr: false },
+  );
+  const out = await streamText(stream);
+  assert.match(out, /window\.k\s*=\s*foo\s*;/);
+});
+
+test('renderToStream: multiple attributes on one tag compose correctly', async () => {
+  const stream = renderToStream(
+    html`<a href="/x" data-id=${42} class="btn">go</a>`,
+    { ssr: false },
+  );
+  const out = await streamText(stream);
+  assert.match(out, /href="\/x"/);
+  assert.match(out, /data-id="42"/);
+  assert.match(out, /class="btn"/);
+});
+
+test('renderToStream: closing tag `</div>` parses cleanly', async () => {
+  const stream = renderToStream(
+    html`<div>${'a'}</div><span>${'b'}</span>`,
+    { ssr: false },
+  );
+  const out = await streamText(stream);
+  assert.match(out, /<div>a<\/div><span>b<\/span>/);
+});
+
+test('renderToStream: self-closing-ish void tag with hole works', async () => {
+  const stream = renderToStream(
+    html`<img src=${'/logo.png'} alt="logo">`,
+    { ssr: false },
+  );
+  const out = await streamText(stream);
+  assert.match(out, /<img\s+src="\/logo\.png"\s+alt="logo">/);
+});
+
+test('renderToStream: attribute that turns out to be static (no value hole) renders as-is', async () => {
+  const stream = renderToStream(
+    html`<div id="x" class="y">ok</div>`,
+    { ssr: false },
+  );
+  const out = await streamText(stream);
+  assert.match(out, /<div\s+id="x"\s+class="y">ok<\/div>/);
+});
+
 /* ---------------- nested Suspense inside a template ---------------- */
 
 test('Suspense nested in a template is replaced by its boundary HTML', async () => {
