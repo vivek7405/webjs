@@ -185,3 +185,60 @@ test('repeat() removal drops only removed keys', async () => {
   assert.strictEqual(after[1], preC);
   assert.equal(preB.parentNode, null);
 });
+
+test('mixed attr: single hole with surrounding static text composes correctly', () => {
+  const el = document.createElement('div');
+  const view = (cls) => html`<div class="prefix ${cls} suffix">x</div>`;
+  render(view('mid'), el);
+  assert.equal(el.querySelector('div').getAttribute('class'), 'prefix mid suffix');
+  render(view('new'), el);
+  assert.equal(el.querySelector('div').getAttribute('class'), 'prefix new suffix');
+});
+
+test('mixed attr: multiple holes in one attribute all update', () => {
+  const el = document.createElement('div');
+  const view = (a, b) => html`<div class="a ${a} b ${b} c">x</div>`;
+  render(view('X', 'Y'), el);
+  assert.equal(el.querySelector('div').getAttribute('class'), 'a X b Y c');
+  render(view('X2', 'Y2'), el);
+  assert.equal(el.querySelector('div').getAttribute('class'), 'a X2 b Y2 c');
+});
+
+test('mixed attr: null/undefined values coerce to empty string', () => {
+  const el = document.createElement('div');
+  const view = (cls) => html`<div data-x="[${cls}]">z</div>`;
+  render(view(null), el);
+  assert.equal(el.querySelector('div').getAttribute('data-x'), '[]');
+  render(view(undefined), el);
+  assert.equal(el.querySelector('div').getAttribute('data-x'), '[]');
+  render(view('mid'), el);
+  assert.equal(el.querySelector('div').getAttribute('data-x'), '[mid]');
+});
+
+test('mixed attr: element identity preserved across updates', () => {
+  const el = document.createElement('div');
+  const view = (a, b) => html`<section data-foo="pre ${a} mid ${b}">k</section>`;
+  render(view('1', '2'), el);
+  const pre = el.querySelector('section');
+  render(view('3', '4'), el);
+  const post = el.querySelector('section');
+  assert.strictEqual(pre, post, 'element reused across mixed-attr updates');
+  assert.equal(post.getAttribute('data-foo'), 'pre 3 mid 4');
+});
+
+test('mixed attr: coexists with other part kinds on the same element', () => {
+  const el = document.createElement('div');
+  let clicked = 0;
+  const view = (pref, text) => html`
+    <button class="btn ${pref} active" @click=${() => { clicked++; }}>${text}</button>
+  `;
+  render(view('primary', 'Go'), el);
+  const btn = el.querySelector('button');
+  assert.equal(btn.getAttribute('class'), 'btn primary active');
+  assert.equal(btn.textContent, 'Go');
+  btn.click();
+  assert.equal(clicked, 1);
+  render(view('secondary', 'Stop'), el);
+  assert.equal(btn.getAttribute('class'), 'btn secondary active');
+  assert.equal(btn.textContent, 'Stop');
+});

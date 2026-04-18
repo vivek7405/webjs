@@ -445,3 +445,11 @@ function reactivateScripts(container) {
     old.replaceWith(script);
   }
 }
+
+// Internal helpers re-exported for unit testing (underscore prefix signals
+// "not part of the public API — may change without notice").
+export {
+  findLayoutShell as _findLayoutShell,
+  addNewHeadElements as _addNewHeadElements,
+  mergeHead as _mergeHead,
+};

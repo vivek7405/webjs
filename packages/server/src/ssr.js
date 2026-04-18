@@ -252,6 +252,9 @@ function hoistHeadTags(headHtml, bodyHtml) {
   return { head: newHead, body: remaining };
 }
 
+// Internal helper re-exported for unit testing.
+export { hoistHeadTags as _hoistHeadTags };
+
 /**
  * Buffered wrapper (error / not-found paths; no Suspense streaming).
  * @param {string} body

@@ -76,3 +76,46 @@ suite('Light DOM hydration', () => {
     el.remove();
   });
 });
+
+/**
+ * MutationObserver safety net — when the router inserts custom elements via
+ * replaceChildren or DOM moves, the browser doesn't always auto-upgrade them.
+ * The router's global MutationObserver fixes that — test that importing the
+ * router-client module sets up the observer and elements get upgraded.
+ */
+suite('Custom element upgrade safety net', () => {
+  test('importing router-client upgrades custom elements inserted later', async () => {
+    // Import router-client (auto-enables on import — sets up MutationObserver).
+    await import('../../packages/core/src/router-client.js');
+
+    // Define a custom element AFTER the router is enabled.
+    const tagName = 'safety-net-test-el';
+    let constructed = 0;
+    let connected = 0;
+    if (!customElements.get(tagName)) {
+      customElements.define(tagName, class extends HTMLElement {
+        constructor() { super(); constructed++; }
+        connectedCallback() { connected++; this.textContent = 'upgraded'; }
+      });
+    }
+
+    // Simulate router-style insertion: create the element via innerHTML of a
+    // host that starts detached, then attach the host. replaceChildren also
+    // works — the key is that the element isn't created via
+    // `document.createElement` (which auto-upgrades synchronously).
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    host.innerHTML = `<${tagName}></${tagName}>`;
+
+    // Give the MutationObserver a tick to fire.
+    await new Promise((r) => setTimeout(r, 50));
+
+    const el = host.querySelector(tagName);
+    assert.ok(el, 'custom element exists in DOM');
+    assert.ok(constructed >= 1, 'constructor ran at least once');
+    assert.ok(connected >= 1, 'connectedCallback ran at least once');
+    assert.equal(el.textContent, 'upgraded');
+
+    host.remove();
+  });
+});
