@@ -12,7 +12,10 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": false,
-    "jsx": "preserve"
+    "jsx": "preserve",
+    "plugins": [
+      { "name": "ts-lit-plugin", "strict": true }
+    ]
   },
   "include": [
     "app/**/*",
