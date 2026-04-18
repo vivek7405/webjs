@@ -16,6 +16,8 @@
     "webjs": "0.1.0"
   },
   "devDependencies": {
-    "prisma": "^5.22.0"
+    "prisma": "^5.22.0",
+    "ts-lit-plugin": "^2.0.2",
+    "typescript": "^6.0.3"
   }
 }
