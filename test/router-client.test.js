@@ -330,3 +330,107 @@ test('navigate: response without content-type falls back safely', async () => {
     restore();
   }
 });
+
+/* ------------ navigate: external origin → real location ------------ */
+
+test('navigate: cross-origin URL delegates to location.href (no fetch)', async () => {
+  const { redirect, restore } = installNavigationMocks({ contentType: 'text/html', body: '' });
+  try {
+    await navigate('https://other-site.test/x');
+    assert.equal(redirect.href, 'https://other-site.test/x');
+  } finally {
+    restore();
+  }
+});
+
+/* ------------ navigate: fetch error → real location ------------ */
+
+test('navigate: fetch rejection falls back to full page navigation', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLocation = globalThis.location;
+  let redirected = null;
+  globalThis.fetch = async () => { throw new Error('network dead'); };
+  globalThis.location = /** @type any */ ({ origin: 'http://localhost', href: 'http://localhost/' });
+  Object.defineProperty(globalThis.location, 'href', {
+    configurable: true,
+    get() { return 'http://localhost/'; },
+    set(v) { redirected = v; },
+  });
+  globalThis.history = /** @type any */ ({ pushState: () => {} });
+  try {
+    await navigate('http://localhost/boom');
+    assert.equal(redirected, 'http://localhost/boom');
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.location = originalLocation;
+  }
+});
+
+test('navigate: non-ok response falls back to full page navigation', async () => {
+  const { redirect, restore } = installNavigationMocks({
+    contentType: 'text/html',
+    body: '<html></html>',
+    ok: false,
+  });
+  try {
+    await navigate('http://localhost/missing');
+    assert.equal(redirect.href, 'http://localhost/missing');
+  } finally {
+    restore();
+  }
+});
+
+/* ------------ navigate: same-layout vs different-layout swap ------------ */
+
+test('navigate: same-layout swap preserves header/footer, swaps <main> only', async () => {
+  document.body.innerHTML =
+    '<div data-layout="root">' +
+      '<header>H</header>' +
+      '<main><p>old-page</p></main>' +
+      '<footer>F</footer>' +
+    '</div>';
+  const { restore } = installNavigationMocks({
+    contentType: 'text/html',
+    body:
+      '<!doctype html><html><head></head><body>' +
+      '<div data-layout="root">' +
+        '<header>H</header>' +
+        '<main><p>new-page</p></main>' +
+        '<footer>F</footer>' +
+      '</div></body></html>',
+  });
+  try {
+    await navigate('http://localhost/page2');
+    const main = document.querySelector('main');
+    assert.ok(main.textContent.includes('new-page'));
+    // header/footer still mounted
+    assert.ok(document.querySelector('header'));
+    assert.ok(document.querySelector('footer'));
+  } finally {
+    restore();
+    document.body.innerHTML = '';
+  }
+});
+
+test('navigate: different-layout swap replaces the body content', async () => {
+  document.body.innerHTML =
+    '<div data-layout="public"><p>old</p></div>';
+  const { restore } = installNavigationMocks({
+    contentType: 'text/html',
+    body:
+      '<!doctype html><html><head></head><body>' +
+      '<div data-layout="admin"><p>new-admin</p></div>' +
+      '</body></html>',
+  });
+  try {
+    await navigate('http://localhost/admin');
+    // Different-layout branch may use startViewTransition when available;
+    // under linkedom it uses the synchronous fallback. Either way, the old
+    // public layout should be gone from the body after the nav.
+    assert.ok(!document.body.textContent.includes('old'),
+      'old public-layout content cleared after navigate');
+  } finally {
+    restore();
+    document.body.innerHTML = '';
+  }
+});
