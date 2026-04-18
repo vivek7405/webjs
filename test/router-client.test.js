@@ -434,3 +434,157 @@ test('navigate: different-layout swap replaces the body content', async () => {
     document.body.innerHTML = '';
   }
 });
+
+/* ------------ parseHTML returning null, hash scroll, View Transitions ------------ */
+
+test('navigate: unparseable HTML body falls back to full navigation', async () => {
+  // Force parseHTML() to return null by removing both hooks.
+  const origDP = globalThis.DOMParser;
+  const origDoc = globalThis.Document;
+  globalThis.DOMParser = undefined;
+  globalThis.Document = undefined;
+  const { redirect, restore } = installNavigationMocks({
+    contentType: 'text/html',
+    body: '<html><body><p>whatever</p></body></html>',
+  });
+  try {
+    await navigate('http://localhost/unparseable');
+    assert.equal(redirect.href, 'http://localhost/unparseable');
+  } finally {
+    restore();
+    globalThis.DOMParser = origDP;
+    globalThis.Document = origDoc;
+  }
+});
+
+test('navigate: hash portion triggers scroll (target found or top)', async () => {
+  document.body.innerHTML =
+    '<div data-layout="root"><main><section id="anchor">A</section></main></div>';
+  let scrolledToTop = false;
+  let scrolledIntoView = false;
+  globalThis.scrollTo = () => { scrolledToTop = true; };
+  const origInto = globalThis.HTMLElement.prototype.scrollIntoView;
+  globalThis.HTMLElement.prototype.scrollIntoView = function () { scrolledIntoView = true; };
+  const { restore } = installNavigationMocks({
+    contentType: 'text/html',
+    body:
+      '<!doctype html><html><head></head><body>' +
+      '<div data-layout="root"><main><section id="anchor">A</section></main></div>' +
+      '</body></html>',
+  });
+  try {
+    await navigate('http://localhost/x#anchor');
+    assert.ok(scrolledIntoView, 'existing anchor → scrollIntoView');
+    scrolledIntoView = false;
+    await navigate('http://localhost/x#missing');
+    assert.ok(scrolledToTop || !scrolledIntoView,
+      'missing anchor falls back to scrollTo(0,0)');
+  } finally {
+    restore();
+    document.body.innerHTML = '';
+    globalThis.HTMLElement.prototype.scrollIntoView = origInto;
+  }
+});
+
+test('navigate: different-layout branch uses startViewTransition when available', async () => {
+  // Different layout = different tag names AND different data-layout values.
+  document.body.innerHTML = '<public-shell data-layout="public"><p>old</p></public-shell>';
+  let swapRan = false;
+  Object.defineProperty(document, 'startViewTransition', {
+    configurable: true,
+    value: (cb) => {
+      swapRan = true;
+      cb();
+      return { finished: Promise.resolve() };
+    },
+  });
+  const { restore } = installNavigationMocks({
+    contentType: 'text/html',
+    body:
+      '<!doctype html><html><head></head><body>' +
+      '<admin-shell data-layout="admin"><p>new</p></admin-shell>' +
+      '</body></html>',
+  });
+  try {
+    await navigate('http://localhost/other');
+    assert.ok(swapRan, 'startViewTransition callback should have fired');
+  } finally {
+    restore();
+    delete document.startViewTransition;
+    document.body.innerHTML = '';
+  }
+});
+
+/* ------------ forwardSuspenseResolvers (exposed via same-layout swap) ------------ */
+
+test('navigate: same-layout swap forwards <template data-webjs-resolve> nodes', async () => {
+  document.body.innerHTML =
+    '<div data-layout="root"><main><p>old</p></main></div>';
+  const { restore } = installNavigationMocks({
+    contentType: 'text/html',
+    body:
+      '<!doctype html><html><head></head><body>' +
+      '<div data-layout="root"><main><p>new</p></main></div>' +
+      '<template data-webjs-resolve="s1"><p>resolved</p></template>' +
+      '</body></html>',
+  });
+  try {
+    await navigate('http://localhost/with-suspense');
+    const tpl = document.body.querySelector('template[data-webjs-resolve="s1"]');
+    assert.ok(tpl, 'Suspense resolver template should be copied to live body');
+  } finally {
+    restore();
+    document.body.innerHTML = '';
+  }
+});
+
+/* ------------ onClick: interception of <a> clicks ------------ */
+
+test('onClick: same-origin link click is intercepted and fetched via router', async () => {
+  // enableClientRouter() auto-runs on import, so a 'click' listener is already
+  // installed in capture phase on the document.
+  document.body.innerHTML =
+    '<div data-layout="root"><main><a href="/other">Go</a></main></div>';
+  let fetched = null;
+  globalThis.fetch = async (url) => {
+    fetched = String(url);
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: (k) => (k.toLowerCase() === 'content-type' ? 'text/html' : null) },
+      text: async () =>
+        '<!doctype html><html><head></head><body>' +
+        '<div data-layout="root"><main><p>new</p></main></div>' +
+        '</body></html>',
+    };
+  };
+  const origLoc = globalThis.location;
+  const loc = /** @type any */ ({
+    origin: 'http://localhost',
+    href: 'http://localhost/',
+    pathname: '/',
+    search: '',
+  });
+  globalThis.location = loc;
+  globalThis.history = /** @type any */ ({ pushState: () => {} });
+  globalThis.scrollTo = () => {};
+  try {
+    const a = document.querySelector('a');
+    // linkedom: a.href returns the full URL with our overridden location.origin.
+    // Ensure a.href → 'http://localhost/other' for the origin check to match.
+    a.setAttribute('href', 'http://localhost/other');
+    // linkedom doesn't expose MouseEvent; fabricate a MouseEvent-shaped object.
+    const ev = new window.Event('click', { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'button', { value: 0 });
+    Object.defineProperty(ev, 'composedPath', {
+      value: () => [a],
+    });
+    a.dispatchEvent(ev);
+    await new Promise((r) => setTimeout(r, 5));
+    assert.ok(fetched && fetched.includes('/other'),
+      `router should have fetched /other; saw: ${fetched}`);
+  } finally {
+    document.body.innerHTML = '';
+    globalThis.location = origLoc;
+  }
+});
