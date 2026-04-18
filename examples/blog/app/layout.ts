@@ -226,8 +226,7 @@ export default function RootLayout({ children }: { children: unknown }) {
       main article { margin: 0; }
     </style>
 
-    <div data-layout>
-      <header class="sticky top-0 z-20 flex items-center gap-6 px-[clamp(var(--sp-4),4vw,var(--sp-6))] py-3 border-b border-border bg-[color-mix(in_oklch,var(--bg)_75%,transparent)] backdrop-blur-[18px] backdrop-saturate-[180%]">
+    <header class="sticky top-0 z-20 flex items-center gap-6 px-[clamp(var(--sp-4),4vw,var(--sp-6))] py-3 border-b border-border bg-[color-mix(in_oklch,var(--bg)_75%,transparent)] backdrop-blur-[18px] backdrop-saturate-[180%]">
         <a href="/" class="mr-auto inline-flex items-center gap-2 no-underline text-fg font-semibold text-[15px] leading-none tracking-tight">
           <span class="inline-block w-[22px] h-[22px] rounded-[6px] bg-gradient-to-br from-accent to-[color-mix(in_oklch,var(--accent)_55%,var(--fg))] shadow-[inset_0_0_0_1px_oklch(1_0_0/0.15),0_1px_4px_var(--accent-tint)]"></span>
           <span>webjs</span>
@@ -253,7 +252,6 @@ export default function RootLayout({ children }: { children: unknown }) {
           &nbsp;&middot;&nbsp;
           <a href="/__webjs/health" class="text-inherit no-underline transition-colors duration-[140ms] hover:text-fg-muted">health</a>
         </span>
-      </footer>
-    </div>
+    </footer>
   `;
 }

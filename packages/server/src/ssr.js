@@ -192,7 +192,16 @@ async function renderChain(route, ctx, dev, suspenseCtx) {
     if (!mod.default) continue;
     tree = await mod.default({ ...ctx, children: tree });
   }
-  return renderToString(tree, { ssr: true, suspenseCtx });
+  let body = await renderToString(tree, { ssr: true, suspenseCtx });
+  // Wrap the outermost layout's output in a data-layout element so the
+  // client router can detect same-layout navigations and swap only the
+  // page content (keeping header/footer/nav mounted). The layout identity
+  // is derived from the outermost layout file path.
+  if (route.layouts.length > 0) {
+    const layoutId = route.layouts[0].replace(/^.*\/app\//, '').replace(/\.[jt]sx?$/, '');
+    body = `<div data-layout="${layoutId}">${body}</div>`;
+  }
+  return body;
 }
 
 /**

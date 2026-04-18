@@ -175,7 +175,7 @@ async function performNavigation(href, isPopState) {
 
     if (currentShell && newShell &&
         (currentShell.tagName === newShell.tagName ||
-         (currentShell.hasAttribute('data-layout') && newShell.hasAttribute('data-layout')))) {
+         (currentShell.getAttribute('data-layout') && currentShell.getAttribute('data-layout') === newShell.getAttribute('data-layout')))) {
       // Same layout — minimal swap: title + page content only.
       const newTitle = doc.querySelector('title');
       if (newTitle) document.title = newTitle.textContent || '';
