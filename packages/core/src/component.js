@@ -120,8 +120,8 @@ export class WebComponent extends Base {
   /** Custom element tag name. Subclasses must override. @type {string} */
   static tag = '';
 
-  /** Whether to use shadow DOM. @type {boolean} */
-  static shadow = true;
+  /** Whether to use shadow DOM. Default: false (light DOM). @type {boolean} */
+  static shadow = false;
 
   /**
    * Hydration strategy for this component.
@@ -349,7 +349,7 @@ export class WebComponent extends Base {
   _activate() {
     this._connected = true;
     const Ctor = /** @type any */ (this.constructor);
-    if (Ctor.shadow !== false) {
+    if (Ctor.shadow === true) {
       const hadSSRShadow = !!this.shadowRoot;
       if (!this.shadowRoot) {
         /** @type any */ (this).attachShadow({ mode: 'open' });
