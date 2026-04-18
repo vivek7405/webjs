@@ -1,0 +1,21 @@
+{
+  "name": "webjs-plugin",
+  "version": "0.1.0",
+  "description": "TypeScript language-service plugin for webjs — go-to-definition and future editor intelligence for custom elements inside html`` tagged templates.",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "private": true,
+  "peerDependencies": {
+    "typescript": ">=5.0.0"
+  },
+  "files": [
+    "src"
+  ],
+  "keywords": [
+    "webjs",
+    "typescript",
+    "language-service",
+    "plugin",
+    "web-components"
+  ]
+}

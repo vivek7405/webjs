@@ -1,9 +1,11 @@
 import { WebComponent, html } from 'webjs';
 
 /**
- * `<my-counter>` — demo counter with the current design system.
- * Tabular monospace output; warm-accent focus ring.
- */
+   * `<my-counter>` — demo counter with the current design system.
+   * Tabular monospace output; warm-accent focus ring.
+   *
+   * @customElement my-counter
+   */
 export class Counter extends WebComponent {
   static tag = 'my-counter';
   static properties = { count: { type: Number } };

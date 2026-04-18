@@ -14,7 +14,8 @@
     "verbatimModuleSyntax": false,
     "jsx": "preserve",
     "plugins": [
-      { "name": "ts-lit-plugin", "strict": true }
+      { "name": "ts-lit-plugin", "strict": true },
+      { "name": "webjs-plugin" }
     ]
   },
   "include": [
