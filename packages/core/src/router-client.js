@@ -201,8 +201,10 @@ async function performNavigation(href, isPopState) {
     if (currentShell && newShell &&
         (currentShell.tagName === newShell.tagName ||
          (currentShell.getAttribute('data-layout') && currentShell.getAttribute('data-layout') === newShell.getAttribute('data-layout')))) {
-      // Same layout — swap page content + merge head for new modules.
-      mergeHead(doc.head);
+      // Same layout — update title + add any new head elements (modulepreloads,
+      // scripts for newly-needed components). DON'T remove existing head
+      // elements — runtime-generated content like Tailwind CSS must survive.
+      addNewHeadElements(doc.head);
 
       // For data-layout shells, swap only the <main> element's children
       // (header and footer stay mounted). For custom element shells with
@@ -304,6 +306,37 @@ function findLayoutShell(body) {
     if (child.tagName.includes('-')) return child;
   }
   return null;
+}
+
+/**
+ * Add-only head merge for same-layout navigations. Updates the title and
+ * adds new elements (modulepreloads, scripts) without removing existing
+ * ones — runtime-generated content like Tailwind CSS styles must survive.
+ *
+ * @param {HTMLHeadElement} newHead
+ */
+function addNewHeadElements(newHead) {
+  const newTitle = newHead.querySelector('title');
+  if (newTitle) document.title = newTitle.textContent || '';
+
+  const currentSet = new Set();
+  for (const el of document.head.children) currentSet.add(el.outerHTML);
+
+  for (const el of newHead.children) {
+    if (el.tagName === 'SCRIPT' && el.getAttribute('type') === 'importmap') continue;
+    if (el.tagName === 'BASE') continue;
+    if (el.tagName === 'TITLE') continue;
+    if (!currentSet.has(el.outerHTML)) {
+      if (el.tagName === 'SCRIPT') {
+        const script = document.createElement('script');
+        for (const attr of el.attributes) script.setAttribute(attr.name, attr.value);
+        script.textContent = el.textContent;
+        document.head.appendChild(script);
+      } else {
+        document.head.appendChild(el.cloneNode(true));
+      }
+    }
+  }
 }
 
 /** @param {HTMLHeadElement} newHead */
