@@ -2,7 +2,7 @@ import { WebComponent, html, css } from 'webjs';
 
 /**
  * `<muted-text>` — small all-caps mono rubric for timestamps and meta.
- * Use for everything that isn't prose: dates, authors, labels, statuses.
+ * Stays shadow DOM because it uses <slot> for content projection.
  */
 export class MutedText extends WebComponent {
   static tag = 'muted-text';

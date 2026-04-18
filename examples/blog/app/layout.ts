@@ -25,6 +25,26 @@ export default function RootLayout({ children }: { children: unknown }) {
         } catch (_) {}
       })();
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style type="text/tailwindcss">
+      @theme {
+        --color-fg: var(--fg);
+        --color-fg-muted: var(--fg-muted);
+        --color-fg-subtle: var(--fg-subtle);
+        --color-bg: var(--bg);
+        --color-bg-elev: var(--bg-elev);
+        --color-bg-subtle: var(--bg-subtle);
+        --color-border: var(--border);
+        --color-border-strong: var(--border-strong);
+        --color-accent: var(--accent);
+        --color-accent-hover: var(--accent-hover);
+        --color-accent-fg: var(--accent-fg);
+        --color-accent-tint: var(--accent-tint);
+        --font-sans: var(--font-sans);
+        --font-serif: var(--font-serif);
+        --font-mono: var(--font-mono);
+      }
+    </style>
     <style>
       :root {
         color-scheme: light dark;

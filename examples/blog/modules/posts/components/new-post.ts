@@ -1,83 +1,15 @@
-import { WebComponent, html, css } from 'webjs';
-// Server action — dev server rewrites this import into an RPC stub for the
-// browser. At type-check time TS resolves the real source so createPost's
-// input + return types flow across the RPC boundary.
+import { WebComponent, html } from 'webjs';
 import { createPost } from '../actions/create-post.server.ts';
 
 type State = { busy: boolean; error: string | null };
 
+/**
+ * `<new-post>` — post creation form.
+ * Light DOM with Tailwind utilities.
+ */
 export class NewPost extends WebComponent {
   static tag = 'new-post';
-  static styles = css`
-    :host { display: block; }
-    form {
-      display: grid;
-      gap: var(--sp-5);
-      padding: var(--sp-6) clamp(var(--sp-4), 4vw, var(--sp-6));
-      background: var(--bg-elev);
-      border: 1px solid var(--border);
-      border-radius: var(--rad-lg);
-      box-shadow: var(--shadow);
-    }
-    label {
-      display: grid;
-      gap: var(--sp-2);
-      font: 600 10px/1 var(--font-mono);
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      color: var(--fg-subtle);
-    }
-    input[name='title'] {
-      font: 700 clamp(1.4rem, 1.1rem + 1vw, 1.75rem)/1.15 var(--font-serif);
-      letter-spacing: -0.02em;
-      color: var(--fg);
-      background: transparent;
-      border: 0;
-      border-bottom: 1px solid var(--border-strong);
-      padding: var(--sp-3) 0;
-      transition: border-color var(--t-fast);
-    }
-    textarea {
-      font: 16px/1.65 var(--font-serif);
-      resize: vertical;
-      min-height: 220px;
-      color: var(--fg);
-      background: transparent;
-      border: 1px solid var(--border-strong);
-      border-radius: var(--rad);
-      padding: var(--sp-4);
-      transition: border-color var(--t-fast), box-shadow var(--t-fast);
-    }
-    input:focus, textarea:focus {
-      outline: 0;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-tint);
-    }
-    input[name='title']:focus { box-shadow: none; }
-    button {
-      justify-self: start;
-      font: 600 13px/1 var(--font-sans);
-      letter-spacing: 0.02em;
-      padding: var(--sp-3) var(--sp-5);
-      border-radius: 999px;
-      border: 0;
-      background: var(--accent);
-      color: var(--accent-fg);
-      cursor: pointer;
-      transition: background var(--t-fast), transform var(--t-fast);
-    }
-    button:hover  { background: var(--accent-hover); }
-    button:active { transform: translateY(1px); }
-    button:disabled { opacity: 0.5; cursor: progress; }
-    .err {
-      margin: 0;
-      padding: var(--sp-3);
-      border-radius: var(--rad);
-      background: color-mix(in oklch, var(--bg-elev) 80%, var(--accent));
-      color: var(--accent);
-      font: 13px/1.4 var(--font-mono);
-    }
-  `;
+  static shadow = false;
 
   declare state: State;
 
@@ -100,7 +32,6 @@ export class NewPost extends WebComponent {
         this.setState({ busy: false, error: result.error });
         return;
       }
-      // TS knows result.data is PostFormatted here.
       location.href = `/blog/${result.data.slug}`;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -110,18 +41,23 @@ export class NewPost extends WebComponent {
 
   render() {
     const { busy, error } = this.state;
+    const inputCls = 'text-fg bg-transparent transition-all duration-150 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent-tint';
     return html`
-      <form @submit=${(e: SubmitEvent) => this.onSubmit(e)}>
-        <label>
+      <form @submit=${(e: SubmitEvent) => this.onSubmit(e)} class="grid gap-5 p-6 bg-bg-elev border border-border rounded-xl shadow-lg">
+        <label class="grid gap-2 font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle">
           Title
-          <input name="title" placeholder="A bold title…" required autofocus />
+          <input name="title" placeholder="A bold title…" required autofocus
+                 class="font-serif text-xl font-bold tracking-tight border-0 border-b border-border-strong py-3 ${inputCls}" />
         </label>
-        <label>
+        <label class="grid gap-2 font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle">
           Body
-          <textarea name="body" placeholder="Write your post — markdown not required." required></textarea>
+          <textarea name="body" placeholder="Write your post — markdown not required." required
+                    class="font-serif text-base leading-relaxed resize-y min-h-[220px] border border-border-strong rounded-lg p-4 ${inputCls}"></textarea>
         </label>
-        <button ?disabled=${busy}>${busy ? 'Publishing…' : 'Publish'}</button>
-        ${error ? html`<p class="err">${error}</p>` : ''}
+        <button ?disabled=${busy} class="justify-self-start text-[13px] font-semibold tracking-wide py-3 px-5 rounded-full border-0 bg-accent text-accent-fg cursor-pointer transition-all duration-150 hover:bg-accent-hover active:translate-y-px disabled:opacity-50 disabled:cursor-progress">
+          ${busy ? 'Publishing…' : 'Publish'}
+        </button>
+        ${error ? html`<p class="m-0 p-3 rounded-lg bg-bg-elev text-accent font-mono text-[13px] leading-snug">${error}</p>` : ''}
       </form>
     `;
   }

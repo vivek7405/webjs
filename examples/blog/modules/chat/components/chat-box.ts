@@ -1,4 +1,4 @@
-import { WebComponent, html, css, connectWS } from 'webjs';
+import { WebComponent, html, connectWS } from 'webjs';
 
 type Line = { id: number; text: string; kind: 'say' | 'meta' };
 type State = { lines: Line[]; connected: boolean; count: number };
@@ -7,100 +7,12 @@ type ChatMessage =
   | { kind: 'join' | 'leave'; count: number };
 
 /**
- * `<chat-box>` — terminal-leaning live chat panel against /api/chat.
+ * `<chat-box>` — live chat panel against /api/chat.
+ * Light DOM with Tailwind utilities.
  */
 export class ChatBox extends WebComponent {
   static tag = 'chat-box';
-  static styles = css`
-    :host {
-      display: block;
-      border: 1px solid var(--border);
-      border-radius: var(--rad-lg);
-      background: var(--bg-elev);
-      box-shadow: var(--shadow);
-      overflow: hidden;
-      font-family: var(--font-sans);
-    }
-    .status {
-      display: flex;
-      align-items: center;
-      gap: var(--sp-2);
-      padding: var(--sp-3) var(--sp-4);
-      border-bottom: 1px solid var(--border);
-      background: var(--bg-subtle);
-      font: 600 10px/1 var(--font-mono);
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      color: var(--fg-subtle);
-    }
-    .dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: var(--fg-subtle);
-    }
-    .dot.on {
-      background: var(--success);
-      box-shadow: 0 0 0 3px color-mix(in oklch, var(--success) 30%, transparent);
-    }
-    .dot.off { background: var(--accent); }
-
-    .log {
-      height: 220px;
-      overflow-y: auto;
-      padding: var(--sp-4);
-      font: 14px/1.6 var(--font-sans);
-      scroll-behavior: smooth;
-      background: var(--bg-sunken);
-    }
-    .log p { margin: 0 0 var(--sp-2); color: var(--fg); }
-    .log em {
-      font: 500 10px/1.4 var(--font-mono);
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      color: var(--fg-subtle);
-      font-style: normal;
-    }
-    .empty {
-      color: var(--fg-subtle);
-      font-style: italic;
-    }
-
-    form {
-      display: flex;
-      gap: var(--sp-2);
-      padding: var(--sp-3) var(--sp-4);
-      border-top: 1px solid var(--border);
-      background: var(--bg-subtle);
-    }
-    input {
-      flex: 1;
-      font: 14px/1.5 var(--font-sans);
-      padding: var(--sp-2) var(--sp-3);
-      border: 1px solid var(--border-strong);
-      border-radius: var(--rad);
-      background: var(--bg-elev);
-      color: var(--fg);
-      transition: border-color var(--t-fast), box-shadow var(--t-fast);
-    }
-    input:focus {
-      outline: 0;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-tint);
-    }
-    button {
-      font: 600 12px/1 var(--font-sans);
-      letter-spacing: 0.02em;
-      padding: var(--sp-2) var(--sp-4);
-      border-radius: 999px;
-      border: 0;
-      background: var(--accent);
-      color: var(--accent-fg);
-      cursor: pointer;
-      transition: background var(--t-fast), transform var(--t-fast);
-    }
-    button:hover  { background: var(--accent-hover); }
-    button:active { transform: translateY(1px); }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-  `;
+  static shadow = false;
 
   declare state: State;
   _conn: ReturnType<typeof connectWS> | null = null;
@@ -147,24 +59,33 @@ export class ChatBox extends WebComponent {
 
   render() {
     const { lines, connected, count } = this.state;
+    const dotCls = connected
+      ? 'w-[7px] h-[7px] rounded-full bg-green-500 shadow-[0_0_0_3px_rgba(34,197,94,0.3)]'
+      : 'w-[7px] h-[7px] rounded-full bg-accent';
     return html`
-      <div class="status">
-        <span class=${connected ? 'dot on' : 'dot off'}></span>
-        ${connected ? html`Live · ${Math.max(0, count - 1)} other${count - 1 !== 1 ? 's' : ''} online` : html`Reconnecting…`}
+      <div class="block border border-border rounded-xl bg-bg-elev shadow-lg overflow-hidden font-sans">
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-border bg-bg-subtle font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle">
+          <span class=${dotCls}></span>
+          ${connected ? html`Live · ${Math.max(0, count - 1)} other${count - 1 !== 1 ? 's' : ''} online` : html`Reconnecting…`}
+        </div>
+        <div class="h-[220px] overflow-y-auto p-4 text-sm leading-relaxed scroll-smooth bg-bg-subtle/30">
+          ${lines.length === 0
+            ? html`<p class="m-0 text-fg-subtle italic">No messages yet — say something.</p>`
+            : lines.map((l) =>
+                l.kind === 'meta'
+                  ? html`<p class="m-0 mb-2 text-fg"><em class="font-mono text-[10px] font-medium tracking-[0.15em] uppercase text-fg-subtle not-italic">${l.text}</em></p>`
+                  : html`<p class="m-0 mb-2 text-fg">${l.text}</p>`)}
+        </div>
+        <form @submit=${(e: SubmitEvent) => this.onSubmit(e)} class="flex gap-2 px-4 py-3 border-t border-border bg-bg-subtle">
+          <input
+            placeholder=${connected ? 'Say hi…' : 'Disconnected'}
+            ?disabled=${!connected}
+            autocomplete="off"
+            class="flex-1 text-sm font-sans py-2 px-3 border border-border-strong rounded-lg bg-bg-elev text-fg transition-all duration-150 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent-tint"
+          />
+          <button ?disabled=${!connected} class="font-semibold text-xs tracking-wide px-4 py-2 rounded-full border-0 bg-accent text-accent-fg cursor-pointer transition-all duration-150 hover:bg-accent-hover active:translate-y-px disabled:opacity-50 disabled:cursor-not-allowed">Send</button>
+        </form>
       </div>
-      <div class="log">
-        ${lines.length === 0
-          ? html`<p class="empty">No messages yet — say something.</p>`
-          : lines.map((l) =>
-              l.kind === 'meta'
-                ? html`<p><em>${l.text}</em></p>`
-                : html`<p>${l.text}</p>`)}
-      </div>
-      <form @submit=${(e) => this.onSubmit(e)}>
-        <input placeholder=${connected ? 'Say hi…' : 'Disconnected'}
-               ?disabled=${!connected} autocomplete="off" />
-        <button ?disabled=${!connected}>Send</button>
-      </form>
     `;
   }
 }
