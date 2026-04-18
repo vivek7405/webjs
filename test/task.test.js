@@ -218,7 +218,7 @@ test('Task.abort: aborts the signal of the in-flight task', async () => {
   await runPromise;
 });
 
-test('Task: hostDisconnected aborts in-flight task', async () => {
+test('Task: onUnmount aborts in-flight task', async () => {
   const host = createMockHost();
   let capturedSignal;
   let resolve;
@@ -234,7 +234,7 @@ test('Task: hostDisconnected aborts in-flight task', async () => {
 
   const runPromise = task.run();
 
-  task.hostDisconnected();
+  task.onUnmount();
   assert.equal(capturedSignal.aborted, true);
 
   resolve();
@@ -245,7 +245,7 @@ test('Task: hostDisconnected aborts in-flight task', async () => {
 // Auto-run
 // ---------------------------------------------------------------------------
 
-test('Task: auto-run triggers when args change on hostUpdate', async () => {
+test('Task: auto-run triggers when args change on beforeRender', async () => {
   const host = createMockHost();
   let currentQuery = 'foo';
   let runCount = 0;
@@ -256,20 +256,20 @@ test('Task: auto-run triggers when args change on hostUpdate', async () => {
     autoRun: true,
   });
 
-  // First hostUpdate — prevArgs is null so it always runs.
-  task.hostUpdate();
+  // First beforeRender — prevArgs is null so it always runs.
+  task.beforeRender();
   // run() is async, give it a tick to settle.
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(runCount, 1);
 
   // Same args — should not re-run.
-  task.hostUpdate();
+  task.beforeRender();
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(runCount, 1);
 
   // Changed args — should re-run.
   currentQuery = 'bar';
-  task.hostUpdate();
+  task.beforeRender();
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(runCount, 2);
 
@@ -277,7 +277,7 @@ test('Task: auto-run triggers when args change on hostUpdate', async () => {
   assert.equal(task.value, 'result:bar');
 });
 
-test('Task: autoRun false does not run on hostUpdate', () => {
+test('Task: autoRun false does not run on beforeRender', () => {
   const host = createMockHost();
   let runCount = 0;
 
@@ -287,7 +287,7 @@ test('Task: autoRun false does not run on hostUpdate', () => {
     autoRun: false,
   });
 
-  task.hostUpdate();
+  task.beforeRender();
   assert.equal(runCount, 0);
 });
 
