@@ -221,6 +221,10 @@ async function performNavigation(href, isPopState) {
         (n) => !(n instanceof HTMLTemplateElement && /** @type any */ (n).getAttribute('shadowrootmode'))
       );
       swapSlotContent(target, children);
+      // Forward any streamed Suspense resolvers that sit outside the layout
+      // wrapper (they're emitted at body level, after </div>). Without this,
+      // the new page's fallback boundary never gets its deferred content.
+      forwardSuspenseResolvers(doc.body);
     } else {
       // Different layout structure — full swap.
       // Move nodes directly from the parsed doc (preserves DSD shadow roots)
@@ -431,6 +435,21 @@ function upgradeTree(root) {
       // nested custom elements — recurse into it.
       if (el.shadowRoot) upgradeTree(el.shadowRoot);
     }
+  }
+}
+
+/**
+ * Copy streamed Suspense resolver templates + scripts from the fetched
+ * document body onto the live document body. The `<template>` elements carry
+ * a `data-webjs-resolve="<id>"` attribute; the suspense boot's
+ * MutationObserver watches for them and replaces the matching
+ * `<webjs-boundary id="<id>">` with the template content.
+ *
+ * @param {HTMLElement} fetchedBody
+ */
+function forwardSuspenseResolvers(fetchedBody) {
+  for (const tpl of fetchedBody.querySelectorAll('template[data-webjs-resolve]')) {
+    document.body.appendChild(tpl.cloneNode(true));
   }
 }
 
