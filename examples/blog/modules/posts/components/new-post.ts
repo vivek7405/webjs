@@ -50,6 +50,13 @@ export class NewPost extends WebComponent {
     const { busy, error } = this.state;
     const inputCls = 'text-fg bg-transparent transition-all duration-150 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent-tint';
     return html`
+      <style>
+        new-post input:focus, new-post textarea:focus {
+          outline: none;
+          border-color: var(--accent) !important;
+          box-shadow: 0 0 0 3px var(--accent-tint);
+        }
+      </style>
       <form @submit=${(e: SubmitEvent) => this.onSubmit(e)} class="grid gap-5 p-6 bg-bg-elev border border-border rounded-xl shadow-lg">
         <label class="grid gap-2 font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle">
           Title
