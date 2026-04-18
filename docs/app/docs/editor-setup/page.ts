@@ -7,12 +7,12 @@ export default function EditorSetup() {
     <h1>Editor Setup — Neovim &amp; VS Code</h1>
     <p>webjs ships a TypeScript overlay (<code>packages/core/index.d.ts</code> and <code>packages/core/src/component.d.ts</code>) so any editor that speaks the TypeScript Language Server (<code>tsserver</code>) gets autocomplete, hover documentation, and type-checking for the framework APIs with zero build step.</p>
 
-    <p>This page covers three layers of intelligence, each of which is independently opt-in:</p>
+    <p>This page covers two layers of intelligence:</p>
     <ol>
       <li><strong>Type-safe component internals</strong> — <code>this.student: Student</code> inside the class. Works out of the box once <code>tsconfig.json</code> is set up.</li>
       <li><strong>Template-literal intelligence</strong> — autocomplete, type-checking, and go-to-definition for <code>&lt;student-card student=\${...}&gt;</code> inside <code>html\`…\`</code> tags. Requires <code>ts-lit-plugin</code>.</li>
-      <li><strong>DOM-query typing</strong> — <code>document.querySelector('student-card')</code> returns <code>StudentCard | null</code>. Requires one-line <code>HTMLElementTagNameMap</code> augmentation per component.</li>
     </ol>
+    <p>There's also an optional standard-TypeScript convention for typing <code>document.querySelector('student-card')</code> — briefly covered at the end.</p>
 
     <h2>Prerequisites</h2>
     <ul>
@@ -119,29 +119,8 @@ return {
     <pre>html\`&lt;student-card student=\${42}&gt;&lt;/student-card&gt;\`
 //                                    ^^^ squiggle: \`number\` is not assignable to \`Student\`.</pre>
 
-    <h2>Layer 3 — <code>HTMLElementTagNameMap</code> augmentation</h2>
-    <p>Add one line per component to teach TypeScript's built-in <code>HTMLElementTagNameMap</code> about your custom elements. This enables:</p>
-    <ul>
-      <li><code>document.querySelector('student-card')</code> returns <code>StudentCard | null</code> (instead of <code>Element | null</code>).</li>
-      <li><code>document.createElement('student-card')</code> returns <code>StudentCard</code>.</li>
-      <li><code>addEventListener</code> overloads that depend on the element type resolve correctly.</li>
-      <li><code>ts-lit-plugin</code> uses this as a reliable registry — more deterministic than scanning for <code>static tag = '…'</code>.</li>
-    </ul>
-
-    <p>Convention: put the augmentation at the bottom of the component file.</p>
-    <pre>export class StudentCard extends WebComponent {
-  static tag = 'student-card';
-  static properties = { student: { type: Object } };
-  declare student: Student;
-  render() { return html\`&lt;p&gt;\${this.student.name}&lt;/p&gt;\`; }
-}
-StudentCard.register(import.meta.url);
-
-declare global {
-  interface HTMLElementTagNameMap {
-    'student-card': StudentCard;
-  }
-}</pre>
+    <h2>Optional: typed DOM queries</h2>
+    <p>If you want <code>document.querySelector('student-card')</code> to return <code>StudentCard | null</code> instead of <code>Element | null</code>, augment TypeScript's built-in <code>HTMLElementTagNameMap</code> inside your component file. This is a <a href="https://developer.mozilla.org/docs/Web/API/Document/querySelector" target="_blank">standard TypeScript pattern</a> — the same one <a href="https://lit.dev" target="_blank">Lit</a> uses. Three lines per component; skip it if you don't need the DOM-query typing.</p>
 
     <h2>Editor actions — quick reference</h2>
     <table>
@@ -162,7 +141,6 @@ declare global {
     <ol>
       <li><strong>Layer 1</strong> — hover <code>this.student</code> inside <code>render()</code>: expect <code>(property) student: Student</code>. Type <code>this.</code> inside the class: expect autocomplete for <code>student</code>, <code>setState</code>, <code>requestUpdate</code>, <code>state</code>, <code>render</code>, etc.</li>
       <li><strong>Layer 2</strong> — inside an <code>html\`…\`</code> template, type <code>&lt;student-</code>: expect <code>student-card</code> in the completion list. On <code>&lt;student-card&gt;</code>, press <code>gd</code> / F12: jumps to the <code>StudentCard</code> class. Type <code>&lt;student-card x</code>: attribute completions from <code>static properties</code>.</li>
-      <li><strong>Layer 3</strong> — in any TS file, type <code>document.querySelector('student-card').</code>: expect Student-typed property completions (<code>student</code> appears).</li>
     </ol>
     <p>If any layer misbehaves, the most common cause is tsserver using a different TypeScript install than your workspace's. In Neovim run <code>:LspInfo</code>; in VS Code click the TypeScript version in the status bar. Both should point inside your project's <code>node_modules/</code>.</p>
 

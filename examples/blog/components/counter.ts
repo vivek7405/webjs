@@ -27,9 +27,3 @@ export class Counter extends WebComponent {
   }
 }
 Counter.register(import.meta.url);
-
-declare global {
-  interface HTMLElementTagNameMap {
-    'my-counter': Counter;
-  }
-}

@@ -86,12 +86,13 @@ const ctrl: ReactiveController = {
 };
 void ctrl;
 
-/* ------------- Augmenting HTMLElementTagNameMap gives querySelector typing ------------- */
+/* ------------- Optional: HTMLElementTagNameMap augmentation ------------- */
+// Standard TypeScript pattern (same one Lit uses). Enables typed
+// document.querySelector / createElement. Opt-in per component.
 
 declare global {
   interface HTMLElementTagNameMap {
     'student-card': StudentCard;
-    'my-counter': Counter;
   }
 }
 

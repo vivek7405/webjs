@@ -451,16 +451,6 @@ export class ThemeToggle extends WebComponent {
 }
 
 ThemeToggle.register(import.meta.url);
-
-// Tells TypeScript that <theme-toggle> in the DOM is a ThemeToggle instance.
-// Enables: document.querySelector('theme-toggle') → ThemeToggle | null,
-//          document.createElement('theme-toggle') → ThemeToggle,
-//          and ts-lit-plugin attribute/tag intelligence inside html\`\`.
-declare global {
-  interface HTMLElementTagNameMap {
-    'theme-toggle': ThemeToggle;
-  }
-}
 `);
   } // end if (!isApi)
 
