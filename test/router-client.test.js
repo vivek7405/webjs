@@ -10,7 +10,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
 
-let _find, _addNewHead, _merge;
+let _find, _addNewHead, _merge, _isNonHtmlPath, navigate;
 
 before(async () => {
   const { window } = parseHTML('<!doctype html><html><head></head><body></body></html>');
@@ -31,8 +31,13 @@ before(async () => {
   globalThis.CustomEvent = window.CustomEvent;
   globalThis.DOMParser = window.DOMParser;
 
-  ({ _findLayoutShell: _find, _addNewHeadElements: _addNewHead, _mergeHead: _merge } =
-    await import('../packages/core/src/router-client.js'));
+  ({
+    _findLayoutShell: _find,
+    _addNewHeadElements: _addNewHead,
+    _mergeHead: _merge,
+    _isNonHtmlPath,
+    navigate,
+  } = await import('../packages/core/src/router-client.js'));
 });
 
 test('findLayoutShell: detects data-layout element on direct body child', () => {
@@ -176,4 +181,152 @@ test('mergeHead: re-creates script elements so they execute', () => {
   assert.ok(added);
   assert.notStrictEqual(added, s, 'script re-created so browser executes it');
   assert.equal(added.getAttribute('type'), 'module');
+});
+
+/* ------------ extension-based skip (pre-emptive) ------------ */
+
+test('isNonHtmlPath: skips downloads and documents', () => {
+  assert.equal(_isNonHtmlPath('/exports/report.pdf'), true);
+  assert.equal(_isNonHtmlPath('/files/archive.zip'), true);
+  assert.equal(_isNonHtmlPath('/data/records.csv'), true);
+  assert.equal(_isNonHtmlPath('/Download.DOCX'), true, 'case-insensitive');
+});
+
+test('isNonHtmlPath: skips feeds and api-like extensions', () => {
+  assert.equal(_isNonHtmlPath('/feed.xml'), true);
+  assert.equal(_isNonHtmlPath('/feed.rss'), true);
+  assert.equal(_isNonHtmlPath('/posts.json'), true);
+  assert.equal(_isNonHtmlPath('/robots.txt'), true);
+});
+
+test('isNonHtmlPath: skips images and media', () => {
+  assert.equal(_isNonHtmlPath('/avatar.png'), true);
+  assert.equal(_isNonHtmlPath('/logo.svg'), true);
+  assert.equal(_isNonHtmlPath('/hero.webp'), true);
+  assert.equal(_isNonHtmlPath('/clip.mp4'), true);
+  assert.equal(_isNonHtmlPath('/theme.mp3'), true);
+});
+
+test('isNonHtmlPath: does NOT skip normal page paths', () => {
+  assert.equal(_isNonHtmlPath('/'), false);
+  assert.equal(_isNonHtmlPath('/blog/post-slug'), false);
+  assert.equal(_isNonHtmlPath('/dashboard'), false);
+  // A route that happens to include a dot in a segment but no extension.
+  assert.equal(_isNonHtmlPath('/users/john.smith/profile'), false);
+});
+
+/* ------------ Content-Type guard on navigate() ------------ */
+
+function installNavigationMocks({ contentType, body = '', ok = true }) {
+  const originalFetch = globalThis.fetch;
+  const originalLocation = globalThis.location;
+  const originalHistory = globalThis.history;
+  const originalScrollTo = globalThis.scrollTo;
+  /** @type {{ href: string | null, assigns: string[] }} */
+  const redirect = { href: null, assigns: [] };
+
+  globalThis.fetch = async () => ({
+    ok,
+    status: ok ? 200 : 500,
+    headers: { get: (k) => (k.toLowerCase() === 'content-type' ? contentType : null) },
+    text: async () => body,
+  });
+
+  // Replace location with a spy that captures href assignments.
+  globalThis.location = /** @type any */ ({
+    origin: 'http://localhost',
+    href: 'http://localhost/',
+    get pathname() { return '/'; },
+    get search() { return ''; },
+  });
+  Object.defineProperty(globalThis.location, 'href', {
+    configurable: true,
+    get() { return 'http://localhost/'; },
+    set(v) { redirect.href = v; redirect.assigns.push(v); },
+  });
+
+  // Stubs for APIs the happy-path swap calls — without them the swap
+  // throws, the catch-all falls back to location.href, and we can't
+  // distinguish "Content-Type guard fired" from "environment is missing
+  // browser APIs".
+  globalThis.history = /** @type any */ ({ pushState: () => {}, replaceState: () => {} });
+  globalThis.scrollTo = /** @type any */ (() => {});
+
+  return {
+    redirect,
+    restore() {
+      globalThis.fetch = originalFetch;
+      globalThis.location = originalLocation;
+      globalThis.history = originalHistory;
+      globalThis.scrollTo = originalScrollTo;
+    },
+  };
+}
+
+test('navigate: JSON response triggers full-page fallback (no DOM swap)', async () => {
+  const { redirect, restore } = installNavigationMocks({
+    contentType: 'application/json; charset=utf-8',
+    body: '{"posts":[]}',
+  });
+  try {
+    await navigate('http://localhost/api/posts');
+    assert.equal(redirect.href, 'http://localhost/api/posts',
+      'JSON response should trigger location.href assignment');
+  } finally {
+    restore();
+  }
+});
+
+test('navigate: text/event-stream triggers full-page fallback', async () => {
+  const { redirect, restore } = installNavigationMocks({
+    contentType: 'text/event-stream',
+    body: '',
+  });
+  try {
+    await navigate('http://localhost/events');
+    assert.equal(redirect.href, 'http://localhost/events');
+  } finally {
+    restore();
+  }
+});
+
+test('navigate: application/pdf triggers full-page fallback', async () => {
+  const { redirect, restore } = installNavigationMocks({
+    contentType: 'application/pdf',
+    body: '%PDF-1.4\n...',
+  });
+  try {
+    await navigate('http://localhost/docs/report');
+    assert.equal(redirect.href, 'http://localhost/docs/report');
+  } finally {
+    restore();
+  }
+});
+
+test('navigate: text/html response proceeds with router swap (no fallback)', async () => {
+  const { redirect, restore } = installNavigationMocks({
+    contentType: 'text/html; charset=utf-8',
+    body: '<!doctype html><html><head><title>ok</title></head><body><div data-layout="x">content</div></body></html>',
+  });
+  try {
+    await navigate('http://localhost/ok');
+    assert.equal(redirect.href, null,
+      'text/html response should not trigger location.href fallback');
+  } finally {
+    restore();
+  }
+});
+
+test('navigate: response without content-type falls back safely', async () => {
+  const { redirect, restore } = installNavigationMocks({
+    contentType: '',
+    body: '',
+  });
+  try {
+    await navigate('http://localhost/weird');
+    assert.equal(redirect.href, 'http://localhost/weird',
+      'missing Content-Type is not assumed to be HTML');
+  } finally {
+    restore();
+  }
 });

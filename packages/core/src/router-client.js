@@ -112,6 +112,17 @@ enableClientRouter();
  * Internal
  * ==================================================================== */
 
+/**
+ * Pathnames with these extensions are never HTML pages. The client router
+ * should let the browser handle them natively — so PDFs open in a viewer,
+ * JSON/XML feeds render as text, archives trigger the download prompt,
+ * and images open in a new tab. Intercepting would fetch-and-swap binary
+ * bytes as HTML, producing a blank/garbled page with no way to recover.
+ *
+ * This is intentionally conservative — anything not listed still routes.
+ */
+const NON_HTML_EXTENSIONS = /\.(?:pdf|zip|tar|gz|7z|rar|dmg|exe|msi|deb|rpm|apk|ipa|xlsx?|docx?|pptx?|csv|odt|ods|odp|rtf|epub|mobi|xml|json|rss|atom|txt|md|wasm|mp3|mp4|mov|avi|webm|ogg|flac|wav|m4a|m4v|mkv|png|jpe?g|gif|webp|avif|bmp|ico|svg|tiff?|heic)$/i;
+
 /** @param {MouseEvent} e */
 function onClick(e) {
   if (!enabled) return;
@@ -134,6 +145,9 @@ function onClick(e) {
   if (url.origin !== location.origin) return;
   // Skip hash-only changes on the same page.
   if (url.pathname === location.pathname && url.search === location.search && url.hash) return;
+  // Skip paths whose extension clearly isn't an HTML page — let the
+  // browser handle downloads / feeds / images natively.
+  if (NON_HTML_EXTENSIONS.test(url.pathname)) return;
 
   e.preventDefault();
   performNavigation(href, false);
@@ -177,6 +191,19 @@ async function performNavigation(href, isPopState) {
     });
     if (!resp.ok) {
       // Fall back to full navigation on error.
+      location.href = href;
+      return;
+    }
+    // Content-Type guard — if the server didn't return HTML, the router
+    // can't swap it safely. Common mismatches:
+    //   • API routes: application/json, application/vnd.api+json
+    //   • Feeds:      application/xml, text/xml, application/rss+xml
+    //   • Downloads:  application/pdf, application/zip, etc.
+    //   • SSE:        text/event-stream (would hang on resp.text())
+    // Fall back to a full navigation so the browser handles the MIME
+    // natively (viewer, download prompt, JSON tree, etc.).
+    const ctype = resp.headers.get('content-type') || '';
+    if (!/^text\/html\b/i.test(ctype)) {
       location.href = href;
       return;
     }
@@ -472,3 +499,15 @@ export {
   addNewHeadElements as _addNewHeadElements,
   mergeHead as _mergeHead,
 };
+
+/**
+ * Predicate used by the onClick handler to decide whether a same-origin
+ * href should bypass the router (let the browser handle it natively).
+ * Exposed for unit testing.
+ *
+ * @param {string} pathname
+ * @returns {boolean}
+ */
+export function _isNonHtmlPath(pathname) {
+  return NON_HTML_EXTENSIONS.test(pathname);
+}

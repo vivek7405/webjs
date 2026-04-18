@@ -1469,9 +1469,21 @@ await navigate('/login', { replace: true }); // replace history entry
 <a href="/legacy" data-no-router>Full reload</a>
 ```
 
+**Use `data-no-router` for:**
+- **Auth flows** — `/logout`, `/auth/google`, OAuth redirect chains. A full reload wipes in-memory module state (cached user data, auth tokens), which SPA navigation leaves behind. Module state surviving a "logout" is a real bug class.
+- **Print views / embed pages** — anywhere you want a clean-slate render without the existing layout.
+- **Experimental routes** backed by a different client runtime that needs a full boot.
+
+**What the router auto-skips** (no `data-no-router` needed):
+- Links with `download`, `target` other than `_self`, or a modifier-key click.
+- Cross-origin hrefs.
+- Pure hash fragments on the same page.
+- Hrefs ending in non-HTML extensions (`.pdf`, `.zip`, `.json`, `.xml`, images, media, archives, documents) — the browser handles them natively.
+- Responses whose `Content-Type` isn't `text/html` — falls back to a full navigation so JSON APIs, SSE streams, feeds, and mis-served downloads behave correctly.
+
 **Loading indicator:** `<html>` gets `data-navigating` attribute during fetch — use CSS to show a progress bar.
 
-**When to use:** always — it's enabled by default in the scaffold layout. **When NOT to use:** links with `download`, `target="_blank"`, external origins — these are automatically skipped.
+**When to use:** always — it's enabled by default in the scaffold layout.
 
 ### Raw-text templates
 

@@ -10,12 +10,24 @@ export default function ClientRouter() {
     <h2>When to use</h2>
     <p>It's enabled automatically when you import <code>webjs/client-router</code> in your layout (the scaffold does this for you). You don't need to do anything — every <code>&lt;a&gt;</code> link in your app becomes a client-side navigation.</p>
 
-    <h2>When NOT to use</h2>
+    <h2>When the router auto-skips a link</h2>
+    <p>These are handled natively by the browser — no fetch, no swap:</p>
     <ul>
-      <li>For links to external sites — they're ignored automatically (different origin).</li>
-      <li>For file downloads — links with <code>download</code> attribute are ignored.</li>
-      <li>For links that should force a full reload — add <code>data-no-router</code> to the <code>&lt;a&gt;</code> tag.</li>
+      <li>Cross-origin hrefs.</li>
+      <li>Links with a <code>download</code> attribute, a <code>target</code> other than <code>_self</code>, or clicked with a modifier key (⌘/Ctrl/Shift/Alt).</li>
+      <li>Pure hash fragments on the same page (lets the browser jump to the anchor).</li>
+      <li>Hrefs whose path ends in a non-HTML extension: <code>.pdf</code>, <code>.zip</code>, <code>.json</code>, <code>.xml</code>, images, media, archives, documents. The browser opens them in a viewer, triggers a download, or renders the feed directly.</li>
+      <li>Responses whose <code>Content-Type</code> isn't <code>text/html</code> (JSON APIs, SSE streams, mis-served downloads). The router notices after the fetch and falls back to a full navigation.</li>
     </ul>
+
+    <h2>Explicit opt-out with <code>data-no-router</code></h2>
+    <p>Add <code>data-no-router</code> to force a full page navigation for links the router would otherwise intercept. Use this for:</p>
+    <ul>
+      <li><strong>Auth flows</strong> — <code>/logout</code>, <code>/auth/google</code>, OAuth redirect chains. A full reload wipes in-memory module state (cached user data, auth tokens); SPA navigation leaves it behind.</li>
+      <li><strong>Print views / embed pages</strong> — anywhere you want a clean-slate render without the existing layout.</li>
+      <li><strong>Experimental routes</strong> backed by a different client runtime that needs a full boot.</li>
+    </ul>
+    <pre>&lt;a href="/logout" data-no-router&gt;Log out&lt;/a&gt;</pre>
 
     <h2>How it works</h2>
     <ol>
@@ -41,12 +53,7 @@ await navigate('/about');
 // Replace current history entry
 await navigate('/login', { replace: true });</pre>
 
-    <h2>Opting out</h2>
-    <p>Add <code>data-no-router</code> to any link to force a full page navigation:</p>
-
-    <pre>&lt;a href="/legacy-page" data-no-router&gt;Full reload&lt;/a&gt;</pre>
-
-    <p>To disable the router entirely:</p>
+    <h2>Disabling the router entirely</h2>
     <pre>import { disableClientRouter } from 'webjs/client-router';
 disableClientRouter();</pre>
 
