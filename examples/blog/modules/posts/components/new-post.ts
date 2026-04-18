@@ -23,14 +23,20 @@ export class NewPost extends WebComponent {
 
   async onSubmit(e: SubmitEvent) {
     e.preventDefault();
-    const form = e.currentTarget as HTMLFormElement;
+    // Use querySelector as a fallback — e.currentTarget can be null in
+    // some re-render scenarios with light DOM event delegation.
+    const form = (e.currentTarget || this.querySelector('form')) as HTMLFormElement;
+    if (!form) return;
     const data = new FormData(form);
+    const title = String(data.get('title') || '');
+    const body = String(data.get('body') || '');
+    if (!title || !body) {
+      this.setState({ error: 'Title and body are required' });
+      return;
+    }
     this.setState({ busy: true, error: null });
     try {
-      const result = await createPost({
-        title: String(data.get('title') || ''),
-        body:  String(data.get('body')  || ''),
-      });
+      const result = await createPost({ title, body });
       if (!result.success) {
         this.setState({ busy: false, error: result.error });
         return;

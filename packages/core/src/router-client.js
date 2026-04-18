@@ -50,12 +50,37 @@ function parseHTML(html) {
 
 let enabled = false;
 
+/**
+ * Global MutationObserver that upgrades any custom element inserted into the
+ * document. This is the safety net — if replaceChildren, View Transitions,
+ * or any other DOM operation inserts elements that the browser fails to
+ * auto-upgrade, this observer catches them.
+ */
+let upgradeObserver = null;
+function ensureUpgradeObserver() {
+  if (upgradeObserver || typeof MutationObserver === 'undefined' || typeof customElements === 'undefined') return;
+  upgradeObserver = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        const el = /** @type {Element} */ (node);
+        if (el.tagName?.includes('-')) customElements.upgrade(el);
+        for (const child of el.querySelectorAll('*')) {
+          if (child.tagName?.includes('-')) customElements.upgrade(child);
+        }
+      }
+    }
+  });
+  upgradeObserver.observe(document.body, { childList: true, subtree: true });
+}
+
 /** Enable the client router. Idempotent. */
 export function enableClientRouter() {
   if (enabled || typeof document === 'undefined') return;
   enabled = true;
   document.addEventListener('click', onClick, true);
   window.addEventListener('popstate', onPopState);
+  ensureUpgradeObserver();
 }
 
 /** Disable the client router. */
