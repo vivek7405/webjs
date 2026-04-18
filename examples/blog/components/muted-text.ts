@@ -5,9 +5,16 @@
  * Pure HTMLElement — no render step. Children are preserved as-is;
  * Tailwind utility classes are applied directly to the host.
  */
-class MutedText extends HTMLElement {
-  connectedCallback() {
-    this.classList.add('text-fg-subtle', 'font-mono', 'text-[11px]', 'font-medium', 'leading-snug', 'tracking-[0.12em]', 'uppercase');
+if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
+  class MutedText extends HTMLElement {
+    connectedCallback() {
+      this.classList.add(
+        'text-fg-subtle', 'font-mono', 'text-[11px]', 'font-medium',
+        'leading-snug', 'tracking-[0.12em]', 'uppercase'
+      );
+    }
+  }
+  if (!customElements.get('muted-text')) {
+    customElements.define('muted-text', MutedText);
   }
 }
-customElements.define('muted-text', MutedText);
