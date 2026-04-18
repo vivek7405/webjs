@@ -42,12 +42,13 @@ export class NewPost extends WebComponent {
   render() {
     const { busy, error } = this.state;
     const inputCls = 'text-fg bg-transparent transition-all duration-150 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent-tint';
+    const titleCls = 'text-fg bg-transparent transition-all duration-150 focus:outline-none focus:border-b-accent focus:ring-0';
     return html`
       <form @submit=${(e: SubmitEvent) => this.onSubmit(e)} class="grid gap-5 p-6 bg-bg-elev border border-border rounded-xl shadow-lg">
         <label class="grid gap-2 font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle">
           Title
           <input name="title" placeholder="A bold title…" required autofocus
-                 class="font-serif text-xl font-bold tracking-tight border-0 border-b border-border-strong py-3 ${inputCls}" />
+                 class="font-serif text-xl font-bold tracking-tight border-0 border-b border-border-strong py-3 ${titleCls}" />
         </label>
         <label class="grid gap-2 font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle">
           Body
