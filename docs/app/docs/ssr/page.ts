@@ -117,7 +117,7 @@ async function loadExpensiveItems() {
     <h2>Client Upgrade</h2>
     <p>After the browser has painted the SSR'd HTML, it loads the page's ES modules (as <code>&lt;script type="module"&gt;</code> imports). When a custom element's module loads:</p>
     <ol>
-      <li>The class is registered via <code>customElements.define()</code> (called by <code>Counter.register(import.meta.url)</code>).</li>
+      <li>The class is registered via <code>customElements.define()</code> (called by <code>Counter.register()</code>).</li>
       <li>The browser upgrades every instance of that tag in the document, calling <code>connectedCallback()</code>.</li>
       <li>In <code>connectedCallback</code>, if <code>this.shadowRoot</code> already exists (from DSD), webjs skips <code>attachShadow()</code> and re-renders into the existing shadow root. This means the DSD content serves as the initial paint, and the client render just adds event listeners and reactive bindings.</li>
       <li>The fine-grained client renderer preserves focus, cursor position, scroll offset, and form state across subsequent state updates.</li>
@@ -172,7 +172,7 @@ export const metadata = {
       <li>Every custom element tag that actually appeared in the rendered HTML</li>
     </ul>
     <p>This breaks the ES module waterfall. Without modulepreload, the browser would discover each component's import only after parsing its parent module. With the hints in the <code>&lt;head&gt;</code>, the browser begins fetching all modules in parallel immediately.</p>
-    <p>Component preload discovery works because <code>register(import.meta.url)</code> records the module URL alongside the tag name. During <code>injectDSD</code>, every custom element tag that matched is added to a <code>usedComponents</code> set. After rendering, the set is converted to <code>&lt;link&gt;</code> tags.</p>
+    <p>Component preload discovery works because <code>register()</code> records the module URL alongside the tag name. During <code>injectDSD</code>, every custom element tag that matched is added to a <code>usedComponents</code> set. After rendering, the set is converted to <code>&lt;link&gt;</code> tags.</p>
     <p>In production bundle mode (when <code>.webjs/bundle.js</code> exists), all per-file preloads are replaced by a single <code>&lt;link rel="modulepreload" href="/__webjs/bundle.js"&gt;</code>.</p>
 
     <h2>103 Early Hints</h2>

@@ -432,7 +432,7 @@ class MyThing extends WebComponent {
     return html`…`;
   }
 }
-MyThing.register(import.meta.url);
+MyThing.register();
 ```
 
 Mutate state with `this.setState({...})` — it batches a re-render via microtask.
@@ -458,7 +458,7 @@ class StudentCard extends WebComponent {
     return html`<p>${this.student.name}</p>`;
   }
 }
-StudentCard.register(import.meta.url);
+StudentCard.register();
 ```
 
 Built-in constructors (`String`, `Number`, `Boolean`, `Array`, `Object`)
@@ -802,7 +802,7 @@ When you mark an action as `expose('METHOD /path', fn)`, you are declaring it pa
 
 ### Components (`components/*.js`)
 
-- Each file should define **one** custom element and call `Class.register(import.meta.url)` at module top level.
+- Each file should define **one** custom element and call `Class.register()` at module top level.
   Passing `import.meta.url` lets the SSR shell emit a `<link rel="modulepreload">` so the browser can fetch the module without waiting for its parent to parse. Zero build step; big first-paint win.
 - Imported by pages (for SSR) and/or other components (for composition).
 - **Styling convention: shadow-DOM CSS via `static styles = css\`…\``, not inline `style="…"` attributes.** Any repeated visual chunk in pages (layout chrome, cards, muted labels, etc.) should become a component whose styles live in its shadow root. The example app's `<blog-shell>` and `<muted-text>` demonstrate this — pages emit semantic HTML with zero inline styles.

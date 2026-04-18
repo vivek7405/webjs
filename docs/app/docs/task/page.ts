@@ -41,7 +41,7 @@ class UserProfile extends WebComponent {
     });
   }
 }
-UserProfile.register(import.meta.url);</pre>
+UserProfile.register();</pre>
 
     <h2>Task States</h2>
     <p>A task is always in one of four states, exposed as <code>TaskStatus</code> constants:</p>
@@ -165,7 +165,7 @@ handleSubmit(e) {
     });
   }
 }
-SearchResults.register(import.meta.url);</pre>
+SearchResults.register();</pre>
 
     <h2>When to Use Task vs Async Page Functions</h2>
 
@@ -247,7 +247,7 @@ class LiveSearch extends WebComponent {
     \`;
   }
 }
-LiveSearch.register(import.meta.url);</pre>
+LiveSearch.register();</pre>
 
     <h2>Next Steps</h2>
     <ul>

@@ -165,16 +165,17 @@ export class WebComponent extends Base {
 
   /**
    * Register this class with the element registry.
-   * Pass `import.meta.url` from the defining module to enable automatic
-   * `<link rel="modulepreload">` hints in SSR:
    *
-   *     MyCounter.register(import.meta.url);
+   *     MyCounter.register();
    *
-   * @param {string} [moduleUrl]
+   * Module URLs (used by SSR to emit `<link rel="modulepreload">` hints)
+   * are derived server-side at boot by scanning the app tree for
+   * `class … extends WebComponent { static tag = '…' }` declarations.
+   * No per-component argument is needed.
    */
-  static register(moduleUrl) {
+  static register() {
     if (!this.tag) throw new Error('WebComponent subclass is missing a static `tag`');
-    register(this.tag, this, moduleUrl);
+    register(this.tag, this);
   }
 
   /**

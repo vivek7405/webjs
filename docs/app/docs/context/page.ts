@@ -71,7 +71,7 @@ class AppShell extends WebComponent {
     \`;
   }
 }
-AppShell.register(import.meta.url);</pre>
+AppShell.register();</pre>
 
     <p>When you call <code>provider.setValue(newValue)</code>, every subscribed consumer is notified and its host component re-renders automatically.</p>
 
@@ -106,7 +106,7 @@ class ThemedCard extends WebComponent {
     \`;
   }
 }
-ThemedCard.register(import.meta.url);</pre>
+ThemedCard.register();</pre>
 
     <h2>Subscribe vs One-Shot Mode</h2>
     <p>The <code>subscribe</code> option controls whether the consumer receives ongoing updates:</p>
@@ -178,7 +178,7 @@ class AppRoot extends WebComponent {
     return html\`&lt;slot&gt;&lt;/slot&gt;\`;
   }
 }
-AppRoot.register(import.meta.url);</pre>
+AppRoot.register();</pre>
 
     <h2>Nested Providers</h2>
     <p>Providers can be nested. A consumer resolves to the nearest ancestor provider with a matching context key:</p>
@@ -230,7 +230,7 @@ class AuthProvider extends WebComponent {
     return html\`&lt;slot&gt;&lt;/slot&gt;\`;
   }
 }
-AuthProvider.register(import.meta.url);
+AuthProvider.register();
 
 // components/user-menu.ts
 import { WebComponent, html } from 'webjs';
@@ -252,7 +252,7 @@ class UserMenu extends WebComponent {
     return html\`&lt;span&gt;Hi, \${user.name}&lt;/span&gt;\`;
   }
 }
-UserMenu.register(import.meta.url);</pre>
+UserMenu.register();</pre>
 
     <h2>Next Steps</h2>
     <ul>

@@ -109,7 +109,7 @@ export class Counter extends WebComponent {
     \`;
   }
 }
-Counter.register(import.meta.url);</pre>
+Counter.register();</pre>
 
     <h3>Run it</h3>
     <pre>npx webjs dev

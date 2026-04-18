@@ -35,7 +35,7 @@ class HeavyChart extends WebComponent {
     return html${'`'}&lt;canvas&gt;&lt;/canvas&gt;${'`'};
   }
 }
-HeavyChart.register(import.meta.url);</pre>
+HeavyChart.register();</pre>
 
     <h2>How it works</h2>
     <ol>

@@ -20,4 +20,4 @@ export class ShadowParent extends WebComponent {
       : html`<div data-testid="shadow-parent"><shadow-inner></shadow-inner></div>`;
   }
 }
-ShadowParent.register(import.meta.url);
+ShadowParent.register();

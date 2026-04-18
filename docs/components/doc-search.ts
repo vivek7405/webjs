@@ -152,4 +152,4 @@ export class DocSearch extends WebComponent {
     `;
   }
 }
-DocSearch.register(import.meta.url);
+DocSearch.register();

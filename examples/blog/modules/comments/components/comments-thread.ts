@@ -101,7 +101,7 @@ export class CommentsThread extends WebComponent {
     `;
   }
 }
-CommentsThread.register(import.meta.url);
+CommentsThread.register();
 
 function signinHref() {
   if (typeof location !== 'undefined') {

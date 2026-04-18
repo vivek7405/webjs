@@ -66,7 +66,7 @@ export class Counter extends WebComponent {
     \`;
   }
 }
-Counter.register(import.meta.url);</pre>
+Counter.register();</pre>
 
     <h2>Class-prefix rule for light-DOM custom CSS</h2>
     <p>Tailwind utilities are unique by construction, so most light-DOM components need zero custom CSS. But when you <em>do</em> reach for a <code>&lt;style&gt;</code> block or an imported stylesheet, <strong>every class selector MUST be prefixed with the component's tag name</strong>. Otherwise two components that both define <code>.card</code> or <code>.header</code> will style each other.</p>
@@ -123,7 +123,7 @@ export class Card extends WebComponent {
     \`;
   }
 }
-Card.register(import.meta.url);</pre>
+Card.register();</pre>
 
     <p>Shadow-DOM components are SSR'd via Declarative Shadow DOM — styles paint before JS loads, no hydration runtime, and the browser enforces the boundary. Light-DOM components are SSR'd as direct HTML with a <code>&lt;!--webjs-hydrate--&gt;</code> marker; client-side rendering replaces the marker without flash.</p>
 

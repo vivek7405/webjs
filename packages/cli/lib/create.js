@@ -450,7 +450,7 @@ export class ThemeToggle extends WebComponent {
   }
 }
 
-ThemeToggle.register(import.meta.url);
+ThemeToggle.register();
 `);
   } // end if (!isApi)
 

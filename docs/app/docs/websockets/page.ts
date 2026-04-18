@@ -319,7 +319,7 @@ export class LiveChat extends WebComponent {
     \`;
   }
 }
-LiveChat.register(import.meta.url);</pre>
+LiveChat.register();</pre>
 
     <p>Use it in a page:</p>
     <pre>// app/chat/page.ts
@@ -449,7 +449,7 @@ export class LiveComments extends WebComponent {
     \`;
   }
 }
-LiveComments.register(import.meta.url);</pre>
+LiveComments.register();</pre>
 
     <p>Usage in a page:</p>
     <pre>// app/posts/[slug]/page.ts

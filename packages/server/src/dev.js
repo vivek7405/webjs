@@ -27,6 +27,7 @@ import { withRequest } from './context.js';
 import { attachWebSocket } from './websocket.js';
 import { scanBareImports, vendorImportMapEntries, serveVendorBundle, clearVendorCache } from './vendor.js';
 import { buildModuleGraph, transitiveDeps } from './module-graph.js';
+import { primeComponentRegistry } from './component-scanner.js';
 import { setVendorEntries } from './importmap.js';
 
 const MIME = {
@@ -83,6 +84,12 @@ export async function createRequestHandler(opts) {
   // Build module dependency graph for transitive preload hints.
   const moduleGraph = await buildModuleGraph(appDir);
 
+  // Scan for component classes and prime their module URLs into the
+  // core registry. This replaces what used to be per-component
+  // `Counter.register(import.meta.url)` calls — the URL is derived
+  // here so authors can just write `Counter.register()`.
+  await primeComponentRegistry(appDir);
+
   const state = {
     routeTable: await buildRouteTable(appDir),
     actionIndex: await buildActionIndex(appDir, dev),
@@ -104,6 +111,8 @@ export async function createRequestHandler(opts) {
     state.bareImports = await scanBareImports(appDir);
     setVendorEntries(vendorImportMapEntries(state.bareImports));
     state.moduleGraph = await buildModuleGraph(appDir);
+    // Re-scan components in case a new file was added or a tag renamed.
+    await primeComponentRegistry(appDir);
     opts.onReload?.();
   }
 

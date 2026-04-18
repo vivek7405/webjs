@@ -112,7 +112,7 @@ export class PostForm extends WebComponent {
     \`;
   }
 }
-PostForm.register(import.meta.url);</pre>
+PostForm.register();</pre>
 
     <h2>The superjson Wire Format</h2>
     <p>Server actions use <strong>superjson</strong> for serialisation, not plain <code>JSON.stringify</code>. The content type is <code>application/vnd.webjs+json</code>. This means rich JavaScript types survive the round trip:</p>
@@ -323,7 +323,7 @@ export class TodoApp extends WebComponent {
     \`;
   }
 }
-TodoApp.register(import.meta.url);
+TodoApp.register();
 
 // 3. Call the REST endpoint from curl
 // curl -X POST http://localhost:3000/api/todos \\
