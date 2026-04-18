@@ -9,7 +9,7 @@
 export { html, isTemplate, MARKER } from './src/html.js';
 export { css, isCSS, adoptStyles, stylesToString } from './src/css.js';
 export { WebComponent } from './src/component.js';
-export { register, lookup, lookupModuleUrl, isLazy, allTags, primeModuleUrl } from './src/registry.js';
+export { register, lookup, lookupModuleUrl, isLazy, allTags, primeModuleUrl, tagOf } from './src/registry.js';
 export { renderToString, renderToStream } from './src/render-server.js';
 export { render } from './src/render-client.js';
 export { escapeText, escapeAttr } from './src/escape.js';

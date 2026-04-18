@@ -3,7 +3,6 @@ import { WebComponent, html, css } from 'webjs';
 type Result = { path: string; title: string; score: number; snippet: string };
 
 export class DocSearch extends WebComponent {
-  static tag = 'doc-search';
   static styles = css`
     :host { display: block; margin-bottom: var(--sp-4); }
     .wrap { position: relative; }
@@ -152,4 +151,4 @@ export class DocSearch extends WebComponent {
     `;
   }
 }
-DocSearch.register();
+customElements.define('doc-search', DocSearch);

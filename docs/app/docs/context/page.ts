@@ -44,7 +44,6 @@ import { ContextProvider } from 'webjs/context';
 import { themeContext } from '../contexts/theme.ts';
 
 class AppShell extends WebComponent {
-  static tag = 'app-shell';
 
   static styles = css\`
     :host { display: block; }
@@ -71,7 +70,7 @@ class AppShell extends WebComponent {
     \`;
   }
 }
-AppShell.register();</pre>
+customElements.define('app-shell', AppShell);</pre>
 
     <p>When you call <code>provider.setValue(newValue)</code>, every subscribed consumer is notified and its host component re-renders automatically.</p>
 
@@ -83,7 +82,6 @@ import { ContextConsumer } from 'webjs/context';
 import { themeContext } from '../contexts/theme.ts';
 
 class ThemedCard extends WebComponent {
-  static tag = 'themed-card';
 
   static styles = css\`
     :host { display: block; padding: 16px; border-radius: 8px; }
@@ -106,7 +104,7 @@ class ThemedCard extends WebComponent {
     \`;
   }
 }
-ThemedCard.register();</pre>
+customElements.define('themed-card', ThemedCard);</pre>
 
     <h2>Subscribe vs One-Shot Mode</h2>
     <p>The <code>subscribe</code> option controls whether the consumer receives ongoing updates:</p>
@@ -153,7 +151,6 @@ const localeContext = createContext('locale');
 const authContext = createContext('auth');
 
 class AppRoot extends WebComponent {
-  static tag = 'app-root';
 
   #theme = new ContextProvider(this, {
     context: themeContext,
@@ -178,7 +175,7 @@ class AppRoot extends WebComponent {
     return html\`&lt;slot&gt;&lt;/slot&gt;\`;
   }
 }
-AppRoot.register();</pre>
+customElements.define('app-root', AppRoot);</pre>
 
     <h2>Nested Providers</h2>
     <p>Providers can be nested. A consumer resolves to the nearest ancestor provider with a matching context key:</p>
@@ -208,7 +205,6 @@ import { ContextProvider } from 'webjs/context';
 import { authContext } from '../contexts/auth.ts';
 
 class AuthProvider extends WebComponent {
-  static tag = 'auth-provider';
 
   #auth = new ContextProvider(this, {
     context: authContext,
@@ -230,7 +226,7 @@ class AuthProvider extends WebComponent {
     return html\`&lt;slot&gt;&lt;/slot&gt;\`;
   }
 }
-AuthProvider.register();
+customElements.define('auth-provider', AuthProvider);
 
 // components/user-menu.ts
 import { WebComponent, html } from 'webjs';
@@ -238,7 +234,6 @@ import { ContextConsumer } from 'webjs/context';
 import { authContext } from '../contexts/auth.ts';
 
 class UserMenu extends WebComponent {
-  static tag = 'user-menu';
 
   #auth = new ContextConsumer(this, {
     context: authContext,
@@ -252,7 +247,7 @@ class UserMenu extends WebComponent {
     return html\`&lt;span&gt;Hi, \${user.name}&lt;/span&gt;\`;
   }
 }
-UserMenu.register();</pre>
+customElements.define('user-menu', UserMenu);</pre>
 
     <h2>Next Steps</h2>
     <ul>

@@ -57,7 +57,7 @@ Quality bar stays the same — just no blocking on questions.
 - No build step: source files are served as ES modules
 - Web components with shadow DOM: use `static styles = css` not inline styles
 - One function per server action file (*.server.ts)
-- Components must call .register()
+- Components must call customElements.define('tag', Class)
 - Never import @prisma/client or node:* from client components
 - Use directives (classMap, styleMap, ref, etc.) from 'webjs/directives'
 - See AGENTS.md for the complete directive decision guide

@@ -1,6 +1,6 @@
 import { render as clientRender } from './render-client.js';
 import { isCSS, adoptStyles } from './css.js';
-import { register } from './registry.js';
+import { register, tagOf } from './registry.js';
 
 const isBrowser = typeof window !== 'undefined' && typeof HTMLElement !== 'undefined';
 
@@ -117,9 +117,6 @@ function defaultHasChanged(a, b) {
 const Base = isBrowser ? HTMLElement : /** @type {any} */ (class {});
 
 export class WebComponent extends Base {
-  /** Custom element tag name. Subclasses must override. @type {string} */
-  static tag = '';
-
   /** Whether to use shadow DOM. Default: false (light DOM). @type {boolean} */
   static shadow = false;
 
@@ -163,20 +160,6 @@ export class WebComponent extends Base {
    */
   static styles = null;
 
-  /**
-   * Register this class with the element registry.
-   *
-   *     MyCounter.register();
-   *
-   * Module URLs (used by SSR to emit `<link rel="modulepreload">` hints)
-   * are derived server-side at boot by scanning the app tree for
-   * `class … extends WebComponent { static tag = '…' }` declarations.
-   * No per-component argument is needed.
-   */
-  static register() {
-    if (!this.tag) throw new Error('WebComponent subclass is missing a static `tag`');
-    register(this.tag, this);
-  }
 
   /**
    * Returns the list of attribute names the browser should observe.
@@ -374,7 +357,7 @@ export class WebComponent extends Base {
       // adoptedStyleSheets). Warn if the developer set both.
       if (Ctor.styles) {
         console.warn(
-          `[webjs] <${Ctor.tag}> has static shadow = false AND static styles. ` +
+          `[webjs] <${tagOf(Ctor) || this.tagName?.toLowerCase()}> has static shadow = false AND static styles. ` +
           `static styles only works with shadow DOM (adoptedStyleSheets). ` +
           `For light DOM, use global CSS or <style> in render().`
         );
@@ -491,7 +474,7 @@ export class WebComponent extends Base {
       const tpl = this.render();
       clientRender(tpl, this._renderRoot);
     } catch (error) {
-      console.error(`[webjs] render error in <${/** @type any */ (this.constructor).tag || this.tagName}>:`, error);
+      console.error(`[webjs] render error in <${tagOf(/** @type any */ (this.constructor)) || this.tagName?.toLowerCase()}>:`, error);
       try {
         const fallback = this.renderError(/** @type {Error} */ (error));
         if (fallback !== undefined) clientRender(fallback, this._renderRoot);

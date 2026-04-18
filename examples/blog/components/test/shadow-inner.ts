@@ -2,7 +2,6 @@ import { WebComponent, html, css } from 'webjs';
 
 /** Shadow DOM child — used in nested DSD e2e tests. */
 export class ShadowInner extends WebComponent {
-  static tag = 'shadow-inner';
   static shadow = true;
   static styles = css`
     :host { display: inline-flex; align-items: center; gap: 4px; }
@@ -12,4 +11,4 @@ export class ShadowInner extends WebComponent {
     return html`<span data-testid="shadow-inner">shadow-inner OK</span>`;
   }
 }
-ShadowInner.register();
+customElements.define('shadow-inner', ShadowInner);

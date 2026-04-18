@@ -67,7 +67,6 @@ const NAV_SECTIONS = [
 ];
 
 export class DocShell extends WebComponent {
-  static tag = 'doc-shell';
   static styles = css`
     :host {
       display: grid;
@@ -245,4 +244,4 @@ export class DocShell extends WebComponent {
     `;
   }
 }
-DocShell.register();
+customElements.define('doc-shell', DocShell);

@@ -27,7 +27,6 @@ export default function LazyLoading() {
     <pre>import { WebComponent, html, css } from 'webjs';
 
 class HeavyChart extends WebComponent {
-  static tag = 'heavy-chart';
   static lazy = true;  // ← module loaded on scroll, not on page load
   static styles = css${'`'}:host { display: block; min-height: 400px; }${'`'};
 
@@ -35,7 +34,7 @@ class HeavyChart extends WebComponent {
     return html${'`'}&lt;canvas&gt;&lt;/canvas&gt;${'`'};
   }
 }
-HeavyChart.register();</pre>
+customElements.define('heavy-chart', HeavyChart);</pre>
 
     <h2>How it works</h2>
     <ol>
@@ -51,7 +50,6 @@ HeavyChart.register();</pre>
     <p>For even more control, use <code>static hydrate = 'visible'</code> — this defers the component's <code>connectedCallback</code> activation (not just the module load) until the element is visible:</p>
 
     <pre>class LazyComments extends WebComponent {
-  static tag = 'lazy-comments';
   static hydrate = 'visible';  // ← activation deferred until visible
   // ...
 }</pre>

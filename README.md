@@ -85,7 +85,6 @@ export default async function Home() {
 import { WebComponent, html } from 'webjs';
 
 export class Counter extends WebComponent {
-  static tag = 'my-counter';
   // Light DOM is the default; Tailwind utility classes apply directly.
   static properties = { count: { type: Number } };
   count = 0;
@@ -100,7 +99,7 @@ export class Counter extends WebComponent {
     `;
   }
 }
-Counter.register();
+customElements.define('my-counter', Counter);
 ```
 
 Need scoped styles, `<slot>` projection, or embed-ready isolation? Opt

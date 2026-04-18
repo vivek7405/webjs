@@ -27,7 +27,12 @@ import { withRequest } from './context.js';
 import { attachWebSocket } from './websocket.js';
 import { scanBareImports, vendorImportMapEntries, serveVendorBundle, clearVendorCache } from './vendor.js';
 import { buildModuleGraph, transitiveDeps } from './module-graph.js';
-import { primeComponentRegistry } from './component-scanner.js';
+import { primeComponentRegistry, findOrphanComponents } from './component-scanner.js';
+
+/** PascalCase → kebab-case for a helpful diagnostic example tag name. */
+function kebab(name) {
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
 import { setVendorEntries } from './importmap.js';
 
 const MIME = {
@@ -85,10 +90,24 @@ export async function createRequestHandler(opts) {
   const moduleGraph = await buildModuleGraph(appDir);
 
   // Scan for component classes and prime their module URLs into the
-  // core registry. This replaces what used to be per-component
-  // `Counter.register(import.meta.url)` calls — the URL is derived
-  // here so authors can just write `Counter.register()`.
+  // core registry. SSR uses this for modulepreload hints without
+  // requiring authors to pass `import.meta.url` themselves.
   await primeComponentRegistry(appDir);
+
+  // Dev-time guardrail: warn about any class extending WebComponent
+  // that isn't registered via customElements.define() in its own
+  // module. Without registration, <my-tag> elements silently stay as
+  // HTMLUnknownElement in the browser — a common early-stage footgun.
+  if (dev) {
+    const orphans = await findOrphanComponents(appDir);
+    for (const { className, file } of orphans) {
+      logger.warn?.(
+        `[webjs] ${className} extends WebComponent but has no customElements.define(...) call in ${file}. ` +
+          `Add \`customElements.define('<tag-name>', ${className});\` at the bottom of the file ` +
+          `or <${kebab(className)}> tags won't upgrade in the browser.`,
+      );
+    }
+  }
 
   const state = {
     routeTable: await buildRouteTable(appDir),
@@ -113,6 +132,15 @@ export async function createRequestHandler(opts) {
     state.moduleGraph = await buildModuleGraph(appDir);
     // Re-scan components in case a new file was added or a tag renamed.
     await primeComponentRegistry(appDir);
+    if (dev) {
+      const orphans = await findOrphanComponents(appDir);
+      for (const { className, file } of orphans) {
+        logger.warn?.(
+          `[webjs] ${className} extends WebComponent but has no customElements.define(...) call in ${file}. ` +
+            `Add \`customElements.define('<tag-name>', ${className});\` or <${kebab(className)}> tags won't upgrade.`,
+        );
+      }
+    }
     opts.onReload?.();
   }
 

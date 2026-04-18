@@ -64,7 +64,6 @@ export default function Controllers() {
     <pre>import { WebComponent, html, css } from 'webjs';
 
 class LazyImage extends WebComponent {
-  static tag = 'lazy-image';
   static properties = { src: { type: String } };
 
   #visibility = new VisibilityController(this, { threshold: 0.1 });
@@ -79,7 +78,7 @@ class LazyImage extends WebComponent {
     \`;
   }
 }
-LazyImage.register();</pre>
+customElements.define('lazy-image', LazyImage);</pre>
 
     <h2>Example: FetchController</h2>
     <p>A reusable controller that fetches data from a URL and exposes loading/error/data states:</p>
@@ -122,7 +121,6 @@ LazyImage.register();</pre>
     <pre>import { WebComponent, html } from 'webjs';
 
 class UserList extends WebComponent {
-  static tag = 'user-list';
 
   #users = new FetchController(this, '/api/users');
 
@@ -137,13 +135,12 @@ class UserList extends WebComponent {
     \`;
   }
 }
-UserList.register();</pre>
+customElements.define('user-list', UserList);</pre>
 
     <h2>Multiple Controllers on One Component</h2>
     <p>Controllers compose naturally. A single component can use any number of controllers:</p>
 
     <pre>class DashboardWidget extends WebComponent {
-  static tag = 'dashboard-widget';
 
   #data = new FetchController(this, '/api/dashboard/stats');
   #visibility = new VisibilityController(this, { threshold: 0.5 });
@@ -159,7 +156,7 @@ UserList.register();</pre>
     return html\`&lt;div&gt;\${this.#data.data?.summary}&lt;/div&gt;\`;
   }
 }
-DashboardWidget.register();</pre>
+customElements.define('dashboard-widget', DashboardWidget);</pre>
 
     <h2>Built-in Controllers</h2>
     <p>webjs ships three controllers out of the box:</p>
@@ -170,7 +167,6 @@ DashboardWidget.register();</pre>
     <pre>import { Task } from 'webjs/task';
 
 class UserProfile extends WebComponent {
-  static tag = 'user-profile';
   static properties = { userId: { type: String } };
 
   #task = new Task(this, {
@@ -198,7 +194,6 @@ class UserProfile extends WebComponent {
 const themeContext = createContext('theme');
 
 class AppShell extends WebComponent {
-  static tag = 'app-shell';
 
   #themeProvider = new ContextProvider(this, {
     context: themeContext,
@@ -219,7 +214,6 @@ class AppShell extends WebComponent {
 const themeContext = createContext('theme');
 
 class ThemeBadge extends WebComponent {
-  static tag = 'theme-badge';
 
   #theme = new ContextConsumer(this, {
     context: themeContext,

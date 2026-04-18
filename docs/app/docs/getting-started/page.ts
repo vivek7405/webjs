@@ -95,7 +95,6 @@ export default function Home() {
     <pre>import { WebComponent, html } from 'webjs';
 
 export class Counter extends WebComponent {
-  static tag = 'my-counter';
   static properties = { count: { type: Number } };
   count = 0;
 
@@ -109,7 +108,7 @@ export class Counter extends WebComponent {
     \`;
   }
 }
-Counter.register();</pre>
+customElements.define('my-counter', Counter);</pre>
 
     <h3>Run it</h3>
     <pre>npx webjs dev

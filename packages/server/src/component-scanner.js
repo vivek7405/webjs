@@ -1,35 +1,31 @@
 /**
  * Server-side scanner that walks the app tree and records the
- * browser-visible URL for every webjs component class declared in
- * `.js`/`.ts`/`.mjs`/`.mts` files.
+ * browser-visible URL for every webjs component module.
  *
  * Called once at server boot. Results are used to prime the core
  * registry (`primeModuleUrl`) BEFORE any SSR render — so when a page
  * renders a component tag, `lookupModuleUrl(tag)` already has the URL
  * ready for `<link rel="modulepreload">` hints.
  *
- * Regex-based on purpose: the framework is no-build and keeps the
- * server cold-start cheap. A full TS parse (via web-component-analyzer
- * or typescript) would be ~50× slower for no payoff here — we only
- * need to extract `{ className, tag, file }` tuples.
+ * The convention webjs uses is the web-standard one:
+ *
+ *     class Counter extends WebComponent { … }
+ *     customElements.define('my-counter', Counter);
+ *
+ * The scanner looks for `customElements.define('<tag>', <ClassName>)`
+ * calls — static text patterns that are cheap to regex-match without
+ * a full TS parse. A full parse would be ~50× slower for no payoff;
+ * we only need `{ tag, className, moduleUrl }` tuples.
  */
 
 import { readFile } from 'node:fs/promises';
-import { relative, sep } from 'node:path';
+import { sep } from 'node:path';
 import { walk } from './fs-walk.js';
 import { primeModuleUrl } from 'webjs';
 
 /**
- * Recognise class declarations shaped like
- *
- *     export class Foo extends WebComponent {
- *       static tag = 'foo-el';
- *       …
- *     }
- *
- * Works with any base class name — we don't hard-require `WebComponent`
- * so test fixtures that extend a local base or plain `HTMLElement`
- * aren't invisible.
+ * Recognise `customElements.define('tag-name', ClassName)` calls. Both
+ * single and double quotes; whitespace is flexible.
  *
  * @param {string} src
  * @returns {Array<{ className: string, tag: string }>}
@@ -37,85 +33,16 @@ import { primeModuleUrl } from 'webjs';
 export function extractComponents(src) {
   /** @type {Array<{ className: string, tag: string }>} */
   const results = [];
-  // Locate the class header. Body-balanced matching happens below because
-  // regex alone can't handle nested braces (method bodies, objects, etc.).
-  const headerRe = /\b(?:export\s+)?(?:default\s+)?class\s+([A-Z][A-Za-z0-9_$]*)\s+extends\s+[A-Za-z0-9_$.]+\s*\{/g;
+  const re = /\bcustomElements\.define\s*\(\s*['"]([^'"\n]+)['"]\s*,\s*([A-Z][A-Za-z0-9_$]*)\b/g;
   let m;
-  while ((m = headerRe.exec(src)) !== null) {
-    const className = m[1];
-    const bodyStart = m.index + m[0].length;
-    const bodyEnd = findMatchingBrace(src, bodyStart - 1);
-    if (bodyEnd < 0) continue;
-    const body = src.slice(bodyStart, bodyEnd);
-    const tagMatch = body.match(/\bstatic\s+tag(?:\s*:\s*\w+)?\s*=\s*['"]([^'"\n]+)['"]/);
-    if (tagMatch && tagMatch[1].includes('-')) {
-      results.push({ className, tag: tagMatch[1] });
+  while ((m = re.exec(src)) !== null) {
+    const tag = m[1];
+    const className = m[2];
+    if (tag.includes('-')) {
+      results.push({ className, tag });
     }
-    headerRe.lastIndex = bodyEnd + 1;
   }
   return results;
-}
-
-/**
- * Given the index of an opening `{`, return the index of its matching
- * `}`, or -1 if unbalanced. Ignores braces inside string / template
- * literals and line / block comments. Not a full tokenizer but close
- * enough for component class bodies.
- *
- * @param {string} src
- * @param {number} openIdx
- * @returns {number}
- */
-function findMatchingBrace(src, openIdx) {
-  let depth = 0;
-  let i = openIdx;
-  while (i < src.length) {
-    const c = src[i];
-    if (c === '/' && src[i + 1] === '/') {
-      // line comment
-      const nl = src.indexOf('\n', i);
-      i = nl < 0 ? src.length : nl + 1;
-      continue;
-    }
-    if (c === '/' && src[i + 1] === '*') {
-      const end = src.indexOf('*/', i + 2);
-      i = end < 0 ? src.length : end + 2;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === '`') {
-      i = skipString(src, i, c);
-      continue;
-    }
-    if (c === '{') depth++;
-    else if (c === '}') {
-      depth--;
-      if (depth === 0) return i;
-    }
-    i++;
-  }
-  return -1;
-}
-
-/**
- * Skip past a quoted string. Handles escapes. For template literals
- * we ignore `${}` holes — nested braces there could technically close
- * an outer class, but in practice component source doesn't pack
- * classes inside template strings.
- *
- * @param {string} src
- * @param {number} start
- * @param {string} quote
- * @returns {number}
- */
-function skipString(src, start, quote) {
-  let i = start + 1;
-  while (i < src.length) {
-    const c = src[i];
-    if (c === '\\') { i += 2; continue; }
-    if (c === quote) return i + 1;
-    i++;
-  }
-  return src.length;
 }
 
 /**
@@ -162,6 +89,48 @@ export async function primeComponentRegistry(appDir) {
     primeModuleUrl(tag, moduleUrl);
   }
   return { count: components.length };
+}
+
+/**
+ * Find `class X extends WebComponent` (or its subclasses) declarations
+ * that are NOT accompanied by a `customElements.define(tag, X)` call in
+ * the same file. Lets the dev server warn authors early when they
+ * forget the registration step.
+ *
+ * @param {string} appDir
+ * @returns {Promise<Array<{ className: string, file: string }>>}
+ */
+export async function findOrphanComponents(appDir) {
+  /** @type {Array<{ className: string, file: string }>} */
+  const orphans = [];
+  const filter = (p) =>
+    /\.m?[jt]sx?$/.test(p) &&
+    !/\.(test|spec)\.m?[jt]sx?$/.test(p) &&
+    !/\.server\.m?[jt]s$/.test(p);
+
+  for await (const file of walk(appDir, filter)) {
+    let src;
+    try { src = await readFile(file, 'utf8'); } catch { continue; }
+    // Find every class that extends WebComponent (exact name — we trust
+    // the framework convention).
+    const classRe = /\b(?:export\s+)?(?:default\s+)?class\s+([A-Z][A-Za-z0-9_$]*)\s+extends\s+WebComponent\b/g;
+    const defineRe = /\bcustomElements\.define\s*\(\s*['"][^'"]+['"]\s*,\s*([A-Z][A-Za-z0-9_$]*)\b/g;
+
+    const declared = new Set();
+    let m;
+    while ((m = classRe.exec(src)) !== null) declared.add(m[1]);
+    if (declared.size === 0) continue;
+
+    const defined = new Set();
+    while ((m = defineRe.exec(src)) !== null) defined.add(m[1]);
+
+    for (const cls of declared) {
+      if (!defined.has(cls)) {
+        orphans.push({ className: cls, file });
+      }
+    }
+  }
+  return orphans;
 }
 
 /**

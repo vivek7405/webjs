@@ -51,7 +51,6 @@ export default function RootLayout({ children }: { children: unknown }) {
     <pre>import { WebComponent, html } from 'webjs';
 
 export class Counter extends WebComponent {
-  static tag = 'my-counter';
   // static shadow = false is the default — no need to declare it.
   static properties = { count: { type: Number } };
   count = 0;
@@ -66,14 +65,13 @@ export class Counter extends WebComponent {
     \`;
   }
 }
-Counter.register();</pre>
+customElements.define('my-counter', Counter);</pre>
 
     <h2>Class-prefix rule for light-DOM custom CSS</h2>
     <p>Tailwind utilities are unique by construction, so most light-DOM components need zero custom CSS. But when you <em>do</em> reach for a <code>&lt;style&gt;</code> block or an imported stylesheet, <strong>every class selector MUST be prefixed with the component's tag name</strong>. Otherwise two components that both define <code>.card</code> or <code>.header</code> will style each other.</p>
 
     <pre>// Pattern A — BEM-ish class names prefixed with tag
 class MyCard extends WebComponent {
-  static tag = 'my-card';
   render() {
     return html\`
       &lt;style&gt;
@@ -89,7 +87,6 @@ class MyCard extends WebComponent {
 
 // Pattern B — descendant selector rooted at the tag
 class MyCard extends WebComponent {
-  static tag = 'my-card';
   render() {
     return html\`
       &lt;style&gt;
@@ -109,7 +106,6 @@ class MyCard extends WebComponent {
     <pre>import { WebComponent, html, css } from 'webjs';
 
 export class Card extends WebComponent {
-  static tag = 'my-card';
   static shadow = true;                  // opt in
   static styles = css\`
     :host { display: block; padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
@@ -123,7 +119,7 @@ export class Card extends WebComponent {
     \`;
   }
 }
-Card.register();</pre>
+customElements.define('my-card', Card);
 
     <p>Shadow-DOM components are SSR'd via Declarative Shadow DOM — styles paint before JS loads, no hydration runtime, and the browser enforces the boundary. Light-DOM components are SSR'd as direct HTML with a <code>&lt;!--webjs-hydrate--&gt;</code> marker; client-side rendering replaces the marker without flash.</p>
 

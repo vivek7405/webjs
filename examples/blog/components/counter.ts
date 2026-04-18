@@ -1,13 +1,10 @@
 import { WebComponent, html } from 'webjs';
 
 /**
-   * `<my-counter>` — demo counter with the current design system.
-   * Tabular monospace output; warm-accent focus ring.
-   *
-   * @customElement my-counter
-   */
+ * `<my-counter>` — demo counter with the current design system.
+ * Tabular monospace output; warm-accent focus ring.
+ */
 export class Counter extends WebComponent {
-  static tag = 'my-counter';
   static properties = { count: { type: Number } };
   declare count: number;
   _bump(d: number) { this.count = (Number(this.count) || 0) + d; this.requestUpdate(); }
@@ -28,4 +25,4 @@ export class Counter extends WebComponent {
     `;
   }
 }
-Counter.register();
+customElements.define('my-counter', Counter);

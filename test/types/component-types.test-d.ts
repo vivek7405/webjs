@@ -32,7 +32,6 @@ class Student {
 }
 
 class StudentCard extends WebComponent {
-  static tag = 'student-card';
   static properties = { student: { type: Object } };
   declare student: Student;
   render() {
@@ -41,6 +40,7 @@ class StudentCard extends WebComponent {
     return html`<p>${this.student.name}</p>`;
   }
 }
+customElements.define('student-card', StudentCard);
 
 const card = new StudentCard();
 type _Student = Assert<Equal<typeof card.student, Student>>;
@@ -48,7 +48,6 @@ type _Student = Assert<Equal<typeof card.student, Student>>;
 /* ------------- Framework APIs are typed on `this` ------------- */
 
 class Counter extends WebComponent {
-  static tag = 'my-counter';
   static properties = { count: { type: Number } };
   declare count: number;
 
@@ -60,6 +59,7 @@ class Counter extends WebComponent {
     return html`<p>${this.count}</p>`;
   }
 }
+customElements.define('my-counter', Counter);
 
 /* ------------- PropertyDeclaration shape accepts the expected fields ------------- */
 

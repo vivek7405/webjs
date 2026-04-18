@@ -9,7 +9,6 @@ type State = { comments: CommentFormatted[]; busy: boolean; error: string | null
  * warm accent CTA, empty-state hint.
  */
 export class CommentsThread extends WebComponent {
-  static tag = 'comments-thread';
   static properties = {
     postId:   { type: String },
     initial:  { type: Object },
@@ -101,7 +100,7 @@ export class CommentsThread extends WebComponent {
     `;
   }
 }
-CommentsThread.register();
+customElements.define('comments-thread', CommentsThread);
 
 function signinHref() {
   if (typeof location !== 'undefined') {

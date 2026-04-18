@@ -260,7 +260,6 @@ export function WS(ws: WebSocket) {
 import { WebComponent, html, css, connectWS } from 'webjs';
 
 export class LiveChat extends WebComponent {
-  static tag = 'live-chat';
   static styles = css\`
     :host { display: flex; flex-direction: column; height: 400px; border: 1px solid #ccc; border-radius: 8px; overflow: hidden; }
     .messages { flex: 1; overflow-y: auto; padding: 12px; }
@@ -319,7 +318,7 @@ export class LiveChat extends WebComponent {
     \`;
   }
 }
-LiveChat.register();</pre>
+customElements.define('live-chat', LiveChat);</pre>
 
     <p>Use it in a page:</p>
     <pre>// app/chat/page.ts
@@ -395,7 +394,6 @@ export function WS(ws: WebSocket, req: Request, { params }: { params: { postId: 
 import { WebComponent, html, css, connectWS } from 'webjs';
 
 export class LiveComments extends WebComponent {
-  static tag = 'live-comments';
   static properties = { postId: { type: Number } };
   static styles = css\`
     :host { display: block; }
@@ -449,7 +447,7 @@ export class LiveComments extends WebComponent {
     \`;
   }
 }
-LiveComments.register();</pre>
+customElements.define('live-comments', LiveComments);</pre>
 
     <p>Usage in a page:</p>
     <pre>// app/posts/[slug]/page.ts

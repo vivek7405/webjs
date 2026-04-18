@@ -7,7 +7,6 @@ import './light-inner.ts';
  * Used in nested DSD e2e tests.
  */
 export class LightParent extends WebComponent {
-  static tag = 'light-parent';
 
   static properties = { child: { type: String } };
   child: string = 'shadow';
@@ -17,4 +16,4 @@ export class LightParent extends WebComponent {
       : html`<div data-testid="light-parent"><shadow-inner></shadow-inner></div>`;
   }
 }
-LightParent.register();
+customElements.define('light-parent', LightParent);

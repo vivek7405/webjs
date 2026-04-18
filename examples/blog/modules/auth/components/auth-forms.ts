@@ -8,7 +8,6 @@ type Mode = 'login' | 'signup';
 type State = { mode: Mode; busy: boolean; error: string | null };
 
 export class AuthForms extends WebComponent {
-  static tag = 'auth-forms';
   static properties = { then: { type: String } };
   then: string = '/dashboard';
   declare state: State;
@@ -84,4 +83,4 @@ export class AuthForms extends WebComponent {
     `;
   }
 }
-AuthForms.register();
+customElements.define('auth-forms', AuthForms);

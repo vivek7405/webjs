@@ -10,7 +10,6 @@ type ChatMessage =
  * `<chat-box>` — terminal-leaning live chat panel against /api/chat.
  */
 export class ChatBox extends WebComponent {
-  static tag = 'chat-box';
 
   declare state: State;
   _conn: ReturnType<typeof connectWS> | null = null;
@@ -84,4 +83,4 @@ export class ChatBox extends WebComponent {
     `;
   }
 }
-ChatBox.register();
+customElements.define('chat-box', ChatBox);

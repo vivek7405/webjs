@@ -13,7 +13,7 @@ export default function Conventions() {
     <ul>
       <li><strong>Module architecture</strong> — where actions, queries, and components go.</li>
       <li><strong>Testing rules</strong> — when unit vs E2E tests are required.</li>
-      <li><strong>Component patterns</strong> — light DOM by default with Tailwind; shadow DOM opt-in; <code>register()</code>; the class-prefix rule for light-DOM custom CSS.</li>
+      <li><strong>Component patterns</strong> — light DOM by default with Tailwind; shadow DOM opt-in; <code>customElements.define()</code>; the class-prefix rule for light-DOM custom CSS.</li>
       <li><strong>Styling convention</strong> — Tailwind browser runtime + <code>@theme</code> tokens; JS helpers in <code>app/_utils/ui.ts</code> to dedupe repeated class bundles; no <code>@apply</code>.</li>
       <li><strong>Server action patterns</strong> — one function per file, <code>ActionResult</code> envelope.</li>
       <li><strong>Code style</strong> — TypeScript extensions, const/let preferences, async/await patterns.</li>
@@ -52,7 +52,7 @@ webjs check --rules</pre>
     <ul>
       <li><strong>Actions in modules</strong> — server actions live under <code>modules/&lt;feature&gt;/actions/</code>, not scattered in random directories.</li>
       <li><strong>One function per action</strong> — each <code>.server.ts</code> file exports a single named async function.</li>
-      <li><strong>Components have register()</strong> — every component class calls <code>.register()</code> at module top level.</li>
+      <li><strong>Components have register()</strong> — every component class calls <code>customElements.define()</code> at module top level.</li>
       <li><strong>No server imports in client code</strong> — <code>@prisma/client</code>, <code>node:*</code>, and other server-only modules are not imported from components or pages.</li>
       <li><strong>Tests exist for modules</strong> — every module under <code>modules/</code> has corresponding test files.</li>
       <li><strong>Tag names have hyphens</strong> — custom element tags contain at least one hyphen (HTML spec requirement).</li>
