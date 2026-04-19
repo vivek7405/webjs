@@ -1,21 +1,16 @@
 /**
  * webjs-plugin — a TypeScript language-service plugin that resolves
- * custom-element tag names inside html`` tagged templates to the
- * corresponding webjs component class.
  *
- * Runs alongside ts-lit-plugin. When the cursor sits on a tag name
- * inside an html`` template and the upstream language service returns
- * no definition (ts-lit-plugin doesn't recognise webjs's `static tag`
- * convention), this plugin contributes one by scanning the project for
- * class declarations shaped like:
+ *   1. Custom-element tag names inside `html\`\`` tagged templates → the
+ *      corresponding WebComponent class declaration.
+ *   2. CSS class names inside `class="…"` attributes of `html\`\`` templates
+ *      → the rule that defines them in a `css\`\`` tagged template.
  *
- *     class Counter extends WebComponent {
- *       static tag = 'my-counter';
- *       ...
- *     }
+ * Runs alongside ts-lit-plugin. Whenever upstream returns no definition,
+ * this plugin tries both resolvers in turn.
  *
- * The scan is keyed by source-file version so it's cheap on subsequent
- * requests and is rebuilt lazily when any file changes.
+ * Registration scan is keyed by each SourceFile's version so subsequent
+ * lookups are cheap and invalidate incrementally on edits.
  */
 
 'use strict';
@@ -30,7 +25,7 @@
 function init(modules) {
   const ts = modules.typescript;
 
-  /** @type {Map<string, { version: string, components: Map<string, ComponentRef> }>} */
+  /** @type {Map<string, { version: string, components: Map<string, ComponentRef>, classes: Map<string, CssClassRef[]> }>} */
   const perFileCache = new Map();
 
   return { create };
@@ -52,7 +47,11 @@ function init(modules) {
         return upstream;
       }
       try {
-        return webjsDefinition(info, fileName, position) || upstream;
+        return (
+          webjsTagDefinition(info, fileName, position) ||
+          webjsCssClassDefinition(info, fileName, position) ||
+          upstream
+        );
       } catch (e) {
         info.project.projectService.logger?.info?.(
           `webjs-plugin: getDefinitionAndBoundSpan threw: ${String(e)}`,
@@ -64,16 +63,17 @@ function init(modules) {
     return proxy;
   }
 
+  /* ================================================================
+   * Resolver 1: custom-element tag → component class
+   * ================================================================ */
+
   /**
-   * Main resolver. Returns a DefinitionInfoAndBoundSpan for a webjs tag
-   * under the cursor, or undefined if we have no opinion.
-   *
    * @param {import('typescript/lib/tsserverlibrary').server.PluginCreateInfo} info
    * @param {string} fileName
    * @param {number} position
    * @returns {import('typescript').DefinitionInfoAndBoundSpan | undefined}
    */
-  function webjsDefinition(info, fileName, position) {
+  function webjsTagDefinition(info, fileName, position) {
     const program = info.languageService.getProgram();
     if (!program) return undefined;
     const source = program.getSourceFile(fileName);
@@ -83,7 +83,7 @@ function init(modules) {
     if (!hit) return undefined;
 
     const registry = buildRegistry(program);
-    const ref = registry.get(hit.tag);
+    const ref = registry.components.get(hit.tag);
     if (!ref) return undefined;
 
     return {
@@ -101,6 +101,42 @@ function init(modules) {
     };
   }
 
+  /* ================================================================
+   * Resolver 2: CSS class name in html`class="…"` → css`` rule
+   * ================================================================ */
+
+  /**
+   * @param {import('typescript/lib/tsserverlibrary').server.PluginCreateInfo} info
+   * @param {string} fileName
+   * @param {number} position
+   * @returns {import('typescript').DefinitionInfoAndBoundSpan | undefined}
+   */
+  function webjsCssClassDefinition(info, fileName, position) {
+    const program = info.languageService.getProgram();
+    if (!program) return undefined;
+    const source = program.getSourceFile(fileName);
+    if (!source) return undefined;
+
+    const hit = classUnderCursor(source, position);
+    if (!hit) return undefined;
+
+    const registry = buildRegistry(program);
+    const refs = registry.classes.get(hit.className);
+    if (!refs || refs.length === 0) return undefined;
+
+    return {
+      textSpan: hit.span,
+      definitions: refs.map((r) => ({
+        fileName: r.fileName,
+        textSpan: r.span,
+        kind: /** @type any */ (ts.ScriptElementKind).classElement,
+        name: `.${hit.className}`,
+        containerKind: /** @type any */ (ts.ScriptElementKind).moduleElement,
+        containerName: '',
+      })),
+    };
+  }
+
   /* ---------------- cursor → tag detection ---------------- */
 
   /**
@@ -112,14 +148,9 @@ function init(modules) {
    * @returns {{ tag: string, span: import('typescript').TextSpan } | undefined}
    */
   function tagUnderCursor(source, position) {
-    // Find the innermost node at the cursor. Tagged templates cover their
-    // whole body as a single TemplateExpression / NoSubstitutionTemplateLiteral.
-    const templateExpr = findEnclosingHtmlTemplate(source, position);
+    const templateExpr = findEnclosingTaggedTemplate(source, position, 'html');
     if (!templateExpr) return undefined;
 
-    // Grab the full template literal text (raw, with holes replaced by the
-    // original text between them — we don't need interpolated values for
-    // tag detection, only structure).
     const { rawText, startPos } = getTemplateText(templateExpr);
     const offset = position - startPos;
     if (offset < 0 || offset > rawText.length) return undefined;
@@ -128,20 +159,39 @@ function init(modules) {
   }
 
   /**
-   * Walk up from the token at `position` looking for a tagged template
-   * whose tag identifier is `html`. Returns that template node or
-   * undefined.
+   * If `position` lies on a class name inside a `class="…"` attribute of
+   * an `html\`\`` template, return the class and its span.
    *
    * @param {import('typescript').SourceFile} source
    * @param {number} position
+   * @returns {{ className: string, span: import('typescript').TextSpan } | undefined}
+   */
+  function classUnderCursor(source, position) {
+    const templateExpr = findEnclosingTaggedTemplate(source, position, 'html');
+    if (!templateExpr) return undefined;
+
+    const { rawText, startPos } = getTemplateText(templateExpr);
+    const offset = position - startPos;
+    if (offset < 0 || offset > rawText.length) return undefined;
+
+    return findClassAtOffset(rawText, offset, startPos);
+  }
+
+  /**
+   * Walk up from the token at `position` looking for a tagged template
+   * whose tag identifier matches `name` (e.g. `html`, `css`). Returns
+   * that template node or undefined.
+   *
+   * @param {import('typescript').SourceFile} source
+   * @param {number} position
+   * @param {string} name
    * @returns {import('typescript').TaggedTemplateExpression | undefined}
    */
-  function findEnclosingHtmlTemplate(source, position) {
+  function findEnclosingTaggedTemplate(source, position, name) {
     function walk(node) {
       if (position < node.getStart(source) || position > node.getEnd()) {
         return undefined;
       }
-      // Depth-first: check children first so we return the innermost match.
       let found;
       ts.forEachChild(node, (c) => {
         const hit = walk(c);
@@ -153,7 +203,7 @@ function init(modules) {
       });
       if (found) return found;
 
-      if (ts.isTaggedTemplateExpression(node) && tagIsHtml(node.tag)) {
+      if (ts.isTaggedTemplateExpression(node) && tagMatches(node.tag, name)) {
         return /** @type import('typescript').TaggedTemplateExpression */ (node);
       }
       return undefined;
@@ -161,11 +211,13 @@ function init(modules) {
     return walk(source);
   }
 
-  /** @param {import('typescript').Expression} tag */
-  function tagIsHtml(tag) {
-    if (ts.isIdentifier(tag)) return tag.text === 'html';
-    // Support `webjs.html\`...\`` or aliased imports.
-    if (ts.isPropertyAccessExpression(tag)) return tag.name.text === 'html';
+  /**
+   * @param {import('typescript').Expression} tag
+   * @param {string} name
+   */
+  function tagMatches(tag, name) {
+    if (ts.isIdentifier(tag)) return tag.text === name;
+    if (ts.isPropertyAccessExpression(tag)) return tag.name.text === name;
     return false;
   }
 
@@ -188,21 +240,13 @@ function init(modules) {
    * `offset`. Returns the tag (lowercased) and its absolute span in the
    * source file.
    *
-   * Rules:
-   *   • Only recognise custom elements (tag names containing a hyphen).
-   *   • Match on both opening and closing tags.
-   *   • Ignore tags inside `${...}` interpolations (they're real JS).
-   *
-   * @param {string} raw   Raw template source including backticks + interpolation holes.
-   * @param {number} offset Position relative to the start of the template.
-   * @param {number} startPos Absolute start position of the template in the source file.
+   * @param {string} raw
+   * @param {number} offset
+   * @param {number} startPos
    * @returns {{ tag: string, span: import('typescript').TextSpan } | undefined}
    */
   function findTagAtOffset(raw, offset, startPos) {
-    // Strip `${...}` blocks (balanced-brace). Replace with spaces of equal
-    // length to preserve offsets.
     const sanitised = stripHoles(raw);
-    // Match opening `<tag-name` or closing `</tag-name`.
     const re = /<\/?([a-zA-Z][a-zA-Z0-9_-]*)/g;
     let m;
     while ((m = re.exec(sanitised)) !== null) {
@@ -210,17 +254,70 @@ function init(modules) {
       const tagEnd = tagStart + m[1].length;
       if (offset >= tagStart && offset <= tagEnd) {
         const tag = m[1].toLowerCase();
-        if (!tag.includes('-')) return undefined; // not a custom element
+        if (!tag.includes('-')) return undefined;
         return {
           tag,
-          span: {
-            start: startPos + tagStart,
-            length: m[1].length,
-          },
+          span: { start: startPos + tagStart, length: m[1].length },
         };
       }
     }
     return undefined;
+  }
+
+  /**
+   * Scan the raw template text for `class="…"` / `class='…'` attributes
+   * and return the class name whose span contains `offset`.
+   *
+   * Only string-literal attribute values are considered; `class=${…}`
+   * dynamic expressions are skipped (we can't statically know the
+   * concatenated class set).
+   *
+   * @param {string} raw
+   * @param {number} offset
+   * @param {number} startPos
+   * @returns {{ className: string, span: import('typescript').TextSpan } | undefined}
+   */
+  function findClassAtOffset(raw, offset, startPos) {
+    const sanitised = stripHoles(raw);
+    // Match `class="..."` or `class='...'`. The value is captured so we can
+    // walk its individual class names.
+    const re = /\bclass\s*=\s*(["'])([^"']*)\1/g;
+    let m;
+    while ((m = re.exec(sanitised)) !== null) {
+      const valueStart = m.index + m[0].indexOf(m[2]); // skip `class="`
+      const value = m[2];
+      if (offset < valueStart || offset > valueStart + value.length) continue;
+      // Split the value into whitespace-separated class tokens and find
+      // which one the cursor is on.
+      let i = 0;
+      while (i < value.length) {
+        while (i < value.length && /\s/.test(value[i])) i++;
+        const tokenStart = i;
+        while (i < value.length && !/\s/.test(value[i])) i++;
+        const tokenEnd = i;
+        if (tokenEnd > tokenStart) {
+          const absStart = valueStart + tokenStart;
+          const absEnd = valueStart + tokenEnd;
+          if (offset >= absStart && offset <= absEnd) {
+            const className = value.slice(tokenStart, tokenEnd);
+            if (!isValidClassIdent(className)) return undefined;
+            return {
+              className,
+              span: {
+                start: startPos + absStart,
+                length: className.length,
+              },
+            };
+          }
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /** @param {string} s */
+  function isValidClassIdent(s) {
+    return /^[A-Za-z_][\w-]*$/.test(s);
   }
 
   /**
@@ -229,7 +326,6 @@ function init(modules) {
    * just tracks brace depth after a `${`.
    *
    * @param {string} raw
-   * @returns {string}
    */
   function stripHoles(raw) {
     let out = '';
@@ -244,7 +340,6 @@ function init(modules) {
           if (depth === 0) break;
           i++;
         }
-        // Fill [start..i] with spaces so length is preserved.
         const len = i - start + 1;
         out += ' '.repeat(len);
         continue;
@@ -254,7 +349,7 @@ function init(modules) {
     return out;
   }
 
-  /* ---------------- program-wide component registry ---------------- */
+  /* ---------------- program-wide registry ---------------- */
 
   /**
    * @typedef {{
@@ -262,19 +357,26 @@ function init(modules) {
    *   className: string,
    *   classNameSpan: import('typescript').TextSpan,
    * }} ComponentRef
+   *
+   * @typedef {{
+   *   fileName: string,
+   *   span: import('typescript').TextSpan,
+   * }} CssClassRef
    */
 
   /**
-   * Build or return a cached tag → ComponentRef registry for the whole
-   * program. The registry is invalidated file-by-file whenever the
-   * SourceFile's version changes (tsserver bumps this on every edit).
+   * Build or return cached tag → ComponentRef and class-name → CssClassRef
+   * registries for the whole program. Invalidated file-by-file on version
+   * change (tsserver bumps this on every edit).
    *
    * @param {import('typescript').Program} program
-   * @returns {Map<string, ComponentRef>}
+   * @returns {{ components: Map<string, ComponentRef>, classes: Map<string, CssClassRef[]> }}
    */
   function buildRegistry(program) {
     /** @type {Map<string, ComponentRef>} */
-    const all = new Map();
+    const components = new Map();
+    /** @type {Map<string, CssClassRef[]>} */
+    const classes = new Map();
 
     for (const sf of program.getSourceFiles()) {
       if (sf.fileName.includes('/node_modules/')) continue;
@@ -283,25 +385,35 @@ function init(modules) {
           ? String(/** @type any */ (sf).version)
           : `${sf.getFullStart()}:${sf.getEnd()}`;
       const cached = perFileCache.get(sf.fileName);
-      let components;
+      let fileComponents;
+      let fileClasses;
       if (cached && cached.version === version) {
-        components = cached.components;
+        fileComponents = cached.components;
+        fileClasses = cached.classes;
       } else {
-        components = extractComponents(sf);
-        perFileCache.set(sf.fileName, { version, components });
+        fileComponents = extractComponents(sf);
+        fileClasses = extractCssClasses(sf);
+        perFileCache.set(sf.fileName, {
+          version,
+          components: fileComponents,
+          classes: fileClasses,
+        });
       }
-      for (const [tag, ref] of components) {
-        // First match wins — a later file doesn't override an earlier one.
-        if (!all.has(tag)) all.set(tag, ref);
+      for (const [tag, ref] of fileComponents) {
+        if (!components.has(tag)) components.set(tag, ref);
+      }
+      for (const [name, refs] of fileClasses) {
+        const all = classes.get(name) || [];
+        for (const r of refs) all.push(r);
+        classes.set(name, all);
       }
     }
-    return all;
+    return { components, classes };
   }
 
   /**
    * Extract webjs components from a single source file by scanning for
-   * `customElements.define('<tag>', <ClassName>)` calls and matching
-   * the class identifier back to a class declaration in the same file.
+   * `Class.register('tag')` or `customElements.define('tag', Class)`.
    *
    * @param {import('typescript').SourceFile} sf
    * @returns {Map<string, ComponentRef>}
@@ -310,9 +422,6 @@ function init(modules) {
     /** @type {Map<string, ComponentRef>} */
     const out = new Map();
 
-    // First pass: index every local class declaration by its identifier
-    // text so the define-call pass can resolve class references without
-    // a type-checker lookup.
     /** @type {Map<string, { span: import('typescript').TextSpan }>} */
     const localClasses = new Map();
     function indexClasses(node) {
@@ -328,9 +437,6 @@ function init(modules) {
     }
     indexClasses(sf);
 
-    // Second pass: find registration calls. Both patterns are accepted:
-    //   Counter.register('my-counter')                       // idiomatic
-    //   customElements.define('my-counter', Counter)         // native
     function visit(node) {
       if (ts.isCallExpression(node)) {
         const match = readDefineCall(node) || readRegisterCall(node);
@@ -343,6 +449,56 @@ function init(modules) {
               classNameSpan: local.span,
             });
           }
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(sf);
+    return out;
+  }
+
+  /**
+   * Extract CSS class definitions from every `css\`…\`` tagged template in
+   * the file. Each occurrence of `.class-name` in the template text is
+   * recorded as a potential definition — if the user go-to-definitions on
+   * a class name and the plugin finds one or more matches across the
+   * program, they are offered as the destination(s).
+   *
+   * This is a lexical scan; it doesn't parse CSS. Good enough for the
+   * common case (scope wrappers, nested rules, hover/focus pseudo-classes).
+   *
+   * @param {import('typescript').SourceFile} sf
+   * @returns {Map<string, CssClassRef[]>}
+   */
+  function extractCssClasses(sf) {
+    /** @type {Map<string, CssClassRef[]>} */
+    const out = new Map();
+
+    function visit(node) {
+      if (ts.isTaggedTemplateExpression(node) && tagMatches(node.tag, 'css')) {
+        const src = sf.text;
+        const t = node.template;
+        const start = t.getStart(sf);
+        const end = t.getEnd();
+        // Scan the raw literal text (including interpolation markers —
+        // they're unlikely to collide with a class-name pattern).
+        const body = src.slice(start, end);
+        const re = /\.([A-Za-z_][\w-]*)/g;
+        let m;
+        while ((m = re.exec(body)) !== null) {
+          // Skip matches that are part of a decimal number (e.g. `1.5rem`):
+          // the character preceding the `.` is a digit.
+          const prevIdx = m.index - 1;
+          if (prevIdx >= 0 && /[0-9]/.test(body[prevIdx])) continue;
+          const name = m[1];
+          const absStart = start + m.index + 1; // skip the leading `.`
+          const ref = {
+            fileName: sf.fileName,
+            span: { start: absStart, length: name.length },
+          };
+          const existing = out.get(name);
+          if (existing) existing.push(ref);
+          else out.set(name, [ref]);
         }
       }
       ts.forEachChild(node, visit);
@@ -381,7 +537,6 @@ function init(modules) {
     if (!ts.isPropertyAccessExpression(callee)) return undefined;
     if (callee.name.text !== 'define') return undefined;
 
-    // Object side must be `customElements` (or `window.customElements`).
     const obj = callee.expression;
     if (ts.isIdentifier(obj)) {
       if (obj.text !== 'customElements') return undefined;

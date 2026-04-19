@@ -601,6 +601,100 @@ construction (`p-4`, `font-semibold`, etc.). Drop down to custom CSS
 only when Tailwind can't express it, and apply the prefix rule every
 time.
 
+##### Using vanilla CSS for the whole app (opt-out of Tailwind)
+
+Tailwind isn't required. If you prefer hand-written CSS everywhere,
+webjs supports it — you just need a scoping convention so generic
+class names (`.btn`, `.input`, `.header`, `.form`) don't collide
+across pages, layouts, and components in the global light-DOM
+namespace.
+
+**Convention — three scopes, one rule each:**
+
+| Scope | Wrapper selector | Where it lives |
+|---|---|---|
+| **Component** | Custom-element tag | Nested CSS under `my-counter { … }` |
+| **Page** | `.page-<route>` | Wrap the page's markup in `<div class="page-<route>">` |
+| **Layout** | `.layout-<name>` | Wrap the layout's markup in `<div class="layout-<name>">` |
+
+Naming convention: derive the scope class from the file path. Slashes
+→ hyphens. Dynamic segments become their param name. Route groups
+`(marketing)` drop.
+
+- `app/page.ts`                   → `.page-home`
+- `app/about/page.ts`             → `.page-about`
+- `app/dashboard/posts/new/page.ts` → `.page-dashboard-posts-new`
+- `app/blog/[slug]/page.ts`       → `.page-blog-slug`
+- `app/(marketing)/about/page.ts` → `.page-about`
+- `app/layout.ts`                 → `.layout-root`
+- `app/admin/layout.ts`           → `.layout-admin`
+
+Styles colocate with the markup as `const STYLES = css\`…\`` and
+interpolate via `<style>${STYLES.text}</style>`. `ts-lit-plugin` /
+`webjs-plugin` highlights the CSS and resolves class go-to-definition.
+
+Example (page):
+
+```ts
+import { html, css } from 'webjs';
+
+const STYLES = css`
+  .page-dashboard {
+    .actions      { display: flex; gap: 12px; }
+    .btn          { padding: 12px 24px; border-radius: 999px; }
+    .btn-primary  { background: var(--accent); color: var(--accent-fg); }
+  }
+`;
+
+export default function Dashboard() {
+  return html`
+    <style>${STYLES.text}</style>
+    <div class="page-dashboard">
+      <div class="actions">
+        <a class="btn btn-primary" href="/new">+ New</a>
+      </div>
+    </div>
+  `;
+}
+```
+
+Example (layout):
+
+```ts
+const STYLES = css`
+  .layout-root {
+    .header { position: sticky; top: 0; }
+    .nav    { display: flex; gap: 16px; }
+  }
+`;
+
+export default function RootLayout({ children }) {
+  return html`
+    <style>${STYLES.text}</style>
+    <div class="layout-root">
+      <header class="header">
+        <nav class="nav">…</nav>
+      </header>
+      <main>${children}</main>
+    </div>
+  `;
+}
+```
+
+Inside each scope, `.btn` / `.input` / `.header` / `.form` / `.item`
+are free names — CSS descendant combinators stop them at the scope
+boundary. A small curated set of **primitives** (`rubric`, `banner`,
+`accent-link`, `display-h1`, …) can live global in the root layout as
+your design system; everything else is scoped.
+
+**Tradeoffs vs Tailwind:** more files you write, more discipline
+required, slight rename cost (2 textual edits when a route folder
+moves). In exchange: no browser-runtime script, no `@theme` block,
+idiomatic CSS, plain cascade you can debug with any tool.
+
+The framework default remains Tailwind — this escape hatch is for
+teams who deliberately want plain CSS.
+
 ##### When to opt in to shadow DOM
 
 Set `static shadow = true` when:

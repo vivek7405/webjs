@@ -4,8 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "node scripts/dev.js",
-    "dev:only": "webjs dev --port 5000",
+    "dev": "webjs dev --port 5000",
     "start": "webjs start --port 5000",
     "build": "webjs build"
   },

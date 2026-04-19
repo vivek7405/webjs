@@ -71,8 +71,10 @@ Run `npx webjs check` on the blog example after changes.
 npm install                          # workspace-linked deps
 npm test                             # run unit tests (153 tests)
 npm run test:browser                     # run E2E tests (9 tests, needs chromium)
-cd examples/blog && npx webjs dev    # dev server with live reload
-cd website && npm run dev            # website + docs + blog together
+npm run dev                          # website + docs + blog together (5000/4000/3456)
+cd website && npm run dev            # just the website  (port 5000)
+cd docs && npm run dev               # just the docs     (port 4000)
+cd examples/blog && npm run dev      # just the blog     (port 3456)
 
 # scaffold
 webjs create <name>                  # full-stack app (default)
