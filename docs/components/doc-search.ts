@@ -1,75 +1,11 @@
-import { WebComponent, html, css } from 'webjs';
+import { WebComponent, html } from 'webjs';
 
 type Result = { path: string; title: string; score: number; snippet: string };
 
+/**
+ * `<doc-search>` — search input + dropdown results. Light DOM + Tailwind.
+ */
 export class DocSearch extends WebComponent {
-  static styles = css`
-    :host { display: block; margin-bottom: var(--sp-4); }
-    .wrap { position: relative; }
-    input {
-      width: 100%;
-      padding: 8px 12px 8px 32px;
-      font: 13px/1.4 var(--font-sans);
-      border: 1px solid var(--border);
-      border-radius: var(--rad);
-      background: var(--bg-elev);
-      color: var(--fg);
-      outline: 0;
-      transition: border-color var(--t-fast), box-shadow var(--t-fast);
-    }
-    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
-    input::placeholder { color: var(--fg-subtle); }
-    .icon {
-      position: absolute;
-      left: 10px; top: 50%;
-      transform: translateY(-50%);
-      width: 14px; height: 14px;
-      color: var(--fg-subtle);
-    }
-    .results {
-      position: absolute;
-      top: calc(100% + 4px);
-      left: 0; right: 0;
-      background: var(--bg-elev);
-      border: 1px solid var(--border);
-      border-radius: var(--rad);
-      box-shadow: var(--shadow);
-      z-index: 50;
-      max-height: 360px;
-      overflow-y: auto;
-    }
-    .results:empty { display: none; }
-    .result {
-      display: block;
-      padding: 10px 12px;
-      text-decoration: none;
-      color: var(--fg);
-      border-bottom: 1px solid var(--border);
-      transition: background var(--t-fast);
-    }
-    .result:last-child { border-bottom: 0; }
-    .result:hover { background: var(--accent-tint); }
-    .result .title {
-      font-weight: 600;
-      font-size: 13px;
-      margin-bottom: 2px;
-    }
-    .result .snippet {
-      font-size: 12px;
-      color: var(--fg-muted);
-      line-height: 1.4;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .empty {
-      padding: 12px;
-      text-align: center;
-      font-size: 13px;
-      color: var(--fg-subtle);
-    }
-  `;
-
   declare state: { query: string; results: Result[]; loading: boolean; open: boolean };
   _timer: any = null;
 
@@ -112,7 +48,6 @@ export class DocSearch extends WebComponent {
 
   navigate(path: string) {
     this.setState({ open: false, query: '' });
-    // Use the client router if available
     if (typeof (window as any).navigate === 'function') {
       (window as any).navigate(path);
     } else {
@@ -123,11 +58,13 @@ export class DocSearch extends WebComponent {
   render() {
     const { query, results, loading, open } = this.state;
     return html`
-      <div class="wrap">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <div class="block relative mb-4">
+        <svg class="absolute left-[10px] top-1/2 -translate-y-1/2 w-[14px] h-[14px] text-fg-subtle pointer-events-none"
+             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
         </svg>
         <input
+          class="w-full font-sans text-[13px] leading-[1.4] py-2 pr-3 pl-8 border border-border rounded-lg bg-bg-elev text-fg outline-none transition-colors duration-fast focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-tint)] placeholder:text-fg-subtle"
           type="search"
           placeholder="Search docs…"
           .value=${query}
@@ -136,13 +73,15 @@ export class DocSearch extends WebComponent {
           @blur=${() => this.onBlur()}
         />
         ${open && query.length >= 2 ? html`
-          <div class="results">
-            ${loading ? html`<div class="empty">Searching…</div>` :
-              results.length === 0 ? html`<div class="empty">No results for "${query}"</div>` :
+          <div class="absolute top-[calc(100%+4px)] left-0 right-0 bg-bg-elev border border-border rounded-lg shadow-lg z-50 max-h-[360px] overflow-y-auto">
+            ${loading ? html`<div class="p-3 text-center text-[13px] text-fg-subtle">Searching…</div>` :
+              results.length === 0 ? html`<div class="p-3 text-center text-[13px] text-fg-subtle">No results for "${query}"</div>` :
               results.map(r => html`
-                <a class="result" href=${r.path} @click=${(e: Event) => { e.preventDefault(); this.navigate(r.path); }}>
-                  <div class="title">${r.title}</div>
-                  <div class="snippet">${r.snippet}</div>
+                <a class="block p-2.5 px-3 no-underline text-fg border-b border-border last:border-b-0 transition-colors duration-fast hover:bg-accent-tint"
+                   href=${r.path}
+                   @click=${(e: Event) => { e.preventDefault(); this.navigate(r.path); }}>
+                  <div class="font-semibold text-[13px] mb-0.5">${r.title}</div>
+                  <div class="text-[12px] text-fg-muted leading-[1.4] overflow-hidden whitespace-nowrap text-ellipsis">${r.snippet}</div>
                 </a>
               `)}
           </div>
