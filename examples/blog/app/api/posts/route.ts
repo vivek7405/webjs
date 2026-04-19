@@ -8,7 +8,7 @@
  *     `Accept: application/vnd.webjs+json` and gets back superjson with
  *     real `Date` objects.
  */
-import { json } from '@webjs/server';
+import { json } from '@webjskit/server';
 import { listPosts } from '../../../modules/posts/queries/list-posts.server.ts';
 import { createPost } from '../../../modules/posts/actions/create-post.server.ts';
 

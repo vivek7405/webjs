@@ -6,7 +6,7 @@
  * For production horizontal scaling, the user explicitly switches to Redis:
  *
  * ```js
- * import { setStore, redisStore } from '@webjs/server';
+ * import { setStore, redisStore } from '@webjskit/server';
  * setStore(redisStore({ url: process.env.REDIS_URL }));
  * ```
  *
@@ -176,7 +176,7 @@ export function getStore() {
  * Set the default cache store. Call this at app startup to use Redis:
  *
  * ```js
- * import { setStore, redisStore } from '@webjs/server';
+ * import { setStore, redisStore } from '@webjskit/server';
  * setStore(redisStore({ url: process.env.REDIS_URL }));
  * ```
  *

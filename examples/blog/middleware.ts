@@ -3,7 +3,7 @@
  * Return a Response to short-circuit; call next() to continue.
  *
  * To add framework sessions:
- * import { session, cookieSessionStorage } from '@webjs/server';
+ * import { session, cookieSessionStorage } from '@webjskit/server';
  * export default session({
  *   secret: process.env.SESSION_SECRET,
  *   storage: cookieSessionStorage(),  // or storeSessionStorage() for Redis

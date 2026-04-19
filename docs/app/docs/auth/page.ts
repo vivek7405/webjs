@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'Authentication — webjs' };
 
@@ -9,7 +9,7 @@ export default function Auth() {
 
     <h2>Setup</h2>
     <pre>// lib/auth.ts — create once
-import { createAuth, Credentials, Google, GitHub } from '@webjs/server';
+import { createAuth, Credentials, Google, GitHub } from '@webjskit/server';
 import { prisma } from './prisma.ts';
 
 export const { auth, signIn, signOut, handlers } = createAuth({

@@ -1,5 +1,5 @@
 {
-  "name": "@webjs/server",
+  "name": "@webjskit/server",
   "version": "0.1.0",
   "type": "module",
   "description": "webjs dev/prod server: SSR, router, API, server actions, live reload",
@@ -14,7 +14,7 @@
     "README.md"
   ],
   "dependencies": {
-    "@webjs/core": "0.1.0",
+    "@webjskit/core": "0.1.0",
     "chokidar": "^3.6.0",
     "superjson": "^2.2.6",
     "ws": "^8.20.0"

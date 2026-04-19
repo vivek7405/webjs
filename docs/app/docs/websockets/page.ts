@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'WebSockets — webjs' };
 
@@ -98,7 +98,7 @@ function parseCookies(header: string): Record&lt;string, string&gt; {
     <h2>Client Side: connectWS()</h2>
     <p>The <code>connectWS()</code> function from <code>webjs</code> creates a managed WebSocket connection with automatic reconnection, JSON handling, and send queuing:</p>
 
-    <pre>import { connectWS } from '@webjs/core';
+    <pre>import { connectWS } from '@webjskit/core';
 
 const conn = connectWS('/api/chat', {
   onOpen: () =&gt; {
@@ -257,7 +257,7 @@ export function WS(ws: WebSocket) {
 
     <h3>Client Component</h3>
     <pre>// components/live-chat.ts
-import { WebComponent, html, css, connectWS } from '@webjs/core';
+import { WebComponent, html, css, connectWS } from '@webjskit/core';
 
 export class LiveChat extends WebComponent {
   static styles = css\`
@@ -322,7 +322,7 @@ LiveChat.register('live-chat');</pre>
 
     <p>Use it in a page:</p>
     <pre>// app/chat/page.ts
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 import '../../components/live-chat.ts';
 
 export const metadata = { title: 'Live Chat' };
@@ -391,7 +391,7 @@ export function WS(ws: WebSocket, req: Request, { params }: { params: { postId: 
 
     <h3>Client Component</h3>
     <pre>// components/live-comments.ts
-import { WebComponent, html, css, connectWS } from '@webjs/core';
+import { WebComponent, html, css, connectWS } from '@webjskit/core';
 
 export class LiveComments extends WebComponent {
   static properties = { postId: { type: Number } };
@@ -451,7 +451,7 @@ LiveComments.register('live-comments');</pre>
 
     <p>Usage in a page:</p>
     <pre>// app/posts/[slug]/page.ts
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 import '../../../components/live-comments.ts';
 
 export default async function PostPage({ params }: { params: { slug: string } }) {

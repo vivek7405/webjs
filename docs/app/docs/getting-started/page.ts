@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'Getting Started — webjs' };
 
@@ -63,14 +63,14 @@ webjs create my-app --template saas</pre>
     "start": "webjs start"
   },
   "dependencies": {
-    "@webjs/cli": "0.1.0",
-    "@webjs/core": "0.1.0",
-    "@webjs/server": "0.1.0"
+    "@webjskit/cli": "0.1.0",
+    "@webjskit/core": "0.1.0",
+    "@webjskit/server": "0.1.0"
   }
 }</pre>
 
     <h3>app/layout.ts</h3>
-    <pre>import { html } from '@webjs/core';
+    <pre>import { html } from '@webjskit/core';
 
 export default function Layout({ children }: { children: unknown }) {
   return html\`
@@ -80,7 +80,7 @@ export default function Layout({ children }: { children: unknown }) {
 }</pre>
 
     <h3>app/page.ts</h3>
-    <pre>import { html } from '@webjs/core';
+    <pre>import { html } from '@webjskit/core';
 import '../components/counter.ts';
 
 export default function Home() {
@@ -92,7 +92,7 @@ export default function Home() {
 
     <h3>components/counter.ts</h3>
     <p>Components render into light DOM by default — Tailwind utility classes apply directly. Set <code>static shadow = true</code> when you want scoped styles or <code>&lt;slot&gt;</code> projection.</p>
-    <pre>import { WebComponent, html } from '@webjs/core';
+    <pre>import { WebComponent, html } from '@webjskit/core';
 
 export class Counter extends WebComponent {
   static properties = { count: { type: Number } };

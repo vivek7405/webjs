@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'API Routes — webjs' };
 
@@ -95,13 +95,13 @@ export async function POST(req: Request) {
     <p>When you need control over status code, headers, or streaming, return a <code>Response</code> directly.</p>
 
     <h2>json() Helper -- Content Negotiation</h2>
-    <p>The <code>json()</code> helper from <code>@webjs/server</code> adds smart content negotiation. It inspects the incoming request's <code>Accept</code> header and responds accordingly:</p>
+    <p>The <code>json()</code> helper from <code>@webjskit/server</code> adds smart content negotiation. It inspects the incoming request's <code>Accept</code> header and responds accordingly:</p>
     <ul>
       <li>If the client sent <code>Accept: application/vnd.webjs+json</code> (e.g. via <code>richFetch()</code>), the response is encoded with <strong>superjson</strong> so that <code>Date</code>, <code>Map</code>, <code>Set</code>, and <code>BigInt</code> survive the round trip.</li>
       <li>Otherwise, the response is plain <code>application/json</code> -- standard for curl, mobile apps, and third-party consumers.</li>
     </ul>
     <pre>// app/api/posts/route.ts
-import { json } from '@webjs/server';
+import { json } from '@webjskit/server';
 
 export async function GET() {
   const posts = await db.post.findMany({
@@ -120,8 +120,8 @@ export async function POST(req: Request) {
     <p>The helper reads the in-flight Request from an <code>AsyncLocalStorage</code> context set up by the request pipeline, so you do not need to pass the request explicitly.</p>
 
     <h2>readBody() -- Parsing Rich Request Bodies</h2>
-    <p>The <code>readBody()</code> helper from <code>@webjs/server</code> is the inverse of <code>json()</code>. It parses the request body as superjson when the client sent the <code>application/vnd.webjs+json</code> content type, and as plain JSON otherwise:</p>
-    <pre>import { json, readBody } from '@webjs/server';
+    <p>The <code>readBody()</code> helper from <code>@webjskit/server</code> is the inverse of <code>json()</code>. It parses the request body as superjson when the client sent the <code>application/vnd.webjs+json</code> content type, and as plain JSON otherwise:</p>
+    <pre>import { json, readBody } from '@webjskit/server';
 
 export async function POST(req: Request) {
   const data = await readBody(req);
@@ -133,7 +133,7 @@ export async function POST(req: Request) {
 
     <h2>richFetch() -- Typed Client Calls</h2>
     <p>On the client side, <code>richFetch()</code> from <code>webjs</code> is a drop-in replacement for <code>fetch()</code> that enables the superjson round trip:</p>
-    <pre>import { richFetch } from '@webjs/core';
+    <pre>import { richFetch } from '@webjskit/core';
 
 // GET with rich types
 const posts = await richFetch('/api/posts');
@@ -179,7 +179,7 @@ export function WS(ws: WebSocket, req: Request) {
     <h2>Per-Segment Middleware on API Routes</h2>
     <p>API routes participate in the same per-segment middleware chain as pages. A <code>middleware.ts</code> file in a directory applies to all routes (page and API) under that directory:</p>
     <pre>// app/api/auth/middleware.ts
-import { rateLimit } from '@webjs/server';
+import { rateLimit } from '@webjskit/server';
 
 // 5 requests per 10 seconds per IP on all /api/auth/* routes
 export default rateLimit({ window: '10s', max: 5 });</pre>
@@ -199,7 +199,7 @@ export default async function authGuard(
 
     <h2>Rate Limiting</h2>
     <p>webjs ships a built-in in-memory fixed-window rate limiter, shaped as a middleware:</p>
-    <pre>import { rateLimit } from '@webjs/server';
+    <pre>import { rateLimit } from '@webjskit/server';
 
 // In a middleware.ts file:
 export default rateLimit({
@@ -253,7 +253,7 @@ export default async function cors(
     <h2>Complete CRUD Example</h2>
     <p>Here is a full route.ts implementing GET, POST, and DELETE for a resource:</p>
     <pre>// app/api/posts/route.ts
-import { json, readBody } from '@webjs/server';
+import { json, readBody } from '@webjskit/server';
 
 // GET /api/posts -- list all posts, with pagination
 export async function GET(req: Request) {
@@ -320,7 +320,7 @@ export async function DELETE(req: Request) {
 
     <h3>Single-Resource Route (Dynamic Params)</h3>
     <pre>// app/api/posts/[slug]/route.ts
-import { json, readBody } from '@webjs/server';
+import { json, readBody } from '@webjskit/server';
 
 type Ctx = { params: { slug: string } };
 
@@ -354,12 +354,12 @@ export async function DELETE(_req: Request, { params }: Ctx) {
       <li>Handler signature: <code>(req: Request, { params }) =&gt; Response | object</code></li>
       <li>Dynamic params via <code>[slug]</code> folder names, catch-all via <code>[...rest]</code></li>
       <li>Return a <code>Response</code> for full control, or return a plain object for auto-JSON</li>
-      <li><code>json()</code> from <code>@webjs/server</code> provides content negotiation (plain JSON vs superjson)</li>
+      <li><code>json()</code> from <code>@webjskit/server</code> provides content negotiation (plain JSON vs superjson)</li>
       <li><code>readBody()</code> parses incoming superjson or JSON based on content type</li>
       <li><code>richFetch()</code> on the client for typed API calls with rich types</li>
       <li>Export <code>WS</code> from the same <code>route.ts</code> for WebSocket support</li>
       <li>Per-segment <code>middleware.ts</code> applies to all routes underneath</li>
-      <li><code>rateLimit()</code> from <code>@webjs/server</code> for built-in rate limiting</li>
+      <li><code>rateLimit()</code> from <code>@webjskit/server</code> for built-in rate limiting</li>
       <li>CORS via <code>expose()</code> options or custom middleware on <code>route.ts</code> files</li>
       <li>webjs works as a backend-only API framework when no page files are present</li>
     </ul>

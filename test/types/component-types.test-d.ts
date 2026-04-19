@@ -16,7 +16,7 @@ import {
   html,
   type PropertyDeclaration,
   type ReactiveController,
-} from '@webjs/core';
+} from '@webjskit/core';
 
 /* ------------- Helper: compile-time assertion ------------- */
 

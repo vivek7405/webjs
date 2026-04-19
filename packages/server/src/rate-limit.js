@@ -6,7 +6,7 @@
  *   - Otherwise → in-memory (single-process, great for dev)
  *
  * ```js
- * import { rateLimit } from '@webjs/server';
+ * import { rateLimit } from '@webjskit/server';
  * export default rateLimit({ window: '1m', max: 60 });
  * ```
  *

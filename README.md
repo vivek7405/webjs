@@ -55,8 +55,8 @@ cd website        && npm run dev     # just the website
 ```
 packages/
   core/       # webjs — html, css, WebComponent, renderers, client router
-  server/     # @webjs/server — dev/prod server, router, SSR, actions, WS
-  cli/        # @webjs/cli — webjs dev/start/build/db
+  server/     # @webjskit/server — dev/prod server, router, SSR, actions, WS
+  cli/        # @webjskit/cli — webjs dev/start/build/db
 examples/
   blog/       # full-featured reference app (auth, posts, comments, chat)
 docs/         # documentation site (built on webjs itself)
@@ -68,7 +68,7 @@ CLAUDE.md     # Claude Code quick-reference
 
 ```ts
 // app/page.ts — server-rendered, async data fetching
-import { html, repeat } from '@webjs/core';
+import { html, repeat } from '@webjskit/core';
 import '../components/counter.ts';
 import { listPosts } from '../modules/posts/queries/list-posts.server.ts';
 
@@ -88,7 +88,7 @@ export default async function Home() {
 
 ```ts
 // components/counter.ts — interactive web component, light DOM + Tailwind
-import { WebComponent, html } from '@webjs/core';
+import { WebComponent, html } from '@webjskit/core';
 
 export class Counter extends WebComponent {
   // Light DOM is the default; Tailwind utility classes apply directly.
@@ -134,7 +134,7 @@ Health: `GET /__webjs/health`. Graceful shutdown on `SIGTERM`.
 Embed in Express/Fastify/Bun/Deno:
 
 ```ts
-import { createRequestHandler } from '@webjs/server';
+import { createRequestHandler } from '@webjskit/server';
 const app = await createRequestHandler({ appDir: process.cwd() });
 const resp = await app.handle(new Request('http://x/api/hello'));
 ```

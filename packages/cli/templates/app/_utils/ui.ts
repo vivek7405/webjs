@@ -14,7 +14,7 @@
  * This file lives under `_utils/` — any folder whose name starts with `_`
  * is ignored by the router, so it can never accidentally become a route.
  */
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 /** `● label` kicker — small caps, accent colour, above headings. */
 export function rubric(label: string, mb: 'sm' | 'md' = 'md') {

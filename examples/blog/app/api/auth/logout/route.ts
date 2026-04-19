@@ -1,4 +1,4 @@
-import { cookies } from '@webjs/server';
+import { cookies } from '@webjskit/server';
 import { logout } from '../../../../modules/auth/actions/logout.server.ts';
 import { SESSION_COOKIE, clearSessionCookieHeader } from '../../../../lib/session.ts';
 

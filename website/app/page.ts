@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = {
   title: 'webjs — AI-first, web-components-first, no-build web framework',

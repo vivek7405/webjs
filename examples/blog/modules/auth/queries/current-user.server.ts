@@ -1,12 +1,12 @@
 'use server';
 
-import { cookies } from '@webjs/server';
+import { cookies } from '@webjskit/server';
 import { getUserByToken, SESSION_COOKIE } from '../../../lib/session.ts';
 import type { PublicUser } from '../types.ts';
 
 /**
  * Resolve the currently-logged-in user from the in-flight Request's
- * session cookie. Relies on `cookies()` from @webjs/server which reads
+ * session cookie. Relies on `cookies()` from @webjskit/server which reads
  * the AsyncLocalStorage-backed request context.
  */
 export async function currentUser(): Promise<PublicUser | null> {

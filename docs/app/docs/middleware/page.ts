@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'Middleware — webjs' };
 
@@ -100,7 +100,7 @@ export default async function apiAuth(
     <h2>Use Case: Auth Gate on /dashboard</h2>
     <p>A common pattern: require authentication for an entire subtree by placing a middleware in the segment directory.</p>
     <pre>// app/dashboard/middleware.ts
-import { cookies } from '@webjs/server';
+import { cookies } from '@webjskit/server';
 import { getUserByToken, SESSION_COOKIE } from '../../lib/session.ts';
 
 export default async function requireAuth(
@@ -159,9 +159,9 @@ export default async function cors(
     <p>For expose()d server actions, webjs has built-in CORS support via the <code>cors</code> option on <code>expose()</code>. Use middleware CORS when you need blanket coverage across all routes in a segment.</p>
 
     <h2>Rate Limiting</h2>
-    <p>webjs ships a built-in rate limiter as a middleware factory. Import <code>rateLimit</code> from <code>@webjs/server</code>:</p>
+    <p>webjs ships a built-in rate limiter as a middleware factory. Import <code>rateLimit</code> from <code>@webjskit/server</code>:</p>
     <pre>// app/api/auth/middleware.ts
-import { rateLimit } from '@webjs/server';
+import { rateLimit } from '@webjskit/server';
 
 export default rateLimit({ window: '10s', max: 5 });</pre>
     <p>That single line protects every route under <code>/api/auth/</code> (login, signup, password reset) with a limit of 5 requests per 10 seconds per IP address.</p>
@@ -184,8 +184,8 @@ export default rateLimit({ window: '10s', max: 5 });</pre>
     <p>For multi-instance deployments, rate-limit at the edge (nginx, Cloudflare, AWS WAF) or use the <code>key</code> function to integrate with a shared store like Redis.</p>
 
     <h2>cookies() and headers() Helpers</h2>
-    <p>webjs provides request-scoped helpers via <code>@webjs/server</code> that let you read cookies and headers from anywhere in your server-side code (middleware, pages, server actions, API routes) without explicitly threading the request object:</p>
-    <pre>import { cookies, headers } from '@webjs/server';
+    <p>webjs provides request-scoped helpers via <code>@webjskit/server</code> that let you read cookies and headers from anywhere in your server-side code (middleware, pages, server actions, API routes) without explicitly threading the request object:</p>
+    <pre>import { cookies, headers } from '@webjskit/server';
 
 // In any server-side function:
 const token = cookies().get('session_token');
@@ -209,7 +209,7 @@ const userAgent = headers().get('user-agent');</pre>
       <li><strong>Keep middleware fast.</strong> It runs on every request in its scope. Defer heavy work to the route handler when possible.</li>
       <li><strong>Avoid mutating the request.</strong> The Web <code>Request</code> API is largely immutable. If you need to pass data downstream (e.g., a resolved user object), store it in a module-scoped <code>AsyncLocalStorage</code> or use a header.</li>
       <li><strong>One default export.</strong> Each <code>middleware.ts</code> must export a single default function. Multiple middleware in one file are not supported; if you need composition, chain them manually inside your export.</li>
-      <li><strong>Use <code>rateLimit()</code> from <code>@webjs/server</code></strong> rather than writing your own. It handles cleanup, header injection, and IP extraction from proxy headers.</li>
+      <li><strong>Use <code>rateLimit()</code> from <code>@webjskit/server</code></strong> rather than writing your own. It handles cleanup, header injection, and IP extraction from proxy headers.</li>
     </ul>
   `;
 }

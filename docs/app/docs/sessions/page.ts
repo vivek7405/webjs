@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'Sessions — webjs' };
 
@@ -11,7 +11,7 @@ export default function Sessions() {
     <p>Add session middleware in <code>middleware.ts</code>:</p>
 
     <pre>// middleware.ts
-import { session, cookieSessionStorage } from '@webjs/server';
+import { session, cookieSessionStorage } from '@webjskit/server';
 
 export default session({
   secret: process.env.SESSION_SECRET,
@@ -30,7 +30,7 @@ export default session({
       <li>Every response includes the full session cookie.</li>
     </ul>
 
-    <pre>import { session, cookieSessionStorage } from '@webjs/server';
+    <pre>import { session, cookieSessionStorage } from '@webjskit/server';
 
 export default session({
   secret: process.env.SESSION_SECRET,
@@ -45,7 +45,7 @@ export default session({
       <li>For production, use with Redis: <code>setStore(redisStore(...))</code>.</li>
     </ul>
 
-    <pre>import { session, storeSessionStorage } from '@webjs/server';
+    <pre>import { session, storeSessionStorage } from '@webjskit/server';
 
 export default session({
   secret: process.env.SESSION_SECRET,
@@ -55,7 +55,7 @@ export default session({
     <h2>Session Class API</h2>
     <p>Use <code>getSession(req)</code> in any server-side code — API routes, server actions, middleware:</p>
 
-    <pre>import { getSession } from '@webjs/server';
+    <pre>import { getSession } from '@webjskit/server';
 
 const s = getSession(req);</pre>
 
@@ -96,7 +96,7 @@ s.regenerateId(true);  // new ID, old store entry deleted</pre>
 
     <h2>Example: Login Flow</h2>
     <pre>// app/api/login/route.ts
-import { getSession } from '@webjs/server';
+import { getSession } from '@webjskit/server';
 import { prisma } from '../../lib/prisma.ts';
 import { verifyPassword } from '../../lib/auth.server.ts';
 
@@ -118,7 +118,7 @@ export async function POST(req: Request) {
 
     <h2>Example: Logout</h2>
     <pre>// app/api/logout/route.ts
-import { getSession } from '@webjs/server';
+import { getSession } from '@webjskit/server';
 
 export async function POST(req: Request) {
   const s = getSession(req);

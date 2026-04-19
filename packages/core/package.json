@@ -1,5 +1,5 @@
 {
-  "name": "@webjs/core",
+  "name": "@webjskit/core",
   "version": "0.1.0",
   "type": "module",
   "description": "webjs core runtime — html/css tags, WebComponent base, isomorphic renderers",

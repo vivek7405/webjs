@@ -1,4 +1,4 @@
-import { WebComponent, html } from '@webjs/core';
+import { WebComponent, html } from '@webjskit/core';
 
 /**
  * `<theme-toggle>` — three-state theme switcher: system → light → dark → system.

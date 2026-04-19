@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 import { displayH1 } from './_utils/ui.ts';
 
 export default function NotFound() {

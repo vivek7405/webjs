@@ -5,7 +5,7 @@
  * ```js
  * // actions/posts.server.js
  * 'use server';
- * import { expose } from '@webjs/core';
+ * import { expose } from '@webjskit/core';
  *
  * export const createPost = expose('POST /api/posts', async ({ title, body }) => {
  *   // same function body you'd write without expose()

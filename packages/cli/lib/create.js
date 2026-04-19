@@ -64,9 +64,9 @@ export async function scaffoldApp(name, cwd, opts = {}) {
       check: 'webjs check',
     },
     dependencies: {
-      '@webjs/cli': 'latest',
-      '@webjs/core': 'latest',
-      '@webjs/server': 'latest',
+      '@webjskit/cli': 'latest',
+      '@webjskit/core': 'latest',
+      '@webjskit/server': 'latest',
       ...(isSaas ? { '@prisma/client': '^6.0.0' } : {}),
     },
     devDependencies: {
@@ -218,8 +218,8 @@ export type ActionResult<T> =
       await cp(uiSrc, join(utilsDir, 'ui.ts'));
     }
 
-  await writeFile(join(appDir, 'app', 'layout.ts'), `import { html } from '@webjs/core';
-import '@webjs/core/client-router';
+  await writeFile(join(appDir, 'app', 'layout.ts'), `import { html } from '@webjskit/core';
+import '@webjskit/core/client-router';
 import '../components/theme-toggle.ts';
 
 /**
@@ -354,7 +354,7 @@ export default function RootLayout({ children }: { children: unknown }) {
 }
 `);
 
-  await writeFile(join(appDir, 'app', 'page.ts'), `import { html } from '@webjs/core';
+  await writeFile(join(appDir, 'app', 'page.ts'), `import { html } from '@webjskit/core';
 import { rubric, displayH1, accentLink } from './_utils/ui.ts';
 
 export const metadata = {
@@ -395,7 +395,7 @@ export default function Home() {
 
   // --- Theme toggle component ---
 
-  await writeFile(join(appDir, 'components', 'theme-toggle.ts'), `import { WebComponent, html } from '@webjs/core';
+  await writeFile(join(appDir, 'components', 'theme-toggle.ts'), `import { WebComponent, html } from '@webjskit/core';
 
 type Theme = 'system' | 'light' | 'dark';
 

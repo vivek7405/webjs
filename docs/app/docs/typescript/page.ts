@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'TypeScript — webjs' };
 
@@ -110,7 +110,7 @@ export async function getEvents(): Promise&lt;Event[]&gt; {
 const events = await getEvents();
 events[0].createdAt instanceof Date; // true
 events[0].createdAt.toLocaleDateString(); // works</pre>
-    <p>For API routes, the same content negotiation applies. Use <code>json()</code> from <code>@webjs/server</code> on the server side and <code>richFetch()</code> from <code>webjs</code> on the client side to get superjson encoding. External consumers (curl, other services) get plain JSON automatically.</p>
+    <p>For API routes, the same content negotiation applies. Use <code>json()</code> from <code>@webjskit/server</code> on the server side and <code>richFetch()</code> from <code>webjs</code> on the client side to get superjson encoding. External consumers (curl, other services) get plain JSON automatically.</p>
 
     <h2>JSDoc Alternative</h2>
     <p>If you prefer <code>.js</code> files, you can achieve the same type safety using JSDoc annotations with <code>checkJs: true</code> in your tsconfig:</p>

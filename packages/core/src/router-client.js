@@ -9,7 +9,7 @@
  *
  * To enable, import this module from a layout or boot script:
  *
- *   import '@webjs/core/client-router';
+ *   import '@webjskit/core/client-router';
  *
  * Or call `enableClientRouter()` for programmatic control.
  *

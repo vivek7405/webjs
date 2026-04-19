@@ -874,14 +874,14 @@ function debounce(fn, ms) {
 }
 
 /**
- * Find the absolute directory of the `@webjs/core` package, regardless of
+ * Find the absolute directory of the `@webjskit/core` package, regardless of
  * whether we're running from the monorepo or an installed copy.
  * @param {string} appDir
  */
 function locateCoreDir(appDir) {
   try {
     const require = createRequire(join(appDir, 'package.json'));
-    const pkgPath = require.resolve('@webjs/core/package.json');
+    const pkgPath = require.resolve('@webjskit/core/package.json');
     return dirname(pkgPath);
   } catch {}
   const here = fileURLToPath(import.meta.url);

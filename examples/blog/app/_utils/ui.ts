@@ -11,7 +11,7 @@
  * molecules (`backLink`, `banner`, `codeChip`). Keep this file terse —
  * prefer inlining one-off classes in the page itself.
  */
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 /** `● label` kicker — small caps, accent colour, above headings. */
 export function rubric(label: string, mb: 'sm' | 'md' = 'md') {

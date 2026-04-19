@@ -33,7 +33,7 @@ async function scaffold(files) {
 
 test('extractComponents: finds customElements.define(tag, Class) calls', () => {
   const src = `
-    import { WebComponent } from '@webjs/core';
+    import { WebComponent } from '@webjskit/core';
     export class Counter extends WebComponent {
       render() {}
     }

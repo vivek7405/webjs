@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'Backend-Only Mode — webjs' };
 
@@ -121,7 +121,7 @@ export default async function cors(
   return resp;
 }</pre>
     <pre>// app/api/auth/middleware.ts — rate limit auth endpoints
-import { rateLimit } from '@webjs/server';
+import { rateLimit } from '@webjskit/server';
 
 export default rateLimit({ window: '10s', max: 5 });</pre>
 
@@ -129,7 +129,7 @@ export default rateLimit({ window: '10s', max: 5 });</pre>
     <p><code>expose()</code> turns a server action into a typed REST endpoint. This is especially useful in backend-only mode because it lets you define your API logic as plain functions with validation, then expose them over HTTP:</p>
     <pre>// actions/users.server.ts
 'use server';
-import { expose } from '@webjs/core';
+import { expose } from '@webjskit/core';
 import { prisma } from '../lib/prisma.ts';
 
 export const listUsers = expose('GET /api/v2/users', async () =&gt; {
@@ -188,16 +188,16 @@ export function WS(ws: WebSocket, req: Request, { params }: { params: Record&lt;
     <p>WebSocket endpoints coexist with HTTP handlers in the same <code>route.ts</code>. The second argument is a <code>Request</code> object from the upgrade handshake, so you can read cookies, headers, and query params for auth.</p>
 
     <h2>Content-Negotiated JSON</h2>
-    <p>Use the <code>json()</code> helper from <code>@webjs/server</code> and the <code>richFetch()</code> client helper from <code>webjs</code> for superjson-encoded responses that preserve <code>Date</code>, <code>Map</code>, <code>Set</code>, and <code>BigInt</code>:</p>
+    <p>Use the <code>json()</code> helper from <code>@webjskit/server</code> and the <code>richFetch()</code> client helper from <code>webjs</code> for superjson-encoded responses that preserve <code>Date</code>, <code>Map</code>, <code>Set</code>, and <code>BigInt</code>:</p>
     <pre>// app/api/events/route.ts
-import { json } from '@webjs/server';
+import { json } from '@webjskit/server';
 
 export async function GET() {
   const events = await prisma.event.findMany();
   return json(events); // dates stay as Dates for richFetch callers
 }</pre>
     <pre>// Internal client (another webjs app or same-app component)
-import { richFetch } from '@webjs/core';
+import { richFetch } from '@webjskit/core';
 
 const events = await richFetch('/api/events');
 // events[0].createdAt is a real Date object
@@ -205,7 +205,7 @@ const events = await richFetch('/api/events');
 // External client (curl, Postman) gets plain JSON automatically
 // curl http://localhost:3000/api/events</pre>
     <p>The <code>json()</code> helper reads the <code>Accept</code> header. If the client sent <code>Accept: application/vnd.webjs+json</code> (as <code>richFetch</code> does), the response is superjson-encoded. Otherwise, plain <code>application/json</code>. The <code>Vary: Accept</code> header is set automatically.</p>
-    <p>For reading request bodies with the same content negotiation, use <code>readBody(req)</code> from <code>@webjs/server</code>.</p>
+    <p>For reading request bodies with the same content negotiation, use <code>readBody(req)</code> from <code>@webjskit/server</code>.</p>
 
     <h2>Health Probes, Graceful Shutdown, Compression</h2>
     <p>All production features work in backend-only mode with no extra configuration:</p>
@@ -219,7 +219,7 @@ const events = await richFetch('/api/events');
 
     <h2>createRequestHandler() for Serverless/Edge</h2>
     <p>Embed a backend-only webjs app in any environment that speaks <code>Request</code>/<code>Response</code>:</p>
-    <pre>import { createRequestHandler } from '@webjs/server';
+    <pre>import { createRequestHandler } from '@webjskit/server';
 
 // Build the handler once at cold start
 const app = await createRequestHandler({
@@ -284,9 +284,9 @@ fastify.listen({ port: 3000 });</pre>
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@webjs/cli": "0.1.0",
-    "@webjs/core": "0.1.0",
-    "@webjs/server": "0.1.0",
+    "@webjskit/cli": "0.1.0",
+    "@webjskit/core": "0.1.0",
+    "@webjskit/server": "0.1.0",
     "@prisma/client": "^6.0.0"
   },
   "devDependencies": {
@@ -308,7 +308,7 @@ fastify.listen({ port: 3000 });</pre>
 }</pre>
 
     <h3>app/api/posts/route.ts</h3>
-    <pre>import { json } from '@webjs/server';
+    <pre>import { json } from '@webjskit/server';
 import { prisma } from '../../../lib/prisma.ts';
 
 export async function GET() {

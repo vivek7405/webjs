@@ -55,16 +55,16 @@ test('action scanner discovers expose()d routes and invokes them over HTTP', asy
   // Use a relative import so the scaffolded module can find webjs via the workspace.
   const dir = await scaffold({
     'actions/math.server.js': `
-      import { expose } from '@webjs/core';
+      import { expose } from '@webjskit/core';
       export const add = expose('POST /api/add', async ({ a, b }) => a + b);
       export const get = expose('GET /api/value/:id', async ({ id }) => ({ id: Number(id) }));
     `,
-    // Minimal package.json so `import '@webjs/core'` resolves via workspace.
+    // Minimal package.json so `import '@webjskit/core'` resolves via workspace.
     'package.json': JSON.stringify({ name: 'tmp', type: 'module' }),
   });
   try {
-    // Symlink node_modules/@webjs/core → the real package so the scaffold can import it.
-    const scopeDir = join(dir, 'node_modules', '@webjs');
+    // Symlink node_modules/@webjskit/core → the real package so the scaffold can import it.
+    const scopeDir = join(dir, 'node_modules', '@webjskit');
     await mkdir(scopeDir, { recursive: true });
     const { symlink } = await import('node:fs/promises');
     const realWebjs = new URL('../packages/core', import.meta.url).pathname;
@@ -100,7 +100,7 @@ test('action scanner discovers expose()d routes and invokes them over HTTP', asy
 test('validate hook rejects bad input with 400 before handler runs', async () => {
   const dir = await scaffold({
     'actions/guarded.server.js': `
-      import { expose } from '@webjs/core';
+      import { expose } from '@webjskit/core';
       let called = 0;
       export const make = expose(
         'POST /api/make',
@@ -115,7 +115,7 @@ test('validate hook rejects bad input with 400 before handler runs', async () =>
     'package.json': JSON.stringify({ name: 'tmp', type: 'module' }),
   });
   try {
-    const scopeDir = join(dir, 'node_modules', '@webjs');
+    const scopeDir = join(dir, 'node_modules', '@webjskit');
     await mkdir(scopeDir, { recursive: true });
     const { symlink } = await import('node:fs/promises');
     const realWebjs = new URL('../packages/core', import.meta.url).pathname;

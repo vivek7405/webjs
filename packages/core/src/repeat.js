@@ -3,7 +3,7 @@
  *
  * Usage in a template:
  * ```js
- * import { html, repeat } from '@webjs/core';
+ * import { html, repeat } from '@webjskit/core';
  * html`<ul>${repeat(items, (it) => it.id, (it) => html`<li>${it.title}</li>`)}</ul>`;
  * ```
  *

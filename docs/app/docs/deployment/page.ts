@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'Deployment — webjs' };
 
@@ -95,7 +95,7 @@ readinessProbe:
 # Prod output (one JSON line per event):
 {"level":"info","msg":"webjs prod server ready on http://localhost:3000","time":"2026-01-15T10:30:00.000Z"}</pre>
     <p>Replace it with your own logger by passing any object with <code>info</code>, <code>warn</code>, and <code>error</code> methods to <code>createRequestHandler</code>:</p>
-    <pre>import { createRequestHandler } from '@webjs/server';
+    <pre>import { createRequestHandler } from '@webjskit/server';
 import pino from 'pino';
 
 const logger = pino({ level: 'info' });
@@ -112,7 +112,7 @@ const app = await createRequestHandler({
 
     <h2>createRequestHandler for Embedding</h2>
     <p>If you need to embed webjs inside an existing server (Express, Fastify, Bun, Deno, serverless), use <code>createRequestHandler</code> directly. It returns a <code>handle(req: Request) =&gt; Promise&lt;Response&gt;</code> function that takes a standard Web API Request and returns a standard Response:</p>
-    <pre>import { createRequestHandler } from '@webjs/server';
+    <pre>import { createRequestHandler } from '@webjskit/server';
 
 const app = await createRequestHandler({
   appDir: '/path/to/your/app',
@@ -121,7 +121,7 @@ const app = await createRequestHandler({
 
     <h3>Express</h3>
     <pre>import express from 'express';
-import { createRequestHandler } from '@webjs/server';
+import { createRequestHandler } from '@webjskit/server';
 
 const app = await createRequestHandler({ appDir: process.cwd(), dev: false });
 const server = express();
@@ -155,7 +155,7 @@ server.all('*', async (req, res) =&gt; {
 server.listen(3000);</pre>
 
     <h3>Bun</h3>
-    <pre>import { createRequestHandler } from '@webjs/server';
+    <pre>import { createRequestHandler } from '@webjskit/server';
 
 const app = await createRequestHandler({ appDir: process.cwd(), dev: false });
 
@@ -165,7 +165,7 @@ Bun.serve({
 });</pre>
 
     <h3>Deno</h3>
-    <pre>import { createRequestHandler } from '@webjs/server';
+    <pre>import { createRequestHandler } from '@webjskit/server';
 
 const app = await createRequestHandler({ appDir: Deno.cwd(), dev: false });
 

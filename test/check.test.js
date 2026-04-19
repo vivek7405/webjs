@@ -17,7 +17,7 @@ test('tag-name-has-hyphen: flags component without hyphen in tag', async () => {
     await mkdir(join(appDir, 'components'), { recursive: true });
     await writeFile(
       join(appDir, 'components', 'bad.js'),
-      `import { WebComponent } from '@webjs/core';
+      `import { WebComponent } from '@webjskit/core';
 class BadComp extends WebComponent {}
 BadComp.register('badcomp');
 `,
@@ -38,7 +38,7 @@ test('tag-name-has-hyphen: passes for valid hyphenated tag', async () => {
     await mkdir(join(appDir, 'components'), { recursive: true });
     await writeFile(
       join(appDir, 'components', 'good.js'),
-      `import { WebComponent } from '@webjs/core';
+      `import { WebComponent } from '@webjskit/core';
 class GoodComp extends WebComponent {}
 GoodComp.register('good-comp');
 `,
@@ -58,7 +58,7 @@ test('components-have-register: flags component with no register() call', async 
     await mkdir(join(appDir, 'components'), { recursive: true });
     await writeFile(
       join(appDir, 'components', 'no-reg.js'),
-      `import { WebComponent } from '@webjs/core';
+      `import { WebComponent } from '@webjskit/core';
 class NoReg extends WebComponent {}
 `,
     );
@@ -78,7 +78,7 @@ test('components-have-register: passes with Class.register("tag")', async () => 
     await mkdir(join(appDir, 'components'), { recursive: true });
     await writeFile(
       join(appDir, 'components', 'good.js'),
-      `import { WebComponent } from '@webjs/core';
+      `import { WebComponent } from '@webjskit/core';
 class GoodComp extends WebComponent {}
 GoodComp.register('good-comp');
 `,
@@ -98,7 +98,7 @@ test('components-have-register: passes with customElements.define fallback', asy
     await mkdir(join(appDir, 'components'), { recursive: true });
     await writeFile(
       join(appDir, 'components', 'native.js'),
-      `import { WebComponent } from '@webjs/core';
+      `import { WebComponent } from '@webjskit/core';
 class NativeComp extends WebComponent {}
 customElements.define('native-comp', NativeComp);
 `,
@@ -128,7 +128,7 @@ test('rule override disables a rule', async () => {
     await mkdir(join(appDir, 'components'), { recursive: true });
     await writeFile(
       join(appDir, 'components', 'bad.js'),
-      `import { WebComponent } from '@webjs/core';
+      `import { WebComponent } from '@webjskit/core';
 class BadComp extends WebComponent {}
 BadComp.register('badcomp');
 `,
@@ -288,7 +288,7 @@ test('no-server-imports-in-components: flags direct @prisma/client import', asyn
     await mkdir(join(appDir, 'components'), { recursive: true });
     await writeFile(
       join(appDir, 'components', 'bad.ts'),
-      `import { WebComponent } from '@webjs/core';\n` +
+      `import { WebComponent } from '@webjskit/core';\n` +
       `import { PrismaClient } from '@prisma/client';\n` +
       `class Bad extends WebComponent {}\nBad.register('bad-c');\n`,
     );
@@ -307,7 +307,7 @@ test('no-server-imports-in-components: flags direct node:* imports', async () =>
     await mkdir(join(appDir, 'components'), { recursive: true });
     await writeFile(
       join(appDir, 'components', 'bad.ts'),
-      `import { WebComponent } from '@webjs/core';\n` +
+      `import { WebComponent } from '@webjskit/core';\n` +
       `import fs from 'node:fs';\n` +
       `class Bad extends WebComponent {}\nBad.register('bad-n');\n`,
     );
@@ -325,7 +325,7 @@ test('no-server-imports-in-components: flags imports from lib/', async () => {
     await mkdir(join(appDir, 'components'), { recursive: true });
     await writeFile(
       join(appDir, 'components', 'bad.ts'),
-      `import { WebComponent } from '@webjs/core';\n` +
+      `import { WebComponent } from '@webjskit/core';\n` +
       `import { prisma } from '../lib/prisma';\n` +
       `class Bad extends WebComponent {}\nBad.register('bad-l');\n`,
     );
@@ -395,7 +395,7 @@ test('override via package.json "conventions" disables a rule', async () => {
     await mkdir(join(appDir, 'components'), { recursive: true });
     await writeFile(
       join(appDir, 'components', 'bad.js'),
-      `import { WebComponent } from '@webjs/core';\n` +
+      `import { WebComponent } from '@webjskit/core';\n` +
       `class BadComp extends WebComponent {}\nBadComp.register('badcomp');\n`,
     );
     await writeFile(
@@ -418,7 +418,7 @@ test('override via webjs.conventions.js disables a rule', async () => {
     await mkdir(join(appDir, 'components'), { recursive: true });
     await writeFile(
       join(appDir, 'components', 'bad.js'),
-      `import { WebComponent } from '@webjs/core';\n` +
+      `import { WebComponent } from '@webjskit/core';\n` +
       `class BadComp extends WebComponent {}\nBadComp.register('badcomp');\n`,
     );
     await writeFile(

@@ -1,5 +1,5 @@
 {
-  "name": "@webjs/docs",
+  "name": "@webjskit/docs",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -13,8 +13,8 @@
     "build": "webjs build"
   },
   "dependencies": {
-    "@webjs/cli": "0.1.0",
-    "@webjs/core": "0.1.0",
-    "@webjs/server": "0.1.0"
+    "@webjskit/cli": "0.1.0",
+    "@webjskit/core": "0.1.0",
+    "@webjskit/server": "0.1.0"
   }
 }

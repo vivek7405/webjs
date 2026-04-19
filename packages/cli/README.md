@@ -1,4 +1,4 @@
-# @webjs/cli
+# @webjskit/cli
 
 CLI for [webjs](https://github.com/vivek7405/webjs) — scaffold, develop,
 build, and run webjs apps.
@@ -10,7 +10,7 @@ Installing this package gives you the `webjs` command.
 Most users won't install globally. Scaffold a new app instead:
 
 ```sh
-npx @webjs/cli create my-app
+npx @webjskit/cli create my-app
 cd my-app
 npm install
 npm run dev
@@ -19,7 +19,7 @@ npm run dev
 Or globally:
 
 ```sh
-npm install -g @webjs/cli
+npm install -g @webjskit/cli
 webjs create my-app
 ```
 

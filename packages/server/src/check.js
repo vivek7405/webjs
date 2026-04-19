@@ -215,7 +215,7 @@ function countExportedFunctions(content) {
  *
  * @example
  * ```js
- * import { checkConventions } from '@webjs/server';
+ * import { checkConventions } from '@webjskit/server';
  * const violations = await checkConventions('/path/to/myapp');
  * for (const v of violations) {
  *   console.warn(`[${v.rule}] ${v.file}: ${v.message}`);

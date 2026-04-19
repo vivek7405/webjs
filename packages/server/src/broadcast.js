@@ -3,7 +3,7 @@
  *
  * ```js
  * // app/api/chat/route.ts
- * import { broadcast } from '@webjs/server';
+ * import { broadcast } from '@webjskit/server';
  *
  * export function WS(ws, req) {
  *   ws.on('message', (data) => {

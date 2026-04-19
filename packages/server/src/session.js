@@ -7,11 +7,11 @@
  *
  * ```js
  * // middleware.ts
- * import { session } from '@webjs/server';
+ * import { session } from '@webjskit/server';
  * export default session({ secret: process.env.SESSION_SECRET });
  *
  * // In any handler:
- * import { getSession } from '@webjs/server';
+ * import { getSession } from '@webjskit/server';
  * const s = getSession(req);
  * s.set('userId', user.id);
  * s.flash('message', 'Welcome back!');

@@ -4,7 +4,7 @@
  * rewriting.
  *
  * ```js
- * import { connectWS } from '@webjs/core';
+ * import { connectWS } from '@webjskit/core';
  *
  * const conn = connectWS('/api/chat', {
  *   onMessage: (msg) => this.setState({ lines: [...this.state.lines, msg] }),

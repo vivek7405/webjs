@@ -6,7 +6,7 @@ import { RPC_CONTENT_TYPE } from './actions.js';
  * Content-negotiated JSON helper for API routes (`route.js` handlers).
  *
  *   // GET /api/posts
- *   import { json } from '@webjs/server';
+ *   import { json } from '@webjskit/server';
  *   export async function GET() {
  *     return json(await listPosts());   // plain Prisma rows with Date columns
  *   }

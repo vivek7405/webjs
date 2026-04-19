@@ -62,7 +62,7 @@ export function getSerializer() {
  * `deserialize(str) => unknown`, and expose a `contentType` string.
  *
  * ```js
- * import { setSerializer } from '@webjs/server';
+ * import { setSerializer } from '@webjskit/server';
  *
  * setSerializer({
  *   serialize: JSON.stringify,

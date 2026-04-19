@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 import '../../../../modules/posts/components/new-post.ts';
 import { backLink, rubric, clampH1 } from '../../../_utils/ui.ts';
 

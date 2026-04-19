@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'Reactive Controllers — webjs' };
 
@@ -61,7 +61,7 @@ export default function Controllers() {
 
     <p>Usage in any component:</p>
 
-    <pre>import { WebComponent, html, css } from '@webjs/core';
+    <pre>import { WebComponent, html, css } from '@webjskit/core';
 
 class LazyImage extends WebComponent {
   static properties = { src: { type: String } };
@@ -118,7 +118,7 @@ LazyImage.register('lazy-image');</pre>
 
     <p>Any component can now fetch data by creating a <code>FetchController</code> instance:</p>
 
-    <pre>import { WebComponent, html } from '@webjs/core';
+    <pre>import { WebComponent, html } from '@webjskit/core';
 
 class UserList extends WebComponent {
 
@@ -164,7 +164,7 @@ DashboardWidget.register('dashboard-widget');</pre>
     <h3>Task</h3>
     <p>Manages async operations with automatic loading/error states, abort support, and reactive args. Imported from <code>webjs/task</code>. See the <a href="/docs/task">Task Controller</a> page for full documentation.</p>
 
-    <pre>import { Task } from '@webjs/core/task';
+    <pre>import { Task } from '@webjskit/core/task';
 
 class UserProfile extends WebComponent {
   static properties = { userId: { type: String } };
@@ -189,7 +189,7 @@ class UserProfile extends WebComponent {
     <h3>ContextProvider</h3>
     <p>Provides a value to all descendant components via the context protocol. Imported from <code>webjs/context</code>. See the <a href="/docs/context">Context Protocol</a> page for full documentation.</p>
 
-    <pre>import { createContext, ContextProvider } from '@webjs/core/context';
+    <pre>import { createContext, ContextProvider } from '@webjskit/core/context';
 
 const themeContext = createContext('theme');
 
@@ -209,7 +209,7 @@ class AppShell extends WebComponent {
     <h3>ContextConsumer</h3>
     <p>Consumes a value from an ancestor provider. Imported from <code>webjs/context</code>.</p>
 
-    <pre>import { createContext, ContextConsumer } from '@webjs/core/context';
+    <pre>import { createContext, ContextConsumer } from '@webjskit/core/context';
 
 const themeContext = createContext('theme');
 

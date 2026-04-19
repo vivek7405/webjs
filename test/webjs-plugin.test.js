@@ -74,13 +74,13 @@ function offsetOf(file, needle) {
 test('resolves <my-counter> inside html`` to the Counter class', () => {
   const svc = makeService({
     '/counter.ts':
-      `import { WebComponent, html } from '@webjs/core';\n` +
+      `import { WebComponent, html } from '@webjskit/core';\n` +
       `export class Counter extends WebComponent {\n` +
       `  render() { return html\`<output></output>\`; }\n` +
       `}\n` +
       `Counter.register('my-counter');\n`,
     '/page.ts':
-      `import { html } from '@webjs/core';\n` +
+      `import { html } from '@webjskit/core';\n` +
       `import './counter.ts';\n` +
       `export default function Page() {\n` +
       `  return html\`<my-counter count=\${3}></my-counter>\`;\n` +
@@ -107,7 +107,7 @@ test('resolves closing tag </my-counter> just like the opening tag', () => {
       `}\n` +
       `Counter.register('my-counter');\n`,
     '/page.ts':
-      `import { html } from '@webjs/core';\n` +
+      `import { html } from '@webjskit/core';\n` +
       `export default function P() {\n` +
       `  return html\`<my-counter></my-counter>\`;\n` +
       `}\n`,
@@ -128,7 +128,7 @@ test('returns nothing for unknown tag names', () => {
       `}\n` +
       `Counter.register('my-counter');\n`,
     '/page.ts':
-      `import { html } from '@webjs/core';\n` +
+      `import { html } from '@webjskit/core';\n` +
       `export default function P() {\n` +
       `  return html\`<other-tag></other-tag>\`;\n` +
       `}\n`,
@@ -146,7 +146,7 @@ test('ignores plain HTML tags (no hyphen → not a custom element)', () => {
       `}\n` +
       `Counter.register('my-counter');\n`,
     '/page.ts':
-      `import { html } from '@webjs/core';\n` +
+      `import { html } from '@webjskit/core';\n` +
       `export default function P() {\n` +
       `  return html\`<div></div>\`;\n` +
       `}\n`,
@@ -163,7 +163,7 @@ test('ignores plain HTML tags (no hyphen → not a custom element)', () => {
 test('resolves a class name inside html`class="…"` to the css`` rule', () => {
   const svc = makeService({
     '/page.ts':
-      `import { html, css } from '@webjs/core';\n` +
+      `import { html, css } from '@webjskit/core';\n` +
       `const STYLES = css\`\n` +
       `  .page-home {\n` +
       `    .hero-title { font-size: 2rem; }\n` +
@@ -192,7 +192,7 @@ test('resolves a class name inside html`class="…"` to the css`` rule', () => {
 test('resolves a class name defined in ANOTHER file via program-wide index', () => {
   const svc = makeService({
     '/layout.ts':
-      `import { html, css } from '@webjs/core';\n` +
+      `import { html, css } from '@webjskit/core';\n` +
       `const STYLES = css\`\n` +
       `  .banner { padding: 8px; background: lightyellow; }\n` +
       `\`;\n` +
@@ -200,7 +200,7 @@ test('resolves a class name defined in ANOTHER file via program-wide index', () 
       `  return html\`<style>\${STYLES.text}</style><main>\${children}</main>\`;\n` +
       `}\n`,
     '/page.ts':
-      `import { html } from '@webjs/core';\n` +
+      `import { html } from '@webjskit/core';\n` +
       `export default function P() {\n` +
       `  return html\`<p class="banner">hi</p>\`;\n` +
       `}\n`,
@@ -216,7 +216,7 @@ test('resolves a class name defined in ANOTHER file via program-wide index', () 
 test('picks the correct class when class="a b c" has multiple tokens', () => {
   const svc = makeService({
     '/page.ts':
-      `import { html, css } from '@webjs/core';\n` +
+      `import { html, css } from '@webjskit/core';\n` +
       `const STYLES = css\`\n` +
       `  .btn         { padding: 8px; }\n` +
       `  .btn-primary { background: orange; }\n` +
@@ -244,7 +244,7 @@ test('picks the correct class when class="a b c" has multiple tokens', () => {
 test('does not crash on unknown class names (returns no definition)', () => {
   const svc = makeService({
     '/page.ts':
-      `import { html } from '@webjs/core';\n` +
+      `import { html } from '@webjskit/core';\n` +
       `export default function P() {\n` +
       `  return html\`<p class="nowhere-defined">x</p>\`;\n` +
       `}\n`,
@@ -258,7 +258,7 @@ test('does not crash on unknown class names (returns no definition)', () => {
 test('numeric decimals inside css`` are not mistaken for class names', () => {
   const svc = makeService({
     '/page.ts':
-      `import { html, css } from '@webjs/core';\n` +
+      `import { html, css } from '@webjskit/core';\n` +
       `const STYLES = css\`\n` +
       `  .hero {\n` +
       `    padding: 1.5rem;\n` +
@@ -269,7 +269,7 @@ test('numeric decimals inside css`` are not mistaken for class names', () => {
       `  return html\`<style>\${STYLES.text}</style><div class="hero">hi</div>\`;\n` +
       `}\n`,
     '/other.ts':
-      `import { html } from '@webjs/core';\n` +
+      `import { html } from '@webjskit/core';\n` +
       `export default function O() {\n` +
       `  return html\`<div class="5rem">x</div>\`;\n` +
       `}\n`,
@@ -295,7 +295,7 @@ test('ignores code inside ${...} holes (not part of the template markup)', () =>
       `}\n` +
       `Counter.register('my-counter');\n`,
     '/page.ts':
-      `import { html } from '@webjs/core';\n` +
+      `import { html } from '@webjskit/core';\n` +
       `const label = 'my-counter';\n` +
       `export default function P() {\n` +
       `  return html\`<span>\${label}</span>\`;\n` +

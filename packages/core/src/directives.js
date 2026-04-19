@@ -40,8 +40,8 @@
  * user-supplied input — this is an XSS vector.
  *
  * ```js
- * import { html } from '@webjs/core';
- * import { unsafeHTML } from '@webjs/core/directives';
+ * import { html } from '@webjskit/core';
+ * import { unsafeHTML } from '@webjskit/core/directives';
  *
  * // Good: trusted markdown output
  * html`<article>${unsafeHTML(markdownToHtml(post.body))}</article>`;
@@ -83,8 +83,8 @@ export function isUnsafeHTML(x) {
  * DOM value has changed.
  *
  * ```js
- * import { html } from '@webjs/core';
- * import { live } from '@webjs/core/directives';
+ * import { html } from '@webjskit/core';
+ * import { live } from '@webjskit/core/directives';
  *
  * html`<input .value=${live(this.state.query)}
  *             @input=${e => this.setState({ query: e.target.value })}>`;

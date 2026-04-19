@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'Server Actions — webjs' };
 
@@ -32,7 +32,7 @@ export async function deletePost(id: number) {
     <pre>// modules/auth/queries/current-user.ts
 'use server';
 
-import { getRequest } from '@webjs/server';
+import { getRequest } from '@webjskit/server';
 import { prisma } from '../../../lib/prisma.ts';
 
 export async function currentUser() {
@@ -84,7 +84,7 @@ export const deletePost = (...args) => __rpc('deletePost', args);</pre>
     <p>Because the browser's import statement points at the real <code>.server.ts</code> file, TypeScript's language server resolves types from the original source. Your editor shows the correct parameter types, return types, and JSDoc comments. The rewrite happens only at runtime in the browser -- the type checker never sees the stub.</p>
 
     <pre>// components/post-form.ts
-import { WebComponent, html, css } from '@webjs/core';
+import { WebComponent, html, css } from '@webjskit/core';
 import { createPost } from '../actions/posts.server.ts';
 //                        ^-- TS sees: (input: { title: string; body: string }) => Promise&lt;Post&gt;
 
@@ -139,7 +139,7 @@ PostForm.register('post-form');</pre>
 
     <pre>// actions/posts.server.ts
 'use server';
-import { expose } from '@webjs/core';
+import { expose } from '@webjskit/core';
 import { prisma } from '../lib/prisma.ts';
 
 export const listPosts = expose('GET /api/posts', async () =&gt; {
@@ -257,7 +257,7 @@ export async function createPost(input: unknown): Promise&lt;ActionResult&lt;Pos
     <pre>// 1. Define the server action
 // actions/todos.server.ts
 'use server';
-import { expose } from '@webjs/core';
+import { expose } from '@webjskit/core';
 
 interface Todo { id: number; text: string; done: boolean; createdAt: Date; }
 const todos: Todo[] = [];
@@ -275,7 +275,7 @@ export const listTodos = expose('GET /api/todos', async () =&gt; {
 
 // 2. Call from a web component
 // components/todo-app.ts
-import { WebComponent, html, css } from '@webjs/core';
+import { WebComponent, html, css } from '@webjskit/core';
 import { addTodo, listTodos } from '../actions/todos.server.ts';
 
 export class TodoApp extends WebComponent {

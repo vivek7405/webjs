@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 import '../../components/theme-toggle.ts';
 import '../../components/doc-search.ts';
 

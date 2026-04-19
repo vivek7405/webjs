@@ -1,4 +1,4 @@
-import { WebComponent, html, repeat, connectWS } from '@webjs/core';
+import { WebComponent, html, repeat, connectWS } from '@webjskit/core';
 import '../../../components/muted-text.ts';
 import type { CommentFormatted } from '../types.ts';
 

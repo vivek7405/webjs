@@ -13,8 +13,8 @@ import { test, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { PrismaClient } from '@prisma/client';
-import { withRequest } from '@webjs/server';
-import { setStore, memoryStore } from '@webjs/server';
+import { withRequest } from '@webjskit/server';
+import { setStore, memoryStore } from '@webjskit/server';
 
 import { signup } from '../../modules/auth/actions/signup.server.ts';
 import { listPosts } from '../../modules/posts/queries/list-posts.server.ts';

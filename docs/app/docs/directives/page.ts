@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'Directives — webjs' };
 
@@ -7,12 +7,12 @@ export default function Directives() {
     <h1>Directives</h1>
     <p>webjs follows a <strong>"less is more"</strong> philosophy. Only three directives are built in — each solves a problem that has <em>no native alternative</em>. Everything else uses native JavaScript and HTML patterns.</p>
 
-    <pre>import { repeat } from '@webjs/core';            // keyed lists
-import { unsafeHTML, live } from '@webjs/core/directives'; // raw HTML, input sync</pre>
+    <pre>import { repeat } from '@webjskit/core';            // keyed lists
+import { unsafeHTML, live } from '@webjskit/core/directives'; // raw HTML, input sync</pre>
 
     <h2>repeat(items, keyFn, templateFn)</h2>
     <p><strong>Essential.</strong> Keyed list reconciliation. Without it, re-rendering an array destroys and recreates all DOM nodes — losing focus, scroll position, and component state.</p>
-    <pre>import { html, repeat } from '@webjs/core';
+    <pre>import { html, repeat } from '@webjskit/core';
 
 html\`&lt;ul&gt;
   \${repeat(
@@ -26,7 +26,7 @@ html\`&lt;ul&gt;
 
     <h2>unsafeHTML(htmlString)</h2>
     <p><strong>Essential.</strong> Renders a raw HTML string without escaping. The only way to inject pre-built HTML (CMS content, markdown output) into a template.</p>
-    <pre>import { unsafeHTML } from '@webjs/core/directives';
+    <pre>import { unsafeHTML } from '@webjskit/core/directives';
 
 // Trusted markdown output
 html\`&lt;article&gt;\${unsafeHTML(markdownToHtml(post.body))}&lt;/article&gt;\`;</pre>
@@ -34,7 +34,7 @@ html\`&lt;article&gt;\${unsafeHTML(markdownToHtml(post.body))}&lt;/article&gt;\`
 
     <h2>live(value)</h2>
     <p><strong>Essential.</strong> Dirty-checks against the <em>live DOM value</em> instead of the last rendered value. Solves the input desync problem where the user types between renders.</p>
-    <pre>import { live } from '@webjs/core/directives';
+    <pre>import { live } from '@webjskit/core/directives';
 
 html\`&lt;input .value=\${live(this.state.query)}
        @input=\${(e) =&gt; this.setState({ query: e.target.value })}&gt;\`;</pre>

@@ -45,9 +45,9 @@ Every code change must include:
 - Tagged template: html`<div>${value}</div>` with css`...` for styles
 - Components: extend WebComponent, use static tag/styles/properties, call Class.register('tag')
 - Server actions: *.server.ts files with one exported async function each
-- Directives: import { classMap, styleMap, ref, when, ... } from '@webjs/core/directives'
-- Context: import { createContext, ContextProvider, ContextConsumer } from '@webjs/core/context'
-- Task: import { Task, TaskStatus } from '@webjs/core/task'
+- Directives: import { classMap, styleMap, ref, when, ... } from '@webjskit/core/directives'
+- Context: import { createContext, ContextProvider, ContextConsumer } from '@webjskit/core/context'
+- Task: import { Task, TaskStatus } from '@webjskit/core/task'
 - Routing: file-based under app/ (page.ts, layout.ts, route.ts, middleware.ts)
 
 ## What NOT to do

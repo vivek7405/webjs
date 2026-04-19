@@ -21,7 +21,7 @@
 import { readFile } from 'node:fs/promises';
 import { sep } from 'node:path';
 import { walk } from './fs-walk.js';
-import { primeModuleUrl } from '@webjs/core';
+import { primeModuleUrl } from '@webjskit/core';
 
 /**
  * Recognise either registration pattern:

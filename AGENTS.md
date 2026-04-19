@@ -226,7 +226,7 @@ node_modules/
       router-client.js            ← Turbo Drive–style client router
       suspense.js                 ← streaming Suspense boundary
       lazy-loader.js              ← IntersectionObserver–based lazy module loading
-  @webjs/server/                  ← server: SSR, router, actions, dev server
+  @webjskit/server/                  ← server: SSR, router, actions, dev server
     src/
       dev.js                      ← request handler, file serving, TS transforms
       router.js                   ← file-based route scanner + matcher
@@ -236,7 +236,7 @@ node_modules/
       check.js                    ← convention validator (webjs check)
       vendor.js                   ← auto-bundle npm deps for browser
       module-graph.js             ← dependency graph for transitive preloads
-  @webjs/cli/                     ← CLI: dev, start, build, test, check, create
+  @webjskit/cli/                     ← CLI: dev, start, build, test, check, create
 ```
 
 **AI agents: when debugging framework behaviour** (e.g., "why doesn't my
@@ -295,12 +295,12 @@ Every file is a plain ES module. No config required.
 
 ---
 
-## Public API — `@webjs/core`
+## Public API — `@webjskit/core`
 
-Import from the bare specifier `'@webjs/core'` (resolved via the injected import map).
+Import from the bare specifier `'@webjskit/core'` (resolved via the injected import map).
 
 ```js
-import { html, css, WebComponent, render, renderToString } from '@webjs/core';
+import { html, css, WebComponent, render, renderToString } from '@webjskit/core';
 ```
 
 | Export            | Purpose |
@@ -319,7 +319,7 @@ import { html, css, WebComponent, render, renderToString } from '@webjs/core';
 | `connectWS(url, handlers)` | Client-side WebSocket with auto-reconnect, JSON parse/stringify, queued sends. |
 | `richFetch<T>(url, init?)` | Client-side fetch that adds `Accept: application/vnd.webjs+json`, encodes plain-object bodies via superjson, and decodes responses with rich types. |
 
-### Directives — `import { … } from '@webjs/core/directives'`
+### Directives — `import { … } from '@webjskit/core/directives'`
 
 webjs follows a **"less is more"** philosophy: only directives that solve
 problems with NO native alternative are included. AI agents don't need
@@ -349,7 +349,7 @@ syntax sugar — they write code that works, not code that looks pretty.
 | Async data in page | `async` page function (just `await`) |
 | Lists without reorder | `${items.map(item => html\`…\`)}` |
 
-### Context Protocol — `import { … } from '@webjs/core/context'`
+### Context Protocol — `import { … } from '@webjskit/core/context'`
 
 Share data across deeply nested components without prop drilling.
 
@@ -362,7 +362,7 @@ Share data across deeply nested components without prop drilling.
 
 **When to use Context (AI hint):** Use when data (theme, auth state, locale, config) must reach components many levels deep without threading it through every intermediate component's attributes. Do NOT use for data that changes on every render (use state for that) or for data that only one component needs (use a server action or prop).
 
-### Task Controller — `import { Task, TaskStatus } from '@webjs/core/task'`
+### Task Controller — `import { Task, TaskStatus } from '@webjskit/core/task'`
 
 Manages async operations (fetch, compute) inside components with automatic loading/error states and AbortController.
 
@@ -447,7 +447,7 @@ TypeScript's class-field initializer doesn't clobber the reactive
 accessor the framework installs via `Object.defineProperty`.
 
 ```ts
-import { WebComponent, html } from '@webjs/core';
+import { WebComponent, html } from '@webjskit/core';
 
 class StudentCard extends WebComponent {
   static properties = { student: { type: Object } };   // runtime: tracked + coerced
@@ -636,7 +636,7 @@ interpolate via `<style>${STYLES.text}</style>`. `ts-lit-plugin` /
 Example (page):
 
 ```ts
-import { html, css } from '@webjs/core';
+import { html, css } from '@webjskit/core';
 
 const STYLES = css`
   .page-dashboard {
@@ -738,7 +738,7 @@ Set `static shadow = true` when:
 
 ```js
 // app/error.ts — root error boundary
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export default function ErrorPage({ error }: { error: Error }) {
   return html`
@@ -757,7 +757,7 @@ A `loading.js` file is the automatic Suspense boundary for its sibling page. The
 
 ```js
 // app/blog/loading.ts — shown while blog pages load
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export default function Loading() {
   return html`
@@ -861,7 +861,7 @@ Supported files: `sitemap.js`, `robots.js`, `manifest.js`, `icon.js`, `apple-ico
 - On the server these modules are imported normally; you can freely use Prisma, `fs`, environment variables, etc.
 - **Expose as REST**: wrap any action with `expose('METHOD /path', fn)` to ALSO make it reachable at a stable REST URL. The same function body powers both callers:
   ```js
-  import { expose } from '@webjs/core';
+  import { expose } from '@webjskit/core';
   export const createPost = expose('POST /api/posts', async ({ title, body }) => { … });
   ```
   When called over HTTP, the adapter merges `{ ...query, ...urlParams, ...jsonBody }` into a single object argument. This is the recommended way to surface a server action to external consumers — no `route.js` wrapper needed.
@@ -988,7 +988,7 @@ no client-side runtime, no diff from writing the classes by hand.
 Scaffold example (`app/_utils/ui.ts`):
 
 ```ts
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 /** `● label` kicker — small caps, accent colour, above headings. */
 export function rubric(label: string, mb: 'sm' | 'md' = 'md') {
@@ -1060,7 +1060,7 @@ the class-prefix rule documented in the Shadow-vs-Light DOM section.
 
 ```js
 // app/about/page.js
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 export default function About() {
   return html`<h1>About</h1><p>…</p>`;
 }
@@ -1070,7 +1070,7 @@ export default function About() {
 
 ```js
 // app/users/[id]/page.js
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 export default async function User({ params }) {
   // use a server action to fetch; never import a DB client directly in a page
   const user = await fetchUser(params.id);
@@ -1132,7 +1132,7 @@ if (!r.success) this.setState({ error: r.error });
 
 ```js
 // components/hello-world.js
-import { WebComponent, html } from '@webjs/core';
+import { WebComponent, html } from '@webjskit/core';
 export class HelloWorld extends WebComponent {
   render() { return html`<p>Hello!</p>`; }
 }
@@ -1183,7 +1183,7 @@ Reference it via JSDoc:
 - Health probe: `GET /__webjs/health` and `/__webjs/ready` return `{status:"ok"}`
   with `Cache-Control: no-store`. Wire these into your orchestrator.
 - Embed in another runtime: import `createRequestHandler({ appDir, dev })`
-  from `@webjs/server`. It returns `{ handle(req: Request) → Promise<Response> }`
+  from `@webjskit/server`. It returns `{ handle(req: Request) → Promise<Response> }`
   — usable in Express (`app.use((req, res) => …)`), Fastify, Deno, Bun, Workers.
 - Plug your own logger via `createRequestHandler({ logger })`. Any `{ info,
   warn, error }` shape works (pino, winston, etc.).
@@ -1295,7 +1295,7 @@ into rich types for your own UI code:
 
 ```ts
 // app/api/posts/route.ts — server side
-import { json } from '@webjs/server';
+import { json } from '@webjskit/server';
 import { listPosts } from '.../queries/list-posts.server.ts';
 
 export async function GET() {
@@ -1305,7 +1305,7 @@ export async function GET() {
 
 ```ts
 // caller — client side
-import { richFetch } from '@webjs/core';
+import { richFetch } from '@webjskit/core';
 const posts = await richFetch<Post[]>('/api/posts');
 // posts[0].createdAt is a Date here (richFetch sends
 // Accept: application/vnd.webjs+json and superjson-parses the response).
@@ -1319,7 +1319,7 @@ context:
 - Otherwise → plain JSON with `Content-Type: application/json`.
 
 Request bodies can be parsed with the dual-format `readBody(req)`
-helper from `@webjs/server`.
+helper from `@webjskit/server`.
 
 ### TypeScript is not required
 
@@ -1330,7 +1330,7 @@ Add `"checkJs": true` to `tsconfig.json` to enforce types in editor
 + CI. The framework doesn't care either way — pick what fits the
 codebase.
 
-## Built-in essentials — `import { … } from '@webjs/server'`
+## Built-in essentials — `import { … } from '@webjskit/server'`
 
 Opinionated defaults: **set `REDIS_URL` and everything scales.**
 
@@ -1362,11 +1362,11 @@ For app-level caching (database query results, expensive computations),
 use the cache store directly:
 
 ```js
-import { getStore } from '@webjs/server';
+import { getStore } from '@webjskit/server';
 const store = getStore(); // memory by default
 
 // For Redis: configure explicitly at app startup
-import { setStore, redisStore } from '@webjs/server';
+import { setStore, redisStore } from '@webjskit/server';
 setStore(redisStore({ url: process.env.REDIS_URL }));
 ```
 
@@ -1374,11 +1374,11 @@ setStore(redisStore({ url: process.env.REDIS_URL }));
 
 ```js
 // middleware.js — add session support to all routes
-import { session } from '@webjs/server';
+import { session } from '@webjskit/server';
 export default session(); // auto: REDIS_URL → server-side, otherwise → cookie
 
 // In any page or action:
-import { getSession } from '@webjs/server';
+import { getSession } from '@webjskit/server';
 const s = getSession(req);
 s.userId = user.id; // auto-saved after response
 ```
@@ -1391,7 +1391,7 @@ Requires `SESSION_SECRET` environment variable.
 
 ```js
 // lib/auth.ts — create once
-import { createAuth, Credentials, Google, GitHub } from '@webjs/server';
+import { createAuth, Credentials, Google, GitHub } from '@webjskit/server';
 
 export const { auth, signIn, signOut, handlers } = createAuth({
   providers: [
@@ -1431,7 +1431,7 @@ providers (Google, GitHub) handle the full redirect flow.
 
 ```js
 // app/api/chat/route.ts
-import { broadcast } from '@webjs/server';
+import { broadcast } from '@webjskit/server';
 
 export function WS(ws, req) {
   ws.on('message', (data) => {
@@ -1459,7 +1459,7 @@ scaling, the user explicitly configures Redis where needed:
 
 ```js
 // app startup — explicit, no magic
-import { setStore, redisStore } from '@webjs/server';
+import { setStore, redisStore } from '@webjskit/server';
 setStore(redisStore({ url: process.env.REDIS_URL }));
 // Now rate limiter and sessions share state across instances
 ```
@@ -1474,7 +1474,7 @@ and what stays in-memory.
 ### Streaming SSR / Suspense
 
 ```js
-import { html, Suspense } from '@webjs/core';
+import { html, Suspense } from '@webjskit/core';
 
 export default function Page() {
   return html`
@@ -1548,15 +1548,15 @@ Fixed-window limiter shaped as middleware. Place it in `middleware.ts` at whatev
 
 ```js
 // app/api/auth/middleware.ts — protect login/signup from brute force
-import { rateLimit } from '@webjs/server';
+import { rateLimit } from '@webjskit/server';
 export default rateLimit({ window: '10s', max: 5 });
 
 // app/api/middleware.ts — general API rate limit
-import { rateLimit } from '@webjs/server';
+import { rateLimit } from '@webjskit/server';
 export default rateLimit({ window: '1m', max: 60 });
 
 // Custom key: rate limit per authenticated user instead of IP
-import { rateLimit } from '@webjs/server';
+import { rateLimit } from '@webjskit/server';
 export default rateLimit({
   window: '1m', max: 30,
   key: async (req) => {
@@ -1580,7 +1580,7 @@ then segment-scoped files.
 
 ### Client router — Turbo Drive-style navigation
 
-`import '@webjs/core/client-router'` enables SPA-style navigation without full page reloads. Intercepts same-origin `<a>` clicks (including inside shadow DOM via `composedPath()`), fetches the target HTML, and swaps DOM content.
+`import '@webjskit/core/client-router'` enables SPA-style navigation without full page reloads. Intercepts same-origin `<a>` clicks (including inside shadow DOM via `composedPath()`), fetches the target HTML, and swaps DOM content.
 
 **How it works:**
 1. Fetches the target URL's HTML via `fetch()`.
@@ -1592,7 +1592,7 @@ then segment-scoped files.
 
 **Programmatic navigation:**
 ```js
-import { navigate } from '@webjs/core/client-router';
+import { navigate } from '@webjskit/core/client-router';
 await navigate('/about');                    // push to history
 await navigate('/login', { replace: true }); // replace history entry
 ```
@@ -1637,7 +1637,7 @@ Import `createRequestHandler` and adapt the platform's Request/Response:
 ```js
 // Express
 import express from 'express';
-import { createRequestHandler } from '@webjs/server';
+import { createRequestHandler } from '@webjskit/server';
 const webjs = await createRequestHandler({ appDir });
 app.use(async (req, res) => {
   const webReq = new Request(`http://${req.headers.host}${req.url}`, {
@@ -1686,7 +1686,7 @@ Use `node:test` and `node:assert/strict`. Test server actions, components
 ```ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { html, renderToString } from '@webjs/core';
+import { html, renderToString } from '@webjskit/core';
 
 test('component renders heading', async () => {
   const result = await renderToString(html`<h1>Hello</h1>`);

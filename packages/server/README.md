@@ -1,10 +1,10 @@
-# @webjs/server
+# @webjskit/server
 
 Dev + production server for [webjs](https://github.com/vivek7405/webjs) —
 file-based routing, streaming SSR, server actions, WebSocket upgrades, and
 live reload.
 
-Rarely installed directly. Use [`@webjs/cli`](https://www.npmjs.com/package/@webjs/cli)
+Rarely installed directly. Use [`@webjskit/cli`](https://www.npmjs.com/package/@webjskit/cli)
 to scaffold and run an app; it pulls this package in as a dependency.
 
 ## Features
@@ -24,7 +24,7 @@ to scaffold and run an app; it pulls this package in as a dependency.
 ## Install
 
 ```sh
-npm install @webjs/server @webjs/core
+npm install @webjskit/server @webjskit/core
 ```
 
 ## Use
@@ -39,7 +39,7 @@ npx webjs start
 Or programmatically:
 
 ```js
-import { startServer } from '@webjs/server';
+import { startServer } from '@webjskit/server';
 
 await startServer({ port: 3000, appDir: process.cwd(), dev: true });
 ```

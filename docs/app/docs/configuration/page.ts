@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'Configuration — webjs' };
 
@@ -73,7 +73,7 @@ npx webjs db studio       # prisma studio</pre>
     <blockquote><strong>Warning:</strong> never reference <code>process.env</code> in component code that runs on the client. It's undefined in the browser and would leak server secrets if it worked.</blockquote>
 
     <h2>Programmatic API</h2>
-    <pre>import { startServer, createRequestHandler } from '@webjs/server';
+    <pre>import { startServer, createRequestHandler } from '@webjskit/server';
 
 // Option 1: Full server
 await startServer({

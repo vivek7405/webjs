@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'Task Controller — webjs' };
 
@@ -7,13 +7,13 @@ export default function TaskPage() {
     <h1>Task Controller</h1>
     <p>The Task controller manages async operations inside components — data fetching, computations, or any promise-based work. It tracks loading, success, and error states automatically, cancels in-flight requests when args change, and provides a convenient <code>render()</code> helper for mapping states to templates.</p>
 
-    <pre>import { Task, TaskStatus } from '@webjs/core/task';</pre>
+    <pre>import { Task, TaskStatus } from '@webjskit/core/task';</pre>
 
     <h2>Basic Usage</h2>
     <p>Create a Task inside a component. Pass a task function and an <code>args</code> function that returns the reactive inputs. When the args change, the task re-runs automatically.</p>
 
-    <pre>import { WebComponent, html } from '@webjs/core';
-import { Task } from '@webjs/core/task';
+    <pre>import { WebComponent, html } from '@webjskit/core';
+import { Task } from '@webjskit/core/task';
 
 class UserProfile extends WebComponent {
   static properties = { userId: { type: String } };
@@ -185,8 +185,8 @@ SearchResults.register('search-results');</pre>
 
     <h2>Full Example: Search With Debounce</h2>
 
-    <pre>import { WebComponent, html, css } from '@webjs/core';
-import { Task } from '@webjs/core/task';
+    <pre>import { WebComponent, html, css } from '@webjskit/core';
+import { Task } from '@webjskit/core/task';
 
 class LiveSearch extends WebComponent {
 

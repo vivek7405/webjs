@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'Caching — webjs' };
 
@@ -10,7 +10,7 @@ export default function Cache() {
     <h2>cache() — Server-Side Query Caching</h2>
     <p>Wrap any async function with <code>cache()</code> to cache its return value on the server. Same function + same arguments = cached result until TTL expires or you call <code>invalidate()</code>.</p>
 
-    <pre>import { cache } from '@webjs/server';
+    <pre>import { cache } from '@webjskit/server';
 
 export const listPosts = cache(
   async () => {
@@ -54,7 +54,7 @@ export const metadata = {
     <h2>Low-Level Cache Store</h2>
     <p>Both <code>cache()</code> and the rate limiter are built on a pluggable cache store. You can use it directly for custom caching needs:</p>
 
-    <pre>import { getStore, setStore, redisStore } from '@webjs/server';
+    <pre>import { getStore, setStore, redisStore } from '@webjskit/server';
 
 // Get the default store (memoryStore in dev)
 const store = getStore();
@@ -74,7 +74,7 @@ const count = await store.increment('api:hits:192.168.1.1', 60_000);</pre>
     <h4>redisStore (production)</h4>
     <p>Redis-backed store for multi-instance deployments. Set it explicitly at app startup:</p>
 
-    <pre>import { setStore, redisStore } from '@webjs/server';
+    <pre>import { setStore, redisStore } from '@webjskit/server';
 setStore(redisStore({ url: process.env.REDIS_URL }));</pre>
 
     <h3>Store API</h3>

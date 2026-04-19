@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'AI-First Development — webjs' };
 
@@ -24,7 +24,7 @@ export default function AIFirst() {
     <p>Every webjs app has an <code>AGENTS.md</code> at the root. This is a structured document that AI agents read before touching any code. It contains:</p>
     <ul>
       <li><strong>File conventions table</strong> — which filename means what (page.ts, route.ts, middleware.ts, .server.ts, etc.).</li>
-      <li><strong>Public API surface</strong> — every exported function from <code>webjs</code> and <code>@webjs/server</code> with a one-line description.</li>
+      <li><strong>Public API surface</strong> — every exported function from <code>webjs</code> and <code>@webjskit/server</code> with a one-line description.</li>
       <li><strong>Invariants</strong> — rules that must never be broken ("never import @prisma/client from a component", "event holes must be unquoted").</li>
       <li><strong>Recipes</strong> — step-by-step instructions for "add a page", "add a server action", "add a component", "add a DB model".</li>
       <li><strong>What's deliberately deferred</strong> — so agents don't try to implement features that aren't supported yet.</li>
@@ -142,7 +142,7 @@ Autonomous mode        ✅ defaults   ❌ n/a        ❌ n/a</pre>
     <pre>## What webjs is
 ## App layout (file conventions table)
 ## Public API — webjs
-## Public API — @webjs/server
+## Public API — @webjskit/server
 ## Modules architecture
 ## File conventions — detail (pages, layouts, routes, actions, components)
 ## Invariants (rules agents must follow)

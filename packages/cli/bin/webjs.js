@@ -31,7 +31,7 @@ async function main() {
     case 'dev': {
       // If we're already inside the --watch child, start the server directly.
       if (process.env.__WEBJS_DEV_CHILD === '1') {
-        const { startServer } = await import('@webjs/server');
+        const { startServer } = await import('@webjskit/server');
         const port = Number(flag(rest, '--port', process.env.PORT || 3000));
         await startServer({ appDir: process.cwd(), port, dev: true });
         break;
@@ -71,7 +71,7 @@ async function main() {
       break;
     }
     case 'start': {
-      const { startServer } = await import('@webjs/server');
+      const { startServer } = await import('@webjskit/server');
       const port = Number(flag(rest, '--port', process.env.PORT || 3000));
       const http2 = rest.includes('--http2');
       const cert = flag(rest, '--cert');
@@ -80,7 +80,7 @@ async function main() {
       break;
     }
     case 'build': {
-      const { buildBundle } = await import('@webjs/server');
+      const { buildBundle } = await import('@webjskit/server');
       const t = Date.now();
       const result = await buildBundle({
         appDir: process.cwd(),
@@ -174,7 +174,7 @@ async function main() {
       break;
     }
     case 'check': {
-      const { checkConventions, RULES } = await import('@webjs/server/check');
+      const { checkConventions, RULES } = await import('@webjskit/server/check');
       const violations = await checkConventions(process.cwd());
 
       if (rest.includes('--rules')) {

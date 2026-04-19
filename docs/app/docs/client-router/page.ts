@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'Client Router — webjs' };
 
@@ -45,7 +45,7 @@ export default function ClientRouter() {
     <h2>Programmatic navigation</h2>
     <p>Use <code>navigate()</code> instead of <code>location.href = ...</code>:</p>
 
-    <pre>import { navigate } from '@webjs/core/client-router';
+    <pre>import { navigate } from '@webjskit/core/client-router';
 
 // Normal navigation (adds to history)
 await navigate('/about');
@@ -54,7 +54,7 @@ await navigate('/about');
 await navigate('/login', { replace: true });</pre>
 
     <h2>Disabling the router entirely</h2>
-    <pre>import { disableClientRouter } from '@webjs/core/client-router';
+    <pre>import { disableClientRouter } from '@webjskit/core/client-router';
 disableClientRouter();</pre>
 
     <h2>Listening for navigations</h2>

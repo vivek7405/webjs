@@ -1,4 +1,4 @@
-import { WebComponent, html, css } from '@webjs/core';
+import { WebComponent, html, css } from '@webjskit/core';
 
 /** Shadow DOM child — used in nested DSD e2e tests. */
 export class ShadowInner extends WebComponent {

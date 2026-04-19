@@ -1,4 +1,4 @@
-import { html } from '@webjs/core';
+import { html } from '@webjskit/core';
 
 export const metadata = { title: 'Rate Limiting — webjs' };
 
@@ -24,7 +24,7 @@ export default function RateLimiting() {
     <p>Create a <code>middleware.ts</code> file and export the rate limiter:</p>
 
     <pre>// app/api/auth/middleware.ts
-import { rateLimit } from '@webjs/server';
+import { rateLimit } from '@webjskit/server';
 
 export default rateLimit({ window: '1m', max: 10 });</pre>
 
@@ -43,7 +43,7 @@ export default rateLimit({ window: '1m', max: 10 });</pre>
     <p>Rate limit by authenticated user instead of IP:</p>
 
     <pre>// app/api/posts/middleware.ts
-import { rateLimit } from '@webjs/server';
+import { rateLimit } from '@webjskit/server';
 import { auth } from '../../modules/auth/index.ts';
 
 export default rateLimit({
