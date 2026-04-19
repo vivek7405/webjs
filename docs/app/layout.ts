@@ -101,8 +101,10 @@ export default function RootLayout({ children }: { children: unknown }) {
           --bg-sunken:     oklch(0.11 0.008 55);
           --border:        oklch(0.26 0.012 55 / 0.9);
           --border-strong: oklch(0.38 0.012 55 / 0.9);
-          --accent-tint:   oklch(0.78 0.14 55 / 0.12);
+          --accent:        oklch(0.78 0.14 55);
+          --accent-hover:  oklch(0.85 0.14 55);
           --accent-fg:     oklch(0.15 0.01 55);
+          --accent-tint:   oklch(0.78 0.14 55 / 0.12);
         }
       }
       :root[data-theme='dark'] {
@@ -115,8 +117,10 @@ export default function RootLayout({ children }: { children: unknown }) {
         --bg-sunken:     oklch(0.11 0.008 55);
         --border:        oklch(0.26 0.012 55 / 0.9);
         --border-strong: oklch(0.38 0.012 55 / 0.9);
-        --accent-tint:   oklch(0.78 0.14 55 / 0.12);
+        --accent:        oklch(0.78 0.14 55);
+        --accent-hover:  oklch(0.85 0.14 55);
         --accent-fg:     oklch(0.15 0.01 55);
+        --accent-tint:   oklch(0.78 0.14 55 / 0.12);
       }
 
       html, body { margin: 0; }
