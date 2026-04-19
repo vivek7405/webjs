@@ -1,4 +1,4 @@
-import { WebComponent, html } from 'webjs';
+import { WebComponent, html } from '@webjs/core';
 
 /** Light DOM child — used in nested DSD e2e tests. */
 export class LightInner extends WebComponent {

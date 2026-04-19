@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'Streaming & Suspense — webjs' };
 
@@ -17,7 +17,7 @@ export default function SuspensePage() {
     </ol>
 
     <h2>Usage</h2>
-    <pre>import { html, Suspense } from 'webjs';
+    <pre>import { html, Suspense } from '@webjs/core';
 
 async function SlowStats() {
   const data = await fetchExpensiveAnalytics();

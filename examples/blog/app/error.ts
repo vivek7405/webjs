@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 import '../components/error-card.ts';
 
 /**

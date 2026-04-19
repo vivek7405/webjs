@@ -1,5 +1,5 @@
-import { html } from 'webjs';
-import 'webjs/client-router';
+import { html } from '@webjs/core';
+import '@webjs/core/client-router';
 import '../components/theme-toggle.ts';
 
 /**

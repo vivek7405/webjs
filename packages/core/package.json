@@ -1,5 +1,5 @@
 {
-  "name": "webjs",
+  "name": "@webjs/core",
   "version": "0.1.0",
   "type": "module",
   "description": "webjs core runtime — html/css tags, WebComponent base, isomorphic renderers",
@@ -21,6 +21,25 @@
   "files": [
     "index.js",
     "index.d.ts",
-    "src"
+    "src",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vivek7405/webjs.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/vivek7405/webjs#readme",
+  "bugs": "https://github.com/vivek7405/webjs/issues",
+  "license": "MIT",
+  "keywords": [
+    "webjs",
+    "web-components",
+    "ssr",
+    "framework",
+    "no-build"
   ]
 }

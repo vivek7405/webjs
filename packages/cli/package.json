@@ -6,7 +6,30 @@
   "bin": {
     "webjs": "bin/webjs.js"
   },
+  "files": [
+    "bin",
+    "lib",
+    "templates",
+    "README.md"
+  ],
   "dependencies": {
     "@webjs/server": "0.1.0"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vivek7405/webjs.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/vivek7405/webjs#readme",
+  "bugs": "https://github.com/vivek7405/webjs/issues",
+  "license": "MIT",
+  "keywords": [
+    "webjs",
+    "cli",
+    "dev",
+    "scaffold"
+  ]
 }

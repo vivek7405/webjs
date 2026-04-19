@@ -131,10 +131,10 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       return s ? JSON.parse(s.textContent) : null;
     });
     assert.ok(map, 'Import map should exist');
-    assert.ok(map.imports['webjs'], 'Should have webjs entry');
-    assert.ok(map.imports['webjs/directives'], 'Should have webjs/directives entry');
-    assert.ok(map.imports['webjs/context'], 'Should have webjs/context entry');
-    assert.ok(map.imports['webjs/task'], 'Should have webjs/task entry');
+    assert.ok(map.imports['@webjs/core'], 'Should have @webjs/core entry');
+    assert.ok(map.imports['@webjs/core/directives'], 'Should have @webjs/core/directives entry');
+    assert.ok(map.imports['@webjs/core/context'], 'Should have @webjs/core/context entry');
+    assert.ok(map.imports['@webjs/core/task'], 'Should have @webjs/core/task entry');
     assert.ok(map.imports['superjson'], 'Should have superjson entry');
   });
 

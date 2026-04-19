@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'expose() — REST Endpoints from Server Actions — webjs' };
 
@@ -22,7 +22,7 @@ export default function Expose() {
 
     <h2>Basic usage</h2>
     <pre>// modules/posts/actions/create-post.server.ts
-import { expose } from 'webjs';
+import { expose } from '@webjs/core';
 import { prisma } from '../../../lib/prisma.ts';
 
 export const createPost = expose('POST /api/posts', async ({ title, body }) => {
@@ -38,7 +38,7 @@ export const createPost = expose('POST /api/posts', async ({ title, body }) => {
     <h2>Input validation</h2>
     <p>Pass a <code>validate</code> function as the third argument. It runs only on the HTTP path (RPC calls are same-origin and CSRF-protected, so they bypass validation):</p>
 
-    <pre>import { expose } from 'webjs';
+    <pre>import { expose } from '@webjs/core';
 import { z } from 'zod';
 
 const PostSchema = z.object({

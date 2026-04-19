@@ -32,7 +32,7 @@ test('setVendorEntries: adds entries to import map', () => {
   const map = buildImportMap();
   assert.equal(map.imports['dayjs'], '/__webjs/vendor/dayjs.js');
   // Built-ins should still be there
-  assert.equal(map.imports['webjs'], '/__webjs/core/index.js');
+  assert.equal(map.imports['@webjs/core'], '/__webjs/core/index.js');
   assert.equal(map.imports['superjson'], '/__webjs/vendor/superjson.js');
   // Clean up
   setVendorEntries({});
@@ -54,5 +54,5 @@ test('setVendorEntries: overwrite replaces previous entries', () => {
 
 test('import map always includes lazy-loader entry', () => {
   const map = buildImportMap();
-  assert.equal(map.imports['webjs/lazy-loader'], '/__webjs/core/src/lazy-loader.js');
+  assert.equal(map.imports['@webjs/core/lazy-loader'], '/__webjs/core/src/lazy-loader.js');
 });

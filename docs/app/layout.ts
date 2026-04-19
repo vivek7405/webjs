@@ -1,5 +1,5 @@
-import { html } from 'webjs';
-import 'webjs/client-router';
+import { html } from '@webjs/core';
+import '@webjs/core/client-router';
 
 /**
  * Root layout for the docs site — Tailwind CSS browser runtime +

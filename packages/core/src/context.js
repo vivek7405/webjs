@@ -27,8 +27,8 @@
  * ## Quick example
  *
  * ```js
- * import { WebComponent, html } from 'webjs';
- * import { createContext, ContextProvider, ContextConsumer } from 'webjs/context';
+ * import { WebComponent, html } from '@webjs/core';
+ * import { createContext, ContextProvider, ContextConsumer } from '@webjs/core/context';
  *
  * const ThemeCtx = createContext('theme');
  *

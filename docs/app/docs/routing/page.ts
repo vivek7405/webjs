@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'Routing — webjs' };
 
@@ -68,7 +68,7 @@ export default function Routing() {
 
     <h3>Signature</h3>
     <pre>// app/blog/[slug]/page.ts
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 type Ctx = {
   params: { slug: string };
@@ -110,7 +110,7 @@ export default async function BlogPost({ params, searchParams, url }: Ctx) {
 
     <h3>Root Layout</h3>
     <pre>// app/layout.ts
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export default function RootLayout({ children }: { children: unknown }) {
   return html\`
@@ -122,7 +122,7 @@ export default function RootLayout({ children }: { children: unknown }) {
 
     <h3>Nested Layout</h3>
     <pre>// app/dashboard/layout.ts
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export default function DashboardLayout({ children }: { children: unknown }) {
   return html\`
@@ -164,7 +164,7 @@ export default function DashboardLayout({ children }: { children: unknown }) {
         └── page.ts     # matches /users/42, /users/abc, etc.</pre>
 
     <pre>// app/users/[id]/page.ts
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export default async function UserPage({ params }: { params: { id: string } }) {
   const user = await db.users.find(params.id);
@@ -190,7 +190,7 @@ export default async function UserPage({ params }: { params: { id: string } }) {
         └── page.ts     # /files/a/b/c → { path: "a/b/c" }</pre>
 
     <pre>// app/files/[...path]/page.ts
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export default function FilesPage({ params }: { params: { path: string } }) {
   const segments = params.path.split('/');
@@ -369,7 +369,7 @@ export function WS(ws: WebSocket, req: Request, { params }: { params: Record&lt;
     </p>
 
     <pre>// app/not-found.ts
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export default function NotFound() {
   return html\`
@@ -395,7 +395,7 @@ export default function NotFound() {
     </p>
 
     <pre>// app/error.ts — root error boundary
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export default function ErrorBoundary({ error }: { error: unknown }) {
   const message = error instanceof Error ? error.message : String(error);
@@ -433,7 +433,7 @@ export default function ErrorBoundary({ error }: { error: unknown }) {
     <h3>Static Metadata</h3>
     <p>Export a <code>metadata</code> object from any page or layout:</p>
     <pre>// app/about/page.ts
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = {
   title: 'About — My App',
@@ -454,7 +454,7 @@ export default function About() {
       route params or data fetching:
     </p>
     <pre>// app/blog/[slug]/page.ts
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const post = await db.posts.findBySlug(params.slug);
@@ -485,7 +485,7 @@ export default async function PostPage({ params }: { params: { slug: string } })
     <!-- ===== NAVIGATION HELPERS ===== -->
     <h2>Navigation Helpers</h2>
     <p>
-      webjs provides two server-side navigation helpers, imported from <code>'webjs'</code>.
+      webjs provides two server-side navigation helpers, imported from <code>'@webjs/core'</code>.
       Both work by throwing a sentinel error that the SSR pipeline catches — never wrap
       them in a try/catch.
     </p>
@@ -495,7 +495,7 @@ export default async function PostPage({ params }: { params: { slug: string } })
       Aborts rendering and returns a <code>404</code> response. If a
       <code>not-found.ts</code> exists at the app root, it is rendered.
     </p>
-    <pre>import { html, notFound } from 'webjs';
+    <pre>import { html, notFound } from '@webjs/core';
 
 export default async function PostPage({ params }: { params: { slug: string } }) {
   const post = await db.posts.findBySlug(params.slug);
@@ -510,7 +510,7 @@ export default async function PostPage({ params }: { params: { slug: string } })
       <code>307</code> (temporary redirect). Pass <code>308</code> for a permanent
       redirect.
     </p>
-    <pre>import { redirect } from 'webjs';
+    <pre>import { redirect } from '@webjs/core';
 
 export default async function ProtectedPage() {
   const user = await getSession();
@@ -534,7 +534,7 @@ export default async function ProtectedPage() {
     </p>
 
     <pre>// app/dashboard/loading.ts  (reserved — future Suspense integration)
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export default function Loading() {
   return html\`

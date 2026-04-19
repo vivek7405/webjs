@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'Components — webjs' };
 
@@ -10,7 +10,7 @@ export default function Components() {
     <h2>The WebComponent Base Class</h2>
     <p>Every interactive component extends <code>WebComponent</code> and declares three static fields: a <strong>tag name</strong>, a <strong>property map</strong>, and <strong>styles</strong>. Then it implements <code>render()</code> and registers itself.</p>
 
-    <pre>import { WebComponent, html, css } from 'webjs';
+    <pre>import { WebComponent, html, css } from '@webjs/core';
 
 class MyCounter extends WebComponent {
 
@@ -159,7 +159,7 @@ this.setState({ label: 'hello' });
     <h2>Styles</h2>
     <p>Use the <code>css</code> tagged template to declare scoped styles. They are automatically adopted into the component's shadow root.</p>
 
-    <pre>import { WebComponent, html, css } from 'webjs';
+    <pre>import { WebComponent, html, css } from '@webjs/core';
 
 class StyledCard extends WebComponent {
   static styles = css\`
@@ -565,7 +565,7 @@ UserProfile.register('user-profile');</pre>
     <h3>Keyed Lists with repeat()</h3>
     <p>By default, rendering an array of templates rebuilds all children when any item changes. For lists where items have stable identities, use <code>repeat()</code> to enable keyed reconciliation:</p>
 
-    <pre>import { WebComponent, html, css, repeat } from 'webjs';
+    <pre>import { WebComponent, html, css, repeat } from '@webjs/core';
 
 class TaskList extends WebComponent {
 
@@ -622,7 +622,7 @@ TaskList.register('task-list');</pre>
     <h2>Putting It All Together</h2>
     <p>Here is a complete example showing properties, state, events, lifecycle, slots, and scoped styles in a single component:</p>
 
-    <pre>import { WebComponent, html, css, repeat, connectWS } from 'webjs';
+    <pre>import { WebComponent, html, css, repeat, connectWS } from '@webjs/core';
 
 class ChatBox extends WebComponent {
 

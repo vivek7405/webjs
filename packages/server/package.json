@@ -8,10 +8,33 @@
     ".": "./index.js",
     "./check": "./src/check.js"
   },
+  "files": [
+    "index.js",
+    "src",
+    "README.md"
+  ],
   "dependencies": {
+    "@webjs/core": "0.1.0",
     "chokidar": "^3.6.0",
     "superjson": "^2.2.6",
-    "webjs": "0.1.0",
     "ws": "^8.20.0"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vivek7405/webjs.git",
+    "directory": "packages/server"
+  },
+  "homepage": "https://github.com/vivek7405/webjs#readme",
+  "bugs": "https://github.com/vivek7405/webjs/issues",
+  "license": "MIT",
+  "keywords": [
+    "webjs",
+    "ssr",
+    "server",
+    "router",
+    "dev-server"
+  ]
 }

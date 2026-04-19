@@ -1,4 +1,4 @@
-import { WebComponent, html } from 'webjs';
+import { WebComponent, html } from '@webjs/core';
 
 /**
  * `<error-card message="…">` — inline error surface, uses the accent tint

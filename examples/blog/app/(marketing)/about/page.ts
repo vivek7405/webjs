@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 import { rubric, displayH1, codeChip } from '../../_utils/ui.ts';
 
 export const metadata = { title: 'About — webjs blog' };

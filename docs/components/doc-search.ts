@@ -1,4 +1,4 @@
-import { WebComponent, html } from 'webjs';
+import { WebComponent, html } from '@webjs/core';
 
 type Result = { path: string; title: string; score: number; snippet: string };
 

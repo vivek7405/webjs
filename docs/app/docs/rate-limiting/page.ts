@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'Rate Limiting — webjs' };
 

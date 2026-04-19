@@ -1,13 +1,13 @@
 /**
  * Testing utilities for webjs components.
  *
- * **When to use (AI hint):** Import from `'webjs/testing'` in test files
+ * **When to use (AI hint):** Import from `'@webjs/core/testing'` in test files
  * to create, render, and interact with web components in a Node.js test
  * environment using linkedom (a lightweight DOM implementation).
  *
  * ```js
- * import { fixture, waitForUpdate } from 'webjs/testing';
- * import { html } from 'webjs';
+ * import { fixture, waitForUpdate } from '@webjs/core/testing';
+ * import { html } from '@webjs/core';
  *
  * const el = await fixture(html`<my-counter count="5"></my-counter>`);
  * assert.equal(el.shadowRoot.textContent.trim(), '5');

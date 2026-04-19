@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { readFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
-import { getExposed } from 'webjs';
+import { getExposed } from '@webjs/core';
 import { walk } from './fs-walk.js';
 import { verify as verifyCsrf, CSRF_COOKIE, CSRF_HEADER } from './csrf.js';
 import { getSerializer } from './serializer.js';

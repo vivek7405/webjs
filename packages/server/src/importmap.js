@@ -24,14 +24,14 @@ export function setVendorEntries(entries) {
 export function buildImportMap() {
   return {
     imports: {
-      'webjs':              '/__webjs/core/index.js',
-      'webjs/':             '/__webjs/core/src/',
-      'webjs/client-router': '/__webjs/core/src/router-client.js',
-      'webjs/lazy-loader':   '/__webjs/core/src/lazy-loader.js',
-      'webjs/directives':    '/__webjs/core/src/directives.js',
-      'webjs/context':       '/__webjs/core/src/context.js',
-      'webjs/testing':       '/__webjs/core/src/testing.js',
-      'webjs/task':          '/__webjs/core/src/task.js',
+      '@webjs/core':               '/__webjs/core/index.js',
+      '@webjs/core/':              '/__webjs/core/src/',
+      '@webjs/core/client-router': '/__webjs/core/src/router-client.js',
+      '@webjs/core/lazy-loader':   '/__webjs/core/src/lazy-loader.js',
+      '@webjs/core/directives':    '/__webjs/core/src/directives.js',
+      '@webjs/core/context':       '/__webjs/core/src/context.js',
+      '@webjs/core/testing':       '/__webjs/core/src/testing.js',
+      '@webjs/core/task':          '/__webjs/core/src/task.js',
       'superjson':          '/__webjs/vendor/superjson.js',
       ..._extraEntries,
     },

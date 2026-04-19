@@ -295,12 +295,12 @@ Every file is a plain ES module. No config required.
 
 ---
 
-## Public API — `webjs`
+## Public API — `@webjs/core`
 
-Import from the bare specifier `'webjs'` (resolved via the injected import map).
+Import from the bare specifier `'@webjs/core'` (resolved via the injected import map).
 
 ```js
-import { html, css, WebComponent, render, renderToString } from 'webjs';
+import { html, css, WebComponent, render, renderToString } from '@webjs/core';
 ```
 
 | Export            | Purpose |
@@ -319,7 +319,7 @@ import { html, css, WebComponent, render, renderToString } from 'webjs';
 | `connectWS(url, handlers)` | Client-side WebSocket with auto-reconnect, JSON parse/stringify, queued sends. |
 | `richFetch<T>(url, init?)` | Client-side fetch that adds `Accept: application/vnd.webjs+json`, encodes plain-object bodies via superjson, and decodes responses with rich types. |
 
-### Directives — `import { … } from 'webjs/directives'`
+### Directives — `import { … } from '@webjs/core/directives'`
 
 webjs follows a **"less is more"** philosophy: only directives that solve
 problems with NO native alternative are included. AI agents don't need
@@ -349,7 +349,7 @@ syntax sugar — they write code that works, not code that looks pretty.
 | Async data in page | `async` page function (just `await`) |
 | Lists without reorder | `${items.map(item => html\`…\`)}` |
 
-### Context Protocol — `import { … } from 'webjs/context'`
+### Context Protocol — `import { … } from '@webjs/core/context'`
 
 Share data across deeply nested components without prop drilling.
 
@@ -362,7 +362,7 @@ Share data across deeply nested components without prop drilling.
 
 **When to use Context (AI hint):** Use when data (theme, auth state, locale, config) must reach components many levels deep without threading it through every intermediate component's attributes. Do NOT use for data that changes on every render (use state for that) or for data that only one component needs (use a server action or prop).
 
-### Task Controller — `import { Task, TaskStatus } from 'webjs/task'`
+### Task Controller — `import { Task, TaskStatus } from '@webjs/core/task'`
 
 Manages async operations (fetch, compute) inside components with automatic loading/error states and AbortController.
 
@@ -447,7 +447,7 @@ TypeScript's class-field initializer doesn't clobber the reactive
 accessor the framework installs via `Object.defineProperty`.
 
 ```ts
-import { WebComponent, html } from 'webjs';
+import { WebComponent, html } from '@webjs/core';
 
 class StudentCard extends WebComponent {
   static properties = { student: { type: Object } };   // runtime: tracked + coerced
@@ -636,7 +636,7 @@ interpolate via `<style>${STYLES.text}</style>`. `ts-lit-plugin` /
 Example (page):
 
 ```ts
-import { html, css } from 'webjs';
+import { html, css } from '@webjs/core';
 
 const STYLES = css`
   .page-dashboard {
@@ -738,7 +738,7 @@ Set `static shadow = true` when:
 
 ```js
 // app/error.ts — root error boundary
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export default function ErrorPage({ error }: { error: Error }) {
   return html`
@@ -757,7 +757,7 @@ A `loading.js` file is the automatic Suspense boundary for its sibling page. The
 
 ```js
 // app/blog/loading.ts — shown while blog pages load
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export default function Loading() {
   return html`
@@ -861,7 +861,7 @@ Supported files: `sitemap.js`, `robots.js`, `manifest.js`, `icon.js`, `apple-ico
 - On the server these modules are imported normally; you can freely use Prisma, `fs`, environment variables, etc.
 - **Expose as REST**: wrap any action with `expose('METHOD /path', fn)` to ALSO make it reachable at a stable REST URL. The same function body powers both callers:
   ```js
-  import { expose } from 'webjs';
+  import { expose } from '@webjs/core';
   export const createPost = expose('POST /api/posts', async ({ title, body }) => { … });
   ```
   When called over HTTP, the adapter merges `{ ...query, ...urlParams, ...jsonBody }` into a single object argument. This is the recommended way to surface a server action to external consumers — no `route.js` wrapper needed.
@@ -988,7 +988,7 @@ no client-side runtime, no diff from writing the classes by hand.
 Scaffold example (`app/_utils/ui.ts`):
 
 ```ts
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 /** `● label` kicker — small caps, accent colour, above headings. */
 export function rubric(label: string, mb: 'sm' | 'md' = 'md') {
@@ -1060,7 +1060,7 @@ the class-prefix rule documented in the Shadow-vs-Light DOM section.
 
 ```js
 // app/about/page.js
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 export default function About() {
   return html`<h1>About</h1><p>…</p>`;
 }
@@ -1070,7 +1070,7 @@ export default function About() {
 
 ```js
 // app/users/[id]/page.js
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 export default async function User({ params }) {
   // use a server action to fetch; never import a DB client directly in a page
   const user = await fetchUser(params.id);
@@ -1132,7 +1132,7 @@ if (!r.success) this.setState({ error: r.error });
 
 ```js
 // components/hello-world.js
-import { WebComponent, html } from 'webjs';
+import { WebComponent, html } from '@webjs/core';
 export class HelloWorld extends WebComponent {
   render() { return html`<p>Hello!</p>`; }
 }
@@ -1305,7 +1305,7 @@ export async function GET() {
 
 ```ts
 // caller — client side
-import { richFetch } from 'webjs';
+import { richFetch } from '@webjs/core';
 const posts = await richFetch<Post[]>('/api/posts');
 // posts[0].createdAt is a Date here (richFetch sends
 // Accept: application/vnd.webjs+json and superjson-parses the response).
@@ -1474,7 +1474,7 @@ and what stays in-memory.
 ### Streaming SSR / Suspense
 
 ```js
-import { html, Suspense } from 'webjs';
+import { html, Suspense } from '@webjs/core';
 
 export default function Page() {
   return html`
@@ -1580,7 +1580,7 @@ then segment-scoped files.
 
 ### Client router — Turbo Drive-style navigation
 
-`import 'webjs/client-router'` enables SPA-style navigation without full page reloads. Intercepts same-origin `<a>` clicks (including inside shadow DOM via `composedPath()`), fetches the target HTML, and swaps DOM content.
+`import '@webjs/core/client-router'` enables SPA-style navigation without full page reloads. Intercepts same-origin `<a>` clicks (including inside shadow DOM via `composedPath()`), fetches the target HTML, and swaps DOM content.
 
 **How it works:**
 1. Fetches the target URL's HTML via `fetch()`.
@@ -1592,7 +1592,7 @@ then segment-scoped files.
 
 **Programmatic navigation:**
 ```js
-import { navigate } from 'webjs/client-router';
+import { navigate } from '@webjs/core/client-router';
 await navigate('/about');                    // push to history
 await navigate('/login', { replace: true }); // replace history entry
 ```
@@ -1686,7 +1686,7 @@ Use `node:test` and `node:assert/strict`. Test server actions, components
 ```ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { html, renderToString } from 'webjs';
+import { html, renderToString } from '@webjs/core';
 
 test('component renders heading', async () => {
   const result = await renderToString(html`<h1>Hello</h1>`);

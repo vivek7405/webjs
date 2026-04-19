@@ -1,4 +1,4 @@
-import { WebComponent, html } from 'webjs';
+import { WebComponent, html } from '@webjs/core';
 import './shadow-inner.ts';
 import './light-inner.ts';
 

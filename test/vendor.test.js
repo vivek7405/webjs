@@ -78,7 +78,7 @@ test('scanBareImports: finds bare specifiers in source files', async () => {
   assert.ok(!found.has('pg'), 'server-only imports should be skipped');
   assert.ok(!found.has('./local.js'), 'relative imports should be excluded');
   // Built-ins should never appear
-  assert.ok(!found.has('webjs'));
+  assert.ok(!found.has('@webjs/core'));
   assert.ok(!found.has('superjson'));
 
   await rm(dir, { recursive: true, force: true });
@@ -110,8 +110,8 @@ test('vendorImportMapEntries: generates correct URLs', () => {
 });
 
 test('vendorImportMapEntries: skips built-ins', () => {
-  const entries = vendorImportMapEntries(new Set(['webjs', 'superjson', 'dayjs']));
-  assert.ok(!('webjs' in entries));
+  const entries = vendorImportMapEntries(new Set(['@webjs/core', 'superjson', 'dayjs']));
+  assert.ok(!('@webjs/core' in entries));
   assert.ok(!('superjson' in entries));
   assert.ok('dayjs' in entries);
 });

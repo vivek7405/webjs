@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@webjs/cli": "0.1.0",
-    "@webjs/server": "0.1.0",
-    "webjs": "0.1.0"
+    "@webjs/core": "0.1.0",
+    "@webjs/server": "0.1.0"
   }
 }

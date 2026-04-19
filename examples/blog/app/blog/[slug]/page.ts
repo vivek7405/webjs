@@ -1,4 +1,4 @@
-import { html, notFound } from 'webjs';
+import { html, notFound } from '@webjs/core';
 import '../../../components/muted-text.ts';
 import '../../../modules/comments/components/comments-thread.ts';
 

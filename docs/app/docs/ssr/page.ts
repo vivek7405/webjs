@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'Server-Side Rendering — webjs' };
 
@@ -11,7 +11,7 @@ export default function SSR() {
     <p>Pages are plain async functions that return <code>html\`\`</code> tagged templates (a <code>TemplateResult</code>). The server imports the page module, calls its default export, and passes the result through <code>renderToString()</code>. That function walks the template tree, resolves every <code>Promise</code> it encounters in template holes, and produces a complete HTML string.</p>
 
     <pre>// app/page.ts
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'Home' };
 
@@ -67,7 +67,7 @@ export default async function Home() {
     <p>Pages, layouts, and components can all be async. The server awaits every level of the render tree:</p>
 
     <pre>// app/posts/[slug]/page.ts
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 import '../../components/post-card.ts';
 
 export default async function PostPage({ params }: { params: { slug: string } }) {
@@ -87,7 +87,7 @@ export default async function PostPage({ params }: { params: { slug: string } })
     <h2>Streaming SSR with Suspense</h2>
     <p>Not every data fetch should block the initial HTML flush. The <code>Suspense</code> function creates a boundary that streams deferred content after the initial paint:</p>
 
-    <pre>import { html, Suspense } from 'webjs';
+    <pre>import { html, Suspense } from '@webjs/core';
 
 export default function CataloguePage() {
   return html\`
@@ -204,7 +204,7 @@ export const metadata = {
 
     <h2>Full SSR Example</h2>
     <pre>// app/layout.ts
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 export const metadata = { title: 'My App' };
 
 export default function RootLayout({ children }: { children: unknown }) {
@@ -215,7 +215,7 @@ export default function RootLayout({ children }: { children: unknown }) {
 }
 
 // app/page.ts
-import { html, Suspense } from 'webjs';
+import { html, Suspense } from '@webjs/core';
 import '../components/hero-banner.ts';
 
 export const metadata = {

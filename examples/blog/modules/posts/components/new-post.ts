@@ -1,4 +1,4 @@
-import { WebComponent, html } from 'webjs';
+import { WebComponent, html } from '@webjs/core';
 // Server action — dev server rewrites this import into an RPC stub for the
 // browser. At type-check time TS resolves the real source so createPost's
 // input + return types flow across the RPC boundary.

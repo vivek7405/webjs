@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'Conventions & AI Workflow — webjs' };
 
@@ -73,7 +73,7 @@ webjs test
 
     <pre>import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { html, renderToString } from 'webjs';
+import { html, renderToString } from '@webjs/core';
 
 test('renders heading', async () =&gt; {
   const result = await renderToString(html\`&lt;h1&gt;Hello&lt;/h1&gt;\`);

@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'Lazy Loading — webjs' };
 
@@ -24,7 +24,7 @@ export default function LazyLoading() {
     <h2>Basic usage</h2>
     <p>Add <code>static lazy = true</code> to your component class:</p>
 
-    <pre>import { WebComponent, html, css } from 'webjs';
+    <pre>import { WebComponent, html, css } from '@webjs/core';
 
 class HeavyChart extends WebComponent {
   static lazy = true;  // ← module loaded on scroll, not on page load

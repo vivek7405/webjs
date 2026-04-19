@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'Editor Setup — webjs' };
 
@@ -46,7 +46,7 @@ export default function EditorSetup() {
 
     <h2>Layer 1 — Component internals (works everywhere)</h2>
     <p>Type each property with the two-line pattern. The runtime half goes in <code>static properties</code>; the compile-time half goes in a <code>declare</code> field that types the auto-generated accessor:</p>
-    <pre>import { WebComponent, html } from 'webjs';
+    <pre>import { WebComponent, html } from '@webjs/core';
 import type { Student } from './student-types.ts';
 
 export class StudentCard extends WebComponent {

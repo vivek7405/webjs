@@ -3,7 +3,7 @@
  *
  * Usage (inside a server-only module: page, layout, API route, server action):
  *
- *   import { notFound, redirect } from 'webjs';
+ *   import { notFound, redirect } from '@webjs/core';
  *   if (!post) notFound();
  *   if (user.banned) redirect('/goodbye');
  *

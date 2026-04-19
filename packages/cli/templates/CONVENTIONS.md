@@ -212,7 +212,7 @@ with puppeteer or playwright imports.
 <!-- OVERRIDE -->
 
 ```ts
-import { WebComponent, html } from 'webjs';
+import { WebComponent, html } from '@webjs/core';
 
 export class MyWidget extends WebComponent {
   static properties = { label: { type: String }, count: { type: Number } };
@@ -297,7 +297,7 @@ small function in `app/_utils/ui.ts`:
 
 ```ts
 // app/_utils/ui.ts
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export function rubric(label: string) {
   return html`
@@ -357,7 +357,7 @@ their tag. Styles colocate as `const STYLES = css\`…\`` + `<style>${'$'}{STYLE
 
 ```ts
 // app/dashboard/page.ts
-import { html, css } from 'webjs';
+import { html, css } from '@webjs/core';
 
 const STYLES = css\`
   .page-dashboard {
@@ -438,7 +438,7 @@ SSR content is visible immediately — only the JS download is deferred.
 Tag a server action to also be reachable over HTTP:
 
 ```ts
-import { expose } from 'webjs';
+import { expose } from '@webjs/core';
 export const createPost = expose('POST /api/posts', async ({ title, body }) => {
   return prisma.post.create({ data: { title, body } });
 });

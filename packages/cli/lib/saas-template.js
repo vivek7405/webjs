@@ -145,7 +145,7 @@ export async function writeSaasFiles(appDir) {
   // app/login/page.ts
   await mkdir(join(appDir, 'app', 'login'), { recursive: true });
   await writeFile(join(appDir, 'app', 'login', 'page.ts'), [
-    "import { html } from 'webjs';",
+    "import { html } from '@webjs/core';",
     "",
     "export const metadata = { title: 'Login' };",
     "",
@@ -166,7 +166,7 @@ export async function writeSaasFiles(appDir) {
   // app/signup/page.ts
   await mkdir(join(appDir, 'app', 'signup'), { recursive: true });
   await writeFile(join(appDir, 'app', 'signup', 'page.ts'), [
-    "import { html } from 'webjs';",
+    "import { html } from '@webjs/core';",
     "",
     "export const metadata = { title: 'Sign up' };",
     "",
@@ -202,7 +202,7 @@ export async function writeSaasFiles(appDir) {
 
   // app/dashboard/page.ts
   await writeFile(join(appDir, 'app', 'dashboard', 'page.ts'), [
-    "import { html } from 'webjs';",
+    "import { html } from '@webjs/core';",
     "import { currentUser } from '../../modules/auth/queries/current-user.server.ts';",
     "",
     "export const metadata = { title: 'Dashboard' };",
@@ -220,7 +220,7 @@ export async function writeSaasFiles(appDir) {
 
   // app/dashboard/settings/page.ts
   await writeFile(join(appDir, 'app', 'dashboard', 'settings', 'page.ts'), [
-    "import { html } from 'webjs';",
+    "import { html } from '@webjs/core';",
     "import { currentUser } from '../../../modules/auth/queries/current-user.server.ts';",
     "",
     "export const metadata = { title: 'Settings' };",

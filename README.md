@@ -68,7 +68,7 @@ CLAUDE.md     # Claude Code quick-reference
 
 ```ts
 // app/page.ts — server-rendered, async data fetching
-import { html, repeat } from 'webjs';
+import { html, repeat } from '@webjs/core';
 import '../components/counter.ts';
 import { listPosts } from '../modules/posts/queries/list-posts.server.ts';
 
@@ -88,7 +88,7 @@ export default async function Home() {
 
 ```ts
 // components/counter.ts — interactive web component, light DOM + Tailwind
-import { WebComponent, html } from 'webjs';
+import { WebComponent, html } from '@webjs/core';
 
 export class Counter extends WebComponent {
   // Light DOM is the default; Tailwind utility classes apply directly.

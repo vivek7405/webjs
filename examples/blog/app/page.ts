@@ -1,4 +1,4 @@
-import { html, repeat, Suspense } from 'webjs';
+import { html, repeat, Suspense } from '@webjs/core';
 import '../components/counter.ts';
 import '../components/muted-text.ts';
 import '../modules/chat/components/chat-box.ts';

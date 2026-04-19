@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'Loading States — webjs' };
 
@@ -23,7 +23,7 @@ export default function LoadingStates() {
     <p>Create a <code>loading.ts</code> file next to your page. The framework automatically wraps the page in a <code>Suspense</code> boundary using your loading component as the fallback:</p>
 
     <pre>// app/blog/loading.ts
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export default function Loading() {
   return html${'`'}
@@ -36,7 +36,7 @@ export default function Loading() {
 }</pre>
 
     <pre>// app/blog/page.ts — this is async and may be slow
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export default async function BlogPage() {
   const posts = await fetchPosts();  // slow DB query
@@ -62,7 +62,7 @@ export default async function BlogPage() {
     <h2>Manual Suspense</h2>
     <p>For more control, use <code>Suspense()</code> directly in your page template instead of a <code>loading.ts</code> file:</p>
 
-    <pre>import { html, Suspense } from 'webjs';
+    <pre>import { html, Suspense } from '@webjs/core';
 
 export default function Page() {
   return html${'`'}

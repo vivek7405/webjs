@@ -9,7 +9,7 @@
  * Usage (automatic — the SSR pipeline sets this up):
  *
  *   <script type="module">
- *     import { observeLazy } from 'webjs/lazy-loader';
+ *     import { observeLazy } from '@webjs/core/lazy-loader';
  *     observeLazy({
  *       'my-lazy-widget': '/components/my-lazy-widget.ts',
  *     });

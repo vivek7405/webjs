@@ -1,4 +1,4 @@
-import { WebComponent, html } from 'webjs';
+import { WebComponent, html } from '@webjs/core';
 
 /**
  * `<my-counter>` — demo counter with the current design system.

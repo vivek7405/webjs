@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'Testing — webjs' };
 
@@ -26,7 +26,7 @@ test('listPosts returns an array', async () =&gt; {
 
     <h2>Renderer Tests</h2>
     <p>Test <code>renderToString</code> for SSR output:</p>
-    <pre>import { html, renderToString } from 'webjs';
+    <pre>import { html, renderToString } from '@webjs/core';
 
 test('renders template with interpolation', async () =&gt; {
   const out = await renderToString(html\`&lt;p&gt;\${'hello'}&lt;/p&gt;\`);

@@ -43,9 +43,9 @@ suite('E2E: Blog (real browser)', () => {
   test('import map includes framework entries', async () => {
     const resp = await fetchPage('/');
     const html = await resp.text();
-    assert.ok(html.includes('"webjs"'), 'import map should have webjs entry');
+    assert.ok(html.includes('"@webjs/core"'), 'import map should have @webjs/core entry');
     assert.ok(html.includes('"superjson"'), 'import map should have superjson entry');
-    assert.ok(html.includes('webjs/directives'), 'import map should have directives entry');
+    assert.ok(html.includes('@webjs/core/directives'), 'import map should have directives entry');
   });
 
   test('API route returns JSON', async () => {

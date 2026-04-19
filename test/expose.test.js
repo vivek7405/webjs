@@ -55,20 +55,20 @@ test('action scanner discovers expose()d routes and invokes them over HTTP', asy
   // Use a relative import so the scaffolded module can find webjs via the workspace.
   const dir = await scaffold({
     'actions/math.server.js': `
-      import { expose } from 'webjs';
+      import { expose } from '@webjs/core';
       export const add = expose('POST /api/add', async ({ a, b }) => a + b);
       export const get = expose('GET /api/value/:id', async ({ id }) => ({ id: Number(id) }));
     `,
-    // Minimal package.json so `import 'webjs'` resolves via workspace.
+    // Minimal package.json so `import '@webjs/core'` resolves via workspace.
     'package.json': JSON.stringify({ name: 'tmp', type: 'module' }),
   });
   try {
-    // Symlink node_modules/webjs → the real package so the scaffold can import it.
-    const modulesDir = join(dir, 'node_modules');
-    await mkdir(modulesDir, { recursive: true });
+    // Symlink node_modules/@webjs/core → the real package so the scaffold can import it.
+    const scopeDir = join(dir, 'node_modules', '@webjs');
+    await mkdir(scopeDir, { recursive: true });
     const { symlink } = await import('node:fs/promises');
     const realWebjs = new URL('../packages/core', import.meta.url).pathname;
-    await symlink(realWebjs, join(modulesDir, 'webjs'), 'dir').catch(() => {});
+    await symlink(realWebjs, join(scopeDir, 'core'), 'dir').catch(() => {});
 
     const idx = await buildActionIndex(dir, true);
     assert.equal(idx.httpRoutes.length, 2);
@@ -100,7 +100,7 @@ test('action scanner discovers expose()d routes and invokes them over HTTP', asy
 test('validate hook rejects bad input with 400 before handler runs', async () => {
   const dir = await scaffold({
     'actions/guarded.server.js': `
-      import { expose } from 'webjs';
+      import { expose } from '@webjs/core';
       let called = 0;
       export const make = expose(
         'POST /api/make',
@@ -115,11 +115,11 @@ test('validate hook rejects bad input with 400 before handler runs', async () =>
     'package.json': JSON.stringify({ name: 'tmp', type: 'module' }),
   });
   try {
-    const modulesDir = join(dir, 'node_modules');
-    await mkdir(modulesDir, { recursive: true });
+    const scopeDir = join(dir, 'node_modules', '@webjs');
+    await mkdir(scopeDir, { recursive: true });
     const { symlink } = await import('node:fs/promises');
     const realWebjs = new URL('../packages/core', import.meta.url).pathname;
-    await symlink(realWebjs, join(modulesDir, 'webjs'), 'dir').catch(() => {});
+    await symlink(realWebjs, join(scopeDir, 'core'), 'dir').catch(() => {});
 
     const idx = await buildActionIndex(dir, true);
     const m = matchExposedAction(idx, 'POST', '/api/make');

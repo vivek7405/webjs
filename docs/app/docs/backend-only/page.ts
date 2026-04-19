@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'Backend-Only Mode — webjs' };
 
@@ -129,7 +129,7 @@ export default rateLimit({ window: '10s', max: 5 });</pre>
     <p><code>expose()</code> turns a server action into a typed REST endpoint. This is especially useful in backend-only mode because it lets you define your API logic as plain functions with validation, then expose them over HTTP:</p>
     <pre>// actions/users.server.ts
 'use server';
-import { expose } from 'webjs';
+import { expose } from '@webjs/core';
 import { prisma } from '../lib/prisma.ts';
 
 export const listUsers = expose('GET /api/v2/users', async () =&gt; {
@@ -197,7 +197,7 @@ export async function GET() {
   return json(events); // dates stay as Dates for richFetch callers
 }</pre>
     <pre>// Internal client (another webjs app or same-app component)
-import { richFetch } from 'webjs';
+import { richFetch } from '@webjs/core';
 
 const events = await richFetch('/api/events');
 // events[0].createdAt is a real Date object
@@ -285,8 +285,8 @@ fastify.listen({ port: 3000 });</pre>
   },
   "dependencies": {
     "@webjs/cli": "0.1.0",
+    "@webjs/core": "0.1.0",
     "@webjs/server": "0.1.0",
-    "webjs": "0.1.0",
     "@prisma/client": "^6.0.0"
   },
   "devDependencies": {

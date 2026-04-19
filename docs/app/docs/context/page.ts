@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'Context Protocol — webjs' };
 
@@ -7,7 +7,7 @@ export default function Context() {
     <h1>Context Protocol</h1>
     <p>The context protocol lets you share data across deeply nested components without threading attributes through every intermediate element. It uses DOM events under the hood, which means it works across shadow DOM boundaries — a provider at the top of the tree can reach consumers buried many levels deep.</p>
 
-    <pre>import { createContext, ContextProvider, ContextConsumer } from 'webjs/context';</pre>
+    <pre>import { createContext, ContextProvider, ContextConsumer } from '@webjs/core/context';</pre>
 
     <h2>When to Use Context</h2>
     <p>Context is the right tool when:</p>
@@ -29,7 +29,7 @@ export default function Context() {
     <p><code>createContext(name)</code> returns a unique context key. The name is for debugging — uniqueness comes from the object identity.</p>
 
     <pre>// contexts/theme.ts (or .js)
-import { createContext } from 'webjs/context';
+import { createContext } from '@webjs/core/context';
 
 export const themeContext = createContext('theme');
 export type Theme = 'light' | 'dark' | 'system';</pre>
@@ -39,8 +39,8 @@ export type Theme = 'light' | 'dark' | 'system';</pre>
     <h2>Providing a Value</h2>
     <p><code>ContextProvider</code> is a reactive controller that provides a value to all descendants. Attach it to any component:</p>
 
-    <pre>import { WebComponent, html, css } from 'webjs';
-import { ContextProvider } from 'webjs/context';
+    <pre>import { WebComponent, html, css } from '@webjs/core';
+import { ContextProvider } from '@webjs/core/context';
 import { themeContext } from '../contexts/theme.ts';
 
 class AppShell extends WebComponent {
@@ -77,8 +77,8 @@ AppShell.register('app-shell');</pre>
     <h2>Consuming a Value</h2>
     <p><code>ContextConsumer</code> is a reactive controller that reads the nearest provider's value. Attach it to any descendant component:</p>
 
-    <pre>import { WebComponent, html, css } from 'webjs';
-import { ContextConsumer } from 'webjs/context';
+    <pre>import { WebComponent, html, css } from '@webjs/core';
+import { ContextConsumer } from '@webjs/core/context';
 import { themeContext } from '../contexts/theme.ts';
 
 class ThemedCard extends WebComponent {
@@ -144,7 +144,7 @@ ThemedCard.register('themed-card');</pre>
     <h2>Multiple Contexts</h2>
     <p>A single component can provide or consume multiple contexts:</p>
 
-    <pre>import { createContext, ContextProvider } from 'webjs/context';
+    <pre>import { createContext, ContextProvider } from '@webjs/core/context';
 
 const themeContext = createContext('theme');
 const localeContext = createContext('locale');
@@ -196,12 +196,12 @@ AppRoot.register('app-root');</pre>
     <p>A complete provider + consumer pair for authentication state:</p>
 
     <pre>// contexts/auth.ts
-import { createContext } from 'webjs/context';
+import { createContext } from '@webjs/core/context';
 export const authContext = createContext('auth');
 
 // components/auth-provider.ts
-import { WebComponent, html } from 'webjs';
-import { ContextProvider } from 'webjs/context';
+import { WebComponent, html } from '@webjs/core';
+import { ContextProvider } from '@webjs/core/context';
 import { authContext } from '../contexts/auth.ts';
 
 class AuthProvider extends WebComponent {
@@ -229,8 +229,8 @@ class AuthProvider extends WebComponent {
 AuthProvider.register('auth-provider');
 
 // components/user-menu.ts
-import { WebComponent, html } from 'webjs';
-import { ContextConsumer } from 'webjs/context';
+import { WebComponent, html } from '@webjs/core';
+import { ContextConsumer } from '@webjs/core/context';
 import { authContext } from '../contexts/auth.ts';
 
 class UserMenu extends WebComponent {

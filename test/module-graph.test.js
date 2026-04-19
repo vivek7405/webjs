@@ -11,16 +11,16 @@ test('buildModuleGraph: builds graph from source files', async () => {
   await mkdir(join(dir, 'components'), { recursive: true });
 
   await writeFile(join(dir, 'page.ts'), `
-    import { html } from 'webjs';
+    import { html } from '@webjs/core';
     import './components/counter.ts';
     import './components/header.ts';
   `);
   await writeFile(join(dir, 'components', 'counter.ts'), `
-    import { WebComponent, html } from 'webjs';
+    import { WebComponent, html } from '@webjs/core';
     import './shared.ts';
   `);
   await writeFile(join(dir, 'components', 'header.ts'), `
-    import { WebComponent, html } from 'webjs';
+    import { WebComponent, html } from '@webjs/core';
     import './shared.ts';
   `);
   await writeFile(join(dir, 'components', 'shared.ts'), `
@@ -40,7 +40,7 @@ test('buildModuleGraph: builds graph from source files', async () => {
   assert.ok(counterDeps, 'counter.ts should have deps');
   assert.ok(counterDeps.has(join(dir, 'components', 'shared.ts')));
 
-  // Bare specifiers (e.g. 'webjs') should NOT be in the graph — only
+  // Bare specifiers (e.g. '@webjs/core') should NOT be in the graph — only
   // relative imports resolve to absolute paths.
   if (pageDeps) {
     for (const dep of pageDeps) {

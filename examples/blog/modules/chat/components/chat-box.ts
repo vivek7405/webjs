@@ -1,4 +1,4 @@
-import { WebComponent, html, connectWS } from 'webjs';
+import { WebComponent, html, connectWS } from '@webjs/core';
 
 type Line = { id: number; text: string; kind: 'say' | 'meta' };
 type State = { lines: Line[]; connected: boolean; count: number };

@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'Error Handling — webjs' };
 
@@ -24,7 +24,7 @@ export default function ErrorHandling() {
     <p>Place an <code>error.ts</code> file at any level in the <code>app/</code> directory. When a page or layout at that level (or deeper) throws, the nearest <code>error.ts</code> is rendered instead.</p>
 
     <pre>// app/error.ts — root error boundary
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export default function ErrorPage({ error }: { error: Error }) {
   return html${'`'}
@@ -48,7 +48,7 @@ export default function ErrorPage({ error }: { error: Error }) {
     <p>A special error boundary for 404 responses. Place <code>not-found.ts</code> at any route level — the nearest one wins:</p>
 
     <pre>// app/not-found.ts
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export default function NotFound() {
   return html${'`'}
@@ -60,7 +60,7 @@ export default function NotFound() {
 
     <p>Trigger a 404 programmatically from any page function or server action:</p>
 
-    <pre>import { notFound } from 'webjs';
+    <pre>import { notFound } from '@webjs/core';
 
 export default async function PostPage({ params }: { params: { slug: string } }) {
   const post = await getPost(params.slug);

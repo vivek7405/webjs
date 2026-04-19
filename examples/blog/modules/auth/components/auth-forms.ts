@@ -1,4 +1,4 @@
-import { WebComponent, html } from 'webjs';
+import { WebComponent, html } from '@webjs/core';
 
 /**
  * `<auth-forms>` — tabbed sign-in / sign-up, 2026 spotlight style.

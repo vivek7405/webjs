@@ -21,11 +21,11 @@ export { connectWS } from './src/websocket-client.js';
 export { richFetch } from './src/rich-fetch.js';
 export { enableClientRouter, disableClientRouter, navigate } from './src/router-client.js';
 
-// Directives — also available via 'webjs/directives'
+// Directives — also available via '@webjs/core/directives'
 export { unsafeHTML, isUnsafeHTML, live, isLive } from './src/directives.js';
 
-// Context Protocol — also available via 'webjs/context'
+// Context Protocol — also available via '@webjs/core/context'
 export { createContext, ContextProvider, ContextConsumer, ContextRequestEvent } from './src/context.js';
 
-// Task controller — also available via 'webjs/task'
+// Task controller — also available via '@webjs/core/task'
 export { Task, TaskStatus } from './src/task.js';

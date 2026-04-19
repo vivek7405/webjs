@@ -1,4 +1,4 @@
-import { html } from 'webjs';
+import { html } from '@webjs/core';
 
 export const metadata = { title: 'API Routes — webjs' };
 
@@ -133,7 +133,7 @@ export async function POST(req: Request) {
 
     <h2>richFetch() -- Typed Client Calls</h2>
     <p>On the client side, <code>richFetch()</code> from <code>webjs</code> is a drop-in replacement for <code>fetch()</code> that enables the superjson round trip:</p>
-    <pre>import { richFetch } from 'webjs';
+    <pre>import { richFetch } from '@webjs/core';
 
 // GET with rich types
 const posts = await richFetch('/api/posts');

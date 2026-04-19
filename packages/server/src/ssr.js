@@ -1,6 +1,6 @@
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { renderToString, isNotFound, isRedirect, lookupModuleUrl, isLazy } from 'webjs';
+import { renderToString, isNotFound, isRedirect, lookupModuleUrl, isLazy } from '@webjs/core';
 import { importMapTag } from './importmap.js';
 import { readToken, newToken, cookieHeader } from './csrf.js';
 import { transitiveDeps } from './module-graph.js';
@@ -181,7 +181,7 @@ async function renderChain(route, ctx, dev, suspenseCtx) {
     try {
       const loadingMod = await loadModule(loadingFile, dev);
       if (loadingMod.default) {
-        const { Suspense } = await import('webjs');
+        const { Suspense } = await import('@webjs/core');
         const fallback = await loadingMod.default(ctx);
         tree = Suspense({ fallback, children: Promise.resolve(tree) });
       }
@@ -289,7 +289,7 @@ function wrapHead(opts) {
     ? opts.lazyComponents
     : null;
   const lazyBoot = lazyEntries
-    ? `\nimport { observeLazy } from 'webjs/lazy-loader';\nobserveLazy(${JSON.stringify(lazyEntries)});`
+    ? `\nimport { observeLazy } from '@webjs/core/lazy-loader';\nobserveLazy(${JSON.stringify(lazyEntries)});`
     : '';
   const boot = (imports || lazyBoot) ? `<script type="module"${n}>\n${imports}${lazyBoot}\n</script>` : '';
   const reload = opts.dev ? `<script type="module"${n} src="/__webjs/reload.js"></script>` : '';
