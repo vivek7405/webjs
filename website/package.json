@@ -4,8 +4,12 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "webjs dev --port 5000",
+    "prestart": "npm run css:build",
+    "dev": "concurrently --names css,web --prefix-colors magenta,cyan --kill-others-on-fail \"npm:css:watch\" \"npm:webjs:dev\"",
     "start": "webjs start --port 5000",
+    "webjs:dev": "webjs dev --port 5000",
+    "css:watch": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --watch",
+    "css:build": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify",
     "build": "webjs build"
   },
   "dependencies": {
