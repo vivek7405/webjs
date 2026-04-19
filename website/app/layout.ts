@@ -5,7 +5,14 @@ import '../components/theme-toggle.ts';
 /**
  * Root layout — Tailwind CSS browser runtime + @theme design tokens,
  * matching the blog example's architecture. Light DOM everywhere.
+ *
+ * Docs / Blog URLs are read from env so the same code works across
+ * `webjs dev` and any deployment target. Override via DOCS_URL /
+ * BLOG_URL at deploy time (e.g. in Railway's service env vars).
  */
+const DOCS_URL = process.env.DOCS_URL || 'http://localhost:4000';
+const BLOG_URL = process.env.BLOG_URL || 'http://localhost:3456';
+
 export default function RootLayout({ children }: { children: unknown }) {
   return html`
     <script>
@@ -112,8 +119,8 @@ export default function RootLayout({ children }: { children: unknown }) {
         webjs
       </a>
       <nav class="flex items-center gap-4">
-        <a class="text-fg-muted no-underline font-medium text-[13px] leading-none transition-colors duration-fast hover:text-fg" href="http://localhost:4000/docs/getting-started" target="_blank">Docs</a>
-        <a class="text-fg-muted no-underline font-medium text-[13px] leading-none transition-colors duration-fast hover:text-fg" href="http://localhost:3456" target="_blank">Blog Demo</a>
+        <a class="text-fg-muted no-underline font-medium text-[13px] leading-none transition-colors duration-fast hover:text-fg" href=${DOCS_URL + '/docs/getting-started'} target="_blank">Docs</a>
+        <a class="text-fg-muted no-underline font-medium text-[13px] leading-none transition-colors duration-fast hover:text-fg" href=${BLOG_URL} target="_blank">Blog Demo</a>
         <a class="text-fg-muted no-underline font-medium text-[13px] leading-none transition-colors duration-fast hover:text-fg" href="https://github.com/vivek7405/webjs" target="_blank">GitHub</a>
         <theme-toggle></theme-toggle>
       </nav>

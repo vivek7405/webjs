@@ -5,6 +5,12 @@ export const metadata = {
   description: 'AI-first, web-components-first framework. File-based routing, server actions, streaming SSR — built on web standards. Designed for AI agents to read, write, and ship.',
 };
 
+// URLs for the sibling apps. Read at SSR time so they reflect whatever
+// environment the website is running in — `webjs dev` uses the default
+// ports; deployments override DOCS_URL / BLOG_URL with real URLs.
+const DOCS_URL = process.env.DOCS_URL || 'http://localhost:4000';
+const BLOG_URL = process.env.BLOG_URL || 'http://localhost:3456';
+
 const FEATURES = [
   { icon: '🤖', title: 'AI-First Development', desc: 'Designed from the ground up for AI agents. AGENTS.md contract, cross-agent guardrails (.cursorrules, .windsurfrules, copilot-instructions.md), auto-generated tests and docs, opinionated conventions — LLMs produce production-quality code without guesswork.' },
   { icon: '⚡', title: 'No Build Step', desc: 'Source files are served to the browser as native ES modules. Edit a .ts file, refresh, see it. No webpack, no Vite, no compile step. Auto-vendor bundling for npm packages via import maps.' },
@@ -206,9 +212,9 @@ export default function LandingPage() {
         Your AI agent reads the code and ships.
       </p>
       <div class="hero-actions">
-        <a class="primary" href="http://localhost:4000/docs/getting-started" target="_blank">Get Started</a>
+        <a class="primary" href=${DOCS_URL + '/docs/getting-started'} target="_blank">Get Started</a>
         <a class="secondary" href="https://github.com/vivek7405/webjs" target="_blank">GitHub</a>
-        <a class="secondary" href="http://localhost:3456" target="_blank">Example Blog</a>
+        <a class="secondary" href=${BLOG_URL} target="_blank">Example Blog</a>
       </div>
     </section>
 
@@ -313,7 +319,7 @@ middleware.ts              → global auth</pre>
     </section>
 
     <footer>
-      <p><a href="https://github.com/vivek7405/webjs" target="_blank">GitHub</a> · <a href="http://localhost:4000/docs/getting-started" target="_blank">Docs</a> · <a href="http://localhost:4000/docs/ai-first" target="_blank">AI-First</a> · <a href="http://localhost:3456" target="_blank">Example Blog</a></p>
+      <p><a href="https://github.com/vivek7405/webjs" target="_blank">GitHub</a> · <a href=${DOCS_URL + '/docs/getting-started'} target="_blank">Docs</a> · <a href=${DOCS_URL + '/docs/ai-first'} target="_blank">AI-First</a> · <a href=${BLOG_URL} target="_blank">Example Blog</a></p>
     </footer>
   `;
 }
