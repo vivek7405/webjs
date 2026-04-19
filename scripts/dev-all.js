@@ -18,12 +18,12 @@ const root = resolve(__dirname, '..');
 
 const procs = [];
 
-function start(name, cwd, args) {
+function start(name, cwd, cmd, args, extraEnv = {}) {
   console.log(`▲ starting ${name}...`);
-  const child = spawn('npx', args, {
+  const child = spawn(cmd, args, {
     cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env },
+    env: { ...process.env, ...extraEnv },
   });
   child.stdout.on('data', (d) => {
     for (const line of d.toString().split('\n').filter(Boolean)) {
@@ -42,9 +42,12 @@ function start(name, cwd, args) {
   return child;
 }
 
-start('website', resolve(root, 'website'), ['webjs', 'dev', '--port', '5000']);
-start('docs', resolve(root, 'docs'), ['webjs', 'dev', '--port', '4000']);
-start('blog', resolve(root, 'examples', 'blog'), ['webjs', 'dev', '--port', '3456']);
+// Use each workspace's `npm run dev` so the concurrently-spawned
+// tailwind CLI watcher (and, for the blog, prisma generate) runs too.
+// The PORT env var is honoured by webjs dev's default-port fallback.
+start('website', resolve(root, 'website'), 'npm', ['run', 'dev'], { PORT: '5000' });
+start('docs',    resolve(root, 'docs'),    'npm', ['run', 'dev'], { PORT: '4000' });
+start('blog',    resolve(root, 'examples', 'blog'), 'npm', ['run', 'dev'], { PORT: '3456' });
 
 function cleanup() {
   console.log('\n▲ shutting down...');

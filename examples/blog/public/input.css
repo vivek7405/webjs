@@ -1,0 +1,44 @@
+/* Tailwind CSS v4 input file — compiled to public/tailwind.css by the
+ * `css:watch` / `css:build` npm scripts. Authors shouldn't edit
+ * public/tailwind.css directly; it's generated and gitignored. */
+@import "tailwindcss";
+
+/* @theme maps our design-token CSS custom properties (defined on
+ * :root in app/layout.ts for light/dark switching) into Tailwind's
+ * palette so utility classes like `text-fg`, `bg-bg-elev`,
+ * `text-display`, `font-serif`, `duration-fast` resolve. */
+@theme {
+  --color-fg:            var(--fg);
+  --color-fg-muted:      var(--fg-muted);
+  --color-fg-subtle:     var(--fg-subtle);
+
+  --color-bg:            var(--bg);
+  --color-bg-elev:       var(--bg-elev);
+  --color-bg-subtle:     var(--bg-subtle);
+  --color-bg-sunken:     var(--bg-sunken);
+
+  --color-border:        var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-accent:        var(--accent);
+  --color-accent-hover:  var(--accent-hover);
+  --color-accent-fg:     var(--accent-fg);
+  --color-accent-tint:   var(--accent-tint);
+
+  --color-success:       var(--success);
+  --color-danger:        var(--danger);
+
+  --font-sans:  var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-mono:  var(--font-mono);
+
+  /* Fluid type scale — used via text-display, text-h1, text-h2, text-lede. */
+  --text-display: clamp(2.6rem, 1.6rem + 3.2vw, 4.25rem);
+  --text-h1:      clamp(2rem, 1.5rem + 1.6vw, 2.85rem);
+  --text-h2:      clamp(1.35rem, 1.15rem + 0.7vw, 1.7rem);
+  --text-lede:    clamp(1.05rem, 0.95rem + 0.3vw, 1.2rem);
+
+  /* Custom motion durations — used via duration-fast / duration-slow. */
+  --duration-fast: 140ms;
+  --duration-slow: 380ms;
+}

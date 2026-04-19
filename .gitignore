@@ -8,6 +8,9 @@ out/
 .cache/
 .webjs/
 
+# generated Tailwind CSS — built from public/input.css via `npm run dev` / `npm run start`
+**/public/tailwind.css
+
 # env
 .env
 .env.*

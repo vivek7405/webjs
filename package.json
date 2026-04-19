@@ -21,8 +21,10 @@
     "test:all": "npm test && npm run test:browser"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.2.2",
     "@web/test-runner": "^0.20.2",
     "@web/test-runner-playwright": "^0.11.1",
+    "concurrently": "^9.2.1",
     "esbuild": "^0.28.0",
     "linkedom": "^0.18.12",
     "playwright": "^1.59.1",

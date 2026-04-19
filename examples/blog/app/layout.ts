@@ -16,10 +16,12 @@ const footerLink = (href: string, label: string) => html`
  * Three concerns, in document order:
  *  1. Inline `<script>` that syncs `<html data-theme>` from localStorage
  *     BEFORE any style applies (no FOUC).
- *  2. Tailwind browser runtime + `@theme` block that maps our design
- *     tokens (OKLCH palette, fluid type scale, motion durations) into
- *     Tailwind's palette so classes like `text-fg`, `bg-bg-elev`,
- *     `text-display`, `font-serif`, `duration-fast` work out-of-the-box.
+ *  2. Generated Tailwind stylesheet (`public/tailwind.css`) — compiled
+ *     once in prod via `npm run start` or on-file-change in dev via
+ *     `npm run dev`. The input lives in `public/input.css` and includes
+ *     the `@theme` block that maps our design tokens into Tailwind's
+ *     palette (so classes like `text-fg`, `bg-bg-elev`, `text-display`,
+ *     `font-serif`, `duration-fast` resolve).
  *  3. Shell markup styled with Tailwind utility classes.
  *
  * Non-Tailwind CSS is kept to the minimum that utility classes can't
@@ -39,44 +41,7 @@ export default function RootLayout({ children }: { children: unknown }) {
         } catch (_) {}
       })();
     </script>
-    <script src="/public/tailwind-browser.js"></script>
-    <style type="text/tailwindcss">
-      @theme {
-        --color-fg:            var(--fg);
-        --color-fg-muted:      var(--fg-muted);
-        --color-fg-subtle:     var(--fg-subtle);
-
-        --color-bg:            var(--bg);
-        --color-bg-elev:       var(--bg-elev);
-        --color-bg-subtle:     var(--bg-subtle);
-        --color-bg-sunken:     var(--bg-sunken);
-
-        --color-border:        var(--border);
-        --color-border-strong: var(--border-strong);
-
-        --color-accent:        var(--accent);
-        --color-accent-hover:  var(--accent-hover);
-        --color-accent-fg:     var(--accent-fg);
-        --color-accent-tint:   var(--accent-tint);
-
-        --color-success:       var(--success);
-        --color-danger:        var(--danger);
-
-        --font-sans:  var(--font-sans);
-        --font-serif: var(--font-serif);
-        --font-mono:  var(--font-mono);
-
-        /* Fluid type scale — used via text-display, text-h1, text-h2, text-lede. */
-        --text-display: clamp(2.6rem, 1.6rem + 3.2vw, 4.25rem);
-        --text-h1:      clamp(2rem, 1.5rem + 1.6vw, 2.85rem);
-        --text-h2:      clamp(1.35rem, 1.15rem + 0.7vw, 1.7rem);
-        --text-lede:    clamp(1.05rem, 0.95rem + 0.3vw, 1.2rem);
-
-        /* Custom motion durations — used via duration-fast / duration-slow. */
-        --duration-fast: 140ms;
-        --duration-slow: 380ms;
-      }
-    </style>
+    <link rel="stylesheet" href="/public/tailwind.css">
     <style>
       :root {
         color-scheme: light dark;

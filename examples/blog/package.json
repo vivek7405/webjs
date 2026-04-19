@@ -4,8 +4,13 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "webjs dev",
+    "predev": "prisma generate",
+    "prestart": "prisma generate && npm run css:build",
+    "dev": "concurrently --names css,web --prefix-colors magenta,cyan --kill-others-on-fail \"npm:css:watch\" \"npm:webjs:dev\"",
     "start": "webjs start",
+    "webjs:dev": "webjs dev",
+    "css:watch": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --watch",
+    "css:build": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify",
     "db:generate": "webjs db generate",
     "db:migrate": "webjs db migrate"
   },
