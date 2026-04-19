@@ -186,8 +186,102 @@ export default function Post({ params }) {
       <li>Add a synchronous <code>&lt;script&gt;</code> before your <code>&lt;style&gt;</code> block that reads localStorage and sets <code>data-theme</code> before any paint — no FOUC.</li>
     </ol>
 
-    <h2>Custom CSS without Tailwind</h2>
-    <p>The framework has no hard dependency on Tailwind. If you prefer CSS modules, vanilla CSS, or PostCSS, just omit the Tailwind script + <code>@theme</code> block and author styles the usual way. The class-prefix rule for light-DOM components still applies. The blog example is the convention, not the requirement.</p>
+    <h2>Vanilla CSS end-to-end (opt out of Tailwind)</h2>
+    <p>Tailwind is the default but not a requirement. If you prefer hand-written CSS everywhere, drop the Tailwind browser script + <code>@theme</code> block from the root layout and follow the <strong>wrapper-scoping convention</strong> below so generic class names (<code>.btn</code>, <code>.input</code>, <code>.header</code>) can't collide across pages, layouts, and components in the global light-DOM namespace.</p>
+
+    <h3>Three scopes, one rule each</h3>
+    <table>
+      <thead><tr><th>Scope</th><th>Wrapper selector</th><th>Derived from</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Component</strong></td><td>Custom-element tag</td><td>Already unique via <code>customElements.define</code></td></tr>
+        <tr><td><strong>Page</strong></td><td><code>.page-&lt;route&gt;</code></td><td><code>app/dashboard/page.ts</code> → <code>.page-dashboard</code>. <code>app/blog/[slug]/page.ts</code> → <code>.page-blog-slug</code>. Route groups <code>(marketing)</code> drop. Root <code>app/page.ts</code> → <code>.page-home</code>.</td></tr>
+        <tr><td><strong>Layout</strong></td><td><code>.layout-&lt;name&gt;</code></td><td><code>app/layout.ts</code> → <code>.layout-root</code>. <code>app/admin/layout.ts</code> → <code>.layout-admin</code>.</td></tr>
+      </tbody>
+    </table>
+
+    <p>Every page wraps its output in <code>&lt;div class="page-&lt;route&gt;"&gt;</code>. Every layout wraps in <code>&lt;div class="layout-&lt;name&gt;"&gt;</code>. Components scope via their tag name. Styles colocate with the markup as <code>const STYLES = css\`…\`</code> and interpolate via <code>&lt;style&gt;\${STYLES.text}&lt;/style&gt;</code> — <code>ts-lit-plugin</code> / <code>webjs-plugin</code> highlights the CSS and resolves class go-to-definition inside those blocks.</p>
+
+    <h3>Page scope</h3>
+    <pre>// app/dashboard/page.ts
+import { html, css } from 'webjs';
+
+const STYLES = css\`
+  .page-dashboard {
+    .actions     { display: flex; gap: 12px; }
+    .btn         { padding: 12px 24px; border-radius: 999px; }
+    .btn-primary { background: var(--accent); color: var(--accent-fg); }
+  }
+\`;
+
+export default function Dashboard() {
+  return html\`
+    &lt;style&gt;\${STYLES.text}&lt;/style&gt;
+    &lt;div class="page-dashboard"&gt;
+      &lt;div class="actions"&gt;
+        &lt;a class="btn btn-primary" href="/new"&gt;+ New&lt;/a&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  \`;
+}</pre>
+
+    <h3>Layout scope</h3>
+    <pre>// app/layout.ts
+import { html, css } from 'webjs';
+
+const STYLES = css\`
+  .layout-root {
+    .header { position: sticky; top: 0; }
+    .nav    { display: flex; gap: 16px; }
+  }
+\`;
+
+export default function RootLayout({ children }: { children: unknown }) {
+  return html\`
+    &lt;style&gt;\${STYLES.text}&lt;/style&gt;
+    &lt;div class="layout-root"&gt;
+      &lt;header class="header"&gt;
+        &lt;nav class="nav"&gt;…&lt;/nav&gt;
+      &lt;/header&gt;
+      &lt;main&gt;\${children}&lt;/main&gt;
+    &lt;/div&gt;
+  \`;
+}</pre>
+
+    <h3>Component scope</h3>
+    <pre>// components/my-card.ts
+import { WebComponent, html, css } from 'webjs';
+
+const STYLES = css\`
+  my-card {
+    .body  { padding: 16px; border: 1px solid var(--border); }
+    .title { font-weight: 600; }
+  }
+\`;
+
+export class MyCard extends WebComponent {
+  render() {
+    return html\`
+      &lt;style&gt;\${STYLES.text}&lt;/style&gt;
+      &lt;div class="body"&gt;
+        &lt;h3 class="title"&gt;\${this.title}&lt;/h3&gt;
+      &lt;/div&gt;
+    \`;
+  }
+}
+MyCard.register('my-card');</pre>
+
+    <h3>Primitives stay intentionally global</h3>
+    <p>A small curated set of design-system classes (<code>rubric</code>, <code>banner</code>, <code>accent-link</code>, <code>display-h1</code>, <code>code-chip</code>, …) lives once in the root layout and is intentionally global. These are your design system — treated the way Bootstrap treats <code>.btn</code>. Everything else is scoped.</p>
+
+    <h3>Tradeoffs vs Tailwind</h3>
+    <ul>
+      <li><strong>More per-file CSS to write</strong> — no utility ecosystem.</li>
+      <li><strong>Wrapper discipline</strong> — every page and every layout remembers to wrap.</li>
+      <li><strong>Rename cost</strong> — moving <code>app/dashboard/</code> → <code>app/admin/</code> is 2 textual edits in one file: the <code>.page-dashboard</code> selector in the <code>css\`…\`</code> block and the matching <code>class="page-dashboard"</code> on the wrapper div.</li>
+    </ul>
+    <p>You get in return: no browser-runtime script, no <code>@theme</code> block, idiomatic CSS you can debug with plain DevTools, and a cascade that works exactly the way you read it.</p>
+
+    <p><strong>Pick one styling convention per project and stay consistent.</strong> The default is Tailwind. The scoped-wrapper convention above is the supported alternative when you want plain CSS end-to-end.</p>
 
     <h2>How SSR works for each mode</h2>
     <ul>

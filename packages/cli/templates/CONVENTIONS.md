@@ -335,6 +335,70 @@ rule (see Components section above).
 
 ---
 
+## Styling alternative: vanilla CSS end-to-end
+
+<!-- OVERRIDE -->
+
+If you'd rather skip Tailwind, webjs works with plain CSS as long as you
+wrap pages, layouts, and components so class names don't collide in the
+global light-DOM namespace.
+
+**Convention — three scopes:**
+
+| Scope | Wrapper | Derivation |
+|---|---|---|
+| **Component** | Custom-element tag | Tag is already unique |
+| **Page** | `.page-<route>` | `app/dashboard/page.ts` → `.page-dashboard`; `app/blog/[slug]/page.ts` → `.page-blog-slug`; root `app/page.ts` → `.page-home` |
+| **Layout** | `.layout-<name>` | `app/layout.ts` → `.layout-root`; `app/admin/layout.ts` → `.layout-admin` |
+
+Every page wraps its output in `<div class="page-<route>">`. Every
+layout wraps in `<div class="layout-<name>">`. Components scope via
+their tag. Styles colocate as `const STYLES = css\`…\`` + `<style>${'$'}{STYLES.text}</style>`.
+
+```ts
+// app/dashboard/page.ts
+import { html, css } from 'webjs';
+
+const STYLES = css\`
+  .page-dashboard {
+    .actions     { display: flex; gap: 12px; }
+    .btn         { padding: 12px 24px; border-radius: 999px; }
+    .btn-primary { background: var(--accent); color: var(--accent-fg); }
+  }
+\`;
+
+export default function Dashboard() {
+  return html\`
+    <style>${'$'}{STYLES.text}</style>
+    <div class="page-dashboard">
+      <div class="actions">
+        <a class="btn btn-primary" href="/new">+ New</a>
+      </div>
+    </div>
+  \`;
+}
+```
+
+Inside each scope, `.btn` / `.input` / `.form` / `.item` are free
+names — CSS descendant combinators stop them at the scope boundary.
+A small curated set of **primitives** (`rubric`, `banner`,
+`accent-link`, `display-h1`, …) can live global in the root layout
+as your design system.
+
+**When you'd pick this over Tailwind:**
+- You want zero runtime scripts and zero build step.
+- You prefer idiomatic CSS and plain-cascade debugging.
+- You already have a design system in CSS custom properties.
+
+**Costs:**
+- Write more per-file CSS (no utility ecosystem).
+- Discipline: every page/layout remembers to wrap.
+- Renaming a route folder = 2 textual edits in one file (the wrapper class + the matching `class=` attribute).
+
+Pick one convention per project and stay consistent.
+
+---
+
 ## Rate limiting & middleware
 
 <!-- OVERRIDE -->
