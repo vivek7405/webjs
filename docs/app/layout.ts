@@ -1,6 +1,12 @@
 import { html } from 'webjs';
 import 'webjs/client-router';
 
+/**
+ * Root layout for the docs site — Tailwind CSS browser runtime +
+ * @theme design tokens. Light DOM everywhere. Shell chrome (sidebar +
+ * content) lives in app/docs/layout.ts so the sidebar only renders on
+ * documentation pages.
+ */
 export default function RootLayout({ children }: { children: unknown }) {
   return html`
     <script>
@@ -13,6 +19,39 @@ export default function RootLayout({ children }: { children: unknown }) {
         } catch (_) {}
       })();
     </script>
+    <script src="/public/tailwind-browser.js"></script>
+    <style type="text/tailwindcss">
+      @theme {
+        --color-fg:            var(--fg);
+        --color-fg-muted:      var(--fg-muted);
+        --color-fg-subtle:     var(--fg-subtle);
+
+        --color-bg:            var(--bg);
+        --color-bg-elev:       var(--bg-elev);
+        --color-bg-subtle:     var(--bg-subtle);
+        --color-bg-sunken:     var(--bg-sunken);
+
+        --color-border:        var(--border);
+        --color-border-strong: var(--border-strong);
+
+        --color-accent:        var(--accent);
+        --color-accent-hover:  var(--accent-hover);
+        --color-accent-fg:     var(--accent-fg);
+        --color-accent-tint:   var(--accent-tint);
+
+        --font-sans:  var(--font-sans);
+        --font-serif: var(--font-serif);
+        --font-mono:  var(--font-mono);
+
+        --text-display: clamp(2.6rem, 1.6rem + 3vw, 4rem);
+        --text-h1:      clamp(2rem, 1.5rem + 1.6vw, 2.6rem);
+        --text-h2:      clamp(1.3rem, 1.1rem + 0.7vw, 1.6rem);
+        --text-lede:    clamp(1.05rem, 0.95rem + 0.3vw, 1.18rem);
+
+        --duration-fast: 140ms;
+        --duration-slow: 220ms;
+      }
+    </style>
     <style>
       :root {
         color-scheme: light dark;
@@ -31,30 +70,26 @@ export default function RootLayout({ children }: { children: unknown }) {
         --accent-hover:  oklch(0.5 0.15 55);
         --accent-fg:     oklch(1 0 0);
         --accent-tint:   oklch(0.58 0.15 55 / 0.08);
-        --danger:        oklch(0.55 0.2 25);
-        --success:       oklch(0.55 0.15 145);
 
         --font-sans:  -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         --font-serif: ui-serif, 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, Cambria, serif;
         --font-mono:  ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+
+        /* spacing + radii + shadows — referenced by individual doc pages */
+        --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+        --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 72px;
+        --rad-sm: 4px; --rad: 8px; --rad-lg: 12px; --rad-xl: 16px;
+        --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.05);
+        --shadow:    0 4px 24px oklch(0 0 0 / 0.06), 0 1px 2px oklch(0 0 0 / 0.04);
 
         --fs-display: clamp(2.6rem, 1.6rem + 3vw, 4rem);
         --fs-h1:      clamp(2rem, 1.5rem + 1.6vw, 2.6rem);
         --fs-h2:      clamp(1.3rem, 1.1rem + 0.7vw, 1.6rem);
         --fs-lede:    clamp(1.05rem, 0.95rem + 0.3vw, 1.18rem);
 
-        --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
-        --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 72px;
-
-        --rad-sm: 4px; --rad: 8px; --rad-lg: 12px; --rad-xl: 16px;
-
-        --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.05);
-        --shadow:    0 4px 24px oklch(0 0 0 / 0.06), 0 1px 2px oklch(0 0 0 / 0.04);
-
-        --t-fast: 140ms cubic-bezier(0.3, 0, 0.3, 1);
-        --t:      220ms cubic-bezier(0.3, 0, 0.3, 1);
+        --t-fast: 140ms;
+        --t:      220ms;
       }
-
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme='light']) {
           --fg:            oklch(0.96 0.015 60);
@@ -70,8 +105,6 @@ export default function RootLayout({ children }: { children: unknown }) {
           --accent-hover:  oklch(0.85 0.14 55);
           --accent-fg:     oklch(0.15 0.01 55);
           --accent-tint:   oklch(0.78 0.14 55 / 0.12);
-          --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.3);
-          --shadow:    0 4px 24px oklch(0 0 0 / 0.4);
         }
       }
       :root[data-theme='dark'] {
@@ -88,18 +121,16 @@ export default function RootLayout({ children }: { children: unknown }) {
         --accent-hover:  oklch(0.85 0.14 55);
         --accent-fg:     oklch(0.15 0.01 55);
         --accent-tint:   oklch(0.78 0.14 55 / 0.12);
-        --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.3);
-        --shadow:    0 4px 24px oklch(0 0 0 / 0.4);
       }
 
-      *, *::before, *::after { box-sizing: border-box; }
       html, body { margin: 0; }
       body {
         background: var(--bg);
         color: var(--fg);
         font: 16px/1.65 var(--font-sans);
         -webkit-font-smoothing: antialiased;
-        transition: background var(--t), color var(--t);
+        transition: background var(--t) cubic-bezier(0.3, 0, 0.3, 1),
+                    color var(--t) cubic-bezier(0.3, 0, 0.3, 1);
       }
       ::selection { background: var(--accent-tint); color: var(--fg); }
     </style>

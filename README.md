@@ -35,13 +35,19 @@ npx webjs create my-app              # full-stack (pages + API + components)
 npx webjs create my-api --template api   # backend-only (routes + modules, no SSR)
 npx webjs create my-app --template saas  # auth + dashboard + Prisma User model
 
-# or run the example
+# or run everything in the monorepo (website + docs + blog together)
 git clone https://github.com/vivek7405/webjs
 cd webjs && npm install
-cd examples/blog
-npx prisma migrate dev --name init
-npx webjs dev
-# → http://localhost:3000
+cd examples/blog && npx prisma migrate dev --name init && cd ..
+npm run dev
+# → Website → http://localhost:5000
+# → Docs    → http://localhost:4000
+# → Blog    → http://localhost:3456
+#
+# Or run any one individually:
+cd examples/blog && npm run dev      # just the blog
+cd docs           && npm run dev     # just the docs
+cd website        && npm run dev     # just the website
 ```
 
 ## Repo layout
@@ -141,22 +147,23 @@ The docs site is built on webjs itself:
 cd docs && npx webjs dev --port 4000
 ```
 
-35 pages covering: getting started, AI-first development, routing,
+37 pages covering: getting started, AI-first development, routing,
 components, SSR, styling, Suspense, loading states, error handling,
 client router, server actions, expose() REST endpoints, API routes,
 WebSockets, database, authentication, TypeScript, middleware,
 rate limiting, lazy loading, metadata routes, caching, sessions,
 controllers, context protocol, task, deployment, backend-only mode,
-testing, conventions, configuration.
+testing, conventions, configuration, editor setup.
 
 ## Status
 
-Pre-1.0. 246 unit tests, 21 browser tests. Key features:
+Pre-1.0. 571 unit tests (91.6% line coverage), 33 puppeteer e2e tests,
+27 WTR browser tests. Key features:
 
 - **Core:** SSR with DSD (opt-in) + light-DOM hydration (default), fine-grained client renderer, `repeat()`, `Suspense()`, client router with `composedPath()` for shadow DOM, mixed-attribute interpolation, MutationObserver upgrade safety net
 - **Data:** server actions + superjson (Date/Map/Set/BigInt survive the wire), `expose()` for REST, `json()` + `richFetch()` for content-negotiated APIs, `cache()` for server-side query caching with TTL + `invalidate()`
 - **Server:** file router, per-segment middleware, `rateLimit()`, WebSockets + `broadcast()`, CSRF, compression, HTTP/2, 103 Early Hints, health probes, graceful shutdown, `Session` class with `SessionStorage` (cookie or store-backed), NextAuth-style `createAuth()` (Credentials, Google, GitHub)
-- **DX:** TypeScript with zero build, `AGENTS.md` contract, `CLAUDE.md`, live reload in dev, optional esbuild bundle for prod
+- **DX:** TypeScript with zero build, `AGENTS.md` contract, `CLAUDE.md`, live reload in dev, optional esbuild bundle for prod, `webjs-plugin` for tsserver — tag-name and CSS-class-name go-to-definition inside `html\`\`` templates.
 
 ## License
 

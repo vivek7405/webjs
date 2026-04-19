@@ -2,6 +2,10 @@ import { html } from 'webjs';
 import 'webjs/client-router';
 import '../components/theme-toggle.ts';
 
+/**
+ * Root layout — Tailwind CSS browser runtime + @theme design tokens,
+ * matching the blog example's architecture. Light DOM everywhere.
+ */
 export default function RootLayout({ children }: { children: unknown }) {
   return html`
     <script>
@@ -14,10 +18,44 @@ export default function RootLayout({ children }: { children: unknown }) {
         } catch (_) {}
       })();
     </script>
+    <script src="/public/tailwind-browser.js"></script>
+    <style type="text/tailwindcss">
+      @theme {
+        --color-fg:            var(--fg);
+        --color-fg-muted:      var(--fg-muted);
+        --color-fg-subtle:     var(--fg-subtle);
+
+        --color-bg:            var(--bg);
+        --color-bg-elev:       var(--bg-elev);
+        --color-bg-subtle:     var(--bg-subtle);
+        --color-bg-sunken:     var(--bg-sunken);
+
+        --color-border:        var(--border);
+        --color-border-strong: var(--border-strong);
+
+        --color-accent:        var(--accent);
+        --color-accent-hover:  var(--accent-hover);
+        --color-accent-fg:     var(--accent-fg);
+        --color-accent-tint:   var(--accent-tint);
+
+        --font-sans:  var(--font-sans);
+        --font-serif: var(--font-serif);
+        --font-mono:  var(--font-mono);
+
+        --text-display: clamp(2.6rem, 1.6rem + 3vw, 4rem);
+        --text-h1:      clamp(2rem, 1.5rem + 1.6vw, 2.6rem);
+        --text-h2:      clamp(1.3rem, 1.1rem + 0.7vw, 1.6rem);
+        --text-lede:    clamp(1.05rem, 0.95rem + 0.3vw, 1.18rem);
+
+        --duration-fast: 140ms;
+        --duration-slow: 220ms;
+      }
+    </style>
     <style>
       :root {
         color-scheme: light dark;
 
+        /* Light theme (default) */
         --fg:            oklch(0.18 0.015 60);
         --fg-muted:      oklch(0.42 0.02 65);
         --fg-subtle:     oklch(0.62 0.015 70);
@@ -36,23 +74,21 @@ export default function RootLayout({ children }: { children: unknown }) {
         --font-serif: ui-serif, 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, Cambria, serif;
         --font-mono:  ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, monospace;
 
+        /* spacing + radii + shadows — consumed by the home page's <style> block */
+        --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+        --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 72px;
+        --rad-sm: 4px; --rad: 8px; --rad-lg: 12px; --rad-xl: 16px;
+        --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.05);
+        --shadow:    0 4px 24px oklch(0 0 0 / 0.06), 0 1px 2px oklch(0 0 0 / 0.04);
+
         --fs-display: clamp(2.6rem, 1.6rem + 3vw, 4rem);
         --fs-h1:      clamp(2rem, 1.5rem + 1.6vw, 2.6rem);
         --fs-h2:      clamp(1.3rem, 1.1rem + 0.7vw, 1.6rem);
         --fs-lede:    clamp(1.05rem, 0.95rem + 0.3vw, 1.18rem);
 
-        --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
-        --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 72px;
-
-        --rad-sm: 4px; --rad: 8px; --rad-lg: 12px; --rad-xl: 16px;
-
-        --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.05);
-        --shadow:    0 4px 24px oklch(0 0 0 / 0.06), 0 1px 2px oklch(0 0 0 / 0.04);
-
-        --t-fast: 140ms cubic-bezier(0.3, 0, 0.3, 1);
-        --t:      220ms cubic-bezier(0.3, 0, 0.3, 1);
+        --t-fast: 140ms;
+        --t:      220ms;
       }
-
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme='light']) {
           --fg:            oklch(0.96 0.015 60);
@@ -90,62 +126,27 @@ export default function RootLayout({ children }: { children: unknown }) {
         --shadow:    0 4px 24px oklch(0 0 0 / 0.4);
       }
 
-      *, *::before, *::after { box-sizing: border-box; }
       html, body { margin: 0; }
       body {
         background: var(--bg);
         color: var(--fg);
         font: 16px/1.65 var(--font-sans);
         -webkit-font-smoothing: antialiased;
-        transition: background var(--t), color var(--t);
+        transition: background var(--t) cubic-bezier(0.3, 0, 0.3, 1),
+                    color var(--t) cubic-bezier(0.3, 0, 0.3, 1);
       }
       ::selection { background: var(--accent-tint); color: var(--fg); }
-
-      .site-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        max-width: 960px;
-        margin: 0 auto;
-        padding: var(--sp-4) var(--sp-5);
-      }
-      .site-header .brand {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        text-decoration: none;
-        font: 700 16px/1 var(--font-sans);
-        color: var(--fg);
-        letter-spacing: -0.01em;
-      }
-      .site-header .brand-mark {
-        width: 22px; height: 22px;
-        border-radius: 6px;
-        background: linear-gradient(135deg, var(--accent), color-mix(in oklch, var(--accent) 55%, var(--fg)));
-      }
-      .site-header nav {
-        display: flex;
-        align-items: center;
-        gap: var(--sp-4);
-      }
-      .site-header nav a {
-        color: var(--fg-muted);
-        text-decoration: none;
-        font: 500 13px/1 var(--font-sans);
-        transition: color var(--t-fast);
-      }
-      .site-header nav a:hover { color: var(--fg); }
     </style>
 
-    <header class="site-header">
-      <a class="brand" href="/">
-        <span class="brand-mark"></span>
+    <header class="flex items-center justify-between max-w-[960px] mx-auto px-6 py-4">
+      <a class="flex items-center gap-2 no-underline text-fg font-bold text-base leading-none tracking-tight" href="/">
+        <span class="w-[22px] h-[22px] rounded-md bg-gradient-to-br from-accent to-[color-mix(in_oklch,var(--accent)_55%,var(--fg))]"></span>
         webjs
       </a>
-      <nav>
-        <a href="http://localhost:4000/docs/getting-started" target="_blank">Docs</a>
-        <a href="http://localhost:3456" target="_blank">Blog Demo</a>
-        <a href="https://github.com/vivek7405/webjs" target="_blank">GitHub</a>
+      <nav class="flex items-center gap-4">
+        <a class="text-fg-muted no-underline font-medium text-[13px] leading-none transition-colors duration-fast hover:text-fg" href="http://localhost:4000/docs/getting-started" target="_blank">Docs</a>
+        <a class="text-fg-muted no-underline font-medium text-[13px] leading-none transition-colors duration-fast hover:text-fg" href="http://localhost:3456" target="_blank">Blog Demo</a>
+        <a class="text-fg-muted no-underline font-medium text-[13px] leading-none transition-colors duration-fast hover:text-fg" href="https://github.com/vivek7405/webjs" target="_blank">GitHub</a>
         <theme-toggle></theme-toggle>
       </nav>
     </header>
