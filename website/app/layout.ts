@@ -16,6 +16,38 @@ const env = (globalThis as any).process?.env ?? {};
 const DOCS_URL = env.DOCS_URL || 'http://localhost:4000';
 const BLOG_URL = env.BLOG_URL || 'http://localhost:3456';
 
+// Site-wide Open Graph + Twitter card metadata. `generateMetadata`
+// receives the request context so we can derive an absolute og:image
+// URL (OG scrapers require absolute http(s) URLs).
+const TITLE = 'webjs — AI-first, web-components-first, no-build web framework';
+const DESCRIPTION = 'Web components, server actions, streaming SSR — on web standards. Designed for AI agents to read, write, and ship.';
+
+export function generateMetadata(ctx: { url: string }) {
+  const origin = new URL(ctx.url).origin;
+  const image = `${origin}/public/og.png`;
+  return {
+    title: TITLE,
+    description: DESCRIPTION,
+    openGraph: {
+      type: 'website',
+      title: TITLE,
+      description: DESCRIPTION,
+      url: origin,
+      image,
+      'image:width': '1200',
+      'image:height': '630',
+      'image:alt': 'webjs — AI-first, web-components-first, no-build web framework',
+      'site_name': 'webjs',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: TITLE,
+      description: DESCRIPTION,
+      image,
+    },
+  };
+}
+
 export default function RootLayout({ children }: { children: unknown }) {
   return html`
     <script>

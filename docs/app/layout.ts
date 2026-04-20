@@ -7,6 +7,36 @@ import '@webjskit/core/client-router';
  * content) lives in app/docs/layout.ts so the sidebar only renders on
  * documentation pages.
  */
+
+const TITLE = 'webjs — Documentation';
+const DESCRIPTION = 'Getting started, routing, components, server actions, deployment, and more.';
+
+export function generateMetadata(ctx: { url: string }) {
+  const origin = new URL(ctx.url).origin;
+  const image = `${origin}/public/og.png`;
+  return {
+    title: TITLE,
+    description: DESCRIPTION,
+    openGraph: {
+      type: 'website',
+      title: TITLE,
+      description: DESCRIPTION,
+      url: origin,
+      image,
+      'image:width': '1200',
+      'image:height': '630',
+      'image:alt': 'webjs documentation',
+      'site_name': 'webjs · docs',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: TITLE,
+      description: DESCRIPTION,
+      image,
+    },
+  };
+}
+
 export default function RootLayout({ children }: { children: unknown }) {
   return html`
     <script>

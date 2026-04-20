@@ -316,6 +316,14 @@ function wrapHead(opts) {
       metaTags.push(`<meta property="og:${escapeAttr(k)}" content="${escapeAttr(String(v))}">`);
     }
   }
+  // Twitter card tags. Twitter falls back to og:* when these are absent
+  // but won't upgrade to summary_large_image without an explicit
+  // twitter:card entry.
+  if (m.twitter && typeof m.twitter === 'object') {
+    for (const [k, v] of Object.entries(m.twitter)) {
+      metaTags.push(`<meta name="twitter:${escapeAttr(k)}" content="${escapeAttr(String(v))}">`);
+    }
+  }
 
   // Preload hints: page modules themselves + every discovered component
   // module, then any custom `metadata.preload` entries (fonts, images, etc.)

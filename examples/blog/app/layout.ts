@@ -10,6 +10,35 @@ const footerLink = (href: string, label: string) => html`
   <a href=${href} class="text-inherit no-underline transition-colors duration-fast hover:text-fg-muted">${label}</a>
 `;
 
+const TITLE = 'webjs blog — live demo';
+const DESCRIPTION = 'A live, full-stack webjs example: posts, comments, auth, and WebSocket chat.';
+
+export function generateMetadata(ctx: { url: string }) {
+  const origin = new URL(ctx.url).origin;
+  const image = `${origin}/public/og.png`;
+  return {
+    title: TITLE,
+    description: DESCRIPTION,
+    openGraph: {
+      type: 'website',
+      title: TITLE,
+      description: DESCRIPTION,
+      url: origin,
+      image,
+      'image:width': '1200',
+      'image:height': '630',
+      'image:alt': 'webjs blog — live demo',
+      'site_name': 'webjs · blog',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: TITLE,
+      description: DESCRIPTION,
+      image,
+    },
+  };
+}
+
 /**
  * Root layout — globals + chrome.
  *

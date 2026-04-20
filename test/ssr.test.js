@@ -416,6 +416,27 @@ test('ssrPage: metadata.openGraph emits og:* meta tags', async () => {
   assert.ok(/<link rel="preload"[^>]*as="font"/.test(body));
 });
 
+test('ssrPage: metadata.twitter emits twitter:* meta tags', async () => {
+  const sub = mkdtempSync(join(tmpDir, 'tw-'));
+  const appDir = join(sub, 'app');
+  mkdirSync(appDir, { recursive: true });
+
+  const pageFile = join(appDir, 'page.js');
+  writeFileSync(pageFile,
+    `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+    `export const metadata = {\n` +
+    `  twitter: { card: 'summary_large_image', title: 'Tw', image: '/og.png' },\n` +
+    `};\n` +
+    `export default function Page() { return html\`<p>ok</p>\`; }\n`);
+
+  const route = { file: pageFile, layouts: [], errors: [], metadataFiles: [pageFile] };
+  const resp = await ssrPage(route, {}, new URL('http://localhost/'), { dev: false, appDir });
+  const body = await resp.text();
+  assert.ok(body.includes('<meta name="twitter:card" content="summary_large_image">'));
+  assert.ok(body.includes('<meta name="twitter:title" content="Tw">'));
+  assert.ok(body.includes('<meta name="twitter:image" content="/og.png">'));
+});
+
 test('ssrPage: a metadata file that throws is silently skipped', async () => {
   const sub = mkdtempSync(join(tmpDir, 'metaerr-'));
   const appDir = join(sub, 'app');
