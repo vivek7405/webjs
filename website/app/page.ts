@@ -8,8 +8,13 @@ export const metadata = {
 // URLs for the sibling apps. Read at SSR time so they reflect whatever
 // environment the website is running in — `webjs dev` uses the default
 // ports; deployments override DOCS_URL / BLOG_URL with real URLs.
-const DOCS_URL = process.env.DOCS_URL || 'http://localhost:4000';
-const BLOG_URL = process.env.BLOG_URL || 'http://localhost:3456';
+// Guarded against `process` being undefined because this file also
+// loads on the client during hydration — an unguarded access crashes
+// the module and prevents custom elements (e.g. <theme-toggle>) from
+// upgrading.
+const env = (globalThis as any).process?.env ?? {};
+const DOCS_URL = env.DOCS_URL || 'http://localhost:4000';
+const BLOG_URL = env.BLOG_URL || 'http://localhost:3456';
 
 const FEATURES = [
   { icon: '🤖', title: 'AI-First Development', desc: 'Designed from the ground up for AI agents. AGENTS.md contract, cross-agent guardrails (.cursorrules, .windsurfrules, copilot-instructions.md), auto-generated tests and docs, opinionated conventions — LLMs produce production-quality code without guesswork.' },

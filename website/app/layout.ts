@@ -10,8 +10,11 @@ import '../components/theme-toggle.ts';
  * `webjs dev` and any deployment target. Override via DOCS_URL /
  * BLOG_URL at deploy time (e.g. in Railway's service env vars).
  */
-const DOCS_URL = process.env.DOCS_URL || 'http://localhost:4000';
-const BLOG_URL = process.env.BLOG_URL || 'http://localhost:3456';
+// Guarded against `process` being undefined because this file also
+// loads on the client during hydration.
+const env = (globalThis as any).process?.env ?? {};
+const DOCS_URL = env.DOCS_URL || 'http://localhost:4000';
+const BLOG_URL = env.BLOG_URL || 'http://localhost:3456';
 
 export default function RootLayout({ children }: { children: unknown }) {
   return html`
