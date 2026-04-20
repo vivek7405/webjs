@@ -498,6 +498,9 @@ export {
   findLayoutShell as _findLayoutShell,
   addNewHeadElements as _addNewHeadElements,
   mergeHead as _mergeHead,
+  reactivateScripts as _reactivateScripts,
+  findAnchorInPath as _findAnchorInPath,
+  onPopState as _onPopState,
 };
 
 /**

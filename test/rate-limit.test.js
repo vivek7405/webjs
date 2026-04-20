@@ -58,3 +58,52 @@ test('passes through x-ratelimit-* headers on the success path', async () => {
   assert.equal(r.headers.get('x-ratelimit-remaining'), '4');
   assert.ok(r.headers.get('x-ratelimit-reset'));
 });
+
+test('defaultKey falls back through cf-connecting-ip, x-real-ip, then `_anon_`', async () => {
+  const mw = rateLimit({ window: '1s', max: 1 });
+  const cf = new Request('http://x/', { headers: { 'cf-connecting-ip': '4.4.4.4' } });
+  const real = new Request('http://x/', { headers: { 'x-real-ip': '5.5.5.5' } });
+  const anon = new Request('http://x/');
+  // Each hits its own bucket on the first call and 429s on the second.
+  assert.equal((await mw(cf, async () => new Response())).status, 200);
+  assert.equal((await mw(cf, async () => new Response())).status, 429);
+  assert.equal((await mw(real, async () => new Response())).status, 200);
+  assert.equal((await mw(real, async () => new Response())).status, 429);
+  assert.equal((await mw(anon, async () => new Response())).status, 200);
+  assert.equal((await mw(anon, async () => new Response())).status, 429);
+});
+
+test('immutable response headers do not throw (catch branch)', async () => {
+  // A cross-realm Response can expose immutable headers. Simulate that
+  // by returning a Response whose `headers.set` throws.
+  const mw = rateLimit({ window: '1s', max: 5 });
+  const req = new Request('http://x/', { headers: { 'x-forwarded-for': '8.8.8.8' } });
+  const frozenHeaders = new Headers({ 'content-type': 'text/plain' });
+  frozenHeaders.set = () => { throw new TypeError('immutable'); };
+  const resp = new Response('ok', { headers: {} });
+  Object.defineProperty(resp, 'headers', { value: frozenHeaders });
+  const out = await mw(req, async () => resp);
+  // Middleware swallows the error; pass-through still works.
+  assert.equal(out.status, 200);
+});
+
+test('static string key acts as a bucket prefix (namespaces IP buckets)', async () => {
+  // opts.key as a string prefixes the default IP-derived key — it doesn't
+  // collapse all callers into one bucket.
+  const mwA = rateLimit({ window: '1s', max: 1, key: 'group-a:' });
+  const mwB = rateLimit({ window: '1s', max: 1, key: 'group-b:' });
+  const req = new Request('http://x/', { headers: { 'x-forwarded-for': '7.7.7.7' } });
+  // Same IP, different prefix → independent buckets.
+  assert.equal((await mwA(req, async () => new Response())).status, 200);
+  assert.equal((await mwB(req, async () => new Response())).status, 200);
+  // Second hit under the same prefix → 429.
+  assert.equal((await mwA(req, async () => new Response())).status, 429);
+});
+
+test('custom message is surfaced in the 429 body', async () => {
+  const mw = rateLimit({ window: '1s', max: 0, message: 'chill out' });
+  const req = new Request('http://x/', { headers: { 'x-forwarded-for': '10.10.10.10' } });
+  const resp = await mw(req, async () => new Response());
+  assert.equal(resp.status, 429);
+  assert.deepEqual(await resp.json(), { error: 'chill out' });
+});

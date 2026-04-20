@@ -758,6 +758,112 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     );
     assert.notEqual(before, after, 'Theme should change after toggle click post-navigation');
   });
+
+  // ---------------------------------------------------------------------------
+  // Full auth round-trip: signup → protected dashboard → logout
+  // ---------------------------------------------------------------------------
+
+  test('auth flow: signup → access dashboard → logout clears session', async () => {
+    // Run late: previous tests assume unauthenticated state, so clean
+    // cookies before starting the flow.
+    const client = await page.target().createCDPSession();
+    await client.send('Network.clearBrowserCookies');
+    await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(500);
+
+    const email = `e2e-${Date.now()}@test.local`;
+    const password = 'correct-horse-battery-staple';
+
+    // 1) POST /api/auth/signup with a fresh email. Rate-limited to 5/10s
+    // — we do one request total per test run, so we're well under.
+    const signupResp = await page.evaluate(async ({ email, password }) => {
+      const r = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password, name: 'E2E User' }),
+      });
+      return { status: r.status, ok: r.ok };
+    }, { email, password });
+    assert.ok(signupResp.ok, `signup should succeed; got status ${signupResp.status}`);
+
+    // 2) With the session cookie now set, /dashboard should render (not redirect).
+    const dashResp = await page.goto(baseUrl + '/dashboard', {
+      waitUntil: 'domcontentloaded',
+      timeout: 10000,
+    });
+    assert.equal(dashResp.status(), 200);
+    assert.ok(
+      !page.url().includes('/login'),
+      `authenticated /dashboard should not redirect to /login; got: ${page.url()}`,
+    );
+
+    // 3) POST /api/auth/logout → clears cookie.
+    const logoutResp = await page.evaluate(async () => {
+      const r = await fetch('/api/auth/logout', { method: 'POST' });
+      return { status: r.status };
+    });
+    assert.ok(
+      logoutResp.status >= 200 && logoutResp.status < 400,
+      `logout should return 2xx/3xx; got ${logoutResp.status}`,
+    );
+
+    // 4) /dashboard now redirects back to /login again.
+    await page.goto(baseUrl + '/dashboard', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(500);
+    assert.ok(
+      page.url().includes('/login'),
+      `/dashboard after logout should redirect to /login; got: ${page.url()}`,
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // Client-side nav: same-layout swap preserves the layout header element
+  // ---------------------------------------------------------------------------
+
+  test('client nav: layout header survives same-layout swap (no remount)', async () => {
+    // Same-layout nav should preserve the layout chrome — the header
+    // DOM element is the same instance before and after. If the router
+    // did a full page reload, a property stamped on the element would
+    // be lost.
+    await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(1500);
+    await page.evaluate(() => {
+      const h = document.querySelector('header');
+      if (h) /** @type any */ (h).__layoutMarker = 'before';
+    });
+    await clickNavLink(page, 'About');
+    await sleep(2000);
+    const survived = await page.evaluate(() =>
+      /** @type any */ (document.querySelector('header'))?.__layoutMarker === 'before',
+    );
+    assert.ok(survived, 'same-layout nav should keep the <header> DOM element mounted');
+  });
+
+  // ---------------------------------------------------------------------------
+  // Rate limiting: 6th rapid auth request → 429
+  // ---------------------------------------------------------------------------
+
+  test('rate limit: 6 rapid auth requests → 429 with retry-after', { timeout: 30000 }, async () => {
+    // /api/auth/* has `rateLimit({ window: '10s', max: 5 })`. Fire 6
+    // login attempts with a bogus credential in quick succession.
+    // Use Node's fetch (not page.evaluate) so we bypass puppeteer
+    // navigation timeouts — this is a pure HTTP-level test.
+    // The X-Forwarded-For header gives us a fresh IP bucket so earlier
+    // tests in the suite don't consume our quota.
+    const ip = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
+    const statuses = [];
+    for (let i = 0; i < 6; i++) {
+      const r = await fetch(baseUrl + '/api/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-forwarded-for': ip },
+        body: JSON.stringify({ email: 'ratelimit@test', password: 'x' }),
+      });
+      statuses.push({ status: r.status, retryAfter: r.headers.get('retry-after') });
+    }
+    const last = statuses[statuses.length - 1];
+    assert.equal(last.status, 429, `6th rapid auth request should be 429, got ${last.status}`);
+    assert.ok(last.retryAfter, 'rate-limit 429 should include a Retry-After header');
+  });
 });
 
 // ---------------------------------------------------------------------------

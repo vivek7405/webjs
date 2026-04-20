@@ -98,9 +98,12 @@ async function encodeJwt(payload, secret) {
 async function decodeJwt(token, secret) {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
-  const ok = await crypto.subtle.verify('HMAC', await hmacKey(secret), unb64url(parts[2]), enc.encode(`${parts[0]}.${parts[1]}`));
-  if (!ok) return null;
+  // `unb64url` → `atob` throws InvalidCharacterError on non-base64 input.
+  // Any failure here (bad base64, bad HMAC verify) means the cookie is
+  // garbage; treat it as "no session" rather than crashing the request.
   try {
+    const ok = await crypto.subtle.verify('HMAC', await hmacKey(secret), unb64url(parts[2]), enc.encode(`${parts[0]}.${parts[1]}`));
+    if (!ok) return null;
     const payload = JSON.parse(dec.decode(unb64url(parts[1])));
     if (payload.exp && Date.now() / 1000 > payload.exp) return null;
     return payload;

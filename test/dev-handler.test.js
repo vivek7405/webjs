@@ -429,6 +429,40 @@ test('handle: metadata route can return a Response directly', async () => {
   assert.ok((await resp.text()).includes('User-agent: *'));
 });
 
+test('handle: metadata route string body infers text/plain for .txt', async () => {
+  const appDir = makeApp({
+    'app/page.js':
+      `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+      `export default function P() { return html\`<p>ok</p>\`; }\n`,
+    'app/robots.js':
+      `export default function robots() {\n` +
+      `  return 'User-agent: *\\nAllow: /';\n` +
+      `}\n`,
+  });
+  const app = await createRequestHandler({ appDir, dev: true });
+  const resp = await app.handle(new Request('http://x/robots.txt'));
+  assert.equal(resp.status, 200);
+  assert.ok(resp.headers.get('content-type').includes('text/plain'));
+  assert.ok((await resp.text()).startsWith('User-agent: *'));
+});
+
+test('handle: metadata route object body is JSON-serialised with application/json', async () => {
+  const appDir = makeApp({
+    'app/page.js':
+      `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+      `export default function P() { return html\`<p>ok</p>\`; }\n`,
+    'app/manifest.js':
+      `export default function manifest() {\n` +
+      `  return { name: 'Demo', short_name: 'Demo', start_url: '/' };\n` +
+      `}\n`,
+  });
+  const app = await createRequestHandler({ appDir, dev: true });
+  const resp = await app.handle(new Request('http://x/manifest.json'));
+  assert.equal(resp.status, 200);
+  assert.ok(resp.headers.get('content-type').includes('application/json'));
+  assert.deepEqual(await resp.json(), { name: 'Demo', short_name: 'Demo', start_url: '/' });
+});
+
 test('handle: metadata route that throws → 500', async () => {
   const appDir = makeApp({
     'app/page.js':

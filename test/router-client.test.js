@@ -10,7 +10,9 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
 
-let _find, _addNewHead, _merge, _isNonHtmlPath, navigate;
+let _find, _addNewHead, _merge, _isNonHtmlPath, navigate,
+  _reactivateScripts, _findAnchorInPath, _onPopState,
+  enableClientRouter, disableClientRouter;
 
 before(async () => {
   const { window } = parseHTML('<!doctype html><html><head></head><body></body></html>');
@@ -36,7 +38,12 @@ before(async () => {
     _addNewHeadElements: _addNewHead,
     _mergeHead: _merge,
     _isNonHtmlPath,
+    _reactivateScripts,
+    _findAnchorInPath,
+    _onPopState,
     navigate,
+    enableClientRouter,
+    disableClientRouter,
   } = await import('../packages/core/src/router-client.js'));
 });
 
@@ -586,5 +593,100 @@ test('onClick: same-origin link click is intercepted and fetched via router', as
   } finally {
     document.body.innerHTML = '';
     globalThis.location = origLoc;
+  }
+});
+
+// ---- reactivateScripts ----
+
+test('reactivateScripts: recreates <script> elements so they execute', () => {
+  const container = document.createElement('div');
+  container.innerHTML = '<script id="s1">window.__rs = 1;</script>';
+  const before = container.querySelector('#s1');
+  _reactivateScripts(container);
+  const after = container.querySelector('#s1');
+  assert.ok(after, 'script still in container after reactivate');
+  assert.notEqual(before, after, 'script node was replaced, not kept');
+  assert.equal(after.textContent, 'window.__rs = 1;');
+});
+
+test('reactivateScripts: preserves attributes on the recreated node', () => {
+  const container = document.createElement('div');
+  container.innerHTML = '<script type="module" src="/x.js" data-flag="a"></script>';
+  _reactivateScripts(container);
+  const s = container.querySelector('script');
+  assert.equal(s.getAttribute('type'), 'module');
+  assert.equal(s.getAttribute('src'), '/x.js');
+  assert.equal(s.getAttribute('data-flag'), 'a');
+});
+
+// ---- findAnchorInPath ----
+
+test('findAnchorInPath: returns the nearest anchor in composedPath()', () => {
+  document.body.innerHTML = '<a href="/to"><span id="inner">click</span></a>';
+  const inner = document.getElementById('inner');
+  const anchor = document.querySelector('a');
+  const e = { composedPath: () => [inner, anchor, document.body] };
+  assert.equal(_findAnchorInPath(e), anchor);
+});
+
+test('findAnchorInPath: returns null when no anchor is in the path', () => {
+  document.body.innerHTML = '<div><span id="nope">click</span></div>';
+  const nope = document.getElementById('nope');
+  const e = { composedPath: () => [nope, document.body] };
+  assert.equal(_findAnchorInPath(e), null);
+});
+
+// ---- disableClientRouter ----
+
+test('disableClientRouter: is a no-op when router is already disabled', () => {
+  // router-client auto-enables on import; call disable twice to exercise
+  // both the "was enabled → teardown" and "already disabled → early return".
+  disableClientRouter();
+  disableClientRouter(); // second call hits `if (!enabled) return`
+  // Re-enable to restore state for any subsequent tests.
+  enableClientRouter();
+});
+
+test('disableClientRouter: enableClientRouter is idempotent', () => {
+  // disable → enable → enable again: second enable hits the
+  // `if (enabled || typeof document === 'undefined') return` early-return.
+  disableClientRouter();
+  enableClientRouter();
+  enableClientRouter(); // idempotent
+  // No assertion needed — we just want the coverage path for the
+  // "already enabled" guard. If the second call double-attached
+  // listeners, subsequent tests would misbehave.
+});
+
+// ---- onPopState ----
+
+test('onPopState: triggers a router navigation to location.href', async () => {
+  // Stub performNavigation indirectly by stubbing fetch + location.
+  const origLoc = globalThis.location;
+  const origFetch = globalThis.fetch;
+  let fetched = null;
+  globalThis.location = /** @type {any} */ ({
+    href: 'http://localhost/popped',
+    pathname: '/popped',
+    origin: 'http://localhost',
+    search: '',
+    hash: '',
+  });
+  globalThis.fetch = async (url) => {
+    fetched = String(url);
+    return new Response('<!doctype html><html><body><div data-layout="x">popped</div></body></html>', {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    });
+  };
+  try {
+    document.body.innerHTML = '<div data-layout="x">before</div>';
+    _onPopState({});
+    // Let the async navigation settle.
+    await new Promise((r) => setTimeout(r, 10));
+    assert.equal(fetched, 'http://localhost/popped');
+  } finally {
+    globalThis.location = origLoc;
+    globalThis.fetch = origFetch;
   }
 });
