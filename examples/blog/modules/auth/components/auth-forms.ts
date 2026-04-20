@@ -5,16 +5,23 @@ import { WebComponent, html } from '@webjskit/core';
  * Pill-switcher, serif heading, mono field labels, amber CTA.
  */
 type Mode = 'login' | 'signup';
-type State = { mode: Mode; busy: boolean; error: string | null };
+type State = { busy: boolean; error: string | null };
 
 export class AuthForms extends WebComponent {
-  static properties = { then: { type: String } };
+  // `mode` is a reactive property so the parent page can pick which tab
+  // loads initially via `<auth-forms mode="signup">` — see login/page.ts
+  // which flips to signup when the URL has `?tab=signup`.
+  static properties = {
+    then: { type: String },
+    mode: { type: String },
+  };
   then: string = '/dashboard';
+  mode: Mode = 'login';
   declare state: State;
 
   constructor() {
     super();
-    this.state = { mode: 'login', busy: false, error: null };
+    this.state = { busy: false, error: null };
   }
 
   async onSubmit(e: SubmitEvent) {
@@ -22,7 +29,7 @@ export class AuthForms extends WebComponent {
     const data = Object.fromEntries(new FormData(e.currentTarget as HTMLFormElement));
     this.setState({ busy: true, error: null });
     try {
-      const url = this.state.mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
+      const url = this.mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
       const r = await fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -40,7 +47,8 @@ export class AuthForms extends WebComponent {
   }
 
   render() {
-    const { mode, busy, error } = this.state;
+    const mode = this.mode;
+    const { busy, error } = this.state;
     return html`
       <div class="p-7 px-6 bg-bg-elev border border-border rounded-2xl shadow">
         <div class="grid grid-cols-2 p-1 mb-5 rounded-full bg-bg-subtle border border-border" role="tablist">
@@ -48,12 +56,12 @@ export class AuthForms extends WebComponent {
                   class="${mode === 'login'
                     ? 'py-2.5 px-3 font-sans text-xs font-semibold tracking-[0.02em] border-0 rounded-full cursor-pointer transition-all duration-150 bg-bg-elev text-fg shadow-sm'
                     : 'py-2.5 px-3 font-sans text-xs font-semibold tracking-[0.02em] border-0 rounded-full cursor-pointer transition-all duration-150 bg-transparent text-fg-muted'}"
-                  @click=${() => this.setState({ mode: 'login', error: null })}>Sign in</button>
+                  @click=${() => { this.mode = 'login'; this.setState({ error: null }); }}>Sign in</button>
           <button role="tab"
                   class="${mode === 'signup'
                     ? 'py-2.5 px-3 font-sans text-xs font-semibold tracking-[0.02em] border-0 rounded-full cursor-pointer transition-all duration-150 bg-bg-elev text-fg shadow-sm'
                     : 'py-2.5 px-3 font-sans text-xs font-semibold tracking-[0.02em] border-0 rounded-full cursor-pointer transition-all duration-150 bg-transparent text-fg-muted'}"
-                  @click=${() => this.setState({ mode: 'signup', error: null })}>Create account</button>
+                  @click=${() => { this.mode = 'signup'; this.setState({ error: null }); }}>Create account</button>
         </div>
         <form class="grid gap-4" @submit=${(e) => this.onSubmit(e)}>
           ${mode === 'signup'

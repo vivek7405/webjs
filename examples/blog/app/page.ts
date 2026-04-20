@@ -35,7 +35,7 @@ export default async function HomePage() {
 
     ${me
       ? banner(html`Welcome back, <strong class="text-fg font-bold">${me.name || me.email}</strong>. ${accentLink('/dashboard', 'Your dashboard →')}`)
-      : banner(html`${accentLink('/login', 'Sign in')} or ${accentLink('/login?then=/dashboard/posts/new', 'create an account')} to write posts and comment.`)}
+      : banner(html`${accentLink('/login', 'Sign in')} or ${accentLink('/login?tab=signup&then=/dashboard/posts/new', 'create an account')} to write posts and comment.`)}
 
     <div class="flex items-baseline justify-between mt-8 mb-2">
       <span class="block font-mono text-[11px] leading-none font-semibold tracking-[0.2em] uppercase text-accent">Latest posts</span>
