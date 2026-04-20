@@ -42,7 +42,7 @@ export default function LandingPage() {
         text-align: center;
       }
       .hero .rubric {
-        font: 600 13px/1 var(--font-mono);
+        font: 600 13px/1.4 var(--font-mono);
         letter-spacing: 0.15em;
         text-transform: uppercase;
         color: var(--fg-muted);
@@ -50,17 +50,18 @@ export default function LandingPage() {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 8px;
+        flex-wrap: wrap;
+        column-gap: 8px;
+        row-gap: 2px;
       }
+      .hero .rubric > span { white-space: nowrap; }
       .hero .rubric .name {
         font-size: 15px;
         font-weight: 800;
         letter-spacing: 0.08em;
         color: var(--accent);
       }
-      .hero .rubric .sep {
-        color: var(--fg-subtle);
-      }
+      .hero .rubric .sep { color: var(--fg-subtle); }
       .hero h1 {
         font: 700 var(--fs-display)/1.05 var(--font-serif);
         letter-spacing: -0.03em;
@@ -129,6 +130,7 @@ export default function LandingPage() {
         border: 1px solid var(--border);
         border-radius: var(--rad-lg);
         transition: border-color var(--t), box-shadow var(--t);
+        min-width: 0;
       }
       .feature:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
       .feature .icon { font-size: 24px; margin-bottom: var(--sp-2); }
@@ -167,6 +169,8 @@ export default function LandingPage() {
         background: var(--bg-elev);
         border: 1px solid var(--border);
         border-radius: var(--rad-lg);
+        /* allow grid track to shrink below min-content of the <pre> inside */
+        min-width: 0;
       }
       .mode-card .rubric {
         font: 600 10px/1 var(--font-mono);
@@ -209,7 +213,15 @@ export default function LandingPage() {
     </style>
 
     <section class="hero">
-      <div class="rubric"><span class="name">webjs</span> <span class="sep">—</span> ai-first · web-components-first · no build</div>
+      <div class="rubric">
+        <span class="name">webjs</span>
+        <span class="sep">—</span>
+        <span>ai-first</span>
+        <span class="sep">·</span>
+        <span>web-components-first</span>
+        <span class="sep">·</span>
+        <span>no build</span>
+      </div>
       <h1>The web framework where AI agents write production code.</h1>
       <p>
         The web framework that gets out of your way. Web components, server actions,
