@@ -5,7 +5,7 @@ export const metadata = { title: 'Caching — webjs' };
 export default function Cache() {
   return html`
     <h1>Caching</h1>
-    <p>webjs provides two complementary caching layers: <code>cache()</code> for server-side query result caching, and HTTP <code>Cache-Control</code> headers for page-level browser/CDN caching. Both follow the <strong>opinionated defaults</strong> philosophy — zero config in development, set <code>REDIS_URL</code> for production scaling.</p>
+    <p>webjs provides two complementary caching layers: <code>cache()</code> for server-side query result caching, and HTTP <code>Cache-Control</code> headers for page-level browser/CDN caching. Zero config in development (in-memory store). For horizontal scaling in production, call <code>setStore(redisStore({ url: process.env.REDIS_URL }))</code> once at app startup to share the cache across instances.</p>
 
     <h2>cache() — Server-Side Query Caching</h2>
     <p>Wrap any async function with <code>cache()</code> to cache its return value on the server. Same function + same arguments = cached result until TTL expires or you call <code>invalidate()</code>.</p>

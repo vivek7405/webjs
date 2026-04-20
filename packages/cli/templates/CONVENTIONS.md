@@ -82,14 +82,19 @@ variables control infrastructure — no config files needed:
 
 | Environment variable | Effect |
 |---|---|
-| `REDIS_URL` | Cache, sessions, rate limiting, and pub/sub all use Redis |
+| `REDIS_URL` | Connection string consumed by `redisStore({ url: process.env.REDIS_URL })`. Not auto-wired — call `setStore(redisStore())` once at app startup to put cache / sessions / rate-limit on Redis. |
 | `AUTH_SECRET` | Required for auth JWT signing (32+ random chars) |
 | `AUTH_GOOGLE_ID` | Google OAuth client ID (optional) |
 | `AUTH_GITHUB_ID` | GitHub OAuth client ID (optional) |
 | `PORT` | Server port (default: 3000) |
 
 **Development:** zero env vars needed. Everything works with memory/cookie/disk.
-**Production:** set `REDIS_URL` + `SESSION_SECRET`. That's it.
+**Production:** set `AUTH_SECRET` + `SESSION_SECRET`. For horizontal scaling, also set `REDIS_URL` and add one line at app startup:
+
+```js
+import { setStore, redisStore } from '@webjskit/server';
+setStore(redisStore({ url: process.env.REDIS_URL }));
+```
 
 ---
 

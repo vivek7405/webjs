@@ -90,7 +90,7 @@ prisma/schema.prisma         User, Session, Post, Comment
 ## Feature usage in this app
 
 ### Rate limiting
-`app/api/auth/middleware.ts` applies `rateLimit({ window: '10s', max: 5 })` to all auth endpoints — 5 requests per 10 seconds per IP. Exceeding returns 429 with `retry-after` header. Uses the global cache store (memory in dev, Redis if `REDIS_URL` is set).
+`app/api/auth/middleware.ts` applies `rateLimit({ window: '10s', max: 5 })` to all auth endpoints — 5 requests per 10 seconds per IP. Exceeding returns 429 with `retry-after` header. Uses the global cache store (memory by default; call `setStore(redisStore({ url: process.env.REDIS_URL }))` at app startup to switch to Redis for cross-instance sharing).
 
 ### Error boundaries
 `app/error.ts` catches any unhandled error during page rendering. Receives `{ error }` and renders a user-friendly error card. Nested error boundaries are supported — place `error.ts` deeper in the route tree to isolate failures.

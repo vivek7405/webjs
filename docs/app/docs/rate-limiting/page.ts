@@ -5,7 +5,7 @@ export const metadata = { title: 'Rate Limiting — webjs' };
 export default function RateLimiting() {
   return html`
     <h1>Rate Limiting</h1>
-    <p>webjs ships a fixed-window rate limiter backed by the pluggable cache store. In development it uses in-memory counters; set <code>REDIS_URL</code> and limits are shared across all instances automatically.</p>
+    <p>webjs ships a fixed-window rate limiter backed by the pluggable cache store. In development it uses in-memory counters. For shared limits across multiple instances in production, switch the global cache store to Redis at app startup (one <code>setStore()</code> call) — the rate limiter picks it up automatically.</p>
 
     <h2>When to use</h2>
     <ul>
@@ -73,7 +73,7 @@ export default rateLimit({
     </ul>
 
     <h2>Scaling with Redis</h2>
-    <p>In production with multiple server instances, set <code>REDIS_URL</code> and the rate limiter automatically uses the shared Redis store. No code changes needed — the cache store is pluggable.</p>
+    <p>In production with multiple server instances, set <code>REDIS_URL</code> and call <code>setStore(redisStore({ url: process.env.REDIS_URL }))</code> once at app startup — the rate limiter uses whatever store is active, so switching once applies to every <code>rateLimit()</code> middleware in the app.</p>
 
     <pre># .env
 REDIS_URL=redis://localhost:6379</pre>

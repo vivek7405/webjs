@@ -1,13 +1,22 @@
 /**
  * Fixed-window rate limiter backed by the pluggable cache store.
  *
- * Convention over configuration:
- *   - If `REDIS_URL` is set → rate limits are shared across all instances
- *   - Otherwise → in-memory (single-process, great for dev)
+ * Uses the global cache store (`getStore()`) by default, which is
+ * in-memory unless the app calls `setStore(redisStore(...))` at
+ * startup. Passing `opts.store` lets a single middleware target a
+ * different store than the default.
  *
  * ```js
  * import { rateLimit } from '@webjskit/server';
  * export default rateLimit({ window: '1m', max: 60 });
+ * ```
+ *
+ * For horizontal scaling across multiple instances, switch the global
+ * store to Redis once at app startup:
+ *
+ * ```js
+ * import { setStore, redisStore } from '@webjskit/server';
+ * setStore(redisStore({ url: process.env.REDIS_URL }));
  * ```
  *
  * @module rate-limit
@@ -31,8 +40,8 @@ export function rateLimit(opts = {}) {
   const keyFn = typeof opts.key === 'function' ? opts.key : defaultKey;
   const keyPrefix = typeof opts.key === 'string' ? opts.key : '';
   const message = opts.message ?? 'Too Many Requests';
-  // Use the provided store, or fall back to the global cache store.
-  // The global store auto-detects Redis if REDIS_URL is set.
+  // Use the provided store, or fall back to the global cache store —
+  // whatever was set via `setStore()` at app startup (in-memory by default).
   const store = opts.store || null;
 
   return async function rateLimitMiddleware(req, next) {

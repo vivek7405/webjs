@@ -56,7 +56,7 @@ Run `npx webjs check` on the blog example after changes.
 
 ## Framework philosophy
 
-- **Opinionated defaults.** `REDIS_URL` → everything scales. No config files.
+- **Opinionated defaults.** In-memory cache in dev; one `setStore(redisStore({ url: process.env.REDIS_URL }))` call at startup switches cache/sessions/rate-limit to Redis for horizontal scaling. No config files.
 - **Built-in essentials: auth (OAuth + credentials + JWT), sessions (cookie or Redis), cache() for queries, HTTP Cache-Control, WebSocket broadcast(), rateLimit().
 - **Less is more** for abstractions (directives, lifecycle hooks) — only what has no native workaround.
 - **No build step by default.** Never introduce a bundler in the critical path.

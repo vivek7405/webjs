@@ -38,7 +38,7 @@ export default session({
 });</pre>
 
     <h3>storeSessionStorage() — production</h3>
-    <p>Only a session ID is stored in the cookie. Session data lives in the cache store (memory by default, Redis when <code>REDIS_URL</code> is set).</p>
+    <p>Only a session ID is stored in the cookie. Session data lives in the global cache store — in-memory by default; switch to Redis for horizontal scaling by calling <code>setStore(redisStore({ url: process.env.REDIS_URL }))</code> once at app startup.</p>
     <ul>
       <li>No payload size limit beyond store key size.</li>
       <li>Server-side invalidation — delete the store entry and the session is gone.</li>

@@ -4,8 +4,9 @@
 
 Full-stack web framework inspired by NextJs, Lit, and Rails. `cache()` for
 queries, HTTP Cache-Control for pages, Session class with SessionStorage,
-NextAuth-style auth with providers, WebSocket broadcast, rate limiting — set
-`REDIS_URL` and everything scales horizontally. Web components first,
+NextAuth-style auth with providers, WebSocket broadcast, rate limiting.
+Swap the in-memory cache store for Redis with a single `setStore()` call
+(no config files, no build step in between). Web components first,
 TypeScript with zero build step, real SSR with Declarative Shadow DOM.
 
 ## Why webjs
@@ -20,7 +21,7 @@ TypeScript with zero build step, real SSR with Declarative Shadow DOM.
 - **Client router.** Turbo-Drive-style link interception. Shadow-DOM-aware via `composedPath()`. Layouts stay mounted, only page content swaps. No white flash.
 - **WebSockets built in.** Export `WS` from `route.ts` → WebSocket endpoint. `connectWS()` on the client auto-reconnects.
 - **Backend-only mode.** Skip pages entirely — use webjs as a lightweight API framework with file routing, middleware, rate limiting, and TypeScript.
-- **Built-in essentials.** Auth, sessions, caching, WebSocket broadcast, rate limiting — all built in. Set `REDIS_URL` to scale.
+- **Built-in essentials.** Auth, sessions, caching, WebSocket broadcast, rate limiting — all built in, sharing one pluggable cache store. In-memory by default; call `setStore(redisStore({ url: process.env.REDIS_URL }))` once at startup to put all four on Redis for horizontal scaling.
 - **Lazy loading.** `static lazy = true` defers module download until the component scrolls into the viewport. SSR content stays visible — only the JS is lazy.
 - **Error boundaries & loading states.** `error.ts` catches render failures at any route level. `loading.ts` auto-wraps pages in Suspense boundaries.
 - **Metadata routes.** `sitemap.ts`, `robots.ts`, `manifest.ts`, `icon.ts`, `opengraph-image.ts` — dynamic SEO/PWA metadata from functions, not static files.
@@ -157,8 +158,8 @@ testing, conventions, configuration, editor setup.
 
 ## Status
 
-Pre-1.0. 571 unit tests (91.6% line coverage), 33 puppeteer e2e tests,
-27 WTR browser tests. Key features:
+Pre-1.0. 632 unit tests (96.6% line coverage, 87.5% branch, 93.6% function),
+36 puppeteer e2e tests, 27 WTR browser tests. Key features:
 
 - **Core:** SSR with DSD (opt-in) + light-DOM hydration (default), fine-grained client renderer, `repeat()`, `Suspense()`, client router with `composedPath()` for shadow DOM, mixed-attribute interpolation, MutationObserver upgrade safety net
 - **Data:** server actions + superjson (Date/Map/Set/BigInt survive the wire), `expose()` for REST, `json()` + `richFetch()` for content-negotiated APIs, `cache()` for server-side query caching with TTL + `invalidate()`
