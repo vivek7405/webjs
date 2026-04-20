@@ -176,6 +176,7 @@ export default function RootLayout({ children }: { children: unknown }) {
         ${navLink('/', 'Posts')}
         ${navLink('/about', 'About')}
         ${navLink('/dashboard', 'Dashboard')}
+        <a href="https://github.com/vivek7405/webjs/tree/main/examples/blog" target="_blank" rel="noopener" class="text-fg-muted no-underline font-medium text-[13px] leading-none tracking-[0.005em] transition-colors duration-fast hover:text-fg">GitHub</a>
         <theme-toggle></theme-toggle>
       </nav>
     </header>
