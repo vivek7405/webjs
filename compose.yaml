@@ -1,0 +1,52 @@
+# docker compose — runs website + docs + blog as three services from a
+# single image. Local parity with Railway deployment (same Dockerfile).
+#
+#   docker compose up --build
+#     website → http://localhost:15000
+#     docs    → http://localhost:14000
+#     blog    → http://localhost:13000
+services:
+  website:
+    image: webjs
+    build: .
+    working_dir: /app/website
+    # @webjskit/cli installed in the root node_modules/.bin by npm workspaces;
+    # invoke its binary directly rather than via `npx webjs`.
+    command: ["node", "/app/node_modules/@webjskit/cli/bin/webjs.js", "start", "--port", "5000"]
+    ports:
+      - "15000:5000"
+    environment:
+      DOCS_URL: ${DOCS_URL:-http://localhost:14000}
+      BLOG_URL: ${BLOG_URL:-http://localhost:13000}
+
+  docs:
+    image: webjs
+    build: .
+    working_dir: /app/docs
+    command: ["node", "/app/node_modules/@webjskit/cli/bin/webjs.js", "start", "--port", "4000"]
+    ports:
+      - "14000:4000"
+
+  blog:
+    image: webjs
+    build: .
+    working_dir: /app/examples/blog
+    # Apply migrations, then start. `migrate deploy` is idempotent; a
+    # second boot on an already-migrated DB is a quick no-op.
+    command:
+      - sh
+      - -c
+      - |
+        node /app/node_modules/prisma/build/index.js migrate deploy && \
+        node /app/node_modules/@webjskit/cli/bin/webjs.js start --port 3000
+    ports:
+      - "13000:3000"
+    environment:
+      DATABASE_URL: file:/data/dev.db
+      AUTH_SECRET:    ${AUTH_SECRET:-change-me-at-least-32-characters-long!}
+      SESSION_SECRET: ${SESSION_SECRET:-change-me-at-least-32-characters-long!}
+    volumes:
+      - blog-data:/data
+
+volumes:
+  blog-data:

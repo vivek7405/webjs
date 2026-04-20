@@ -1,0 +1,33 @@
+.git
+.github
+node_modules
+**/node_modules
+**/.webjs
+**/dist
+**/build
+**/out
+**/.cache
+
+# local env files (each service should read .env at runtime if needed)
+**/.env
+!**/.env.example
+
+# prisma local sqlite (keep schema + migrations; volume owns the db)
+**/dev.db
+**/dev.db-journal
+
+# logs
+*.log
+npm-debug.log*
+
+# editors / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# test artifacts
+coverage/
+test/
+**/test/
+scripts/dev-all.js
