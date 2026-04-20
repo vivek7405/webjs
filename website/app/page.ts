@@ -222,11 +222,11 @@ export default function LandingPage() {
         <span class="sep">·</span>
         <span>no build</span>
       </div>
-      <h1>The web framework built for AI agents from the ground up.</h1>
+      <h1>The web framework built for AI agents</h1>
       <p>
-        The web framework that gets out of your way. Web components, server actions,
-        streaming SSR, all on web standards. No bundler, no config, no magic.
-        Your AI agent reads the framework code and ships.
+        Your AI agent reads the framework code and ships. Web components,
+        server actions, streaming SSR, all on web standards. No bundler,
+        no config, no magic.
       </p>
       <div class="hero-actions">
         <a class="primary" href=${DOCS_URL + '/docs/getting-started'} target="_blank">Get Started</a>
