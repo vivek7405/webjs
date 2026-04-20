@@ -24,6 +24,12 @@ COPY examples/blog/package.json           ./examples/blog/
 COPY website/package.json                 ./website/
 COPY docs/package.json                    ./docs/
 
+# Copy the CLI's bin/ before install so npm can symlink it into
+# /app/node_modules/.bin/webjs. Without this, the bin target doesn't
+# exist at install time and npm silently skips the symlink — then
+# `npm start` inside any workspace fails with `sh: webjs: not found`.
+COPY packages/cli/bin                     ./packages/cli/bin
+
 RUN npm install --no-audit --no-fund
 
 # --- 2. Copy source -----------------------------------------------------

@@ -6,7 +6,7 @@
   "scripts": {
     "prestart": "npm run css:build",
     "dev": "concurrently --names css,web --prefix-colors magenta,cyan --kill-others-on-fail \"npm:css:watch\" \"npm:webjs:dev\"",
-    "start": "webjs start --port 4000",
+    "start": "webjs start",
     "webjs:dev": "webjs dev --port 4000",
     "css:watch": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --watch",
     "css:build": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify",
