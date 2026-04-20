@@ -182,7 +182,7 @@ export default function RootLayout({ children }: { children: unknown }) {
     </header>
 
     <div class="max-w-[760px] mx-auto px-4 sm:px-6 pt-4 text-[11px] leading-snug text-fg-subtle font-mono tracking-wide">
-      Demo app — data may be wiped without notice.
+      Demo app - data will be wiped between redeploys.
     </div>
 
     <main class="block max-w-[760px] mx-auto px-4 sm:px-6 pt-4 pb-12 min-h-screen">
