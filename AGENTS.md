@@ -209,35 +209,79 @@ inspired by NextJs, Lit, and Rails.
 
 ## Framework source — where to find it
 
-The webjs framework code lives in `node_modules/` in the user's project:
+The webjs framework code lives in `node_modules/` in the user's project.
+There's no build step, no bundler, no minification — what you read is
+what runs. When debugging, reach for the source directly instead of
+guessing.
 
 ```
-node_modules/
-  webjs/                          ← core: html, css, WebComponent, render, directives
+node_modules/@webjskit/
+  core/                           ← renderer, WebComponent, directives, testing
+    index.js                      ← barrel: html, css, WebComponent, render, …
     src/
       html.js                     ← tagged template → TemplateResult
-      component.js                ← WebComponent base class (lifecycle, controllers, properties)
+      css.js                      ← css`` → CSSResult, adoptStyles, stylesToString
+      component.js                ← WebComponent base class (lifecycle, properties)
       render-client.js            ← client-side fine-grained DOM renderer
       render-server.js            ← async SSR renderer (renderToString, renderToStream)
       directives.js               ← unsafeHTML, live
       repeat.js                   ← keyed list reconciliation
-      context.js                  ← Context Protocol (ContextProvider, ContextConsumer)
+      context.js                  ← Context Protocol (createContext, Provider, Consumer)
       task.js                     ← Task controller (async data with states)
       router-client.js            ← Turbo Drive–style client router
       suspense.js                 ← streaming Suspense boundary
-      lazy-loader.js              ← IntersectionObserver–based lazy module loading
-  @webjskit/server/                  ← server: SSR, router, actions, dev server
+      lazy-loader.js              ← IntersectionObserver-based lazy module loading
+      testing.js                  ← fixture, waitForUpdate, click, shadowQuery
+      nav.js                      ← notFound(), redirect() sentinels
+      expose.js                   ← expose() REST-endpoint tagging
+      registry.js                 ← custom-element bookkeeping
+      escape.js                   ← HTML attribute / text escaping
+      websocket-client.js         ← connectWS() with auto-reconnect
+      rich-fetch.js               ← content-negotiated fetch helper
+  server/                         ← dev + prod server, SSR, router, actions, auth
+    index.js                      ← exported: createRequestHandler, startServer,
+                                    rateLimit, cache, Session, createAuth, …
     src/
       dev.js                      ← request handler, file serving, TS transforms
       router.js                   ← file-based route scanner + matcher
       ssr.js                      ← SSR pipeline (layouts, metadata, Suspense streaming)
       actions.js                  ← server action scanner, RPC endpoints, expose()
+      auth.js                     ← createAuth, Credentials/Google/GitHub, JWT
+      session.js                  ← Session class, cookie/store adapters
+      cache.js                    ← pluggable cache store (memory or Redis)
+      cache-fn.js                 ← cache() function wrapper
+      rate-limit.js               ← rateLimit() middleware
+      csrf.js                     ← double-submit CSRF protection
+      websocket.js                ← WS route upgrade + attachWebSocket
+      broadcast.js                ← broadcast() for fan-out messaging
       serializer.js               ← pluggable wire format (superjson default)
       check.js                    ← convention validator (webjs check)
       vendor.js                   ← auto-bundle npm deps for browser
       module-graph.js             ← dependency graph for transitive preloads
-  @webjskit/cli/                     ← CLI: dev, start, build, test, check, create
+      importmap.js                ← import map builder for browser resolution
+      context.js                  ← AsyncLocalStorage per-request context
+      json.js                     ← json() + readBody() content-negotiation
+  cli/                            ← CLI: dev, start, build, test, check, create, db
+    bin/webjs.js
+    lib/create.js                 ← scaffold logic
+    templates/                    ← file templates copied into new apps
+  ts-plugin/                      ← tsserver plugin: go-to-definition for tag names
 ```
+
+**Concrete use cases:**
+
+- "Why isn't my component hydrating?" → read
+  `node_modules/@webjskit/core/src/render-client.js` and
+  `node_modules/@webjskit/core/src/component.js`.
+- "What exactly does `metadata.openGraph` emit?" → grep
+  `node_modules/@webjskit/server/src/ssr.js` for `og:`.
+- "How does the router decide same-layout swap vs full replace?" → read
+  `node_modules/@webjskit/core/src/router-client.js`.
+- "What conventions does `webjs check` enforce?" → read
+  `node_modules/@webjskit/server/src/check.js`.
+
+Commands like `grep -rn 'foo' node_modules/@webjskit/` work the same as
+they do on app code, because the framework ships as plain source.
 
 **AI agents: when debugging framework behaviour** (e.g., "why doesn't my
 component hydrate?" or "why is SSR missing my layout?"), read the relevant
@@ -724,9 +768,61 @@ Set `static shadow = true` when:
 - Runs **only on the server**. Data fetching is just `await` — same mental model as React Server Components.
 - May `throw notFound()` or `throw redirect('/somewhere')` — the SSR pipeline converts these to 404 / 3xx responses.
 - Named exports read by the framework:
-  - `metadata` — static object (`{ title, description, viewport, themeColor, openGraph: {…} }`) merged into `<head>`.
-  - `generateMetadata(ctx)` — async function returning the same shape. Takes precedence over `metadata`.
+  - `metadata` — static object merged into `<head>` (see below).
+  - `generateMetadata(ctx)` — async function returning the same shape. Takes precedence over `metadata`. Use this when you need request-scoped values (absolute URLs from `ctx.url`, params-dependent titles, etc.).
 - Page modules are also loaded on the client (as a side effect) so transitively imported components register their custom elements. Keep top-level imports safe to execute in the browser (do **not** import `@prisma/client`, `node:fs`, etc. directly — go through a server action).
+
+#### Metadata API
+
+Every key is optional. Values flow into `<head>` at SSR time and merge
+from outer layouts inward (page wins on conflict).
+
+```ts
+export const metadata = {
+  title: 'Blog post title',              // → <title>
+  description: 'Short summary',          // → <meta name="description">
+  viewport: 'width=device-width,initial-scale=1',  // → <meta name="viewport">
+  themeColor: '#1c1613',                 // → <meta name="theme-color">
+  cacheControl: 'public, max-age=60',    // → Cache-Control response header (pages default to no-store)
+  preload: [                             // → <link rel="preload"> array
+    { href: '/public/fonts/Inter.woff2', as: 'font', type: 'font/woff2', crossorigin: 'anonymous' },
+  ],
+  openGraph: {                           // → <meta property="og:*">
+    type: 'website',
+    title: 'OG title',
+    description: 'OG description',
+    url: 'https://example.com/post',
+    image: 'https://example.com/og.png',
+    'image:width': '1200',
+    'image:height': '630',
+    'image:alt': 'Post cover',
+    'site_name': 'My Site',
+  },
+  twitter: {                             // → <meta name="twitter:*">
+    card: 'summary_large_image',         // required for big-image preview
+    title: 'Twitter title',
+    description: 'Twitter description',
+    image: 'https://example.com/og.png',
+  },
+};
+```
+
+```ts
+// Request-scoped: derive absolute URLs for OG/twitter from ctx.url.
+export function generateMetadata(ctx: { url: string }) {
+  const origin = new URL(ctx.url).origin;
+  const image = `${origin}/public/og.png`;
+  return {
+    title: 'My Page',
+    openGraph: { type: 'website', url: origin, image, 'image:width': '1200', 'image:height': '630' },
+    twitter: { card: 'summary_large_image', image },
+  };
+}
+```
+
+`cacheControl` is special — it's emitted as a **response header**, not a
+`<meta>` tag. Pages default to `no-store` for safety; opt into caching
+by setting this explicitly.
 
 ### Error boundaries (`app/**/error.js`)
 
@@ -1155,6 +1251,56 @@ The `--template api` scaffold produces thin route handlers that wrap typed
 server actions. Business logic lives in `modules/`, routes just import and
 call the action/query. This gives you file-based routing for URL structure
 plus type-safe server actions for logic.
+
+### Full CLI reference
+
+```sh
+webjs dev    [--port N] [--appDir <dir>]              # dev server with live reload (HMR-style for CSS, full reload for JS)
+webjs start  [--port N] [--appDir <dir>]              # prod server. Reads PORT env; defaults to 3000
+webjs build  [--appDir <dir>]                         # (optional) esbuild bundle for older browsers / CDN cache
+webjs test   [--server] [--browser] [--watch]         # runs test/unit/**/*.test.(js|ts) + test/browser/** when --browser
+webjs check  [--fix]                                  # convention validator; --fix applies safe rewrites
+webjs create <name> [--template api|saas]             # scaffold a new app
+webjs db <prisma-subcommand> [...]                    # passthrough to `prisma` (saas template only)
+```
+
+`PORT` env is honoured by `dev` and `start` when `--port` is absent — the
+default deployment pattern for Railway / Fly / Render.
+
+### Testing helpers — `@webjskit/core/testing`
+
+Minimal DOM testing helpers for Node `node:test`, backed by linkedom:
+
+```ts
+import { fixture, waitForUpdate, click, shadowQuery, shadowQueryAll } from '@webjskit/core/testing';
+import { html } from '@webjskit/core';
+import '../components/my-counter.ts';
+
+const el = await fixture(html`<my-counter count="5"></my-counter>`);
+assert.equal(shadowQuery(el, 'output').textContent.trim(), '5');
+
+click(shadowQuery(el, 'button[aria-label="Increment"]'));
+await waitForUpdate(el);
+assert.equal(shadowQuery(el, 'output').textContent.trim(), '6');
+```
+
+`fixture()` accepts either a `` html`` `` template or a raw HTML string,
+renders it (via `renderToString` if a template), parses it into a DOM
+environment, and returns the first child element. `waitForUpdate(el)`
+yields two microtasks so setState-triggered re-renders settle.
+
+### TypeScript editor plugin — `@webjskit/ts-plugin`
+
+The scaffold adds `@webjskit/ts-plugin` + `ts-lit-plugin` to `tsconfig.json`'s
+`compilerOptions.plugins`. Together they give VS Code / Neovim:
+
+- Autocomplete + type-check + diagnostics for attributes inside `` html`` ``
+  tagged templates (`ts-lit-plugin`).
+- Go-to-definition from a custom-element tag name (`<my-counter>`) straight
+  to the class declaration that set `static tag = 'my-counter'`
+  (`@webjskit/ts-plugin`). Plain `customElements.define('x', X)` works too.
+
+Plugin order matters in tsconfig — list `ts-lit-plugin` first.
 
 ### Add a database model
 

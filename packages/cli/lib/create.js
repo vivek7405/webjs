@@ -95,9 +95,10 @@ export async function scaffoldApp(name, cwd, opts = {}) {
     },
   }, null, 2) + '\n');
 
-  // --- Templates (CONVENTIONS.md, CLAUDE.md, test files, Claude hooks) ---
+  // --- Templates (AGENTS.md, CONVENTIONS.md, CLAUDE.md, test files, Claude hooks) ---
 
   const templateFiles = [
+    'AGENTS.md',
     'CONVENTIONS.md',
     'CLAUDE.md',
     'test/unit/example.test.ts',
@@ -386,12 +387,8 @@ export default function Home() {
 }
 `);
 
-  // --- AGENTS.md (copy from framework root) ---
-
-  const agentsSrc = resolve(__dirname, '..', '..', '..', 'AGENTS.md');
-  if (existsSync(agentsSrc)) {
-    await cp(agentsSrc, join(appDir, 'AGENTS.md'));
-  }
+  // AGENTS.md is copied via the `templateFiles` loop above, from
+  // `packages/cli/templates/AGENTS.md` with `{{APP_NAME}}` substitution.
 
   // --- Theme toggle component ---
 
@@ -459,11 +456,8 @@ ThemeToggle.register('theme-toggle');
     await writeSaasFiles(appDir);
   }
 
-  // --- AGENTS.md (always copy) ---
-  const agentsSrc2 = resolve(__dirname, '..', '..', '..', 'AGENTS.md');
-  if (!existsSync(join(appDir, 'AGENTS.md')) && existsSync(agentsSrc2)) {
-    await cp(agentsSrc2, join(appDir, 'AGENTS.md'));
-  }
+  // AGENTS.md is already in place via the shared `templateFiles` loop
+  // earlier in this function — no framework-root fallback needed.
 
   // --- Git init + configure hooks directory ---
   const { execSync } = await import('node:child_process');

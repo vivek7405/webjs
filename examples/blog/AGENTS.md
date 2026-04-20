@@ -3,11 +3,34 @@
 This is the reference app for the webjs framework. It exercises every
 feature the framework ships. Read this before editing any file.
 
+## Framework source is in `node_modules/`
+
+You can — and should — read framework code directly when debugging. No
+build step, no minification: the JavaScript in `node_modules/@webjskit/*`
+is what runs. Quick map:
+
+- `node_modules/@webjskit/core/` — renderer, `WebComponent`, directives,
+  client router, `Task`, context, testing helpers. See
+  `node_modules/@webjskit/core/src/component.js` for lifecycle
+  behaviour; `render-client.js` for DOM patching; `router-client.js`
+  for navigation / View Transitions.
+- `node_modules/@webjskit/server/` — dev server, SSR, file router,
+  server actions, WebSocket upgrade, `auth.js`, `session.js`,
+  `cache.js`, `rate-limit.js`, `csrf.js`. `ssr.js` shows exactly how
+  the metadata object becomes `<head>` tags.
+- `node_modules/@webjskit/cli/` — CLI commands + scaffold templates.
+- `node_modules/@webjskit/ts-plugin/` — tsserver plugin for go-to-
+  definition on tag names inside `` html`` `` templates.
+
+When in doubt, `grep -rn '<symbol>' node_modules/@webjskit/` — the
+framework is plain JS with JSDoc types, small, and readable end-to-end.
+
 ## App layout
 
 ```
 app/                         thin route adapters
-  layout.ts                  root layout (design tokens, theme toggle, <blog-shell>)
+  layout.ts                  root layout — light-DOM shell with <header>/<main>/<footer>,
+                              theme toggle, Tailwind tokens, open-graph metadata
   page.ts                    / (home — post feed, counter, chat)
   error.ts                   error boundary
   not-found.ts               404
@@ -60,7 +83,7 @@ modules/
     utils/clients.ts         shared WebSocket client Set + broadcast()
     types.ts                 ChatMessage
 components/                  shared UI primitives
-  blog-shell.ts, counter.ts, error-card.ts, muted-text.ts, theme-toggle.ts
+  counter.ts, error-card.ts, theme-toggle.ts
 prisma/schema.prisma         User, Session, Post, Comment
 ```
 
@@ -73,7 +96,10 @@ prisma/schema.prisma         User, Session, Post, Comment
 `app/error.ts` catches any unhandled error during page rendering. Receives `{ error }` and renders a user-friendly error card. Nested error boundaries are supported — place `error.ts` deeper in the route tree to isolate failures.
 
 ### Client router
-The layout (`app/layout.ts`) imports `webjs/client-router` — all `<a>` links navigate via fetch + DOM swap. The `<blog-shell>` layout stays mounted across navigations (header, footer, theme state preserved). Only page content swaps.
+The layout (`app/layout.ts`) imports `@webjskit/core/client-router` — all `<a>` links navigate via fetch + DOM swap. Same-layout navigations keep the `<header>` and `<footer>` elements mounted (theme state, scroll context preserved). Only `<main>` content swaps.
+
+### Metadata
+Root `app/layout.ts` exports `generateMetadata(ctx)` that derives an absolute `og:image` URL from `ctx.url.origin`. Sets `openGraph` + `twitter: { card: 'summary_large_image' }` so social shares render the 1200×630 `public/og.png` card.
 
 ### Middleware
 - `middleware.ts` (root) — request logging on every route.
