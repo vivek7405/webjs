@@ -22,8 +22,8 @@ const APPS = [
   {
     out: resolve(root, 'website/public/og.png'),
     section: null,
-    title: 'The web framework where AI agents write production code.',
-    subtitle: 'Web components, server actions, streaming SSR — on web standards. No build step.',
+    title: 'The web framework built for AI agents.',
+    subtitle: 'Your AI agent reads the framework code and ships. Web components, server actions, streaming SSR. No bundler, no config, no magic.',
   },
   {
     out: resolve(root, 'docs/public/og.png'),
