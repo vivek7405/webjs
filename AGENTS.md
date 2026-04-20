@@ -631,7 +631,7 @@ Naming convention: derive the scope class from the file path. Slashes
 
 Styles colocate with the markup as `const STYLES = css\`…\`` and
 interpolate via `<style>${STYLES.text}</style>`. `ts-lit-plugin` /
-`webjs-plugin` highlights the CSS and resolves class go-to-definition.
+`@webjskit/ts-plugin` highlights the CSS and resolves class go-to-definition.
 
 Example (page):
 

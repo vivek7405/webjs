@@ -1,0 +1,33 @@
+{
+  "name": "@webjskit/ts-plugin",
+  "version": "0.1.0",
+  "type": "commonjs",
+  "description": "TypeScript language-service plugin for webjs — go-to-definition for custom-element tag names inside html`` tagged templates.",
+  "main": "src/index.js",
+  "peerDependencies": {
+    "typescript": ">=5.0.0"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vivek7405/webjs.git",
+    "directory": "packages/ts-plugin"
+  },
+  "homepage": "https://github.com/vivek7405/webjs#readme",
+  "bugs": "https://github.com/vivek7405/webjs/issues",
+  "license": "MIT",
+  "keywords": [
+    "webjs",
+    "webjskit",
+    "typescript",
+    "language-service",
+    "tsserver-plugin",
+    "web-components"
+  ]
+}

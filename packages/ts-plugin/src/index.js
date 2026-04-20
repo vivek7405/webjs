@@ -1,5 +1,5 @@
 /**
- * webjs-plugin — a TypeScript language-service plugin that resolves
+ * @webjskit/ts-plugin — a TypeScript language-service plugin that resolves
  *
  *   1. Custom-element tag names inside `html\`\`` tagged templates → the
  *      corresponding WebComponent class declaration.
@@ -54,7 +54,7 @@ function init(modules) {
         );
       } catch (e) {
         info.project.projectService.logger?.info?.(
-          `webjs-plugin: getDefinitionAndBoundSpan threw: ${String(e)}`,
+          `@webjskit/ts-plugin: getDefinitionAndBoundSpan threw: ${String(e)}`,
         );
         return upstream;
       }

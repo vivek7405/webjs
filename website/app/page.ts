@@ -225,15 +225,15 @@ export default function LandingPage() {
 
     <div class="install">
       <span class="comment"># scaffold a new app</span><br>
-      <span class="cmd">npx webjs create my-app</span><br>
-      <span class="cmd">cd my-app && npx webjs dev</span><br>
+      <span class="cmd">npx @webjskit/cli create my-app</span><br>
+      <span class="cmd">cd my-app && npm install && npm run dev</span><br>
       <span class="comment"># → http://localhost:3000</span><br>
       <br>
       <span class="comment"># or backend-only API</span><br>
-      <span class="cmd">npx webjs create my-api --template api</span><br>
+      <span class="cmd">npx @webjskit/cli create my-api --template api</span><br>
       <br>
       <span class="comment"># or SaaS starter (auth + dashboard + Prisma)</span><br>
-      <span class="cmd">npx webjs create my-app --template saas</span>
+      <span class="cmd">npx @webjskit/cli create my-app --template saas</span>
     </div>
 
     <div class="features">

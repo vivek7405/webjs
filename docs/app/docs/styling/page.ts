@@ -199,7 +199,7 @@ export default function Post({ params }) {
       </tbody>
     </table>
 
-    <p>Every page wraps its output in <code>&lt;div class="page-&lt;route&gt;"&gt;</code>. Every layout wraps in <code>&lt;div class="layout-&lt;name&gt;"&gt;</code>. Components scope via their tag name. Styles colocate with the markup as <code>const STYLES = css\`…\`</code> and interpolate via <code>&lt;style&gt;\${STYLES.text}&lt;/style&gt;</code> — <code>ts-lit-plugin</code> / <code>webjs-plugin</code> highlights the CSS and resolves class go-to-definition inside those blocks.</p>
+    <p>Every page wraps its output in <code>&lt;div class="page-&lt;route&gt;"&gt;</code>. Every layout wraps in <code>&lt;div class="layout-&lt;name&gt;"&gt;</code>. Components scope via their tag name. Styles colocate with the markup as <code>const STYLES = css\`…\`</code> and interpolate via <code>&lt;style&gt;\${STYLES.text}&lt;/style&gt;</code> — <code>ts-lit-plugin</code> / <code>@webjskit/ts-plugin</code> highlights the CSS and resolves class go-to-definition inside those blocks.</p>
 
     <h3>Page scope</h3>
     <pre>// app/dashboard/page.ts

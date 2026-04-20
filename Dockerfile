@@ -19,7 +19,7 @@ COPY package.json package-lock.json ./
 COPY packages/cli/package.json            ./packages/cli/
 COPY packages/core/package.json           ./packages/core/
 COPY packages/server/package.json         ./packages/server/
-COPY packages/webjs-plugin/package.json   ./packages/webjs-plugin/
+COPY packages/ts-plugin/package.json      ./packages/ts-plugin/
 COPY examples/blog/package.json           ./examples/blog/
 COPY website/package.json                 ./website/
 COPY docs/package.json                    ./docs/

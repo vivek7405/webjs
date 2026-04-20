@@ -15,7 +15,7 @@
     "jsx": "preserve",
     "plugins": [
       { "name": "ts-lit-plugin", "strict": true },
-      { "name": "webjs-plugin" }
+      { "name": "@webjskit/ts-plugin" }
     ]
   },
   "include": [

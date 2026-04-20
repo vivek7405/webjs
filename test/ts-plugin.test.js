@@ -1,5 +1,5 @@
 /**
- * Unit tests for webjs-plugin — verifies the language-service decorator
+ * Unit tests for @webjskit/ts-plugin — verifies the language-service decorator
  * returns a correct `getDefinitionAndBoundSpan` result for a cursor
  * positioned on a custom-element tag inside an html`` template.
  *
@@ -23,7 +23,7 @@ const files = {};
 
 before(() => {
   ts = require('typescript');
-  createPlugin = require('../packages/webjs-plugin/src/index.js');
+  createPlugin = require('../packages/ts-plugin/src/index.js');
 });
 
 /**

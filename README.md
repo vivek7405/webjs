@@ -163,7 +163,7 @@ Pre-1.0. 571 unit tests (91.6% line coverage), 33 puppeteer e2e tests,
 - **Core:** SSR with DSD (opt-in) + light-DOM hydration (default), fine-grained client renderer, `repeat()`, `Suspense()`, client router with `composedPath()` for shadow DOM, mixed-attribute interpolation, MutationObserver upgrade safety net
 - **Data:** server actions + superjson (Date/Map/Set/BigInt survive the wire), `expose()` for REST, `json()` + `richFetch()` for content-negotiated APIs, `cache()` for server-side query caching with TTL + `invalidate()`
 - **Server:** file router, per-segment middleware, `rateLimit()`, WebSockets + `broadcast()`, CSRF, compression, HTTP/2, 103 Early Hints, health probes, graceful shutdown, `Session` class with `SessionStorage` (cookie or store-backed), NextAuth-style `createAuth()` (Credentials, Google, GitHub)
-- **DX:** TypeScript with zero build, `AGENTS.md` contract, `CLAUDE.md`, live reload in dev, optional esbuild bundle for prod, `webjs-plugin` for tsserver — tag-name and CSS-class-name go-to-definition inside `html\`\`` templates.
+- **DX:** TypeScript with zero build, `AGENTS.md` contract, `CLAUDE.md`, live reload in dev, optional esbuild bundle for prod, `@webjskit/ts-plugin` for tsserver — tag-name and CSS-class-name go-to-definition inside `html\`\`` templates.
 
 ## License
 
