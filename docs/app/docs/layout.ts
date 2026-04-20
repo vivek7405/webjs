@@ -150,16 +150,65 @@ export default function DocsLayout({ children }: { children: unknown }) {
       .docs-sidebar::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
       .docs-sidebar:hover::-webkit-scrollbar-thumb { background: var(--border-strong); }
       .docs-sidebar::-webkit-scrollbar-thumb:hover { background: var(--fg-subtle); }
+
+      /* Mobile sidenav drawer — slides in from the left at <=860px.
+         Toggled via [data-menu-open] on <body>. */
+      .menu-backdrop { display: none; }
+      @media (max-width: 860px) {
+        .docs-sidebar {
+          position: fixed !important;
+          top: 0; left: 0; bottom: 0;
+          width: 280px; max-width: 85vw;
+          height: 100dvh;
+          z-index: 40;
+          transform: translateX(-100%);
+          transition: transform 220ms cubic-bezier(0.3, 0, 0.3, 1);
+          box-shadow: 4px 0 24px oklch(0 0 0 / 0.25);
+        }
+        body[data-menu-open] .docs-sidebar { transform: translateX(0); }
+        .menu-backdrop {
+          display: block;
+          position: fixed; inset: 0;
+          background: oklch(0 0 0 / 0.5);
+          opacity: 0; pointer-events: none;
+          transition: opacity 220ms;
+          z-index: 30;
+        }
+        body[data-menu-open] .menu-backdrop { opacity: 1; pointer-events: auto; }
+        body[data-menu-open] { overflow: hidden; }
+      }
     </style>
 
+    <header class="hidden max-[860px]:flex sticky top-0 z-[25] items-center gap-4 px-4 py-3 border-b border-border bg-[color-mix(in_oklch,var(--bg)_85%,transparent)] backdrop-blur-[18px] backdrop-saturate-[180%]">
+      <a href="/" class="mr-auto inline-flex items-center gap-2 no-underline text-fg font-semibold text-[15px] leading-none tracking-tight">
+        <span class="inline-block w-[22px] h-[22px] rounded-md bg-gradient-to-br from-accent to-[color-mix(in_oklch,var(--accent)_55%,var(--fg))] shadow-[inset_0_0_0_1px_oklch(1_0_0/0.15),0_1px_4px_var(--accent-tint)]"></span>
+        <span>webjs docs</span>
+      </a>
+      <button
+        class="inline-flex items-center justify-center w-9 h-9 p-0 border border-border rounded-full bg-bg-elev text-fg-muted cursor-pointer transition-all duration-150 hover:text-fg hover:border-border-strong"
+        aria-label="Open menu"
+        aria-controls="docs-sidebar"
+        onclick="document.body.toggleAttribute('data-menu-open'); this.setAttribute('aria-expanded', document.body.hasAttribute('data-menu-open'))"
+      >
+        <svg class="w-4 h-4 stroke-current fill-none" style="stroke-width:1.8;stroke-linecap:round" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <theme-toggle></theme-toggle>
+    </header>
+
+    <div class="menu-backdrop" onclick="document.body.removeAttribute('data-menu-open')"></div>
+
     <div class="grid grid-cols-[260px_1fr] min-h-screen max-[860px]:grid-cols-1">
-      <aside class="docs-sidebar sticky top-0 h-screen overflow-y-auto py-8 px-6 border-r border-border bg-bg-subtle text-sm max-[860px]:hidden">
+      <aside
+        id="docs-sidebar"
+        class="docs-sidebar sticky top-0 h-screen overflow-y-auto py-8 px-6 border-r border-border bg-bg-subtle text-sm"
+        onclick="if (event.target.closest('a')) document.body.removeAttribute('data-menu-open')"
+      >
         <div class="flex items-center justify-between mb-6">
           <a class="flex items-center gap-2 no-underline text-fg font-semibold text-base leading-none" href="/">
             <span class="w-[22px] h-[22px] rounded-md bg-gradient-to-br from-accent to-[color-mix(in_oklch,var(--accent)_55%,var(--fg))]"></span>
             webjs docs
           </a>
-          <theme-toggle></theme-toggle>
+          <theme-toggle class="max-[860px]:hidden"></theme-toggle>
         </div>
         <doc-search></doc-search>
         <nav>
@@ -171,7 +220,7 @@ export default function DocsLayout({ children }: { children: unknown }) {
           `)}
         </nav>
       </aside>
-      <main class="max-w-[800px] px-6 pt-12 pb-16">
+      <main class="max-w-[800px] px-6 pt-12 pb-16 max-[860px]:pt-6">
         <div class="prose-docs">${children}</div>
       </main>
     </div>

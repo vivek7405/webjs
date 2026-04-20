@@ -163,23 +163,83 @@ export default function RootLayout({ children }: { children: unknown }) {
       ::-webkit-scrollbar { width: 10px; height: 10px; }
       ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
       ::-webkit-scrollbar-track { background: transparent; }
+
+      /* Mobile drawer + backdrop. Toggled via [data-menu-open] on <body>.
+         Desktop (>= 640px) hides the drawer entirely — desktop nav is inline. */
+      .menu-drawer {
+        position: fixed;
+        top: 0; right: 0;
+        height: 100dvh;
+        width: 80vw; max-width: 320px;
+        background: var(--bg-elev);
+        border-left: 1px solid var(--border);
+        box-shadow: -4px 0 24px oklch(0 0 0 / 0.25);
+        transform: translateX(100%);
+        transition: transform 220ms cubic-bezier(0.3, 0, 0.3, 1);
+        z-index: 40;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      body[data-menu-open] .menu-drawer { transform: translateX(0); }
+      .menu-backdrop {
+        position: fixed; inset: 0;
+        background: oklch(0 0 0 / 0.5);
+        opacity: 0; pointer-events: none;
+        transition: opacity 220ms;
+        z-index: 30;
+      }
+      body[data-menu-open] .menu-backdrop { opacity: 1; pointer-events: auto; }
+      body[data-menu-open] { overflow: hidden; }
+      @media (min-width: 640px) {
+        .menu-drawer, .menu-backdrop, .menu-hamburger { display: none !important; }
+      }
     </style>
 
-    <header class="sticky top-0 z-20 flex items-center gap-6 px-4 sm:px-6 py-3 border-b border-border bg-[color-mix(in_oklch,var(--bg)_75%,transparent)] backdrop-blur-[18px] backdrop-saturate-[180%]">
+    <header class="sticky top-0 z-20 flex items-center gap-4 sm:gap-6 px-4 sm:px-6 py-3 border-b border-border bg-[color-mix(in_oklch,var(--bg)_75%,transparent)] backdrop-blur-[18px] backdrop-saturate-[180%]">
       <a href="/" class="mr-auto inline-flex items-center gap-2 no-underline text-fg font-semibold text-[15px] leading-none tracking-tight">
         <span class="inline-block w-[22px] h-[22px] rounded-md bg-gradient-to-br from-accent to-[color-mix(in_oklch,var(--accent)_55%,var(--fg))] shadow-[inset_0_0_0_1px_oklch(1_0_0/0.15),0_1px_4px_var(--accent-tint)]"></span>
         <span>webjs</span>
         <span class="text-fg-subtle mx-1 font-normal">/</span>
         <span>blog</span>
       </a>
-      <nav class="flex gap-4 items-center">
+      <nav class="hidden sm:flex gap-4 items-center">
         ${navLink('/', 'Posts')}
         ${navLink('/about', 'About')}
         ${navLink('/dashboard', 'Dashboard')}
         <a href="https://github.com/vivek7405/webjs/tree/main/examples/blog" target="_blank" rel="noopener" class="text-fg-muted no-underline font-medium text-[13px] leading-none tracking-[0.005em] transition-colors duration-fast hover:text-fg">GitHub</a>
-        <theme-toggle></theme-toggle>
       </nav>
+      <button
+        class="menu-hamburger inline-flex items-center justify-center w-9 h-9 p-0 border border-border rounded-full bg-bg-elev text-fg-muted cursor-pointer transition-all duration-150 hover:text-fg hover:border-border-strong"
+        aria-label="Open menu"
+        aria-controls="mobile-menu"
+        onclick="document.body.toggleAttribute('data-menu-open'); this.setAttribute('aria-expanded', document.body.hasAttribute('data-menu-open'))"
+      >
+        <svg class="w-4 h-4 stroke-current fill-none" style="stroke-width:1.8;stroke-linecap:round" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <theme-toggle></theme-toggle>
     </header>
+
+    <div class="menu-backdrop" onclick="document.body.removeAttribute('data-menu-open')"></div>
+    <aside
+      id="mobile-menu"
+      class="menu-drawer"
+      aria-label="Mobile navigation"
+      onclick="if (event.target.closest('a')) document.body.removeAttribute('data-menu-open')"
+    >
+      <button
+        class="self-end inline-flex items-center justify-center w-9 h-9 p-0 border border-border rounded-full bg-bg-elev text-fg-muted cursor-pointer transition-all duration-150 hover:text-fg hover:border-border-strong mb-2"
+        aria-label="Close menu"
+        onclick="document.body.removeAttribute('data-menu-open')"
+      >
+        <svg class="w-4 h-4 stroke-current fill-none" style="stroke-width:1.8;stroke-linecap:round" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <a href="/" class="text-fg no-underline font-medium text-base leading-none py-3 px-1 border-b border-border hover:text-accent transition-colors">Posts</a>
+      <a href="/about" class="text-fg no-underline font-medium text-base leading-none py-3 px-1 border-b border-border hover:text-accent transition-colors">About</a>
+      <a href="/dashboard" class="text-fg no-underline font-medium text-base leading-none py-3 px-1 border-b border-border hover:text-accent transition-colors">Dashboard</a>
+      <a href="https://github.com/vivek7405/webjs/tree/main/examples/blog" target="_blank" rel="noopener" class="text-fg no-underline font-medium text-base leading-none py-3 px-1 hover:text-accent transition-colors">GitHub</a>
+    </aside>
 
     <div class="max-w-[760px] mx-auto px-4 sm:px-6 pt-4 text-[11px] leading-snug text-fg-subtle font-mono tracking-wide">
       Demo app - data will be wiped between redeploys.
