@@ -1876,13 +1876,20 @@ tag names have hyphens. Override any rule in `package.json`:
 ### Scaffolding — `webjs create`
 
 ```sh
+# install once
+npm i -g @webjskit/cli
+
+# scaffold + run
 webjs create my-app
+cd my-app && npm install && npm run dev
+# → http://localhost:3000
 ```
 
 Generates an opinionated project with:
 - `app/` with root layout + page
 - `modules/` skeleton
 - `components/` with theme toggle
+- `prisma/schema.prisma` (SQLite by default, example `User` model) + `lib/prisma.ts` singleton
 - `test/unit/` and `test/e2e/` with example tests
 - `CONVENTIONS.md` — editable project conventions (AI agents read this)
 - `AGENTS.md` — full framework API reference

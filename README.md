@@ -31,10 +31,19 @@ TypeScript with zero build step, real SSR with Declarative Shadow DOM.
 ## Quickstart
 
 ```sh
+# install once
+npm i -g @webjskit/cli
+
 # scaffold a new app
-npx webjs create my-app              # full-stack (pages + API + components)
-npx webjs create my-api --template api   # backend-only (routes + modules, no SSR)
-npx webjs create my-app --template saas  # auth + dashboard + Prisma User model
+webjs create my-app                  # full-stack (pages + API + components + Prisma/SQLite)
+cd my-app && npm install && npm run dev
+# → http://localhost:3000
+
+# or backend-only API
+webjs create my-api --template api
+
+# or SaaS starter (auth + dashboard + Prisma)
+webjs create my-app --template saas
 
 # or run everything in the monorepo (website + docs + blog together)
 git clone https://github.com/vivek7405/webjs

@@ -174,20 +174,23 @@ After merging, should &lt;branch&gt; be deleted or kept?</pre>
     <h2>webjs create</h2>
     <p>The scaffolding command generates a complete project with all conventions, config files, and example tests pre-configured:</p>
 
-    <pre>webjs create my-app</pre>
+    <pre>npm i -g @webjskit/cli
+webjs create my-app
+cd my-app && npm install && npm run dev</pre>
 
     <p>This generates:</p>
     <ul>
       <li><code>app/</code> with root layout + page</li>
       <li><code>modules/</code> skeleton for feature-scoped code</li>
       <li><code>components/</code> with a theme toggle component</li>
+      <li><code>prisma/schema.prisma</code> — SQLite by default, example <code>User</code> model. <code>lib/prisma.ts</code> ships a singleton client.</li>
       <li><code>test/unit/</code> and <code>test/browser/</code> with example tests</li>
       <li><code>CONVENTIONS.md</code> — editable project conventions</li>
       <li><code>AGENTS.md</code> — full framework API reference</li>
       <li><code>CLAUDE.md</code> — quick reminders for Claude Code</li>
       <li>Agent config files (<code>.cursorrules</code>, <code>.windsurfrules</code>, <code>.github/copilot-instructions.md</code>)</li>
       <li><code>.editorconfig</code> for consistent formatting</li>
-      <li><code>package.json</code> with scripts and webjs conventions config</li>
+      <li><code>package.json</code> with scripts (<code>dev</code>, <code>build</code>, <code>start</code>, <code>test</code>, <code>check</code>, <code>db:migrate</code>, <code>db:generate</code>, <code>db:studio</code>) and webjs conventions config</li>
     </ul>
 
     <p>Every file is ready to use immediately. The project works out of the box with <code>webjs dev</code>, and every AI agent that opens the project will automatically read the config files and follow the conventions.</p>

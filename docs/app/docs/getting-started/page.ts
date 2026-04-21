@@ -14,24 +14,24 @@ export default function GettingStarted() {
     </ul>
 
     <h2>Quick Start</h2>
-    <pre>git clone https://github.com/vivek7405/webjs
-cd webjs && npm install
+    <pre># install once
+npm i -g @webjskit/cli
 
-cd examples/blog
-npx prisma migrate dev --name init
-npx webjs dev
+# scaffold a new app
+webjs create my-app
+cd my-app && npm install && npm run dev
 # → http://localhost:3000</pre>
 
-    <p>Open the blog in a browser. You'll see a full-featured app with posts, comments, live chat, auth, and a counter — all built on webjs.</p>
+    <p>Every scaffold ships with Prisma + SQLite wired up (<code>prisma/schema.prisma</code> with an example <code>User</code> model and <code>lib/prisma.ts</code> singleton). Run <code>npm run db:migrate</code> the first time to create <code>prisma/dev.db</code>.</p>
 
     <h2>Create a New App</h2>
 
     <h3>Using the scaffold</h3>
-    <pre># full-stack app (pages + API + components)
+    <pre># full-stack app (pages + API + components + Prisma/SQLite)
 webjs create my-app
 
 # backend-only API (route handlers + modules, no pages/components/SSR)
-webjs create my-app --template api
+webjs create my-api --template api
 
 # SaaS starter (auth + dashboard + Prisma User model + modules)
 webjs create my-app --template saas</pre>

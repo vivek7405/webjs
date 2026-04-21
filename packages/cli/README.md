@@ -7,20 +7,25 @@ Installing this package gives you the `webjs` command.
 
 ## Install
 
-Most users won't install globally. Scaffold a new app instead:
+Install once, globally:
+
+```sh
+npm i -g @webjskit/cli
+```
+
+Then scaffold a new app anywhere:
+
+```sh
+webjs create my-app
+cd my-app && npm install && npm run dev
+# → http://localhost:3000
+```
+
+One-shot without global install:
 
 ```sh
 npx @webjskit/cli create my-app
-cd my-app
-npm install
-npm run dev
-```
-
-Or globally:
-
-```sh
-npm install -g @webjskit/cli
-webjs create my-app
+cd my-app && npm install && npm run dev
 ```
 
 ## Commands
