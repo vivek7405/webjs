@@ -39,6 +39,9 @@ export function generateMetadata(ctx: { url: string }) {
 
 export default function RootLayout({ children }: { children: unknown }) {
   return html`
+    <link rel="icon" href="/public/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/public/favicon.png" type="image/png">
+    <link rel="apple-touch-icon" href="/public/favicon.png">
     <script>
       (function(){
         try {

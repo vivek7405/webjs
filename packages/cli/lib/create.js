@@ -42,6 +42,7 @@ export async function scaffoldApp(name, cwd, opts = {}) {
     'modules',
     'lib',
     'public',
+    'prisma',
     'test/unit',
     'test/e2e',
   ];
@@ -55,6 +56,8 @@ export async function scaffoldApp(name, cwd, opts = {}) {
     type: 'module',
     private: true,
     scripts: {
+      predev: 'prisma generate',
+      prestart: 'prisma migrate deploy',
       dev: 'webjs dev',
       build: 'webjs build',
       start: 'webjs start',
@@ -62,19 +65,22 @@ export async function scaffoldApp(name, cwd, opts = {}) {
       'test:server': 'webjs test --server',
       'test:browser': 'webjs test --browser',
       check: 'webjs check',
+      'db:migrate': 'prisma migrate dev',
+      'db:generate': 'prisma generate',
+      'db:studio': 'prisma studio',
     },
     dependencies: {
+      '@prisma/client': '^6.0.0',
       '@webjskit/cli': 'latest',
       '@webjskit/core': 'latest',
       '@webjskit/server': 'latest',
-      ...(isSaas ? { '@prisma/client': '^6.0.0' } : {}),
     },
     devDependencies: {
       esbuild: '^0.28.0',
+      prisma: '^6.0.0',
       '@web/test-runner': '^0.20.0',
       '@web/test-runner-playwright': '^0.11.0',
       'playwright': '^1.59.0',
-      ...(isSaas ? { prisma: '^6.0.0' } : {}),
     },
   }, null, 2) + '\n');
 
@@ -139,6 +145,64 @@ export async function scaffoldApp(name, cwd, opts = {}) {
   // Make git pre-commit hook executable
   const preCommitPath = join(appDir, '.hooks', 'pre-commit');
   if (existsSync(preCommitPath)) await chmod(preCommitPath, 0o755);
+
+  // --- Prisma schema + client singleton (all templates) ---
+
+  await writeFile(join(appDir, 'prisma', 'schema.prisma'), `generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Defaults to SQLite at ./prisma/dev.db. Switch to postgresql / mysql
+  // by changing the provider + DATABASE_URL in .env.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Example model — feel free to delete or extend.
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+}
+`);
+
+  await writeFile(join(appDir, 'lib', 'prisma.ts'), `/**
+ * Prisma client singleton. The \`globalThis\` trick keeps a single
+ * instance across dev-server module reloads, so we don't open a new
+ * DB connection on every file change.
+ */
+import { PrismaClient } from '@prisma/client';
+
+const g = globalThis as unknown as { __prisma?: PrismaClient };
+
+export const prisma = g.__prisma ?? new PrismaClient();
+if (process.env.NODE_ENV !== 'production') g.__prisma = prisma;
+`);
+
+  // Env vars: append DATABASE_URL to the .env.example the template
+  // already copied (if present). The scaffold's root .env.example
+  // lists auth secrets etc.; we just add the DB line idempotently.
+  const envExample = join(appDir, '.env.example');
+  if (existsSync(envExample)) {
+    const cur = await readFile(envExample, 'utf8');
+    if (!cur.includes('DATABASE_URL')) {
+      await writeFile(envExample, cur.replace(/\n?$/, '\n') + '\nDATABASE_URL=file:./prisma/dev.db\n');
+    }
+  } else {
+    await writeFile(envExample, 'DATABASE_URL=file:./prisma/dev.db\n');
+  }
+
+  // .gitignore the generated SQLite file.
+  const gitignore = join(appDir, '.gitignore');
+  const gitignoreExtra = '\n# SQLite dev database\nprisma/dev.db\nprisma/dev.db-journal\n';
+  if (existsSync(gitignore)) {
+    const cur = await readFile(gitignore, 'utf8');
+    if (!cur.includes('prisma/dev.db')) await writeFile(gitignore, cur + gitignoreExtra);
+  } else {
+    await writeFile(gitignore, 'node_modules\n.webjs\n' + gitignoreExtra);
+  }
 
   // --- App files (template-specific) ---
 

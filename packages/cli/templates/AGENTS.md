@@ -60,12 +60,48 @@ modules/<feature>/
   components/*.ts        feature-scoped components
   utils/*.ts             feature-scoped helpers
   types.ts               feature types
-lib/                     cross-cutting infra (prisma, session, auth config)
+lib/
+  prisma.ts              PrismaClient singleton (import from here, never `new PrismaClient()`)
+  ...                    other cross-cutting infra (session, auth config, etc.)
+prisma/
+  schema.prisma          Prisma schema — SQLite by default, switch provider for Postgres/MySQL
+  dev.db                 SQLite file (gitignored); run `npm run db:migrate` to create
+  migrations/            generated migration SQL
 public/                  static assets, served at /public/*
 test/unit/*.test.ts      unit tests (node --test)
 test/browser/*.test.ts   browser tests (web-test-runner)
 middleware.ts            root middleware (optional, outermost)
 ```
+
+## Database (Prisma + SQLite by default)
+
+Every scaffold includes a Prisma setup pointed at a local SQLite file.
+First-run workflow:
+
+```sh
+cp .env.example .env          # DATABASE_URL is pre-filled for SQLite
+npm run db:migrate            # creates prisma/dev.db + migration
+npm run dev                   # webjs dev + prisma generate via predev
+```
+
+Scripts:
+
+- `npm run db:migrate` — `prisma migrate dev` (dev-time schema changes + migration + generate)
+- `npm run db:generate` — `prisma generate` (regenerate client only)
+- `npm run db:studio` — `prisma studio` (GUI)
+- `predev` hook auto-runs `prisma generate` before `npm run dev`
+- `prestart` hook runs `prisma migrate deploy` before `npm start` (idempotent in prod)
+
+Always import the client from `lib/prisma.ts` (never `new PrismaClient()` directly —
+the singleton avoids opening a new connection on every dev-server reload):
+
+```ts
+import { prisma } from '../../../lib/prisma.ts';
+const users = await prisma.user.findMany();
+```
+
+To switch to Postgres or MySQL: change `provider` in `prisma/schema.prisma`
+and the `DATABASE_URL` in `.env`.
 
 ## Imports
 
