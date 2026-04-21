@@ -224,9 +224,9 @@ export default function LandingPage() {
       </div>
       <h1>The web framework built for AI agents</h1>
       <p>
-        Your AI agent reads the framework code and ships. Web components,
-        server actions, streaming SSR, all on web standards. No bundler,
-        no config, no magic.
+        WebJs is built for AI agents from the ground up.
+        You get native web components, server actions, streaming SSR.
+        Built on web standards. No bundler, no config, no magic.
       </p>
       <div class="hero-actions">
         <a class="primary" href=${DOCS_URL + '/docs/getting-started'} target="_blank">Get Started</a>
