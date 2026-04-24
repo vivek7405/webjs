@@ -229,7 +229,7 @@ export default function LandingPage() {
         Built on web standards. No bundler, no config, no magic.
       </p>
       <div class="hero-actions">
-        <a class="primary" href=${DOCS_URL + '/docs/getting-started'} target="_blank">Docs</a>
+        <a class="primary" href=${DOCS_URL + '/docs/getting-started'} target="_blank">Get Started</a>
         <a class="secondary" href="https://github.com/vivek7405/webjs" target="_blank">GitHub</a>
         <a class="secondary" href=${BLOG_URL} target="_blank">Example Blog</a>
       </div>
