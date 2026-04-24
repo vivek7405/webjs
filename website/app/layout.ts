@@ -149,7 +149,41 @@ export default function RootLayout({ children }: { children: unknown }) {
                     color var(--t) cubic-bezier(0.3, 0, 0.3, 1);
       }
       ::selection { background: var(--accent-tint); color: var(--fg); }
+
+      .announce {
+        background: var(--accent-tint);
+        border-bottom: 1px solid var(--border);
+        color: var(--fg);
+        font: 500 13px/1.4 var(--font-sans);
+        text-align: center;
+        padding: 8px 16px;
+      }
+      .announce a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 600;
+      }
+      .announce a:hover { text-decoration: underline; }
+      .announce .tag {
+        display: inline-block;
+        font: 700 10px/1 var(--font-mono);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--accent);
+        background: color-mix(in oklch, var(--accent) 15%, transparent);
+        padding: 3px 7px;
+        border-radius: 999px;
+        margin-right: 8px;
+        vertical-align: middle;
+      }
     </style>
+
+    <div class="announce">
+      <span class="tag">New</span>
+      <a href="https://heyvivek.com/i-built-a-tiny-in-size-not-in-power-full-stack-framework-for-the-ai-era-i-call-it-webjs" target="_blank" rel="noopener noreferrer">
+        Read the story behind webjs &rarr;
+      </a>
+    </div>
 
     <header class="flex items-center justify-between max-w-[960px] mx-auto px-6 py-4">
       <a class="flex items-center gap-2 no-underline text-fg font-bold text-base leading-none tracking-tight" href="/">
