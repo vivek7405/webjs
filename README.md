@@ -2,7 +2,7 @@
 
 **AI-first. Web components first.**
 
-Full-stack web framework inspired by NextJs, Lit, and Rails. `cache()` for
+Full-stack web framework built on top of Web Components. `cache()` for
 queries, HTTP Cache-Control for pages, Session class with SessionStorage,
 NextAuth-style auth with providers, WebSocket broadcast, rate limiting.
 Swap the in-memory cache store for Redis with a single `setStore()` call
