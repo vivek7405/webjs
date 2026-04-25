@@ -433,8 +433,8 @@ export default function Home() {
       \${displayH1(html\`Hello from <span class="text-accent italic">${name}</span>.\`)}
       <p class="text-lede leading-[1.5] text-fg-muted max-w-[56ch] m-0">
         Edit <code class="font-mono text-[0.9em]">app/page.ts</code> to get started.
-        Run \${accentLink('#', 'npx webjs test')} to run tests and
-        \${accentLink('#', 'npx webjs check')} to validate conventions.
+        Run \${accentLink('#', 'webjs test')} to run tests and
+        \${accentLink('#', 'webjs check')} to validate conventions.
       </p>
     </section>
 
@@ -564,7 +564,7 @@ ThemeToggle.register('theme-toggle');
   console.log(`Next steps:
   cd ${name}
   npm install${isSaas ? '\n  npx prisma migrate dev --name init' : ''}
-  npx webjs dev
+  webjs dev
 
 AI-driven development (enforced for all AI agents):
   ✓ Tests auto-generated with every feature
@@ -572,6 +572,6 @@ AI-driven development (enforced for all AI agents):
   ✓ Git merges/pushes to main require approval
   ✓ Commits are automatic, small, and meaningful
   ✓ No AI attribution in commit messages
-  ✓ Convention validation via \`npx webjs check\`
+  ✓ Convention validation via \`webjs check\`
 `);
 }
