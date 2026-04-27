@@ -1,6 +1,6 @@
 {
   "name": "@webjskit/cli",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "type": "module",
   "description": "webjs CLI — dev, start, create, db",
   "bin": {
@@ -13,7 +13,7 @@
     "README.md"
   ],
   "dependencies": {
-    "@webjskit/server": "0.1.0"
+    "@webjskit/server": "0.1.1"
   },
   "publishConfig": {
     "access": "public"

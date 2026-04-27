@@ -449,7 +449,7 @@ async function handleCore(req, ctx) {
       }
       // TypeScript source: esbuild-strip types, cache by mtime.
       if (/\.m?ts$/.test(abs)) {
-        return tsResponse(abs, dev);
+        return tsResponse(abs, dev, appDir);
       }
       return fileResponse(abs, { dev, immutable: false });
     }
@@ -795,14 +795,14 @@ let _superjsonBundle = null;
  */
 async function serveBundledSuperjson(appDir, dev) {
   if (!_superjsonBundle) {
-    let build;
-    try { ({ build } = await import('esbuild')); }
-    catch {
+    const esbuildMod = await loadEsbuild(appDir);
+    if (!esbuildMod) {
       return new Response('/* esbuild missing */', {
         status: 500,
         headers: { 'content-type': 'application/javascript; charset=utf-8' },
       });
     }
+    const { build } = esbuildMod;
     const entryPoint = locatePackageDir(appDir, 'superjson');
     if (!entryPoint) return new Response('superjson not found', { status: 404 });
     const result = await build({
@@ -824,15 +824,15 @@ async function serveBundledSuperjson(appDir, dev) {
   });
 }
 
-async function tsResponse(abs, dev) {
-  let esbuild;
-  try { ({ transform: esbuild } = await import('esbuild')); }
-  catch {
+async function tsResponse(abs, dev, appDir) {
+  const esbuildMod = await loadEsbuild(appDir);
+  if (!esbuildMod) {
     return new Response(
       '/* esbuild missing — run `npm i -D esbuild` to enable TypeScript sources */',
       { status: 500, headers: { 'content-type': 'application/javascript; charset=utf-8' } }
     );
   }
+  const esbuild = esbuildMod.transform;
   const st = await stat(abs);
   const cached = TS_CACHE.get(abs);
   if (cached && cached.mtimeMs === st.mtimeMs) {
@@ -908,6 +908,30 @@ function locatePackageDir(appDir, pkgName) {
   };
   try { const d = tryFrom(join(appDir, 'package.json')); if (d) return d; } catch {}
   try { const d = tryFrom(fileURLToPath(import.meta.url)); if (d) return d; } catch {}
+  return null;
+}
+
+/**
+ * Load esbuild — preferring the user app's `node_modules` (where the scaffold
+ * lists it as a devDep). Falls back to the server module's resolution path
+ * (works for workspace-linked installs). Returns `null` if not found.
+ *
+ * Without this two-step lookup, a globally-installed `@webjskit/cli` can't see
+ * esbuild from the user's app and serves `.ts` files as an "esbuild missing"
+ * stub even though `npm i` succeeded.
+ *
+ * @param {string} appDir
+ * @returns {Promise<typeof import('esbuild') | null>}
+ */
+let _esbuild = null;
+async function loadEsbuild(appDir) {
+  if (_esbuild) return _esbuild;
+  try {
+    const req = createRequire(join(appDir, 'package.json'));
+    _esbuild = await import(pathToFileURL(req.resolve('esbuild')).href);
+    return _esbuild;
+  } catch {}
+  try { _esbuild = await import('esbuild'); return _esbuild; } catch {}
   return null;
 }
 
