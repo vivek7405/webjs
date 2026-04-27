@@ -135,8 +135,8 @@ bypass/autonomous mode).
    enforces the approval programmatically; other agents must ask via
    their config files.
 
-7. **Run tests before committing.** `npx webjs test` must pass. If the
-   change is user-facing, `npx webjs test --browser` must also pass.
+7. **Run tests before committing.** `webjs test` must pass. If the
+   change is user-facing, `webjs test --browser` must also pass.
 
 ### What "automatically" means — a concrete example
 

@@ -32,8 +32,8 @@ npm install @webjskit/server @webjskit/core
 Normally invoked via the CLI:
 
 ```sh
-npx webjs dev
-npx webjs start
+webjs dev
+webjs start
 ```
 
 Or programmatically:

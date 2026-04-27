@@ -32,12 +32,12 @@ model Post {
     <h3>Run Migrations</h3>
     <pre>npx prisma migrate dev --name init
 # or via the webjs CLI wrapper:
-npx webjs db migrate init</pre>
+webjs db migrate init</pre>
 
     <h3>Generate the Client</h3>
     <pre>npx prisma generate
 # or:
-npx webjs db generate</pre>
+webjs db generate</pre>
     <p>This writes the typed client to <code>node_modules/.prisma/client</code>. Run it once after schema changes — it's not in the request hot path.</p>
 
     <h2>Using Prisma in Server Actions</h2>
@@ -102,8 +102,8 @@ export function formatPost(row: any): PostFormatted {
 
     <h2>CLI Integration</h2>
     <p>The webjs CLI wraps common Prisma commands:</p>
-    <pre>npx webjs db generate      # prisma generate
-npx webjs db migrate init  # prisma migrate dev --name init
-npx webjs db studio        # prisma studio (visual DB browser)</pre>
+    <pre>webjs db generate      # prisma generate
+webjs db migrate init  # prisma migrate dev --name init
+webjs db studio        # prisma studio (visual DB browser)</pre>
   `;
 }

@@ -15,17 +15,17 @@
 1. **Tests** — Unit test for new actions/queries/components. E2E test for
    user-facing features. Run `npm test` from repo root after every change.
 2. **Documentation** — Update `AGENTS.md` if adding new modules/conventions.
-3. **Convention check** — Run `npx webjs check` and fix violations.
+3. **Convention check** — Run `webjs check` and fix violations.
 
 The user should never have to say "also write tests" or "update the docs."
 
 ## Quick reference
 
 ```sh
-npx webjs dev              # dev server
-npx webjs test             # run tests
-npx webjs test --e2e       # run with E2E
-npx webjs check            # validate conventions
+webjs dev              # dev server
+webjs test             # run tests
+webjs test --e2e       # run with E2E
+webjs check            # validate conventions
 npx prisma migrate dev     # DB migration
 ```
 

@@ -135,8 +135,8 @@ export async function listPosts() {
 ## Production
 
 ```sh
-npx webjs build                     # optional: bundle for fewer HTTP requests
-npx webjs start --port 8080         # JSON logs, gzip/brotli, ETag, streaming
+webjs build                     # optional: bundle for fewer HTTP requests
+webjs start --port 8080         # JSON logs, gzip/brotli, ETag, streaming
 ```
 
 Health: `GET /__webjs/health`. Graceful shutdown on `SIGTERM`.
@@ -154,7 +154,7 @@ const resp = await app.handle(new Request('http://x/api/hello'));
 The docs site is built on webjs itself:
 
 ```sh
-cd docs && npx webjs dev --port 4000
+cd docs && webjs dev --port 4000
 ```
 
 37 pages covering: getting started, AI-first development, routing,

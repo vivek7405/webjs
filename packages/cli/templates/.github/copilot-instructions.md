@@ -27,7 +27,7 @@ Every code change must include:
 2. Server tests in test/unit/*.test.ts (node:test for actions, queries, utilities)
 3. Browser tests in test/browser/*.test.js (WTR + Playwright, real Chromium)
 4. Documentation updates (AGENTS.md for API, docs/ for user guides)
-5. Convention validation: `npx webjs check` must pass
+5. Convention validation: `webjs check` must pass
 
 ## Git rules
 
@@ -38,7 +38,7 @@ Every code change must include:
 - NEVER merge any branch without explicit user permission. Always ask:
   "Ready to merge <branch> into <target>? Delete or keep <branch> after?"
   Wait for approval AND the delete/keep preference. Applies to ALL merges.
-- Run `npx webjs test` before every commit
+- Run `webjs test` before every commit
 
 ## Code patterns
 

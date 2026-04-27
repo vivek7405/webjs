@@ -11,7 +11,7 @@ services:
     build: .
     working_dir: /app/website
     # @webjskit/cli installed in the root node_modules/.bin by npm workspaces;
-    # invoke its binary directly rather than via `npx webjs`.
+    # invoke its binary directly rather than via `webjs`.
     command: ["node", "/app/node_modules/@webjskit/cli/bin/webjs.js", "start", "--port", "5000"]
     ports:
       - "15000:5000"

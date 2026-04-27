@@ -111,7 +111,7 @@ export class Counter extends WebComponent {
 Counter.register('my-counter');</pre>
 
     <h3>Run it</h3>
-    <pre>npx webjs dev
+    <pre>webjs dev
 # → http://localhost:3000</pre>
 
     <p>That's it — no build step, no bundler config, no compilation. Edit any <code>.ts</code> file, refresh, and see it.</p>

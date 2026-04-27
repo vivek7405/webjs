@@ -32,8 +32,8 @@ This is automatic — the user should never have to ask.
 - **Bug fix** → add regression test proving the fix
 - **Refactor** → run existing tests, ensure they pass
 
-After writing code, ALWAYS run `npx webjs test`. If E2E-relevant,
-also run `npx webjs test --browser`. Never report a task as done with
+After writing code, ALWAYS run `webjs test`. If E2E-relevant,
+also run `webjs test --browser`. Never report a task as done with
 failing tests.
 
 ### 3. Documentation (mandatory, never skip)
@@ -52,18 +52,18 @@ If this project has a **website/** directory, also:
 
 ### 4. Convention validation
 
-After making changes, run `npx webjs check` and fix any violations before
+After making changes, run `webjs check` and fix any violations before
 reporting the task as done.
 
 ## Quick reference
 
 ```sh
-npx webjs dev              # dev server with live reload
-npx webjs test             # run unit tests
-npx webjs test --browser       # run unit + E2E tests
-npx webjs check            # validate conventions
-npx webjs build            # (optional) production bundle
-npx webjs start            # production server
+webjs dev              # dev server with live reload
+webjs test             # run unit tests
+webjs test --browser       # run unit + E2E tests
+webjs check            # validate conventions
+webjs build            # (optional) production bundle
+webjs start            # production server
 ```
 
 All API details, recipes, and feature documentation → see **[AGENTS.md](./AGENTS.md)**.

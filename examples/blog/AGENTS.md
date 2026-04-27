@@ -146,4 +146,4 @@ Create `modules/<feature>/components/<name>.ts` or `components/<name>.ts`.
 Extend WebComponent. Set `static tag`. Call `register()`.
 
 ### Add a database model
-Edit `prisma/schema.prisma`. Run `npx webjs db migrate <name>` then `npx webjs db generate`.
+Edit `prisma/schema.prisma`. Run `webjs db migrate <name>` then `webjs db generate`.

@@ -5,9 +5,9 @@
  * Chromium via Playwright. Server tests (actions, queries) use node:test.
  *
  * Run:
- *   npx webjs test              # runs both server + browser tests
- *   npx webjs test --browser    # browser tests only
- *   npx webjs test --server     # server tests only
+ *   webjs test              # runs both server + browser tests
+ *   webjs test --browser    # browser tests only
+ *   webjs test --server     # server tests only
  */
 import { playwrightLauncher } from '@web/test-runner-playwright';
 

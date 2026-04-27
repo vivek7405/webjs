@@ -1,7 +1,7 @@
 /**
  * Example unit test — replace with tests for your modules.
  *
- * Run:  npx webjs test
+ * Run:  webjs test
  * Or:   node --test test/unit/*.test.ts
  */
 import { test } from 'node:test';

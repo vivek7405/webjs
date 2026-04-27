@@ -198,7 +198,7 @@ RUN npm ci --production
 COPY . .
 
 # Optional: build the client bundle
-RUN npx webjs build
+RUN webjs build
 
 EXPOSE 3000
 HEALTHCHECK CMD curl -f http://localhost:3000/__webjs/health || exit 1
@@ -218,7 +218,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 RUN npx prisma generate
-RUN npx webjs build
+RUN webjs build
 
 FROM node:23-slim
 WORKDIR /app
@@ -275,7 +275,7 @@ After=network.target
 Type=simple
 User=www
 WorkingDirectory=/srv/my-app
-ExecStart=/usr/bin/npx webjs start --port 3000
+ExecStart=/usr/bin/webjs start --port 3000
 Restart=on-failure
 RestartSec=5
 Environment=NODE_ENV=production
@@ -284,14 +284,14 @@ Environment=DATABASE_URL=postgresql://...
 [Install]
 WantedBy=multi-user.target</pre>
     <pre># Or with PM2
-pm2 start "npx webjs start" --name my-app</pre>
+pm2 start "webjs start" --name my-app</pre>
 
     <h2>Deployment Checklist</h2>
     <ul>
       <li>Node 23.6+ installed (for native TypeScript type stripping).</li>
       <li><code>npm ci --production</code> to install only production dependencies.</li>
       <li>Run <code>npx prisma generate</code> if you use Prisma.</li>
-      <li>Optionally run <code>npx webjs build</code> for a single-file client bundle.</li>
+      <li>Optionally run <code>webjs build</code> for a single-file client bundle.</li>
       <li>Set environment variables (<code>DATABASE_URL</code>, <code>SESSION_SECRET</code>, etc.).</li>
       <li>Use <code>webjs start</code> (not <code>webjs dev</code>) for production.</li>
       <li>Configure health checks against <code>/__webjs/health</code>.</li>

@@ -26,7 +26,7 @@ Every code change must include:
 1. Server tests in test/unit/*.test.ts (node:test)
 2. Browser tests in test/browser/*.test.js (WTR + Playwright, real Chromium)
 3. Documentation updates (AGENTS.md, docs/, website/ if they exist)
-4. Convention check: `npx webjs check` must pass
+4. Convention check: `webjs check` must pass
 
 The user should never have to ask for tests or documentation.
 
@@ -41,7 +41,7 @@ The user should never have to ask for tests or documentation.
 - NEVER merge any branch without explicit user permission. Always ask:
   "Ready to merge <branch> into <target>? Delete or keep <branch> after?"
   Wait for approval AND the delete/keep preference. Applies to ALL merges.
-- Run `npx webjs test` before every commit
+- Run `webjs test` before every commit
 
 ## Framework specifics
 

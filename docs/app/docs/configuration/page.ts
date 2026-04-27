@@ -9,7 +9,7 @@ export default function Configuration() {
 
     <h2>CLI Options</h2>
     <h3>webjs dev</h3>
-    <pre>npx webjs dev [--port 3000]</pre>
+    <pre>webjs dev [--port 3000]</pre>
     <ul>
       <li><code>--port</code> — dev server port (default: <code>3000</code>, or <code>PORT</code> env var)</li>
       <li>File watching via chokidar (automatic)</li>
@@ -19,7 +19,7 @@ export default function Configuration() {
     </ul>
 
     <h3>webjs start</h3>
-    <pre>npx webjs start [--port 3000] [--http2 --cert &lt;path&gt; --key &lt;path&gt;]</pre>
+    <pre>webjs start [--port 3000] [--http2 --cert &lt;path&gt; --key &lt;path&gt;]</pre>
     <ul>
       <li><code>--port</code> — production server port</li>
       <li><code>--http2 --cert &lt;pem&gt; --key &lt;pem&gt;</code> — serve HTTP/2 over TLS (falls back to H1.1 if cert/key missing)</li>
@@ -30,7 +30,7 @@ export default function Configuration() {
     </ul>
 
     <h3>webjs build</h3>
-    <pre>npx webjs build [--no-minify] [--no-sourcemap]</pre>
+    <pre>webjs build [--no-minify] [--no-sourcemap]</pre>
     <ul>
       <li>Bundles all client-facing modules (components, pages, layouts) into <code>.webjs/bundle.js</code> via esbuild</li>
       <li>Optional — the framework works without it (no-build by default)</li>
@@ -38,9 +38,9 @@ export default function Configuration() {
     </ul>
 
     <h3>webjs db</h3>
-    <pre>npx webjs db generate     # prisma generate
-npx webjs db migrate &lt;name&gt;  # prisma migrate dev
-npx webjs db studio       # prisma studio</pre>
+    <pre>webjs db generate     # prisma generate
+webjs db migrate &lt;name&gt;  # prisma migrate dev
+webjs db studio       # prisma studio</pre>
 
     <h2>tsconfig.json</h2>
     <p>Optional but recommended for editor + CI type-checking:</p>
@@ -69,7 +69,7 @@ npx webjs db studio       # prisma studio</pre>
 
     <h2>Environment Variables</h2>
     <p>Use <code>process.env</code> in server-side code (pages, actions, route handlers, middleware). There's no built-in <code>.env</code> loader — use <code>dotenv</code> or pass vars via the shell:</p>
-    <pre>DATABASE_URL=postgres://... npx webjs start</pre>
+    <pre>DATABASE_URL=postgres://... webjs start</pre>
     <blockquote><strong>Warning:</strong> never reference <code>process.env</code> in component code that runs on the client. It's undefined in the browser and would leak server secrets if it worked.</blockquote>
 
     <h2>Programmatic API</h2>

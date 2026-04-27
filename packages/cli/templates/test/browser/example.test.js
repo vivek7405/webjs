@@ -1,7 +1,7 @@
 /**
  * Example browser test — runs in real Chromium via WTR + Playwright.
  *
- * Run:  npx webjs test --browser
+ * Run:  webjs test --browser
  *       npx wtr
  *
  * Tests here have full access to real browser APIs: Shadow DOM,

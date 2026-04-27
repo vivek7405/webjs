@@ -109,10 +109,10 @@ test('WS echo works', async () =&gt; {
     <h2>webjs test command</h2>
     <p>The CLI provides a built-in test runner:</p>
     <pre># Run unit tests
-npx webjs test
+webjs test
 
 # Run unit + browser tests (WTR + Playwright)
-npx webjs test --browser</pre>
+webjs test --browser</pre>
 
     <p>It discovers test files automatically:</p>
     <ul>
@@ -142,10 +142,10 @@ describe('Contact form', () =&gt; {
     <h2>Convention Validation</h2>
     <p><code>webjs check</code> validates your app against conventions:</p>
     <pre># Check all conventions
-npx webjs check
+webjs check
 
 # List available rules
-npx webjs check --rules</pre>
+webjs check --rules</pre>
     <p>Rules include: actions in modules, one function per action file, components have <code>Class.register('tag')</code>, no server imports in client code, tests exist for modules, tag names have hyphens.</p>
     <p>Override rules in <code>package.json</code>:</p>
     <pre>{ "webjs": { "conventions": { "tests-exist": false } } }</pre>

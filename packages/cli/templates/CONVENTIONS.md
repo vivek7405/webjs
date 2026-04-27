@@ -33,7 +33,7 @@ even if the user doesn't explicitly ask.**
 
 2. **Tests** — Unit test for logic, E2E test for user-facing behavior.
    See the "Testing" section below for what type of test each change needs.
-   Run `npx webjs test` after every change. Never mark work as done with
+   Run `webjs test` after every change. Never mark work as done with
    failing tests.
 
 3. **Documentation updates** — When adding or modifying features:
@@ -43,7 +43,7 @@ even if the user doesn't explicitly ask.**
    - If a `website/` directory exists, update the landing page for
      user-facing features.
 
-3. **Convention check** — Run `npx webjs check` after changes and fix
+3. **Convention check** — Run `webjs check` after changes and fix
    any violations before reporting the task as done.
 
 ### Autonomous mode (sandbox / bypass permissions)
@@ -529,8 +529,8 @@ This project enforces a git workflow via agent-specific config files
   `.github/copilot-instructions.md`.
 
 **Pre-commit checks:**
-- `npx webjs test` must pass
-- `npx webjs check` must pass
+- `webjs test` must pass
+- `webjs check` must pass
 - No unrelated files in the commit
 
 ---

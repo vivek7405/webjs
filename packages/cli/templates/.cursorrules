@@ -28,13 +28,13 @@ Quality bar stays the same — just no blocking on questions.
 ## Mandatory workflow (never skip)
 
 1. TESTS: Server tests in test/unit/ (node:test), browser tests in
-   test/browser/ (WTR + Playwright, real Chromium). Run `npx webjs test`
+   test/browser/ (WTR + Playwright, real Chromium). Run `webjs test`
    after every change. Never deliver code without passing tests.
 
 2. DOCS: Update AGENTS.md for API changes. Update docs/ and website/ if
    they exist. The user should never have to ask for tests or docs.
 
-3. CONVENTIONS: Run `npx webjs check` and fix violations before committing.
+3. CONVENTIONS: Run `webjs check` and fix violations before committing.
 
 ## Git rules
 

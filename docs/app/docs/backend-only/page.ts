@@ -328,7 +328,7 @@ export async function POST(req: Request) {
 }</pre>
 
     <h3>Run it</h3>
-    <pre>npx webjs dev
+    <pre>webjs dev
 # API is live at http://localhost:3000
 # curl http://localhost:3000/api/posts
 # curl http://localhost:3000/__webjs/health</pre>

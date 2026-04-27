@@ -4,9 +4,9 @@
 
 ## Test plan
 
-- [ ] Unit tests added/updated (`npx webjs test` passes)
-- [ ] E2E tests added/updated for user-facing changes (`npx webjs test --e2e` passes)
-- [ ] `npx webjs check` passes (no convention violations)
+- [ ] Unit tests added/updated (`webjs test` passes)
+- [ ] E2E tests added/updated for user-facing changes (`webjs test --e2e` passes)
+- [ ] `webjs check` passes (no convention violations)
 
 ## Documentation
 

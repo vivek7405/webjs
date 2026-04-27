@@ -52,7 +52,7 @@ When adding or modifying framework features, update:
 
 ### 4. Convention validation
 
-Run `npx webjs check` on the blog example after changes.
+Run `webjs check` on the blog example after changes.
 
 ## Framework philosophy
 
