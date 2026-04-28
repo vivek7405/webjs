@@ -17,10 +17,38 @@
  * @typedef {{ cls: typeof import('./component.js').WebComponent, moduleUrl: string | null, lazy: boolean, tag: string }} RegistryEntry
  */
 
+/* ------------------------------------------------------------------
+ * Shared registry on globalThis.
+ *
+ * In a typical install, the dev server (`@webjskit/server`) and the
+ * user's app modules each import `@webjskit/core`. When the cli is
+ * installed globally (or hoisted at a different level than the user's
+ * app), Node resolves the bare specifier from each importer's location
+ * and may end up loading TWO instances of `@webjskit/core` — one for
+ * the server, one for the user's app. Each instance would otherwise
+ * have its own private `registry` Map, so:
+ *
+ *   user-app:  ThemeToggle.register('theme-toggle')   → instance-A registry
+ *   server:    lookup('theme-toggle')                  → instance-B registry (empty)
+ *
+ * SSR's `injectDSD` would then skip the tag and emit bare
+ * `<theme-toggle></theme-toggle>` even though the user registered it
+ * correctly. Symptom: components render with no children server-side
+ * and only "appear" after the browser hydrates.
+ *
+ * We side-step this by keying both maps off `globalThis` with a stable
+ * `Symbol.for(...)`. Every loaded instance of this module finds the
+ * same maps regardless of which copy of `@webjskit/core` it lives in.
+ * @ts-ignore */
+const REGISTRY_KEY = Symbol.for('webjs:registry');
+/** @ts-ignore */
+const CLASS_TO_TAG_KEY = Symbol.for('webjs:classToTag');
+
+const _g = /** @type {any} */ (globalThis);
 /** @type {Map<string, RegistryEntry>} */
-const registry = new Map();
+const registry = _g[REGISTRY_KEY] || (_g[REGISTRY_KEY] = new Map());
 /** @type {WeakMap<Function, string>} */
-const classToTag = new WeakMap();
+const classToTag = _g[CLASS_TO_TAG_KEY] || (_g[CLASS_TO_TAG_KEY] = new WeakMap());
 
 const isBrowser =
   typeof window !== 'undefined' && typeof customElements !== 'undefined';
