@@ -33,7 +33,6 @@ test('setVendorEntries: adds entries to import map', () => {
   assert.equal(map.imports['dayjs'], '/__webjs/vendor/dayjs.js');
   // Built-ins should still be there
   assert.equal(map.imports['@webjskit/core'], '/__webjs/core/index.js');
-  assert.equal(map.imports['superjson'], '/__webjs/vendor/superjson.js');
   // Clean up
   setVendorEntries({});
 });

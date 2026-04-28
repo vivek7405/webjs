@@ -197,8 +197,9 @@ inspired by NextJs, Lit, and Rails.
 - **Server actions with rich types.** Any file ending `.server.js` / `.server.ts`
   (or starting with `'use server'`) exports functions the client imports and
   calls directly — the import is rewritten into an RPC stub. The RPC wire uses
-  **superjson**, so `Date`, `Map`, `Set`, `BigInt`, `undefined`, `URL`, `RegExp`
-  round-trip as their real types.
+  webjs's built-in ESM serializer, so `Date`, `Map`, `Set`, `BigInt`,
+  `undefined`, `Error`, `TypedArray`, `ArrayBuffer`, `Blob`, `File`, `FormData`,
+  registered Symbols, and reference cycles all round-trip as their real types.
 - **Server-file source is unreachable from the browser (framework invariant).**
   The HTTP layer independently re-verifies every JS/TS request against the
   server-file predicate (filename suffix OR `'use server'` directive) before
@@ -256,7 +257,7 @@ node_modules/@webjskit/
       csrf.js                     ← double-submit CSRF protection
       websocket.js                ← WS route upgrade + attachWebSocket
       broadcast.js                ← broadcast() for fan-out messaging
-      serializer.js               ← pluggable wire format (superjson default)
+      serializer.js               ← pluggable wire format (webjs built-in default)
       check.js                    ← convention validator (webjs check)
       vendor.js                   ← auto-bundle npm deps for browser
       module-graph.js             ← dependency graph for transitive preloads
@@ -363,7 +364,7 @@ import { html, css, WebComponent, render, renderToString } from '@webjskit/core'
 | `repeat(items, k, t)` | Keyed list directive — `${repeat(items, it => it.id, it => html\`...\`)}`. Preserves element identity / focus when items reorder. |
 | `Suspense({fallback, children})` | Streaming boundary — server flushes `fallback` immediately, streams `children` (a Promise<TemplateResult>) when it resolves. |
 | `connectWS(url, handlers)` | Client-side WebSocket with auto-reconnect, JSON parse/stringify, queued sends. |
-| `richFetch<T>(url, init?)` | Client-side fetch that adds `Accept: application/vnd.webjs+json`, encodes plain-object bodies via superjson, and decodes responses with rich types. |
+| `richFetch<T>(url, init?)` | Client-side fetch that adds `Accept: application/vnd.webjs+json`, encodes plain-object bodies via webjs's built-in serializer, and decodes responses with rich types. |
 
 ### Directives — `import { … } from '@webjskit/core/directives'`
 
@@ -1438,12 +1439,15 @@ const r = await createPost({ title, body });
 if (r.success) r.data.title;   // ← PostFormatted.title: string
 ```
 
-**Runtime reality matches the types** because the RPC wire is superjson:
-a `Date` on the server is a `Date` on the client, a `Map` is a `Map`, a
-`BigInt` is a `BigInt`. Supported types: everything superjson handles
-(Date, Map, Set, BigInt, undefined, URL, RegExp, Error, Decimal, plus
-any custom transformer you register). Class instances come through as
-plain objects — prototypes are lost, methods don't survive.
+**Runtime reality matches the types** because the RPC wire uses webjs's
+built-in ESM serializer: a `Date` on the server is a `Date` on the client,
+a `Map` is a `Map`, a `BigInt` is a `BigInt`. Supported types: `Date`,
+`Map`, `Set`, `BigInt`, `Error`, `undefined`, `NaN`/`Infinity`/`-0`,
+`TypedArray` (Int8/Uint8/.../Float64), `ArrayBuffer`, `DataView`, `Blob`,
+`File`, `FormData`, `Symbol.for(...)` registered symbols, and reference
+cycles / shared refs. Class instances come through as plain objects —
+prototypes are lost, methods don't survive (matching React Server
+Actions' behavior).
 
 ### API routes — opt in via content negotiation
 
@@ -1466,12 +1470,12 @@ export async function GET() {
 import { richFetch } from '@webjskit/core';
 const posts = await richFetch<Post[]>('/api/posts');
 // posts[0].createdAt is a Date here (richFetch sends
-// Accept: application/vnd.webjs+json and superjson-parses the response).
+// Accept: application/vnd.webjs+json and parses the rich response).
 ```
 
 The `json()` helper reads the in-flight Request via the AsyncLocalStorage
 context:
-- `Accept: application/vnd.webjs+json` → superjson-encoded response,
+- `Accept: application/vnd.webjs+json` → encoded with the webjs serializer,
   `Content-Type: application/vnd.webjs+json`, `Vary: Accept` for
   correct shared-cache keying.
 - Otherwise → plain JSON with `Content-Type: application/json`.

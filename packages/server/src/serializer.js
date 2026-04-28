@@ -1,34 +1,39 @@
-import { stringify, parse } from 'superjson';
+import { stringify, parse } from '@webjskit/core';
 
 /**
  * @typedef {Object} Serializer
  * A pluggable serializer that controls how webjs server actions encode and
  * decode values on the RPC wire.
  *
- * **AI hint:** The default serializer uses superjson so rich types (Date,
- * Map, Set, BigInt, etc.) survive the client/server round-trip. To swap in
- * a different wire format (e.g. devalue, plain JSON, msgpack), call
- * `setSerializer()` with an object that implements `serialize`,
- * `deserialize`, and `contentType`.
+ * **AI hint:** The default serializer uses webjs's built-in
+ * (`@webjskit/core` `stringify` / `parse`) so rich types — Date, Map, Set,
+ * BigInt, TypedArrays, Blob/File/FormData, cycles — survive the
+ * client/server round-trip. To swap in a different wire format (e.g.
+ * plain JSON, msgpack), call `setSerializer()` with an object that
+ * implements `serialize`, `deserialize`, and `contentType`.
  *
- * @property {(value: unknown) => string} serialize
+ * @property {(value: unknown) => Promise<string>} serialize
  *   Encode a value to a string suitable for an HTTP response body.
+ *   Async to support binary types (Blob/File/FormData) which require
+ *   an `await arrayBuffer()` step.
  * @property {(str: string) => unknown} deserialize
  *   Decode a string produced by `serialize` back to the original value.
+ *   Sync — binary is already inlined as base64 in the wire format.
  * @property {string} contentType
  *   The MIME content-type header value to use for RPC responses.
  */
 
 /**
- * Default serializer backed by superjson.
+ * Default serializer backed by webjs's built-in `stringify` / `parse`.
  *
- * Handles Date, Map, Set, BigInt, RegExp, undefined, Error, and other
- * types that plain `JSON.stringify` drops or mangles.
+ * Handles Date, Map, Set, BigInt, TypedArrays, ArrayBuffer, DataView,
+ * Blob, File, FormData, registered Symbols, undefined, NaN/Infinity/-0,
+ * Error, and cycles / shared references.
  *
  * @type {Serializer}
  */
 export const defaultSerializer = {
-  serialize(value) {
+  async serialize(value) {
     return stringify(value);
   },
   deserialize(str) {
@@ -45,7 +50,7 @@ let current = defaultSerializer;
  *
  * **AI hint:** Use this in server-side code that needs to encode or decode
  * RPC payloads. It returns whatever serializer was set via `setSerializer`,
- * or the default superjson serializer if none was set.
+ * or the default webjs serializer if none was set.
  *
  * @returns {Serializer}
  */
@@ -58,14 +63,14 @@ export function getSerializer() {
  *
  * **AI hint:** Call this at application startup (before any requests are
  * handled) to swap the wire format for server actions. The serializer
- * must implement `serialize(value) => string`,
+ * must implement `serialize(value) => Promise<string>`,
  * `deserialize(str) => unknown`, and expose a `contentType` string.
  *
  * ```js
  * import { setSerializer } from '@webjskit/server';
  *
  * setSerializer({
- *   serialize: JSON.stringify,
+ *   serialize: async (v) => JSON.stringify(v),
  *   deserialize: JSON.parse,
  *   contentType: 'application/json',
  * });

@@ -5,8 +5,8 @@
  *   - External clients (curl, mobile) sending `Accept: application/json`
  *     get plain JSON with stringified dates.
  *   - webjs's own UI using `richFetch()` sends
- *     `Accept: application/vnd.webjs+json` and gets back superjson with
- *     real `Date` objects.
+ *     `Accept: application/vnd.webjs+json` and gets back the rich
+ *     wire format with real `Date` objects.
  */
 import { json } from '@webjskit/server';
 import { listPosts } from '../../../modules/posts/queries/list-posts.server.ts';

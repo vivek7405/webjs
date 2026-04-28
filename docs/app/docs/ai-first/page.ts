@@ -70,7 +70,7 @@ modules/posts/queries/get-post.server.ts      → exports getPost()</pre>
 export async function createPost(
   input: { title: string; body: string }
 ): Promise&lt;ActionResult&lt;PostFormatted&gt;&gt; { ... }</pre>
-    <p>The TypeScript signature IS the API contract. No separate schema file, no OpenAPI spec, no GraphQL SDL. The client component imports the function, TypeScript checks the types, and superjson preserves them on the wire. An AI agent can:</p>
+    <p>The TypeScript signature IS the API contract. No separate schema file, no OpenAPI spec, no GraphQL SDL. The client component imports the function, TypeScript checks the types, and webjs's built-in serializer preserves them on the wire. An AI agent can:</p>
     <ol>
       <li>Read the function signature to understand the API.</li>
       <li>Modify the function and know every call site that breaks (via tsc).</li>
@@ -134,7 +134,7 @@ Convention validator   ✅ webjs check ❌ none      ❌ none
 File = function        ✅ one/file   ⚠️ varies     ❌ free-form
 No build transforms    ✅ none       ❌ SWC/webpack ✅ none
 Explicit server bound. ✅ .server.ts ⚠️ 'use srv'  n/a
-Typed RPC (no schema)  ✅ superjson  ⚠️ Flight     ❌ manual
+Typed RPC (no schema)  ✅ rich types ⚠️ Flight     ❌ manual
 Autonomous mode        ✅ defaults   ❌ n/a        ❌ n/a</pre>
 
     <h2>The AGENTS.md File</h2>

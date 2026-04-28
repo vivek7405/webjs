@@ -580,19 +580,21 @@ test('handle: POST to /__webjs/action/<hash>/<fn> invokes the action', async () 
   assert.ok(tokMatch, `page should set csrf cookie; got: ${setCookie}`);
   const token = decodeURIComponent(tokMatch[1]);
 
-  // POST with serialized args (superjson wire format + matching csrf).
+  // POST with serialized args (webjs wire format + matching csrf). The
+  // serializer's tagged-inline format is plain JSON for primitive args:
+  // an array of values that double() will receive as positional args.
   const resp = await app.handle(new Request(rpcUrl, {
     method: 'POST',
     headers: {
-      'content-type': 'application/json',
+      'content-type': 'application/vnd.webjs+json',
       'x-webjs-csrf': token,
       cookie: `webjs_csrf=${encodeURIComponent(token)}`,
     },
-    body: JSON.stringify({ json: [21] }),
+    body: JSON.stringify([21]),
   }));
   assert.equal(resp.status, 200);
   const body = await resp.json();
-  assert.equal(body.json, 42);
+  assert.equal(body, 42);
 });
 
 test('handle: expose()d action is reachable by method+path', async () => {
@@ -966,17 +968,6 @@ test('handle: fileResponse 404 for a deleted file inside /public', async () => {
   const app = await createRequestHandler({ appDir, dev: true });
   const resp = await app.handle(new Request('http://x/public/gone.txt'));
   assert.equal(resp.status, 404);
-});
-
-test('handle: /__webjs/vendor/superjson.js serves the legacy superjson bundle', async () => {
-  // superjson must be resolvable from the appDir. Use the repo root.
-  const repoRoot = resolve(__dirname, '..');
-  const silent = { info: () => {}, warn: () => {}, error: () => {} };
-  const app = await createRequestHandler({ appDir: repoRoot, dev: true, logger: silent });
-  const resp = await app.handle(new Request('http://x/__webjs/vendor/superjson.js'));
-  assert.equal(resp.status, 200);
-  const body = await resp.text();
-  assert.ok(body.length > 0);
 });
 
 test('handle: percent-encoded pathname is decoded before matching', async () => {

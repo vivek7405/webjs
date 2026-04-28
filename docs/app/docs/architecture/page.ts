@@ -29,7 +29,8 @@ export default function Architecture() {
       <li><code>expose()</code> — tag an action for REST exposure</li>
       <li><code>notFound()</code> / <code>redirect()</code> — navigation sentinels</li>
       <li><code>connectWS()</code> — auto-reconnecting WebSocket client</li>
-      <li><code>richFetch()</code> — superjson-aware fetch wrapper</li>
+      <li><code>richFetch()</code> — rich-type-aware fetch wrapper</li>
+      <li><code>stringify()</code> / <code>parse()</code> — webjs's built-in serializer (Date, Map, Set, BigInt, TypedArray, Blob, File, FormData, cycles)</li>
     </ul>
 
     <h3>@webjskit/server</h3>

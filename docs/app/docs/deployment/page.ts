@@ -40,7 +40,7 @@ webjs build [--no-minify] [--no-sourcemap]</pre>
     <p>In production mode, webjs automatically negotiates <code>Accept-Encoding</code> and compresses responses with Brotli (quality 4) or Gzip (level 6). Compression applies to text-based content types: HTML, JavaScript, JSON, CSS, SVG, XML. Binary assets (images, fonts) are served uncompressed.</p>
 
     <h3>ETags and Cache Headers</h3>
-    <p>Static files are served with a SHA-1 ETag and a 1-hour <code>max-age</code>. The production bundle (<code>.webjs/bundle.js</code>) and vendored libraries (superjson) are served with <code>max-age=31536000, immutable</code> since their content is addressed by hash. In dev, all files use <code>Cache-Control: no-cache</code>.</p>
+    <p>Static files are served with a SHA-1 ETag and a 1-hour <code>max-age</code>. The production bundle (<code>.webjs/bundle.js</code>) and auto-vendored npm packages are served with <code>max-age=31536000, immutable</code> since their content is addressed by hash. In dev, all files use <code>Cache-Control: no-cache</code>.</p>
 
     <h3>Graceful Shutdown</h3>
     <p>On <code>SIGINT</code> or <code>SIGTERM</code>, webjs:</p>

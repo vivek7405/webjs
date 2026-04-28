@@ -70,7 +70,7 @@ export default async function Home() {
 }</pre>
 
     <h2>Type Safety</h2>
-    <p>Prisma generates TypeScript types for every model. In a <code>.ts</code> server action, the return type flows through the RPC boundary to the client component — <code>Post.createdAt</code> is a <code>Date</code> on the server, and thanks to superjson, it's a <code>Date</code> on the client too.</p>
+    <p>Prisma generates TypeScript types for every model. In a <code>.ts</code> server action, the return type flows through the RPC boundary to the client component — <code>Post.createdAt</code> is a <code>Date</code> on the server, and thanks to webjs's built-in rich-type serializer, it's a <code>Date</code> on the client too.</p>
     <p>For DTOs (where you want to control the exact shape returned to the client), create a <code>format*</code> function in your module's <code>utils/</code>:</p>
     <pre>// modules/posts/utils/format.ts
 import type { PostFormatted } from '../types.ts';

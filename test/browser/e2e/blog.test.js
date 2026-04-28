@@ -44,7 +44,6 @@ suite('E2E: Blog (real browser)', () => {
     const resp = await fetchPage('/');
     const html = await resp.text();
     assert.ok(html.includes('"@webjskit/core"'), 'import map should have @webjskit/core entry');
-    assert.ok(html.includes('"superjson"'), 'import map should have superjson entry');
     assert.ok(html.includes('@webjskit/core/directives'), 'import map should have directives entry');
   });
 
