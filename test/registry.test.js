@@ -99,3 +99,41 @@ test('primeModuleUrl: creates an entry with no cls when called before register()
   // lookupModuleUrl via lookup+allTags shouldn't crash.
   assert.ok(allTags().includes('rx-prime'));
 });
+
+test('registry is shared across module instances via globalThis (dual-instance bug)', async () => {
+  // Two different file URLs for the same registry source. When `@webjskit/core`
+  // is installed twice (e.g. globally + locally), Node loads it as two distinct
+  // module instances. Each instance must still see the same registry, otherwise
+  // a component registered in one instance is invisible to lookups in the other
+  // (the bug that caused SSR-bare custom elements when the cli was global).
+  const { mkdtempSync, rmSync, copyFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { pathToFileURL } = await import('node:url');
+
+  const dir = mkdtempSync(join(tmpdir(), 'webjs-registry-dual-'));
+  try {
+    const src = new URL('../packages/core/src/registry.js', import.meta.url);
+    const copyA = join(dir, 'registry-a.js');
+    const copyB = join(dir, 'registry-b.js');
+    copyFileSync(src, copyA);
+    copyFileSync(src, copyB);
+
+    const a = await import(pathToFileURL(copyA).href);
+    const b = await import(pathToFileURL(copyB).href);
+
+    assert.notEqual(a, b, 'two distinct module instances expected');
+
+    class Shared {}
+    a.register('rx-shared-tag', Shared);
+
+    // Both instances must agree the tag is registered.
+    assert.ok(a.allTags().includes('rx-shared-tag'));
+    assert.ok(b.allTags().includes('rx-shared-tag'),
+      'instance B must see registrations made via instance A — registry is shared');
+    assert.equal(b.lookup('rx-shared-tag'), Shared);
+    assert.equal(b.tagOf(Shared), 'rx-shared-tag');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
