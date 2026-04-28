@@ -9,7 +9,7 @@ export default function GettingStarted() {
 
     <h2>Prerequisites</h2>
     <ul>
-      <li><strong>Node.js 23.6+</strong> — required for native TypeScript type-stripping. Node 20+ works if you stick to plain JavaScript.</li>
+      <li><strong>Node.js 20.6+</strong> — needed for <code>module.register()</code>, the API webjs uses to install its esbuild TypeScript loader at startup.</li>
       <li><strong>npm</strong> (or any package manager).</li>
     </ul>
 
@@ -118,8 +118,7 @@ Counter.register('my-counter');</pre>
 
     <h2>How It Works</h2>
     <ul>
-      <li><strong>Server-side:</strong> Node 23.6+ strips TypeScript types at runtime. Your <code>.ts</code> pages and server actions run directly.</li>
-      <li><strong>Client-side:</strong> The dev server transforms <code>.ts</code> files via esbuild (~1ms/file, cached by mtime) before serving to the browser.</li>
+      <li><strong>TypeScript:</strong> The dev server registers an esbuild loader hook at startup. Every <code>.ts</code> import — server-side or browser-fetched — flows through esbuild's <code>transform()</code>. Same transformer for SSR and hydration, ~1ms/file, cached by mtime.</li>
       <li><strong>SSR:</strong> Pages are rendered to HTML strings on the server. Light-DOM components serialize as plain children with a <code>&lt;!--webjs-hydrate--&gt;</code> marker; shadow-DOM components (opt-in) emit Declarative Shadow DOM so scoped styles paint before JS loads.</li>
       <li><strong>Hydration:</strong> When JS loads, custom elements upgrade and become interactive. The fine-grained renderer preserves focus, cursor position, and form state across state updates.</li>
     </ul>

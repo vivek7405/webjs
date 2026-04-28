@@ -8,9 +8,9 @@ const [cmd, ...rest] = process.argv.slice(2);
 
 const USAGE = `webjs — commands:
   webjs dev   [--port 3000]                       Start dev server with live reload
-  webjs build                                     Bundle components + pages for production
-  webjs start [--port 3000]                       Start production server
+  webjs start [--port 3000]                       Start production server (serves source directly; no build required)
               [--http2 --cert <path> --key <path>]  Serve HTTP/2 over TLS (falls back to h1.1)
+  webjs build                                     Optional: bundle client modules into a single file (advanced/perf opt-in)
   webjs test  [--server|--browser]                 Run server + browser tests
   webjs check                                     Validate app against conventions
   webjs create <name> [--template full-stack|api|saas]  Scaffold a new webjs app

@@ -25,7 +25,7 @@ export default async function Home() {
   \`;
 }</pre>
 
-    <p>Because Node 23.6+ strips TypeScript types natively, no compilation step is needed. The file above runs directly on the server.</p>
+    <p>The dev server's esbuild loader hook transforms TypeScript on import, so the file above runs directly on the server with no manual compilation step.</p>
 
     <h2>The SSR Pipeline</h2>
     <p>When the server receives a GET request for a page URL, the pipeline runs in this order:</p>

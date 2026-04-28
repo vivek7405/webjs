@@ -59,7 +59,6 @@ export async function scaffoldApp(name, cwd, opts = {}) {
       predev: 'prisma generate',
       prestart: 'prisma migrate deploy',
       dev: 'webjs dev',
-      build: 'webjs build',
       start: 'webjs start',
       test: 'webjs test',
       'test:server': 'webjs test --server',
@@ -76,7 +75,6 @@ export async function scaffoldApp(name, cwd, opts = {}) {
       '@webjskit/server': 'latest',
     },
     devDependencies: {
-      esbuild: '^0.28.0',
       prisma: '^6.0.0',
       '@web/test-runner': '^0.20.0',
       '@web/test-runner-playwright': '^0.11.0',
