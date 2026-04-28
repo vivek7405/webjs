@@ -14,7 +14,7 @@ to scaffold and run an app; it pulls this package in as a dependency.
   `middleware.ts`, `[param]`, `[...slug]`, `(groups)`, `_private`.
 - **Streaming SSR** with Suspense boundaries.
 - **Server actions** — import a `.server.ts` function from a client component
-  and it auto-rewrites into a type-safe RPC stub. `superjson` on the wire.
+  and it auto-rewrites into a type-safe RPC stub. webjs's built-in serializer on the wire — Date/Map/Set/BigInt/TypedArray/Blob/File/FormData/cycles all survive.
 - **WebSockets** — export `WS` from `route.ts` and it becomes a WebSocket
   endpoint on the same path.
 - **Live reload** for dev.

@@ -135,7 +135,6 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     assert.ok(map.imports['@webjskit/core/directives'], 'Should have @webjskit/core/directives entry');
     assert.ok(map.imports['@webjskit/core/context'], 'Should have @webjskit/core/context entry');
     assert.ok(map.imports['@webjskit/core/task'], 'Should have @webjskit/core/task entry');
-    assert.ok(map.imports['superjson'], 'Should have superjson entry');
   });
 
   test('modulepreload links are deduplicated', async () => {

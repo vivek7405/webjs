@@ -1,4 +1,4 @@
-import { stringify as sjStringify, parse as sjParse } from 'superjson';
+import { stringify as wjStringify, parse as wjParse } from '@webjskit/core';
 import { getRequest } from './context.js';
 import { RPC_CONTENT_TYPE } from './actions.js';
 
@@ -14,9 +14,10 @@ import { RPC_CONTENT_TYPE } from './actions.js';
  * The helper reads the in-flight Request from the AsyncLocalStorage
  * request context. If the caller sent `Accept: application/vnd.webjs+json`
  * (e.g. via the `richFetch` client helper), the response body is
- * superjson-encoded so rich types (Date, Map, Set, BigInt, …) survive.
- * Otherwise the response is plain `application/json`, unchanged behaviour
- * for curl / external consumers.
+ * encoded with the webjs serializer so rich types (Date, Map, Set,
+ * BigInt, TypedArrays, Blob, File, FormData, cycles) survive. Otherwise
+ * the response is plain `application/json`, unchanged behaviour for
+ * curl / external consumers.
  *
  * Passing an options object with `{ status, headers }` mirrors
  * `Response.json(data, init)`.
@@ -24,8 +25,11 @@ import { RPC_CONTENT_TYPE } from './actions.js';
  * @template T
  * @param {T} data
  * @param {ResponseInit} [init]
+ * @returns {Promise<Response>} async because the rich path may need to
+ *   read bytes from Blob/File/FormData; plain-JSON path resolves
+ *   immediately.
  */
-export function json(data, init = {}) {
+export async function json(data, init = {}) {
   const req = getRequest();
   const accept = req?.headers.get('accept') || '';
   const wantsRich = accept.includes(RPC_CONTENT_TYPE);
@@ -34,7 +38,7 @@ export function json(data, init = {}) {
   if (wantsRich) {
     headers.set('content-type', RPC_CONTENT_TYPE);
     headers.append('vary', 'Accept');
-    return new Response(sjStringify(data), { ...init, headers });
+    return new Response(await wjStringify(data), { ...init, headers });
   }
   headers.set('content-type', 'application/json; charset=utf-8');
   headers.append('vary', 'Accept');
@@ -42,10 +46,10 @@ export function json(data, init = {}) {
 }
 
 /**
- * Parse a request body as superjson when the client sent our content
- * type, otherwise as plain JSON. Handy for route handlers that accept
- * rich bodies from the `richFetch` helper but plain JSON from everyone
- * else.
+ * Parse a request body using the webjs serializer when the client sent
+ * our content type, otherwise as plain JSON. Handy for route handlers
+ * that accept rich bodies from the `richFetch` helper but plain JSON
+ * from everyone else.
  *
  * @param {Request} req
  */
@@ -53,7 +57,7 @@ export async function readBody(req) {
   const ct = req.headers.get('content-type') || '';
   const text = await req.text();
   if (!text) return null;
-  if (ct.includes(RPC_CONTENT_TYPE)) return sjParse(text);
+  if (ct.includes(RPC_CONTENT_TYPE)) return wjParse(text);
   return JSON.parse(text);
 }
 

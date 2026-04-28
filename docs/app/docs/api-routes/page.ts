@@ -97,7 +97,7 @@ export async function POST(req: Request) {
     <h2>json() Helper -- Content Negotiation</h2>
     <p>The <code>json()</code> helper from <code>@webjskit/server</code> adds smart content negotiation. It inspects the incoming request's <code>Accept</code> header and responds accordingly:</p>
     <ul>
-      <li>If the client sent <code>Accept: application/vnd.webjs+json</code> (e.g. via <code>richFetch()</code>), the response is encoded with <strong>superjson</strong> so that <code>Date</code>, <code>Map</code>, <code>Set</code>, and <code>BigInt</code> survive the round trip.</li>
+      <li>If the client sent <code>Accept: application/vnd.webjs+json</code> (e.g. via <code>richFetch()</code>), the response is encoded with the <strong>webjs serializer</strong> so that <code>Date</code>, <code>Map</code>, <code>Set</code>, <code>BigInt</code>, <code>TypedArray</code>, <code>Blob</code>, <code>File</code>, <code>FormData</code>, and reference cycles all survive the round trip.</li>
       <li>Otherwise, the response is plain <code>application/json</code> -- standard for curl, mobile apps, and third-party consumers.</li>
     </ul>
     <pre>// app/api/posts/route.ts
@@ -109,7 +109,7 @@ export async function GET() {
   });
   return json(posts);
   // External client:  plain JSON, createdAt is an ISO string
-  // richFetch client: superjson, createdAt is a real Date object
+  // richFetch client: rich types, createdAt is a real Date object
 }
 
 export async function POST(req: Request) {
@@ -120,7 +120,7 @@ export async function POST(req: Request) {
     <p>The helper reads the in-flight Request from an <code>AsyncLocalStorage</code> context set up by the request pipeline, so you do not need to pass the request explicitly.</p>
 
     <h2>readBody() -- Parsing Rich Request Bodies</h2>
-    <p>The <code>readBody()</code> helper from <code>@webjskit/server</code> is the inverse of <code>json()</code>. It parses the request body as superjson when the client sent the <code>application/vnd.webjs+json</code> content type, and as plain JSON otherwise:</p>
+    <p>The <code>readBody()</code> helper from <code>@webjskit/server</code> is the inverse of <code>json()</code>. It parses the request body with the webjs rich serializer when the client sent the <code>application/vnd.webjs+json</code> content type, and as plain JSON otherwise:</p>
     <pre>import { json, readBody } from '@webjskit/server';
 
 export async function POST(req: Request) {
@@ -132,7 +132,7 @@ export async function POST(req: Request) {
 }</pre>
 
     <h2>richFetch() -- Typed Client Calls</h2>
-    <p>On the client side, <code>richFetch()</code> from <code>webjs</code> is a drop-in replacement for <code>fetch()</code> that enables the superjson round trip:</p>
+    <p>On the client side, <code>richFetch()</code> from <code>webjs</code> is a drop-in replacement for <code>fetch()</code> that enables the rich-type round trip:</p>
     <pre>import { richFetch } from '@webjskit/core';
 
 // GET with rich types
@@ -143,7 +143,7 @@ const posts = await richFetch('/api/posts');
 const newPost = await richFetch('/api/posts', {
   method: 'POST',
   body: { title: 'Hello', publishAt: new Date(2026, 5, 1) },
-  // body is automatically superjson-stringified
+  // body is automatically encoded with the rich serializer
   // Content-Type is set to application/vnd.webjs+json
 });
 
@@ -158,8 +158,8 @@ try {
     <p><code>richFetch</code> automatically:</p>
     <ul>
       <li>Sets <code>Accept: application/vnd.webjs+json</code> on outgoing requests</li>
-      <li>If <code>body</code> is a plain object (not FormData, Blob, ArrayBuffer, or string), stringifies it with superjson and sets the content type</li>
-      <li>Parses the response with superjson when the server responds with the vendor content type, or with plain <code>JSON.parse</code> otherwise</li>
+      <li>If <code>body</code> is a plain object (not FormData, Blob, ArrayBuffer, or string), encodes it with the webjs serializer and sets the content type</li>
+      <li>Parses the response with the webjs serializer when the server responds with the vendor content type, or with plain <code>JSON.parse</code> otherwise</li>
       <li>Throws an <code>Error</code> with <code>.status</code> and <code>.body</code> properties for non-2xx responses</li>
     </ul>
 
@@ -354,8 +354,8 @@ export async function DELETE(_req: Request, { params }: Ctx) {
       <li>Handler signature: <code>(req: Request, { params }) =&gt; Response | object</code></li>
       <li>Dynamic params via <code>[slug]</code> folder names, catch-all via <code>[...rest]</code></li>
       <li>Return a <code>Response</code> for full control, or return a plain object for auto-JSON</li>
-      <li><code>json()</code> from <code>@webjskit/server</code> provides content negotiation (plain JSON vs superjson)</li>
-      <li><code>readBody()</code> parses incoming superjson or JSON based on content type</li>
+      <li><code>json()</code> from <code>@webjskit/server</code> provides content negotiation (plain JSON vs webjs rich JSON)</li>
+      <li><code>readBody()</code> parses incoming rich-format or plain JSON based on content type</li>
       <li><code>richFetch()</code> on the client for typed API calls with rich types</li>
       <li>Export <code>WS</code> from the same <code>route.ts</code> for WebSocket support</li>
       <li>Per-segment <code>middleware.ts</code> applies to all routes underneath</li>

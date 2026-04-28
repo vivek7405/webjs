@@ -7,26 +7,26 @@ import {
   setSerializer,
 } from '../packages/server/src/serializer.js';
 
-test('defaultSerializer round-trips plain objects', () => {
+test('defaultSerializer round-trips plain objects', async () => {
   const obj = { a: 1, b: 'hello', c: [1, 2, 3] };
-  const str = defaultSerializer.serialize(obj);
+  const str = await defaultSerializer.serialize(obj);
   const out = defaultSerializer.deserialize(str);
   assert.deepEqual(out, obj);
 });
 
-test('defaultSerializer round-trips Date objects', () => {
+test('defaultSerializer round-trips Date objects', async () => {
   const d = new Date('2025-01-15T00:00:00.000Z');
-  const str = defaultSerializer.serialize(d);
+  const str = await defaultSerializer.serialize(d);
   const out = defaultSerializer.deserialize(str);
   assert.ok(out instanceof Date);
   assert.equal(out.toISOString(), d.toISOString());
 });
 
-test('defaultSerializer round-trips Map and Set', () => {
+test('defaultSerializer round-trips Map and Set', async () => {
   const m = new Map([['a', 1]]);
   const s = new Set([1, 2, 3]);
   const data = { m, s };
-  const str = defaultSerializer.serialize(data);
+  const str = await defaultSerializer.serialize(data);
   const out = defaultSerializer.deserialize(str);
   assert.ok(out.m instanceof Map);
   assert.equal(out.m.get('a'), 1);

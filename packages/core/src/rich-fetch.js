@@ -1,20 +1,22 @@
-import { stringify as sjStringify, parse as sjParse } from 'superjson';
+import { stringify as wjStringify, parse as wjParse } from './serialize.js';
 
 const RPC_CONTENT_TYPE = 'application/vnd.webjs+json';
 
 /**
  * `richFetch(url, init?)` — drop-in `fetch` for calling your own API routes
- * when you want rich types to round-trip (`Date`, `Map`, `Set`, `BigInt`, …).
+ * when you want rich types to round-trip (`Date`, `Map`, `Set`, `BigInt`,
+ * `TypedArray`, `Blob`, `File`, `FormData`, cycles).
  *
  * - Adds `Accept: application/vnd.webjs+json` to the request so a
- *   server-side `json(data)` helper encodes with superjson.
- * - If the response content-type matches, decodes with superjson and
- *   returns the rich value.
+ *   server-side `json(data)` helper encodes with the webjs serializer.
+ * - If the response content-type matches, decodes with the webjs
+ *   serializer and returns the rich value.
  * - Otherwise decodes with plain `.json()` (so any route you haven't
  *   opted in on still works).
- * - Request bodies: if `init.body` is a plain object (not string /
- *   FormData / Blob / ArrayBuffer / ReadableStream), it's superjson-
- *   stringified and the request content-type is set to our vendor type.
+ * - Request bodies: if `init.body` is a plain object (not a string,
+ *   FormData/Blob/ArrayBuffer/ReadableStream/URLSearchParams), it is
+ *   encoded with the webjs serializer and the request content-type is
+ *   set to our vendor type.
  *
  * ```js
  * import { richFetch } from '@webjskit/core';
@@ -45,7 +47,7 @@ export async function richFetch(url, init = {}) {
     !(typeof ReadableStream !== 'undefined' && body instanceof ReadableStream) &&
     !ArrayBuffer.isView(body)
   ) {
-    body = sjStringify(body);
+    body = await wjStringify(body);
     if (!headers.has('content-type')) headers.set('content-type', RPC_CONTENT_TYPE);
   }
 
@@ -53,7 +55,7 @@ export async function richFetch(url, init = {}) {
   const ct = res.headers.get('content-type') || '';
   const text = await res.text();
   const parsed = ct.includes(RPC_CONTENT_TYPE)
-    ? (text ? sjParse(text) : null)
+    ? (text ? wjParse(text) : null)
     : ct.includes('application/json')
     ? (text ? JSON.parse(text) : null)
     : text;

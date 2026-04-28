@@ -188,7 +188,7 @@ export function WS(ws: WebSocket, req: Request, { params }: { params: Record&lt;
     <p>WebSocket endpoints coexist with HTTP handlers in the same <code>route.ts</code>. The second argument is a <code>Request</code> object from the upgrade handshake, so you can read cookies, headers, and query params for auth.</p>
 
     <h2>Content-Negotiated JSON</h2>
-    <p>Use the <code>json()</code> helper from <code>@webjskit/server</code> and the <code>richFetch()</code> client helper from <code>webjs</code> for superjson-encoded responses that preserve <code>Date</code>, <code>Map</code>, <code>Set</code>, and <code>BigInt</code>:</p>
+    <p>Use the <code>json()</code> helper from <code>@webjskit/server</code> and the <code>richFetch()</code> client helper from <code>webjs</code> for rich-encoded responses that preserve <code>Date</code>, <code>Map</code>, <code>Set</code>, <code>BigInt</code>, <code>TypedArray</code>, <code>Blob</code>, <code>File</code>, <code>FormData</code>, and reference cycles:</p>
     <pre>// app/api/events/route.ts
 import { json } from '@webjskit/server';
 
@@ -204,7 +204,7 @@ const events = await richFetch('/api/events');
 
 // External client (curl, Postman) gets plain JSON automatically
 // curl http://localhost:3000/api/events</pre>
-    <p>The <code>json()</code> helper reads the <code>Accept</code> header. If the client sent <code>Accept: application/vnd.webjs+json</code> (as <code>richFetch</code> does), the response is superjson-encoded. Otherwise, plain <code>application/json</code>. The <code>Vary: Accept</code> header is set automatically.</p>
+    <p>The <code>json()</code> helper reads the <code>Accept</code> header. If the client sent <code>Accept: application/vnd.webjs+json</code> (as <code>richFetch</code> does), the response is encoded with the webjs serializer. Otherwise, plain <code>application/json</code>. The <code>Vary: Accept</code> header is set automatically.</p>
     <p>For reading request bodies with the same content negotiation, use <code>readBody(req)</code> from <code>@webjskit/server</code>.</p>
 
     <h2>Health Probes, Graceful Shutdown, Compression</h2>
@@ -258,7 +258,7 @@ fastify.listen({ port: 3000 });</pre>
       <li><strong>File-based routing</strong> — no manual <code>app.get()</code> / <code>app.post()</code> registration. Drop a <code>route.ts</code> in a folder and it is live.</li>
       <li><strong>Nested middleware</strong> — middleware scoped to route subtrees, not global or per-route.</li>
       <li><strong>TypeScript first</strong> — no build step, no compilation, no config. <code>.ts</code> files run directly.</li>
-      <li><strong>superjson wire format</strong> — rich types survive <code>Date</code>/<code>Map</code>/<code>Set</code>/<code>BigInt</code> serialisation.</li>
+      <li><strong>Rich wire format</strong> — webjs's built-in serializer round-trips <code>Date</code>/<code>Map</code>/<code>Set</code>/<code>BigInt</code>/<code>TypedArray</code>/<code>Blob</code>/<code>File</code>/<code>FormData</code> and reference cycles.</li>
       <li><strong>WebSocket support</strong> — export a <code>WS</code> function from a route file, no separate setup.</li>
       <li><strong>Health probes</strong> — built-in, zero config.</li>
       <li><strong>expose()</strong> — turn server functions into REST endpoints with validation and CORS.</li>

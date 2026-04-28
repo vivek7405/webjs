@@ -19,6 +19,10 @@ export { repeat, isRepeat } from './src/repeat.js';
 export { Suspense, isSuspense } from './src/suspense.js';
 export { connectWS } from './src/websocket-client.js';
 export { richFetch } from './src/rich-fetch.js';
+export {
+  stringify, parse,
+  serialize, deserialize,
+} from './src/serialize.js';
 export { enableClientRouter, disableClientRouter, navigate } from './src/router-client.js';
 
 // Directives — also available via '@webjskit/core/directives'

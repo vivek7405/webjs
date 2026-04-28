@@ -1,13 +1,14 @@
 /**
  * Unit tests for richFetch — the fetch wrapper that round-trips rich JS
- * types (Date, Map, Set, BigInt, URL, RegExp, undefined) via superjson.
+ * types (Date, Map, Set, BigInt, TypedArray, Blob/File/FormData, cycles)
+ * via the webjs serializer.
  *
  * Installs a fake global fetch per test, asserts request shape + response
  * decoding against fixtures. No network IO.
  */
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { stringify as sjStringify } from 'superjson';
+import { stringify as wjStringify } from '../packages/core/src/serialize.js';
 
 import { richFetch } from '../packages/core/src/rich-fetch.js';
 
@@ -62,18 +63,20 @@ test('does NOT overwrite a caller-supplied Accept header', async () => {
  * Request body encoding
  * ------------------------------------------------------------------ */
 
-test('encodes plain-object body with superjson + sets content-type', async () => {
-  mockFetch(() => respond(sjStringify({ ok: true }), { headers: { 'content-type': RPC } }));
+test('encodes plain-object body with the webjs serializer + sets content-type', async () => {
+  mockFetch(async () => respond(await wjStringify({ ok: true }), { headers: { 'content-type': RPC } }));
   await richFetch('/api/posts', {
     method: 'POST',
     body: { title: 'hi', publishAt: new Date(2026, 0, 1) },
   });
   const h = new Headers(lastInit.headers);
   assert.equal(h.get('content-type'), RPC);
-  // Body should be a superjson string containing the Date as {"type":"Date"}
-  const sjPayload = JSON.parse(lastInit.body);
-  assert.ok(sjPayload.json);
-  assert.ok(sjPayload.meta);
+  // Body should be a webjs-tagged JSON string. Date becomes a tagged
+  // object: { _$wj: "Date", v: "<iso>" } nested under the "publishAt" key.
+  const payload = JSON.parse(lastInit.body);
+  assert.equal(payload.title, 'hi');
+  assert.equal(payload.publishAt._$wj, 'Date');
+  assert.equal(typeof payload.publishAt.v, 'string');
 });
 
 test('respects caller-supplied Content-Type on object body (no override)', async () => {
@@ -146,9 +149,9 @@ test('leaves string body alone', async () => {
  * Response decoding by content-type
  * ------------------------------------------------------------------ */
 
-test('decodes superjson response when content-type is RPC', async () => {
+test('decodes rich response when content-type is RPC', async () => {
   const d = new Date(2026, 0, 1);
-  mockFetch(() => respond(sjStringify({ when: d }), { headers: { 'content-type': RPC } }));
+  mockFetch(async () => respond(await wjStringify({ when: d }), { headers: { 'content-type': RPC } }));
   const out = /** @type any */ (await richFetch('/x'));
   assert.ok(out.when instanceof Date);
   assert.equal(out.when.getTime(), d.getTime());

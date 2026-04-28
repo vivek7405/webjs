@@ -13,16 +13,16 @@ import { getSerializer } from './serializer.js';
  * parser and external JSON consumers aren't confused.
  *
  * Uses the content type from the active serializer (defaults to
- * `application/vnd.webjs+json` with the superjson default).
+ * `application/vnd.webjs+json` with the built-in webjs serializer).
  */
 export const RPC_CONTENT_TYPE = 'application/vnd.webjs+json';
 
 /** Build a serialized Response with webjs content-type. */
-function rpcResponse(payload, init = {}) {
+async function rpcResponse(payload, init = {}) {
   const s = getSerializer();
   const headers = new Headers(init.headers || {});
   headers.set('content-type', s.contentType);
-  return new Response(s.serialize(payload), { ...init, headers });
+  return new Response(await s.serialize(payload), { ...init, headers });
 }
 
 /**
@@ -143,12 +143,13 @@ export async function serveActionStub(idx, absFile) {
     fnNames.push('default');
   }
   const body = `// webjs: generated server-action stub for ${relative(idx.appDir, absFile)}\n` +
-    `import { stringify as __sjStringify, parse as __sjParse } from 'superjson';\n` +
+    `import { stringify as __wjStringify, parse as __wjParse } from '@webjskit/core';\n` +
     `function __csrf() {\n` +
     `  const m = document.cookie.match(/(?:^|;\\s*)${CSRF_COOKIE}=([^;]+)/);\n` +
     `  return m ? decodeURIComponent(m[1]) : '';\n` +
     `}\n` +
     `async function __rpc(fn, args) {\n` +
+    `  const body = await __wjStringify(args);\n` +
     `  const res = await fetch(${JSON.stringify(`/__webjs/action/${hash}/`)} + fn, {\n` +
     `    method: 'POST',\n` +
     `    headers: {\n` +
@@ -156,12 +157,12 @@ export async function serveActionStub(idx, absFile) {
     `      ${JSON.stringify(CSRF_HEADER)}: __csrf()\n` +
     `    },\n` +
     `    credentials: 'same-origin',\n` +
-    `    body: __sjStringify(args)\n` +
+    `    body\n` +
     `  });\n` +
     `  const ct = res.headers.get('content-type') || '';\n` +
     `  const text = await res.text();\n` +
     `  const parsed = ct.includes(${JSON.stringify(RPC_CONTENT_TYPE)})\n` +
-    `    ? __sjParse(text)\n` +
+    `    ? __wjParse(text)\n` +
     `    : (ct.includes('application/json') ? JSON.parse(text) : text);\n` +
     `  if (!res.ok) {\n` +
     `    const msg = (parsed && parsed.error) || ('webjs action ' + fn + ' -> ' + res.status);\n` +

@@ -371,12 +371,11 @@ async function handleCore(req, ctx) {
     return fileResponse(abs, { dev, immutable: !dev });
   }
 
-  // Vendor bundles: /__webjs/vendor/<pkg>.js
-  // superjson uses its legacy bundler; all other npm packages go through
-  // the generic auto-bundler (Vite-style optimizeDeps).
+  // Vendor bundles: /__webjs/vendor/<pkg>.js — generic auto-bundler
+  // (Vite-style optimizeDeps) for any bare npm import that webjs can't
+  // serve directly as ESM.
   if (path.startsWith('/__webjs/vendor/') && path.endsWith('.js')) {
     const pkgName = decodeURIComponent(path.slice('/__webjs/vendor/'.length, -'.js'.length));
-    if (pkgName === 'superjson') return serveBundledSuperjson(appDir, dev);
     return serveVendorBundle(pkgName, appDir, dev);
   }
 
@@ -799,38 +798,6 @@ async function exists(p) {
  * @param {string} abs
  * @param {boolean} dev
  */
-/** @type {string | null} */
-let _superjsonBundle = null;
-
-/**
- * Serve superjson as a single self-contained ESM file. All transitive deps
- * (copy-anything, is-what) are inlined by esbuild so the browser only ever
- * fetches one file and no bare-specifier imports leak.
- */
-async function serveBundledSuperjson(appDir, dev) {
-  if (!_superjsonBundle) {
-    const { build } = await loadEsbuild();
-    const entryPoint = locatePackageDir(appDir, 'superjson');
-    if (!entryPoint) return new Response('superjson not found', { status: 404 });
-    const result = await build({
-      entryPoints: [join(entryPoint, 'dist', 'index.js')],
-      bundle: true,
-      format: 'esm',
-      target: 'es2022',
-      platform: 'browser',
-      write: false,
-      minify: !dev,
-    });
-    _superjsonBundle = result.outputFiles[0].text;
-  }
-  return new Response(_superjsonBundle, {
-    headers: {
-      'content-type': 'application/javascript; charset=utf-8',
-      'cache-control': dev ? 'no-cache' : 'public, max-age=31536000, immutable',
-    },
-  });
-}
-
 async function tsResponse(abs, dev) {
   const { transform: esbuild } = await loadEsbuild();
   const st = await stat(abs);

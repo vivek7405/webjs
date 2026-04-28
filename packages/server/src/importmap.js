@@ -1,12 +1,9 @@
 /**
  * Build the import map JSON injected into every SSR HTML document.
  *
- * superjson is mapped to a single pre-bundled ESM file (its transitive deps
- * copy-anything + is-what are inlined by esbuild on first request) so only
- * ONE fetch is needed and no extra bare-specifier entries leak into the map.
- *
  * Additional vendor entries are added automatically when the bare-import
- * scanner discovers npm packages used by client code (Vite-style optimizeDeps).
+ * scanner discovers npm packages used by client code (Vite-style
+ * optimizeDeps).
  */
 
 /** @type {Record<string, string>} */
@@ -32,7 +29,6 @@ export function buildImportMap() {
       '@webjskit/core/context':       '/__webjs/core/src/context.js',
       '@webjskit/core/testing':       '/__webjs/core/src/testing.js',
       '@webjskit/core/task':          '/__webjs/core/src/task.js',
-      'superjson':          '/__webjs/vendor/superjson.js',
       ..._extraEntries,
     },
   };

@@ -99,8 +99,8 @@ if (result.success) {
 }</pre>
     <p>At runtime, the browser never receives the server code. webjs replaces the import with a thin RPC stub that calls <code>POST /__webjs/action/:hash/createPost</code>. But TypeScript's type checker sees through the <code>.server.ts</code> boundary and validates argument/return types at compile time.</p>
 
-    <h2>superjson: Rich Types Across the Wire</h2>
-    <p>Standard JSON cannot represent <code>Date</code>, <code>Map</code>, <code>Set</code>, <code>BigInt</code>, <code>RegExp</code>, <code>undefined</code>, or <code>NaN</code>. webjs uses <a href="https://github.com/blitz-js/superjson">superjson</a> for all server action RPC calls and for the <code>json()</code> / <code>richFetch()</code> helpers, so rich types survive the network round-trip.</p>
+    <h2>Rich Types Across the Wire</h2>
+    <p>Standard JSON cannot represent <code>Date</code>, <code>Map</code>, <code>Set</code>, <code>BigInt</code>, <code>undefined</code>, <code>NaN</code>, <code>Infinity</code>, <code>TypedArray</code>, <code>Blob</code>, <code>File</code>, or <code>FormData</code>. webjs ships its own pure-ESM serializer (in <code>@webjskit/core</code>) used for all server action RPC calls and for the <code>json()</code> / <code>richFetch()</code> helpers, so rich types survive the network round-trip — including binary content (file uploads through actions just work).</p>
     <pre>// Server action
 export async function getEvents(): Promise&lt;Event[]&gt; {
   return prisma.event.findMany(); // createdAt is a Date
@@ -110,7 +110,7 @@ export async function getEvents(): Promise&lt;Event[]&gt; {
 const events = await getEvents();
 events[0].createdAt instanceof Date; // true
 events[0].createdAt.toLocaleDateString(); // works</pre>
-    <p>For API routes, the same content negotiation applies. Use <code>json()</code> from <code>@webjskit/server</code> on the server side and <code>richFetch()</code> from <code>webjs</code> on the client side to get superjson encoding. External consumers (curl, other services) get plain JSON automatically.</p>
+    <p>For API routes, the same content negotiation applies. Use <code>json()</code> from <code>@webjskit/server</code> on the server side and <code>richFetch()</code> from <code>webjs</code> on the client side to get rich-type encoding. External consumers (curl, other services) get plain JSON automatically.</p>
 
     <h2>JSDoc Alternative</h2>
     <p>If you prefer <code>.js</code> files, you can achieve the same type safety using JSDoc annotations with <code>checkJs: true</code> in your tsconfig:</p>
