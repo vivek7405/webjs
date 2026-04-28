@@ -148,6 +148,35 @@ test('handle: .ts source served as JS with esbuild-stripped types', async () => 
   assert.ok(!/: string/.test(code));
 });
 
+test('handle: .ts source supports non-erasable TS (enum, parameter properties)', async () => {
+  // Proves the browser-bound transform uses esbuild — Node's built-in
+  // stripper would reject this syntax. SSR-side imports use the same
+  // esbuild loader so both paths produce equivalent JS.
+  const appDir = makeApp({
+    'app/page.ts': `export default () => 'ok';`,
+    'components/advanced.ts': `
+      enum Status { Active = 'active', Inactive = 'inactive' }
+      export class Box {
+        constructor(public readonly status: Status) {}
+        describe(): string { return \`box is \${this.status}\`; }
+      }
+      export const initial: Status = Status.Active;
+    `,
+  });
+  const app = await createRequestHandler({ appDir, dev: true });
+  const resp = await app.handle(new Request('http://x/components/advanced.ts'));
+  assert.equal(resp.status, 200);
+  const code = await resp.text();
+  // enum compiled to a runtime object
+  assert.ok(/Status\s*\[/.test(code) || /Status\s*=\s*\{/.test(code) || /\(Status\b/.test(code),
+    `enum should compile to runtime code; got:\n${code.slice(0, 400)}`);
+  // parameter property desugared to constructor body assignment
+  assert.ok(/this\.status\s*=\s*status/.test(code),
+    `parameter property should desugar; got:\n${code.slice(0, 400)}`);
+  // type annotations gone
+  assert.ok(!/:\s*Status\b/.test(code), 'type annotations should be stripped');
+});
+
 test('handle: /foo.js falls through to sibling foo.ts when .js is missing', async () => {
   const appDir = makeApp({
     'app/page.ts': `export default () => 'ok';`,

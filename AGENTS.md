@@ -172,9 +172,11 @@ inspired by NextJs, Lit, and Rails.
   cache store, rate limiting — all built in with pluggable adapters.
 - **No build step.** Source files are served to the browser as native ES modules.
 - **JSDoc or TypeScript.** Plain `.js` with JSDoc is the default; `.ts`/`.mts`
-  files are a supported first-class option — Node 23.6+ strips types at runtime
-  for server files, and the dev server strips types via esbuild when serving
-  browser-facing `.ts` files. No ahead-of-time build step either way.
+  files are a supported first-class option. The dev server registers an esbuild
+  loader hook at startup so every `.ts` import — server-side (SSR) or browser-
+  fetched (hydration) — flows through the same esbuild transform. Same JS
+  output for both paths, full TypeScript feature support (enums, decorators,
+  parameter properties), no ahead-of-time build step you run.
 - **SSR + CSR by default.** Pages are server-rendered (real HTML, no
   hydration fallback). Interactive web components render as light DOM
   by default — global CSS and Tailwind utility classes apply directly.
@@ -1344,21 +1346,30 @@ participation. No `tsc` run is part of the user-visible workflow:
   Red-squiggle on wrong types.
 - **CI** (optional) runs `tsc --noEmit` against `tsconfig.json` at the
   app root — type-check only, zero generated files.
-- **Dev server** (runtime): when the browser requests a `.ts` file, the
-  dev server transforms via `esbuild.transform()` (~0.5–1ms per file,
-  cached by mtime) and serves JavaScript with an inline sourcemap.
-- **Node server-side** (runtime): Node 23.6+ natively strips types
-  from `.ts` / `.mts` modules on import. Pages, layouts, server actions
-  and route handlers all run unchanged.
-- **`webjs build`**: esbuild already handles `.ts` in its bundle entry
-  graph; no extra config needed.
+- **Dev server** (runtime, both directions): the server registers an
+  esbuild ESM loader hook at startup (`module.register()`) so every `.ts`
+  import — server-side (SSR pages, layouts, actions, routes) or browser-
+  fetched (`/components/foo.ts`) — flows through the same `esbuild.transform()`
+  call (~0.5–1ms per file, cached by mtime). This is deliberate: SSR and
+  hydration must produce equivalent JS, and esbuild is a superset of any
+  built-in stripper.
+- **`webjs build`**: same esbuild used for the optional production bundle;
+  no extra config or install needed (esbuild is a hard dep of `@webjskit/server`).
+
+### TypeScript feature support
+
+Because esbuild handles both server-side and browser-bound `.ts` files,
+every TS feature esbuild supports works in webjs: enums, namespaces with
+runtime values, parameter properties, decorators (legacy and Stage-3),
+generics, type assertions, etc. No "stick to erasable syntax" caveat.
 
 ### Import convention
 
-Use explicit `.ts` extensions in imports. This is what Node's native
-TS support expects and matches the framework's resolution. For mixed
-codebases, `.js` imports that point at a `.ts` sibling also resolve
-in the dev server (fallback) — but prefer explicit `.ts` for clarity.
+Use explicit `.ts` extensions in imports. The esbuild loader hook expects
+file URLs ending in `.ts` / `.mts`; the dev server's `.ts` URL handler
+expects the same. For mixed codebases, `.js` imports that point at a `.ts`
+sibling also resolve in the dev server (fallback) — but prefer explicit
+`.ts` for clarity.
 
 ```ts
 // modules/posts/queries/list-posts.server.ts
@@ -1388,18 +1399,19 @@ no separate build:
 }
 ```
 
-### What doesn't work with Node's strip-types
+### TypeScript feature support
 
-Node's runtime stripper handles **erasable syntax only**. The following
-don't run and need to be avoided (or moved into dev dependencies that
-pre-compile):
+Because the dev server uses esbuild on both sides (the `module.register()`
+loader hook for server-side imports and `tsResponse` for browser-bound
+files), every TS feature esbuild supports works:
 
-- `enum`, `namespace`
+- `type`, `interface`, generics, `as`, conditional/mapped/template-literal types
+- `enum` (string + numeric), `namespace` with runtime values
 - Parameter properties (`constructor(public x: number)`)
-- Legacy decorators (`@foo` with emit)
+- Decorators (legacy `experimentalDecorators` + Stage-3 standard)
 
-All other TS — `type`, `interface`, generics, `as`, conditional types,
-mapped types, template-literal types — run fine.
+There is no "stick to erasable syntax" caveat. SSR and hydration always
+produce equivalent JS because the same esbuild call transforms both.
 
 ## Full-stack type safety (actions + API routes)
 

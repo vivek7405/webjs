@@ -16,7 +16,7 @@ export default function EditorSetup() {
 
     <h2>Prerequisites</h2>
     <ul>
-      <li><strong>Node 23.6+</strong> for native TypeScript type-stripping at runtime.</li>
+      <li><strong>Node 20.6+</strong> for the esbuild loader hook the dev server registers at startup.</li>
       <li><strong>TypeScript 5.6+</strong> as a dev dependency (<code>npm i -D typescript</code>). The framework itself has no TS dependency; you only need it for editor intellisense.</li>
       <li>A <code>tsconfig.json</code> in your app. The scaffold generates one.</li>
     </ul>
@@ -40,7 +40,7 @@ export default function EditorSetup() {
     <ul>
       <li><code>moduleResolution: "NodeNext"</code> — required for the framework's <code>exports</code> map to resolve correctly.</li>
       <li><code>allowImportingTsExtensions: true</code> — lets you write <code>import { x } from './foo.ts'</code>, matching how webjs serves them.</li>
-      <li><code>noEmit: true</code> — TypeScript type-checks only; webjs strips types at request time.</li>
+      <li><code>noEmit: true</code> — TypeScript type-checks only; webjs transforms <code>.ts</code> via esbuild at import / request time.</li>
       <li><code>plugins: [{ name: 'ts-lit-plugin' }]</code> — enables template-literal intelligence (details below).</li>
     </ul>
 

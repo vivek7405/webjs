@@ -4,8 +4,22 @@ import { stat, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { createGzip, createBrotliCompress, constants as zlibConstants } from 'node:zlib';
 import { join, extname, resolve, dirname, relative, sep } from 'node:path';
-import { createRequire } from 'node:module';
+import { createRequire, register } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+
+// Route every server-side `.ts` import through esbuild — same transformer
+// as the dev server uses for browser-bound modules. Keeps SSR and hydration
+// output identical and supports the full TS feature set (enums, decorators,
+// parameter properties) that Node's built-in stripper rejects.
+//
+// Registered before any user-app import. Idempotent across restarts.
+let _esbuildLoaderRegistered = false;
+function registerEsbuildLoader() {
+  if (_esbuildLoaderRegistered) return;
+  _esbuildLoaderRegistered = true;
+  register('./esbuild-loader.js', import.meta.url);
+}
+registerEsbuildLoader();
 
 import { buildRouteTable, matchPage, matchApi } from './router.js';
 import { ssrPage, ssrNotFound } from './ssr.js';
@@ -449,7 +463,7 @@ async function handleCore(req, ctx) {
       }
       // TypeScript source: esbuild-strip types, cache by mtime.
       if (/\.m?ts$/.test(abs)) {
-        return tsResponse(abs, dev, appDir);
+        return tsResponse(abs, dev);
       }
       return fileResponse(abs, { dev, immutable: false });
     }
@@ -795,14 +809,7 @@ let _superjsonBundle = null;
  */
 async function serveBundledSuperjson(appDir, dev) {
   if (!_superjsonBundle) {
-    const esbuildMod = await loadEsbuild(appDir);
-    if (!esbuildMod) {
-      return new Response('/* esbuild missing */', {
-        status: 500,
-        headers: { 'content-type': 'application/javascript; charset=utf-8' },
-      });
-    }
-    const { build } = esbuildMod;
+    const { build } = await loadEsbuild();
     const entryPoint = locatePackageDir(appDir, 'superjson');
     if (!entryPoint) return new Response('superjson not found', { status: 404 });
     const result = await build({
@@ -824,15 +831,8 @@ async function serveBundledSuperjson(appDir, dev) {
   });
 }
 
-async function tsResponse(abs, dev, appDir) {
-  const esbuildMod = await loadEsbuild(appDir);
-  if (!esbuildMod) {
-    return new Response(
-      '/* esbuild missing — run `npm i -D esbuild` to enable TypeScript sources */',
-      { status: 500, headers: { 'content-type': 'application/javascript; charset=utf-8' } }
-    );
-  }
-  const esbuild = esbuildMod.transform;
+async function tsResponse(abs, dev) {
+  const { transform: esbuild } = await loadEsbuild();
   const st = await stat(abs);
   const cached = TS_CACHE.get(abs);
   if (cached && cached.mtimeMs === st.mtimeMs) {
@@ -912,27 +912,17 @@ function locatePackageDir(appDir, pkgName) {
 }
 
 /**
- * Load esbuild — preferring the user app's `node_modules` (where the scaffold
- * lists it as a devDep). Falls back to the server module's resolution path
- * (works for workspace-linked installs). Returns `null` if not found.
+ * Load esbuild. Resolved as a real dependency of `@webjskit/server`,
+ * so the bare specifier always resolves regardless of where the cli is
+ * installed (global, local, workspace-linked).
  *
- * Without this two-step lookup, a globally-installed `@webjskit/cli` can't see
- * esbuild from the user's app and serves `.ts` files as an "esbuild missing"
- * stub even though `npm i` succeeded.
- *
- * @param {string} appDir
- * @returns {Promise<typeof import('esbuild') | null>}
+ * @returns {Promise<typeof import('esbuild')>}
  */
 let _esbuild = null;
-async function loadEsbuild(appDir) {
+async function loadEsbuild() {
   if (_esbuild) return _esbuild;
-  try {
-    const req = createRequire(join(appDir, 'package.json'));
-    _esbuild = await import(pathToFileURL(req.resolve('esbuild')).href);
-    return _esbuild;
-  } catch {}
-  try { _esbuild = await import('esbuild'); return _esbuild; } catch {}
-  return null;
+  _esbuild = await import('esbuild');
+  return _esbuild;
 }
 
 const RELOAD_CLIENT_JS = `// webjs dev reload client

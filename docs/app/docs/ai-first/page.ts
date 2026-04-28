@@ -58,7 +58,7 @@ modules/posts/queries/get-post.server.ts      → exports getPost()</pre>
 
     <h3>4. No Build Step = What You See Is What Runs</h3>
     <p>Frameworks with build pipelines transform source code before it executes. The JSX you write becomes <code>React.createElement</code> calls. Your imports become webpack chunks. Your CSS modules get hashed classnames. An AI agent reading the source sees one thing; the runtime does another.</p>
-    <p>webjs has <strong>no build step</strong>. The <code>.ts</code> file you see is the file that runs (Node strips types; the dev server strips types for the browser). There's no intermediate representation, no generated code, no output directory. An AI agent can reason about what the code does by reading the file — because the file IS what runs.</p>
+    <p>webjs has <strong>no build step you run</strong>. The <code>.ts</code> file you see is the file that runs — the dev server transforms TypeScript via esbuild on import (server-side) and on request (browser-side), with the same transformer for both. There's no intermediate representation, no generated code, no output directory. An AI agent can reason about what the code does by reading the file — because the file IS what runs.</p>
 
     <h3>5. Explicit Server Boundary</h3>
     <p>The <code>.server.ts</code> extension is a visible, greppable marker that says "this code runs only on the server." An AI agent never accidentally puts a database call in a component — the naming convention prevents it. And the framework enforces it: <code>.server.ts</code> files are rewritten to RPC stubs for the browser.</p>

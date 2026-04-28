@@ -12,7 +12,7 @@ TypeScript with zero build step, real SSR with Declarative Shadow DOM.
 ## Why webjs
 
 - **AI-first.** Predictable file conventions, one function per file, explicit `.server.ts` boundary, `AGENTS.md` contract — designed so LLMs modify code without loading the entire codebase into context.
-- **No build.** `.ts` files served directly. Node 23.6+ strips types at runtime; the dev server strips types via esbuild for the browser (~1ms/file, cached). Edit, refresh, done.
+- **No build step you run.** `.ts` files served directly. The dev server transforms TypeScript via esbuild for both server-side imports (SSR) and browser-bound modules (hydration) — same transformer for both, ~1ms/file, cached by mtime. Full TS feature support (enums, decorators, parameter properties — anything esbuild handles). Edit, refresh, done.
 - **Web components, light DOM by default.** Pages and components render as light DOM so global CSS and Tailwind utilities apply directly — no `::part`, no `:host`, no CSS-var plumbing. Shadow DOM is opt-in (`static shadow = true`) when you need scoped styles or real `<slot>` projection. Both modes SSR fully, no hydration runtime.
 - **Tailwind CSS by default.** The scaffold ships with the Tailwind browser runtime + `@theme` design tokens. Prefer hand-written CSS? Opt out entirely — the framework works just as well with vanilla CSS when you follow the wrapper-scoping convention (`.page-<route>`, `.layout-<name>`, component-tag scoped). Full recipe in the [Styling docs](./docs/app/docs/styling/page.ts).
 - **Full-stack type safety.** Import a `.server.ts` function from a component — TypeScript sees the real signature. superjson on the wire preserves `Date`, `Map`, `Set`, `BigInt`.

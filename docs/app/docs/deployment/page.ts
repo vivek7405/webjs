@@ -5,7 +5,7 @@ export const metadata = { title: 'Deployment — webjs' };
 export default function Deployment() {
   return html`
     <h1>Deployment</h1>
-    <p>webjs runs as a standard Node.js server. There is no static export, no serverless adapter, no edge runtime. Deploy it anywhere you can run Node 23.6+: a VPS, a container, a PaaS like Fly.io or Railway, or behind a reverse proxy on bare metal.</p>
+    <p>webjs runs as a standard Node.js server. There is no static export, no serverless adapter, no edge runtime. Deploy it anywhere you can run Node 20.6+: a VPS, a container, a PaaS like Fly.io or Railway, or behind a reverse proxy on bare metal.</p>
 
     <h2>Dev vs Prod</h2>
     <p>webjs has two modes, controlled by the CLI command:</p>
@@ -31,8 +31,7 @@ webjs build [--no-minify] [--no-sourcemap]</pre>
       <li>Server-only files (<code>.server.ts</code>, <code>route.ts</code>, <code>middleware.ts</code>) are never included.</li>
       <li>In production, SSR pages load <code>/__webjs/bundle.js</code> instead of individual modules, collapsing dozens of requests into one.</li>
     </ul>
-    <p>esbuild is required for the build step. Install it as a dev dependency:</p>
-    <pre>npm install -D esbuild</pre>
+    <p>esbuild is bundled with <code>@webjskit/server</code> — no separate install needed. <code>webjs build</code> runs immediately after a fresh scaffold.</p>
     <p>For small apps (under ~20 components), unbundled serving in production is perfectly viable. The build step is an optimisation, not a requirement.</p>
 
     <h2>Production Features</h2>
@@ -206,8 +205,8 @@ HEALTHCHECK CMD curl -f http://localhost:3000/__webjs/health || exit 1
 CMD ["npx", "webjs", "start"]</pre>
     <p>Tips:</p>
     <ul>
-      <li>Use <code>node:23-slim</code> (not <code>node:23-alpine</code>) for native TypeScript type stripping support.</li>
-      <li>Run <code>npm ci --production</code> to skip dev dependencies. If you run <code>webjs build</code> in the container, install esbuild first (move it to regular <code>dependencies</code> or use a multi-stage build).</li>
+      <li><code>node:slim</code> works fine — esbuild ships its own native binary, so no extra system packages are required.</li>
+      <li>Run <code>npm ci --production</code> to skip dev dependencies. esbuild is a dependency of <code>@webjskit/server</code>, so it's always available for <code>webjs build</code> without extra setup.</li>
       <li>Set <code>HEALTHCHECK</code> to the built-in health endpoint for container orchestrators.</li>
       <li>For apps with Prisma, add <code>RUN npx prisma generate</code> before the CMD.</li>
     </ul>
@@ -288,7 +287,7 @@ pm2 start "webjs start" --name my-app</pre>
 
     <h2>Deployment Checklist</h2>
     <ul>
-      <li>Node 23.6+ installed (for native TypeScript type stripping).</li>
+      <li>Node 20.6+ installed (required for the esbuild loader hook).</li>
       <li><code>npm ci --production</code> to install only production dependencies.</li>
       <li>Run <code>npx prisma generate</code> if you use Prisma.</li>
       <li>Optionally run <code>webjs build</code> for a single-file client bundle.</li>
