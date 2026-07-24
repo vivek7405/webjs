@@ -28,26 +28,16 @@ This is what separates a working app from a broken one.
 
 ## Type everything (all templates)
 
-Define explicit TypeScript interfaces and discriminated unions for component
-props, action payloads, and optimistic updates. Narrow an `ActionResult` with
+Define explicit TypeScript interfaces and discriminated unions for your data
+payloads and action inputs and outputs (and, in a UI app, component props and
+optimistic updates). Narrow an `ActionResult` with
 `if (result.success && result.data)`. Never reach for `any` or a loose
 `as any` cast.
 
 Keep server-only code (database drivers, secrets, `node:*` builtins) in
-`.server.ts` modules. A `.server.ts` file whose functions a browser component
+`.server.ts` modules. A `.server.ts` file whose functions a browser module
 imports MUST start with `'use server';` on its first line, so WebJs compiles
-those exports into RPC stubs. Pages and layouts (`app/**/page.ts`,
-`app/**/layout.ts`) are server-only HTML generators, so put every interactive
-behavior inside a `WebComponent` custom element.
-
-## Reactive properties (all templates)
-
-Declare a component's reactive properties in the base-class factory, never as a
-class-field initializer (`items = []` clobbers the reactive accessor). Use the
-shorthand for primitives
-(`extends WebComponent({ name: String, count: Number, open: Boolean })`) and the
-`prop<T>()` helper for typed objects and arrays
-(`extends WebComponent({ items: prop<Item[]>(Array), user: prop<User>(Object) })`).
+those exports into RPC stubs.
 
 ## Data (all templates)
 

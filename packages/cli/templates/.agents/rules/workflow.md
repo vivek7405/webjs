@@ -8,20 +8,17 @@ Read `AGENTS.md` first. Full hosted docs are at https://docs.webjs.dev.
 
 ## Grow the app in place (non-negotiable)
 
-- **The scaffold is a starting point with a browsable feature gallery.** It ships
-  a gallery index home, a root layout, a database wired up, and single-concept
-  demos under `app/features/` plus the `app/examples/todo` app (logic in
-  `modules/`). The gallery is reference, not part of your product. **Building a
-  real app? Learn from the gallery FIRST, then clear it, then build:** (1) skim
-  the demos relevant to your task under `app/features/<x>` for the runnable idiom
-  (the skill teaches the same and SURVIVES the clear, so you never lose it);
-  (2) run `npm run gallery:clear` to shed the whole gallery in one step (it keeps
-  the agent skill and the database wiring, and resets the home AND the root
-  layout to a token-free blank slate, no gallery palette or navbar survives; a
-  layout you already customised is kept, only its theme-toggle wiring stripped);
-  (3) regenerate the database and grow the app in place under `app/`,
-  `components/`, and `modules/<feature>/`. Keep the gallery only while exploring,
-  never ship it.
+- **Study the shipped examples, then clear them and build.** The scaffold is a
+  starting point with a browsable showcase to learn the real idioms from, plus a
+  database wired up. A full-stack app ships a UI feature gallery (`app/features/`,
+  `app/examples/todo`); the api template ships a backend-features showcase
+  (`app/api/features/`), with logic in `modules/`. Building a real app: study the
+  parts that match your task (the skill teaches the same and SURVIVES the clear),
+  run `npm run gallery:clear` to shed the showcase (it keeps the agent skill and
+  the database wiring, and resets to a clean base), then regenerate the database
+  and grow the app in place under `app/`, `components/`, and `modules/<feature>/`.
+  `AGENTS.md` carries the full template-specific build playbook and the order to
+  follow.
 - **Use the wired-up database (Drizzle), never JSON files.** For any data the app
   stores, define a Drizzle table in `db/schema.server.ts`, then
   `npm run db:generate` and `npm run db:migrate`. Never use a JSON file, a
@@ -29,12 +26,12 @@ Read `AGENTS.md` first. Full hosted docs are at https://docs.webjs.dev.
 - **`app/` is routing-only.** Only routing files live in `app/` (page, layout,
   route, middleware, metadata routes). Browser-safe helpers go in `lib/utils/`,
   feature logic in `modules/`, server-only code behind `.server.ts`.
-- **Give a UI app its own design.** Define design tokens in `app/layout.ts` with
-  a palette that fits the app (after `gallery:clear` the layout is a token-free
-  blank slate; `.agents/skills/webjs/references/styling.md` is the guide).
-  Render the app and LOOK before calling UI work
-  done: `webjs check` and `webjs typecheck` pass even when a layout collapses, so
-  open every route you changed in a real browser and play through its states.
+- **For a UI app, render and LOOK before calling it done.** Define design tokens
+  in `app/layout.ts` with a palette that fits the app
+  (`.agents/skills/webjs/references/styling.md` is the guide), then open every
+  route you changed in a real browser and play through its states. `webjs check`
+  and `webjs typecheck` pass even when a layout collapses, so the browser is the
+  real check.
 
 ## Before starting ANY work
 

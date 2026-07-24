@@ -695,6 +695,23 @@ test('scaffoldApp: AGENTS.md build playbook is template-specific (#1076)', async
     assert.match(api, /`route\(\)` adapter/, 'api: route() adapter');
     assert.match(api, /Secure every endpoint/, 'api: endpoint security section');
     assert.doesNotMatch(fs, /Build a backend API/, 'full-stack: no backend-API heading');
+
+    // The component guidance (WebComponent, reactive props) is UI-only, so it
+    // lives in the full-stack playbook, never in the api AGENTS.md.
+    assert.match(fs, /Components: where interactivity lives/, 'full-stack: component guidance');
+    assert.doesNotMatch(api, /Components: where interactivity lives|Reactive properties/,
+      'api: no component/reactive-props guidance');
+
+    // The sibling agent-doc surfaces (CONVENTIONS.md, .agents/rules/workflow.md)
+    // ship into BOTH apps, so they must be template-neutral: no opt-out phrasing,
+    // and they must acknowledge the api showcase rather than only the UI gallery.
+    const apiConv = readFileSync(join(cwd, 'api-app', 'CONVENTIONS.md'), 'utf8');
+    const apiFlow = readFileSync(join(cwd, 'api-app', '.agents/rules/workflow.md'), 'utf8');
+    for (const [label, md] of [['CONVENTIONS.md', apiConv], ['workflow.md', apiFlow]]) {
+      assert.doesNotMatch(md, /only while exploring|do not have to read|only if a task needs/i,
+        `api ${label}: no opt-out phrasing`);
+      assert.match(md, /app\/api\/features/, `api ${label}: acknowledges the api showcase`);
+    }
   } finally {
     restore();
     await rm(cwd, { recursive: true, force: true });

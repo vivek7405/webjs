@@ -65,6 +65,17 @@ to that item's detail page. Wrap each row action button (edit, delete, status)
 so its handler calls `event.stopPropagation()`, letting the button run its own
 action without also triggering the row navigation.
 
+### Components: where interactivity lives
+
+Pages and layouts (`app/**/page.ts`, `app/**/layout.ts`) are server-only HTML
+generators, so put every interactive behavior inside a `WebComponent` custom
+element. Declare a component's reactive properties in the base-class factory,
+never as a class-field initializer (`items = []` clobbers the reactive
+accessor). Use the shorthand for primitives
+(`extends WebComponent({ name: String, count: Number, open: Boolean })`) and the
+`prop<T>()` helper for typed objects and arrays
+(`extends WebComponent({ items: prop<Item[]>(Array), user: prop<User>(Object) })`).
+
 ### 5. Verify before you call it done
 
 Run each of these and fix what it reports, in order:
