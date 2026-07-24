@@ -1,6 +1,6 @@
 {
   "name": "@webjsdev/cli",
-  "version": "0.10.47",
+  "version": "0.10.48",
   "type": "module",
   "description": "webjs CLI - dev, start, create, db",
   "bin": {
