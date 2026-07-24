@@ -128,9 +128,9 @@ With no route literal (or before you generate route types), `params` is `Record<
 
 Type page metadata with the exported `Metadata` type (and `MetadataContext` for the `generateMetadata` argument), the same ergonomics as Next.js's `import type { Metadata } from 'next'`.
 
-### The generated route union (`webjs types`)
+### The generated route union (`npx webjsdev types`)
 
-Run `webjs types` to write `.webjs/routes.d.ts`, an opt-in overlay augmenting `@webjsdev/core` with one key per route in `app/`. It narrows two things at tsserver time:
+Run `npx webjsdev types` to write `.webjs/routes.d.ts`, an opt-in overlay augmenting `@webjsdev/core` with one key per route in `app/`. It narrows two things at tsserver time:
 
 - The `Route` href type: `navigate('/blog/anything')` passes, `navigate('/nonexistent')` is an error. Until you generate the types, `Route` is `string` (unconstrained, non-breaking for JSDoc and un-generated apps).
 - Per-route `params`: `PageProps<'/blog/[slug]'>['params']` becomes `{ slug: string }`.
@@ -139,7 +139,7 @@ Run `webjs types` to write `.webjs/routes.d.ts`, an opt-in overlay augmenting `@
 npx webjsdev types     # writes .webjs/routes.d.ts (route count printed)
 ```
 
-`npm run dev` emits it at startup and re-emits after each route rebuild, so the editor always has fresh types. The file is gitignored (regenerated per machine, like Next's `.next/types`); the scaffold `tsconfig.json` already lists it in `include`. To opt in for an existing app, run `npx webjsdev types` once and add `.webjs/routes.d.ts` to `include`. This is webjs's no-build equivalent of Next 15's `typedRoutes`, achieved via interface declaration-merging rather than a bundler.
+`npm run dev` emits it at startup and re-emits after each route rebuild, so the editor always has fresh types. The file is gitignored (regenerated per machine, like Next's `.next/types`); the scaffold `tsconfig.json` already lists it in `include`. To opt in for an existing app, run `npx webjsdev types` once and add `.webjs/routes.d.ts` to `include`. This is the WebJs no-build equivalent of Next 15's `typedRoutes`, achieved via interface declaration-merging rather than a bundler.
 
 ### The `webjs` config block and auth user
 

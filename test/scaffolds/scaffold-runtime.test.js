@@ -136,6 +136,17 @@ test('bun scaffold: agent-config markdown shows bun commands, no npm commands', 
     assert.match(agents, /bun run check/, 'playbook check command is bunified');
     assert.match(agents, /bunx webjsdev ui add/, 'playbook ui add is bunified');
 
+    // The copied agent skill is bunified as well (#1076): its references carry
+    // runnable commands, so a bun app's skill must not instruct npm. The one
+    // exception is references/runtime.md, the deliberate node-vs-bun command
+    // matrix, which keeps its npm column (the counterfactual that the
+    // exclusion works).
+    const skillTesting = read(appDir, '.agents/skills/webjs/references/testing.md');
+    assert.doesNotMatch(skillTesting, /\bnpm run /, 'skill testing.md is bunified');
+    assert.match(skillTesting, /bun run test/, 'skill testing.md shows bun commands');
+    const skillRuntime = read(appDir, '.agents/skills/webjs/references/runtime.md');
+    assert.match(skillRuntime, /npm install/, 'runtime.md keeps its npm column (matrix preserved)');
+
     // The starter test files' header comments are bun-ified too (no npm/npx).
     const browserTest = read(appDir, 'test/hello/browser/hello.test.js');
     assert.doesNotMatch(browserTest, /\bnpx /, 'hello browser test uses bunx');

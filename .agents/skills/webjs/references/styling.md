@@ -119,9 +119,14 @@ The default stack is a static compiled Tailwind stylesheet (`css:build` compiles
     --background:       light-dark(#ffffff, #1e2226);
     --foreground:       light-dark(#191c20, #dee2e6);
     --card:             light-dark(#f7f8fa, #313539);
-    --muted-foreground: light-dark(#565c64, #94989c);
-    --border:           light-dark(#e2e5e9, #3d434b);
     --primary:          light-dark(#1e2226, #dee2e6);
+    --secondary:        light-dark(#eef0f3, #3a3f45);
+    --muted:            light-dark(#f1f3f5, #2a2e33);
+    --muted-foreground: light-dark(#565c64, #94989c);
+    --accent:           light-dark(#e9ecef, #383d43);
+    --border:           light-dark(#e2e5e9, #3d434b);
+    --ring:             light-dark(#9aa1a9, #6c737b);
+    --destructive:      light-dark(#b3261e, #f2b8b5);
     /* a derived token tracks BOTH themes for free via var(--primary) */
     --primary-tint: color-mix(in srgb, var(--primary) 22%, transparent);
   }

@@ -649,7 +649,23 @@ export async function scaffoldApp(name, cwd, opts = {}) {
   const repoRootSkill = resolve(__dirname, '..', '..', '..', '.agents', 'skills', 'webjs');
   const skillSrc = existsSync(bundledSkill) ? bundledSkill : repoRootSkill;
   if (existsSync(skillSrc)) {
-    await cp(skillSrc, join(appDir, '.agents', 'skills', 'webjs'), { recursive: true });
+    const skillDest = join(appDir, '.agents', 'skills', 'webjs');
+    await cp(skillSrc, skillDest, { recursive: true });
+    // Bun runtime (#541): the skill's runnable commands are authored in the
+    // canonical npm forms, so derive the bun flavor on copy, the same way the
+    // agent-config markdown above goes through bunifyProse. references/runtime.md
+    // is EXCLUDED on purpose: it is the deliberate node-vs-bun command matrix,
+    // and rewriting its npm column would destroy the comparison it exists to
+    // make.
+    if (isBun) {
+      const { readdir } = await import('node:fs/promises');
+      const entries = await readdir(skillDest, { recursive: true, withFileTypes: true });
+      for (const e of entries) {
+        if (!e.isFile() || !e.name.endsWith('.md') || e.name === 'runtime.md') continue;
+        const p = join(e.parentPath, e.name);
+        await writeFile(p, bunifyProse(await readFile(p, 'utf8')));
+      }
+    }
   }
 
   // Make the Claude enforcement hooks + the git pre-commit executable.

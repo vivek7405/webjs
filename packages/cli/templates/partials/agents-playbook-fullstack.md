@@ -48,7 +48,8 @@ Full reference: `.agents/skills/webjs/references/styling.md`.
 
 Pull primitives with `npx webjsdev ui add <name>`; the source is copied into
 `components/ui/`, so you own it fully and can add, remove, restructure, or theme
-it however your app needs. Do NOT guess a helper or tag signature. Inspect the copied file `components/ui/<name>.ts`, or run
+it however your app needs. Do NOT guess a helper or tag signature. Inspect the
+copied file `components/ui/<name>.ts`, or run
 `npx webjsdev ui view <name>`, for the exact exported names, variants, and
 sizes. The kit has two tiers:
 

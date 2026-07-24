@@ -177,17 +177,18 @@ export default async function PostPage({ params }) {
     <p>Build the payload server-side and apply it client-side:</p>
     <pre>// app/posts/[id]/route.ts
 import { stream, streamResponse, acceptsStream, broadcast } from '@webjsdev/server';
+import { escapeText } from '@webjsdev/core';
 export async function POST(req, { params }) {
   const c = await addComment(params.id, await req.formData());
-  const html = stream.append('comments', '&lt;li&gt;' + escapeHtml(c.text) + '&lt;/li&gt;');
+  const html = stream.append('comments', '&lt;li&gt;' + escapeText(c.text) + '&lt;/li&gt;');
   broadcast('post:' + params.id, html);              // fan out to other viewers
   if (acceptsStream(req)) return streamResponse(html); // JS client: surgical
-  return Response.redirect('/posts/' + params.id, 303); // no-JS: normal render
+  return Response.redirect(new URL('/posts/' + params.id, req.url), 303); // no-JS: normal render
 }</pre>
     <pre>// a component, for the live channel
 import { connectWS, renderStream } from '@webjsdev/core';
 connectWS('/posts/' + id + '/feed', { onMessage: (m) =&gt; renderStream(m) });</pre>
-    <p><code>stream.*</code> escapes the target id but NOT the content (server-authored HTML, like an <code>html</code> hole, so escape any user substring yourself). <code>renderStream</code> and the <code>&lt;webjs-stream&gt;</code> element are auto-registered by the client router.</p>
+    <p><code>stream.*</code> escapes the target id but NOT the content (server-authored HTML, like an <code>html</code> hole, so escape any user substring yourself with <code>escapeText</code> from <code>@webjsdev/core</code>). <code>renderStream</code> and the <code>&lt;webjs-stream&gt;</code> element are auto-registered by the client router.</p>
 
     <h2>View Transitions (opt-in, all three swap paths)</h2>
     <p>The router can wrap a client navigation's DOM mutation in the native <a href="https://developer.mozilla.org/en-US/docs/Web/API/View_Transitions_API">View Transitions API</a> (<code>document.startViewTransition</code>), so a same-shell partial swap cross-fades (or runs your <code>::view-transition-*</code> CSS) instead of snapping. It is OFF by default and purely OPT-IN, so an unconfigured app behaves exactly as before (no animation surprise, no regression in a browser without the API). Opt in by adding a meta to the page head, mirroring Turbo's <code>&lt;meta name="view-transition"&gt;</code> convention:</p>

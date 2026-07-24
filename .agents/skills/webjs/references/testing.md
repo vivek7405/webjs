@@ -4,7 +4,7 @@
 
 - The four test layers (unit, browser, e2e, smoke) and where each file lives.
 - The `handle()` harness from `@webjsdev/server/testing` for driving the real request pipeline against a native `Response`.
-- `webjs test` and `webjs test --browser`, plus when a browser or e2e test is REQUIRED (hydration, client router, slots, custom-element upgrade).
+- `npm run test` and `npm run test:browser`, plus when a browser or e2e test is REQUIRED (hydration, client router, slots, custom-element upgrade).
 - Bun cross-runtime parity for runtime-sensitive code.
 - Rendering the app and LOOKING for visual defects a static check cannot catch (a collapsed or reflowing layout).
 - Convention validation with `webjs check`.
@@ -27,7 +27,7 @@ Assert only on what the layer needs. A block that inspects only the HTTP respons
 ## App runners (`webjs test`)
 
 ```sh
-npm run test              # runtime test runner over everything not under browser/ or e2e/
+npm run test              # unit + browser tests (both layers; e2e only with WEBJS_E2E=1)
 npm run test:browser      # web-test-runner against test/**/browser/**
 WEBJS_E2E=1 npm run test  # adds the e2e layer
 ```

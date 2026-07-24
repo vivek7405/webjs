@@ -674,8 +674,9 @@ test('scaffoldApp: AGENTS.md build playbook is template-specific (#1076)', async
       assert.match(md, /Read the framework source for exact contracts/, `${label}: source-reading step`);
       assert.match(md, /Never reach for `any`/, `${label}: no-any strict typing`);
       assert.match(md, /npm run check/, `${label}: verification includes the check script`);
-      // No opt-out / permission-to-skip phrasing (the #1076 regression to prevent).
-      assert.doesNotMatch(md, /do not have to read|only exploring|only if a task needs/i,
+      // No opt-out / permission-to-skip phrasing (the #1076 regression to
+      // prevent; "only when a task needs" is the historical wording).
+      assert.doesNotMatch(md, /do not have to read|only exploring|only (if|when) a task needs/i,
         `${label}: no opt-out phrasing`);
     }
 
@@ -707,9 +708,12 @@ test('scaffoldApp: AGENTS.md build playbook is template-specific (#1076)', async
     // and they must acknowledge the api showcase rather than only the UI gallery.
     const apiConv = readFileSync(join(cwd, 'api-app', 'CONVENTIONS.md'), 'utf8');
     const apiFlow = readFileSync(join(cwd, 'api-app', '.agents/rules/workflow.md'), 'utf8');
-    for (const [label, md] of [['CONVENTIONS.md', apiConv], ['workflow.md', apiFlow]]) {
-      assert.doesNotMatch(md, /only while exploring|do not have to read|only if a task needs/i,
+    const apiCursor = readFileSync(join(cwd, 'api-app', '.cursorrules'), 'utf8');
+    for (const [label, md] of [['CONVENTIONS.md', apiConv], ['workflow.md', apiFlow], ['.cursorrules', apiCursor]]) {
+      assert.doesNotMatch(md, /only while exploring|do not have to read|only (if|when) a task needs/i,
         `api ${label}: no opt-out phrasing`);
+    }
+    for (const [label, md] of [['CONVENTIONS.md', apiConv], ['workflow.md', apiFlow]]) {
       assert.match(md, /app\/api\/features/, `api ${label}: acknowledges the api showcase`);
     }
   } finally {
