@@ -257,7 +257,13 @@ export class UiTabsTrigger extends WebComponent({
       e.preventDefault();
       const v = target.value;
       if (v) tabs.setAttribute('value', v);
-      target.focus();
+      // Focus the inner <button role="tab">, NOT the <ui-tabs-trigger> host.
+      // The host carries no tabindex so it is not focusable; calling focus()
+      // on it is a no-op that leaves the focus ring stranded on the previous
+      // trigger while a different panel shows. The roving tabindex lives on
+      // the inner button, so that is what APG focus-follows-selection targets.
+      const btn = target.querySelector<HTMLButtonElement>('[role="tab"]');
+      (btn ?? target).focus();
     }
   };
 }

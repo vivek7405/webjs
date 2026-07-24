@@ -88,6 +88,83 @@ suite('ui-tabs a11y', () => {
     assert.ok(triggers[0].id !== triggers[1].id, 'ids differ across groups');
     root.remove();
   });
+
+  // Keyboard nav (APG automatic activation): arrow / Home / End both select
+  // the tab AND move focus to its inner <button role="tab">. The counterfactual
+  // for the #1078 fix is `document.activeElement === next inner button`: before
+  // the fix the handler focused the non-focusable <ui-tabs-trigger> host, so
+  // focus never moved and this assertion failed.
+  async function mountTabs(orientation = 'horizontal') {
+    const root = await mount(html`
+      <ui-tabs value="a" orientation=${orientation}>
+        <ui-tabs-list>
+          <ui-tabs-trigger value="a">A</ui-tabs-trigger>
+          <ui-tabs-trigger value="b">B</ui-tabs-trigger>
+          <ui-tabs-trigger value="c">C</ui-tabs-trigger>
+        </ui-tabs-list>
+        <ui-tabs-content value="a">PANE A</ui-tabs-content>
+        <ui-tabs-content value="b">PANE B</ui-tabs-content>
+        <ui-tabs-content value="c">PANE C</ui-tabs-content>
+      </ui-tabs>
+    `);
+    const tabsEl = root.querySelector('ui-tabs');
+    const btns = [...root.querySelectorAll('ui-tabs-trigger [role="tab"]')];
+    return { root, tabsEl, btns };
+  }
+
+  const press = (el, key) =>
+    el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+
+  test('ArrowRight moves focus AND selection to the next trigger', async () => {
+    const { root, tabsEl, btns } = await mountTabs();
+    btns[0].focus();
+    press(btns[0], 'ArrowRight');
+    await tick();
+    assert.equal(document.activeElement, btns[1], 'focus moved to trigger B');
+    assert.equal(tabsEl.getAttribute('value'), 'b', 'selection followed to b');
+    assert.equal(btns[1].getAttribute('data-state'), 'active', 'B is active');
+    assert.equal(btns[1].tabIndex, 0, 'B is the tab stop');
+    assert.equal(btns[0].tabIndex, -1, 'A left the tab order');
+    root.remove();
+  });
+
+  test('ArrowLeft wraps from the first trigger to the last', async () => {
+    const { root, tabsEl, btns } = await mountTabs();
+    btns[0].focus();
+    press(btns[0], 'ArrowLeft');
+    await tick();
+    assert.equal(document.activeElement, btns[2], 'focus wrapped to trigger C');
+    assert.equal(tabsEl.getAttribute('value'), 'c', 'selection wrapped to c');
+    root.remove();
+  });
+
+  test('Home / End move focus to the first / last trigger', async () => {
+    const { root, tabsEl, btns } = await mountTabs();
+    btns[1].focus();
+    press(btns[1], 'End');
+    await tick();
+    assert.equal(document.activeElement, btns[2], 'End -> last trigger');
+    assert.equal(tabsEl.getAttribute('value'), 'c');
+    press(btns[2], 'Home');
+    await tick();
+    assert.equal(document.activeElement, btns[0], 'Home -> first trigger');
+    assert.equal(tabsEl.getAttribute('value'), 'a');
+    root.remove();
+  });
+
+  test('vertical orientation navigates with ArrowDown / ArrowUp', async () => {
+    const { root, tabsEl, btns } = await mountTabs('vertical');
+    btns[0].focus();
+    press(btns[0], 'ArrowDown');
+    await tick();
+    assert.equal(document.activeElement, btns[1], 'ArrowDown -> next trigger');
+    assert.equal(tabsEl.getAttribute('value'), 'b');
+    press(btns[1], 'ArrowUp');
+    await tick();
+    assert.equal(document.activeElement, btns[0], 'ArrowUp -> previous trigger');
+    assert.equal(tabsEl.getAttribute('value'), 'a');
+    root.remove();
+  });
 });
 
 suite('ui-toggle-group a11y', () => {
@@ -179,6 +256,36 @@ suite('ui-dropdown-menu a11y', () => {
     root.querySelector('ui-dropdown-menu').show();
     await tick();
     assert.equal(btn.getAttribute('aria-expanded'), 'true', 'open -> true');
+    root.remove();
+  });
+
+  // Keyboard nav: opening focuses the first item, ArrowDown/Up move focus
+  // among [role="menuitem"] (skipping disabled), and Escape closes the menu.
+  test('open focuses first item; ArrowDown/Up move focus; Escape closes', async () => {
+    const root = await mount(html`
+      <ui-dropdown-menu>
+        <ui-dropdown-menu-trigger><button>Options</button></ui-dropdown-menu-trigger>
+        <ui-dropdown-menu-content>
+          <ui-dropdown-menu-item>Profile</ui-dropdown-menu-item>
+          <ui-dropdown-menu-item>Billing</ui-dropdown-menu-item>
+          <ui-dropdown-menu-item>Settings</ui-dropdown-menu-item>
+        </ui-dropdown-menu-content>
+      </ui-dropdown-menu>
+    `);
+    const menuEl = root.querySelector('ui-dropdown-menu');
+    const items = [...root.querySelectorAll('ui-dropdown-menu-item [role="menuitem"]')];
+    menuEl.show();
+    await tick();
+    assert.equal(document.activeElement, items[0], 'first item focused on open');
+    items[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await tick();
+    assert.equal(document.activeElement, items[1], 'ArrowDown -> second item');
+    items[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    await tick();
+    assert.equal(document.activeElement, items[0], 'ArrowUp -> first item');
+    items[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await tick();
+    assert.equal(menuEl.open, false, 'Escape closes the menu');
     root.remove();
   });
 });
