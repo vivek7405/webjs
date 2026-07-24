@@ -6,8 +6,8 @@ app that has not initialised the kit yet: running `webjs ui init` then
 `webjs ui add <name>` is HOW the kit comes to exist, and it is the default for a
 repeated primitive over hand-writing one from scratch. `@webjsdev/ui` is the shadcn-style
 kit for WebJs. The source is copied into your repo (`components/ui/`), so you own
-and edit it exactly as freely as code you wrote yourself (the copied file is
-yours to trim and theme). Two tiers:
+and edit it exactly as freely as code you wrote yourself: add, remove, or
+restructure it however your app needs, not just theme it. Two tiers:
 
 - **Tier 1, class helpers (23 components).** Pure functions returning Tailwind
   class strings (`buttonClass({ variant })`, `cardClass()`), composed with
