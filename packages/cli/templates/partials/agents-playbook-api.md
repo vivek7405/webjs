@@ -17,8 +17,10 @@ something you lose.
 ### 2. Model the data
 
 Define real models in `db/schema.server.ts`, then run `npm run db:generate` and
-`npm run db:migrate`. Put reads in `modules/<feature>/queries/*.server.ts` and
-writes in `modules/<feature>/actions/*.server.ts`, one function per file.
+`npm run db:migrate`. Write a seed script at `db/seed.server.ts` and run
+`npm run db:seed` so endpoints return real rows while you build, instead of
+empty arrays. Put reads in `modules/<feature>/queries/*.server.ts` and writes
+in `modules/<feature>/actions/*.server.ts`, one function per file.
 
 ### 3. Build endpoints
 

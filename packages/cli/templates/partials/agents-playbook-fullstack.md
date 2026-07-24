@@ -20,8 +20,10 @@ a runnable copy you study first, not something you lose.
 
 Define real models in `db/schema.server.ts`, then run `npm run db:generate` and
 `npm run db:migrate` (required after the clear, which removed the demo table and
-migrations). Put reads in `modules/<feature>/queries/*.server.ts` and writes in
-`modules/<feature>/actions/*.server.ts`, one function per file.
+migrations). Write a seed script at `db/seed.server.ts` and run
+`npm run db:seed` so list and detail pages render real rows while you build,
+instead of empty states. Put reads in `modules/<feature>/queries/*.server.ts`
+and writes in `modules/<feature>/actions/*.server.ts`, one function per file.
 
 ### 3. Build a token-based design system
 
