@@ -56,7 +56,7 @@ npm install
 npm run gallery:clear   # shed the backend-features showcase before building
 npm run dev             # dev server at http://localhost:8080
 npm run start           # production server
-npm test                # unit tests
+npm test                # unit + browser tests
 npm run typecheck
 npx webjsdev check      # correctness checks
 npm run db:generate && npm run db:migrate

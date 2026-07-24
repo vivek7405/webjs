@@ -698,8 +698,8 @@ test('scaffoldApp: AGENTS.md build playbook is template-specific (#1076)', async
 
     // The component guidance (WebComponent, reactive props) is UI-only, so it
     // lives in the full-stack playbook, never in the api AGENTS.md.
-    assert.match(fs, /Components: where interactivity lives/, 'full-stack: component guidance');
-    assert.doesNotMatch(api, /Components: where interactivity lives|Reactive properties/,
+    assert.match(fs, /Build components for interactivity/, 'full-stack: component guidance');
+    assert.doesNotMatch(api, /Build components for interactivity|WebComponent/,
       'api: no component/reactive-props guidance');
 
     // The sibling agent-doc surfaces (CONVENTIONS.md, .agents/rules/workflow.md)
