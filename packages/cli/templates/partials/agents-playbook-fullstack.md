@@ -10,17 +10,29 @@ Read the demos under `app/features/` (and `app/examples/todo`) that match what
 you are building, so you copy the real idiom: server actions, queries,
 optimistic UI, component hydration, design tokens. Then run
 `npm run gallery:clear` to shed the whole gallery and reset `app/page.ts` and
-`app/layout.ts` to a blank slate. The skill teaches the same patterns and
-survives the clear, so the gallery is a runnable copy you study first, not
-something you lose.
+`app/layout.ts` to a blank slate. The clear also removes the example
+`components/ui/` primitives, the demo `todos` table, and the demo migrations;
+it keeps the agent skill, the database wiring, and `lib/utils/cn.ts` (the
+`webjs ui add` prerequisite). The skill teaches the same patterns and survives
+the clear, so the gallery is a runnable copy you study first, not something you
+lose.
 
-### 2. Build a token-based design system first
+### 2. Model the data
+
+Define real models in `db/schema.server.ts`, then run `npm run db:generate` and
+`npm run db:migrate` (required after the clear, which removed the demo table and
+migrations). Put reads in `modules/<feature>/queries/*.server.ts` and writes in
+`modules/<feature>/actions/*.server.ts`, one function per file.
+
+### 3. Build a token-based design system
 
 Define your color tokens as CSS custom properties in `app/layout.ts`, each
 written once with the native CSS `light-dark(LIGHT, DARK)` function so light and
 dark modes come from ONE declaration: `--background`, `--foreground`, `--card`,
-`--primary`, `--secondary`, `--muted`, `--accent`, `--border`, `--ring`,
-`--destructive`. Consume them ONLY as token utilities (`bg-background`,
+`--primary`, `--secondary`, `--muted`, `--muted-foreground`, `--accent`,
+`--border`, `--ring`, `--destructive` (add the matching `*-foreground` pair for
+each surface token you use, following the reference palette in the styling
+guide). Consume them ONLY as token utilities (`bg-background`,
 `text-foreground`, `bg-card`, `border-border`, `text-primary`,
 `text-muted-foreground`, `bg-destructive`). Never put a raw un-themed Tailwind
 color (`red-500`, `blue-600`, `gray-100`) on an element or a `@webjsdev/ui`
@@ -28,7 +40,7 @@ helper. Add an inline theme-detection script in the layout `<head>` so the first
 paint matches the saved theme with no flash. Full reference:
 `.agents/skills/webjs/references/styling.md`.
 
-### 3. Use the UI kit, do not hand-roll primitives
+### 4. Use the UI kit, do not hand-roll primitives
 
 Pull primitives with `npx webjsdev ui add <name>`; the source is copied into
 `components/ui/`, so you own and theme it. Do NOT guess a helper or tag
@@ -37,8 +49,8 @@ signature. Inspect the copied file `components/ui/<name>.ts`, or run
 sizes. The kit has two tiers:
 
 - **Tier 1, class helpers** for static primitives (button, card, input, badge,
-  select, textarea). Spread the helper onto a native element, for example
-  `class=${buttonClass({ variant: 'primary', size: 'md' })}`.
+  native-select, textarea). Spread the helper onto a native element, for example
+  `class=${buttonClass({ variant: 'outline', size: 'sm' })}`.
 - **Tier 2, custom elements** for stateful controls and overlays (`<ui-tabs>`,
   `<ui-dialog>`, `<ui-dropdown-menu>`, `<ui-tooltip>`, sonner toasts). Use the
   registered tag; it owns its ARIA, focus trap, and keyboard navigation out of
@@ -47,7 +59,7 @@ sizes. The kit has two tiers:
 
 Full reference: `.agents/skills/webjs/references/ui-kit.md`.
 
-### 4. Build a multi-page app (MPA), not a single page
+### 5. Build a multi-page app (MPA), not a single page
 
 Structure the product as real routes, not one page that swaps client state:
 
@@ -65,7 +77,7 @@ to that item's detail page. Wrap each row action button (edit, delete, status)
 so its handler calls `event.stopPropagation()`, letting the button run its own
 action without also triggering the row navigation.
 
-### 5. Build components for interactivity
+### 6. Build components for interactivity
 
 Pages and layouts (`app/**/page.ts`, `app/**/layout.ts`) are server-only HTML
 generators, so put every interactive behavior inside a `WebComponent` custom
@@ -76,7 +88,7 @@ accessor). Use the shorthand for primitives
 `prop<T>()` helper for typed objects and arrays
 (`extends WebComponent({ items: prop<Item[]>(Array), user: prop<User>(Object) })`).
 
-### 6. Verify before you call it done
+### 7. Verify before you call it done
 
 Run each of these and fix what it reports, in order:
 
