@@ -131,6 +131,10 @@ test('bun scaffold: agent-config markdown shows bun commands, no npm commands', 
     }
     const agents = read(appDir, 'AGENTS.md');
     assert.match(agents, /bun --bun run dev/);
+    // The injected template playbook (#1076) is bunified too: the substitution
+    // runs BEFORE bunifyProse, so the playbook's commands arrive in bun form.
+    assert.match(agents, /bun run check/, 'playbook check command is bunified');
+    assert.match(agents, /bunx webjsdev ui add/, 'playbook ui add is bunified');
 
     // The starter test files' header comments are bun-ified too (no npm/npx).
     const browserTest = read(appDir, 'test/hello/browser/hello.test.js');
