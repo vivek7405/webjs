@@ -24,7 +24,7 @@ In Next, `redirect()` works in Server Components, Actions, and Route Handlers al
 // route.ts WRONG: redirect() is uncaught here.
 export async function GET() { redirect('/login'); }
 // route.ts RIGHT: return a real redirect Response.
-export async function GET() { return Response.redirect(new URL('/login', req.url), 303); }
+export async function GET(req: Request) { return Response.redirect(new URL('/login', req.url), 303); }
 ```
 
 Do NOT throw `redirect()` from a page `action` to bounce a form POST either. The method-preserving 307 default re-POSTs the body and re-runs the mutation. Return an `ActionResult` with a `redirect` field instead (a 303 PRG), or throw only for a real external redirect.

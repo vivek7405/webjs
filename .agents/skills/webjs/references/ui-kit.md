@@ -2,8 +2,8 @@
 
 Load this when the app uses `@webjsdev/ui` (a `components.json` is present), OR
 when you are about to add a UI primitive (button, card, input, badge) to a fresh
-app that has not initialised the kit yet: running `webjs ui init` then
-`webjs ui add <name>` is HOW the kit comes to exist, and it is the default for a
+app that has not initialised the kit yet: running `npx webjsdev ui init` then
+`npx webjsdev ui add <name>` is HOW the kit comes to exist, and it is the default for a
 repeated primitive over hand-writing one from scratch. `@webjsdev/ui` is the shadcn-style
 kit for WebJs. The source is copied into your repo (`components/ui/`), so you own
 and edit it exactly as freely as code you wrote yourself, and can add, remove,
@@ -32,25 +32,25 @@ paste-ready structure on demand:
   kit inventory (each component's tier, helper signatures, npm deps); pass
   `{ name: "accordion" }` for one component's helper signatures, the paste-ready
   structural example, the accessibility header, and deps.
-- **CLI**: `webjs ui list` (inventory), `webjs ui view <name>` (the projected
+- **CLI**: `npx webjsdev ui list` (inventory), `npx webjsdev ui view <name>` (the projected
   view plus the full source). Same data as the MCP tool (one shared projector).
 
 So the loop is: `add` the component, then query `ui <name>` (MCP) or
-`webjs ui view <name>` for the accessible structure, paste it, and fill it in.
+`npx webjsdev ui view <name>` for the accessible structure, paste it, and fill it in.
 
 ## Setup and resolution
 
-- `webjs ui init` writes `components.json`, `lib/utils.ts`, and the CSS design
+- `npx webjsdev ui init` writes `components.json`, `lib/utils.ts`, and the CSS design
   tokens the helpers render against (`--background`, `--foreground`,
   `--destructive`, ...). It HARD-FAILS if the tokens cannot be written, so a
   clean exit means the kit is styled. `add` self-heals the tokens if they go
   missing.
 - Resolution is LOCAL-FIRST: `init` / `add` / `list` / `view` read the registry
   that ships inside the installed `@webjsdev/ui`, with no network. This pins you
-  to the installed version; run `webjs ui diff` to see where your local copies
+  to the installed version; run `npx webjsdev ui diff` to see where your local copies
   drift from the upstream (that command alone compares against the live registry).
 
-## Inventory (run `webjs ui list` or the MCP `ui` tool for the authoritative, current set)
+## Inventory (run `npx webjsdev ui list` or the MCP `ui` tool for the authoritative, current set)
 
 **Tier 1 (class helpers):** accordion, alert, aspect-ratio, avatar, badge,
 breadcrumb, button, card, checkbox, collapsible, input, kbd, label,
@@ -66,7 +66,7 @@ dropdown-menu, hover-card, sonner, tabs, tooltip, plus toggle and toggle-group
 - A helper is a function, so compose it: `class=${buttonClass({ variant: 'outline' })}`.
   The unquoted `${...}` is a normal `html` attribute hole.
 - Tier-1 helpers assume the design tokens exist; if a component paints unstyled,
-  the tokens are missing (re-run `webjs ui init` or let `add` self-heal them).
+  the tokens are missing (re-run `npx webjsdev ui init` or let `add` self-heal them).
 - Custom elements are display-only-safe at SSR and hydrate in the browser, the
   standard WebJs component model (`references/components.md`).
 

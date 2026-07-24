@@ -136,10 +136,10 @@ Run `webjs types` to write `.webjs/routes.d.ts`, an opt-in overlay augmenting `@
 - Per-route `params`: `PageProps<'/blog/[slug]'>['params']` becomes `{ slug: string }`.
 
 ```sh
-webjs types     # writes .webjs/routes.d.ts (route count printed)
+npx webjsdev types     # writes .webjs/routes.d.ts (route count printed)
 ```
 
-`webjs dev` emits it at startup and re-emits after each route rebuild, so the editor always has fresh types. The file is gitignored (regenerated per machine, like Next's `.next/types`); the scaffold `tsconfig.json` already lists it in `include`. To opt in for an existing app, run `webjs types` once and add `.webjs/routes.d.ts` to `include`. This is webjs's no-build equivalent of Next 15's `typedRoutes`, achieved via interface declaration-merging rather than a bundler.
+`npm run dev` emits it at startup and re-emits after each route rebuild, so the editor always has fresh types. The file is gitignored (regenerated per machine, like Next's `.next/types`); the scaffold `tsconfig.json` already lists it in `include`. To opt in for an existing app, run `npx webjsdev types` once and add `.webjs/routes.d.ts` to `include`. This is webjs's no-build equivalent of Next 15's `typedRoutes`, achieved via interface declaration-merging rather than a bundler.
 
 ### The `webjs` config block and auth user
 

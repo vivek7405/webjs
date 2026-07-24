@@ -53,9 +53,10 @@ Configure providers once in a `.server.ts` file. `createAuth` returns
 `handlers` (the OAuth redirect endpoints).
 
 ```ts
-// lib/auth.server.ts
+// modules/auth/auth.server.ts
 import { createAuth, Credentials, Google, GitHub } from '@webjsdev/server';
 import { db } from '#db/connection.server.ts';
+import { compare } from './password.server.ts';
 
 export const { auth, signIn, signOut, handlers } = createAuth({
   providers: [
@@ -154,7 +155,7 @@ is produced, so a logged-out visitor never receives protected markup.
 ```ts
 // app/dashboard/page.ts
 import { html, redirect } from '@webjsdev/core';
-import { auth } from '#lib/auth.server.ts';
+import { auth } from '#modules/auth/auth.server.ts';
 
 export default async function Dashboard() {
   const session = await auth();
@@ -197,7 +198,7 @@ default page.
 ```ts
 // app/admin/page.ts
 import { html, forbidden, unauthorized } from '@webjsdev/core';
-import { auth } from '#lib/auth.server.ts';
+import { auth } from '#modules/auth/auth.server.ts';
 
 export default async function Admin() {
   const session = await auth();
@@ -227,8 +228,10 @@ an `ActionResult` failure envelope with a status the client can act on.
 ```ts
 // modules/posts/actions/delete-post.server.ts
 'use server';
-import { auth } from '#lib/auth.server.ts';
+import { eq } from 'drizzle-orm';
+import { auth } from '#modules/auth/auth.server.ts';
 import { db } from '#db/connection.server.ts';
+import { posts } from '#db/schema.server.ts';
 
 export async function deletePost(input: { id: string }) {
   const session = await auth();

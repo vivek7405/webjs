@@ -108,7 +108,7 @@ export function WS(ws, req) {
 }
 ```
 
-`broadcast(path, data, opts?)` fans out to all clients on `path`; `opts.except` skips one socket (typically the sender). `clientCount(path)` returns the live count. Single-instance by default; wire Redis pub/sub yourself for multi-instance.
+`broadcast(path, data, opts?)` fans out to all clients on `path`; `opts.except` skips one socket (typically the sender). Single-instance by default; wire Redis pub/sub yourself for multi-instance.
 
 ## File storage
 
