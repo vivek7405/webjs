@@ -12,10 +12,9 @@ optimistic UI, component hydration, design tokens. Then run
 `npm run gallery:clear` to shed the whole gallery and reset `app/page.ts` and
 `app/layout.ts` to a blank slate. The clear also removes the example
 `components/ui/` primitives, the demo `todos` table, and the demo migrations;
-it keeps the agent skill, the database wiring, and `lib/utils/cn.ts` (the
-`webjs ui add` prerequisite). The skill teaches the same patterns and survives
-the clear, so the gallery is a runnable copy you study first, not something you
-lose.
+it keeps the agent skill, the database wiring, and `lib/utils/cn.ts` (needed by
+`npx webjsdev ui add`). The skill teaches the same patterns, so the gallery is
+a runnable copy you study first, not something you lose.
 
 ### 2. Model the data
 
@@ -26,19 +25,22 @@ migrations). Put reads in `modules/<feature>/queries/*.server.ts` and writes in
 
 ### 3. Build a token-based design system
 
-Define your color tokens as CSS custom properties in `app/layout.ts`, each
-written once with the native CSS `light-dark(LIGHT, DARK)` function so light and
-dark modes come from ONE declaration: `--background`, `--foreground`, `--card`,
-`--primary`, `--secondary`, `--muted`, `--muted-foreground`, `--accent`,
-`--border`, `--ring`, `--destructive` (add the matching `*-foreground` pair for
-each surface token you use, following the reference palette in the styling
-guide). Consume them ONLY as token utilities (`bg-background`,
-`text-foreground`, `bg-card`, `border-border`, `text-primary`,
-`text-muted-foreground`, `bg-destructive`). Never put a raw un-themed Tailwind
-color (`red-500`, `blue-600`, `gray-100`) on an element or a `@webjsdev/ui`
-helper. Add an inline theme-detection script in the layout `<head>` so the first
-paint matches the saved theme with no flash. Full reference:
-`.agents/skills/webjs/references/styling.md`.
+Full reference: `.agents/skills/webjs/references/styling.md`.
+
+- Define your color tokens as CSS custom properties in `app/layout.ts`, each
+  written ONCE with the native CSS `light-dark(LIGHT, DARK)` function, so light
+  and dark modes come from one declaration.
+- Define at least: `--background`, `--foreground`, `--card`, `--primary`,
+  `--secondary`, `--muted`, `--muted-foreground`, `--accent`, `--border`,
+  `--ring`, `--destructive`. Add the matching `*-foreground` pair for each
+  surface token you use, following the styling guide's reference palette.
+- Consume colors ONLY as token utilities: `bg-background`, `text-foreground`,
+  `bg-card`, `border-border`, `text-primary`, `text-muted-foreground`,
+  `bg-destructive`.
+- NEVER put a raw un-themed Tailwind color (`red-500`, `blue-600`, `gray-100`)
+  on an element or a `@webjsdev/ui` helper.
+- Add an inline theme-detection script in the layout `<head>` so the first
+  paint matches the saved theme with no flash.
 
 ### 4. Use the UI kit, do not hand-roll primitives
 
@@ -92,12 +94,15 @@ accessor). Use the shorthand for primitives
 
 Run each of these and fix what it reports, in order:
 
-- `npx webjsdev check` (correctness: no browser-import or boundary violation).
+- `npm run check` (correctness: no browser-import or boundary violation).
 - `npm run typecheck` (zero type errors).
 - `npm test` (unit and browser tests for the features you built).
 - `npm run css:build` (compile Tailwind).
 
-Then boot `npm run dev` and confirm every page route returns HTTP 200.
+Then boot `npm run dev`, confirm every page route returns HTTP 200, and open
+every route you changed in a real browser and play through its states: `check`
+and `typecheck` pass even when a layout collapses, so the browser is the real
+check for UI work.
 
 ### Commands
 
@@ -109,7 +114,7 @@ npm run start                # production server
 npm test                     # unit + browser tests
 npm run typecheck
 npm run css:build            # compile Tailwind
-npx webjsdev check           # correctness checks
+npm run check                # correctness checks
 npx webjsdev ui add <name>   # copy a ui primitive into components/ui/
 npx webjsdev ui view <name>  # inspect a primitive's exact signature
 npm run db:generate && npm run db:migrate

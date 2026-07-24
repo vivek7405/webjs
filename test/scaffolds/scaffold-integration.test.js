@@ -673,7 +673,7 @@ test('scaffoldApp: AGENTS.md build playbook is template-specific (#1076)', async
       assert.match(md, /Gather context BEFORE you build \(required\)/, `${label}: required context-gathering`);
       assert.match(md, /Read the framework source for exact contracts/, `${label}: source-reading step`);
       assert.match(md, /Never reach for `any`/, `${label}: no-any strict typing`);
-      assert.match(md, /npx webjsdev check/, `${label}: verification includes webjs check`);
+      assert.match(md, /npm run check/, `${label}: verification includes the check script`);
       // No opt-out / permission-to-skip phrasing (the #1076 regression to prevent).
       assert.doesNotMatch(md, /do not have to read|only exploring|only if a task needs/i,
         `${label}: no opt-out phrasing`);

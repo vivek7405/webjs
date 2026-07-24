@@ -29,9 +29,9 @@ Read `AGENTS.md` first. Full hosted docs are at https://docs.webjs.dev.
 - **For a UI app, render and LOOK before calling it done.** Define design tokens
   in `app/layout.ts` with a palette that fits the app
   (`.agents/skills/webjs/references/styling.md` is the guide), then open every
-  route you changed in a real browser and play through its states. `webjs check`
-  and `webjs typecheck` pass even when a layout collapses, so the browser is the
-  real check.
+  route you changed in a real browser and play through its states.
+  `npm run check` and `npm run typecheck` pass even when a layout collapses, so
+  the browser is the real check.
 
 ## Before starting ANY work
 
@@ -50,7 +50,7 @@ Read `AGENTS.md` first. Full hosted docs are at https://docs.webjs.dev.
 2. Browser tests in `test/<feature>/browser/*.test.js` for hydration, DOM, slots,
    and the client router.
 3. Documentation stays in sync on the SAME PR as the code, never a follow-up.
-4. `webjs check` must pass.
+4. `npm run check` must pass.
 5. Pre-merge self-review: before saying a PR is ready, run fresh-context review
    rounds until one round finds zero issues (minimum two rounds, rotate focus).
    Skip only for a one-line trivial change.

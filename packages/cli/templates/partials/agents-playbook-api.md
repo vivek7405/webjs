@@ -23,8 +23,9 @@ writes in `modules/<feature>/actions/*.server.ts`, one function per file.
 ### 3. Build endpoints
 
 Expose HTTP with a `route.ts` handler (named `GET` / `POST` / `PUT` / `PATCH` /
-`DELETE` exports), each `(request, { params }) => Response`, where a returned
-value auto-JSONs. To publish a `'use server'` action as REST, use the `route()`
+`DELETE` exports), each `(request, { params }) => Response | value` (a returned
+plain value auto-JSONs, so return the data directly unless you need headers or
+a status). To publish a `'use server'` action as REST, use the `route()`
 adapter from `@webjsdev/server`, which merges the query, the route params, and
 the JSON body into one input object and JSON-responds. Full reference:
 `.agents/skills/webjs/references/data-and-actions.md` and
@@ -33,8 +34,9 @@ the JSON body into one input object and JSON-responds. Full reference:
 ### 4. Secure every endpoint
 
 A `route.ts` handler is NOT covered by the action-RPC CSRF and error-sanitizing
-layer, so on every mutating endpoint you must: authenticate the request, pass a
-`validate` function, rate-limit it, and log without leaking secrets. For
+layer, so on every mutating endpoint you must: authenticate the request
+(sessions and auth are in `.agents/skills/webjs/references/auth-and-sessions.md`),
+pass a `validate` function, rate-limit it, and log without leaking secrets. For
 cross-origin access use the `cors()` middleware from `@webjsdev/server`; with
 `credentials: true` set an explicit origin allowlist, never `'*'`.
 
@@ -42,7 +44,7 @@ cross-origin access use the `cors()` middleware from `@webjsdev/server`; with
 
 Run each of these and fix what it reports, in order:
 
-- `npx webjsdev check` (correctness: no browser-import or boundary violation).
+- `npm run check` (correctness: no browser-import or boundary violation).
 - `npm run typecheck` (zero type errors).
 - `npm test` (unit tests for the endpoints and modules you built).
 
@@ -58,6 +60,6 @@ npm run dev             # dev server at http://localhost:8080
 npm run start           # production server
 npm test                # unit + browser tests
 npm run typecheck
-npx webjsdev check      # correctness checks
+npm run check           # correctness checks
 npm run db:generate && npm run db:migrate
 ```
