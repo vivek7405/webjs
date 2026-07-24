@@ -140,11 +140,12 @@ html\`
     <p><strong>webjs-stream is webjs's take on Turbo Streams</strong> (from Hotwire Turbo); the action set mirrors <code>&lt;turbo-stream&gt;</code>, so that muscle memory transfers directly. The same applier serves two delivery paths: a content-negotiated <code>&lt;form&gt;</code> response (the client router asks for the stream MIME only on a JS-driven submit, so a JS-off form still gets a normal render), and a <strong>live channel</strong>, where <code>renderStream(message)</code> in a <code>connectWS</code> handler applies a <code>broadcast()</code>ed payload. So chat, notifications, and presence reuse the same grammar.</p>
     <pre>// server: append one comment, fan it out to other viewers, degrade for no-JS
 import { stream, streamResponse, acceptsStream, broadcast } from '@webjsdev/server';
+import { escapeText } from '@webjsdev/core';
 export async function POST(req, { params }) {
   const c = await addComment(params.id, await req.formData());
-  const html = stream.append('comments', ${'${`<li>${escapeHtml(c.text)}</li>`}'});
-  broadcast(${'${`post:${params.id}`}'}, html);
-  return acceptsStream(req) ? streamResponse(html) : Response.redirect(${'${`/post/${params.id}`}'}, 303);
+  const html = stream.append('comments', '&lt;li&gt;' + escapeText(c.text) + '&lt;/li&gt;');
+  broadcast('post:' + params.id, html);
+  return acceptsStream(req) ? streamResponse(html) : Response.redirect(new URL('/post/' + params.id, req.url), 303);
 }</pre>
     <p>Reach for <code>&lt;webjs-stream&gt;</code> when the change is a single element inside an otherwise-unchanged region, or when a live channel pushes incremental updates. Use a region swap or a <code>&lt;webjs-frame&gt;</code> reload when a whole region changes; those are not the tool for one row.</p>
 

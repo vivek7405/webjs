@@ -212,8 +212,8 @@ Success is a 303 (PRG); failure re-renders the page at 422 with the result on `a
 ## Testing Defaults
 
 - Prefer server/handler tests first: drive the app with `handle()` from `@webjsdev/server/testing` and assert on the `Response`.
-- Add a browser test (`webjs test --browser`) for anything touching hydration, the client router, slots, or custom-element upgrade. A unit test is necessary but NOT sufficient for a browser-facing change.
-- Render the app and LOOK for any UI change: `webjs check` and `webjs typecheck` pass even when a layout collapses. Static tools give no signal for a visual defect.
+- Add a browser test (`npm run test:browser`) for anything touching hydration, the client router, slots, or custom-element upgrade. A unit test is necessary but NOT sufficient for a browser-facing change.
+- Render the app and LOOK for any UI change: `npm run check` and `npm run typecheck` pass even when a layout collapses. Static tools give no signal for a visual defect.
 - WebJs runs on Node 24+ AND Bun. Prove a runtime-sensitive change (serializer, listener, streams, `node:crypto`, the TS stripper) on both.
 
 ## Common Mistakes To Avoid

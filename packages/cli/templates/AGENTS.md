@@ -1,69 +1,56 @@
 # AGENTS.md for {{APP_NAME}}
 
-This is a WebJs app: AI-first, web-components-first, no build step. Read this
-before editing any file. It is deliberately short. The framework knowledge
-lives in one place that every AI tool can read.
+This is a WebJs app: AI-first, web-components-first, buildless, and
+progressively enhanced. Read this whole file before you edit anything, then
+follow it. The steps here are required, not optional.
 
-## Building features
+## Gather context BEFORE you build (required)
 
-Read `.agents/skills/webjs/SKILL.md` first. It is the guide to building a WebJs
-app: it helps you choose the right layer, reach for the right export, and avoid
-the WebJs-specific mistakes that Next.js or Lit habits cause. It routes to
-focused references under `.agents/skills/webjs/references/` that you load only
-when a task needs them. The full hosted docs are at https://docs.webjs.dev.
+WebJs is its own framework. It is not React, Next, or Lit, so writing code from
+that muscle memory produces broken WebJs code. Before you write or change
+anything, gather context from these sources. Do not skip a step to save time.
+This is what separates a working app from a broken one.
 
-## Grow this app in place
+1. **Read the skill.** Start with `.agents/skills/webjs/SKILL.md`, then load the
+   `references/*.md` files it routes to for the surface you are touching. The
+   skill is the guide to building a WebJs app: it helps you choose the right
+   layer, reach for the right export, and avoid the mistakes Next.js or Lit
+   habits cause. Reading it is never wasted work: it survives the
+   gallery-clearing step in the playbook below.
+2. **Study the shipped examples, then build on a clean slate.** The template
+   playbook below says what ships and the exact order to follow. The workflow
+   rules (git, tests, review) are in `.agents/rules/workflow.md`; follow them
+   too.
+3. **Read the framework source for exact contracts.** WebJs is 100% buildless
+   native ES modules, so the source you run IS the source you read. When you
+   need a precise API signature or behavior, open the package source under
+   `node_modules/@webjsdev/*` directly (each package ships its own `AGENTS.md`).
+   The full hosted docs are at https://docs.webjs.dev.
 
-This scaffold is a starting point. It ships a gallery index home
-(`app/page.ts`), a root layout with a neutral design-token palette
-(`app/layout.ts`), a database wired up (`db/`), and a densely-commented feature
-gallery: single-concept demos under `app/features/` plus the `app/examples/todo`
-app, with logic in `modules/`. The gallery is reference to learn the idioms
-from, not part of your product.
+{{PLAYBOOK}}
 
-**Building a real app? Learn from the gallery FIRST, then clear it, then build.**
-The order matters:
+## Type everything (all templates)
 
-1. **Gather context.** Skim the demos relevant to your task under
-   `app/features/<x>` (and `app/examples/todo`) for the runnable idiom. You do
-   not have to read all of it, and you never lose it: the skill at
-   `.agents/skills/webjs/` teaches the same patterns and SURVIVES the clear, so
-   clearing is not a knowledge-loss event, the gallery is just a runnable bonus.
-2. **Clear it.** Run `npm run gallery:clear` to shed the whole gallery in one
-   step: it removes `app/features/`, `app/examples/`, the demo `modules/`, the
-   gallery's example design system (`components/ui/`, the theme-toggle), the
-   example tests, and the demo `todos` table, and resets `app/page.ts` to a
-   minimal home AND `app/layout.ts` to a token-free blank slate (OS system
-   colours, no navbar, no palette). A layout you already customised (the gallery
-   brand removed) is KEPT, with only the theme-toggle wiring stripped. It KEEPS
-   the agent skill, the database wiring, and `lib/utils/cn.ts` (the
-   `webjs ui add` prerequisite).
-3. **Build.** Regenerate the database (`npm run db:generate` then `npm run
-   db:migrate`), then grow the app in place: routes under `app/`, components
-   under `components/`, features under `modules/<feature>/`, server-only code
-   behind `.server.ts`. Build the app's OWN design system from the blank slate:
-   define design tokens in `app/layout.ts` and pull primitives with
-   `npx webjsdev ui add <name>` then theme the copied source (you own it, so
-   modify it rather than hand-writing a primitive from scratch), following
-   `.agents/skills/webjs/references/styling.md`.
+Define explicit TypeScript interfaces and discriminated unions for your data
+payloads and action inputs and outputs (and, in a UI app, component props and
+optimistic updates). Narrow an `ActionResult` with
+`if (result.success && result.data)`. Never reach for `any` or a loose
+`as any` cast.
 
-If you are only exploring, keep the gallery and browse it.
+Keep server-only code (database drivers, secrets, `node:*` builtins) in
+`.server.ts` modules. There are exactly two kinds:
 
-## Commands
+- A `.server.ts` file WITH `'use server';` as its first line is a server
+  action: WebJs exposes its exported async functions to browser code as RPC
+  calls, so browser modules may import it directly.
+- A `.server.ts` file WITHOUT `'use server'` is a server-only utility:
+  importing it from a page, layout, or component CRASHES in the browser at
+  module load. Reach it only from `'use server'` actions, `route.ts` handlers,
+  or middleware. Never add `'use server'` to a file only other server code
+  imports (the DB connection, the schema).
 
-```sh
-npm install
-npm run gallery:clear  # shed the demo gallery before building a real app
-npm run dev            # dev server at http://localhost:8080
-npm run start          # production server
-npm test               # unit + browser tests
-npm run typecheck
-npx webjsdev check     # correctness checks
-npx webjsdev ui add <name>   # add a ui-* component on demand
-```
+## Data (all templates)
 
-## Data
-
-Use the wired-up database (Drizzle). Define real models in
-`db/schema.server.ts`, then `npm run db:generate` and `npm run db:migrate`.
-Never store app data in JSON files, in-memory arrays, or localStorage.
+Use the wired-up database (Drizzle) for every piece of data the app stores;
+the playbook above has the modeling step. Never store app data in a JSON file,
+an in-memory array, or localStorage.

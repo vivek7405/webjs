@@ -112,7 +112,13 @@ templates/               Verbatim files copied into every new app.
                          CONVENTIONS.md / .cursorrules / .agents/rules/workflow.md
                          / .github/copilot-instructions.md / .editorconfig
                          / .env.example / .claude.json / .claude/hooks/
-                         all live here.
+                         all live here. AGENTS.md ALSO gets a template-specific
+                         {{PLAYBOOK}} injection: create.js substitutes the
+                         full-stack or api build playbook from
+                         templates/partials/agents-playbook-{fullstack,api}.md
+                         (the shared meta-rules stay in AGENTS.md, so the two
+                         stay single-sourced). The partials are NOT copied as
+                         app files.
 README.md                npm-facing package readme.
 ```
 
@@ -183,7 +189,13 @@ verbatim.
    When editing `templates/AGENTS.md`, `templates/CLAUDE.md`,
    `templates/CONVENTIONS.md`, `.cursorrules`, etc., remember they ship
    into every scaffolded app. Write for the audience of an AI agent
-   working inside a freshly-scaffolded webjs project.
+   working inside a freshly-scaffolded WebJs project. `templates/AGENTS.md`
+   is the one exception to "verbatim": it carries a `{{PLAYBOOK}}` marker
+   that `create.js` replaces with the full-stack or api build playbook from
+   `templates/partials/agents-playbook-{fullstack,api}.md`, so the api app
+   never ships UI-only guidance. Keep the shared meta-rules (required
+   context-gathering, strict typing, data) in `AGENTS.md` itself and only
+   the template-divergent build steps in the partials.
 5. **`templates/CLAUDE.md` uses Claude Code's `@import` syntax**
    (`@AGENTS.md`, `@CONVENTIONS.md`). See https://code.claude.com/docs/en/claude-md.md#import-additional-files
 

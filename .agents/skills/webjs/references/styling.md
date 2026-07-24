@@ -73,7 +73,7 @@ Avoid `@apply`: it hides which utilities a class uses and creates a second sourc
 An `html`-fragment helper is right for a repeated CHUNK of markup (the rubric above). For a repeated UI PRIMITIVE (button, input, card, badge) that needs variants and sizes, use a class helper instead: a function that returns a Tailwind class STRING you spread onto a native element. That is exactly what `@webjsdev/ui` ships (`buttonClass({ variant, size })`, `cardClass()`, `inputClass()`, `badgeClass({ variant })`), and it is what the scaffold gallery uses in `components/ui/`. To style a ONE-OFF that a variant does not cover (a circular icon button, a pill), compose the helper and override the bespoke bits with `cn()`: `cn(buttonClass({ variant: 'secondary', size: 'none' }), 'w-9 h-9 rounded-full')`. `cn` resolves Tailwind conflicts so a later class wins, including a shorthand over the axis it subsumes (`p-0` beats an earlier `px-4 py-2`), so an override just works. For an icon button prefer `size: 'none'` (it states "I supply my own box" by dropping the helper's padding + radius) over layering a `p-0` on top of the default size.
 
 ```ts
-// components/ui/button.ts  (webjs ui add button, themed to your app)
+// components/ui/button.ts  (npx webjsdev ui add button, themed to your app)
 import { cn } from '#lib/utils/cn.ts';
 const BASE = 'inline-flex cursor-pointer items-center justify-center ...';
 const VARIANTS = { default: 'bg-primary text-primary-foreground ...', secondary: '...' } as const;
@@ -91,7 +91,7 @@ html`<button class=${buttonClass({ variant: 'secondary', size: 'sm' })} @click=$
 
 Why a class helper (not a `<ui-button>` wrapper): it adds NO indirection, so the element stays native (`@click`, `?disabled`, form submission, focus, a11y all just work) and the markup stays readable, while every button shares one source of truth (so no button can forget `cursor-pointer` or drift). Put the affordance every variant needs (like `cursor-pointer`) on the shared BASE.
 
-**Default: `webjs ui add`, then modify. Do not hand-write a primitive from scratch.** For a repeated primitive with variants, run `webjs ui add <name>` then trim and theme the copied source. The scaffold already ships the `cn` prerequisite at `lib/utils/cn.ts`, so `add` works out of the box (a non-scaffold app runs `webjs ui init` once first to write `components.json`, the `cn` util, and the design tokens). The kit is shadcn-style, so `add` COPIES the helper's source INTO your `components/ui/` and you own and edit it exactly as freely as code you typed yourself. That is the key point: `add`-then-modify and hand-writing end at the SAME place (owned, editable class-helper source), so the difference is only the STARTING POINT. `add` starts you from vetted, variant-complete source you then adapt (and the copied header spells out the primitive's accessibility obligations), where hand-writing starts from a blank file and re-derives all of it for no benefit. Theme it to YOUR app (change the class values so the helper produces YOUR look, rather than bending your app to the kit's defaults) and keep only the parts you use (the gallery's `cardClass` is surface-only, since its panels vary their own padding and layout). Hand-author a primitive yourself ONLY for a one-off the kit does not cover, or a deliberate opt-out of the kit. Reserve `lib/utils/ui.ts` `html`-fragment helpers for repeated markup chunks; reserve `components/ui/*` class helpers for themed primitives with variants.
+**Default: `npx webjsdev ui add`, then modify. Do not hand-write a primitive from scratch.** For a repeated primitive with variants, run `npx webjsdev ui add <name>` then adapt the copied source (add, remove, restructure, or theme it as your app needs). The scaffold already ships the `cn` prerequisite at `lib/utils/cn.ts`, so `add` works out of the box (a non-scaffold app runs `npx webjsdev ui init` once first to write `components.json`, the `cn` util, and the design tokens). The kit is shadcn-style, so `add` COPIES the helper's source INTO your `components/ui/` and you own and edit it exactly as freely as code you typed yourself. That is the key point: `add`-then-modify and hand-writing end at the SAME place (owned, editable class-helper source), so the difference is only the STARTING POINT. `add` starts you from vetted, variant-complete source you then adapt (and the copied header spells out the primitive's accessibility obligations), where hand-writing starts from a blank file and re-derives all of it for no benefit. You own the copied source and can add, remove, restructure, or theme it however your app needs: change the class values so the helper produces YOUR look (rather than bending your app to the kit's defaults), keep only the parts you use (the gallery's `cardClass` is surface-only, since its panels vary their own padding and layout), and add variants the kit does not ship. Hand-author a primitive yourself ONLY for a one-off the kit does not cover, or a deliberate opt-out of the kit. Reserve `lib/utils/ui.ts` `html`-fragment helpers for repeated markup chunks; reserve `components/ui/*` class helpers for themed primitives with variants.
 
 ## Accessible native controls
 
@@ -119,9 +119,14 @@ The default stack is a static compiled Tailwind stylesheet (`css:build` compiles
     --background:       light-dark(#ffffff, #1e2226);
     --foreground:       light-dark(#191c20, #dee2e6);
     --card:             light-dark(#f7f8fa, #313539);
-    --muted-foreground: light-dark(#565c64, #94989c);
-    --border:           light-dark(#e2e5e9, #3d434b);
     --primary:          light-dark(#1e2226, #dee2e6);
+    --secondary:        light-dark(#eef0f3, #3a3f45);
+    --muted:            light-dark(#f1f3f5, #2a2e33);
+    --muted-foreground: light-dark(#565c64, #94989c);
+    --accent:           light-dark(#e9ecef, #383d43);
+    --border:           light-dark(#e2e5e9, #3d434b);
+    --ring:             light-dark(#9aa1a9, #6c737b);
+    --destructive:      light-dark(#b3261e, #f2b8b5);
     /* a derived token tracks BOTH themes for free via var(--primary) */
     --primary-tint: color-mix(in srgb, var(--primary) 22%, transparent);
   }

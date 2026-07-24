@@ -4,7 +4,7 @@
 
 - The four test layers (unit, browser, e2e, smoke) and where each file lives.
 - The `handle()` harness from `@webjsdev/server/testing` for driving the real request pipeline against a native `Response`.
-- `webjs test` and `webjs test --browser`, plus when a browser or e2e test is REQUIRED (hydration, client router, slots, custom-element upgrade).
+- `npm run test` and `npm run test:browser`, plus when a browser or e2e test is REQUIRED (hydration, client router, slots, custom-element upgrade).
 - Bun cross-runtime parity for runtime-sensitive code.
 - Rendering the app and LOOKING for visual defects a static check cannot catch (a collapsed or reflowing layout).
 - Convention validation with `webjs check`.
@@ -27,12 +27,12 @@ Assert only on what the layer needs. A block that inspects only the HTTP respons
 ## App runners (`webjs test`)
 
 ```sh
-webjs test              # runtime test runner over everything not under browser/ or e2e/
-webjs test --browser    # web-test-runner against test/**/browser/**
-WEBJS_E2E=1 webjs test   # adds the e2e layer
+npm run test              # unit + browser tests (both layers; e2e only with WEBJS_E2E=1)
+npm run test:browser      # web-test-runner against test/**/browser/**
+WEBJS_E2E=1 npm run test  # adds the e2e layer
 ```
 
-`webjs test` dispatches on the runtime (`node --test` on Node, `bun test` on Bun). The scaffold's `web-test-runner.config.js` globs `test/**/browser/**/*.test.js` and is already wired, so you do not set it up.
+`npm run test` dispatches on the runtime (`node --test` on Node, `bun test` on Bun). The scaffold's `web-test-runner.config.js` globs `test/**/browser/**/*.test.js` and is already wired, so you do not set it up.
 
 A scaffolded app has one root `test/` directory shaped the same way (feature first, kind second):
 
@@ -110,11 +110,11 @@ A layout bug (a board that collapses, cells of unequal size, a grid that resizes
 
 WebJs runs on Node 24+ or Bun. The Node suite is the source of truth; an additive Bun matrix re-runs the runtime-sensitive suite under Bun to catch the long tail of cross-runtime incompatibilities (a `node:*` API Bun implements differently, a crypto or stream edge case, an error-message-format quirk).
 
-Bun parity is part of the definition of done. A change to a runtime-sensitive surface (the serializer, the `node:http` vs `Bun.serve` listener and request path, SSR / action / CSRF dispatch, streams, `node:crypto`, the TS stripper, auth / session / cors) is NOT done until you run the Bun matrix green AND add or update a `test/bun/<feature>.mjs` cross-runtime assertion. Run it with `node scripts/run-bun-tests.js` (needs `bun` on PATH).
+If your app targets Bun, Bun parity is part of the definition of done. A change to a runtime-sensitive surface (the serializer, the `node:http` vs `Bun.serve` listener and request path, SSR / action / CSRF dispatch, streams, `node:crypto`, the TS stripper, auth / session / cors) is NOT done until you also run your suite under the Bun runtime (needs `bun` installed) and add a cross-runtime assertion for the touched surface.
 
 ## Convention validation (`webjs check`)
 
-`webjs check` is the correctness validator. Every rule catches code that is wrong to ship (a crash, a security leak, a type-strip failure), plus the `no-scaffold-placeholder` sentinel for unreplaced scaffold content. Run it and fix every violation before considering the change done (`webjs check --json` for an agent loop, `webjs check --rules` to list the rules). It is separate from `CONVENTIONS.md`, which carries the customizable project conventions you follow by judgment.
+`npm run check` is the correctness validator. Every rule catches code that is wrong to ship (a crash, a security leak, a type-strip failure), plus the `no-scaffold-placeholder` sentinel for unreplaced scaffold content. Run it and fix every violation before considering the change done (`npm run check -- --json` for an agent loop, `npm run check -- --rules` to list the rules). It is separate from `CONVENTIONS.md`, which carries the customizable project conventions you follow by judgment.
 
 ## What NOT to do
 

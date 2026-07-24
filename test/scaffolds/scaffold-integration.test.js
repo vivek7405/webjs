@@ -647,3 +647,77 @@ test('scaffoldApp --db postgres: json<T>() helper maps to jsonb, one schema both
     await rm(cwd, { recursive: true, force: true });
   }
 });
+
+// AGENTS.md carries a template-SPECIFIC build playbook (#1076): the full-stack
+// scaffold teaches the UI playbook (design tokens, the UI kit, an MPA), the api
+// scaffold teaches the backend playbook (route handlers, endpoint security), and
+// neither ships guidance that does not match what it generated. Both front-load
+// the same required meta-rules and drop the opt-out phrasing that let smaller
+// models under-gather context.
+test('scaffoldApp: AGENTS.md build playbook is template-specific (#1076)', async () => {
+  const cwd = await tempCwd();
+  const restore = muteConsole();
+  try {
+    await scaffoldApp('fs-app', cwd, { template: 'full-stack' });
+    await scaffoldApp('api-app', cwd, { template: 'api' });
+    const fs = readFileSync(join(cwd, 'fs-app', 'AGENTS.md'), 'utf8');
+    const api = readFileSync(join(cwd, 'api-app', 'AGENTS.md'), 'utf8');
+
+    // The placeholder is always substituted (a leftover would ship a broken app).
+    for (const [label, md] of [['full-stack', fs], ['api', api]]) {
+      assert.doesNotMatch(md, /\{\{PLAYBOOK\}\}|\{\{APP_NAME\}\}/, `${label}: no leftover placeholder`);
+    }
+
+    // Shared, required meta-rules on BOTH templates.
+    for (const [label, md] of [['full-stack', fs], ['api', api]]) {
+      assert.match(md, /Gather context BEFORE you build \(required\)/, `${label}: required context-gathering`);
+      assert.match(md, /Read the framework source for exact contracts/, `${label}: source-reading step`);
+      assert.match(md, /Never reach for `any`/, `${label}: no-any strict typing`);
+      assert.match(md, /npm run check/, `${label}: verification includes the check script`);
+      // No opt-out / permission-to-skip phrasing (the #1076 regression to
+      // prevent; "only when a task needs" is the historical wording).
+      assert.doesNotMatch(md, /do not have to read|only exploring|only (if|when) a task needs/i,
+        `${label}: no opt-out phrasing`);
+    }
+
+    // Full-stack teaches the UI playbook; the api template must NOT.
+    assert.match(fs, /light-dark\(LIGHT, DARK\)/, 'full-stack: design-token mandate');
+    assert.match(fs, /Tier 2, custom elements/, 'full-stack: UI kit tier-2 discovery');
+    assert.match(fs, /multi-page app \(MPA\)/, 'full-stack: MPA structure');
+    assert.match(fs, /position: fixed/, 'full-stack: fixed navbar');
+    assert.match(fs, /npm run css:build/, 'full-stack: css:build in the pipeline');
+    for (const uiOnly of [/light-dark/, /Tier 2/, /ui add/, /css:build/, /position: fixed/]) {
+      assert.doesNotMatch(api, uiOnly, `api: no UI-only guidance (${uiOnly})`);
+    }
+
+    // The api template teaches the backend playbook the full-stack one does not.
+    assert.match(api, /Build a backend API \(api template\)/, 'api: backend playbook heading');
+    assert.match(api, /app\/api\/features\//, 'api: backend-features showcase path');
+    assert.match(api, /`route\(\)` adapter/, 'api: route() adapter');
+    assert.match(api, /Secure every endpoint/, 'api: endpoint security section');
+    assert.doesNotMatch(fs, /Build a backend API/, 'full-stack: no backend-API heading');
+
+    // The component guidance (WebComponent, reactive props) is UI-only, so it
+    // lives in the full-stack playbook, never in the api AGENTS.md.
+    assert.match(fs, /Build components for interactivity/, 'full-stack: component guidance');
+    assert.doesNotMatch(api, /Build components for interactivity|WebComponent/,
+      'api: no component/reactive-props guidance');
+
+    // The sibling agent-doc surfaces (CONVENTIONS.md, .agents/rules/workflow.md)
+    // ship into BOTH apps, so they must be template-neutral: no opt-out phrasing,
+    // and they must acknowledge the api showcase rather than only the UI gallery.
+    const apiConv = readFileSync(join(cwd, 'api-app', 'CONVENTIONS.md'), 'utf8');
+    const apiFlow = readFileSync(join(cwd, 'api-app', '.agents/rules/workflow.md'), 'utf8');
+    const apiCursor = readFileSync(join(cwd, 'api-app', '.cursorrules'), 'utf8');
+    for (const [label, md] of [['CONVENTIONS.md', apiConv], ['workflow.md', apiFlow], ['.cursorrules', apiCursor]]) {
+      assert.doesNotMatch(md, /only while exploring|do not have to read|only (if|when) a task needs/i,
+        `api ${label}: no opt-out phrasing`);
+    }
+    for (const [label, md] of [['CONVENTIONS.md', apiConv], ['workflow.md', apiFlow]]) {
+      assert.match(md, /app\/api\/features/, `api ${label}: acknowledges the api showcase`);
+    }
+  } finally {
+    restore();
+    await rm(cwd, { recursive: true, force: true });
+  }
+});

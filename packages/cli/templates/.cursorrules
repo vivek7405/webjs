@@ -1,20 +1,20 @@
 # WebJs app rules (Cursor)
 
-Cursor reads `AGENTS.md` natively; this file points you at it and the agent
+Cursor reads `AGENTS.md` natively. This file points you at it and the agent
 skill, and carries the commit rule.
 
 - **Read `AGENTS.md` first, then `.agents/skills/webjs/SKILL.md`** (the guide to
   building a WebJs app; it routes to focused references under
-  `.agents/skills/webjs/references/` that you load only when a task needs them).
-- **The scaffold ships a browsable feature gallery** (single-concept demos under
-  `app/features/` plus the `app/examples/todo` app, with logic in `modules/`).
-  It is reference to learn the idioms from, not part of your product.
-- **Building a real app? Learn from the gallery FIRST, then clear it, then
-  build.** Skim the demos relevant to your task for the runnable idiom (the skill
-  teaches the same and SURVIVES the clear, so you never lose it), then run
-  `npm run gallery:clear` to shed the gallery and reset the home, then grow the
-  app in place: add routes under `app/`, components under `components/`, features
-  under `modules/<feature>/`, and keep server-only code behind `.server.ts`.
+  `.agents/skills/webjs/references/`). These are required context, not optional
+  reading: WebJs is not React, Next, or Lit, so gather this context before you
+  write code.
+- **Study the shipped examples, then clear them and build.** The scaffold ships
+  a browsable showcase to learn the real idioms from (a full-stack app ships a
+  UI feature gallery, the api template ships a backend-features showcase). Read
+  the parts that match your task, run `npm run gallery:clear` to shed the
+  showcase and reset to a clean base, then grow the app in place: add routes
+  under `app/`, features under `modules/<feature>/`, and keep server-only code
+  behind `.server.ts`. `AGENTS.md` carries the full template-specific playbook.
 - **Use the wired-up database (Drizzle)** for persistence. Never a JSON file, an
   in-memory array, or localStorage.
 - **Commit per logical unit** as soon as it is complete, and never commit to

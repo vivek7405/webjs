@@ -142,17 +142,18 @@ Actions: `append` / `prepend` (child of the target id), `before` / `after` (sibl
 ```ts
 // app/post/[id]/route.ts
 import { stream, streamResponse, acceptsStream, broadcast } from '@webjsdev/server';
+import { escapeText } from '@webjsdev/core';
 
 export async function POST(req: Request, { params }) {
   const comment = await addComment(params.id, await req.formData());
-  const parts = stream.append('comments', `<li>${escapeHtml(comment.text)}</li>`);
+  const parts = stream.append('comments', `<li>${escapeText(comment.text)}</li>`);
   broadcast(`post:${params.id}`, parts);              // fan out to every viewer
   if (acceptsStream(req)) return streamResponse(parts);
-  return Response.redirect(`/post/${params.id}`, 303); // no-JS fallback
+  return Response.redirect(new URL(`/post/${params.id}`, req.url), 303); // no-JS fallback
 }
 ```
 
-`stream.*` escapes the target id but NOT the content, so escape any user substring yourself, exactly like an `html` hole.
+`stream.*` escapes the target id but NOT the content, so escape any user substring yourself with `escapeText` (from `@webjsdev/core`), exactly like an `html` hole.
 
 ## Streaming (Suspense and RPC)
 
