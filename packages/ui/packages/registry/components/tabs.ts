@@ -241,7 +241,13 @@ export class UiTabsTrigger extends WebComponent({
     const tabs = this._tabs;
     if (!tabs) return;
     const orientation = tabs.orientation;
-    const triggers = Array.from(tabs.querySelectorAll<UiTabsTrigger>('ui-tabs-trigger'));
+    // Scope to triggers belonging to THIS group: querySelectorAll crosses into
+    // a nested <ui-tabs> inside a panel, and arrow nav at the boundary would
+    // jump into the inner group and set this group's value to an inner-only
+    // value (hiding every panel). Same scoping dropdown-menu applies to items.
+    const triggers = Array.from(tabs.querySelectorAll<UiTabsTrigger>('ui-tabs-trigger')).filter(
+      (t) => t._tabs === tabs,
+    );
     const idx = triggers.indexOf(this);
     const nextKey = orientation === 'horizontal' ? 'ArrowRight' : 'ArrowDown';
     const prevKey = orientation === 'horizontal' ? 'ArrowLeft' : 'ArrowUp';
@@ -257,7 +263,13 @@ export class UiTabsTrigger extends WebComponent({
       e.preventDefault();
       const v = target.value;
       if (v) tabs.setAttribute('value', v);
-      target.focus();
+      // Focus the inner <button role="tab">, NOT the <ui-tabs-trigger> host.
+      // The host carries no tabindex so it is not focusable; calling focus()
+      // on it is a no-op that leaves the focus ring stranded on the previous
+      // trigger while a different panel shows. The roving tabindex lives on
+      // the inner button, so that is what APG focus-follows-selection targets.
+      const btn = target.querySelector<HTMLButtonElement>('[role="tab"]');
+      (btn ?? target).focus();
     }
   };
 }
