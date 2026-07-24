@@ -241,7 +241,13 @@ export class UiTabsTrigger extends WebComponent({
     const tabs = this._tabs;
     if (!tabs) return;
     const orientation = tabs.orientation;
-    const triggers = Array.from(tabs.querySelectorAll<UiTabsTrigger>('ui-tabs-trigger'));
+    // Scope to triggers belonging to THIS group: querySelectorAll crosses into
+    // a nested <ui-tabs> inside a panel, and arrow nav at the boundary would
+    // jump into the inner group and set this group's value to an inner-only
+    // value (hiding every panel). Same scoping dropdown-menu applies to items.
+    const triggers = Array.from(tabs.querySelectorAll<UiTabsTrigger>('ui-tabs-trigger')).filter(
+      (t) => t._tabs === tabs,
+    );
     const idx = triggers.indexOf(this);
     const nextKey = orientation === 'horizontal' ? 'ArrowRight' : 'ArrowDown';
     const prevKey = orientation === 'horizontal' ? 'ArrowLeft' : 'ArrowUp';

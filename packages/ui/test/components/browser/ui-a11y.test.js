@@ -152,6 +152,42 @@ suite('ui-tabs a11y', () => {
     root.remove();
   });
 
+  test('arrow nav stays inside its own group when a panel nests another tabs', async () => {
+    const root = await mount(html`
+      <ui-tabs value="outer-a">
+        <ui-tabs-list>
+          <ui-tabs-trigger value="outer-a">Outer A</ui-tabs-trigger>
+          <ui-tabs-trigger value="outer-b">Outer B</ui-tabs-trigger>
+        </ui-tabs-list>
+        <ui-tabs-content value="outer-a">
+          <ui-tabs value="inner-x">
+            <ui-tabs-list>
+              <ui-tabs-trigger value="inner-x">Inner X</ui-tabs-trigger>
+              <ui-tabs-trigger value="inner-y">Inner Y</ui-tabs-trigger>
+            </ui-tabs-list>
+            <ui-tabs-content value="inner-x">INNER PANE</ui-tabs-content>
+            <ui-tabs-content value="inner-y">INNER PANE Y</ui-tabs-content>
+          </ui-tabs>
+        </ui-tabs-content>
+        <ui-tabs-content value="outer-b">OUTER PANE B</ui-tabs-content>
+      </ui-tabs>
+    `);
+    const outer = root.querySelector('ui-tabs');
+    const outerBtns = [
+      root.querySelector('ui-tabs-trigger[value="outer-a"] [role="tab"]'),
+      root.querySelector('ui-tabs-trigger[value="outer-b"] [role="tab"]'),
+    ];
+    // ArrowRight from the LAST outer trigger must wrap to the FIRST outer
+    // trigger, not jump into the nested group (which would set the outer
+    // value to an inner-only value and hide every outer panel).
+    outerBtns[1].focus();
+    press(outerBtns[1], 'ArrowRight');
+    await tick();
+    assert.equal(document.activeElement, outerBtns[0], 'wrapped within the outer group');
+    assert.equal(outer.getAttribute('value'), 'outer-a', 'outer value stays an outer value');
+    root.remove();
+  });
+
   test('vertical orientation navigates with ArrowDown / ArrowUp', async () => {
     const { root, tabsEl, btns } = await mountTabs('vertical');
     btns[0].focus();
