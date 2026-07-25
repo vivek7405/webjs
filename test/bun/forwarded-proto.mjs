@@ -36,7 +36,34 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { connect } from 'node:net';
 import { startServer } from '@webjsdev/server';
+
+/**
+ * Issue a GET with a VERBATIM request target, bypassing the fetch client.
+ *
+ * Both runtimes' `fetch` normalize the path before it reaches the wire (Bun
+ * collapses a leading `//`), which is exactly the shape being attacked here, so
+ * a raw socket is the only way to put it on the wire.
+ *
+ * @param {number} port
+ * @param {string} target
+ * @param {Record<string, string>} [headers]
+ * @returns {Promise<string>} the raw response text
+ */
+function rawGet(port, target, headers = {}) {
+  return new Promise((res, rej) => {
+    const sock = connect(port, '127.0.0.1', () => {
+      const extra = Object.entries(headers).map(([k, v]) => `${k}: ${v}\r\n`).join('');
+      sock.write(`GET ${target} HTTP/1.1\r\nHost: localhost:${port}\r\nConnection: close\r\n${extra}\r\n`);
+    });
+    let buf = '';
+    sock.setTimeout(8000, () => { sock.destroy(); rej(new Error(`raw GET ${target} timed out`)); });
+    sock.on('data', (d) => { buf += d; });
+    sock.on('end', () => res(buf));
+    sock.on('error', rej);
+  });
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CORE = pathToFileURL(resolve(__dirname, '../../packages/core/index.js')).toString();
@@ -108,12 +135,18 @@ try {
   // `/x` so a DIFFERENT route matches, using only the proto header every proxy
   // sets. The control proves `/x` is really routable, so the 404 below is the
   // attack being refused and not the fixture missing a route.
-  const control = await fetch(`${base}/x`);
-  assert.equal(control.status, 200, 'control: /x is a real route');
-  assert.equal((await control.json()).reached, true, 'control: /x answers');
+  // It has to go over a RAW SOCKET: Bun's `fetch` client rewrites
+  // `//evil.com/x` to `/evil.com/x` before sending, so driving this through
+  // `fetch` silently tests nothing on the very runtime the bug was on (this
+  // assertion passed against a deliberately reintroduced bug until it was
+  // moved off `fetch`).
+  const control = await rawGet(port, '/x');
+  assert.match(control, /^HTTP\/1\.1 200/, 'control: /x is a real route');
+  assert.match(control, /"reached":true/, 'control: /x answers');
 
-  const hostile = await fetch(`${base}//evil.com/x`, { headers: { 'x-forwarded-proto': 'https' } });
-  assert.equal(hostile.status, 404, 'a //-prefixed path must not collapse onto the /x route');
+  const hostile = await rawGet(port, '//evil.com/x', { 'x-forwarded-proto': 'https' });
+  assert.doesNotMatch(hostile, /"reached":true/, 'a //-prefixed path must not collapse onto the /x route');
+  assert.match(hostile, /^HTTP\/1\.1 404/, 'a //-prefixed path is not a route');
 
   // 7. A client-supplied `x-webjs-remote-ip` must never reach a handler as-is.
   // Node stamps its own socket address over it; Bun strips it and answers from
