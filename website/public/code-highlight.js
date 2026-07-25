@@ -7,7 +7,14 @@
  * palette declared once in the layout stylesheet. It mirrors the website's
  * lib/highlight.ts tokenizer so the colors match across every webjs surface.
  *
- * A MutationObserver re-runs on client-router navigations (new <pre> nodes
+ * Loaded from the ROOT layout, not the docs sub-layout, and scoped to
+ * `.prose-docs pre`. The root layout is never swapped by the client router,
+ * so the observer below installs exactly once and stays live for the session.
+ * A copy in the sub-layout would instead depend on the router re-executing a
+ * script it had just swapped in, and would never run at all for a reader
+ * whose first docs page arrives by soft navigation.
+ *
+ * The MutationObserver is what handles those navigations (new <pre> nodes
  * swapped into the DOM), and a data-hl guard prevents double processing.
  */
 (function () {
@@ -120,20 +127,29 @@
     code.appendChild(frag);
   }
 
+  // Scoped to .prose-docs on purpose. This script is loaded site-wide from the
+  // root layout, and the marketing pages (home, blog, compare) already emit
+  // their code blocks tokenized at SSR by lib/highlight.ts. Re-tokenizing
+  // those from textContent would throw away the server's spans and re-derive
+  // them from scratch. Only the docs ship plain <pre> for this to enhance.
+  var SCOPE = '.prose-docs pre';
+
   function run(root) {
-    var list = (root || document).querySelectorAll('pre');
+    var scope = root || document;
+    var list = scope.querySelectorAll(SCOPE);
     for (var i = 0; i < list.length; i++) highlight(list[i]);
+    // A subtree handed to us by the observer may BE a matching <pre>, which
+    // querySelectorAll would not match.
+    if (scope.matches && scope.matches(SCOPE)) highlight(scope);
   }
 
   function init() {
     run(document);
-    // Attach the observer at most once per document. This script is included
-    // by the docs sub-layout, which sits INSIDE the client router's swap
-    // range, and the router re-executes every script in a swapped range. So
-    // without this guard a marketing-to-docs navigation adds another
-    // document.body observer every time, and they accumulate for the life of
-    // the session. Re-running run(document) above is harmless either way,
-    // since each block is already guarded by data-hl.
+    // Attach the observer at most once per document. Loading from the root
+    // layout already means one execution per hard load, but the guard is kept
+    // so that moving this tag anywhere the router can swap cannot silently
+    // start accumulating body observers again. Re-running run(document) is
+    // harmless either way, since each block is guarded by data-hl.
     if (window.__webjsHighlightObserving) return;
     window.__webjsHighlightObserving = true;
     new MutationObserver(function (muts) {
@@ -142,7 +158,6 @@
         for (var b = 0; b < added.length; b++) {
           var node = added[b];
           if (node.nodeType !== 1) continue;
-          if (node.matches && node.matches('pre')) highlight(node);
           if (node.querySelectorAll) run(node);
         }
       }

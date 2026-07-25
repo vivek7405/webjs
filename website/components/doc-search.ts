@@ -1,4 +1,4 @@
-import { WebComponent, html, signal } from '@webjsdev/core';
+import { WebComponent, html, signal, navigate } from '@webjsdev/core';
 
 type Result = { path: string; title: string; score: number; snippet: string };
 
@@ -47,12 +47,19 @@ export class DocSearch extends WebComponent {
     if (this.query.get().length >= 2) this.open.set(true);
   }
 
-  navigate(path: string) {
+  /**
+   * Go to a result. This used to probe for a `window.navigate` global that
+   * the client router has never defined, so every result silently fell
+   * through to a full page reload. The router exports `navigate` from
+   * `@webjsdev/core`, so import it and use it; `location.href` stays as the
+   * fallback for the case where the router is disabled app-wide.
+   */
+  goTo(path: string) {
     this.open.set(false);
     this.query.set('');
-    if (typeof (window as any).navigate === 'function') {
-      (window as any).navigate(path);
-    } else {
+    try {
+      navigate(path);
+    } catch {
       location.href = path;
     }
   }
@@ -84,7 +91,7 @@ export class DocSearch extends WebComponent {
               results.map(r => html`
                 <a class="block p-2.5 px-3 no-underline text-fg border-b border-border last:border-b-0 transition-colors duration-fast hover:bg-accent-tint"
                    href=${r.path}
-                   @click=${(e: Event) => { e.preventDefault(); this.navigate(r.path); }}>
+                   @click=${(e: Event) => { e.preventDefault(); this.goTo(r.path); }}>
                   <div class="font-semibold text-[13px] mb-0.5">${r.title}</div>
                   <div class="text-[12px] text-fg-muted leading-[1.4] overflow-hidden whitespace-nowrap text-ellipsis">${r.snippet}</div>
                 </a>

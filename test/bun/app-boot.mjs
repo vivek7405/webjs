@@ -28,12 +28,17 @@ import { createRequestHandler } from '@webjsdev/server';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`;
 
-/** The three apps + the real routes to probe. ui-website includes a component
+/** The apps + the real routes to probe. ui-website includes a component
  *  detail page (`/docs/components/[name]`), the exact route class that 500'd in
- *  #526 when the registry copy was skipped. */
+ *  #526 when the registry copy was skipped.
+ *
+ *  The website's list carries doc routes because the docs are served by it
+ *  since #1098. The old `docs` app is gone from this list on purpose: it is a
+ *  redirect-only host now, and every route on it answers 301 with an empty
+ *  body, which passes the status check while probing zero preloads. Leaving it
+ *  here would have looked like docs coverage while providing none. */
 const APPS = [
-  { name: 'website', dir: 'website', routes: ['/'] },
-  { name: 'docs', dir: 'docs', routes: ['/', '/docs/no-build'] },
+  { name: 'website', dir: 'website', routes: ['/', '/docs/no-build', '/docs/components'] },
   { name: 'ui-website', dir: 'packages/ui/packages/website', routes: ['/', '/docs/components/button'] },
 ];
 
@@ -84,4 +89,4 @@ if (failed) {
   console.error(`FAIL  app boot-check on ${runtime}`);
   process.exit(1);
 }
-console.log(`OK  app boot-check passed on ${runtime} (website + docs + ui-website serve real routes, no broken preloads)`);
+console.log(`OK  app boot-check passed on ${runtime} (website incl. /docs + ui-website serve real routes, no broken preloads)`);

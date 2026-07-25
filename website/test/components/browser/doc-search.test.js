@@ -8,9 +8,9 @@
  * and renders a dropdown, so this is the layer that proves it still works.
  *
  * `fetch` is stubbed so the test asserts the component's behaviour (debounce,
- * dropdown states, navigation) rather than the search ranking, which is a
- * server concern covered separately. It also keeps the test deterministic
- * with no server running.
+ * dropdown states, result rendering, and where a result click goes) rather
+ * than the search ranking, which is a server concern covered separately. It
+ * also keeps the test deterministic with no server running.
  */
 import '#components/doc-search.ts';
 
@@ -98,6 +98,27 @@ suite('doc-search', () => {
     await afterSearch();
     await el.updateComplete;
     assert.ok(el.textContent.includes('No results'), 'the empty state is explicit');
+  });
+
+  test('a result click is intercepted rather than left to the browser', async () => {
+    // The handler preventDefaults and routes itself. The navigation that
+    // follows cannot be asserted here (it would navigate the test runner out
+    // of the suite), so this pins the interception, and docs-search.test.ts
+    // pins that the router is what it hands off to.
+    await type('routing');
+    await afterSearch();
+    await el.updateComplete;
+
+    const link = el.querySelector('a');
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+    // Stop the event before the component's own handler runs, so the click is
+    // observed without the navigation it would otherwise trigger.
+    const block = (e) => { e.preventDefault(); e.stopImmediatePropagation(); };
+    link.addEventListener('click', block, { capture: true });
+    link.dispatchEvent(ev);
+    link.removeEventListener('click', block, { capture: true });
+
+    assert.ok(ev.defaultPrevented, 'the click is handled, not left to the browser');
   });
 
   test('typing again supersedes the previous query', async () => {

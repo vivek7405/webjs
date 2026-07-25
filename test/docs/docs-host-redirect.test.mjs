@@ -71,9 +71,23 @@ test('an unknown path still redirects rather than 404ing', async () => {
   assert.equal(res.headers.get('location'), 'https://webjs.dev/whatever/old/path');
 });
 
-test('the readiness probe is exempt, so deploys can still gate on it', async () => {
+test('the readiness probe is answered locally, so deploys can still gate on it', async () => {
   // Redirecting /__webjs/ready would fail every healthcheck and the service
   // would never come up, which is the one way to actually break this host.
+  // The framework answers the probes before app middleware runs, so this
+  // holds regardless of the middleware; it is pinned because the deploy
+  // depends on it, not because the middleware is what provides it.
   const res = await handle('/__webjs/ready');
   assert.ok(res.status < 300, `expected a local 2xx, got ${res.status}`);
+});
+
+test('the rest of the /__webjs namespace is left to the framework, not answered here', async () => {
+  // The middleware must not swallow the framework's own endpoints with a
+  // canned body. /__webjs/core/* DOES reach app middleware (unlike the
+  // probes), so a blanket response here would serve text where a module
+  // belongs. A 404 from the framework is fine and expected on this host,
+  // which serves no HTML; what matters is that the body is not ours.
+  const res = await handle('/__webjs/core/index-browser.js');
+  assert.notEqual(res.status, 301, 'framework paths are not redirected');
+  assert.notEqual(await res.text(), 'ok', 'and not answered with a canned body');
 });

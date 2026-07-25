@@ -1068,6 +1068,37 @@ test('reactivateScripts: applies meta csp-nonce to re-emitted body scripts', () 
     'reactivated body scripts must carry the meta nonce, not the source nonce');
 });
 
+test('reactivateScripts: reactivates a script that IS the container, not just a descendant', () => {
+  // The swap loop passes each TOP-LEVEL node of the swapped range, so the
+  // container can BE a script. querySelectorAll never matches the element it
+  // is called on, so this case used to be skipped silently: a layout that
+  // emits a progressive-enhancement script as a sibling of its content (the
+  // docs shell does) simply stopped enhancing after a soft navigation, with
+  // no error to notice.
+  document.head.innerHTML = '<meta name="csp-nonce" content="body-nonce">';
+  document.body.innerHTML = '<script id="top" nonce="stale">window.x = 1;</script>';
+  const top = document.getElementById('top');
+
+  _reactivateScripts(top);
+
+  const s = document.body.querySelector('script#top');
+  assert.ok(s, 'the script is still in the document');
+  assert.notEqual(s, top, 'it was replaced by a fresh node, which is what makes it run');
+  assert.equal(s.getAttribute('nonce'), 'body-nonce', 'and it carries the meta nonce');
+});
+
+test('reactivateScripts: a container that is not a script still reactivates its descendants', () => {
+  document.head.innerHTML = '<meta name="csp-nonce" content="body-nonce">';
+  document.body.innerHTML = '<div id="wrap"><script id="inner">window.y = 1;</script></div>';
+  const wrap = document.getElementById('wrap');
+  const before = document.getElementById('inner');
+
+  _reactivateScripts(wrap);
+
+  const after = wrap.querySelector('script#inner');
+  assert.ok(after && after !== before, 'the descendant script was re-emitted');
+});
+
 /* ====================================================================
  * isNonHtmlPath
  * ==================================================================== */

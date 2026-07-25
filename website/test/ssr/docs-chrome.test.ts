@@ -46,8 +46,12 @@ const bodyOf = async (path: string) => {
 
 /**
  * The shared header markup, sliced out by the wrapper the root layout emits.
- * Both pages must produce a byte-identical slice, which is the strongest
- * statement of "one header" available without diffing whole documents.
+ *
+ * Note what this does and does not prove. Byte equality across two pages
+ * shows the header carries no page-dependent state, which is worth pinning,
+ * but it cannot catch a docs-only header: `headerOf` returns the FIRST match,
+ * which is always the root layout's, and a second header would render after
+ * it. The count assertion further down is what covers that case.
  */
 function headerOf(html: string): string {
   const start = html.indexOf('<div class="site-top');
@@ -66,6 +70,16 @@ function footerOf(html: string): string {
 test('a docs page renders the SAME header as a marketing page', async () => {
   const [doc, marketing] = await Promise.all([bodyOf(DOC_PATH), bodyOf(MARKETING_PATH)]);
   assert.equal(headerOf(doc), headerOf(marketing), 'the header markup must be identical, not merely similar');
+});
+
+test('the shared skip-link resolves on a docs page', async () => {
+  // The root layout emits "Skip to content" pointing at #main, and every
+  // marketing page supplies that id. A docs page that omits it leaves the
+  // shared chrome's one keyboard affordance pointing at nothing, which is
+  // invisible unless you tab into it.
+  const doc = await bodyOf(DOC_PATH);
+  assert.ok(doc.includes('href="#main"'), 'the skip link is present, from the shared layout');
+  assert.ok(doc.includes('id="main"'), 'and the docs supply its target');
 });
 
 test('a docs page renders the SAME footer as a marketing page', async () => {

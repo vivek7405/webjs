@@ -97,24 +97,40 @@ export default function DocsLayout({ children }: { children: unknown }) {
     <style>
       /* Content typography for doc pages, scoped under .prose-docs so the
          same element tags inside the shared header, footer, and sidebar stay
-         unaffected. Every value reads a marketing-site token. */
+         unaffected.
+
+         This deliberately tracks the site's OTHER long-form surface, the blog
+         post renderer in lib/render-post.ts: serif headings in --fg, no rules
+         between sections, code in a --bg-subtle card, an accent-bar
+         blockquote with no fill. The docs previously had their own voice here
+         (an orange h1, a border-top on every h2, near-black code blocks) and
+         that mismatch is what made them read as a different site even after
+         they moved onto this one.
+
+         The one deliberate divergence is RHYTHM. A blog post breathes at
+         80px between sections; a reference page with forty of them would just
+         be scrolling. So the scale is the site's and the spacing is tighter. */
       .prose-docs h1 {
-        font: 700 var(--text-doc-h1)/1.1 var(--font-serif);
+        font: 700 var(--text-doc-h1)/1.12 var(--font-serif);
         letter-spacing: -0.025em;
-        margin: 0 0 16px;
-        color: var(--accent);
+        margin: 0 0 20px;
+        color: var(--fg);
       }
       .prose-docs h2 {
-        font: 700 var(--text-doc-h2)/1.2 var(--font-serif);
+        font: 700 var(--text-doc-h2)/1.18 var(--font-serif);
         letter-spacing: -0.02em;
-        margin: 48px 0 12px;
-        padding-top: 24px;
-        border-top: 1px solid var(--border);
+        color: var(--fg);
+        margin: 56px 0 16px;
       }
-      .prose-docs h3 { font-size: 1.1rem; font-weight: 700; margin: 24px 0 8px; }
-      .prose-docs p  { margin: 0 0 16px; line-height: 1.7; overflow-wrap: anywhere; }
-      .prose-docs ul, .prose-docs ol { padding-left: 24px; margin: 0 0 16px; }
-      .prose-docs li { margin: 8px 0; line-height: 1.6; overflow-wrap: anywhere; }
+      .prose-docs h3 {
+        font: 700 1.15rem/1.3 var(--font-serif);
+        letter-spacing: -0.01em;
+        color: var(--fg);
+        margin: 36px 0 10px;
+      }
+      .prose-docs p  { margin: 0 0 18px; font-size: 17px; line-height: 1.75; overflow-wrap: anywhere; }
+      .prose-docs ul, .prose-docs ol { padding-left: 24px; margin: 0 0 18px; }
+      .prose-docs li { margin: 8px 0; font-size: 17px; line-height: 1.7; overflow-wrap: anywhere; }
       .prose-docs a {
         color: var(--accent);
         text-decoration: underline;
@@ -124,24 +140,24 @@ export default function DocsLayout({ children }: { children: unknown }) {
       }
       .prose-docs a:hover { text-decoration-color: currentColor; }
       .prose-docs hr {
-        margin: 48px 0;
+        margin: 56px 0;
         border: 0;
         height: 1px;
         background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
       }
       .prose-docs pre {
-        margin: 0 0 16px;
-        padding: 16px;
-        border-radius: 8px;
-        background: var(--bg-sunken);
+        margin: 0 0 24px;
+        padding: 20px 24px;
+        border-radius: 12px;
+        background: var(--bg-subtle);
         border: 1px solid var(--border);
         overflow-x: auto;
-        font: 14px/1.6 var(--font-mono);
+        font: 13px/1.7 var(--font-mono);
         color: var(--fg);
       }
       .prose-docs code {
         font-family: var(--font-mono);
-        font-size: 0.88em;
+        font-size: 0.86em;
         padding: 2px 6px;
         border-radius: 4px;
         background: var(--bg-subtle);
@@ -151,21 +167,29 @@ export default function DocsLayout({ children }: { children: unknown }) {
       .prose-docs pre code { padding: 0; border: 0; background: transparent; font-size: inherit; }
       .prose-docs strong { font-weight: 700; color: var(--fg); }
       .prose-docs blockquote {
-        margin: 0 0 16px;
-        padding: 12px 24px;
-        border-left: 3px solid var(--accent);
-        background: var(--accent-tint);
-        border-radius: 0 8px 8px 0;
-        color: var(--fg);
+        margin: 28px 0;
+        padding: 0 0 0 20px;
+        border-left: 2px solid var(--accent);
+        color: var(--fg-muted);
+        font-size: 17px;
+        line-height: 1.7;
         font-style: italic;
       }
-      .prose-docs table { width: 100%; margin: 0 0 16px; border-collapse: collapse; font-size: 14px; }
-      .prose-docs th, .prose-docs td { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left; }
-      .prose-docs th { font-weight: 600; background: var(--bg-subtle); }
+      .prose-docs table { width: 100%; margin: 0 0 24px; border-collapse: collapse; font-size: 15px; }
+      .prose-docs th, .prose-docs td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+      .prose-docs th { font-weight: 600; color: var(--fg); }
 
       /* The sidebar sticks BELOW the shared fixed header, so it reads
          --header-h from the root layout rather than assuming a bare viewport.
-         Only the offset is docs-specific; the header itself is shared. */
+         Only the offset is docs-specific; the header itself is shared.
+
+         It is deliberately TRANSPARENT on desktop: no panel fill, no divider
+         rule. The root layout paints one warm glow across the whole viewport
+         behind the content, and an opaque sidebar would mask it on the left
+         while the content column kept it, splitting the page into two
+         different backgrounds and making the docs read as a separate app
+         bolted onto the site. The same reason the marketing pages and the UI
+         site's docs shell carry no panel behind their nav. */
       .docs-sidebar {
         position: sticky;
         top: var(--header-h);
@@ -207,6 +231,13 @@ export default function DocsLayout({ children }: { children: unknown }) {
           transform: translateX(-100%);
           transition: transform 220ms cubic-bezier(0.3, 0, 0.3, 1);
           box-shadow: 4px 0 24px oklch(0 0 0 / 0.25);
+          /* The drawer DOES need a fill, unlike the desktop sidebar: it floats
+             over the content it is covering, so it has to be opaque. Scoped to
+             this breakpoint so the desktop column stays transparent over the
+             page glow. */
+          background: var(--bg-elev);
+          border-right: 1px solid var(--border);
+          padding-top: 1.5rem;
         }
         body[data-docs-nav-open] .docs-sidebar { transform: translateX(0); }
         .docs-backdrop {
@@ -225,10 +256,15 @@ export default function DocsLayout({ children }: { children: unknown }) {
 
     <div class="docs-backdrop" onclick="document.body.removeAttribute('data-docs-nav-open')"></div>
 
-    <div class="min-[1920px]:mx-auto min-[1920px]:max-w-[1280px] grid grid-cols-[260px_1fr] min-h-screen max-[860px]:grid-cols-1">
+    <!-- Same container as the shared header (max-w-[1240px] mx-auto px-6), so
+         the sidebar's left edge lines up with the wordmark above it and the
+         content column lines up with every other page on the site. A
+         full-bleed docs shell was the other tell that this section was pasted
+         in from somewhere else. -->
+    <div class="max-w-[1240px] mx-auto px-6 grid grid-cols-[248px_1fr] gap-10 min-h-screen max-[860px]:grid-cols-1 max-[860px]:gap-0">
       <aside
         id="docs-sidebar"
-        class="docs-sidebar overflow-y-auto py-8 px-6 border-r border-border bg-bg-subtle text-sm"
+        class="docs-sidebar overflow-y-auto py-10 text-sm max-[860px]:px-5"
         aria-label="Documentation"
         onclick="if (event.target.closest('a')) document.body.removeAttribute('data-docs-nav-open')"
       >
@@ -237,12 +273,12 @@ export default function DocsLayout({ children }: { children: unknown }) {
           ${NAV_SECTIONS.map((s) => html`
             <div class="font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle mt-6 mb-2 first:mt-0">${s.title}</div>
             ${s.items.map((it) => html`
-              <a class="block py-1.5 px-3 my-px rounded-md text-fg-muted no-underline text-sm transition-colors duration-fast hover:text-fg hover:bg-bg-elev" href=${it.href}>${it.label}</a>
+              <a class="block py-1.5 px-3 my-px -mx-3 rounded-md text-fg-muted no-underline text-sm transition-colors duration-fast hover:text-fg hover:bg-bg-subtle" href=${it.href}>${it.label}</a>
             `)}
           `)}
         </nav>
       </aside>
-      <main class="min-w-0 max-w-[820px] px-6 pt-10 pb-16">
+      <main id="main" tabindex="-1" class="min-w-0 max-w-[820px] pt-10 pb-16 focus:outline-none">
         <button
           class="hidden max-[860px]:inline-flex items-center gap-2 mb-6 px-3 py-2 rounded-lg border border-border bg-bg-elev text-fg-muted text-sm cursor-pointer transition-colors duration-fast hover:text-fg hover:border-border-strong"
           aria-controls="docs-sidebar"
@@ -254,11 +290,5 @@ export default function DocsLayout({ children }: { children: unknown }) {
         <div class="prose-docs">${children}</div>
       </main>
     </div>
-
-    <!-- Progressive-enhancement syntax highlighting for the doc code samples.
-         The blocks are server-rendered as plain readable text; this tokenizes
-         them into the SAME t-* classes the marketing site's SSR highlighter
-         emits, whose palette is declared once in public/input.css. -->
-    <script src="/public/code-highlight.js" defer></script>
   `;
 }

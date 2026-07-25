@@ -15,6 +15,8 @@
  */
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,19 +69,34 @@ test('hits carry a title and a snippet the dropdown can render', async () => {
 
 test('the index does not depend on the working directory', async () => {
   // The old index walked from process.cwd(), so it silently returned nothing
-  // whenever the server ran from anywhere but the app dir. `webjs test` runs
-  // this suite FROM the app dir, which is the one cwd that cannot catch that,
-  // so the check moves the working directory out from under a fresh handler
-  // and asserts search still works.
-  const original = process.cwd();
-  process.chdir(tmpdir());
-  try {
-    const app = await createRequestHandler({ appDir: WEBSITE_ROOT, dev: false });
+  // whenever the server ran from anywhere but the app dir. This has to run in
+  // a FRESH process: in prod mode the module cache is not busted, so a chdir
+  // inside this process would happen after the modules already resolved their
+  // roots, and the check would pass even with the bug restored.
+  const script = `
+    const { createRequestHandler } = await import('@webjsdev/server');
+    process.chdir(${JSON.stringify(tmpdir())});
+    const app = await createRequestHandler({ appDir: ${JSON.stringify(WEBSITE_ROOT)}, dev: false });
     await app.warmup?.();
     const res = await app.handle(new Request('http://localhost/api/search?q=components'));
-    assert.equal(res.status, 200);
-    assert.ok(((await res.json()) as Hit[]).length > 0, 'indexed the docs from an unrelated cwd');
-  } finally {
-    process.chdir(original);
-  }
+    const hits = await res.json();
+    process.stdout.write('HITS:' + hits.length);
+  `;
+  const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+    cwd: WEBSITE_ROOT,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  const hits = Number(/HITS:(\d+)/.exec(out)?.[1] ?? 0);
+  assert.ok(hits > 0, 'a fresh process with an unrelated cwd still indexes the docs');
+});
+
+test('a result click hands off to the client router, not a page reload', () => {
+  // The browser suite pins that the click is intercepted; it cannot pin where
+  // the handoff goes without navigating the test runner out of the suite. The
+  // component used to probe a `window.navigate` global the router has never
+  // defined, so every result quietly fell through to location.href.
+  const src = readFileSync(resolve(WEBSITE_ROOT, 'components/doc-search.ts'), 'utf8');
+  assert.ok(!src.includes('window as any).navigate'), 'no probe for a global that does not exist');
+  assert.match(src, /import \{[^}]*\bnavigate\b[^}]*\} from '@webjsdev\/core'/, 'imports the router navigate');
 });

@@ -20,13 +20,18 @@
  */
 const TARGET = (process.env.SITE_URL || 'https://webjs.dev').replace(/\/$/, '');
 
-export default async function redirectToSite(req: Request): Promise<Response> {
+export default async function redirectToSite(
+  req: Request,
+  next: () => Promise<Response>,
+): Promise<Response> {
   const { pathname, search } = new URL(req.url);
 
-  // The framework's own endpoints stay local. /__webjs/ready is the Railway
-  // healthcheck this service gates its deploys on, so redirecting it would
-  // fail every deploy.
-  if (pathname.startsWith('/__webjs/')) return new Response('ok');
+  // The framework's own endpoints stay local, handled by the framework rather
+  // than answered here. The health and readiness probes are actually served
+  // before app middleware runs, so they never reach this line, but the rest of
+  // the namespace does, and answering it with a canned body would break it
+  // rather than leave it alone.
+  if (pathname.startsWith('/__webjs/')) return next();
 
   // A bare visit to the host means "the documentation", not "the marketing
   // home page", so root lands on the docs hub rather than at /.
