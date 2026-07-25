@@ -248,15 +248,19 @@ export default function DocsLayout({ children }: { children: unknown }) {
         height: calc(100vh - var(--header-h));
       }
 
-      /* Sidebar scrollbar: hidden until hover, matching the .scroll-thin
-         treatment the root layout defines for the marketing pages. */
-      .docs-sidebar { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color 300ms; }
-      .docs-sidebar:hover { scrollbar-color: var(--border-strong) transparent; }
-      .docs-sidebar::-webkit-scrollbar { width: 6px; }
-      .docs-sidebar::-webkit-scrollbar-track { background: transparent; }
-      .docs-sidebar::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
-      .docs-sidebar:hover::-webkit-scrollbar-thumb { background: var(--border-strong); }
-      .docs-sidebar::-webkit-scrollbar-thumb:hover { background: var(--fg-subtle); }
+      /* The NAV scrolls, not the sidebar: the search field stays put at the
+         top of the column rather than scrolling out of reach, and the
+         scrollbar spans only the link list instead of running the full height
+         of the column and pressing against the field. Hidden until hover,
+         matching the .scroll-thin treatment the root layout defines for the
+         marketing pages. */
+      .docs-nav { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color 300ms; }
+      .docs-nav:hover { scrollbar-color: var(--border-strong) transparent; }
+      .docs-nav::-webkit-scrollbar { width: 6px; }
+      .docs-nav::-webkit-scrollbar-track { background: transparent; }
+      .docs-nav::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
+      .docs-nav:hover::-webkit-scrollbar-thumb { background: var(--border-strong); }
+      .docs-nav::-webkit-scrollbar-thumb:hover { background: var(--fg-subtle); }
 
       /* Mobile: the sidebar becomes a drawer sliding in from the left,
          toggled by [data-docs-nav-open] on body. The attribute name is
@@ -326,10 +330,9 @@ export default function DocsLayout({ children }: { children: unknown }) {
         /* A wide table has to scroll inside its own box here, or it pushes the
            DOCUMENT past the viewport and drags the shared fixed header with
            it. A display of block is what makes overflow apply to a table at
-           all, and it is scoped to this breakpoint because it also shrinks the
-           table
-           shrink-to-fit, which on a wide screen leaves the row rules stopping
-           short of the column edge. */
+           all, and it is scoped to this breakpoint because it also shrinks
+           the table to fit its content, which on a wide screen leaves the row
+           rules stopping short of the column edge. */
         .prose-docs table {
           display: block;
           max-width: 100%;
@@ -348,16 +351,20 @@ export default function DocsLayout({ children }: { children: unknown }) {
     <div class="max-w-[1240px] mx-auto px-6 grid grid-cols-[248px_1fr] gap-10 min-h-screen max-[860px]:grid-cols-1 max-[860px]:gap-0">
       <aside
         id="docs-sidebar"
-        class="docs-sidebar overflow-y-auto py-10 text-sm max-[860px]:px-5"
+        class="docs-sidebar flex flex-col py-10 text-sm max-[860px]:px-5"
         aria-label="Documentation"
         onclick="if (event.target.closest('a')) document.body.removeAttribute('data-docs-nav-open')"
       >
-        <doc-search></doc-search>
-        <nav>
+        <doc-search class="shrink-0"></doc-search>
+        <!-- min-h-0 is what lets this shrink inside the flex column; without
+             it the nav takes its content height and the column scrolls
+             instead, taking the search field with it. pr-4 keeps the
+             scrollbar off the links, pl-1 keeps them off the left edge. -->
+        <nav class="docs-nav flex-1 min-h-0 overflow-y-auto pr-3">
           ${NAV_SECTIONS.map((s) => html`
             <div class="font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle mt-6 mb-2 first:mt-0">${s.title}</div>
             ${s.items.map((it) => html`
-              <a class="block py-1.5 px-3 my-px -mx-3 rounded-md text-fg-muted no-underline text-sm transition-colors duration-fast hover:text-fg hover:bg-bg-subtle" href=${it.href}>${it.label}</a>
+              <a class="block py-1.5 px-3 my-px rounded-md text-fg-muted no-underline text-sm transition-colors duration-fast hover:text-fg hover:bg-bg-subtle" href=${it.href}>${it.label}</a>
             `)}
           `)}
         </nav>
