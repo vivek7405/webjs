@@ -143,6 +143,26 @@ test('docs pages describe the docs, not the marketing pitch', async () => {
   assert.match(doc, /<title>Routing \| WebJs<\/title>/, 'while the page still owns its title');
 });
 
+test('docs pages keep the full social card, not just the fields they override', async () => {
+  // Metadata merges as a shallow spread per layer, so a sub-layout that names
+  // `openGraph` REPLACES the root's object rather than merging into it. The
+  // first version of the docs metadata did exactly that and silently dropped
+  // og:image, its dimensions, og:url, and the large-image Twitter card,
+  // leaving every doc URL to share as a bare text card. Assert the fields at
+  // RISK, not only the ones the sub-layout means to set.
+  const doc = await bodyOf(DOC_PATH);
+  for (const tag of [
+    '<meta property="og:image" content="http://localhost/public/og.png">',
+    '<meta property="og:image:width" content="1200">',
+    '<meta property="og:image:height" content="630">',
+    '<meta name="twitter:card" content="summary_large_image">',
+    '<meta name="twitter:image" content="http://localhost/public/og.png">',
+  ]) {
+    assert.ok(doc.includes(tag), `docs page is missing ${tag}`);
+  }
+  assert.match(doc, /<meta property="og:url" content="http:\/\/localhost\/docs\/routing">/, 'og:url is the page, not the origin');
+});
+
 test('/docs redirects to the introduction rather than serving a second landing page', async () => {
   const res = await handle('/docs');
   assert.equal(res.status, 308);
