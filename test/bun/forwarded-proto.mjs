@@ -58,6 +58,12 @@ try {
   // A route handler reading the raw request url, the app-code surface.
   w('app/api/whoami/route.ts', `export async function GET(req: Request) {\n  return Response.json({ url: req.url, origin: new URL(req.url).origin, ip: req.headers.get('x-webjs-remote-ip') });\n}`);
   w('app/api/echo/route.ts', `export async function POST(req: Request) {\n  return Response.json({ method: req.method, body: await req.text(), ct: req.headers.get('content-type'), origin: new URL(req.url).origin });\n}`);
+  // The target of the scheme-relative-authority attack below. If the path is
+  // resolved rather than assigned, `//evil.com/x` collapses to `/x` and reaches
+  // THIS route; correct behaviour never matches it.
+  w('app/x/route.ts', `export async function GET(req: Request) {\n  return Response.json({ reached: true, url: req.url });\n}`);
+  // A WebSocket endpoint, so the upgrade path's correction is asserted too.
+  w('app/live/route.ts', `export function WS(ws: any, req: Request) {\n  ws.send(JSON.stringify({ url: req.url }));\n}`);
 
   let server;
   ({ server, close } = await startServer({ appDir: dir, dev: true, port: 0, logger: quiet }));
@@ -98,13 +104,16 @@ try {
 
   // 6. A `//`-prefixed path must NOT be read as an authority. Resolving the
   // path against the corrected origin turns `//evil.com/x` into
-  // `https://evil.com/x`, handing over the origin AND matching a different
-  // route, using only the proto header every proxy sets.
+  // `https://evil.com/x`, handing over the origin AND collapsing the path to
+  // `/x` so a DIFFERENT route matches, using only the proto header every proxy
+  // sets. The control proves `/x` is really routable, so the 404 below is the
+  // attack being refused and not the fixture missing a route.
+  const control = await fetch(`${base}/x`);
+  assert.equal(control.status, 200, 'control: /x is a real route');
+  assert.equal((await control.json()).reached, true, 'control: /x answers');
+
   const hostile = await fetch(`${base}//evil.com/x`, { headers: { 'x-forwarded-proto': 'https' } });
-  if (hostile.status < 400) {
-    const seen = await hostile.json().catch(() => null);
-    if (seen) assert.notEqual(new URL(seen.url).host, 'evil.com', 'a //-path never becomes the authority');
-  }
+  assert.equal(hostile.status, 404, 'a //-prefixed path must not collapse onto the /x route');
 
   // 7. A client-supplied `x-webjs-remote-ip` must never reach a handler as-is.
   // Node stamps its own socket address over it; Bun strips it and answers from
@@ -124,9 +133,20 @@ try {
   assert.equal(echoed.ct, 'application/json', 'content-type survives the rebuild');
   assert.equal(echoed.origin, 'https://webjs.dev', 'a POST is origin-corrected too');
 
+  // 9. The WS upgrade path corrects its handler request too. The node shell
+  // gets this from `buildRequestFromUpgrade`; on Bun it is `bunUpgrade`
+  // applying the same helper. Untested, a regression here would be silent.
+  const wsUrl = await new Promise((res, rej) => {
+    const sock = new WebSocket(`ws://localhost:${port}/live`, { headers: proxied });
+    const timer = setTimeout(() => { try { sock.close(); } catch {} rej(new Error('WS handshake timed out')); }, 8000);
+    sock.onmessage = (ev) => { clearTimeout(timer); try { sock.close(); } catch {} res(JSON.parse(String(ev.data)).url); };
+    sock.onerror = () => { clearTimeout(timer); rej(new Error('WS connection failed')); };
+  });
+  assert.equal(new URL(wsUrl).origin, 'https://webjs.dev', `the WS handler request is origin-corrected on ${runtime}`);
+
   await close();
   close = null;
-  console.log(`OK  forwarded proto/host passed on ${runtime} (page ctx.url + route req.url both https)`);
+  console.log(`OK  forwarded proto/host passed on ${runtime} (page ctx.url + route req.url + WS all https)`);
 } catch (e) {
   failure = e;
 } finally {
