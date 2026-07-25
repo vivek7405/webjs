@@ -39,5 +39,13 @@ test('home metadata is single-source and consistent across title, og, and twitte
   assert.equal(m.twitter.title, m.title, 'twitter:title matches the <title>');
   assert.equal(m.openGraph.description, m.description, 'og:description matches the meta description');
   assert.equal(m.twitter.description, m.description, 'twitter:description matches the meta description');
-  assert.equal(m.openGraph['image:alt'], m.title, 'og image alt matches the title');
+  // og:image:alt deliberately does NOT mirror the title. Alt text describes the
+  // IMAGE, and the card (public/og.png) carries its own benefit-led headline
+  // rather than the page title, so tying the two together would force one of
+  // them to be wrong. What must hold is that it stays a real description
+  // instead of silently going empty or falling back to the title.
+  const alt = m.openGraph['image:alt'];
+  assert.equal(typeof alt, 'string', 'og image alt is a string');
+  assert.ok(alt.trim().length > 20, `og image alt is a real description, got ${JSON.stringify(alt)}`);
+  assert.notEqual(alt, m.title, 'og image alt describes the card, not the page title');
 });
