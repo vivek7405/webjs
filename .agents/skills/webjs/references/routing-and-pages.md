@@ -94,6 +94,8 @@ export async function POST(req: Request) {
 
 Optional root-level plus per-segment. The default export is `async (req, next) => Response`. Return a Response to short-circuit, or call `next()` and post-process. Per-segment middleware applies to its subtree, outermost to innermost.
 
+The root file sits beside `app/`, not inside it, and may be `middleware.ts` / `.js` / `.mts` / `.mjs` (`.ts` wins if more than one exists). A per-segment `app/<segment>/middleware.*` takes any of the same extensions.
+
 ## Metadata and `generateMetadata`
 
 A page exports `metadata` (static) or `generateMetadata(ctx)` (request-scoped, takes precedence). Values flow into `<head>` at SSR and merge across nested layouts (deeper wins). Type both with `Metadata`; `MetadataContext` types the argument. The surface is Next.js-compatible.
