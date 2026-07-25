@@ -187,6 +187,14 @@ jobs:
       # on the Bun SSR path (buffered and streamed) as on Node.
       - name: webjs binding-prefix dispatch on Bun
         run: bun test/bun/binding-prefixes.mjs
+      # Reverse-proxy forwarded headers on Bun (#1090): the node shell corrects
+      # the request url via urlFromRequest before building its Request, but the
+      # Bun shell handed Bun.serve's request straight through, so behind a
+      # TLS-terminating proxy every absolute URL an app derived came out http://
+      # (webjs.dev served an http:// og:image). This asserts a page's ctx.url AND
+      # a route handler's raw req.url both carry the forwarded scheme + host.
+      - name: Forwarded proto/host on Bun
+        run: bun test/bun/forwarded-proto.mjs
       # Light-DOM slot SSR projection on Bun (#1021): slot substitution
       # (injectDSD / substituteSlotsInRender) is on the SSR hot path, so the
       # projection must be byte-consistent across runtimes: authored children
