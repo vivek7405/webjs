@@ -8,7 +8,7 @@
  * `insertBefore` on the next navigation.
  *
  * Pre-existing bug this regression test was written against: an unclosed
- * `<pre>` in docs/app/docs/components/page.ts pulled the children marker
+ * `<pre>` in website/app/docs/components/page.ts pulled the children marker
  * into a code-example `<pre>`, breaking every subsequent client-router
  * nav after visiting /docs/components.
  *

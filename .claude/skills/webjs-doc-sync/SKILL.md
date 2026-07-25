@@ -43,7 +43,7 @@ applies, then update or consciously skip each.
    relevant `references/` file.
 2. **`README.md`** (repo root). Update when a headline capability changes (the
    feature list, the quickstart, the runtime/template matrix).
-3. **The docs site: `docs/app/docs/<topic>/page.tsx`.** This is the
+3. **The docs site: `website/app/docs/<topic>/page.tsx`.** This is the
    user-facing documentation at webjs.dev/docs. Find the topic page(s) that cover
    the area (`server-actions`, `routing`, `components`, `caching`, `configuration`,
    `client-router`, `data-fetching`, ...) and update them. `llms.txt` /
@@ -90,7 +90,7 @@ applies, then update or consciously skip each.
    be) described:
    ```sh
    git grep -n -iE '<token1>|<token2>' -- \
-     AGENTS.md '.agents/skills/webjs/**' README.md 'docs/app/docs/**' \
+     AGENTS.md '.agents/skills/webjs/**' README.md 'website/app/docs/**' \
      'website/**' 'packages/cli/templates/**' 'examples/**/CONVENTIONS.md'
    ```
 3. For each surface in the mapping that applies, update it. For a behaviour

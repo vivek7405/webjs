@@ -58,10 +58,16 @@ test('/llms.txt gives agents the key project entry points and inline facts', asy
   assert.match(body, /Needs no training data/, 'states no training data is required');
   assert.match(body, /node_modules\/@webjsdev/, 'grounds it in the readable framework source');
   assert.match(body, /Production-shaped/, 'states the scaffold is production-shaped');
-  // The Docs section links the agent-facing AGENTS.md contract, the single most
-  // useful entry point for an agent building a WebJs app.
-  assert.match(body, /^## Docs$/m, 'has a Docs section');
+  // The Overview section links the agent-facing AGENTS.md contract, the single
+  // most useful entry point for an agent building a WebJs app, alongside the
+  // definitional pages.
+  assert.match(body, /^## Overview$/m, 'has an Overview section');
   assert.match(body, /\/blob\/main\/AGENTS\.md/, 'links the AGENTS.md contract');
+  // The docs are enumerated inline (#1098), not reduced to one outbound link
+  // at another host, so an agent reading this file reaches every topic.
+  assert.match(body, /^## Documentation$/m, 'has a Documentation section');
+  assert.match(body, /^- \[Getting Started\]\(https?:\/\/[^/]+\/docs\/getting-started\/llms\.txt\)/m, 'links a doc page directly');
+  assert.ok(!body.includes('docs.webjs.dev'), 'nothing points at the retired subdomain');
   // A Project section points at the repo, UI kit, and live demo.
   assert.match(body, /^## Project$/m, 'has a Project section');
   assert.match(body, /github\.com\/webjsdev\/webjs\)/, 'links the GitHub repository');

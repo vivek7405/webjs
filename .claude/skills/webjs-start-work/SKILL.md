@@ -143,7 +143,7 @@ Doc drift is the #1 way a framework rots. Documentation MUST stay in sync with c
    - `CHANGELOG.md` (per-package, under `changelog/<pkg>/<version>.md`). Generated automatically by the pre-commit hook on version-bump commits; review and add migration notes for breaking changes. Without a version bump, no changelog entry.
    - `CLAUDE.md` (only if a Claude Code rule is specifically added; framework conventions go in AGENTS.md).
    - `.github/*.md` (issue templates, PR templates, contributing) when a workflow rule shifts.
-3. **User-facing docs site** under `docs/app/docs/<topic>/page.ts` (these are `.ts` files, not markdown, so they're excluded by the markdown query but they're the canonical user-facing reference). If the change is visible to a user reading the docs site, update the matching topic page. Add a new page if the surface is new and there's no obvious home.
+3. **User-facing docs site** under `website/app/docs/<topic>/page.ts` (these are `.ts` files, not markdown, so they're excluded by the markdown query but they're the canonical user-facing reference). If the change is visible to a user reading the docs site, update the matching topic page. Add a new page if the surface is new and there's no obvious home.
 4. **Scaffold templates** under `packages/cli/templates/` and the generators `packages/cli/lib/{create,api-gallery}.js`. Update if the change affects what `webjs create` generates. The scaffold ships a gallery index home + layout + db wiring, a densely-commented feature gallery (`packages/cli/templates/gallery/**`, demos under `app/features/` plus `app/examples/todo`) and the api showcase (`api-gallery.js`), plus one cross-agent skill at `.agents/skills/webjs/` (SKILL.md + references) that the agent grows in place; there are no per-agent rule files. A feature change that agents should know about lands in the skill; a generated-code change lands in the generators, verified with `generate + boot + webjs check`.
 5. **The MCP server** (the standalone `@webjsdev/mcp` package, `packages/mcp/src/{mcp,mcp-docs,mcp-source}.js`, extracted from the CLI in #415; `webjs mcp` and `npx @webjsdev/mcp` both run it). The MCP is how AI agents learn and introspect webjs, so it must stay in lockstep with the surfaces it exposes. Update it whenever the change touches what it serves:
    - **Introspection tools** (`list_routes` / `list_actions` / `list_components` / `check`): if you change the route table shape, the action/RPC-hash scheme, component registration, or a `webjs check` rule, update the matching tool projection so the MCP reports reality.
@@ -213,13 +213,13 @@ For each item above, explicitly answer one of:
 
 The "every markdown file" rule is generative because new markdown files appear over a project's lifetime. A closed enumeration silently excludes them; the git query is the source of truth.
 
-If you find yourself writing "N/A" for every item except tests, that is a smell. Most user-visible code changes touch at least one markdown file and the relevant `docs/app/docs/<topic>/page.ts` page.
+If you find yourself writing "N/A" for every item except tests, that is a smell. Most user-visible code changes touch at least one markdown file and the relevant `website/app/docs/<topic>/page.ts` page.
 
 ### Concrete examples from recent PRs
 
-- PR #110 (`fs.watch` + Web Crypto): updated `AGENTS.md` (no-build claim wording), `packages/server/AGENTS.md` (file watcher mention), `docs/app/docs/{configuration,deployment,no-build}/page.ts` (chokidar → fs.watch). Tests covered the watcher, the boundary, and the migration.
-- PR #111 (module-graph asset gate): updated `AGENTS.md` (new invariant about the gate), `packages/server/AGENTS.md` (gate + guardrail invariants), `docs/app/docs/no-build/page.ts` (new "authorisation gate" subsection). Tests covered the gate end-to-end.
-- PR #117 (core dist bundles): updated `docs/app/docs/no-build/page.ts` (the @webjsdev/core exception note), `packages/core/README.md` (tarball layout), `packages/core/AGENTS.md` (invariant 1 rewording), `packages/server/AGENTS.md` (importmap.js module-map entry).
+- PR #110 (`fs.watch` + Web Crypto): updated `AGENTS.md` (no-build claim wording), `packages/server/AGENTS.md` (file watcher mention), `website/app/docs/{configuration,deployment,no-build}/page.ts` (chokidar → fs.watch). Tests covered the watcher, the boundary, and the migration.
+- PR #111 (module-graph asset gate): updated `AGENTS.md` (new invariant about the gate), `packages/server/AGENTS.md` (gate + guardrail invariants), `website/app/docs/no-build/page.ts` (new "authorisation gate" subsection). Tests covered the gate end-to-end.
+- PR #117 (core dist bundles): updated `website/app/docs/no-build/page.ts` (the @webjsdev/core exception note), `packages/core/README.md` (tarball layout), `packages/core/AGENTS.md` (invariant 1 rewording), `packages/server/AGENTS.md` (importmap.js module-map entry).
 
 If a PR ships without ANY of those touches and the change is user-visible, the PR is incomplete; do not mark it ready for review (leave it draft until the surfaces are addressed).
 
