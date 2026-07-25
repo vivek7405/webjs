@@ -22,6 +22,14 @@
  *
  * A plain assert script (not node:test), so the SAME file runs on both runtimes.
  * Run from the repo root so the bare `@webjsdev/server` specifier resolves.
+ *
+ * The failure is reported by an explicit `process.exit(1)` rather than by letting
+ * the assertion propagate, because `startServer` installs an `uncaughtException`
+ * handler that begins a graceful shutdown and exits 0. On Bun a top-level
+ * assertion failure routes through that handler, so a broken proof would exit 0
+ * and CI's `bun test/bun/<file>.mjs` step would go GREEN on a real regression
+ * (verified: node exits 1, Bun exits 0). Filed separately as #1091 for the other
+ * proof scripts, which all share this shape.
  */
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
@@ -39,6 +47,8 @@ const dir = mkdtempSync(join(tmpdir(), 'wj-forwarded-'));
 const w = (rel, body) => { const abs = join(dir, rel); mkdirSync(dirname(abs), { recursive: true }); writeFileSync(abs, body); };
 
 let close;
+/** @type {unknown} */
+let failure = null;
 try {
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'forwarded', type: 'module', webjs: {} }));
   w('app/layout.ts', `import { html } from ${JSON.stringify(CORE)};\nexport default ({ children }: { children: unknown }) => html\`<!doctype html><html><head></head><body>\${children}</body></html>\`;`);
@@ -88,7 +98,15 @@ try {
   await close();
   close = null;
   console.log(`OK  forwarded proto/host passed on ${runtime} (page ctx.url + route req.url both https)`);
+} catch (e) {
+  failure = e;
 } finally {
   try { if (close) await close(); } catch {}
   rmSync(dir, { recursive: true, force: true });
+}
+
+if (failure) {
+  console.error(`FAIL forwarded proto/host on ${runtime}`);
+  console.error(failure instanceof Error ? failure.stack || failure.message : String(failure));
+  process.exit(1);
 }
