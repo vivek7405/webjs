@@ -32,23 +32,61 @@
  * @returns {URL}
  */
 export function urlFromRequest(req) {
-  const trust = process.env.WEBJS_NO_TRUST_PROXY !== '1';
-  let host = null;
-  let proto = null;
-  if (trust) {
-    host = firstHeaderValue(req.headers['x-forwarded-host']);
-    proto = firstHeaderValue(req.headers['x-forwarded-proto']);
-  }
+  const { host, proto } = readForwarded((n) => /** @type {any} */ (req.headers)[n]);
   const finalHost = host || /** @type {string|undefined} */ (req.headers.host) || 'localhost';
   const finalProto = proto || 'http';
   return new URL(req.url || '/', `${finalProto}://${finalHost}`);
 }
 
 /**
+ * Apply the forwarded headers to an ALREADY-PARSED url, for a shell whose
+ * request is a web `Request` (Bun) rather than a node `IncomingMessage`.
+ *
+ * `urlFromRequest` above cannot be reused directly: it reads `req.headers` as a
+ * plain node object, while a web `Request` exposes a `Headers` instance whose
+ * values come from `.get()`. Reusing it against a `Request` silently reads
+ * `undefined` for every header, so it LOOKS wired up while changing nothing.
+ * Both entry points funnel through `readForwarded` so the two runtimes cannot
+ * drift on the trust switch or the comma-chain rule.
+ *
+ * Returns the SAME URL instance when nothing changes (no proxy, or the headers
+ * already agree), so the caller can use identity to skip rebuilding a request
+ * on the hot path.
+ *
+ * @param {URL} url  the url as the local listener saw it
+ * @param {Headers} headers  the web `Request` headers
+ * @returns {URL} the corrected url, or `url` itself when unchanged
+ */
+export function applyForwarded(url, headers) {
+  const { host, proto } = readForwarded((n) => headers.get(n));
+  const finalHost = host || url.host;
+  // `url.protocol` carries its trailing colon; the forwarded header does not.
+  const finalProto = proto || url.protocol.slice(0, -1);
+  if (finalHost === url.host && `${finalProto}:` === url.protocol) return url;
+  return new URL(`${url.pathname}${url.search}${url.hash}`, `${finalProto}://${finalHost}`);
+}
+
+/**
+ * Read the forwarded host / proto through a header getter, honoring the
+ * `WEBJS_NO_TRUST_PROXY=1` opt-out. The one place the trust decision and the
+ * comma-chain rule live, shared by the node and Bun entry points above.
+ *
+ * @param {(name: string) => string | string[] | undefined | null} getHeader
+ * @returns {{ host: string | null, proto: string | null }}
+ */
+function readForwarded(getHeader) {
+  if (process.env.WEBJS_NO_TRUST_PROXY === '1') return { host: null, proto: null };
+  return {
+    host: firstHeaderValue(getHeader('x-forwarded-host')),
+    proto: firstHeaderValue(getHeader('x-forwarded-proto')),
+  };
+}
+
+/**
  * Pick the first comma-separated value from a header that may be a
  * string, an array of strings, or undefined.
  *
- * @param {string | string[] | undefined} h
+ * @param {string | string[] | undefined | null} h
  * @returns {string | null}
  */
 function firstHeaderValue(h) {

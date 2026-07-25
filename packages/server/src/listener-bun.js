@@ -45,7 +45,8 @@ import { EventEmitter } from 'node:events';
 import { Readable, pipeline } from 'node:stream';
 import { matchApi } from './router.js';
 import { registerClient } from './broadcast.js';
-import { setTrustedRemoteIp } from './rate-limit.js';
+import { setTrustedRemoteIp, propagateTrustedRemoteIp } from './rate-limit.js';
+import { applyForwarded } from './forwarded.js';
 import {
   isCompressible,
   isEventsPath,
@@ -104,7 +105,7 @@ export function startBunListener(ctx) {
         // head-start during SSR compute, not the preloads themselves.
 
         stampRemoteIp(req, srv);
-        const resp = await app.handle(req);
+        const resp = await app.handle(forwardedRequest(req, url));
         return compress ? await maybeCompress(resp, req) : resp;
       } catch (e) {
         logger.error('request pipeline threw', { err: e instanceof Error ? e.stack : String(e) });
@@ -237,7 +238,11 @@ async function bunUpgrade(req, srv, ctx) {
   }
 
   const wrapper = new BunWsAdapter();
-  const handlerReq = upgradeRequest(req, url);
+  // Behind a proxy the handshake arrives as plain http on the internal hop, so
+  // the handler request carries the ORIGINAL scheme + host too (the node WS path
+  // gets this from `urlFromRequest` in `buildRequestFromUpgrade`). Routing above
+  // keyed on `url.pathname`, which the origin swap leaves untouched.
+  const handlerReq = upgradeRequest(req, applyForwarded(url, req.headers));
   // Stamp the framework-trusted socket IP on the handler request so a `WS`
   // handler's `clientIp(req)` returns the real peer, not a spoofed inbound
   // `x-webjs-remote-ip` (#778). `srv.requestIP` must be queried with Bun's
@@ -315,6 +320,40 @@ function bunSseResponse(req, hub, app) {
     status: 200,
     headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' },
   });
+}
+
+/**
+ * Rebuild the request behind a TLS-terminating reverse proxy so `req.url`
+ * carries the ORIGINAL scheme + host (`X-Forwarded-Proto` / `X-Forwarded-Host`).
+ *
+ * Why the request itself and not just a threaded url: everything downstream
+ * (the framework's own `new URL(req.url)` reads AND a user's `route.ts` doing
+ * `new URL(req.url).origin`) derives from `req.url`, so correcting only a side
+ * channel would fix the framework's absolute URLs and leave app code broken.
+ * The node shell gets this for free, since `toWebRequest` builds its `Request`
+ * FROM the already-corrected `urlFromRequest(req)`; Bun hands us a `Request`
+ * whose url reflects the internal `http://container` view, so the correction
+ * has to be applied here for the two shells to agree.
+ *
+ * Hot path: `applyForwarded` returns the SAME url instance when nothing
+ * changes, so an app with no proxy in front (local dev, direct exposure,
+ * `WEBJS_NO_TRUST_PROXY=1`) does ZERO extra work and keeps the #756 no-clone
+ * behaviour. Behind a proxy this costs one `Request` construction per request,
+ * which is still strictly less than the node shell, which constructs one
+ * unconditionally. The trusted IP is carried across the rebuild the same way
+ * the base-path rewrite in `dev.js` does it (#773), so `clientIp` stays
+ * authoritative and the inbound spoofable header is never consulted.
+ *
+ * @param {Request} req
+ * @param {URL} url  the url as `Bun.serve` saw it
+ * @returns {Request} `req` itself when unchanged, else the corrected request
+ */
+function forwardedRequest(req, url) {
+  const fwd = applyForwarded(url, req.headers);
+  if (fwd === url) return req;
+  const next = new Request(fwd, req);
+  propagateTrustedRemoteIp(req, next);
+  return next;
 }
 
 /**
