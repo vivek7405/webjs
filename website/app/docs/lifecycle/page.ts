@@ -74,7 +74,7 @@ await el.updateComplete;
 this.name = 'updated';                       // reactive property assignment
 // One render. changedProperties.has('name') is true; signal change drove the watcher.</pre>
 
-    <p>For a fine-grained binding that updates a single template hole without re-running the host's <code>render()</code> (and without going through the lifecycle hooks above), see the <code>watch(signal)</code> directive in the <a href="/docs/components#state">Components</a> doc. Lifecycle hooks fire only on a full re-render; <code>watch()</code>-driven updates bypass them.</p>
+    <p>For a fine-grained binding that updates a single template hole without re-running the host's <code>render()</code> (and without going through the lifecycle hooks above), see the <code>watch(signal)</code> directive in the <a href="/docs/components">Components</a> doc. Lifecycle hooks fire only on a full re-render; <code>watch()</code>-driven updates bypass them.</p>
 
     <h2>requestUpdate(name, oldValue)</h2>
     <p>Manually schedule a re-render. Optionally record a property change so hooks see it in <code>changedProperties</code>. Used by controllers and code that mutates outside the reactive property system.</p>

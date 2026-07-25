@@ -94,33 +94,48 @@ const NAV_SECTIONS = [
 
 /**
  * Docs-scoped metadata, merged over the root layout's for every page under
- * /docs (metadata merges layout then page, deepest winning).
+ * /docs. A doc page's own `metadata` still overrides the title, which is the
+ * one field each page sets.
  *
  * Without this the docs inherit the marketing pitch: the deleted docs root
- * layout carried its own title and description, so dropping it would have
- * left all 45 pages advertising "the web framework for AI agents" as their
- * search snippet and social card, with only the title differing. A doc page's
- * own `metadata` still overrides the title, which is the one field each page
- * sets.
+ * layout carried its own title and description, so dropping it left all 45
+ * pages advertising "the web framework for AI agents" as their search snippet
+ * and social card.
  *
- * The og:image stays the site's, deliberately. A per-section card is worth
- * having eventually, but one shared card is better than the docs pointing at
- * an image that no longer exists.
+ * The merge is a SHALLOW spread per layer (`meta = { ...meta, ...resolved }`
+ * in ssr.js), so `openGraph` and `twitter` REPLACE the root's objects rather
+ * than merging into them. That is why every field is restated here, including
+ * the ones this layer does not care about: naming only `title` and
+ * `description` silently dropped `og:image`, its dimensions, `og:url`, and
+ * `twitter:card`, leaving every doc URL to share as a bare text card. Keep
+ * these in step with app/layout.ts.
  */
 const DOCS_DESCRIPTION =
   'Reference documentation for WebJs: routing, components, server actions, data fetching, styling, streaming, deployment, and the conventions an agent needs to build with it.';
+const DOCS_OG_TITLE = 'WebJs documentation';
 
-export function generateMetadata() {
+export function generateMetadata(ctx: { url: string }) {
+  const { origin, pathname } = new URL(ctx.url);
+  const image = `${origin}/public/og.png`;
   return {
     description: DOCS_DESCRIPTION,
     openGraph: {
       type: 'article',
-      title: 'WebJs documentation',
+      title: DOCS_OG_TITLE,
       description: DOCS_DESCRIPTION,
-      'image:alt': 'WebJs documentation',
+      url: origin + pathname,
+      image,
+      'image:width': '1200',
+      'image:height': '630',
+      'image:alt': DOCS_OG_TITLE,
       'site_name': 'WebJs',
     },
-    twitter: { title: 'WebJs documentation', description: DOCS_DESCRIPTION },
+    twitter: {
+      card: 'summary_large_image',
+      title: DOCS_OG_TITLE,
+      description: DOCS_DESCRIPTION,
+      image,
+    },
   };
 }
 
@@ -207,20 +222,12 @@ export default function DocsLayout({ children }: { children: unknown }) {
         line-height: 1.7;
         font-style: italic;
       }
-      /* A wide table has to scroll inside its own box. Without this it
-         pushes the DOCUMENT wider than the viewport on a narrow screen,
-         and the shared fixed header slides with it. A display of block is
-         what makes overflow apply to a table at all. */
       .prose-docs table {
-        display: block;
         width: 100%;
-        max-width: 100%;
-        overflow-x: auto;
         margin: 0 0 24px;
         border-collapse: collapse;
         font-size: 15px;
       }
-      .prose-docs th, .prose-docs td { white-space: normal; }
       .prose-docs th, .prose-docs td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
       .prose-docs th { font-weight: 600; color: var(--fg); }
 
@@ -266,7 +273,13 @@ export default function DocsLayout({ children }: { children: unknown }) {
          --header-h sidesteps the stacking context entirely and leaves the
          header usable while the drawer is open. */
       .docs-backdrop { display: none; }
-      @media (max-width: 860px) {
+      /* 859.98, not 860. Tailwind's max-[860px] variant compiles to
+         "not all and (min-width: 860px)", which EXCLUDES exactly 860, while a
+         hand-written max-width of 860px includes it. At that one width the
+         grid had already collapsed to a single column and the menu button was
+         already hidden, while these drawer rules had not taken over, so the
+         page had no navigation at all. */
+      @media (max-width: 859.98px) {
         .docs-sidebar {
           position: fixed;
           top: var(--header-h); left: 0; bottom: 0;
@@ -309,6 +322,19 @@ export default function DocsLayout({ children }: { children: unknown }) {
         }
         body[data-docs-nav-open] .docs-backdrop { opacity: 1; pointer-events: auto; }
         body[data-docs-nav-open] { overflow: hidden; }
+
+        /* A wide table has to scroll inside its own box here, or it pushes the
+           DOCUMENT past the viewport and drags the shared fixed header with
+           it. A display of block is what makes overflow apply to a table at
+           all, and it is scoped to this breakpoint because it also shrinks the
+           table
+           shrink-to-fit, which on a wide screen leaves the row rules stopping
+           short of the column edge. */
+        .prose-docs table {
+          display: block;
+          max-width: 100%;
+          overflow-x: auto;
+        }
       }
     </style>
 

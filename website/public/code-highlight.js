@@ -132,6 +132,7 @@
   // their code blocks tokenized at SSR by lib/highlight.ts. Re-tokenizing
   // those from textContent would throw away the server's spans and re-derive
   // them from scratch. Only the docs ship plain <pre> for this to enhance.
+  var PROSE = '.prose-docs';
   var SCOPE = '.prose-docs pre';
 
   function run(root) {
@@ -152,13 +153,23 @@
     // harmless either way, since each block is guarded by data-hl.
     if (window.__webjsHighlightObserving) return;
     window.__webjsHighlightObserving = true;
+    // The observer is what makes a soft navigation INTO the docs work, so it
+    // has to be installed from the root layout, which means it is live on the
+    // marketing pages too. Keep its callback cheap there: a subtree with no
+    // .prose-docs in it is the common case, and `contains` on a cached node
+    // beats a selector query per inserted element.
     new MutationObserver(function (muts) {
       for (var a = 0; a < muts.length; a++) {
         var added = muts[a].addedNodes;
         for (var b = 0; b < added.length; b++) {
           var node = added[b];
-          if (node.nodeType !== 1) continue;
-          if (node.querySelectorAll) run(node);
+          if (node.nodeType !== 1 || !node.querySelector) continue;
+          // Three ways an inserted node can be relevant: it IS the prose
+          // container (entering the docs), it CONTAINS one, or it is a piece
+          // of content swapped INSIDE one (navigating between doc pages, the
+          // common case, where the container itself is never replaced).
+          if (!node.matches(PROSE) && !node.querySelector(PROSE) && !node.closest(PROSE)) continue;
+          run(node.closest(PROSE) || node);
         }
       }
     }).observe(document.body, { childList: true, subtree: true });

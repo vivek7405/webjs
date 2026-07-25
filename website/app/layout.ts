@@ -328,6 +328,6 @@ export default function RootLayout({ children }: { children: unknown }) {
          by the client router: a copy inside the swap range would depend on
          the router re-executing it, and would never run at all for a reader
          whose first docs page arrives by soft navigation. -->
-    <script src="/public/code-highlight.js" defer></script>
+    <script src="/public/code-highlight.js" defer nonce="${nonce}"></script>
   `;
 }
