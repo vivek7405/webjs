@@ -123,8 +123,8 @@ packages/
   webjsdev/         # unscoped npm name for @webjsdev/cli (so `npm i -g webjsdev` works without a scope)
 examples/
   blog/             # full-featured reference app (auth, posts, comments, chat)
-docs/               # documentation site (built on webjs itself)
-website/            # landing site (built on webjs itself)
+website/            # landing site AND the documentation at /docs
+docs/               # docs.webjs.dev, a redirect-only host (kept forever)
 AGENTS.md           # AI-agent contract for the framework
 CLAUDE.md           # Claude Code quick-reference
 ```
@@ -150,14 +150,14 @@ because macOS reserves it for the AirPlay Receiver / Control Center):
 | App | Dir | Port | Env override |
 |---|---|---|---|
 | Landing site | `website/` | 5001 | `WEBSITE_PORT` |
-| Docs | `docs/` | 5002 | `DOCS_PORT` |
+| docs.webjs.dev redirect | `docs/` | 5002 | `DOCS_PORT` |
 | UI registry site | `packages/ui/packages/website/` | 5003 | `UI_PORT` |
 | Example blog | `examples/blog/` | 5004 | `BLOG_PORT` |
 
 **Run a single app** (from its directory). Each honors a `PORT` env var:
 
 ```sh
-cd docs && npm run dev               # docs on 5002
+cd website && npm run dev            # landing site + docs on 5001
 PORT=8080 npm run dev                # ...or on 8080
 ```
 
@@ -274,11 +274,15 @@ const resp = await app.handle(new Request('http://x/api/hello'));
 
 ## Documentation
 
-The docs site is built on WebJs itself:
+The docs are part of the landing site, served at `/docs` and built on WebJs
+itself. They live in `website/app/docs/`, so running the site runs them:
 
 ```sh
-cd docs && npm run dev    # webjs dev; compiles Tailwind, then recompiles on request (see AGENTS.md)
+cd website && npm run dev    # webjs dev; compiles Tailwind, then recompiles on request (see AGENTS.md)
 ```
+
+`docs.webjs.dev` still resolves and path-preservingly redirects here, because
+error messages in already-published npm packages point at it.
 
 37 pages covering: getting started, AI-first development, routing,
 components, SSR, styling, Suspense, loading states, error handling,

@@ -4,7 +4,7 @@
  * the brand logo used in each app's header: a small rounded square with
  * the accent-orange gradient + subtle inner highlight.
  *
- * Writes into website/public, docs/public, examples/blog/public.
+ * Writes into website/public, examples/blog/public, and the UI site.
  *
  *   node scripts/generate-favicon.mjs
  */
@@ -16,9 +16,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
+// The docs are served by the website (#1098), so they share its favicon. The
+// docs.webjs.dev host that remains renders no HTML at all, only redirects, so
+// it has no public/ to write into.
 const APPS = [
   resolve(root, 'website/public'),
-  resolve(root, 'docs/public'),
   resolve(root, 'examples/blog/public'),
   resolve(root, 'packages/ui/packages/website/public'),
 ];

@@ -157,7 +157,7 @@ app/                        ROUTING ONLY (thin adapters importing from modules/;
   <path>/route.js           HTTP handler at /<path>
   <segment>/middleware.js   per-segment middleware
   <segment>/loading.js      auto Suspense boundary
-middleware.js               root middleware (every request)
+middleware.js               root middleware (every request; .ts/.mts/.mjs too)
 readiness.js                optional /__webjs/ready check (return false/throw = 503)
 env.js                      optional boot-time env validation (schema or validator fn; fails fast)
 instrumentation.js          optional boot-time hook (register(); wire APM via setOnError, #848)
@@ -286,7 +286,7 @@ Named async exports per method (`GET`/`POST`/`PUT`/`PATCH`/`DELETE`), each `(Req
 
 ### Middleware (`middleware.{js,ts}`)
 
-Optional top-level + per-segment. Default export `async (req, next) => Response`. Return a Response to short-circuit, or call `next()` then post-process. Per-segment applies to its subtree, outermost to innermost.
+Optional top-level + per-segment. Default export `async (req, next) => Response`. Return a Response to short-circuit, or call `next()` then post-process. Per-segment applies to its subtree, outermost to innermost. The root file sits beside `app/` and may be `middleware.ts` / `.js` / `.mts` / `.mjs` (`.ts` wins if more than one exists).
 
 ### Env validation (`env.{js,ts}`)
 

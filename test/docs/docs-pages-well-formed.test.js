@@ -86,7 +86,7 @@ async function extractHtmlTemplates(filePath) {
 
 async function listDocsPages() {
   const entries = [];
-  for await (const p of glob('docs/app/**/page.{js,ts}', { cwd: ROOT })) {
+  for await (const p of glob('website/app/docs/**/page.{js,ts}', { cwd: ROOT })) {
     entries.push(resolve(ROOT, p));
   }
   return entries;
@@ -95,7 +95,15 @@ async function listDocsPages() {
 describe('docs pages produce balanced container tags (router-safe HTML)', () => {
   test('every page.{js,ts} under docs/app has matching open/close counts for <pre>, <div>, <ul>, <ol>, <table>', async () => {
     const pages = await listDocsPages();
-    assert.ok(pages.length > 0, 'no docs pages discovered: glob pattern wrong?');
+    // A floor, not just "more than zero". When the docs moved to
+    // website/app/docs this glob kept pointing at the old app and matched a
+    // single redirect stub with no template in it, so every check below ran
+    // on an empty string and passed. `> 0` did not catch that; a realistic
+    // count does.
+    assert.ok(
+      pages.length >= 40,
+      `expected the full docs corpus, found ${pages.length}: glob pattern wrong?`,
+    );
 
     /** @type {string[]} */
     const failures = [];

@@ -2995,13 +2995,11 @@ function replaceBoundaryRange(target, source) {
   for (const n of incomingSlice) {
     liveParent.insertBefore(n, target.end);
   }
-  // Snapshot the walk before touching anything: reactivateScripts REPLACES a
-  // node when the node itself is a script, which detaches it and would cut
-  // the sibling chain mid-iteration, silently skipping every node after it
-  // (including their custom-element upgrades).
-  for (const n of nodesBetween(target.start, target.end)) {
-    reactivateScripts(n);
-    upgradeCustomElements(n);
+  for (let n = target.start.nextSibling; n && n !== target.end; n = n.nextSibling) {
+    if (n.nodeType === 1) {
+      reactivateScripts(/** @type {Element} */ (n));
+      upgradeCustomElements(/** @type {Element} */ (n));
+    }
   }
 }
 
@@ -3056,13 +3054,11 @@ function swapMarkerRange(target, source, _doc) {
   reconcileSiblings(liveParent, target.start, target.end, liveSlice, incomingSlice);
 
   // Upgrade + activate scripts in the just-swapped range.
-  // Snapshot the walk before touching anything: reactivateScripts REPLACES a
-  // node when the node itself is a script, which detaches it and would cut
-  // the sibling chain mid-iteration, silently skipping every node after it
-  // (including their custom-element upgrades).
-  for (const n of nodesBetween(target.start, target.end)) {
-    reactivateScripts(n);
-    upgradeCustomElements(n);
+  for (let n = target.start.nextSibling; n && n !== target.end; n = n.nextSibling) {
+    if (n.nodeType === 1) {
+      reactivateScripts(/** @type {Element} */ (n));
+      upgradeCustomElements(/** @type {Element} */ (n));
+    }
   }
 }
 
@@ -4207,42 +4203,8 @@ async function streamBoundariesProgressively(reader, dec, initialBuf, isCurrent)
   }
 }
 
-/**
- * The element nodes between two boundary comments, collected up front so a
- * caller may replace them while iterating.
- *
- * @param {Node} start
- * @param {Node} end
- * @returns {Element[]}
- */
-function nodesBetween(start, end) {
-  const out = [];
-  for (let n = start.nextSibling; n && n !== end; n = n.nextSibling) {
-    if (n.nodeType === 1) out.push(/** @type {Element} */ (n));
-  }
-  return out;
-}
-
-/**
- * Re-emit every script in a just-swapped range so it executes.
- *
- * The caller walks the swapped range and passes each top-level node, so
- * `container` can BE a script rather than merely contain one. A script parsed
- * by DOMParser carries the "already started" flag, so re-inserting the same
- * node is inert; only a fresh clone runs. `querySelectorAll` never matches the
- * element it is called on, so a top-level script had to be handled explicitly
- * or it silently never ran. That is easy to miss because the failure looks
- * like a script that simply has nothing to do: a layout emitting a
- * progressive-enhancement script as a sibling of its content (the docs shell
- * does exactly this) stopped enhancing anything after a soft navigation.
- *
- * @param {Element} container
- */
+/** @param {Element} container */
 function reactivateScripts(container) {
-  if (container.tagName === 'SCRIPT') {
-    container.replaceWith(cloneScriptWithCorrectNonce(/** @type {HTMLScriptElement} */ (container)));
-    return;
-  }
   for (const old of container.querySelectorAll('script')) {
     old.replaceWith(cloneScriptWithCorrectNonce(/** @type {HTMLScriptElement} */ (old)));
   }
