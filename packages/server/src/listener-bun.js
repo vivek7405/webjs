@@ -351,9 +351,47 @@ function bunSseResponse(req, hub, app) {
 function forwardedRequest(req, url) {
   const fwd = applyForwarded(url, req.headers);
   if (fwd === url) return req;
-  const next = new Request(fwd, req);
+  // SECURITY (#778): drop any client-supplied `x-webjs-remote-ip` before it
+  // rides onto the rebuilt request. `trustedRemoteIp` reads the WeakMap first,
+  // so the header cannot win today, but every other rebuild site strips it
+  // (`dev.js`'s base-path rewrite, `upgradeRequest` below) and leaving it
+  // attached would re-arm the spoof the moment any later code path rebuilds
+  // this request without carrying the WeakMap across.
+  const headers = new Headers(req.headers);
+  headers.delete('x-webjs-remote-ip');
+  const next = new Request(fwd, { ...requestInitFrom(req), headers });
   propagateTrustedRemoteIp(req, next);
   return next;
+}
+
+/**
+ * The parts of a `Request` that must survive the rebuild, spelled out because
+ * the header strip above needs its own `Headers` and passing the `Request` as
+ * the init would ignore them.
+ *
+ * `duplex: 'half'` is required by the spec whenever a body is present, and
+ * `mode: 'navigate'` cannot be passed to the constructor, so it is dropped.
+ *
+ * @param {Request} req
+ */
+function requestInitFrom(req) {
+  /** @type {any} */
+  const init = {
+    method: req.method,
+    signal: req.signal,
+    credentials: req.credentials,
+    cache: req.cache,
+    redirect: req.redirect,
+    referrer: req.referrer,
+    referrerPolicy: req.referrerPolicy,
+    integrity: req.integrity,
+  };
+  if (req.mode && req.mode !== 'navigate') init.mode = req.mode;
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    init.body = req.body;
+    init.duplex = 'half';
+  }
+  return init;
 }
 
 /**

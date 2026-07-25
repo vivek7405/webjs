@@ -208,3 +208,92 @@ test('applyForwarded and urlFromRequest agree for the same request', () => {
   const bun = applyForwarded(new URL('http://container:3000/a/b?c=1'), webHeaders(headers));
   assert.equal(bun.href, node.href);
 });
+
+/**
+ * Hostile / malformed forwarded headers. Everything here is reachable by a
+ * client whose headers the edge proxy forwards rather than overwrites, and the
+ * node and Bun entry points must agree on every one of them.
+ */
+
+test('a //-prefixed path cannot become the authority (both entry points)', () => {
+  // `url.pathname` for `GET //evil.com/x` is `//evil.com/x`, a scheme-relative
+  // reference. Resolving it against a new base yields `https://evil.com/x`:
+  // the origin is taken over AND the path collapses to `/x`, so a DIFFERENT
+  // route matches. Only `X-Forwarded-Proto` is needed, which every
+  // TLS-terminating proxy sets.
+  const want = 'https://container:3000//evil.com/x?q=1';
+  const node = urlFromRequest(makeReq('//evil.com/x?q=1', {
+    host: 'container:3000',
+    'x-forwarded-proto': 'https',
+  }));
+  const bun = applyForwarded(new URL('http://container:3000//evil.com/x?q=1'), webHeaders({
+    host: 'container:3000',
+    'x-forwarded-proto': 'https',
+  }));
+  assert.equal(node.href, want, 'node keeps the real host and the full path');
+  assert.equal(bun.href, want, 'bun keeps the real host and the full path');
+  assert.equal(bun.host, 'container:3000');
+  assert.equal(bun.pathname, '//evil.com/x');
+});
+
+test('a malformed forwarded host is ignored, never thrown', () => {
+  // An unparseable authority used to raise `Invalid URL`, which the fetch path
+  // turned into a 500 and the WS upgrade path into a failed handshake.
+  for (const bad of ['a b', '[', 'ho st']) {
+    const bun = applyForwarded(new URL('http://real/p'), webHeaders({ host: 'real', 'x-forwarded-host': bad }));
+    assert.equal(bun.href, 'http://real/p', `bun ignores ${JSON.stringify(bad)}`);
+    const node = urlFromRequest(makeReq('/p', { host: 'real', 'x-forwarded-host': bad }));
+    assert.equal(node.href, 'http://real/p', `node ignores ${JSON.stringify(bad)}`);
+  }
+});
+
+test('an out-of-range port makes the whole authority unparseable, so it is ignored', () => {
+  // Rejected wholesale rather than salvaging the hostname: a malformed
+  // authority is not honored at all, which is easier to reason about than a
+  // partially-applied one. Both entry points must agree on that.
+  const node = urlFromRequest(makeReq('/p', { host: 'c', 'x-forwarded-host': 'webjs.dev:99999' }));
+  const bun = applyForwarded(new URL('http://c/p'), webHeaders({ host: 'c', 'x-forwarded-host': 'webjs.dev:99999' }));
+  assert.equal(node.href, 'http://c/p');
+  assert.equal(bun.href, node.href);
+});
+
+test('a forwarded host without a port clears the internal port (no hostname/port mixing)', () => {
+  // The `host` setter only updates the port when the new value carries one, so
+  // layering the public hostname over `Host: container:3000` could otherwise
+  // produce `docs.webjs.dev:3000`: the public name wearing the internal port.
+  const headers = { host: 'container:3000', 'x-forwarded-host': 'docs.webjs.dev', 'x-forwarded-proto': 'https' };
+  const node = urlFromRequest(makeReq('/a', headers));
+  const bun = applyForwarded(new URL('http://container:3000/a'), webHeaders(headers));
+  assert.equal(node.href, 'https://docs.webjs.dev/a');
+  assert.equal(bun.href, node.href);
+});
+
+test('only http and https are accepted as a forwarded scheme', () => {
+  // A non-special scheme collapses `origin` to the literal string "null", so
+  // every absolute URL the app derives becomes "null/...".
+  for (const bad of ['javascript', 'file', 'data', 'ftp']) {
+    const bun = applyForwarded(new URL('http://webjs.dev/p'), webHeaders({ host: 'webjs.dev', 'x-forwarded-proto': bad }));
+    assert.equal(bun.href, 'http://webjs.dev/p', `bun rejects ${bad}`);
+    assert.notEqual(bun.origin, 'null');
+    const node = urlFromRequest(makeReq('/p', { host: 'webjs.dev', 'x-forwarded-proto': bad }));
+    assert.equal(node.href, 'http://webjs.dev/p', `node rejects ${bad}`);
+  }
+});
+
+test('a forwarded scheme is matched case-insensitively', () => {
+  const url = new URL('https://webjs.dev/p');
+  // Already https, so an uppercase HTTPS must still be recognised as the no-op.
+  assert.equal(applyForwarded(url, webHeaders({ host: 'webjs.dev', 'x-forwarded-proto': 'HTTPS' })), url);
+});
+
+test('proto-only forwarding agrees on the host fallback (the Railway shape)', () => {
+  // The branch the earlier parity test missed: with no x-forwarded-host, node
+  // falls back to the raw Host header. Reading the already-normalized url.host
+  // instead dropped an explicit :80 (http's default port) and the two shells
+  // disagreed on exactly the case this helper exists for.
+  const headers = { host: 'webjs.dev:80', 'x-forwarded-proto': 'https' };
+  const node = urlFromRequest(makeReq('/a', headers));
+  const bun = applyForwarded(new URL('http://webjs.dev:80/a'), webHeaders(headers));
+  assert.equal(bun.href, node.href, 'the two shells agree on the host fallback');
+  assert.equal(node.href, 'https://webjs.dev:80/a');
+});

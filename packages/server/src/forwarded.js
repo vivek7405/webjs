@@ -33,9 +33,69 @@
  */
 export function urlFromRequest(req) {
   const { host, proto } = readForwarded((n) => /** @type {any} */ (req.headers)[n]);
-  const finalHost = host || /** @type {string|undefined} */ (req.headers.host) || 'localhost';
-  const finalProto = proto || 'http';
-  return new URL(req.url || '/', `${finalProto}://${finalHost}`);
+  const rawHost = /** @type {string|undefined} */ (req.headers.host) || '';
+  const u = resolveOrigin(proto || 'http', host, rawHost);
+  // Assign the request target's parts rather than RESOLVING it against `u`.
+  // Resolving is unsafe: a request line may carry `//evil.com/x`, a
+  // scheme-relative reference, so `new URL('//evil.com/x', 'https://real-host')`
+  // resolves to `https://evil.com/x`, handing over the origin AND silently
+  // rewriting the path to `/x` so a different route matches. A request target
+  // is a path, never a full reference, so it is assigned as one.
+  const m = /^([^?#]*)(\?[^#]*)?(#.*)?$/.exec(req.url || '/');
+  u.pathname = (m && m[1]) || '/';
+  u.search = (m && m[2]) || '';
+  u.hash = (m && m[3]) || '';
+  return u;
+}
+
+/**
+ * Build the origin both entry points agree on, as an origin-only URL.
+ *
+ * Sharing this is what makes node/Bun parity STRUCTURAL rather than a
+ * coincidence of two similar-looking expressions. The layering matters: start
+ * from a known-good placeholder, apply the raw `Host`, then let the forwarded
+ * host override it. Each assignment goes through the `host` setter, which
+ * IGNORES a value it cannot parse instead of throwing, so a junk header falls
+ * back to the previous layer rather than 500ing the request or collapsing to
+ * localhost.
+ *
+ * @param {string} proto  already restricted to http / https by `normalizeProto`
+ * @param {string | null} forwardedHost
+ * @param {string} rawHost  the `Host` header
+ * @returns {URL} an origin-only URL
+ */
+function resolveOrigin(proto, forwardedHost, rawHost) {
+  const u = new URL(`${proto}://localhost`);
+  if (rawHost) setHost(u, rawHost);
+  if (forwardedHost) setHost(u, forwardedHost);
+  return u;
+}
+
+/**
+ * Assign an authority, clearing any port the previous layer left behind.
+ *
+ * The `host` setter only updates the port when the new value CARRIES one, so
+ * layering `X-Forwarded-Host: docs.webjs.dev` over `Host: container:3000`
+ * otherwise yields `docs.webjs.dev:3000`: the public hostname wearing the
+ * internal port. Clearing first makes each layer a full replacement.
+ *
+ * @param {URL} u
+ * @param {string} value
+ */
+function setHost(u, value) {
+  let probe;
+  try {
+    probe = new URL(`${u.protocol}//${value}`);
+  } catch {
+    // Not a parseable authority (`a b`, `[`, a port over 65535). Leave the
+    // previous layer in place rather than throwing, so a junk header is never a
+    // 500 on the fetch path or a failed WS handshake.
+    return;
+  }
+  u.hostname = probe.hostname;
+  // Assign the port unconditionally, including the empty string, so a value
+  // carrying no port clears one the previous layer left behind.
+  u.port = probe.port;
 }
 
 /**
@@ -53,17 +113,43 @@ export function urlFromRequest(req) {
  * already agree), so the caller can use identity to skip rebuilding a request
  * on the hot path.
  *
+ * The rewrite CLONES the url and assigns `protocol` / `host` rather than
+ * re-parsing the path against a new base. Re-parsing is unsafe: `url.pathname`
+ * for `GET //evil.com/x` is `//evil.com/x`, which is a scheme-relative
+ * reference, so `new URL('//evil.com/x', 'https://real-host')` resolves to
+ * `https://evil.com/x`. An attacker needed only the `X-Forwarded-Proto` every
+ * TLS-terminating proxy already sets to take over the origin AND silently
+ * change which route matched. Assigning through the setters cannot move the
+ * path into the authority, and it fails safe on a malformed value (the `host`
+ * setter ignores what it cannot parse instead of throwing, so a junk header is
+ * no longer a 500 on the fetch path or a broken WS handshake).
+ *
+ * The host FALLBACK is the `Host` header, not `url.host`, to match
+ * `urlFromRequest` exactly: node builds from the raw header string, so with
+ * `Host: webjs.dev:80` + `X-Forwarded-Proto: https` it judges the `:80` against
+ * https and keeps it. Falling back to the already-normalized `url.host` dropped
+ * it (port 80 is http's default), which made the two shells disagree on the
+ * exact proto-only shape this helper exists for.
+ *
  * @param {URL} url  the url as the local listener saw it
  * @param {Headers} headers  the web `Request` headers
  * @returns {URL} the corrected url, or `url` itself when unchanged
  */
 export function applyForwarded(url, headers) {
   const { host, proto } = readForwarded((n) => headers.get(n));
-  const finalHost = host || url.host;
+  if (!host && !proto) return url;
   // `url.protocol` carries its trailing colon; the forwarded header does not.
-  const finalProto = proto || url.protocol.slice(0, -1);
-  if (finalHost === url.host && `${finalProto}:` === url.protocol) return url;
-  return new URL(`${url.pathname}${url.search}${url.hash}`, `${finalProto}://${finalHost}`);
+  const origin = resolveOrigin(proto || url.protocol.slice(0, -1), host, headers.get('host') || url.host);
+  if (origin.host === url.host && origin.protocol === url.protocol) return url;
+  // Copy the path across verbatim. Never re-parse it against the new origin:
+  // `url.pathname` for `GET //evil.com/x` is `//evil.com/x`, a scheme-relative
+  // reference, so resolving would resolve the authority out of the PATH and
+  // hand an attacker the origin (plus a different matched route) using only the
+  // `X-Forwarded-Proto` every TLS-terminating proxy already sets.
+  origin.pathname = url.pathname;
+  origin.search = url.search;
+  origin.hash = url.hash;
+  return origin;
 }
 
 /**
@@ -78,8 +164,28 @@ function readForwarded(getHeader) {
   if (process.env.WEBJS_NO_TRUST_PROXY === '1') return { host: null, proto: null };
   return {
     host: firstHeaderValue(getHeader('x-forwarded-host')),
-    proto: firstHeaderValue(getHeader('x-forwarded-proto')),
+    proto: normalizeProto(firstHeaderValue(getHeader('x-forwarded-proto'))),
   };
+}
+
+/**
+ * Accept only `http` / `https` as a forwarded scheme (case-insensitively; the
+ * URL normal form is lowercase, and comparing a raw `HTTPS` against
+ * `url.protocol` otherwise misses the no-op case).
+ *
+ * Anything else is dropped rather than honored. A non-special scheme is the
+ * damaging shape: `X-Forwarded-Proto: javascript` produced
+ * `javascript://host/path`, whose `origin` is the literal string `null`, so
+ * every absolute URL the app derived became `null/...`. A proxy in front of an
+ * HTTP server only ever forwards http or https, so an allowlist costs nothing.
+ *
+ * @param {string | null} p
+ * @returns {string | null}
+ */
+function normalizeProto(p) {
+  if (!p) return null;
+  const v = p.toLowerCase();
+  return v === 'http' || v === 'https' ? v : null;
 }
 
 /**
