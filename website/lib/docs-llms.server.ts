@@ -213,6 +213,11 @@ function bodyToMarkdown(raw: string): string {
     .trim();
 }
 
+/** Fold JS string escapes out of a source-extracted literal (\' -> ', etc.). */
+function unescapeJs(s: string): string {
+  return s.replace(/\\(.)/g, '$1');
+}
+
 function decodeEntities(s: string): string {
   return s
     .replace(/&amp;/g, '&')
@@ -233,15 +238,20 @@ async function extractPage(file: string): Promise<DocPage> {
   const slug = basename(dirname(file));
 
   const meta = metadataBlock(raw);
-  const titleMatch = meta.match(/title:\s*['"`]([^'"`]+)['"`]/);
-  const rawTitle = titleMatch?.[1] || slug;
+  // Both extractors must cross an ESCAPED quote rather than stop at it: a
+  // description like 'SSR\'d to real HTML...' otherwise truncates at the
+  // backslash, and that garbage fragment ships verbatim in /llms.txt and the
+  // search index. `(?:\\.|[^'\\])*` consumes any escaped character as a
+  // unit; unescapeJs() then folds the backslashes back out of the capture.
+  const titleMatch = meta.match(/title:\s*(?:'((?:\\.|[^'\\])*)'|"((?:\\.|[^"\\])*)"|`((?:\\.|[^`\\])*)`)/);
+  const rawTitle = unescapeJs(titleMatch?.[1] ?? titleMatch?.[2] ?? titleMatch?.[3] ?? '') || slug;
   const title = rawTitle.replace(/\s*\|\s*webjs\s*$/i, '').trim();
 
   // Description: prefer metadata.description, else the first <p> text.
   let description = '';
-  const descMatch = meta.match(/description:\s*(?:'([^']*)'|"([^"]*)"|`([^`]*)`)/);
+  const descMatch = meta.match(/description:\s*(?:'((?:\\.|[^'\\])*)'|"((?:\\.|[^"\\])*)"|`((?:\\.|[^`\\])*)`)/);
   if (descMatch) {
-    description = oneLine(decodeEntities(descMatch[1] ?? descMatch[2] ?? descMatch[3] ?? ''));
+    description = oneLine(decodeEntities(unescapeJs(descMatch[1] ?? descMatch[2] ?? descMatch[3] ?? '')));
   }
   if (!description) {
     const pMatch = raw.match(/<p[^>]*>([\s\S]*?)<\/p>/);

@@ -97,6 +97,20 @@ describe('/llms.txt (the one site index)', () => {
     );
   });
 
+  test('an escaped quote in a page description does not truncate the entry', async () => {
+    // progressive-enhancement's description contains \'d, and the extractor
+    // used to stop dead at the backslash, publishing the garbage fragment
+    // "WebJs pages and components are SSR\" in the index and the search
+    // text. Assert the one known page is whole AND that no entry anywhere
+    // ends in a backslash, so the next escaped quote fails here too.
+    const body = await (await handle('/llms.txt')).text();
+    const pe = body.split('\n').find((l) => l.includes('Progressive Enhancement'));
+    assert.ok(pe, 'the progressive-enhancement entry exists');
+    assert.match(pe, /SSR'd to real HTML/, 'the escaped quote survives extraction');
+    const truncated = body.split('\n').filter((l) => l.endsWith('\\'));
+    assert.deepEqual(truncated, [], 'no index line may end with a backslash');
+  });
+
   test('there is no second, docs-only llms.txt competing with this one', async () => {
     // The docs used to publish their own index on their own host. Now they
     // enumerate into this one, so a doc topic is reachable from the single

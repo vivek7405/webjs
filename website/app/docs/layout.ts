@@ -176,8 +176,17 @@ export default function DocsLayout({ children }: { children: unknown }) {
         margin: 36px 0 10px;
       }
       .prose-docs p  { margin: 0 0 18px; font-size: 17px; line-height: 1.75; overflow-wrap: anywhere; }
-      .prose-docs ul, .prose-docs ol { padding-left: 24px; margin: 0 0 18px; }
+      /* Tailwind's preflight strips list-style from every ul/ol, so without
+         restating it here a docs list renders as indented plain text with no
+         markers at all, and the indent then reads as an arbitrary layout
+         inconsistency instead of a list. The rule for indentation across the
+         docs is exactly this: text sits flush unless it carries a marker, and
+         the 24px inset exists only to house that marker. */
+      .prose-docs ul { list-style: disc; padding-left: 24px; margin: 0 0 18px; }
+      .prose-docs ol { list-style: decimal; padding-left: 24px; margin: 0 0 18px; }
       .prose-docs li { margin: 8px 0; font-size: 17px; line-height: 1.7; overflow-wrap: anywhere; }
+      .prose-docs li::marker { color: var(--fg-subtle); font-size: 15px; }
+      .prose-docs ol > li::marker { font-family: var(--font-mono); }
       .prose-docs a {
         color: var(--accent);
         text-decoration: underline;
@@ -358,8 +367,9 @@ export default function DocsLayout({ children }: { children: unknown }) {
         <doc-search class="shrink-0"></doc-search>
         <!-- min-h-0 is what lets this shrink inside the flex column; without
              it the nav takes its content height and the column scrolls
-             instead, taking the search field with it. pr-4 keeps the
-             scrollbar off the links, pl-1 keeps them off the left edge. -->
+             instead, taking the search field with it. pr-3 keeps the
+             scrollbar off the links; the left inset comes from the px-2 on
+             the labels and links themselves. -->
         <nav class="docs-nav flex-1 min-h-0 overflow-y-auto pr-3">
           ${NAV_SECTIONS.map((s) => html`
             <div class="font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle px-2 mt-6 mb-2 first:mt-0">${s.title}</div>

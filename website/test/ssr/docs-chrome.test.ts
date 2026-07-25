@@ -128,6 +128,18 @@ test('the docs use the marketing design tokens, with no duplicate theme block', 
   assert.ok(docsLayout.includes('var(--accent)'), 'it consumes the shared tokens');
 });
 
+test('the docs prose restores list markers over the Tailwind preflight', () => {
+  // Tailwind's preflight sets list-style: none on every ul/ol. The prose
+  // rules used to re-add only the padding, so every docs list rendered as
+  // indented plain text with NO bullets or numbers, and the indent then read
+  // as an arbitrary layout inconsistency rather than a list. Deleting the
+  // restatement brings that straight back, and nothing else would catch it:
+  // the page renders fine, just wrong.
+  const docsLayout = readFileSync(resolve(WEBSITE_ROOT, 'app/docs/layout.ts'), 'utf8');
+  assert.match(docsLayout, /\.prose-docs ul \{[^}]*list-style: disc/, 'ul markers restored');
+  assert.match(docsLayout, /\.prose-docs ol \{[^}]*list-style: decimal/, 'ol markers restored');
+});
+
 test('docs pages describe the docs, not the marketing pitch', async () => {
   // Dropping the docs' own root layout took its title and description with
   // it, so without a docs-scoped generateMetadata every page here would ship
