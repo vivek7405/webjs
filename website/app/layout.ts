@@ -1,6 +1,7 @@
 import { html, cspNonce } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
 import { DOCS_URL, UI_URL, EXAMPLE_BLOG_URL, GH_URL, NEW_TAB } from '#lib/links.ts';
+import { siteFooter } from '#lib/site-footer.ts';
 
 /**
  * Root layout for the redesigned marketing site.
@@ -288,6 +289,8 @@ export default function RootLayout({ children }: { children: unknown }) {
 
     <div class="relative z-[1]">
       ${children}
+
+      ${siteFooter()}
     </div>
   `;
 }

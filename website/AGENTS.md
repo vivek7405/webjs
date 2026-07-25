@@ -16,8 +16,9 @@ website/
     layout.ts          root layout (head, OG/Twitter metadata,
                        header/footer chrome, Tailwind tokens)
     page.ts            /  → the entire one-page landing site.
-                           Hero, features grid, code samples, agent
-                           badges, and footer all live here.
+                           Hero, features grid, code samples, and agent
+                           badges all live here. The header and footer
+                           chrome are in layout.ts (shared by every page).
     changelog/page.ts  /changelog. Reads ../../../changelog/<pkg>/*.md
                        at SSR time and renders the unified release
                        feed. The deployment image must include the
