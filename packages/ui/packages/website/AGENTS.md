@@ -107,14 +107,14 @@ re-populates from the current registry state.
 ### Sibling-app URLs (header, footer)
 
 Sibling-app links in the header + footer (Webjs site, Docs) read from
-`WEBSITE_URL` / `DOCS_URL` env vars. Fallbacks are the canonical
+`WEBSITE_URL` env var (the docs link is derived from it, since the docs are
+served at `<website>/docs`). Fallbacks are the canonical
 localhost dev ports so local `npm run dev` works with zero setup. Deploy
 by overriding via the service env (e.g. Railway's variables):
 
 | Env var | Local fallback | Production value |
 |---|---|---|
 | `WEBSITE_URL` | `http://localhost:5001` | `https://webjs.dev` |
-| `DOCS_URL` | `http://localhost:5002` | `https://docs.webjs.dev` |
 
 `.env.example` in this directory documents the same defaults. Copy it to
 `.env` only if you need to override locally; the fallbacks already match.

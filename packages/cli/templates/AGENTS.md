@@ -25,7 +25,7 @@ This is what separates a working app from a broken one.
    native ES modules, so the source you run IS the source you read. When you
    need a precise API signature or behavior, open the package source under
    `node_modules/@webjsdev/*` directly (each package ships its own `AGENTS.md`).
-   The full hosted docs are at https://docs.webjs.dev.
+   The full hosted docs are at https://webjs.dev/docs.
 
 {{PLAYBOOK}}
 

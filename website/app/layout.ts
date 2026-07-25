@@ -1,6 +1,6 @@
 import { html, cspNonce } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
-import { DOCS_URL, UI_URL, EXAMPLE_BLOG_URL, GH_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_START_PATH, UI_URL, EXAMPLE_BLOG_URL, GH_URL, NEW_TAB } from '#lib/links.ts';
 import { siteFooter } from '#lib/site-footer.ts';
 
 /**
@@ -13,7 +13,7 @@ import { siteFooter } from '#lib/site-footer.ts';
  * clamp, the fixed static glow layer, the hover-only scrollbar (`.scroll-thin`),
  * and the <details> icon swap. Everything else is Tailwind.
  *
- * Shared link config (DOCS_URL / UI_URL / EXAMPLE_BLOG_URL / GH_URL / NEW_TAB) lives in
+ * Shared link config (DOCS_START_PATH / UI_URL / EXAMPLE_BLOG_URL / GH_URL / NEW_TAB) lives in
  * lib/links.ts, imported here and by app/page.ts.
  */
 
@@ -21,7 +21,7 @@ const TITLE = 'WebJs - The Web Framework for AI Agents';
 const DESCRIPTION = 'A full-stack web framework built on web components, SSR, and progressive enhancement, with zero build step. Lean enough for AI agents to read end to end. File-based routing, server actions, and streaming SSR on web standards. Runs on Node 24+ or Bun.';
 
 const NAV = [
-  { label: 'Docs', href: DOCS_URL + '/docs/getting-started', ext: true },
+  { label: 'Docs', href: DOCS_START_PATH, ext: false },
   { label: 'UI', href: UI_URL, ext: true },
   { label: 'Demo', href: EXAMPLE_BLOG_URL, ext: true },
   { label: 'Blog', href: '/blog', ext: false },
@@ -139,9 +139,21 @@ export default function RootLayout({ children }: { children: unknown }) {
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', measure);
         else measure();
       })();
+      // The docs drawer's open state is an attribute on <body>, which is
+      // OUTSIDE every swap range, so a soft navigation carries it along:
+      // it locks scrolling on whatever page you land on, and re-opens the
+      // drawer over the next docs page you visit. Clearing it here, in the
+      // root layout, is what makes that impossible, because this listener
+      // survives navigation while anything the docs sub-layout registers
+      // would be swapped away with it.
+      function closeDocsNav() { document.body.removeAttribute('data-docs-nav-open'); }
+      window.addEventListener('popstate', closeDocsNav);
+      document.addEventListener('webjs:navigate', closeDocsNav);
+
       document.addEventListener('click', function (e) {
         var t = e.target;
         if (!t || !t.closest) return;
+        if (t.closest('a')) closeDocsNav();
         var a = t.closest('.mobile-menu a');
         if (a) { var d = a.closest('details'); if (d) d.removeAttribute('open'); return; }
         var open = document.querySelectorAll('.mobile-menu[open]');
@@ -308,5 +320,14 @@ export default function RootLayout({ children }: { children: unknown }) {
 
       ${siteFooter()}
     </div>
+
+    <!-- Progressive-enhancement syntax highlighting for the documentation's
+         code samples, scoped to .prose-docs so the marketing pages keep the
+         spans lib/highlight.ts already emitted at SSR. It lives HERE rather
+         than in the docs sub-layout because the root layout is never swapped
+         by the client router: a copy inside the swap range would depend on
+         the router re-executing it, and would never run at all for a reader
+         whose first docs page arrives by soft navigation. -->
+    <script src="/public/code-highlight.js" defer nonce="${nonce}"></script>
   `;
 }

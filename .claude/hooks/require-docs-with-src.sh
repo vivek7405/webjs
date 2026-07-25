@@ -62,10 +62,16 @@ if [ -z "$src_touched" ]; then exit 0; fi
 # Any documentation surface staged in the same commit? The curated set of
 # real doc surfaces: AGENTS / CLAUDE / CONVENTIONS / README markdown at any
 # depth (root, per-package, per-example), the skill at .agents/skills/webjs/,
-# the docs site, the marketing website, and the scaffold templates. NOT every
-# *.md, so a stray note cannot be staged to slip the gate.
+# the marketing website (which carries the docs site at website/app/docs/),
+# and the scaffold templates. NOT every *.md, so a stray note cannot be
+# staged to slip the gate.
+#
+# `^docs/` is deliberately absent. That path used to BE the docs site, but
+# since #1098 it holds a three-file redirect-only host, so accepting it would
+# let a staged tsconfig satisfy the documentation gate. Its AGENTS.md still
+# counts, via the markdown alternative above.
 doc_staged=$(printf '%s\n' "$staged" | grep -E \
-  '(^|/)(AGENTS|CLAUDE|CONVENTIONS|README)\.md$|^\.agents/skills/webjs/|^docs/|^website/|^packages/cli/templates/' || true)
+  '(^|/)(AGENTS|CLAUDE|CONVENTIONS|README)\.md$|^\.agents/skills/webjs/|^website/|^packages/cli/templates/' || true)
 if [ -n "$doc_staged" ]; then exit 0; fi
 
 cat >&2 <<'EOF'
@@ -80,7 +86,7 @@ package.json webjs.* key, an html hole, a lifecycle hook, a convention, or
 the behaviour of an already-documented feature), invoke the webjs-doc-sync
 skill, then `git add` EVERY applicable surface and commit again:
   AGENTS.md + .agents/skills/webjs/      agent reference (SKILL.md + references/)
-  docs/app/docs/<topic>                  the docs site
+  website/app/docs/<topic>               the docs site (served at webjs.dev/docs)
   README.md                              if a headline capability
   website/                               marketing copy, if headline
   packages/cli/templates/                scaffold per-agent rule files

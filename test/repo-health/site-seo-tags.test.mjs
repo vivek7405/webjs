@@ -1,8 +1,8 @@
 /**
- * Cross-app SEO-tag invariants for the three in-repo web apps (#1088).
+ * Cross-app SEO-tag invariants for the in-repo web apps (#1088).
  *
- * webjs.dev, docs.webjs.dev, and ui.webjs.dev each shipped the SAME two
- * defects, because each root layout was copied from the last:
+ * webjs.dev, the docs, and ui.webjs.dev each shipped the SAME two defects,
+ * because each root layout was copied from the last:
  *
  *  1. `<link rel="icon" ... sizes="32x32">` pointing at an asset that is
  *     really 512x512. The declared size was wrong AND under Google's floor
@@ -12,8 +12,13 @@
  *     trailing-slash variant of every URL split its ranking signals.
  *
  * A per-app test would not have caught the copy-paste spread, so this asserts
- * the invariant across all three at once. Adding a fourth app to APPS is the
+ * the invariant across every app at once. Adding an app to APPS is the
  * intended way to bring it under the same guard.
+ *
+ * The docs are no longer a separate app here (#1098): they are served by the
+ * website at /docs and share its root layout, so the website row now covers
+ * them. `docs.webjs.dev` still resolves, but as a redirect-only host with no
+ * layout and nothing indexable of its own, which is the point of the move.
  *
  * These are source-level assertions on the layout file rather than SSR
  * renders, because the three apps have different dependency trees and
@@ -28,8 +33,7 @@ import { fileURLToPath } from 'node:url';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const APPS = [
-  { name: 'website (webjs.dev)', dir: 'website' },
-  { name: 'docs (docs.webjs.dev)', dir: 'docs' },
+  { name: 'website (webjs.dev, incl. /docs)', dir: 'website' },
   { name: 'ui website (ui.webjs.dev)', dir: 'packages/ui/packages/website' },
 ];
 

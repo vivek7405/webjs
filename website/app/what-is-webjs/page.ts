@@ -1,7 +1,7 @@
 import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import { COMPONENT_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE } from '#lib/samples.ts';
-import { DOCS_URL, GH_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 import { faqJsonLd } from '#lib/faq.ts';
 import { highlight } from '#lib/highlight.ts';
 
@@ -230,9 +230,9 @@ export default function WhatIsWebJs() {
           actually needs it.
         </p>
         <div class="flex gap-3 justify-center flex-wrap mb-8">
-          <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_URL + '/docs/getting-started'} target="_blank" rel="noopener noreferrer">
+          <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>
             Get started
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>${NEW_TAB}
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
           </a>
           <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href="/why-webjs">Why WebJs exists</a>
         </div>
@@ -340,7 +340,7 @@ export default function WhatIsWebJs() {
             <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
           </div>
           <div class="flex gap-3 justify-center flex-wrap">
-            <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_URL + '/docs/getting-started'} target="_blank" rel="noopener noreferrer">Read the docs${NEW_TAB}</a>
+            <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>Read the docs</a>
             <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href=${GH_URL} target="_blank" rel="noopener noreferrer">View on GitHub${NEW_TAB}</a>
           </div>
           <p class="mt-14 pt-8 border-t border-border max-w-[52ch] mx-auto text-[14px] leading-[1.7] text-fg-subtle">

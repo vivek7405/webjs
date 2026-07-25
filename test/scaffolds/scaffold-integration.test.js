@@ -146,7 +146,7 @@ test('scaffoldApp full-stack: writes the canonical full-stack app layout', async
     const pageSrc = readFileSync(join(appDir, 'app', 'page.ts'), 'utf8');
     assert.match(pageSrc, /Explore the gallery/, 'home hero indexes the gallery');
     assert.match(pageSrc, /from '#modules\/gallery\/nav\.ts'/, 'home reads the shared gallery nav (the feature + example index)');
-    assert.match(pageSrc, /docs\.webjs\.dev/, 'footer links the docs');
+    assert.match(pageSrc, /webjs\.dev\/docs/, 'footer links the docs');
     assert.match(pageSrc, /github\.com\/webjsdev\/webjs/, 'footer links the source');
     assert.doesNotMatch(pageSrc, /<prompt-button\b/, 'the AI-prompts card is gone');
     assert.doesNotMatch(pageSrc, /Coding with AI/, 'the coding-with-AI section is gone');

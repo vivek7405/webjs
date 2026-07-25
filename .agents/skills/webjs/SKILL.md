@@ -9,7 +9,7 @@ Use this skill for end-to-end WebJs app work. It helps you choose the right laye
 
 ## Full Documentation
 
-This skill is the quick guide. When you need the full API reference for a surface, load the matching file in `references/` (listed below). For even deeper framework detail, WebJs ships buildless, so the source you run IS the source you read: look in `node_modules/@webjsdev/{core,server,cli}/` (each package ships its own `AGENTS.md`). The complete hosted docs live at https://docs.webjs.dev.
+This skill is the quick guide. When you need the full API reference for a surface, load the matching file in `references/` (listed below). For even deeper framework detail, WebJs ships buildless, so the source you run IS the source you read: look in `node_modules/@webjsdev/{core,server,cli}/` (each package ships its own `AGENTS.md`). The complete hosted docs live at https://webjs.dev/docs.
 
 ## What WebJs Is
 

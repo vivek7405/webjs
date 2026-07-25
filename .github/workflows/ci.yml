@@ -146,13 +146,14 @@ jobs:
       # a node:crypto digest, so it must be byte-identical on the Bun.serve path.
       - name: App-source deploy signal on Bun
         run: bun test/bun/app-source-signal.mjs
-      # Boot website + docs + ui-website on Bun and GET real routes (#542). All
-      # four in-repo apps deploy on Bun, but only examples/blog had a Bun boot in
-      # CI, so a per-route break only on Bun (the #526 ui-website 500) could reach
-      # production. The script runs each app's webjs.start.before presteps (the
-      # ui-website registry copy is the #526 root cause) and probes an ui-website
-      # component detail page. Node runs it too in the "In-repo app tests" job.
-      - name: App boot-check on Bun (website + docs + ui-website)
+      # Boot website (which serves /docs) + ui-website on Bun and GET real
+      # routes (#542). Every in-repo app deploys on Bun, but only examples/blog
+      # had a Bun boot in CI, so a per-route break only on Bun (the #526
+      # ui-website 500) could reach production. The script runs each app's
+      # webjs.start.before presteps (the ui-website registry copy is the #526
+      # root cause) and probes an ui-website component detail page. Node runs it
+      # too in the "In-repo app tests" job.
+      - name: App boot-check on Bun (website incl. /docs + ui-website)
         run: bun test/bun/app-boot.mjs
       # SSR action-result seeding on Bun (#529): seeding rode Node's
       # module.registerHooks, which Bun lacks; it now installs via a Bun.plugin
@@ -195,6 +196,13 @@ jobs:
       # a route handler's raw req.url both carry the forwarded scheme + host.
       - name: Forwarded proto/host on Bun
         run: bun test/bun/forwarded-proto.mjs
+      # Root middleware resolution on Bun (#1098). A root `middleware.ts` was
+      # never loaded at all: the lookup was the single literal `middleware.js`,
+      # with no error to notice. The proof is a module-LOAD path (a bare
+      # import() of a .ts file), and the TS strip differs per runtime, so it
+      # needs its own step rather than riding the Node suite.
+      - name: Root middleware resolution on Bun
+        run: bun test/bun/root-middleware.mjs
       # Light-DOM slot SSR projection on Bun (#1021): slot substitution
       # (injectDSD / substituteSlotsInRender) is on the SSR hot path, so the
       # projection must be byte-consistent across runtimes: authored children
@@ -373,11 +381,12 @@ jobs:
     # suite. This job runs each IN-REPO app's OWN test suite (its `webjs test`
     # script), which the root runners do not discover, so a regression in an
     # app's tests gates the merge (issue #342). The website's `test` runs both
-    # its node + browser suites (hence Playwright); the blog is node-only and
-    # touches its SQLite DB (the same setup the unit + e2e jobs do). docs and
-    # the ui-website ship no `webjs test` suite, so they are covered by the
-    # `node test/bun/app-boot.mjs` boot-check step below (#627), which boots all
-    # three via createRequestHandler and asserts each serves real routes with no
+    # its node + browser suites (hence Playwright), and covers the docs too
+    # since they are its own /docs routes; the blog is node-only and touches
+    # its SQLite DB (the same setup the unit + e2e jobs do). The ui-website
+    # ships no `webjs test` suite, so it is covered by the
+    # `node test/bun/app-boot.mjs` boot-check step below (#627), which boots it
+    # via createRequestHandler and asserts it serves real routes with no
     # broken modulepreload; the same script runs on Bun in the `bun` job (#542).
     steps:
       - uses: actions/checkout@v6
@@ -398,11 +407,14 @@ jobs:
         run: npm test --workspace=@webjsdev/website
       - name: blog tests (node)
         run: npm test --workspace=@webjsdev/example-blog
-      # docs + ui-website ship no `webjs test` suite (#627): boot all three
-      # non-blog apps on Node and assert each serves real routes with no broken
-      # modulepreload. Runs the apps' `webjs.start.before` presteps first (the
-      # ui-website registry copy). The blog is covered by the e2e job.
-      - name: App boot-check on Node (website + docs + ui-website)
+      # The ui-website ships no `webjs test` suite (#627): boot the non-blog
+      # apps on Node and assert each serves real routes with no broken
+      # modulepreload, including the website's /docs routes. Runs the apps'
+      # `webjs.start.before` presteps first (the ui-website registry copy). The
+      # blog is covered by the e2e job. The docs.webjs.dev redirect host is not
+      # here on purpose: every route on it is an empty 301, which would pass
+      # vacuously; it is covered by test/docs/docs-host-redirect.test.mjs.
+      - name: App boot-check on Node (website incl. /docs + ui-website)
         run: node test/bun/app-boot.mjs
 
   docker:

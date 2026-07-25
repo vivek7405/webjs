@@ -5,16 +5,18 @@ import './_components/theme-toggle.ts';
  * Sibling-app URLs are read from env so the same code works in
  * `webjs dev` (localhost) and in deployment (real hosts). Fallbacks
  * are the canonical localhost dev ports (matching the matching apps'
- * `webjs:dev --port` flags). Deploy by overriding WEBSITE_URL /
- * DOCS_URL in the service env (Railway, etc.); `.env.example` in
- * this directory documents the same defaults for visibility.
+ * `webjs:dev --port` flags). Deploy by overriding WEBSITE_URL in the
+ * service env (Railway, etc.); `.env.example` in this directory
+ * documents the same defaults for visibility.
  *
  * Guarded against `process` being undefined: this file also loads
  * on the client during hydration.
  */
 const env = (globalThis as any).process?.env ?? {};
 const WEBSITE_URL = env.WEBSITE_URL || 'http://localhost:5001';
-const DOCS_URL = env.DOCS_URL || 'http://localhost:5002';
+// The docs are a path on the website now, so this is derived rather than
+// configured. One less service env var, and it cannot drift from WEBSITE_URL.
+const DOCS_URL = WEBSITE_URL + '/docs';
 
 const TITLE = 'WebJs UI - The AI-First Component Library for WebJs';
 const DESCRIPTION =

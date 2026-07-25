@@ -15,6 +15,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { planDevSupervisor } from '../../lib/dev-supervisor.js';
 
 const ARGV = ['/path/to/webjs.js', 'dev', '--port', '8080'];
@@ -50,6 +54,8 @@ test('Node re-execs under `node --watch` with the project watch paths', () => {
       '--watch-path', 'actions',
       '--watch-path', 'middleware.ts',
       '--watch-path', 'middleware.js',
+      '--watch-path', 'middleware.mts',
+      '--watch-path', 'middleware.mjs',
       ...ARGV,
     ],
   });
@@ -81,4 +87,28 @@ test('`--no-hot` opts out of the supervisor on Bun (run in-process)', () => {
 test('`--no-hot` opts out of the supervisor on Node (run in-process)', () => {
   const plan = planDevSupervisor({ isBun: false, argv: ARGV, noHot: true, exists: allExist });
   assert.deepEqual(plan, { mode: 'inline' });
+});
+
+test('the watched middleware extensions match the ones the server loads', () => {
+  // The server resolves a root middleware from four extensions. If this list
+  // is narrower, an app can have a middleware that LOADS but never restarts
+  // the dev server when edited, which is the quiet half of the bug where a
+  // root `middleware.ts` was loaded by neither. Read from the server source
+  // rather than restated, so the two cannot drift apart silently.
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '../../../server/src/dev.js'),
+    'utf8',
+  );
+  const m = src.match(/const ROOT_MIDDLEWARE_FILES = \[([^\]]+)\]/);
+  assert.ok(m, 'the server declares its root-middleware candidates in one place');
+  const serverExts = m[1].match(/'([^']+)'/g).map((q) => q.slice(1, -1));
+
+  const plan = planDevSupervisor({ isBun: false, argv: ARGV, noHot: false, exists: allExist });
+  const watched = plan.args.filter((a) => a.startsWith('middleware.'));
+
+  assert.deepEqual(
+    [...watched].sort(),
+    [...serverExts].sort(),
+    'every extension the server loads must also be watched in dev',
+  );
 });

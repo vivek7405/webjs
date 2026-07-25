@@ -35,7 +35,7 @@ older, unrelated Java framework also used the name WebJS.
 - **No build step you run.** `.ts` files served directly. Node 24+ or Bun is the runtime (run a Bun app with `bun --bun run dev` / `start`), and the dev server strips types via Node's built-in `module.stripTypeScriptTypes` (or `amaro` on Bun, byte-identical), position-preserving, no sourcemap, near-zero overhead. TypeScript must be erasable. Non-erasable constructs (enums, value-carrying namespaces, constructor parameter properties, legacy decorators with `emitDecoratorMetadata`) fail at strip time with a 500 pointing at the `no-non-erasable-typescript` lint rule, since WebJs is buildless end-to-end with no bundler fallback. Edit, refresh, done.
 - **Web components, light DOM by default.** Pages and components render as light DOM so global CSS and Tailwind utilities apply directly: no `::part`, no `:host`, no CSS-var plumbing. Shadow DOM is opt-in (`static shadow = true`) when you need scoped styles or third-party-embed isolation. `<slot>` projection (named slots, fallback content, `assignedNodes` / `slotchange`) works identically in both modes. Both modes SSR fully, no hydration runtime.
 - **Progressive enhancement, built in.** Pages *and* components are SSR'd to real HTML. Every web component's `render()` runs on the server, so its initial markup is in the response before any script loads. Content reads, links navigate, forms submit (server actions are plain HTML POSTs), and display-only custom elements look right, all without JavaScript. JS is opt-in *per interactive behavior*, not per component: a counter renders as "0" without JS, and only the +/- click handling needs scripts. The HTML is the floor, and the client router and `@click` / signal interactivity are layered on top.
-- **Tailwind CSS by default.** The scaffold compiles a static Tailwind stylesheet (`css:build`, run automatically by dev / start) with shadcn-style `@theme` design tokens, so the app is fully styled with JavaScript disabled. Prefer hand-written CSS? Opt out entirely, and the framework works just as well with vanilla CSS when you follow the wrapper-scoping convention (`.page-<route>`, `.layout-<name>`, component-tag scoped). Full recipe in the [Styling docs](./docs/app/docs/styling/page.ts).
+- **Tailwind CSS by default.** The scaffold compiles a static Tailwind stylesheet (`css:build`, run automatically by dev / start) with shadcn-style `@theme` design tokens, so the app is fully styled with JavaScript disabled. Prefer hand-written CSS? Opt out entirely, and the framework works just as well with vanilla CSS when you follow the wrapper-scoping convention (`.page-<route>`, `.layout-<name>`, component-tag scoped). Full recipe in the [Styling docs](./website/app/docs/styling/page.ts).
 - **Full-stack type safety.** Import a `.server.ts` function from a component, and TypeScript sees the real signature. webjs's built-in ESM serializer on the wire preserves `Date`, `Map`, `Set`, `BigInt`, `TypedArray`, `Blob`, `File`, `FormData`, and reference cycles.
 - **Server-file source is unreachable from the browser.** Framework invariant: any file ending `.server.{js,ts}` is source-protected. With `'use server'` it serves an RPC stub (server action); without, a throw-at-load stub (server-only utility). Either way the real source never reaches the browser. Enforced in the HTTP layer with regression tests.
 - **NextJs-style routing.** `page.ts`, `layout.ts`, `route.ts`, `error.ts`, `middleware.ts`, `[params]`, `(groups)`, `_private`. Layouts persist across navigations.
@@ -69,7 +69,7 @@ older, unrelated Java framework also used the name WebJS.
 > **The scaffold is a starting point, grown in place.** It ships a gallery index home, a neutral-palette root layout, database wiring, and a densely-commented feature gallery (single-concept demos under `app/features/` plus the `app/examples/todo` app, with logic in `modules/`). The framework context ships as one cross-agent skill, `.agents/skills/webjs/SKILL.md` (a routing skill), alongside `AGENTS.md` and `.agents/rules/workflow.md`. Read the skill and browse the gallery, then build the app the user asked for on top of the scaffold, pruning the demos it does not use.
 >
 > Full rules: [`AGENTS.md` → How AI agents must scaffold](./AGENTS.md#how-ai-agents-must-scaffold).
-> Full framework docs (every API, every recipe): **https://docs.webjs.dev**.
+> Full framework docs (every API, every recipe): **https://webjs.dev/docs**.
 
 ```sh
 # Get started in one command (no global install required)
@@ -123,8 +123,8 @@ packages/
   webjsdev/         # unscoped npm name for @webjsdev/cli (so `npm i -g webjsdev` works without a scope)
 examples/
   blog/             # full-featured reference app (auth, posts, comments, chat)
-docs/               # documentation site (built on webjs itself)
-website/            # landing site (built on webjs itself)
+website/            # landing site AND the documentation at /docs
+docs/               # docs.webjs.dev, a redirect-only host (kept forever)
 AGENTS.md           # AI-agent contract for the framework
 CLAUDE.md           # Claude Code quick-reference
 ```
@@ -150,14 +150,14 @@ because macOS reserves it for the AirPlay Receiver / Control Center):
 | App | Dir | Port | Env override |
 |---|---|---|---|
 | Landing site | `website/` | 5001 | `WEBSITE_PORT` |
-| Docs | `docs/` | 5002 | `DOCS_PORT` |
+| docs.webjs.dev redirect | `docs/` | 5002 | `DOCS_PORT` |
 | UI registry site | `packages/ui/packages/website/` | 5003 | `UI_PORT` |
 | Example blog | `examples/blog/` | 5004 | `BLOG_PORT` |
 
 **Run a single app** (from its directory). Each honors a `PORT` env var:
 
 ```sh
-cd docs && npm run dev               # docs on 5002
+cd website && npm run dev            # landing site + docs on 5001
 PORT=8080 npm run dev                # ...or on 8080
 ```
 
@@ -174,10 +174,11 @@ WEBSITE_PORT=8001 DOCS_PORT=8002 UI_PORT=8003 BLOG_PORT=8004 npm run dev
 > env var is the supported interface (and the conventional one: Railway,
 > Heroku, Fly, etc. all drive port via `PORT`).
 
-The apps cross-link by URL (the landing site links to docs/demo/UI,
-the UI site links back). Those default to the localhost ports above and
-are overridable via `DOCS_URL` / `EXAMPLE_BLOG_URL` / `UI_URL` / `WEBSITE_URL`
-(this is also how deploys point them at real domains).
+The apps cross-link by URL (the landing site links to the demo and the UI
+kit, the UI site links back). Those default to the localhost ports above and
+are overridable via `EXAMPLE_BLOG_URL` / `UI_URL` / `WEBSITE_URL` (this is also
+how deploys point them at real domains). The docs are not in that list: they
+are served by the landing site itself at `/docs`, so they are a plain path.
 
 ## Example
 
@@ -273,11 +274,15 @@ const resp = await app.handle(new Request('http://x/api/hello'));
 
 ## Documentation
 
-The docs site is built on WebJs itself:
+The docs are part of the landing site, served at `/docs` and built on WebJs
+itself. They live in `website/app/docs/`, so running the site runs them:
 
 ```sh
-cd docs && npm run dev    # webjs dev; compiles Tailwind, then recompiles on request (see AGENTS.md)
+cd website && npm run dev    # webjs dev; compiles Tailwind, then recompiles on request (see AGENTS.md)
 ```
+
+`docs.webjs.dev` still resolves and path-preservingly redirects here, because
+error messages in already-published npm packages point at it.
 
 37 pages covering: getting started, AI-first development, routing,
 components, SSR, styling, Suspense, loading states, error handling,

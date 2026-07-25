@@ -1,8 +1,8 @@
 {
   "$comment": "Exemptions for the API docs/test coverage gate (api-coverage.test.js). The gate reuses test/scaffolds/gallery-coverage.json for the INTERNAL classification (an internal export is exempt from docs + test coverage too), so this file only lists the few extra exemptions the scaffold manifest does not express. Keep each reason honest.",
   "docsExempt": {
-    "cookieSession": "alias of cookieSessionStorage; documented under the canonical name (docs/app/docs/sessions)",
-    "storeSession": "alias of storeSessionStorage; documented under the canonical name (docs/app/docs/sessions)"
+    "cookieSession": "alias of cookieSessionStorage; documented under the canonical name (website/app/docs/sessions)",
+    "storeSession": "alias of storeSessionStorage; documented under the canonical name (website/app/docs/sessions)"
   },
   "testExempt": {
     "cookieSession": "alias of cookieSessionStorage; exercised through the canonical name",

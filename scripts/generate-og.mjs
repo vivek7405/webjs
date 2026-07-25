@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Generates Open Graph social-preview PNGs for docs and examples/blog.
+ * Generates Open Graph social-preview PNGs for the example apps.
  *
  * Uses puppeteer-core + system chromium to render a small HTML template
  * at 1200×630 (the OG / Twitter summary_large_image size) and writes the
@@ -30,12 +30,6 @@ const LOGO_FROM = 'oklch(0.8 0.16 58)';
 const LOGO_TO = 'oklch(0.62 0.18 44)';
 
 const APPS = [
-  {
-    out: resolve(root, 'docs/public/og.png'),
-    section: 'docs',
-    title: 'Documentation',
-    subtitle: 'Getting started, routing, components, server actions, deployment, and more.',
-  },
   {
     out: resolve(root, 'examples/blog/public/og.png'),
     section: 'blog · demo',

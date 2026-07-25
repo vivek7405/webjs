@@ -133,11 +133,12 @@ on request when a source changes, so the stylesheet never goes stale without a
 live watcher. In prod, `npm start` and `webjs start` are equivalent too:
 `webjs.start.before` runs `npm run css:build` before serving.
 
-Set `DOCS_URL` / `UI_URL` / `EXAMPLE_BLOG_URL` env vars to point the header links at
-the right hosts when deploying. `EXAMPLE_BLOG_URL` is the live example-blog app
+Set `UI_URL` / `EXAMPLE_BLOG_URL` env vars to point the header links at the
+right hosts when deploying. `EXAMPLE_BLOG_URL` is the live example-blog app
 surfaced as the "Demo" link. Locally, `.env` in this directory sets them to
-the sibling apps' localhost ports. Blog and Changelog are in-app routes, so
-they need no env var.
+the sibling apps' localhost ports. Blog, Changelog, and Docs are in-app
+routes, so they need no env var. (Docs used to need one: they were a separate
+`docs.webjs.dev` app until #1098 moved them here under `app/docs/`.)
 
 ---
 

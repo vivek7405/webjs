@@ -1,7 +1,10 @@
 /**
- * Cross-runtime app boot-check for the three in-repo apps that ship no test
- * suite: `website`, `docs`, and `packages/ui/packages/website` (ui-website).
- * All four in-repo apps DEPLOY on Bun in production (#541), but only
+ * Cross-runtime app boot-check for the in-repo apps whose routes CI would
+ * not otherwise exercise: `website` (which serves the documentation at
+ * /docs) and `packages/ui/packages/website` (ui-website). The
+ * docs.webjs.dev redirect host is deliberately absent: every route on it
+ * is an empty 301, which would pass this check vacuously.
+ * All the in-repo apps DEPLOY on Bun in production (#541), but only
  * `examples/blog` had Bun coverage in CI (the blog-on-bun e2e), so a per-route
  * break that occurs only on Bun could reach production undetected. The #526
  * incident was exactly this: ui.webjs.dev served 500s on its component detail
@@ -28,12 +31,17 @@ import { createRequestHandler } from '@webjsdev/server';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`;
 
-/** The three apps + the real routes to probe. ui-website includes a component
+/** The apps + the real routes to probe. ui-website includes a component
  *  detail page (`/docs/components/[name]`), the exact route class that 500'd in
- *  #526 when the registry copy was skipped. */
+ *  #526 when the registry copy was skipped.
+ *
+ *  The website's list carries doc routes because the docs are served by it
+ *  since #1098. The old `docs` app is gone from this list on purpose: it is a
+ *  redirect-only host now, and every route on it answers 301 with an empty
+ *  body, which passes the status check while probing zero preloads. Leaving it
+ *  here would have looked like docs coverage while providing none. */
 const APPS = [
-  { name: 'website', dir: 'website', routes: ['/'] },
-  { name: 'docs', dir: 'docs', routes: ['/', '/docs/no-build'] },
+  { name: 'website', dir: 'website', routes: ['/', '/docs/no-build', '/docs/components'] },
   { name: 'ui-website', dir: 'packages/ui/packages/website', routes: ['/', '/docs/components/button'] },
 ];
 
@@ -84,4 +92,4 @@ if (failed) {
   console.error(`FAIL  app boot-check on ${runtime}`);
   process.exit(1);
 }
-console.log(`OK  app boot-check passed on ${runtime} (website + docs + ui-website serve real routes, no broken preloads)`);
+console.log(`OK  app boot-check passed on ${runtime} (website incl. /docs + ui-website serve real routes, no broken preloads)`);

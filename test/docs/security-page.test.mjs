@@ -13,7 +13,8 @@ import { fileURLToPath } from 'node:url';
 import { createRequestHandler } from '@webjsdev/server';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DOCS_DIR = resolve(__dirname, '..', '..', 'docs');
+// The docs are served by the marketing app at webjs.dev/docs.
+const DOCS_DIR = resolve(__dirname, '..', '..', 'website');
 
 /** @type {(path: string) => Promise<Response>} */
 let handle;
@@ -53,7 +54,7 @@ test('/docs/security serves and covers the required security surfaces', async ()
 
 test('the security page is registered in the sidebar nav', async () => {
   // The sidebar is rendered into every docs page, so any docs page carries
-  // the nav link once the entry is added to docs/app/docs/layout.ts.
+  // the nav link once the entry is added to website/app/docs/layout.ts.
   const res = await handle('/docs/getting-started');
   assert.equal(res.status, 200);
   const html = await res.text();

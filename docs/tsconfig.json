@@ -7,12 +7,10 @@
     "strict": true,
     "types": ["node"],
     "noEmit": true,
-    "allowJs": true,
-    "checkJs": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["app/**/*", "components/**/*"],
+  "include": ["app/**/*", "middleware.ts"],
   "exclude": ["node_modules", ".webjs"]
 }

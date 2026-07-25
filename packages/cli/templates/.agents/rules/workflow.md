@@ -4,7 +4,7 @@ You are working on a WebJs app (AI-first, no-build, web-components-first). This
 file is the WORKFLOW contract (git, tests, review). For HOW to build (routing,
 components, actions, styling, the framework API), read
 `.agents/skills/webjs/SKILL.md`, which routes to focused references on demand.
-Read `AGENTS.md` first. Full hosted docs are at https://docs.webjs.dev.
+Read `AGENTS.md` first. Full hosted docs are at https://webjs.dev/docs.
 
 ## Grow the app in place (non-negotiable)
 

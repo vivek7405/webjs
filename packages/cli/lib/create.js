@@ -1292,7 +1292,7 @@ export default function RootLayout({ children }: { children: unknown }) {
         WebJs Gallery
       </a>
       <nav class="flex items-center gap-4 text-sm" aria-label="Primary">
-        <a href="https://docs.webjs.dev" target="_blank" rel="noopener" class="hidden sm:inline text-muted-foreground hover:text-foreground no-underline transition-colors">Docs</a>
+        <a href="https://webjs.dev/docs" target="_blank" rel="noopener" class="hidden sm:inline text-muted-foreground hover:text-foreground no-underline transition-colors">Docs</a>
         <a href="https://github.com/webjsdev/webjs" target="_blank" rel="noopener" class="hidden sm:inline text-muted-foreground hover:text-foreground no-underline transition-colors">GitHub</a>
         <theme-toggle></theme-toggle>
       </nav>
@@ -1363,7 +1363,7 @@ export default function Home() {
       <!-- Footer: docs + source -->
       <footer class="flex flex-col items-center gap-3">
         <nav class="flex items-center gap-6 text-sm text-muted-foreground" aria-label="WebJs links">
-          <a href="https://docs.webjs.dev" target="_blank" rel="noopener" class="inline-flex items-center gap-2 hover:text-foreground transition-colors no-underline">\${iconBook()}<span>Docs</span></a>
+          <a href="https://webjs.dev/docs" target="_blank" rel="noopener" class="inline-flex items-center gap-2 hover:text-foreground transition-colors no-underline">\${iconBook()}<span>Docs</span></a>
           <a href="https://github.com/webjsdev/webjs" target="_blank" rel="noopener" class="inline-flex items-center gap-2 hover:text-foreground transition-colors no-underline">\${iconGithub()}<span>GitHub</span></a>
         </nav>
         <p class="text-[0.7rem] uppercase tracking-[0.15em] text-muted-foreground m-0 text-center">
@@ -1497,7 +1497,7 @@ ThemeToggle.register('theme-toggle');
   • Use the wired-up database (Drizzle): define real models in
     db/schema.server.ts, then run 'npm run db:generate' and 'npm run db:migrate'.
     Never store app data in JSON files, in-memory arrays, or localStorage.
-  • Full hosted docs are at https://docs.webjs.dev.
+  • Full hosted docs are at https://webjs.dev/docs.
 `);
 
   // Auto-install (default). Detect the package manager from the env so

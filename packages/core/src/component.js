@@ -576,7 +576,7 @@ class WebComponentBase extends Base {
             `properties via the factory instead: \`class ${name} extends WebComponent({ ` +
             `count: Number })\`. Use the \`prop()\` helper for options ` +
             `(\`prop(Number, { reflect: true })\`) and set defaults in the ` +
-            `constructor after \`super()\`. See https://docs.webjs.dev/docs/components.`,
+            `constructor after \`super()\`. See https://webjs.dev/docs/components.`,
         );
       }
       C = Object.getPrototypeOf(C);

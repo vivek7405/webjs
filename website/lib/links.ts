@@ -12,7 +12,17 @@ import { html } from '@webjsdev/core';
  */
 const env = (globalThis as any).process?.env ?? {};
 
-export const DOCS_URL = env.DOCS_URL || 'https://docs.webjs.dev';
+/**
+ * The documentation is served by THIS app under /docs, so it is a plain
+ * same-origin path rather than an env-configured sibling URL. Keeping the
+ * docs on the main domain is deliberate: a subdomain accrues its own
+ * authority in search instead of contributing to webjs.dev, and it carried
+ * its own layout that drifted from this one. `docs.webjs.dev` still
+ * resolves, permanently redirecting into these paths.
+ */
+export const DOCS_PATH = '/docs';
+export const DOCS_START_PATH = '/docs/getting-started';
+
 export const UI_URL = env.UI_URL || 'https://ui.webjs.dev';
 // EXAMPLE_BLOG_URL points at the live example-blog app (a real WebJs app), surfaced as
 // the "Demo" nav link.

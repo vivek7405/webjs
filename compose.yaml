@@ -3,7 +3,7 @@
 #
 #   docker compose up --build
 #     website    → http://localhost:15001
-#     docs       → http://localhost:15002
+#     docs       → http://localhost:15002  (redirect-only; the docs live at website/docs)
 #     blog       → http://localhost:15004
 #     ui-website → http://localhost:15003  (registry host + @webjsdev/ui docs)
 #
@@ -25,10 +25,12 @@ services:
       - "15001:5001"
     environment:
       PORT: "5001"
-      DOCS_URL: ${DOCS_URL:-http://localhost:15002}
       EXAMPLE_BLOG_URL: ${EXAMPLE_BLOG_URL:-http://localhost:15004}
       UI_URL:   ${UI_URL:-http://localhost:15003}
 
+  # The documentation itself is served by the `website` service at /docs. This
+  # service is the docs.webjs.dev host, which redirects every request there and
+  # must keep resolving indefinitely (shipped npm packages link to it).
   docs:
     image: webjs
     build: .
@@ -38,6 +40,7 @@ services:
       - "15002:5002"
     environment:
       PORT: "5002"
+      SITE_URL: ${SITE_URL:-http://localhost:15001}
 
   blog:
     image: webjs

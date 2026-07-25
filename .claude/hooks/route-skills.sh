@@ -125,7 +125,7 @@ if has '(doc|documentation) (gap|drift|sync|coverage|debt)' \
    || has '(missing|stale|outdated|out-of-date|out of date).{0,20}(doc|docs|documentation)' \
    || has 'did (we|you|i) (update|sync).{0,20}(doc|docs)' \
    || has '(audit|sweep|check).{0,40}(doc|docs|documentation)'; then
-  add_match "webjs-doc-sync: the request is about documentation sync, drift, or a doc gap. Invoke the webjs-doc-sync skill BEFORE editing any doc. It holds the authoritative map of EVERY surface (AGENTS.md + the skill at .agents/skills/webjs/, README, the docs site under docs/app/docs/, the marketing website/, and the scaffold templates' per-agent rule files) and the change-type to surface mapping, so no surface is silently skipped. File each confirmed gap via webjs-file-issue."
+  add_match "webjs-doc-sync: the request is about documentation sync, drift, or a doc gap. Invoke the webjs-doc-sync skill BEFORE editing any doc. It holds the authoritative map of EVERY surface (AGENTS.md + the skill at .agents/skills/webjs/, README, the docs site under website/app/docs/, the rest of the marketing website/, and the scaffold templates' per-agent rule files) and the change-type to surface mapping, so no surface is silently skipped. File each confirmed gap via webjs-file-issue."
 fi
 
 # --- webjs-scaffold-sync: keep every scaffold surface in sync -----------

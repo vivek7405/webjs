@@ -94,6 +94,8 @@ export async function POST(req: Request) {
 
 Optional root-level plus per-segment. The default export is `async (req, next) => Response`. Return a Response to short-circuit, or call `next()` and post-process. Per-segment middleware applies to its subtree, outermost to innermost.
 
+The root file sits beside `app/`, not inside it, and may be `middleware.ts` / `.js` / `.mts` / `.mjs` (`.ts` wins if more than one exists). A per-segment `app/<segment>/middleware.*` takes any of the same extensions.
+
 ## Metadata and `generateMetadata`
 
 A page exports `metadata` (static) or `generateMetadata(ctx)` (request-scoped, takes precedence). Values flow into `<head>` at SSR and merge across nested layouts (deeper wins). Type both with `Metadata`; `MetadataContext` types the argument. The surface is Next.js-compatible.
@@ -108,7 +110,7 @@ export async function generateMetadata(ctx: MetadataContext): Promise<Metadata> 
 }
 ```
 
-Common fields: `title` (string or `{ template, default, absolute }`), `description`, `keywords`, `metadataBase` (resolves relative URLs in `openGraph` / `twitter` / `alternates` / `icons`), `openGraph`, `twitter`, `robots`, `alternates.canonical`, `icons`, `manifest`, and `jsonLd` (schema.org structured data, single object or array, HTML-safe-escaped automatically). `viewport`, `themeColor`, and `colorScheme` may also be set via a split `export const viewport = { ... }`. `cacheControl` is emitted as a response HEADER (not a `<meta>`); pages default to `no-store`, and a `public` value enables conditional GET (a weak `ETag` + `304`). See https://docs.webjs.dev for the full field list.
+Common fields: `title` (string or `{ template, default, absolute }`), `description`, `keywords`, `metadataBase` (resolves relative URLs in `openGraph` / `twitter` / `alternates` / `icons`), `openGraph`, `twitter`, `robots`, `alternates.canonical`, `icons`, `manifest`, and `jsonLd` (schema.org structured data, single object or array, HTML-safe-escaped automatically). `viewport`, `themeColor`, and `colorScheme` may also be set via a split `export const viewport = { ... }`. `cacheControl` is emitted as a response HEADER (not a `<meta>`); pages default to `no-store`, and a `public` value enables conditional GET (a weak `ETag` + `304`). See https://webjs.dev/docs for the full field list.
 
 ## Control-flow throws
 

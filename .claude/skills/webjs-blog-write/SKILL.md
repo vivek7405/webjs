@@ -11,7 +11,7 @@ when_to_use: |
     editing an existing blog post's prose in a non-trivial way
   Do NOT trigger for: filing an issue (webjs-file-issue), syncing framework
   API docs or the docs site (webjs-doc-sync), or the docs site's own
-  `docs/app/docs/**` pages (those are reference docs, not blog posts).
+  `website/app/docs/**` pages (those are reference docs, not blog posts).
 ---
 
 # Write a webjs blog post
@@ -99,5 +99,5 @@ The test before you ship: read the draft aloud and ask whether the author would 
 ## Related skills
 
 - **webjs-file-issue**: file the tracking issue for the blog work before writing, and file a framework issue if dogfooding surfaces a real bug.
-- **webjs-doc-sync**: for the framework's own reference docs (`AGENTS.md`, the skill at `.agents/skills/webjs/`, the docs site under `docs/app/docs/`). A blog post is not a doc-sync surface, and reference docs are not a blog. Keep them separate.
+- **webjs-doc-sync**: for the framework's own reference docs (`AGENTS.md`, the skill at `.agents/skills/webjs/`, the docs site under `website/app/docs/`). A blog post is not a doc-sync surface, and reference docs are not a blog. Keep them separate.
 - **webjs-list-todos**: to see what shipped work is open or recently done when hunting for a topic.

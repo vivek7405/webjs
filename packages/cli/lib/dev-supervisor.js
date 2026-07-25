@@ -51,7 +51,11 @@ export function planDevSupervisor({ isBun, argv, noHot, exists }) {
   for (const dir of ['app', 'components', 'modules', 'lib', 'actions']) {
     if (exists(dir)) watchPaths.push('--watch-path', dir);
   }
-  for (const f of ['middleware.ts', 'middleware.js']) {
+  // Every extension the server's root-middleware lookup accepts, in the same
+  // order. If these two lists diverge, an app gets a middleware that loads but
+  // never restarts the dev server when edited, which is the quiet half of the
+  // bug where a `middleware.ts` was loaded by neither.
+  for (const f of ['middleware.ts', 'middleware.js', 'middleware.mts', 'middleware.mjs']) {
     if (exists(f)) watchPaths.push('--watch-path', f);
   }
   return {

@@ -28,6 +28,17 @@
   --text-display: clamp(2.7rem, 1.5rem + 3.6vw, 4.6rem);
   --text-h2:      clamp(1.7rem, 1.2rem + 1.4vw, 2.5rem);
   --text-lede:    clamp(1.08rem, 0.98rem + 0.4vw, 1.28rem);
+
+  /* Documentation-page type scale. The docs run a tighter heading rhythm than
+     the marketing pages (a reference page wants a calm h1, not a hero), so
+     they carry their own two steps here rather than reusing --text-display.
+     Declared in the one @theme block so /docs and the marketing pages read
+     from a single token source, which is the point of the merge. */
+  --text-doc-h1: clamp(2rem, 1.5rem + 1.6vw, 2.6rem);
+  --text-doc-h2: clamp(1.3rem, 1.1rem + 0.7vw, 1.6rem);
+
+  --duration-fast: 140ms;
+  --duration-slow: 220ms;
 }
 
 /*

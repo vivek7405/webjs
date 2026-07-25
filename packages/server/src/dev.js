@@ -2259,21 +2259,40 @@ async function runWithSegmentMiddleware(req, files, terminal, dev) {
 }
 
 /**
- * Load the optional top-level `middleware.js`.
+ * Root-middleware filename candidates, in resolution order.
+ *
+ * Every other routing convention accepts all four extensions (the router
+ * matches on the STEM, so `app/<segment>/middleware.ts` has always worked),
+ * and both the scaffold and the dev supervisor write / watch `middleware.ts`.
+ * This lookup used to be the single literal `middleware.js`, so a root
+ * `middleware.ts` was silently never loaded: no error, no warning, the app
+ * just ran with no global middleware. TypeScript is the documented default
+ * for an app, so that was the common case, and it went unnoticed because the
+ * failure is invisible (a missing middleware looks exactly like an app that
+ * has none). `.ts` is tried first to match the dev supervisor's order.
+ */
+const ROOT_MIDDLEWARE_FILES = ['middleware.ts', 'middleware.js', 'middleware.mts', 'middleware.mjs'];
+
+/**
+ * Load the optional top-level `middleware.{ts,js,mts,mjs}`.
  * @param {string} appDir
  * @param {boolean} dev
  * @param {import('./logger.js').Logger} logger
  */
 async function loadMiddleware(appDir, dev, logger) {
-  const file = join(appDir, 'middleware.js');
-  if (!(await exists(file))) return null;
+  let file = null;
+  for (const name of ROOT_MIDDLEWARE_FILES) {
+    const candidate = join(appDir, name);
+    if (await exists(candidate)) { file = candidate; break; }
+  }
+  if (!file) return null;
   const url = pathToFileURL(file).toString();
   const bust = dev ? `?t=${Date.now()}-${Math.random().toString(36).slice(2)}` : '';
   try {
     const mod = await import(url + bust);
     return typeof mod.default === 'function' ? mod.default : null;
   } catch (e) {
-    logger.error('failed to load middleware.js', { err: String(e) });
+    logger.error('failed to load root middleware', { file, err: String(e) });
     return null;
   }
 }
@@ -2575,7 +2594,7 @@ async function tsResponse(abs, dev, elideOpts, cache, immutable, reportDevError)
           `Replace enum / namespace / parameter-property / legacy-decorator / ` +
           `import = require constructs with their erasable equivalents. ` +
           `Run \`webjs check\` for guidance (no-non-erasable-typescript rule). ` +
-          `Docs: https://docs.webjs.dev/docs/typescript`
+          `Docs: https://webjs.dev/docs/typescript`
         // Prod: terse, no path leak, no Node-message leak (Node's
         // message can include source snippets). Operators get the
         // detail in server logs above.

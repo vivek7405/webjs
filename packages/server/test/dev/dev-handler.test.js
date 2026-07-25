@@ -395,7 +395,7 @@ test('handle: .ts source with non-erasable TS returns 500 pointing at the lint r
   assert.match(body, /advanced\.ts/, 'body should name the offending file');
   assert.match(body, /no-non-erasable-typescript/, 'body should point at the lint rule');
   // #263: the error carries a stable, fetchable docs URL an agent can act on.
-  assert.match(body, /https:\/\/docs\.webjs\.dev\/docs\/typescript/, 'body should anchor a docs URL');
+  assert.match(body, /https:\/\/webjs\.dev\/docs\/typescript/, 'body should anchor a docs URL');
 });
 
 test('handle: .ts source with non-erasable TS returns terse 500 in PROD (no filesystem path leak)', async () => {
