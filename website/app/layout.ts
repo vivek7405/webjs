@@ -287,7 +287,7 @@ export default function RootLayout({ children }: { children: unknown }) {
     </header>
     </div>
 
-    <div class="relative z-[1]">
+    <div class="relative z-1">
       ${children}
 
       ${siteFooter()}
