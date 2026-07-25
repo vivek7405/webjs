@@ -51,15 +51,17 @@ export function urlFromRequest(req) {
 /**
  * Build the origin both entry points agree on, as an origin-only URL.
  *
- * Sharing this is what makes node/Bun parity STRUCTURAL rather than a
- * coincidence of two similar-looking expressions. The layering matters: start
- * from a known-good placeholder, apply the raw `Host`, then let the forwarded
- * host override it. Each assignment goes through the `host` setter, which
- * IGNORES a value it cannot parse instead of throwing, so a junk header falls
- * back to the previous layer rather than 500ing the request or collapsing to
+ * Sharing this is what keeps the ORIGIN decision identical across the two
+ * shells rather than a coincidence of two similar-looking expressions. The
+ * layering matters: start from a known-good placeholder, apply the raw `Host`,
+ * then let the forwarded host override it. Each assignment goes through
+ * `setHost`, which ignores a value it cannot parse, so a junk header falls back
+ * to the previous layer rather than 500ing the request or collapsing to
  * localhost.
  *
- * @param {string} proto  already restricted to http / https by `normalizeProto`
+ * @param {string} proto  http / https. `normalizeProto` guarantees it for a
+ *   forwarded value; the callers' fallbacks pass the url's own scheme, which is
+ *   http or https for any request a listener shell can receive.
  * @param {string | null} forwardedHost
  * @param {string} rawHost  the `Host` header
  * @returns {URL} an origin-only URL
@@ -106,23 +108,31 @@ function setHost(u, value) {
  * plain node object, while a web `Request` exposes a `Headers` instance whose
  * values come from `.get()`. Reusing it against a `Request` silently reads
  * `undefined` for every header, so it LOOKS wired up while changing nothing.
- * Both entry points funnel through `readForwarded` so the two runtimes cannot
- * drift on the trust switch or the comma-chain rule.
+ * Both entry points funnel through `readForwarded` (the trust switch, the
+ * allowed schemes, the comma-chain rule) and `resolveOrigin` (the host
+ * layering), so the HEADER and ORIGIN decisions cannot drift. What each shell
+ * RECEIVES still differs: node gets an origin-form request target it treats as
+ * a path, Bun gets a url its own parser already resolved, so an absolute-form
+ * request line routes differently between them. The security-relevant part, the
+ * origin, is decided here for both.
  *
- * Returns the SAME URL instance when nothing changes (no proxy, or the headers
- * already agree), so the caller can use identity to skip rebuilding a request
- * on the hot path.
+ * Returns the SAME URL instance when nothing changes, so the caller can use
+ * identity to skip rebuilding a request on the hot path. That fast path also
+ * requires the url's own authority to already AGREE with the `Host` header:
+ * `Bun.serve` reports an absolute-form request line (`GET http://evil/x`) as
+ * the request's url, so returning early on "no forwarded headers" would let an
+ * unproxied app hand a client full control of `ctx.url.origin`. When they
+ * disagree the origin is rebuilt from `Host` and the client's authority is
+ * discarded. A normal request has `url.host === Host`, so the optimization is
+ * intact for every real request.
  *
- * The rewrite CLONES the url and assigns `protocol` / `host` rather than
- * re-parsing the path against a new base. Re-parsing is unsafe: `url.pathname`
- * for `GET //evil.com/x` is `//evil.com/x`, which is a scheme-relative
+ * The origin is rebuilt through the shared `resolveOrigin`, and the path parts
+ * are COPIED onto it rather than re-parsed against it. Re-parsing is unsafe:
+ * `url.pathname` for `GET //evil.com/x` is `//evil.com/x`, a scheme-relative
  * reference, so `new URL('//evil.com/x', 'https://real-host')` resolves to
  * `https://evil.com/x`. An attacker needed only the `X-Forwarded-Proto` every
  * TLS-terminating proxy already sets to take over the origin AND silently
- * change which route matched. Assigning through the setters cannot move the
- * path into the authority, and it fails safe on a malformed value (the `host`
- * setter ignores what it cannot parse instead of throwing, so a junk header is
- * no longer a 500 on the fetch path or a broken WS handshake).
+ * change which route matched.
  *
  * The host FALLBACK is the `Host` header, not `url.host`, to match
  * `urlFromRequest` exactly: node builds from the raw header string, so with
@@ -137,9 +147,10 @@ function setHost(u, value) {
  */
 export function applyForwarded(url, headers) {
   const { host, proto } = readForwarded((n) => headers.get(n));
-  if (!host && !proto) return url;
+  const rawHost = headers.get('host') || url.host;
+  if (!host && !proto && url.host === rawHost) return url;
   // `url.protocol` carries its trailing colon; the forwarded header does not.
-  const origin = resolveOrigin(proto || url.protocol.slice(0, -1), host, headers.get('host') || url.host);
+  const origin = resolveOrigin(proto || url.protocol.slice(0, -1), host, rawHost);
   if (origin.host === url.host && origin.protocol === url.protocol) return url;
   // Copy the path across verbatim. Never re-parse it against the new origin:
   // `url.pathname` for `GET //evil.com/x` is `//evil.com/x`, a scheme-relative

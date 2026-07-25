@@ -281,9 +281,29 @@ test('only http and https are accepted as a forwarded scheme', () => {
 });
 
 test('a forwarded scheme is matched case-insensitively', () => {
-  const url = new URL('https://webjs.dev/p');
-  // Already https, so an uppercase HTTPS must still be recognised as the no-op.
-  assert.equal(applyForwarded(url, webHeaders({ host: 'webjs.dev', 'x-forwarded-proto': 'HTTPS' })), url);
+  // Assert the UPGRADE, not the no-op: an identity check cannot tell
+  // "recognised as https" from "rejected as an unknown scheme", since both
+  // return the url unchanged. Driving it from an http url makes the two
+  // outcomes observably different.
+  const upgraded = applyForwarded(new URL('http://webjs.dev/p'), webHeaders({ host: 'webjs.dev', 'x-forwarded-proto': 'HTTPS' }));
+  assert.equal(upgraded.href, 'https://webjs.dev/p', 'uppercase HTTPS still upgrades the scheme');
+  assert.equal(
+    urlFromRequest(makeReq('/p', { host: 'webjs.dev', 'x-forwarded-proto': 'HTTPS' })).href,
+    'https://webjs.dev/p',
+    'and the node entry point agrees',
+  );
+  // The no-op direction still holds on an already-https url.
+  const already = new URL('https://webjs.dev/p');
+  assert.equal(applyForwarded(already, webHeaders({ host: 'webjs.dev', 'x-forwarded-proto': 'HTTPS' })), already);
+});
+
+test('an absolute-form request line cannot supply the origin', () => {
+  // `Bun.serve` reports an absolute-form request line as the request's url, so
+  // a client sending `GET http://evil.example/path` would otherwise own
+  // ctx.url.origin on an unproxied app. The Host header decides the origin.
+  const bun = applyForwarded(new URL('http://evil.example/path'), webHeaders({ host: 'localhost:5001' }));
+  assert.equal(bun.origin, 'http://localhost:5001', 'the client authority is discarded');
+  assert.equal(bun.pathname, '/path');
 });
 
 test('proto-only forwarding agrees on the host fallback (the Railway shape)', () => {
