@@ -44,7 +44,7 @@ applies, then update or consciously skip each.
 2. **`README.md`** (repo root). Update when a headline capability changes (the
    feature list, the quickstart, the runtime/template matrix).
 3. **The docs site: `docs/app/docs/<topic>/page.tsx`.** This is the
-   user-facing documentation at docs.webjs.dev. Find the topic page(s) that cover
+   user-facing documentation at webjs.dev/docs. Find the topic page(s) that cover
    the area (`server-actions`, `routing`, `components`, `caching`, `configuration`,
    `client-router`, `data-fetching`, ...) and update them. `llms.txt` /
    `llms-full.txt` are generated LIVE from the doc pages (no build step), so they

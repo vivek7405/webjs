@@ -26,7 +26,7 @@ const REPO = join(__dirname, '..', '..');
 const MANIFEST = JSON.parse(readFileSync(join(__dirname, 'knowledge-coverage.json'), 'utf8'));
 
 const EXPLAIN_SURFACES = [
-  'docs/app/docs/troubleshooting/page.ts',
+  'website/app/docs/troubleshooting/page.ts',
   '.agents/skills/webjs/references/muscle-memory-gotchas.md',
 ].map((p) => join(REPO, p));
 const AGENTS_MD = join(REPO, 'AGENTS.md');

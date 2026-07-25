@@ -2594,7 +2594,7 @@ async function tsResponse(abs, dev, elideOpts, cache, immutable, reportDevError)
           `Replace enum / namespace / parameter-property / legacy-decorator / ` +
           `import = require constructs with their erasable equivalents. ` +
           `Run \`webjs check\` for guidance (no-non-erasable-typescript rule). ` +
-          `Docs: https://docs.webjs.dev/docs/typescript`
+          `Docs: https://webjs.dev/docs/typescript`
         // Prod: terse, no path leak, no Node-message leak (Node's
         // message can include source snippets). Operators get the
         // detail in server logs above.

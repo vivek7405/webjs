@@ -13,7 +13,8 @@ import { createRequestHandler } from '@webjsdev/server';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..', '..');
-const DOCS_DIR = resolve(ROOT, 'docs');
+// The docs are served by the marketing app at webjs.dev/docs.
+const DOCS_DIR = resolve(ROOT, 'website');
 
 test('the skill carries the canonical recipes and the persistence rule (recipes.md was retired into the skill)', async () => {
   const skill = await readFile(resolve(ROOT, '.agents', 'skills', 'webjs', 'SKILL.md'), 'utf8');

@@ -163,7 +163,7 @@ export default function Home() {
         app from here. The guide is <code class="text-[0.9em]">.agents/skills/webjs/SKILL.md</code>.
       </p>
       <nav class="flex items-center gap-5 text-sm opacity-70">
-        <a href="https://docs.webjs.dev" target="_blank" rel="noopener" class="hover:opacity-100 transition-opacity no-underline">Docs</a>
+        <a href="https://webjs.dev/docs" target="_blank" rel="noopener" class="hover:opacity-100 transition-opacity no-underline">Docs</a>
         <a href="https://github.com/webjsdev/webjs" target="_blank" rel="noopener" class="hover:opacity-100 transition-opacity no-underline">GitHub</a>
       </nav>
     </div>

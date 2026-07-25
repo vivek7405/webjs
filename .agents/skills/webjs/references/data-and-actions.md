@@ -96,7 +96,7 @@ const [updated] = await db.update(posts).set({ title }).where(eq(posts.id, id)).
 await db.delete(posts).where(eq(posts.id, id));
 ```
 
-A `.returning()` row is the table's own columns only, never `with` relations. When the caller wants a joined shape, re-read with `db.query.*` or splice the already-known related value in by hand. Full surface at https://docs.webjs.dev.
+A `.returning()` row is the table's own columns only, never `with` relations. When the caller wants a joined shape, re-read with `db.query.*` or splice the already-known related value in by hand. Full surface at https://webjs.dev/docs.
 
 ## Input validation at the boundary
 
@@ -201,4 +201,4 @@ import type { Post } from '#db/schema.server.ts';
 import { posts } from '#db/schema.server.ts';
 ```
 
-Keep the wire shape in a browser-safe `modules/<feature>/types.ts` with NO runtime import from a `.server.ts` file or from `db/`. Define a hand-written DTO, or a type-only derivation (`import type { Post } ...; export type PostFormatted = Omit<Post, 'createdAt'> & { createdAt: string }`). Never `export *` or a value re-export from a `.server.ts` in `types.ts`; that carries the runtime table bindings and breaks any component importing the types. Full reference at https://docs.webjs.dev.
+Keep the wire shape in a browser-safe `modules/<feature>/types.ts` with NO runtime import from a `.server.ts` file or from `db/`. Define a hand-written DTO, or a type-only derivation (`import type { Post } ...; export type PostFormatted = Omit<Post, 'createdAt'> & { createdAt: string }`). Never `export *` or a value re-export from a `.server.ts` in `types.ts`; that carries the runtime table bindings and breaks any component importing the types. Full reference at https://webjs.dev/docs.

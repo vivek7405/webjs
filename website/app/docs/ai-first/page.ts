@@ -136,7 +136,7 @@ App with auth / login / signup / accounts (SaaS)        default (auth card)
 HTTP/JSON API only, no UI                                --template api</pre>
     <p>The scaffold is REFERENCE, not the final product. The agent's job after scaffolding is to replace the example <code>app/page.ts</code> ("Hello from …"), the example <code>User</code> model in <code>db/schema.server.ts</code>, and the example components with the app the user actually requested. The infrastructure (Drizzle wiring, test config, agent rules, route conventions) stays.</p>
 
-    <p><strong>When the scaffolded <code>AGENTS.md</code> doesn't cover what you need</strong> (an obscure directive, an auth-provider recipe, deployment specifics, edge cases), the full hosted documentation is at <a href="https://docs.webjs.dev">docs.webjs.dev</a>. Every API, every recipe, every example lives there. Reach for it before guessing or hand-rolling.</p>
+    <p><strong>When the scaffolded <code>AGENTS.md</code> doesn't cover what you need</strong> (an obscure directive, an auth-provider recipe, deployment specifics, edge cases), the full hosted documentation is at <a href="/docs">the rest of these docs</a>. Every API, every recipe, every example lives there. Reach for it before guessing or hand-rolling.</p>
 
     <h2>What an AI Agent Can Do with webjs</h2>
     <p>Given a WebJs app + AGENTS.md, an AI coding assistant can:</p>

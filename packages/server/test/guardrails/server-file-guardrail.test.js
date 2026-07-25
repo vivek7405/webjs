@@ -64,7 +64,7 @@ function assertIsServerOnlyStub(text) {
   assert.ok(/throw new Error/.test(text), 'server-only stub must throw on import');
   // #263: the throw-at-load message anchors a stable, fetchable docs URL.
   assert.ok(
-    text.includes('https://docs.webjs.dev/docs/server-actions'),
+    text.includes('https://webjs.dev/docs/server-actions'),
     'server-only stub message must anchor a docs URL'
   );
   assertNoSourceLeak(text);

@@ -70,12 +70,16 @@ const ports = {
 // BLOG_PORT override flows through to every app, not just the website.
 const links = {
   WEBSITE_URL: `http://localhost:${ports.website}`,
-  DOCS_URL: `http://localhost:${ports.docs}`,
   UI_URL: `http://localhost:${ports.ui}`,
   EXAMPLE_BLOG_URL: `http://localhost:${ports.blog}`,
 };
+// The docs are served BY the website now (webjs.dev/docs), so there is no
+// DOCS_URL cross-link. The docs app is a redirect-only host, and SITE_URL is
+// where it sends everything, which locally has to be the website dev server
+// rather than production.
+const siteUrl = { SITE_URL: `http://localhost:${ports.website}` };
 start('website', resolve(root, 'website'), 'npm', ['run', 'dev'], { PORT: ports.website, ...links });
-start('docs',    resolve(root, 'docs'),    'npm', ['run', 'dev'], { PORT: ports.docs, ...links });
+start('docs',    resolve(root, 'docs'),    'npm', ['run', 'dev'], { PORT: ports.docs, ...links, ...siteUrl });
 start('ui',      resolve(root, 'packages', 'ui', 'packages', 'website'), 'npm', ['run', 'dev'], { PORT: ports.ui, ...links });
 start('blog',    resolve(root, 'examples', 'blog'), 'npm', ['run', 'dev'], { PORT: ports.blog, ...links });
 
@@ -92,7 +96,8 @@ process.on('SIGTERM', cleanup);
 console.log(`
 ▲ webjs development servers:
   Website     → http://localhost:${ports.website}
-  Docs        → http://localhost:${ports.docs}
+  Docs        → http://localhost:${ports.website}/docs
+  docs.webjs.dev redirect host → http://localhost:${ports.docs}
   UI registry → http://localhost:${ports.ui}
   Demo        → http://localhost:${ports.blog}
 

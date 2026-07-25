@@ -89,7 +89,7 @@ Badge.register('status-badge');
 
 // Shipped: a single @click makes it interactive, so its JS is fetched.
 class Counter extends WebComponent {
-  render() { return html\`&lt;button @click=\${'${() => this.inc()}'}&gt;+&lt;/button&gt;\`; }
+  render() { return html\`&lt;button @click=\${() =&gt; this.inc()}&gt;+&lt;/button&gt;\`; }
 }
 Counter.register('my-counter');</pre>
 

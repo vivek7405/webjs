@@ -113,7 +113,7 @@ async function walkFiles(dir, re, out = []) {
  * The agent- AND user-facing doc corpus. Three surfaces:
  *  - AGENTS.md + the skill references (agent-facing markdown, imports in ``` fences).
  *  - the scaffold's shipped AGENTS.md (ships into every app).
- *  - the docs SITE (`docs/app/**`, the docs.webjs.dev source): its code samples
+ *  - the docs SITE (`website/app/docs/**`): its code samples
  *    are embedded in `.ts` page template strings, and its own components import
  *    the framework for real. Both must resolve, so the site cannot drift ahead
  *    of the shipped surface (the external documentation the user asked about).
@@ -121,7 +121,7 @@ async function walkFiles(dir, re, out = []) {
 async function docCorpus() {
   const files = [join(ROOT, 'AGENTS.md'), join(ROOT, 'README.md'), join(ROOT, 'packages/cli/templates/AGENTS.md')];
   await walkFiles(join(ROOT, '.agents', 'skills', 'webjs'), /\.md$/, files);
-  await walkFiles(join(ROOT, 'docs', 'app'), /\.(ts|md|mdx)$/, files);
+  await walkFiles(join(ROOT, 'website', 'app', 'docs'), /\.(ts|md|mdx)$/, files);
   // Marketing site (its sample-code strings + its own components import the
   // framework) and every package README are first-class doc surfaces too.
   await walkFiles(join(ROOT, 'website'), /\.(ts|md|mdx)$/, files);

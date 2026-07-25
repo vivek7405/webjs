@@ -69,7 +69,7 @@ older, unrelated Java framework also used the name WebJS.
 > **The scaffold is a starting point, grown in place.** It ships a gallery index home, a neutral-palette root layout, database wiring, and a densely-commented feature gallery (single-concept demos under `app/features/` plus the `app/examples/todo` app, with logic in `modules/`). The framework context ships as one cross-agent skill, `.agents/skills/webjs/SKILL.md` (a routing skill), alongside `AGENTS.md` and `.agents/rules/workflow.md`. Read the skill and browse the gallery, then build the app the user asked for on top of the scaffold, pruning the demos it does not use.
 >
 > Full rules: [`AGENTS.md` → How AI agents must scaffold](./AGENTS.md#how-ai-agents-must-scaffold).
-> Full framework docs (every API, every recipe): **https://docs.webjs.dev**.
+> Full framework docs (every API, every recipe): **https://webjs.dev/docs**.
 
 ```sh
 # Get started in one command (no global install required)

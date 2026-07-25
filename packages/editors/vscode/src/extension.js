@@ -39,7 +39,7 @@ function activate(context) {
       runInTerminal('webjs create', `npx @webjsdev/cli create ${name}`);
     }),
     vscode.commands.registerCommand('webjs.docs', () => {
-      vscode.env.openExternal(vscode.Uri.parse('https://docs.webjs.dev'));
+      vscode.env.openExternal(vscode.Uri.parse('https://webjs.dev/docs'));
     }),
   );
 }

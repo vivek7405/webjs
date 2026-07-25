@@ -3,7 +3,7 @@
 You are working on a webjs app, an AI-first, no-build, web-components-first
 framework. Read AGENTS.md for the full API reference and CONVENTIONS.md for
 project-specific conventions before writing any code. When AGENTS.md does not
-cover what you need, the full hosted docs are at **https://docs.webjs.dev**.
+cover what you need, the full hosted docs are at **https://webjs.dev/docs**.
 
 ## Persistence + scaffold rules (non-negotiable)
 

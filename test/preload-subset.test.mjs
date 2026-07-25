@@ -6,7 +6,7 @@
  * so a hint pointing at a non-servable file (a server-only module reached
  * through a `.server.*`, a phantom path, anything the auth gate 404s) is a
  * real bug shipped to users (the #158 / #159 class). The blog gained a
- * browser-level probe in #176; this generalises it to ALL four in-repo apps
+ * browser-level probe in #176; this generalises it to every in-repo app
  * through the in-process handler, so a regression in any of them is caught
  * without a browser.
  *
@@ -33,8 +33,9 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // emit the layout's modulepreloads, which is what this test probes.
 const APPS = [
   { name: 'blog', dir: 'examples/blog', routes: ['/about', '/static-info'] },
-  { name: 'website', dir: 'website', routes: ['/'] },
-  { name: 'docs', dir: 'docs', routes: ['/docs/architecture', '/docs/components'] },
+  // The docs are served by the website app (#1098), so their routes are probed
+  // as part of it. `docs/` itself is a redirect-only host with no pages left.
+  { name: 'website', dir: 'website', routes: ['/', '/docs/architecture', '/docs/components'] },
   { name: 'ui-website', dir: 'packages/ui/packages/website', routes: ['/'] },
 ];
 

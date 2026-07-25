@@ -12,7 +12,8 @@ import { fileURLToPath } from 'node:url';
 import { createRequestHandler } from '@webjsdev/server';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DOCS_DIR = resolve(__dirname, '..', '..', 'docs');
+// The docs are served by the marketing app at webjs.dev/docs.
+const DOCS_DIR = resolve(__dirname, '..', '..', 'website');
 
 /** @type {(path: string) => Promise<Response>} */
 let handle;
