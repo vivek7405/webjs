@@ -629,12 +629,12 @@ export default function Loading() {
     <!-- ===== SUMMARY ===== -->
     <h2>Route Resolution Order</h2>
     <p>When a request arrives, WebJs resolves it in this order:</p>
-    <ul>
-      <li><strong>1. Static file</strong>: if a file exists in the project's public/static directory, it is served directly.</li>
-      <li><strong>2. API route</strong>: <code>route.ts</code> handlers are matched against the URL. WebSocket upgrades also match here.</li>
-      <li><strong>3. Page route</strong>: <code>page.ts</code> files are matched by positional specificity (segment by segment, a static segment beats a dynamic one beats a catch-all, so the catch-all kind is lowest at its position rather than blanket-last), with ties broken by a stable alphabetical key rather than file order.</li>
-      <li><strong>4. Not found</strong>: if nothing matches, <code>not-found.ts</code> is rendered with a <code>404</code> status.</li>
-    </ul>
+    <ol>
+      <li><strong>Static file</strong>: if a file exists in the project's public/static directory, it is served directly.</li>
+      <li><strong>API route</strong>: <code>route.ts</code> handlers are matched against the URL. WebSocket upgrades also match here.</li>
+      <li><strong>Page route</strong>: <code>page.ts</code> files are matched by positional specificity (segment by segment, a static segment beats a dynamic one beats a catch-all, so the catch-all kind is lowest at its position rather than blanket-last), with ties broken by a stable alphabetical key rather than file order.</li>
+      <li><strong>Not found</strong>: if nothing matches, <code>not-found.ts</code> is rendered with a <code>404</code> status.</li>
+    </ol>
 
     <h2>Quick Reference</h2>
     <pre>File              Purpose                              Example URL
