@@ -2,12 +2,32 @@
 
 **AI-first. Web components first.**
 
-Full-stack web framework built on top of Web Components. `cache()` for
-queries, HTTP Cache-Control for pages, Session class with SessionStorage,
-NextAuth-style auth with providers, WebSocket broadcast, rate limiting.
-Swap the in-memory cache store for Redis with a single `setStore()` call
-(no config files, no build step in between). Web components first,
-TypeScript with zero build step, real SSR with Declarative Shadow DOM.
+## What is WebJs?
+
+**WebJs is a free, open-source, full-stack JavaScript web framework built on
+web components.** It server-renders every page and component to real HTML,
+needs no build step or bundler, and runs on Node 24+ or Bun.
+
+You write pages, layouts, and components as plain files. WebJs serves that
+source to the browser exactly as you wrote it, so the code you read is the
+code that runs. Content reads and forms submit before any script loads, and
+JavaScript is added only where an interaction actually needs it.
+
+It gives you file-based routing, server actions with real end-to-end types,
+sessions, authentication, caching, rate limiting, WebSockets, and a database
+layer in the box. `cache()` for queries, HTTP Cache-Control for pages, a
+Session class with SessionStorage, NextAuth-style auth with providers, and
+WebSocket broadcast all share one pluggable store, so a single `setStore()`
+call moves them onto Redis with no config files in between.
+
+```sh
+npm create webjs@latest my-app
+```
+
+Full overview at [webjs.dev/what-is-webjs](https://webjs.dev/what-is-webjs).
+Not the project you were looking for? [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js)
+(often shortened to wwebjs) is an unrelated WhatsApp client library, and an
+older, unrelated Java framework also used the name WebJS.
 
 ## Why WebJs
 
