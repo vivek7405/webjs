@@ -13,10 +13,18 @@ const DESCRIPTION = 'Getting started, routing, components, server actions, deplo
 export function generateMetadata(ctx: { url: string }) {
   const origin = new URL(ctx.url).origin;
   const image = `${origin}/public/og.png`;
+  // Site-wide canonical, derived here so every docs page gets one from a single
+  // place (the docs site had none at all). Built from origin plus pathname, so
+  // tracking query strings and a stray trailing slash collapse onto one URL
+  // instead of splitting ranking signals across near-duplicate addresses.
+  // Mirrors website/app/layout.ts.
+  const { pathname } = new URL(ctx.url);
+  const canonical = origin + (pathname === '/' ? '' : pathname.replace(/\/+$/, ''));
   return {
     // Docs pages are identical for every visitor, so cache at the CDN. Set on
     // the root layout so it applies to every doc page (a page could override).
     cacheControl: 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400',
+    alternates: { canonical },
     title: TITLE,
     description: DESCRIPTION,
     openGraph: {
@@ -42,9 +50,15 @@ export function generateMetadata(ctx: { url: string }) {
 export default function RootLayout({ children }: { children: unknown }) {
   const nonce = cspNonce();
   return html`
+    <!-- Raster first: Google's favicon crawler takes the first usable icon and
+         wants a square whose side is a multiple of 48px. This previously
+         declared sizes="32x32" for an asset that is really 512x512, which was
+         both wrong and under the 48px floor. 192 is used because it is a clean
+         multiple of 48 and 512 is not (512 % 48 = 32). See website/app/layout.ts,
+         which carries the same fix. -->
+    <link rel="icon" href="/public/favicon-192.png" type="image/png" sizes="192x192">
     <link rel="icon" href="/public/favicon.svg" type="image/svg+xml" sizes="any">
-    <link rel="icon" href="/public/favicon.png" type="image/png" sizes="32x32">
-    <link rel="apple-touch-icon" href="/public/favicon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/public/apple-touch-icon.png">
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-3RC87HXJ3P" nonce="${nonce}"></script>
     <script nonce="${nonce}">

@@ -14,6 +14,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { renderToString } from '@webjsdev/core/server';
 import WhatIsWebJs, { generateMetadata } from '#app/what-is-webjs/page.ts';
+import Sitemap from '#app/sitemap.ts';
+import { GET as llmsGet } from '#app/llms.txt/route.ts';
+import { siteFooter } from '#lib/site-footer.ts';
 
 const CANONICAL = 'https://webjs.dev/what-is-webjs';
 
@@ -89,6 +92,38 @@ test('every FAQPage entry is also VISIBLE in the rendered page', async () => {
     const fragment = q.acceptedAnswer.text.split('.')[0].slice(0, 40);
     assert.ok(out.includes(fragment), `answer is rendered on the page: ${fragment}`);
   }
+});
+
+test('the page is discoverable: sitemap, llms.txt, and an internal link', async () => {
+  // A page nothing points at is a page a crawler reaches late and weights
+  // lightly, so the wiring is part of the feature rather than a nicety.
+  const xml = await Sitemap();
+  assert.ok(
+    String(xml).includes('https://webjs.dev/what-is-webjs'),
+    'listed in the sitemap',
+  );
+
+  const llms = await (await llmsGet()).text();
+  assert.match(llms, /\/what-is-webjs\)/, 'listed in llms.txt for the answer engines');
+
+  const footer = await renderToString(siteFooter());
+  assert.ok(footer.includes('href="/what-is-webjs"'), 'linked from the site footer on every page');
+});
+
+test('the sitemap ranks it above the content hubs', async () => {
+  // It is a primary page, not an index. The priority states that, and the home
+  // page must still outrank it.
+  const xml = String(await Sitemap());
+  const entry = (url: string) => {
+    const i = xml.indexOf(`<loc>${url}</loc>`);
+    assert.ok(i > -1, `${url} is in the sitemap`);
+    return Number(xml.slice(i, i + 400).match(/<priority>([\d.]+)<\/priority>/)?.[1]);
+  };
+  const home = entry('https://webjs.dev/');
+  const page = entry('https://webjs.dev/what-is-webjs');
+  const hub = entry('https://webjs.dev/blog');
+  assert.ok(page > hub, 'outranks a content hub');
+  assert.ok(home >= page, 'does not outrank the home page');
 });
 
 test('the FAQ answers the disambiguation and licensing questions searchers actually ask', () => {
