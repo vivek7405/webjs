@@ -17,6 +17,7 @@ import { renderToString } from '@webjsdev/core/server';
 
 import Robots from '#app/robots.ts';
 import { GET as llmsGet } from '#app/llms.txt/route.ts';
+import { listPosts } from '#modules/blog/queries/list-posts.server.ts';
 import ArticlesHub from '#app/articles/page.ts';
 import { generateMetadata as articleMeta } from '#app/articles/[slug]/page.ts';
 import { generateMetadata as compareMeta } from '#app/compare/[slug]/page.ts';
@@ -43,6 +44,50 @@ test('/llms.txt lists articles, comparisons, and posts', async () => {
   assert.match(body, /\/articles\/web-components-framework/, 'lists an article');
   assert.match(body, /\/compare\/webjs-vs-/, 'lists at least one comparison');
   assert.match(body, /\/blog\//, 'lists blog posts');
+});
+
+test('/llms.txt gives agents the key project entry points and inline facts', async () => {
+  const body = await (await llmsGet()).text();
+  // A durable "Key facts" preamble so an agent gets the essentials without
+  // fetching every linked page.
+  assert.match(body, /^Key facts:$/m, 'carries an inline Key facts preamble');
+  // The Docs section links the agent-facing AGENTS.md contract, the single most
+  // useful entry point for an agent building a WebJs app.
+  assert.match(body, /^## Docs$/m, 'has a Docs section');
+  assert.match(body, /\/blob\/main\/AGENTS\.md/, 'links the AGENTS.md contract');
+  // A Project section points at the repo, UI kit, and live demo.
+  assert.match(body, /^## Project$/m, 'has a Project section');
+  assert.match(body, /github\.com\/webjsdev\/webjs\)/, 'links the GitHub repository');
+  // The Optional section (llmstxt.org semantics) holds skippable links.
+  assert.match(body, /^## Optional$/m, 'has an Optional section');
+  assert.match(body, /\/sitemap\.xml/, 'points at the sitemap under Optional');
+});
+
+test('/llms.txt annotates blog posts with their description and covers overflow with a hub link', async () => {
+  const body = await (await llmsGet()).text();
+  // Blog entries carry the post description (the file value, not a hardcode),
+  // so the list is useful without opening each post.
+  const posts = await listPosts();
+  const described = posts.find((p) => p.description);
+  assert.ok(described, 'fixture has at least one post with a description');
+  assert.ok(
+    body.includes(`/blog/${described!.slug}): ${described!.description}`),
+    'a blog entry renders "<url>): <description>"',
+  );
+  // The hub link guarantees nothing is truly hidden by the 20-post cap.
+  assert.match(body, /^- \[All posts\]/m, 'links the full blog index');
+});
+
+test('/llms.txt is well-formed: a section header is always preceded by a blank line', async () => {
+  // The section() helper emits a leading '' before every '## <title>', so no
+  // header ever butts up against the previous section's last list item.
+  const body = await (await llmsGet()).text();
+  const lines = body.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (/^## /.test(lines[i])) {
+      assert.equal(lines[i - 1], '', `"${lines[i]}" must be preceded by a blank line`);
+    }
+  }
 });
 
 test('the articles hub SSRs evergreen cards (tags, no dates)', async () => {
