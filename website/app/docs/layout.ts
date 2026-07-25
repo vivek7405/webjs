@@ -362,9 +362,9 @@ export default function DocsLayout({ children }: { children: unknown }) {
              scrollbar off the links, pl-1 keeps them off the left edge. -->
         <nav class="docs-nav flex-1 min-h-0 overflow-y-auto pr-3">
           ${NAV_SECTIONS.map((s) => html`
-            <div class="font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle mt-6 mb-2 first:mt-0">${s.title}</div>
+            <div class="font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle px-2 mt-6 mb-2 first:mt-0">${s.title}</div>
             ${s.items.map((it) => html`
-              <a class="block py-1.5 px-3 my-px rounded-md text-fg-muted no-underline text-sm transition-colors duration-fast hover:text-fg hover:bg-bg-subtle" href=${it.href}>${it.label}</a>
+              <a class="block py-1.5 px-2 my-px rounded-md text-fg-muted no-underline text-sm transition-colors duration-fast hover:text-fg hover:bg-bg-subtle" href=${it.href}>${it.label}</a>
             `)}
           `)}
         </nav>
