@@ -98,6 +98,51 @@ test('every internal /docs link the docs publish resolves', async () => {
   assert.deepEqual(dead, [], `dead internal docs links:\n  ${dead.join('\n  ')}`);
 });
 
+test('every doc page on disk is reachable from the sidebar', async () => {
+  // The reverse of the check above, and the direction that actually rots. The
+  // sitemap and llms.txt both enumerate topics FROM DISK, and /docs is a
+  // redirect rather than a listing page, so the sidebar is the only surface a
+  // human can navigate from. A new page would appear in the sitemap and the
+  // AI index automatically while being orphaned from every human path, with
+  // every other test green.
+  const layout = await readFile(resolve(DOCS_ROOT, 'layout.ts'), 'utf8');
+  const linked = new Set(
+    [...layout.matchAll(/href:\s*'(\/docs\/[^']+)'/g)].map((m) => m[1]),
+  );
+
+  const orphans: string[] = [];
+  for (const d of await readdir(DOCS_ROOT, { withFileTypes: true })) {
+    if (!d.isDirectory() || d.name.startsWith('.') || d.name.startsWith('_') || d.name.startsWith('[')) continue;
+    const files = await readdir(resolve(DOCS_ROOT, d.name)).catch(() => [] as string[]);
+    if (!files.includes('page.ts') && !files.includes('page.js')) continue;
+    if (!linked.has(`/docs/${d.name}`)) orphans.push(d.name);
+  }
+
+  assert.deepEqual(
+    orphans,
+    [],
+    `these doc pages exist but no sidebar entry links them:\n  ${orphans.join('\n  ')}`,
+  );
+});
+
+test('the llms.txt index follows the sidebar order', async () => {
+  // The order used to be a hand-copied list that had already drifted from the
+  // sidebar, so the AI-facing index put Runtime and Security in an
+  // alphabetical tail instead of their sections. It is derived now; this
+  // asserts the derivation, so a parser change that silently yields nothing
+  // (which would degrade to pure alphabetical) fails here.
+  const body = await (await handle('/llms.txt')).text();
+  const listed = [...body.matchAll(/\/docs\/([^/]+)\/llms\.txt/g)].map((m) => m[1]);
+
+  const layout = await readFile(resolve(DOCS_ROOT, 'layout.ts'), 'utf8');
+  const nav = [...layout.matchAll(/href:\s*'\/docs\/([^']+)'/g)].map((m) => m[1]);
+
+  assert.ok(nav.length > 40, `sanity: expected the full sidebar, found ${nav.length}`);
+  // Every listed topic that HAS a sidebar entry must appear in sidebar order.
+  const inNavOrder = listed.filter((slug) => nav.includes(slug));
+  assert.deepEqual(inNavOrder, nav.filter((slug) => listed.includes(slug)));
+});
+
 test('the text-only page copies are fetchable but not indexable', async () => {
   // Fetchable is the point (an agent asking for llms.txt wants the text);
   // indexable is not (it is the same content as the HTML page, on the same

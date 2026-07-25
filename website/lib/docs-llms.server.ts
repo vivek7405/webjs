@@ -45,61 +45,36 @@ export type DocPage = {
 };
 
 /**
- * The curated topic order. This is the SAME ordering as the docs
- * sidebar (`app/docs/layout.ts` NAV_SECTIONS), flattened, so llms.txt
- * matches the visible site nav. Kept as an explicit list here (rather
- * than importing the layout, which pulls in browser components) so this
- * server-only module stays import-light. Any topic on disk that is not
- * in this list is appended alphabetically, so a newly added page always
- * appears even before someone curates its position.
+ * The topic order, read from the sidebar so the two cannot disagree.
+ *
+ * This used to be a hand-copied list, and it had already drifted: it carried
+ * a slug that no longer exists and was missing six real pages, so /llms.txt
+ * listed Runtime and Security in an alphabetical tail instead of under
+ * Getting Started and Infrastructure. Deriving it removes the failure mode
+ * rather than correcting one instance of it.
+ *
+ * Parsed from the layout's SOURCE rather than imported: the layout imports
+ * browser components, and this is a server-only module that should stay
+ * import-light. The order is the order the hrefs appear, which is the order
+ * a reader sees them. A topic with no sidebar entry falls to the end
+ * alphabetically (and is separately a test failure, since an unlinked page is
+ * unreachable by a human).
  */
-const CURATED_ORDER = [
-  // Getting Started
-  'getting-started',
-  'ai-first',
-  'architecture',
-  'no-build',
-  'configuration',
-  // Core Concepts
-  'routing',
-  'components',
-  'lifecycle',
-  'directives',
-  'ssr',
-  'progressive-enhancement',
-  'styling',
-  'suspense',
-  'loading-states',
-  'error-handling',
-  'client-router',
-  // Data & Backend
-  'server-actions',
-  'expose',
-  'api-routes',
-  'websockets',
-  'database',
-  'authentication',
-  'backend-only',
-  // Infrastructure
-  'cache',
-  'sessions',
-  'auth',
-  'rate-limiting',
-  'metadata-routes',
-  // Component Library
-  'ui',
-  // Advanced
-  'controllers',
-  'context',
-  'task',
-  'lazy-loading',
-  'typescript',
-  'editor-setup',
-  'middleware',
-  'deployment',
-  'testing',
-  'conventions',
-];
+const DOCS_LAYOUT = join(DOCS_PAGES_ROOT, 'layout.ts');
+
+/** @type {string[] | null} */
+let curatedOrderCache: string[] | null = null;
+
+async function curatedOrder(): Promise<string[]> {
+  if (curatedOrderCache) return curatedOrderCache;
+  const src = await readFile(DOCS_LAYOUT, 'utf8').catch(() => '');
+  const slugs: string[] = [];
+  for (const m of src.matchAll(/href:\s*'\/docs\/([^']+)'/g)) {
+    if (!slugs.includes(m[1])) slugs.push(m[1]);
+  }
+  curatedOrderCache = slugs;
+  return slugs;
+}
 
 /** Lazily built page list, cached in memory (mirrors the search index). */
 let pagesCache: DocPage[] | null = null;
@@ -314,9 +289,10 @@ export async function getDocPages(): Promise<DocPage[]> {
     }
   }
 
+  const order = await curatedOrder();
   const rank = (slug: string) => {
-    const i = CURATED_ORDER.indexOf(slug);
-    return i < 0 ? CURATED_ORDER.length : i;
+    const i = order.indexOf(slug);
+    return i < 0 ? order.length : i;
   };
   pages.sort((a, b) => {
     const ra = rank(a.slug);
@@ -363,14 +339,12 @@ export async function renderDocsIndexSection(origin: string): Promise<string[]> 
  * Render /llms-full.txt: the FULL prose corpus. For each page emit a
  * `# <Title>` heading, its absolute URL, then the page's markdown body.
  *
- * DEPLOYMENT-SAFE SOURCING: the corpus is built from the docs app's OWN
- * pages under `app/docs/**`, which always ship with the deployed docs
- * app. We OPTIONALLY fold in the repo-root WebJs skill at
+ * DEPLOYMENT-SAFE SOURCING: the corpus is built from the
+ * pages under `app/docs/**`, which always ship with the deployed app. We OPTIONALLY fold in the repo-root WebJs skill at
  * `.agents/skills/webjs/` (SKILL.md + references/) as extra enrichment,
  * but ONLY via a try/catch read that no-ops when the directory is absent
- * (a standalone deployed docs app may not carry the monorepo root). The
- * docs pages always lead; the skill is a bonus that never breaks the
- * deployed app.
+ * (a standalone deploy may not carry the monorepo root). The docs pages
+ * always lead; the skill is a bonus that never breaks the deployed app.
  */
 export async function renderLlmsFull(req?: Request): Promise<string> {
   const origin = originFor(req);

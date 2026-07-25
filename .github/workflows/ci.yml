@@ -196,6 +196,13 @@ jobs:
       # a route handler's raw req.url both carry the forwarded scheme + host.
       - name: Forwarded proto/host on Bun
         run: bun test/bun/forwarded-proto.mjs
+      # Root middleware resolution on Bun (#1098). A root `middleware.ts` was
+      # never loaded at all: the lookup was the single literal `middleware.js`,
+      # with no error to notice. The proof is a module-LOAD path (a bare
+      # import() of a .ts file), and the TS strip differs per runtime, so it
+      # needs its own step rather than riding the Node suite.
+      - name: Root middleware resolution on Bun
+        run: bun test/bun/root-middleware.mjs
       # Light-DOM slot SSR projection on Bun (#1021): slot substitution
       # (injectDSD / substituteSlotsInRender) is on the SSR hot path, so the
       # projection must be byte-consistent across runtimes: authored children
