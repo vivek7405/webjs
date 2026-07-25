@@ -51,6 +51,10 @@ test('/llms.txt gives agents the key project entry points and inline facts', asy
   // A durable "Key facts" preamble so an agent gets the essentials without
   // fetching every linked page.
   assert.match(body, /^Key facts:$/m, 'carries an inline Key facts preamble');
+  // The two headline differentiators: agent-agnostic (not one vendor) and a
+  // production-shaped scaffold from the first command.
+  assert.match(body, /Agent-agnostic/, 'states it is agent-agnostic, not one-vendor');
+  assert.match(body, /Production-shaped/, 'states the scaffold is production-shaped');
   // The Docs section links the agent-facing AGENTS.md contract, the single most
   // useful entry point for an agent building a WebJs app.
   assert.match(body, /^## Docs$/m, 'has a Docs section');
