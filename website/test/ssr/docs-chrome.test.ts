@@ -128,6 +128,21 @@ test('the docs use the marketing design tokens, with no duplicate theme block', 
   assert.ok(docsLayout.includes('var(--accent)'), 'it consumes the shared tokens');
 });
 
+test('docs pages describe the docs, not the marketing pitch', async () => {
+  // Dropping the docs' own root layout took its title and description with
+  // it, so without a docs-scoped generateMetadata every page here would ship
+  // the landing page's blurb as its search snippet and social card, with only
+  // the <title> differing. Pages set their own title; nothing else.
+  const [doc, marketing] = await Promise.all([bodyOf(DOC_PATH), bodyOf(MARKETING_PATH)]);
+  const descOf = (html: string) => /<meta name="description" content="([^"]*)"/.exec(html)?.[1] ?? '';
+  const ogTitleOf = (html: string) => /<meta property="og:title" content="([^"]*)"/.exec(html)?.[1] ?? '';
+
+  assert.notEqual(descOf(doc), descOf(marketing), 'the docs carry their own description');
+  assert.match(descOf(doc), /documentation/i, 'and it says what the section is');
+  assert.match(ogTitleOf(doc), /documentation/i, 'the social card too');
+  assert.match(doc, /<title>Routing \| WebJs<\/title>/, 'while the page still owns its title');
+});
+
 test('/docs redirects to the introduction rather than serving a second landing page', async () => {
   const res = await handle('/docs');
   assert.equal(res.status, 308);

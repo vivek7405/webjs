@@ -1,7 +1,10 @@
 /**
- * Cross-runtime app boot-check for the three in-repo apps that ship no test
- * suite: `website`, `docs`, and `packages/ui/packages/website` (ui-website).
- * All four in-repo apps DEPLOY on Bun in production (#541), but only
+ * Cross-runtime app boot-check for the in-repo apps whose routes CI would
+ * not otherwise exercise: `website` (which serves the documentation at
+ * /docs) and `packages/ui/packages/website` (ui-website). The
+ * docs.webjs.dev redirect host is deliberately absent: every route on it
+ * is an empty 301, which would pass this check vacuously.
+ * All the in-repo apps DEPLOY on Bun in production (#541), but only
  * `examples/blog` had Bun coverage in CI (the blog-on-bun e2e), so a per-route
  * break that occurs only on Bun could reach production undetected. The #526
  * incident was exactly this: ui.webjs.dev served 500s on its component detail

@@ -151,8 +151,8 @@ const href = signedUrl(user.avatarKey, { secret: process.env.AUTH_SECRET!, expir
     <h2>Next Steps</h2>
     <ul>
       <li><a href="/docs/server-actions">Server Actions</a>: the RPC boundary that round-trips File / Blob / FormData</li>
-      <li><a href="/docs/route-handlers">Route Handlers</a>: the route.ts that streams stored bytes back</li>
-      <li><a href="/docs/caching">Caching</a>: the cache adapter the file store's swap-the-backend model mirrors</li>
+      <li><a href="/docs/api-routes">Route Handlers</a>: the route.ts that streams stored bytes back</li>
+      <li><a href="/docs/cache">Caching</a>: the cache adapter the file store's swap-the-backend model mirrors</li>
     </ul>
   `;
 }

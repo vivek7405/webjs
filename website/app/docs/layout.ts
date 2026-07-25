@@ -92,6 +92,38 @@ const NAV_SECTIONS = [
   },
 ];
 
+/**
+ * Docs-scoped metadata, merged over the root layout's for every page under
+ * /docs (metadata merges layout then page, deepest winning).
+ *
+ * Without this the docs inherit the marketing pitch: the deleted docs root
+ * layout carried its own title and description, so dropping it would have
+ * left all 45 pages advertising "the web framework for AI agents" as their
+ * search snippet and social card, with only the title differing. A doc page's
+ * own `metadata` still overrides the title, which is the one field each page
+ * sets.
+ *
+ * The og:image stays the site's, deliberately. A per-section card is worth
+ * having eventually, but one shared card is better than the docs pointing at
+ * an image that no longer exists.
+ */
+const DOCS_DESCRIPTION =
+  'Reference documentation for WebJs: routing, components, server actions, data fetching, styling, streaming, deployment, and the conventions an agent needs to build with it.';
+
+export function generateMetadata() {
+  return {
+    description: DOCS_DESCRIPTION,
+    openGraph: {
+      type: 'article',
+      title: 'WebJs documentation',
+      description: DOCS_DESCRIPTION,
+      'image:alt': 'WebJs documentation',
+      'site_name': 'WebJs',
+    },
+    twitter: { title: 'WebJs documentation', description: DOCS_DESCRIPTION },
+  };
+}
+
 export default function DocsLayout({ children }: { children: unknown }) {
   return html`
     <style>
@@ -175,7 +207,20 @@ export default function DocsLayout({ children }: { children: unknown }) {
         line-height: 1.7;
         font-style: italic;
       }
-      .prose-docs table { width: 100%; margin: 0 0 24px; border-collapse: collapse; font-size: 15px; }
+      /* A wide table has to scroll inside its own box. Without this it
+         pushes the DOCUMENT wider than the viewport on a narrow screen,
+         and the shared fixed header slides with it. A display of block is
+         what makes overflow apply to a table at all. */
+      .prose-docs table {
+        display: block;
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        margin: 0 0 24px;
+        border-collapse: collapse;
+        font-size: 15px;
+      }
+      .prose-docs th, .prose-docs td { white-space: normal; }
       .prose-docs th, .prose-docs td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
       .prose-docs th { font-weight: 600; color: var(--fg); }
 
@@ -239,7 +284,20 @@ export default function DocsLayout({ children }: { children: unknown }) {
           border-right: 1px solid var(--border);
           padding-top: 1.5rem;
         }
-        body[data-docs-nav-open] .docs-sidebar { transform: translateX(0); }
+        /* Off-screen is not enough: a translated element keeps every link
+           in the tab order, so a keyboard user tabbing off the menu button
+           walked 45 invisible controls before reaching the page. Hiding it
+           removes them, and delaying the visibility change until the slide
+           finishes keeps the close animation. */
+        .docs-sidebar {
+          visibility: hidden;
+          transition: transform 220ms cubic-bezier(0.3, 0, 0.3, 1), visibility 0s linear 220ms;
+        }
+        body[data-docs-nav-open] .docs-sidebar {
+          transform: translateX(0);
+          visibility: visible;
+          transition: transform 220ms cubic-bezier(0.3, 0, 0.3, 1), visibility 0s;
+        }
         .docs-backdrop {
           display: block;
           position: fixed;
@@ -282,6 +340,7 @@ export default function DocsLayout({ children }: { children: unknown }) {
         <button
           class="hidden max-[860px]:inline-flex items-center gap-2 mb-6 px-3 py-2 rounded-lg border border-border bg-bg-elev text-fg-muted text-sm cursor-pointer transition-colors duration-fast hover:text-fg hover:border-border-strong"
           aria-controls="docs-sidebar"
+          aria-expanded="false"
           onclick="document.body.toggleAttribute('data-docs-nav-open'); this.setAttribute('aria-expanded', document.body.hasAttribute('data-docs-nav-open'))"
         >
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>

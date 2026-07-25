@@ -93,7 +93,7 @@ async function listDocsPages() {
 }
 
 describe('docs pages produce balanced container tags (router-safe HTML)', () => {
-  test('every page.{js,ts} under docs/app has matching open/close counts for <pre>, <div>, <ul>, <ol>, <table>', async () => {
+  test('every page.{js,ts} under website/app/docs has matching open/close counts for <pre>, <div>, <ul>, <ol>, <table>', async () => {
     const pages = await listDocsPages();
     // A floor, not just "more than zero". When the docs moved to
     // website/app/docs this glob kept pointing at the old app and matched a
@@ -107,9 +107,11 @@ describe('docs pages produce balanced container tags (router-safe HTML)', () => 
 
     /** @type {string[]} */
     const failures = [];
+    let withBody = 0;
     for (const page of pages) {
       const body = await extractHtmlTemplates(page);
       if (!body) continue;
+      withBody++;
       for (const tag of CONTAINERS) {
         const { open, close } = tagCounts(body, tag);
         if (open !== close) {
@@ -117,6 +119,15 @@ describe('docs pages produce balanced container tags (router-safe HTML)', () => 
         }
       }
     }
+    // The glob floor above only proves the pages were FOUND. This proves
+    // they were READ: without it a regression in extractHtmlTemplates would
+    // hand back empty strings and every check would pass on nothing, the
+    // same vacuous shape one layer down. app/docs/page.ts is a redirect
+    // with no template, so the floor is under the page count, not equal.
+    assert.ok(
+      withBody >= 40,
+      `only ${withBody} of ${pages.length} pages yielded a template: extraction broken?`,
+    );
     assert.deepEqual(
       failures,
       [],

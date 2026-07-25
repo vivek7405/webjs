@@ -91,7 +91,7 @@ const liked = signal(false);
 const result = await optimistic(liked, true, () => likePost(postId));
 // liked flips to true instantly. Rolls back on throw or failure envelope.
 On success the optimistic value stays; reconcile from result if needed.</pre>
-    <p>Both signatures are client-only, so a component importing <code>optimistic</code> is never elided as display-only. See <a href="/docs/advanced">Advanced</a> for the full reference.</p>
+    <p>Both signatures are client-only, so a component importing <code>optimistic</code> is never elided as display-only. See <a href="/docs/data-fetching">Data Fetching</a> for the full reference.</p>
 
     <h2>Non-2xx HTML responses render in place</h2>
     <p>Any response with a <code>text/html</code> body is applied to the DOM regardless of status code. This makes the standard server-rendered validation pattern work end-to-end:</p>
