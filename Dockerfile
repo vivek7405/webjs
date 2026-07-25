@@ -117,13 +117,14 @@ RUN npm run build:dist --workspace=@webjsdev/core
 # build-safe.
 RUN cd packages/ui/packages/website && node scripts/copy-registry.js
 
-# Tailwind: compile per-app CSS (all four use the CLI, no browser runtime).
+# Tailwind: compile per-app CSS (every app with a stylesheet uses the CLI, no
+# browser runtime). The `docs` service is absent on purpose: it renders no HTML
+# at all now, only redirects to webjs.dev/docs, so it has no stylesheet.
 # Each compose service's command invokes `webjs.js start` directly, which
 # bypasses the per-package `prestart: css:build` hook in npm; the CSS has
 # to be ready in the image. Keep this list in sync with the apps that
 # have a public/input.css and a `css:build` script in their package.json.
 RUN npx tailwindcss -i website/public/input.css                       -o website/public/tailwind.css                       --minify \
- && npx tailwindcss -i docs/public/input.css                          -o docs/public/tailwind.css                          --minify \
  && npx tailwindcss -i examples/blog/public/input.css                 -o examples/blog/public/tailwind.css                 --minify \
  && npx tailwindcss -i packages/ui/packages/website/public/input.css  -o packages/ui/packages/website/public/tailwind.css  --minify
 
