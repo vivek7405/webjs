@@ -57,6 +57,10 @@ export async function GET(): Promise<Response> {
   ];
 
   lines.push(...section('Docs', [
+    // Listed first, and deliberately: it is the one page that answers the flat
+    // "what is webjs" question, which several unrelated projects sharing the
+    // name make genuinely ambiguous for a model resolving the term.
+    `- [What is WebJs?](${SITE_URL}/what-is-webjs): the definitional overview, what it is, what it gives you, and how it differs from the unrelated projects that share the name`,
     `- [Getting started](${DOCS_URL}/docs/getting-started): install, scaffold, and run your first app`,
     `- [Documentation](${DOCS_URL}/docs): the full framework reference`,
     `- [AGENTS.md](${GH_URL}/blob/main/AGENTS.md): the agent-facing contract, the conventions and API for building a WebJs app`,

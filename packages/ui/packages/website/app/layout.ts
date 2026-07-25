@@ -26,10 +26,17 @@ const DESCRIPTION =
 export function generateMetadata(ctx: { url: string }) {
   const origin = new URL(ctx.url).origin;
   const image = `${origin}/public/og.png`;
+  // Site-wide canonical, derived here so every page gets one from a single
+  // place (this site had none at all). Built from origin plus pathname, so
+  // tracking query strings and a stray trailing slash collapse onto one URL
+  // instead of splitting ranking signals. Mirrors website/app/layout.ts.
+  const { pathname } = new URL(ctx.url);
+  const canonical = origin + (pathname === '/' ? '' : pathname.replace(/\/+$/, ''));
   return {
     // The component showcase is identical for every visitor, so cache at the
     // CDN. Set on the root layout so it applies to every page.
     cacheControl: 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400',
+    alternates: { canonical },
     title: TITLE,
     description: DESCRIPTION,
     themeColor: '#1c1613',
@@ -59,9 +66,14 @@ export default function Layout({ children }: { children: any }) {
   // the real <head>. Other markup goes into <body>.
   const nonce = cspNonce();
   return html`
+    <!-- Raster first: Google's favicon crawler takes the first usable icon and
+         wants a square whose side is a multiple of 48px. This previously
+         declared sizes="32x32" for an asset that is really 512x512, which was
+         both wrong and under the 48px floor. 192 is a clean multiple of 48,
+         512 is not (512 % 48 = 32). Same fix as website/app/layout.ts. -->
+    <link rel="icon" href="/public/favicon-192.png" type="image/png" sizes="192x192" />
     <link rel="icon" href="/public/favicon.svg" type="image/svg+xml" sizes="any" />
-    <link rel="icon" href="/public/favicon.png" type="image/png" sizes="32x32" />
-    <link rel="apple-touch-icon" href="/public/favicon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/public/apple-touch-icon.png" />
     <link rel="stylesheet" href="/public/tailwind.css" />
     <!-- Synchronous theme bootstrap: mirrors webjs.dev so saved themes
          apply before first paint and avoid FOUC. -->
