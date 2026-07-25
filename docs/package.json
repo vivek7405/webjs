@@ -1,6 +1,6 @@
 {
-  "name": "@webjsdev/docs",
-  "version": "0.1.0",
+  "name": "@webjsdev/docs-redirect",
+  "version": "0.2.0",
   "type": "module",
   "private": true,
   "imports": {
@@ -8,12 +8,7 @@
   },
   "scripts": {
     "dev": "webjs dev --port ${PORT:-5002}",
-    "start": "webjs start",
-    "css:build": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify"
-  },
-  "webjs": {
-    "dev": { "before": ["npm run css:build"], "regenerate": [{ "output": "public/tailwind.css", "command": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify", "inputs": ["app", "components", "lib", "public/input.css"] }] },
-    "start": { "before": ["npm run css:build"] }
+    "start": "webjs start"
   },
   "dependencies": {
     "@webjsdev/cli": "^0.10.0",

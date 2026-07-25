@@ -12,7 +12,7 @@
  * `/docs/<topic>`; this dynamic `[topic]/llms.txt` only catches the
  * `.../llms.txt` child, so the two never collide.
  */
-import { renderPageMarkdown, textResponse } from '#lib/llms.server.ts';
+import { renderPageMarkdown, textResponse } from '#lib/docs-llms.server.ts';
 
 export async function GET(req: Request, { params }: { params: { topic: string } }) {
   const md = await renderPageMarkdown(params.topic, req);

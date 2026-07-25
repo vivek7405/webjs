@@ -1,7 +1,8 @@
 import { listComparisons } from '#modules/compare/queries/list-comparisons.server.ts';
 import { listArticles } from '#modules/articles/queries/list-articles.server.ts';
 import { listPosts } from '#modules/blog/queries/list-posts.server.ts';
-import { DOCS_URL, UI_URL, EXAMPLE_BLOG_URL, GH_URL } from '#lib/links.ts';
+import { renderDocsIndexSection } from '#lib/docs-llms.server.ts';
+import { UI_URL, EXAMPLE_BLOG_URL, GH_URL } from '#lib/links.ts';
 
 /**
  * GET /llms.txt
@@ -20,8 +21,12 @@ import { DOCS_URL, UI_URL, EXAMPLE_BLOG_URL, GH_URL } from '#lib/links.ts';
  * agent-facing AGENTS.md contract, docs, UI kit, demo).
  *
  * `SITE_URL` mirrors app/sitemap.ts and app/robots.ts so all three agree
- * on the origin. The cross-app URLs (docs, UI, demo, repo) are the shared
- * single source from lib/links.ts, the same ones the header/footer use.
+ * on the origin. The cross-app URLs (UI, demo, repo) are the shared single
+ * source from lib/links.ts, the same ones the header/footer use.
+ *
+ * The documentation now lives on THIS origin under /docs, so it is
+ * enumerated inline (every page, with its description) rather than reduced
+ * to a single link at another host. This is the one llms.txt for the site.
  */
 const SITE_URL = ((globalThis as any).process?.env?.SITE_URL || 'https://webjs.dev').replace(/\/$/, '');
 
@@ -31,7 +36,12 @@ function section(title: string, items: string[]): string[] {
 }
 
 export async function GET(): Promise<Response> {
-  const [comparisons, articles, posts] = await Promise.all([listComparisons(), listArticles(), listPosts()]);
+  const [comparisons, articles, posts, docLinks] = await Promise.all([
+    listComparisons(),
+    listArticles(),
+    listPosts(),
+    renderDocsIndexSection(SITE_URL),
+  ]);
 
   // Blog is capped so the file stays a concise index rather than a full
   // archive; the "All posts" hub link below covers everything past the cap.
@@ -56,15 +66,20 @@ export async function GET(): Promise<Response> {
     '- Runs on Node 24+ or Bun (a native `Bun.serve` listener on Bun); the source is the runtime, with no build artifact.',
   ];
 
-  lines.push(...section('Docs', [
+  lines.push(...section('Overview', [
     // Listed first, and deliberately: it is the one page that answers the flat
     // "what is webjs" question, which several unrelated projects sharing the
     // name make genuinely ambiguous for a model resolving the term.
     `- [What is WebJs?](${SITE_URL}/what-is-webjs): the definitional overview, what it is, what it gives you, and how it differs from the unrelated projects that share the name`,
-    `- [Getting started](${DOCS_URL}/docs/getting-started): install, scaffold, and run your first app`,
-    `- [Documentation](${DOCS_URL}/docs): the full framework reference`,
+    `- [Why WebJs](${SITE_URL}/why-webjs): the case for the architecture, and who it is not for`,
     `- [AGENTS.md](${GH_URL}/blob/main/AGENTS.md): the agent-facing contract, the conventions and API for building a WebJs app`,
+    `- [Full documentation corpus](${SITE_URL}/llms-full.txt): every doc page below, concatenated as markdown in one file`,
   ]));
+
+  // Every doc page, enumerated. Each link is the page's raw-markdown variant
+  // (/docs/<topic>/llms.txt), so a model following one gets prose rather than
+  // HTML it has to strip.
+  lines.push(...section('Documentation', docLinks));
 
   lines.push(...section('Project', [
     `- [GitHub repository](${GH_URL}): source, issues, and the framework monorepo (plain JS with JSDoc, so what you read is what runs)`,

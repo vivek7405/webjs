@@ -2,7 +2,7 @@ import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import '#components/like-button.ts';
 import { COMPONENT_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE } from '#lib/samples.ts';
-import { DOCS_URL, GH_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_PATH, DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 // highlight() runs only at SSR (codeWindow renders its output into the served
 // HTML), but it does ship to the client as a small dead module: the page loads
 // in the browser to register copy-cmd, and that pulls in its
@@ -168,7 +168,7 @@ export default function LandingPage() {
         frameworks. Runs on Node 24+ or Bun.
       </p>
       <div class="flex gap-3 justify-center flex-wrap mb-8">
-        <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_URL + '/docs/getting-started'} target="_blank" rel="noopener noreferrer">
+        <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>
           Get started
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>${NEW_TAB}
         </a>
@@ -388,11 +388,11 @@ middleware.ts</pre>
             <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
           </div>
           <div class="flex gap-3 justify-center flex-wrap mt-7">
-            <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_URL + '/docs/getting-started'} target="_blank" rel="noopener noreferrer">
+            <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>
               Get started
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>${NEW_TAB}
             </a>
-            <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href=${DOCS_URL} target="_blank" rel="noopener noreferrer">Read the docs${NEW_TAB}</a>
+            <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href=${DOCS_PATH}>Read the docs</a>
           </div>
         </div>
       </div>

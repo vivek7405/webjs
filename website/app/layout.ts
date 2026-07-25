@@ -1,6 +1,6 @@
 import { html, cspNonce } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
-import { DOCS_URL, UI_URL, EXAMPLE_BLOG_URL, GH_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_START_PATH, UI_URL, EXAMPLE_BLOG_URL, GH_URL, NEW_TAB } from '#lib/links.ts';
 import { siteFooter } from '#lib/site-footer.ts';
 
 /**
@@ -13,7 +13,7 @@ import { siteFooter } from '#lib/site-footer.ts';
  * clamp, the fixed static glow layer, the hover-only scrollbar (`.scroll-thin`),
  * and the <details> icon swap. Everything else is Tailwind.
  *
- * Shared link config (DOCS_URL / UI_URL / EXAMPLE_BLOG_URL / GH_URL / NEW_TAB) lives in
+ * Shared link config (DOCS_START_PATH / UI_URL / EXAMPLE_BLOG_URL / GH_URL / NEW_TAB) lives in
  * lib/links.ts, imported here and by app/page.ts.
  */
 
@@ -21,7 +21,7 @@ const TITLE = 'WebJs - The Web Framework for AI Agents';
 const DESCRIPTION = 'A full-stack web framework built on web components, SSR, and progressive enhancement, with zero build step. Lean enough for AI agents to read end to end. File-based routing, server actions, and streaming SSR on web standards. Runs on Node 24+ or Bun.';
 
 const NAV = [
-  { label: 'Docs', href: DOCS_URL + '/docs/getting-started', ext: true },
+  { label: 'Docs', href: DOCS_START_PATH, ext: false },
   { label: 'UI', href: UI_URL, ext: true },
   { label: 'Demo', href: EXAMPLE_BLOG_URL, ext: true },
   { label: 'Blog', href: '/blog', ext: false },
