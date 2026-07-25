@@ -165,7 +165,8 @@ export default function LandingPage() {
       <p class="text-lede leading-[1.6] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
         WebJs is a full-stack web framework that needs no training data. An
         agent reads the whole stack end to end, so small models and large ones
-        both ship code that works. Web components and SSR, zero build step, on
+        both ship production-ready architecture and a design system from the
+        very first line of code. Web components and SSR, zero build step, on
         Node 24+ or Bun.
       </p>
       <div class="flex gap-3 justify-center flex-wrap mb-8">

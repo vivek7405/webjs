@@ -96,7 +96,7 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
     -webkit-background-clip:text; background-clip:text; color:transparent;
   }
   p.lede{
-    margin-top:-12px; max-width:48ch;
+    margin-top:-12px; max-width:80ch;
     font-size:22px; line-height:1.4; color:${T.fgMuted};
   }
   p.lede b{ color:${T.fg}; font-weight:600; }
@@ -135,7 +135,7 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
     <div class="brand"><div class="mark"></div><div class="word">webjs</div></div>
     <div class="mid">
       <h1>Any AI model. <span class="accent">Production-ready code.</span></h1>
-      <p class="lede">A full-stack web framework that needs <b>no training data</b>. Small models and large ones both ship code that works.</p>
+      <p class="lede">A full-stack web framework that needs <b>no training data</b>. Small models and large ones both ship production-ready architecture and a design system from the very first line of code.</p>
       <div class="cards">
         <div class="card">
           <div class="clabel"><span class="cnum">01</span> What your agent gets</div>
