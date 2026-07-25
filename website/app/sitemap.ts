@@ -20,10 +20,16 @@ const SITE_URL = ((globalThis as any).process?.env?.SITE_URL || 'https://webjs.d
 export default async function Sitemap() {
   const [comparisons, articles, posts] = await Promise.all([listComparisons(), listArticles(), listPosts()]);
 
-  const staticRoutes = ['/', '/blog', '/articles', '/compare', '/why', '/changelog'].map((path) => ({
+  // `/what-is-webjs` is a primary page, not a hub, so it carries a priority
+  // just under the home page. It is the canonical answer to the flat
+  // "what is webjs" query, which is contested by several unrelated projects
+  // that happen to share the name.
+  const PRIORITY: Record<string, number> = { '/': 1.0, '/what-is-webjs': 0.9 };
+
+  const staticRoutes = ['/', '/what-is-webjs', '/blog', '/articles', '/compare', '/why', '/changelog'].map((path) => ({
     url: `${SITE_URL}${path}`,
     changeFrequency: 'weekly' as const,
-    priority: path === '/' ? 1.0 : 0.7,
+    priority: PRIORITY[path] ?? 0.7,
   }));
 
   const compareRoutes = comparisons.map((c) => ({

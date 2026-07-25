@@ -38,7 +38,16 @@ const NAV = [
 export function generateMetadata(ctx: { url: string }) {
   const origin = new URL(ctx.url).origin;
   const image = `${origin}/public/og.png`;
+  // Site-wide canonical, derived here so EVERY page gets one from a single
+  // place (the site had none at all, on any page). Built from origin +
+  // pathname, so tracking query strings and a stray trailing slash all collapse
+  // onto one canonical URL instead of splitting ranking signals across
+  // near-duplicate addresses. A page that needs a different canonical overrides
+  // `alternates` in its own generateMetadata (metadata merges layout then page).
+  const { pathname } = new URL(ctx.url);
+  const canonical = origin + (pathname === '/' ? '' : pathname.replace(/\/+$/, ''));
   return {
+    alternates: { canonical },
     // The marketing site is identical for every visitor (no per-user / session
     // reads), so it is safe to cache at the CDN. Set on the root layout so it
     // applies to every page (a per-user page could override with no-store).
@@ -68,9 +77,17 @@ const panelLink = 'text-fg-muted no-underline font-medium text-sm px-3 py-[10px]
 export default function RootLayout({ children }: { children: unknown }) {
   const nonce = cspNonce();
   return html`
+    <!-- Favicons, ordered raster first on purpose. Google's favicon crawler takes
+         the first usable icon and wants a SQUARE raster whose side is a multiple
+         of 48px. This previously declared sizes="32x32" on an asset that is
+         really 512x512: the claim was both wrong and under Google's 48px floor,
+         which is why webjs.dev showed no icon in search results. 192 is used
+         because it is a clean multiple of 48 (512 is not, 512 % 48 = 32).
+         /favicon.ico is served from public/favicon.ico at the origin root and
+         stays as the fallback for crawlers that read no markup at all. -->
+    <link rel="icon" href="/public/favicon-192.png" type="image/png" sizes="192x192">
     <link rel="icon" href="/public/favicon.svg" type="image/svg+xml" sizes="any">
-    <link rel="icon" href="/public/favicon.png" type="image/png" sizes="32x32">
-    <link rel="apple-touch-icon" href="/public/favicon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/public/apple-touch-icon.png">
 
     <!-- Self-hosted fonts (declared via @font-face in input.css), preloaded so
          they fetch in parallel with the stylesheet instead of being discovered
