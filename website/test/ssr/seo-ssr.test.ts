@@ -73,9 +73,11 @@ test('/llms.txt gives agents the key project entry points and inline facts', asy
 test('/llms.txt annotates blog posts with their description and covers overflow with a hub link', async () => {
   const body = await (await llmsGet()).text();
   // Blog entries carry the post description (the file value, not a hardcode),
-  // so the list is useful without opening each post.
+  // so the list is useful without opening each post. Scope the pick to the
+  // same top-20 window the route renders, or the assertion could select a
+  // described post that sits past the cap and is legitimately absent.
   const posts = await listPosts();
-  const described = posts.find((p) => p.description);
+  const described = posts.slice(0, 20).find((p) => p.description);
   assert.ok(described, 'fixture has at least one post with a description');
   assert.ok(
     body.includes(`/blog/${described!.slug}): ${described!.description}`),
