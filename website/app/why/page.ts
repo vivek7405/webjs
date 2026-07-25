@@ -34,7 +34,7 @@ export function generateMetadata(ctx: { url: string }) {
       image,
       'image:width': '1200',
       'image:height': '630',
-      'image:alt': 'Why WebJs, the model-agnostic web framework that needs no training data',
+      'image:alt': 'Why WebJs, the framework your AI agent already understands',
       'site_name': 'WebJs',
     },
     twitter: { card: 'summary_large_image', title, description, image },

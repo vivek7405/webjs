@@ -32,7 +32,7 @@ export const metadata = {
       '@type': 'WebSite',
       name: 'WebJs',
       url: SITE_URL,
-      description: 'A model-agnostic, web-components-first full-stack web framework with no build step, readable end to end by any AI model without training data.',
+      description: 'An AI-first, web-components-first full-stack web framework with no build step.',
     },
     {
       '@context': 'https://schema.org',
@@ -159,15 +159,13 @@ export default function LandingPage() {
 
     <main id="main" tabindex="-1" class="focus:outline-none">
     <section class="text-center px-6 pt-[clamp(48px,7vw,96px)] pb-10 md:pb-18">
-      <h1 class="font-display font-extrabold text-display leading-[1.04] tracking-[-0.035em] mx-auto mt-2 mb-4 max-w-[17ch] text-balance">
-        Production-ready code from any AI model
+      <h1 class="font-display font-extrabold text-display leading-[1.04] tracking-[-0.035em] mx-auto mt-2 mb-4 max-w-[15ch] text-balance">
+        The web framework for AI agents
       </h1>
       <p class="text-lede leading-[1.6] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
-        WebJs is a full-stack web framework that needs no training data. An
-        agent reads the whole stack end to end, so small models and large ones
-        both ship production-ready architecture and a design system from the
-        very first line of code. Web components and SSR, zero build step, on
-        Node 24+ or Bun.
+        WebJs is a full-stack framework built on web components, SSR, and
+        progressive enhancement, with zero build step. Standards that outlast
+        frameworks. Runs on Node 24+ or Bun.
       </p>
       <div class="flex gap-3 justify-center flex-wrap mb-8">
         <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_URL + '/docs/getting-started'} target="_blank" rel="noopener noreferrer">
@@ -333,9 +331,9 @@ export default function LandingPage() {
     <section class="py-16">
       <div class="max-w-[1080px] mx-auto px-6">
         <div class="max-w-[720px] mx-auto mb-12 text-center">
-          <div class=${KICKER}>Model agnostic</div>
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">No training data required</h2>
-          <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">An agent does not need to have seen WebJs before. A zero build step means the source it reads is the source that runs, and the whole framework is plain JavaScript under node_modules, small enough to fit in a context window. Any model learns the real API from the code instead of recalling one, so a smaller or cheaper model gets the same result. <a class="text-accent font-medium underline underline-offset-[3px] decoration-[color-mix(in_oklch,var(--color-accent)_45%,transparent)] hover:decoration-current transition-colors" href="/why">See the full argument</a>.</p>
+          <div class=${KICKER}>Small by design</div>
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Light enough for AI</h2>
+          <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">A zero build step means the source you read is what runs. Because the framework ships without compilation layers, an AI agent can read and reason about the entire WebJs source end to end, straight from node_modules.</p>
         </div>
         <div class="grid gap-px bg-border grid-cols-1 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4 rounded-2xl border border-border overflow-hidden shadow-[var(--shadow-sm)]">
           ${STATS.map(s => html`

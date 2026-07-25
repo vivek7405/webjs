@@ -4,13 +4,7 @@
  * A sibling of scripts/generate-og.mjs (the home-page card): same dark, on-brand
  * look and the same render pipeline (headless Chromium at 2x, downscaled to an
  * exact 1200x630 with ImageMagick for crisp text), but with the pitch page's
- * headline and tags.
- *
- * Like the home card, the copy leads with the BENEFIT (any model, small or
- * large, produces production-ready code because no training data is required)
- * and keeps only the two technical facts that make the claim credible. The full
- * argument lives on /why. The card has to earn the click first. Run it whenever
- * the /why headline or look changes:
+ * AI-era headline and tags. Run it whenever the /why headline or look changes:
  *
  *   node scripts/generate-og-why.mjs
  *
@@ -92,7 +86,7 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
   }
   .sub{
     font-size:22px; line-height:1.4; color:${T.fgMuted}; font-weight:400;
-    max-width:46ch; margin-top:-12px;
+    max-width:34ch; margin-top:-14px;
   }
   .sub b{ color:${T.fg}; font-weight:600; }
   .accent{
@@ -132,26 +126,26 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
   <div class="frame">
     <div class="top">
       <div class="brand"><div class="mark"></div><div class="word">webjs</div></div>
-      <div class="kicker">Why WebJs</div>
+      <div class="kicker">Built for the AI era</div>
     </div>
     <div class="mid">
-      <h1>The <span class="accent">model-agnostic</span> web framework</h1>
-      <div class="sub">No training data required. Point <b>any model</b> at it, small or large, and get production-ready code.</div>
+      <h1>The framework your <span class="accent">AI agent</span> already understands</h1>
+      <div class="sub">A <b>full-stack JavaScript framework</b> your AI agent can read end to end.</div>
       <div class="cards">
         <div class="card">
-          <div class="clabel"><span class="cnum">01</span> Any model works</div>
-          <div class="ctext">The whole framework is plain JS in <span class="mono">node_modules</span>. <span class="q">An agent reads it into context and learns the real API instead of guessing.</span></div>
+          <div class="clabel"><span class="cnum">01</span> Framework source</div>
+          <div class="ctext">No build, <span class="mono">node_modules</span> holds plain JS. <span class="q">The agent reads the whole framework and fits it into context.</span></div>
         </div>
         <div class="card">
-          <div class="clabel"><span class="cnum">02</span> Code that ships</div>
-          <div class="ctext">No build, so what you write is what runs. <span class="q">The agent debugs the running app against the real source, not a bundle.</span></div>
+          <div class="clabel"><span class="cnum">02</span> Your app code</div>
+          <div class="ctext">Served to the browser as written. <span class="q">The agent debugs the running app against the real source, not a bundle.</span></div>
         </div>
       </div>
     </div>
     <div>
       <hr>
       <div class="foot">
-        <div class="tags"><span class="dot"></span>ANY MODEL &nbsp;&middot;&nbsp; NO TRAINING DATA &nbsp;&middot;&nbsp; NO BUILD</div>
+        <div class="tags"><span class="dot"></span>NO TRAINING DATA &nbsp;&middot;&nbsp; NO BUNDLER &nbsp;&middot;&nbsp; ANY MODEL</div>
         <div>github.com/webjsdev/webjs</div>
       </div>
     </div>
