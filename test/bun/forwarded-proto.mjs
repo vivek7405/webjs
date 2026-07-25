@@ -56,7 +56,8 @@ try {
   // how website/app/layout.ts derives its og:image.
   w('app/page.ts', `import { html } from ${JSON.stringify(CORE)};\nexport function generateMetadata(ctx: { url: string }) {\n  const origin = new URL(ctx.url).origin;\n  return { title: 'fwd', openGraph: { image: origin + '/public/og.png' } };\n}\nexport default () => html\`<main>page</main>\`;`);
   // A route handler reading the raw request url, the app-code surface.
-  w('app/api/whoami/route.ts', `export async function GET(req: Request) {\n  return Response.json({ url: req.url, origin: new URL(req.url).origin });\n}`);
+  w('app/api/whoami/route.ts', `export async function GET(req: Request) {\n  return Response.json({ url: req.url, origin: new URL(req.url).origin, ip: req.headers.get('x-webjs-remote-ip') });\n}`);
+  w('app/api/echo/route.ts', `export async function POST(req: Request) {\n  return Response.json({ method: req.method, body: await req.text(), ct: req.headers.get('content-type'), origin: new URL(req.url).origin });\n}`);
 
   let server;
   ({ server, close } = await startServer({ appDir: dir, dev: true, port: 0, logger: quiet }));
@@ -94,6 +95,34 @@ try {
   // that must keep working for dev).
   const plain = await fetch(`${base}/api/whoami`);
   assert.equal((await plain.json()).origin, base, 'an unproxied request keeps its own origin');
+
+  // 6. A `//`-prefixed path must NOT be read as an authority. Resolving the
+  // path against the corrected origin turns `//evil.com/x` into
+  // `https://evil.com/x`, handing over the origin AND matching a different
+  // route, using only the proto header every proxy sets.
+  const hostile = await fetch(`${base}//evil.com/x`, { headers: { 'x-forwarded-proto': 'https' } });
+  if (hostile.status < 400) {
+    const seen = await hostile.json().catch(() => null);
+    if (seen) assert.notEqual(new URL(seen.url).host, 'evil.com', 'a //-path never becomes the authority');
+  }
+
+  // 7. A client-supplied `x-webjs-remote-ip` must never reach a handler as-is.
+  // Node stamps its own socket address over it; Bun strips it and answers from
+  // the WeakMap. Either way the client's value must not survive.
+  const spoof = await fetch(`${base}/api/whoami`, { headers: { ...proxied, 'x-webjs-remote-ip': '9.9.9.9' } });
+  assert.notEqual((await spoof.json()).ip, '9.9.9.9', 'a spoofed remote-ip header does not survive the rebuild');
+
+  // 8. The rebuild must not lose the request body or method.
+  const echo = await fetch(`${base}/api/echo`, {
+    method: 'POST',
+    headers: { ...proxied, 'content-type': 'application/json' },
+    body: '{"n":42}',
+  });
+  const echoed = await echo.json();
+  assert.equal(echoed.method, 'POST', 'method survives the rebuild');
+  assert.equal(echoed.body, '{"n":42}', 'body survives the rebuild');
+  assert.equal(echoed.ct, 'application/json', 'content-type survives the rebuild');
+  assert.equal(echoed.origin, 'https://webjs.dev', 'a POST is origin-corrected too');
 
   await close();
   close = null;
