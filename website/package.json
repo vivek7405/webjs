@@ -14,8 +14,39 @@
     "css:build": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify"
   },
   "webjs": {
-    "dev": { "before": ["npm run css:build"], "regenerate": [{ "output": "public/tailwind.css", "command": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify", "inputs": ["app", "components", "lib", "modules", "public/input.css"] }], "watch": ["../blog"] },
-    "start": { "before": ["npm run css:build"] }
+    "redirects": [
+      {
+        "source": "/why",
+        "destination": "/why-webjs",
+        "permanent": true
+      }
+    ],
+    "dev": {
+      "before": [
+        "npm run css:build"
+      ],
+      "regenerate": [
+        {
+          "output": "public/tailwind.css",
+          "command": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify",
+          "inputs": [
+            "app",
+            "components",
+            "lib",
+            "modules",
+            "public/input.css"
+          ]
+        }
+      ],
+      "watch": [
+        "../blog"
+      ]
+    },
+    "start": {
+      "before": [
+        "npm run css:build"
+      ]
+    }
   },
   "dependencies": {
     "@webjsdev/cli": "^0.10.0",

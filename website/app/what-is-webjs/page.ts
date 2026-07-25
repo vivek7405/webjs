@@ -8,7 +8,7 @@ import { highlight } from '#lib/highlight.ts';
 /**
  * /what-is-webjs
  *
- * The definitional page for the "what is webjs" query class. Where /why makes
+ * The definitional page for the "what is webjs" query class. Where /why-webjs makes
  * the argument for the framework and /compare positions it against specific
  * alternatives, this page answers the flat question: what IS this thing.
  *
@@ -140,7 +140,7 @@ export function generateMetadata() {
   };
 }
 
-// Shared class strings, kept in lockstep with app/page.ts and app/why/page.ts
+// Shared class strings, kept in lockstep with app/page.ts and app/why-webjs/page.ts
 // so the three render as one design system.
 const KICKER = 'inline-flex flex-wrap justify-center gap-[10px] font-mono font-semibold text-[12px] leading-[1.4] tracking-[0.18em] uppercase text-[var(--accent-text)]';
 const BTN = 'inline-flex items-center gap-2 px-[22px] py-[13px] rounded-full font-semibold text-[15px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
@@ -218,12 +218,12 @@ export default function WhatIsWebJs() {
         <h1 class="font-display font-extrabold text-display leading-[1.04] tracking-[-0.035em] mx-auto mt-4 mb-6 max-w-[14ch] text-balance">
           What is WebJs?
         </h1>
-        <p class="text-lede leading-[1.6] text-fg-muted max-w-[62ch] mx-auto mb-6 text-pretty">
+        <p class="text-lede leading-[1.6] text-fg-muted max-w-[56ch] mx-auto mb-6 text-pretty">
           <strong class="text-fg font-semibold">WebJs is a free, open-source, full-stack JavaScript web
           framework built on web components.</strong> It server-renders every page and component to real
           HTML, needs no build step or bundler, and runs on Node 24+ or Bun.
         </p>
-        <p class="text-[1.05rem] leading-[1.7] text-fg-muted max-w-[62ch] mx-auto mb-8 text-pretty">
+        <p class="text-[1.05rem] leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
           You write pages, layouts, and components as plain files. WebJs serves that source to the
           browser exactly as you wrote it, so the code you read is the code that runs. Content reads
           and forms submit before any script loads, and JavaScript is added only where an interaction
@@ -234,7 +234,7 @@ export default function WhatIsWebJs() {
             Get started
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>${NEW_TAB}
           </a>
-          <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href="/why">Why WebJs exists</a>
+          <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href="/why-webjs">Why WebJs exists</a>
         </div>
         <div class=${INSTALL}>
           <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
@@ -343,7 +343,7 @@ export default function WhatIsWebJs() {
             <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_URL + '/docs/getting-started'} target="_blank" rel="noopener noreferrer">Read the docs${NEW_TAB}</a>
             <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href=${GH_URL} target="_blank" rel="noopener noreferrer">View on GitHub${NEW_TAB}</a>
           </div>
-          <p class="mt-10 text-[14px] text-fg-subtle">
+          <p class="mt-14 pt-8 border-t border-border max-w-[52ch] mx-auto text-[14px] leading-[1.7] text-fg-subtle">
             Compare WebJs with <a class="text-fg-muted hover:text-accent underline underline-offset-2" href="/compare/webjs-vs-nextjs">Next.js</a>,
             <a class="text-fg-muted hover:text-accent underline underline-offset-2" href="/compare/webjs-vs-lit">Lit</a>, and
             <a class="text-fg-muted hover:text-accent underline underline-offset-2" href="/compare/webjs-vs-astro">Astro</a>, or read
