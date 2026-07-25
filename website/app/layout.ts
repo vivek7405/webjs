@@ -22,7 +22,6 @@ const DESCRIPTION = 'A full-stack web framework built on web components, SSR, an
 
 const NAV = [
   { label: 'Docs', href: DOCS_URL + '/docs/getting-started', ext: true },
-  { label: 'Why WebJs', href: '/why', ext: false },
   { label: 'UI', href: UI_URL, ext: true },
   { label: 'Demo', href: EXAMPLE_BLOG_URL, ext: true },
   { label: 'Blog', href: '/blog', ext: false },

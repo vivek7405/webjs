@@ -1,0 +1,79 @@
+/**
+ * Guards the header/footer split and the /why to /why-webjs rename (#1094).
+ *
+ * Three things here are easy to half-do and impossible to notice locally:
+ *
+ *  - moving a nav item OUT of the header but forgetting to put it in the
+ *    footer, so the page becomes unreachable from the chrome entirely
+ *  - renaming a route but leaving an internal link, the sitemap entry, or the
+ *    og:url pointing at the old path, which sends crawlers and readers to a
+ *    redirect instead of the page
+ *  - shipping the rename WITHOUT the 301, which silently drops whatever
+ *    ranking equity the old URL had accumulated
+ *
+ * Each is asserted against observable output (rendered HTML, the serialized
+ * sitemap, the config the framework actually reads) rather than source text.
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { html } from '@webjsdev/core';
+import { renderToString } from '@webjsdev/core/server';
+import RootLayout from '#app/layout.ts';
+import Sitemap from '#app/sitemap.ts';
+import { siteFooter } from '#lib/site-footer.ts';
+
+const WEBSITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+const renderLayout = () => renderToString(RootLayout({ children: html`<main>x</main>` }));
+
+test('the header nav no longer carries Why WebJs', async () => {
+  const out = await renderLayout();
+  const header = out.slice(0, out.indexOf('<footer'));
+  assert.ok(!header.includes('href="/why-webjs"'), 'not in the header (desktop or mobile menu)');
+  assert.ok(!header.includes('href="/why"'), 'and not left pointing at the old path either');
+});
+
+test('the footer Resources column carries Why WebJs', async () => {
+  // Moved, not deleted. Without this the page is unreachable from the chrome.
+  const out = await renderToString(siteFooter());
+  assert.ok(out.includes('href="/why-webjs"'), 'linked from the footer');
+  assert.ok(out.includes('href="/what-is-webjs"'), 'still alongside What is WebJs?');
+});
+
+test('the header still carries the rest of the nav', async () => {
+  // Counterweight to the removal assertions: prove we removed ONE entry, not
+  // that the nav failed to render at all.
+  const out = await renderLayout();
+  for (const href of ['/blog', '/compare', '/changelog']) {
+    assert.ok(out.includes(`href="${href}"`), `header still links ${href}`);
+  }
+});
+
+test('the sitemap lists /why-webjs and not the old /why', async () => {
+  const xml = String(await Sitemap());
+  assert.ok(xml.includes('<loc>https://webjs.dev/why-webjs</loc>'), 'lists the new path');
+  assert.ok(!xml.includes('<loc>https://webjs.dev/why</loc>'), 'does not list the redirecting path');
+});
+
+test('a permanent redirect preserves the old /why URL', async () => {
+  // The rename is only safe because the old URL keeps resolving. This reads the
+  // config the framework actually consumes (compileRedirectRules reads
+  // package.json webjs.redirects), so deleting the entry fails here.
+  const pkg = JSON.parse(readFileSync(resolve(WEBSITE_ROOT, 'package.json'), 'utf8'));
+  const rules = pkg.webjs?.redirects ?? [];
+  const rule = rules.find((r: any) => r.source === '/why');
+  assert.ok(rule, 'a redirect rule exists for /why');
+  assert.equal(rule.destination, '/why-webjs', 'points at the new path');
+  assert.ok(rule.permanent === true || rule.statusCode === 301, 'is a PERMANENT redirect, so signals transfer');
+});
+
+test('no internal link still points at the old /why path', async () => {
+  // A link to /why would still work, but every visit would eat a redirect hop.
+  const pages = await Promise.all([renderLayout(), renderToString(siteFooter())]);
+  for (const out of pages) {
+    assert.ok(!/href="\/why"/.test(out), 'no chrome link targets the pre-rename path');
+  }
+});

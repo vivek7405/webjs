@@ -90,20 +90,20 @@ test('favicon.ico exists so the origin-root fallback resolves', () => {
 });
 
 test('the root layout gives every page a canonical URL', () => {
-  const m = generateMetadata({ url: 'https://webjs.dev/why' });
-  assert.equal(m.alternates.canonical, 'https://webjs.dev/why', 'canonical tracks the current path');
+  const m = generateMetadata({ url: 'https://webjs.dev/why-webjs' });
+  assert.equal(m.alternates.canonical, 'https://webjs.dev/why-webjs', 'canonical tracks the current path');
 });
 
 test('the canonical collapses query strings and trailing slashes', () => {
   // The counterfactual for the whole point of a canonical: three addresses for
   // one page must resolve to ONE canonical, or they split ranking signals.
   const variants = [
-    'https://webjs.dev/why?utm_source=twitter&utm_campaign=launch',
-    'https://webjs.dev/why/',
-    'https://webjs.dev/why',
+    'https://webjs.dev/why-webjs?utm_source=twitter&utm_campaign=launch',
+    'https://webjs.dev/why-webjs/',
+    'https://webjs.dev/why-webjs',
   ];
   const canonicals = variants.map((url) => generateMetadata({ url }).alternates.canonical);
-  assert.deepEqual(new Set(canonicals), new Set(['https://webjs.dev/why']), 'all variants collapse to one canonical');
+  assert.deepEqual(new Set(canonicals), new Set(['https://webjs.dev/why-webjs']), 'all variants collapse to one canonical');
 });
 
 test('the home page canonical has no trailing slash', () => {

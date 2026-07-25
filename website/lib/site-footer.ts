@@ -27,6 +27,7 @@ export function siteFooter() {
           <div class="flex flex-col gap-3">
             <h4 class="text-xs font-bold uppercase tracking-wider text-fg">Resources</h4>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/what-is-webjs">What is WebJs?</a>
+            <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/why-webjs">Why WebJs</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/blog">Blog</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/articles">Articles</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/changelog">Changelog</a>

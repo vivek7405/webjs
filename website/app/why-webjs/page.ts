@@ -3,7 +3,7 @@ import '#components/copy-cmd.ts';
 import { DOCS_URL, GH_URL, EXAMPLE_BLOG_URL, NEW_TAB } from '#lib/links.ts';
 
 /**
- * /why
+ * /why-webjs
  *
  * The developer pitch page. Where the home page shows the framework's shape
  * (progressive enhancement, the three-file stack, the weight stats), this page
@@ -30,7 +30,7 @@ export function generateMetadata(ctx: { url: string }) {
       type: 'article',
       title,
       description,
-      url: `${origin}/why`,
+      url: `${origin}/why-webjs`,
       image,
       'image:width': '1200',
       'image:height': '630',
