@@ -28,7 +28,7 @@
  * handler that begins a graceful shutdown and exits 0. On Bun a top-level
  * assertion failure routes through that handler, so a broken proof would exit 0
  * and CI's `bun test/bun/<file>.mjs` step would go GREEN on a real regression
- * (verified: node exits 1, Bun exits 0). Filed separately as #1091 for the other
+ * (verified: node exits 1, Bun exits 0). Filed separately as #1092 for the other
  * proof scripts, which all share this shape.
  */
 import assert from 'node:assert/strict';
