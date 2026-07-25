@@ -35,8 +35,11 @@ Three seams pick a runtime-specific implementation, all inside the framework, no
 | Hot reload | `node --watch` | `bun --hot` |
 | WebSocket | the `ws` library | native `Bun.serve` + a bridge adapter |
 | 103 Early Hints | yes | no (`Bun.serve` has no informational-response API) |
+| Reverse-proxy headers | `X-Forwarded-Proto` / `X-Forwarded-Host` honored | same |
 
 The 103 Early Hints gap costs only a small first-load latency edge where an edge proxy forwards the 103, never correctness. The `modulepreload` hints still ship in the document head on both runtimes.
+
+Behind a TLS-terminating proxy (Railway, Fly, Render, Cloudflare, nginx), both shells rewrite the request URL from `X-Forwarded-Proto` / `X-Forwarded-Host`, so `ctx.url` in a page, `req.url` in a `route.{js,ts}` handler, and every absolute URL you build from either carry the ORIGINAL scheme and host rather than the internal `http://container` hop. A comma-separated chain (a CDN in front of a load balancer) takes the value closest to the client. Set `WEBJS_NO_TRUST_PROXY=1` to stop trusting the headers when the container is directly exposed. This was Bun-only broken before #1090, which shipped an `http://` `og:image` on an HTTPS site.
 
 ## Scaffolding a Bun app
 
