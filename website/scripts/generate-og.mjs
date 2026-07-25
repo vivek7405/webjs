@@ -84,11 +84,11 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
                inset 0 1px 0 color-mix(in oklch, white 30%, transparent);
   }
   .word{ font-family:'Inter Tight',sans-serif; font-weight:700; font-size:31px; letter-spacing:-0.02em; }
-  .mid{ flex:1; display:flex; flex-direction:column; justify-content:center; }
+  .mid{ flex:1; display:flex; flex-direction:column; justify-content:center; gap:34px; padding-top:40px; }
   h1{
     font-family:'Inter Tight',sans-serif; font-weight:800;
-    font-size:66px; line-height:1.05; letter-spacing:-0.035em;
-    max-width:18ch;
+    font-size:52px; line-height:1.05; letter-spacing:-0.035em;
+    max-width:20ch;
   }
   .accent{
     white-space:nowrap;
@@ -96,9 +96,30 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
     -webkit-background-clip:text; background-clip:text; color:transparent;
   }
   p.lede{
-    margin-top:26px; max-width:30ch;
-    font-size:25px; line-height:1.5; color:${T.fgMuted};
+    margin-top:-12px; max-width:48ch;
+    font-size:22px; line-height:1.4; color:${T.fgMuted};
   }
+  p.lede b{ color:${T.fg}; font-weight:600; }
+  /* Two benefit cards, sharing the /why card's grid so the two social cards
+     read as one system. The split here is deliberately broader than /why's
+     (which argues the model-agnostic case): this is the site-wide default card,
+     also serving /blog, /articles and /compare, so one card covers what the
+     agent gets and the other what the shipped app gets. */
+  .cards{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .card{
+    border:1px solid ${T.border}; border-radius:18px;
+    background:color-mix(in oklch, ${T.bgDeep} 60%, transparent);
+    padding:24px 26px; display:flex; flex-direction:column; gap:12px;
+  }
+  .clabel{
+    display:flex; align-items:center; gap:9px;
+    font-family:'JetBrains Mono',monospace; font-weight:500;
+    font-size:14px; letter-spacing:0.1em; text-transform:uppercase; color:${T.accent};
+  }
+  .cnum{ color:${T.fgSubtle}; }
+  .ctext{ font-size:21px; line-height:1.42; color:${T.fg}; font-weight:400; }
+  .ctext .q{ color:${T.fgMuted}; }
+  .mono{ font-family:'JetBrains Mono',monospace; font-size:0.86em; color:${T.fgMuted}; }
   .foot{
     display:flex; align-items:center; justify-content:space-between;
     font-family:'JetBrains Mono',monospace; font-weight:500;
@@ -114,7 +135,17 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
     <div class="brand"><div class="mark"></div><div class="word">webjs</div></div>
     <div class="mid">
       <h1>Any AI model. <span class="accent">Production-ready code.</span></h1>
-      <p class="lede">A full-stack web framework an agent reads end to end, so it needs no training data. Small models and large ones both ship code that works.</p>
+      <p class="lede">A full-stack web framework that needs <b>no training data</b>. Small models and large ones both ship code that works.</p>
+      <div class="cards">
+        <div class="card">
+          <div class="clabel"><span class="cnum">01</span> What your agent gets</div>
+          <div class="ctext">The whole stack fits in context. <span class="q">Plain JS in <span class="mono">node_modules</span>, built on the web components and forms every model already knows.</span></div>
+        </div>
+        <div class="card">
+          <div class="clabel"><span class="cnum">02</span> What you ship</div>
+          <div class="ctext">Server-rendered HTML that works without JavaScript. <span class="q">No bundler in between, on Node 24+ or Bun.</span></div>
+        </div>
+      </div>
     </div>
     <div>
       <hr>
