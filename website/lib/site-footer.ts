@@ -2,11 +2,12 @@ import { html } from '@webjsdev/core';
 import { DOCS_URL, UI_URL, EXAMPLE_BLOG_URL, GH_URL, DISCORD_URL, NEW_TAB } from '#lib/links.ts';
 
 /**
- * The site-wide footer, shared across marketing pages (the home page and /why).
+ * The site-wide footer, rendered once by the root layout (app/layout.ts) so it
+ * appears on every page, the same way the header/nav does.
  *
- * It lives here rather than inline in a page so every page renders the same
- * chrome. Pure SSR-time helper: it returns an `html` fragment and touches no
- * client globals, so importing it never ships a page to the browser.
+ * It lives here rather than inline in the layout so the chrome stays readable.
+ * Pure SSR-time helper: it returns an `html` fragment and touches no client
+ * globals, so importing it never ships a page to the browser.
  *
  * Anchor links point at `/#<id>` (not a bare `#<id>`) so a section anchor
  * resolves from any page, not only the home page.

@@ -54,6 +54,18 @@ test('every nav landmark carries a distinguishing aria-label', async () => {
   assert.ok(labels.includes('Footer'), 'the footer nav is labeled Footer');
 });
 
+test('the root layout renders the site footer around a bare child (every page gets it)', async () => {
+  // The footer is layout chrome, not per-page markup, so a page that renders
+  // only its own <main> (blog, compare, changelog, articles) still gets exactly
+  // one footer. Compose the layout around a minimal child and assert the footer
+  // nav is present and appears once. Guards against the footer regressing back
+  // into individual pages (where blog/compare/changelog silently lost it).
+  const out = await renderToString(RootLayout({ children: html`<main>content</main>` }));
+  const footers = (out.match(/<footer\b/g) || []).length;
+  assert.equal(footers, 1, 'the layout renders exactly one footer around any page');
+  assert.ok(out.includes('aria-label="Footer"'), 'the layout-rendered footer nav is labeled Footer');
+});
+
 test('external new-tab links announce the context change and hide decorative glyphs', async () => {
   const out = await renderToString(RootLayout({ children: LandingPage() }));
   // Every target="_blank" link carries a visually-hidden new-tab cue.

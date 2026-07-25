@@ -3,7 +3,6 @@ import '#components/copy-cmd.ts';
 import '#components/like-button.ts';
 import { COMPONENT_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE } from '#lib/samples.ts';
 import { DOCS_URL, GH_URL, NEW_TAB } from '#lib/links.ts';
-import { siteFooter } from '#lib/site-footer.ts';
 // highlight() runs only at SSR (codeWindow renders its output into the served
 // HTML), but it does ship to the client as a small dead module: the page loads
 // in the browser to register copy-cmd, and that pulls in its
@@ -400,7 +399,5 @@ middleware.ts</pre>
     </section>
 
     </main>
-
-    ${siteFooter()}
   `;
 }
