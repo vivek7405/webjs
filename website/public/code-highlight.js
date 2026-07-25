@@ -127,6 +127,15 @@
 
   function init() {
     run(document);
+    // Attach the observer at most once per document. This script is included
+    // by the docs sub-layout, which sits INSIDE the client router's swap
+    // range, and the router re-executes every script in a swapped range. So
+    // without this guard a marketing-to-docs navigation adds another
+    // document.body observer every time, and they accumulate for the life of
+    // the session. Re-running run(document) above is harmless either way,
+    // since each block is already guarded by data-hl.
+    if (window.__webjsHighlightObserving) return;
+    window.__webjsHighlightObserving = true;
     new MutationObserver(function (muts) {
       for (var a = 0; a < muts.length; a++) {
         var added = muts[a].addedNodes;

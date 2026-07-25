@@ -80,7 +80,7 @@ package.json webjs.* key, an html hole, a lifecycle hook, a convention, or
 the behaviour of an already-documented feature), invoke the webjs-doc-sync
 skill, then `git add` EVERY applicable surface and commit again:
   AGENTS.md + .agents/skills/webjs/      agent reference (SKILL.md + references/)
-  docs/app/docs/<topic>                  the docs site
+  website/app/docs/<topic>               the docs site (served at webjs.dev/docs)
   README.md                              if a headline capability
   website/                               marketing copy, if headline
   packages/cli/templates/                scaffold per-agent rule files

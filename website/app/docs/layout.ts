@@ -185,14 +185,24 @@ export default function DocsLayout({ children }: { children: unknown }) {
       /* Mobile: the sidebar becomes a drawer sliding in from the left,
          toggled by [data-docs-nav-open] on body. The attribute name is
          docs-specific so it cannot collide with the shared header's own
-         mobile menu, which is a details element in the root layout. */
+         mobile menu, which is a details element in the root layout.
+
+         The drawer opens BELOW the shared header rather than over it, and
+         that is load-bearing, not a taste call. The root layout wraps
+         children in a relative z-1 element, which is a stacking context,
+         so nothing rendered in here can paint above the z-20 header no
+         matter what z-index it claims: a full-height drawer would have its
+         top band (which holds the search field) buried under the header,
+         with the clicks going to the header instead. Starting at
+         --header-h sidesteps the stacking context entirely and leaves the
+         header usable while the drawer is open. */
       .docs-backdrop { display: none; }
       @media (max-width: 860px) {
         .docs-sidebar {
           position: fixed;
-          top: 0; left: 0; bottom: 0;
+          top: var(--header-h); left: 0; bottom: 0;
           width: 280px; max-width: 85vw;
-          height: 100dvh;
+          height: auto;
           z-index: 40;
           transform: translateX(-100%);
           transition: transform 220ms cubic-bezier(0.3, 0, 0.3, 1);
@@ -201,7 +211,8 @@ export default function DocsLayout({ children }: { children: unknown }) {
         body[data-docs-nav-open] .docs-sidebar { transform: translateX(0); }
         .docs-backdrop {
           display: block;
-          position: fixed; inset: 0;
+          position: fixed;
+          top: var(--header-h); left: 0; right: 0; bottom: 0;
           background: oklch(0 0 0 / 0.5);
           opacity: 0; pointer-events: none;
           transition: opacity 220ms;
