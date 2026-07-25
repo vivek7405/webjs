@@ -19,6 +19,10 @@ import { siteFooter } from '#lib/site-footer.ts';
 
 const TITLE = 'WebJs - The Web Framework for AI Agents';
 const DESCRIPTION = 'A full-stack web framework built on web components, SSR, and progressive enhancement, with zero build step. Lean enough for AI agents to read end to end. File-based routing, server actions, and streaming SSR on web standards. Runs on Node 24+ or Bun.';
+// Describes what the social card itself SAYS (public/og.png), which is the
+// benefit-led line, not the page title. Kept in lockstep with the headline in
+// scripts/generate-og.mjs.
+const OG_IMAGE_ALT = 'WebJs, any AI model produces production-ready code';
 
 const NAV = [
   { label: 'Docs', href: DOCS_URL + '/docs/getting-started', ext: true },
@@ -51,7 +55,7 @@ export function generateMetadata(ctx: { url: string }) {
       image,
       'image:width': '1200',
       'image:height': '630',
-      'image:alt': TITLE,
+      'image:alt': OG_IMAGE_ALT,
       'site_name': 'WebJs',
     },
     twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION, image },

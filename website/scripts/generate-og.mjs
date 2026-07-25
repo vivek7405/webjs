@@ -13,8 +13,14 @@
  * from node_modules. ImageMagick is the only external, non-npm tool. The card
  * mirrors the dark-theme design tokens declared in
  * app/layout.ts
- * (background, foreground, accent, the warm accent glow) and the hero
- * headline, so a regenerated card always matches the live site.
+ * (background, foreground, accent, the warm accent glow), so a regenerated card
+ * always matches the live site's look.
+ *
+ * The copy is deliberately BENEFIT-led rather than a copy of the hero headline:
+ * a social card is read in a timeline by someone who has never heard of WebJs,
+ * so it answers "what do I get" (production-ready code out of any model, small
+ * or large, with no training data) before "how does it work". The mechanism
+ * lives on the page. The card sells the outcome.
  */
 import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
@@ -107,13 +113,13 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
   <div class="frame">
     <div class="brand"><div class="mark"></div><div class="word">webjs</div></div>
     <div class="mid">
-      <h1>The <span class="accent">web framework</span> for AI agents</h1>
-      <p class="lede">A full-stack framework built on web components, SSR, and progressive enhancement, with zero build step. Standards that outlast frameworks.</p>
+      <h1>Any AI model. <span class="accent">Production-ready code.</span></h1>
+      <p class="lede">A full-stack web framework an agent reads end to end, so it needs no training data. Small models and large ones both ship code that works.</p>
     </div>
     <div>
       <hr>
       <div class="foot">
-        <div class="tags"><span class="dot"></span>AI-FIRST &nbsp;&middot;&nbsp; WEB-COMPONENTS-FIRST &nbsp;&middot;&nbsp; NO BUILD</div>
+        <div class="tags"><span class="dot"></span>MODEL AGNOSTIC &nbsp;&middot;&nbsp; NO TRAINING DATA &nbsp;&middot;&nbsp; NO BUILD</div>
         <div>github.com/webjsdev/webjs</div>
       </div>
     </div>
