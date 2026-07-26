@@ -164,3 +164,48 @@
 @font-face{font-family:'Inter Tight';font-style:normal;font-weight:100 900;font-display:swap;src:url('/public/fonts/inter-tight.woff2') format('woff2');}
 @font-face{font-family:'Inter';font-style:normal;font-weight:100 900;font-display:swap;src:url('/public/fonts/inter.woff2') format('woff2');}
 @font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:100 800;font-display:swap;src:url('/public/fonts/jetbrains-mono.woff2') format('woff2');}
+
+/*
+ * Docs sidenav scrollbar: subtle, hover-revealed.
+ *
+ * Default: track + thumb transparent, so the column looks bar-less while idle.
+ * On hover (or focus-within) the thumb fades in. Mirrors the macOS
+ * overlay-scrollbar feel cross-browser, via scrollbar-color / scrollbar-width
+ * on Firefox and the ::-webkit-scrollbar pseudo-elements on Chromium + Safari.
+ *
+ * Lives here rather than in a `<style>` in app/docs/layout.ts (#1109). That is
+ * a NON-ROOT layout, so it renders inside the client router's swap boundary,
+ * and a `<style>` there is removed and re-inserted on every crossing in or out
+ * of /docs. Each insert or remove mutates the document CSSOM, which invalidates
+ * style for the whole document, including the preserved header. This file is
+ * linked once by the root layout, above every boundary, and is never swapped.
+ */
+.docs-sidenav {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 200ms ease;
+}
+.docs-sidenav:hover,
+.docs-sidenav:focus-within {
+  scrollbar-color: color-mix(in oklch, var(--fg) 25%, transparent) transparent;
+}
+.docs-sidenav::-webkit-scrollbar {
+  width: 8px;
+}
+.docs-sidenav::-webkit-scrollbar-track {
+  background: transparent;
+}
+.docs-sidenav::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 200ms ease;
+}
+.docs-sidenav:hover::-webkit-scrollbar-thumb,
+.docs-sidenav:focus-within::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklch, var(--fg) 25%, transparent);
+}
+.docs-sidenav::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in oklch, var(--fg) 45%, transparent);
+}

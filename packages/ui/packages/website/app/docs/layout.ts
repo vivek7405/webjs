@@ -1,45 +1,7 @@
-import { html, css } from '@webjsdev/core';
+import { html } from '@webjsdev/core';
 import { loadRegistryIndex } from '#app/_lib/registry.server.ts';
 import { splitByTier } from '#app/_lib/tier.ts';
 
-// Subtle, hover-revealed scrollbar for the sidenav.
-//
-// Default behavior: scrollbar track + thumb are transparent: the column
-// looks bar-less while idle. On hover (mouse over the aside) the thumb
-// fades in. Mirrors macOS overlay-scrollbar feel cross-browser:
-//   - Firefox: scrollbar-color, scrollbar-width
-//   - Chromium / Safari: ::-webkit-scrollbar pseudo-elements
-const SIDENAV_STYLES = css`
-  .docs-sidenav {
-    scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
-    transition: scrollbar-color 200ms ease;
-  }
-  .docs-sidenav:hover,
-  .docs-sidenav:focus-within {
-    scrollbar-color: color-mix(in oklch, var(--fg) 25%, transparent) transparent;
-  }
-  .docs-sidenav::-webkit-scrollbar {
-    width: 8px;
-  }
-  .docs-sidenav::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .docs-sidenav::-webkit-scrollbar-thumb {
-    background-color: transparent;
-    border-radius: 999px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
-    transition: background-color 200ms ease;
-  }
-  .docs-sidenav:hover::-webkit-scrollbar-thumb,
-  .docs-sidenav:focus-within::-webkit-scrollbar-thumb {
-    background-color: color-mix(in oklch, var(--fg) 25%, transparent);
-  }
-  .docs-sidenav::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in oklch, var(--fg) 45%, transparent);
-  }
-`;
 
 /**
  * Shadcn-style docs shell: sidebar (component list, getting started) on the
@@ -73,7 +35,13 @@ export default async function DocsLayout({ children }: { children: unknown }) {
     'block py-2 px-3 -mx-2 rounded-md text-fg-muted hover:bg-bg-subtle hover:text-fg transition-colors';
 
   return html`
-    <style>${SIDENAV_STYLES.text}</style>
+    <!-- No inline style block here. This is a NON-ROOT layout, so it renders
+         inside the client router's swap boundary and a style element would be
+         removed and re-inserted on every crossing in or out of /docs, churning
+         the document CSSOM and repainting the preserved header (#1109). The
+         .docs-sidenav scrollbar rules live in public/input.css, which the root
+         layout links once above the boundary. (Tag name spelled out rather than
+         bracketed: this comment ships in the served HTML.) -->
     <div class="grid lg:grid-cols-[220px_1fr] gap-8 -mt-10">
       <!--
         Sidenav height note: when the user is at the top of the page,

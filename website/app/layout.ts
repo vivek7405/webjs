@@ -146,6 +146,19 @@ export default function RootLayout({ children }: { children: unknown }) {
       // root layout, is what makes that impossible, because this listener
       // survives navigation while anything the docs sub-layout registers
       // would be swapped away with it.
+      //
+      // This is LOAD-BEARING as of #1109, not defense in depth. The rules it
+      // guards (body[data-docs-nav-open] { overflow: hidden } and the drawer
+      // transform) moved from the docs sub-layout's inline style block into the
+      // compiled stylesheet, so they are now live on every page instead of
+      // leaving the document when you leave /docs. Nothing else can clear the
+      // attribute. Do not remove this listener without re-scoping those rules.
+      //
+      // The tag name is spelled without angle brackets on purpose, the same
+      // care the copy-cmd rule below takes: this comment ships inside a script
+      // element in the served HTML, so a literal opening tag here would pair
+      // with the real closing tag further down for anything scanning the
+      // document (our own #1109 style-churn tests included).
       function closeDocsNav() { document.body.removeAttribute('data-docs-nav-open'); }
       window.addEventListener('popstate', closeDocsNav);
       document.addEventListener('webjs:navigate', closeDocsNav);

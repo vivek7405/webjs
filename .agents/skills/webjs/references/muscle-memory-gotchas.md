@@ -159,7 +159,9 @@ A custom element is `display: inline` by default, so a block container collapses
 
 ### Interpolating into a `<style>` or `<script>` inside a component
 
-In Lit a binding inside `<style>` works. In a WebJs component it fails silently after hydration: the server emits the interpolated content (first paint looks right), but the client drops the raw-text hole and rebuilds the element EMPTY, so the styles vanish. Use `static styles` (shadow) or Tailwind (light DOM). A fully static `<style>` with no `${}` is fine. Flagged by `no-interpolation-in-raw-text-element`. Note the exception: pages and layouts never hydrate, so a page's `<style>${STYLES}</style>` is a legitimate pattern.
+In Lit a binding inside `<style>` works. In a WebJs component it fails silently after hydration: the server emits the interpolated content (first paint looks right), but the client drops the raw-text hole and rebuilds the element EMPTY, so the styles vanish. Use `static styles` (shadow) or Tailwind (light DOM). Flagged by `no-interpolation-in-raw-text-element`.
+
+A fully static `<style>` with no `${}` survives hydration, and a page or layout never hydrates at all, so neither is caught by that rule. **Neither is free, though, and the reason is navigation rather than hydration (#1109).** A `<style>` rendered by a component, a page, or a NON-ROOT layout is inside the client router's swap boundary, so crossing between routes removes one stylesheet and inserts another, and a CSSOM mutation invalidates style for the WHOLE document, preserved layouts included. The visible result is an intermittent one-frame flash of the entire page. Put static rules in the compiled stylesheet the ROOT layout links, which sits above every boundary and is never swapped. See `styling.md`.
 
 ### Reordering a `.map()` list needs a keyed `repeat()`
 

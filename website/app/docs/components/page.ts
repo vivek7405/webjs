@@ -286,33 +286,26 @@ class AppCard extends WebComponent({ heading: String }) {
 AppCard.register('app-card');</pre>
 
     <h3>Class-prefix rule for custom CSS</h3>
-    <p>Tailwind utilities are unique by construction, so most light-DOM components need zero custom CSS. If you <em>do</em> author a <code>&lt;style&gt;</code> block or import a stylesheet, <strong>every class selector MUST be prefixed with the component's tag name</strong>. Otherwise two components with a <code>.card</code> or <code>.header</code> class will style each other.</p>
+    <p>Tailwind utilities are unique by construction, so most light-DOM components need zero custom CSS. If you <em>do</em> author custom CSS for a light-DOM component, <strong>every class selector MUST be prefixed with the component's tag name</strong>. Otherwise two components with a <code>.card</code> or <code>.header</code> class will style each other.</p>
 
-    <pre>// Pattern A: BEM-ish class names prefixed with tag
+    <p><strong>Put those rules in the app stylesheet, not in a <code>&lt;style&gt;</code> inside <code>render()</code>.</strong> A component's rendered output is inside the client router's swap boundary, so a <code>&lt;style&gt;</code> there is removed and re-inserted as the component mounts and unmounts across navigations, and each CSSOM mutation invalidates style for the whole document. It is also duplicated once per instance on the page. Prefixing makes the names safe; the stylesheet is where they belong. See <a href="/docs/styling">Styling</a>.</p>
+
+    <pre>/* Pattern A: BEM-ish class names prefixed with tag */
+.my-card__body  &#123; padding: 16px; &#125;
+.my-card__title &#123; font-weight: 600; &#125;
+
+/* Pattern B: descendant selector rooted at the tag */
+my-card .body  &#123; padding: 16px; &#125;
+my-card .title &#123; font-weight: 600; &#125;</pre>
+
+    <pre>// The component just renders the markup
 class MyCard extends WebComponent {
   render() {
-    return html\`
-      &lt;style&gt;
-        .my-card__body  { padding: 16px; }
-        .my-card__title { font-weight: 600; }
-      &lt;/style&gt;
-      &lt;div class="my-card__body"&gt;&lt;h3 class="my-card__title"&gt;\${t}&lt;/h3&gt;&lt;/div&gt;
-    \`;
-  }
-}
-
-// Pattern B: descendant selector rooted at the tag
-class MyCard extends WebComponent {
-  render() {
-    return html\`
-      &lt;style&gt;
-        my-card .body  { padding: 16px; }
-        my-card .title { font-weight: 600; }
-      &lt;/style&gt;
-      &lt;div class="body"&gt;&lt;h3 class="title"&gt;\${t}&lt;/h3&gt;&lt;/div&gt;
-    \`;
+    return html\`&lt;div class="my-card__body"&gt;&lt;h3 class="my-card__title"&gt;\${t}&lt;/h3&gt;&lt;/div&gt;\`;
   }
 }</pre>
+
+    <p>Truly scoped CSS that ships with the component is what shadow DOM is for: set <code>static shadow = true</code> and use <code>static styles</code>, which is adopted per element and never touches the document CSSOM.</p>
 
     <h2>Shadow DOM (opt-in)</h2>
     <p>Set <code>static shadow = true</code> when you want one of these:</p>

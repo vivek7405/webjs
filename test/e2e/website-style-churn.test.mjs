@@ -21,11 +21,18 @@
  * and the router could still inject or drop a sheet during the swap or the head
  * merge, and only a browser can see that.
  *
- * Observed rather than sampled. A MutationObserver records EVERY style-node
- * add and remove for the whole run, so a sheet that is removed and re-added
- * within one frame is still caught. The earlier CDP screencast on the live site
- * sampled about 11fps and could not rule out a one-frame flash, which is the
- * measurement mistake this avoids.
+ * Observed rather than sampled. A MutationObserver records every style-node add
+ * and remove for the whole run, so a sheet that is removed and re-added within
+ * one frame is still caught. The earlier CDP screencast on the live site sampled
+ * about 11fps and could not rule out a one-frame flash, which is the measurement
+ * mistake this avoids.
+ *
+ * The observer walks each added and removed SUBTREE rather than testing the
+ * node itself. `addedNodes` and `removedNodes` carry only the root of a change,
+ * so a `<style>` wrapped in a `<div>` would otherwise never be seen and the
+ * churn log would stay empty while the page churned. That happens not to be the
+ * shape of the two blocks this PR moved (both were top-level nodes of their
+ * templates), which is exactly the sort of accident that stops holding later.
  *
  * Run: WEBJS_E2E=1 node --test test/e2e/website-style-churn.test.mjs
  */
@@ -187,10 +194,23 @@ describe('E2E: website style churn (#1109)', {
       w.__header = document.querySelector('header');
       const isStyle = (n) => n.nodeType === 1 && (n.tagName === 'STYLE'
         || (n.tagName === 'LINK' && (n.getAttribute('rel') || '').toLowerCase().includes('stylesheet')));
+      // Walk the whole subtree: addedNodes/removedNodes carry only the root of
+      // a change, so a nested <style> is invisible to a test on the node alone.
+      const stylesIn = (n) => {
+        if (n.nodeType !== 1) return [];
+        const found = isStyle(n) ? [n] : [];
+        if (n.querySelectorAll) found.push(...n.querySelectorAll('style, link[rel~="stylesheet"]'));
+        return found;
+      };
+      const record = (op) => (n) => {
+        for (const el of stylesIn(n)) {
+          w.__styleChurn.push({ op, tag: el.tagName, len: (el.textContent || '').length });
+        }
+      };
       new MutationObserver((records) => {
         for (const r of records) {
-          for (const n of r.addedNodes) if (isStyle(n)) w.__styleChurn.push({ op: 'add', tag: n.tagName, len: (n.textContent || '').length });
-          for (const n of r.removedNodes) if (isStyle(n)) w.__styleChurn.push({ op: 'remove', tag: n.tagName, len: (n.textContent || '').length });
+          r.addedNodes.forEach(record('add'));
+          r.removedNodes.forEach(record('remove'));
         }
       }).observe(document.documentElement, { childList: true, subtree: true });
     });

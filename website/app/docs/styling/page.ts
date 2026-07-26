@@ -21,7 +21,7 @@ export default function Styling() {
       <thead><tr><th>Where</th><th>Swapped on navigation?</th><th>Use it for</th></tr></thead>
       <tbody>
         <tr><td><code>public/input.css</code></td><td>No, loaded above every boundary</td><td><strong>Every static rule.</strong> Tokens, prose scales, tag-prefixed component CSS, scrollbars, media queries.</td></tr>
-        <tr><td>Root layout <code>&lt;style&gt;</code></td><td>No, it renders outside <code>&#36;&#123;children&#125;</code></td><td>Token values that must resolve with JS off, and anything the compiled sheet cannot carry.</td></tr>
+        <tr><td>Root layout <code>&lt;style&gt;</code></td><td>No, it renders outside <code>&#36;&#123;children&#125;</code></td><td>Anything that has to be in the document itself rather than a linked file, such as the token values the pre-paint theme bootstrap reads. The compiled sheet is still the default even here.</td></tr>
         <tr><td>Page / non-root-layout <code>&lt;style&gt;</code></td><td><strong>Yes</strong></td><td>Only genuinely per-request CSS.</td></tr>
         <tr><td>Component <code>static styles</code></td><td>No, adopted per element</td><td>Scoped shadow-DOM CSS.</td></tr>
       </tbody>
@@ -301,7 +301,7 @@ export default function Dashboard() {
 }</pre>
 
     <h3>Layout scope</h3>
-    <p>The root layout is the one place that links the sheet. It is also the one layout rendered <em>outside</em> every swap boundary, so if you do need an inline <code>&lt;style&gt;</code> (token values that must resolve with JS off), this is where it goes. A <strong>nested</strong> layout must not carry one.</p>
+    <p>The root layout is the one place that links the sheet. It is also the one layout rendered <em>outside</em> every swap boundary, so if you do need an inline <code>&lt;style&gt;</code> at all, this is where it goes. A <strong>nested</strong> layout must not carry one.</p>
     <pre>// app/layout.ts
 import { html } from '@webjsdev/core';
 

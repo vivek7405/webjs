@@ -150,12 +150,14 @@ export function generateMetadata(ctx: { url: string }) {
 
 export default function DocsLayout({ children }: { children: unknown }) {
   return html`
-    <!-- No <style> here. A sub-layout renders INSIDE the router's swap
-         boundary, so a <style> in this template is inserted on entering /docs
-         and removed on leaving, churning the document CSSOM on every crossing
-         and repainting the preserved header (#1109). The .prose-docs scale,
-         the sidebar, and the mobile drawer all live in public/input.css, which
-         the root layout loads once above the boundary. -->
+    <!-- No inline style block here. A sub-layout renders INSIDE the router's
+         swap boundary, so a style element in this template is inserted on
+         entering /docs and removed on leaving, churning the document CSSOM on
+         every crossing and repainting the preserved header (#1109). The
+         .prose-docs scale, the sidebar, and the mobile drawer all live in
+         public/input.css, which the root layout loads once above the boundary.
+         (Tag name spelled out rather than bracketed: this comment ships in the
+         served HTML, and a literal tag here confuses any document scanner.) -->
 
     <div class="docs-backdrop" onclick="document.body.removeAttribute('data-docs-nav-open')"></div>
 

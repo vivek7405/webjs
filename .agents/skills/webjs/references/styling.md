@@ -42,11 +42,14 @@ When custom CSS IS unavoidable inside a light-DOM component, the tag-prefix inva
 A page never hydrates, so a `<style>` in one is safe from the raw-text-hole trap that bites components. That is a statement about HYDRATION, and it says nothing about NAVIGATION. The client router swaps the DOM between the keyed boundary comments each layout emits around its children, so a `<style>` a page or a NON-ROOT layout renders sits inside that range:
 
 ```
-<!--wj:children:root:/docs/routing-->     <- swap boundary opens
-  <style> ... the sub-layout's rules ... </style>   <- removed and re-inserted on every crossing
-  ...
-<!--/wj:children:root-->
+<!--wj:children:/:/-->                              <- root layout's boundary opens
+  <!--wj:children:/docs:/docs-->                    <- the docs sub-layout's
+    <style> ... the sub-layout's rules ... </style> <- removed and re-inserted on every crossing
+    <!--wj:children:/docs/routing:/docs/routing-->
+      ... the page ...
 ```
+
+(The marker is `<!--wj:children:<segmentPath>:<routeKey>-->`. The root layout's segment path is `/`, not `root`.)
 
 Crossing between two routes that own different ones removes a stylesheet and inserts another. Adding or removing a stylesheet mutates the document CSSOM, and **a CSSOM mutation invalidates style for the ENTIRE document, including the DOM the router deliberately preserved.** The layout you kept mounted repaints anyway. That is expensive exactly where it is most visible: `oklch()` tokens, `color-mix()`, and a `backdrop-filter` header all have to re-resolve, so the symptom is an intermittent one-frame flash of the whole page, navbar included. It was reported on webjs.dev crossing in and out of `/docs`, where the crossing swung the document's inline CSS from 9199 to 17046 bytes.
 
@@ -57,7 +60,7 @@ Next.js engineers against the same effect from the other side. It renders runtim
 | Where | Swapped on nav? | Use it for |
 |---|---|---|
 | `public/input.css` (compiled, linked by the root layout) | No, loaded above every boundary | **Every static rule.** Tokens, prose scales, tag-prefixed component CSS, scrollbars, media queries. |
-| Root layout `<style>` (`app/layout.ts` exactly) | No, it renders outside `${children}` | Token VALUES that must resolve with JS off, and anything the compiled sheet cannot carry. |
+| Root layout `<style>` (`app/layout.ts` exactly) | No, it renders outside `${children}` | Anything that must be in the document itself rather than a linked file (the pre-paint theme bootstrap's token values). The compiled sheet is the default even here. |
 | Page / non-root-layout `<style>` | **Yes** | Only CSS that is genuinely per-request (a value computed from `params`). Static rules do not belong here. |
 | Component `static styles` (shadow DOM) | No, adopted per element | Scoped shadow CSS. |
 
