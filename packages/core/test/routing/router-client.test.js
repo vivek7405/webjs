@@ -32,7 +32,7 @@ let _collect, _plan, _keyOf, _diffEl, _reconcile,
   _onSubmit, _getSubmitMethod, _getSubmitAction, _buildSubmitFormData,
   _restoreOptimistic, _navToken, _bumpNavToken,
   _currentPageUrl, _setCurrentPageUrl, _resetWarnOnce,
-  _eligibleAnchorHref, _prefetchSuppressed, _prefetchMode, _prefetchHasHoverPointer, _prefetch, _prefetchTake,
+  _eligibleAnchorHref, _prefetchSuppressed, _prefetchMode, _prefetchHasHoverPointer, _prefetch, _prefetchTake, _prefetchAnchor,
   _buildHaveHeader,
   _prefetchSaysSaveData, _prefetchPeek, _prefetchInflightSize, _resetPrefetch,
   _viewTransitionsEnabled, _runWithTransition, _regraftPermanentElements,
@@ -109,6 +109,7 @@ before(async () => {
     _prefetchHasHoverPointer,
     _prefetch,
     _prefetchTake,
+    _prefetchAnchor,
     _buildHaveHeader,
     _prefetchSaysSaveData,
     _prefetchPeek,
@@ -3397,42 +3398,61 @@ test('prefetch: the current-page guard keys on path+search, not the full href', 
   });
 });
 
-test('prefetchTake: discards an entry fetched against a different X-Webjs-Have (#1114)', async () => {
-  await withPrefetchEnv(async () => {
-    _prefetch('http://localhost/about');
-    await new Promise((r) => setTimeout(r, 0));
-    const entry = _prefetchPeek('http://localhost/about');
-    assert.ok(entry, 'precondition: the fragment is cached');
-    // Simulate the poison: the entry was fetched while the live DOM had
-    // DIFFERENT boundaries than it does now. The stored `have` is the vary
-    // key of the reduced response, so a mismatch makes the fragment
-    // un-applicable to the current DOM.
-    entry.have = '/docs/getting-started:/docs/getting-started,/docs:/docs,/:/';
+test('prefetchAnchor: reads the boundary a reduced fragment is anchored at (#1114)', async () => {
+  await withPrefetchEnv(() => {
+    // A reduced response begins at the boundary the server short-circuited on,
+    // so its first open-boundary comment is the join point the swap looks for.
     assert.equal(
-      _prefetchTake('http://localhost/about'),
-      null,
-      'a stale-context entry is refused, so the click refetches instead of full-loading'
+      _prefetchAnchor('<!doctype html><body><!--wj:children:/docs:/docs--><main>x</main><!--/wj:children:/docs--></body>'),
+      '/docs:/docs'
     );
     assert.equal(
-      _prefetchPeek('http://localhost/about'),
-      null,
-      'and the poisoned entry is evicted, not left to poison the next click too'
+      _prefetchAnchor('<!doctype html><body><!--wj:children:/:/--><main>x</main><!--/wj:children:/--></body>'),
+      '/:/'
     );
+    // No boundary at all means "no constraint": a shape change must degrade to
+    // the old permissive behaviour, never to rejecting every entry.
+    assert.equal(_prefetchAnchor('<!doctype html><body><main>no markers</main></body>'), null);
+    assert.equal(_prefetchAnchor(''), null);
   });
 });
 
-test('prefetchTake: still consumes an entry whose X-Webjs-Have matches (#1114)', async () => {
+test('prefetchTake: keeps an entry whose anchor is still live, drops one whose anchor is gone (#1114)', async () => {
   await withPrefetchEnv(async () => {
-    // The guard must not break the feature it protects: a same-context entry
-    // is the whole point of prefetching and has to stay a cache HIT.
-    _prefetch('http://localhost/about');
-    await new Promise((r) => setTimeout(r, 0));
-    const stored = _prefetchPeek('http://localhost/about');
-    assert.ok(stored, 'precondition: cached');
-    assert.equal(stored.have, _buildHaveHeader() || '', 'stored context equals the live context');
-    const taken = _prefetchTake('http://localhost/about');
-    assert.ok(taken, 'consumed as a hit');
-    assert.match(taken.html, /ok/);
+    // The validity key is the ANCHOR, not the whole X-Webjs-Have string. A
+    // root-anchored fragment applies on any page (every page carries the root
+    // boundary), so an unrelated navigation between prefetch and click must NOT
+    // throw it away; a /docs-anchored one cannot apply once /docs is gone.
+    //
+    // Driven through the real cache rather than by hand-poking entries, so it
+    // exercises prefetchTake's own read of the live DOM.
+    const live = (html) => { document.body.innerHTML = html; };
+    const ROOT_ANCHORED = '<!--wj:children:/:/--><main>x</main><!--/wj:children:/-->';
+    const DOCS_ANCHORED = '<!--wj:children:/docs:/docs--><main>x</main><!--/wj:children:/docs-->';
+
+    for (const [label, fragment, liveBody, expectHit] of [
+      ['root-anchored, root still live', ROOT_ANCHORED, ROOT_ANCHORED, true],
+      ['docs-anchored, docs gone', DOCS_ANCHORED, ROOT_ANCHORED, false],
+      ['docs-anchored, docs still live',
+        DOCS_ANCHORED,
+        '<!--wj:children:/:/-->' + DOCS_ANCHORED + '<!--/wj:children:/-->', true],
+    ]) {
+      _resetPrefetch();
+      await withPrefetchEnv(async () => {
+        _prefetch('http://localhost/target');
+        await new Promise((r) => setTimeout(r, 0));
+        const e = _prefetchPeek('http://localhost/target');
+        assert.ok(e, `${label}: precondition cached`);
+        e.html = fragment;                       // pin the anchor under test
+        live(liveBody);
+        const took = _prefetchTake('http://localhost/target');
+        assert.equal(!!took, expectHit, label);
+        if (!expectHit) {
+          assert.equal(_prefetchPeek('http://localhost/target'), null, `${label}: evicted, not left to poison`);
+        }
+      });
+    }
+    document.body.innerHTML = '';
   });
 });
 
@@ -3845,6 +3865,82 @@ function faultInjectionCase(t, liveBody, incomingBody) {
     globalThis.document.body.innerHTML = savedBody;
   }
 }
+
+/* --------------------------------------------------------------------------
+ * #1114: every degradation is OBSERVABLE in production.
+ *
+ * The bug this exists to prevent recurring: the router degraded correctly but
+ * SILENTLY (the warning was dev-only), so a click turning into a full document
+ * load emitted no signal on a deployed site. That is why the whole-document
+ * flash was misattributed twice before the real cause was found. These pin the
+ * event as public API, not as debug output that can be quietly dropped.
+ * ------------------------------------------------------------------------ */
+
+test('applySwap: a degradation dispatches webjs:navigation-fallback with its cause (#1114)', () => {
+  const savedBody = globalThis.document.body.innerHTML;
+  const savedHead = globalThis.document.head.innerHTML;
+  const savedLocation = globalThis.location;
+  const seen = [];
+  const onFallback = (e) => seen.push(e.detail);
+  globalThis.document.addEventListener('webjs:navigation-fallback', onFallback);
+  try {
+    globalThis.document.head.innerHTML = '';
+    globalThis.location = /** @type any */ ({ get href() { return 'http://x/current'; }, set href(_v) {} });
+    globalThis.sessionStorage.clear();
+    // Live side is fine; the INCOMING side lost its close marker, so the scan
+    // is poisoned and the only safe move is a full page load.
+    globalThis.document.body.innerHTML =
+      '<!--wj:children:/:/--><main id="fb-old">old</main><!--/wj:children:/-->';
+    const incoming = new globalThis.DOMParser().parseFromString(
+      '<!doctype html><html><head></head><body><!--wj:children:/:/--><main>new</main></body></html>', 'text/html');
+
+    _applySwap(incoming, null, false, 'http://x/blog');
+
+    assert.equal(seen.length, 1, 'exactly one event for one degradation');
+    assert.equal(seen[0].cause, 'incoming-boundaries-malformed', 'the cause names the actual reason');
+    assert.equal(seen[0].href, 'http://x/blog', 'and the destination that will now hard-load');
+    assert.equal(seen[0].willReload, true, 'this one really does reload, which is what an app wants to count');
+  } finally {
+    globalThis.document.removeEventListener('webjs:navigation-fallback', onFallback);
+    globalThis.location = savedLocation;
+    globalThis.document.head.innerHTML = savedHead;
+    globalThis.document.body.innerHTML = savedBody;
+  }
+});
+
+test('applySwap: a discarded background revalidation reports willReload=false (#1114)', () => {
+  const savedBody = globalThis.document.body.innerHTML;
+  const savedHead = globalThis.document.head.innerHTML;
+  const savedLocation = globalThis.location;
+  const seen = [];
+  const onFallback = (e) => seen.push(e.detail);
+  globalThis.document.addEventListener('webjs:navigation-fallback', onFallback);
+  try {
+    globalThis.document.head.innerHTML = '';
+    let assigned = null;
+    globalThis.location = /** @type any */ ({ get href() { return 'http://x/current'; }, set href(v) { assigned = v; } });
+    globalThis.sessionStorage.clear();
+    globalThis.document.body.innerHTML =
+      '<!--wj:children:/:/--><main id="fb-rv">old</main><!--/wj:children:/-->';
+    const incoming = new globalThis.DOMParser().parseFromString(
+      '<!doctype html><html><head></head><body><!--wj:children:/:/--><main>new</main></body></html>', 'text/html');
+
+    // revalidating=true: a background refresh with no trustworthy plan is
+    // DISCARDED rather than hard-loaded, because the user is already looking at
+    // a valid page. The distinction matters to a listener counting full loads.
+    _applySwap(incoming, null, true, 'http://x/blog');
+
+    assert.equal(assigned, null, 'a background op never yanks the user through a hard load');
+    assert.equal(seen.length, 1, 'still reported, so the degradation is not invisible');
+    assert.equal(seen[0].cause, 'revalidation-discarded');
+    assert.equal(seen[0].willReload, false, 'and flagged as NOT a document load');
+  } finally {
+    globalThis.document.removeEventListener('webjs:navigation-fallback', onFallback);
+    globalThis.location = savedLocation;
+    globalThis.document.head.innerHTML = savedHead;
+    globalThis.document.body.innerHTML = savedBody;
+  }
+});
 
 test('applySwap: a truncated INCOMING boundary (dropped close) degrades to a full load (#1015)', (t) => {
   faultInjectionCase(t,

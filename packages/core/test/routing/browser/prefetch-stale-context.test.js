@@ -31,7 +31,6 @@ import {
   _prefetch,
   _prefetchTake,
   _prefetchPeek,
-  _buildHaveHeader,
   _resetPrefetch,
 } from '../../../src/router-client.js';
 
@@ -114,81 +113,99 @@ suite('Client router: a stale prefetch never forces a full page load (#1114)', (
     }
   });
 
-  test('an entry cached against a different boundary set is refused on consume', async () => {
-    // Guard 2, the belt to guard 1's braces: even if an entry with a stale
-    // context reaches the cache by any route, consuming it must not happen.
-    // Cache while the live DOM is the DOCS shape...
-    setup(DOCS_BODY);
+  test('a fragment anchored at a boundary the live DOM still has IS consumed', async () => {
+    // The regression guard on the guard. A fragment prefetched from home is
+    // anchored at the ROOT boundary, which every page carries, so soft-navigating
+    // elsewhere before the click must NOT throw it away. An earlier version of
+    // this fix compared the whole `X-Webjs-Have` string and discarded it, which
+    // silently cost a round-trip on the common "warm the navbar, navigate once,
+    // then tap" flow, and broke prefetch outright on any route with a
+    // `loading.{js,ts}` (the skeleton removes the page boundary before the
+    // fetch, so the live have is legitimately shorter with no navigation).
+    setup(HOME_BODY);
     try {
-      const target = location.origin + '/some-other-page';
+      const target = location.origin + '/anchored-at-root';
+      // Serve a ROOT-anchored fragment, which is what `have=/:/` returns.
+      window.fetch = async (url, init) => {
+        calls.push({ url: String(url), have: (init && init.headers && init.headers['x-webjs-have']) || null });
+        return new Response('<!doctype html><html><head></head><body>' + DOCS_BODY + '</body></html>', {
+          status: 200, headers: { 'content-type': 'text/html', 'x-webjs-build': 'b1' },
+        });
+      };
       _prefetch(target);
       await afterPrefetchAttempt();
-      const cached = _prefetchPeek(target);
-      assert.ok(cached, 'precondition: fragment cached');
-      assert.equal(cached.have, _buildHaveHeader(), 'and it recorded the docs-shaped context');
+      assert.ok(_prefetchPeek(target), 'precondition: cached');
 
-      // ...then navigate (in DOM terms) back to the HOME shape, which is what
-      // happens between the poisoning prefetch and the later click.
+      // Soft-nav to a DIFFERENT page. The root boundary survives, as it does on
+      // every page in a real app, so the fragment is still applicable.
+      document.body.innerHTML =
+        '<!--wj:children:/:/--><!--wj:children:/blog:/blog--><main>blog</main><!--/wj:children:/blog--><!--/wj:children:/-->';
+
+      const taken = _prefetchTake(target);
+      assert.ok(taken, 'a root-anchored fragment survives an unrelated navigation and stays a cache HIT');
+    } finally {
+      teardown();
+    }
+  });
+
+  test('a fragment anchored at a boundary the live DOM LOST is refused', async () => {
+    // The other side of the same coin, and the actual #1114 shape: a fragment
+    // anchored deep (at /docs) cannot apply on a page with no /docs boundary.
+    // Consuming it is what produced the full page load.
+    setup(DOCS_BODY);
+    try {
+      const target = location.origin + '/docs/other';
+      window.fetch = async (url, init) => {
+        calls.push({ url: String(url), have: (init && init.headers && init.headers['x-webjs-have']) || null });
+        // A /docs-anchored fragment: what the server returns when the client
+        // already holds the root AND the docs layout.
+        return new Response(
+          '<!doctype html><html><head></head><body>' +
+          '<!--wj:children:/docs:/docs--><main>other</main><!--/wj:children:/docs-->' +
+          '</body></html>',
+          { status: 200, headers: { 'content-type': 'text/html', 'x-webjs-build': 'b1' } });
+      };
+      _prefetch(target);
+      await afterPrefetchAttempt();
+      assert.ok(_prefetchPeek(target), 'precondition: cached');
+
+      // Leave the docs section entirely: no /docs boundary remains.
       document.body.innerHTML = HOME_BODY;
-      assert.notEqual(_buildHaveHeader(), cached.have, 'the live context really did change');
 
       assert.equal(
         _prefetchTake(target),
         null,
-        'the stale-context entry is refused, so the click refetches instead of full-loading'
+        'the anchor is gone, so the entry is refused and the click refetches instead of full-loading'
       );
-      assert.equal(_prefetchPeek(target), null, 'and it is evicted rather than left to poison the next click');
+      assert.equal(_prefetchPeek(target), null, 'and it is evicted, not left to poison the next click');
     } finally {
       teardown();
     }
   });
 
-  test('the reported hover, swap, click sequence leaves no consumable poison', async () => {
-    // The end-to-end shape, in DOM terms. This is the assertion that would have
-    // caught the bug: after the full sequence there must be no entry that a
-    // click on /docs would consume.
-    setup(HOME_BODY);
+  test('the reported sequence: a late same-page prefetch caches nothing', async () => {
+    // The end-to-end #1114 shape. Deliberately NOT reusing one in-flight window:
+    // an earlier version of this test called _prefetch twice synchronously, so
+    // the second call was swallowed by the in-flight dedupe rather than by the
+    // guard, and it passed on the unfixed bundle. Here the first prefetch is
+    // fully settled first, and the URL under test is the REAL current location,
+    // because guard 1 compares against location.href and no amount of
+    // document.body rewriting changes that.
+    setup(DOCS_BODY);
     try {
-      const docsUrl = location.origin + '/docs/intro';
+      const here = location.origin + location.pathname + location.search;
+      assert.equal(calls.length, 0, 'clean slate');
 
-      // 1. Hover on home: a legitimate prefetch, home-shaped context.
-      _prefetch(docsUrl);
-      await afterPrefetchAttempt();
-      assert.equal(calls.length, 1, 'the hover prefetch went out');
-      assert.equal(calls[0].have, HOME_HAVE(), 'against the home boundaries');
+      // The hover timer fires while standing on the page it points at.
+      _prefetch(here);
+      await afterPrefetchAttempt(200);
 
-      // 2. The click consumes it: a hit, because the context still matches.
-      const hit = _prefetchTake(docsUrl);
-      assert.ok(hit, 'the hover prefetch is consumed as a hit (the feature still works)');
-
-      // 3. The swap lands: the live DOM is now the docs page.
-      document.body.innerHTML = DOCS_BODY;
-
-      // 4. The stale hover timer fires while standing on /docs. This is the
-      //    poisoning step, and guard 1 must make it inert.
-      _prefetch(docsUrl);
-      await afterPrefetchAttempt(150);
-      assert.equal(
-        _prefetchPeek(docsUrl),
-        null,
-        'the late timer cached nothing, so returning home and clicking /docs cannot full-load'
-      );
-
-      // 5. Prove the next click is a clean cache MISS (refetch), not a
-      //    poisoned hit. A miss is a round-trip; a poisoned hit was a reload.
-      document.body.innerHTML = HOME_BODY;
-      assert.equal(_prefetchTake(docsUrl), null, 'no consumable entry remains');
+      assert.equal(calls.length, 0, 'no fetch: the late timer is inert');
+      assert.equal(_prefetchPeek(here), null, 'nothing cached, so no later click can consume a self-fragment');
+      assert.equal(_prefetchTake(here), null, 'and nothing to take');
     } finally {
       teardown();
     }
   });
 
-  /** The `have` string the home-shaped body produces, computed live. */
-  function HOME_HAVE() {
-    const saved = document.body.innerHTML;
-    document.body.innerHTML = HOME_BODY;
-    const have = _buildHaveHeader();
-    document.body.innerHTML = saved;
-    return have;
-  }
 });

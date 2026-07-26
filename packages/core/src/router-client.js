@@ -807,9 +807,15 @@ function reportFallback(cause, href, willReload = true) {
     }
   }
   if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production') return;
+  // Word the warning from `willReload`: several causes deliberately do NOT
+  // reload (a suppressed deploy reload, a discarded background revalidation),
+  // and claiming a full page load for those sends a reader hunting the wrong
+  // symptom.
   warnOnce(
     `fallback:${cause}`,
-    `[webjs] client router fell back to a full page load (${cause}) navigating to ${href}. This is correct (no DOM corruption), just not a soft nav.`
+    willReload
+      ? `[webjs] client router fell back to a full page load (${cause}) navigating to ${href}. This is correct (no DOM corruption), just not a soft nav.`
+      : `[webjs] client router degraded a soft navigation (${cause}) for ${href}, without a full page load.`
   );
 }
 
@@ -1439,6 +1445,9 @@ const PREFETCH_HOVER_DELAY = 100;
 const PREFETCH_VIEWPORT_DELAY = 250;
 
 /** @typedef {{ html: string, build: string | null, finalUrl: string, at: number, have: string }} PrefetchEntry */
+/* `have` is the X-Webjs-Have this fragment was fetched against. Kept for
+ * diagnostics and tests; validity is decided by the fragment's ANCHOR, not by
+ * this string (see prefetchTake). */
 /** @type {Map<string, PrefetchEntry>} */
 const prefetchCache = new Map();
 /** Keys with a fetch currently in flight (dedupe + concurrency gate). */
@@ -1743,9 +1752,35 @@ function prefetchStore(key, entry) {
 }
 
 /**
+ * The `segment:routeKey` a cached fragment is ANCHORED at, or null when it
+ * carries no boundary (a full document, or an unparseable body).
+ *
+ * A reduced response begins at the deepest boundary the server short-circuited
+ * on, so its FIRST open-boundary comment is the join point the swap will look
+ * for in the live DOM. Verified against the server: `have=/:/` yields a
+ * fragment starting at `<!--wj:children:/:/-->` (anchored at the root, so it
+ * applies on any page), while `have=/docs:/docs,/:/` yields one starting at
+ * `<!--wj:children:/docs:/docs-->` (applies only under /docs).
+ *
+ * Read with a regex rather than a parse: this runs on the click path, and the
+ * full parse happens moments later in `fetchAndApply` anyway. The pattern is
+ * anchored on the literal marker the SSR emits, and a miss is treated as
+ * "no constraint", so a shape change degrades to the old permissive behaviour
+ * rather than silently rejecting every entry.
+ *
+ * @param {string} html
+ * @returns {string | null}
+ */
+function prefetchAnchor(html) {
+  const m = /<!--wj:children:([^>]*?)-->/.exec(html || '');
+  return m ? m[1] : null;
+}
+
+/**
  * Consume a fresh speculative entry for `href`, removing it (a fragment
  * is single-use: once applied it becomes a real snapshot). Returns null
- * on miss or when the entry has aged past the TTL.
+ * on miss, when the entry has aged past the TTL, or when the live DOM no
+ * longer offers the boundary the fragment is anchored at.
  *
  * @param {string} href
  * @returns {PrefetchEntry | null}
@@ -1754,18 +1789,38 @@ function prefetchTake(href) {
   const key = cacheKey(href);
   const entry = prefetchCache.get(key);
   if (!entry) return null;
+  if ((nowMs() - entry.at) >= PREFETCH_TTL) { prefetchCache.delete(key); return null; }
+  // The reduced response VARIES on X-Webjs-Have, and this cache is a
+  // client-side cache of that response, so it has to respect its own vary
+  // dimension (#1114). The dimension is NOT the whole have string though: a
+  // fragment is anchored at ONE boundary and applies to any live DOM that still
+  // offers that boundary with the same route-key. Checking the whole string
+  // instead discards entries that would have applied (prefetch /docs/x from /,
+  // soft-nav to /blog, click: the fragment is anchored at the root, which /blog
+  // also has), and worse, `applyOptimisticLoading` removes the page's own
+  // boundary before the fetch to insert a loading skeleton, so on any route
+  // with a `loading.{js,ts}` the live have is legitimately SHORTER at consume
+  // time than at prefetch time with no navigation at all.
+  //
+  // So: consume when the anchor is still live, discard when it is not.
+  // Discarding costs one round-trip; consuming a fragment whose anchor is gone
+  // hands `applySwap` a tree sharing no boundary with the live DOM, and the
+  // #1015 integrity degradation correctly turns that into a full page load,
+  // which is the whole-document flash this guard exists to prevent.
+  const anchor = prefetchAnchor(entry.html);
+  if (anchor) {
+    // `buildHaveHeader()` emits exactly comma-joined `segment:routeKey` entries,
+    // so it is the single source of truth for the comparison format: membership
+    // in it IS "the live DOM offers this boundary with this route-key". It
+    // returns '' mid-parse, which rejects an anchored entry, and that is the
+    // safe direction (a click during parse takes the full-load path regardless).
+    const liveKeys = new Set(String(buildHaveHeader() || '').split(',').filter(Boolean));
+    if (!liveKeys.has(anchor)) {
+      prefetchCache.delete(key);
+      return null;
+    }
+  }
   prefetchCache.delete(key);
-  if ((nowMs() - entry.at) >= PREFETCH_TTL) return null;
-  // The reduced response VARIES on X-Webjs-Have (the server marks it so), and
-  // this cache is the client-side cache of that response, so it must respect
-  // its own vary dimension (#1114). An entry fetched against one page state is
-  // a fragment RELATIVE to that state; consuming it after the live boundaries
-  // changed (a navigation landed between the prefetch and the click) hands
-  // applySwap a fragment that shares no boundary with the live DOM, and the
-  // #1015 integrity degradation then correctly falls back to a full page load.
-  // Discarding here costs one network round-trip on a stale hit; consuming
-  // costs the user a full document load.
-  if ((entry.have || '') !== (buildHaveHeader() || '')) return null;
   return entry;
 }
 
@@ -1997,7 +2052,15 @@ function handleNavigationError(href, status, error) {
   // cross-document nav). Fall back to a hard load so an unrecoverable case
   // is not a silent dead-end. This is the exception, reached only after
   // the event was not cancelled AND no in-place target exists.
-  if (typeof location !== 'undefined') location.href = href;
+  //
+  // Report it like every other degradation (#1114): this IS a click turning
+  // into a document load, so an app watching `webjs:navigation-fallback` to
+  // count full loads must see it. The preceding `webjs:navigation-error`
+  // carries no `cause` / `willReload`, so it is not a substitute.
+  if (typeof location !== 'undefined') {
+    reportFallback('navigation-error-unrecoverable', href);
+    location.href = href;
+  }
 }
 
 /**
@@ -4311,6 +4374,7 @@ export {
   prefetchHasHoverPointer as _prefetchHasHoverPointer,
   prefetch as _prefetch,
   prefetchTake as _prefetchTake,
+  prefetchAnchor as _prefetchAnchor,
   prefetchSaysSaveData as _prefetchSaysSaveData,
   readStreamedShell as _readStreamedShell,
   takeResolveUnit as _takeResolveUnit,
