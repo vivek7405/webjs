@@ -106,8 +106,12 @@ function stripShadowTemplates(html) {
 let failed = false;
 for (const app of APPS) {
   const appDir = resolve(REPO_ROOT, app.dir);
-  /** The first probed route's stylesheet set, the churn baseline (#1109). */
+  /** The first SUCCESSFULLY probed route's stylesheet set, the churn baseline,
+   *  and the route it came from (#1109). Taken from a 2xx only: a failing route
+   *  yields an empty body, so seeding the baseline from it would report every
+   *  healthy route afterwards as churn and send someone chasing a phantom. */
   let sheetKey = null;
+  let sheetBaselineRoute = null;
   try {
     runStartBefore(appDir);
     const h = await createRequestHandler({ appDir, dev: false });
@@ -139,13 +143,13 @@ for (const app of APPS) {
         if (rel.toLowerCase().split(/\s+/).includes('stylesheet')) sheets.push('LINK:' + (m[2] || '').trim());
       }
       const key = sheets.join('\u0000');
-      if (sheetKey === null) sheetKey = key;
-      const churns = resp.status < 400 && key !== sheetKey;
+      if (resp.status < 400 && sheetKey === null) { sheetKey = key; sheetBaselineRoute = route; }
+      const churns = resp.status < 400 && sheetKey !== null && key !== sheetKey;
 
       const ok = resp.status < 400 && broken.length === 0 && !churns;
-      console.log(`${ok ? 'OK  ' : 'FAIL'} ${app.name} ${route} -> ${resp.status}, preloads=${preloads.length}, broken=[${broken.join(', ')}], sheets=${sheets.length}${churns ? ' CHURN: differs from ' + app.routes[0] : ''}`);
+      console.log(`${ok ? 'OK  ' : 'FAIL'} ${app.name} ${route} -> ${resp.status}, preloads=${preloads.length}, broken=[${broken.join(', ')}], sheets=${sheets.length}${churns ? ' CHURN: differs from ' + sheetBaselineRoute : ''}`);
       if (churns) {
-        console.error(`      a <style> or stylesheet <link> differs between ${app.routes[0]} and ${route}, so navigating`);
+        console.error(`      a <style> or stylesheet <link> differs between ${sheetBaselineRoute} and ${route}, so navigating`);
         console.error('      between them mutates the document CSSOM and repaints the preserved layout (#1109).');
         console.error('      Move static rules into the app stylesheet the ROOT layout links.');
       }
