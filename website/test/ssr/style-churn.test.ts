@@ -82,12 +82,27 @@ function staticRoutes(): string[] {
     .sort();
 }
 
-/** The index page each dynamic route hangs off, used to find a real instance. */
-const DYNAMIC_INDEXES = ['/blog', '/articles', '/compare'];
+/**
+ * Every dynamic route family, as the parent path its instances hang off.
+ * Derived, not listed: `app/blog/[slug]/page.ts` yields `/blog`. A hand-written
+ * list would silently give a NEW family zero coverage, which is the same defect
+ * the static list had.
+ */
+function dynamicFamilies(): string[] {
+  return routeFiles()
+    .filter((f) => /(^|\/)page\.(ts|js|mts|mjs)$/.test(f))
+    .map((f) => f.replace(/(^|\/)page\.(ts|js|mts|mjs)$/, ''))
+    .filter((p) => p.includes('['))
+    .map((p) => '/' + p.split('/').slice(0, -1).join('/'))
+    .filter((p, i, a) => a.indexOf(p) === i)
+    .sort();
+}
 
 let handle: (path: string) => Promise<Response>;
 /** Static routes plus one resolved instance of each dynamic route. */
 let routes: string[];
+/** Dynamic families the resolution could not reach, asserted empty below. */
+const unresolvedFamilies: string[] = [];
 
 before(async () => {
   const app = await createRequestHandler({ appDir: WEBSITE_ROOT, dev: false });
@@ -95,27 +110,40 @@ before(async () => {
   handle = (path) => app.handle(new Request('http://localhost' + path));
 
   const candidates = staticRoutes();
-  // Resolve one concrete URL per dynamic route by taking the first child link
+  // Resolve one concrete URL per dynamic family by taking the first child link
   // off its index page, so /blog/[slug] and friends are covered by a REAL
-  // rendered post rather than skipped for being unaddressable.
-  for (const index of DYNAMIC_INDEXES) {
-    const res = await handle(index);
-    if (!res.ok) continue;
+  // rendered post rather than skipped for being unaddressable. Recorded so the
+  // test below can FAIL when a family stops resolving, instead of quietly
+  // shrinking its own coverage.
+  for (const family of dynamicFamilies()) {
+    const res = await handle(family);
+    if (!res.ok) { unresolvedFamilies.push(`${family} (index returned ${res.status})`); continue; }
     const html = await res.text();
+    const depth = family.split('/').length + 1;
     const child = [...html.matchAll(/href="([^"]+)"/g)]
       .map((m) => m[1])
-      .find((h) => h.startsWith(index + '/') && h.split('/').length === 3);
+      .find((h) => h.startsWith(family + '/') && h.split('/').length === depth);
     if (child) candidates.push(child);
+    else unresolvedFamilies.push(`${family} (no instance link found on the index)`);
   }
 
   // Keep only routes that render a document. A redirect-only route (/docs
   // 308s to /docs/getting-started) has no body to inspect, and treating its
-  // empty response as "zero styles" would make the byte-identical assertion
-  // fail for the wrong reason.
+  // empty response as "zero stylesheets" would make the byte-identical
+  // assertion fail for the wrong reason.
   routes = [];
   for (const p of candidates) {
     if ((await handle(p)).status === 200) routes.push(p);
   }
+});
+
+test('every dynamic route family resolved to a real instance', () => {
+  // The resolution above degrades silently by construction (a changed permalink
+  // shape or a link moved into a template just finds nothing). Without this,
+  // all three families could drop out and the suite would still pass, because
+  // 51 static routes clear any count threshold.
+  assert.deepEqual(unresolvedFamilies, [], 'these dynamic routes are covered by nothing');
+  assert.ok(dynamicFamilies().length > 0, 'the site does have dynamic routes, so this is not vacuous');
 });
 
 const bodyOf = async (path: string) => {
@@ -125,21 +153,67 @@ const bodyOf = async (path: string) => {
 };
 
 /**
- * Every `<style>` element's full source text, in document order.
+ * Drop the contents of every declarative-shadow-root template.
+ *
+ * A `<style>` inside `<template shadowrootmode="...">` belongs to a shadow
+ * tree, not the document. Inserting or removing it does NOT invalidate document
+ * style (and on the client the component adopts it via adoptedStyleSheets), so
+ * it is not churn and a shadow component legitimately carries one via
+ * `static styles`. Counting them made a page with three shadow previews look
+ * like it churned three stylesheets against a page with none.
+ *
+ * Balanced scan rather than a non-greedy regex, because a template can nest.
+ */
+function stripShadowTemplates(html: string): string {
+  const OPEN = /<template\b[^>]*\bshadowrootmode\b[^>]*>/gi;
+  const TAG = /<template\b[^>]*>|<\/template\s*>/gi;
+  let out = '';
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = OPEN.exec(html))) {
+    if (m.index < last) continue;
+    out += html.slice(last, m.index);
+    let depth = 1;
+    let end = html.length;
+    TAG.lastIndex = OPEN.lastIndex;
+    let t: RegExpExecArray | null;
+    while (depth > 0 && (t = TAG.exec(html))) {
+      depth += t[0][1] === '/' ? -1 : 1;
+      end = TAG.lastIndex;
+    }
+    last = depth === 0 ? end : html.length;
+    OPEN.lastIndex = last;
+  }
+  return out + html.slice(last);
+}
+
+/**
+ * Every stylesheet the document carries, in order, as `TAG:content` entries.
+ *
+ * Covers `<link rel~="stylesheet">` as well as `<style>`. Both mutate the
+ * document CSSOM when inserted or removed, so both churn identically; a link
+ * additionally costs a network fetch. Scanning only for `<style>` let the
+ * cheapest regression (rendering a `<link>` from a nested layout) pass all
+ * three nets, and it disagreed with the e2e, which counts links as churn.
  *
  * Scripts and HTML comments are stripped FIRST. A `<script>` is raw text to the
  * HTML parser, so a literal opening style tag inside one is just characters,
  * but a naive regex pairs it with the next real closing tag and reports a
  * multi-KB phantom element. That is not hypothetical: it happened here, because
- * the root layout's inline script carries a comment about this very rule. The
- * app-side fix is to spell the tag name out in shipped comments; this is the
- * belt to that braces, so the measurement cannot lie either way.
+ * the root layout's inline script carries a comment about this very rule.
  */
-function stylesOf(html: string): string[] {
-  const scrubbed = html
+function sheetsOf(html: string): string[] {
+  const scrubbed = stripShadowTemplates(html)
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/<!--[\s\S]*?-->/g, '');
-  return [...scrubbed.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]);
+  const out: string[] = [];
+  for (const m of scrubbed.matchAll(/<style[^>]*>([\s\S]*?)<\/style>|<link\b([^>]*)>/gi)) {
+    if (m[1] !== undefined) { out.push('STYLE:' + m[1]); continue; }
+    const attrs = m[2] || '';
+    const rel = /\brel\s*=\s*["']?([^"'>]*)/i.exec(attrs)?.[1] || '';
+    if (rel.toLowerCase().split(/\s+/).includes('stylesheet')) out.push('LINK:' + attrs.trim());
+  }
+  return out;
 }
 
 /**
@@ -158,37 +232,62 @@ function swapRangeOf(html: string, path: string): string {
 }
 
 /**
- * Source with comments removed, so prose ABOUT a `<style>` is not mistaken for
- * one. Several of these files carry a comment saying why they render no
- * `<style>`, which a naive scan flags as the very thing it is describing.
+ * A raw `<style>` or `<link rel=stylesheet>` anywhere in a routing file's
+ * source, comments included.
  *
- * The `//` rule skips a match preceded by `:` so a `https://` URL does not eat
- * the rest of its line. A mis-strip here can only cost coverage, never produce
- * a false positive, and the served-HTML test below is the authoritative net.
+ * Deliberately NOT comment-aware. An earlier version stripped comments so prose
+ * about a style tag would not be flagged, and the block-comment rule paired the
+ * first `/*` with the first `*\/`, which on docs pages full of unbalanced `/*`
+ * inside CSS samples deleted up to 78% of the file before scanning. A net with
+ * a silent hole that large is worse than no net.
+ *
+ * The convention instead is that prose spells the tag name out rather than
+ * bracketing it, which these files already do (and which they need anyway,
+ * since a bracketed tag inside a shipped comment confuses any scanner reading
+ * the served HTML). This scan is what enforces that convention: writing a
+ * bracketed tag in a comment fails it, which is the intended nudge.
  */
-function withoutComments(src: string): string {
-  return src
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-}
+const SHEET_IN_SOURCE = /<style[\s>]|<link\b[^>]*rel\s*=\s*["']?[^"'>]*stylesheet/i;
 
-test('the style scanner is not fooled by a tag name inside a script or comment', () => {
-  // Guards the scrubbing in stylesOf. Without it, the literal tag inside the
+test('the document scanner is not fooled by a tag name inside a script or comment', () => {
+  // Guards the scrubbing in sheetsOf. Without it, the literal tag inside the
   // script pairs with the real closing tag below it and reports one giant
-  // phantom element, which is exactly the bug this scanner hit in review.
+  // phantom element, which is exactly what happened here: it inflated the
+  // measured style bytes by 1368 and would have masked a later regression.
   const html = [
     '<script>// mentions <style> in a comment</script>',
     '<!-- and <style> in an HTML comment -->',
     '<style>.real { color: red }</style>',
+    '<link rel="icon" href="/favicon.png">',
+    '<link rel="stylesheet" href="/public/tailwind.css">',
   ].join('\n');
-  assert.deepEqual(stylesOf(html), ['.real { color: red }']);
+  assert.deepEqual(sheetsOf(html), [
+    'STYLE:.real { color: red }',
+    'LINK:rel="stylesheet" href="/public/tailwind.css"',
+  ]);
+});
+
+test('a shadow-DOM component style is not counted as churn', () => {
+  // A <style> inside <template shadowrootmode> belongs to a shadow tree, not
+  // the document, so inserting or removing it invalidates nothing document-wide
+  // and a shadow component legitimately ships one via `static styles`. Counting
+  // them made a ui-website page with three shadow previews look like it churned
+  // three stylesheets against a page with none. Nesting is handled with a
+  // balanced scan, which a non-greedy regex would get wrong.
+  const html = [
+    '<style>.doc { color: red }</style>',
+    '<my-el><template shadowrootmode="open">',
+    '  <style>:host { display: block }</style>',
+    '  <template><style>.nested { color: blue }</style></template>',
+    '</template></my-el>',
+  ].join('\n');
+  assert.deepEqual(sheetsOf(html), ['STYLE:.doc { color: red }']);
 });
 
 test('no page or layout SOURCE file renders a <style>, except the root layout', () => {
   const offenders = routeFiles()
     .filter((f) => f !== ROOT_LAYOUT)
-    .filter((f) => /<style[\s>]/.test(withoutComments(readFileSync(join(APP_DIR, f), 'utf8'))));
+    .filter((f) => SHEET_IN_SOURCE.test(readFileSync(join(APP_DIR, f), 'utf8')));
   assert.deepEqual(
     offenders,
     [],
@@ -198,28 +297,22 @@ test('no page or layout SOURCE file renders a <style>, except the root layout', 
   );
 });
 
-test('the source scan still fires when a <style> is reintroduced', () => {
-  // The scan above strips comments, and getting that wrong in the other
-  // direction (stripping too much) would silently disable it. Prove the
-  // detector still sees a real one in a file shaped like the docs sub-layout.
-  const realistic = `
-    /* This comment mentions <style> and must not count. */
-    export default function L({ children }) {
-      return html\`
-        <!-- Neither does this <style> mention. -->
-        <style>.prose-docs ul { list-style: disc; }</style>
-        <div>\${children}</div>
-      \`;
-    }`;
-  assert.match(withoutComments(realistic), /<style[\s>]/, 'a real <style> survives comment stripping');
-  const commentsOnly = realistic.replace('<style>.prose-docs ul { list-style: disc; }</style>', '');
-  assert.doesNotMatch(withoutComments(commentsOnly), /<style[\s>]/, 'while prose about one does not');
+test('the source scan fires for a style block AND for a stylesheet link', () => {
+  // Both churn the CSSOM. Scanning only for a style block let the cheapest
+  // regression through: a nested layout rendering its own <link>.
+  assert.match('<style>.a{color:red}</style>', SHEET_IN_SOURCE);
+  assert.match('<link rel="stylesheet" href="/public/app.css">', SHEET_IN_SOURCE);
+  assert.match("<link href='/x.css' rel='preload stylesheet'>", SHEET_IN_SOURCE);
+  // And it must not fire on the things a routing file legitimately carries.
+  assert.doesNotMatch('<link rel="icon" href="/favicon.png">', SHEET_IN_SOURCE);
+  assert.doesNotMatch('<link rel="modulepreload" href="/x.js">', SHEET_IN_SOURCE);
+  assert.doesNotMatch('a style block belongs in public/input.css', SHEET_IN_SOURCE);
 });
 
 test('no route SERVES a <style> inside the router swap range', async () => {
   assert.ok(routes.length > 40, `expected the site's full route list, got ${routes.length}`);
   for (const path of routes) {
-    const inRange = stylesOf(swapRangeOf(await bodyOf(path), path));
+    const inRange = sheetsOf(swapRangeOf(await bodyOf(path), path));
     assert.deepEqual(
       inRange.map((s) => s.trim().slice(0, 80)),
       [],
@@ -230,7 +323,7 @@ test('no route SERVES a <style> inside the router swap range', async () => {
 
 test('every route serves a byte-identical <style> set, so any crossing is churn-free', async () => {
   const baselinePath = routes[0];
-  const baseline = stylesOf(await bodyOf(baselinePath));
+  const baseline = sheetsOf(await bodyOf(baselinePath));
   assert.ok(baseline.length > 0, 'the site does carry inline style, so this is not vacuously true');
   assert.ok(
     baseline.reduce((n, s) => n + s.length, 0) > 0,
@@ -241,7 +334,7 @@ test('every route serves a byte-identical <style> set, so any crossing is churn-
     // Element-for-element, not just totals: an equal byte count with different
     // content would still be a remove plus an insert.
     assert.deepEqual(
-      stylesOf(await bodyOf(path)),
+      sheetsOf(await bodyOf(path)),
       baseline,
       `${path} serves different inline style than ${baselinePath}, so crossing between them churns the CSSOM`
     );
@@ -260,7 +353,7 @@ test('the docs prose rules ship in the compiled stylesheet, not the document', a
   );
   assert.ok(doc.includes('class="prose-docs"'), 'and the content column carries the prose hook');
   assert.ok(
-    !stylesOf(doc).some((s) => s.includes('.prose-docs')),
+    !sheetsOf(doc).some((s) => s.includes('.prose-docs')),
     'while no inline <style> redeclares the prose rules'
   );
 

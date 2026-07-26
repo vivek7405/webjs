@@ -14,10 +14,10 @@ import '#components/doc-search.ts';
  * Doc page bodies are plain HTML with no component wrapper, so their
  * typography is styled through `.prose-docs` descendant selectors rather than
  * per-element utility classes across 45 pages. Those rules, and the sidebar and
- * mobile-drawer rules, live in `public/input.css`, NOT in a `<style>` here.
+ * mobile-drawer rules, live in `public/input.css`, NOT in a style block here.
  *
  * That placement is load-bearing (#1109). A sub-layout renders inside the
- * client router's swap boundary, so a `<style>` in this template is inserted on
+ * client router's swap boundary, so a style element in this template is inserted on
  * entering /docs and removed on leaving. Adding or removing a stylesheet
  * mutates the document CSSOM, which invalidates style for the whole document,
  * including the preserved fixed header, and that is what made crossing in and

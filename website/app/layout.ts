@@ -7,7 +7,7 @@ import { siteFooter } from '#lib/site-footer.ts';
  * Root layout for the redesigned marketing site.
  *
  * Styling is Tailwind-first: chrome and structure use utility classes,
- * with the design tokens declared once in the foundation <style> below
+ * with the design tokens declared once in the foundation style block below
  * and exposed to Tailwind via @theme in public/input.css. Only the
  * genuinely un-utility-expressible pieces stay as CSS: the prefers-reduced-motion
  * clamp, the fixed static glow layer, the hover-only scrollbar (`.scroll-thin`),

@@ -226,6 +226,8 @@ describe('E2E: website style churn (#1109)', {
         const before = await page.evaluate(() => location.pathname);
         if (before === path) continue;   // the lap seam, / to / is not a hop
 
+        const titleBefore = await page.evaluate(() => document.title);
+
         // Click the REAL link, so what is under test is the router's click
         // interception on the actual markup. No programmatic fallback: a
         // history.pushState stand-in would swap nothing, and a test that
@@ -238,10 +240,27 @@ describe('E2E: website style churn (#1109)', {
         }, path);
         assert.ok(clicked, `no <a href="${path}"> on ${before} to drive the cycle with`);
 
-        await page.waitForFunction((p) => location.pathname === p, { timeout: 15_000 }, path);
-        // And wait for the swap to actually land, not just the URL to change.
+        // Wait for the swap to actually LAND, not merely for the URL to change.
+        // The marker must be specific to the INCOMING route. An earlier version
+        // waited on `.prose-docs`, which is already in the outgoing document on
+        // a docs-to-docs hop, so it resolved instantly and the fingerprint below
+        // sampled the pre-swap DOM on a third of the hops. The title is
+        // per-route (`Routing | WebJs` vs `Getting Started | WebJs` vs the
+        // landing page's), and `titleBefore` is captured per hop BEFORE the
+        // click rather than compared against a constant, so this holds for
+        // every pair and cannot read a title the router has already updated.
         await page.waitForFunction(
-          (p) => (p.startsWith('/docs') ? !!document.querySelector('.prose-docs') : !!document.querySelector('like-button')),
+          (p, t) => location.pathname === p && document.title !== t,
+          { timeout: 15_000 },
+          path,
+          titleBefore,
+        );
+        // Then the route's own content, so a title set ahead of the body swap
+        // cannot satisfy this on its own.
+        await page.waitForFunction(
+          (p) => (p.startsWith('/docs')
+            ? !!document.querySelector('.prose-docs h1')
+            : !document.querySelector('#docs-sidebar') && !!document.querySelector('like-button')),
           { timeout: 15_000 },
           path,
         );

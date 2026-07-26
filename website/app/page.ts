@@ -110,12 +110,12 @@ function codeWindow(title: string, sample: string) {
 }
 
 export default function LandingPage() {
-  // No `<style>` here. This page renders inside the router's swap boundary, so
-  // a `<style>` in this template is inserted and removed on every navigation in
-  // or out of the landing page, invalidating style for the whole document and
-  // repainting the preserved header (#1109). The editor tokens, the code-window
-  // hues, and the like-button pill all live in public/input.css, which the root
-  // layout loads once above the boundary.
+  // No inline style block here. This page renders inside the router's swap
+  // boundary, so a style element in this template would be inserted and removed
+  // on every navigation in or out of the landing page, invalidating style for
+  // the whole document and repainting the preserved header (#1109). The editor
+  // tokens, the code-window hues, and the like-button pill all live in
+  // public/input.css, which the root layout loads once above the boundary.
   return html`
     <main id="main" tabindex="-1" class="focus:outline-none">
     <section class="text-center px-6 pt-[clamp(48px,7vw,96px)] pb-10 md:pb-18">
