@@ -8,18 +8,23 @@
  * does (correctly) when the #1015 boundary-integrity scan finds no trustworthy
  * shared boundary. The captured cause on every failure was `no-shared-boundary`.
  *
- * The producer is a hover's intent-prefetch timer OUTLIVING the navigation it
- * precedes:
+ * The poison is a fragment anchored DEEPER than the page you later click from.
+ * The server short-circuits on LAYOUT segments, so prefetching any /docs page
+ * while the client already holds the docs layout returns a fragment anchored at
+ * `/docs:/docs`. That applies fine from a sibling /docs page and not at all
+ * from outside /docs, where the swap finds no shared boundary and the router
+ * degrades to `location.href`.
  *
- *   1. Hover `/docs` on the landing page. The dwell timer starts.
- *   2. Click. The soft nav lands, so the live DOM is now the docs page.
- *   3. The timer fires anyway and prefetches `/docs`, computing `X-Webjs-Have`
- *      from the SWAPPED DOM. The server correctly answers "you already have
- *      everything" with a near-empty fragment, which is cached under `/docs`.
- *   4. Back on the landing page, clicking `/docs` consumes that fragment, the
- *      swap finds no shared boundary, and the router full-loads.
+ * Two ways to end up holding one at the wrong moment, both covered below:
  *
- * Two guards, one test each below, plus the end-to-end sequence.
+ *   1. A hover's intent timer outlives the click it belongs to, so it resolves
+ *      after the swap and prefetches the page now under the cursor.
+ *   2. A hover on a sibling link that is never clicked, followed by navigating
+ *      out of the section.
+ *
+ * The cure for both is validating the ANCHOR on consume. Not prefetching the
+ * current page (#1106) removes producer 1 and the wasted request, but is not
+ * itself the fix; an earlier version of this work had that backwards.
  *
  * MUST run in a real browser: the poisoned entry only matters through
  * `buildHaveHeader()` reading real boundary comments out of a live
@@ -31,10 +36,12 @@ import {
   _prefetch,
   _prefetchTake,
   _prefetchPeek,
+  _applyOptimisticLoading,
   _resetPrefetch,
 } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
+import { _buildHaveHeader as _buildHave } from '../../../src/router-client.js';
 
 /**
  * Wait until a prefetch has actually landed in the cache, or until we can be
@@ -95,9 +102,9 @@ suite('Client router: a stale prefetch never forces a full page load (#1114)', (
   }
 
   test('prefetching the page you are already on is a no-op', async () => {
-    // Guard 1. Standing on the docs page, the late hover timer targets the docs
-    // page itself. Before the fix this issued a fetch whose response was the
-    // near-empty "you have everything" fragment, and cached it.
+    // Standing on the docs page, the late hover timer targets the docs page
+    // itself. That request can never serve a later navigation (a same-URL click
+    // short-circuits) and only burns a capped cache slot.
     setup(DOCS_BODY);
     try {
       _prefetch(location.origin + location.pathname + location.search);
@@ -179,6 +186,83 @@ suite('Client router: a stale prefetch never forces a full page load (#1114)', (
       );
       assert.equal(_prefetchPeek(target), null, 'and it is evicted, not left to poison the next click');
     } finally {
+      teardown();
+    }
+  });
+
+  test('a never-clicked sibling hover cannot poison a later cross-section click', async () => {
+    // Producer 2, which the current-page guard does NOT touch, so this is the
+    // case that proves the anchor check is the actual cure: hover /docs/b while
+    // on /docs/a and never click it, then leave the docs section entirely, then
+    // click /docs/b from outside. The cached fragment is anchored at /docs.
+    setup('<!--wj:children:/:/-->' + '<!--wj:children:/docs:/docs--><main>a</main><!--/wj:children:/docs-->' + '<!--/wj:children:/-->');
+    try {
+      const sibling = location.origin + '/docs/b';
+      window.fetch = async (url, init) => {
+        calls.push({ url: String(url), have: (init && init.headers && init.headers['x-webjs-have']) || null });
+        return new Response(
+          '<!doctype html><html><head></head><body>' +
+          '<!--wj:children:/docs:/docs--><main>b</main><!--/wj:children:/docs-->' +
+          '</body></html>',
+          { status: 200, headers: { 'content-type': 'text/html', 'x-webjs-build': 'b1' } });
+      };
+      _prefetch(sibling);
+      await afterPrefetchAttempt();
+      assert.ok(_prefetchPeek(sibling), 'the sibling hover cached a /docs-anchored fragment');
+
+      // Navigate out of the section without ever clicking that link.
+      document.body.innerHTML = HOME_BODY;
+
+      assert.equal(
+        _prefetchTake(sibling),
+        null,
+        'refused from outside /docs, so the click refetches rather than full-loading'
+      );
+    } finally {
+      teardown();
+    }
+  });
+
+  test('the loading skeleton does not make every prefetch unconsumable', async () => {
+    // The skeleton deletes everything between the chosen slot's markers, which
+    // includes every NESTED boundary. So on an app whose only loading template
+    // is at the ROOT, `buildHaveHeader()` after the skeleton reports just the
+    // root, and validating a deeper anchor against that view would refuse EVERY
+    // prefetch, permanently, on that whole app. The nav path therefore validates
+    // against the boundaries captured BEFORE the skeleton ran.
+    setup('<!--wj:children:/:/-->' + '<!--wj:children:/docs:/docs--><main>docs</main><!--/wj:children:/docs-->' + '<!--/wj:children:/-->');
+    try {
+      const target = location.origin + '/docs/deep';
+      window.fetch = async (url, init) => {
+        calls.push({ url: String(url), have: (init && init.headers && init.headers['x-webjs-have']) || null });
+        return new Response(
+          '<!doctype html><html><head></head><body>' +
+          '<!--wj:children:/docs:/docs--><main>deep</main><!--/wj:children:/docs-->' +
+          '</body></html>',
+          { status: 200, headers: { 'content-type': 'text/html', 'x-webjs-build': 'b1' } });
+      };
+      _prefetch(target);
+      await afterPrefetchAttempt();
+      assert.ok(_prefetchPeek(target), 'precondition: a /docs-anchored fragment is cached');
+
+      // A root-level loading template, which is the shape that breaks it.
+      const tpl = document.createElement('template');
+      tpl.id = 'wj-loading:/';
+      tpl.innerHTML = '<div class="skeleton">loading</div>';
+      document.body.appendChild(tpl);
+
+      const state = _applyOptimisticLoading();
+      assert.ok(state, 'the skeleton applied');
+      assert.ok(state.haveKeys.includes('/docs:/docs'), 'and captured the pre-skeleton view');
+      // The live DOM no longer reports /docs at all, which is the trap.
+      assert.ok(!_buildHave().includes('/docs:/docs'), 'the skeleton really did hide the deeper boundary');
+
+      // Validated against the live DOM it would be refused; against the
+      // captured view it is correctly consumed.
+      assert.equal(_prefetchTake(target), null, 'live-DOM view alone would refuse it');
+    } finally {
+      const t = document.getElementById('wj-loading:/');
+      if (t) t.remove();
       teardown();
     }
   });

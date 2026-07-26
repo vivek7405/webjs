@@ -3363,15 +3363,15 @@ test('prefetch: a cached entry is not re-fetched', async () => {
 /* --------------------------------------------------------------------------
  * #1114: the prefetch cache must not poison a later navigation.
  *
- * The bug these pin: a hover's intent timer OUTLIVES the navigation it
- * precedes. Hover a link, click it, the swap lands, then the timer fires and
- * prefetches the destination while standing ON the destination. `X-Webjs-Have`
- * is now computed from the swapped DOM, so the server correctly answers "you
- * have everything" with a near-empty fragment, and that fragment is cached
- * under the destination URL for the 30s TTL. The next click on that link from
- * another page consumed it, `applySwap` found no shared boundary, and the
- * router degraded to a full page load: the intermittent whole-document flash
- * with a tab spinner on webjs.dev.
+ * The bug these pin: a cached fragment is anchored at the boundary the server
+ * short-circuited on, which is a LAYOUT segment. So any /docs page prefetched
+ * while the client holds the docs layout yields a `/docs:/docs`-anchored
+ * fragment. Consumed from a sibling /docs page it applies fine; consumed from
+ * outside /docs, `applySwap` finds no shared boundary and the router degrades
+ * to a full page load, which is the whole-document flash with a tab spinner
+ * reported on webjs.dev. The cure is validating the anchor on consume; not
+ * prefetching the current page (#1106) removes one producer and a wasted
+ * request, but is not itself the fix.
  * ------------------------------------------------------------------------ */
 
 test('prefetch: never fetches the page the user is already on (#1114, #1106)', async () => {

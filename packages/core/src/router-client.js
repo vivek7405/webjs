@@ -1444,10 +1444,7 @@ const PREFETCH_HOVER_DELAY = 100;
  */
 const PREFETCH_VIEWPORT_DELAY = 250;
 
-/** @typedef {{ html: string, build: string | null, finalUrl: string, at: number, have: string }} PrefetchEntry */
-/* `have` is the X-Webjs-Have this fragment was fetched against. Kept for
- * diagnostics and tests; validity is decided by the fragment's ANCHOR, not by
- * this string (see prefetchTake). */
+/** @typedef {{ html: string, build: string | null, finalUrl: string, at: number }} PrefetchEntry */
 /** @type {Map<string, PrefetchEntry>} */
 const prefetchCache = new Map();
 /** Keys with a fetch currently in flight (dedupe + concurrency gate). */
@@ -1630,15 +1627,21 @@ function prefetch(href) {
   if (typeof fetch !== 'function') return;
   if (prefetchSaysSaveData()) return;
   const key = cacheKey(href);
-  // Never prefetch the page we are already ON (#1114). This is not just waste:
-  // the reduced response for "a page the client fully has" is a near-empty
-  // fragment, and caching it poisons the URL-keyed entry for the NEXT visit.
-  // The concrete producer is a hover's intent timer surviving a navigation:
-  // hover a link, click it, the swap lands, THEN the timer fires and
-  // "prefetches" the destination against the destination's own boundaries.
-  // The next click on that link (from another page, within the TTL) consumed
-  // the poisoned fragment, found no shared boundary, and degraded to a full
-  // page load: the intermittent whole-document flash on webjs.dev.
+  // Never prefetch the page we are already ON (#1106). The request cannot help
+  // any future navigation, because a same-URL click short-circuits, and it
+  // occupies one of the capped cache slots until its TTL expires. Fires
+  // routinely: a hover's intent timer outlives the click it belongs to, so it
+  // resolves after the swap has landed and now points at the current page.
+  //
+  // It ALSO removes one producer of the #1114 stale entry, though it is not the
+  // cure for it (the anchor check in prefetchTake is). Worth being precise,
+  // because the first version of this fix had the causality backwards: the
+  // server short-circuits on LAYOUT segments only and ignores the page's own
+  // boundary entry, so a self-prefetch is not a near-empty response, it is a
+  // normal fragment anchored at the innermost LAYOUT. That fragment is
+  // perfectly applicable from a sibling page and fails only from outside that
+  // layout, which is exactly what the anchor check catches, and which a
+  // never-clicked hover on a sibling link produces without this guard.
   if (typeof location !== 'undefined' && key === cacheKey(location.href)) return;
   if (prefetchInflight.has(key)) return;
   if (prefetchQueued.has(key)) return;
@@ -1704,7 +1707,7 @@ function prefetch(href) {
       }
       const finalUrl = resp.redirected && resp.url ? resp.url : href;
       const html = await resp.text();
-      prefetchStore(key, { html, build, src, finalUrl, at: nowMs(), have });
+      prefetchStore(key, { html, build, src, finalUrl, at: nowMs() });
     })
     .catch(() => { /* speculative: swallow */ })
     .finally(() => {
@@ -1783,9 +1786,13 @@ function prefetchAnchor(html) {
  * longer offers the boundary the fragment is anchored at.
  *
  * @param {string} href
+ * @param {string} [liveKeysOverride] the `X-Webjs-Have` view to validate the
+ *   anchor against, when the caller holds a truer one than the live DOM does.
+ *   Used for the optimistic loading skeleton, which deletes nested boundaries
+ *   before the fetch, so reading the DOM here would under-report them.
  * @returns {PrefetchEntry | null}
  */
-function prefetchTake(href) {
+function prefetchTake(href, liveKeysOverride) {
   const key = cacheKey(href);
   const entry = prefetchCache.get(key);
   if (!entry) return null;
@@ -1814,7 +1821,10 @@ function prefetchTake(href) {
     // in it IS "the live DOM offers this boundary with this route-key". It
     // returns '' mid-parse, which rejects an anchored entry, and that is the
     // safe direction (a click during parse takes the full-load path regardless).
-    const liveKeys = new Set(String(buildHaveHeader() || '').split(',').filter(Boolean));
+    const liveKeys = new Set(
+      String(liveKeysOverride != null ? liveKeysOverride : (buildHaveHeader() || ''))
+        .split(',').filter(Boolean)
+    );
     if (!liveKeys.has(anchor)) {
       prefetchCache.delete(key);
       return null;
@@ -2110,13 +2120,19 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
   const busyFrame = frameId ? markFrameBusy(frameId, myToken) : null;
   try {
   try {
-    // Warm-cache fast path: a hover/focus/viewport prefetch may have
-    // already fetched this exact page (same X-Webjs-Have shell). Consume
-    // it instead of going to the network, so the click resolves with no
-    // round-trip. Only for plain GET navs without a frame target; form
-    // submissions and frame swaps always hit the server. The entry is
-    // single-use (prefetchTake removes it) and TTL-guarded inside take.
-    const prefetched = (method === 'GET' && !body && !frameId) ? prefetchTake(href) : null;
+    // Warm-cache fast path: a hover/focus/viewport prefetch may already hold
+    // this page. Consume it instead of going to the network, so the click
+    // resolves with no round-trip. Only for plain GET navs without a frame
+    // target; form submissions and frame swaps always hit the server. The entry
+    // is single-use (prefetchTake removes it), TTL-guarded, and validated by its
+    // ANCHOR rather than by an identical X-Webjs-Have (#1114): a fragment
+    // applies wherever the boundary it starts at is still live, so an unrelated
+    // navigation between the prefetch and this click does not disqualify it.
+    // The optimistic skeleton has already deleted nested boundaries by now, so
+    // pass the view captured before it ran.
+    const prefetched = (method === 'GET' && !body && !frameId)
+      ? prefetchTake(href, optimisticState ? optimisticState.haveKeys : undefined)
+      : null;
     if (prefetched) {
       html = prefetched.html;
       incomingBuild = prefetched.build;
@@ -3705,6 +3721,16 @@ function applyOptimisticLoading() {
   if (deepest === null || tpl === null) return null;
 
   const slot = slots.get(deepest);
+  // Snapshot the boundary keys BEFORE the skeleton wipes them (#1114). The
+  // range below deletes everything between this slot's markers, which includes
+  // every NESTED boundary comment, so `buildHaveHeader()` afterwards is
+  // legitimately shorter than the page really is. `prefetchTake` validates a
+  // cached fragment's anchor against the live boundaries, and without this it
+  // would judge against the skeleton's truncated view: on an app whose only
+  // loading.{js,ts} sits at the root, every deeper anchor vanishes and NO
+  // prefetch is ever consumable. Carried on the state that already threads to
+  // fetchAndApply, so nothing new has to be plumbed.
+  const haveKeys = buildHaveHeader();
   /** @type {Node[]} */
   const oldChildren = [];
   for (let n = slot.start.nextSibling; n && n !== slot.end; n = n.nextSibling) {
@@ -3716,10 +3742,10 @@ function applyOptimisticLoading() {
   range.setEndBefore(slot.end);
   range.deleteContents();
   slot.start.parentNode.insertBefore(tpl.content.cloneNode(true), slot.end);
-  return { slot, oldChildren, token: currentNavigationToken };
+  return { slot, oldChildren, token: currentNavigationToken, haveKeys };
 }
 
-/** @param {{ slot: { start: Comment, end: Comment }, oldChildren: Node[], token: number } | null} state */
+/** @param {{ slot: { start: Comment, end: Comment }, oldChildren: Node[], token: number, haveKeys?: string } | null} state */
 function restoreOptimistic(state) {
   if (!state) return;
   // A newer nav superseded the one that captured this state: don't
@@ -4375,6 +4401,7 @@ export {
   prefetch as _prefetch,
   prefetchTake as _prefetchTake,
   prefetchAnchor as _prefetchAnchor,
+  applyOptimisticLoading as _applyOptimisticLoading,
   prefetchSaysSaveData as _prefetchSaysSaveData,
   readStreamedShell as _readStreamedShell,
   takeResolveUnit as _takeResolveUnit,
