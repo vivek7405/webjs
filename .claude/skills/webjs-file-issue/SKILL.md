@@ -28,7 +28,7 @@ If the user's description is very thin (e.g. "track adding dark mode as a todo")
 
 ## Steps
 
-1. **Ground the body BEFORE you create anything. This step is not optional and it is the one that gets skipped.**
+1. **Ground the body BEFORE you create anything.** The one exception is a thin placeholder the user explicitly asked for (see Inputs above, and the placeholder note under "Issue body convention"): confirm that with them FIRST, because there is no point grounding a body they opted out of. For every real task this step is not optional, and it is the one that gets skipped.
 
    The implementer is an AI agent with zero access to this conversation (see "Issue body convention" below for why). So before calling `gh issue create`, actually open the codebase and collect:
 
@@ -43,27 +43,29 @@ If the user's description is very thin (e.g. "track adding dark mode as a todo")
 
    The user should never have to ask for this. If they do, the skill was not followed.
 
-2. **Create the issue AND assign it to vivek7405.** Every webjs issue is assigned to the owner (vivek7405) at creation so the project board shows ownership at a glance.
+2. **Create the issue AND assign it to vivek7405.** Every WebJs issue is assigned to the owner (vivek7405) at creation so the project board shows ownership at a glance.
 
-   Pipe the body in through a QUOTED heredoc. Do not pass it as `--body "..."`:
-   an issue body is full of backticks and `$` characters, and an unquoted shell
-   string runs them as command substitution, silently eating whatever they
-   contained. That is a real incident from this repo, not a hypothetical.
+   Write the grounded body to a scratch file first, then pass it with
+   `--body-file`. Do NOT pass it as `--body "..."`: an issue body is full of
+   backticks and `$` characters, and an unquoted shell string runs them as
+   command substitution, silently eating whatever they contained. That is a
+   real incident in this repo, not a hypothetical.
 
    ```sh
+   # write the body to a scratch path first (any disposable location)
    gh issue create --repo webjsdev/webjs \
      --title 'dogfood: the router drops the second click' \
      --label bug \
      --assignee vivek7405 \
-     --body-file - <<'EOF'
-   ## Problem
-   ...the grounded body from step 1...
-   EOF
+     --body-file /tmp/issue-body.md
    ```
 
-   The `<<'EOF'` quoting is what makes it safe, and `--body-file -` reads it from
-   stdin so there is no temp file to create or clean up. Note `--body <<'EOF'` on
-   its own does NOT work: `--body` would consume the next flag as its value.
+   A file path is used here rather than a heredoc on purpose. A heredoc whose
+   `EOF` terminator is indented (which it will be, pasted from any nested
+   context like this one) does not terminate: bash swallows the rest of the
+   script into the body and still exits 0. That failure has shipped from this
+   very section twice. If you do use a heredoc, put the terminator at column 0
+   and run the command once to confirm it worked.
 
    The body follows the shape under "Issue body convention" below: Problem,
    Design / approach, Implementation notes, Acceptance criteria.
@@ -126,4 +128,4 @@ For a thin placeholder (user just wants the line item tracked, explicitly deferr
 
 - If `gh issue create` fails (auth, label missing, network): surface the error and offer to retry with adjusted args.
 - If `gh project item-add` fails after the issue was created: report the partial state ("issue #N created but not on board yet") and offer to add it manually.
-- If the user's description seems to duplicate an existing open issue: search the board first with `gh project item-list 1 --owner webjsdev --format json` and ask whether to file anyway or use the existing one.
+- If the user's description seems to duplicate an existing open issue: search the board first with `gh project item-list 1 --owner webjsdev --format json --limit 20000` and ask whether to file anyway or use the existing one.

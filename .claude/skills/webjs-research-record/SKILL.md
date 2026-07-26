@@ -61,19 +61,17 @@ Extract from the user's request:
 2. **Find or create the issue.** If a backlog `research` issue already exists for this question, use it. Otherwise create one:
    ```sh
    gh issue create --repo webjsdev/webjs --label research \
-     --title "research: <question or decision>" --body-file <record.md>
+     --title "research: <question or decision>" --body-file /tmp/research-record.md
    ```
    When appending to an existing backlog issue, also curate the final conclusion into its body so the answer is readable without the whole thread:
    ```sh
-   gh issue edit <n> --repo webjsdev/webjs --body-file <updated-record.md>
+   gh issue edit <n> --repo webjsdev/webjs --body-file /tmp/research-record.md
    # confirm the label is present:
    gh issue edit <n> --repo webjsdev/webjs --add-label research
    ```
 3. **Add deep-dive comments** for the threaded detail:
    ```sh
-   gh issue comment <n> --repo webjsdev/webjs --body-file - <<'EOF'
-   ## Deep-dive: ...
-   EOF
+   gh issue comment <n> --repo webjsdev/webjs --body-file /tmp/deep-dive.md
    ```
 4. **Close the issue as completed** (it is a record, not open work):
    ```sh
