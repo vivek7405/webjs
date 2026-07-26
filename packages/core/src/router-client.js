@@ -764,15 +764,48 @@ function shouldFullLoadDuringParse(isPopState, frameId) {
 }
 
 /**
- * Dev-only diagnostic: the client router degraded a soft navigation to a full
- * page load. Records WHY (the `cause`) so the "why did my SPA nav do a full
- * reload?" question is answerable from the console instead of guessed at. Silent
- * in production and deduped per cause so a repeated trigger does not spam.
+ * The client router degraded a soft navigation. Records WHY (the `cause`), so
+ * "why did my SPA nav do a full reload?" is answerable instead of guessed at.
+ *
+ * Two channels, deliberately different in reach:
+ *
+ * - A **`webjs:navigation-fallback` event on `document`, in EVERY environment**,
+ *   detail `{ cause, href, willReload }`. Dispatch convention matches
+ *   `webjs:navigate` / `webjs:prefetch` / `webjs:navigation-error`.
+ * - A dev-only console warning, deduped per cause so a repeat does not spam.
+ *
+ * The event exists because the console warning alone made this class of bug
+ * UNDIAGNOSABLE in production (#1114). A degradation is correct behaviour, not
+ * an error, so nothing was logged and nothing was thrown, and a deployed app had
+ * no way to observe that a click had turned into a full document load. The
+ * user-visible symptoms (a loading spinner in the browser tab, a whole-document
+ * flash including preserved chrome) were then attributed to a styling problem
+ * for a full investigation cycle, because the actual cause emitted no signal.
+ *
+ * An event costs nothing when nobody listens, is greppable from a page console,
+ * and lets a deployed app wire this to analytics. It is NOT cancelable: by the
+ * time this fires the decision to degrade is already made and is the only safe
+ * option (#1015 chose a bounded full load over a heuristic recovery that could
+ * corrupt the DOM silently), so there is nothing for a listener to veto.
  *
  * @param {string} cause a short stable slug for the degradation reason
  * @param {string} href the destination the router fell back to loading
+ * @param {boolean} [willReload] true when a full document load follows (the
+ *   default). False for a degradation that does NOT reload, so a listener can
+ *   tell "this click became a document load" from "this background op was
+ *   dropped", which are very different user-visible events.
  */
-function devWarnFallback(cause, href) {
+function reportFallback(cause, href, willReload = true) {
+  if (typeof document !== 'undefined' && typeof CustomEvent !== 'undefined') {
+    try {
+      document.dispatchEvent(new CustomEvent('webjs:navigation-fallback', {
+        detail: { cause, href, willReload },
+      }));
+    } catch {
+      // A listener that throws must never turn a correct degradation into a
+      // broken navigation. Diagnostics are strictly best-effort.
+    }
+  }
   if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production') return;
   warnOnce(
     `fallback:${cause}`,
@@ -1137,7 +1170,7 @@ async function performNavigation(href, isPopState, frameId) {
   // Scoped to frameless forward navs: popstate is browser-driven, and a frame
   // nav carries its own boundary element.
   if (shouldFullLoadDuringParse(isPopState, frameId) && typeof location !== 'undefined') {
-    devWarnFallback('readyState-loading', href);
+    reportFallback('readyState-loading', href);
     location.href = href;
     return;
   }
@@ -1405,7 +1438,7 @@ const PREFETCH_HOVER_DELAY = 100;
  */
 const PREFETCH_VIEWPORT_DELAY = 250;
 
-/** @typedef {{ html: string, build: string | null, finalUrl: string, at: number }} PrefetchEntry */
+/** @typedef {{ html: string, build: string | null, finalUrl: string, at: number, have: string }} PrefetchEntry */
 /** @type {Map<string, PrefetchEntry>} */
 const prefetchCache = new Map();
 /** Keys with a fetch currently in flight (dedupe + concurrency gate). */
@@ -1588,6 +1621,16 @@ function prefetch(href) {
   if (typeof fetch !== 'function') return;
   if (prefetchSaysSaveData()) return;
   const key = cacheKey(href);
+  // Never prefetch the page we are already ON (#1114). This is not just waste:
+  // the reduced response for "a page the client fully has" is a near-empty
+  // fragment, and caching it poisons the URL-keyed entry for the NEXT visit.
+  // The concrete producer is a hover's intent timer surviving a navigation:
+  // hover a link, click it, the swap lands, THEN the timer fires and
+  // "prefetches" the destination against the destination's own boundaries.
+  // The next click on that link (from another page, within the TTL) consumed
+  // the poisoned fragment, found no shared boundary, and degraded to a full
+  // page load: the intermittent whole-document flash on webjs.dev.
+  if (typeof location !== 'undefined' && key === cacheKey(location.href)) return;
   if (prefetchInflight.has(key)) return;
   if (prefetchQueued.has(key)) return;
   const existing = prefetchCache.get(key);
@@ -1652,7 +1695,7 @@ function prefetch(href) {
       }
       const finalUrl = resp.redirected && resp.url ? resp.url : href;
       const html = await resp.text();
-      prefetchStore(key, { html, build, src, finalUrl, at: nowMs() });
+      prefetchStore(key, { html, build, src, finalUrl, at: nowMs(), have });
     })
     .catch(() => { /* speculative: swallow */ })
     .finally(() => {
@@ -1713,6 +1756,16 @@ function prefetchTake(href) {
   if (!entry) return null;
   prefetchCache.delete(key);
   if ((nowMs() - entry.at) >= PREFETCH_TTL) return null;
+  // The reduced response VARIES on X-Webjs-Have (the server marks it so), and
+  // this cache is the client-side cache of that response, so it must respect
+  // its own vary dimension (#1114). An entry fetched against one page state is
+  // a fragment RELATIVE to that state; consuming it after the live boundaries
+  // changed (a navigation landed between the prefetch and the click) hands
+  // applySwap a fragment that shares no boundary with the live DOM, and the
+  // #1015 integrity degradation then correctly falls back to a full page load.
+  // Discarding here costs one network round-trip on a stale hit; consuming
+  // costs the user a full document load.
+  if ((entry.have || '') !== (buildHaveHeader() || '')) return null;
   return entry;
 }
 
@@ -2753,14 +2806,17 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
           // user is on a stale importmap but at least the page
           // renders.
           sessionStorage.removeItem(flag);
+          reportFallback('deploy-mismatch-reload-suppressed', href, false);
         } else {
           if (sessionStorage) sessionStorage.setItem(flag, '1');
+          reportFallback('deploy-mismatch', href);
           location.href = href;
           return;
         }
       } catch {
         // sessionStorage unavailable (private mode w/ quota etc.):
         // fall through to a single reload like before.
+        reportFallback('deploy-mismatch', href);
         location.href = href;
         return;
       }
@@ -2896,7 +2952,7 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
   // is already viewing a page, so a background op must never yank them
   // through a hard load; it takes the in-place path below.
   if (href && !revalidating && typeof location !== 'undefined') {
-    devWarnFallback(!here ? 'live-boundaries-malformed'
+    reportFallback(!here ? 'live-boundaries-malformed'
       : !there ? 'incoming-boundaries-malformed'
       : 'no-shared-boundary', href);
     location.href = href;
@@ -2909,7 +2965,7 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
   // fragment, so the full-body swap below would wipe the shell from a
   // background op. Doing nothing is the only safe degradation here.
   if (href && revalidating) {
-    devWarnFallback('revalidation-discarded', href);
+    reportFallback('revalidation-discarded', href, false);
     return 'discard';
   }
 
