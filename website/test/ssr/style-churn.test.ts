@@ -142,7 +142,14 @@ test('every dynamic route family resolved to a real instance', () => {
   // shape or a link moved into a template just finds nothing). Without this,
   // all three families could drop out and the suite would still pass, because
   // 51 static routes clear any count threshold.
-  assert.deepEqual(unresolvedFamilies, [], 'these dynamic routes are covered by nothing');
+  assert.deepEqual(
+    unresolvedFamilies,
+    [],
+    'these dynamic routes are covered by nothing. Either the index page stopped linking to ' +
+      'its children in a shape this can find, or the family is NESTED (app/x/[a]/[b]/page.ts ' +
+      'yields the non-URL parent /x/[a]), in which case teach dynamicFamilies() to resolve the ' +
+      'outer segment first rather than deleting the assertion'
+  );
   assert.ok(dynamicFamilies().length > 0, 'the site does have dynamic routes, so this is not vacuous');
 });
 
