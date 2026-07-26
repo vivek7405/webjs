@@ -33,6 +33,7 @@ let _collect, _plan, _keyOf, _diffEl, _reconcile,
   _restoreOptimistic, _navToken, _bumpNavToken,
   _currentPageUrl, _setCurrentPageUrl, _resetWarnOnce,
   _eligibleAnchorHref, _prefetchSuppressed, _prefetchMode, _prefetchHasHoverPointer, _prefetch, _prefetchTake,
+  _buildHaveHeader,
   _prefetchSaysSaveData, _prefetchPeek, _prefetchInflightSize, _resetPrefetch,
   _viewTransitionsEnabled, _runWithTransition, _regraftPermanentElements,
   _applyStreamedResolve,
@@ -108,6 +109,7 @@ before(async () => {
     _prefetchHasHoverPointer,
     _prefetch,
     _prefetchTake,
+    _buildHaveHeader,
     _prefetchSaysSaveData,
     _prefetchPeek,
     _prefetchInflightSize,
@@ -3354,6 +3356,83 @@ test('prefetch: a cached entry is not re-fetched', async () => {
     _prefetch('http://localhost/cached');
     await new Promise((r) => setTimeout(r, 0));
     assert.equal(calls.length, 1, 'second prefetch skipped, entry already cached');
+  });
+});
+
+/* --------------------------------------------------------------------------
+ * #1114: the prefetch cache must not poison a later navigation.
+ *
+ * The bug these pin: a hover's intent timer OUTLIVES the navigation it
+ * precedes. Hover a link, click it, the swap lands, then the timer fires and
+ * prefetches the destination while standing ON the destination. `X-Webjs-Have`
+ * is now computed from the swapped DOM, so the server correctly answers "you
+ * have everything" with a near-empty fragment, and that fragment is cached
+ * under the destination URL for the 30s TTL. The next click on that link from
+ * another page consumed it, `applySwap` found no shared boundary, and the
+ * router degraded to a full page load: the intermittent whole-document flash
+ * with a tab spinner on webjs.dev.
+ * ------------------------------------------------------------------------ */
+
+test('prefetch: never fetches the page the user is already on (#1114, #1106)', async () => {
+  await withPrefetchEnv(async (calls) => {
+    // withPrefetchEnv pins location at http://localhost/ (pathname '/').
+    _prefetch('http://localhost/');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 0, 'no fetch issued for the current page');
+    assert.equal(_prefetchPeek('http://localhost/'), null, 'and nothing cached under it');
+  });
+});
+
+test('prefetch: the current-page guard keys on path+search, not the full href', async () => {
+  await withPrefetchEnv(async (calls) => {
+    // A bare hash link is the same document, so it must be suppressed too;
+    // a different search IS a different page and must still prefetch.
+    _prefetch('http://localhost/#section');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 0, 'hash-only target is the current page');
+
+    _prefetch('http://localhost/?q=1');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls.length, 1, 'a different search is a different page');
+  });
+});
+
+test('prefetchTake: discards an entry fetched against a different X-Webjs-Have (#1114)', async () => {
+  await withPrefetchEnv(async () => {
+    _prefetch('http://localhost/about');
+    await new Promise((r) => setTimeout(r, 0));
+    const entry = _prefetchPeek('http://localhost/about');
+    assert.ok(entry, 'precondition: the fragment is cached');
+    // Simulate the poison: the entry was fetched while the live DOM had
+    // DIFFERENT boundaries than it does now. The stored `have` is the vary
+    // key of the reduced response, so a mismatch makes the fragment
+    // un-applicable to the current DOM.
+    entry.have = '/docs/getting-started:/docs/getting-started,/docs:/docs,/:/';
+    assert.equal(
+      _prefetchTake('http://localhost/about'),
+      null,
+      'a stale-context entry is refused, so the click refetches instead of full-loading'
+    );
+    assert.equal(
+      _prefetchPeek('http://localhost/about'),
+      null,
+      'and the poisoned entry is evicted, not left to poison the next click too'
+    );
+  });
+});
+
+test('prefetchTake: still consumes an entry whose X-Webjs-Have matches (#1114)', async () => {
+  await withPrefetchEnv(async () => {
+    // The guard must not break the feature it protects: a same-context entry
+    // is the whole point of prefetching and has to stay a cache HIT.
+    _prefetch('http://localhost/about');
+    await new Promise((r) => setTimeout(r, 0));
+    const stored = _prefetchPeek('http://localhost/about');
+    assert.ok(stored, 'precondition: cached');
+    assert.equal(stored.have, _buildHaveHeader() || '', 'stored context equals the live context');
+    const taken = _prefetchTake('http://localhost/about');
+    assert.ok(taken, 'consumed as a hit');
+    assert.match(taken.html, /ok/);
   });
 });
 
