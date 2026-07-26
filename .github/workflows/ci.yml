@@ -310,6 +310,17 @@ jobs:
         env:
           WEBJS_E2E: '1'
         run: node --test test/e2e/browser-harness.test.mjs
+      # Style-churn e2e (#1109): boots the WEBSITE in prod and drives the
+      # reported landing / docs cycle 22 times through the real client router,
+      # asserting via MutationObserver that no stylesheet is ever added or
+      # removed. A page or sub-layout `<style>` sits inside the swap boundary,
+      # so churning it invalidates style document-wide and repaints the
+      # preserved header. The SSR guard in website/test/ssr/style-churn.test.ts
+      # pins the authoring rule; this pins the consequence in a real browser.
+      - name: Run website style-churn e2e (#1109)
+        env:
+          WEBJS_E2E: '1'
+        run: node --test test/e2e/website-style-churn.test.mjs
       # Touch-emulation e2e for interactive Tier-2 ui components (#745/#747):
       # boots the ui-website and taps hover-card / dropdown-submenu / sonner
       # under a Chromium iPhone context (faithful touch events, no real device).
