@@ -43,8 +43,11 @@ dependencies.
 
 ## Releasing a version
 
-1. Bump `version` in `packages/editors/vscode/package.json` (the pre-commit hook
-   skips this package's changelog, so no changelog file is generated).
+1. Bump `version` in `packages/editors/vscode/package.json`. The pre-commit hook
+   TRACKS this package (#413), so the bump DOES require a `changelog/vscode/<version>.md`
+   and `scripts/backfill-changelog.js` generates one. The entry carries
+   `npm: false`, which makes every publish script skip it, so nothing is
+   published automatically: the `vsce` / `ovsx` steps below are still manual.
 2. Build + package + publish to both registries:
    ```sh
    cd packages/editors/vscode
