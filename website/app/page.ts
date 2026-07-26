@@ -110,53 +110,13 @@ function codeWindow(title: string, sample: string) {
 }
 
 export default function LandingPage() {
+  // No `<style>` here. This page renders inside the router's swap boundary, so
+  // a `<style>` in this template is inserted and removed on every navigation in
+  // or out of the landing page, invalidating style for the whole document and
+  // repainting the preserved header (#1109). The editor tokens, the code-window
+  // hues, and the like-button pill all live in public/input.css, which the root
+  // layout loads once above the boundary.
   return html`
-    <style>
-      /* Editor + code tokens for the Show-dont-tell code windows and the
-         Why-webjs code cards. The editor surfaces reference the theme's own
-         semantic tokens, so they track light/dark with no duplication; only
-         the three syntax hues need a dark override. */
-      :root {
-        --editor-bg: var(--bg-elev);
-        --editor-sidebar-bg: var(--bg-sunken);
-        --editor-tab-bg: var(--bg-sunken);
-        --editor-active-tab-bg: var(--bg-elev);
-        --editor-status-bg: var(--bg-sunken);
-        --editor-border: var(--border);
-        --editor-fg: var(--fg);
-        --editor-gutter-fg: var(--fg-subtle);
-        --editor-gutter-border: var(--border);
-        --code-tag: oklch(0.55 0.13 250);
-        --code-attr: oklch(0.52 0.16 150);
-        --code-str: oklch(0.55 0.13 145);
-        --code-text: var(--fg);
-        --code-punc: var(--fg-muted);
-      }
-      :root[data-theme='dark'] {
-        --code-tag: oklch(0.78 0.13 250); --code-attr: oklch(0.66 0.16 150); --code-str: oklch(0.80 0.15 145);
-      }
-      @media (prefers-color-scheme: dark) {
-        :root:not([data-theme='light']) { --code-tag: oklch(0.78 0.13 250); --code-attr: oklch(0.66 0.16 150); --code-str: oklch(0.80 0.15 145); }
-      }
-      /* Syntax-highlight token colors (.t-kw / .t-str / ...) are defined
-         globally in public/input.css so every surface (this page and the
-         blog code fences) shares one palette. */
-      /* The live like-button demo: a bare light-DOM button the page styles
-         into a pill (tag-prefixed, per the light-DOM CSS rule). */
-      like-button button {
-        display: inline-flex; align-items: center; gap: 0.375rem;
-        padding: 0.375rem 0.75rem;
-        border: 1px solid var(--border);
-        border-radius: 0.5rem;
-        background: var(--bg-elev);
-        color: var(--fg);
-        font-size: 13px; font-weight: 500; line-height: 1;
-        cursor: pointer;
-        transition: border-color 140ms, background-color 140ms;
-      }
-      like-button button:hover { border-color: var(--border-strong); }
-    </style>
-
     <main id="main" tabindex="-1" class="focus:outline-none">
     <section class="text-center px-6 pt-[clamp(48px,7vw,96px)] pb-10 md:pb-18">
       <h1 class="font-display font-extrabold text-display leading-[1.04] tracking-[-0.035em] mx-auto mt-2 mb-4 max-w-[15ch] text-balance">

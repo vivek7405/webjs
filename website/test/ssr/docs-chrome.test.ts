@@ -124,8 +124,13 @@ test('the docs use the marketing design tokens, with no duplicate theme block', 
     !/--fg\s*:|--bg\s*:|--accent\s*:/.test(docsLayout),
     'and redefines none of the core color tokens either'
   );
-  // It should still READ them, which is what proves it is on the shared scale.
-  assert.ok(docsLayout.includes('var(--accent)'), 'it consumes the shared tokens');
+  // The docs prose rules moved to the compiled stylesheet in #1109, so the
+  // consumption check follows them there. Reading a shared token is what proves
+  // the docs are on the site's scale rather than carrying a parallel palette.
+  const inputCss = readFileSync(resolve(WEBSITE_ROOT, 'public/input.css'), 'utf8');
+  const proseBlock = inputCss.slice(inputCss.indexOf('.prose-docs h1'));
+  assert.ok(proseBlock.includes('var(--accent)'), 'the docs prose consumes the shared tokens');
+  assert.ok(proseBlock.includes('var(--font-serif)'), 'including the shared type families');
 });
 
 test('the docs prose restores list markers over the Tailwind preflight', () => {
@@ -135,9 +140,17 @@ test('the docs prose restores list markers over the Tailwind preflight', () => {
   // as an arbitrary layout inconsistency rather than a list. Deleting the
   // restatement brings that straight back, and nothing else would catch it:
   // the page renders fine, just wrong.
-  const docsLayout = readFileSync(resolve(WEBSITE_ROOT, 'app/docs/layout.ts'), 'utf8');
-  assert.match(docsLayout, /\.prose-docs ul \{[^}]*list-style: disc/, 'ul markers restored');
-  assert.match(docsLayout, /\.prose-docs ol \{[^}]*list-style: decimal/, 'ol markers restored');
+  //
+  // The rules live in public/input.css since #1109 (a sub-layout `<style>` sits
+  // inside the router's swap boundary and churned the CSSOM on every crossing),
+  // so this guard reads the stylesheet source rather than the layout. It reads
+  // the SOURCE, not the compiled output, because Lightning CSS minifies
+  // `list-style: disc` down to `list-style: outside`: disc is the initial value
+  // of list-style-type, so the shorthand still restores it, but the literal
+  // "disc" is gone from public/tailwind.css.
+  const inputCss = readFileSync(resolve(WEBSITE_ROOT, 'public/input.css'), 'utf8');
+  assert.match(inputCss, /\.prose-docs ul \{[^}]*list-style: disc/, 'ul markers restored');
+  assert.match(inputCss, /\.prose-docs ol \{[^}]*list-style: decimal/, 'ol markers restored');
 });
 
 test('docs pages describe the docs, not the marketing pitch', async () => {
