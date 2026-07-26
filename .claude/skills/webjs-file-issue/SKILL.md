@@ -1,6 +1,6 @@
 ---
 name: webjs-file-issue
-description: Use this skill when the user asks to file a new task, create an issue, or track new work on the webjsdev/webjs project. Trigger phrases include "file a task for X", "create an issue for Y", "track this as a todo", "add this to the todo list", "open an issue about Z", "make this an issue", "file a bug for ...", "add a new task", or any natural-language ask to create new tracked work in the webjs project at https://github.com/orgs/webjsdev/projects/1. The skill creates the GitHub issue with an appropriate body, adds it to the project board, and reports the new issue number.
+description: Use this skill when the user asks to file a new task, create an issue, or track new work on the webjsdev/webjs project. Trigger phrases include "file a task for X", "create an issue for Y", "track this as a todo", "add this to the todo list", "open an issue about Z", "make this an issue", "file a bug for ...", "add a new task", or any natural-language ask to create new tracked work in the webjs project at https://github.com/orgs/webjsdev/projects/1. The skill grounds the body in the real codebase first (concrete file paths, landmines, invariants, test and doc surfaces, since the implementer is an AI agent working cold), creates the GitHub issue, adds it to the project board, and reports the new issue number.
 when_to_use: |
   Examples that should trigger this skill:
     "file a task for adding dark mode"
@@ -28,19 +28,53 @@ If the user's description is very thin (e.g. "track adding dark mode as a todo")
 
 ## Steps
 
-1. **Create the issue AND assign it to vivek7405.** Every webjs issue is assigned to the owner (vivek7405) at creation so the project board shows ownership at a glance.
+1. **Ground the body BEFORE you create anything.** The one exception is a thin placeholder the user explicitly asked for (see Inputs above, and the placeholder note under "Issue body convention"): confirm that with them FIRST, because there is no point grounding a body they opted out of. For every real task this step is not optional, and it is the one that gets skipped.
+
+   The implementer is an AI agent with zero access to this conversation (see "Issue body convention" below for why). So before calling `gh issue create`, actually open the codebase and collect:
+
+   - the concrete **files / functions** the change touches, with real paths and approximate lines, found by `grep` / `Read`, not guessed;
+   - the **landmines**: prior incidents (link the issue or PR), non-obvious constraints, anything that will bite someone who was not here;
+   - the **invariants** the change must not break, linked to AGENTS.md where relevant;
+   - the **test layers and doc surfaces** the change has to touch.
+
+   A few greps now save the implementing agent a cold-start investigation later, and the difference is visible in the filed issue.
+
+   **Cold-start test, apply it to your own draft before filing.** Reread the body as if you had never seen this conversation. Could you start work from it alone, without asking a single clarifying question and without first having to find where the relevant code lives? If not, it is not ready. Two concrete failure signs: the body names an area ("the router", "the prefetch logic") rather than a path, or it describes the symptom without saying where the fix goes.
+
+   The user should never have to ask for this. If they do, the skill was not followed.
+
+2. **Create the issue AND assign it to vivek7405.** Every WebJs issue is assigned to the owner (vivek7405) at creation so the project board shows ownership at a glance.
+
+   Write the grounded body to a scratch file first, then pass it with
+   `--body-file`. Do NOT pass it as `--body "..."`: an issue body is full of
+   backticks and `$` characters, and an unquoted shell string runs them as
+   command substitution, silently eating whatever they contained. This has
+   already bitten this repo through a sibling flag: a review posted with
+   `gh api -f body=` lost every code reference in it and had to be deleted
+   and reposted. Same mechanism, different flag.
 
    ```sh
+   # write the body to a scratch path first (any disposable location)
    gh issue create --repo webjsdev/webjs \
-     --title "<title>" \
-     --body "<body>" \
-     --label <label> \
-     --assignee vivek7405
+     --title 'dogfood: the router drops the second click' \
+     --label bug \
+     --assignee vivek7405 \
+     --body-file /tmp/issue-body.md
    ```
+
+   A file path is used here rather than a heredoc on purpose. A heredoc whose
+   `EOF` terminator is indented (which it will be, pasted from any nested
+   context like this one) does not terminate: bash swallows the rest of the
+   script into the body and still exits 0. That failure has shipped from this
+   very section twice. If you do use a heredoc, put the terminator at column 0
+   and run the command once to confirm it worked.
+
+   The body follows the shape under "Issue body convention" below: Problem,
+   Design / approach, Implementation notes, Acceptance criteria.
 
    Capture the returned issue URL and number.
 
-2. **Add it to the project board.**
+3. **Add it to the project board.**
 
    ```sh
    gh project item-add 1 --owner webjsdev --url <issue-url>
@@ -48,13 +82,11 @@ If the user's description is very thin (e.g. "track adding dark mode as a todo")
 
    The card lands in Todo by default. No need to set Status explicitly.
 
-3. **Report back briefly.** One short message: issue number + title + a link, and confirm it's on the board in Todo. Do not invent next steps; just confirm the artefact exists.
+4. **Report back briefly.** One short message: issue number + title + a link, and confirm it's on the board in Todo. Do not invent next steps; just confirm the artefact exists.
 
 ## Issue body convention
 
 **Standing assumption: every issue here is implemented by an AI agent working COLD.** The agent that picks the issue up has ZERO access to the conversation that produced it. So the body is the entire brief, and it MUST carry enough for that agent to implement correctly without re-discovering everything: not just WHAT and WHY, but WHERE (the concrete files / functions / dirs to edit), the LANDMINES (known gotchas, prior incidents, non-obvious constraints), and the INVARIANTS to respect. An issue that reads well to a human who was in the room but leaves an agent guessing the file paths is under-specified. The user should not have to ask for this each time; it is the default.
-
-Before filing a scoped issue, do LIGHT codebase grounding so the body cites real landmarks, not vague pointers: grep for the relevant files / functions, name them with their paths (and approximate line or symbol when helpful), and capture any gotcha you hit or know about. A few `grep` / `Read` calls now save the implementing agent a cold-start investigation later.
 
 Match the shape of issues #112 / #113 / #114 (all visible on the board):
 
@@ -84,7 +116,7 @@ Match the shape of issues #112 / #113 / #114 (all visible on the board):
 - [ ] Docs / AGENTS.md updated if the public surface changed
 ```
 
-The **Implementation notes** section is mandatory for any scoped issue, precisely because the implementer is an agent with no conversational context. If you cannot fill it in without investigating, do the light grounding first (above), then file.
+The **Implementation notes** section is mandatory for any scoped issue, precisely because the implementer is an agent with no conversational context. If you find yourself writing it from memory, stop and go back to step 1: paths recalled rather than grepped are the ones that turn out to be stale, and a confidently wrong path costs the implementer more than no path at all.
 
 For a thin placeholder (user just wants the line item tracked, explicitly deferring the detail), skip the Design / Implementation-notes / Acceptance sections; leave a single short paragraph in Problem and mark the issue "needs scoping". Use this ONLY when the user opts into a bare placeholder; the default for a real task is the fully-grounded body above.
 
@@ -98,4 +130,4 @@ For a thin placeholder (user just wants the line item tracked, explicitly deferr
 
 - If `gh issue create` fails (auth, label missing, network): surface the error and offer to retry with adjusted args.
 - If `gh project item-add` fails after the issue was created: report the partial state ("issue #N created but not on board yet") and offer to add it manually.
-- If the user's description seems to duplicate an existing open issue: search the board first with `gh project item-list 1 --owner webjsdev --format json` and ask whether to file anyway or use the existing one.
+- If the user's description seems to duplicate an existing open issue: search the board first with `gh project item-list 1 --owner webjsdev --format json --limit 20000` and ask whether to file anyway or use the existing one.
