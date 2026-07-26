@@ -832,7 +832,7 @@ export async function checkConventions(appDir) {
             message: `An interpolation (\`\${...}\`) sits inside a <${tag}> element in an html template. The server renderer emits it but the client renderer drops it, so it paints at SSR then wipes to empty on hydration.`,
             fix:
               tag === 'style'
-                ? `Move the CSS out of the raw-text hole: use \`static styles\` (shadow DOM) or a \`css\` template for a component, or put page CSS in the layout. Static \`<style>...</style>\` with no \`\${}\` is fine.`
+                ? `Move the CSS out of the raw-text hole: put static rules in the app stylesheet the ROOT layout links, or use \`static styles\` with \`static shadow = true\` for scoped CSS. A static \`<style>...</style>\` with no \`\${}\` clears THIS rule, but it still churns the document CSSOM on every navigation if it sits inside the router swap boundary (a component, a page, or a non-root layout), so the stylesheet is the right home either way (#1109).`
                 : `Build the script body outside the raw-text element (set attributes/properties via bindings, or compute the value before the template). Static \`<script>...</script>\` with no \`\${}\` is fine.`,
           });
           break; // one violation per file is enough
