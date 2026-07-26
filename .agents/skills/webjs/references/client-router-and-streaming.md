@@ -65,6 +65,15 @@ document.addEventListener('webjs:navigation-error', (e) => {
 });
 ```
 
+**Observing a degradation.** Some conditions make a soft nav impossible, and the router then degrades to a full page load rather than risk a corrupt DOM (the #1015 integrity model). Every such path dispatches `webjs:navigation-fallback` on `document`, in ALL environments including production, with `detail { cause, href, willReload }`. Causes: `no-shared-boundary`, `live-boundaries-malformed`, `incoming-boundaries-malformed`, `readyState-loading`, `deploy-mismatch`, `deploy-mismatch-reload-suppressed`, `revalidation-discarded`. `willReload` is false for a degradation that does NOT reload (a dropped background revalidation), so a listener can tell "this click became a document load" from "a background op was skipped". Not cancelable: by the time it fires the degradation is the only safe option. In dev a deduped console warning also prints.
+
+```ts
+document.addEventListener('webjs:navigation-fallback', (e) => {
+  // A full document load on a click is a UX regression worth knowing about in prod.
+  if (e.detail.willReload) analytics.track('router_full_load', e.detail);
+});
+```
+
 **Form state.** A form submitting through the router gets `aria-busy="true"` for the in-flight duration, plus bubbling `webjs:submit-start` and `webjs:submit-end` (detail `{ form, url, ok }`) events. Style `form[aria-busy="true"]` in pure CSS or listen for the events.
 
 ## Link Prefetch
@@ -84,6 +93,8 @@ Override per link with the `data-prefetch` attribute.
 Next-style aliases work (`true` = `render`, `auto` = `viewport`, `false` = `none`). `viewport` uses an IntersectionObserver at threshold 0.5 with a ~250ms dwell, cancelled the instant a link scrolls back out, so a fast scroll spends no requests. Speculation is bounded by a concurrency cap, in-flight de-dupe, and an LRU + TTL cache, and is disabled entirely under `Save-Data`, `prefers-reduced-data`, or a 2g connection. The guiding rule is snappy but never at the cost of bloating the network tab, so when the two conflict the gate under-fetches.
 
 A prefetch issues a real GET, so any mutating endpoint MUST be a POST or a `<form>` submission (which the router never prefetches), never a GET link. A `webjs:prefetch` event fires on `document` when a fragment lands in the cache.
+
+**The cache is CONTEXT-KEYED, not just URL-keyed (#1114).** A prefetched fragment is a reduced response: the request carries `X-Webjs-Have` (the boundaries the client already holds) and the server returns only the divergent part, marking it `Vary: X-Webjs-Have`. So an entry is a fragment RELATIVE to the DOM it was fetched against, and the cache stores that context alongside it. On consume, a context mismatch DISCARDS the entry and the click refetches. That costs one round-trip; consuming it would hand the swap a fragment sharing no boundary with the live DOM, which correctly degrades to a full page load. The router also never prefetches the page it is already on, which is the main way a stale entry used to be created: a hover's intent timer can fire AFTER the click it belongs to has already swapped, at which point the destination is the current page and the server answers "you have everything" with a near-empty fragment. Both guards are internal; nothing to configure.
 
 ## `<webjs-frame>` Partial-Swap Regions
 
