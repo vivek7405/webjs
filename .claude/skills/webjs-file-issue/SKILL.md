@@ -28,19 +28,36 @@ If the user's description is very thin (e.g. "track adding dark mode as a todo")
 
 ## Steps
 
-1. **Create the issue AND assign it to vivek7405.** Every webjs issue is assigned to the owner (vivek7405) at creation so the project board shows ownership at a glance.
+1. **Ground the body BEFORE you create anything. This step is not optional and it is the one that gets skipped.**
+
+   The implementer is an AI agent with zero access to this conversation (see "Issue body convention" below for why). So before calling `gh issue create`, actually open the codebase and collect:
+
+   - the concrete **files / functions** the change touches, with real paths and approximate lines, found by `grep` / `Read`, not guessed;
+   - the **landmines**: prior incidents (link the issue or PR), non-obvious constraints, anything that will bite someone who was not here;
+   - the **invariants** the change must not break, linked to AGENTS.md where relevant;
+   - the **test layers and doc surfaces** the change has to touch.
+
+   A few greps now save the implementing agent a cold-start investigation later, and the difference is visible in the filed issue.
+
+   **Cold-start test, apply it to your own draft before filing.** Reread the body as if you had never seen this conversation. Could you start work from it alone, without asking a single clarifying question and without first having to find where the relevant code lives? If not, it is not ready. Two concrete failure signs: the body names an area ("the router", "the prefetch logic") rather than a path, or it describes the symptom without saying where the fix goes.
+
+   The user should never have to ask for this. If they do, the skill was not followed.
+
+2. **Create the issue AND assign it to vivek7405.** Every webjs issue is assigned to the owner (vivek7405) at creation so the project board shows ownership at a glance.
 
    ```sh
    gh issue create --repo webjsdev/webjs \
      --title "<title>" \
-     --body "<body>" \
+     --body-file <grounded-body.md> \
      --label <label> \
      --assignee vivek7405
    ```
 
+   The body is the grounded one from step 1, in the shape given under "Issue body convention" below (Problem, Design / approach, Implementation notes, Acceptance criteria). Prefer `--body-file` or a heredoc over `--body "..."`: issue bodies contain backticks and code, and an unquoted shell string mangles them (a real incident, backticked identifiers were silently eaten from a filed writeup).
+
    Capture the returned issue URL and number.
 
-2. **Add it to the project board.**
+3. **Add it to the project board.**
 
    ```sh
    gh project item-add 1 --owner webjsdev --url <issue-url>
@@ -48,7 +65,7 @@ If the user's description is very thin (e.g. "track adding dark mode as a todo")
 
    The card lands in Todo by default. No need to set Status explicitly.
 
-3. **Report back briefly.** One short message: issue number + title + a link, and confirm it's on the board in Todo. Do not invent next steps; just confirm the artefact exists.
+4. **Report back briefly.** One short message: issue number + title + a link, and confirm it's on the board in Todo. Do not invent next steps; just confirm the artefact exists.
 
 ## Issue body convention
 
