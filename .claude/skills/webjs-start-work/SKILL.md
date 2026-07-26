@@ -99,9 +99,11 @@ The user's request typically names an issue by number (e.g. `#112`) or by descri
    gh pr create --repo webjsdev/webjs --base main --head <prefix>/<slug> --draft \
      --assignee vivek7405 \
      --title "<conventional-prefix>: <imperative summary>" \
-     --body "Closes #<N>
+     --body-file - <<'EOF'
+   Closes #<N>
 
-   <one-line summary of the intended change; this is a living body, refined as the work lands>"
+   <one-line summary of the intended change; this is a living body, refined as the work lands>
+   EOF
    ```
 
    The title MUST carry a conventional-commit prefix from the first moment (feat/fix/perf/breaking appear in the changelog; chore/docs/test/refactor do not), because a single-commit PR squashes on the COMMIT subject and a multi-commit PR on the TITLE. Refine the title/body as the change takes shape; the draft is a living document. Capture the issue URL/number for `Closes #<N>` (already in the body).
@@ -332,7 +334,7 @@ The draft PR is already open (step 6), so reviews post to it from the first roun
 2. **For each finding the subagent reports**, do exactly ONE of these three. There is no fourth option, and "mention it and move on" is not allowed:
    - **Fix it** on the branch (commit + push to update the PR), OR
    - **Reject it** explicitly with a one-sentence reason written in your reply to the user and in the PR body. Rejection has to be defensible (e.g. "the agent flagged X as a security issue but X runs server-side only and never reaches user input"). False positives are real; reject them on the merits, don't just hand-wave. OR
-   - **File it** as a tracked issue when it is genuine but out of scope for THIS PR (a pre-existing bug, an unrelated dependency/hygiene problem, a separate feature). "Out of scope" is NOT a reason to drop a finding. Run the `webjs-file-issue` flow (`gh issue create --repo webjsdev/webjs --assignee vivek7405` + `gh project item-add 1 --owner webjsdev --url <url>`) and capture the issue number. Verify it landed (`gh project item-list`). A finding you call out-of-scope without an issue number is an unfiled finding, which is the exact mistake this clause exists to prevent. If unsure whether something is in-scope, default to fixing it in this PR; only file-and-defer when it is clearly separable and fixing it here would mean scope creep.
+   - **File it** as a tracked issue when it is genuine but out of scope for THIS PR (a pre-existing bug, an unrelated dependency/hygiene problem, a separate feature). "Out of scope" is NOT a reason to drop a finding. INVOKE the `webjs-file-issue` skill rather than hand-rolling `gh issue create`: it gates on grounding the body in the real codebase first, which is exactly what an out-of-scope review finding needs and exactly what a hurried two-command version omits. Capture the issue number. Verify it landed (`gh project item-list`). A finding you call out-of-scope without an issue number is an unfiled finding, which is the exact mistake this clause exists to prevent. If unsure whether something is in-scope, default to fixing it in this PR; only file-and-defer when it is clearly separable and fixing it here would mean scope creep.
 
    **Record every genuine finding as a comment ON THE PR, the way a human reviewer would.** The self-review trail must live on the PR, not only in your reply to the user (a finding that exists only in the chat transcript is invisible to anyone reading the PR later). For findings tied to specific lines, post an INLINE review comment at `file:line` (`gh api repos/webjsdev/webjs/pulls/<N>/comments -f body=... -f commit_id=<sha> -f path=<file> -F line=<n>`, or a `gh pr review` with line comments). For cross-cutting or round-summary notes, use `gh pr comment <N> --body-file <f>`. Each comment states the finding, its `file:line`, and its disposition (`fixed in <sha>` / `rejected because <reason>` / `filed as #<n>`). Post rejected findings and false positives too, so the reasoning is auditable on the PR. A `CLEAN` round can be noted briefly. Do this as part of the loop, not as an afterthought. (Reminder: em-dashes and the other banned glyphs in AGENTS.md invariant 11 apply to PR comment bodies too, since they go through the same tooling.)
 

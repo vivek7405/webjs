@@ -71,7 +71,9 @@ Extract from the user's request:
    ```
 3. **Add deep-dive comments** for the threaded detail:
    ```sh
-   gh issue comment <n> --repo webjsdev/webjs --body "## Deep-dive: ..."
+   gh issue comment <n> --repo webjsdev/webjs --body-file - <<'EOF'
+   ## Deep-dive: ...
+   EOF
    ```
 4. **Close the issue as completed** (it is a record, not open work):
    ```sh

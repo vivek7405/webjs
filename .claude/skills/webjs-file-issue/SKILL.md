@@ -45,15 +45,28 @@ If the user's description is very thin (e.g. "track adding dark mode as a todo")
 
 2. **Create the issue AND assign it to vivek7405.** Every webjs issue is assigned to the owner (vivek7405) at creation so the project board shows ownership at a glance.
 
+   Pipe the body in through a QUOTED heredoc. Do not pass it as `--body "..."`:
+   an issue body is full of backticks and `$` characters, and an unquoted shell
+   string runs them as command substitution, silently eating whatever they
+   contained. That is a real incident from this repo, not a hypothetical.
+
    ```sh
    gh issue create --repo webjsdev/webjs \
-     --title "<title>" \
-     --body-file <grounded-body.md> \
-     --label <label> \
-     --assignee vivek7405
+     --title 'dogfood: the router drops the second click' \
+     --label bug \
+     --assignee vivek7405 \
+     --body-file - <<'EOF'
+   ## Problem
+   ...the grounded body from step 1...
+   EOF
    ```
 
-   The body is the grounded one from step 1, in the shape given under "Issue body convention" below (Problem, Design / approach, Implementation notes, Acceptance criteria). Prefer `--body-file` or a heredoc over `--body "..."`: issue bodies contain backticks and code, and an unquoted shell string mangles them (a real incident, backticked identifiers were silently eaten from a filed writeup).
+   The `<<'EOF'` quoting is what makes it safe, and `--body-file -` reads it from
+   stdin so there is no temp file to create or clean up. Note `--body <<'EOF'` on
+   its own does NOT work: `--body` would consume the next flag as its value.
+
+   The body follows the shape under "Issue body convention" below: Problem,
+   Design / approach, Implementation notes, Acceptance criteria.
 
    Capture the returned issue URL and number.
 
@@ -70,8 +83,6 @@ If the user's description is very thin (e.g. "track adding dark mode as a todo")
 ## Issue body convention
 
 **Standing assumption: every issue here is implemented by an AI agent working COLD.** The agent that picks the issue up has ZERO access to the conversation that produced it. So the body is the entire brief, and it MUST carry enough for that agent to implement correctly without re-discovering everything: not just WHAT and WHY, but WHERE (the concrete files / functions / dirs to edit), the LANDMINES (known gotchas, prior incidents, non-obvious constraints), and the INVARIANTS to respect. An issue that reads well to a human who was in the room but leaves an agent guessing the file paths is under-specified. The user should not have to ask for this each time; it is the default.
-
-Before filing a scoped issue, do LIGHT codebase grounding so the body cites real landmarks, not vague pointers: grep for the relevant files / functions, name them with their paths (and approximate line or symbol when helpful), and capture any gotcha you hit or know about. A few `grep` / `Read` calls now save the implementing agent a cold-start investigation later.
 
 Match the shape of issues #112 / #113 / #114 (all visible on the board):
 
@@ -101,7 +112,7 @@ Match the shape of issues #112 / #113 / #114 (all visible on the board):
 - [ ] Docs / AGENTS.md updated if the public surface changed
 ```
 
-The **Implementation notes** section is mandatory for any scoped issue, precisely because the implementer is an agent with no conversational context. If you cannot fill it in without investigating, do the light grounding first (above), then file.
+The **Implementation notes** section is mandatory for any scoped issue, precisely because the implementer is an agent with no conversational context. If you find yourself writing it from memory, stop and go back to step 1: paths recalled rather than grepped are the ones that turn out to be stale, and a confidently wrong path costs the implementer more than no path at all.
 
 For a thin placeholder (user just wants the line item tracked, explicitly deferring the detail), skip the Design / Implementation-notes / Acceptance sections; leave a single short paragraph in Problem and mark the issue "needs scoping". Use this ONLY when the user opts into a bare placeholder; the default for a real task is the fully-grounded body above.
 
