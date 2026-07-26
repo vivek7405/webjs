@@ -22,7 +22,7 @@ The webjsdev/webjs project tracks work on the GitHub Project at https://github.c
 1. **Fetch the board state.**
 
    ```sh
-   gh project item-list 1 --owner webjsdev --format json
+   gh project item-list 1 --owner webjsdev --format json --limit 20000
    ```
 
 2. **Bucket by Status** (Todo, In progress, Done) and pretty-print each bucket with issue numbers and titles. If the user explicitly asked for only one bucket (e.g. "what's in progress"), filter accordingly.

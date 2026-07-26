@@ -48,8 +48,10 @@ If the user's description is very thin (e.g. "track adding dark mode as a todo")
    Write the grounded body to a scratch file first, then pass it with
    `--body-file`. Do NOT pass it as `--body "..."`: an issue body is full of
    backticks and `$` characters, and an unquoted shell string runs them as
-   command substitution, silently eating whatever they contained. That is a
-   real incident in this repo, not a hypothetical.
+   command substitution, silently eating whatever they contained. The
+   near-miss version of this has already happened here: a review posted
+   through `gh api -f body=` lost every code reference in it and had to be
+   deleted and reposted. Same mechanism, different flag.
 
    ```sh
    # write the body to a scratch path first (any disposable location)

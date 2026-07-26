@@ -39,7 +39,7 @@ When in doubt, file it. A duplicate is cheap to close; untracked work is the exp
 The user's request typically names an issue by number (e.g. `#112`) or by description (e.g. "the dist issue"). Resolve the number first:
 
 - If the user said `#N` explicitly, use N.
-- If they described the issue by topic, run `gh project item-list 1 --owner webjsdev --format json` and match against item titles. If multiple match, ask the user to disambiguate.
+- If they described the issue by topic, run `gh project item-list 1 --owner webjsdev --format json --limit 20000` and match against item titles. If multiple match, ask the user to disambiguate.
 
 ## Steps
 
@@ -58,7 +58,7 @@ The user's request typically names an issue by number (e.g. `#112`) or by descri
 2. **Confirm the issue is on the project board.**
 
    ```sh
-   gh project item-list 1 --owner webjsdev --format json --jq ".items[] | select(.content.number == <N>)"
+   gh project item-list 1 --owner webjsdev --format json --limit 20000 --jq ".items[] | select(.content.number == <N>)"
    ```
 
    If not present, add it: `gh project item-add 1 --owner webjsdev --url https://github.com/webjsdev/webjs/issues/<N>`.
@@ -85,11 +85,13 @@ The user's request typically names an issue by number (e.g. `#112`) or by descri
    ```sh
    N=<issue-number>
    PROJECT_ID=$(gh project view 1 --owner webjsdev --format json --jq '.id')
-   ITEM_ID=$(gh project item-list 1 --owner webjsdev --format json --jq ".items[] | select(.content.number == $N) | .id")
+   ITEM_ID=$(gh project item-list 1 --owner webjsdev --format json --limit 20000 --jq ".items[] | select(.content.number == $N) | .id")
    STATUS_FIELD_ID=$(gh project field-list 1 --owner webjsdev --format json --jq '.fields[] | select(.name == "Status") | .id')
    IN_PROGRESS_OPT_ID=$(gh project field-list 1 --owner webjsdev --format json --jq '.fields[] | select(.name == "Status") | .options[] | select(.name == "In progress") | .id')
    gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" --field-id "$STATUS_FIELD_ID" --single-select-option-id "$IN_PROGRESS_OPT_ID"
    ```
+
+   The `--limit 20000` on `item-list` is load-bearing, not defensive. The board is well past 200 items and the default page is 30, so without it the `select(.content.number == $N)` filter matches nothing for almost every issue, `ITEM_ID` comes back empty, and `item-edit` fails on an empty `--id`. The same truncation makes step 2 report a card as missing when it is already on the board.
 
 6. **Open a DRAFT PR immediately, BEFORE writing any code.** This is the single most important ordering rule and it is NOT optional: the PR is opened at the START of the work, not the end. The whole point of the PR is to be the durable, append-only record of the change AS IT HAPPENS: every per-logical-unit commit lands on it, every design-rationale / decision / follow-up context comment is posted to it the moment that discussion happens, and every self-review round is posted to it. NONE of that is possible if the PR does not exist yet, which is exactly the failure a late `gh pr create` causes. So open it now, empty branch and all (the branch was already pushed in step 4).
 
@@ -99,8 +101,9 @@ The user's request typically names an issue by number (e.g. `#112`) or by descri
    gh pr create --repo webjsdev/webjs --base main --head <prefix>/<slug> --draft \
      --assignee vivek7405 \
      --title "<conventional-prefix>: <imperative summary>" \
-     --body-file /tmp/pr-body.md   # Closes #<N> plus a one-line summary; a living
-                                   # body, refined as the work lands
+     --body-file /tmp/pr-body.md
+   # write /tmp/pr-body.md first: "Closes #<N>" plus a one-line summary of the
+   # intended change. It is a living body, refined as the work lands.
    ```
 
    The title MUST carry a conventional-commit prefix from the first moment (feat/fix/perf/breaking appear in the changelog; chore/docs/test/refactor do not), because a single-commit PR squashes on the COMMIT subject and a multi-commit PR on the TITLE. Refine the title/body as the change takes shape; the draft is a living document. Capture the issue URL/number for `Closes #<N>` (already in the body).
@@ -333,7 +336,7 @@ The draft PR is already open (step 6), so reviews post to it from the first roun
    - **Reject it** explicitly with a one-sentence reason written in your reply to the user and in the PR body. Rejection has to be defensible (e.g. "the agent flagged X as a security issue but X runs server-side only and never reaches user input"). False positives are real; reject them on the merits, don't just hand-wave. OR
    - **File it** as a tracked issue when it is genuine but out of scope for THIS PR (a pre-existing bug, an unrelated dependency/hygiene problem, a separate feature). "Out of scope" is NOT a reason to drop a finding. INVOKE the `webjs-file-issue` skill rather than hand-rolling `gh issue create`: it gates on grounding the body in the real codebase first, which is exactly what an out-of-scope review finding needs and exactly what a hurried two-command version omits. Capture the issue number. Verify it landed (`gh project item-list 1 --owner webjsdev --limit 20000`, the board is past 200 items so the default cap of 30 reports a false negative). A finding you call out-of-scope without an issue number is an unfiled finding, which is the exact mistake this clause exists to prevent. If unsure whether something is in-scope, default to fixing it in this PR; only file-and-defer when it is clearly separable and fixing it here would mean scope creep.
 
-   **Record every genuine finding as a comment ON THE PR, the way a human reviewer would.** The self-review trail must live on the PR, not only in your reply to the user (a finding that exists only in the chat transcript is invisible to anyone reading the PR later). For findings tied to specific lines, post an INLINE review comment at `file:line` (`gh api repos/webjsdev/webjs/pulls/<N>/comments --input comment.json`, writing the body into that JSON file first, or a `gh pr review` with line comments). Build that JSON with a real serializer, never by interpolating into a shell string: review text is dense with backticks, and an unquoted shell string runs them as command substitution. That is exactly how a review on #1115 lost every code reference in its inline comments and had to be deleted and reposted.. For cross-cutting or round-summary notes, use `gh pr comment <N> --body-file /tmp/pr-comment.md`. Each comment states the finding, its `file:line`, and its disposition (`fixed in <sha>` / `rejected because <reason>` / `filed as #<n>`). Post rejected findings and false positives too, so the reasoning is auditable on the PR. A `CLEAN` round can be noted briefly. Do this as part of the loop, not as an afterthought. (Reminder: em-dashes and the other banned glyphs in AGENTS.md invariant 11 apply to PR comment bodies too, since they go through the same tooling.)
+   **Record every genuine finding as a comment ON THE PR, the way a human reviewer would.** The self-review trail must live on the PR, not only in your reply to the user (a finding that exists only in the chat transcript is invisible to anyone reading the PR later). For findings tied to specific lines, post an INLINE review comment at `file:line` (`gh api repos/webjsdev/webjs/pulls/<N>/comments --input comment.json`, writing the body into that JSON file first, or a `gh pr review` with line comments). Build that JSON with a real serializer, never by interpolating into a shell string: review text is dense with backticks, and an unquoted shell string runs them as command substitution. That is exactly how a review on #1115 lost every code reference in its inline comments and had to be deleted and reposted. For cross-cutting or round-summary notes, use `gh pr comment <N> --body-file /tmp/pr-comment.md`. Each comment states the finding, its `file:line`, and its disposition (`fixed in <sha>` / `rejected because <reason>` / `filed as #<n>`). Post rejected findings and false positives too, so the reasoning is auditable on the PR. A `CLEAN` round can be noted briefly. Do this as part of the loop, not as an afterthought. (Reminder: em-dashes and the other banned glyphs in AGENTS.md invariant 11 apply to PR comment bodies too, since they go through the same tooling.)
 
 3. **If the round found any findings (even rejected ones)**, run another round with a fresh subagent. The new round picks a slightly different focus prompt: if round 1 was broad, round 2 zooms in on the file you most edited; if round 2 zoomed in, round 3 zooms out to cross-file consistency, etc. Rotate focus to avoid the agent rediscovering the same surface.
 
