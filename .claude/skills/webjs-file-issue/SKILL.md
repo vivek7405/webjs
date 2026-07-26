@@ -1,6 +1,6 @@
 ---
 name: webjs-file-issue
-description: Use this skill when the user asks to file a new task, create an issue, or track new work on the webjsdev/webjs project. Trigger phrases include "file a task for X", "create an issue for Y", "track this as a todo", "add this to the todo list", "open an issue about Z", "make this an issue", "file a bug for ...", "add a new task", or any natural-language ask to create new tracked work in the webjs project at https://github.com/orgs/webjsdev/projects/1. The skill creates the GitHub issue with an appropriate body, adds it to the project board, and reports the new issue number.
+description: Use this skill when the user asks to file a new task, create an issue, or track new work on the webjsdev/webjs project. Trigger phrases include "file a task for X", "create an issue for Y", "track this as a todo", "add this to the todo list", "open an issue about Z", "make this an issue", "file a bug for ...", "add a new task", or any natural-language ask to create new tracked work in the webjs project at https://github.com/orgs/webjsdev/projects/1. The skill grounds the body in the real codebase first (concrete file paths, landmines, invariants, test and doc surfaces, since the implementer is an AI agent working cold), creates the GitHub issue, adds it to the project board, and reports the new issue number.
 when_to_use: |
   Examples that should trigger this skill:
     "file a task for adding dark mode"
