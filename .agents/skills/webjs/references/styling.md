@@ -5,6 +5,7 @@
 - Tailwind-first: the strong default for pages AND light-DOM components, and the Lit reflex it counters
 - The light-DOM tag-prefix invariant when raw CSS is unavoidable
 - Extracting a repeated Tailwind bundle into a `lib/utils/ui.ts` `html` fragment (not `@apply`)
+- Where static CSS lives: the compiled stylesheet, NOT a page or sub-layout `<style>` (the navigation flash)
 - Design tokens: `:root` / `@theme` in the root layout
 - Light-DOM host `display: block` behaviour (and shadow hosts via `:host`)
 - When to use `static styles` (shadow DOM)
@@ -33,6 +34,55 @@ Reserve raw CSS for what utilities genuinely cannot express. This is the exhaust
 - complex `color-mix()` or gradient effects a utility cannot spell.
 
 When custom CSS IS unavoidable inside a light-DOM component, the tag-prefix invariant holds (every class selector is prefixed with the component tag). Shadow-DOM components (`static shadow = true`) legitimately author `static styles = css\`\``, the right home for scoped CSS. The Tailwind-first steer is about the LIGHT-DOM default, not shadow DOM.
+
+## Where static CSS lives: the compiled stylesheet, not a page `<style>`
+
+**Static CSS goes in `public/input.css`** (compiled to the `public/tailwind.css` the ROOT layout links). Not in a `<style>` a page or a sub-layout renders. This is a correctness rule, not tidiness (#1109).
+
+A page never hydrates, so a `<style>` in one is safe from the raw-text-hole trap that bites components. That is a statement about HYDRATION, and it says nothing about NAVIGATION. The client router swaps the DOM between the keyed boundary comments each layout emits around its children, so a `<style>` a page or a NON-ROOT layout renders sits inside that range:
+
+```
+<!--wj:children:root:/docs/routing-->     <- swap boundary opens
+  <style> ... the sub-layout's rules ... </style>   <- removed and re-inserted on every crossing
+  ...
+<!--/wj:children:root-->
+```
+
+Crossing between two routes that own different ones removes a stylesheet and inserts another. Adding or removing a stylesheet mutates the document CSSOM, and **a CSSOM mutation invalidates style for the ENTIRE document, including the DOM the router deliberately preserved.** The layout you kept mounted repaints anyway. That is expensive exactly where it is most visible: `oklch()` tokens, `color-mix()`, and a `backdrop-filter` header all have to re-resolve, so the symptom is an intermittent one-frame flash of the whole page, navbar included. It was reported on webjs.dev crossing in and out of `/docs`, where the crossing swung the document's inline CSS from 9199 to 17046 bytes.
+
+Next.js engineers against the same effect from the other side. It renders runtime styles as `<link rel="stylesheet" precedence="next">` so React hoists them to `<head>` and dedupes by href (a sheet shared by both routes is never removed), and it removes a superseded sheet on a `setTimeout` with the comment "Delay the removal of the stylesheet to avoid FOUC". They reach for hoisting and delayed removal because a synchronous stylesheet swap during a navigation flashes. WebJs has no build step to extract CSS imports into files, so the equivalent is authoring static rules in the compiled stylesheet directly.
+
+**The rule:**
+
+| Where | Swapped on nav? | Use it for |
+|---|---|---|
+| `public/input.css` (compiled, linked by the root layout) | No, loaded above every boundary | **Every static rule.** Tokens, prose scales, tag-prefixed component CSS, scrollbars, media queries. |
+| Root layout `<style>` (`app/layout.ts` exactly) | No, it renders outside `${children}` | Token VALUES that must resolve with JS off, and anything the compiled sheet cannot carry. |
+| Page / non-root-layout `<style>` | **Yes** | Only CSS that is genuinely per-request (a value computed from `params`). Static rules do not belong here. |
+| Component `static styles` (shadow DOM) | No, adopted per element | Scoped shadow CSS. |
+
+A long-form prose scale is the case that most often tempts a sub-layout `<style>`, because doc or article bodies are bare HTML and Tailwind cannot target unclassed elements. Descendant selectors under one wrapper class are the right tool for that (`@tailwindcss/typography` does the same), so keep the selectors and move the FILE:
+
+```css
+/* public/input.css, after @import "tailwindcss" and UNLAYERED, which is what
+   keeps these above Tailwind's preflight regardless of source order. */
+.prose-docs h1 { font: 700 var(--text-doc-h1)/1.12 var(--font-serif); }
+.prose-docs ul { list-style: disc; padding-left: 24px; }   /* preflight strips this */
+```
+
+```ts
+// app/docs/layout.ts, no <style> at all
+export default function DocsLayout({ children }: { children: unknown }) {
+  return html`<div class="prose-docs">${children}</div>`;
+}
+```
+
+To verify, assert the property rather than eyeballing it. The flash is intermittent, so a green instrumented run proves little. Compare the `<style>` set served for two routes and require them to be identical, which is cheap at SSR and localizes any regression:
+
+```ts
+const stylesOf = (html: string) => [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]);
+assert.deepEqual(stylesOf(await body('/docs/routing')), stylesOf(await body('/')));
+```
 
 ## DRY via a JS helper, not `@apply`
 

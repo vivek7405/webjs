@@ -142,7 +142,7 @@ export const RULES = [
   {
     name: 'no-interpolation-in-raw-text-element',
     description:
-      'Flags a template interpolation (`${...}`) placed as a child of a `<style>` or `<script>` element inside a COMPONENT `html` template. Raw-text elements are an SSR/client asymmetry trap: the server renderer emits the interpolated content, but the client renderer drops it (a raw-text hole is a `noop`, since the compile cache is keyed on the static strings), so the element renders correctly on the server and then wipes to empty on hydration. Scoped to components (files with a `WebComponent` class), which hydrate; pages and layouts render server-only and never hydrate, so a page interpolating a `css` result into a `<style>` is a legitimate pattern and is not flagged. In a component, author scoped CSS with `static styles` (shadow DOM) or a `css` template. Found dogfooding a tic-tac-toe app (#845): a `<style>${STYLE}</style>` painted at SSR then vanished on hydrate.',
+      'Flags a template interpolation (`${...}`) placed as a child of a `<style>` or `<script>` element inside a COMPONENT `html` template. Raw-text elements are an SSR/client asymmetry trap: the server renderer emits the interpolated content, but the client renderer drops it (a raw-text hole is a `noop`, since the compile cache is keyed on the static strings), so the element renders correctly on the server and then wipes to empty on hydration. Scoped to components (files with a `WebComponent` class), which hydrate; pages and layouts render server-only and never hydrate, so a page interpolating a `css` result into a `<style>` is not flagged. That exemption is about HYDRATION only, and is not an endorsement: a page or non-root-layout `<style>` sits inside the client router swap boundary, so it is removed and re-inserted on every navigation across that route, and the CSSOM mutation invalidates style document-wide (#1109). Static rules belong in the compiled stylesheet the root layout links; reserve a page `<style>` for genuinely per-request CSS. In a component, author scoped CSS with `static styles` (shadow DOM) or a `css` template. Found dogfooding a tic-tac-toe app (#845): a `<style>${STYLE}</style>` painted at SSR then vanished on hydrate.',
   },
   {
     name: 'no-missing-local-import',
@@ -802,8 +802,12 @@ export async function checkConventions(appDir) {
   //
   // Scoped to COMPONENTS. The drop only happens on the CLIENT renderer, which
   // runs for components (hydration + re-render). Pages and layouts render
-  // server-only (never hydrate), so a page's `<style>${STYLES.text}</style>` is
-  // a legitimate, taught pattern and must NOT be flagged. Scan raw source with
+  // server-only (never hydrate), so a page's `<style>${STYLES.text}</style>`
+  // must NOT be flagged here. It is still a CONVENTION violation when the rules
+  // are static (#1109): a page / non-root-layout `<style>` is inside the router
+  // swap boundary, so it churns the CSSOM on every crossing. That stays prose
+  // guidance rather than a rule, because per-request CSS in a page `<style>` is
+  // a legitimate thing to want. Scan raw source with
   // comments stripped (the tag text lives in a template string, which the
   // redacted `scan` view blanks). One violation per file.
   {

@@ -67,6 +67,8 @@ document.addEventListener('webjs:navigation-error', (e) => {
 
 **Form state.** A form submitting through the router gets `aria-busy="true"` for the in-flight duration, plus bubbling `webjs:submit-start` and `webjs:submit-end` (detail `{ form, url, ok }`) events. Style `form[aria-busy="true"]` in pure CSS or listen for the events.
 
+**Keep static CSS out of the swap range (#1109).** "Outer DOM is never re-rendered" is a statement about the DOM tree, not about style. A `<style>` a page or a NON-ROOT layout renders is inside the boundary, so a crossing removes one stylesheet and inserts another, and mutating the document CSSOM invalidates style for the WHOLE document. The preserved header repaints anyway, and on tokens built from `oklch()` / `color-mix()` behind a `backdrop-filter` that shows as an intermittent one-frame flash of the entire page. Author static rules in the compiled stylesheet the ROOT layout links, which sits above every boundary and is never swapped. Full reference, including how to pin the property in a test, in `styling.md`.
+
 ## Link Prefetch
 
 Same-origin in-app links prefetch speculatively so a click resolves from a warm cache. On by default, no per-link opt-in needed. The default strategy is DEVICE-ADAPTIVE, because one strategy cannot serve both input modalities. On a hover-capable fine pointer the default is `intent` (warm on hover/focus after a ~100ms dwell). On touch the default is `viewport` (warm as links settle on-screen), because touch has no hover. Modality is detected with `matchMedia('(hover: hover) and (pointer: fine)')`, never a UA sniff.

@@ -12,6 +12,40 @@ export default function Styling() {
 
     <p>In dev the scaffold keeps that stylesheet fresh with an on-request recompile (a <code>webjs.dev.regenerate</code> rule), not a background <code>tailwindcss --watch</code>. When a source changes, the dev server recompiles <code>public/tailwind.css</code> before serving it, so a newly added utility class is never rendered unstyled and there is no watch process that can die or lag. Prod builds the same file once before serving, so dev and prod share the identical compile.</p>
 
+    <h2>Static CSS belongs in the compiled stylesheet, not a page <code>&lt;style&gt;</code></h2>
+    <p>A page never hydrates, so a <code>&lt;style&gt;</code> in one is safe from the raw-text-hole trap that bites components. That is a statement about hydration, and it says nothing about navigation. <strong>A page or non-root layout renders inside the client router's swap boundary</strong>, so a <code>&lt;style&gt;</code> there is removed and re-inserted every time you navigate across that route.</p>
+    <p>Adding or removing a stylesheet mutates the document CSSOM, and a CSSOM mutation invalidates style for the <em>whole</em> document, including the DOM the router deliberately preserved. Your fixed header repaints even though its element was never touched. With design tokens built from <code>oklch()</code> and <code>color-mix()</code> behind a <code>backdrop-filter</code>, the visible result is an intermittent one-frame flash of the entire page on navigation.</p>
+    <p>So put static rules in <code>public/input.css</code>. The root layout links the compiled output once, above every boundary, and the router never swaps it. Reserve a page or layout <code>&lt;style&gt;</code> for CSS that is genuinely per-request, such as a value computed from <code>params</code>. The <strong>root</strong> layout's own <code>&lt;style&gt;</code> is outside every boundary and is fine.</p>
+
+    <table>
+      <thead><tr><th>Where</th><th>Swapped on navigation?</th><th>Use it for</th></tr></thead>
+      <tbody>
+        <tr><td><code>public/input.css</code></td><td>No, loaded above every boundary</td><td><strong>Every static rule.</strong> Tokens, prose scales, tag-prefixed component CSS, scrollbars, media queries.</td></tr>
+        <tr><td>Root layout <code>&lt;style&gt;</code></td><td>No, it renders outside <code>&#36;&#123;children&#125;</code></td><td>Token values that must resolve with JS off, and anything the compiled sheet cannot carry.</td></tr>
+        <tr><td>Page / non-root-layout <code>&lt;style&gt;</code></td><td><strong>Yes</strong></td><td>Only genuinely per-request CSS.</td></tr>
+        <tr><td>Component <code>static styles</code></td><td>No, adopted per element</td><td>Scoped shadow-DOM CSS.</td></tr>
+      </tbody>
+    </table>
+
+    <p>The case that most often tempts a sub-layout <code>&lt;style&gt;</code> is a long-form prose scale, because article and reference bodies are bare HTML and Tailwind cannot target unclassed elements. Descendant selectors under one wrapper class are the right tool there. Keep the selectors and move the file:</p>
+
+    <pre>/* public/input.css, after @import "tailwindcss" and UNLAYERED, which is
+   what keeps these above Tailwind's preflight regardless of source order. */
+.prose h1 &#123; font: 700 2.2rem/1.12 var(--font-serif); &#125;
+.prose ul &#123; list-style: disc; padding-left: 24px; &#125;   /* preflight strips this */</pre>
+
+    <pre>// app/docs/layout.ts, with no &lt;style&gt; at all
+export default function DocsLayout(&#123; children &#125;: &#123; children: unknown &#125;) &#123;
+  return html\`&lt;div class="prose"&gt;\${children}&lt;/div&gt;\`;
+&#125;</pre>
+
+    <p>The flash is intermittent, so verify by asserting the property rather than by watching for it. Comparing the <code>&lt;style&gt;</code> set served for two routes is cheap at SSR and points straight at the offending route when it regresses:</p>
+
+    <pre>const stylesOf = (html: string) =&gt;
+  [...html.matchAll(/&lt;style[^&gt;]*&gt;([\\s\\S]*?)&lt;\\/style&gt;/g)].map((m) =&gt; m[1]);
+
+assert.deepEqual(stylesOf(await body('/docs/routing')), stylesOf(await body('/')));</pre>
+
     <pre>// public/input.css (compiled to a static public/tailwind.css by css:build,
 // which the dev / start tasks run automatically). The @theme maps live here.
 @import "tailwindcss";
@@ -237,23 +271,27 @@ export default function Post({ params }) {
       </tbody>
     </table>
 
-    <p>Every page wraps its output in <code>&lt;div class="page-&lt;route&gt;"&gt;</code>. Every layout wraps in <code>&lt;div class="layout-&lt;name&gt;"&gt;</code>. Components scope via their tag name. Styles colocate with the markup as <code>const STYLES = css\`…\`</code> and interpolate via <code>&lt;style&gt;\${STYLES.text}&lt;/style&gt;</code>. The standalone <code>@webjsdev/intellisense</code> (and the <code>webjs</code> editor extension) resolves class go-to-definition inside those blocks.</p>
+    <p>Every page wraps its output in <code>&lt;div class="page-&lt;route&gt;"&gt;</code>. Every layout wraps in <code>&lt;div class="layout-&lt;name&gt;"&gt;</code>. Components scope via their tag name. The wrapper is what makes the class names collision-proof; it says nothing about where the rules are served from, and that is a separate decision.</p>
+
+    <p><strong>Serve the rules from one stylesheet the root layout links, keyed by those same wrappers.</strong> Even without Tailwind you still want a single sheet loaded above the router's swap boundary, for the reason in the section above: a per-page <code>&lt;style&gt;</code> is inserted and removed on every navigation and invalidates style document-wide. So the wrapper scoping and the single sheet work together, one file with a block per scope:</p>
+
+    <pre>/* public/app.css, linked once from app/layout.ts. One block per scope,
+   the same wrapper names the pages and layouts render. */
+.page-dashboard &#123;
+  .actions     &#123; display: flex; gap: 12px; &#125;
+  .btn         &#123; padding: 12px 24px; border-radius: 999px; &#125;
+  .btn-primary &#123; background: var(--primary); color: var(--primary-foreground); &#125;
+&#125;
+.layout-admin &#123;
+  .sidebar &#123; width: 240px; &#125;
+&#125;</pre>
 
     <h3>Page scope</h3>
-    <pre>// app/dashboard/page.ts
-import { html, css } from '@webjsdev/core';
-
-const STYLES = css\`
-  .page-dashboard {
-    .actions     { display: flex; gap: 12px; }
-    .btn         { padding: 12px 24px; border-radius: 999px; }
-    .btn-primary { background: var(--primary); color: var(--primary-foreground); }
-  }
-\`;
+    <pre>// app/dashboard/page.ts, no &lt;style&gt;: the rules live in public/app.css
+import { html } from '@webjsdev/core';
 
 export default function Dashboard() {
   return html\`
-    &lt;style&gt;\${STYLES.text}&lt;/style&gt;
     &lt;div class="page-dashboard"&gt;
       &lt;div class="actions"&gt;
         &lt;a class="btn btn-primary" href="/new"&gt;+ New&lt;/a&gt;
@@ -263,21 +301,15 @@ export default function Dashboard() {
 }</pre>
 
     <h3>Layout scope</h3>
+    <p>The root layout is the one place that links the sheet. It is also the one layout rendered <em>outside</em> every swap boundary, so if you do need an inline <code>&lt;style&gt;</code> (token values that must resolve with JS off), this is where it goes. A <strong>nested</strong> layout must not carry one.</p>
     <pre>// app/layout.ts
-import { html, css } from '@webjsdev/core';
-
-const STYLES = css\`
-  .layout-root {
-    .header { position: fixed; inset-inline: 0; top: 0; } /* fixed, NOT sticky (see note) */
-    .nav    { display: flex; gap: 16px; }
-  }
-\`;
+import { html } from '@webjsdev/core';
 
 export default function RootLayout({ children }: { children: unknown }) {
   return html\`
-    &lt;style&gt;\${STYLES.text}&lt;/style&gt;
+    &lt;link rel="stylesheet" href="/public/app.css"&gt;
     &lt;div class="layout-root"&gt;
-      &lt;header class="header"&gt;
+      &lt;header class="header"&gt;   &lt;!-- fixed, NOT sticky (see note) --&gt;
         &lt;nav class="nav"&gt;…&lt;/nav&gt;
       &lt;/header&gt;
       &lt;main&gt;\${children}&lt;/main&gt;
@@ -288,20 +320,18 @@ export default function RootLayout({ children }: { children: unknown }) {
     <p><strong>Pin a header with <code>position: fixed</code>, never <code>position: sticky</code>.</strong> A sticky header flickers its background for one frame on iOS WebKit (every iOS browser) during a client-router navigation: the preserved header plus the scroll-to-top trips a WebKit sticky-repaint bug, and the GPU-promotion hacks (<code>translateZ</code>, <code>will-change</code>) do not fix it. Use <code>position: fixed</code> and reserve the header height on the content with a <code>--header-height</code> CSS variable (kept exact by a <code>ResizeObserver</code>). It is iOS-only and invisible on desktop, Android, and in DevTools emulation, so it shows only on a real device.</p>
 
     <h3>Component scope</h3>
+    <p>A light-DOM component's rules go in the same sheet, keyed by its tag name (already unique, via <code>customElements.define</code>). A component must <strong>not</strong> interpolate into its own <code>&lt;style&gt;</code>: it hydrates, and the client renderer drops a raw-text hole, so the block paints at SSR and then wipes to empty. <code>webjs check</code> flags that as <code>no-interpolation-in-raw-text-element</code>. For truly scoped CSS, opt into shadow DOM and use <code>static styles</code> instead.</p>
+    <pre>/* public/app.css */
+my-card &#123;
+  .body  &#123; padding: 16px; border: 1px solid var(--border); &#125;
+  .title &#123; font-weight: 600; &#125;
+&#125;</pre>
     <pre>// components/my-card.ts
-import { WebComponent, html, css } from '@webjsdev/core';
-
-const STYLES = css\`
-  my-card {
-    .body  { padding: 16px; border: 1px solid var(--border); }
-    .title { font-weight: 600; }
-  }
-\`;
+import { WebComponent, html } from '@webjsdev/core';
 
 export class MyCard extends WebComponent {
   render() {
     return html\`
-      &lt;style&gt;\${STYLES.text}&lt;/style&gt;
       &lt;div class="body"&gt;
         &lt;h3 class="title"&gt;\${this.title}&lt;/h3&gt;
       &lt;/div&gt;
@@ -317,7 +347,7 @@ MyCard.register('my-card');</pre>
     <ul>
       <li><strong>More per-file CSS to write</strong>: no utility ecosystem.</li>
       <li><strong>Wrapper discipline</strong>: every page and every layout remembers to wrap.</li>
-      <li><strong>Rename cost</strong>: moving <code>app/dashboard/</code> → <code>app/admin/</code> is 2 textual edits in one file: the <code>.page-dashboard</code> selector in the <code>css\`…\`</code> block and the matching <code>class="page-dashboard"</code> on the wrapper div.</li>
+      <li><strong>Rename cost</strong>: moving <code>app/dashboard/</code> → <code>app/admin/</code> is 2 textual edits: the <code>.page-dashboard</code> selector in the stylesheet and the matching <code>class="page-dashboard"</code> on the wrapper div.</li>
     </ul>
     <p>You get in return: no browser-runtime script, no <code>@theme</code> block, idiomatic CSS you can debug with plain DevTools, and a cascade that works exactly the way you read it.</p>
 

@@ -114,6 +114,7 @@ class Panel extends WebComponent({ label: String }) {
 
 - A light-DOM component authoring custom CSS MUST prefix every class selector with its tag name (`.my-card__body` or `my-card .body`). Prefer Tailwind, unique by construction. `static styles` on a light-DOM component is silently ignored.
 - **Never interpolate into a component's `<style>` or `<script>` body** (`html\`<style>${x}</style>\``). The server emits it but the client drops the raw-text hole, so it paints then wipes to empty on hydrate (flagged by `no-interpolation-in-raw-text-element`). Use `static styles` or Tailwind.
+- A page or layout never hydrates, so the rule above does not apply to it, but **a page or NON-ROOT-layout `<style>` still costs on every navigation**. It renders inside the client router's swap boundary, so crossing in or out of that route removes a stylesheet and inserts another, and a CSSOM mutation invalidates style document-wide (a preserved fixed header repaints). Put STATIC rules in the compiled stylesheet. See `styling.md`.
 - Light-DOM hosts are marked `display: block` via one low-priority `@layer webjs-host` rule (overridable by any Tailwind utility). Shadow hosts are NOT marked; set `:host { display: block }` in `static styles`. Size the HOST (put `w-full max-w-[...]` on the render root), not only an inner wrapper. See `styling.md`.
 
 ## Slots
