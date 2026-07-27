@@ -274,18 +274,17 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
          attribute the way it did when each element carried its own handler. -->
     <div class="docs-backdrop"></div>
 
-    <!-- 1200 / 800, the measure the documentation used on its own domain
-         before #1101 moved it here and widened it to 1240 / 820. A reference
-         page is read line by line, and 800px is the comfortable ceiling for
-         that; the extra 20px bought nothing.
+    <!-- The OUTER container matches the shared header (max-w-[1240px] mx-auto
+         px-6) so the sidebar's left edge sits flush under the wordmark above
+         it, while the CONTENT column below is capped independently at 800px.
+         The two are separate decisions and worth keeping separate: alignment
+         is a property of the page frame, and 800px is the comfortable ceiling
+         for a reference page read line by line. #1101 moved both to 1240/820
+         together, which fixed neither.
 
-         Note this is 40px narrower than the shared header's own
-         max-w-[1240px] container, so the sidebar's left edge sits 20px inside
-         the wordmark above it rather than flush with it. That is a deliberate
-         trade: the reading measure wins over the alignment. Narrow the header
-         to match if the offset ever reads as an accident rather than a
-         choice. -->
-    <div class="max-w-[1200px] mx-auto px-6 grid grid-cols-[248px_1fr] gap-10 min-h-screen max-[860px]:grid-cols-1 max-[860px]:gap-0">
+         The slack lands as extra space between the sidebar and the text
+         rather than as a longer line, which is the trade being made here. -->
+    <div class="max-w-[1240px] mx-auto px-6 grid grid-cols-[248px_1fr] gap-10 min-h-screen max-[860px]:grid-cols-1 max-[860px]:gap-0">
       <aside
         id="docs-sidebar"
         class="docs-sidebar flex flex-col py-10 text-sm max-[860px]:px-5"
