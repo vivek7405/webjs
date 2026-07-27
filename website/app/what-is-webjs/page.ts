@@ -230,9 +230,9 @@ export default function WhatIsWebJs() {
         </p>
         <p class="text-[1.05rem] leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
           WebJs serves your source to the browser exactly as you wrote it, so the code you read
-          is the code that runs. The framework itself ships the same way: plain JavaScript with
-          JSDoc, sitting in node_modules/@webjsdev of every WebJs app, where what you read is
-          what runs. An AI agent can open the router, the renderer, or the serializer it is
+          is the code that runs. The framework itself ships the same way, as plain JavaScript
+          with JSDoc sitting in node_modules/@webjsdev of every WebJs app, where what you read
+          is what runs. An AI agent can open the router, the renderer, or the serializer it is
           about to call and read the actual code, instead of reasoning about a minified bundle
           from training data. No other full-stack JavaScript framework hands an agent its entire
           running source, and that grounding is what lets even smaller models produce quality

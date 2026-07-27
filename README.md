@@ -10,8 +10,8 @@ components.** It server-renders every page and component to real HTML,
 needs no build step or bundler, and runs on Node 24+ or Bun.
 
 WebJs serves your source to the browser exactly as you wrote it, so the code
-you read is the code that runs. The framework itself ships the same way:
-plain JavaScript with JSDoc, sitting in `node_modules/@webjsdev` of every
+you read is the code that runs. The framework itself ships the same way, as
+plain JavaScript with JSDoc sitting in `node_modules/@webjsdev` of every
 WebJs app, where what you read is what runs. An AI agent can open the router,
 the renderer, or the serializer it is about to call and read the actual code,
 instead of reasoning about a minified bundle from training data. No other
