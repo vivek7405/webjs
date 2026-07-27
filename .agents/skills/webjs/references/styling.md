@@ -223,7 +223,12 @@ A transparent border rather than `padding-right`, for two reasons. It composes w
 
 The property is only set while a lock is active AND the viewport actually widened, so the `0px` fallback covers every other moment and the two mechanisms never double-compensate. If you find inline `padding-right` on your `<html>` while a modal is open, that is this, and it comes off on close.
 
-Put the declaration on the element that is actually off-centre, not necessarily the fixed one. If your fixed wrapper paints nothing and a child carries the background, insetting the wrapper insets that child too; put it on the inner centring container instead. Both shapes ship in this repo: `examples/blog` puts it straight on the fixed header, which paints its own chrome, and `website` puts it on the centring bar inside a wrapper that paints nothing.
+**Put it on the element that is both viewport-width and painting.** Both halves are load-bearing, and getting either wrong fails quietly.
+
+- **Viewport-width**, or a left-aligned child still moves. Insetting a `max-width` container holds its CENTRED children still but not its leading ones, because the container's own box is not what widened. This is easy to miss: measure a left-aligned child, not just a centred one.
+- **Painting**, or the background stops short of the widened edge. Insetting a wrapper that paints nothing insets the child that does, which leaves an unpainted strip.
+
+In this repo `examples/blog` has one element that is both (the fixed header paints its own chrome, so the border goes straight on it), and `website` has a non-painting fixed wrapper around a painting header around a centring bar, where the header is the one that qualifies.
 
 Rolling your own scroll lock? Three things the kit learned the hard way, and the first is that almost every implementation of this (including Next's own dev overlay and Radix) gets the fixed case wrong by design.
 

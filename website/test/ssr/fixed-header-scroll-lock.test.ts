@@ -13,13 +13,18 @@
  * come back silently on WebKit with every existing test still green. These
  * assertions are what make that fail instead.
  *
- * Two properties, and the second is the one that is easy to get wrong. The
- * compensation must sit on the CENTRING BAR, not on the fixed `.site-top`
- * wrapper: the wrapper paints nothing, so insetting it insets the header element
- * that carries the background and bottom border and leaves an unpainted strip at
- * the top right. Verified in Chromium with the property forced to 15px: on the
- * wrapper the painted chrome ends 15px early, on the bar it stays full bleed at
- * 1265 while the nav centre moves the compensating 7.5px.
+ * Placement is the part that is easy to get wrong, and it took two attempts. The
+ * target must be BOTH viewport-width and painting. Viewport-width, or a
+ * left-aligned child still moves (the centring bar is capped by max-width, so
+ * insetting it held the centred nav and left the logo shifting the full amount).
+ * Painting, or the background stops short of the widened edge (`.site-top` paints
+ * nothing, so insetting it truncates the header that does). `.site-top > header`
+ * is the only element here that is both.
+ *
+ * Measured on Chromium at a 1400px viewport with a 15px scrollbar and the gutter
+ * suppressed to emulate WebKit: logo 0.0, nav 0.0, chrome spanning 0..1400. The
+ * earlier check missed this by forcing the property while the scrollbar was still
+ * present, so the viewport never widened and only half the effect was visible.
  */
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -48,22 +53,28 @@ test('the header opts into the scroll-lock compensation', () => {
   );
 });
 
-test('the compensation targets the centring bar, not the fixed wrapper', () => {
-  // The rule must select the bar. Insetting `.site-top` would inset the header
-  // element that paints the background and bottom border, leaving an unpainted
-  // strip at the top right for as long as a dialog is open.
-  const rule = new RegExp(`\\.site-bar\\s*\\{[^}]*var\\(${COMPENSATION}`);
-  assert.ok(rule.test(body), 'a .site-bar rule consumes the compensation');
-  assert.equal(
-    new RegExp(`\\.site-top\\s*\\{[^}]*var\\(${COMPENSATION}`).test(body),
-    false,
-    'the fixed wrapper must NOT be the one inset',
+test('the compensation targets the header, not the wrapper or the centring bar', () => {
+  // The target has to be BOTH viewport-width and painting.
+  //
+  // Viewport-width, or a left-aligned child still moves: the centring bar is
+  // capped by max-width, so insetting it held the centred nav still while the
+  // logo kept shifting the full scrollbar width. Measured at a 1400px viewport,
+  // logo +7.5px with the bar, 0.0px with the header.
+  //
+  // Painting, or the background stops short of the widened edge: `.site-top`
+  // paints nothing, so insetting IT insets the header that carries the
+  // background and border, leaving an unpainted strip at the top right.
+  assert.ok(
+    new RegExp(`\\.site-top\\s*>\\s*header\\s*\\{[^}]*var\\(${COMPENSATION}`).test(body),
+    'a `.site-top > header` rule consumes the compensation',
   );
-
-  const start = body.indexOf('<div class="site-top');
-  assert.ok(start >= 0, 'the fixed header wrapper is present');
-  const bar = body.indexOf('class="site-bar', start);
-  assert.ok(bar > start, 'the centring bar inside the header carries the site-bar hook');
+  for (const wrong of ['\\.site-top', '\\.site-bar']) {
+    assert.equal(
+      new RegExp(`${wrong}\\s*\\{[^}]*var\\(${COMPENSATION}`).test(body),
+      false,
+      `${wrong.replace('\\', '')} must not be the element inset`,
+    );
+  }
 });
 
 test('the compensation resolves to zero when no lock is active', () => {

@@ -196,12 +196,22 @@ async function buildFixedHeaderPage(rootStyles = {}) {
   flow.style.cssText = 'max-width:400px;margin:0 auto;height:20px;';
   document.body.appendChild(flow);
 
+  // The opt-in is the shape every doc surface prescribes: a transparent right
+  // border on the element that is both viewport-width and painting. Padding was
+  // the earlier form and is deliberately NOT what is asserted here.
   const header = document.createElement('div');
   header.style.cssText =
-    'position:fixed;top:0;left:0;right:0;height:40px;' +
-    'padding-right:var(--wj-scrollbar-compensation, 0px);';
+    'position:fixed;top:0;left:0;right:0;height:40px;background:#345;' +
+    'border-right:var(--wj-scrollbar-compensation, 0px) solid transparent;';
+  // A centred child AND a left-aligned one. They move for different reasons, and
+  // measuring only the centred one is how a wrong placement passed review: the
+  // website opt-in sat on a max-width bar, which held the centred nav still while
+  // the left-aligned logo kept shifting the full scrollbar width.
   const inner = document.createElement('div');
   inner.style.cssText = 'max-width:400px;margin:0 auto;height:40px;';
+  const leading = document.createElement('div');
+  leading.style.cssText = 'position:absolute;left:0;top:0;width:20px;height:40px;';
+  header.appendChild(leading);
   header.appendChild(inner);
   document.body.appendChild(header);
 
@@ -224,6 +234,7 @@ async function buildFixedHeaderPage(rootStyles = {}) {
   return {
     header,
     inner,
+    leading,
     flow,
     /** Track a mounted root so teardown can unmount it even after a failure. */
     track(root) {
@@ -251,7 +262,11 @@ async function buildFixedHeaderPage(rootStyles = {}) {
   };
 }
 
-const centreOf = (el) => Math.round(el.getBoundingClientRect().left * 100) / 100;
+const centreOf = (el) => {
+  const b = el.getBoundingClientRect();
+  return Math.round((b.left + b.width / 2) * 100) / 100;
+};
+const rightEdgeOf = (el) => Math.round(el.getBoundingClientRect().right * 100) / 100;
 
 suite('ui-dialog scroll lock layout', () => {
   suiteSetup(async () => {
@@ -271,18 +286,38 @@ suite('ui-dialog scroll lock layout', () => {
       const dialog = root.querySelector('ui-dialog');
 
       const fixedBefore = centreOf(page.inner);
+      const leadingBefore = centreOf(page.leading);
       const flowBefore = centreOf(page.flow);
+      const chromeBefore = rightEdgeOf(page.header);
+      assert.equal(chromeBefore, rightEdgeOf(document.documentElement), 'chrome starts full width');
 
       dialog.show();
       await tick();
       assert.equal(document.body.style.overflow, 'hidden', 'the lock engaged');
 
-      assert.equal(centreOf(page.inner), fixedBefore, 'fixed header content does not move on open');
+      assert.equal(centreOf(page.inner), fixedBefore, 'centred header content does not move on open');
+      assert.equal(
+        centreOf(page.leading),
+        leadingBefore,
+        'left-aligned header content does not move on open either',
+      );
       assert.equal(centreOf(page.flow), flowBefore, 'in-flow content does not move on open');
+      // The chrome must still reach the edge of the initial containing block. An
+      // opt-in that holds the content by shrinking the PAINTED box would satisfy
+      // the assertions above and leave an unpainted strip. Compared against the
+      // root's own box, which tracks the ICB, so this holds on both paths: where
+      // the gutter is reserved nothing moved at all, and where it is not, both
+      // edges grew together.
+      assert.equal(
+        rightEdgeOf(page.header),
+        rightEdgeOf(document.documentElement),
+        'the painted chrome still spans the full viewport',
+      );
 
       dialog.hide();
       await tick();
-      assert.equal(centreOf(page.inner), fixedBefore, 'fixed header content does not move on close');
+      assert.equal(centreOf(page.inner), fixedBefore, 'centred header content does not move on close');
+      assert.equal(centreOf(page.leading), leadingBefore, 'left-aligned content does not move on close');
     } finally {
       await page.teardown();
     }

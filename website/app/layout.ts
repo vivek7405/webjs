@@ -311,15 +311,20 @@ export default function RootLayout({ children }: { children: unknown }) {
       /* #1144: while a modal holds the page scroll lock, an engine that ignores
          scrollbar-gutter widens the viewport, and .site-top is position: fixed so
          it lays out against the viewport and cannot be reached by the padding
-         that holds in-flow content still. The opt-in goes on the CENTRING BAR,
-         not on .site-top: the wrapper paints nothing, so insetting it would inset
-         the header element that carries the background and bottom border and
-         leave an unpainted strip at the top right. A transparent right border on
-         the bar composes with its existing px-6 (a padding-right would have to
-         restate that value) and resolves to 0px at every other moment. Declared
-         after the Tailwind link above, so it wins the border-right-color the
-         border-* utilities also set. */
-      .site-bar { border-right: var(--wj-scrollbar-compensation, 0px) solid transparent; }
+         that holds in-flow content still. The opt-in goes on the HEADER, which is
+         the element that is both viewport-width and painting. Both properties are
+         load-bearing. Viewport-width means insetting its content box undoes the
+         widening exactly, for left-aligned children as much as centred ones (the
+         centring bar is capped by max-width, so insetting THAT moved the nav but
+         left the logo shifting the full amount). Painting means the background
+         still covers the inset, since backgrounds fill the border box, so the
+         chrome stays edge to edge. Measured at a 1400px viewport with a 15px
+         scrollbar and the gutter suppressed: logo 0.0, nav 0.0, chrome 0..1400.
+         A transparent border rather than padding-right, because it composes with
+         whatever padding is already there instead of restating it. The child
+         selector outranks the border-* utilities that also set
+         border-right-color, so cascade order does not matter. */
+      .site-top > header { border-right: var(--wj-scrollbar-compensation, 0px) solid transparent; }
       .glow-layer { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
       .glow-layer::before {
         content: ''; position: absolute; inset: 0;
@@ -359,7 +364,7 @@ export default function RootLayout({ children }: { children: unknown }) {
 
     <div class="site-top fixed inset-x-0 top-0 z-20">
     <header class="backdrop-blur-md bg-[color-mix(in_oklch,var(--color-bg)_78%,transparent)] border-b border-border">
-      <div class="site-bar max-w-[1240px] mx-auto px-6 py-[11px] flex items-center justify-between gap-4">
+      <div class="max-w-[1240px] mx-auto px-6 py-[11px] flex items-center justify-between gap-4">
         <a class="inline-flex items-center gap-[9px] no-underline text-fg font-display font-extrabold text-[17px] leading-none tracking-[-0.02em] shrink-0" href="/">
           <span class="w-[22px] h-[22px] rounded-[7px] bg-gradient-to-br from-[var(--logo-from)] to-[var(--logo-to)] shadow-[0_2px_10px_var(--accent-tint)]"></span>
           webjs

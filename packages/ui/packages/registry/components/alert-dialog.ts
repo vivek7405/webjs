@@ -303,10 +303,21 @@ export class UiAlertDialog extends WebComponent({
   }
 
   _setup(): void {
+    // A detached element must not lock: `updated()` defers this to a microtask,
+    // and a removal in between already ran _teardown() as a no-op, so locking
+    // here would never be released (nothing disconnects twice).
+    if (!this.isConnected) return;
     const content = this._content;
     if (!content) return;
-    lockScroll();
-    this._scrollLocked = true;
+    // Idempotent, because the count is an integer and the flag is a boolean. A
+    // coalesced hide() then show() in one task produces ONE update whose
+    // changedProperties still reports open, so _setup() can run twice with no
+    // _teardown() between; double-counting there would leave the page locked for
+    // the rest of the session.
+    if (!this._scrollLocked) {
+      lockScroll();
+      this._scrollLocked = true;
+    }
     content.showModal();
   }
 
