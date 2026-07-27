@@ -309,9 +309,15 @@ when the caller passes an explicit custom `--registry <url>`.
    reference, not specification, so a variant here may render differently
    where this kit has a reason. Treating the class strings as authoritative
    is the mistake this note exists to prevent. The deliberate divergences so
-   far: the accordion trigger tints on hover instead of underlining (#1137),
-   and the destructive fill carries `text-destructive-foreground` at full
-   opacity instead of `text-white` plus `dark:bg-destructive/60` (#1138).
+   far:
+
+   - The accordion trigger tints on hover instead of underlining (#1137).
+   - The destructive fill carries `text-destructive-foreground` at full
+     opacity instead of `text-white` plus `dark:bg-destructive/60` (#1138).
+   - The destructive dropdown-menu item's dark hover tint is `/15` rather
+     than `/20`, because the item's own red text sits on that tint and `/20`
+     fails AA under theme-stone's lighter popover (#1138).
+
    Record any new one here, and keep the reason at the call site.
 
 6. **Native form controls participate in `<form>` submission natively.**

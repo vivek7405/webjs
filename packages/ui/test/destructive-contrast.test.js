@@ -19,10 +19,13 @@
  * OKLab to sRGB) and asserts the WCAG ratio for every pairing a shipped
  * component renders, including the translucent composites.
  *
- * The margins are not all comfortable. The destructive dropdown-menu item on
- * its dark hover tint sits at 4.62:1, so a lightness nudge of a couple of
- * hundredths drops it below AA. That pairing is the reason this test computes
- * composites rather than only checking the flat colours.
+ * The margins are not all comfortable, and the tightest one is not on the
+ * component you would guess. The destructive dropdown-menu item's own red text
+ * sits ON its hover tint, and under theme-stone's lighter popover that pairing
+ * is the first to fail: at shadcn's dark /20 tint it measures 4.47:1. The tint
+ * is /15 here for that reason. It is also why this test composites the
+ * translucent layers instead of only checking the flat colours, and why it
+ * runs every base colour rather than trusting neutral to represent them.
  *
  * A failure here is a real accessibility regression, not a style opinion.
  * Retune the token rather than lowering the threshold.
@@ -134,9 +137,11 @@ function palette(mode, overrides = {}) {
 function pairings(p) {
   const hoverFill = over(p.destructive, p.card, 0.9);
   const alertDescription = over(p.destructive, p.card, 0.9);
-  // dropdown-menu.ts tints the hovered destructive item at /10, doubled to /20
-  // in dark because the tint has to read against a much darker popover.
-  const menuTint = over(p.destructive, p.popover, p.mode === 'dark' ? 0.2 : 0.1);
+  // dropdown-menu.ts tints the hovered destructive item at /10, raised in dark
+  // because the tint has to read against a much darker popover. shadcn ships
+  // /20 there; this kit runs /15, because the item's own red text sits ON that
+  // tint and /20 takes it to 4.47:1 under theme-stone's lighter popover.
+  const menuTint = over(p.destructive, p.popover, p.mode === 'dark' ? 0.15 : 0.1);
   return [
     ['fill behind its foreground (button, badge rest)', p.destructiveForeground, p.destructive],
     ['hover fill behind its foreground (button, badge hover)', p.destructiveForeground, hoverFill],
