@@ -23,10 +23,11 @@ Code, Cursor, Copilot, Gemini, and opencode all read from one source.
 
 It gives you file-based routing, server actions with real end-to-end types,
 sessions, authentication, caching, rate limiting, WebSockets, and a database
-layer in the box. `cache()` for queries, HTTP Cache-Control for pages, a
-Session class with SessionStorage, NextAuth-style auth with providers, and
-WebSocket broadcast all share one pluggable store, so a single `setStore()`
-call moves them onto Redis with no config files in between.
+layer in the box. `cache()` for queries, HTTP Cache-Control for pages and for
+cached GET server actions, a Session class with SessionStorage, NextAuth-style
+auth with providers, and WebSocket broadcast all share one pluggable store, so
+a single `setStore()` call moves them onto Redis with no config files in
+between.
 
 ```sh
 npm create webjs@latest my-app
