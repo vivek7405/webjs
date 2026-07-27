@@ -19,6 +19,11 @@
         "source": "/why",
         "destination": "/why-webjs",
         "permanent": true
+      },
+      {
+        "source": "/docs/ui",
+        "destination": "/ui",
+        "permanent": true
       }
     ],
     "dev": {

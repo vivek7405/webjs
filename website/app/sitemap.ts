@@ -3,6 +3,7 @@ import { listComparisons } from '#modules/compare/queries/list-comparisons.serve
 import { listArticles } from '#modules/articles/queries/list-articles.server.ts';
 import { listPosts } from '#modules/blog/queries/list-posts.server.ts';
 import { getDocPages } from '#lib/docs-llms.server.ts';
+import { loadRegistryIndex } from '#modules/ui/queries/registry.server.ts';
 
 /**
  * /sitemap.xml
@@ -23,11 +24,12 @@ import { getDocPages } from '#lib/docs-llms.server.ts';
 const SITE_URL = ((globalThis as any).process?.env?.SITE_URL || 'https://webjs.dev').replace(/\/$/, '');
 
 export default async function Sitemap() {
-  const [comparisons, articles, posts, docPages] = await Promise.all([
+  const [comparisons, articles, posts, docPages, registry] = await Promise.all([
     listComparisons(),
     listArticles(),
     listPosts(),
     getDocPages(),
+    loadRegistryIndex(),
   ]);
 
   // `/what-is-webjs` is a primary page, not a hub, so it carries a priority
@@ -36,7 +38,7 @@ export default async function Sitemap() {
   // that happen to share the name.
   const PRIORITY: Record<string, number> = { '/': 1.0, '/what-is-webjs': 0.9 };
 
-  const staticRoutes = ['/', '/what-is-webjs', '/blog', '/articles', '/compare', '/why-webjs', '/changelog'].map((path) => ({
+  const staticRoutes = ['/', '/what-is-webjs', '/blog', '/articles', '/compare', '/why-webjs', '/changelog', '/ui'].map((path) => ({
     url: `${SITE_URL}${path}`,
     changeFrequency: 'weekly' as const,
     priority: PRIORITY[path] ?? 0.7,
@@ -50,6 +52,22 @@ export default async function Sitemap() {
     changeFrequency: 'weekly' as const,
     priority: p.slug === 'getting-started' ? 0.9 : 0.8,
   }));
+
+  // One entry per component in the gallery, enumerated from the live registry
+  // index rather than a hardcoded list, so a component added to
+  // packages/ui/packages/registry is crawlable the moment it exists. Only
+  // `registry:ui` items have a page; themes and lib items are registry
+  // artifacts with nothing to render (and /ui/<theme> deliberately 404s).
+  //
+  // ui.webjs.dev served no sitemap at all, which is a large part of why moving
+  // the gallery was cheap: there was almost nothing indexed to lose.
+  const uiRoutes = registry
+    .filter((item) => item.type === 'registry:ui')
+    .map((item) => ({
+      url: `${SITE_URL}/ui/${item.name}`,
+      changeFrequency: 'monthly' as const,
+      priority: 0.7,
+    }));
 
   const compareRoutes = comparisons.map((c) => ({
     url: `${SITE_URL}/compare/${c.slug}`,
@@ -72,5 +90,5 @@ export default async function Sitemap() {
     priority: 0.6,
   }));
 
-  return sitemap([...staticRoutes, ...docRoutes, ...compareRoutes, ...articleRoutes, ...blogRoutes]);
+  return sitemap([...staticRoutes, ...docRoutes, ...uiRoutes, ...compareRoutes, ...articleRoutes, ...blogRoutes]);
 }

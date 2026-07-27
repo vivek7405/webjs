@@ -75,9 +75,16 @@ const NAV_SECTIONS = [
     ],
   },
   {
+    // The component library is its own section at /ui, with the same shell as
+    // these pages (see lib/docs-shell.ts). This entry is a cross-link out of
+    // the docs rather than a doc page: /docs/ui used to hold a second,
+    // hand-written description of the kit that had drifted badly (it
+    // advertised roughly 55 components against an actual 32 and showed a
+    // <ui-button> API the kit does not have), so it is gone and its URL
+    // permanently redirects to /ui.
     title: 'Component Library',
     items: [
-      { href: '/docs/ui', label: '@webjsdev/ui (AI-first)' },
+      { href: '/ui', label: '@webjsdev/ui (AI-first)' },
     ],
   },
   {
