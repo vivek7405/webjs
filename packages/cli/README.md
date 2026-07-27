@@ -50,7 +50,7 @@ webjs vendor pin [--download]  # pin client deps to a committable importmap (off
 webjs db <generate|migrate|push|studio|seed>   # drizzle-kit passthrough (+ seed)
 
 webjs ui init                  # initialise @webjsdev/ui in this project
-webjs ui add <names...>        # copy components from the registry (https://ui.webjs.dev/registry/<name>.json)
+webjs ui add <names...>        # copy components from the registry (https://webjs.dev/ui/registry/<name>.json)
 webjs ui list                  # list every component available in the registry
 ```
 
@@ -60,7 +60,7 @@ helpers (`buttonClass`, `cardClass`, …) for the visual primitives and a small 
 of stateful custom elements (`<ui-dialog>`, `<ui-tabs>`, `<ui-popover>`) where
 state matters. The package is a hard dependency of `@webjsdev/cli`, so installing
 the CLI gives you `webjs ui` automatically. See
-[https://ui.webjs.dev](https://ui.webjs.dev) for the catalogue.
+[https://webjs.dev/ui](https://webjs.dev/ui) for the catalogue.
 
 ## Scaffolded templates
 

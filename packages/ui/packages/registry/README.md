@@ -5,7 +5,7 @@ Internal: sources for the `@webjsdev/ui` component registry.
 Not published. `registry.json` is the manifest, and the files it points at
 are the source of truth. The website
 ([`@webjsdev/ui-website`](../ui-website)) composes shadcn-compatible JSON on
-demand and serves it at `https://ui.webjs.dev/registry/<name>.json`, which the
+demand and serves it at `https://webjs.dev/ui/registry/<name>.json`, which the
 `@webjsdev/ui` CLI fetches. There is no build step, no generated output, no
 `prestart` hook.
 

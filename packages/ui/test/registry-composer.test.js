@@ -1,6 +1,6 @@
 /**
- * Unit tests for the ui-website's registry composer
- * (`packages/ui/packages/website/app/_lib/registry.server.ts`).
+ * Unit tests for the registry composer
+ * (`website/modules/ui/queries/registry.server.ts`).
  *
  * The composer turns the on-disk registry.json + theme synthesis logic
  * into the JSON the CLI fetches at runtime via /registry/<name>.json.
@@ -8,6 +8,11 @@
  * during merges: a regression in the contract (e.g. a theme dropping
  * out of the index, or the cache returning a stale value) wouldn't
  * surface until production.
+ *
+ * The composer moved out of this package with #1099, when the gallery and
+ * the registry API merged into the marketing site. It still reads the
+ * sources in `packages/ui/packages/registry/`, which is why its tests stay
+ * here next to the registry they describe.
  *
  * Imports the .ts module directly: Node 22+ strips types natively, so
  * no transpile step is needed.
@@ -21,10 +26,12 @@ import { fileURLToPath } from 'node:url';
 const COMPOSER_PATH = join(
   dirname(fileURLToPath(import.meta.url)),
   '..',
-  'packages',
+  '..',
+  '..',
   'website',
-  'app',
-  '_lib',
+  'modules',
+  'ui',
+  'queries',
   'registry.server.ts',
 );
 

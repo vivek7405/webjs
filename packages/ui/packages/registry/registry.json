@@ -1,7 +1,7 @@
 {
   "$schema": "https://ui.webjs.dev/schema/registry.json",
   "name": "@webjsdev/ui",
-  "homepage": "https://ui.webjs.dev",
+  "homepage": "https://webjs.dev/ui",
   "items": [
     {
       "name": "lib-utils",

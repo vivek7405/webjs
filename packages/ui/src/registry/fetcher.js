@@ -4,8 +4,16 @@ import { loadRegistryItem, loadRegistryIndex } from './local.js';
 /**
  * The canonical hosted registry. Local-first resolution applies ONLY for this
  * exact URL: it is the one registry whose sources ship inside the package.
+ *
+ * This moved from `https://ui.webjs.dev/registry` when the gallery merged into
+ * the marketing site (#1099). The OLD URL still works and must keep working
+ * forever, because every already-published version of this package carries it
+ * and cannot be corrected: `ui.webjs.dev` now permanently redirects here, and
+ * `fetch` follows redirects by default (verified against the real published
+ * 0.3.1 and 0.3.8 tarballs before the move). Pointing new releases straight at
+ * the destination just saves them the hop.
  */
-export const HOSTED_REGISTRY_URL = 'https://ui.webjs.dev/registry';
+export const HOSTED_REGISTRY_URL = 'https://webjs.dev/ui/registry';
 
 /**
  * Default registry URL. A `REGISTRY_URL` env var points at a CUSTOM registry,

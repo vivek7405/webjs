@@ -37,7 +37,7 @@
     "url": "git+https://github.com/webjsdev/webjs.git",
     "directory": "packages/ui"
   },
-  "homepage": "https://ui.webjs.dev",
+  "homepage": "https://webjs.dev/ui",
   "bugs": "https://github.com/webjsdev/webjs/issues",
   "license": "MIT",
   "keywords": [
