@@ -164,6 +164,12 @@ export async function ssrPage(route, params, url, opts) {
         frameRes.headers.append('vary', 'X-Webjs-Frame');
         // #1009: a subtree sliced from a REDUCED render inherits its variance.
         if (reduced) frameRes.headers.append('vary', 'X-Webjs-Have');
+        // Today this response is built without page metadata, so it is already
+        // `no-store` and privateFragment is a no-op. Called anyway so the
+        // invariant holds by construction rather than by that coincidence: if
+        // the frame response ever starts carrying the page's cacheControl, it
+        // must not become shared-cacheable.
+        privateFragment(frameRes);
         return frameRes;
       }
     }
@@ -312,7 +318,10 @@ export async function ssrPage(route, params, url, opts) {
     // cache key is unchanged. The internal #241 revalidate cache is already
     // safe by construction: `cacheEligible` excludes any request that carries
     // x-webjs-have, so a reduced body is never stored under the URL-only key.
-    if (reduced) res.headers.append('vary', 'X-Webjs-Have');
+    if (reduced) {
+      res.headers.append('vary', 'X-Webjs-Have');
+      privateFragment(res);
+    }
     // Server HTML cache write (#241). The page opted in via `revalidate`, so
     // FLAG this candidate for the response funnel rather than writing here: the
     // store decision must see the FINAL response (after segment middleware,
@@ -463,6 +472,44 @@ export async function ssrForbidden(route, opts) {
 export async function ssrUnauthorized(route, opts) {
   const html = await ssrBoundaryHtml(nearest(route.unauthorizeds), '401: Unauthorized', opts);
   return htmlResponse(html, 401, opts.req, opts.url);
+}
+
+/**
+ * Downgrade a PARTIAL response so no shared cache can store it (#1140).
+ *
+ * A reduced `X-Webjs-Have` body and a `<webjs-frame>` subtree are sliced by a
+ * REQUEST header, so they are valid only for a client that sent it. Both are
+ * marked `Vary` for that header, but `Vary` is not a guarantee in practice:
+ * Cloudflare honours only `Accept-Encoding` and several other shared caches
+ * are just as selective. Since these responses otherwise inherit the page's
+ * `Cache-Control`, a page that opted into public caching was handing CDNs a
+ * chrome-less fragment under the full page's URL, to be served to whoever
+ * navigated there next. Measured on webjs.dev: 71,759 bytes for the document
+ * versus 47,375 for the fragment, identical `Cache-Control` on both.
+ *
+ * `private` fixes that at the source instead of relying on `Vary` being
+ * respected: no shared cache may store it, while the browser that asked for it
+ * still may. The freshness directives are preserved, so a returning client
+ * keeps whatever reuse the page declared. `Vary` stays too, as belt-and-braces
+ * for caches that do honour it.
+ *
+ * Note this also drops the response out of the conditional-GET funnel, whose
+ * `isCacheable` excludes `private`. That is deliberate: the client router
+ * revalidates its own fetches (#1131) and dedupes through its snapshot cache,
+ * so a fragment ETag was buying nothing.
+ *
+ * @param {Response} res
+ */
+function privateFragment(res) {
+  const cc = res.headers.get('cache-control') || '';
+  if (/(?:^|,)\s*(?:no-store|private)\s*(?:,|$)/i.test(cc)) return;
+  // Strip the shared-cache directives, keep the client-facing ones.
+  const kept = cc
+    .split(',')
+    .map((d) => d.trim())
+    .filter((d) => d && !/^public$/i.test(d) && !/^s-maxage=/i.test(d) && !/^proxy-revalidate$/i.test(d));
+  kept.unshift('private');
+  res.headers.set('cache-control', kept.join(', '));
 }
 
 /**

@@ -98,6 +98,8 @@ export const metadata = {
 
     <p>That path only works if the page renders the same bytes twice. The ETag is a hash of the response body, so any per-render-varying value anywhere in the document defeats it: a <code>Date.now()</code>, a <code>Math.random()</code>, an id from a module-scope counter (which never resets in a long-lived server), or a CSP nonce, which is why a page under CSP is excluded from the server HTML cache. Nothing errors when this happens. The page renders correctly, every content assertion still passes, and the only symptom is a caching layer that silently never engages, so it is worth a test that renders the page twice, through its layout, and asserts the two outputs are identical.</p>
 
+    <p>A public <code>cacheControl</code> is safe to use behind a CDN. The SSR response carries no <code>Set-Cookie</code> (action CSRF is an Origin / <code>Sec-Fetch-Site</code> check), so there is no per-visitor data to leak into a shared copy. The client router's partial responses are handled for you: a reduced fragment is served <code>private</code> so no shared cache can store it, which holds even on a CDN that ignores <code>Vary</code> (Cloudflare honours only <code>Accept-Encoding</code>). Without that, a CDN could serve a chrome-less fragment to a full-page navigation.</p>
+
     <p>Note that <code>max-age=0</code> is a common default worth thinking about. It keeps the browser revalidating on every view, which is right when deploys must be visible immediately, but it means a stored copy is never reused directly. A small non-zero value is what produces real browser cache hits on back/forward and repeat visits.</p>
 
     <h2>Server HTML Response Cache (export const revalidate)</h2>
