@@ -22,7 +22,7 @@
  * Chrome 120+, Safari 17.2+, Firefox 130+. Migrated from the prior
  * <ui-accordion> custom element set.
  *
- * Design tokens used: --border, --ring, --foreground.
+ * Design tokens used: --border, --ring, --accent, --accent-foreground.
  *
  * @example
  * ```html
@@ -82,11 +82,16 @@ export const accordionTriggerClass = (opts: { disabled?: boolean } = {}): string
   // The -mx-2/px-2 pair keeps the label's left edge aligned with the panel
   // content below (which has no horizontal padding either) while giving the
   // tint breathing room; the tint intentionally extends 8px past the item
-  // dividers, the same look as the webjs.dev docs sidebar links. rounded-md
-  // keeps it from reading as a full-bleed table row, and shapes the focus
-  // ring as a side effect. The label inherits its rest colour, so a wrapper
-  // that sets its own colour keeps it until hover.
-  const base = 'flex w-full cursor-pointer list-none items-center justify-between gap-4 rounded-md -mx-2 px-2 py-4 text-left text-sm font-medium outline-none transition-all hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring/50 marker:hidden [&::-webkit-details-marker]:hidden';
+  // dividers on BOTH sides, the same look as the webjs.dev docs sidebar
+  // links. There is deliberately no w-full here: a summary styled as flex is
+  // a block-level box that already fills its containing block, and width:100%
+  // plus symmetric negative margins is over-constrained, so the browser drops
+  // the end-side margin and the tint bleeds left while stopping short on the
+  // right (mirrored in RTL). rounded-md keeps the tint from reading as a
+  // full-bleed table row, and shapes the focus ring as a side effect. The
+  // label inherits its rest colour, so a wrapper that sets its own colour
+  // keeps it until hover.
+  const base = 'flex cursor-pointer list-none items-center justify-between gap-4 rounded-md -mx-2 px-2 py-4 text-left text-sm font-medium outline-none transition-all hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring/50 marker:hidden [&::-webkit-details-marker]:hidden';
   if (opts.disabled) return `${base} pointer-events-none cursor-not-allowed opacity-50`;
   return base;
 };
