@@ -6,9 +6,9 @@
  * This is the test of record for the whole fix, through the real request
  * pipeline rather than renderToString. It fails on either regression path:
  *
- * - Revert the header to `max-age=0` (or any no-store / private value) and
- *   the max-age assertion fails. Nothing else in the suite reads the header,
- *   so without this a one-line revert of the fix ships green.
+ * - Revert the header to `max-age=0` (or to `no-store`) and the max-age
+ *   assertion fails. Nothing else in the suite reads the header, so without
+ *   this a one-line revert of the fix ships green.
  * - Reintroduce any per-render nondeterminism (the copy-cmd counter class)
  *   and the replay fails: the second render hashes to a different ETag, the
  *   recorded validator no longer matches, and the expected 304 comes back
@@ -41,8 +41,11 @@ for (const route of ['/', '/docs/getting-started']) {
     const maxAge = Number(/(?:^|,)\s*max-age=(\d+)/.exec(cc)?.[1] ?? NaN);
     assert.ok(maxAge > 0,
       `max-age must be positive for the browser to ever reuse a stored copy, got: ${cc}`);
-    assert.ok(!/no-store|private/.test(cc),
-      `a no-store / private value opts the page out of the ETag path entirely, got: ${cc}`);
+    // Only `no-store` opts a page out of the ETag path; `private` is validated
+    // normally (#1140), so asserting against it here would over-constrain the
+    // site (a `private, max-age=60` page would still 304 correctly).
+    assert.ok(!/no-store/.test(cc),
+      `a no-store value opts the page out of the ETag path entirely, got: ${cc}`);
 
     const etag = first.headers.get('etag');
     assert.ok(etag, 'a cacheable 200 carries a validator');

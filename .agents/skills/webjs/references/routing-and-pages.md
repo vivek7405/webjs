@@ -110,7 +110,7 @@ export async function generateMetadata(ctx: MetadataContext): Promise<Metadata> 
 }
 ```
 
-Common fields: `title` (string or `{ template, default, absolute }`), `description`, `keywords`, `metadataBase` (resolves relative URLs in `openGraph` / `twitter` / `alternates` / `icons`), `openGraph`, `twitter`, `robots`, `alternates.canonical`, `icons`, `manifest`, and `jsonLd` (schema.org structured data, single object or array, HTML-safe-escaped automatically). `viewport`, `themeColor`, and `colorScheme` may also be set via a split `export const viewport = { ... }`. `cacheControl` is emitted as a response HEADER (not a `<meta>`); pages default to `no-store`, and a `public` value enables conditional GET (a weak `ETag` + `304`). See https://webjs.dev/docs for the full field list.
+Common fields: `title` (string or `{ template, default, absolute }`), `description`, `keywords`, `metadataBase` (resolves relative URLs in `openGraph` / `twitter` / `alternates` / `icons`), `openGraph`, `twitter`, `robots`, `alternates.canonical`, `icons`, `manifest`, and `jsonLd` (schema.org structured data, single object or array, HTML-safe-escaped automatically). `viewport`, `themeColor`, and `colorScheme` may also be set via a split `export const viewport = { ... }`. `cacheControl` is emitted as a response HEADER (not a `<meta>`); pages default to `no-store`, and any other value enables conditional GET (a weak `ETag` + `304`), `private` included. See https://webjs.dev/docs for the full field list.
 
 ## Control-flow throws
 

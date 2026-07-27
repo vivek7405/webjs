@@ -1045,6 +1045,13 @@ test('ssrPage: a QUALIFIED private is still downgraded on a fragment (#1140)', a
   assert.doesNotMatch(cc, /(^|,)\s*public\s*(,|$)/, `public must be stripped, got: ${cc}`);
   assert.doesNotMatch(cc, /s-maxage/i, `the shared TTL must be stripped, got: ${cc}`);
   assert.match(cc, /(^|,)\s*private\s*(,|$)/, `a bare private must be added, got: ${cc}`);
+  // The qualified form must be REPLACED, not joined by a bare one. A header
+  // carrying `private` twice is ambiguous: a cache resolving the repeat by
+  // last-occurrence reads the qualified form, which leaves the response
+  // shared-storable, which is the hazard this whole change removes.
+  assert.equal((cc.match(/(^|,)\s*private/g) || []).length, 1,
+    `private must appear exactly once, got: ${cc}`);
+  assert.doesNotMatch(cc, /private\s*=/, `the qualified form must not survive, got: ${cc}`);
 });
 
 test('ssrPage: a quoted directive argument survives the downgrade intact (#1140)', async () => {

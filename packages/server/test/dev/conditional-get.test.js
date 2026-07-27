@@ -181,6 +181,21 @@ test('a REDUCED router fragment is private AND still 304s (#1140)', async () => 
   assert.equal(replayBody.length, 0, 'a 304 has no body');
 });
 
+test('privateFragment fails CLOSED when a response carries no Cache-Control (#1140)', async () => {
+  // A response with no Cache-Control is heuristically storable by a shared
+  // cache (RFC 9111), so "no header" is not "nothing to do". Exercised as a
+  // unit because every current caller sets the header, which is exactly why a
+  // future change there could reintroduce a shareable fragment unnoticed.
+  const { privateFragment } = await import('../../src/ssr.js');
+  assert.equal(typeof privateFragment, 'function', 'the helper is exported so this can be tested at all');
+  const res = new Response('x');
+  res.headers.delete('cache-control');
+  assert.equal(res.headers.get('cache-control'), null, 'sanity: the response really has no header');
+  privateFragment(res);
+  assert.match(res.headers.get('cache-control') || '', /(^|,)\s*private\s*(,|$)/,
+    'an absent Cache-Control is replaced with private, not left alone');
+});
+
 /* ---------------- no-store page: no ETag, no 304 ---------------- */
 
 test('a no-store (dynamic / per-user) page gets NO ETag and never 304s', async () => {

@@ -501,9 +501,15 @@ export async function ssrUnauthorized(route, opts) {
  *
  * @param {Response} res
  */
-function privateFragment(res) {
+export function privateFragment(res) {
   const cc = res.headers.get('cache-control') || '';
-  if (!cc) return;
+  // No header at all is not "nothing to do": a response with no Cache-Control
+  // is heuristically storable by a shared cache (RFC 9111), which is precisely
+  // the hazard here. Fail CLOSED.
+  if (!cc) {
+    res.headers.set('cache-control', 'private');
+    return;
+  }
   // Split on commas that are NOT inside a quoted argument: a directive may
   // carry one (`no-cache="Set-Cookie, X-Foo"`, `private="x-user"`), and a naive
   // split tears those apart.
@@ -527,7 +533,11 @@ function privateFragment(res) {
   const isBare = (d) => !d.includes('=');
   if (directives.some((d) => nameOf(d) === 'no-store' || (nameOf(d) === 'private' && isBare(d)))) return;
 
-  const SHARED_ONLY = new Set(['public', 's-maxage', 'proxy-revalidate']);
+  // `private` joins the drop list because a bare one is prepended below: a
+  // qualified `private="x-user"` left in place would emit the directive twice,
+  // and a cache that resolves a repeat by taking the last occurrence would read
+  // the qualified form, which per RFC 9111 leaves the response shared-storable.
+  const SHARED_ONLY = new Set(['public', 's-maxage', 'proxy-revalidate', 'private']);
   const kept = directives.filter((d) => d && !SHARED_ONLY.has(nameOf(d)));
   kept.unshift('private');
   res.headers.set('cache-control', kept.join(', '));
