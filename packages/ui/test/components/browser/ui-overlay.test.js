@@ -178,11 +178,25 @@ async function buildFixedHeaderPage() {
   // the precondition check has to wait or it under-reports the width.
   await tick();
 
+  const mounted = [];
+
   return {
     header,
     inner,
     flow,
+    /** Track a mounted root so teardown can unmount it even after a failure. */
+    track(root) {
+      mounted.push(root);
+      return root;
+    },
     teardown() {
+      // Close every dialog FIRST. An assertion that throws mid-test would
+      // otherwise leave the lock engaged, and the next test would see a page
+      // with no scrollbar and skip itself instead of running.
+      for (const root of mounted) {
+        for (const el of root.querySelectorAll('ui-dialog, ui-alert-dialog')) el.hide?.();
+        root.remove();
+      }
       style.remove();
       spacer.remove();
       flow.remove();
@@ -203,11 +217,11 @@ suite('ui-dialog scroll lock layout', () => {
     try {
       if (scrollbarWidth() === 0) this.skip();
 
-      const root = await mount(html`
+      const root = page.track(await mount(html`
         <ui-dialog>
           <ui-dialog-content><ui-dialog-title>T</ui-dialog-title></ui-dialog-content>
         </ui-dialog>
-      `);
+      `));
       const dialog = root.querySelector('ui-dialog');
 
       const fixedBefore = centreOf(page.inner);
@@ -222,7 +236,6 @@ suite('ui-dialog scroll lock layout', () => {
       dialog.hide();
       await tick();
       assert.equal(centreOf(page.inner), fixedBefore, 'fixed header content does not move on close');
-      root.remove();
     } finally {
       page.teardown();
     }
@@ -233,11 +246,11 @@ suite('ui-dialog scroll lock layout', () => {
     try {
       if (scrollbarWidth() === 0) this.skip();
 
-      const root = await mount(html`
+      const root = page.track(await mount(html`
         <ui-dialog>
           <ui-dialog-content><ui-dialog-title>T</ui-dialog-title></ui-dialog-content>
         </ui-dialog>
-      `);
+      `));
       const dialog = root.querySelector('ui-dialog');
 
       dialog.show();
@@ -253,7 +266,6 @@ suite('ui-dialog scroll lock layout', () => {
         '',
         'compensation custom property cleared',
       );
-      root.remove();
     } finally {
       page.teardown();
     }
@@ -264,14 +276,14 @@ suite('ui-dialog scroll lock layout', () => {
     try {
       if (scrollbarWidth() === 0) this.skip();
 
-      const root = await mount(html`
+      const root = page.track(await mount(html`
         <ui-dialog id="outer">
           <ui-dialog-content><ui-dialog-title>Outer</ui-dialog-title></ui-dialog-content>
         </ui-dialog>
         <ui-dialog id="inner">
           <ui-dialog-content><ui-dialog-title>Inner</ui-dialog-title></ui-dialog-content>
         </ui-dialog>
-      `);
+      `));
       const outer = root.querySelector('#outer');
       const nested = root.querySelector('#inner');
 
@@ -297,7 +309,6 @@ suite('ui-dialog scroll lock layout', () => {
         'compensation released on the outermost close',
       );
       assert.equal(centreOf(page.inner), fixedBefore, 'fixed header back where it started');
-      root.remove();
     } finally {
       page.teardown();
     }
@@ -538,11 +549,11 @@ suite('ui-alert-dialog', () => {
     try {
       if (scrollbarWidth() === 0) this.skip();
 
-      const root = await mount(html`
+      const root = page.track(await mount(html`
         <ui-alert-dialog>
           <ui-alert-dialog-content><ui-alert-dialog-title>T</ui-alert-dialog-title></ui-alert-dialog-content>
         </ui-alert-dialog>
-      `);
+      `));
       const dialog = root.querySelector('ui-alert-dialog');
 
       const fixedBefore = centreOf(page.inner);
@@ -561,7 +572,6 @@ suite('ui-alert-dialog', () => {
         '',
         'compensation released on close',
       );
-      root.remove();
     } finally {
       page.teardown();
     }
