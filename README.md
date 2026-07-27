@@ -1,7 +1,6 @@
 # WebJs
 
-**WebJs is an AI-first, web-components-first framework for building full-stack
-web apps that work before any JavaScript loads.**
+**The web framework for AI agents.**
 
 ## What is WebJs?
 
