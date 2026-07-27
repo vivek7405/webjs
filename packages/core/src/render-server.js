@@ -527,16 +527,25 @@ function inertRanges(html) {
     // closes, the stray `'` is just an attribute-name character.
     let p = lt + 1;
     let quote = '';
-    let prev = '';
+    // `expectValue` is set by `=` and cleared by the first non-whitespace
+    // character after it. Only THAT character can open a quoted value, which is
+    // what the spec does: before-attribute-value reconsumes anything else in
+    // attribute-value-unquoted state. Keying off "the previous character was
+    // `=`" instead re-opens the hole on `<a title==">`, where the `"` is an
+    // ordinary value character; an odd quote count then ran the scan to EOF and
+    // returned one giant inert range, silently disabling this whole fix for the
+    // rest of the page.
+    let expectValue = false;
+    let selfClosing = false;
     while (p < n) {
       const c = html[p];
+      const isSpace = c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
       if (quote) { if (c === quote) quote = ''; }
-      else if ((c === '"' || c === "'") && prev === '=') quote = c;
-      else if (c === '>') { p += 1; break; }
-      // Char compare rather than a regex: this runs per byte of every tag, and
-      // on a Tailwind-default page most bytes ARE tag interior (long class
-      // attributes), so a per-character `RegExp` test dominated the scan cost.
-      if (c !== ' ' && c !== '\t' && c !== '\n' && c !== '\r' && c !== '\f') prev = c;
+      else if (expectValue && !isSpace) {
+        if (c === '"' || c === "'") quote = c;
+        expectValue = false;
+      } else if (c === '>') { selfClosing = html[p - 1] === '/'; p += 1; break; }
+      else if (c === '=') expectValue = true;
       p += 1;
     }
     // The tag's interior is not markup either. A component tag written inside
@@ -548,7 +557,14 @@ function inertRanges(html) {
     i = p;
     const tag = name[1].toLowerCase();
     const isClose = html[lt + 1] === '/';
-    if (!isClose && isTextOnlyTag(tag)) {
+    // A self-closing start tag has no content to skip. In HTML the `/` is
+    // ignored, but in SVG and MathML foreign content it genuinely closes the
+    // element, and `<svg><title/></svg>` otherwise finds no `</title`, runs the
+    // range to EOF, and makes every component in the rest of the document
+    // inert. Honouring `/>` costs only the malformed-HTML case (`<style/>`,
+    // already broken authoring) and fails in the direction where components
+    // keep rendering rather than silently vanishing.
+    if (!isClose && !selfClosing && isTextOnlyTag(tag)) {
       // Everything up to the matching close tag is text, not markup.
       // `<plaintext>` has no end tag at all: the rest of the document is text.
       const close = tag === 'plaintext'

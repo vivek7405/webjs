@@ -315,6 +315,53 @@ test('plaintext runs to the end of the document', async () => {
   assert.ok(!out.includes('RENDERED'), 'nothing after plaintext is instantiated');
 });
 
+test('the <!---> short form closes like a browser closes it', async () => {
+  // comment-start-dash + `>`. Distinct from `<!-->` and separately unpinned:
+  // without its branch the comment never ends and the component vanishes.
+  const out = await renderToString(html`<div><!---><comment-probe></comment-probe></div>`);
+  assert.ok(out.includes('RENDERED'), '<!---> is a complete empty comment');
+});
+
+test('a doubled = does not open a quoted value', async () => {
+  // Per spec the character after `=` is reconsumed in attribute-value-unquoted
+  // state, so in `title==">` the quote is an ordinary value character and the
+  // tag ends at the first `>`. Treating it as a delimiter leaves an odd quote
+  // count, runs the scan to EOF, and silently disables the fix for the rest of
+  // the page. Reachable through unsafeHTML or third-party markup.
+  const out = await renderToString(
+    html`<div>${unsafeHTML('<a title==">go</a>')}<comment-probe></comment-probe></div>`
+  );
+  assert.ok(out.includes('RENDERED'), 'the component after the doubled = still renders');
+});
+
+test('a self-closed text-only tag does not swallow the document', async () => {
+  // In SVG and MathML foreign content a self-closing tag genuinely closes, so
+  // `<svg><title/></svg>` has no `</title` to find. Running the range to EOF
+  // there makes every component in the rest of the document inert.
+  const out = await renderToString(
+    html`<div>${unsafeHTML('<svg><title/></svg>')}<comment-probe></comment-probe></div>`
+  );
+  assert.ok(out.includes('RENDERED'), 'a component after a self-closed title still renders');
+});
+
+test('a close tag is matched on a tag boundary, not a prefix', async () => {
+  // `</styleguide>` is not `</style>`. Without the lookahead the style content
+  // ends early and the component inside it is instantiated.
+  const out = await renderToString(
+    html`<div>${unsafeHTML('<style>/* see </styleguide> */ <comment-probe></comment-probe></style>')}<span>after</span></div>`
+  );
+  assert.ok(!out.includes('RENDERED'), 'a prefix close tag does not end the style');
+  assert.ok(out.includes('<span>after</span>'), 'markup after the style survives');
+});
+
+test('a literal </plaintext> does not resume scanning', async () => {
+  // plaintext has no end tag: a browser reads `</plaintext>` as more text.
+  const out = await renderToString(
+    html`<div>${unsafeHTML('<plaintext>x</plaintext><comment-probe></comment-probe>')}</div>`
+  );
+  assert.ok(!out.includes('RENDERED'), 'nothing after plaintext is instantiated, close tag or not');
+});
+
 test('a markup declaration does not expose the markup after it', async () => {
   // `<![CDATA[ ... ]]>` and `<!x ...>` are bogus comments that run to the next
   // `>`. Without that branch the bytes inside are scanned as markup.
@@ -359,7 +406,9 @@ test('a short-form comment does not swallow the slotted children after it', asyn
   // it runs past a `<!-->` or `--!>` and eats the children, so a slot="head"
   // child is silently routed into the default slot.
   const out = await renderToString(
-    html`<slot-shell><!--><b slot="head">HEAD</b><i>BODY</i></slot-shell>`
+    // `--!>` is the discriminating form: `<!-->` happens to contain `-->`, so a
+    // bare indexOf finds the same end and the test could not fail.
+    html`<slot-shell><!-- note --!><b slot="head">HEAD</b><i>BODY</i></slot-shell>`
   );
   assert.ok(out.includes('HEAD'), 'the named-slot child is still projected');
   assert.ok(!out.includes('NO-HEAD'), 'the named slot did not fall back');
