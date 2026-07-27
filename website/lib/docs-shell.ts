@@ -274,12 +274,18 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
          attribute the way it did when each element carried its own handler. -->
     <div class="docs-backdrop"></div>
 
-    <!-- Same container as the shared header (max-w-[1240px] mx-auto px-6), so
-         the sidebar's left edge lines up with the wordmark above it and the
-         content column lines up with every other page on the site. A
-         full-bleed docs shell was the other tell that this section was pasted
-         in from somewhere else. -->
-    <div class="max-w-[1240px] mx-auto px-6 grid grid-cols-[248px_1fr] gap-10 min-h-screen max-[860px]:grid-cols-1 max-[860px]:gap-0">
+    <!-- 1200 / 800, the measure the documentation used on its own domain
+         before #1101 moved it here and widened it to 1240 / 820. A reference
+         page is read line by line, and 800px is the comfortable ceiling for
+         that; the extra 20px bought nothing.
+
+         Note this is 40px narrower than the shared header's own
+         max-w-[1240px] container, so the sidebar's left edge sits 20px inside
+         the wordmark above it rather than flush with it. That is a deliberate
+         trade: the reading measure wins over the alignment. Narrow the header
+         to match if the offset ever reads as an accident rather than a
+         choice. -->
+    <div class="max-w-[1200px] mx-auto px-6 grid grid-cols-[248px_1fr] gap-10 min-h-screen max-[860px]:grid-cols-1 max-[860px]:gap-0">
       <aside
         id="docs-sidebar"
         class="docs-sidebar flex flex-col py-10 text-sm max-[860px]:px-5"
@@ -305,7 +311,7 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
           `)}
         </nav>
       </aside>
-      <main id="main" tabindex="-1" class="min-w-0 max-w-[820px] pt-10 pb-16 focus:outline-none">
+      <main id="main" tabindex="-1" class="min-w-0 max-w-[800px] pt-10 pb-16 focus:outline-none">
         <button
           class="docs-nav-toggle hidden max-[860px]:inline-flex items-center gap-2 mb-6 px-3 py-2 rounded-lg border border-border bg-bg-elev text-fg-muted text-sm cursor-pointer transition-colors duration-fast hover:text-fg hover:border-border-strong"
           aria-controls="docs-sidebar"
