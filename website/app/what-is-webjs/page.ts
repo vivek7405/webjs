@@ -162,6 +162,10 @@ const PROSE = 'text-fg-muted text-[1.05rem] leading-[1.7] m-0';
 // "and what does it actually give me", in concrete nouns rather than adjectives.
 const CAPABILITIES = [
   {
+    title: 'AI-first, readable end to end',
+    body: 'Predictable file conventions, one server function per file, and an explicit .server.ts boundary keep the context a change needs small, so an agent can edit one route without reading the whole app. Every app ships an AGENTS.md contract that Claude Code, Cursor, Copilot, Gemini, and opencode read from one source, and the framework itself is plain JavaScript with JSDoc in node_modules rather than a compiled bundle.',
+  },
+  {
     title: 'Web components, server-rendered',
     body: 'Components are standard custom elements. Every render() runs on the server, so the initial markup is in the HTTP response before any script loads. Light DOM is the default, so global CSS and Tailwind apply directly, and shadow DOM is one static field away when you want scoped styles.',
   },
@@ -180,10 +184,6 @@ const CAPABILITIES = [
   {
     title: 'TypeScript with nothing to compile',
     body: 'Write .ts files and run them. Types are stripped at request time by Node 24+ or by amaro on Bun, position-preserving and near-zero overhead, so what you read in the editor is what runs in the browser.',
-  },
-  {
-    title: 'AI-first, readable end to end',
-    body: 'Predictable file conventions, one server function per file, and an explicit .server.ts boundary keep the context a change needs small, so an agent can edit one route without reading the whole app. Every app ships an AGENTS.md contract that Claude Code, Cursor, Copilot, Gemini, and opencode read from one source, and the framework itself is plain JavaScript with JSDoc in node_modules rather than a compiled bundle.',
   },
 ];
 
@@ -232,7 +232,9 @@ export default function WhatIsWebJs() {
           You write pages, layouts, and components as plain files. WebJs serves that source to the
           browser exactly as you wrote it, so the code you read is the code that runs. Content reads
           and forms submit before any script loads, and JavaScript is added only where an interaction
-          actually needs it.
+          actually needs it. The same conventions that keep that source readable are what make WebJs
+          AI-first, because a coding agent can change one route without loading the whole codebase
+          into context.
         </p>
         <div class="flex gap-3 justify-center flex-wrap mb-8">
           <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>
