@@ -18,7 +18,7 @@
  * Native <button> focus and keyboard activation are already correct.
  *
  * Design tokens used: --primary, --primary-foreground, --destructive,
- * --secondary, --secondary-foreground, --accent, --accent-foreground,
+ * --destructive-foreground, --secondary, --secondary-foreground, --accent, --accent-foreground,
  * --background, --input, --ring.
  *
  * @example
@@ -44,16 +44,28 @@ const BASE =
 
 const VARIANTS = {
   default: 'bg-primary text-primary-foreground hover:bg-primary/90',
-  // No dark:bg-destructive/60 here, deliberately. shadcn fades the destructive
-  // fill to 60% in dark, which composites to a dusty, washed-out red against a
-  // near-black surface: it reads closer to disabled than to dangerous, and
+  // Two divergences from shadcn here, and they only work together.
+  //
+  // No dark:bg-destructive/60. Fading the fill to 60% composites to a dusty
+  // red against a near-black surface, reading closer to disabled than to
+  // dangerous on the one control that should look most certain, and
   // attenuation is already this kit's DISABLED vocabulary (disabled:opacity-50).
-  // The confirm button for a destructive action is the one control that should
-  // look most certain, so dark uses the full token, which is tuned lighter for
-  // dark backgrounds. Presentation-only divergence; the variant and size names
-  // and the data attributes match shadcn exactly.
+  //
+  // text-destructive-foreground rather than a hardcoded text-white. That is
+  // what makes dropping the fade safe, and it is the whole point. In dark mode
+  // --destructive is a LIGHT red, because it doubles as text-destructive on a
+  // near-black card and has to be legible there. A light red behind white text
+  // is only 2.9:1, so shadcn's fade was quietly doing contrast work, not just
+  // muting the colour: 60% of a light red over near-black composites down to
+  // something white text can sit on. Pairing the fill with its own foreground
+  // token instead lets dark use the full-strength red with DARK text (5.6:1)
+  // while light keeps a deep red with near-white text (5.8:1). One token pair,
+  // both roles, no compositing trick.
+  //
+  // Presentation only; the variant and size names and the data attributes
+  // match shadcn exactly.
   destructive:
-    'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40',
+    'bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40',
   outline:
     'border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50',
   secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
