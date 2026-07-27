@@ -5,8 +5,8 @@ web apps that work before any JavaScript loads.**
 
 ## What is WebJs?
 
-**WebJs is a free, open-source, AI-first full-stack JavaScript web framework
-built on web components.** It server-renders every page and component to real HTML,
+**WebJs is an AI-first full-stack JavaScript web framework built on web
+components.** It server-renders every page and component to real HTML,
 needs no build step or bundler, and runs on Node 24+ or Bun.
 
 You write pages, layouts, and components as plain files. WebJs serves that
