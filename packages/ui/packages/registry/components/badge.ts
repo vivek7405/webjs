@@ -14,7 +14,8 @@
  * or <button>) is focusable, and an icon-only one needs an aria-label.
  *
  * Design tokens used: --primary, --secondary, --destructive,
- * --destructive-foreground, --foreground, --accent, --border, --ring.
+ * --destructive-fill, --destructive-foreground, --foreground, --accent,
+ * --border, --ring.
  *
  * @example
  * ```html
@@ -31,11 +32,11 @@ const BASE =
 const VARIANTS = {
   default: 'bg-primary text-primary-foreground [a&]:hover:bg-primary/90',
   secondary: 'bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90',
-  // Same pairing as the button's destructive variant, which is where the
-  // reasoning lives. Kept in step deliberately: a destructive Badge sitting
-  // next to a destructive Button in one view has to be the same red.
+  // bg-destructive-fill, for the reason documented on the button's destructive
+  // variant. Kept in step deliberately: a destructive Badge sitting next to a
+  // destructive Button in one view has to be the same red.
   destructive:
-    'bg-destructive text-destructive-foreground focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 [a&]:hover:bg-destructive/90',
+    'bg-destructive-fill text-destructive-foreground focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 [a&]:hover:bg-destructive-fill/90',
   outline:
     'border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
   ghost: '[a&]:hover:bg-accent [a&]:hover:text-accent-foreground',

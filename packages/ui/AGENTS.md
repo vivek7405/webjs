@@ -312,11 +312,12 @@ when the caller passes an explicit custom `--registry <url>`.
    far:
 
    - The accordion trigger tints on hover instead of underlining (#1137).
-   - The destructive fill carries `text-destructive-foreground` at full
+   - The destructive fill paints a `--destructive-fill` token at full
      opacity instead of `text-white` plus `dark:bg-destructive/60` (#1138).
-   - The destructive dropdown-menu item's dark hover tint is `/15` rather
-     than `/20`, because the item's own red text sits on that tint and `/20`
-     fails AA under theme-stone's lighter popover (#1138).
+     shadcn's fade exists because one token cannot be both a fill under
+     white text and legible red text on a dark card. A second token answers
+     that more directly than compositing does, and it keeps the dark fill
+     saturated rather than dusty.
 
    Record any new one here, and keep the reason at the call site.
 

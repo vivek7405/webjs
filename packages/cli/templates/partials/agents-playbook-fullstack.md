@@ -34,12 +34,14 @@ Full reference: `.agents/skills/webjs/references/styling.md`.
   and dark modes come from one declaration.
 - Define at least: `--background`, `--foreground`, `--card`, `--primary`,
   `--primary-foreground`, `--secondary`, `--muted`, `--muted-foreground`,
-  `--accent`, `--border`, `--ring`, `--destructive`,
+  `--accent`, `--border`, `--ring`, `--destructive`, `--destructive-fill`,
   `--destructive-foreground`. A filled ui variant pairs `bg-<token>` with
   `text-<token>-foreground`, so every fill token needs its `*-foreground`
   half or that variant's text has no colour to resolve to. Check the pair in
-  both themes, since a fill that flips light to dark between them needs its
-  foreground to flip the other way.
+  both themes. A colour used BOTH as a fill and as text on a surface needs
+  two values rather than one, which is why the destructive red has a
+  separate `--destructive-fill`: error text on a dark card wants a light
+  red, and a fill under white text wants a dark one.
 - Consume colors ONLY as token utilities: `bg-background`, `text-foreground`,
   `bg-card`, `border-border`, `text-primary`, `text-muted-foreground`,
   `bg-destructive`.

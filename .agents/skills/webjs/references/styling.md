@@ -130,7 +130,10 @@ The default stack is a static compiled Tailwind stylesheet (`css:build` compiles
     /* every FILL token needs its foreground pair, and the pair flips per
        theme: a dark fill takes light text, a light one takes dark text */
     --primary-foreground:     light-dark(#ffffff, #191c20);
-    --destructive-foreground: light-dark(#ffffff, #601410);
+    --destructive-foreground: light-dark(#ffffff, #ffffff);
+    /* a red used BOTH as a fill and as error text needs two values: text on
+       a dark card must be light, a fill under white text must be dark */
+    --destructive-fill:       light-dark(#b3261e, #c0202a);
     /* a derived token tracks BOTH themes for free via var(--primary) */
     --primary-tint: color-mix(in srgb, var(--primary) 22%, transparent);
   }
