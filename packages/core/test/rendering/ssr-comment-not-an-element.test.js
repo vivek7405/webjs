@@ -37,6 +37,15 @@ class SlotInComment extends WebComponent {
 }
 SlotInComment.register('slot-in-comment');
 
+// A named slot with a distinguishable fallback, so a child routed into the
+// WRONG slot is visible in the output rather than merely missing.
+class SlotShell extends WebComponent {
+  render() {
+    return html`<div><slot name="head">NO-HEAD</slot><slot></slot></div>`;
+  }
+}
+SlotShell.register('slot-shell');
+
 test('a component tag inside a comment is not instantiated', async () => {
   const out = await renderToString(html`<div><!-- <comment-probe></comment-probe> --></div>`);
   assert.equal(out, '<div><!-- <comment-probe></comment-probe> --></div>');
@@ -234,6 +243,48 @@ test('a slot mentioned in a comment does not consume the authored children', asy
   const out = await renderToString(html`<slot-in-comment><b>kid</b></slot-in-comment>`);
   assert.ok(out.includes('<b>kid</b>'), 'the authored children are still projected');
   assert.ok(out.includes('<p>tail</p>'), 'the rest of the template survives');
+});
+
+test('iframe fallback content is text, not markup', async () => {
+  // Raw text is not just script and style. An <iframe> with fallback markup is
+  // the realistic one, and it hit the identical document-destroying path.
+  const out = await renderToString(
+    html`<div><iframe>see <comment-probe> here</iframe><span>after</span></div>`
+  );
+  assert.ok(!out.includes('RENDERED'), 'a component tag inside an iframe does not render');
+  assert.ok(out.includes('<span>after</span>'), 'markup after the iframe survives');
+});
+
+test('a markup declaration does not expose the markup after it', async () => {
+  // `<![CDATA[ ... ]]>` and `<!x ...>` are bogus comments that run to the next
+  // `>`. Without that branch the bytes inside are scanned as markup.
+  const cdata = await renderToString(
+    html`<div><![CDATA[ <comment-probe> ]]><span>after</span></div>`
+  );
+  assert.ok(!cdata.includes('RENDERED'), 'a tag inside CDATA does not render');
+  assert.ok(cdata.includes('<span>after</span>'), 'markup after it survives');
+});
+
+test('a comment AFTER a real suspense boundary is still mapped correctly', async () => {
+  // Pins the `consumed` offset arithmetic. The suspense scanner computes its
+  // ranges against the full input but walks a shrinking string, so a boundary
+  // consumed earlier has to advance the offset or every later comment is
+  // mis-mapped and its contents run. A commented boundary with no real one
+  // before it only exercises the offset-zero path.
+  const out = await renderToString(html`<div><webjs-suspense>a</webjs-suspense><!-- <webjs-suspense><comment-probe></comment-probe></webjs-suspense> --><span>after</span></div>`);
+  assert.ok(!out.includes('RENDERED'), 'the commented boundary after a real one stays inert');
+  assert.ok(out.includes('<span>after</span>'), 'markup after it survives');
+});
+
+test('a short-form comment does not swallow the slotted children after it', async () => {
+  // Pins the partition scanner sharing endOfComment. With a bare indexOf('-->')
+  // it runs past a `<!-->` or `--!>` and eats the children, so a slot="head"
+  // child is silently routed into the default slot.
+  const out = await renderToString(
+    html`<slot-shell><!--><b slot="head">HEAD</b><i>BODY</i></slot-shell>`
+  );
+  assert.ok(out.includes('HEAD'), 'the named-slot child is still projected');
+  assert.ok(!out.includes('NO-HEAD'), 'the named slot did not fall back');
 });
 
 test('the client router boundary comments do not hide the components between them', async () => {

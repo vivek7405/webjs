@@ -412,6 +412,29 @@ function defaultSSRErrorTemplate(tag, err, dev) {
 }
 
 /**
+ * Index just past the end of the comment starting at `start`, or -1 if it is
+ * unterminated. Shared so every scanner that has to decide where a comment
+ * stops agrees, including on the spec short forms.
+ *
+ * @param {string} html
+ * @param {number} start  index of the `<` of `<!--`
+ * @returns {number}
+ */
+function endOfComment(html, start) {
+  let p = start + 4;
+  // `<!-->` and `<!--->` are comments whose data is empty (spec short forms).
+  if (html[p] === '>') return p + 1;
+  if (html.startsWith('->', p)) return p + 2;
+  while (p < html.length) {
+    // `--!>` is the spec's "abrupt closing" form and closes just like `-->`.
+    if (html.startsWith('-->', p)) return p + 3;
+    if (html.startsWith('--!>', p)) return p + 4;
+    p += 1;
+  }
+  return -1;
+}
+
+/**
  * Byte ranges of `html` where a tag-shaped match is NOT an element (#1128).
  *
  * The element scanners below match tags with a flat regex over already-
@@ -436,40 +459,22 @@ function defaultSSRErrorTemplate(tag, err, dev) {
  *   which end at the next `>`.
  * - **Tags**, consumed with their quoted attribute values, so `<` and `<!--`
  *   inside an attribute are inert rather than context-changing.
- * - **Raw text** (`script`, `style`) and **RCDATA** (`textarea`, `title`), whose
- *   content is text and ends only at the matching close tag. Their content is
- *   returned as a skip range too: a component tag inside a `<style>` comment hit
- *   the identical markup-destroying path, so excluding it would leave half the
- *   bug live. `<template>` is deliberately NOT in this list; its content is
- *   parsed normally and legitimately carries components (Declarative Shadow DOM
- *   and the streaming swap templates both depend on that).
+ * - **Text-only elements**, whose content the HTML tokenizer never reads as
+ *   markup: raw text (`script`, `style`, `iframe`, `xmp`, `noembed`,
+ *   `noframes`, `plaintext`) and RCDATA (`textarea`, `title`). Their content is
+ *   returned as a skip range too, because a component tag inside a `<style>`
+ *   comment or an `<iframe>` fallback hit the identical markup-destroying path,
+ *   so excluding them would leave half the bug live.
+ *
+ *   Two deliberate exclusions. `<template>` content IS parsed and legitimately
+ *   carries components (Declarative Shadow DOM and the streamed swap templates
+ *   both depend on that). `<noscript>` content is parsed as markup when
+ *   scripting is disabled, which for a progressive-enhancement framework is the
+ *   case that matters, so components inside it must keep rendering.
  *
  * @param {string} html
  * @returns {[number, number][]} ascending, non-overlapping `[start, end)` pairs
  */
-/**
- * Index just past the end of the comment starting at `start`, or -1 if it is
- * unterminated. Shared so every scanner that has to decide where a comment
- * stops agrees, including on the spec short forms.
- *
- * @param {string} html
- * @param {number} start  index of the `<` of `<!--`
- * @returns {number}
- */
-function endOfComment(html, start) {
-  let p = start + 4;
-  // `<!-->` and `<!--->` are comments whose data is empty (spec short forms).
-  if (html[p] === '>') return p + 1;
-  if (html.startsWith('->', p)) return p + 2;
-  while (p < html.length) {
-    // `--!>` is the spec's "abrupt closing" form and closes just like `-->`.
-    if (html.startsWith('-->', p)) return p + 3;
-    if (html.startsWith('--!>', p)) return p + 4;
-    p += 1;
-  }
-  return -1;
-}
-
 function inertRanges(html) {
   /** @type {[number, number][]} */
   const ranges = [];
@@ -543,9 +548,12 @@ function inertRanges(html) {
     i = p;
     const tag = name[1].toLowerCase();
     const isClose = html[lt + 1] === '/';
-    if (!isClose && (isRawtextTag(tag) || isRcdataTag(tag))) {
+    if (!isClose && isTextOnlyTag(tag)) {
       // Everything up to the matching close tag is text, not markup.
-      const close = new RegExp(`</${tag}(?=[\\s/>])`, 'i').exec(html.slice(p));
+      // `<plaintext>` has no end tag at all: the rest of the document is text.
+      const close = tag === 'plaintext'
+        ? null
+        : new RegExp(`</${tag}(?=[\\s/>])`, 'i').exec(html.slice(p));
       const contentEnd = close ? p + close.index : n;
       if (contentEnd > p) ranges.push([p, contentEnd]);
       i = contentEnd;
@@ -1243,6 +1251,30 @@ function isRawtextTag(tag) {
  */
 function isRcdataTag(tag) {
   return tag === 'textarea' || tag === 'title';
+}
+
+/**
+ * Elements whose content the HTML tokenizer never reads as markup, for the
+ * purposes of `inertRanges` only (#1128).
+ *
+ * Deliberately NOT `isRawtextTag`, even though it overlaps: that predicate is
+ * shared with the template tokenizer, where widening it would change how holes
+ * inside those elements are escaped. This one answers a narrower question,
+ * "can a tag-shaped string in here be a real element", and the answer is no for
+ * every raw-text and RCDATA element, not just the two the template path cares
+ * about. `<iframe>` with fallback markup is the realistic trigger.
+ *
+ * `<noscript>` is excluded on purpose: its content IS parsed as markup when
+ * scripting is disabled, which for a progressive-enhancement framework is the
+ * case that matters, so components inside it must keep rendering.
+ *
+ * @param {string} tag
+ * @returns {boolean}
+ */
+function isTextOnlyTag(tag) {
+  return isRawtextTag(tag) || isRcdataTag(tag)
+    || tag === 'iframe' || tag === 'xmp' || tag === 'noembed'
+    || tag === 'noframes' || tag === 'plaintext';
 }
 
 /**
