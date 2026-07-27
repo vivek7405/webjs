@@ -57,7 +57,7 @@ const FAQ = [
   {
     question: 'What makes WebJs AI-first?',
     answer:
-      'WebJs is designed so a coding agent can change one part of an app without reading all of it. File conventions are predictable, each server function lives in its own file, and the .server.ts extension marks the server boundary explicitly, so the relevant context for a change is small and easy to locate. Every app ships an AGENTS.md contract plus a cross-agent skill that Claude Code, Cursor, Copilot, Gemini, and opencode all read from one source, and the framework itself ships as plain JavaScript with JSDoc, so an agent reads the code it is calling rather than a compiled bundle.',
+      'WebJs is designed so a coding agent can change one part of an app without reading all of it. File conventions are predictable, each server function lives in its own file, and the .server.ts extension marks the server boundary explicitly, so the relevant context for a change is small and easy to locate. Every app ships an AGENTS.md contract plus a cross-agent skill that Claude Code, Cursor, Copilot, Gemini, and opencode all read from one source. And because there is no build step, the framework itself sits as plain JavaScript with JSDoc in node_modules/@webjsdev of every app, so an agent reads the actual router, renderer, or serializer it is calling rather than a compiled bundle. That grounding in real source is what lets even smaller AI models produce quality WebJs code.',
   },
   {
     question: 'Is WebJs free to use?',
@@ -230,11 +230,13 @@ export default function WhatIsWebJs() {
         </p>
         <p class="text-[1.05rem] leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
           WebJs serves your source to the browser exactly as you wrote it, so the code you read
-          is the code that runs. Content reads
-          and forms submit before any script loads, and JavaScript is added only where an interaction
-          actually needs it. The same conventions that keep that source readable are what make WebJs
-          AI-first, because a coding agent can change one route without loading the whole codebase
-          into context.
+          is the code that runs. The framework itself ships the same way: plain JavaScript with
+          JSDoc, sitting in node_modules/@webjsdev of every WebJs app, where what you read is
+          what runs. An AI agent can open the router, the renderer, or the serializer it is
+          about to call and read the actual code, instead of reasoning about a minified bundle
+          from training data. No other full-stack JavaScript framework hands an agent its entire
+          running source, and that grounding is what lets even smaller models produce quality
+          code.
         </p>
         <div class="flex gap-3 justify-center flex-wrap mb-8">
           <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>

@@ -10,17 +10,20 @@ components.** It server-renders every page and component to real HTML,
 needs no build step or bundler, and runs on Node 24+ or Bun.
 
 WebJs serves your source to the browser exactly as you wrote it, so the code
-you read is the code that runs. Content reads and forms submit before any script loads, and
-JavaScript is added only where an interaction actually needs it.
+you read is the code that runs. The framework itself ships the same way:
+plain JavaScript with JSDoc, sitting in `node_modules/@webjsdev` of every
+WebJs app, where what you read is what runs. An AI agent can open the router,
+the renderer, or the serializer it is about to call and read the actual code,
+instead of reasoning about a minified bundle from training data. No other
+full-stack JavaScript framework hands an agent its entire running source, and
+that grounding is what lets even smaller models produce quality code.
 
-**WebJs is AI-first**, which is a design constraint rather than a feature.
-File conventions are predictable, each server function lives in its own file,
-and the `.server.ts` extension marks the server boundary explicitly, so a
-coding agent can change one route without loading the whole codebase into
-context. Every app ships an `AGENTS.md` contract plus a cross-agent skill that
-Claude Code, Cursor, Copilot, Gemini, and opencode all read from one source.
-The framework itself is plain JavaScript with JSDoc in `node_modules`, so an
-agent reads the code it is calling instead of guessing at a compiled bundle.
+**AI-first is a design constraint here, not a marketing tag.** File
+conventions are predictable, each server function lives in its own file, and
+the `.server.ts` extension marks the server boundary explicitly, so a coding
+agent can change one route without loading the whole codebase into context.
+Every app ships an `AGENTS.md` contract plus a cross-agent skill that Claude
+Code, Cursor, Copilot, Gemini, and opencode all read from one source.
 
 It gives you file-based routing, server actions with real end-to-end types,
 sessions, authentication, caching, rate limiting, WebSockets, and a database
