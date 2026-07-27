@@ -91,6 +91,17 @@ import { positionFloating, type PopoverSide, type PopoverAlign } from './popover
 export const dropdownMenuContentClass = (): string =>
   'fixed z-50 max-h-[--available-height] min-w-[8rem] m-0 overflow-x-hidden overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md';
 
+// The destructive item's dark hover tint is /15, where shadcn ships /20. This
+// is the one place in the kit where a hover tint carries a contrast
+// requirement rather than only an affordance: the item keeps its own red
+// text ON the tint, so a heavier tint closes the gap between the two. At /20
+// that pairing measures 4.47:1 under theme-stone, whose popover is lighter
+// than neutral's, and /15 takes it to 4.89:1 while staying a more visible
+// hover than the light-mode /10 next to it.
+//
+// packages/ui/test/destructive-contrast.test.js reads this alpha out of the
+// class string rather than restating it, so restoring /20 in a shadcn sync
+// fails the suite instead of silently reintroducing the defect.
 export const dropdownMenuItemClass = (): string =>
   "relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:hover:bg-destructive/10 data-[variant=destructive]:hover:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/15 dark:data-[variant=destructive]:hover:bg-destructive/15 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4";
 

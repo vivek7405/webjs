@@ -130,6 +130,32 @@ function palette(mode, overrides = {}) {
 }
 
 /**
+ * Read the destructive menu item's hover tint alpha out of dropdown-menu.ts,
+ * per mode, rather than restating it here.
+ *
+ * The alpha is load-bearing for contrast (the item's own red text sits ON the
+ * tint), so a hardcoded copy would let a shadcn sync restore the failing /20
+ * with the suite still green. Deriving it means the test measures whatever
+ * actually ships. Both the focus and hover variants must agree, since they
+ * paint the same state and a split between them is a bug on its own.
+ */
+function menuTintAlpha(mode) {
+  const src = readFileSync(join(REGISTRY, 'components', 'dropdown-menu.ts'), 'utf8');
+  const prefix = mode === 'dark' ? 'dark:' : '';
+  const found = new Set();
+  for (const trigger of ['focus', 'hover']) {
+    const re = new RegExp(
+      `(?<!dark:)${prefix}data-\\[variant=destructive\\]:${trigger}:bg-destructive/(\\d+)`,
+    );
+    const m = re.exec(src);
+    assert.ok(m, `dropdown-menu.ts: no ${mode} ${trigger} tint for a destructive item`);
+    found.add(Number(m[1]));
+  }
+  assert.equal(found.size, 1, `dropdown-menu.ts: ${mode} focus and hover tints disagree`);
+  return [...found][0] / 100;
+}
+
+/**
  * Every pairing a shipped component paints. The translucent entries composite
  * against the surface behind them rather than simply darkening, so each needs
  * its own check rather than being inferred from the flat colour.
@@ -137,11 +163,7 @@ function palette(mode, overrides = {}) {
 function pairings(p) {
   const hoverFill = over(p.destructive, p.card, 0.9);
   const alertDescription = over(p.destructive, p.card, 0.9);
-  // dropdown-menu.ts tints the hovered destructive item at /10, raised in dark
-  // because the tint has to read against a much darker popover. shadcn ships
-  // /20 there; this kit runs /15, because the item's own red text sits ON that
-  // tint and /20 takes it to 4.47:1 under theme-stone's lighter popover.
-  const menuTint = over(p.destructive, p.popover, p.mode === 'dark' ? 0.15 : 0.1);
+  const menuTint = over(p.destructive, p.popover, menuTintAlpha(p.mode));
   return [
     ['fill behind its foreground (button, badge rest)', p.destructiveForeground, p.destructive],
     ['hover fill behind its foreground (button, badge hover)', p.destructiveForeground, hoverFill],
