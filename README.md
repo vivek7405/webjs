@@ -13,6 +13,15 @@ source to the browser exactly as you wrote it, so the code you read is the
 code that runs. Content reads and forms submit before any script loads, and
 JavaScript is added only where an interaction actually needs it.
 
+**WebJs is AI-first**, which is a design constraint rather than a feature.
+File conventions are predictable, each server function lives in its own file,
+and the `.server.ts` extension marks the server boundary explicitly, so a
+coding agent can change one route without loading the whole codebase into
+context. Every app ships an `AGENTS.md` contract plus a cross-agent skill that
+Claude Code, Cursor, Copilot, Gemini, and opencode all read from one source.
+The framework itself is plain JavaScript with JSDoc in `node_modules`, so an
+agent reads the code it is calling instead of guessing at a compiled bundle.
+
 It gives you file-based routing, server actions with real end-to-end types,
 sessions, authentication, caching, rate limiting, WebSockets, and a database
 layer in the box. `cache()` for queries, HTTP Cache-Control for pages, a
