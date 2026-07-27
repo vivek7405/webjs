@@ -1,5 +1,15 @@
 # deps
-node_modules/
+# No trailing slash on purpose: with one, this matches DIRECTORIES only, so a
+# stray `node_modules` SYMLINK is not ignored and a `git add -A` commits it.
+# That happened, and a self-referential symlink resolves to an ELOOP path that
+# npm and Node's resolver both have to stat in every fresh clone.
+node_modules
+
+# Screenshots and scratch images dropped at the repo root while working. Only
+# root level, so the real assets under */public/ stay tracked.
+/*.png
+/*.jpg
+/*.jpeg
 
 # build / caches
 dist/

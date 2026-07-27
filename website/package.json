@@ -9,31 +9,42 @@
   "scripts": {
     "dev": "webjs dev --port ${PORT:-5001}",
     "start": "webjs start",
+    "pretest": "node scripts/copy-registry.mjs",
     "test": "webjs test",
+    "pretest:browser": "node scripts/copy-registry.mjs",
     "test:browser": "webjs test --browser",
     "css:build": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify"
   },
   "webjs": {
+    "seed": false,
     "redirects": [
       {
         "source": "/why",
         "destination": "/why-webjs",
         "permanent": true
+      },
+      {
+        "source": "/docs/ui",
+        "destination": "/ui",
+        "permanent": true
       }
     ],
     "dev": {
       "before": [
+        "node scripts/copy-registry.mjs",
         "npm run css:build"
       ],
       "regenerate": [
         {
           "output": "public/tailwind.css",
-          "command": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify",
+          "command": "node scripts/copy-registry.mjs && tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify",
           "inputs": [
             "app",
             "components",
             "lib",
             "modules",
+            "../packages/ui/packages/registry/components",
+            "../packages/ui/packages/registry/lib",
             "public/input.css"
           ]
         }
@@ -44,6 +55,7 @@
     },
     "start": {
       "before": [
+        "node scripts/copy-registry.mjs",
         "npm run css:build"
       ]
     }

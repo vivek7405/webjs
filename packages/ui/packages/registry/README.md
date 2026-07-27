@@ -3,11 +3,15 @@
 Internal: sources for the `@webjsdev/ui` component registry.
 
 Not published. `registry.json` is the manifest, and the files it points at
-are the source of truth. The website
-([`@webjsdev/ui-website`](../ui-website)) composes shadcn-compatible JSON on
-demand and serves it at `https://ui.webjs.dev/registry/<name>.json`, which the
-`@webjsdev/ui` CLI fetches. There is no build step, no generated output, no
-`prestart` hook.
+are the source of truth. The marketing site composes shadcn-compatible JSON on
+demand from these sources and serves it at
+`https://webjs.dev/ui/registry/<name>.json`, which the `@webjsdev/ui` CLI
+fetches. There is no build step, no generated output, no `prestart` hook.
+
+The composer and the routes moved out of this package with #1099, when the
+gallery merged into the marketing site. The old `ui.webjs.dev/registry/**`
+URLs still resolve, permanently redirecting to the new ones, because
+already-published CLI versions fetch from them.
 
 ## Layout
 
@@ -26,10 +30,10 @@ overrides → merged CSS, same `files[]` shape.
 
 ## Wire endpoints
 
-Served by `@webjsdev/ui-website` (`app/_lib/registry.server.ts` +
-`app/registry/**`):
+Served by the marketing site (`website/modules/ui/queries/registry.server.ts`
+composes, `website/app/ui/registry/**` routes):
 
-- `GET /registry/<name>.json`: single registry item (`type: registry:ui` /
+- `GET /ui/registry/<name>.json`: single registry item (`type: registry:ui` /
   `registry:theme` / `registry:lib`), with file contents inlined.
-- `GET /registry/index.json`: flat metadata-only list.
-- `GET /registry`: full manifest with every item's content inlined.
+- `GET /ui/registry/index.json`: flat metadata-only list.
+- `GET /ui/registry`: full manifest with every item's content inlined.

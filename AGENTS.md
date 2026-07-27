@@ -475,7 +475,7 @@ webjs ui init | add <names...> | list | view <name>
 webjs vendor pin|unpin|list|audit|outdated|update [--from PROVIDER]   # importmap pinning, .webjs/vendor/importmap.json
 ```
 
-`--from PROVIDER` accepts `jspm` (default), `jsdelivr`, `unpkg`, `skypack` and is persisted in the pin file. `PORT` is honoured when `--port` is absent; `webjs dev` emits `routes.d.ts` automatically. Running this repo's own apps (`website/`, `docs/`, `examples/blog/`, `packages/ui/packages/website/`): `cd` in and use **its** `npm run dev` / `npm start`; as of #550 a bare `webjs dev` / `webjs start` is equivalent (the per-app orchestration moved into the `webjs.dev` / `webjs.start` tasks config, which the primitive runs), so the npm scripts are now just thin aliases.
+`--from PROVIDER` accepts `jspm` (default), `jsdelivr`, `unpkg`, `skypack` and is persisted in the pin file. `PORT` is honoured when `--port` is absent; `webjs dev` emits `routes.d.ts` automatically. Running this repo's own apps (`website/`, which serves the docs and the UI gallery, plus the redirect-only `docs/` and `packages/ui/packages/website/` hosts, and `examples/blog/`): `cd` in and use **its** `npm run dev` / `npm start`; as of #550 a bare `webjs dev` / `webjs start` is equivalent (the per-app orchestration moved into the `webjs.dev` / `webjs.start` tasks config, which the primitive runs), so the npm scripts are now just thin aliases.
 
 ---
 

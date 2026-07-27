@@ -118,42 +118,45 @@ packages/ui/
       base-colors.js              per-base-colour overrides (stone/zinc/mauve/olive/mist/taupe) + mergeThemeCss
     registry.json                 manifest (item names + types + file paths + deps)
 
-  packages/website/               the registry HTTP host + docs (internal)
-    app/
-      layout.ts, page.ts          docs site shell + home
-      _components/                hand-written website-chrome custom elements (theme-toggle, …)
-      _lib/registry.server.ts     composes registry JSON on demand from ../../registry/
-      registry/route.ts                  GET /registry, full manifest (composed on demand)
-      registry/index.json/route.ts       GET /registry/index.json, flat list
-      registry/[name]/route.ts           GET /registry/<name>.json, single item (CLI fetches here)
-      docs/page.ts                docs root
-      docs/components/[name]/page.ts  per-component docs page
-    components/                   GITIGNORED, auto-populated by webjs.dev.before / webjs.start.before (scripts/copy-registry.js, #550)
-    lib/                          GITIGNORED, same as above (for utils.ts)
+  packages/website/               ui.webjs.dev, REDIRECT-ONLY since #1099 (internal)
+    middleware.ts                 301s every request to webjs.dev/ui (path-aware, see its AGENTS.md)
 ```
 
-### ⚠️ ui-website footgun : do NOT write hand-written files into `packages/website/components/`
+The gallery and the registry API moved onto the marketing site in #1099. They
+now live outside this package:
 
-`packages/website/` is the publisher AND a consumer of the kit, so its
-`components/` and `lib/` directories are wholesale gitignored , 
-`scripts/copy-registry.js` regenerates them via `webjs.dev.before` /
-`webjs.start.before` (#550) by mirroring
-`../registry/` with each component's `'../lib/utils.ts'` import rewritten
-to the website's depth. **Anything hand-written you put in
-`packages/website/components/*` or `packages/website/lib/*` is invisible
-to git, never reaches the deploy, and breaks SSR with a prod 500
-(this has happened, see git log for the favicon / theme-toggle incidents).**
+```
+website/                          the marketing site, at the repo root
+  app/ui/page.ts                  /ui, the gallery introduction
+  app/ui/layout.ts                the sidebar shell, shared with /docs
+  app/ui/[name]/page.ts           /ui/<name>, one page per component
+  app/ui/registry/route.ts               GET /ui/registry, full manifest
+  app/ui/registry/index.json/route.ts    GET /ui/registry/index.json, flat list
+  app/ui/registry/[name]/route.ts        GET /ui/registry/<name>.json (the CLI fetches here)
+  modules/ui/queries/registry.server.ts  composes registry JSON on demand from THIS package
+  components/ui/, lib/ui/         GITIGNORED mirror of ../registry/, written by scripts/copy-registry.mjs
+```
 
-Hand-written components for the website go in
-**`packages/website/app/_components/`** instead. The underscore prefix
-keeps them out of the router, the directory is tracked normally, and
-the `components/` mirror's gitignore can stay simple.
+### ⚠️ Mirror footgun : do NOT hand-write files into the marketing site's `components/ui/`
 
-This trap exists ONLY in `packages/website/`. Scaffolded user apps,
-`examples/blog`, and every other webjs app keep `components/ui/` as
-normal tracked source, the standard shadcn "you own it" pattern.
-See [`packages/website/AGENTS.md`](packages/website/AGENTS.md) for the
-full per-directory breakdown.
+The marketing site is a consumer of this kit (its `/ui` pages import the
+components to render live previews), so `website/components/ui/` and
+`website/lib/ui/` are gitignored: `website/scripts/copy-registry.mjs`
+regenerates them via `webjs.dev.before` / `webjs.start.before` (#550) by
+mirroring `../registry/` with each component's `'../lib/utils.ts'` import
+rewritten to the site's depth. **Anything hand-written you put in those two
+directories is invisible to git, never reaches the deploy, and breaks SSR with
+a prod 500** (this has happened, see git log for the favicon / theme-toggle
+incidents on the old ui site).
+
+The scope narrowed with #1099: only the `ui/` SUBDIRECTORIES are generated, so
+the site's own `components/*.ts` and `lib/*.ts` are ordinary tracked source and
+a hand-written site component goes there the normal way. The old
+`app/_components/` workaround is gone along with the app that needed it.
+
+This trap exists ONLY in the marketing site. Scaffolded user apps,
+`examples/blog`, and every other WebJs app keep `components/ui/` as normal
+tracked source, the standard shadcn "you own it" pattern.
 
 ## v1 component inventory (32 components)
 
@@ -246,8 +249,8 @@ when the caller passes an explicit custom `--registry <url>`.
 
 - `getRegistryItem(name, url)` / `getRegistryIndex(url)` in `fetcher.js` are the
   dispatch: local unless `url` is a custom (non-default) registry. `local.js` is
-  the on-disk composer (the plain-JS twin of the ui-website's
-  `_lib/registry.server.ts`).
+  the on-disk composer (the plain-JS twin of the marketing site's
+  `modules/ui/queries/registry.server.ts`).
 - **`webjsui diff` is the deliberate carve-out**: it compares local files
   against the LIVE upstream, so it stays on the network path (local-first would
   compare the package against itself). It also compares each local file against
@@ -369,13 +372,16 @@ the overall layout.
 ## Building / running
 
 ```sh
-npm run ui:dev                       # serve the registry website on :5003
+npm run dev --workspace=@webjsdev/website   # the gallery at localhost:5001/ui
+npm run ui:dev                              # the ui.webjs.dev redirect host on :5003
 ```
 
-**No registry build step.** Registry JSON is composed on demand by the
-website's route handlers (see `app/_lib/registry.server.ts`). Source of
-truth is `packages/registry/components/*.ts` + `registry.json` +
-`themes/base-colors.js`. Cached in memory after first request.
+**No registry build step.** Registry JSON is composed on demand by the route
+handlers on the marketing site (see its
+`modules/ui/queries/registry.server.ts`, which reads the sources in this
+package). Source of truth is `packages/registry/components/*.ts` +
+`registry.json` + `themes/base-colors.js`. Cached in memory after first
+request.
 
 Theme synthesis: only `theme-neutral` is declared in `registry.json`
 (canonical CSS lives at `themes/index.css`). The other 6 base colours , 

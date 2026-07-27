@@ -2,7 +2,9 @@ import { listComparisons } from '#modules/compare/queries/list-comparisons.serve
 import { listArticles } from '#modules/articles/queries/list-articles.server.ts';
 import { listPosts } from '#modules/blog/queries/list-posts.server.ts';
 import { renderDocsIndexSection } from '#lib/docs-llms.server.ts';
-import { UI_URL, EXAMPLE_BLOG_URL, GH_URL } from '#lib/links.ts';
+import { loadRegistryIndex } from '#modules/ui/queries/registry.server.ts';
+import { splitByTier } from '#modules/ui/utils/tier.ts';
+import { UI_PATH, EXAMPLE_BLOG_URL, GH_URL } from '#lib/links.ts';
 
 /**
  * GET /llms.txt
@@ -36,11 +38,12 @@ function section(title: string, items: string[]): string[] {
 }
 
 export async function GET(): Promise<Response> {
-  const [comparisons, articles, posts, docLinks] = await Promise.all([
+  const [comparisons, articles, posts, docLinks, registry] = await Promise.all([
     listComparisons(),
     listArticles(),
     listPosts(),
     renderDocsIndexSection(SITE_URL),
+    loadRegistryIndex(),
   ]);
 
   // Blog is capped so the file stays a concise index rather than a full
@@ -81,9 +84,27 @@ export async function GET(): Promise<Response> {
   // HTML it has to strip.
   lines.push(...section('Documentation', docLinks));
 
+  // Every component, enumerated the same way the doc pages are. Without this
+  // an agent entering through llms.txt could not discover a single component
+  // page, while the sitemap advertised all of them, and the whole point of an
+  // AI-first kit is that an agent can find the piece it needs. Split by tier
+  // because the tier decides HOW you use one: a class helper on a native
+  // element, or a custom element tag.
+  const uiComponents = registry.filter((i) => i.type === 'registry:ui');
+  const { tier1, tier2 } = splitByTier(uiComponents);
+  const uiLink = (i: { name: string }) => `- [${i.name}](${SITE_URL}${UI_PATH}/${i.name})`;
+  lines.push(...section(
+    `UI components, Tier 1 (class helpers on native elements)`,
+    tier1.map(uiLink),
+  ));
+  lines.push(...section(
+    `UI components, Tier 2 (stateful custom elements)`,
+    tier2.map(uiLink),
+  ));
+
   lines.push(...section('Project', [
     `- [GitHub repository](${GH_URL}): source, issues, and the framework monorepo (plain JS with JSDoc, so what you read is what runs)`,
-    `- [UI component library](${UI_URL}): the AI-first web-component kit (\`webjs ui add\`)`,
+    `- [UI component library](${SITE_URL}${UI_PATH}): the AI-first web-component kit (\`webjs ui add\`)`,
     `- [Live demo](${EXAMPLE_BLOG_URL}): a real WebJs app (the example blog)`,
     `- [Changelog](${SITE_URL}/changelog): the unified per-package release feed`,
   ]));

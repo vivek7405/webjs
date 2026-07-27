@@ -5,7 +5,7 @@
 #     website    → http://localhost:15001
 #     docs       → http://localhost:15002  (redirect-only; the docs live at website/docs)
 #     blog       → http://localhost:15004
-#     ui-website → http://localhost:15003  (registry host + @webjsdev/ui docs)
+#     ui-website → http://localhost:15003  (redirect-only; the gallery lives at website/ui)
 #
 # Readiness gate: the image carries a single PORT-driven HEALTHCHECK (it probes
 # /__webjs/ready, see Dockerfile), so each service only sets PORT and compose
@@ -26,7 +26,6 @@ services:
     environment:
       PORT: "5001"
       EXAMPLE_BLOG_URL: ${EXAMPLE_BLOG_URL:-http://localhost:15004}
-      UI_URL:   ${UI_URL:-http://localhost:15003}
 
   # The documentation itself is served by the `website` service at /docs. This
   # service is the docs.webjs.dev host, which redirects every request there and
@@ -65,20 +64,20 @@ services:
     volumes:
       - blog-data:/data
 
+  # The gallery and the registry API are served by the `website` service at
+  # /ui. This service is the ui.webjs.dev host, which redirects every request
+  # there and must keep resolving indefinitely: shipped @webjsdev/ui versions
+  # fetch components from its /registry endpoints.
   ui-website:
     image: webjs
     build: .
     working_dir: /app/packages/ui/packages/website
-    # Registry host for @webjsdev/ui:
-    #   GET /r/<name>.json          single registry item (CLI fetches from here)
-    #   GET /r/index.json           flat list of all items
-    #   GET /docs/components/<name> per-component docs page
-    # The registry JSON is built at image time (see Dockerfile RUN step).
     command: ["bun", "/app/node_modules/@webjsdev/cli/bin/webjs.js", "start"]
     ports:
       - "15003:5003"
     environment:
       PORT: "5003"
+      SITE_URL: ${SITE_URL:-http://localhost:15001}
 
 volumes:
   blog-data:

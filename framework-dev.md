@@ -6,7 +6,7 @@ Read this only when editing the WebJs monorepo (this repo), not a scaffolded app
 
 ### Deploying the in-repo apps (Docker image + readiness gate)
 
-The four in-repo apps (`website`, which serves the documentation at `/docs`, the redirect-only `docs` host, `examples/blog`, `packages/ui/packages/website`) deploy from ONE image built by the root `Dockerfile`, each run as a separate service with its own `PORT` (compose sets it locally, the platform injects it in prod). `compose.yaml` is local parity for that setup; the platform never reads it.
+The four in-repo apps (`website`, which serves the documentation at `/docs` and the component gallery at `/ui`, the redirect-only `docs` host, `examples/blog`, and the redirect-only `packages/ui/packages/website` host) deploy from ONE image built by the root `Dockerfile`, each run as a separate service with its own `PORT` (compose sets it locally, the platform injects it in prod). `compose.yaml` is local parity for that setup; the platform never reads it.
 
 The readiness gate is the same `/__webjs/ready` endpoint the framework ships and documents (503 until fully warm, then 200, see the deployment docs page). Two seams carry it, because no single file configures every platform:
 

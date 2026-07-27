@@ -1,6 +1,6 @@
 import { html, cspNonce } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
-import { DOCS_START_PATH, UI_URL, EXAMPLE_BLOG_URL, GH_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_START_PATH, UI_PATH, EXAMPLE_BLOG_URL, GH_URL, NEW_TAB } from '#lib/links.ts';
 import { siteFooter } from '#lib/site-footer.ts';
 
 /**
@@ -13,7 +13,7 @@ import { siteFooter } from '#lib/site-footer.ts';
  * clamp, the fixed static glow layer, the hover-only scrollbar (`.scroll-thin`),
  * and the <details> icon swap. Everything else is Tailwind.
  *
- * Shared link config (DOCS_START_PATH / UI_URL / EXAMPLE_BLOG_URL / GH_URL / NEW_TAB) lives in
+ * Shared link config (DOCS_START_PATH / UI_PATH / EXAMPLE_BLOG_URL / GH_URL / NEW_TAB) lives in
  * lib/links.ts, imported here and by app/page.ts.
  */
 
@@ -22,7 +22,7 @@ const DESCRIPTION = 'An AI-first full-stack web framework built on web component
 
 const NAV = [
   { label: 'Docs', href: DOCS_START_PATH, ext: false },
-  { label: 'UI', href: UI_URL, ext: true },
+  { label: 'UI', href: UI_PATH, ext: false },
   { label: 'Demo', href: EXAMPLE_BLOG_URL, ext: true },
   { label: 'Blog', href: '/blog', ext: false },
   { label: 'Compare', href: '/compare', ext: false },
@@ -150,28 +150,78 @@ export default function RootLayout({ children }: { children: unknown }) {
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', measure);
         else measure();
       })();
-      // The docs drawer's open state is an attribute on <body>, which is
-      // OUTSIDE every swap range, so a soft navigation carries it along:
-      // it locks scrolling on whatever page you land on, and re-opens the
-      // drawer over the next docs page you visit. Clearing it here, in the
-      // root layout, is what makes that impossible, because this listener
-      // survives navigation while anything the docs sub-layout registers
-      // would be swapped away with it.
-      function closeDocsNav() { document.body.removeAttribute('data-docs-nav-open'); }
+      // The sidebar drawer shared by /docs and /ui (lib/docs-shell.ts) is
+      // driven entirely from here, and both halves of that are deliberate.
+      //
+      // Its open state is an attribute on <body>, which is OUTSIDE every swap
+      // range, so a soft navigation carries it along: it locks scrolling on
+      // whatever page you land on, and re-opens the drawer over the next page
+      // you visit. Clearing it in the ROOT layout is what makes that
+      // impossible, because this listener survives navigation while anything
+      // the sub-layout registered would be swapped away with it.
+      //
+      // The open/close handlers live here too, rather than as inline onclick
+      // attributes in the shell. That keeps the shell module inert at load so
+      // the page/layout modules importing it can be elided, and it puts every
+      // close path through one function, so the toggle's aria-expanded cannot
+      // drift out of step with the attribute (dismissing via the backdrop used
+      // to leave the button advertising an expanded drawer indefinitely).
+      function syncDocsNav() {
+        var open = document.body.hasAttribute('data-docs-nav-open');
+        var btn = document.querySelector('.docs-nav-toggle');
+        if (btn) btn.setAttribute('aria-expanded', String(open));
+        return open;
+      }
+      function closeDocsNav() {
+        document.body.removeAttribute('data-docs-nav-open');
+        syncDocsNav();
+      }
       window.addEventListener('popstate', closeDocsNav);
       document.addEventListener('webjs:navigate', closeDocsNav);
 
       document.addEventListener('click', function (e) {
         var t = e.target;
         if (!t || !t.closest) return;
-        if (t.closest('a')) closeDocsNav();
+
+        // Header mobile menu FIRST, and unconditionally, because the drawer
+        // toggle is a click OUTSIDE that menu and every other outside click
+        // dismisses it. Handling it after an early return for the toggle left
+        // both navigation surfaces open at once, which is neither what the
+        // outside-click rule promises nor what a reader expects from a menu
+        // they just clicked away from.
         var a = t.closest('.mobile-menu a');
-        if (a) { var d = a.closest('details'); if (d) d.removeAttribute('open'); return; }
-        var open = document.querySelectorAll('.mobile-menu[open]');
-        for (var i = 0; i < open.length; i++) if (!open[i].contains(t)) open[i].removeAttribute('open');
+        if (a) {
+          var d = a.closest('details');
+          if (d) d.removeAttribute('open');
+        } else {
+          var open = document.querySelectorAll('.mobile-menu[open]');
+          // A click INSIDE an open menu (its summary) is left alone, so the
+          // details element toggles natively.
+          for (var i = 0; i < open.length; i++) if (!open[i].contains(t)) open[i].removeAttribute('open');
+        }
+
+        // Then the sidebar drawer.
+        if (t.closest('.docs-nav-toggle')) {
+          document.body.toggleAttribute('data-docs-nav-open');
+          syncDocsNav();
+          return;
+        }
+        // Any link, and the backdrop, dismiss it. The backdrop needs no
+        // navigation to be clicked, which is why it cannot rely on the link.
+        if (t.closest('a') || t.closest('.docs-backdrop')) closeDocsNav();
       });
       document.addEventListener('keydown', function (e) {
         if (e.key !== 'Escape') return;
+        // The drawer wins when both it and the header menu are open, and
+        // returns, so focus lands on the control that opened THIS one. Without
+        // the return both closed on one Escape and the header summary took
+        // focus, which is not where the reader was.
+        if (document.body.hasAttribute('data-docs-nav-open')) {
+          closeDocsNav();
+          var btn = document.querySelector('.docs-nav-toggle');
+          if (btn) btn.focus();
+          return;
+        }
         var open = document.querySelectorAll('.mobile-menu[open]');
         for (var i = 0; i < open.length; i++) {
           open[i].removeAttribute('open');

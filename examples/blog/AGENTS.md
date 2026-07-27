@@ -90,7 +90,7 @@ modules/
 components/                  shared UI primitives
   counter.ts, error-card.ts, theme-toggle.ts, blog-shell.ts, muted-text.ts
   ui/                        @webjsdev/ui standard kit (button, card, input, dialog, …)
-                              installed via `webjs ui add …` from https://ui.webjs.dev
+                              installed via `webjs ui add …` from https://webjs.dev/ui
 db/schema.server.ts          User, Session, Post, Comment (Drizzle)
 ```
 
@@ -175,7 +175,7 @@ Real surfaces in this app:
   list and `buttonClass({ size: 'lg' })` for actions.
 
 Add more components via `webjs ui add <name>` (registry at
-https://ui.webjs.dev). Tier-1 additions auto-export class helpers
+https://webjs.dev/ui). Tier-1 additions auto-export class helpers
 from their `components/ui/<name>.ts` file; Tier-2 additions register
 their custom element on import.
 

@@ -9,7 +9,7 @@
  * are interchangeable for every consumer.
  *
  * It is the plain-JS twin of the ui-website composer
- * (`packages/ui/packages/website/app/_lib/registry.server.ts`): both read
+ * (`website/modules/ui/queries/registry.server.ts`): both read
  * `packages/registry/registry.json` + the `components/*.ts` sources and
  * synthesize the 6 non-neutral base-colour themes from `themes/base-colors.js`.
  * Keeping the CLI on this module (rather than always hitting the network) is

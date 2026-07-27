@@ -23,7 +23,15 @@ const env = (globalThis as any).process?.env ?? {};
 export const DOCS_PATH = '/docs';
 export const DOCS_START_PATH = '/docs/getting-started';
 
-export const UI_URL = env.UI_URL || 'https://ui.webjs.dev';
+/**
+ * The component library is served by THIS app under /ui, for the same reasons
+ * the docs are: a subdomain accrues its own authority in search instead of
+ * contributing to webjs.dev, and ui.webjs.dev carried a second layout that had
+ * drifted from this one. `ui.webjs.dev` still resolves, permanently
+ * redirecting into these paths, and its /registry endpoints keep answering
+ * because already-published CLI versions fetch from them.
+ */
+export const UI_PATH = '/ui';
 // EXAMPLE_BLOG_URL points at the live example-blog app (a real WebJs app), surfaced as
 // the "Demo" nav link.
 export const EXAMPLE_BLOG_URL = env.EXAMPLE_BLOG_URL || 'https://example-blog.webjs.dev';

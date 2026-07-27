@@ -33,10 +33,15 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // emit the layout's modulepreloads, which is what this test probes.
 const APPS = [
   { name: 'blog', dir: 'examples/blog', routes: ['/about', '/static-info'] },
-  // The docs are served by the website app (#1098), so their routes are probed
-  // as part of it. `docs/` itself is a redirect-only host with no pages left.
-  { name: 'website', dir: 'website', routes: ['/', '/docs/architecture', '/docs/components'] },
-  { name: 'ui-website', dir: 'packages/ui/packages/website', routes: ['/'] },
+  // The docs (#1098) and the component gallery (#1099) are both served by the
+  // website app, so their routes are probed as part of it. `docs/` and
+  // `packages/ui/packages/website/` are redirect-only hosts with no pages
+  // left, so there is no HTML there to carry a modulepreload at all.
+  //
+  // /ui/button is the gallery's heaviest page: it is the one that pulls the
+  // mirrored kit component sources, which is exactly the class of import a
+  // broken preload would show up in.
+  { name: 'website', dir: 'website', routes: ['/', '/docs/architecture', '/docs/components', '/ui', '/ui/button'] },
 ];
 
 const PRELOAD_RE = /<link[^>]+rel=["']modulepreload["'][^>]*href=["']([^"']+)["']/g;

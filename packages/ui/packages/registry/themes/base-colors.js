@@ -5,7 +5,7 @@
  * preserved; only hue / chroma shift.
  *
  * Pure ESM data module: imported at request time by the website's registry
- * composer (`app/_lib/registry.server.ts`) to synthesize `theme-<color>` items
+ * composer (`website/modules/ui/queries/registry.server.ts`) to synthesize `theme-<color>` items
  * on demand. No build step, no committed output. Numbers match the values
  * shadcn emits in `apps/v4/public/r/themes/*.json`.
  */

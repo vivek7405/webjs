@@ -16,13 +16,13 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
-// The docs are served by the website (#1098), so they share its favicon. The
-// docs.webjs.dev host that remains renders no HTML at all, only redirects, so
-// it has no public/ to write into.
+// The docs (#1098) and the component gallery (#1099) are served by the website,
+// so they share its favicon. The docs.webjs.dev and ui.webjs.dev hosts that
+// remain render no HTML at all, only redirects, so neither has a public/ to
+// write into (and writing to a directory that no longer exists throws).
 const APPS = [
   resolve(root, 'website/public'),
   resolve(root, 'examples/blog/public'),
-  resolve(root, 'packages/ui/packages/website/public'),
 ];
 
 // SVG that matches the header logo mark in website/app/layout.ts: a rounded

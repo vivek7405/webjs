@@ -1,6 +1,11 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchRegistryItem, fetchRegistryIndex } from '../src/registry/fetcher.js';
+import {
+  fetchRegistryItem,
+  fetchRegistryIndex,
+  isDefaultRegistry,
+  HOSTED_REGISTRY_URL,
+} from '../src/registry/fetcher.js';
 
 const origFetch = globalThis.fetch;
 let calls = [];
@@ -66,3 +71,33 @@ test('fetchRegistryIndex: fetches the index', async () => {
 
 // Restore fetch after tests run
 globalThis.fetch = origFetch;
+
+/**
+ * The hosted registry URL is a RELEASED CONTRACT, so it is pinned rather than
+ * left to drift (#1099).
+ *
+ * Two separate properties matter here. The constant has to point at the live
+ * endpoint, because that is what a fresh install fetches from. And it has to
+ * stay the value `isDefaultRegistry` compares against, because that comparison
+ * is what selects local-first resolution: if the two ever disagree, every
+ * default install silently starts taking the network path instead of reading
+ * the sources that ship inside this package.
+ *
+ * The previous value, `https://ui.webjs.dev/registry`, is still live as a
+ * permanent redirect and must stay that way forever for already-published
+ * versions. That side of the contract is covered by
+ * `test/ui/ui-host-redirect.test.mjs`.
+ */
+test('the hosted registry URL points at the live endpoint', () => {
+  assert.equal(HOSTED_REGISTRY_URL, 'https://webjs.dev/ui/registry');
+});
+
+test('the hosted registry URL is what selects local-first resolution', () => {
+  assert.equal(isDefaultRegistry(HOSTED_REGISTRY_URL), true, 'the canonical URL is the default');
+  assert.equal(isDefaultRegistry(undefined), true, 'and so is passing nothing');
+  assert.equal(
+    isDefaultRegistry('https://ui.webjs.dev/registry'),
+    false,
+    'the old host is a custom registry now, so it takes the network path rather than being silently shadowed by the packaged sources',
+  );
+});

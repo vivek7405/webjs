@@ -1,23 +1,24 @@
 /**
- * Cross-runtime app boot-check for the in-repo apps whose routes CI would
- * not otherwise exercise: `website` (which serves the documentation at
- * /docs) and `packages/ui/packages/website` (ui-website). The
- * docs.webjs.dev redirect host is deliberately absent: every route on it
- * is an empty 301, which would pass this check vacuously.
+ * Cross-runtime app boot-check for the routes CI would not otherwise
+ * exercise. That is now one app, `website`, which serves the marketing pages,
+ * the documentation at /docs (#1098), and the component gallery at /ui
+ * (#1099). The docs.webjs.dev and ui.webjs.dev redirect hosts are deliberately
+ * absent: every route on them is an empty 301, which would pass this check
+ * vacuously.
  * All the in-repo apps DEPLOY on Bun in production (#541), but only
  * `examples/blog` had Bun coverage in CI (the blog-on-bun e2e), so a per-route
  * break that occurs only on Bun could reach production undetected. The #526
- * incident was exactly this: ui.webjs.dev served 500s on its component detail
- * pages because the prod start bypassed the registry copy, and Railway's
- * liveness-only healthcheck never probed an individual route.
+ * incident was exactly this: the component detail pages served 500s because
+ * the prod start bypassed the registry copy, and Railway's liveness-only
+ * healthcheck never probed an individual route.
  *
  * This runs under WHICHEVER runtime executes it (Bun in the CI `bun` job, and
  * Node via `scripts/run-bun-tests.js`): it runs each app's `webjs.start.before`
- * presteps (the ui-website registry copy + each app's Tailwind build, exactly
- * what `webjs start` runs), boots the app via `createRequestHandler({ dev:
- * false })`, GETs real routes (including a ui-website component detail page, the
- * #526 route class), and asserts status < 400 plus no broken same-origin
- * `modulepreload` hint (the #158 / #159 probe). Fails LOUD with a non-zero exit.
+ * presteps (the registry copy + the Tailwind build, exactly what `webjs start`
+ * runs), boots the app via `createRequestHandler({ dev: false })`, GETs real
+ * routes (including a gallery component detail page, the #526 route class),
+ * and asserts status < 400 plus no broken same-origin `modulepreload` hint
+ * (the #158 / #159 probe). Fails LOUD with a non-zero exit.
  *
  * Left as-is: `examples/blog` already has its own Bun e2e (#523 / #525), so it
  * is not duplicated here.
@@ -31,18 +32,21 @@ import { createRequestHandler } from '@webjsdev/server';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`;
 
-/** The apps + the real routes to probe. ui-website includes a component
- *  detail page (`/docs/components/[name]`), the exact route class that 500'd in
- *  #526 when the registry copy was skipped.
+/** The apps + the real routes to probe.
  *
- *  The website's list carries doc routes because the docs are served by it
- *  since #1098. The old `docs` app is gone from this list on purpose: it is a
- *  redirect-only host now, and every route on it answers 301 with an empty
- *  body, which passes the status check while probing zero preloads. Leaving it
- *  here would have looked like docs coverage while providing none. */
+ *  Everything the project serves as HTML is now one app: the docs moved onto
+ *  the website in #1098 and the component gallery in #1099. So the list is a
+ *  single entry, and it carries a gallery component detail page (`/ui/button`),
+ *  the exact route class that 500'd in #526 when the registry copy was skipped.
+ *
+ *  The old `docs` and `ui-website` apps are gone from this list on purpose:
+ *  both are redirect-only hosts now, and every route on them answers 301 with
+ *  an empty body, which passes a status check while probing zero preloads.
+ *  Leaving them here would have looked like coverage while providing none.
+ *  Their redirect MAPPINGS are asserted in test/ui/ui-host-redirect.test.mjs
+ *  and test/docs/docs-host-redirect.test.mjs instead. */
 const APPS = [
-  { name: 'website', dir: 'website', routes: ['/', '/docs/no-build', '/docs/components'] },
-  { name: 'ui-website', dir: 'packages/ui/packages/website', routes: ['/', '/docs/components/button'] },
+  { name: 'website', dir: 'website', routes: ['/', '/docs/no-build', '/docs/components', '/ui', '/ui/button'] },
 ];
 
 /** Run an app's `webjs.start.before` steps (registry copy, Tailwind build) the
@@ -92,4 +96,4 @@ if (failed) {
   console.error(`FAIL  app boot-check on ${runtime}`);
   process.exit(1);
 }
-console.log(`OK  app boot-check passed on ${runtime} (website incl. /docs + ui-website serve real routes, no broken preloads)`);
+console.log(`OK  app boot-check passed on ${runtime} (website incl. /docs + /ui serves real routes, no broken preloads)`);

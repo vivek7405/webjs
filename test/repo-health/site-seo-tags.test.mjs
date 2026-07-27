@@ -32,9 +32,15 @@ import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+/**
+ * Only apps that actually SERVE HTML are checked here. `docs.webjs.dev` and,
+ * since #1099, `ui.webjs.dev` are redirect-only hosts: they render no markup
+ * at all, so they have no layout, no icons, and no canonical to assert. The
+ * pages they used to serve now live under `website/` (at /docs and /ui) and
+ * are covered by this app's entry.
+ */
 const APPS = [
-  { name: 'website (webjs.dev, incl. /docs)', dir: 'website' },
-  { name: 'ui website (ui.webjs.dev)', dir: 'packages/ui/packages/website' },
+  { name: 'website (webjs.dev, incl. /docs and /ui)', dir: 'website' },
 ];
 
 const layoutOf = (dir) => readFileSync(resolve(REPO_ROOT, dir, 'app', 'layout.ts'), 'utf8');

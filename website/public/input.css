@@ -1,6 +1,31 @@
 /* Tailwind CSS v4 input - compiled to public/tailwind.css. */
 @import "tailwindcss";
 
+/* The /ui gallery renders live @webjsdev/ui components, whose sources are
+   mirrored into these two directories by scripts/copy-registry.mjs. Both are
+   gitignored (they are generated), and Tailwind's automatic content detection
+   skips gitignored files, so their utility classes would never be emitted
+   without naming them here. An explicit @source is scanned regardless of
+   gitignore, and it ADDS to the automatic scan rather than replacing it, so
+   the tracked app/, lib/, and modules/ trees keep being picked up. */
+@source "../components/ui/**/*.{ts,js}";
+@source "../lib/ui/**/*.{ts,js}";
+
+/* The kit's components carry `dark:` utilities, and Tailwind's default `dark:`
+   is the OS preference alone. This site's theme is the OS preference UNLESS
+   the reader picked one explicitly, which is `data-theme` on the root (see the
+   bootstrap in app/layout.ts). Pointing the variant at that same signal is what
+   keeps a component preview in step with the page around it: without this, a
+   reader on a dark OS who picks light gets light page tokens and dark
+   component internals. The marketing pages use no `dark:` utilities at all, so
+   redefining the variant changes nothing outside the previews. */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme='light']) *) { @slot; }
+  }
+  &:where(:root[data-theme='dark'] *) { @slot; }
+}
+
 @theme {
   --color-fg:            var(--fg);
   --color-fg-muted:      var(--fg-muted);
@@ -11,10 +36,8 @@
   --color-bg-subtle:     var(--bg-subtle);
   --color-bg-sunken:     var(--bg-sunken);
 
-  --color-border:        var(--border);
   --color-border-strong: var(--border-strong);
 
-  --color-accent:        var(--accent);
   --color-accent-hover:  var(--accent-hover);
   --color-accent-fg:     var(--accent-fg);
   --color-accent-tint:   var(--accent-tint);
@@ -39,6 +62,143 @@
 
   --duration-fast: 140ms;
   --duration-slow: 220ms;
+}
+
+/* --------------------------------------------------------------------------
+   Tokens that must resolve AT THE ELEMENT, not at :root.
+
+   `@theme inline` is the difference between a token a subtree can override and
+   one it cannot, and getting it wrong is silent. A plain `@theme` emits
+   `--color-primary: var(--primary)` on :root and compiles the utility to
+   `background-color: var(--color-primary)`. Custom properties substitute at the
+   element where they are DECLARED, so that inner var(--primary) resolves
+   against :root, where the kit's palette does not exist. The utility then
+   computes to nothing and every preview renders unstyled, which is exactly what
+   happened here: filled buttons came out transparent while outlined ones looked
+   fine, because only the latter got their color from a border utility.
+
+   `inline` instead compiles the utility to `background-color: var(--primary)`,
+   which resolves at the element and therefore picks up whatever .ui-preview
+   declares. So every name a preview needs to re-scope lives in this block.
+
+   `--color-accent` and `--color-border` moved here from the block above for
+   the same reason: a preview needs them to mean the kit's neutral values while
+   the surrounding chrome keeps the warm brand ones. Both still resolve to the
+   :root values everywhere outside a preview, so no marketing page changes.
+   Nothing in the site references `var(--color-accent)` or `var(--color-border)`
+   directly (the hand-written references are all `--color-bg*`, which stays
+   non-inline), so dropping those two exports breaks nothing.
+   -------------------------------------------------------------------------- */
+@theme inline {
+  --color-accent:               var(--accent);
+  --color-border:               var(--border);
+  --color-background:           var(--background);
+  --color-foreground:           var(--foreground);
+  --color-card:                 var(--card);
+  --color-card-foreground:      var(--card-foreground);
+  --color-popover:              var(--popover);
+  --color-popover-foreground:   var(--popover-foreground);
+  --color-primary:              var(--primary);
+  --color-primary-foreground:   var(--primary-foreground);
+  --color-secondary:            var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted:                var(--muted);
+  --color-muted-foreground:     var(--muted-foreground);
+  --color-accent-foreground:    var(--accent-foreground);
+  --color-destructive:          var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-input:                var(--input);
+  --color-ring:                 var(--ring);
+}
+
+/* --------------------------------------------------------------------------
+   Component-preview palette, scoped to .ui-preview.
+
+   A preview shows a component the way it will look in the READER's app, which
+   means the kit's neutral shadcn palette, not this site's warm editorial one.
+   The old ui.webjs.dev declared these values on :root, which it could afford
+   because nothing else lived on that domain. Here they must not leak, so every
+   raw value is declared on the preview container instead. Mirrors what
+   `webjs ui init` writes into a user's globals.css (packages/ui/packages/
+   registry/themes/index.css), which is the point: what you see is what you get.
+   -------------------------------------------------------------------------- */
+.ui-preview {
+  --background:               oklch(1 0 0);
+  --foreground:               oklch(0.145 0 0);
+  --card:                     oklch(1 0 0);
+  --card-foreground:          oklch(0.145 0 0);
+  --popover:                  oklch(1 0 0);
+  --popover-foreground:       oklch(0.145 0 0);
+  --primary:                  oklch(0.205 0 0);
+  --primary-foreground:       oklch(0.985 0 0);
+  --secondary:                oklch(0.97 0 0);
+  --secondary-foreground:     oklch(0.205 0 0);
+  --muted:                    oklch(0.97 0 0);
+  --muted-foreground:         oklch(0.556 0 0);
+  --accent:                   oklch(0.97 0 0);
+  --accent-foreground:        oklch(0.205 0 0);
+  --destructive:              oklch(0.577 0.245 27.325);
+  --destructive-foreground:   oklch(0.97 0.01 17);
+  --border:                   oklch(0.922 0 0);
+  --input:                    oklch(0.922 0 0);
+  --ring:                     oklch(0.708 0 0);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .ui-preview {
+    --background:               oklch(0.145 0 0);
+    --foreground:               oklch(0.985 0 0);
+    --card:                     oklch(0.205 0 0);
+    --card-foreground:          oklch(0.985 0 0);
+    --popover:                  oklch(0.205 0 0);
+    --popover-foreground:       oklch(0.985 0 0);
+    --primary:                  oklch(0.922 0 0);
+    --primary-foreground:       oklch(0.205 0 0);
+    --secondary:                oklch(0.269 0 0);
+    --secondary-foreground:     oklch(0.985 0 0);
+    --muted:                    oklch(0.269 0 0);
+    --muted-foreground:         oklch(0.708 0 0);
+    --accent:                   oklch(0.371 0 0);
+    --accent-foreground:        oklch(0.985 0 0);
+    --destructive:              oklch(0.704 0.191 22.216);
+    --destructive-foreground:   oklch(0.58 0.22 27);
+    --border:                   oklch(1 0 0 / 10%);
+    --input:                    oklch(1 0 0 / 15%);
+    --ring:                     oklch(0.556 0 0);
+  }
+}
+
+:root[data-theme='dark'] .ui-preview {
+  --background:               oklch(0.145 0 0);
+  --foreground:               oklch(0.985 0 0);
+  --card:                     oklch(0.205 0 0);
+  --card-foreground:          oklch(0.985 0 0);
+  --popover:                  oklch(0.205 0 0);
+  --popover-foreground:       oklch(0.985 0 0);
+  --primary:                  oklch(0.922 0 0);
+  --primary-foreground:       oklch(0.205 0 0);
+  --secondary:                oklch(0.269 0 0);
+  --secondary-foreground:     oklch(0.985 0 0);
+  --muted:                    oklch(0.269 0 0);
+  --muted-foreground:         oklch(0.708 0 0);
+  --accent:                   oklch(0.371 0 0);
+  --accent-foreground:        oklch(0.985 0 0);
+  --destructive:              oklch(0.704 0.191 22.216);
+  --destructive-foreground:   oklch(0.58 0.22 27);
+  --border:                   oklch(1 0 0 / 10%);
+  --input:                    oklch(1 0 0 / 15%);
+  --ring:                     oklch(0.556 0 0);
+}
+
+@layer base {
+  /* Tailwind's preflight leaves every element at `border: 0 solid`, so a bare
+     `border` utility (which sets width only) paints in currentColor. The kit's
+     components rely on the app having set a default border color, which is
+     what `webjs ui init` writes (`@layer base { * { @apply border-border } }`).
+     Reproduced here scoped to the preview, in the SAME layer, so any explicit
+     Tailwind color utility on the element still wins (utilities are layered
+     after base regardless of specificity). */
+  .ui-preview, .ui-preview * { border-color: var(--border); }
 }
 
 /*
