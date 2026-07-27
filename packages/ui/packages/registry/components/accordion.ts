@@ -67,7 +67,13 @@ export const accordionItemClass = (): string => 'group border-b last:border-b-0'
  * prop combines both; native HTML has no `disabled` on <details>.
  */
 export const accordionTriggerClass = (opts: { disabled?: boolean } = {}): string => {
-  const base = 'flex w-full cursor-pointer list-none items-center justify-between gap-4 py-4 text-left text-sm font-medium outline-none transition-all hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 marker:hidden [&::-webkit-details-marker]:hidden';
+  // No hover underline. An underline reads as a link affordance, and this is a
+  // disclosure control on a <summary>, not a navigation. The pointer cursor and
+  // the chevron that rotates on open already carry the affordance. (shadcn's
+  // React accordion does underline here; this is a deliberate divergence in
+  // presentation only, so the API parity that matters, variant and size names
+  // and the data attributes, is untouched.)
+  const base = 'flex w-full cursor-pointer list-none items-center justify-between gap-4 py-4 text-left text-sm font-medium outline-none transition-all focus-visible:ring-2 focus-visible:ring-ring/50 marker:hidden [&::-webkit-details-marker]:hidden';
   if (opts.disabled) return `${base} pointer-events-none cursor-not-allowed opacity-50`;
   return base;
 };

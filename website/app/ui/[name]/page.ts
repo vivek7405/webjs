@@ -61,19 +61,41 @@ import '#components/ui/tooltip.ts';
  * Tier plus the naming convention is enough to say something true and distinct
  * about every component, and it stays correct when one moves between tiers.
  */
-export function generateMetadata({ params }: { params: { name: string } }) {
+export async function generateMetadata({ params }: { params: { name: string } }) {
   const name = startCase(params.name);
   const title = `${name} | WebJs UI`;
-  const description =
-    tierOf({ name: params.name }) === 'tier-2'
-      ? `${name} is a stateful custom element in WebJs UI. Compose it as a real ${'<ui-' + params.name + '>'} tag, which wires its own ARIA and keyboard handling, then copy the source into your project and own it.`
-      : `${name} is a class helper in WebJs UI. Apply ${camelName(params.name)}Class() to a native HTML element for full browser semantics, styled with Tailwind v4, with the source copied into your project.`;
+  let description: string;
+
+  if (tierOf({ name: params.name }) === 'tier-2') {
+    description = `${name} is a stateful custom element in WebJs UI. Compose it as a real ${'<ui-' + params.name + '>'} tag, which wires its own ARIA and keyboard handling, then copy the source into your project and own it.`;
+  } else {
+    const item = await loadRegistryItem(params.name);
+    const helper = primaryHelper(params.name, item?.files?.[0]?.content ?? '');
+    description = helper
+      ? `${name} is a class helper in WebJs UI. Apply ${helper}() to a native HTML element for full browser semantics, styled with Tailwind v4, with the source copied into your project.`
+      : `${name} is a class helper in WebJs UI. Apply it to a native HTML element for full browser semantics, styled with Tailwind v4, with the source copied into your project.`;
+  }
   return { title, description, openGraph: { title, description } };
 }
 
-/** `alert-dialog` to `alertDialog`, matching the kit's helper naming. */
-function camelName(name: string): string {
-  return name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+/**
+ * The helper a reader reaches for first, read out of the component's own
+ * source rather than guessed from its name.
+ *
+ * The convention (`alert-dialog` to `alertDialogClass`) holds for most of the
+ * kit but not all of it, and a description naming a function that does not
+ * exist is worse than a vaguer one. `breadcrumb` exports `breadcrumbListClass`,
+ * `popover` exports `popoverContentClass`, and `switch` exports
+ * `switchInputClass` and `switchTrackClass`, with no bare `xClass` in any of
+ * the three. Preferring the exact conventional name and falling back to the
+ * first exported helper keeps every description true, and true automatically
+ * when the kit adds or renames one.
+ */
+function primaryHelper(name: string, source: string): string | null {
+  const exported = [...source.matchAll(/export\s+(?:function|const)\s+([a-zA-Z0-9_$]*Class)\b/g)].map((m) => m[1]);
+  if (!exported.length) return null;
+  const conventional = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase()) + 'Class';
+  return exported.includes(conventional) ? conventional : exported[0];
 }
 
 /**
