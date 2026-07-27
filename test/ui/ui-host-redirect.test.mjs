@@ -61,6 +61,25 @@ test('the registry redirect carries CORS, so a browser consumer can follow it', 
   assert.equal(res.headers.get('access-control-allow-origin'), '*');
 });
 
+test('an asset URL keeps its path instead of moving under /ui', async () => {
+  // The deleted root layout published /public/og.png as its og:image and the
+  // favicons alongside it, so every social card already scraped from this host
+  // points at those URLs. The marketing site serves the same filenames at the
+  // same paths, so they must NOT pick up the /ui prefix the pages do: that
+  // would resolve a live image to a 404 and blank every cached card.
+  for (const path of [
+    '/public/og.png',
+    '/public/favicon-192.png',
+    '/public/favicon.svg',
+    '/public/apple-touch-icon.png',
+    '/favicon.ico',
+  ]) {
+    const res = await handle(path);
+    assert.equal(res.status, 301, `${path} redirects`);
+    assert.equal(res.headers.get('location'), `https://webjs.dev${path}`, `${path} keeps its path`);
+  }
+});
+
 test('a component page maps to its new flat path', async () => {
   // The old site nested components under /docs/components/<name>; the new one
   // serves them at /ui/<name>. A path-preserving redirect would have sent

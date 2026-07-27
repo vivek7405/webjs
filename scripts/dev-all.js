@@ -61,8 +61,8 @@ const ports = {
 };
 
 // Use each workspace's `npm run dev` so the concurrently-spawned
-// tailwind CLI watcher (and, for the blog, the db migrate; for the UI
-// site, the predev copy-registry step) runs too.
+// tailwind CLI watcher (and, for the blog, the db migrate; for the website,
+// the registry-mirror step the /ui previews need) runs too.
 // Point every app's nav + footer cross-links at the sibling dev servers. Each
 // app's lib/links.ts reads these and otherwise falls back to the production
 // domains, which is why a local cross-link would otherwise open the live site.
@@ -70,17 +70,18 @@ const ports = {
 // BLOG_PORT override flows through to every app, not just the website.
 const links = {
   WEBSITE_URL: `http://localhost:${ports.website}`,
-  UI_URL: `http://localhost:${ports.ui}`,
   EXAMPLE_BLOG_URL: `http://localhost:${ports.blog}`,
 };
-// The docs are served BY the website now (webjs.dev/docs), so there is no
-// DOCS_URL cross-link. The docs app is a redirect-only host, and SITE_URL is
-// where it sends everything, which locally has to be the website dev server
-// rather than production.
+// The docs (webjs.dev/docs) and the component gallery (webjs.dev/ui) are both
+// served BY the website now, so there is no DOCS_URL or UI_URL cross-link.
+// Both old subdomains are redirect-only hosts, and SITE_URL is where each
+// sends everything, which locally has to be the website dev server rather than
+// production. Without it, hitting either one in local dev silently lands you
+// on the live site.
 const siteUrl = { SITE_URL: `http://localhost:${ports.website}` };
 start('website', resolve(root, 'website'), 'npm', ['run', 'dev'], { PORT: ports.website, ...links });
 start('docs',    resolve(root, 'docs'),    'npm', ['run', 'dev'], { PORT: ports.docs, ...links, ...siteUrl });
-start('ui',      resolve(root, 'packages', 'ui', 'packages', 'website'), 'npm', ['run', 'dev'], { PORT: ports.ui, ...links });
+start('ui',      resolve(root, 'packages', 'ui', 'packages', 'website'), 'npm', ['run', 'dev'], { PORT: ports.ui, ...links, ...siteUrl });
 start('blog',    resolve(root, 'examples', 'blog'), 'npm', ['run', 'dev'], { PORT: ports.blog, ...links });
 
 function cleanup() {

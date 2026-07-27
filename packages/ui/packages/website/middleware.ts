@@ -40,6 +40,16 @@ function mapPath(pathname: string): string {
   if (pathname === '/registry' || pathname.startsWith('/registry/')) {
     return '/ui' + pathname;
   }
+
+  // Assets keep their path INSTEAD of moving under /ui, because the marketing
+  // site serves the same filenames at the same place. The deleted root layout
+  // published /public/og.png as its og:image and /public/favicon-192.png,
+  // /public/favicon.svg, and /public/apple-touch-icon.png as its icons, so
+  // every social card already scraped from this host, and every embed of that
+  // image, points at those URLs. Sending them to /ui/public/... would resolve
+  // them to nothing; sending them to /public/... resolves them to the
+  // equivalent asset on the new host.
+  if (pathname.startsWith('/public/') || pathname === '/favicon.ico') return pathname;
   // A component page: /docs/components/button becomes /ui/button.
   const component = pathname.match(/^\/docs\/components\/([^/]+)\/?$/);
   if (component) return '/ui/' + component[1];

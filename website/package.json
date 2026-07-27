@@ -34,7 +34,7 @@
       "regenerate": [
         {
           "output": "public/tailwind.css",
-          "command": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify",
+          "command": "node scripts/copy-registry.mjs && tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify",
           "inputs": [
             "app",
             "components",
