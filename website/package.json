@@ -23,6 +23,7 @@
     ],
     "dev": {
       "before": [
+        "node scripts/copy-registry.mjs",
         "npm run css:build"
       ],
       "regenerate": [
@@ -34,6 +35,7 @@
             "components",
             "lib",
             "modules",
+            "../packages/ui/packages/registry/components",
             "public/input.css"
           ]
         }
@@ -44,6 +46,7 @@
     },
     "start": {
       "before": [
+        "node scripts/copy-registry.mjs",
         "npm run css:build"
       ]
     }
