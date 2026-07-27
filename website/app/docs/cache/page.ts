@@ -94,6 +94,10 @@ export const metadata = {
 
     <p>This sets the standard <code>Cache-Control</code> header on the HTTP response. Browsers and CDNs cache the rendered page without any server-side state.</p>
 
+    <p>A public <code>cacheControl</code> also opts the page into conditional GET: WebJs attaches a weak <code>ETag</code> and answers a matching <code>If-None-Match</code> with a <code>304</code>, so a revalidation costs a few hundred bytes instead of the whole document. That only works if the page renders the same bytes twice. Any per-render-varying value in a component (a <code>Date.now()</code>, a <code>Math.random()</code>, or an incrementing id from a module-scope counter, which never resets in a long-lived server) changes the body, changes the ETag, and means no <code>If-None-Match</code> can ever match. Nothing errors when this happens: the page renders correctly and the caching layer just silently never engages, so it is worth a test that renders a page twice and asserts the output is identical.</p>
+
+    <p>Note that <code>max-age=0</code> is a common default worth thinking about. It keeps the browser revalidating on every view, which is right when deploys must be visible immediately, but it means a stored copy is never reused directly. A small non-zero value is what produces real browser cache hits on back/forward and repeat visits.</p>
+
     <h2>Server HTML Response Cache (export const revalidate)</h2>
     <p>For a page that renders identical HTML for every visitor, opt into the server HTML response cache so the SSR pipeline runs once per window instead of once per request (webjs's no-build equivalent of Next.js's Full Route Cache and ISR). Declare a revalidation window on the page module:</p>
 
