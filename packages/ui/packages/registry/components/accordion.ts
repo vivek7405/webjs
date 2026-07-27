@@ -67,20 +67,7 @@ export const accordionItemClass = (): string => 'group border-b last:border-b-0'
  * prop combines both; native HTML has no `disabled` on <details>.
  */
 export const accordionTriggerClass = (opts: { disabled?: boolean } = {}): string => {
-  // Hover dims the label instead of underlining it. An underline reads as a
-  // link affordance, and this is a disclosure control on a <summary>, not a
-  // navigation. A slight drop in text weight reads as "this responds to you"
-  // without borrowing another control's vocabulary, and it pairs with the
-  // chevron that rotates on open. (shadcn's React accordion underlines here;
-  // this is a deliberate divergence in presentation only, so the API parity
-  // that matters, variant and size names and the data attributes, is
-  // untouched.)
-  //
-  // The label carries `text-foreground` explicitly rather than inheriting it,
-  // because the hover target has to be a known starting colour: inheriting an
-  // author's own colour and then dimming to 80% of the THEME foreground would
-  // shift the hue, not just the weight.
-  const base = 'flex w-full cursor-pointer list-none items-center justify-between gap-4 py-4 text-left text-sm font-medium text-foreground outline-none transition-all hover:text-foreground/80 focus-visible:ring-2 focus-visible:ring-ring/50 marker:hidden [&::-webkit-details-marker]:hidden';
+  const base = 'flex w-full cursor-pointer list-none items-center justify-between gap-4 py-4 text-left text-sm font-medium outline-none transition-all hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 marker:hidden [&::-webkit-details-marker]:hidden';
   if (opts.disabled) return `${base} pointer-events-none cursor-not-allowed opacity-50`;
   return base;
 };
