@@ -412,54 +412,96 @@ function defaultSSRErrorTemplate(tag, err, dev) {
 }
 
 /**
- * Byte ranges of the HTML comments in `html`, as `[start, end)` pairs in
- * ascending order (#1128).
+ * Byte ranges of `html` where a tag-shaped match is NOT an element (#1128).
  *
  * The element scanners below match tags with a flat regex over already-
- * assembled markup, which has no notion of an HTML context, so a registered
- * tag name written inside a comment used to be instantiated as a real element.
- * That is not a cosmetic problem: the replacement consumed the rest of the
- * comment INCLUDING its closing `-->`, so the remaining markup was swallowed
- * by an unterminated comment. Whether it happened at all depended on whether
- * the name in the comment happened to be a registered component, which made it
- * look random.
+ * assembled markup, which has no notion of an HTML context. So a registered tag
+ * name written inside a comment used to be constructed and rendered as a real
+ * element, and the replacement consumed the rest of the comment INCLUDING its
+ * closing `-->`, leaving an unterminated comment that swallowed every following
+ * byte. Whether it happened depended on whether the name in the comment was a
+ * registered component, which is what made it look random.
  *
- * Two details that keep this faithful to how a browser parses the same bytes:
+ * This is a single left-to-right pass rather than a search for `<!--`, because
+ * the naive version introduces failures worse than the bug: an `<!--` inside an
+ * attribute value (`title="use <!-- here"`) or inside RCDATA would open a region
+ * that never closes, and every component after it would silently stop rendering.
+ * Deciding that requires knowing the context, which means tokenizing, so the
+ * pass tracks the same states the HTML parser does for these purposes:
  *
- * - An unterminated `<!--` comments out everything to the end of the input,
- *   so the range runs to EOF rather than being ignored.
- * - Raw-text elements have no comment syntax: inside `<script>` / `<style>`,
- *   `<!--` is ordinary text. Skipping over those elements is what stops a
- *   `<!--` in a script from opening a bogus comment region and suppressing
- *   every real component after it. (Their CONTENT is deliberately not
- *   returned as a skip range: whether a tag-shaped string inside a script
- *   should be instantiated is a separate question from this fix, so the
- *   existing behaviour there is left alone.)
+ * - **Comments**, including the spec's short forms. `<!-->` and `<!--->` close
+ *   immediately, `--!>` closes as well as `-->`, and an unterminated comment
+ *   runs to EOF, exactly as a browser would treat the same bytes.
+ * - **Markup declarations and bogus comments** (`<!doctype …>`, `<![CDATA[…]]>`),
+ *   which end at the next `>`.
+ * - **Tags**, consumed with their quoted attribute values, so `<` and `<!--`
+ *   inside an attribute are inert rather than context-changing.
+ * - **Raw text** (`script`, `style`) and **RCDATA** (`textarea`, `title`), whose
+ *   content is text and ends only at the matching close tag. Their content is
+ *   returned as a skip range too: a component tag inside a `<style>` comment hit
+ *   the identical markup-destroying path, so excluding it would leave half the
+ *   bug live. `<template>` is deliberately NOT in this list; its content is
+ *   parsed normally and legitimately carries components (Declarative Shadow DOM
+ *   and the streaming swap templates both depend on that).
  *
  * @param {string} html
- * @returns {[number, number][]}
+ * @returns {[number, number][]} ascending, non-overlapping `[start, end)` pairs
  */
-function commentRanges(html) {
+function inertRanges(html) {
   /** @type {[number, number][]} */
   const ranges = [];
+  const n = html.length;
   let i = 0;
-  while (i < html.length) {
+  while (i < n) {
     const lt = html.indexOf('<', i);
     if (lt === -1) break;
     if (html.startsWith('<!--', lt)) {
-      const close = html.indexOf('-->', lt + 4);
-      const end = close === -1 ? html.length : close + 3;
+      let p = lt + 4;
+      // `<!-->` and `<!--->` are comments whose data is empty (spec short forms).
+      if (html[p] === '>') p += 1;
+      else if (html.startsWith('->', p)) p += 2;
+      else {
+        while (p < n) {
+          if (html.startsWith('-->', p)) { p += 3; break; }
+          if (html.startsWith('--!>', p)) { p += 4; break; }
+          p += 1;
+        }
+      }
+      ranges.push([lt, Math.min(p, n)]);
+      i = Math.min(p, n);
+      continue;
+    }
+    if (html.startsWith('<!', lt) || html.startsWith('<?', lt)) {
+      // Doctype / bogus comment / processing instruction: ends at the next `>`.
+      const close = html.indexOf('>', lt);
+      const end = close === -1 ? n : close + 1;
       ranges.push([lt, end]);
       i = end;
       continue;
     }
-    const raw = /^<(script|style)\b/i.exec(html.slice(lt, lt + 8));
-    if (raw) {
-      const closeTag = new RegExp(`</${raw[1]}\\s*>`, 'i').exec(html.slice(lt));
-      i = closeTag ? lt + closeTag.index + closeTag[0].length : html.length;
-      continue;
+    const name = /^<\/?([a-zA-Z][^\s/>]*)/.exec(html.slice(lt, lt + 64));
+    if (!name) { i = lt + 1; continue; }
+    // Consume the tag, honouring quoted attribute values so a `<` or `<!--`
+    // inside one cannot be mistaken for markup.
+    let p = lt + 1;
+    let quote = '';
+    while (p < n) {
+      const c = html[p];
+      if (quote) { if (c === quote) quote = ''; }
+      else if (c === '"' || c === "'") quote = c;
+      else if (c === '>') { p += 1; break; }
+      p += 1;
     }
-    i = lt + 1;
+    i = p;
+    const tag = name[1].toLowerCase();
+    const isClose = html[lt + 1] === '/';
+    if (!isClose && (isRawtextTag(tag) || isRcdataTag(tag))) {
+      // Everything up to the matching close tag is text, not markup.
+      const close = new RegExp(`</${tag}(?=[\\s/>])`, 'i').exec(html.slice(p));
+      const contentEnd = close ? p + close.index : n;
+      if (contentEnd > p) ranges.push([p, contentEnd]);
+      i = contentEnd;
+    }
   }
   return ranges;
 }
@@ -517,8 +559,9 @@ async function injectDSD(html, ctx, ancestors = [], dev) {
   );
   /** @type {{start:number, end:number, text:string}[]} */
   const edits = [];
-  // A tag name inside a comment is comment TEXT, not an element (#1128).
-  const comments = html.indexOf('<!--') === -1 ? [] : commentRanges(html);
+  // A tag name inside a comment, a script, a style, or RCDATA is text, not an
+  // element (#1128).
+  const comments = inertRanges(html);
   for (const m of html.matchAll(pattern)) {
     const [match, tag, attrs, selfClose] = m;
     const Cls = lookup(tag);
@@ -826,6 +869,16 @@ function isVoidElement(tag) {
 async function processSuspenseElements(html, ctx, ancestors = [], dev) {
   if (html.indexOf('<webjs-suspense') === -1) return html;
   const OPEN = /<webjs-suspense((?:"[^"]*"|'[^']*'|[^>])*?)>/i;
+  // A commented-out boundary is text, not an element (#1128). This scanner is
+  // the reason the comment fix cannot live in injectDSD alone: it runs FIRST
+  // and hands the boundary's children to a fresh injectDSD as a standalone
+  // string, which has no idea those bytes came from inside a comment. Under
+  // streaming it is worse than a stray render, because the children's data
+  // fetches run and the swap script targets an id that only exists inside a
+  // comment, so it can never resolve. Ranges are computed against the FULL
+  // input once, and `consumed` maps the shrinking `rest` back onto it.
+  const inert = inertRanges(html);
+  let consumed = 0;
   let result = '';
   let rest = html;
   // Bounded loop: each iteration consumes at least the opening tag.
@@ -834,6 +887,14 @@ async function processSuspenseElements(html, ctx, ancestors = [], dev) {
     if (!m) {
       result += rest;
       break;
+    }
+    if (inert.length && inRanges(inert, consumed + m.index)) {
+      // Emit through the end of this match and keep scanning after it.
+      const skipTo = m.index + m[0].length;
+      result += rest.slice(0, skipTo);
+      rest = rest.slice(skipTo);
+      consumed += skipTo;
+      continue;
     }
     const openStart = m.index;
     const openEnd = m.index + m[0].length;
@@ -865,6 +926,7 @@ async function processSuspenseElements(html, ctx, ancestors = [], dev) {
       const innerProcessed = await injectDSD(inner, ctx, ancestors, dev);
       result += `<webjs-suspense>${innerProcessed}</webjs-suspense>`;
     }
+    consumed += rest.length - afterClose.length;
     rest = afterClose;
   }
   return result;
@@ -1041,8 +1103,15 @@ function substituteSlotsInRender(rendered, partitioned, ownerTag) {
   let result = '';
   let cursor = 0;
   const slotRe = /<slot((?:"[^"]*"|'[^']*'|[^>])*?)(\/?)>/gi;
+  // A `<slot>` written inside a comment is documentation, not a slot (#1128).
+  // Substituting one is worse here than in the element walk: a commented slot
+  // has no `</slot>`, so the fallback scan below swallows the rest of the
+  // template, the component's REAL slot is never substituted, and the authored
+  // children are dropped from the page entirely.
+  const inert = inertRanges(rendered);
   let m;
   while ((m = slotRe.exec(rendered)) !== null) {
+    if (inert.length && inRanges(inert, m.index)) continue;
     result += rendered.slice(cursor, m.index);
     const [fullOpen, attrsRaw, selfCloseSlash] = m;
     const isSelfClose = !!selfCloseSlash;
@@ -1099,6 +1168,17 @@ function escapeRegex(s) {
 /** @param {string} tag */
 function isRawtextTag(tag) {
   return tag === 'script' || tag === 'style';
+}
+
+/**
+ * RCDATA elements: their content is text (character references aside), so a
+ * tag-shaped string inside one is not markup. Kept next to `isRawtextTag` so
+ * the two lists stay together rather than drifting apart.
+ * @param {string} tag
+ * @returns {boolean}
+ */
+function isRcdataTag(tag) {
+  return tag === 'textarea' || tag === 'title';
 }
 
 /**

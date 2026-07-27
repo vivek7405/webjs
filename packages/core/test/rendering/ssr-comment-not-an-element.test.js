@@ -21,6 +21,22 @@ class CommentProbe extends WebComponent {
 }
 CommentProbe.register('comment-probe');
 
+// Name deliberately starts with "script": a raw-text check that is not
+// anchored on a tag boundary treats this as a <script> and stops scanning.
+class ScriptProbe extends WebComponent {
+  render() { return html`<b>SCRIPTPROBE</b>`; }
+}
+ScriptProbe.register('script-probe');
+
+// A template that documents its own slot in a comment, which is exactly how a
+// developer would annotate one.
+class SlotInComment extends WebComponent {
+  render() {
+    return html`<div><!-- <slot name="head"> is the header --><slot></slot><p>tail</p></div>`;
+  }
+}
+SlotInComment.register('slot-in-comment');
+
 test('a component tag inside a comment is not instantiated', async () => {
   const out = await renderToString(html`<div><!-- <comment-probe></comment-probe> --></div>`);
   assert.equal(out, '<div><!-- <comment-probe></comment-probe> --></div>');
@@ -64,13 +80,93 @@ test('a comment marker inside a script does not suppress later components', asyn
   assert.ok(out.includes('RENDERED'), 'a component after a script containing "<!--" still renders');
 });
 
-test('the framework own hydration marker does not hide a sibling component', async () => {
-  // injectDSD recurses over output that already contains `<!--webjs-hydrate-->`
-  // and the client router's `<!--wj:children:...-->` boundary pairs. Those are
-  // well-formed comments, so they must not start a region that swallows the
-  // components rendered after them.
+// The cases below are the ones a naive `indexOf('<!--')` scanner gets wrong.
+// Every one of them was a real regression in the first version of this fix:
+// the component silently stopped rendering, which is a worse failure than the
+// bug being fixed, because the page loses content with no error anywhere.
+
+test('a comment marker inside an attribute value is inert', async () => {
   const out = await renderToString(
-    html`<div><comment-probe></comment-probe><comment-probe></comment-probe></div>`
+    html`<div><a title="use <!-- here"></a><comment-probe></comment-probe></div>`
   );
-  assert.equal(out.match(/RENDERED/g)?.length, 2, 'both siblings render past the first hydrate marker');
+  assert.ok(out.includes('RENDERED'), 'an attribute containing "<!--" does not open a comment');
+});
+
+test('the spec short comment forms close where a browser closes them', async () => {
+  // `--!>` is the "abrupt closing" form and `<!-->` is a comment with empty
+  // data. A scanner that only knows `-->` runs past both and swallows the page.
+  const abrupt = await renderToString(html`<div><!-- note --!><comment-probe></comment-probe></div>`);
+  assert.ok(abrupt.includes('RENDERED'), '--!> closes the comment');
+  const empty = await renderToString(html`<div><!--><comment-probe></comment-probe></div>`);
+  assert.ok(empty.includes('RENDERED'), '<!--> is a complete empty comment');
+});
+
+test('RCDATA content does not open a comment region', async () => {
+  // textarea and title hold text, so `<!--` inside them is not comment syntax.
+  const ta = await renderToString(html`<div><textarea><!-- hi</textarea><comment-probe></comment-probe></div>`);
+  assert.ok(ta.includes('RENDERED'), 'a textarea containing "<!--" does not suppress later components');
+  const ti = await renderToString(html`<div><title><!--</title><comment-probe></comment-probe></div>`);
+  assert.ok(ti.includes('RENDERED'), 'a title containing "<!--" does not suppress later components');
+});
+
+test('a component whose name starts with a raw-text tag name is not mistaken for one', async () => {
+  // `script-probe` starts with "script". Treating it as a <script> would skip
+  // to a `</script>` that never comes, so the rest of the document goes
+  // unscanned and the comment bug stays live after it.
+  const out = await renderToString(
+    html`<div><script-probe></script-probe><!-- <comment-probe> --><span>after</span></div>`
+  );
+  assert.ok(out.includes('SCRIPTPROBE'), 'the hyphenated component itself renders');
+  assert.ok(!out.includes('RENDERED'), 'the commented component after it is still inert');
+  assert.ok(out.includes('<span>after</span>'), 'markup after it survives');
+});
+
+test('raw-text content is text, so a component inside a style is inert', async () => {
+  // Same markup-destroying path as the comment case: without this the replaced
+  // tag ate the `*/</style>` and everything after it.
+  const out = await renderToString(
+    html`<div><style>/* <comment-probe> */</style><span>ok</span></div>`
+  );
+  assert.ok(!out.includes('RENDERED'), 'a component tag inside a style does not render');
+  assert.ok(out.includes('<span>ok</span>'), 'markup after the style survives');
+});
+
+test('a commented-out suspense boundary does not run its children', async () => {
+  // processSuspenseElements runs BEFORE the element walk and hands the
+  // boundary's children to a fresh injectDSD as a standalone string, so the
+  // comment fix has to reach it too. Under streaming this also consumed an id
+  // and emitted a swap script targeting an element that only exists inside a
+  // comment, so it could never resolve.
+  const out = await renderToString(
+    html`<div><!-- <webjs-suspense data-webjs-fallback="x"><comment-probe></comment-probe></webjs-suspense> --><span>after</span></div>`
+  );
+  assert.ok(!out.includes('RENDERED'), 'children of a commented boundary do not render');
+  assert.ok(out.includes('<span>after</span>'), 'markup after the comment survives');
+});
+
+test('a slot mentioned in a comment does not consume the authored children', async () => {
+  // The worst of the family: a commented `<slot>` has no `</slot>`, so the
+  // fallback scan swallowed the rest of the template, the real slot was never
+  // substituted, and the authored children vanished from the page.
+  const out = await renderToString(html`<slot-in-comment><b>kid</b></slot-in-comment>`);
+  assert.ok(out.includes('<b>kid</b>'), 'the authored children are still projected');
+  assert.ok(out.includes('<p>tail</p>'), 'the rest of the template survives');
+});
+
+test('the client router boundary comments do not hide the components between them', async () => {
+  // The load-bearing case (#1015, #1114). SSR wraps each layout's children in
+  // KEYED boundary comment PAIRS, and the router's scan is strict: a mispaired
+  // or duplicated boundary degrades navigation to a full page load. Those
+  // comments must be skipped as comments WITHOUT swallowing the real markup
+  // between them, so assert a component inside a pair still renders and both
+  // markers survive verbatim.
+  const out = await renderToString(html`<div>
+    <!--wj:children:root:/-->
+    <comment-probe></comment-probe>
+    <!--/wj:children:root-->
+    <comment-probe></comment-probe>
+  </div>`);
+  assert.equal(out.match(/RENDERED/g)?.length, 2, 'components inside and after the boundary pair both render');
+  assert.ok(out.includes('<!--wj:children:root:/-->'), 'the opening boundary survives verbatim');
+  assert.ok(out.includes('<!--/wj:children:root-->'), 'the closing boundary survives verbatim');
 });
