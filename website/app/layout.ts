@@ -317,9 +317,12 @@ export default function RootLayout({ children }: { children: unknown }) {
          than on .site-top: padding the fixed wrapper would inset the header
          element that paints the background and bottom border, leaving an
          unpainted strip at the top right, while padding the bar keeps the chrome
-         full bleed and still holds the nav centred. See the pr-[calc(...)] below,
-         which resolves to px-6 at every moment except an open modal on an engine
-         that ignores the gutter. */
+         full bleed and still holds the nav centred. The declaration is the
+         padding-right utility on that bar, which resolves to the same 1.5rem as
+         its px at every moment except an open modal on an engine that ignores
+         the gutter. Do not name the class literally in this comment: Tailwind
+         scans inline styles too, and an illustrative arbitrary value ships as a
+         real rule with an invalid value. */
       .glow-layer { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
       .glow-layer::before {
         content: ''; position: absolute; inset: 0;

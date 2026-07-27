@@ -318,11 +318,12 @@ suite('ui-dialog scroll lock layout', () => {
     }
   });
 
-  // dialog.ts and alert-dialog.ts keep SEPARATE module-scope refcounts on
-  // purpose (so `webjs ui add alert-dialog` stays self contained), so a confirm
-  // opened from inside a dialog is the one interleaving that duplication
-  // creates. The inner lock unlocks first, and it must not strip the outer
-  // dialog's compensation on the way out.
+  // dialog.ts and alert-dialog.ts ship as separate copies (so
+  // `webjs ui add alert-dialog` stays self contained) but share ONE refcount
+  // through globalThis, so a confirm opened from inside a dialog is a plain
+  // increment and its close a plain decrement. This is the interleaving that
+  // duplication creates, and the assertion is that the shared count holds
+  // through it.
   test('an alert-dialog inside an open dialog does not release the dialog compensation', async function () {
     const page = await buildFixedHeaderPage();
     try {
@@ -422,6 +423,61 @@ suite('ui-dialog scroll lock layout', () => {
         'no compensation left on the page',
       );
       assert.equal(centreOf(page.inner), fixedBefore, 'fixed header back where it started');
+    } finally {
+      await page.teardown();
+    }
+  });
+
+  // A dialog with no content child returns from _setup() BEFORE locking, but
+  // _teardown() unlocks unconditionally, so an unlock can arrive with no lock
+  // behind it. Treating that as the last release would replay a stale snapshot
+  // onto whatever the page owns now, and while another dialog is open it would
+  // drop that dialog's compensation mid-flight.
+  test('an unlock with no matching lock does not disturb an open dialog', async function () {
+    const page = await buildFixedHeaderPage();
+    try {
+      if (!requireClassicScrollbar(this)) return;
+
+      const root = page.track(
+        await mount(html`
+          <ui-dialog id="real">
+            <ui-dialog-content><ui-dialog-title>Real</ui-dialog-title></ui-dialog-content>
+          </ui-dialog>
+          <ui-dialog id="contentless"></ui-dialog>
+        `),
+      );
+      const real = root.querySelector('#real');
+      const contentless = root.querySelector('#contentless');
+      const fixedBefore = centreOf(page.inner);
+      const flowBefore = centreOf(page.flow);
+
+      real.show();
+      await tick();
+      const compensation = document.documentElement.style.getPropertyValue(
+        '--wj-scrollbar-compensation',
+      );
+      const padding = document.documentElement.style.paddingRight;
+
+      // Shown and hidden with no content child, so it never locked.
+      contentless.show();
+      await tick();
+      contentless.hide();
+      await tick();
+
+      assert.equal(document.body.style.overflow, 'hidden', 'the open dialog is still locked');
+      assert.equal(
+        document.documentElement.style.getPropertyValue('--wj-scrollbar-compensation'),
+        compensation,
+        'the open dialog keeps its compensation',
+      );
+      assert.equal(document.documentElement.style.paddingRight, padding, 'the padding is untouched');
+      assert.equal(centreOf(page.inner), fixedBefore, 'the fixed header does not move');
+      assert.equal(centreOf(page.flow), flowBefore, 'in-flow content does not move');
+
+      real.hide();
+      await tick();
+      assert.equal(document.body.style.overflow, '', 'released cleanly afterwards');
+      assert.equal(document.documentElement.style.paddingRight, '', 'no padding left behind');
     } finally {
       await page.teardown();
     }

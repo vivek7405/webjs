@@ -111,8 +111,8 @@ function installStyles(): void {
   document.head.appendChild(style);
 }
 
-// Body scroll lock. Refcounted so nested dialogs unlock in order. Kept in
-// lockstep with dialog.ts (not imported) so `webjs ui add alert-dialog`
+// Page scroll lock, refcounted so nested dialogs release safely in ANY order.
+// Kept in lockstep with dialog.ts (not imported) so `webjs ui add alert-dialog`
 // doesn't pull in the full dialog component.
 //
 // Hiding the page scrollbar widens the viewport by the scrollbar's width, so
@@ -123,8 +123,8 @@ function installStyles(): void {
 //
 //   1. Reserve the scrollbar gutter for the duration of the lock, so the
 //      viewport width never changes and NOTHING moves, in flow or fixed. This
-//      needs no cooperation from the page. Chromium and Firefox honour it.
-//   2. Where the engine ignores `scrollbar-gutter` (WebKit today), fall back to
+//      needs no cooperation from the page. Measured honoured on Chromium.
+//   2. Where the engine ignores it (measured on WebKit), fall back to
 //      padding <html> and publish the leftover width as
 //      `--wj-scrollbar-compensation` on it, so a fixed element can opt in with
 //      `padding-right: var(--wj-scrollbar-compensation, 0px)`.
@@ -151,14 +151,17 @@ interface ScrollLockState {
 }
 
 const SCROLLBAR_COMPENSATION = '--wj-scrollbar-compensation';
-const SCROLL_LOCK_KEY = '__wjScrollLock';
 
 function scrollLockState(): ScrollLockState {
-  const store = globalThis as unknown as Record<string, ScrollLockState | undefined>;
-  let state = store[SCROLL_LOCK_KEY];
+  // The key follows the framework's global-key prefix (see `__webjsSonnerBus` in
+  // sonner.ts, the same pattern for the same reason), and the cast is typed
+  // rather than a string-keyed bag, so a change to the shape is a type error in
+  // both copies instead of a silent undefined at runtime.
+  const store = globalThis as unknown as { __webjsScrollLock?: ScrollLockState };
+  let state = store.__webjsScrollLock;
   if (!state) {
     state = { count: 0, overflow: '', rootPaddingRight: '', scrollbarGutter: '', compensation: '' };
-    store[SCROLL_LOCK_KEY] = state;
+    store.__webjsScrollLock = state;
   }
   return state;
 }
@@ -214,7 +217,12 @@ function lockScroll(): void {
 
 function unlockScroll(): void {
   const state = scrollLockState();
-  state.count = Math.max(0, state.count - 1);
+  // An unlock with no matching lock is a no-op, NOT the last release. Clamping
+  // to zero and restoring would replay a stale snapshot onto whatever the page
+  // owns now, and it is reachable: a dialog with no content child returns from
+  // _setup() before locking, while _teardown() always unlocks.
+  if (state.count === 0) return;
+  state.count--;
   if (state.count === 0) {
     const root = document.documentElement;
     document.body.style.overflow = state.overflow;
@@ -244,6 +252,7 @@ export class UiAlertDialog extends WebComponent({
   }
 
   _disposeBeforeCache?: () => void;
+  _scrollLocked?: boolean;
 
   connectedCallback(): void {
     installStyles();
@@ -295,11 +304,19 @@ export class UiAlertDialog extends WebComponent({
     const content = this._content;
     if (!content) return;
     lockScroll();
+    this._scrollLocked = true;
     content.showModal();
   }
 
   _teardown(): void {
-    unlockScroll();
+    // Release only what THIS element locked. _setup() returns before locking
+    // when there is no content child, so an unconditional unlock here would
+    // consume ANOTHER open dialog's count and restore the page out from under
+    // it, dropping its compensation while it is still open.
+    if (this._scrollLocked) {
+      this._scrollLocked = false;
+      unlockScroll();
+    }
     this._content?.close();
   }
 }

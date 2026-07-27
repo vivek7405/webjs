@@ -122,30 +122,128 @@ function installStyles(): void {
 }
 
 // --------------------------------------------------------------------------
-// Body scroll lock. Refcounted so nested dialogs unlock in order. Native
-// <dialog> does not lock body scroll, only inert-ifies the background.
+// Page scroll lock, refcounted so nested dialogs release safely in ANY order.
+// Native <dialog> does not lock scrolling, it only inert-ifies the background.
+//
+// Hiding the page scrollbar widens the viewport by the scrollbar's width, so
+// anything laid out against the viewport moves. Padding the page holds in-flow
+// content still, but a `position: fixed` header lays out against the initial
+// containing block, never against any padding box, so padding alone leaves it
+// sliding right by half the scrollbar width. Two mechanisms fix it:
+//
+//   1. Reserve the scrollbar gutter for the duration of the lock, so the
+//      viewport width never changes and NOTHING moves, in flow or fixed. This
+//      needs no cooperation from the page. Measured honoured on Chromium.
+//   2. Where the engine ignores it (measured on WebKit), fall back to
+//      padding <html> and publish the leftover width as
+//      `--wj-scrollbar-compensation` on it, so a fixed element can opt in with
+//      `padding-right: var(--wj-scrollbar-compensation, 0px)`.
+//
+// Everything below is MEASURED rather than assumed, because engines disagree
+// about both scrollbar geometry and gutter support. When mechanism 1 works the
+// measured residual is zero, so no padding is applied and the custom property is
+// never set: the two mechanisms cannot double-compensate.
 // --------------------------------------------------------------------------
 
-let scrollLockCount = 0;
-let savedOverflow = '';
-let savedPaddingRight = '';
+// The lock's state is DOCUMENT level, so it is keyed on globalThis rather than
+// module scope. dialog.ts and alert-dialog.ts ship as separate copies (so
+// `webjs ui add alert-dialog` stays self contained), and two independent
+// counters mutating the same <html> can only be released safely in LIFO order.
+// They are not: `disconnectedCallback` fires in tree order and the #766
+// before-cache close runs in registration order, so a confirm inside a dialog
+// releases OUTER first, and the inner unlock would then re-apply the values it
+// captured with nothing left to clear them, leaving <html> padded for good. One
+// shared counter makes release order irrelevant.
+interface ScrollLockState {
+  count: number;
+  overflow: string;
+  rootPaddingRight: string;
+  scrollbarGutter: string;
+  compensation: string;
+}
+
+const SCROLLBAR_COMPENSATION = '--wj-scrollbar-compensation';
+
+function scrollLockState(): ScrollLockState {
+  // The key follows the framework's global-key prefix (see `__webjsSonnerBus` in
+  // sonner.ts, the same pattern for the same reason), and the cast is typed
+  // rather than a string-keyed bag, so a change to the shape is a type error in
+  // both copies instead of a silent undefined at runtime.
+  const store = globalThis as unknown as { __webjsScrollLock?: ScrollLockState };
+  let state = store.__webjsScrollLock;
+  if (!state) {
+    state = { count: 0, overflow: '', rootPaddingRight: '', scrollbarGutter: '', compensation: '' };
+    store.__webjsScrollLock = state;
+  }
+  return state;
+}
 
 function lockScroll(): void {
-  if (scrollLockCount === 0) {
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-    savedOverflow = document.body.style.overflow;
-    savedPaddingRight = document.body.style.paddingRight;
-    document.body.style.overflow = 'hidden';
-    if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`;
+  const state = scrollLockState();
+  if (state.count === 0) {
+    const root = document.documentElement;
+    const body = document.body;
+    const rootStyle = getComputedStyle(root);
+
+    state.overflow = body.style.overflow;
+    state.rootPaddingRight = root.style.paddingRight;
+    state.scrollbarGutter = root.style.scrollbarGutter;
+    state.compensation = root.style.getPropertyValue(SCROLLBAR_COMPENSATION);
+
+    // <html> is an in-flow block filling the initial containing block, so its
+    // border box IS the viewport width, and it is re-laid-out synchronously.
+    // A `position: fixed` probe is NOT a substitute: WebKit keeps reporting its
+    // old box until the next rendering update, so it reads a zero delta and the
+    // compensation below never fires.
+    const widthBefore = root.getBoundingClientRect().width;
+    const padBefore = parseFloat(rootStyle.paddingRight) || 0;
+    // An engine with no `scrollbar-gutter` at all reads back undefined, which
+    // must be treated as "the page has not chosen" so the gutter is still
+    // attempted (setting an unsupported property is a harmless no-op, and the
+    // measured residual below is what actually decides the fallback).
+    const chosenGutter = rootStyle.scrollbarGutter || 'auto';
+
+    // Reserve the gutter, but only when the page has not already made its own
+    // choice. An app running `stable both-edges` keeps both gutters through the
+    // lock, and overwriting that with the single-edge value would drop one and
+    // introduce the very shift this exists to prevent.
+    if (chosenGutter === 'auto' && window.innerWidth > root.clientWidth) {
+      root.style.scrollbarGutter = 'stable';
+    }
+    body.style.overflow = 'hidden';
+
+    const grew = root.getBoundingClientRect().width - widthBefore;
+    if (grew > 0) {
+      // Padding the ROOT holds in-flow content still whatever the body's own
+      // width is (a `max-width` body does not widen with the viewport, so
+      // padding the body would miss it), and it leaves the page's own body
+      // padding untouched.
+      root.style.paddingRight = `${padBefore + grew}px`;
+      // A fixed box lays out against the viewport, so no padding here can reach
+      // it. Publish what it moved by and let it opt in.
+      root.style.setProperty(SCROLLBAR_COMPENSATION, `${grew}px`);
+    }
   }
-  scrollLockCount++;
+  state.count++;
 }
 
 function unlockScroll(): void {
-  scrollLockCount = Math.max(0, scrollLockCount - 1);
-  if (scrollLockCount === 0) {
-    document.body.style.overflow = savedOverflow;
-    document.body.style.paddingRight = savedPaddingRight;
+  const state = scrollLockState();
+  // An unlock with no matching lock is a no-op, NOT the last release. Clamping
+  // to zero and restoring would replay a stale snapshot onto whatever the page
+  // owns now, and it is reachable: a dialog with no content child returns from
+  // _setup() before locking, while _teardown() always unlocks.
+  if (state.count === 0) return;
+  state.count--;
+  if (state.count === 0) {
+    const root = document.documentElement;
+    document.body.style.overflow = state.overflow;
+    root.style.paddingRight = state.rootPaddingRight;
+    root.style.scrollbarGutter = state.scrollbarGutter;
+    // Restored rather than removed, so a value the PAGE set before any dialog
+    // opened survives the lock.
+    if (state.compensation) root.style.setProperty(SCROLLBAR_COMPENSATION, state.compensation);
+    else root.style.removeProperty(SCROLLBAR_COMPENSATION);
   }
 }
 
@@ -212,15 +310,25 @@ export class UiDialog extends WebComponent({
     return this.querySelector('ui-dialog-content') as UiDialogContent | null;
   }
 
+  _scrollLocked?: boolean;
+
   _setup(): void {
     const content = this._content;
     if (!content) return;
     lockScroll();
+    this._scrollLocked = true;
     content.showModal();
   }
 
   _teardown(): void {
-    unlockScroll();
+    // Release only what THIS element locked. _setup() returns before locking
+    // when there is no content child, so an unconditional unlock here would
+    // consume ANOTHER open dialog's count and restore the page out from under
+    // it, dropping its compensation while it is still open.
+    if (this._scrollLocked) {
+      this._scrollLocked = false;
+      unlockScroll();
+    }
     this._content?.close();
   }
 }

@@ -213,7 +213,7 @@ Anything that locks page scroll (a modal, a drawer, an off-canvas menu) hides th
 
 `@webjsdev/ui`'s `<ui-dialog>` / `<ui-alert-dialog>` handle this for you (#1144). Their scroll lock reserves the scrollbar gutter for its duration, so the viewport width never changes and nothing moves. It leaves the gutter alone if your page already declared its own `scrollbar-gutter`, on the assumption that a page which made that choice meant it.
 
-Two engines, two outcomes. Chromium and Firefox honour the reserved gutter, so nothing moves and the lock does nothing else. WebKit ignores `scrollbar-gutter`, so the viewport does widen there; the lock measures how much, pads `<html>` by it to hold in-flow content still (added to any padding you already had, and restored on close), and publishes the amount as `--wj-scrollbar-compensation` so a fixed element can opt in with one line:
+Engines differ, and the lock does not need to know which one it is on. Where the gutter is honoured (measured on Chromium) nothing moves and the lock does nothing else. Where it is ignored (measured on WebKit) the viewport does widen, so the lock measures how much, pads `<html>` by it to hold in-flow content still (added to any padding you already had, and restored on close), and publishes the amount as `--wj-scrollbar-compensation` so a fixed element can opt in with one line:
 
 ```css
 header { position: fixed; inset-inline: 0; top: 0; padding-right: var(--wj-scrollbar-compensation, 0px); }

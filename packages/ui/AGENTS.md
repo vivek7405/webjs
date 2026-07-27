@@ -310,9 +310,11 @@ when the caller passes an explicit custom `--registry <url>`.
    `position: fixed` header sliding right by half the scrollbar width. Since
    WebJs recommends exactly that pinned-header pattern (#610), our lock instead
    reserves the scrollbar gutter (unless the page already declared its own), and
-   where the engine ignores `scrollbar-gutter` it pads `<html>` by the measured
-   residual and publishes it as `--wj-scrollbar-compensation` for a fixed element
-   to opt into. The refcount is shared across both component copies via
+   where the engine ignores `scrollbar-gutter` (measured on WebKit, honoured on
+   Chromium) it pads `<html>` by the measured residual and publishes it as
+   `--wj-scrollbar-compensation` for a fixed element to opt into. Nothing branches
+   on the engine: the residual is measured, so an engine nobody tested behaves
+   correctly either way. The refcount is shared across both component copies via
    `globalThis`, because release order is not guaranteed to be LIFO. This is
    presentation and lifecycle, not API: every tag, variant, and data attribute
    still matches shadcn.

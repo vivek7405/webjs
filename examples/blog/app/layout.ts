@@ -282,7 +282,7 @@ export default function RootLayout({ children }: LayoutProps) {
 
     <div class="glow-layer" aria-hidden="true"></div>
 
-    <header class="site-header fixed inset-x-0 top-0 z-20 flex items-center justify-between gap-4 px-4 sm:px-6 py-3 border-b border-border bg-[color-mix(in_oklch,var(--background)_75%,transparent)] backdrop-blur-[18px] backdrop-saturate-[180%]">
+    <header class="site-header fixed inset-x-0 top-0 z-20 flex items-center justify-between gap-4 px-4 sm:px-6 pr-[calc(1rem+var(--wj-scrollbar-compensation,0px))] sm:pr-[calc(1.5rem+var(--wj-scrollbar-compensation,0px))] py-3 border-b border-border bg-[color-mix(in_oklch,var(--background)_75%,transparent)] backdrop-blur-[18px] backdrop-saturate-[180%]">
       <a href="/" class="inline-flex items-center gap-2 no-underline text-foreground font-semibold text-[15px] leading-none tracking-tight">
         <span class="inline-block w-[22px] h-[22px] rounded-[7px] bg-gradient-to-br from-[var(--logo-from)] to-[var(--logo-to)] shadow-[inset_0_0_0_1px_oklch(1_0_0/0.15),0_2px_10px_var(--primary-tint)]"></span>
         <span>webjs</span>
