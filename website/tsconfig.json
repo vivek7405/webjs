@@ -7,6 +7,8 @@
     "strict": true,
     "types": ["node"],
     "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "erasableSyntaxOnly": true

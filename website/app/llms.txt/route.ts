@@ -2,7 +2,7 @@ import { listComparisons } from '#modules/compare/queries/list-comparisons.serve
 import { listArticles } from '#modules/articles/queries/list-articles.server.ts';
 import { listPosts } from '#modules/blog/queries/list-posts.server.ts';
 import { renderDocsIndexSection } from '#lib/docs-llms.server.ts';
-import { UI_URL, EXAMPLE_BLOG_URL, GH_URL } from '#lib/links.ts';
+import { UI_PATH, EXAMPLE_BLOG_URL, GH_URL } from '#lib/links.ts';
 
 /**
  * GET /llms.txt
@@ -83,7 +83,7 @@ export async function GET(): Promise<Response> {
 
   lines.push(...section('Project', [
     `- [GitHub repository](${GH_URL}): source, issues, and the framework monorepo (plain JS with JSDoc, so what you read is what runs)`,
-    `- [UI component library](${UI_URL}): the AI-first web-component kit (\`webjs ui add\`)`,
+    `- [UI component library](${SITE_URL}${UI_PATH}): the AI-first web-component kit (\`webjs ui add\`)`,
     `- [Live demo](${EXAMPLE_BLOG_URL}): a real WebJs app (the example blog)`,
     `- [Changelog](${SITE_URL}/changelog): the unified per-package release feed`,
   ]));

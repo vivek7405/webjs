@@ -1,5 +1,5 @@
 import { html } from '@webjsdev/core';
-import { DOCS_START_PATH, UI_URL, EXAMPLE_BLOG_URL, GH_URL, DISCORD_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_START_PATH, UI_PATH, EXAMPLE_BLOG_URL, GH_URL, DISCORD_URL, NEW_TAB } from '#lib/links.ts';
 
 /**
  * The site-wide footer, rendered once by the root layout (app/layout.ts) so it
@@ -20,7 +20,7 @@ export function siteFooter() {
           <div class="flex flex-col gap-3">
             <h4 class="text-xs font-bold uppercase tracking-wider text-fg">Product</h4>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${DOCS_START_PATH}>Docs</a>
-            <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${UI_URL} target="_blank" rel="noopener noreferrer">UI components${NEW_TAB}</a>
+            <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${UI_PATH}>UI components</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/#templates">Templates</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${EXAMPLE_BLOG_URL} target="_blank" rel="noopener noreferrer">Showcase${NEW_TAB}</a>
           </div>
