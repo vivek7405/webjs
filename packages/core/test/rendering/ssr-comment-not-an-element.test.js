@@ -544,6 +544,17 @@ test('a <!--> exit inside an already-escaped script clears both escape flags', a
   assert.ok(out.includes('RENDERED'), 'the component after the script still renders');
 });
 
+test('the dash-dash exit also steps down from the double-escaped state', async () => {
+  // Reaches the exit with the double-escape armed, which the case above never
+  // does: with only the escaped flag cleared, the stale double-escape flag
+  // makes the real </script> read as a step-down instead of the end, the
+  // element runs to EOF, and the component after it silently vanishes.
+  const out = await renderToString(
+    html`<div>${unsafeHTML('<script>a<!--<script>b<!--></script>')}<comment-probe></comment-probe></div>`
+  );
+  assert.ok(out.includes('RENDERED'), 'the component after the script still renders');
+});
+
 test('the client router boundary comments do not hide the components between them', async () => {
   // The load-bearing case (#1015, #1114). SSR wraps each layout's children in
   // KEYED boundary comment PAIRS, and the router's scan is strict: a mispaired
