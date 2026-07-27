@@ -87,7 +87,7 @@ suite('copy-cmd', () => {
     document.body.removeChild(el);
   });
 
-  test('describes the copy action via aria-describedby without hiding the command', async () => {
+  test('appends the copy action to the accessible name without hiding the command', async () => {
     const el = await mount('npm create webjs@latest my-app');
     const target = el.querySelector('[data-copy-text]');
     // The command stays the accessible NAME (slotted text, no aria-label)...
@@ -116,7 +116,35 @@ suite('copy-cmd', () => {
     el.querySelector('[data-copy-text]').click();
     await tick();
     assert.equal(written, 'npm create webjs@latest my-app',
-      'only the slotted command is copied, not the hidden description');
+      'only the command is copied, not the hidden description');
+    el.remove();
+  });
+
+  test('the hidden description is excluded from a manual text selection', async () => {
+    // The copy BUTTON is not the only way a visitor copies a command: plenty
+    // triple-click the line and hit Ctrl+C. The description sits in the same
+    // inline container as the command, so it needs user-select:none or it
+    // pastes along with it.
+    //
+    // This asserts the MECHANISM rather than a selection, deliberately. A
+    // programmatic Range ignores user-select entirely (selectNodeContents will
+    // happily return the hidden text), so a range-based assertion here would
+    // fail while real browsers behave correctly, testing nothing useful. The
+    // actual behaviour was verified against a real browser: a genuine
+    // triple-click on the hero command yields exactly
+    // "npm create webjs@latest my-app", and Ctrl+A over the whole document
+    // does not pick the description up either.
+    // Asserted as a class rather than a computed style because this harness
+    // does not load the compiled Tailwind stylesheet, so every utility computes
+    // to its initial value here. The rest of this file asserts sr-only the same
+    // way for the same reason.
+    const el = await mount('npm create webjs@latest my-app');
+    const hint = el.querySelector('[data-copy-text] .sr-only');
+    assert.ok(hint.className.includes('select-none'),
+      'the hidden description opts out of text selection');
+    const command = el.querySelector('[data-copy-source]');
+    assert.ok(command, 'the command has its own wrapper so _copy can read it alone');
+    assert.ok(!command.className.includes('select-none'), 'the command itself stays selectable');
     el.remove();
   });
 

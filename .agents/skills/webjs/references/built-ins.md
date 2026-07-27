@@ -84,6 +84,8 @@ export const revalidate = 60;   // cache this page's HTML for 60s
 
 Both are automatic, prod-focused, and need no config. In production every served module and `public/` asset gets a per-file `?v=<hash>` and `Cache-Control: public, max-age=31536000, immutable`, so a returning client fetches a changed file only when its bytes change. Every cacheable response also carries a weak `ETag`, and a repeat request with a matching `If-None-Match` gets a `304 Not Modified` with no body. Private (`no-store` / `private`) and streamed responses are excluded from the ETag path (no cross-session 304). Dev is byte-faithful (no hashing).
 
+**A page's ETag is only useful if the page renders the same bytes twice.** The ETag is a hash of the response body, so any per-render-varying value anywhere in the document defeats it: a `Date.now()`, a `Math.random()`, an id from a module-scope counter (which never resets in a long-lived server), or a CSP nonce. The failure is silent and total. The page renders correctly, every content assertion still passes, the header is still present, and the only symptom is that no `If-None-Match` ever matches, so every revalidation ships the whole document instead of an empty 304. A page under CSP is excluded from the server HTML cache for exactly this reason (the nonce must differ per response). If a page opts into a public `Cache-Control`, guard it with a test that renders the page twice, through its layout, and asserts the two outputs are byte-identical.
+
 ## Rate limiting
 
 `rateLimit()` is middleware backed by the pluggable cache store (memory by default, Redis when the global store is switched). Fixed-window.

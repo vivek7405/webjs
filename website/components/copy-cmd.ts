@@ -18,9 +18,11 @@ import { WebComponent, html, signal } from '@webjsdev/core';
  * the 304 path site-wide (#1127). Inline text needs no id, so the output is
  * byte-stable and the component stays self-contained.
  *
- * Because the hidden text lives inside the click target, _copy reads the
- * SLOT's assigned nodes rather than the target's textContent, so only the
- * command reaches the clipboard.
+ * Because the hidden text lives inside the click target, the command gets
+ * its own [data-copy-source] wrapper and _copy reads THAT, so only the
+ * command reaches the clipboard. The hidden text is also select-none, so a
+ * triple-click on the command line and a manual Ctrl+C cannot pick it up
+ * either (the button path is not the only way a visitor copies a command).
  *
  * Usage:
  *   <copy-cmd>npm create webjs@latest my-app</copy-cmd>
@@ -49,14 +51,11 @@ export class CopyCmd extends WebComponent {
   }
 
   _copy = async () => {
-    // Read the SLOTTED command specifically, not the click target's whole
-    // textContent: the target also carries the visually-hidden description
-    // that names the action for a screen reader, and that must never land on
-    // the clipboard. assignedNodes is the native light-DOM slot read.
-    const slot = this.querySelector('slot');
-    const text = (slot
-      ? slot.assignedNodes({ flatten: true }).map((n) => n.textContent || '').join('')
-      : '').trim();
+    // Read the command's own wrapper, not the click target: the target also
+    // carries the visually-hidden description that names the action for a
+    // screen reader, and that must never land on the clipboard.
+    const textEl = this.querySelector('[data-copy-source]');
+    const text = (textEl?.textContent || '').trim();
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
@@ -105,7 +104,7 @@ export class CopyCmd extends WebComponent {
           tabindex="0"
           @click=${this._copy}
           @keydown=${this._onKey}
-        ><slot></slot><span class="sr-only"> Copy command to clipboard</span></span>
+        ><span data-copy-source><slot></slot></span><span class="sr-only select-none"> Copy command to clipboard</span></span>
         <button
           class="absolute right-0 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 p-0 rounded-[7px] border bg-bg-elev cursor-copy opacity-100 transition-[opacity,color,border-color] duration-[140ms] hover:text-fg hover:border-fg-muted ${isCopied ? 'text-[oklch(0.66_0.16_150)] border-accent-tint' : 'text-fg-muted border-border'}"
           type="button"

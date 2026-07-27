@@ -23,21 +23,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { renderToString } from '@webjsdev/core/server';
+import RootLayout from '#app/layout.ts';
 import LandingPage from '#app/page.ts';
 import WhatIsWebJs from '#app/what-is-webjs/page.ts';
 import WhyWebJs from '#app/why-webjs/page.ts';
+import GettingStarted from '#app/docs/getting-started/page.ts';
 
+// Render each page THROUGH the root layout. The ETag is computed over the whole
+// served document, so a page-only render would miss anything the layout
+// contributes, which is most of the risk surface: it is the layout that stamps
+// the CSP nonce into four script tags and wraps every page's chrome. Guarding
+// the page subtree alone would leave the exact file this test exists to protect
+// (app/layout.ts) with no coverage at all.
 const PAGES: Array<[string, () => unknown]> = [
   ['/', () => LandingPage()],
   ['/what-is-webjs', () => WhatIsWebJs()],
   ['/why-webjs', () => WhyWebJs()],
+  ['/docs/getting-started', () => GettingStarted()],
 ];
 
 for (const [route, render] of PAGES) {
   test(`${route} renders identical bytes twice (ETag stability)`, async () => {
-    const first = await renderToString(render() as any);
-    const second = await renderToString(render() as any);
-    assert.ok(first.length > 1000, 'renders substantial HTML');
+    const first = await renderToString(RootLayout({ children: render() }) as any);
+    const second = await renderToString(RootLayout({ children: render() }) as any);
+    assert.ok(first.length > 5000, 'renders a substantial full document, not a fragment');
     if (first !== second) {
       // Surface the first divergence rather than dumping two large documents,
       // so the failure names the offending markup directly.
