@@ -56,25 +56,8 @@ suite('copy-cmd', () => {
     return el;
   };
 
-  // The root layout renders the shared aria-describedby target once per page
-  // (the component deliberately does not mint a per-instance id, see #1127).
-  // These tests mount the component in isolation, so stand the hint up here the
-  // same way the layout does, otherwise the reference has nothing to resolve to.
-  let hintEl;
-  const addSharedHint = () => {
-    hintEl = document.createElement('span');
-    hintEl.id = 'copy-cmd-hint';
-    hintEl.className = 'sr-only';
-    hintEl.textContent = 'Copy command to clipboard';
-    document.body.appendChild(hintEl);
-  };
-
-  setup(() => { stubClipboard(); stubGtag(); addSharedHint(); });
-  teardown(() => {
-    restoreClipboard && restoreClipboard();
-    restoreGtag && restoreGtag();
-    hintEl && hintEl.remove();
-  });
+  setup(() => { stubClipboard(); stubGtag(); });
+  teardown(() => { restoreClipboard && restoreClipboard(); restoreGtag && restoreGtag(); });
 
   test('renders the slotted command and a copy affordance', async () => {
     const el = await mount('npm create webjs@latest my-app');
@@ -110,35 +93,31 @@ suite('copy-cmd', () => {
     // The command stays the accessible NAME (slotted text, no aria-label)...
     assert.equal(target.getAttribute('aria-label'), null, 'no aria-label overrides the command name');
     assert.ok(target.textContent.includes('npm create webjs@latest my-app'), 'the command is the accessible name');
-    // ...and an sr-only describedby hint adds the copy ACTION as the description.
-    const hintId = target.getAttribute('aria-describedby');
-    assert.ok(hintId, 'the button references a description via aria-describedby');
-    const hint = document.getElementById(hintId);
-    assert.ok(hint, 'the referenced hint element resolves in the document');
+    // ...and a visually-hidden phrase inside the same target appends the copy
+    // ACTION to the accessible name, so both are announced.
+    const hint = target.querySelector('.sr-only');
+    assert.ok(hint, 'a visually-hidden description sits inside the click target');
     assert.ok(/copy/i.test(hint.textContent) && /clipboard/i.test(hint.textContent),
-      'the hint describes the copy-to-clipboard action');
-    assert.ok(hint.className.includes('sr-only'), 'the hint is visually hidden (screen-reader only)');
+      'the hidden text describes the copy-to-clipboard action');
+    assert.ok(target.textContent.includes('Copy command to clipboard'),
+      'the description is part of the accessible name, after the command');
+    // Self-contained: the description must not depend on an element rendered
+    // elsewhere (a layout-provided target would dangle wherever copy-cmd is
+    // used outside that layout, e.g. an error boundary or another app).
+    assert.equal(target.getAttribute('aria-describedby'), null,
+      'no aria-describedby reference to an element outside the component');
     document.body.removeChild(el);
   });
 
-  test('two copy-cmd on a page share one hint id that resolves to a single element', async () => {
-    const a = await mount('npm create webjs@latest one');
-    const b = await mount('npm create webjs@latest two');
-    const idA = a.querySelector('[data-copy-text]').getAttribute('aria-describedby');
-    const idB = b.querySelector('[data-copy-text]').getAttribute('aria-describedby');
-    assert.ok(idA && idB, 'both buttons carry a describedby id');
-    // Both point at the layout's single hint. The description sentence is the
-    // same for every instance, so sharing it is correct AND keeps the id out of
-    // the rendered HTML, which is what makes the page byte-stable across
-    // renders (a per-instance counter did not reset per render, #1127).
-    assert.equal(idA, idB, 'both instances reference the same shared hint');
-    assert.equal(
-      document.querySelectorAll('#' + idA).length, 1,
-      'exactly one element carries the hint id (no duplicate ids in the document)',
-    );
-    assert.ok(/copy/i.test(document.getElementById(idA).textContent),
-      'the shared hint describes the copy action');
-    a.remove(); b.remove();
+  test('copying excludes the visually-hidden description', async () => {
+    // The description shares the click target with the command, so a naive
+    // textContent read would put "Copy command to clipboard" on the clipboard.
+    const el = await mount('npm create webjs@latest my-app');
+    el.querySelector('[data-copy-text]').click();
+    await tick();
+    assert.equal(written, 'npm create webjs@latest my-app',
+      'only the slotted command is copied, not the hidden description');
+    el.remove();
   });
 
   test('renders no generated ids, so repeated renders are byte-identical', async () => {

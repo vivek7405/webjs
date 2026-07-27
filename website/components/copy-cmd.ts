@@ -5,10 +5,22 @@ import { WebComponent, html, signal } from '@webjsdev/core';
  * affordance. Light DOM, Tailwind utilities throughout. The whole
  * inner wrapper is the click target (text or icon both trigger copy);
  * the icon is an always-visible visual hint, not a separate focusable
- * element. The command text is the button's accessible NAME, and an
- * sr-only aria-describedby hint adds "Copy command to clipboard" as its
- * description, so a screen reader announces both the payload and the
- * action without the label hiding the command.
+ * element. The command text and a visually-hidden "Copy command to
+ * clipboard" both sit inside the click target, so the accessible NAME is
+ * the command followed by the action: a screen reader announces the
+ * payload and what will happen to it, and no aria-label hides the command.
+ *
+ * The description is inline rather than an aria-describedby reference on
+ * purpose. A reference needs a document-unique id, the only way to mint one
+ * during SSR is a module-scope counter, and a counter never resets in a
+ * long-lived server, so consecutive renders of the same page emit different
+ * bytes. That changes the page's ETag on every request and silently kills
+ * the 304 path site-wide (#1127). Inline text needs no id, so the output is
+ * byte-stable and the component stays self-contained.
+ *
+ * Because the hidden text lives inside the click target, _copy reads the
+ * SLOT's assigned nodes rather than the target's textContent, so only the
+ * command reaches the clipboard.
  *
  * Usage:
  *   <copy-cmd>npm create webjs@latest my-app</copy-cmd>
@@ -22,14 +34,6 @@ import { WebComponent, html, signal } from '@webjsdev/core';
  * addEventListener in lifecycle hooks. Cleanup of the auto-reset
  * timer happens in disconnectedCallback.
  */
-// The aria-describedby target, rendered ONCE by the root layout. Every
-// copy-cmd shares it because they all carry the same description sentence.
-// It is deliberately NOT a per-instance generated id: the only way to mint one
-// at SSR is a module-scope counter, which never resets in a long-lived server,
-// so consecutive renders of the same page emit different bytes and the ETag can
-// never match an If-None-Match. That silently disabled 304s site-wide (#1127).
-const HINT_ID = 'copy-cmd-hint';
-
 export class CopyCmd extends WebComponent {
   copied = signal(false);
   // Increments on every successful copy. The live-region text is keyed off its
@@ -45,8 +49,14 @@ export class CopyCmd extends WebComponent {
   }
 
   _copy = async () => {
-    const textEl = this.querySelector('[data-copy-text]');
-    const text = (textEl?.textContent || '').trim();
+    // Read the SLOTTED command specifically, not the click target's whole
+    // textContent: the target also carries the visually-hidden description
+    // that names the action for a screen reader, and that must never land on
+    // the clipboard. assignedNodes is the native light-DOM slot read.
+    const slot = this.querySelector('slot');
+    const text = (slot
+      ? slot.assignedNodes({ flatten: true }).map((n) => n.textContent || '').join('')
+      : '').trim();
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
@@ -93,10 +103,9 @@ export class CopyCmd extends WebComponent {
           data-copy-text
           role="button"
           tabindex="0"
-          aria-describedby=${HINT_ID}
           @click=${this._copy}
           @keydown=${this._onKey}
-        ><slot></slot></span>
+        ><slot></slot><span class="sr-only"> Copy command to clipboard</span></span>
         <button
           class="absolute right-0 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 p-0 rounded-[7px] border bg-bg-elev cursor-copy opacity-100 transition-[opacity,color,border-color] duration-[140ms] hover:text-fg hover:border-fg-muted ${isCopied ? 'text-[oklch(0.66_0.16_150)] border-accent-tint' : 'text-fg-muted border-border'}"
           type="button"

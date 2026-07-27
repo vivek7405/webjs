@@ -288,17 +288,6 @@ export default function RootLayout({ children }: { children: unknown }) {
 
     <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:rounded-lg focus:bg-accent focus:text-accent-fg focus:shadow-[var(--shadow)]">Skip to content</a>
 
-    <!-- Shared aria-describedby target for every copy-cmd on the page. The
-         description is the same sentence for all of them, so one element serves
-         them all. It lives here rather than inside the component because a
-         per-instance id has to come from somewhere unique, and the only
-         mechanism available at SSR (a module-scope counter) never resets in a
-         long-lived server, which makes every page's HTML differ between renders
-         and silently kills the ETag / 304 path. See #1127.
-         Do NOT write the tag name in angle brackets here: a registered custom
-         element inside a comment is still instantiated at SSR. -->
-    <span id="copy-cmd-hint" class="sr-only">Copy command to clipboard</span>
-
     <div class="glow-layer" aria-hidden="true"></div>
 
     <div class="site-top fixed inset-x-0 top-0 z-20">
