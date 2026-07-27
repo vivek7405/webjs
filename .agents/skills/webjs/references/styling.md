@@ -211,12 +211,16 @@ For a dashboard, an alternative is an app-shell scroll container (a non-scrollin
 
 Anything that locks page scroll (a modal, a drawer, an off-canvas menu) hides the page scrollbar, and a classic scrollbar takes real layout width, so hiding it widens the viewport. The usual compensation is padding the body, which holds in-flow content still. **It does nothing for a fixed header**, because a fixed box lays out against the initial containing block, never against the body's padding box, so the header widens with the viewport and its centred content slides right by half the scrollbar width.
 
-`@webjsdev/ui`'s `<ui-dialog>` / `<ui-alert-dialog>` handle this for you (#1144). Their scroll lock reserves the scrollbar gutter for its duration, so the viewport width never changes and nothing moves. Where the engine ignores `scrollbar-gutter` (WebKit today), the lock publishes the leftover width on `<html>` as `--wj-scrollbar-compensation`, and a fixed header opts in with one line:
+`@webjsdev/ui`'s `<ui-dialog>` / `<ui-alert-dialog>` handle this for you (#1144). Their scroll lock reserves the scrollbar gutter for its duration, so the viewport width never changes and nothing moves. It leaves the gutter alone if your page already declared its own `scrollbar-gutter`, on the assumption that a page which made that choice meant it.
+
+Two engines, two outcomes. Chromium and Firefox honour the reserved gutter, so nothing moves and the lock does nothing else. WebKit ignores `scrollbar-gutter`, so the viewport does widen there; the lock measures how much, pads `<html>` by it to hold in-flow content still (added to any padding you already had, and restored on close), and publishes the amount as `--wj-scrollbar-compensation` so a fixed element can opt in with one line:
 
 ```css
 header { position: fixed; inset-inline: 0; top: 0; padding-right: var(--wj-scrollbar-compensation, 0px); }
 ```
 
-The property is only set while a lock is active AND the gutter did not hold, so the `0px` fallback covers every other moment and the two mechanisms never double-compensate.
+The property is only set while a lock is active AND the viewport actually widened, so the `0px` fallback covers every other moment and the two mechanisms never double-compensate. If you find inline `padding-right` on your `<html>` while a modal is open, that is this, and it comes off on close.
+
+Put the declaration on the element that is actually off-centre, not necessarily the fixed one. If your fixed wrapper paints nothing and a child carries the background, padding the wrapper insets that child and leaves an unpainted strip at the edge; pad the inner centring container instead, and the chrome stays full bleed. That is what `website/app/layout.ts` does.
 
 Rolling your own scroll lock? Two things the kit learned the hard way. Reserve the gutter rather than relying on padding alone, or a fixed header will jump. And when you do pad, pad `<html>`, not `<body>`: a `max-width` body does not widen when the viewport does, so padding it misses the shift entirely, while padding the root holds in-flow content whatever the body's width is. Measure the root's own border box to decide the amount, since it tracks the viewport and is re-laid-out synchronously.

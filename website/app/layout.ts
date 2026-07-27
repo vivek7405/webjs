@@ -312,11 +312,14 @@ export default function RootLayout({ children }: { children: unknown }) {
          the viewport. The kit's dialog reserves the scrollbar gutter so nothing
          moves, but WebKit ignores scrollbar-gutter, and there it publishes the
          leftover width instead. The header is position: fixed, so it lays out
-         against the viewport and cannot be reached by the body padding that
-         holds in-flow content still. Opting in is what keeps it from sliding
-         right by half the scrollbar width when a dialog opens. The 0px fallback
-         is what applies at every other moment. */
-      .site-top { padding-right: var(--wj-scrollbar-compensation, 0px); }
+         against the viewport and cannot be reached by the padding that holds
+         in-flow content still. The compensation goes on the CENTRING BAR rather
+         than on .site-top: padding the fixed wrapper would inset the header
+         element that paints the background and bottom border, leaving an
+         unpainted strip at the top right, while padding the bar keeps the chrome
+         full bleed and still holds the nav centred. See the pr-[calc(...)] below,
+         which resolves to px-6 at every moment except an open modal on an engine
+         that ignores the gutter. */
       .glow-layer { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
       .glow-layer::before {
         content: ''; position: absolute; inset: 0;
@@ -356,7 +359,7 @@ export default function RootLayout({ children }: { children: unknown }) {
 
     <div class="site-top fixed inset-x-0 top-0 z-20">
     <header class="backdrop-blur-md bg-[color-mix(in_oklch,var(--color-bg)_78%,transparent)] border-b border-border">
-      <div class="max-w-[1240px] mx-auto px-6 py-[11px] flex items-center justify-between gap-4">
+      <div class="max-w-[1240px] mx-auto px-6 pr-[calc(1.5rem+var(--wj-scrollbar-compensation,0px))] py-[11px] flex items-center justify-between gap-4">
         <a class="inline-flex items-center gap-[9px] no-underline text-fg font-display font-extrabold text-[17px] leading-none tracking-[-0.02em] shrink-0" href="/">
           <span class="w-[22px] h-[22px] rounded-[7px] bg-gradient-to-br from-[var(--logo-from)] to-[var(--logo-to)] shadow-[0_2px_10px_var(--accent-tint)]"></span>
           webjs
