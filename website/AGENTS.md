@@ -146,6 +146,22 @@ to hide it.
 `app/page.ts`: the hero block is at the top of the default-exported
 function. Edit the inline `<h1>` / `<p>` text.
 
+## SSR action seeding is OFF for this app
+
+`package.json` sets `"webjs": { "seed": false }`. Seeding (#472) serializes
+every `'use server'` result invoked during SSR into the page so a shipping
+async component can skip its refetch on hydration. Nothing here consumes that:
+no component on this site does an async render or calls an action, and a page
+function never re-runs in the browser, so the payload was pure page weight.
+
+It was not small. Before turning it off, `/changelog` carried 304KB of seed in
+a 1.1MB response and `/ui/dropdown-menu` 35KB in 141KB, roughly a quarter of
+each page, duplicating content already in the visible HTML.
+
+If you add a component here that genuinely wants seeding (an async render
+calling an action), re-enable it and delete the assertion in
+`test/ssr/ui-gallery.test.ts` that pins this off.
+
 ## Style
 
 - Light DOM, Tailwind utilities, `@theme` tokens from the root layout

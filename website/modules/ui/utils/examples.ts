@@ -996,7 +996,7 @@ const SIZE_EXAMPLES: Record<string, Record<string, string>> = {
 // collision: each card's button only ever publishes into its own
 // sibling viewport, so the toast lands at the demonstrated position
 // every time regardless of which other viewports the page hosts.
-SIZE_EXAMPLES.sonner = (() => {
+function sonnerPositionExamples(): Record<string, string> {
   const make = (position: 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right') => `
     <div class="flex items-center gap-3">
       <ui-sonner position="${position}"></ui-sonner>
@@ -1011,7 +1011,7 @@ SIZE_EXAMPLES.sonner = (() => {
     'bottom-center': make('bottom-center'),
     'bottom-right': make('bottom-right'),
   };
-})();
+}
 
 // Variant examples for sonner are TYPE demos, each card fires the
 // matching imperative API so the user sees the icon + colour treatment
@@ -1029,7 +1029,7 @@ SIZE_EXAMPLES.sonner = (() => {
 // doesn't matter which one wins, toasts always appear in the same
 // place users expect from the default. (Proper multi-viewport
 // routing is a separate concern in sonner.ts, deferred.)
-VARIANT_EXAMPLES.sonner = (() => {
+function sonnerTypeExamples(): Record<string, string> {
   // Loading toasts default to duration: 0 (sticky) per sonner
   // convention, they're meant to be replaced by a follow-up
   // toast.success / toast.error via toast.promise. A bare
@@ -1061,16 +1061,31 @@ VARIANT_EXAMPLES.sonner = (() => {
     warning: make('warning'),
     loading: make('loading'),
   };
-})();
+}
 
+/**
+ * The two sonner maps are built ON DEMAND rather than assigned at module scope.
+ *
+ * They used to be module-scope IIFEs, and that single detail made this module
+ * "client-effecting" to the elision analyser, which pinned
+ * `app/ui/[name]/page.ts` and shipped the whole snippet map plus the API
+ * metadata to the browser on all 33 component pages. Nothing there is of any
+ * use client-side: a page function never re-runs in the browser, and these
+ * strings are consumed during SSR only. Building them inside a function keeps
+ * the module inert on load, so the page elides and the browser fetches just
+ * the interactive component leaves. See AGENTS.md, the execution model's
+ * self-check on page/layout modules in the network tab.
+ */
 export function getVariantExamples(name: string): Record<string, string> | null {
   const key = HYPHENATED_ALIASES[name] || name;
+  if (key === 'sonner') return sonnerTypeExamples();
   return VARIANT_EXAMPLES[key] || VARIANT_EXAMPLES[name] || null;
 }
 
 export function getSizeExamples(name: string): Record<string, string> | null {
   // SIZE_EXAMPLES keyed by the hyphenated component name (no underscore
   // aliasing needed since none of the keys here are TS reserved words).
+  if (name === 'sonner') return sonnerPositionExamples();
   return SIZE_EXAMPLES[name] || null;
 }
 

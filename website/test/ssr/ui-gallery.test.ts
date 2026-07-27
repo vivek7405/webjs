@@ -254,6 +254,28 @@ test('the gallery appears in the sitemap, one URL per component', async () => {
   assert.ok(!xml.includes('/ui/theme-zinc'), 'non-component registry items stay out');
 });
 
+test('no page ships a dead SSR action-seed payload', async () => {
+  // Site-wide, not gallery-specific, but the gallery is what surfaced it.
+  //
+  // Every `'use server'` result invoked during SSR is serialized into the page
+  // so a shipping async component can skip its on-hydration refetch (#472).
+  // This site has no such consumer: no component here does an async render or
+  // calls an action, and a page function never re-runs in the browser. So the
+  // payload was pure weight, and it was not small: 35KB of a 141KB
+  // /ui/dropdown-menu, and 304KB of a 1.1MB /changelog. `webjs.seed` is off
+  // for this app as a result.
+  //
+  // If a component here ever DOES want seeding, re-enable it and delete this
+  // test rather than working around it.
+  for (const path of ['/ui', '/ui/dropdown-menu', '/changelog', '/blog', '/docs/routing']) {
+    const html = await bodyOf(path);
+    assert.ok(
+      !html.includes('__webjs-seeds'),
+      `${path} carries an action-seed payload no component on this site can consume`,
+    );
+  }
+});
+
 test('the old /docs/ui page is gone, permanently redirected to the gallery', async () => {
   // It was a second, hand-written description of the same kit and it had
   // drifted badly (roughly 55 components claimed against an actual 32, and a

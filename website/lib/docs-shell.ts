@@ -265,7 +265,14 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
       }
     </style>
 
-    <div class="docs-backdrop" onclick="document.body.removeAttribute('data-docs-nav-open')"></div>
+    <!-- The drawer's open/close behaviour is NOT wired here. The root layout
+         owns one delegated listener for it (see app/layout.ts), for two
+         reasons. It keeps this module inert at load, so the page/layout
+         modules that import it can be elided instead of shipped to the
+         browser; and it puts every close path in one place, so the toggle
+         button's aria-expanded cannot drift out of step with the body
+         attribute the way it did when each element carried its own handler. -->
+    <div class="docs-backdrop"></div>
 
     <!-- Same container as the shared header (max-w-[1240px] mx-auto px-6), so
          the sidebar's left edge lines up with the wordmark above it and the
@@ -277,7 +284,6 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
         id="docs-sidebar"
         class="docs-sidebar flex flex-col py-10 text-sm max-[860px]:px-5"
         aria-label=${label}
-        onclick="if (event.target.closest('a')) document.body.removeAttribute('data-docs-nav-open')"
       >
         ${asideTop ?? ''}
         <!-- min-h-0 is what lets this shrink inside the flex column; without
@@ -301,10 +307,9 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
       </aside>
       <main id="main" tabindex="-1" class="min-w-0 max-w-[820px] pt-10 pb-16 focus:outline-none">
         <button
-          class="hidden max-[860px]:inline-flex items-center gap-2 mb-6 px-3 py-2 rounded-lg border border-border bg-bg-elev text-fg-muted text-sm cursor-pointer transition-colors duration-fast hover:text-fg hover:border-border-strong"
+          class="docs-nav-toggle hidden max-[860px]:inline-flex items-center gap-2 mb-6 px-3 py-2 rounded-lg border border-border bg-bg-elev text-fg-muted text-sm cursor-pointer transition-colors duration-fast hover:text-fg hover:border-border-strong"
           aria-controls="docs-sidebar"
           aria-expanded="false"
-          onclick="document.body.toggleAttribute('data-docs-nav-open'); this.setAttribute('aria-expanded', document.body.hasAttribute('data-docs-nav-open'))"
         >
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
           ${menuLabel}

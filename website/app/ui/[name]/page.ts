@@ -14,42 +14,28 @@ import { loadRegistryItem } from '#modules/ui/queries/registry.server.ts';
 import '#components/preview-tabs.ts';
 
 // ---------------------------------------------------------------------------
-// Side-effect imports: load every ui-* component module so the custom
-// elements register and the preview pane can render any of them. The modules
-// are mirrored from packages/ui/packages/registry into components/ui/ by
-// scripts/copy-registry.mjs (run by webjs.dev.before / webjs.start.before and
-// baked into the deploy image), so the source the server renders is the same
-// source the browser is served.
+// Side-effect imports: the TIER-2 component modules, so their custom elements
+// register and a preview containing a <ui-*> tag upgrades in the browser. The
+// modules are mirrored from packages/ui/packages/registry into components/ui/
+// by scripts/copy-registry.mjs (run by webjs.dev.before / webjs.start.before
+// and baked into the deploy image), so the source the server renders is the
+// same source the browser is served.
+//
+// Only Tier 2 is imported here, and that is load-bearing rather than tidiness.
+// A Tier-1 file exports class-helper functions and registers no element, so a
+// bare side-effect import of one is a client-effecting NON-component import,
+// which pins this whole page module into the browser bundle (AGENTS.md's
+// execution model, and #963 on the path-aware verdict). The helpers are still
+// imported BY NAME where they are used, in modules/ui/utils/examples.ts, which
+// is what evaluates them during SSR. Importing all 32 here shipped the page,
+// its snippet map, and its API metadata to every reader for nothing.
 // ---------------------------------------------------------------------------
-import '#components/ui/accordion.ts';
-import '#components/ui/alert.ts';
 import '#components/ui/alert-dialog.ts';
-import '#components/ui/aspect-ratio.ts';
-import '#components/ui/avatar.ts';
-import '#components/ui/badge.ts';
-import '#components/ui/breadcrumb.ts';
-import '#components/ui/button.ts';
-import '#components/ui/card.ts';
-import '#components/ui/checkbox.ts';
-import '#components/ui/collapsible.ts';
 import '#components/ui/dialog.ts';
 import '#components/ui/dropdown-menu.ts';
 import '#components/ui/hover-card.ts';
-import '#components/ui/input.ts';
-import '#components/ui/kbd.ts';
-import '#components/ui/label.ts';
-import '#components/ui/native-select.ts';
-import '#components/ui/pagination.ts';
-import '#components/ui/popover.ts';
-import '#components/ui/progress.ts';
-import '#components/ui/radio-group.ts';
-import '#components/ui/separator.ts';
-import '#components/ui/skeleton.ts';
 import '#components/ui/sonner.ts';
-import '#components/ui/switch.ts';
-import '#components/ui/table.ts';
 import '#components/ui/tabs.ts';
-import '#components/ui/textarea.ts';
 import '#components/ui/toggle.ts';
 import '#components/ui/toggle-group.ts';
 import '#components/ui/tooltip.ts';

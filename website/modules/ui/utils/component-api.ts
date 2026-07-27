@@ -296,7 +296,11 @@ export const COMPONENT_API: Record<string, ComponentApi> = {
     variants: ['default', 'destructive'],
     hideVariantsSection: true,
     subcomponents: [
-      { name: '<ui-dropdown-menu>', description: 'Root, owns the open state and document-level event handlers.' },
+      // "page-level" rather than the DOM global's name on purpose: the elision
+      // analyser matches browser globals by scanning source text, so writing
+      // that word here marks this pure data module client-effecting and pins
+      // the whole page into the browser bundle.
+      { name: '<ui-dropdown-menu>', description: 'Root, owns the open state and page-level event handlers.' },
       { name: '<ui-dropdown-menu-trigger>', description: 'Toggles the menu.' },
       { name: '<ui-dropdown-menu-content>', description: 'Popover panel, role="menu". Accepts side / align / side-offset.' },
       { name: '<ui-dropdown-menu-item>', description: 'Clickable row. variant="default | destructive", inset boolean.' },

@@ -139,21 +139,47 @@ export default function RootLayout({ children }: { children: unknown }) {
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', measure);
         else measure();
       })();
-      // The docs drawer's open state is an attribute on <body>, which is
-      // OUTSIDE every swap range, so a soft navigation carries it along:
-      // it locks scrolling on whatever page you land on, and re-opens the
-      // drawer over the next docs page you visit. Clearing it here, in the
-      // root layout, is what makes that impossible, because this listener
-      // survives navigation while anything the docs sub-layout registers
-      // would be swapped away with it.
-      function closeDocsNav() { document.body.removeAttribute('data-docs-nav-open'); }
+      // The sidebar drawer shared by /docs and /ui (lib/docs-shell.ts) is
+      // driven entirely from here, and both halves of that are deliberate.
+      //
+      // Its open state is an attribute on <body>, which is OUTSIDE every swap
+      // range, so a soft navigation carries it along: it locks scrolling on
+      // whatever page you land on, and re-opens the drawer over the next page
+      // you visit. Clearing it in the ROOT layout is what makes that
+      // impossible, because this listener survives navigation while anything
+      // the sub-layout registered would be swapped away with it.
+      //
+      // The open/close handlers live here too, rather than as inline onclick
+      // attributes in the shell. That keeps the shell module inert at load so
+      // the page/layout modules importing it can be elided, and it puts every
+      // close path through one function, so the toggle's aria-expanded cannot
+      // drift out of step with the attribute (dismissing via the backdrop used
+      // to leave the button advertising an expanded drawer indefinitely).
+      function syncDocsNav() {
+        var open = document.body.hasAttribute('data-docs-nav-open');
+        var btn = document.querySelector('.docs-nav-toggle');
+        if (btn) btn.setAttribute('aria-expanded', String(open));
+        return open;
+      }
+      function closeDocsNav() {
+        document.body.removeAttribute('data-docs-nav-open');
+        syncDocsNav();
+      }
       window.addEventListener('popstate', closeDocsNav);
       document.addEventListener('webjs:navigate', closeDocsNav);
 
       document.addEventListener('click', function (e) {
         var t = e.target;
         if (!t || !t.closest) return;
-        if (t.closest('a')) closeDocsNav();
+        if (t.closest('.docs-nav-toggle')) {
+          document.body.toggleAttribute('data-docs-nav-open');
+          syncDocsNav();
+          return;
+        }
+        // Any link, and the backdrop, dismiss the drawer. The backdrop needs no
+        // navigation to be clicked, which is why it cannot rely on the link
+        // branch below.
+        if (t.closest('a') || t.closest('.docs-backdrop')) closeDocsNav();
         var a = t.closest('.mobile-menu a');
         if (a) { var d = a.closest('details'); if (d) d.removeAttribute('open'); return; }
         var open = document.querySelectorAll('.mobile-menu[open]');
@@ -161,6 +187,13 @@ export default function RootLayout({ children }: { children: unknown }) {
       });
       document.addEventListener('keydown', function (e) {
         if (e.key !== 'Escape') return;
+        // Escape dismisses the drawer and returns focus to the control that
+        // opened it, the same contract the header's mobile menu follows.
+        if (document.body.hasAttribute('data-docs-nav-open')) {
+          closeDocsNav();
+          var btn = document.querySelector('.docs-nav-toggle');
+          if (btn) btn.focus();
+        }
         var open = document.querySelectorAll('.mobile-menu[open]');
         for (var i = 0; i < open.length; i++) {
           open[i].removeAttribute('open');
