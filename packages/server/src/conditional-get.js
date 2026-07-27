@@ -14,7 +14,8 @@
  *     storage outright, so there is nothing to validate. `private` is NOT
  *     excluded: it forbids SHARED storage, not validation, and the ETag hashes
  *     THIS response's body, so no user's validator can match another's (#1140).
- *     Excluding it cost the client router's partial responses their 304s.
+ *     That is what lets the client router's partial responses stay `private`
+ *     without losing their 304s.
  *   - Any body the framework did not positively mark as fully buffered. The
  *     funnel only hashes a response that ALREADY carries an `ETag` (a serve
  *     branch hashed its own bytes) OR carries the internal `X-Webjs-Buffered`
@@ -93,11 +94,14 @@ const STRIP_ON_304 = ['content-length', 'content-encoding', 'content-type'];
  * 304 is the correct answer and carries no body either way. `private` already
  * forbids the one real hazard, a SHARED cache storing the response.
  *
- * Excluding it had a concrete cost. The client router's partial responses are
- * private by construction, and it fetches them with `cache: 'no-cache'` (#1131)
- * precisely so a revalidation is a cheap 304 rather than a re-download. With
- * no validator attached, every prefetch and soft navigation re-downloaded the
- * whole fragment.
+ * Widening this is what makes #1140's fragment downgrade safe to ship. Before
+ * that change a reduced fragment INHERITED the page's public header, so it
+ * already passed this check and already carried a validator; marking fragments
+ * `private` would have taken that away, and since the router fetches them with
+ * `cache: 'no-cache'` (#1131), every prefetch and soft navigation would have
+ * re-downloaded the whole fragment. The exclusion is dropped rather than
+ * special-cased because it was never justified on its own terms either, per
+ * the reasoning above.
  *
  * @param {Response} res
  * @returns {boolean}

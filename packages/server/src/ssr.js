@@ -731,8 +731,10 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
       const body = await renderToString(tree, { ssr: true, suspenseCtx });
       // REDUCED response (#1009): the outer layouts were skipped, so these
       // bytes are only valid for a client that already HAS them. The caller
-      // marks the response `Vary: X-Webjs-Have` so no shared cache can serve
-      // this fragment to a fresh full-page navigation.
+      // marks the response `private` so no shared cache can store it, and
+      // additionally `Vary: X-Webjs-Have` for caches that honour it. The
+      // `private` is the guarantee, not the Vary: Cloudflare and others honour
+      // only `Accept-Encoding` (#1140).
       return { html: body + (await loadingTemplates(route, ctx, dev)), reduced: true };
     }
     const mod = await loadModule(route.layouts[i], dev);

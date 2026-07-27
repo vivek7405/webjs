@@ -118,10 +118,11 @@ test('cacheable page: a NON-matching If-None-Match returns 200 + full body', asy
 /* ---------------- private (router fragment): still validated ---------------- */
 
 test('a PRIVATE response still gets an ETag and 304s (#1140)', async () => {
-  // The client router's partial responses are private by construction, and it
-  // fetches them with `cache: 'no-cache'` (#1131) precisely so a revalidation
-  // is a cheap conditional request. Excluding private from the validator path
-  // made every prefetch and soft navigation re-download the whole fragment.
+  // What lets #1140 mark the router's partial responses `private` without
+  // costing them their validator. The router fetches them with
+  // `cache: 'no-cache'` (#1131) precisely so a revalidation is a cheap
+  // conditional request; if `private` were excluded here, that downgrade would
+  // turn every prefetch and soft navigation into a full re-download.
   //
   // The old worry was a "cross-session" 304 on per-user content. It cannot
   // happen: the ETag hashes THIS response's body, so two users with different
