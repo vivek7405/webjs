@@ -151,7 +151,7 @@ export default function RootLayout({ children }: LayoutProps) {
         --popover:                oklch(0.135 0 0);
         --popover-foreground:     oklch(0.96 0 0);
         --primary:                oklch(0.7 0.16 52);
-        --primary-foreground:     oklch(0.17 0.02 52);
+        --primary-foreground:     oklch(0.1 0.01 52);
         --secondary:              oklch(0 0 0);
         --secondary-foreground:   oklch(0.96 0 0);
         --muted:                  oklch(0.09 0 0);
