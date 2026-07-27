@@ -412,6 +412,76 @@ function defaultSSRErrorTemplate(tag, err, dev) {
 }
 
 /**
+ * Byte ranges of the HTML comments in `html`, as `[start, end)` pairs in
+ * ascending order (#1128).
+ *
+ * The element scanners below match tags with a flat regex over already-
+ * assembled markup, which has no notion of an HTML context, so a registered
+ * tag name written inside a comment used to be instantiated as a real element.
+ * That is not a cosmetic problem: the replacement consumed the rest of the
+ * comment INCLUDING its closing `-->`, so the remaining markup was swallowed
+ * by an unterminated comment. Whether it happened at all depended on whether
+ * the name in the comment happened to be a registered component, which made it
+ * look random.
+ *
+ * Two details that keep this faithful to how a browser parses the same bytes:
+ *
+ * - An unterminated `<!--` comments out everything to the end of the input,
+ *   so the range runs to EOF rather than being ignored.
+ * - Raw-text elements have no comment syntax: inside `<script>` / `<style>`,
+ *   `<!--` is ordinary text. Skipping over those elements is what stops a
+ *   `<!--` in a script from opening a bogus comment region and suppressing
+ *   every real component after it. (Their CONTENT is deliberately not
+ *   returned as a skip range: whether a tag-shaped string inside a script
+ *   should be instantiated is a separate question from this fix, so the
+ *   existing behaviour there is left alone.)
+ *
+ * @param {string} html
+ * @returns {[number, number][]}
+ */
+function commentRanges(html) {
+  /** @type {[number, number][]} */
+  const ranges = [];
+  let i = 0;
+  while (i < html.length) {
+    const lt = html.indexOf('<', i);
+    if (lt === -1) break;
+    if (html.startsWith('<!--', lt)) {
+      const close = html.indexOf('-->', lt + 4);
+      const end = close === -1 ? html.length : close + 3;
+      ranges.push([lt, end]);
+      i = end;
+      continue;
+    }
+    const raw = /^<(script|style)\b/i.exec(html.slice(lt, lt + 8));
+    if (raw) {
+      const closeTag = new RegExp(`</${raw[1]}\\s*>`, 'i').exec(html.slice(lt));
+      i = closeTag ? lt + closeTag.index + closeTag[0].length : html.length;
+      continue;
+    }
+    i = lt + 1;
+  }
+  return ranges;
+}
+
+/**
+ * Is `index` inside one of `ranges`? Ranges are ascending and non-overlapping,
+ * and callers walk matches left to right, so this stops as soon as a range
+ * starts past the index.
+ *
+ * @param {[number, number][]} ranges
+ * @param {number} index
+ * @returns {boolean}
+ */
+function inRanges(ranges, index) {
+  for (const [start, end] of ranges) {
+    if (start > index) return false;
+    if (index < end) return true;
+  }
+  return false;
+}
+
+/**
  * Scan an HTML string for registered custom elements and inject
  * Declarative Shadow DOM (`<template shadowrootmode="open">`).
  * Awaits each component's render() so async components are fully resolved.
@@ -447,10 +517,13 @@ async function injectDSD(html, ctx, ancestors = [], dev) {
   );
   /** @type {{start:number, end:number, text:string}[]} */
   const edits = [];
+  // A tag name inside a comment is comment TEXT, not an element (#1128).
+  const comments = html.indexOf('<!--') === -1 ? [] : commentRanges(html);
   for (const m of html.matchAll(pattern)) {
     const [match, tag, attrs, selfClose] = m;
     const Cls = lookup(tag);
     if (!Cls) continue;
+    if (comments.length && inRanges(comments, m.index)) continue;
     // Track which custom elements actually appeared: used by SSR to emit
     // `<link rel="modulepreload">` hints for their module URLs.
     if (ctx && ctx.usedComponents) ctx.usedComponents.add(tag);
