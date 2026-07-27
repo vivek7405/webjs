@@ -82,6 +82,17 @@ assert.equal(await rendered(html`<div><iframe>fallback</iframe><bun-probe></bun-
 assert.equal(await rendered(html`<div><noscript><bun-probe></bun-probe></noscript></div>`), true,
   'noscript content is markup, not text');
 
+// Element boundaries (#1133): a commented tag counts for neither side of the
+// nesting ledger, so the element still ends at its REAL close tag.
+{
+  const out = await renderToString(html`<div><!-- </div> --><bun-probe></bun-probe></div>`);
+  assert.ok(out.includes('<b>PROBE</b>'), 'a commented close tag does not end the element early');
+}
+// Script data double-escape (#1134): <!-- + <script defers the close to the
+// NEXT </script>, so the tag between them is text on both runtimes.
+assert.equal(await rendered(html`<div><script type="text/plain"><!-- <script> </script> <bun-probe></bun-probe> --></script></div>`), false,
+  'a double-escaped script body is text to its real end');
+
 // Content preservation: the damage mode that made this worth fixing.
 const out = await renderToString(
   html`<div><!-- see <bun-probe> here --><span>after</span></div>`

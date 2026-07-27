@@ -124,7 +124,7 @@ The full `<slot>` surface works in light DOM with shadow-DOM parity; migrating m
 
 Two elements are deliberately excluded, and the second matters more. `<template>` content IS parsed and legitimately carries components, which is what Declarative Shadow DOM and streamed swaps rely on. `<noscript>` content is also parsed, because a browser with scripting disabled reads it as markup, and that is the case a progressive-enhancement framework exists to serve, so components inside `<noscript>` render normally.
 
-Two gaps remain. Tracked in #1133: element NESTING is still counted without regard for comments, so a comment that contains an opening or closing tag of the element it sits inside (`<my-card>kid<!-- <my-card> --></my-card>`) still mis-detects where that element ends and shuffles the surrounding markup. Until that lands, avoid writing a component's own tag, open or close, in a comment inside that component. Tracked in #1134: a `<script>` body that contains `<!--` followed by `<script` enters the parser's double-escaped state, where the next `</script>` does not close the element, and WebJs ends the script content there anyway. It needs the legacy comment-wrapped inline script pattern to trigger.
+Element nesting respects comments too: a comment holding the open or close tag of the element it sits inside (`<my-card>kid<!-- </my-card> --></my-card>`) rides along as content, and the element still ends at its real close tag. Script bodies follow the parser's double-escape rule, so the legacy `<!-- <script>... -->` wrapper pattern stays text to its true end.
 
 ```ts
 class MyCard extends WebComponent {

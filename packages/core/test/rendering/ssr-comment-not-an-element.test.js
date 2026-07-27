@@ -454,6 +454,54 @@ test('a short-form comment does not swallow the slotted children after it', asyn
   assert.ok(!out.includes('NO-HEAD'), 'the named slot did not fall back');
 });
 
+// #1133: element boundaries. The depth ledger in findClosingTagInString must
+// not count a tag inside a comment for EITHER side, or the element's end is
+// mis-detected and the surrounding markup shuffles.
+
+test('a commented close tag is not the element end', async () => {
+  const out = await renderToString(html`<slot-shell>kid<!-- </slot-shell> --></slot-shell><span>ok</span>`);
+  // The whole comment stays inside the projected children, the real close tag
+  // still closes, and the trailing span stays OUTSIDE the component.
+  assert.ok(out.includes('kid<!-- </slot-shell> -->'), 'the comment rides the children intact');
+  assert.ok(/<\/slot-shell><span>ok<\/span>/.test(out), 'the span lands after the real close');
+});
+
+test('a commented open tag does not inflate the nesting depth', async () => {
+  const out = await renderToString(html`<slot-shell>kid<!-- <slot-shell> --></slot-shell><span>ok</span>`);
+  assert.ok(/<\/slot-shell><span>ok<\/span>/.test(out), 'depth returns to zero at the real close');
+});
+
+test('a commented slot close tag does not truncate the fallback', async () => {
+  const out = await renderToString(html`<slot-in-comment><b>kid</b></slot-in-comment>`);
+  assert.ok(out.includes('<b>kid</b>'), 'children still project');
+  // And a fallback that documents its own close tag in a comment:
+  const out2 = await renderToString(html`<slot-shell></slot-shell>`);
+  assert.ok(out2.includes('NO-HEAD'), 'the named fallback renders when nothing is slotted');
+});
+
+// #1134: script data is not plain raw text. `<!--` + `<script` enters the
+// double-escaped state, where `</script>` is TEXT and the element ends at the
+// NEXT one. The legacy comment-wrapped inline script produces exactly this.
+
+test('a double-escaped script body stays text to its real end', async () => {
+  const out = await renderToString(html`<div><script type="text/plain"><!-- <script> </script> <comment-probe></comment-probe> --></script><span>after</span></div>`);
+  assert.ok(!out.includes('RENDERED'), 'the tag inside the double-escaped body is text');
+  assert.ok(out.includes('<span>after</span>'), 'markup after the script survives');
+});
+
+test('an ordinary script still ends at its first close tag', async () => {
+  const out = await renderToString(
+    html`<div><script>var a = 1;</script><comment-probe></comment-probe></div>`
+  );
+  assert.ok(out.includes('RENDERED'), 'scanning resumes at the first </script> when not escaped');
+  // And an escaped-but-not-double-escaped body (just a <!--, no inner <script)
+  // also ends at its first close tag, which is what a browser does.
+  const esc = await renderToString(
+    html`<div><script>var a = "<!--";</script><comment-probe></comment-probe></div>`
+  );
+  assert.ok(esc.includes('RENDERED'), 'a lone <!-- in a script does not defer the close');
+});
+
 test('the client router boundary comments do not hide the components between them', async () => {
   // The load-bearing case (#1015, #1114). SSR wraps each layout's children in
   // KEYED boundary comment PAIRS, and the router's scan is strict: a mispaired
