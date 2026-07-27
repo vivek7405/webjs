@@ -163,19 +163,54 @@ function installStyles(): void {
 // --------------------------------------------------------------------------
 // Body scroll lock. Refcounted so nested dialogs unlock in order. Native
 // <dialog> does not lock body scroll, only inert-ifies the background.
+//
+// Hiding the page scrollbar widens the viewport by the scrollbar's width, so
+// anything laid out against the viewport moves. Padding the body holds in-flow
+// content still, but a `position: fixed` header lays out against the initial
+// containing block, never against the body's padding box, so padding alone
+// leaves it sliding right by half the scrollbar width. Two mechanisms fix it:
+//
+//   1. Reserve the scrollbar gutter for the duration of the lock, so the
+//      viewport width never changes and NOTHING moves, in flow or fixed. This
+//      needs no cooperation from the page. Chromium and Firefox honour it.
+//   2. Where the engine ignores `scrollbar-gutter` (WebKit today), fall back to
+//      padding the body and publish the leftover width as
+//      `--wj-scrollbar-compensation` on <html>, so a fixed element can opt in
+//      with `padding-right: var(--wj-scrollbar-compensation, 0px)`.
+//
+// Everything below is MEASURED rather than assumed, because engines disagree
+// about both scrollbar geometry and gutter support. When mechanism 1 works the
+// measured residual is zero, so the body is never padded and the custom
+// property is never set: the two mechanisms cannot double-compensate.
 // --------------------------------------------------------------------------
+
+const SCROLLBAR_COMPENSATION = '--wj-scrollbar-compensation';
 
 let scrollLockCount = 0;
 let savedOverflow = '';
 let savedPaddingRight = '';
+let savedScrollbarGutter = '';
 
 function lockScroll(): void {
   if (scrollLockCount === 0) {
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-    savedOverflow = document.body.style.overflow;
-    savedPaddingRight = document.body.style.paddingRight;
-    document.body.style.overflow = 'hidden';
-    if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`;
+    const root = document.documentElement;
+    const body = document.body;
+    savedOverflow = body.style.overflow;
+    savedPaddingRight = body.style.paddingRight;
+    savedScrollbarGutter = root.style.scrollbarGutter;
+
+    const widthBefore = body.getBoundingClientRect().width;
+    // Only a CLASSIC scrollbar takes layout width and therefore needs a gutter.
+    // Overlay scrollbars (macOS default, touch) take none, and reserving a
+    // gutter for them would shrink the page instead of holding it still.
+    if (window.innerWidth > root.clientWidth) root.style.scrollbarGutter = 'stable';
+    body.style.overflow = 'hidden';
+
+    const grew = body.getBoundingClientRect().width - widthBefore;
+    if (grew > 0) {
+      body.style.paddingRight = `${grew}px`;
+      root.style.setProperty(SCROLLBAR_COMPENSATION, `${grew}px`);
+    }
   }
   scrollLockCount++;
 }
@@ -185,6 +220,8 @@ function unlockScroll(): void {
   if (scrollLockCount === 0) {
     document.body.style.overflow = savedOverflow;
     document.body.style.paddingRight = savedPaddingRight;
+    document.documentElement.style.scrollbarGutter = savedScrollbarGutter;
+    document.documentElement.style.removeProperty(SCROLLBAR_COMPENSATION);
   }
 }
 

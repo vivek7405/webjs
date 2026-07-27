@@ -122,6 +122,188 @@ suite('ui-dialog', () => {
   });
 });
 
+// --------------------------------------------------------------------------
+// Scroll lock layout (#1144)
+//
+// Locking body scroll hides the page scrollbar, which widens the viewport by
+// the scrollbar's width. Padding the body holds in-flow content still, but a
+// `position: fixed` header lays out against the initial containing block, so
+// it used to slide right by half the scrollbar width.
+//
+// These assertions are only meaningful where the scrollbar takes LAYOUT WIDTH.
+// Headless browsers default to overlay scrollbars (zero width), which makes the
+// whole scenario inert, so `buildFixedHeaderPage()` styles the root scrollbar to
+// force a classic one and each test skips EXPLICITLY when the engine still
+// reports zero. A silent pass under overlay scrollbars would prove nothing.
+// --------------------------------------------------------------------------
+
+const scrollbarWidth = () => window.innerWidth - document.documentElement.clientWidth;
+
+/**
+ * Build the reproduction: a page that overflows, a fixed full-width header with
+ * a centred inner box (the thing that visibly jumped), and a centred in-flow
+ * box (which must not move either). The header opts into the published
+ * compensation, which is a no-op on engines that hold the viewport width via
+ * the reserved gutter.
+ *
+ * Centres are what matter here. The body's own border box legitimately widens
+ * when the compensation path runs (padding holds the CONTENT still, not the
+ * border box), so measuring the body would report a false shift.
+ */
+async function buildFixedHeaderPage() {
+  const style = document.createElement('style');
+  style.textContent =
+    'html::-webkit-scrollbar { width: 15px; background: #eee; }' +
+    'html::-webkit-scrollbar-thumb { background: #888; }';
+  document.head.appendChild(style);
+
+  const spacer = document.createElement('div');
+  spacer.style.height = '300vh';
+  document.body.appendChild(spacer);
+
+  const flow = document.createElement('div');
+  flow.style.cssText = 'max-width:400px;margin:0 auto;height:20px;';
+  document.body.appendChild(flow);
+
+  const header = document.createElement('div');
+  header.style.cssText =
+    'position:fixed;top:0;left:0;right:0;height:40px;' +
+    'padding-right:var(--wj-scrollbar-compensation, 0px);';
+  const inner = document.createElement('div');
+  inner.style.cssText = 'max-width:400px;margin:0 auto;height:40px;';
+  header.appendChild(inner);
+  document.body.appendChild(header);
+
+  // WebKit only materialises a custom root scrollbar after a layout pass, so
+  // the precondition check has to wait or it under-reports the width.
+  await tick();
+
+  return {
+    header,
+    inner,
+    flow,
+    teardown() {
+      style.remove();
+      spacer.remove();
+      flow.remove();
+      header.remove();
+    },
+  };
+}
+
+const centreOf = (el) => Math.round(el.getBoundingClientRect().left * 100) / 100;
+
+suite('ui-dialog scroll lock layout', () => {
+  suiteSetup(async () => {
+    await import(`${COMPONENTS_DIR}/dialog.ts`);
+  });
+
+  test('opening a dialog leaves a position:fixed header exactly where it was', async function () {
+    const page = await buildFixedHeaderPage();
+    try {
+      if (scrollbarWidth() === 0) this.skip();
+
+      const root = await mount(html`
+        <ui-dialog>
+          <ui-dialog-content><ui-dialog-title>T</ui-dialog-title></ui-dialog-content>
+        </ui-dialog>
+      `);
+      const dialog = root.querySelector('ui-dialog');
+
+      const fixedBefore = centreOf(page.inner);
+      const flowBefore = centreOf(page.flow);
+
+      dialog.show();
+      await tick();
+
+      assert.equal(centreOf(page.inner), fixedBefore, 'fixed header content does not move on open');
+      assert.equal(centreOf(page.flow), flowBefore, 'in-flow content does not move on open');
+
+      dialog.hide();
+      await tick();
+      assert.equal(centreOf(page.inner), fixedBefore, 'fixed header content does not move on close');
+      root.remove();
+    } finally {
+      page.teardown();
+    }
+  });
+
+  test('the lock is released cleanly, leaving no compensation behind', async function () {
+    const page = await buildFixedHeaderPage();
+    try {
+      if (scrollbarWidth() === 0) this.skip();
+
+      const root = await mount(html`
+        <ui-dialog>
+          <ui-dialog-content><ui-dialog-title>T</ui-dialog-title></ui-dialog-content>
+        </ui-dialog>
+      `);
+      const dialog = root.querySelector('ui-dialog');
+
+      dialog.show();
+      await tick();
+      dialog.hide();
+      await tick();
+
+      assert.equal(document.body.style.overflow, '', 'body overflow restored');
+      assert.equal(document.body.style.paddingRight, '', 'body padding restored');
+      assert.equal(document.documentElement.style.scrollbarGutter, '', 'scrollbar gutter restored');
+      assert.equal(
+        document.documentElement.style.getPropertyValue('--wj-scrollbar-compensation'),
+        '',
+        'compensation custom property cleared',
+      );
+      root.remove();
+    } finally {
+      page.teardown();
+    }
+  });
+
+  test('nested dialogs release the compensation only on the outermost close', async function () {
+    const page = await buildFixedHeaderPage();
+    try {
+      if (scrollbarWidth() === 0) this.skip();
+
+      const root = await mount(html`
+        <ui-dialog id="outer">
+          <ui-dialog-content><ui-dialog-title>Outer</ui-dialog-title></ui-dialog-content>
+        </ui-dialog>
+        <ui-dialog id="inner">
+          <ui-dialog-content><ui-dialog-title>Inner</ui-dialog-title></ui-dialog-content>
+        </ui-dialog>
+      `);
+      const outer = root.querySelector('#outer');
+      const nested = root.querySelector('#inner');
+
+      const fixedBefore = centreOf(page.inner);
+
+      outer.show();
+      await tick();
+      nested.show();
+      await tick();
+      assert.equal(centreOf(page.inner), fixedBefore, 'fixed header held with both dialogs open');
+
+      nested.hide();
+      await tick();
+      assert.equal(document.body.style.overflow, 'hidden', 'still locked while the outer dialog is open');
+      assert.equal(centreOf(page.inner), fixedBefore, 'fixed header still held after the nested close');
+
+      outer.hide();
+      await tick();
+      assert.equal(document.body.style.overflow, '', 'released on the outermost close');
+      assert.equal(
+        document.documentElement.style.getPropertyValue('--wj-scrollbar-compensation'),
+        '',
+        'compensation released on the outermost close',
+      );
+      assert.equal(centreOf(page.inner), fixedBefore, 'fixed header back where it started');
+      root.remove();
+    } finally {
+      page.teardown();
+    }
+  });
+});
+
 suite('ui-tooltip', () => {
   suiteSetup(async () => {
     await import(`${COMPONENTS_DIR}/tooltip.ts`);
@@ -344,6 +526,45 @@ suite('ui-dropdown-menu', () => {
 suite('ui-alert-dialog', () => {
   suiteSetup(async () => {
     await import(`${COMPONENTS_DIR}/alert-dialog.ts`);
+  });
+
+  // alert-dialog carries its own copy of the scroll lock (deliberately not
+  // imported from dialog.ts, so `webjs ui add alert-dialog` stays self
+  // contained), so the #1144 guarantee is asserted against it separately. This
+  // is the exact case reported on webjs.dev/ui: the Delete-account demo moved
+  // the site's fixed navbar.
+  test('opening an alert-dialog leaves a position:fixed header where it was', async function () {
+    const page = await buildFixedHeaderPage();
+    try {
+      if (scrollbarWidth() === 0) this.skip();
+
+      const root = await mount(html`
+        <ui-alert-dialog>
+          <ui-alert-dialog-content><ui-alert-dialog-title>T</ui-alert-dialog-title></ui-alert-dialog-content>
+        </ui-alert-dialog>
+      `);
+      const dialog = root.querySelector('ui-alert-dialog');
+
+      const fixedBefore = centreOf(page.inner);
+      const flowBefore = centreOf(page.flow);
+
+      dialog.show();
+      await tick();
+      assert.equal(centreOf(page.inner), fixedBefore, 'fixed header content does not move on open');
+      assert.equal(centreOf(page.flow), flowBefore, 'in-flow content does not move on open');
+
+      dialog.hide();
+      await tick();
+      assert.equal(centreOf(page.inner), fixedBefore, 'fixed header content does not move on close');
+      assert.equal(
+        document.documentElement.style.getPropertyValue('--wj-scrollbar-compensation'),
+        '',
+        'compensation released on close',
+      );
+      root.remove();
+    } finally {
+      page.teardown();
+    }
   });
 
   test('trigger click opens via show(); content has role="alertdialog"', async () => {

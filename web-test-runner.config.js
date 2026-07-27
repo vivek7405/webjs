@@ -69,10 +69,22 @@ export default {
   // same tests run on each. WTR runs the browsers concurrently, and an engine
   // can be narrowed for a fast local loop with WEBJS_BROWSERS, e.g.
   // `WEBJS_BROWSERS=chromium npx wtr`.
+  // Playwright launches headless browsers with `--hide-scrollbars`, which makes
+  // every scrollbar zero-width. That hides a whole class of real layout bug:
+  // #1144 (a dialog's scroll lock shifting a fixed header) only reproduces when
+  // the scrollbar takes LAYOUT WIDTH, so under the default flag the regression
+  // test would have passed vacuously. Chromium is the engine that shows a
+  // classic scrollbar once the flag is dropped, so it carries that coverage.
   browsers: (process.env.WEBJS_BROWSERS
     ? process.env.WEBJS_BROWSERS.split(',').map((s) => s.trim()).filter(Boolean)
     : ['chromium', 'firefox', 'webkit']
-  ).map((product) => playwrightLauncher({ product })),
+  ).map((product) =>
+    playwrightLauncher(
+      product === 'chromium'
+        ? { product, launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] } }
+        : { product },
+    ),
+  ),
   testFramework: {
     config: {
       ui: 'tdd',
