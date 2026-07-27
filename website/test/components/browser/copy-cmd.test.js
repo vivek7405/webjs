@@ -87,30 +87,38 @@ suite('copy-cmd', () => {
     document.body.removeChild(el);
   });
 
-  test('describes the copy action via aria-describedby without hiding the command', async () => {
+  test('describes the copy action via a title without hiding the command', async () => {
     const el = await mount('npm create webjs@latest my-app');
     const target = el.querySelector('[data-copy-text]');
     // The command stays the accessible NAME (slotted text, no aria-label)...
     assert.equal(target.getAttribute('aria-label'), null, 'no aria-label overrides the command name');
     assert.ok(target.textContent.includes('npm create webjs@latest my-app'), 'the command is the accessible name');
-    // ...and an sr-only describedby hint adds the copy ACTION as the description.
-    const hintId = target.getAttribute('aria-describedby');
-    assert.ok(hintId, 'the button references a description via aria-describedby');
-    const hint = el.querySelector('#' + hintId);
-    assert.ok(hint, 'the referenced hint element exists in the same subtree');
-    assert.ok(/copy/i.test(hint.textContent) && /clipboard/i.test(hint.textContent),
-      'the hint describes the copy-to-clipboard action');
-    assert.ok(hint.className.includes('sr-only'), 'the hint is visually hidden (screen-reader only)');
+    // ...and the title supplies the copy ACTION as the accessible description
+    // (plus a native hover tooltip). A title needs no id, which is the point:
+    // the old aria-describedby needed a document-unique id, the only SSR-safe
+    // source of one is a module-scope counter, and the counter made every
+    // render emit different bytes, killing the page ETag (#1127).
+    assert.equal(target.getAttribute('title'), 'Copy command to clipboard',
+      'the title describes the copy-to-clipboard action');
+    assert.equal(target.getAttribute('aria-describedby'), null,
+      'no id-based description reference remains');
+    // The description is an attribute, not text, so the target's text is
+    // EXACTLY the command: selections and _copy cannot pick up anything else.
+    assert.equal(target.textContent.trim(), 'npm create webjs@latest my-app',
+      'the click target contains only the command text');
     document.body.removeChild(el);
   });
 
-  test('two copy-cmd on a page get distinct describedby hint ids', async () => {
-    const a = await mount('npm create webjs@latest one');
-    const b = await mount('npm create webjs@latest two');
-    const idA = a.querySelector('[data-copy-text]').getAttribute('aria-describedby');
-    const idB = b.querySelector('[data-copy-text]').getAttribute('aria-describedby');
-    assert.ok(idA && idB, 'both buttons carry a describedby id');
-    assert.ok(idA !== idB, 'the two hint ids are unique so neither shadows the other');
+  test('renders no generated ids, so repeated renders are byte-identical', async () => {
+    // The regression guard for #1127. Any per-render-varying value in the
+    // component's output (a counter, a timestamp, a random id) changes the
+    // page's bytes between renders, which changes its ETag, which means an
+    // If-None-Match can never match and a 304 is impossible. Assert the
+    // rendered markup of two independent instances of the SAME command is
+    // identical, which no monotonic id scheme can satisfy.
+    const a = await mount('npm create webjs@latest my-app');
+    const b = await mount('npm create webjs@latest my-app');
+    assert.equal(a.innerHTML, b.innerHTML, 'two renders of the same command emit identical markup');
     a.remove(); b.remove();
   });
 

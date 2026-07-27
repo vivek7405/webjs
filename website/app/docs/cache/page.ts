@@ -94,6 +94,12 @@ export const metadata = {
 
     <p>This sets the standard <code>Cache-Control</code> header on the HTTP response. Browsers and CDNs cache the rendered page without any server-side state.</p>
 
+    <p>Setting <code>cacheControl</code> to anything other than <code>no-store</code> or <code>private</code> also opts the page into conditional GET: WebJs attaches a weak <code>ETag</code> and answers a matching <code>If-None-Match</code> with a <code>304</code>, so a revalidation costs a few hundred bytes instead of the whole document. A bare <code>max-age=60</code> is enough; the <code>public</code> keyword controls shared-cache storage, not whether you get an ETag.</p>
+
+    <p>That path only works if the page renders the same bytes twice. The ETag is a hash of the response body, so any per-render-varying value anywhere in the document defeats it: a <code>Date.now()</code>, a <code>Math.random()</code>, an id from a module-scope counter (which never resets in a long-lived server), or a CSP nonce, which is why a page under CSP is excluded from the server HTML cache. Nothing errors when this happens. The page renders correctly, every content assertion still passes, and the only symptom is a caching layer that silently never engages, so it is worth a test that renders the page twice, through its layout, and asserts the two outputs are identical.</p>
+
+    <p>Note that <code>max-age=0</code> is a common default worth thinking about. It keeps the browser revalidating on every view, which is right when deploys must be visible immediately, but it means a stored copy is never reused directly. A small non-zero value is what produces real browser cache hits on back/forward and repeat visits.</p>
+
     <h2>Server HTML Response Cache (export const revalidate)</h2>
     <p>For a page that renders identical HTML for every visitor, opt into the server HTML response cache so the SSR pipeline runs once per window instead of once per request (webjs's no-build equivalent of Next.js's Full Route Cache and ISR). Declare a revalidation window on the page module:</p>
 

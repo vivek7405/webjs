@@ -46,9 +46,20 @@ export function generateMetadata(ctx: { url: string }) {
     // The marketing site is identical for every visitor (no per-user / session
     // reads), so it is safe to cache at the CDN. Set on the root layout so it
     // applies to every page (a per-user page could override with no-store).
-    // `s-maxage` is the edge cache; `max-age=0` keeps the browser revalidating;
-    // `stale-while-revalidate` serves instantly while refreshing.
-    cacheControl: 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400',
+    // `s-maxage` is the edge cache; `stale-while-revalidate` serves instantly
+    // while refreshing. `max-age=60` is the browser copy: the previous `0` meant
+    // a page was NEVER reusable from disk, so every view paid a round trip even
+    // when nothing had changed. 60s is the smallest value that yields real
+    // browser cache hits (back/forward, repeat visits, a second tab) while
+    // bounding how long a reader can hold pre-deploy HTML to one minute.
+    // Known tradeoff (#1131): the client router fetches with the default HTTP
+    // cache mode, so within that minute a prefetch or soft nav can be served
+    // wholly from cache, handing the router pre-deploy `x-webjs-build` /
+    // `x-webjs-src` headers. Its deploy check then compares two equally stale
+    // ids and skips the snapshot eviction. `max-age=0` avoided that by forcing
+    // a revalidation every time. Accepted here because the blast radius is one
+    // minute of slightly stale marketing copy, and a hard nav still corrects it.
+    cacheControl: 'public, max-age=60, s-maxage=600, stale-while-revalidate=86400',
     title: TITLE,
     description: DESCRIPTION,
     openGraph: {
