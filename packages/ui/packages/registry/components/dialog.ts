@@ -172,50 +172,75 @@ function installStyles(): void {
 // <dialog> does not lock body scroll, only inert-ifies the background.
 //
 // Hiding the page scrollbar widens the viewport by the scrollbar's width, so
-// anything laid out against the viewport moves. Padding the body holds in-flow
+// anything laid out against the viewport moves. Padding the page holds in-flow
 // content still, but a `position: fixed` header lays out against the initial
-// containing block, never against the body's padding box, so padding alone
-// leaves it sliding right by half the scrollbar width. Two mechanisms fix it:
+// containing block, never against any padding box, so padding alone leaves it
+// sliding right by half the scrollbar width. Two mechanisms fix it:
 //
 //   1. Reserve the scrollbar gutter for the duration of the lock, so the
 //      viewport width never changes and NOTHING moves, in flow or fixed. This
 //      needs no cooperation from the page. Chromium and Firefox honour it.
 //   2. Where the engine ignores `scrollbar-gutter` (WebKit today), fall back to
-//      padding the body and publish the leftover width as
-//      `--wj-scrollbar-compensation` on <html>, so a fixed element can opt in
-//      with `padding-right: var(--wj-scrollbar-compensation, 0px)`.
+//      padding <html> and publish the leftover width as
+//      `--wj-scrollbar-compensation` on it, so a fixed element can opt in with
+//      `padding-right: var(--wj-scrollbar-compensation, 0px)`.
 //
 // Everything below is MEASURED rather than assumed, because engines disagree
 // about both scrollbar geometry and gutter support. When mechanism 1 works the
-// measured residual is zero, so the body is never padded and the custom
-// property is never set: the two mechanisms cannot double-compensate.
+// measured residual is zero, so no padding is applied and the custom property is
+// never set: the two mechanisms cannot double-compensate.
 // --------------------------------------------------------------------------
 
 const SCROLLBAR_COMPENSATION = '--wj-scrollbar-compensation';
 
 let scrollLockCount = 0;
 let savedOverflow = '';
-let savedPaddingRight = '';
+let savedRootPaddingRight = '';
 let savedScrollbarGutter = '';
+let savedCompensation = '';
 
 function lockScroll(): void {
   if (scrollLockCount === 0) {
     const root = document.documentElement;
     const body = document.body;
-    savedOverflow = body.style.overflow;
-    savedPaddingRight = body.style.paddingRight;
-    savedScrollbarGutter = root.style.scrollbarGutter;
+    const rootStyle = getComputedStyle(root);
 
-    const widthBefore = body.getBoundingClientRect().width;
-    // Only a CLASSIC scrollbar takes layout width and therefore needs a gutter.
-    // Overlay scrollbars (macOS default, touch) take none, and reserving a
-    // gutter for them would shrink the page instead of holding it still.
-    if (window.innerWidth > root.clientWidth) root.style.scrollbarGutter = 'stable';
+    savedOverflow = body.style.overflow;
+    savedRootPaddingRight = root.style.paddingRight;
+    savedScrollbarGutter = root.style.scrollbarGutter;
+    savedCompensation = root.style.getPropertyValue(SCROLLBAR_COMPENSATION);
+
+    // <html> is an in-flow block filling the initial containing block, so its
+    // border box IS the viewport width, and it is re-laid-out synchronously.
+    // A `position: fixed` probe is NOT a substitute: WebKit keeps reporting its
+    // old box until the next rendering update, so it reads a zero delta and the
+    // compensation below never fires.
+    const widthBefore = root.getBoundingClientRect().width;
+    const padBefore = parseFloat(rootStyle.paddingRight) || 0;
+    // An engine with no `scrollbar-gutter` at all reads back undefined, which
+    // must be treated as "the page has not chosen" so the gutter is still
+    // attempted (setting an unsupported property is a harmless no-op, and the
+    // measured residual below is what actually decides the fallback).
+    const chosenGutter = rootStyle.scrollbarGutter || 'auto';
+
+    // Reserve the gutter, but only when the page has not already made its own
+    // choice. An app running `stable both-edges` keeps both gutters through the
+    // lock, and overwriting that with the single-edge value would drop one and
+    // introduce the very shift this exists to prevent.
+    if (chosenGutter === 'auto' && window.innerWidth > root.clientWidth) {
+      root.style.scrollbarGutter = 'stable';
+    }
     body.style.overflow = 'hidden';
 
-    const grew = body.getBoundingClientRect().width - widthBefore;
+    const grew = root.getBoundingClientRect().width - widthBefore;
     if (grew > 0) {
-      body.style.paddingRight = `${grew}px`;
+      // Padding the ROOT holds in-flow content still whatever the body's own
+      // width is (a `max-width` body does not widen with the viewport, so
+      // padding the body would miss it), and it leaves the page's own body
+      // padding untouched.
+      root.style.paddingRight = `${padBefore + grew}px`;
+      // A fixed box lays out against the viewport, so no padding here can reach
+      // it. Publish what it moved by and let it opt in.
       root.style.setProperty(SCROLLBAR_COMPENSATION, `${grew}px`);
     }
   }
@@ -225,10 +250,16 @@ function lockScroll(): void {
 function unlockScroll(): void {
   scrollLockCount = Math.max(0, scrollLockCount - 1);
   if (scrollLockCount === 0) {
+    const root = document.documentElement;
     document.body.style.overflow = savedOverflow;
-    document.body.style.paddingRight = savedPaddingRight;
-    document.documentElement.style.scrollbarGutter = savedScrollbarGutter;
-    document.documentElement.style.removeProperty(SCROLLBAR_COMPENSATION);
+    root.style.paddingRight = savedRootPaddingRight;
+    root.style.scrollbarGutter = savedScrollbarGutter;
+    // RESTORED, not removed. dialog.ts and alert-dialog.ts keep separate
+    // refcounts on purpose, so an alert-dialog opened from inside an open dialog
+    // unlocks first; removing the property outright would strip the dialog's
+    // compensation while it is still open and jump a fixed header mid-flow.
+    if (savedCompensation) root.style.setProperty(SCROLLBAR_COMPENSATION, savedCompensation);
+    else root.style.removeProperty(SCROLLBAR_COMPENSATION);
   }
 }
 

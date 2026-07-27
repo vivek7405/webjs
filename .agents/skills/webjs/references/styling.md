@@ -217,4 +217,6 @@ Anything that locks page scroll (a modal, a drawer, an off-canvas menu) hides th
 header { position: fixed; inset-inline: 0; top: 0; padding-right: var(--wj-scrollbar-compensation, 0px); }
 ```
 
-The property is only set while a lock is active AND the gutter did not hold, so the `0px` fallback covers every other moment and the two mechanisms never double-compensate. Rolling your own scroll lock? Reserve the gutter the same way rather than padding the body alone, or a fixed header will jump.
+The property is only set while a lock is active AND the gutter did not hold, so the `0px` fallback covers every other moment and the two mechanisms never double-compensate.
+
+Rolling your own scroll lock? Two things the kit learned the hard way. Reserve the gutter rather than relying on padding alone, or a fixed header will jump. And when you do pad, pad `<html>`, not `<body>`: a `max-width` body does not widen when the viewport does, so padding it misses the shift entirely, while padding the root holds in-flow content whatever the body's width is. Measure the root's own border box to decide the amount, since it tracks the viewport and is re-laid-out synchronously.

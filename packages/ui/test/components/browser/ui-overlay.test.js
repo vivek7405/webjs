@@ -259,7 +259,7 @@ suite('ui-dialog scroll lock layout', () => {
       await tick();
 
       assert.equal(document.body.style.overflow, '', 'body overflow restored');
-      assert.equal(document.body.style.paddingRight, '', 'body padding restored');
+      assert.equal(document.documentElement.style.paddingRight, '', 'root padding restored');
       assert.equal(document.documentElement.style.scrollbarGutter, '', 'scrollbar gutter restored');
       assert.equal(
         document.documentElement.style.getPropertyValue('--wj-scrollbar-compensation'),
@@ -268,6 +268,141 @@ suite('ui-dialog scroll lock layout', () => {
       );
     } finally {
       page.teardown();
+    }
+  });
+
+  // dialog.ts and alert-dialog.ts keep SEPARATE module-scope refcounts on
+  // purpose (so `webjs ui add alert-dialog` stays self contained), so a confirm
+  // opened from inside a dialog is the one interleaving that duplication
+  // creates. The inner lock unlocks first, and it must not strip the outer
+  // dialog's compensation on the way out.
+  test('an alert-dialog inside an open dialog does not release the dialog compensation', async function () {
+    const page = await buildFixedHeaderPage();
+    try {
+      if (scrollbarWidth() === 0) this.skip();
+      await import(`${COMPONENTS_DIR}/alert-dialog.ts`);
+
+      const root = page.track(
+        await mount(html`
+          <ui-dialog>
+            <ui-dialog-content><ui-dialog-title>Outer</ui-dialog-title></ui-dialog-content>
+          </ui-dialog>
+          <ui-alert-dialog>
+            <ui-alert-dialog-content><ui-alert-dialog-title>Confirm</ui-alert-dialog-title></ui-alert-dialog-content>
+          </ui-alert-dialog>
+        `),
+      );
+      const dialog = root.querySelector('ui-dialog');
+      const confirm = root.querySelector('ui-alert-dialog');
+
+      const fixedBefore = centreOf(page.inner);
+      const flowBefore = centreOf(page.flow);
+
+      dialog.show();
+      await tick();
+      const compensationWithDialog = document.documentElement.style.getPropertyValue(
+        '--wj-scrollbar-compensation',
+      );
+
+      confirm.show();
+      await tick();
+      assert.equal(centreOf(page.inner), fixedBefore, 'fixed header held with the confirm open');
+
+      confirm.hide();
+      await tick();
+      assert.equal(
+        document.documentElement.style.getPropertyValue('--wj-scrollbar-compensation'),
+        compensationWithDialog,
+        'closing the confirm leaves the dialog compensation as it was',
+      );
+      assert.equal(document.body.style.overflow, 'hidden', 'still locked, the dialog is open');
+      assert.equal(centreOf(page.inner), fixedBefore, 'fixed header held after the confirm closes');
+      assert.equal(centreOf(page.flow), flowBefore, 'in-flow content held after the confirm closes');
+
+      dialog.hide();
+      await tick();
+      assert.equal(document.body.style.overflow, '', 'released on the outermost close');
+      assert.equal(centreOf(page.inner), fixedBefore, 'fixed header back where it started');
+    } finally {
+      page.teardown();
+    }
+  });
+
+  // An app that already reserves both gutters (the standard no-layout-shift
+  // technique) keeps them through the lock, so overwriting its choice with the
+  // single-edge value would drop one and introduce a shift the page never had.
+  test("an app's own scrollbar-gutter is left alone", async function () {
+    const page = await buildFixedHeaderPage();
+    const root = document.documentElement;
+    root.style.scrollbarGutter = 'stable both-edges';
+    try {
+      await tick();
+      if (scrollbarWidth() === 0) this.skip();
+
+      const mountedRoot = page.track(
+        await mount(html`
+          <ui-dialog>
+            <ui-dialog-content><ui-dialog-title>T</ui-dialog-title></ui-dialog-content>
+          </ui-dialog>
+        `),
+      );
+      const dialog = mountedRoot.querySelector('ui-dialog');
+      const fixedBefore = centreOf(page.inner);
+      const flowBefore = centreOf(page.flow);
+
+      dialog.show();
+      await tick();
+      assert.equal(
+        root.style.scrollbarGutter,
+        'stable both-edges',
+        "the page's own gutter choice is not overwritten",
+      );
+      assert.equal(centreOf(page.inner), fixedBefore, 'fixed header does not move');
+      assert.equal(centreOf(page.flow), flowBefore, 'in-flow content does not move');
+
+      dialog.hide();
+      await tick();
+      assert.equal(root.style.scrollbarGutter, 'stable both-edges', 'gutter choice restored');
+    } finally {
+      page.teardown();
+      root.style.scrollbarGutter = '';
+    }
+  });
+
+  // The compensation is ADDED to whatever padding the page already had on the
+  // root, not written over it.
+  test("an app's own root padding is added to, not replaced", async function () {
+    const page = await buildFixedHeaderPage();
+    const root = document.documentElement;
+    root.style.paddingRight = '20px';
+    try {
+      await tick();
+      if (scrollbarWidth() === 0) this.skip();
+
+      const mountedRoot = page.track(
+        await mount(html`
+          <ui-dialog>
+            <ui-dialog-content><ui-dialog-title>T</ui-dialog-title></ui-dialog-content>
+          </ui-dialog>
+        `),
+      );
+      const dialog = mountedRoot.querySelector('ui-dialog');
+      const flowBefore = centreOf(page.flow);
+
+      dialog.show();
+      await tick();
+      assert.ok(
+        parseFloat(getComputedStyle(root).paddingRight) >= 20,
+        "the page's own padding is never reduced",
+      );
+      assert.equal(centreOf(page.flow), flowBefore, 'in-flow content does not move');
+
+      dialog.hide();
+      await tick();
+      assert.equal(root.style.paddingRight, '20px', "the page's own padding is restored exactly");
+    } finally {
+      page.teardown();
+      root.style.paddingRight = '';
     }
   });
 
