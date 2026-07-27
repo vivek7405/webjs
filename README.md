@@ -9,7 +9,8 @@ web apps that work before any JavaScript loads.**
 components.** It server-renders every page and component to real HTML,
 needs no build step or bundler, and runs on Node 24+ or Bun.
 
-You write pages, layouts, and components as plain files. WebJs serves that
+You write pages, layouts, and components as ordinary JavaScript or TypeScript
+modules, with no framework-specific file format to learn. WebJs serves that
 source to the browser exactly as you wrote it, so the code you read is the
 code that runs. Content reads and forms submit before any script loads, and
 JavaScript is added only where an interaction actually needs it.
