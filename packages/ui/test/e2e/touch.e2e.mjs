@@ -5,10 +5,14 @@
  * desktop test caught. Touch *events* (`pointerType`, `matchMedia('(hover:none)')`)
  * emulate faithfully under Playwright's iPhone context (unlike the #730
  * engine-strictness quirk), so this runs on ordinary CI hardware: it boots the
- * ui-website and TAPS each component's primary trigger, asserting the open /
- * render outcome that was broken pre-#746.
+ * site serving the component gallery and TAPS each component's primary
+ * trigger, asserting the open / render outcome that was broken pre-#746.
  *
- * Self-contained: boots the website, runs the checks, tears down. Needs
+ * The gallery moved from ui.webjs.dev to webjs.dev/ui in #1099, so this boots
+ * the marketing app and reads /ui/<name> rather than the retired
+ * /ui/<name>.
+ *
+ * Self-contained: boots the site, runs the checks, tears down. Needs
  * Playwright + a browser. Run: `node packages/ui/test/e2e/touch.e2e.mjs`
  * (the runner sets WEBJS_E2E_TOUCH=1). Skips with a clear message if Playwright
  * or a browser is unavailable.
@@ -20,7 +24,7 @@ import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const WEBSITE = resolve(HERE, '../../packages/website');
+const WEBSITE = resolve(HERE, '../../../../website');
 const PORT = Number(process.env.WEBJS_E2E_PORT || 5181);
 const BASE = `http://localhost:${PORT}`;
 
@@ -34,9 +38,9 @@ try {
   process.exit(0);
 }
 
-// Boot the ui-website (copies the registry, then `webjs start`).
-const cli = resolve(WEBSITE, '../../../../node_modules/@webjsdev/cli/bin/webjs.js');
-spawn(process.execPath, [resolve(WEBSITE, 'scripts/copy-registry.js')], { cwd: WEBSITE, stdio: 'ignore' });
+// Boot the site (mirrors the registry sources in, then `webjs start`).
+const cli = resolve(WEBSITE, '../node_modules/@webjsdev/cli/bin/webjs.js');
+spawn(process.execPath, [resolve(WEBSITE, 'scripts/copy-registry.mjs')], { cwd: WEBSITE, stdio: 'ignore' });
 await sleep(800);
 const server = spawn(process.execPath, [cli, 'start', '--port', String(PORT)], {
   cwd: WEBSITE,
@@ -55,7 +59,7 @@ for (let i = 0; i < 40; i++) {
   } catch { /* retry */ }
   await sleep(500);
 }
-if (!up) { fail('ui-website did not become ready'); teardown(); process.exit(1); }
+if (!up) { fail('the gallery site did not become ready'); teardown(); process.exit(1); }
 
 // Chromium with the iPhone descriptor activates every touch path the fixes key
 // on (verified: matchMedia('(hover:none)') + '(pointer:coarse)' both match, and
@@ -76,7 +80,7 @@ const page = await ctx.newPage();
 const results = [];
 
 // 1) sonner: tap "Show toast" -> a toast renders.
-await page.goto(BASE + '/docs/components/sonner', { waitUntil: 'domcontentloaded' });
+await page.goto(BASE + '/ui/sonner', { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(1800);
 const sbtn = await page.evaluateHandle(() =>
   [...document.querySelectorAll('button')].find((b) => /show toast/i.test(b.textContent || '')));
@@ -87,7 +91,7 @@ const toastNodes = await page.evaluate(() =>
 results.push(['sonner toast renders on tap', toastNodes > 0]);
 
 // 2) hover-card: tap trigger -> opens, no navigation.
-await page.goto(BASE + '/docs/components/hover-card', { waitUntil: 'domcontentloaded' });
+await page.goto(BASE + '/ui/hover-card', { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(1800);
 const urlBefore = page.url();
 await (await page.$('ui-hover-card-trigger'))?.tap();
@@ -96,7 +100,7 @@ const hcOpen = await page.evaluate(() => !!document.querySelector('ui-hover-card
 results.push(['hover-card opens on tap without navigating', hcOpen && page.url() === urlBefore]);
 
 // 3) dropdown submenu: open menu, tap sub-trigger -> opens AND stays (past close delay).
-await page.goto(BASE + '/docs/components/dropdown-menu', { waitUntil: 'domcontentloaded' });
+await page.goto(BASE + '/ui/dropdown-menu', { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(1800);
 await (await page.$('ui-dropdown-menu-trigger button, ui-dropdown-menu-trigger'))?.tap();
 await page.waitForTimeout(400);
@@ -107,7 +111,7 @@ results.push(['dropdown submenu opens and stays open on tap', subOpen]);
 
 // 4) before-cache (#766): open a hover-card, then fire the event the router
 // fires when it snapshots the page for back/forward. The card must close.
-await page.goto(BASE + '/docs/components/hover-card', { waitUntil: 'domcontentloaded' });
+await page.goto(BASE + '/ui/hover-card', { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(1500);
 await (await page.$('ui-hover-card-trigger'))?.tap();
 await page.waitForTimeout(500);
@@ -120,12 +124,12 @@ results.push(['hover-card closes on webjs:before-cache', openedBC && closedBC]);
 // 5) real round-trip: open a hover-card, soft-nav away via an internal link,
 // then Back. The restored snapshot must show the card closed (the router fired
 // before-cache when it snapshotted the page being left).
-await page.goto(BASE + '/docs/components/hover-card', { waitUntil: 'domcontentloaded' });
+await page.goto(BASE + '/ui/hover-card', { waitUntil: 'domcontentloaded' });
 await page.waitForTimeout(1500);
 await (await page.$('ui-hover-card-trigger'))?.tap();
 await page.waitForTimeout(400);
 const navHref = await page.evaluate(() => {
-  const a = [...document.querySelectorAll('a[href^="/docs/components/"]')]
+  const a = [...document.querySelectorAll('a[href^="/ui/"]')]
     .find((x) => x.getAttribute('href') !== location.pathname);
   if (a) { a.click(); return a.getAttribute('href'); }
   return null;

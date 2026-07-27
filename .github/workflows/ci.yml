@@ -32,7 +32,7 @@ jobs:
           cache: npm
       - run: npm ci
       # Dogfood the framework's own correctness checks on the in-repo apps.
-      - name: webjs check (blog, website, docs, ui website)
+      - name: webjs check (blog, website, docs host, ui host)
         run: |
           for app in examples/blog website docs packages/ui/packages/website; do
             echo "::group::webjs check $app"
@@ -146,14 +146,14 @@ jobs:
       # a node:crypto digest, so it must be byte-identical on the Bun.serve path.
       - name: App-source deploy signal on Bun
         run: bun test/bun/app-source-signal.mjs
-      # Boot website (which serves /docs) + ui-website on Bun and GET real
+      # Boot the website (which serves /docs and /ui) on Bun and GET real
       # routes (#542). Every in-repo app deploys on Bun, but only examples/blog
       # had a Bun boot in CI, so a per-route break only on Bun (the #526
-      # ui-website 500) could reach production. The script runs each app's
-      # webjs.start.before presteps (the ui-website registry copy is the #526
-      # root cause) and probes an ui-website component detail page. Node runs it
-      # too in the "In-repo app tests" job.
-      - name: App boot-check on Bun (website incl. /docs + ui-website)
+      # component-page 500) could reach production. The script runs the app's
+      # webjs.start.before presteps (the ui registry copy is the #526 root
+      # cause) and probes a gallery component detail page. Node runs it too in
+      # the "In-repo app tests" job.
+      - name: App boot-check on Bun (website incl. /docs + /ui)
         run: bun test/bun/app-boot.mjs
       # SSR action-result seeding on Bun (#529): seeding rode Node's
       # module.registerHooks, which Bun lacks; it now installs via a Bun.plugin
@@ -311,7 +311,7 @@ jobs:
           WEBJS_E2E: '1'
         run: node --test test/e2e/browser-harness.test.mjs
       # Touch-emulation e2e for interactive Tier-2 ui components (#745/#747):
-      # boots the ui-website and taps hover-card / dropdown-submenu / sonner
+      # boots the site serving the gallery and taps hover-card / dropdown-submenu / sonner
       # under a Chromium iPhone context (faithful touch events, no real device).
       - name: Run ui touch e2e
         run: npm run test:e2e:touch --workspace=@webjsdev/ui
@@ -383,11 +383,12 @@ jobs:
     # app's tests gates the merge (issue #342). The website's `test` runs both
     # its node + browser suites (hence Playwright), and covers the docs too
     # since they are its own /docs routes; the blog is node-only and touches
-    # its SQLite DB (the same setup the unit + e2e jobs do). The ui-website
-    # ships no `webjs test` suite, so it is covered by the
-    # `node test/bun/app-boot.mjs` boot-check step below (#627), which boots it
-    # via createRequestHandler and asserts it serves real routes with no
-    # broken modulepreload; the same script runs on Bun in the `bun` job (#542).
+    # its SQLite DB (the same setup the unit + e2e jobs do). The website's
+    # suite also covers the component gallery, which is its own /ui routes
+    # since #1099. The `node test/bun/app-boot.mjs` boot-check step below
+    # (#627) additionally boots it via createRequestHandler and asserts it
+    # serves real routes with no broken modulepreload; the same script runs on
+    # Bun in the `bun` job (#542).
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -407,14 +408,15 @@ jobs:
         run: npm test --workspace=@webjsdev/website
       - name: blog tests (node)
         run: npm test --workspace=@webjsdev/example-blog
-      # The ui-website ships no `webjs test` suite (#627): boot the non-blog
-      # apps on Node and assert each serves real routes with no broken
-      # modulepreload, including the website's /docs routes. Runs the apps'
-      # `webjs.start.before` presteps first (the ui-website registry copy). The
-      # blog is covered by the e2e job. The docs.webjs.dev redirect host is not
-      # here on purpose: every route on it is an empty 301, which would pass
-      # vacuously; it is covered by test/docs/docs-host-redirect.test.mjs.
-      - name: App boot-check on Node (website incl. /docs + ui-website)
+      # Boot the website on Node and assert it serves real routes with no
+      # broken modulepreload, covering its /docs (#1098) and /ui (#1099)
+      # routes. Runs the app's `webjs.start.before` presteps first (the ui
+      # registry copy, the #526 root cause). The blog is covered by the e2e
+      # job. The docs.webjs.dev and ui.webjs.dev redirect hosts are not here on
+      # purpose: every route on them is an empty 301, which would pass
+      # vacuously; they are covered by test/docs/docs-host-redirect.test.mjs
+      # and test/ui/ui-host-redirect.test.mjs.
+      - name: App boot-check on Node (website incl. /docs + /ui)
         run: node test/bun/app-boot.mjs
 
   docker:
