@@ -475,6 +475,40 @@ function endOfComment(html, start) {
  * @param {string} html
  * @returns {[number, number][]} ascending, non-overlapping `[start, end)` pairs
  */
+/**
+ * Index of the `</script` that really closes a `<script>` whose content starts
+ * at `from`, or -1 when unterminated (#1134).
+ *
+ * Script data is not plain raw text: once the content contains `<!--` followed
+ * by `<script`, the tokenizer is in the script-data-double-escaped state, where
+ * a `</script>` is TEXT (it only steps back to the escaped state) and the
+ * element ends at the NEXT `</script>`. The legacy comment-wrapped inline
+ * script that document.writes a script tag is the pattern that produces this.
+ * Stopping at the first `</script>` there re-opened the original #1128 bug in
+ * the one element the scanner most explicitly claims to handle.
+ *
+ * @param {string} html
+ * @param {number} from  index just past the opening tag's `>`
+ * @returns {number}
+ */
+function endOfScriptContent(html, from) {
+  const re = /<!--|-->|<\/script(?=[\s/>])|<script(?=[\s/>])/gi;
+  re.lastIndex = from;
+  let escaped = false;
+  let dbl = false;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const t = m[0];
+    if (t === '<!--') { if (!escaped) escaped = true; }
+    else if (t === '-->') { escaped = false; dbl = false; }
+    else if (t[1] === '/') {
+      if (dbl) dbl = false;
+      else return m.index;
+    } else if (escaped) dbl = true;
+  }
+  return -1;
+}
+
 function inertRanges(html) {
   /** @type {[number, number][]} */
   const ranges = [];
@@ -588,10 +622,19 @@ function inertRanges(html) {
     if (!isClose && !selfClosing && isTextOnlyTag(tag)) {
       // Everything up to the matching close tag is text, not markup.
       // `<plaintext>` has no end tag at all: the rest of the document is text.
-      const close = tag === 'plaintext'
-        ? null
-        : new RegExp(`</${tag}(?=[\\s/>])`, 'i').exec(html.slice(p));
-      const contentEnd = close ? p + close.index : n;
+      let contentEnd;
+      if (tag === 'plaintext') {
+        // `<plaintext>` has no end tag at all: the rest of the document is text.
+        contentEnd = n;
+      } else if (tag === 'script') {
+        // Script data has the double-escaped state (#1134), so its real end is
+        // not necessarily the first `</script`.
+        const end = endOfScriptContent(html, p);
+        contentEnd = end === -1 ? n : end;
+      } else {
+        const close = new RegExp(`</${tag}(?=[\\s/>])`, 'i').exec(html.slice(p));
+        contentEnd = close ? p + close.index : n;
+      }
       if (contentEnd > p) ranges.push([p, contentEnd]);
       i = contentEnd;
     }
@@ -617,6 +660,24 @@ function inertRanges(html) {
  * @param {[number, number][]} ranges
  * @returns {(index: number) => boolean}
  */
+/**
+ * Random-access membership test over ascending, non-overlapping ranges, for
+ * callers whose queries are NOT monotonic (findClosingTagInString resets its
+ * regex cursors backward while pairing opens with closes). O(ranges) per call;
+ * monotonic callers use `inertAt` below instead.
+ *
+ * @param {[number, number][]} ranges
+ * @param {number} index
+ * @returns {boolean}
+ */
+function inRanges(ranges, index) {
+  for (const [start, end] of ranges) {
+    if (start > index) return false;
+    if (index < end) return true;
+  }
+  return false;
+}
+
 function inertAt(ranges) {
   let cursor = 0;
   return (index) => {
@@ -664,7 +725,8 @@ async function injectDSD(html, ctx, ancestors = [], dev) {
   const edits = [];
   // A tag name inside a comment, a script, a style, RCDATA, or another tag's
   // attribute value is text, not an element (#1128).
-  const isInert = inertAt(inertRanges(html));
+  const inert = inertRanges(html);
+  const isInert = inertAt(inert);
   for (const m of html.matchAll(pattern)) {
     const [match, tag, attrs, selfClose] = m;
     const Cls = lookup(tag);
@@ -715,7 +777,7 @@ async function injectDSD(html, ctx, ancestors = [], dev) {
       let closeEnd = m.index + match.length;
       if (!selfClose) {
         const innerStart = m.index + match.length;
-        const closeIdx = findClosingTagInString(html, innerStart, tag);
+        const closeIdx = findClosingTagInString(html, innerStart, tag, inert);
         if (closeIdx !== -1) {
           authoredInner = html.slice(innerStart, closeIdx);
           const closeRe = new RegExp(`</${escapeRegex(tag)}\\s*>`, 'i');
@@ -863,7 +925,7 @@ async function injectDSD(html, ctx, ancestors = [], dev) {
       let closeEnd = m.index + match.length;
       if (!selfClose) {
         const innerStart = m.index + match.length;
-        const closeIdx = findClosingTagInString(html, innerStart, tag);
+        const closeIdx = findClosingTagInString(html, innerStart, tag, inert);
         if (closeIdx !== -1) {
           const closeRe = new RegExp(`</${escapeRegex(tag)}\\s*>`, 'i');
           const cm = closeRe.exec(html.slice(closeIdx));
@@ -980,7 +1042,8 @@ async function processSuspenseElements(html, ctx, ancestors = [], dev) {
   // fetches run and the swap script targets an id that only exists inside a
   // comment, so it can never resolve. Ranges are computed against the FULL
   // input once, and `consumed` maps the shrinking `rest` back onto it.
-  const isInert = inertAt(inertRanges(html));
+  const inert = inertRanges(html);
+  const isInert = inertAt(inert);
   let consumed = 0;
   let result = '';
   let rest = html;
@@ -1045,18 +1108,34 @@ async function processSuspenseElements(html, ctx, ancestors = [], dev) {
  * @param {string} tagName
  * @returns {number}
  */
-function findClosingTagInString(html, fromIndex, tagName) {
+function findClosingTagInString(html, fromIndex, tagName, inert) {
   const esc = escapeRegex(tagName);
   // Match same-name opening tags. Followed by a name-boundary character
   // so we don't accept <table> as opening <tab>.
   const openRe = new RegExp(`<${esc}(?:[\\s>/])`, 'gi');
   const closeRe = new RegExp(`</${esc}\\s*>`, 'gi');
+  // A tag inside a comment, raw text, RCDATA, or an attribute value is text
+  // and must count for NEITHER side of the depth ledger (#1133). Counting a
+  // commented `<my-card>` as a nested open meant depth never returned to zero,
+  // and matching a commented `</my-card>` as the close truncated the authored
+  // children at the comment, so the projected content ended with an
+  // unterminated `<!--` that a browser read as commenting out the real close
+  // tags. Callers that already computed the ranges for this exact string pass
+  // them; a caller that did not gets them computed here.
+  const ranges = inert === undefined ? inertRanges(html) : inert;
+  const next = (re) => {
+    let m;
+    while ((m = re.exec(html)) !== null) {
+      if (ranges.length === 0 || !inRanges(ranges, m.index)) return m;
+    }
+    return null;
+  };
   openRe.lastIndex = fromIndex;
   closeRe.lastIndex = fromIndex;
   let depth = 1;
   while (depth > 0) {
-    const o = openRe.exec(html);
-    const c = closeRe.exec(html);
+    const o = next(openRe);
+    const c = next(closeRe);
     if (!c) return -1;
     if (o && o.index < c.index) {
       depth++;
@@ -1217,7 +1296,8 @@ function substituteSlotsInRender(rendered, partitioned, ownerTag) {
   // has no `</slot>`, so the fallback scan below swallows the rest of the
   // template, the component's REAL slot is never substituted, and the authored
   // children are dropped from the page entirely.
-  const isInert = inertAt(inertRanges(rendered));
+  const inert = inertRanges(rendered);
+  const isInert = inertAt(inert);
   let m;
   while ((m = slotRe.exec(rendered)) !== null) {
     if (isInert(m.index)) continue;
@@ -1235,7 +1315,7 @@ function substituteSlotsInRender(rendered, partitioned, ownerTag) {
       totalEnd = m.index + fullOpen.length;
     } else {
       const innerStart = m.index + fullOpen.length;
-      const closeIdx = findClosingTagInString(rendered, innerStart, 'slot');
+      const closeIdx = findClosingTagInString(rendered, innerStart, 'slot', inert);
       if (closeIdx === -1) {
         fallback = rendered.slice(innerStart);
         totalEnd = rendered.length;
