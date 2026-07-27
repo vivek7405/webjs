@@ -18,6 +18,16 @@
  * Cached in memory after first read so subsequent requests don't repeat the
  * file I/O. The website dev server restarts on source changes, so cache
  * invalidation isn't needed in dev. Prod is read-only.
+ *
+ * A note on the one-function-per-file convention for a feature's `queries`
+ * directory: this file deliberately exports three reads (item, index,
+ * manifest) instead
+ * of splitting into three files. They are three views of ONE parse and they
+ * share the module-level caches, so splitting them would either duplicate the
+ * cache per view (losing the same-reference guarantee the composer tests pin)
+ * or need a fourth internal module holding the state the three then import.
+ * Both are worse than one cohesive composer. `webjs check` agrees: its
+ * one-function rule covers a CONFIGURED action file, which this is not.
  */
 
 import { readFileSync, existsSync } from 'node:fs';

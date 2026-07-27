@@ -182,11 +182,12 @@ WEBSITE_PORT=8001 DOCS_PORT=8002 UI_PORT=8003 BLOG_PORT=8004 npm run dev
 > env var is the supported interface (and the conventional one: Railway,
 > Heroku, Fly, etc. all drive port via `PORT`).
 
-The apps cross-link by URL (the landing site links to the demo and the UI
-kit, the UI site links back). Those default to the localhost ports above and
-are overridable via `EXAMPLE_BLOG_URL` / `UI_URL` / `WEBSITE_URL` (this is also
-how deploys point them at real domains). The docs are not in that list: they
-are served by the landing site itself at `/docs`, so they are a plain path.
+The landing site cross-links to the demo by URL, defaulting to the localhost
+port above and overridable via `EXAMPLE_BLOG_URL` (this is also how a deploy
+points it at the real domain). The two redirect hosts read `SITE_URL`, which is
+where they send every request. Nothing else needs a URL: the docs and the UI
+gallery are served by the landing site itself at `/docs` and `/ui`, so they are
+plain paths.
 
 ## Example
 

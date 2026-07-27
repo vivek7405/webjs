@@ -156,9 +156,90 @@ test('the kit palette is scoped to previews, so it cannot leak into the chrome',
   );
 });
 
+test('the dark variant tracks the site theme, not just the OS preference', () => {
+  // The kit's components carry `dark:` utilities and Tailwind's default `dark:`
+  // is the OS preference alone, so without this override a reader on a dark OS
+  // who picks light gets light page tokens and dark component internals. The
+  // marketing pages use no `dark:` utilities, so the override is inert outside
+  // previews, which is also why nothing else would catch its removal.
+  const css = readFileSync(resolve(WEBSITE_ROOT, 'public/input.css'), 'utf8');
+  const variant = css.match(/@custom-variant dark \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(variant, 'the dark variant is redefined');
+  assert.match(variant!, /prefers-color-scheme: dark/, 'it still honours the OS preference');
+  assert.match(variant!, /data-theme='light'/, 'an explicit light choice beats a dark OS');
+  assert.match(variant!, /data-theme='dark'/, 'an explicit dark choice beats a light OS');
+});
+
 test('a preview pane carries the scoping class', async () => {
   const html = await bodyOf(UI_COMPONENT);
   assert.ok(html.includes('class="ui-preview'), 'the preview pane opts into the kit palette');
+});
+
+/**
+ * The registry API is a RELEASED CONTRACT, so it is asserted at the location
+ * that now serves it.
+ *
+ * The redirect test covers the old host's `Location` strings, but a correct
+ * redirect into a broken endpoint is still a broken `webjs ui add`, and
+ * nothing else here exercised these routes. `/ui/registry` is also a static
+ * segment sitting next to the `[name]` page route, so precedence is part of
+ * the contract rather than an implementation detail.
+ */
+test('the registry endpoints serve the shapes a published CLI fetches', async () => {
+  const manifest = await handle('/ui/registry');
+  assert.equal(manifest.status, 200, 'the full manifest answers');
+  assert.equal(manifest.headers.get('content-type'), 'application/json');
+  const parsedManifest = JSON.parse(await manifest.text());
+  assert.ok(Array.isArray(parsedManifest.items), 'the manifest carries its items');
+
+  const index = await handle('/ui/registry/index.json');
+  assert.equal(index.status, 200, 'the flat index answers');
+  const items = JSON.parse(await index.text());
+  assert.ok(Array.isArray(items) && items.some((i: any) => i.name === 'button'), 'the index lists components');
+
+  // The item shape the CLI parses: `webjsui add` builds `<base>/<name>.json`
+  // and reads `files[].content`. An item without inlined content installs an
+  // empty file, which is worse than a 404.
+  const item = await handle('/ui/registry/button.json');
+  assert.equal(item.status, 200);
+  const button = JSON.parse(await item.text());
+  assert.equal(button.name, 'button');
+  assert.equal(button.type, 'registry:ui');
+  assert.ok(button.files?.[0]?.content?.includes('buttonClass'), 'the source is inlined, not an empty stub');
+
+  // A synthesized theme resolves through the same route.
+  assert.equal((await handle('/ui/registry/theme-zinc.json')).status, 200);
+  // And an unknown item is a 404 rather than an empty 200.
+  assert.equal((await handle('/ui/registry/does-not-exist.json')).status, 404);
+});
+
+test('the registry reserved slugs and CORS survive the move', async () => {
+  // `index` and `registry` are reserved slugs the old host answered, carried
+  // over verbatim; the CLI relies on them.
+  for (const [slug, check] of [
+    ['index', (v: any) => Array.isArray(v)],
+    ['registry', (v: any) => Array.isArray(v.items)],
+  ] as const) {
+    const res = await handle(`/ui/registry/${slug}.json`);
+    assert.equal(res.status, 200, `${slug} answers`);
+    assert.ok(check(JSON.parse(await res.text())), `${slug} returns its documented shape`);
+  }
+  // The registry is fetched cross-origin by tooling; the old endpoints sent
+  // this and dropping it would break a browser-context consumer.
+  for (const path of ['/ui/registry', '/ui/registry/index.json', '/ui/registry/button.json']) {
+    assert.equal(
+      (await handle(path)).headers.get('access-control-allow-origin'),
+      '*',
+      `${path} is CORS-open`,
+    );
+  }
+});
+
+test('the static registry segment is not shadowed by the component page route', async () => {
+  // /ui/registry sits next to /ui/[name]. If the dynamic page won, the CLI
+  // would receive an HTML 200 instead of JSON, which parses as neither.
+  const res = await handle('/ui/registry');
+  assert.match(res.headers.get('content-type') ?? '', /application\/json/, 'JSON, not the component page');
 });
 
 test('the gallery appears in the sitemap, one URL per component', async () => {

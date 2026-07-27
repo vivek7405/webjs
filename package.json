@@ -22,6 +22,7 @@
     "fix:git": "node scripts/git-worktree-safe.mjs",
     "check:git": "node scripts/git-worktree-safe.mjs --check",
     "dev": "node scripts/dev-all.js",
+    "pretest": "node website/scripts/copy-registry.mjs",
     "test": "node scripts/run-node-tests.js",
     "test:coverage": "WEBJS_COVERAGE=1 node scripts/run-node-tests.js",
     "test:browser": "wtr",

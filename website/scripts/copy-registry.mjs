@@ -40,27 +40,48 @@ if (!existsSync(COMPONENTS_SRC)) {
 mkdirSync(COMPONENTS_DST, { recursive: true });
 mkdirSync(LIB_DST_DIR, { recursive: true });
 
-// Clean the destination so removed-from-registry components don't linger as
-// orphans (they'd still be importable from site code and confuse SSR / the
-// dev server's module graph). Only .ts files are managed here.
-for (const name of readdirSync(COMPONENTS_DST)) {
-  if (name.endsWith('.ts')) rmSync(join(COMPONENTS_DST, name));
+/**
+ * Write only when the content actually differs.
+ *
+ * This matters beyond saving I/O. `webjs.dev.regenerate` runs this script
+ * before recompiling the stylesheet, and the dev supervisor watches
+ * `components/` and `lib/`, so unconditionally rewriting all 32 files makes
+ * every stylesheet regeneration also restart the dev server. Comparing first
+ * makes the common case (nothing changed in the registry) touch nothing.
+ */
+function writeIfChanged(path, content) {
+  try {
+    if (readFileSync(path, 'utf8') === content) return false;
+  } catch {
+    /* missing or unreadable: fall through and write */
+  }
+  writeFileSync(path, content);
+  return true;
 }
 
-copyFileSync(LIB_SRC, join(LIB_DST_DIR, 'utils.ts'));
-copyFileSync(LIB_DOM_SRC, join(LIB_DST_DIR, 'dom.ts'));
+// Drop components that no longer exist upstream, so a removed-from-registry
+// component doesn't linger as an orphan (it would still be importable from
+// site code and would confuse SSR / the dev server's module graph). Only
+// files this script manages are considered, and only genuine leftovers are
+// removed, so an unchanged mirror is left completely untouched.
+const upstream = new Set(readdirSync(COMPONENTS_SRC).filter((n) => n.endsWith('.ts')));
+for (const name of readdirSync(COMPONENTS_DST)) {
+  if (name.endsWith('.ts') && !upstream.has(name)) rmSync(join(COMPONENTS_DST, name));
+}
 
-let copied = 0;
-for (const name of readdirSync(COMPONENTS_SRC)) {
-  if (!name.endsWith('.ts')) continue;
-  const raw = readFileSync(join(COMPONENTS_SRC, name), 'utf8');
-  const rewritten = raw
+let changed = 0;
+if (writeIfChanged(join(LIB_DST_DIR, 'utils.ts'), readFileSync(LIB_SRC, 'utf8'))) changed++;
+if (writeIfChanged(join(LIB_DST_DIR, 'dom.ts'), readFileSync(LIB_DOM_SRC, 'utf8'))) changed++;
+
+for (const name of upstream) {
+  const rewritten = readFileSync(join(COMPONENTS_SRC, name), 'utf8')
     .replaceAll("'../lib/utils.ts'", "'../../lib/ui/utils.ts'")
     .replaceAll('"../lib/utils.ts"', '"../../lib/ui/utils.ts"')
     .replaceAll("'../lib/dom.ts'", "'../../lib/ui/dom.ts'")
     .replaceAll('"../lib/dom.ts"', '"../../lib/ui/dom.ts"');
-  writeFileSync(join(COMPONENTS_DST, name), rewritten);
-  copied++;
+  if (writeIfChanged(join(COMPONENTS_DST, name), rewritten)) changed++;
 }
 
-console.log(`[website] copied ${copied} ui components + lib/ui/{utils,dom}.ts from the registry`);
+console.log(
+  `[website] ui registry mirror: ${upstream.size} components + lib/ui/{utils,dom}.ts, ${changed} file(s) written`,
+);

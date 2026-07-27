@@ -9,7 +9,9 @@
   "scripts": {
     "dev": "webjs dev --port ${PORT:-5001}",
     "start": "webjs start",
+    "pretest": "node scripts/copy-registry.mjs",
     "test": "webjs test",
+    "pretest:browser": "node scripts/copy-registry.mjs",
     "test:browser": "webjs test --browser",
     "css:build": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify"
   },
@@ -41,6 +43,7 @@
             "lib",
             "modules",
             "../packages/ui/packages/registry/components",
+            "../packages/ui/packages/registry/lib",
             "public/input.css"
           ]
         }

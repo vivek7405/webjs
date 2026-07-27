@@ -9,8 +9,8 @@
  * trigger, asserting the open / render outcome that was broken pre-#746.
  *
  * The gallery moved from ui.webjs.dev to webjs.dev/ui in #1099, so this boots
- * the marketing app and reads /ui/<name> rather than the retired
- * /ui/<name>.
+ * the marketing app and reads the flat /ui/<name> paths rather than the
+ * retired nested ones under the old host's docs section.
  *
  * Self-contained: boots the site, runs the checks, tears down. Needs
  * Playwright + a browser. Run: `node packages/ui/test/e2e/touch.e2e.mjs`
