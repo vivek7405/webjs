@@ -44,7 +44,9 @@
  * gutter so the width never changes and a `position: fixed` header stays put.
  * Where the engine ignores `scrollbar-gutter` (WebKit today) it publishes the
  * leftover width on <html> as `--wj-scrollbar-compensation`, so a fixed header
- * opts in with `padding-right: var(--wj-scrollbar-compensation, 0px)`.
+ * opts in with `border-right: var(--wj-scrollbar-compensation, 0px) solid transparent`
+ * (a transparent border composes with existing padding, and a background paints
+ * across it, so a header keeps its own chrome full bleed).
  *
  * @example
  * ```html
@@ -183,7 +185,7 @@ function installStyles(): void {
 //   2. Where the engine ignores it (measured on WebKit), fall back to
 //      padding <html> and publish the leftover width as
 //      `--wj-scrollbar-compensation` on it, so a fixed element can opt in with
-//      `padding-right: var(--wj-scrollbar-compensation, 0px)`.
+//      `border-right: var(--wj-scrollbar-compensation, 0px) solid transparent`.
 //
 // Everything below is MEASURED rather than assumed, because engines disagree
 // about both scrollbar geometry and gutter support. When mechanism 1 works the

@@ -216,11 +216,17 @@ Anything that locks page scroll (a modal, a drawer, an off-canvas menu) hides th
 Engines differ, and the lock does not need to know which one it is on. Where the gutter is honoured (measured on Chromium) nothing moves and the lock does nothing else. Where it is ignored (measured on WebKit) the viewport does widen, so the lock measures how much, pads `<html>` by it to hold in-flow content still (added to any padding you already had, and restored on close), and publishes the amount as `--wj-scrollbar-compensation` so a fixed element can opt in with one line:
 
 ```css
-header { position: fixed; inset-inline: 0; top: 0; padding-right: var(--wj-scrollbar-compensation, 0px); }
+header { position: fixed; inset-inline: 0; top: 0; border-right: var(--wj-scrollbar-compensation, 0px) solid transparent; }
 ```
+
+A transparent border rather than `padding-right`, for two reasons. It composes with whatever padding the element already has, where a padding form has to restate that base value and restate it again per responsive variant. And a background still paints across a border, so a header that carries its own background stays full bleed instead of ending short of the edge. Declare it after your Tailwind link if you use the `border-*` utilities, since those set `border-right-color` too.
 
 The property is only set while a lock is active AND the viewport actually widened, so the `0px` fallback covers every other moment and the two mechanisms never double-compensate. If you find inline `padding-right` on your `<html>` while a modal is open, that is this, and it comes off on close.
 
-Put the declaration on the element that is actually off-centre, not necessarily the fixed one. If your fixed wrapper paints nothing and a child carries the background, padding the wrapper insets that child and leaves an unpainted strip at the edge; pad the inner centring container instead, and the chrome stays full bleed. That is what `website/app/layout.ts` does.
+Put the declaration on the element that is actually off-centre, not necessarily the fixed one. If your fixed wrapper paints nothing and a child carries the background, insetting the wrapper insets that child too; put it on the inner centring container instead. Both shapes ship in this repo: `examples/blog` puts it straight on the fixed header, which paints its own chrome, and `website` puts it on the centring bar inside a wrapper that paints nothing.
 
-Rolling your own scroll lock? Two things the kit learned the hard way. Reserve the gutter rather than relying on padding alone, or a fixed header will jump. And when you do pad, pad `<html>`, not `<body>`: a `max-width` body does not widen when the viewport does, so padding it misses the shift entirely, while padding the root holds in-flow content whatever the body's width is. Measure the root's own border box to decide the amount, since it tracks the viewport and is re-laid-out synchronously.
+Rolling your own scroll lock? Three things the kit learned the hard way, and the first is that almost every implementation of this (including Next's own dev overlay and Radix) gets the fixed case wrong by design.
+
+1. Reserve the gutter rather than relying on padding alone, or a fixed element will jump however carefully you compensate the body.
+2. When you do pad, pad `<html>`, not `<body>`. A `max-width` body does not widen when the viewport does, so padding it misses the shift entirely, while padding the root holds in-flow content whatever the body's width is.
+3. Measure the root's own border box to decide the amount. `documentElement.clientWidth` can grow while nothing actually moved (Chromium reports exactly that under a reserved gutter), and a `position: fixed` probe reads its pre-lock box on WebKit until the next rendering update, so both mislead.

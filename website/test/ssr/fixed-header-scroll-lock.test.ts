@@ -15,11 +15,11 @@
  *
  * Two properties, and the second is the one that is easy to get wrong. The
  * compensation must sit on the CENTRING BAR, not on the fixed `.site-top`
- * wrapper: the wrapper paints nothing, so padding it insets the `<header>` that
- * carries the background and bottom border and leaves an unpainted strip at the
- * top right. Verified in Chromium with the property forced to 15px: on the
- * wrapper the painted chrome ends 15px early, on the bar it stays full bleed
- * while the nav centre still holds.
+ * wrapper: the wrapper paints nothing, so insetting it insets the header element
+ * that carries the background and bottom border and leaves an unpainted strip at
+ * the top right. Verified in Chromium with the property forced to 15px: on the
+ * wrapper the painted chrome ends 15px early, on the bar it stays full bleed at
+ * 1265 while the nav centre moves the compensating 7.5px.
  */
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -48,33 +48,36 @@ test('the header opts into the scroll-lock compensation', () => {
   );
 });
 
-test('the compensation is on the centring bar, not on the fixed wrapper', () => {
+test('the compensation targets the centring bar, not the fixed wrapper', () => {
+  // The rule must select the bar. Insetting `.site-top` would inset the header
+  // element that paints the background and bottom border, leaving an unpainted
+  // strip at the top right for as long as a dialog is open.
+  const rule = new RegExp(`\\.site-bar\\s*\\{[^}]*var\\(${COMPENSATION}`);
+  assert.ok(rule.test(body), 'a .site-bar rule consumes the compensation');
+  assert.equal(
+    new RegExp(`\\.site-top\\s*\\{[^}]*var\\(${COMPENSATION}`).test(body),
+    false,
+    'the fixed wrapper must NOT be the one inset',
+  );
+
   const start = body.indexOf('<div class="site-top');
   assert.ok(start >= 0, 'the fixed header wrapper is present');
-  const wrapperClasses = body.slice(start, body.indexOf('>', start));
-  assert.equal(
-    wrapperClasses.includes(COMPENSATION),
-    false,
-    'padding the fixed wrapper insets the <header> that paints the chrome, which ' +
-      'leaves an unpainted strip at the top right while a dialog is open',
-  );
-
-  const bar = body.indexOf('max-w-[1240px] mx-auto', start);
-  assert.ok(bar > start, 'the centring bar is inside the header');
-  const barClasses = body.slice(bar, body.indexOf('>', bar));
-  assert.ok(
-    barClasses.includes(COMPENSATION),
-    'the centring bar carries the compensation, so the chrome stays full bleed',
-  );
+  const bar = body.indexOf('class="site-bar', start);
+  assert.ok(bar > start, 'the centring bar inside the header carries the site-bar hook');
 });
 
-test('the compensation falls back to the plain padding when no lock is active', () => {
-  // `var(--wj-scrollbar-compensation, 0px)` with the px-6 base is what makes the
-  // header identical to its unpatched self at every moment except an open modal
-  // on an engine that ignores the gutter. A missing fallback would collapse the
-  // padding to zero on every normal page view.
+test('the compensation resolves to zero when no lock is active', () => {
+  // The `0px` fallback is what makes the header identical to its unpatched self
+  // at every moment except an open modal on an engine that ignores the gutter.
+  // Without it the border width would be invalid and the declaration dropped,
+  // which is silent rather than visible.
   assert.ok(
     body.includes(`var(${COMPENSATION},0px)`) || body.includes(`var(${COMPENSATION}, 0px)`),
     'the compensation must carry a 0px fallback for the un-locked case',
+  );
+  // A transparent border, so the chrome still paints across it.
+  assert.ok(
+    /border-right:\s*var\(--wj-scrollbar-compensation,\s*0px\)\s*solid\s*transparent/.test(body),
+    'the opt-in is a transparent right border',
   );
 });

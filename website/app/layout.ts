@@ -308,21 +308,18 @@ export default function RootLayout({ children }: { children: unknown }) {
         display: inline-block; width: 1.15em; height: 1.15em;
         vertical-align: -0.18em; color: var(--heart);
       }
-      /* #1144: a modal that locks page scroll hides the scrollbar, which widens
-         the viewport. The kit's dialog reserves the scrollbar gutter so nothing
-         moves, but WebKit ignores scrollbar-gutter, and there it publishes the
-         leftover width instead. The header is position: fixed, so it lays out
-         against the viewport and cannot be reached by the padding that holds
-         in-flow content still. The compensation goes on the CENTRING BAR rather
-         than on .site-top: padding the fixed wrapper would inset the header
-         element that paints the background and bottom border, leaving an
-         unpainted strip at the top right, while padding the bar keeps the chrome
-         full bleed and still holds the nav centred. The declaration is the
-         padding-right utility on that bar, which resolves to the same 1.5rem as
-         its px at every moment except an open modal on an engine that ignores
-         the gutter. Do not name the class literally in this comment: Tailwind
-         scans inline styles too, and an illustrative arbitrary value ships as a
-         real rule with an invalid value. */
+      /* #1144: while a modal holds the page scroll lock, an engine that ignores
+         scrollbar-gutter widens the viewport, and .site-top is position: fixed so
+         it lays out against the viewport and cannot be reached by the padding
+         that holds in-flow content still. The opt-in goes on the CENTRING BAR,
+         not on .site-top: the wrapper paints nothing, so insetting it would inset
+         the header element that carries the background and bottom border and
+         leave an unpainted strip at the top right. A transparent right border on
+         the bar composes with its existing px-6 (a padding-right would have to
+         restate that value) and resolves to 0px at every other moment. Declared
+         after the Tailwind link above, so it wins the border-right-color the
+         border-* utilities also set. */
+      .site-bar { border-right: var(--wj-scrollbar-compensation, 0px) solid transparent; }
       .glow-layer { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
       .glow-layer::before {
         content: ''; position: absolute; inset: 0;
@@ -362,7 +359,7 @@ export default function RootLayout({ children }: { children: unknown }) {
 
     <div class="site-top fixed inset-x-0 top-0 z-20">
     <header class="backdrop-blur-md bg-[color-mix(in_oklch,var(--color-bg)_78%,transparent)] border-b border-border">
-      <div class="max-w-[1240px] mx-auto px-6 pr-[calc(1.5rem+var(--wj-scrollbar-compensation,0px))] py-[11px] flex items-center justify-between gap-4">
+      <div class="site-bar max-w-[1240px] mx-auto px-6 py-[11px] flex items-center justify-between gap-4">
         <a class="inline-flex items-center gap-[9px] no-underline text-fg font-display font-extrabold text-[17px] leading-none tracking-[-0.02em] shrink-0" href="/">
           <span class="w-[22px] h-[22px] rounded-[7px] bg-gradient-to-br from-[var(--logo-from)] to-[var(--logo-to)] shadow-[0_2px_10px_var(--accent-tint)]"></span>
           webjs
