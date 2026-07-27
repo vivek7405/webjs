@@ -381,7 +381,7 @@ return html`
 
 Add more components with `webjs ui add <name>` (e.g. `webjs ui add dialog
 tabs popover`). The catalogue lives at
-[https://ui.webjs.dev](https://ui.webjs.dev).
+[https://webjs.dev/ui](https://webjs.dev/ui).
 
 **Hand-rolled Tailwind is still appropriate for:**
 - One-off marketing pages, hero sections, landing CTAs.
