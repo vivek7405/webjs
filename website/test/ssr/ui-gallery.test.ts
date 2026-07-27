@@ -254,6 +254,32 @@ test('the gallery appears in the sitemap, one URL per component', async () => {
   assert.ok(!xml.includes('/ui/theme-zinc'), 'non-component registry items stay out');
 });
 
+test('the drawer contract the browser tests model still matches the real listener', () => {
+  // test/components/browser/docs-drawer.test.js transcribes the root layout's
+  // delegated listener, because that listener is an inline script rather than
+  // an importable module. A transcription can drift from its original, so this
+  // pins the branches the transcription depends on. If one moves, fix the
+  // browser test rather than deleting this.
+  const layout = readFileSync(resolve(WEBSITE_ROOT, 'app/layout.ts'), 'utf8');
+  const script = layout.slice(layout.indexOf('function syncDocsNav'), layout.indexOf('</script>', layout.indexOf('function syncDocsNav')));
+  assert.ok(script, 'the drawer script is present in the root layout');
+  for (const [what, needle] of [
+    ['syncs aria-expanded from the body attribute', "querySelector('.docs-nav-toggle')"],
+    ['toggles on the button', "t.closest('.docs-nav-toggle')"],
+    ['closes on a link or the backdrop', "t.closest('.docs-backdrop')"],
+    ['handles Escape', "e.key !== 'Escape'"],
+    ['closes the header menu before the drawer branch returns', "t.closest('.mobile-menu a')"],
+  ] as const) {
+    assert.ok(script.includes(needle), `the listener still ${what}`);
+  }
+  // Ordering is the part that actually broke: the header-menu housekeeping has
+  // to run BEFORE the drawer branch, because that branch returns.
+  assert.ok(
+    script.indexOf("t.closest('.mobile-menu a')") < script.indexOf("t.closest('.docs-nav-toggle')"),
+    'the header menu is handled before the drawer branch returns',
+  );
+});
+
 test('each component page describes itself, not the section', async () => {
   // 33 URLs sharing one description is the duplicate-content shape this whole
   // migration exists to avoid, so introducing it here would have been

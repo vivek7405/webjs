@@ -171,28 +171,44 @@ export default function RootLayout({ children }: { children: unknown }) {
       document.addEventListener('click', function (e) {
         var t = e.target;
         if (!t || !t.closest) return;
+
+        // Header mobile menu FIRST, and unconditionally, because the drawer
+        // toggle is a click OUTSIDE that menu and so has to dismiss it. Doing
+        // this after an early return for the toggle left the dropdown open and
+        // then trapped under the drawer's backdrop: the header is a stacking
+        // context, so the menu's own z-index cannot lift it above the backdrop.
+        var a = t.closest('.mobile-menu a');
+        if (a) {
+          var d = a.closest('details');
+          if (d) d.removeAttribute('open');
+        } else {
+          var open = document.querySelectorAll('.mobile-menu[open]');
+          // A click INSIDE an open menu (its summary) is left alone, so the
+          // details element toggles natively.
+          for (var i = 0; i < open.length; i++) if (!open[i].contains(t)) open[i].removeAttribute('open');
+        }
+
+        // Then the sidebar drawer.
         if (t.closest('.docs-nav-toggle')) {
           document.body.toggleAttribute('data-docs-nav-open');
           syncDocsNav();
           return;
         }
-        // Any link, and the backdrop, dismiss the drawer. The backdrop needs no
-        // navigation to be clicked, which is why it cannot rely on the link
-        // branch below.
+        // Any link, and the backdrop, dismiss it. The backdrop needs no
+        // navigation to be clicked, which is why it cannot rely on the link.
         if (t.closest('a') || t.closest('.docs-backdrop')) closeDocsNav();
-        var a = t.closest('.mobile-menu a');
-        if (a) { var d = a.closest('details'); if (d) d.removeAttribute('open'); return; }
-        var open = document.querySelectorAll('.mobile-menu[open]');
-        for (var i = 0; i < open.length; i++) if (!open[i].contains(t)) open[i].removeAttribute('open');
       });
       document.addEventListener('keydown', function (e) {
         if (e.key !== 'Escape') return;
-        // Escape dismisses the drawer and returns focus to the control that
-        // opened it, the same contract the header's mobile menu follows.
+        // The drawer wins when both it and the header menu are open, and
+        // returns, so focus lands on the control that opened THIS one. Without
+        // the return both closed on one Escape and the header summary took
+        // focus, which is not where the reader was.
         if (document.body.hasAttribute('data-docs-nav-open')) {
           closeDocsNav();
           var btn = document.querySelector('.docs-nav-toggle');
           if (btn) btn.focus();
+          return;
         }
         var open = document.querySelectorAll('.mobile-menu[open]');
         for (var i = 0; i < open.length; i++) {
