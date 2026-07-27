@@ -143,6 +143,41 @@ test('a PRIVATE response still gets an ETag and 304s (#1140)', async () => {
   assert.equal(body.length, 0, 'a 304 has no body');
 });
 
+test('a REDUCED router fragment is private AND still 304s (#1140)', async () => {
+  // The composition the two halves exist for, driven through the real handler.
+  // Asserting them separately (a fragment is private / a private page is
+  // validated) let the actual regression through once already: fragments
+  // silently lost their validator, so every prefetch and soft navigation
+  // re-downloaded the whole fragment while the suite stayed green.
+  const appDir = makeApp({
+    'app/layout.js':
+      `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+      `export const metadata = { cacheControl: 'public, max-age=60, s-maxage=600' };\n` +
+      `export default function L({ children }) { return html\`<div class="OUTER">\${children}</div>\`; }\n`,
+    'app/page.js':
+      `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+      `export default function P() { return html\`<h1>page body</h1>\`; }\n`,
+  });
+  const app = await createRequestHandler({ appDir, dev: true });
+
+  const have = { 'x-webjs-router': '1', 'x-webjs-have': '/:/' };
+  const first = await app.handle(new Request('http://x/', { headers: have }));
+  const body = await first.text();
+  assert.ok(!body.includes('OUTER'), 'sanity: the response really was reduced');
+
+  const cc = first.headers.get('cache-control') || '';
+  assert.match(cc, /(^|,)\s*private\s*(,|$)/, `a fragment is unshareable, got: ${cc}`);
+  assert.doesNotMatch(cc, /s-maxage/i, `a fragment carries no shared TTL, got: ${cc}`);
+
+  const etag = first.headers.get('etag');
+  assert.ok(etag, 'a fragment still carries a validator, or every prefetch re-downloads it');
+
+  const replay = await app.handle(new Request('http://x/', { headers: { ...have, 'if-none-match': etag } }));
+  const replayBody = await replay.text();
+  assert.equal(replay.status, 304, 'the router revalidation is answered 304, not a re-download');
+  assert.equal(replayBody.length, 0, 'a 304 has no body');
+});
+
 /* ---------------- no-store page: no ETag, no 304 ---------------- */
 
 test('a no-store (dynamic / per-user) page gets NO ETag and never 304s', async () => {

@@ -10,9 +10,11 @@
  * uniformly.
  *
  * What is EXCLUDED, and why:
- *   - `no-store` / `private` responses (the default for dynamic, per-user
- *     pages). Never enable a cross-session 304 on private content: a shared
- *     cache keyed on the URL could serve one user's validator to another.
+ *   - `no-store` responses (the default for a dynamic page), which forbid
+ *     storage outright, so there is nothing to validate. `private` is NOT
+ *     excluded: it forbids SHARED storage, not validation, and the ETag hashes
+ *     THIS response's body, so no user's validator can match another's (#1140).
+ *     Excluding it cost the client router's partial responses their 304s.
  *   - Any body the framework did not positively mark as fully buffered. The
  *     funnel only hashes a response that ALREADY carries an `ETag` (a serve
  *     branch hashed its own bytes) OR carries the internal `X-Webjs-Buffered`

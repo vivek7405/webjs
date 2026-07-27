@@ -518,10 +518,12 @@ function privateFragment(res) {
   // `name` is everything before the first `=`, trimmed, so `s-maxage = 600`
   // and `private="x-user"` are recognised as the directives they are.
   const nameOf = (d) => d.split('=')[0].trim().toLowerCase();
-  // Already unshareable: leave it exactly as the author wrote it. Matching on
-  // the parsed name catches the argument forms a regex over the raw string
-  // would miss.
-  if (directives.some((d) => nameOf(d) === 'no-store' || nameOf(d) === 'private')) return;
+  // Already unshareable: leave it exactly as the author wrote it. Only a BARE
+  // `private` counts. The qualified form (`private="x-user"`) marks just the
+  // NAMED header fields private per RFC 9111, leaving the response itself
+  // storable by a shared cache, so it must still be downgraded.
+  const isBare = (d) => !d.includes('=');
+  if (directives.some((d) => nameOf(d) === 'no-store' || (nameOf(d) === 'private' && isBare(d)))) return;
 
   const SHARED_ONLY = new Set(['public', 's-maxage', 'proxy-revalidate']);
   const kept = directives.filter((d) => d && !SHARED_ONLY.has(nameOf(d)));
@@ -541,9 +543,10 @@ function privateFragment(res) {
 function htmlResponse(html, status, req, url, metadata) {
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
   // Default: no caching. Pages are dynamic by default: the developer opts in
-  // explicitly via metadata.cacheControl. A non-200 does NOT inherit it
-  // (#1140); see streamingHtmlResponse for why.
-  headers.set('cache-control', status === 200 ? (metadata?.cacheControl || 'no-store') : 'no-store');
+  // explicitly via metadata.cacheControl. No non-200 guard here, unlike
+  // streamingHtmlResponse: every caller of THIS builder passes no metadata, so
+  // the value is already the no-store default and a guard would be dead code.
+  headers.set('cache-control', metadata?.cacheControl || 'no-store');
   // X-Webjs-Build carries the published build id so the client
   // router can detect post-deploy importmap changes on EVERY
   // response, including the X-Webjs-Have partial responses that
@@ -553,9 +556,10 @@ function htmlResponse(html, status, req, url, metadata) {
   headers.set('x-webjs-build', publishedBuildId());
   headers.set('x-webjs-src', appSourceId());
   // Buffered (string) body: opt into the conditional-GET funnel so a
-  // PUBLIC-cacheable page (metadata.cacheControl) gets a weak ETag + 304.
-  // The funnel still excludes the no-store default, so a private page is
-  // never ETagged. See conditional-get.js.
+  // A cacheable page (metadata.cacheControl) gets a weak ETag + 304. The
+  // funnel excludes only the no-store default; a `private` page IS validated,
+  // which is what keeps the router's partial responses cheap (#1140).
+  // See conditional-get.js.
   headers.set(BUFFERED_MARKER, '1');
   return new Response(html, { status, headers });
 }

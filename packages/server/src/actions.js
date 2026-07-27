@@ -563,8 +563,10 @@ export async function invokeAction(idx, hash, fnName, req, onError, allowedOrigi
  * Build a GET action's response (#488): the serialized body plus a weak ETag
  * (content hash), the `Cache-Control` from the `cache` config (else `no-store`),
  * and `X-Webjs-Tags`. Answers `If-None-Match` with a 304 itself rather than
- * relying on the conditional-GET funnel, which EXCLUDES `private` responses (the
- * default here); a per-user browser cache may still revalidate to a 304.
+ * deferring to the conditional-GET funnel: this branch already hashed the
+ * serialized body, so it can answer without the funnel re-reading it. (The
+ * funnel would now accept these too, since #1140 stopped excluding `private`,
+ * but the short-circuit here still runs first and is cheaper.)
  * @param {unknown} result
  * @param {Record<string, unknown>} mod
  * @param {unknown[]} args
