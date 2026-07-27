@@ -68,13 +68,23 @@ test('the compensation targets the header, not the wrapper or the centring bar',
     new RegExp(`\\.site-top\\s*>\\s*header\\s*\\{[^}]*var\\(${COMPENSATION}`).test(body),
     'a `.site-top > header` rule consumes the compensation',
   );
-  for (const wrong of ['\\.site-top', '\\.site-bar']) {
-    assert.equal(
-      new RegExp(`${wrong}\\s*\\{[^}]*var\\(${COMPENSATION}`).test(body),
-      false,
-      `${wrong.replace('\\', '')} must not be the element inset`,
-    );
-  }
+  // `.site-top` on its own is the wrong target and IS a reachable mistake, since
+  // it is the fixed element and the obvious thing to reach for.
+  assert.equal(
+    new RegExp(`\\.site-top\\s*\\{[^}]*var\\(${COMPENSATION}`).test(body),
+    false,
+    'the non-painting fixed wrapper must not be the element inset',
+  );
+  // Exactly ONE rule may consume it. The other wrong target was the centring
+  // div, which carries no class, so it cannot be named in a negative selector
+  // check; counting the consuming rules catches it anyway, and catches any future
+  // second consumer that would double-compensate.
+  const consumers = body.match(new RegExp(`\\{[^{}]*var\\(${COMPENSATION}`, 'g')) ?? [];
+  assert.equal(
+    consumers.length,
+    1,
+    `exactly one rule may consume the compensation, found ${consumers.length}`,
+  );
 });
 
 test('the compensation resolves to zero when no lock is active', () => {

@@ -62,6 +62,46 @@
  * within the dialog (native focus trap).
  *
  * Design tokens used: --background, --border, --muted-foreground.
+ *
+ * Scroll lock (#1144): opening the dialog locks body scroll, which hides the
+ * page scrollbar and would widen the viewport. The lock reserves the scrollbar
+ * gutter so the width never changes and a `position: fixed` header stays put.
+ * Where the engine ignores `scrollbar-gutter` (WebKit today) it publishes the
+ * leftover width on <html> as `--wj-scrollbar-compensation`, so a fixed header
+ * opts in with `border-right: var(--wj-scrollbar-compensation, 0px) solid transparent`
+ * (a transparent border composes with existing padding, and a background paints
+ * across it, so a header keeps its own chrome full bleed).
+ *
+ * @example
+ * ```html
+ * <ui-dialog>
+ *   <ui-dialog-trigger>
+ *     <button class=${buttonClass({ variant: 'outline' })}>Edit profile</button>
+ *   </ui-dialog-trigger>
+ *   <ui-dialog-content>
+ *     <div class=${dialogHeaderClass()}>
+ *       <h2 data-slot="dialog-title" class=${dialogTitleClass()}>Edit profile</h2>
+ *       <p data-slot="dialog-description" class=${dialogDescriptionClass()}>Make changes and click save.</p>
+ *     </div>
+ *     <div class="grid gap-3">
+ *       <label class=${labelClass()} for="dlg-name">Name</label>
+ *       <input class=${inputClass()} id="dlg-name" placeholder="Your name">
+ *     </div>
+ *     <div class=${dialogFooterClass()}>
+ *       <ui-dialog-close><button class=${buttonClass({ variant: 'outline' })}>Cancel</button></ui-dialog-close>
+ *       <button class=${buttonClass()}>Save</button>
+ *     </div>
+ *   </ui-dialog-content>
+ * </ui-dialog>
+ *
+ * <!-- Suppress the auto-injected top-right X close button. -->
+ * <ui-dialog-content show-close-button="false">
+ *   <div class=${dialogHeaderClass()}>
+ *     <h2 data-slot="dialog-title" class=${dialogTitleClass()}>Quiet dialog</h2>
+ *   </div>
+ * </ui-dialog-content>
+ * ```
+
  */
 import { WebComponent, html, unsafeHTML, prop } from '@webjsdev/core';
 import { ref, createRef } from '@webjsdev/core/directives';
@@ -137,7 +177,7 @@ function installStyles(): void {
 //   2. Where the engine ignores it (measured on WebKit), fall back to
 //      padding <html> and publish the leftover width as
 //      `--wj-scrollbar-compensation` on it, so a fixed element can opt in with
-//      `padding-right: var(--wj-scrollbar-compensation, 0px)`.
+//      `border-right: var(--wj-scrollbar-compensation, 0px) solid transparent`.
 //
 // Everything below is MEASURED rather than assumed, because engines disagree
 // about both scrollbar geometry and gutter support. When mechanism 1 works the

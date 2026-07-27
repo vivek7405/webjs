@@ -463,12 +463,17 @@ suite('ui-dialog scroll lock layout', () => {
     }
   });
 
-  // A dialog with no content child returns from _setup() BEFORE locking, but
-  // _teardown() unlocks unconditionally, so an unlock can arrive with no lock
-  // behind it. Treating that as the last release would replay a stale snapshot
-  // onto whatever the page owns now, and while another dialog is open it would
-  // drop that dialog's compensation mid-flight.
-  test('an unlock with no matching lock does not disturb an open dialog', async function () {
+  // A dialog with no content child returns from _setup() BEFORE locking, so it
+  // must not release anything on the way out. It used to: _teardown() unlocked
+  // unconditionally, which consumed the OPEN dialog's refcount and restored the
+  // page mid-flight, dropping its compensation.
+  //
+  // What this pins is the `_scrollLocked` guard in _teardown(). The count-zero
+  // early return in unlockScroll() is now belt-and-braces rather than the thing
+  // under test, because no path through the components can reach unlockScroll
+  // with a zero count any more. Deleting that early return would leave this
+  // green, and that is expected.
+  test('a contentless dialog does not release an open dialog\'s lock', async function () {
     const page = await buildFixedHeaderPage();
     try {
       if (!requireClassicScrollbar(this)) return;
