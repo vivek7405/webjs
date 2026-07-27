@@ -190,6 +190,15 @@ const TD = 'px-3 py-2 align-top';
 const TD_MUTED = 'px-3 py-2 align-top text-fg-muted';
 const ROW = 'border-t border-border';
 
+/**
+ * One component's page.
+ *
+ * The heading is title-cased for reading, while the registry identifier stays
+ * lowercase everywhere it is a value you type (the Installation command, the
+ * source path, the sidebar links). There is no back link to the index: the
+ * sidebar lists every component on every page, so a dedicated "up" control
+ * would be a second way to do what the nav already does.
+ */
 export default async function ComponentDoc({ params }: { params: { name: string } }) {
   const item = await loadRegistryItem(params.name);
   // Only components are addressable here. The registry also holds themes and
@@ -216,15 +225,8 @@ export default async function ComponentDoc({ params }: { params: { name: string 
       .prose-docs.ui-code > pre { margin: 0; }
     </style>
 
-    <a href="/ui" class="inline-flex items-center gap-1.5 text-sm text-fg-muted hover:text-fg no-underline mb-4">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M19 12H5"></path><path d="m12 19-7-7 7-7"></path>
-      </svg>
-      All components
-    </a>
-
     <header class="mb-8">
-      <h1 class="font-serif font-bold text-[length:var(--text-doc-h1)] leading-[1.12] tracking-[-0.025em] text-fg">${item.name}</h1>
+      <h1 class="font-serif font-bold text-[length:var(--text-doc-h1)] leading-[1.12] tracking-[-0.025em] text-fg">${startCase(item.name)}</h1>
       ${item.description ? html`<p class="mt-2 text-base text-fg-muted">${item.description}</p>` : ''}
       <div class="mt-4 flex flex-wrap gap-2 text-xs">
         <span class="rounded-md border border-border px-2 py-1 text-fg-muted">${item.type.replace('registry:', '')}</span>

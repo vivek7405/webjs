@@ -42,7 +42,14 @@ const REGISTRY_ROOT = resolve(
 );
 const MANIFEST_PATH = join(REGISTRY_ROOT, 'registry.json');
 const NEUTRAL_CSS_PATH = join(REGISTRY_ROOT, 'themes', 'index.css');
-const SCHEMA = 'https://webjs.dev/ui/schema/registry-item.json';
+// Deliberately unchanged by the move to webjs.dev/ui. This URL 404s today and
+// always has (probed live before the migration), and nothing resolves it at
+// runtime: it is an inert JSON Schema reference that rides in the served
+// registry JSON and gets written into users' components.json. Repointing a
+// dead link at a new domain would churn every consumer's file without making
+// anything resolve, so the value stays byte-identical to what shipped
+// clients already carry. Making it actually resolve is separate work.
+const SCHEMA = 'https://ui.webjs.dev/schema/registry-item.json';
 
 export type RegistryFile = {
   path: string;
