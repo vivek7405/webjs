@@ -447,6 +447,29 @@ function defaultSSRErrorTemplate(tag, err, dev) {
  * @param {string} html
  * @returns {[number, number][]} ascending, non-overlapping `[start, end)` pairs
  */
+/**
+ * Index just past the end of the comment starting at `start`, or -1 if it is
+ * unterminated. Shared so every scanner that has to decide where a comment
+ * stops agrees, including on the spec short forms.
+ *
+ * @param {string} html
+ * @param {number} start  index of the `<` of `<!--`
+ * @returns {number}
+ */
+function endOfComment(html, start) {
+  let p = start + 4;
+  // `<!-->` and `<!--->` are comments whose data is empty (spec short forms).
+  if (html[p] === '>') return p + 1;
+  if (html.startsWith('->', p)) return p + 2;
+  while (p < html.length) {
+    // `--!>` is the spec's "abrupt closing" form and closes just like `-->`.
+    if (html.startsWith('-->', p)) return p + 3;
+    if (html.startsWith('--!>', p)) return p + 4;
+    p += 1;
+  }
+  return -1;
+}
+
 function inertRanges(html) {
   /** @type {[number, number][]} */
   const ranges = [];
@@ -456,19 +479,10 @@ function inertRanges(html) {
     const lt = html.indexOf('<', i);
     if (lt === -1) break;
     if (html.startsWith('<!--', lt)) {
-      let p = lt + 4;
-      // `<!-->` and `<!--->` are comments whose data is empty (spec short forms).
-      if (html[p] === '>') p += 1;
-      else if (html.startsWith('->', p)) p += 2;
-      else {
-        while (p < n) {
-          if (html.startsWith('-->', p)) { p += 3; break; }
-          if (html.startsWith('--!>', p)) { p += 4; break; }
-          p += 1;
-        }
-      }
-      ranges.push([lt, Math.min(p, n)]);
-      i = Math.min(p, n);
+      const end = endOfComment(html, lt);
+      const stop = end === -1 ? n : end;
+      ranges.push([lt, stop]);
+      i = stop;
       continue;
     }
     if (html.startsWith('<!', lt) || html.startsWith('<?', lt)) {
@@ -480,7 +494,21 @@ function inertRanges(html) {
       continue;
     }
     const name = /^<\/?([a-zA-Z][^\s/>]*)/.exec(html.slice(lt, lt + 64));
-    if (!name) { i = lt + 1; continue; }
+    if (!name) {
+      // `</` followed by anything that is not an ASCII letter is the third
+      // bogus-comment form (`</1`, `</<`, `</ `), which the spec also runs to
+      // the next `>`. Without this branch the bytes after it are scanned as
+      // markup and a tag inside gets instantiated, which is the original bug.
+      if (html.startsWith('</', lt)) {
+        const close = html.indexOf('>', lt);
+        const end = close === -1 ? n : close + 1;
+        ranges.push([lt, end]);
+        i = end;
+        continue;
+      }
+      i = lt + 1;
+      continue;
+    }
     // Consume the tag, honouring quoted attribute values so a `<` or `<!--`
     // inside one cannot be mistaken for markup.
     //
@@ -500,7 +528,10 @@ function inertRanges(html) {
       if (quote) { if (c === quote) quote = ''; }
       else if ((c === '"' || c === "'") && prev === '=') quote = c;
       else if (c === '>') { p += 1; break; }
-      if (!/\s/.test(c)) prev = c;
+      // Char compare rather than a regex: this runs per byte of every tag, and
+      // on a Tailwind-default page most bytes ARE tag interior (long class
+      // attributes), so a per-character `RegExp` test dominated the scan cost.
+      if (c !== ' ' && c !== '\t' && c !== '\n' && c !== '\r' && c !== '\f') prev = c;
       p += 1;
     }
     // The tag's interior is not markup either. A component tag written inside
@@ -524,20 +555,30 @@ function inertRanges(html) {
 }
 
 /**
- * Is `index` inside one of `ranges`? Ranges are ascending and non-overlapping,
- * and callers walk matches left to right, so this stops as soon as a range
- * starts past the index.
+ * A left-to-right membership test over ascending, non-overlapping ranges.
+ *
+ * Returns a function that answers "is this index inert?" and REMEMBERS how far
+ * it has walked, so a caller scanning matches in increasing order pays O(ranges)
+ * across the whole scan instead of O(ranges) per match. Restarting each time is
+ * an O(tags x components) term, which is measurable on a large page: holding a
+ * document at 40k tags and raising the component count adds hundreds of
+ * milliseconds that the cursor removes.
+ *
+ * The cursor only ever moves forward, so callers MUST query in non-decreasing
+ * index order. All three call sites do (`matchAll`, and the two loops that
+ * consume their input left to right). A caller that needs random access should
+ * scan `ranges` directly rather than reusing this.
  *
  * @param {[number, number][]} ranges
- * @param {number} index
- * @returns {boolean}
+ * @returns {(index: number) => boolean}
  */
-function inRanges(ranges, index) {
-  for (const [start, end] of ranges) {
-    if (start > index) return false;
-    if (index < end) return true;
-  }
-  return false;
+function inertAt(ranges) {
+  let cursor = 0;
+  return (index) => {
+    while (cursor < ranges.length && ranges[cursor][1] <= index) cursor += 1;
+    if (cursor >= ranges.length) return false;
+    return index >= ranges[cursor][0];
+  };
 }
 
 /**
@@ -578,12 +619,12 @@ async function injectDSD(html, ctx, ancestors = [], dev) {
   const edits = [];
   // A tag name inside a comment, a script, a style, RCDATA, or another tag's
   // attribute value is text, not an element (#1128).
-  const inert = inertRanges(html);
+  const isInert = inertAt(inertRanges(html));
   for (const m of html.matchAll(pattern)) {
     const [match, tag, attrs, selfClose] = m;
     const Cls = lookup(tag);
     if (!Cls) continue;
-    if (inert.length && inRanges(inert, m.index)) continue;
+    if (isInert(m.index)) continue;
     // Track which custom elements actually appeared: used by SSR to emit
     // `<link rel="modulepreload">` hints for their module URLs.
     if (ctx && ctx.usedComponents) ctx.usedComponents.add(tag);
@@ -894,7 +935,7 @@ async function processSuspenseElements(html, ctx, ancestors = [], dev) {
   // fetches run and the swap script targets an id that only exists inside a
   // comment, so it can never resolve. Ranges are computed against the FULL
   // input once, and `consumed` maps the shrinking `rest` back onto it.
-  const inert = inertRanges(html);
+  const isInert = inertAt(inertRanges(html));
   let consumed = 0;
   let result = '';
   let rest = html;
@@ -905,7 +946,7 @@ async function processSuspenseElements(html, ctx, ancestors = [], dev) {
       result += rest;
       break;
     }
-    if (inert.length && inRanges(inert, consumed + m.index)) {
+    if (isInert(consumed + m.index)) {
       // Emit through the end of this match and keep scanning after it.
       const skipTo = m.index + m[0].length;
       result += rest.slice(0, skipTo);
@@ -1027,14 +1068,20 @@ function partitionAuthoredBySlot(html) {
     if (lt > cursor) defaultBuf += html.slice(cursor, lt);
     const rest = html.slice(lt);
     if (rest.startsWith('<!--')) {
-      const end = html.indexOf('-->', lt + 4);
-      if (end === -1) {
+      // Find the comment's end the same way inertRanges does, rather than with
+      // a bare `indexOf('-->')`. The two helpers both decide where a comment
+      // stops, so a bare search makes them DISAGREE on the spec short forms
+      // (`--!>`, `<!-->`, `<!--->`): this one would run past the real end and
+      // swallow the slotted children that follow, silently routing a
+      // `slot="head"` child into the default slot.
+      const commentEnd = endOfComment(html, lt);
+      if (commentEnd === -1) {
         defaultBuf += rest;
         cursor = html.length;
         break;
       }
-      defaultBuf += html.slice(lt, end + 3);
-      cursor = end + 3;
+      defaultBuf += html.slice(lt, commentEnd);
+      cursor = commentEnd;
       continue;
     }
     if (rest.startsWith('<!') || rest.startsWith('</')) {
@@ -1125,10 +1172,10 @@ function substituteSlotsInRender(rendered, partitioned, ownerTag) {
   // has no `</slot>`, so the fallback scan below swallows the rest of the
   // template, the component's REAL slot is never substituted, and the authored
   // children are dropped from the page entirely.
-  const inert = inertRanges(rendered);
+  const isInert = inertAt(inertRanges(rendered));
   let m;
   while ((m = slotRe.exec(rendered)) !== null) {
-    if (inert.length && inRanges(inert, m.index)) continue;
+    if (isInert(m.index)) continue;
     result += rendered.slice(cursor, m.index);
     const [fullOpen, attrsRaw, selfCloseSlash] = m;
     const isSelfClose = !!selfCloseSlash;

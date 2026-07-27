@@ -42,6 +42,37 @@ test('a component tag inside a comment is not instantiated', async () => {
   assert.equal(out, '<div><!-- <comment-probe></comment-probe> --></div>');
 });
 
+test('a comment containing a > still runs to its real end', async () => {
+  // This is what actually pins the comment branch. Without it, `<!--` falls
+  // through to the markup-declaration path, which stops at the FIRST `>`, and
+  // every fixture whose tag sits before that `>` stays inert for the wrong
+  // reason. A `>` INSIDE the comment, ahead of the tag, is the discriminator.
+  const out = await renderToString(
+    html`<div><!-- a > b <comment-probe> --><span>after</span></div>`
+  );
+  assert.ok(!out.includes('RENDERED'), 'the component after the > is still inert');
+  assert.ok(out.includes('<span>after</span>'), 'markup after the comment survives');
+});
+
+test('every component in a multi-tag comment stays inert', async () => {
+  const out = await renderToString(
+    html`<div><!-- <comment-probe> and <comment-probe> --><span>after</span></div>`
+  );
+  assert.ok(!out.includes('RENDERED'), 'neither component renders');
+  assert.ok(out.includes('<span>after</span>'), 'markup after the comment survives');
+});
+
+test('a bogus comment opened by </ does not expose what follows', async () => {
+  // `</` followed by a non-letter is the third bogus-comment form and also runs
+  // to the next `>`. Without that branch the bytes after it are scanned as
+  // markup and the tag inside is instantiated.
+  const out = await renderToString(
+    html`<div>a </< b <comment-probe> c</div><span>after</span>`
+  );
+  assert.ok(!out.includes('RENDERED'), 'the tag inside the bogus comment does not render');
+  assert.ok(out.includes('<span>after</span>'), 'markup after it survives');
+});
+
 test('markup after a comment mentioning a component survives', async () => {
   // The regression that actually loses content: the old behaviour ate the
   // closing `-->` and the trailing markup with it.
