@@ -18,7 +18,7 @@ import { siteFooter } from '#lib/site-footer.ts';
  */
 
 const TITLE = 'WebJs - The Web Framework for AI Agents';
-const DESCRIPTION = 'A full-stack web framework built on web components, SSR, and progressive enhancement, with zero build step. Lean enough for AI agents to read end to end. File-based routing, server actions, and streaming SSR on web standards. Runs on Node 24+ or Bun.';
+const DESCRIPTION = 'An AI-first full-stack web framework built on web components, SSR, and progressive enhancement, with zero build step. Lean enough for AI agents to read end to end. File-based routing, server actions, and streaming SSR on web standards. Runs on Node 24+ or Bun.';
 
 const NAV = [
   { label: 'Docs', href: DOCS_START_PATH, ext: false },

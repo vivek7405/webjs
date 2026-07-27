@@ -40,7 +40,7 @@ const TITLE = 'What is WebJs?';
 // Front-loaded so the first 160 characters answer the query on their own, which
 // is what a SERP snippet and an AI answer engine both quote.
 const DESCRIPTION =
-  'WebJs is a free, open-source, full-stack JavaScript web framework built on web components. It renders on the server, ships no build step, and runs on Node 24+ or Bun. Pages are real HTML that work before any script loads.';
+  'WebJs is an AI-first full-stack JavaScript web framework built on web components. It renders on the server, ships no build step, and runs on Node 24+ or Bun. Pages are real HTML that work before any script loads.';
 
 /**
  * The visible FAQ. Rendered into the page AND parsed into FAQPage JSON-LD from
@@ -52,7 +52,12 @@ const FAQ = [
   {
     question: 'What is WebJs?',
     answer:
-      'WebJs is an open-source, full-stack JavaScript web framework built on web components. It server-renders every page and component to real HTML, needs no build step or bundler, and runs on Node 24+ or Bun. You write pages, layouts, and components as plain files, and the framework serves your source to the browser exactly as you wrote it.',
+      'WebJs is an AI-first full-stack JavaScript web framework built on web components. It server-renders every page and component to real HTML, needs no build step or bundler, and runs on Node 24+ or Bun. The framework serves your source to the browser exactly as you wrote it, so the code you read is the code that runs.',
+  },
+  {
+    question: 'What makes WebJs AI-first?',
+    answer:
+      'WebJs is designed so a coding agent can change one part of an app without reading all of it. File conventions are predictable, each server function lives in its own file, and the .server.ts extension marks the server boundary explicitly, so the relevant context for a change is small and easy to locate. Every app ships an AGENTS.md contract plus a cross-agent skill that Claude Code, Cursor, Copilot, Gemini, and opencode all read from one source. And because there is no build step, the framework itself sits as plain JavaScript with JSDoc in node_modules/@webjsdev of every app, so an agent reads the actual router, renderer, or serializer it is calling rather than a compiled bundle. That grounding in real source is what lets even smaller AI models produce quality WebJs code.',
   },
   {
     question: 'Is WebJs free to use?',
@@ -157,6 +162,10 @@ const PROSE = 'text-fg-muted text-[1.05rem] leading-[1.7] m-0';
 // "and what does it actually give me", in concrete nouns rather than adjectives.
 const CAPABILITIES = [
   {
+    title: 'AI-first, readable end to end',
+    body: 'Predictable file conventions, one server function per file, and an explicit .server.ts boundary keep the context a change needs small, so an agent can edit one route without reading the whole app. Every app ships an AGENTS.md contract that Claude Code, Cursor, Copilot, Gemini, and opencode read from one source, and the framework itself is plain JavaScript with JSDoc in node_modules rather than a compiled bundle.',
+  },
+  {
     title: 'Web components, server-rendered',
     body: 'Components are standard custom elements. Every render() runs on the server, so the initial markup is in the HTTP response before any script loads. Light DOM is the default, so global CSS and Tailwind apply directly, and shadow DOM is one static field away when you want scoped styles.',
   },
@@ -175,10 +184,6 @@ const CAPABILITIES = [
   {
     title: 'TypeScript with nothing to compile',
     body: 'Write .ts files and run them. Types are stripped at request time by Node 24+ or by amaro on Bun, position-preserving and near-zero overhead, so what you read in the editor is what runs in the browser.',
-  },
-  {
-    title: 'Readable end to end',
-    body: 'The framework ships as plain JavaScript with JSDoc in node_modules. Nothing is minified or hidden behind a compiler, so you can follow a request from routing through SSR to the client without leaving your project.',
   },
 ];
 
@@ -219,15 +224,17 @@ export default function WhatIsWebJs() {
           What is WebJs?
         </h1>
         <p class="text-lede leading-[1.6] text-fg-muted max-w-[56ch] mx-auto mb-6 text-pretty">
-          <strong class="text-fg font-semibold">WebJs is a free, open-source, full-stack JavaScript web
-          framework built on web components.</strong> It server-renders every page and component to real
-          HTML, needs no build step or bundler, and runs on Node 24+ or Bun.
+          <strong class="text-fg font-semibold">WebJs is an AI-first full-stack JavaScript web
+          framework built on web components.</strong> It server-renders every page and component to
+          real HTML, needs no build step or bundler, and runs on Node 24+ or Bun.
         </p>
         <p class="text-[1.05rem] leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
-          You write pages, layouts, and components as plain files. WebJs serves that source to the
-          browser exactly as you wrote it, so the code you read is the code that runs. Content reads
-          and forms submit before any script loads, and JavaScript is added only where an interaction
-          actually needs it.
+          Nothing is hidden from your agent. The framework ships in node_modules as plain
+          JavaScript it can read end to end, and your app code is served to the browser
+          exactly as written. Any model
+          reasons about the whole stack and debugs it, with no training data required and no
+          single blessed model, on the web components and standard HTML every model already
+          knows.
         </p>
         <div class="flex gap-3 justify-center flex-wrap mb-8">
           <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>
