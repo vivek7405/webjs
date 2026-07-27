@@ -287,8 +287,8 @@ export default async function ComponentDoc({ params }: { params: { name: string 
                       <table class="w-full text-sm">
                         <thead class="bg-bg-subtle">
                           <tr class="text-left">
-                            <th class=${TH}>Name</th>
-                            <th class=${TH}>Description</th>
+                            <th scope="col" class=${TH}>Name</th>
+                            <th scope="col" class=${TH}>Description</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -317,11 +317,11 @@ export default async function ComponentDoc({ params }: { params: { name: string 
                       <table class="w-full text-sm">
                         <thead class="bg-bg-subtle">
                           <tr class="text-left">
-                            <th class=${TH}>Prop</th>
-                            <th class=${TH}>Type</th>
-                            <th class=${TH}>Default</th>
+                            <th scope="col" class=${TH}>Prop</th>
+                            <th scope="col" class=${TH}>Type</th>
+                            <th scope="col" class=${TH}>Default</th>
                             ${api.props.some((p) => p.description)
-                              ? html`<th class=${TH}>Description</th>`
+                              ? html`<th scope="col" class=${TH}>Description</th>`
                               : ''}
                           </tr>
                         </thead>
@@ -355,9 +355,9 @@ export default async function ComponentDoc({ params }: { params: { name: string 
                       <table class="w-full text-sm">
                         <thead class="bg-bg-subtle">
                           <tr class="text-left">
-                            <th class=${TH}>Name</th>
-                            <th class=${TH}>Detail</th>
-                            <th class=${TH}>Description</th>
+                            <th scope="col" class=${TH}>Name</th>
+                            <th scope="col" class=${TH}>Detail</th>
+                            <th scope="col" class=${TH}>Description</th>
                           </tr>
                         </thead>
                         <tbody>

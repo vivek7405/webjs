@@ -63,6 +63,7 @@ import {
   tableRowClass,
   tableHeadClass,
   tableCellClass,
+  tableCaptionClass,
 } from '#components/ui/table.ts';
 import { toggleClass } from '#components/ui/toggle.ts';
 import { progressClass } from '#components/ui/progress.ts';
@@ -156,6 +157,7 @@ const HELPERS: Record<string, (...args: any[]) => string> = {
   progressClass, radioClass, radioGroupClass, separatorClass, skeletonClass, stackClass,
   switchInputClass, switchTrackClass,
   tableBodyClass, tableCellClass, tableClass, tableContainerClass, tableHeadClass, tableHeaderClass, tableRowClass,
+  tableCaptionClass,
   tabsListClass, textareaClass, toggleClass,
 };
 
@@ -394,11 +396,12 @@ const EXAMPLES: Record<string, string> = {
   table: `
     <div class="\${tableContainerClass()} max-w-md w-full">
       <table class="\${tableClass()}">
+        <caption class="\${tableCaptionClass()}">Recent invoices</caption>
         <thead class="\${tableHeaderClass()}">
           <tr class="\${tableRowClass()}">
-            <th class="\${tableHeadClass()}">Invoice</th>
-            <th class="\${tableHeadClass()}">Status</th>
-            <th class="\${tableHeadClass()} text-right">Amount</th>
+            <th scope="col" class="\${tableHeadClass()}">Invoice</th>
+            <th scope="col" class="\${tableHeadClass()}">Status</th>
+            <th scope="col" class="\${tableHeadClass()} text-right">Amount</th>
           </tr>
         </thead>
         <tbody class="\${tableBodyClass()}">

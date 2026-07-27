@@ -58,30 +58,78 @@ export class PreviewTabs extends WebComponent {
     [hidden] { display: none !important; }
   `;
 
+  /**
+   * Arrow / Home / End move between the two tabs, per the APG tab pattern.
+   *
+   * The roles this element declares (`tablist` / `tab` / `tabpanel`) promise
+   * this behaviour, so it has to actually be here: a widget that announces
+   * itself as tabs but only responds to clicks is worse than one that never
+   * claimed to be tabs. Paired with the roving tabindex below, so Tab enters
+   * the group once and lands on the selected tab rather than walking both.
+   */
+  private onKeydown(e: KeyboardEvent) {
+    const keys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
+    if (!keys.includes(e.key)) return;
+    e.preventDefault();
+    const next: 'preview' | 'code' =
+      e.key === 'Home' ? 'preview'
+      : e.key === 'End' ? 'code'
+      : this.mode.get() === 'preview' ? 'code'
+      : 'preview';
+    this.mode.set(next);
+    // Follow-focus selection, the APG default for a tablist whose panels are
+    // already in the DOM (both slots stay mounted here).
+    this.shadowRoot?.querySelector<HTMLElement>(`#tab-${next}`)?.focus();
+  }
+
   render() {
     const mode = this.mode.get();
     const isPreview = mode === 'preview';
+    // The ids are scoped to this shadow root, so several toggles on one page
+    // cannot collide on them.
     return html`
-      <div class="bar" role="tablist" aria-label="Preview and code">
+      <div class="bar" role="tablist" aria-label="Preview and code" @keydown=${(e: KeyboardEvent) => this.onKeydown(e)}>
         <button
           type="button"
+          id="tab-preview"
           class="tab"
           role="tab"
+          aria-controls="panel-preview"
           data-active=${String(isPreview)}
           aria-selected=${isPreview ? 'true' : 'false'}
+          tabindex=${isPreview ? '0' : '-1'}
           @click=${() => this.mode.set('preview')}
         >Preview</button>
         <button
           type="button"
+          id="tab-code"
           class="tab"
           role="tab"
+          aria-controls="panel-code"
           data-active=${String(!isPreview)}
           aria-selected=${!isPreview ? 'true' : 'false'}
+          tabindex=${!isPreview ? '0' : '-1'}
           @click=${() => this.mode.set('code')}
         >Code</button>
       </div>
-      <slot name="preview" ?hidden=${!isPreview}></slot>
-      <slot name="code" ?hidden=${isPreview}></slot>
+      <!-- The panel IS the slot, so the projected demo is assigned exactly
+           once and never rebuilt (see the note above on why that matters for
+           ui-* elements). Each carries the panel role and the label pointing
+           back at its tab, which is what the tablist above promises. -->
+      <slot
+        name="preview"
+        id="panel-preview"
+        role="tabpanel"
+        aria-labelledby="tab-preview"
+        ?hidden=${!isPreview}
+      ></slot>
+      <slot
+        name="code"
+        id="panel-code"
+        role="tabpanel"
+        aria-labelledby="tab-code"
+        ?hidden=${isPreview}
+      ></slot>
     `;
   }
 }

@@ -105,7 +105,7 @@ webjs ui add button card dialog input label</pre>
 
       <h2>Commands</h2>
       <table>
-        <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+        <thead><tr><th scope="col">Command</th><th scope="col">What it does</th></tr></thead>
         <tbody>
           <tr><td><code>init</code></td><td>Writes <code>components.json</code>, copies <code>lib/utils.ts</code>, installs the theme tokens. Exits non-zero if the tokens cannot be written, because an unstyled install with a clean exit code is worse than a failure.</td></tr>
           <tr><td><code>add &lt;names...&gt;</code></td><td>Resolves transitive dependencies, copies the source in, installs npm dependencies, and self-heals missing theme tokens.</td></tr>
