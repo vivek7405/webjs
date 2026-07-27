@@ -576,14 +576,14 @@ async function injectDSD(html, ctx, ancestors = [], dev) {
   );
   /** @type {{start:number, end:number, text:string}[]} */
   const edits = [];
-  // A tag name inside a comment, a script, a style, or RCDATA is text, not an
-  // element (#1128).
-  const comments = inertRanges(html);
+  // A tag name inside a comment, a script, a style, RCDATA, or another tag's
+  // attribute value is text, not an element (#1128).
+  const inert = inertRanges(html);
   for (const m of html.matchAll(pattern)) {
     const [match, tag, attrs, selfClose] = m;
     const Cls = lookup(tag);
     if (!Cls) continue;
-    if (comments.length && inRanges(comments, m.index)) continue;
+    if (inert.length && inRanges(inert, m.index)) continue;
     // Track which custom elements actually appeared: used by SSR to emit
     // `<link rel="modulepreload">` hints for their module URLs.
     if (ctx && ctx.usedComponents) ctx.usedComponents.add(tag);

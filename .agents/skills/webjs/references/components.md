@@ -120,7 +120,9 @@ class Panel extends WebComponent({ label: String }) {
 
 The full `<slot>` surface works in light DOM with shadow-DOM parity; migrating modes never requires a template rewrite. A forwarded slot projects its content everywhere (client, SSR, hydration).
 
-**An HTML comment in a template is inert, including tag names inside it.** `<!-- <my-card> is the wrapper -->` documents the template and renders nothing, the same as in a browser. This holds for component tags, `<slot>`, and `<webjs-suspense>`, and it extends to `<script>`, `<style>`, `<textarea>`, and `<title>` content, whose text is never treated as markup. `<template>` is the deliberate exception: its content IS parsed, which is what Declarative Shadow DOM and streamed swaps rely on. (Before #1128 a commented tag was constructed as a real element and ate the rest of the comment along with the markup after it, so an ordinary explanatory comment could silently delete part of the page.)
+**A tag name inside an HTML comment is not instantiated.** `<!-- <my-card> is the wrapper -->` documents the template and renders no component, the same as in a browser. That holds for component tags, `<slot>`, and `<webjs-suspense>`, and it extends to `<script>`, `<style>`, `<textarea>`, `<title>` content and attribute values, whose text is never treated as markup. `<template>` is the deliberate exception: its content IS parsed, which is what Declarative Shadow DOM and streamed swaps rely on. (Before #1128 a commented tag was constructed as a real element and ate the rest of the comment along with the markup after it, so an ordinary explanatory comment could silently delete part of the page.)
+
+One gap remains, tracked in #1133: element NESTING is still counted without regard for comments, so a comment that contains an opening or closing tag of the element it sits inside (`<my-card>kid<!-- <my-card> --></my-card>`) still mis-detects where that element ends and shuffles the surrounding markup. Until that lands, avoid writing a component's own tag, open or close, in a comment inside that component.
 
 ```ts
 class MyCard extends WebComponent {

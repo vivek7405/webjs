@@ -126,6 +126,14 @@ jobs:
       # Readable.fromWeb, which hangs on Bun).
       - name: webjs compression on Bun
         run: bun test/bun/compression.mjs
+      # SSR HTML-context handling on Bun (#1128): a tag name inside a comment,
+      # raw text, RCDATA, or an attribute value is text, not an element. The
+      # scanner is offset arithmetic over indexOf / startsWith results and a
+      # per-call RegExp, so a V8-versus-JSC divergence would not throw, it would
+      # shift a range boundary and make a component render on one runtime and
+      # silently vanish on the other. Asserts both directions.
+      - name: SSR comment and raw-text handling on Bun
+        run: bun test/bun/comment-not-an-element.mjs
       # Dev hot reload on Bun (#514): start `webjs dev` under Bun, edit a
       # re-imported route module, and assert the response updates with NO manual
       # restart. The CLI re-execs under `bun --hot` on Bun (vs `node --watch` on

@@ -138,6 +138,15 @@ test('an unbalanced quote in a tag does not disable the scan for the rest of the
   // returns a truncated range list, which silently re-enables this entire bug
   // for everything after that tag. A browser recovers at the `>`.
   const apos = "don't";
+  // The discriminating assertion is a REAL component after the bad tag. If the
+  // scan runs to EOF it produces one giant inert range, which keeps a commented
+  // probe inert for the wrong reason and would pass either way; only a genuine
+  // element reveals that everything after the tag stopped being scanned.
+  const live = await renderToString(
+    html`<div title='${apos}'></div><comment-probe></comment-probe>`
+  );
+  assert.ok(live.includes('RENDERED'), 'a real component after the unbalanced quote still renders');
+
   const out = await renderToString(
     html`<div title='${apos}'></div><!-- <comment-probe> --><span>after</span></div>`
   );
@@ -157,12 +166,21 @@ test('a component tag inside an attribute value is not instantiated', async () =
   assert.ok(out.includes('</button>'), 'the carrying element is still closed');
 });
 
-test('an attribute value containing > does not truncate the tag', async () => {
-  // The counterpart to the case above: the interior skip must end at the tag's
-  // real `>`, not at one inside a quoted value, or the element after it is
-  // wrongly treated as still inside the tag and never renders.
-  const out = await renderToString(html`<div title="a > b"></div><comment-probe></comment-probe>`);
-  assert.ok(out.includes('RENDERED'), 'the component after the tag still renders');
+test('an attribute value containing > does not end the tag early', async () => {
+  // A `>` inside a quoted value must not close the tag, or the interior range
+  // stops short and a component tag written LATER in that same value escapes
+  // the skip and is instantiated, destroying the rest of the document. The
+  // tag-with-a-component-in-it is what discriminates: a value containing only
+  // `>` passes whether or not quotes are tracked at all.
+  const out = await renderToString(
+    html`<div title="a > b <comment-probe> c"></div><span>after</span>`
+  );
+  assert.ok(!out.includes('RENDERED'), 'a component named later in the value is still inert');
+  assert.ok(out.includes('</div>'), 'the carrying element is still closed');
+  assert.ok(out.includes('<span>after</span>'), 'markup after it survives');
+
+  const live = await renderToString(html`<div title="a > b"></div><comment-probe></comment-probe>`);
+  assert.ok(live.includes('RENDERED'), 'a real component after such a tag still renders');
 });
 
 test('a commented-out suspense boundary does not run its children', async () => {
