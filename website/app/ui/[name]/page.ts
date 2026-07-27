@@ -432,7 +432,13 @@ export default async function ComponentDoc({ params }: { params: { name: string 
 
     <section>
       <h2 class=${SECTION_HEADING}>Source: <code class="text-xs px-1.5 py-0.5 rounded bg-bg-subtle">components/ui/${item.name}.ts</code></h2>
-      <div class="prose-docs ui-code max-h-[480px] overflow-y-auto rounded-xl"><pre class="text-xs"><code>${source}</code></pre></div>
+      <!-- The height cap and the scroll live on the PRE, not on a wrapper
+           around it. The pre is what carries the border, background, and
+           rounded corners (from .prose-docs in lib/docs-shell.ts), and a
+           scrollbar renders inside its own element's border box. Put the
+           overflow on an outer div and the scrollbar sits outside the visible
+           rectangle, detached from the card it is scrolling. -->
+      <div class="prose-docs ui-code"><pre class="text-xs max-h-[480px] overflow-y-auto"><code>${source}</code></pre></div>
     </section>
   `;
 }
