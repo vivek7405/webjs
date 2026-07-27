@@ -170,6 +170,15 @@ test('raw-text content is text, so a component inside a style is inert', async (
   );
   assert.ok(!out.includes('RENDERED'), 'a component tag inside a style does not render');
   assert.ok(out.includes('<span>ok</span>'), 'markup after the style survives');
+  // The END of the skip needs its own assertion. An inert range never deletes
+  // text, so the span above is true wherever the range stops; only a real
+  // component after the element proves scanning RESUMED. If it did not, a
+  // single <style> in a root layout would silently kill every component on
+  // every page, which is worse than the bug this all started from.
+  const after = await renderToString(
+    html`<div><style>.a{color:red}</style><comment-probe></comment-probe></div>`
+  );
+  assert.ok(after.includes('RENDERED'), 'scanning resumes after the style closes');
 });
 
 test('an unbalanced quote in a tag does not disable the scan for the rest of the page', async () => {
@@ -254,6 +263,10 @@ test('iframe fallback content is text, not markup', async () => {
   );
   assert.ok(!out.includes('RENDERED'), 'a component tag inside an iframe does not render');
   assert.ok(out.includes('<span>after</span>'), 'markup after the iframe survives');
+  const after = await renderToString(
+    html`<div><iframe>fallback</iframe><comment-probe></comment-probe></div>`
+  );
+  assert.ok(after.includes('RENDERED'), 'scanning resumes after the iframe closes');
 });
 
 test('a component inside noscript still renders', async () => {
@@ -286,6 +299,10 @@ test('the other text-only elements are text too', async () => {
     );
     assert.ok(!out.includes('RENDERED'), `a component tag inside <${tag}> does not render`);
     assert.ok(out.includes('<span>after</span>'), `markup after <${tag}> survives`);
+    const after = await renderToString(
+      html`<div>${unsafeHTML(`<${tag}>text</${tag}>`)}<comment-probe></comment-probe></div>`
+    );
+    assert.ok(after.includes('RENDERED'), `scanning resumes after <${tag}> closes`);
   }
 });
 
@@ -317,6 +334,24 @@ test('a comment AFTER a real suspense boundary is still mapped correctly', async
   const out = await renderToString(html`<div><webjs-suspense>a</webjs-suspense><!-- <webjs-suspense><comment-probe></comment-probe></webjs-suspense> --><span>after</span></div>`);
   assert.ok(!out.includes('RENDERED'), 'the commented boundary after a real one stays inert');
   assert.ok(out.includes('<span>after</span>'), 'markup after it survives');
+});
+
+test('a commented-out boundary consumes nothing from the streaming context', async () => {
+  // The blocking path is what plain renderToString exercises, so the serious
+  // half went untested: under streaming a commented boundary would consume an
+  // id, queue a pending chunk, and emit a swap script targeting an element that
+  // exists only inside a comment, so it could never resolve and the fallback
+  // would sit there forever. Assert the context is untouched.
+  const ctx = { pending: [], nextId: 1, usedComponents: new Set() };
+  const out = await renderToString(
+    html`<div><!-- <webjs-suspense data-webjs-fallback="x"><comment-probe></comment-probe></webjs-suspense> --><span>after</span></div>`,
+    { ssr: true, suspenseCtx: ctx },
+  );
+  assert.equal(ctx.nextId, 1, 'no boundary id was consumed');
+  assert.equal(ctx.pending.length, 0, 'nothing was queued to stream');
+  assert.equal(ctx.usedComponents.size, 0, 'no component module was marked used');
+  assert.ok(!out.includes('data-webjs-resolve'), 'no swap template was emitted');
+  assert.ok(out.includes('<span>after</span>'), 'markup after the comment survives');
 });
 
 test('a short-form comment does not swallow the slotted children after it', async () => {

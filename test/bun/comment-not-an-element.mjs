@@ -70,6 +70,17 @@ assert.equal(await rendered(html`<div><textarea><!-- hi</textarea><bun-probe></b
   'RCDATA content does not open a comment');
 assert.equal(await rendered(html`<div><script-shaped></script-shaped><bun-probe></bun-probe></div>`), true,
   'a component whose name starts with a raw-text tag name is not treated as one');
+// The END of each text-only skip, which is the boundary a range-arithmetic
+// divergence would move. An inert range never deletes text, so only a real
+// component AFTER the element proves scanning resumed on this runtime.
+assert.equal(await rendered(html`<div><style>.a{color:red}</style><bun-probe></bun-probe></div>`), true,
+  'scanning resumes after a style closes');
+assert.equal(await rendered(html`<div><script>var a=1;</script><bun-probe></bun-probe></div>`), true,
+  'scanning resumes after a script closes');
+assert.equal(await rendered(html`<div><iframe>fallback</iframe><bun-probe></bun-probe></div>`), true,
+  'scanning resumes after an iframe closes');
+assert.equal(await rendered(html`<div><noscript><bun-probe></bun-probe></noscript></div>`), true,
+  'noscript content is markup, not text');
 
 // Content preservation: the damage mode that made this worth fixing.
 const out = await renderToString(
