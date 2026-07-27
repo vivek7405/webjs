@@ -334,6 +334,46 @@ test('a doubled = does not open a quoted value', async () => {
   assert.ok(out.includes('RENDERED'), 'the component after the doubled = still renders');
 });
 
+test('a missing attribute value does not swallow the tag end', async () => {
+  // `<a href=>` is a missing-value parse error and the `>` still ends the tag.
+  // Consuming it as a value character runs the scan to the NEXT `>`, which eats
+  // the real tag end: the component after it stops rendering, and a following
+  // <style> never arms its skip, so a tag inside the style is instantiated.
+  const live = await renderToString(
+    html`<div>${unsafeHTML('<a href=></a>')}<comment-probe></comment-probe></div>`
+  );
+  assert.ok(live.includes('RENDERED'), 'the component after a valueless attribute renders');
+
+  const styled = await renderToString(
+    html`<div>${unsafeHTML('<a href=></a><style>/* <comment-probe> */</style><span>after</span>')}</div>`
+  );
+  assert.ok(!styled.includes('RENDERED'), 'the following style still skips its content');
+  assert.ok(styled.includes('<span>after</span>'), 'markup after the style survives');
+});
+
+test('a slash ending an unquoted value is not a self-closing solidus', async () => {
+  // Per spec `/` is an ordinary character inside an unquoted value, so
+  // `<iframe src=/embed/x/>` is NOT self-closing. Reading it as one suppresses
+  // the text-only skip and instantiates whatever is inside, which is the
+  // destructive direction. `src=https://host/embed/` is a realistic literal.
+  const out = await renderToString(
+    html`<div>${unsafeHTML('<iframe src=/embed/x/>see <comment-probe> here</iframe><span>after</span>')}</div>`
+  );
+  assert.ok(!out.includes('RENDERED'), 'the iframe still holds text, not markup');
+  assert.ok(out.includes('<span>after</span>'), 'markup after the iframe survives');
+});
+
+test('whitespace between = and a quoted value still opens the value', async () => {
+  // `title= "..."` is ordinary. If the space is not skipped while waiting for
+  // the value, the quote never opens, the tag ends at the first `>` INSIDE the
+  // value, and scanning resumes in the middle of an attribute.
+  const out = await renderToString(
+    html`<div>${unsafeHTML('<div title= "a > b <comment-probe> c"></div>')}<span>after</span></div>`
+  );
+  assert.ok(!out.includes('RENDERED'), 'the component named inside the value stays inert');
+  assert.ok(out.includes('<span>after</span>'), 'markup after it survives');
+});
+
 test('a self-closed text-only tag does not swallow the document', async () => {
   // In SVG and MathML foreign content a self-closing tag genuinely closes, so
   // `<svg><title/></svg>` has no `</title` to find. Running the range to EOF

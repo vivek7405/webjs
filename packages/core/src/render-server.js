@@ -536,16 +536,37 @@ function inertRanges(html) {
     // returned one giant inert range, silently disabling this whole fix for the
     // rest of the page.
     let expectValue = false;
+    // Unquoted values need their own state for two reasons the spec spells out
+    // and a simpler scan gets wrong: `>` ends the tag from here (so `attr=>` is
+    // a missing value, not a value of `>`), and `/` is an ordinary value
+    // character, so an unquoted URL ending in `/` is NOT a self-closing solidus.
+    let inUnquoted = false;
     let selfClosing = false;
     while (p < n) {
       const c = html[p];
       const isSpace = c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f';
-      if (quote) { if (c === quote) quote = ''; }
-      else if (expectValue && !isSpace) {
-        if (c === '"' || c === "'") quote = c;
-        expectValue = false;
-      } else if (c === '>') { selfClosing = html[p - 1] === '/'; p += 1; break; }
-      else if (c === '=') expectValue = true;
+      if (quote) {
+        if (c === quote) quote = '';
+      } else if (c === '>') {
+        // Checked before the value branches: a `>` arriving where a value was
+        // expected terminates the tag (`<a href=>`). Consuming it as a value
+        // character ran the scan on to the NEXT `>`, which swallowed the real
+        // tag end and re-armed the original bug for what followed.
+        selfClosing = !inUnquoted && html[p - 1] === '/';
+        p += 1;
+        break;
+      } else if (expectValue) {
+        // The first non-whitespace character after `=` decides the value form.
+        if (!isSpace) {
+          if (c === '"' || c === "'") quote = c;
+          else inUnquoted = true;
+          expectValue = false;
+        }
+      } else if (inUnquoted) {
+        if (isSpace) inUnquoted = false;
+      } else if (c === '=') {
+        expectValue = true;
+      }
       p += 1;
     }
     // The tag's interior is not markup either. A component tag written inside
