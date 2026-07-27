@@ -25,7 +25,13 @@ import type { RegistryItem } from '../queries/registry.server.ts';
  * than custom elements.
  *
  * When adding a new component to the registry, add its name here if its
- * source defines `class X extends WebComponent` + `.register('ui-...')`.
+ * source declares a custom element: a class extending the WebComponent base
+ * plus a `.register('ui-...')` call.
+ *
+ * That description is deliberately prose rather than a code snippet. The dev
+ * server's component analyser scans source text without skipping comments, so
+ * a snippet of a class declaration in here is reported on every boot as a
+ * component missing its registration call, in a file that declares none.
  */
 export const TIER_2_NAMES: ReadonlySet<string> = new Set([
   'dialog',
