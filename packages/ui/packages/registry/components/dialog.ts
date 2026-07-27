@@ -39,6 +39,13 @@
  *
  * Design tokens used: --background, --border, --muted-foreground.
  *
+ * Scroll lock (#1144): opening the dialog locks body scroll, which hides the
+ * page scrollbar and would widen the viewport. The lock reserves the scrollbar
+ * gutter so the width never changes and a `position: fixed` header stays put.
+ * Where the engine ignores `scrollbar-gutter` (WebKit today) it publishes the
+ * leftover width on <html> as `--wj-scrollbar-compensation`, so a fixed header
+ * opts in with `padding-right: var(--wj-scrollbar-compensation, 0px)`.
+ *
  * @example
  * ```html
  * <ui-dialog>

@@ -206,3 +206,15 @@ new ResizeObserver(apply).observe(hdr);
 ```
 
 For a dashboard, an alternative is an app-shell scroll container (a non-scrolling `100dvh` flex column with `<main>` as the internal scroller), which needs no offset but changes the scroll model.
+
+### A fixed header and a modal that locks scroll
+
+Anything that locks page scroll (a modal, a drawer, an off-canvas menu) hides the page scrollbar, and a classic scrollbar takes real layout width, so hiding it widens the viewport. The usual compensation is padding the body, which holds in-flow content still. **It does nothing for a fixed header**, because a fixed box lays out against the initial containing block, never against the body's padding box, so the header widens with the viewport and its centred content slides right by half the scrollbar width.
+
+`@webjsdev/ui`'s `<ui-dialog>` / `<ui-alert-dialog>` handle this for you (#1144). Their scroll lock reserves the scrollbar gutter for its duration, so the viewport width never changes and nothing moves. Where the engine ignores `scrollbar-gutter` (WebKit today), the lock publishes the leftover width on `<html>` as `--wj-scrollbar-compensation`, and a fixed header opts in with one line:
+
+```css
+header { position: fixed; inset-inline: 0; top: 0; padding-right: var(--wj-scrollbar-compensation, 0px); }
+```
+
+The property is only set while a lock is active AND the gutter did not hold, so the `0px` fallback covers every other moment and the two mechanisms never double-compensate. Rolling your own scroll lock? Reserve the gutter the same way rather than padding the body alone, or a fixed header will jump.

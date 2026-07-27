@@ -305,6 +305,15 @@ when the caller passes an explicit custom `--registry <url>`.
    - `onValueChange={fn}` → `addEventListener('ui-value-change', fn)`
    - `asChild` → drop the wrapper, apply the class helper directly
 
+   **Deliberate divergence, dialog scroll lock (#1144).** shadcn (via Radix)
+   compensates the hidden scrollbar by padding the body only, which leaves a
+   `position: fixed` header sliding right by half the scrollbar width. Since
+   WebJs recommends exactly that pinned-header pattern (#610), our lock instead
+   reserves the scrollbar gutter, and publishes `--wj-scrollbar-compensation`
+   on `<html>` as a fallback where the engine ignores `scrollbar-gutter`. This
+   is presentation and lifecycle, not API: every tag, variant, and data
+   attribute still matches shadcn.
+
 6. **Native form controls participate in `<form>` submission natively.**
    `<input type="checkbox" class=${checkboxClass()}>` is a real input , 
    no `ElementInternals`, no `setFormValue` proxying. Submission,

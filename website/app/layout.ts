@@ -308,6 +308,15 @@ export default function RootLayout({ children }: { children: unknown }) {
         display: inline-block; width: 1.15em; height: 1.15em;
         vertical-align: -0.18em; color: var(--heart);
       }
+      /* #1144: a modal that locks page scroll hides the scrollbar, which widens
+         the viewport. The kit's dialog reserves the scrollbar gutter so nothing
+         moves, but WebKit ignores scrollbar-gutter, and there it publishes the
+         leftover width instead. The header is position: fixed, so it lays out
+         against the viewport and cannot be reached by the body padding that
+         holds in-flow content still. Opting in is what keeps it from sliding
+         right by half the scrollbar width when a dialog opens. The 0px fallback
+         is what applies at every other moment. */
+      .site-top { padding-right: var(--wj-scrollbar-compensation, 0px); }
       .glow-layer { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
       .glow-layer::before {
         content: ''; position: absolute; inset: 0;
