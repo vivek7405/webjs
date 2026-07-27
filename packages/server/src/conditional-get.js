@@ -10,9 +10,15 @@
  * uniformly.
  *
  * What is EXCLUDED, and why:
- *   - `no-store` / `private` responses (the default for dynamic, per-user
- *     pages). Never enable a cross-session 304 on private content: a shared
- *     cache keyed on the URL could serve one user's validator to another.
+ *   - `no-store` responses (the default for a dynamic page), which forbid
+ *     storage outright, so there is nothing to validate. `private` is NOT
+ *     excluded: it forbids SHARED storage, not validation, and the ETag hashes
+ *     THIS response's body, so two users with different bodies get different
+ *     ETags and neither can match the other's, while two users with identical
+ *     bodies are asking about identical bytes, where a 304 discloses nothing
+ *     (#1140).
+ *     That is what lets the client router's partial responses stay `private`
+ *     without losing their 304s.
  *   - Any body the framework did not positively mark as fully buffered. The
  *     funnel only hashes a response that ALREADY carries an `ETag` (a serve
  *     branch hashed its own bytes) OR carries the internal `X-Webjs-Buffered`
@@ -77,11 +83,28 @@ const STRIP_ON_304 = ['content-length', 'content-encoding', 'content-type'];
 
 /**
  * Is this response cacheable enough to carry a validator?  Cacheable means a
- * 200 whose `Cache-Control` is present and does not forbid storage. A
- * `no-store` or `private` response is excluded (private / per-user content
- * must never get a cross-session 304). `no-cache` is INCLUDED: it means
- * "revalidate before reuse", and a 304 is exactly that revalidation answer,
- * so dev's `no-cache` assets still benefit.
+ * 200 whose `Cache-Control` is present and does not forbid STORAGE. Only
+ * `no-store` is excluded. `no-cache` is INCLUDED: it means "revalidate before
+ * reuse", and a 304 is exactly that revalidation answer, so dev's `no-cache`
+ * assets still benefit.
+ *
+ * `private` is INCLUDED too (#1140). It was excluded on the theory that
+ * per-user content must never get a "cross-session" 304, but that cannot
+ * happen: the ETag is a hash of THIS response's body, and a 304 is returned
+ * only when the client's own `If-None-Match` matches it. Two users with
+ * different bodies get different ETags, so neither can ever match the other's;
+ * two users with identical bodies are asking about identical bytes, where a
+ * 304 is the correct answer and carries no body either way. `private` already
+ * forbids the one real hazard, a SHARED cache storing the response.
+ *
+ * Widening this is what makes #1140's fragment downgrade safe to ship. Before
+ * that change a reduced fragment INHERITED the page's public header, so it
+ * already passed this check and already carried a validator; marking fragments
+ * `private` would have taken that away, and since the router fetches them with
+ * `cache: 'no-cache'` (#1131), every prefetch and soft navigation would have
+ * re-downloaded the whole fragment. The exclusion is dropped rather than
+ * special-cased because it was never justified on its own terms either, per
+ * the reasoning above.
  *
  * @param {Response} res
  * @returns {boolean}
@@ -90,7 +113,7 @@ function isCacheable(res) {
   if (res.status !== 200) return false;
   const cc = res.headers.get('cache-control');
   if (!cc) return false;
-  return !/(?:^|,)\s*(?:no-store|private)\s*(?:,|$)/i.test(cc);
+  return !/(?:^|,)\s*no-store\s*(?:,|$)/i.test(cc);
 }
 
 /**

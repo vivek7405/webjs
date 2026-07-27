@@ -7,8 +7,11 @@
  * The headline behaviours:
  *   - a cacheable page (metadata.cacheControl public) gets an ETag, and a
  *     repeat request with a matching If-None-Match gets a 304 with no body;
- *   - a no-store page gets NO ETag and never 304s (no cross-session 304 on
- *     private content);
+ *   - a no-store page gets NO ETag and never 304s (storage is forbidden, so
+ *     there is nothing to validate);
+ *   - a `private` page DOES get an ETag and 304s: private forbids SHARED
+ *     storage, not validation, which is what keeps the client router's
+ *     partial responses cheap (#1140);
  *   - a static asset / app module gets an ETag and 304s on a match;
  *   - a non-matching If-None-Match returns 200 + the full body;
  *   - the ETag is stable for identical content across requests.
@@ -112,6 +115,88 @@ test('cacheable page: a NON-matching If-None-Match returns 200 + full body', asy
   assert.ok(body.includes('cacheable'), 'full body is served on a mismatch');
 });
 
+/* ---------------- private (router fragment): still validated ---------------- */
+
+test('a PRIVATE response still gets an ETag and 304s (#1140)', async () => {
+  // What lets #1140 mark the router's partial responses `private` without
+  // costing them their validator. The router fetches them with
+  // `cache: 'no-cache'` (#1131) precisely so a revalidation is a cheap
+  // conditional request; if `private` were excluded here, that downgrade would
+  // turn every prefetch and soft navigation into a full re-download.
+  //
+  // The old worry was a "cross-session" 304 on per-user content. It cannot
+  // happen: the ETag hashes THIS response's body, so two users with different
+  // bodies get different ETags and neither can match the other's, while two
+  // users with identical bodies are asking about identical bytes.
+  const appDir = makeApp({
+    'app/page.js':
+      `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+      `export const metadata = { cacheControl: 'private, max-age=60' };\n` +
+      `export default function P() { return html\`<h1>private body</h1>\`; }\n`,
+  });
+  const app = await createRequestHandler({ appDir, dev: true });
+  const first = await app.handle(new Request('http://x/'));
+  await first.text();
+  assert.equal(first.headers.get('cache-control'), 'private, max-age=60');
+  const etag = first.headers.get('etag');
+  assert.ok(etag, 'a private response carries a validator');
+
+  const second = await app.handle(new Request('http://x/', { headers: { 'if-none-match': etag } }));
+  const body = await second.text();
+  assert.equal(second.status, 304, 'a matching validator 304s');
+  assert.equal(body.length, 0, 'a 304 has no body');
+});
+
+test('a REDUCED router fragment is private AND still 304s (#1140)', async () => {
+  // The composition the two halves exist for, driven through the real handler.
+  // Asserting them separately (a fragment is private / a private page is
+  // validated) let the actual regression through once already: fragments
+  // silently lost their validator, so every prefetch and soft navigation
+  // re-downloaded the whole fragment while the suite stayed green.
+  const appDir = makeApp({
+    'app/layout.js':
+      `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+      `export const metadata = { cacheControl: 'public, max-age=60, s-maxage=600' };\n` +
+      `export default function L({ children }) { return html\`<div class="OUTER">\${children}</div>\`; }\n`,
+    'app/page.js':
+      `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+      `export default function P() { return html\`<h1>page body</h1>\`; }\n`,
+  });
+  const app = await createRequestHandler({ appDir, dev: true });
+
+  const have = { 'x-webjs-router': '1', 'x-webjs-have': '/:/' };
+  const first = await app.handle(new Request('http://x/', { headers: have }));
+  const body = await first.text();
+  assert.ok(!body.includes('OUTER'), 'sanity: the response really was reduced');
+
+  const cc = first.headers.get('cache-control') || '';
+  assert.match(cc, /(^|,)\s*private\s*(,|$)/, `a fragment is unshareable, got: ${cc}`);
+  assert.doesNotMatch(cc, /s-maxage/i, `a fragment carries no shared TTL, got: ${cc}`);
+
+  const etag = first.headers.get('etag');
+  assert.ok(etag, 'a fragment still carries a validator, or every prefetch re-downloads it');
+
+  const replay = await app.handle(new Request('http://x/', { headers: { ...have, 'if-none-match': etag } }));
+  const replayBody = await replay.text();
+  assert.equal(replay.status, 304, 'the router revalidation is answered 304, not a re-download');
+  assert.equal(replayBody.length, 0, 'a 304 has no body');
+});
+
+test('privateFragment fails CLOSED when a response carries no Cache-Control (#1140)', async () => {
+  // A response with no Cache-Control is heuristically storable by a shared
+  // cache (RFC 9111), so "no header" is not "nothing to do". Exercised as a
+  // unit because every current caller sets the header, which is exactly why a
+  // future change there could reintroduce a shareable fragment unnoticed.
+  const { privateFragment } = await import('../../src/ssr.js');
+  assert.equal(typeof privateFragment, 'function', 'the helper is exported so this can be tested at all');
+  const res = new Response('x');
+  res.headers.delete('cache-control');
+  assert.equal(res.headers.get('cache-control'), null, 'sanity: the response really has no header');
+  privateFragment(res);
+  assert.match(res.headers.get('cache-control') || '', /(^|,)\s*private\s*(,|$)/,
+    'an absent Cache-Control is replaced with private, not left alone');
+});
+
 /* ---------------- no-store page: no ETag, no 304 ---------------- */
 
 test('a no-store (dynamic / per-user) page gets NO ETag and never 304s', async () => {
@@ -126,7 +211,7 @@ test('a no-store (dynamic / per-user) page gets NO ETag and never 304s', async (
   assert.equal(first.headers.get('x-webjs-buffered'), null, 'internal buffered marker never leaks');
 
   // Even if a client replays the page's prior body hash, a no-store page must
-  // not 304 (no cross-session 304 on private content).
+  // not 304 (no-store forbids storage, so there is nothing to validate).
   const replay = await app.handle(
     new Request('http://x/', { headers: { 'if-none-match': '*' } })
   );

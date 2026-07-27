@@ -978,6 +978,133 @@ test('ssrPage: X-Webjs-Have skips rendering layouts above the deepest match', as
   assert.ok(body.includes('page body'), 'page content present');
 });
 
+test('ssrPage: a REDUCED response is never shared-cacheable, whatever the page declared (#1140)', async () => {
+  // Vary is not a guarantee in practice. Cloudflare honours only
+  // Accept-Encoding, so on a page that opted into public caching the reduced
+  // fragment was handed to CDNs under the full page's URL, to be served to
+  // whoever navigated there next. The fragment must therefore be
+  // non-shared-cacheable at the source, not merely Vary-scoped.
+  const { route, appDir } = await makeRoute({
+    pageSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export const metadata = { cacheControl: 'public, max-age=60, s-maxage=600, stale-while-revalidate=86400' };\n` +
+      `export default function Page() { return html\`<p>page body</p>\`; }\n`,
+    layoutSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export default function Layout({ children }) { return html\`<div class="OUTER">\${children}</div>\`; }\n`,
+    metadata:
+      `export const metadata = { cacheControl: 'public, max-age=60, s-maxage=600, stale-while-revalidate=86400' };\n`,
+  });
+  const url = new URL('http://localhost/');
+
+  const haveReq = new Request(url.toString(), { headers: { 'x-webjs-have': '/:/' } });
+  const reduced = await ssrPage(route, {}, url, { dev: false, appDir, req: haveReq });
+  const reducedBody = await reduced.text();
+  assert.ok(!reducedBody.includes('OUTER'), 'sanity: the response really was reduced');
+
+  const cc = reduced.headers.get('cache-control') || '';
+  assert.match(cc, /(^|,)\s*private\s*(,|$)/, `a reduced body must be private, got: ${cc}`);
+  assert.doesNotMatch(cc, /(^|,)\s*public\s*(,|$)/, `a reduced body must not be public, got: ${cc}`);
+  assert.doesNotMatch(cc, /s-maxage/i, `a reduced body must carry no shared-cache TTL, got: ${cc}`);
+  // The client-facing freshness the page declared survives: this is about
+  // SHARED caches, not about forbidding the requesting browser to reuse it.
+  assert.match(cc, /max-age=60/, `the client-facing freshness is preserved, got: ${cc}`);
+  // Belt-and-braces for caches that DO honour Vary.
+  assert.ok((reduced.headers.get('vary') || '').includes('X-Webjs-Have'), 'Vary is still sent');
+
+  // The full document is untouched: edge-cacheability is the whole point of
+  // metadata.cacheControl and a blanket downgrade would silently undo #1127.
+  const fullResp = await ssrPage(route, {}, url, { dev: false, appDir });
+  assert.equal(fullResp.headers.get('cache-control'),
+    'public, max-age=60, s-maxage=600, stale-while-revalidate=86400',
+    'a full document keeps the page-declared Cache-Control byte for byte');
+});
+
+test('ssrPage: a QUALIFIED private is still downgraded on a fragment (#1140)', async () => {
+  // `private="x-user"` marks only the NAMED header fields private per RFC 9111
+  // and leaves the response itself storable by a shared cache, so it must not
+  // be mistaken for an already-unshareable value and passed through.
+  const { route, appDir } = await makeRoute({
+    pageSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export const metadata = { cacheControl: 'private="x-user", public, max-age=60, s-maxage=600' };\n` +
+      `export default function Page() { return html\`<p>page body</p>\`; }\n`,
+    layoutSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export default function Layout({ children }) { return html\`<div class="OUTER">\${children}</div>\`; }\n`,
+    metadata:
+      `export const metadata = { cacheControl: 'private="x-user", public, max-age=60, s-maxage=600' };\n`,
+  });
+  const url = new URL('http://localhost/');
+  const req = new Request(url.toString(), { headers: { 'x-webjs-have': '/:/' } });
+  const resp = await ssrPage(route, {}, url, { dev: false, appDir, req });
+  const body = await resp.text();
+  assert.ok(!body.includes('OUTER'), 'sanity: the response really was reduced');
+
+  const cc = resp.headers.get('cache-control') || '';
+  assert.doesNotMatch(cc, /(^|,)\s*public\s*(,|$)/, `public must be stripped, got: ${cc}`);
+  assert.doesNotMatch(cc, /s-maxage/i, `the shared TTL must be stripped, got: ${cc}`);
+  assert.match(cc, /(^|,)\s*private\s*(,|$)/, `a bare private must be added, got: ${cc}`);
+  // The qualified form must be REPLACED, not joined by a bare one. A header
+  // carrying `private` twice is ambiguous: a cache resolving the repeat by
+  // last-occurrence reads the qualified form, which leaves the response
+  // shared-storable, which is the hazard this whole change removes.
+  assert.equal((cc.match(/(^|,)\s*private/g) || []).length, 1,
+    `private must appear exactly once, got: ${cc}`);
+  assert.doesNotMatch(cc, /private\s*=/, `the qualified form must not survive, got: ${cc}`);
+});
+
+test('ssrPage: a quoted directive argument survives the downgrade intact (#1140)', async () => {
+  // A quoted argument carries a comma INSIDE it. A splitter that is not
+  // quote-aware tears it in two, and re-joining reassembles it with DIFFERENT
+  // inner spacing, so the argument no longer round-trips byte for byte. The
+  // no-space form is what discriminates: with a space after the comma the
+  // naive split happens to rebuild the original and proves nothing.
+  const declared = 'public, max-age=60, s-maxage=600, no-cache="Set-Cookie,X-Foo"';
+  const { route, appDir } = await makeRoute({
+    pageSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export const metadata = { cacheControl: '${declared}' };\n` +
+      `export default function Page() { return html\`<p>page body</p>\`; }\n`,
+    layoutSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export default function Layout({ children }) { return html\`<div class="OUTER">\${children}</div>\`; }\n`,
+    metadata:
+      `export const metadata = { cacheControl: '${declared}' };\n`,
+  });
+  const url = new URL('http://localhost/');
+  const req = new Request(url.toString(), { headers: { 'x-webjs-have': '/:/' } });
+  const resp = await ssrPage(route, {}, url, { dev: false, appDir, req });
+  await resp.text();
+
+  const cc = resp.headers.get('cache-control') || '';
+  assert.ok(cc.includes('no-cache="Set-Cookie,X-Foo"'),
+    `the quoted argument must survive byte for byte, got: ${cc}`);
+  assert.match(cc, /(^|,)\s*private\s*(,|$)/, `still downgraded, got: ${cc}`);
+  assert.doesNotMatch(cc, /s-maxage/i, `shared TTL stripped, got: ${cc}`);
+});
+
+test('ssrPage: a non-200 never inherits the page cacheControl (#1140)', async () => {
+  // The page-action re-render is a 422 carrying the submitter's own field
+  // values and errors. It must not go out shared-cacheable just because the
+  // page opted into public caching.
+  const { route, appDir } = await makeRoute({
+    pageSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export const metadata = { cacheControl: 'public, max-age=60, s-maxage=600' };\n` +
+      `export default function Page() { return html\`<p>page body</p>\`; }\n`,
+    metadata:
+      `export const metadata = { cacheControl: 'public, max-age=60, s-maxage=600' };\n`,
+  });
+  const url = new URL('http://localhost/');
+  const ok = await ssrPage(route, {}, url, { dev: false, appDir });
+  assert.equal(ok.headers.get('cache-control'), 'public, max-age=60, s-maxage=600',
+    'a 200 still honours the page cacheControl');
+  const errored = await ssrPage(route, {}, url, { dev: false, appDir, status: 422 });
+  assert.equal(errored.headers.get('cache-control'), 'no-store',
+    'a 422 re-render is never cacheable');
+});
+
 test('ssrPage: a REDUCED have-response carries Vary: X-Webjs-Have; a full one does not (#1009)', async () => {
   // A reduced response (outer chrome omitted) under a URL-only cache key is
   // latent cache poisoning: a shared cache could serve the fragment to a
@@ -1070,6 +1197,37 @@ test('ssrPage: a frame-subtree response varies on X-Webjs-Frame (shared-cache sa
     `a frame subtree varies on X-Webjs-Frame, got: ${resp.headers.get('vary')}`);
   const body = await resp.text();
   assert.ok(body.includes('frame body'), 'sanity: the frame subtree was returned');
+});
+
+test('ssrPage: a frame subtree is never shared-cacheable either (#1140)', async () => {
+  // Same reasoning as the reduced-have case: the subtree is sliced by a
+  // request header, so a CDN that ignores Vary could serve the lone frame to
+  // a full-page navigation.
+  const { route, appDir } = await makeRoute({
+    pageSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export const metadata = { cacheControl: 'public, max-age=60, s-maxage=600' };\n` +
+      `export default function Page() { return html\`<webjs-frame id="panel"><p>frame body</p></webjs-frame>\`; }\n`,
+    metadata:
+      `export const metadata = { cacheControl: 'public, max-age=60, s-maxage=600' };\n`,
+  });
+  const url = new URL('http://localhost/');
+  const req = new Request(url.toString(), { headers: { 'x-webjs-frame': 'panel' } });
+  const resp = await ssrPage(route, {}, url, { dev: false, appDir, req });
+  const body = await resp.text();
+  assert.ok(body.includes('frame body'), 'sanity: the frame subtree was returned');
+
+  // The contract is "no shared cache may store this", which today the frame
+  // path already satisfies by not inheriting the page's cacheControl at all
+  // (it builds its response without metadata, so the default no-store applies).
+  // Asserted as the CONTRACT rather than as one spelling of it, so the test
+  // keeps holding if that response ever starts carrying page metadata.
+  const cc = resp.headers.get('cache-control') || '';
+  assert.match(cc, /(^|,)\s*(?:no-store|private)\s*(,|$)/,
+    `a frame subtree must not be shared-cacheable, got: ${cc}`);
+  assert.doesNotMatch(cc, /s-maxage/i, `a frame subtree must carry no shared-cache TTL, got: ${cc}`);
+  assert.doesNotMatch(cc, /(^|,)\s*public\s*(,|$)/, `a frame subtree must not be public, got: ${cc}`);
+  assert.ok((resp.headers.get('vary') || '').includes('X-Webjs-Frame'), 'Vary is still sent');
 });
 
 test('ssrPage: X-Webjs-Have picks deepest match (not just any match)', async () => {

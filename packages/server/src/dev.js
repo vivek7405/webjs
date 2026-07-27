@@ -1263,8 +1263,9 @@ export async function createRequestHandler(opts) {
       // into a 304 Not Modified with no body. Applied LAST, after every header
       // (X-Webjs-Build, X-Request-Id, Set-Cookie, CSP) is on the response, so a
       // 304 carries the validators a shared cache and the client router need.
-      // A no-store / per-user response, a non-GET/HEAD, and a streaming Suspense
-      // body are all skipped (see conditional-get.js). Logged with the final
+      // A no-store response, a non-GET/HEAD, and a streaming Suspense body are
+      // all skipped (see conditional-get.js). A `private` response is NOT
+      // skipped: private forbids shared storage, not validation (#1140). Logged with the final
       // (possibly 304) status. Best-effort: a failure leaves the 200 untouched.
       let conditioned = merged;
       try {

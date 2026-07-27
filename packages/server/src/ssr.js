@@ -164,6 +164,11 @@ export async function ssrPage(route, params, url, opts) {
         frameRes.headers.append('vary', 'X-Webjs-Frame');
         // #1009: a subtree sliced from a REDUCED render inherits its variance.
         if (reduced) frameRes.headers.append('vary', 'X-Webjs-Have');
+        // No privateFragment call here on purpose: this response is built
+        // WITHOUT page metadata, so it is already `no-store` and the call
+        // would be dead code with nothing to assert against. The property is
+        // locked by a test instead, which fails if the frame response ever
+        // starts carrying the page's cacheControl.
         return frameRes;
       }
     }
@@ -304,15 +309,25 @@ export async function ssrPage(route, params, url, opts) {
     );
     // REDUCED response (#1009): the X-Webjs-Have short-circuit omitted the
     // outer-layout chrome, so these bytes are only valid for a request that
-    // sent a matching `have`. Without `Vary: X-Webjs-Have`, a shared cache
-    // (CDN edge) could store the reduced body under the URL and serve a
-    // chrome-less fragment to a fresh full-page navigation (measured live:
-    // GET / was 73,534 bytes, GET / + have was 57,035, byte-identical headers
-    // otherwise). Scoped to genuinely reduced responses so a normal page's
-    // cache key is unchanged. The internal #241 revalidate cache is already
-    // safe by construction: `cacheEligible` excludes any request that carries
-    // x-webjs-have, so a reduced body is never stored under the URL-only key.
-    if (reduced) res.headers.append('vary', 'X-Webjs-Have');
+    // sent a matching `have`. Left shared-cacheable, a CDN edge could store the
+    // reduced body under the URL and serve a chrome-less fragment to a fresh
+    // full-page navigation (measured live: GET / was 73,534 bytes, GET / + have
+    // was 57,035, byte-identical headers otherwise).
+    //
+    // TWO markings, and the order of trust matters (#1140). `privateFragment`
+    // is the guarantee: it forbids SHARED storage outright, so no CDN can hold
+    // this body at all. `Vary` is belt-and-braces for caches that honour it,
+    // NOT the protection, because Cloudflare and others honour only
+    // `Accept-Encoding`. Both are scoped to genuinely reduced responses, so a
+    // normal page's headers and cache key are unchanged.
+    //
+    // The internal #241 revalidate cache is already safe by construction:
+    // `cacheEligible` excludes any request that carries x-webjs-have, so a
+    // reduced body is never stored under the URL-only key.
+    if (reduced) {
+      res.headers.append('vary', 'X-Webjs-Have');
+      privateFragment(res);
+    }
     // Server HTML cache write (#241). The page opted in via `revalidate`, so
     // FLAG this candidate for the response funnel rather than writing here: the
     // store decision must see the FINAL response (after segment middleware,
@@ -466,6 +481,82 @@ export async function ssrUnauthorized(route, opts) {
 }
 
 /**
+ * Downgrade a PARTIAL response so no shared cache can store it (#1140).
+ *
+ * A reduced `X-Webjs-Have` body is sliced by a REQUEST header, so it is valid
+ * only for a client that sent it. It is marked `Vary` for that header, but
+ * `Vary` is not a guarantee in practice: Cloudflare honours only
+ * `Accept-Encoding` and several other shared caches are just as selective.
+ * Since a reduced body otherwise INHERITS the page's `Cache-Control`, a page
+ * that opted into public caching was handing CDNs a chrome-less fragment under
+ * the full page's URL, to be served to whoever navigated there next. Measured
+ * on webjs.dev: 71,759 bytes for the document versus 47,375 for the fragment,
+ * identical `Cache-Control` on both.
+ *
+ * The reduced path is the ONLY caller. A `<webjs-frame>` subtree is sliced by a
+ * request header too, but its response is built without page metadata, so it is
+ * already `no-store` and needs no downgrade; that property is locked by a test
+ * rather than by a call here. A NEW partial-response shape does not get this
+ * treatment for free: call this from its response site.
+ *
+ * `private` fixes that at the source instead of relying on `Vary` being
+ * respected: no shared cache may store it, while the browser that asked for it
+ * still may. The freshness directives are preserved, so a returning client
+ * keeps whatever reuse the page declared. `Vary` stays too, as belt-and-braces
+ * for caches that do honour it.
+ *
+ * The response KEEPS its validator. `private` forbids shared storage, not
+ * validation, so the funnel still attaches an ETag (see conditional-get.js,
+ * which stopped excluding `private` for exactly this reason). That matters:
+ * the router fetches partials with `cache: 'no-cache'` (#1131), so without a
+ * validator every prefetch and soft navigation would re-download the whole
+ * fragment instead of being answered 304.
+ *
+ * @param {Response} res
+ */
+export function privateFragment(res) {
+  const cc = res.headers.get('cache-control') || '';
+  // No header at all is not "nothing to do": a response with no Cache-Control
+  // is heuristically storable by a shared cache (RFC 9111), which is precisely
+  // the hazard here. Fail CLOSED.
+  if (!cc) {
+    res.headers.set('cache-control', 'private');
+    return;
+  }
+  // Split on commas that are NOT inside a quoted argument: a directive may
+  // carry one (`no-cache="Set-Cookie, X-Foo"`, `private="x-user"`), and a naive
+  // split tears those apart.
+  const directives = [];
+  let buf = '';
+  let inQuotes = false;
+  for (const ch of cc) {
+    if (ch === '"') inQuotes = !inQuotes;
+    if (ch === ',' && !inQuotes) { directives.push(buf.trim()); buf = ''; continue; }
+    buf += ch;
+  }
+  directives.push(buf.trim());
+
+  // `name` is everything before the first `=`, trimmed, so `s-maxage = 600`
+  // and `private="x-user"` are recognised as the directives they are.
+  const nameOf = (d) => d.split('=')[0].trim().toLowerCase();
+  // Already unshareable: leave it exactly as the author wrote it. Only a BARE
+  // `private` counts. The qualified form (`private="x-user"`) marks just the
+  // NAMED header fields private per RFC 9111, leaving the response itself
+  // storable by a shared cache, so it must still be downgraded.
+  const isBare = (d) => !d.includes('=');
+  if (directives.some((d) => nameOf(d) === 'no-store' || (nameOf(d) === 'private' && isBare(d)))) return;
+
+  // `private` joins the drop list because a bare one is prepended below: a
+  // qualified `private="x-user"` left in place would emit the directive twice,
+  // and a cache that resolves a repeat by taking the last occurrence would read
+  // the qualified form, which per RFC 9111 leaves the response shared-storable.
+  const SHARED_ONLY = new Set(['public', 's-maxage', 'proxy-revalidate', 'private']);
+  const kept = directives.filter((d) => d && !SHARED_ONLY.has(nameOf(d)));
+  kept.unshift('private');
+  res.headers.set('cache-control', kept.join(', '));
+}
+
+/**
  * Build an HTML Response. Sets no cookie: action CSRF is an Origin /
  * Sec-Fetch-Site check, so the page response is cookieless (CDN-cacheable).
  * @param {string} html
@@ -476,8 +567,10 @@ export async function ssrUnauthorized(route, opts) {
  */
 function htmlResponse(html, status, req, url, metadata) {
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
-  // Default: no caching. Pages are dynamic by default: the developer
-  // opts in to caching explicitly via metadata.cacheControl.
+  // Default: no caching. Pages are dynamic by default: the developer opts in
+  // explicitly via metadata.cacheControl. No non-200 guard here, unlike
+  // streamingHtmlResponse: every caller of THIS builder passes no metadata, so
+  // the value is already the no-store default and a guard would be dead code.
   headers.set('cache-control', metadata?.cacheControl || 'no-store');
   // X-Webjs-Build carries the published build id so the client
   // router can detect post-deploy importmap changes on EVERY
@@ -487,10 +580,11 @@ function htmlResponse(html, status, req, url, metadata) {
   // applySwap and publishedBuildId() in importmap.js.
   headers.set('x-webjs-build', publishedBuildId());
   headers.set('x-webjs-src', appSourceId());
-  // Buffered (string) body: opt into the conditional-GET funnel so a
-  // PUBLIC-cacheable page (metadata.cacheControl) gets a weak ETag + 304.
-  // The funnel still excludes the no-store default, so a private page is
-  // never ETagged. See conditional-get.js.
+  // Buffered (string) body: opt into the conditional-GET funnel.
+  // A cacheable page (metadata.cacheControl) gets a weak ETag + 304. The
+  // funnel excludes only the no-store default; a `private` page IS validated,
+  // which is what keeps the router's partial responses cheap (#1140).
+  // See conditional-get.js.
   headers.set(BUFFERED_MARKER, '1');
   return new Response(html, { status, headers });
 }
@@ -650,8 +744,10 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
       const body = await renderToString(tree, { ssr: true, suspenseCtx });
       // REDUCED response (#1009): the outer layouts were skipped, so these
       // bytes are only valid for a client that already HAS them. The caller
-      // marks the response `Vary: X-Webjs-Have` so no shared cache can serve
-      // this fragment to a fresh full-page navigation.
+      // marks the response `private` so no shared cache can store it, and
+      // additionally `Vary: X-Webjs-Have` for caches that honour it. The
+      // `private` is the guarantee, not the Vary: Cloudflare and others honour
+      // only `Accept-Encoding` (#1140).
       return { html: body + (await loadingTemplates(route, ctx, dev)), reduced: true };
     }
     const mod = await loadModule(route.layouts[i], dev);
@@ -1955,8 +2051,11 @@ function streamingHtmlResponse(prefix, bodyHtml, closer, ctx, status, req, url, 
   const encoder = new TextEncoder();
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
   // Default: no caching. Pages are dynamic by default: the developer
-  // opts in to caching explicitly via metadata.cacheControl.
-  headers.set('cache-control', metadata?.cacheControl || 'no-store');
+  // opts in to caching explicitly via metadata.cacheControl. A non-200 does
+  // NOT inherit it (#1140): the page-action re-render is a 422 carrying the
+  // submitter's own field values and errors, which must never be handed to a
+  // shared cache just because the page opted into public caching.
+  headers.set('cache-control', status === 200 ? (metadata?.cacheControl || 'no-store') : 'no-store');
   // See htmlResponse: published build id on every response for the
   // client router's importmap-mismatch detection on partial swaps.
   headers.set('x-webjs-build', publishedBuildId());
