@@ -22,7 +22,7 @@
  * Chrome 120+, Safari 17.2+, Firefox 130+. Migrated from the prior
  * <ui-accordion> custom element set.
  *
- * Design tokens used: --border, --ring, --foreground.
+ * Design tokens used: --border, --ring, --accent, --accent-foreground.
  *
  * @example
  * ```html
@@ -67,20 +67,31 @@ export const accordionItemClass = (): string => 'group border-b last:border-b-0'
  * prop combines both; native HTML has no `disabled` on <details>.
  */
 export const accordionTriggerClass = (opts: { disabled?: boolean } = {}): string => {
-  // Hover dims the label instead of underlining it. An underline reads as a
-  // link affordance, and this is a disclosure control on a <summary>, not a
-  // navigation. A slight drop in text weight reads as "this responds to you"
-  // without borrowing another control's vocabulary, and it pairs with the
-  // chevron that rotates on open. (shadcn's React accordion underlines here;
-  // this is a deliberate divergence in presentation only, so the API parity
-  // that matters, variant and size names and the data attributes, is
-  // untouched.)
+  // Hover is a STATE LAYER (the ghost-button / dropdown-item pair), not an
+  // underline and not a text dim. An underline reads as a link affordance,
+  // and this is a disclosure control on a <summary>, not a navigation. A dim
+  // was tried and rejected: reduced prominence is this kit's DISABLED
+  // vocabulary (opacity-50, including on this very trigger), so dimming on
+  // hover said "unavailable" and "under your pointer" on the same axis, and
+  // it lowered text contrast at the exact moment of interaction. The tint
+  // also reveals the full-width hit area, which a text change cannot.
+  // (shadcn's React accordion underlines here; this is a deliberate
+  // divergence in presentation only, so the API parity that matters, variant
+  // and size names and the data attributes, is untouched.)
   //
-  // The label carries `text-foreground` explicitly rather than inheriting it,
-  // because the hover target has to be a known starting colour: inheriting an
-  // author's own colour and then dimming to 80% of the THEME foreground would
-  // shift the hue, not just the weight.
-  const base = 'flex w-full cursor-pointer list-none items-center justify-between gap-4 py-4 text-left text-sm font-medium text-foreground outline-none transition-all hover:text-foreground/80 focus-visible:ring-2 focus-visible:ring-ring/50 marker:hidden [&::-webkit-details-marker]:hidden';
+  // The -mx-2/px-2 pair keeps the label's left edge aligned with the panel
+  // content below (which has no horizontal padding either) while giving the
+  // tint breathing room; the tint intentionally extends 8px past the item
+  // dividers on BOTH sides, the same look as the webjs.dev docs sidebar
+  // links. There is deliberately no w-full here: a summary styled as flex is
+  // a block-level box that already fills its containing block, and width:100%
+  // plus symmetric negative margins is over-constrained, so the browser drops
+  // the end-side margin and the tint bleeds left while stopping short on the
+  // right (mirrored in RTL). rounded-md keeps the tint from reading as a
+  // full-bleed table row, and shapes the focus ring as a side effect. The
+  // label inherits its rest colour, so a wrapper that sets its own colour
+  // keeps it until hover.
+  const base = 'flex cursor-pointer list-none items-center justify-between gap-4 rounded-md -mx-2 px-2 py-4 text-left text-sm font-medium outline-none transition-all hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring/50 marker:hidden [&::-webkit-details-marker]:hidden';
   if (opts.disabled) return `${base} pointer-events-none cursor-not-allowed opacity-50`;
   return base;
 };
