@@ -87,65 +87,26 @@ suite('copy-cmd', () => {
     document.body.removeChild(el);
   });
 
-  test('appends the copy action to the accessible name without hiding the command', async () => {
+  test('describes the copy action via a title without hiding the command', async () => {
     const el = await mount('npm create webjs@latest my-app');
     const target = el.querySelector('[data-copy-text]');
     // The command stays the accessible NAME (slotted text, no aria-label)...
     assert.equal(target.getAttribute('aria-label'), null, 'no aria-label overrides the command name');
     assert.ok(target.textContent.includes('npm create webjs@latest my-app'), 'the command is the accessible name');
-    // ...and a visually-hidden phrase inside the same target appends the copy
-    // ACTION to the accessible name, so both are announced.
-    const hint = target.querySelector('.sr-only');
-    assert.ok(hint, 'a visually-hidden description sits inside the click target');
-    assert.ok(/copy/i.test(hint.textContent) && /clipboard/i.test(hint.textContent),
-      'the hidden text describes the copy-to-clipboard action');
-    assert.ok(target.textContent.includes('Copy command to clipboard'),
-      'the description is part of the accessible name, after the command');
-    // Self-contained: the description must not depend on an element rendered
-    // elsewhere (a layout-provided target would dangle wherever copy-cmd is
-    // used outside that layout, e.g. an error boundary or another app).
+    // ...and the title supplies the copy ACTION as the accessible description
+    // (plus a native hover tooltip). A title needs no id, which is the point:
+    // the old aria-describedby needed a document-unique id, the only SSR-safe
+    // source of one is a module-scope counter, and the counter made every
+    // render emit different bytes, killing the page ETag (#1127).
+    assert.equal(target.getAttribute('title'), 'Copy command to clipboard',
+      'the title describes the copy-to-clipboard action');
     assert.equal(target.getAttribute('aria-describedby'), null,
-      'no aria-describedby reference to an element outside the component');
+      'no id-based description reference remains');
+    // The description is an attribute, not text, so the target's text is
+    // EXACTLY the command: selections and _copy cannot pick up anything else.
+    assert.equal(target.textContent.trim(), 'npm create webjs@latest my-app',
+      'the click target contains only the command text');
     document.body.removeChild(el);
-  });
-
-  test('copying excludes the visually-hidden description', async () => {
-    // The description shares the click target with the command, so a naive
-    // textContent read would put "Copy command to clipboard" on the clipboard.
-    const el = await mount('npm create webjs@latest my-app');
-    el.querySelector('[data-copy-text]').click();
-    await tick();
-    assert.equal(written, 'npm create webjs@latest my-app',
-      'only the command is copied, not the hidden description');
-    el.remove();
-  });
-
-  test('the hidden description is excluded from a manual text selection', async () => {
-    // The copy BUTTON is not the only way a visitor copies a command: plenty
-    // triple-click the line and hit Ctrl+C. The description sits in the same
-    // inline container as the command, so it needs user-select:none or it
-    // pastes along with it.
-    //
-    // This asserts the MECHANISM rather than a selection, deliberately. A
-    // programmatic Range ignores user-select entirely (selectNodeContents will
-    // happily return the hidden text), so a range-based assertion here would
-    // fail while real browsers behave correctly, testing nothing useful. The
-    // actual behaviour was verified against a real browser: a genuine
-    // triple-click on the hero command yields exactly
-    // "npm create webjs@latest my-app", and Ctrl+A over the whole document
-    // does not pick the description up either.
-    // Asserted as a class rather than a computed style because this harness
-    // does not load the compiled Tailwind stylesheet, so every utility computes
-    // to its initial value here. The rest of this file asserts sr-only the same
-    // way for the same reason.
-    const el = await mount('npm create webjs@latest my-app');
-    const hint = el.querySelector('[data-copy-text] .sr-only');
-    assert.ok(hint.className.includes('select-none'),
-      'the hidden description opts out of text selection');
-    const command = el.querySelector('[data-copy-source]');
-    assert.ok(command, 'the command has its own wrapper so _copy can read it alone');
-    assert.ok(!command.className.includes('select-none'), 'the command itself stays selectable');
-    el.remove();
   });
 
   test('renders no generated ids, so repeated renders are byte-identical', async () => {

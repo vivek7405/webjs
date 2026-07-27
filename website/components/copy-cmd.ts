@@ -5,24 +5,19 @@ import { WebComponent, html, signal } from '@webjsdev/core';
  * affordance. Light DOM, Tailwind utilities throughout. The whole
  * inner wrapper is the click target (text or icon both trigger copy);
  * the icon is an always-visible visual hint, not a separate focusable
- * element. The command text and a visually-hidden "Copy command to
- * clipboard" both sit inside the click target, so the accessible NAME is
- * the command followed by the action: a screen reader announces the
- * payload and what will happen to it, and no aria-label hides the command.
+ * element. The command text is the click target's accessible NAME (no
+ * aria-label hides it), and `title="Copy command to clipboard"` supplies
+ * the accessible DESCRIPTION, so a screen reader announces the payload and
+ * the action. The title doubles as a native hover tooltip.
  *
- * The description is inline rather than an aria-describedby reference on
- * purpose. A reference needs a document-unique id, the only way to mint one
- * during SSR is a module-scope counter, and a counter never resets in a
- * long-lived server, so consecutive renders of the same page emit different
- * bytes. That changes the page's ETag on every request and silently kills
- * the 304 path site-wide (#1127). Inline text needs no id, so the output is
- * byte-stable and the component stays self-contained.
- *
- * Because the hidden text lives inside the click target, the command gets
- * its own [data-copy-source] wrapper and _copy reads THAT, so only the
- * command reaches the clipboard. The hidden text is also select-none, so a
- * triple-click on the command line and a manual Ctrl+C cannot pick it up
- * either (the button path is not the only way a visitor copies a command).
+ * The description is a title attribute rather than an aria-describedby
+ * reference on purpose. A reference needs a document-unique id, the only
+ * way to mint one during SSR is a module-scope counter, and a counter
+ * never resets in a long-lived server, so consecutive renders of the same
+ * page emit different bytes. That changes the page's ETag on every request
+ * and silently kills the 304 path site-wide (#1127). A static attribute
+ * needs no id, adds no text content (so selections and _copy see only the
+ * command), and keeps the output byte-stable.
  *
  * Usage:
  *   <copy-cmd>npm create webjs@latest my-app</copy-cmd>
@@ -51,10 +46,7 @@ export class CopyCmd extends WebComponent {
   }
 
   _copy = async () => {
-    // Read the command's own wrapper, not the click target: the target also
-    // carries the visually-hidden description that names the action for a
-    // screen reader, and that must never land on the clipboard.
-    const textEl = this.querySelector('[data-copy-source]');
+    const textEl = this.querySelector('[data-copy-text]');
     const text = (textEl?.textContent || '').trim();
     if (!text) return;
     try {
@@ -102,9 +94,10 @@ export class CopyCmd extends WebComponent {
           data-copy-text
           role="button"
           tabindex="0"
+          title="Copy command to clipboard"
           @click=${this._copy}
           @keydown=${this._onKey}
-        ><span data-copy-source><slot></slot></span><span class="sr-only select-none"> Copy command to clipboard</span></span>
+        ><slot></slot></span>
         <button
           class="absolute right-0 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 p-0 rounded-[7px] border bg-bg-elev cursor-copy opacity-100 transition-[opacity,color,border-color] duration-[140ms] hover:text-fg hover:border-fg-muted ${isCopied ? 'text-[oklch(0.66_0.16_150)] border-accent-tint' : 'text-fg-muted border-border'}"
           type="button"
