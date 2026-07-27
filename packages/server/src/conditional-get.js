@@ -13,7 +13,10 @@
  *   - `no-store` responses (the default for a dynamic page), which forbid
  *     storage outright, so there is nothing to validate. `private` is NOT
  *     excluded: it forbids SHARED storage, not validation, and the ETag hashes
- *     THIS response's body, so no user's validator can match another's (#1140).
+ *     THIS response's body, so two users with different bodies get different
+ *     ETags and neither can match the other's, while two users with identical
+ *     bodies are asking about identical bytes, where a 304 discloses nothing
+ *     (#1140).
  *     That is what lets the client router's partial responses stay `private`
  *     without losing their 304s.
  *   - Any body the framework did not positively mark as fully buffered. The

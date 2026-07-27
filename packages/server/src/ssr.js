@@ -309,14 +309,21 @@ export async function ssrPage(route, params, url, opts) {
     );
     // REDUCED response (#1009): the X-Webjs-Have short-circuit omitted the
     // outer-layout chrome, so these bytes are only valid for a request that
-    // sent a matching `have`. Without `Vary: X-Webjs-Have`, a shared cache
-    // (CDN edge) could store the reduced body under the URL and serve a
-    // chrome-less fragment to a fresh full-page navigation (measured live:
-    // GET / was 73,534 bytes, GET / + have was 57,035, byte-identical headers
-    // otherwise). Scoped to genuinely reduced responses so a normal page's
-    // cache key is unchanged. The internal #241 revalidate cache is already
-    // safe by construction: `cacheEligible` excludes any request that carries
-    // x-webjs-have, so a reduced body is never stored under the URL-only key.
+    // sent a matching `have`. Left shared-cacheable, a CDN edge could store the
+    // reduced body under the URL and serve a chrome-less fragment to a fresh
+    // full-page navigation (measured live: GET / was 73,534 bytes, GET / + have
+    // was 57,035, byte-identical headers otherwise).
+    //
+    // TWO markings, and the order of trust matters (#1140). `privateFragment`
+    // is the guarantee: it forbids SHARED storage outright, so no CDN can hold
+    // this body at all. `Vary` is belt-and-braces for caches that honour it,
+    // NOT the protection, because Cloudflare and others honour only
+    // `Accept-Encoding`. Both are scoped to genuinely reduced responses, so a
+    // normal page's headers and cache key are unchanged.
+    //
+    // The internal #241 revalidate cache is already safe by construction:
+    // `cacheEligible` excludes any request that carries x-webjs-have, so a
+    // reduced body is never stored under the URL-only key.
     if (reduced) {
       res.headers.append('vary', 'X-Webjs-Have');
       privateFragment(res);
