@@ -532,6 +532,18 @@ test('the <!--> short form inside a script cancels the escape', async () => {
   assert.ok(out.includes('RENDERED'), 'the component after the script still renders');
 });
 
+test('a <!--> exit inside an already-escaped script clears both escape flags', async () => {
+  // The token's trailing dashes reach the dash-dash state from EVERY script
+  // state, and dash-dash exits to plain data on `>`. Missing the exit when
+  // already escaped meant a later "<script" string armed the double-escape
+  // and the element end moved past its real close, silently unrendering every
+  // component after the script. A browser renders this probe.
+  const out = await renderToString(
+    html`<div>${unsafeHTML('<script>a<!--b<!--><script></script>')}<comment-probe></comment-probe></div>`
+  );
+  assert.ok(out.includes('RENDERED'), 'the component after the script still renders');
+});
+
 test('the client router boundary comments do not hide the components between them', async () => {
   // The load-bearing case (#1015, #1114). SSR wraps each layout's children in
   // KEYED boundary comment PAIRS, and the router's scan is strict: a mispaired

@@ -459,16 +459,18 @@ function endOfScriptContent(html, from) {
   while ((m = re.exec(html)) !== null) {
     const t = m[0];
     if (t === '<!--') {
-      if (!escaped) {
-        // The dash-dash state entered by `<!--` exits straight back to plain
-        // script data on `>`, so `<!-->`, `<!--->`, and any run of dashes
-        // followed by `>` cancel the escape before it starts, and the element
-        // still ends at its first `</script>`.
-        let q = m.index + 4;
-        while (html[q] === '-') q += 1;
-        if (html[q] === '>') re.lastIndex = q + 1;
-        else escaped = true;
-      }
+      // The token's own trailing `--` puts the tokenizer in a dash-dash state
+      // REGARDLESS of what state it was in (`<!` are inert bytes in escaped and
+      // double-escaped states too), and every dash-dash state exits straight
+      // back to plain script data on `>`. So `<!-->`, `<!--->`, and any dash
+      // run followed by `>` clear BOTH flags: entering fresh it cancels the
+      // escape before it starts, and inside an escaped or double-escaped body
+      // it is the exit a browser honours, after which the element ends at the
+      // next `</script>`.
+      let q = m.index + 4;
+      while (html[q] === '-') q += 1;
+      if (html[q] === '>') { escaped = false; dbl = false; re.lastIndex = q + 1; }
+      else if (!escaped) escaped = true;
     }
     else if (t === '-->') { escaped = false; dbl = false; }
     else if (t[1] === '/') {
