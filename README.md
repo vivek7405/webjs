@@ -9,13 +9,12 @@ web apps that work before any JavaScript loads.**
 components.** It server-renders every page and component to real HTML,
 needs no build step or bundler, and runs on Node 24+ or Bun.
 
-WebJs serves your source to the browser exactly as you wrote it, so the code
-you read is the code that runs. The framework ships the same way, as plain
-JavaScript with JSDoc in `node_modules/@webjsdev` of every app, and an AI
-agent reads the actual router, renderer, or serializer it is calling instead
-of reasoning about a minified bundle from training data. No other full-stack
-JavaScript framework hands an agent its entire running source, and that
-grounding lets even smaller models produce quality code.
+WebJs is a full-stack JavaScript framework with no build step, so nothing is
+hidden from your agent. The framework ships in `node_modules` as plain
+JavaScript it can read end to end, and your app code is served to the browser
+exactly as written. Any model reasons about the whole stack and debugs it,
+with no training data required and no single blessed model, on the web
+components and standard HTML every model already knows.
 
 **AI-first is a design constraint here, not a marketing tag.** File
 conventions are predictable, each server function lives in its own file, and
