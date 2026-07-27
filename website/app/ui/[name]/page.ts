@@ -54,8 +54,14 @@ import '#components/ui/toggle.ts';
 import '#components/ui/toggle-group.ts';
 import '#components/ui/tooltip.ts';
 
+/**
+ * Titles follow the documentation's shape, "<Page> | <Section>", so a browser
+ * tab or a search result reads the same whether it came from /docs or here.
+ * The registry name is the lowercase identifier you pass to `webjs ui add`, so
+ * it is title-cased for the human-facing title only.
+ */
 export function generateMetadata({ params }: { params: { name: string } }) {
-  return { title: `${params.name}: WebJs UI` };
+  return { title: `${startCase(params.name)} | WebJs UI` };
 }
 
 /**

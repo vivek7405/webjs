@@ -2,8 +2,10 @@ import { html } from '@webjsdev/core';
 import { loadRegistryIndex } from '#modules/ui/queries/registry.server.ts';
 import { splitByTier } from '#modules/ui/utils/tier.ts';
 
+// Same "<Page> | <Section>" shape the documentation uses, so a tab or a search
+// result reads consistently across /docs and /ui.
 export const metadata = {
-  title: 'WebJs UI: the AI-first component library',
+  title: 'WebJs UI | AI-first components for WebJs',
 };
 
 /**
