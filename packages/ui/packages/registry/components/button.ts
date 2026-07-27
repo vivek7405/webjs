@@ -44,8 +44,16 @@ const BASE =
 
 const VARIANTS = {
   default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+  // No dark:bg-destructive/60 here, deliberately. shadcn fades the destructive
+  // fill to 60% in dark, which composites to a dusty, washed-out red against a
+  // near-black surface: it reads closer to disabled than to dangerous, and
+  // attenuation is already this kit's DISABLED vocabulary (disabled:opacity-50).
+  // The confirm button for a destructive action is the one control that should
+  // look most certain, so dark uses the full token, which is tuned lighter for
+  // dark backgrounds. Presentation-only divergence; the variant and size names
+  // and the data attributes match shadcn exactly.
   destructive:
-    'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40',
+    'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40',
   outline:
     'border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50',
   secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
