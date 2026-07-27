@@ -483,15 +483,32 @@ function inertRanges(html) {
     if (!name) { i = lt + 1; continue; }
     // Consume the tag, honouring quoted attribute values so a `<` or `<!--`
     // inside one cannot be mistaken for markup.
+    //
+    // A quote only OPENS a value when it directly follows `=`. That condition
+    // is load-bearing rather than pedantic: `escapeAttr` does not escape `'`,
+    // so an interpolated apostrophe in a single-quoted attribute emits three
+    // unbalanced quotes (`title='don't'`). Treating every quote as a delimiter
+    // left the scanner stuck inside a value to EOF, which returned a truncated
+    // range list and silently re-enabled this whole bug for the rest of the
+    // page. A browser recovers at the `>`, and so does this: after the value
+    // closes, the stray `'` is just an attribute-name character.
     let p = lt + 1;
     let quote = '';
+    let prev = '';
     while (p < n) {
       const c = html[p];
       if (quote) { if (c === quote) quote = ''; }
-      else if (c === '"' || c === "'") quote = c;
+      else if ((c === '"' || c === "'") && prev === '=') quote = c;
       else if (c === '>') { p += 1; break; }
+      if (!/\s/.test(c)) prev = c;
       p += 1;
     }
+    // The tag's interior is not markup either. A component tag written inside
+    // an attribute value (`title="renders a <my-card> element"`) was otherwise
+    // instantiated in place, destroying the rest of the document exactly like
+    // the comment case. Start at lt+1 so the tag's OWN opening `<` still
+    // matches; only what is nested inside it is inert.
+    if (p > lt + 1) ranges.push([lt + 1, p]);
     i = p;
     const tag = name[1].toLowerCase();
     const isClose = html[lt + 1] === '/';

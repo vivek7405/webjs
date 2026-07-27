@@ -131,6 +131,40 @@ test('raw-text content is text, so a component inside a style is inert', async (
   assert.ok(out.includes('<span>ok</span>'), 'markup after the style survives');
 });
 
+test('an unbalanced quote in a tag does not disable the scan for the rest of the page', async () => {
+  // escapeAttr does not escape `'`, so an interpolated apostrophe inside a
+  // single-quoted attribute emits three unbalanced quotes. A scanner that
+  // treats every quote as a delimiter gets stuck inside the value to EOF and
+  // returns a truncated range list, which silently re-enables this entire bug
+  // for everything after that tag. A browser recovers at the `>`.
+  const apos = "don't";
+  const out = await renderToString(
+    html`<div title='${apos}'></div><!-- <comment-probe> --><span>after</span></div>`
+  );
+  assert.ok(!out.includes('RENDERED'), 'the commented component after the tag is still inert');
+  assert.ok(out.includes('<span>after</span>'), 'markup after it survives');
+});
+
+test('a component tag inside an attribute value is not instantiated', async () => {
+  // The same destroy-the-document path as the comment case, in a context the
+  // scanner already knows the boundaries of. Naming a component in a title or
+  // placeholder is the same authoring act that produced the original bug.
+  const out = await renderToString(
+    html`<button title="renders a <comment-probe> element">go</button><span>after</span>`
+  );
+  assert.ok(!out.includes('RENDERED'), 'the tag in the attribute value does not render');
+  assert.ok(out.includes('<span>after</span>'), 'markup after the tag survives');
+  assert.ok(out.includes('</button>'), 'the carrying element is still closed');
+});
+
+test('an attribute value containing > does not truncate the tag', async () => {
+  // The counterpart to the case above: the interior skip must end at the tag's
+  // real `>`, not at one inside a quoted value, or the element after it is
+  // wrongly treated as still inside the tag and never renders.
+  const out = await renderToString(html`<div title="a > b"></div><comment-probe></comment-probe>`);
+  assert.ok(out.includes('RENDERED'), 'the component after the tag still renders');
+});
+
 test('a commented-out suspense boundary does not run its children', async () => {
   // processSuspenseElements runs BEFORE the element walk and hands the
   // boundary's children to a fresh injectDSD as a standalone string, so the
