@@ -5,10 +5,19 @@ import { WebComponent, html, signal } from '@webjsdev/core';
  * affordance. Light DOM, Tailwind utilities throughout. The whole
  * inner wrapper is the click target (text or icon both trigger copy);
  * the icon is an always-visible visual hint, not a separate focusable
- * element. The command text is the button's accessible NAME, and an
- * sr-only aria-describedby hint adds "Copy command to clipboard" as its
- * description, so a screen reader announces both the payload and the
- * action without the label hiding the command.
+ * element. The command text is the click target's accessible NAME (no
+ * aria-label hides it), and `title="Copy command to clipboard"` supplies
+ * the accessible DESCRIPTION, so a screen reader announces the payload and
+ * the action. The title doubles as a native hover tooltip.
+ *
+ * The description is a title attribute rather than an aria-describedby
+ * reference on purpose. A reference needs a document-unique id, the only
+ * way to mint one during SSR is a module-scope counter, and a counter
+ * never resets in a long-lived server, so consecutive renders of the same
+ * page emit different bytes. That changes the page's ETag on every request
+ * and silently kills the 304 path site-wide (#1127). A static attribute
+ * needs no id, adds no text content (so selections and _copy see only the
+ * command), and keeps the output byte-stable.
  *
  * Usage:
  *   <copy-cmd>npm create webjs@latest my-app</copy-cmd>
@@ -22,8 +31,6 @@ import { WebComponent, html, signal } from '@webjsdev/core';
  * addEventListener in lifecycle hooks. Cleanup of the auto-reset
  * timer happens in disconnectedCallback.
  */
-let HINT_SEQ = 0;
-
 export class CopyCmd extends WebComponent {
   copied = signal(false);
   // Increments on every successful copy. The live-region text is keyed off its
@@ -32,9 +39,6 @@ export class CopyCmd extends WebComponent {
   // "Copied" even though `copied` is already true.
   private _copies = signal(0);
   private _resetTimer: number | undefined;
-  // Per-instance id so aria-describedby points at this button's own hint
-  // (multiple copy-cmd can share a page; the value is document-unique).
-  private _hintId = `copy-cmd-hint-${HINT_SEQ++}`;
 
   disconnectedCallback() {
     if (this._resetTimer) clearTimeout(this._resetTimer);
@@ -90,7 +94,7 @@ export class CopyCmd extends WebComponent {
           data-copy-text
           role="button"
           tabindex="0"
-          aria-describedby=${this._hintId}
+          title="Copy command to clipboard"
           @click=${this._copy}
           @keydown=${this._onKey}
         ><slot></slot></span>
@@ -101,7 +105,6 @@ export class CopyCmd extends WebComponent {
           tabindex="-1"
           @click=${this._copy}
         >${isCopied ? CHECK_ICON : COPY_ICON}</button>
-        <span id=${this._hintId} class="sr-only">Copy command to clipboard</span>
         <span class="sr-only" role="status" aria-live="polite">${announce}</span>
       </span>
     `;
