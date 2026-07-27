@@ -156,6 +156,55 @@ test('the kit palette is scoped to previews, so it cannot leak into the chrome',
   );
 });
 
+test('the preview palette matches the kit theme it mirrors', () => {
+  // These values are a HAND-MAINTAINED copy of the kit's canonical theme, not
+  // a generated one, so nothing but this test stops the gallery from showing
+  // colours the kit no longer ships. That is the likeliest way a token change
+  // half-lands: the registry gets updated, the preview keeps the old value,
+  // and the page still looks plausible because it looks like it used to.
+  const kit = readFileSync(
+    resolve(WEBSITE_ROOT, '..', 'packages/ui/packages/registry/themes/index.css'),
+    'utf8',
+  );
+  const site = readFileSync(resolve(WEBSITE_ROOT, 'public/input.css'), 'utf8');
+
+  const tokensIn = (css: string, selector: RegExp): Record<string, string> => {
+    const block = selector.exec(css);
+    assert.ok(block, `block not found: ${selector}`);
+    const out: Record<string, string> = {};
+    for (const [, k, v] of block[1].matchAll(/--([\w-]+):\s*([^;]+);/g)) out[k] = v.trim();
+    return out;
+  };
+
+  // The site scopes the palette to .ui-preview and repeats the dark values for
+  // the OS preference and for the forced theme, so both dark copies are checked.
+  const modes: Array<[string, Record<string, string>, Record<string, string>]> = [
+    ['light', tokensIn(kit, /:root\s*\{([^}]*)\}/), tokensIn(site, /\n\.ui-preview\s*\{([^}]*)\}/)],
+    [
+      'dark (OS preference)',
+      tokensIn(kit, /\.dark\s*\{([^}]*)\}/),
+      tokensIn(site, /:root:not\(\[data-theme='light'\]\)\s+\.ui-preview\s*\{([^}]*)\}/),
+    ],
+    [
+      'dark (forced theme)',
+      tokensIn(kit, /\.dark\s*\{([^}]*)\}/),
+      tokensIn(site, /:root\[data-theme='dark'\]\s+\.ui-preview\s*\{([^}]*)\}/),
+    ],
+  ];
+
+  for (const [mode, kitTokens, siteTokens] of modes) {
+    const shared = Object.keys(siteTokens).filter((k) => k in kitTokens);
+    assert.ok(shared.length > 10, `${mode}: expected to share a palette, found ${shared.length} tokens`);
+    for (const key of shared) {
+      assert.equal(
+        siteTokens[key],
+        kitTokens[key],
+        `${mode}: the preview's --${key} has drifted from the kit theme`,
+      );
+    }
+  }
+});
+
 test('the dark variant tracks the site theme, not just the OS preference', () => {
   // The kit's components carry `dark:` utilities and Tailwind's default `dark:`
   // is the OS preference alone, so without this override a reader on a dark OS

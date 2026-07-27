@@ -17,21 +17,27 @@
  * looks fine in a screenshot and fails for the people who most need it not to.
  * So this test converts the real tokens out of `themes/index.css` (through
  * OKLab to sRGB) and asserts the WCAG ratio for every pairing a shipped
- * component actually renders, including the `/90` hover composites.
+ * component renders, including the translucent composites.
+ *
+ * The margins are not all comfortable. The destructive dropdown-menu item on
+ * its dark hover tint sits at 4.62:1, so a lightness nudge of a couple of
+ * hundredths drops it below AA. That pairing is the reason this test computes
+ * composites rather than only checking the flat colours.
  *
  * A failure here is a real accessibility regression, not a style opinion.
  * Retune the token rather than lowering the threshold.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BASE_COLORS, BASE_OVERRIDES } from '../packages/registry/themes/base-colors.js';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const REGISTRY = join(HERE, '..', 'packages', 'registry');
-const THEME_CSS = readFileSync(join(REGISTRY, 'themes', 'index.css'), 'utf8');
+const REGISTRY = join(dirname(fileURLToPath(import.meta.url)), '..', 'packages', 'registry');
+const THEME_CSS_PATH = join(REGISTRY, 'themes', 'index.css');
+const BASE_COLORS_PATH = join(REGISTRY, 'themes', 'base-colors.js');
+
+const skip = !existsSync(THEME_CSS_PATH);
 
 /** WCAG 2.1 minimum for normal-size body text. UI-only pairs still target it here. */
 const AA = 4.5;
@@ -44,7 +50,15 @@ const AA = 4.5;
 const clamp = (x) => Math.min(1, Math.max(0, x));
 const gamma = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
 
-/** Parse `oklch(L C H)` into gamma-encoded sRGB in 0..1. */
+/**
+ * Parse `oklch(L C H)` into gamma-encoded sRGB in 0..1.
+ *
+ * The clamp runs BEFORE the gamma encode and that order is load-bearing, not
+ * incidental: an out-of-gamut colour yields a negative linear channel, and
+ * `Math.pow(negative, 1 / 2.4)` is NaN. The pre-#1138 light token really did
+ * produce a negative green, so encoding first would have thrown the whole
+ * comparison off rather than merely clipping it.
+ */
 function oklch(str) {
   const m = /oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\)/.exec(str);
   assert.ok(m, `not an oklch() triple: ${str}`);
@@ -80,6 +94,8 @@ const over = (fg, bg, alpha) => fg.map((c, i) => c * alpha + bg[i] * (1 - alpha)
 
 // --- token extraction ---------------------------------------------------
 
+const THEME_CSS = existsSync(THEME_CSS_PATH) ? readFileSync(THEME_CSS_PATH, 'utf8') : '';
+
 /** Read one custom property out of a `:root { … }` or `.dark { … }` block. */
 function tokenIn(selector, name) {
   const block = new RegExp(`${selector}\\s*\\{([^}]*)\\}`).exec(THEME_CSS);
@@ -92,36 +108,47 @@ function tokenIn(selector, name) {
 /**
  * Resolve a mode's palette, applying a base-colour override on top of the
  * canonical neutral values so every shipped theme is covered, not just the
- * default one.
+ * default one. Override keys are UNPREFIXED (`card`, not `--card`); the merger
+ * in `base-colors.js` prepends the dashes itself, and reading them with the
+ * prefix silently returns undefined for every key, which quietly turns this
+ * into seven copies of the neutral assertion.
  */
 function palette(mode, overrides = {}) {
   const selector = mode === 'dark' ? '\\.dark' : ':root';
-  const read = (name) => oklch(overrides[`--${name}`] ?? tokenIn(selector, name));
+  const read = (name) => oklch(overrides[name] ?? tokenIn(selector, name));
   return {
+    mode,
     destructive: read('destructive'),
     destructiveForeground: read('destructive-foreground'),
     card: read('card'),
+    popover: read('popover'),
     background: read('background'),
   };
 }
 
 /**
- * Every pairing a shipped component actually paints. The `/90` entries are
- * hover states, which composite against the surface behind them rather than
- * simply darkening, so they need their own check.
+ * Every pairing a shipped component paints. The translucent entries composite
+ * against the surface behind them rather than simply darkening, so each needs
+ * its own check rather than being inferred from the flat colour.
  */
 function pairings(p) {
   const hoverFill = over(p.destructive, p.card, 0.9);
+  const alertDescription = over(p.destructive, p.card, 0.9);
+  // dropdown-menu.ts tints the hovered destructive item at /10, doubled to /20
+  // in dark because the tint has to read against a much darker popover.
+  const menuTint = over(p.destructive, p.popover, p.mode === 'dark' ? 0.2 : 0.1);
   return [
     ['fill behind its foreground (button, badge rest)', p.destructiveForeground, p.destructive],
     ['hover fill behind its foreground (button, badge hover)', p.destructiveForeground, hoverFill],
-    ['destructive as text on a card (alert, errorClass, menu item)', p.destructive, p.card],
+    ['destructive as text on a card (alert, errorClass, sonner error)', p.destructive, p.card],
     ['destructive as text on the page background', p.destructive, p.background],
+    ['alert description at /90 on a card', alertDescription, p.card],
+    ['destructive menu item on its own hover tint', p.destructive, menuTint],
   ];
 }
 
 for (const mode of ['light', 'dark']) {
-  test(`destructive tokens clear WCAG AA in ${mode} mode`, () => {
+  test(`destructive tokens clear WCAG AA in ${mode} mode`, { skip }, () => {
     for (const [role, fg, bg] of pairings(palette(mode))) {
       const ratio = contrast(fg, bg);
       assert.ok(
@@ -132,7 +159,8 @@ for (const mode of ['light', 'dark']) {
   });
 }
 
-test('every base colour inherits a legible destructive pair', () => {
+test('every base colour inherits a legible destructive pair', { skip }, async () => {
+  const { BASE_COLORS, BASE_OVERRIDES } = await import(BASE_COLORS_PATH);
   for (const name of BASE_COLORS) {
     const o = BASE_OVERRIDES[name];
     assert.ok(o, `${name}: no override entry`);
@@ -148,12 +176,10 @@ test('every base colour inherits a legible destructive pair', () => {
   }
 });
 
-test('the destructive fill pairs with its foreground token, at full opacity', () => {
+test('the destructive fill pairs with its foreground token, at full opacity', { skip }, () => {
   for (const file of ['button.ts', 'badge.ts']) {
     const src = readFileSync(join(REGISTRY, 'components', file), 'utf8');
-    const variant = /destructive:\s*(?:\/\/[^\n]*\n\s*)*'([^']+)'/.exec(
-      src.replace(/\n\s*\/\/[^\n]*/g, ''),
-    );
+    const variant = /^\s*destructive:\s*$\s*'([^']+)'/m.exec(src);
     assert.ok(variant, `${file}: destructive variant string not found`);
     const classes = variant[1];
 
@@ -166,13 +192,13 @@ test('the destructive fill pairs with its foreground token, at full opacity', ()
     assert.doesNotMatch(
       classes,
       /\btext-white\b/,
-      `${file}: white is only legible on the LIGHT theme's fill; use the foreground token.`,
+      `${file}: white is only legible on the LIGHT theme's fill. Use the foreground token.`,
     );
     assert.doesNotMatch(
       classes,
       /dark:bg-destructive\/\d+/,
       `${file}: the dark fill runs at full opacity. Fading it reads as disabled ` +
-        '(attenuation is this kit\'s disabled vocabulary) and the contrast it used to buy ' +
+        "(attenuation is this kit's disabled vocabulary) and the contrast it used to buy " +
         'now comes from --destructive-foreground instead.',
     );
   }

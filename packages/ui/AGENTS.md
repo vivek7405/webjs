@@ -305,6 +305,15 @@ when the caller passes an explicit custom `--registry <url>`.
    - `onValueChange={fn}` → `addEventListener('ui-value-change', fn)`
    - `asChild` → drop the wrapper, apply the class helper directly
 
+   **Parity covers the API, not the pixels.** A shadcn class string is
+   reference, not specification, so a variant here may render differently
+   where this kit has a reason. Treating the class strings as authoritative
+   is the mistake this note exists to prevent. The deliberate divergences so
+   far: the accordion trigger tints on hover instead of underlining (#1137),
+   and the destructive fill carries `text-destructive-foreground` at full
+   opacity instead of `text-white` plus `dark:bg-destructive/60` (#1138).
+   Record any new one here, and keep the reason at the call site.
+
 6. **Native form controls participate in `<form>` submission natively.**
    `<input type="checkbox" class=${checkboxClass()}>` is a real input , 
    no `ElementInternals`, no `setFormValue` proxying. Submission,

@@ -18,8 +18,8 @@
  * Native <button> focus and keyboard activation are already correct.
  *
  * Design tokens used: --primary, --primary-foreground, --destructive,
- * --destructive-foreground, --secondary, --secondary-foreground, --accent, --accent-foreground,
- * --background, --input, --ring.
+ * --destructive-foreground, --secondary, --secondary-foreground, --accent,
+ * --accent-foreground, --background, --input, --ring.
  *
  * @example
  * ```html
@@ -44,26 +44,22 @@ const BASE =
 
 const VARIANTS = {
   default: 'bg-primary text-primary-foreground hover:bg-primary/90',
-  // Two divergences from shadcn here, and they only work together.
+  // The foreground token and the missing dark fade are one decision, so do not
+  // reinstate shadcn's text-white or its dark:bg-destructive/60 separately.
   //
-  // No dark:bg-destructive/60. Fading the fill to 60% composites to a dusty
-  // red against a near-black surface, reading closer to disabled than to
-  // dangerous on the one control that should look most certain, and
-  // attenuation is already this kit's DISABLED vocabulary (disabled:opacity-50).
+  // In dark mode --destructive is a LIGHT red, because it doubles as
+  // text-destructive on a near-black card and has to be legible there. White
+  // on that fill is 2.9:1, so shadcn's fade was doing contrast work rather
+  // than muting a colour: 60% of a light red over near-black composites down
+  // to something white text can sit on. Giving the fill its own foreground
+  // token covers both roles instead, so the fill stays at full opacity.
   //
-  // text-destructive-foreground rather than a hardcoded text-white. That is
-  // what makes dropping the fade safe, and it is the whole point. In dark mode
-  // --destructive is a LIGHT red, because it doubles as text-destructive on a
-  // near-black card and has to be legible there. A light red behind white text
-  // is only 2.9:1, so shadcn's fade was quietly doing contrast work, not just
-  // muting the colour: 60% of a light red over near-black composites down to
-  // something white text can sit on. Pairing the fill with its own foreground
-  // token instead lets dark use the full-strength red with DARK text (5.6:1)
-  // while light keeps a deep red with near-white text (5.8:1). One token pair,
-  // both roles, no compositing trick.
+  // That matters because attenuation is already this kit's DISABLED
+  // vocabulary (disabled:opacity-50), and a faded fill reads closer to
+  // disabled than to dangerous on the one control that should look certain.
   //
-  // Presentation only; the variant and size names and the data attributes
-  // match shadcn exactly.
+  // packages/ui/test/destructive-contrast.test.js holds the measured ratios
+  // and fails if a token edit breaks either role.
   destructive:
     'bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40',
   outline:

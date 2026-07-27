@@ -33,9 +33,13 @@ Full reference: `.agents/skills/webjs/references/styling.md`.
   written ONCE with the native CSS `light-dark(LIGHT, DARK)` function, so light
   and dark modes come from one declaration.
 - Define at least: `--background`, `--foreground`, `--card`, `--primary`,
-  `--secondary`, `--muted`, `--muted-foreground`, `--accent`, `--border`,
-  `--ring`, `--destructive`. Add the matching `*-foreground` pair for each
-  surface token you use, following the styling guide's reference palette.
+  `--primary-foreground`, `--secondary`, `--muted`, `--muted-foreground`,
+  `--accent`, `--border`, `--ring`, `--destructive`,
+  `--destructive-foreground`. A filled ui variant pairs `bg-<token>` with
+  `text-<token>-foreground`, so every fill token needs its `*-foreground`
+  half or that variant's text has no colour to resolve to. Check the pair in
+  both themes, since a fill that flips light to dark between them needs its
+  foreground to flip the other way.
 - Consume colors ONLY as token utilities: `bg-background`, `text-foreground`,
   `bg-card`, `border-border`, `text-primary`, `text-muted-foreground`,
   `bg-destructive`.
