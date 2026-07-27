@@ -215,20 +215,24 @@ export default async function Home() {
 
 ```ts
 // components/counter.ts: interactive web component, light DOM + Tailwind
-import { WebComponent, html, signal } from '@webjsdev/core';
+import { WebComponent, html } from '@webjsdev/core';
 
-export class Counter extends WebComponent {
-  // Light DOM is the default, so Tailwind utility classes apply directly.
-  // Instance signal carries component-local state; the built-in
-  // SignalWatcher re-renders when .get() reads change.
-  count = signal(0);
+export class Counter extends WebComponent({ count: Number }) {
+  // `count` is a reactive property, declared in the base-class factory with
+  // no `declare` line, so the count="3" attribute on the SSR'd tag seeds it
+  // and every assignment re-renders. Light DOM is the default, so Tailwind
+  // utility classes apply directly.
+  constructor() {
+    super();
+    this.count = 0;
+  }
 
   render() {
     return html`
       <div class="inline-flex items-center gap-2 font-mono">
-        <button class="px-3 py-1 rounded border border-border hover:bg-bg-elev" @click=${() => this.count.set(this.count.get() - 1)}>−</button>
-        <output class="min-w-[2ch] text-center">${this.count.get()}</output>
-        <button class="px-3 py-1 rounded border border-border hover:bg-bg-elev" @click=${() => this.count.set(this.count.get() + 1)}>+</button>
+        <button class="px-3 py-1 rounded border border-border hover:bg-bg-elev" @click=${() => this.count--}>−</button>
+        <output class="min-w-[2ch] text-center">${this.count}</output>
+        <button class="px-3 py-1 rounded border border-border hover:bg-bg-elev" @click=${() => this.count++}>+</button>
       </div>
     `;
   }
