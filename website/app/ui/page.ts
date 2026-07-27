@@ -34,8 +34,9 @@ export default async function UiIntro() {
         so an agent trained on shadcn maps its knowledge across directly.
       </p>
       <p>
-        It runs anywhere Tailwind v4 and the small <code>@webjsdev/core</code> runtime do, which
-        includes WebJs, Next, Astro, Vite, SvelteKit, Lit projects, and plain HTML.
+        It is built for WebJs apps and styled with Tailwind v4. Tier-1 helpers are plain functions
+        returning class strings, and Tier-2 elements extend <code>WebComponent</code> from
+        <code>@webjsdev/core</code>, so the kit assumes the runtime a WebJs app already has.
       </p>
 
       <h2>Two tiers, one mental model</h2>
@@ -93,14 +94,11 @@ import { buttonClass } from '#components/ui/button.ts';
       </p>
       <pre>webjs ui init
 webjs ui add button card dialog input label</pre>
-      <p>Anywhere else, install the CLI and the runtime base class, then run the standalone binary:</p>
-      <pre>npm install -D @webjsdev/ui
-npm install @webjsdev/core
-npx webjsui init
-npx webjsui add button card dialog</pre>
       <p>
-        The <code>webjsui</code> binary does not require <code>@webjsdev/cli</code>. It detects
-        your project type (Next, Astro, Vite, Lit, or plain) and picks the matching defaults.
+        <code>init</code> writes <code>components.json</code>, copies the <code>cn()</code> helper
+        into <code>lib/utils.ts</code>, and installs the theme tokens.
+        <code>add</code> resolves a component's transitive dependencies and copies the source into
+        <code>components/ui/</code>, which is yours to edit from that point on.
       </p>
 
       <h2>Commands</h2>
@@ -112,7 +110,7 @@ npx webjsui add button card dialog</pre>
           <tr><td><code>list [filter]</code></td><td>Lists everything in the registry.</td></tr>
           <tr><td><code>view &lt;name&gt;</code></td><td>Prints a component's helpers, its paste-ready example, and its full source.</td></tr>
           <tr><td><code>diff [name]</code></td><td>Compares your local copy against the live registry.</td></tr>
-          <tr><td><code>info</code></td><td>Project diagnostics: detected type, config, registry URL.</td></tr>
+          <tr><td><code>info</code></td><td>Project diagnostics: the resolved config and registry URL.</td></tr>
         </tbody>
       </table>
       <p>
