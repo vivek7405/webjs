@@ -46,9 +46,13 @@ export function generateMetadata(ctx: { url: string }) {
     // The marketing site is identical for every visitor (no per-user / session
     // reads), so it is safe to cache at the CDN. Set on the root layout so it
     // applies to every page (a per-user page could override with no-store).
-    // `s-maxage` is the edge cache; `max-age=0` keeps the browser revalidating;
-    // `stale-while-revalidate` serves instantly while refreshing.
-    cacheControl: 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400',
+    // `s-maxage` is the edge cache; `stale-while-revalidate` serves instantly
+    // while refreshing. `max-age=60` is the browser copy: the previous `0` meant
+    // a page was NEVER reusable from disk, so every view paid a round trip even
+    // when nothing had changed. 60s is the smallest value that yields real
+    // browser cache hits (back/forward, repeat visits, a second tab) while
+    // bounding how long a reader can hold pre-deploy HTML to one minute.
+    cacheControl: 'public, max-age=60, s-maxage=600, stale-while-revalidate=86400',
     title: TITLE,
     description: DESCRIPTION,
     openGraph: {
@@ -283,6 +287,17 @@ export default function RootLayout({ children }: { children: unknown }) {
     </style>
 
     <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:rounded-lg focus:bg-accent focus:text-accent-fg focus:shadow-[var(--shadow)]">Skip to content</a>
+
+    <!-- Shared aria-describedby target for every copy-cmd on the page. The
+         description is the same sentence for all of them, so one element serves
+         them all. It lives here rather than inside the component because a
+         per-instance id has to come from somewhere unique, and the only
+         mechanism available at SSR (a module-scope counter) never resets in a
+         long-lived server, which makes every page's HTML differ between renders
+         and silently kills the ETag / 304 path. See #1127.
+         Do NOT write the tag name in angle brackets here: a registered custom
+         element inside a comment is still instantiated at SSR. -->
+    <span id="copy-cmd-hint" class="sr-only">Copy command to clipboard</span>
 
     <div class="glow-layer" aria-hidden="true"></div>
 

@@ -56,8 +56,25 @@ suite('copy-cmd', () => {
     return el;
   };
 
-  setup(() => { stubClipboard(); stubGtag(); });
-  teardown(() => { restoreClipboard && restoreClipboard(); restoreGtag && restoreGtag(); });
+  // The root layout renders the shared aria-describedby target once per page
+  // (the component deliberately does not mint a per-instance id, see #1127).
+  // These tests mount the component in isolation, so stand the hint up here the
+  // same way the layout does, otherwise the reference has nothing to resolve to.
+  let hintEl;
+  const addSharedHint = () => {
+    hintEl = document.createElement('span');
+    hintEl.id = 'copy-cmd-hint';
+    hintEl.className = 'sr-only';
+    hintEl.textContent = 'Copy command to clipboard';
+    document.body.appendChild(hintEl);
+  };
+
+  setup(() => { stubClipboard(); stubGtag(); addSharedHint(); });
+  teardown(() => {
+    restoreClipboard && restoreClipboard();
+    restoreGtag && restoreGtag();
+    hintEl && hintEl.remove();
+  });
 
   test('renders the slotted command and a copy affordance', async () => {
     const el = await mount('npm create webjs@latest my-app');
@@ -96,21 +113,44 @@ suite('copy-cmd', () => {
     // ...and an sr-only describedby hint adds the copy ACTION as the description.
     const hintId = target.getAttribute('aria-describedby');
     assert.ok(hintId, 'the button references a description via aria-describedby');
-    const hint = el.querySelector('#' + hintId);
-    assert.ok(hint, 'the referenced hint element exists in the same subtree');
+    const hint = document.getElementById(hintId);
+    assert.ok(hint, 'the referenced hint element resolves in the document');
     assert.ok(/copy/i.test(hint.textContent) && /clipboard/i.test(hint.textContent),
       'the hint describes the copy-to-clipboard action');
     assert.ok(hint.className.includes('sr-only'), 'the hint is visually hidden (screen-reader only)');
     document.body.removeChild(el);
   });
 
-  test('two copy-cmd on a page get distinct describedby hint ids', async () => {
+  test('two copy-cmd on a page share one hint id that resolves to a single element', async () => {
     const a = await mount('npm create webjs@latest one');
     const b = await mount('npm create webjs@latest two');
     const idA = a.querySelector('[data-copy-text]').getAttribute('aria-describedby');
     const idB = b.querySelector('[data-copy-text]').getAttribute('aria-describedby');
     assert.ok(idA && idB, 'both buttons carry a describedby id');
-    assert.ok(idA !== idB, 'the two hint ids are unique so neither shadows the other');
+    // Both point at the layout's single hint. The description sentence is the
+    // same for every instance, so sharing it is correct AND keeps the id out of
+    // the rendered HTML, which is what makes the page byte-stable across
+    // renders (a per-instance counter did not reset per render, #1127).
+    assert.equal(idA, idB, 'both instances reference the same shared hint');
+    assert.equal(
+      document.querySelectorAll('#' + idA).length, 1,
+      'exactly one element carries the hint id (no duplicate ids in the document)',
+    );
+    assert.ok(/copy/i.test(document.getElementById(idA).textContent),
+      'the shared hint describes the copy action');
+    a.remove(); b.remove();
+  });
+
+  test('renders no generated ids, so repeated renders are byte-identical', async () => {
+    // The regression guard for #1127. Any per-render-varying value in the
+    // component's output (a counter, a timestamp, a random id) changes the
+    // page's bytes between renders, which changes its ETag, which means an
+    // If-None-Match can never match and a 304 is impossible. Assert the
+    // rendered markup of two independent instances of the SAME command is
+    // identical, which no monotonic id scheme can satisfy.
+    const a = await mount('npm create webjs@latest my-app');
+    const b = await mount('npm create webjs@latest my-app');
+    assert.equal(a.innerHTML, b.innerHTML, 'two renders of the same command emit identical markup');
     a.remove(); b.remove();
   });
 

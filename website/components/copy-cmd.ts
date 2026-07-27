@@ -22,7 +22,13 @@ import { WebComponent, html, signal } from '@webjsdev/core';
  * addEventListener in lifecycle hooks. Cleanup of the auto-reset
  * timer happens in disconnectedCallback.
  */
-let HINT_SEQ = 0;
+// The aria-describedby target, rendered ONCE by the root layout. Every
+// copy-cmd shares it because they all carry the same description sentence.
+// It is deliberately NOT a per-instance generated id: the only way to mint one
+// at SSR is a module-scope counter, which never resets in a long-lived server,
+// so consecutive renders of the same page emit different bytes and the ETag can
+// never match an If-None-Match. That silently disabled 304s site-wide (#1127).
+const HINT_ID = 'copy-cmd-hint';
 
 export class CopyCmd extends WebComponent {
   copied = signal(false);
@@ -32,9 +38,6 @@ export class CopyCmd extends WebComponent {
   // "Copied" even though `copied` is already true.
   private _copies = signal(0);
   private _resetTimer: number | undefined;
-  // Per-instance id so aria-describedby points at this button's own hint
-  // (multiple copy-cmd can share a page; the value is document-unique).
-  private _hintId = `copy-cmd-hint-${HINT_SEQ++}`;
 
   disconnectedCallback() {
     if (this._resetTimer) clearTimeout(this._resetTimer);
@@ -90,7 +93,7 @@ export class CopyCmd extends WebComponent {
           data-copy-text
           role="button"
           tabindex="0"
-          aria-describedby=${this._hintId}
+          aria-describedby=${HINT_ID}
           @click=${this._copy}
           @keydown=${this._onKey}
         ><slot></slot></span>
@@ -101,7 +104,6 @@ export class CopyCmd extends WebComponent {
           tabindex="-1"
           @click=${this._copy}
         >${isCopied ? CHECK_ICON : COPY_ICON}</button>
-        <span id=${this._hintId} class="sr-only">Copy command to clipboard</span>
         <span class="sr-only" role="status" aria-live="polite">${announce}</span>
       </span>
     `;
