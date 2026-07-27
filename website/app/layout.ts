@@ -52,13 +52,11 @@ export function generateMetadata(ctx: { url: string }) {
     // when nothing had changed. 60s is the smallest value that yields real
     // browser cache hits (back/forward, repeat visits, a second tab) while
     // bounding how long a reader can hold pre-deploy HTML to one minute.
-    // Known tradeoff (#1131): the client router fetches with the default HTTP
-    // cache mode, so within that minute a prefetch or soft nav can be served
-    // wholly from cache, handing the router pre-deploy `x-webjs-build` /
-    // `x-webjs-src` headers. Its deploy check then compares two equally stale
-    // ids and skips the snapshot eviction. `max-age=0` avoided that by forcing
-    // a revalidation every time. Accepted here because the blast radius is one
-    // minute of slightly stale marketing copy, and a hard nav still corrects it.
+    // The client router revalidates its own fetches (#1131), so soft navs and
+    // prefetches always see live `x-webjs-build` ids and deploy detection is
+    // unaffected by this max-age; with stable page ETags the revalidation is a
+    // cheap 304. Document navigations (new tab, back/forward) still serve
+    // straight from disk within the window.
     cacheControl: 'public, max-age=60, s-maxage=600, stale-while-revalidate=86400',
     title: TITLE,
     description: DESCRIPTION,

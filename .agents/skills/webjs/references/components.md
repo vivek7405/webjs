@@ -120,6 +120,12 @@ class Panel extends WebComponent({ label: String }) {
 
 The full `<slot>` surface works in light DOM with shadow-DOM parity; migrating modes never requires a template rewrite. A forwarded slot projects its content everywhere (client, SSR, hydration).
 
+**A tag name inside an HTML comment is not instantiated.** `<!-- <my-card> is the wrapper -->` documents the template and renders no component, the same as in a browser. That holds for component tags, `<slot>`, and `<webjs-suspense>`. It extends to attribute values and to every element whose content the HTML parser reads as text rather than markup: `<script>`, `<style>`, `<iframe>`, `<xmp>`, `<noembed>`, `<noframes>`, `<plaintext>`, `<textarea>`, `<title>`. (Before #1128 a commented tag was constructed as a real element and ate the rest of the comment along with the markup after it, so an ordinary explanatory comment could silently delete part of the page.)
+
+Two elements are deliberately excluded, and the second matters more. `<template>` content IS parsed and legitimately carries components, which is what Declarative Shadow DOM and streamed swaps rely on. `<noscript>` content is also parsed, because a browser with scripting disabled reads it as markup, and that is the case a progressive-enhancement framework exists to serve, so components inside `<noscript>` render normally.
+
+Element nesting respects comments too: a comment holding the open or close tag of the element it sits inside (`<my-card>kid<!-- </my-card> --></my-card>`) rides along as content, and the element still ends at its real close tag. Script bodies follow the parser's double-escape rule, so the legacy `<!-- <script>... -->` wrapper pattern stays text to its true end.
+
 ```ts
 class MyCard extends WebComponent {
   render() {

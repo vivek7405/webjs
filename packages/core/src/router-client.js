@@ -1674,7 +1674,16 @@ function prefetch(href) {
   const headers = { 'x-webjs-router': '1', 'x-webjs-prefetch': '1' };
   if (have) headers['x-webjs-have'] = have;
 
-  fetch(href, { method: 'GET', headers, credentials: 'same-origin' })
+  // `no-cache` (revalidate, NOT bypass) is load-bearing (#1131): the deploy
+  // check below reads x-webjs-build / x-webjs-src off this response, and a
+  // page served with a browser max-age would otherwise satisfy the fetch
+  // wholly from the HTTP cache, replaying pre-deploy ids. The check would then
+  // compare two equally stale values and skip the eviction, so a deploy stayed
+  // invisible for the whole freshness window plus one stale-while-revalidate
+  // serving per URL. With stable page ETags a forced revalidation is a
+  // conditional request answered 304, so the cost is a header round-trip, not
+  // a re-download.
+  fetch(href, { method: 'GET', headers, credentials: 'same-origin', cache: 'no-cache' })
     .then(async (resp) => {
       const ctype = resp.headers.get('content-type') || '';
       if (!/^text\/html\b/i.test(ctype)) return;
@@ -2155,7 +2164,10 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
     }
 
     /** @type {RequestInit} */
-    const init = { method, headers, credentials: 'same-origin' };
+    // `no-cache` for the same reason as the prefetch fetch (#1131): applySwap
+    // hard-reloads on a build change it can only see if these headers are
+    // live, not replayed from the HTTP cache.
+    const init = { method, headers, credentials: 'same-origin', cache: 'no-cache' };
     if (signal) init.signal = signal;
     if (body != null && method !== 'GET' && method !== 'HEAD') init.body = body;
 
