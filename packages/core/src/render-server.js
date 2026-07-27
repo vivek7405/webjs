@@ -435,6 +435,51 @@ function endOfComment(html, start) {
 }
 
 /**
+ * Index of the `</script` that really closes a `<script>` whose content starts
+ * at `from`, or -1 when unterminated (#1134).
+ *
+ * Script data is not plain raw text: once the content contains `<!--` followed
+ * by `<script`, the tokenizer is in the script-data-double-escaped state, where
+ * a `</script>` is TEXT (it only steps back to the escaped state) and the
+ * element ends at the NEXT `</script>`. The legacy comment-wrapped inline
+ * script that document.writes a script tag is the pattern that produces this.
+ * Stopping at the first `</script>` there re-opened the original #1128 bug in
+ * the one element the scanner most explicitly claims to handle.
+ *
+ * @param {string} html
+ * @param {number} from  index just past the opening tag's `>`
+ * @returns {number}
+ */
+function endOfScriptContent(html, from) {
+  const re = /<!--|-->|<\/script(?=[\s/>])|<script(?=[\s/>])/gi;
+  re.lastIndex = from;
+  let escaped = false;
+  let dbl = false;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const t = m[0];
+    if (t === '<!--') {
+      if (!escaped) {
+        // The dash-dash state entered by `<!--` exits straight back to plain
+        // script data on `>`, so `<!-->`, `<!--->`, and any run of dashes
+        // followed by `>` cancel the escape before it starts, and the element
+        // still ends at its first `</script>`.
+        let q = m.index + 4;
+        while (html[q] === '-') q += 1;
+        if (html[q] === '>') re.lastIndex = q + 1;
+        else escaped = true;
+      }
+    }
+    else if (t === '-->') { escaped = false; dbl = false; }
+    else if (t[1] === '/') {
+      if (dbl) dbl = false;
+      else return m.index;
+    } else if (escaped) dbl = true;
+  }
+  return -1;
+}
+
+/**
  * Byte ranges of `html` where a tag-shaped match is NOT an element (#1128).
  *
  * The element scanners below match tags with a flat regex over already-
@@ -475,40 +520,6 @@ function endOfComment(html, start) {
  * @param {string} html
  * @returns {[number, number][]} ascending, non-overlapping `[start, end)` pairs
  */
-/**
- * Index of the `</script` that really closes a `<script>` whose content starts
- * at `from`, or -1 when unterminated (#1134).
- *
- * Script data is not plain raw text: once the content contains `<!--` followed
- * by `<script`, the tokenizer is in the script-data-double-escaped state, where
- * a `</script>` is TEXT (it only steps back to the escaped state) and the
- * element ends at the NEXT `</script>`. The legacy comment-wrapped inline
- * script that document.writes a script tag is the pattern that produces this.
- * Stopping at the first `</script>` there re-opened the original #1128 bug in
- * the one element the scanner most explicitly claims to handle.
- *
- * @param {string} html
- * @param {number} from  index just past the opening tag's `>`
- * @returns {number}
- */
-function endOfScriptContent(html, from) {
-  const re = /<!--|-->|<\/script(?=[\s/>])|<script(?=[\s/>])/gi;
-  re.lastIndex = from;
-  let escaped = false;
-  let dbl = false;
-  let m;
-  while ((m = re.exec(html)) !== null) {
-    const t = m[0];
-    if (t === '<!--') { if (!escaped) escaped = true; }
-    else if (t === '-->') { escaped = false; dbl = false; }
-    else if (t[1] === '/') {
-      if (dbl) dbl = false;
-      else return m.index;
-    } else if (escaped) dbl = true;
-  }
-  return -1;
-}
-
 function inertRanges(html) {
   /** @type {[number, number][]} */
   const ranges = [];
@@ -621,7 +632,6 @@ function inertRanges(html) {
     // keep rendering rather than silently vanishing.
     if (!isClose && !selfClosing && isTextOnlyTag(tag)) {
       // Everything up to the matching close tag is text, not markup.
-      // `<plaintext>` has no end tag at all: the rest of the document is text.
       let contentEnd;
       if (tag === 'plaintext') {
         // `<plaintext>` has no end tag at all: the rest of the document is text.
@@ -643,24 +653,6 @@ function inertRanges(html) {
 }
 
 /**
- * A left-to-right membership test over ascending, non-overlapping ranges.
- *
- * Returns a function that answers "is this index inert?" and REMEMBERS how far
- * it has walked, so a caller scanning matches in increasing order pays O(ranges)
- * across the whole scan instead of O(ranges) per match. Restarting each time is
- * an O(tags x components) term, which is measurable on a large page: holding a
- * document at 40k tags and raising the component count adds hundreds of
- * milliseconds that the cursor removes.
- *
- * The cursor only ever moves forward, so callers MUST query in non-decreasing
- * index order. All three call sites do (`matchAll`, and the two loops that
- * consume their input left to right). A caller that needs random access should
- * scan `ranges` directly rather than reusing this.
- *
- * @param {[number, number][]} ranges
- * @returns {(index: number) => boolean}
- */
-/**
  * Random-access membership test over ascending, non-overlapping ranges, for
  * callers whose queries are NOT monotonic (findClosingTagInString resets its
  * regex cursors backward while pairing opens with closes). O(ranges) per call;
@@ -678,6 +670,24 @@ function inRanges(ranges, index) {
   return false;
 }
 
+/**
+ * A left-to-right membership test over ascending, non-overlapping ranges.
+ *
+ * Returns a function that answers "is this index inert?" and REMEMBERS how far
+ * it has walked, so a caller scanning matches in increasing order pays O(ranges)
+ * across the whole scan instead of O(ranges) per match. Restarting each time is
+ * an O(tags x components) term, which is measurable on a large page: holding a
+ * document at 40k tags and raising the component count adds hundreds of
+ * milliseconds that the cursor removes.
+ *
+ * The cursor only ever moves forward, so callers MUST query in non-decreasing
+ * index order. All three call sites do (`matchAll`, and the two loops that
+ * consume their input left to right). A caller that needs random access should
+ * scan `ranges` directly rather than reusing this.
+ *
+ * @param {[number, number][]} ranges
+ * @returns {(index: number) => boolean}
+ */
 function inertAt(ranges) {
   let cursor = 0;
   return (index) => {
@@ -1069,7 +1079,20 @@ async function processSuspenseElements(html, ctx, ancestors = [], dev) {
     const fbMatch = /data-webjs-fallback="([^"]*)"/i.exec(attrs);
     const fallbackHtml = fbMatch ? unescapeAttr(fbMatch[1]) : '';
 
-    const closeIdx = findClosingTagInString(rest, openEnd, 'webjs-suspense');
+    // Pass the FULL-input ranges shifted into `rest` coordinates rather than
+    // letting the helper re-tokenize the suffix. `rest` can begin mid-comment
+    // or mid-raw-text after the skip path above, and a tokenizer restarted
+    // there is in the wrong state: a text-only opener named later in that same
+    // comment would read as a real element and mark everything to EOF inert,
+    // so the boundary's real close tag was skipped and the trailing markup
+    // folded into the boundary. The shifted view keeps the full-string truth,
+    // including a first range that starts before `rest` does.
+    const shifted = [];
+    for (const [s, e] of inert) {
+      if (e <= consumed) continue;
+      shifted.push([Math.max(0, s - consumed), e - consumed]);
+    }
+    const closeIdx = findClosingTagInString(rest, openEnd, 'webjs-suspense', shifted);
     let inner;
     let afterClose;
     if (closeIdx === -1) {

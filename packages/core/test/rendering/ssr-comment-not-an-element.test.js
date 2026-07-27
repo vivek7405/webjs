@@ -502,6 +502,36 @@ test('an ordinary script still ends at its first close tag', async () => {
   assert.ok(esc.includes('RENDERED'), 'a lone <!-- in a script does not defer the close');
 });
 
+test('a comment naming a boundary and a text-only tag does not derail a real boundary after it', async () => {
+  // The suspense scanner skips a commented boundary and re-slices its input
+  // just past the match, which can land MID-comment. The close-tag search for
+  // the next REAL boundary must therefore use ranges computed on the full
+  // input, not a re-tokenization of the suffix: restarted mid-comment, a
+  // text-only opener named later in that comment (here <textarea>) read as a
+  // real unclosed element, everything to EOF went inert, and the boundary
+  // swallowed its own close tag plus the trailing markup.
+  const out = await renderToString(html`<div><!-- a <webjs-suspense> demo uses <textarea> input --><webjs-suspense><comment-probe></comment-probe></webjs-suspense><span>after</span></div>`);
+  assert.ok(out.includes('RENDERED'), 'the real boundary renders its children');
+  // The discriminators, chosen so a swallowed close tag cannot fake a pass:
+  // the failure emits inner + a SYNTHESIZED close, so the tag count doubles
+  // and the document ends with the synthesized `</webjs-suspense>` instead of
+  // the real `</div>`.
+  assert.equal((out.match(/<\/webjs-suspense>/g) || []).length, 1,
+    'exactly one boundary close tag (no synthesized duplicate)');
+  assert.ok(out.endsWith('</div>'), 'the trailing markup stays outside the boundary');
+});
+
+test('the <!--> short form inside a script cancels the escape', async () => {
+  // The dash-dash state entered by <!-- exits straight back to plain script
+  // data on >, so a lone "<!-->" in a script does NOT arm the double-escape:
+  // even with a "<script>" string later in the body, the element ends at its
+  // first </script>, which is where a browser ends it.
+  const out = await renderToString(
+    html`<div>${unsafeHTML('<script>var x = "<!-->"; var y = "<script>";</script>')}<comment-probe></comment-probe></div>`
+  );
+  assert.ok(out.includes('RENDERED'), 'the component after the script still renders');
+});
+
 test('the client router boundary comments do not hide the components between them', async () => {
   // The load-bearing case (#1015, #1114). SSR wraps each layout's children in
   // KEYED boundary comment PAIRS, and the router's scan is strict: a mispaired
