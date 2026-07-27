@@ -52,7 +52,7 @@ const FAQ = [
   {
     question: 'What is WebJs?',
     answer:
-      'WebJs is an AI-first full-stack JavaScript web framework built on web components. It server-renders every page and component to real HTML, needs no build step or bundler, and runs on Node 24+ or Bun. You write pages, layouts, and components as ordinary JavaScript or TypeScript modules, with no framework-specific file format to learn, and the framework serves your source to the browser exactly as you wrote it.',
+      'WebJs is an AI-first full-stack JavaScript web framework built on web components. It server-renders every page and component to real HTML, needs no build step or bundler, and runs on Node 24+ or Bun. The framework serves your source to the browser exactly as you wrote it, so the code you read is the code that runs.',
   },
   {
     question: 'What makes WebJs AI-first?',
@@ -229,9 +229,8 @@ export default function WhatIsWebJs() {
           real HTML, needs no build step or bundler, and runs on Node 24+ or Bun.
         </p>
         <p class="text-[1.05rem] leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
-          You write pages, layouts, and components as ordinary JavaScript or TypeScript modules,
-          with no framework-specific file format to learn. WebJs serves that source to the
-          browser exactly as you wrote it, so the code you read is the code that runs. Content reads
+          WebJs serves your source to the browser exactly as you wrote it, so the code you read
+          is the code that runs. Content reads
           and forms submit before any script loads, and JavaScript is added only where an interaction
           actually needs it. The same conventions that keep that source readable are what make WebJs
           AI-first, because a coding agent can change one route without loading the whole codebase
