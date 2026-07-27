@@ -254,6 +254,29 @@ test('the gallery appears in the sitemap, one URL per component', async () => {
   assert.ok(!xml.includes('/ui/theme-zinc'), 'non-component registry items stay out');
 });
 
+test('each component page describes itself, not the section', async () => {
+  // 33 URLs sharing one description is the duplicate-content shape this whole
+  // migration exists to avoid, so introducing it here would have been
+  // self-defeating. The layout still supplies the section default, which is
+  // what /ui itself uses.
+  const descriptions = new Map<string, string>();
+  for (const path of ['/ui/button', '/ui/dialog', '/ui/alert-dialog', '/ui/table']) {
+    const html = await bodyOf(path);
+    const d = html.match(/<meta name="description" content="([^"]*)"/)?.[1];
+    assert.ok(d, `${path} has a description`);
+    descriptions.set(path, d!);
+  }
+  assert.equal(new Set(descriptions.values()).size, descriptions.size, 'every page has its own');
+
+  // And it says something true about that component rather than a generic
+  // blurb: the tier decides which sentence, so a component moving tier moves
+  // its description with it.
+  assert.match(descriptions.get('/ui/button')!, /class helper/, 'a Tier-1 component reads as a helper');
+  assert.match(descriptions.get('/ui/button')!, /buttonClass\(\)/, 'and names its helper');
+  assert.match(descriptions.get('/ui/dialog')!, /custom element/, 'a Tier-2 component reads as an element');
+  assert.match(descriptions.get('/ui/alert-dialog')!, /ui-alert-dialog/, 'and names its tag');
+});
+
 test('no page ships a dead SSR action-seed payload', async () => {
   // Site-wide, not gallery-specific, but the gallery is what surfaced it.
   //

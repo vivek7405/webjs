@@ -9,6 +9,7 @@ import {
 } from '#modules/ui/utils/examples.ts';
 import { getComponentApi, type ComponentApi } from '#modules/ui/utils/component-api.ts';
 import { loadRegistryItem } from '#modules/ui/queries/registry.server.ts';
+import { tierOf } from '#modules/ui/utils/tier.ts';
 // Side-effect import: register <preview-tabs> so every preview pane below can
 // flip between the live demo and its source snippet.
 import '#components/preview-tabs.ts';
@@ -41,13 +42,38 @@ import '#components/ui/toggle-group.ts';
 import '#components/ui/tooltip.ts';
 
 /**
+ * Per-component metadata.
+ *
  * Titles follow the documentation's shape, "<Page> | <Section>", so a browser
  * tab or a search result reads the same whether it came from /docs or here.
- * The registry name is the lowercase identifier you pass to `webjs ui add`, so
- * it is title-cased for the human-facing title only.
+ * The registry name is the lowercase identifier you pass to the add command,
+ * so it is title-cased for the human-facing title only.
+ *
+ * Each page describes ITSELF rather than inheriting one section description
+ * from the layout for all 33 URLs. A set of byte-identical descriptions across
+ * a section is exactly the duplicate-content shape this migration exists to
+ * avoid, and it would have been self-defeating to introduce 33 of them in a
+ * change whose stated purpose is search consolidation.
+ *
+ * The sentence is DERIVED rather than hand-written. The registry carries no
+ * per-item description (checked: every `registry:ui` item omits it), so a
+ * hand-written map would be 33 more strings to drift out of sync with the kit.
+ * Tier plus the naming convention is enough to say something true and distinct
+ * about every component, and it stays correct when one moves between tiers.
  */
 export function generateMetadata({ params }: { params: { name: string } }) {
-  return { title: `${startCase(params.name)} | WebJs UI` };
+  const name = startCase(params.name);
+  const title = `${name} | WebJs UI`;
+  const description =
+    tierOf({ name: params.name }) === 'tier-2'
+      ? `${name} is a stateful custom element in WebJs UI. Compose it as a real ${'<ui-' + params.name + '>'} tag, which wires its own ARIA and keyboard handling, then copy the source into your project and own it.`
+      : `${name} is a class helper in WebJs UI. Apply ${camelName(params.name)}Class() to a native HTML element for full browser semantics, styled with Tailwind v4, with the source copied into your project.`;
+  return { title, description, openGraph: { title, description } };
+}
+
+/** `alert-dialog` to `alertDialog`, matching the kit's helper naming. */
+function camelName(name: string): string {
+  return name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 }
 
 /**
