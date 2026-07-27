@@ -476,15 +476,21 @@ export async function ssrUnauthorized(route, opts) {
 /**
  * Downgrade a PARTIAL response so no shared cache can store it (#1140).
  *
- * A reduced `X-Webjs-Have` body and a `<webjs-frame>` subtree are sliced by a
- * REQUEST header, so they are valid only for a client that sent it. Both are
- * marked `Vary` for that header, but `Vary` is not a guarantee in practice:
- * Cloudflare honours only `Accept-Encoding` and several other shared caches
- * are just as selective. Since these responses otherwise inherit the page's
- * `Cache-Control`, a page that opted into public caching was handing CDNs a
- * chrome-less fragment under the full page's URL, to be served to whoever
- * navigated there next. Measured on webjs.dev: 71,759 bytes for the document
- * versus 47,375 for the fragment, identical `Cache-Control` on both.
+ * A reduced `X-Webjs-Have` body is sliced by a REQUEST header, so it is valid
+ * only for a client that sent it. It is marked `Vary` for that header, but
+ * `Vary` is not a guarantee in practice: Cloudflare honours only
+ * `Accept-Encoding` and several other shared caches are just as selective.
+ * Since a reduced body otherwise INHERITS the page's `Cache-Control`, a page
+ * that opted into public caching was handing CDNs a chrome-less fragment under
+ * the full page's URL, to be served to whoever navigated there next. Measured
+ * on webjs.dev: 71,759 bytes for the document versus 47,375 for the fragment,
+ * identical `Cache-Control` on both.
+ *
+ * The reduced path is the ONLY caller. A `<webjs-frame>` subtree is sliced by a
+ * request header too, but its response is built without page metadata, so it is
+ * already `no-store` and needs no downgrade; that property is locked by a test
+ * rather than by a call here. A NEW partial-response shape does not get this
+ * treatment for free: call this from its response site.
  *
  * `private` fixes that at the source instead of relying on `Vary` being
  * respected: no shared cache may store it, while the browser that asked for it
