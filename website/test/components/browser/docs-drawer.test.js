@@ -11,9 +11,9 @@
  * each is pinned rather than left to manual checking:
  *   - dismissing via the backdrop left aria-expanded reading true forever
  *   - Escape did not close the drawer at all
- *   - clicking the drawer toggle left the header's mobile menu open, and the
- *     header is a stacking context, so that menu was then trapped underneath
- *     the drawer's backdrop: visible, dimmed, and unclickable
+ *   - clicking the drawer toggle left the header's mobile menu open, so both
+ *     navigation surfaces were open at once, even though the toggle is an
+ *     outside click for that menu
  *   - Escape with both open closed both and left focus on the wrong control
  */
 
@@ -138,7 +138,8 @@ suite('docs drawer', () => {
 
   test('opening the drawer closes the header menu', () => {
     // The toggle is OUTSIDE the header menu, so it is an outside click and has
-    // to dismiss it. Leaving it open trapped it under the drawer backdrop.
+    // to dismiss it. Leaving it open put two navigation surfaces on screen at
+    // once, from a click that was supposed to close one of them.
     menu().setAttribute('open', '');
     toggle().click();
     assert.ok(!menu().hasAttribute('open'), 'the header menu closes');

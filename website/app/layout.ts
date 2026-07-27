@@ -173,10 +173,11 @@ export default function RootLayout({ children }: { children: unknown }) {
         if (!t || !t.closest) return;
 
         // Header mobile menu FIRST, and unconditionally, because the drawer
-        // toggle is a click OUTSIDE that menu and so has to dismiss it. Doing
-        // this after an early return for the toggle left the dropdown open and
-        // then trapped under the drawer's backdrop: the header is a stacking
-        // context, so the menu's own z-index cannot lift it above the backdrop.
+        // toggle is a click OUTSIDE that menu and every other outside click
+        // dismisses it. Handling it after an early return for the toggle left
+        // both navigation surfaces open at once, which is neither what the
+        // outside-click rule promises nor what a reader expects from a menu
+        // they just clicked away from.
         var a = t.closest('.mobile-menu a');
         if (a) {
           var d = a.closest('details');
