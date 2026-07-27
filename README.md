@@ -264,7 +264,7 @@ fetches the page's modules in parallel over a single HTTP/2 connection.
 Same model as Rails 7+ with `importmap-rails`.
 
 ```sh
-npm run start --port 8080                          # JSON logs, gzip/brotli, ETag, streaming
+PORT=8080 npm run start                            # JSON logs, gzip/brotli, ETag, streaming
 ```
 
 The production server speaks plain HTTP/1.1. The expected production topology
@@ -299,7 +299,7 @@ cd website && npm run dev    # webjs dev; compiles Tailwind, then recompiles on 
 `docs.webjs.dev` still resolves and path-preservingly redirects here, because
 error messages in already-published npm packages point at it.
 
-37 pages covering: getting started, AI-first development, routing,
+The pages cover: getting started, AI-first development, routing,
 components, SSR, styling, Suspense, loading states, error handling,
 client router, server actions, REST endpoints, API routes,
 WebSockets, database, authentication, TypeScript, middleware,
@@ -309,7 +309,11 @@ testing, conventions, configuration, editor setup.
 
 ## Status
 
-Pre-1.0. Current packages: `@webjsdev/core` 0.7.1, `@webjsdev/server` 0.7.2, `@webjsdev/cli` 0.8.1, `@webjsdev/ui` 0.3.1. 1151 unit tests, 271 browser tests (web-test-runner), 61 puppeteer e2e tests (56 framework + 5 example-blog smoke). Key features:
+Pre-1.0, released continuously. Current versions of every package
+(`@webjsdev/core`, `@webjsdev/server`, `@webjsdev/cli`, `@webjsdev/ui`) are on
+the [changelog](https://webjs.dev/changelog). Behaviour is covered by unit,
+browser (web-test-runner), and puppeteer e2e suites, plus example-app smoke
+tests. Key features:
 
 - **Core:** Signals (`signal`, `computed`, `effect`, `batch`, TC39 Stage 1 shape) as the default state primitive, with WebComponent's built-in SignalWatcher auto-tracking `.get()` reads inside `render()`. Reactive properties via the declare-free base-class factory `extends WebComponent({ count: Number })` (the `prop()` helper carries options like `reflect` / `state` / `attribute` / `default`), reserved for HTML attribute round-trip (a direct `static properties` block throws at runtime, flagged by the `no-static-properties` rule, and a class-field initializer on a factory prop is caught by `reactive-props-no-class-field`). Full lit-API parity: ReactiveController hooks (`hostConnected`, `hostDisconnected`, `hostUpdate`, `hostUpdated`) and lifecycle (`shouldUpdate`, `willUpdate`, `update`, `updated`, `firstUpdated`, `updateComplete`), 12 directives (`repeat`, `unsafeHTML`, `live`, `keyed`, `guard`, `templateContent`, `ref` + `createRef`, `cache`, `until`, `asyncAppend`, `asyncReplace`, `watch`). SSR with DSD (opt-in) + light-DOM hydration (default), light-DOM `<slot>` projection (framework-driven, same API as shadow DOM), fine-grained client renderer, `Suspense()`, client router with `composedPath()` for shadow DOM, mixed-attribute interpolation, MutationObserver upgrade safety net.
 - **Data:** Server actions with webjs's built-in serializer (`Date`, `Map`, `Set`, `BigInt`, `TypedArray`, `Blob`, `File`, `FormData`, reference cycles all survive the wire). Two-marker server-file convention: `.server.{js,ts}` for path-level source-protection (browser imports get a throw-at-load stub), `'use server'` for RPC registration (file is also browser-callable). REST over HTTP via a `route.ts` (or the `route()` adapter) with an optional `validate` config export. `json()` + `richFetch()` for content-negotiated APIs. `cache()` for server-side query caching with TTL + `invalidate()`. `WEBJS_PUBLIC_*` env vars injected into `window.process.env` at SSR (no build step, no transform).
