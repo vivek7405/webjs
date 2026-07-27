@@ -133,24 +133,47 @@ function installStyles(): void {
 // about both scrollbar geometry and gutter support. When mechanism 1 works the
 // measured residual is zero, so no padding is applied and the custom property is
 // never set: the two mechanisms cannot double-compensate.
-const SCROLLBAR_COMPENSATION = '--wj-scrollbar-compensation';
+// The lock's state is DOCUMENT level, so it is keyed on globalThis rather than
+// module scope. dialog.ts and alert-dialog.ts ship as separate copies (so
+// `webjs ui add alert-dialog` stays self contained), and two independent
+// counters mutating the same <html> can only be released safely in LIFO order.
+// They are not: `disconnectedCallback` fires in tree order and the #766
+// before-cache close runs in registration order, so a confirm inside a dialog
+// releases OUTER first, and the inner unlock would then re-apply the values it
+// captured with nothing left to clear them, leaving <html> padded for good. One
+// shared counter makes release order irrelevant.
+interface ScrollLockState {
+  count: number;
+  overflow: string;
+  rootPaddingRight: string;
+  scrollbarGutter: string;
+  compensation: string;
+}
 
-let scrollLockCount = 0;
-let savedOverflow = '';
-let savedRootPaddingRight = '';
-let savedScrollbarGutter = '';
-let savedCompensation = '';
+const SCROLLBAR_COMPENSATION = '--wj-scrollbar-compensation';
+const SCROLL_LOCK_KEY = '__wjScrollLock';
+
+function scrollLockState(): ScrollLockState {
+  const store = globalThis as unknown as Record<string, ScrollLockState | undefined>;
+  let state = store[SCROLL_LOCK_KEY];
+  if (!state) {
+    state = { count: 0, overflow: '', rootPaddingRight: '', scrollbarGutter: '', compensation: '' };
+    store[SCROLL_LOCK_KEY] = state;
+  }
+  return state;
+}
 
 function lockScroll(): void {
-  if (scrollLockCount === 0) {
+  const state = scrollLockState();
+  if (state.count === 0) {
     const root = document.documentElement;
     const body = document.body;
     const rootStyle = getComputedStyle(root);
 
-    savedOverflow = body.style.overflow;
-    savedRootPaddingRight = root.style.paddingRight;
-    savedScrollbarGutter = root.style.scrollbarGutter;
-    savedCompensation = root.style.getPropertyValue(SCROLLBAR_COMPENSATION);
+    state.overflow = body.style.overflow;
+    state.rootPaddingRight = root.style.paddingRight;
+    state.scrollbarGutter = root.style.scrollbarGutter;
+    state.compensation = root.style.getPropertyValue(SCROLLBAR_COMPENSATION);
 
     // <html> is an in-flow block filling the initial containing block, so its
     // border box IS the viewport width, and it is re-laid-out synchronously.
@@ -186,21 +209,20 @@ function lockScroll(): void {
       root.style.setProperty(SCROLLBAR_COMPENSATION, `${grew}px`);
     }
   }
-  scrollLockCount++;
+  state.count++;
 }
 
 function unlockScroll(): void {
-  scrollLockCount = Math.max(0, scrollLockCount - 1);
-  if (scrollLockCount === 0) {
+  const state = scrollLockState();
+  state.count = Math.max(0, state.count - 1);
+  if (state.count === 0) {
     const root = document.documentElement;
-    document.body.style.overflow = savedOverflow;
-    root.style.paddingRight = savedRootPaddingRight;
-    root.style.scrollbarGutter = savedScrollbarGutter;
-    // RESTORED, not removed. dialog.ts and alert-dialog.ts keep separate
-    // refcounts on purpose, so an alert-dialog opened from inside an open dialog
-    // unlocks first; removing the property outright would strip the dialog's
-    // compensation while it is still open and jump a fixed header mid-flow.
-    if (savedCompensation) root.style.setProperty(SCROLLBAR_COMPENSATION, savedCompensation);
+    document.body.style.overflow = state.overflow;
+    root.style.paddingRight = state.rootPaddingRight;
+    root.style.scrollbarGutter = state.scrollbarGutter;
+    // Restored rather than removed, so a value the PAGE set before any dialog
+    // opened survives the lock.
+    if (state.compensation) root.style.setProperty(SCROLLBAR_COMPENSATION, state.compensation);
     else root.style.removeProperty(SCROLLBAR_COMPENSATION);
   }
 }

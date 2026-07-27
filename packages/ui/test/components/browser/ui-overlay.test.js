@@ -133,11 +133,42 @@ suite('ui-dialog', () => {
 // These assertions are only meaningful where the scrollbar takes LAYOUT WIDTH.
 // Headless browsers default to overlay scrollbars (zero width), which makes the
 // whole scenario inert, so `buildFixedHeaderPage()` styles the root scrollbar to
-// force a classic one and each test skips EXPLICITLY when the engine still
-// reports zero. A silent pass under overlay scrollbars would prove nothing.
+// force a classic one and `requireClassicScrollbar()` decides what a zero width
+// means: a genuine overlay-only engine skips, Chromium fails (its scrollbar is
+// guaranteed by the WTR config), and a lock leaked by an earlier test fails
+// everywhere. A silent pass here would prove nothing, so none is reachable.
 // --------------------------------------------------------------------------
 
 const scrollbarWidth = () => window.innerWidth - document.documentElement.clientWidth;
+
+/**
+ * Gate a scroll-lock assertion on a scrollbar that actually takes layout width.
+ *
+ * Skipping is correct on an engine whose scrollbars are always overlay (Firefox
+ * on Linux cannot be forced off them). It is NOT correct on Chromium, where the
+ * root WTR config drops Playwright's `--hide-scrollbars` precisely so this suite
+ * has a real scrollbar: a zero width there means that flag stopped working and
+ * the whole suite would otherwise go silently green while asserting nothing.
+ */
+function requireClassicScrollbar(ctx) {
+  // A lock leaked by an earlier test hides the scrollbar, which is
+  // indistinguishable from an overlay-scrollbar engine and would silently skip.
+  // Fail instead, on every engine: a leak is the failure, not a reason to stop
+  // looking for one.
+  assert.equal(document.body.style.overflow, '', 'the page arrived with no lock left over');
+  if (scrollbarWidth() > 0) return true;
+  const ua = navigator.userAgent;
+  const isChromium = ua.includes('Chrome/') && !ua.includes('Edg/');
+  assert.equal(
+    isChromium,
+    false,
+    'Chromium reported a zero-width scrollbar: the --hide-scrollbars opt-out in ' +
+      'web-test-runner.config.js is no longer taking effect, so these assertions ' +
+      'would pass without testing anything',
+  );
+  ctx.skip();
+  return false;
+}
 
 /**
  * Build the reproduction: a page that overflows, a fixed full-width header with
@@ -150,7 +181,7 @@ const scrollbarWidth = () => window.innerWidth - document.documentElement.client
  * when the compensation path runs (padding holds the CONTENT still, not the
  * border box), so measuring the body would report a false shift.
  */
-async function buildFixedHeaderPage() {
+async function buildFixedHeaderPage(rootStyles = {}) {
   const style = document.createElement('style');
   style.textContent =
     'html::-webkit-scrollbar { width: 15px; background: #eee; }' +
@@ -178,6 +209,16 @@ async function buildFixedHeaderPage() {
   // the precondition check has to wait or it under-reports the width.
   await tick();
 
+  // Applied here, and restored in teardown AFTER the unlock has run, because
+  // `hide()` defers unlockScroll() to a microtask: resetting these in a test's
+  // own `finally` would run first and the unlock would then write the app's
+  // values straight back onto <html> with nothing left to clear them.
+  const savedRoot = {};
+  for (const [prop, value] of Object.entries(rootStyles)) {
+    savedRoot[prop] = document.documentElement.style[prop];
+    document.documentElement.style[prop] = value;
+  }
+
   const mounted = [];
 
   return {
@@ -189,18 +230,23 @@ async function buildFixedHeaderPage() {
       mounted.push(root);
       return root;
     },
-    teardown() {
-      // Close every dialog FIRST. An assertion that throws mid-test would
-      // otherwise leave the lock engaged, and the next test would see a page
-      // with no scrollbar and skip itself instead of running.
+    async teardown() {
+      // Close every dialog FIRST, and WAIT for the unlock. An assertion that
+      // throws mid-test would otherwise leave the lock engaged, and the next
+      // test would see a page with no scrollbar and skip itself instead of
+      // running. hide() only queues the unlock, so the await is load-bearing.
       for (const root of mounted) {
         for (const el of root.querySelectorAll('ui-dialog, ui-alert-dialog')) el.hide?.();
-        root.remove();
       }
+      await tick();
+      for (const root of mounted) root.remove();
       style.remove();
       spacer.remove();
       flow.remove();
       header.remove();
+      for (const [prop, value] of Object.entries(savedRoot)) {
+        document.documentElement.style[prop] = value;
+      }
     },
   };
 }
@@ -215,7 +261,7 @@ suite('ui-dialog scroll lock layout', () => {
   test('opening a dialog leaves a position:fixed header exactly where it was', async function () {
     const page = await buildFixedHeaderPage();
     try {
-      if (scrollbarWidth() === 0) this.skip();
+      if (!requireClassicScrollbar(this)) return;
 
       const root = page.track(await mount(html`
         <ui-dialog>
@@ -229,6 +275,7 @@ suite('ui-dialog scroll lock layout', () => {
 
       dialog.show();
       await tick();
+      assert.equal(document.body.style.overflow, 'hidden', 'the lock engaged');
 
       assert.equal(centreOf(page.inner), fixedBefore, 'fixed header content does not move on open');
       assert.equal(centreOf(page.flow), flowBefore, 'in-flow content does not move on open');
@@ -237,14 +284,14 @@ suite('ui-dialog scroll lock layout', () => {
       await tick();
       assert.equal(centreOf(page.inner), fixedBefore, 'fixed header content does not move on close');
     } finally {
-      page.teardown();
+      await page.teardown();
     }
   });
 
   test('the lock is released cleanly, leaving no compensation behind', async function () {
     const page = await buildFixedHeaderPage();
     try {
-      if (scrollbarWidth() === 0) this.skip();
+      if (!requireClassicScrollbar(this)) return;
 
       const root = page.track(await mount(html`
         <ui-dialog>
@@ -267,7 +314,7 @@ suite('ui-dialog scroll lock layout', () => {
         'compensation custom property cleared',
       );
     } finally {
-      page.teardown();
+      await page.teardown();
     }
   });
 
@@ -279,7 +326,7 @@ suite('ui-dialog scroll lock layout', () => {
   test('an alert-dialog inside an open dialog does not release the dialog compensation', async function () {
     const page = await buildFixedHeaderPage();
     try {
-      if (scrollbarWidth() === 0) this.skip();
+      if (!requireClassicScrollbar(this)) return;
       await import(`${COMPONENTS_DIR}/alert-dialog.ts`);
 
       const root = page.track(
@@ -324,7 +371,59 @@ suite('ui-dialog scroll lock layout', () => {
       assert.equal(document.body.style.overflow, '', 'released on the outermost close');
       assert.equal(centreOf(page.inner), fixedBefore, 'fixed header back where it started');
     } finally {
-      page.teardown();
+      await page.teardown();
+    }
+  });
+
+  // Release order is NOT guaranteed to be LIFO: disconnectedCallback fires in
+  // tree order and the before-cache close runs in registration order, so an
+  // outer dialog can release before an inner confirm that is still open. With a
+  // refcount per module the inner unlock then re-applies what it captured, with
+  // nothing left to clear it, and <html> stays padded for the rest of the
+  // session. One shared refcount is what makes the order irrelevant.
+  test('releasing the outer dialog first still leaves the page clean', async function () {
+    const page = await buildFixedHeaderPage();
+    try {
+      if (!requireClassicScrollbar(this)) return;
+      await import(`${COMPONENTS_DIR}/alert-dialog.ts`);
+
+      const root = page.track(
+        await mount(html`
+          <ui-dialog>
+            <ui-dialog-content><ui-dialog-title>Outer</ui-dialog-title></ui-dialog-content>
+          </ui-dialog>
+          <ui-alert-dialog>
+            <ui-alert-dialog-content><ui-alert-dialog-title>Confirm</ui-alert-dialog-title></ui-alert-dialog-content>
+          </ui-alert-dialog>
+        `),
+      );
+      const dialog = root.querySelector('ui-dialog');
+      const confirm = root.querySelector('ui-alert-dialog');
+      const fixedBefore = centreOf(page.inner);
+
+      dialog.show();
+      await tick();
+      confirm.show();
+      await tick();
+
+      // Outer first, the order the DOM actually gives us on a subtree removal.
+      dialog.hide();
+      await tick();
+      assert.equal(document.body.style.overflow, 'hidden', 'still locked, the confirm is open');
+      assert.equal(centreOf(page.inner), fixedBefore, 'fixed header still held');
+
+      confirm.hide();
+      await tick();
+      assert.equal(document.body.style.overflow, '', 'overflow released');
+      assert.equal(document.documentElement.style.paddingRight, '', 'no padding left on the page');
+      assert.equal(
+        document.documentElement.style.getPropertyValue('--wj-scrollbar-compensation'),
+        '',
+        'no compensation left on the page',
+      );
+      assert.equal(centreOf(page.inner), fixedBefore, 'fixed header back where it started');
+    } finally {
+      await page.teardown();
     }
   });
 
@@ -332,12 +431,11 @@ suite('ui-dialog scroll lock layout', () => {
   // technique) keeps them through the lock, so overwriting its choice with the
   // single-edge value would drop one and introduce a shift the page never had.
   test("an app's own scrollbar-gutter is left alone", async function () {
-    const page = await buildFixedHeaderPage();
+    const page = await buildFixedHeaderPage({ scrollbarGutter: 'stable both-edges' });
     const root = document.documentElement;
-    root.style.scrollbarGutter = 'stable both-edges';
     try {
       await tick();
-      if (scrollbarWidth() === 0) this.skip();
+      if (!requireClassicScrollbar(this)) return;
 
       const mountedRoot = page.track(
         await mount(html`
@@ -352,6 +450,7 @@ suite('ui-dialog scroll lock layout', () => {
 
       dialog.show();
       await tick();
+      assert.equal(document.body.style.overflow, 'hidden', 'the lock engaged');
       assert.equal(
         root.style.scrollbarGutter,
         'stable both-edges',
@@ -364,20 +463,18 @@ suite('ui-dialog scroll lock layout', () => {
       await tick();
       assert.equal(root.style.scrollbarGutter, 'stable both-edges', 'gutter choice restored');
     } finally {
-      page.teardown();
-      root.style.scrollbarGutter = '';
+      await page.teardown();
     }
   });
 
   // The compensation is ADDED to whatever padding the page already had on the
   // root, not written over it.
   test("an app's own root padding is added to, not replaced", async function () {
-    const page = await buildFixedHeaderPage();
+    const page = await buildFixedHeaderPage({ paddingRight: '20px' });
     const root = document.documentElement;
-    root.style.paddingRight = '20px';
     try {
       await tick();
-      if (scrollbarWidth() === 0) this.skip();
+      if (!requireClassicScrollbar(this)) return;
 
       const mountedRoot = page.track(
         await mount(html`
@@ -391,6 +488,7 @@ suite('ui-dialog scroll lock layout', () => {
 
       dialog.show();
       await tick();
+      assert.equal(document.body.style.overflow, 'hidden', 'the lock engaged');
       assert.ok(
         parseFloat(getComputedStyle(root).paddingRight) >= 20,
         "the page's own padding is never reduced",
@@ -401,15 +499,14 @@ suite('ui-dialog scroll lock layout', () => {
       await tick();
       assert.equal(root.style.paddingRight, '20px', "the page's own padding is restored exactly");
     } finally {
-      page.teardown();
-      root.style.paddingRight = '';
+      await page.teardown();
     }
   });
 
   test('nested dialogs release the compensation only on the outermost close', async function () {
     const page = await buildFixedHeaderPage();
     try {
-      if (scrollbarWidth() === 0) this.skip();
+      if (!requireClassicScrollbar(this)) return;
 
       const root = page.track(await mount(html`
         <ui-dialog id="outer">
@@ -445,7 +542,7 @@ suite('ui-dialog scroll lock layout', () => {
       );
       assert.equal(centreOf(page.inner), fixedBefore, 'fixed header back where it started');
     } finally {
-      page.teardown();
+      await page.teardown();
     }
   });
 });
@@ -682,7 +779,7 @@ suite('ui-alert-dialog', () => {
   test('opening an alert-dialog leaves a position:fixed header where it was', async function () {
     const page = await buildFixedHeaderPage();
     try {
-      if (scrollbarWidth() === 0) this.skip();
+      if (!requireClassicScrollbar(this)) return;
 
       const root = page.track(await mount(html`
         <ui-alert-dialog>
@@ -696,6 +793,7 @@ suite('ui-alert-dialog', () => {
 
       dialog.show();
       await tick();
+      assert.equal(document.body.style.overflow, 'hidden', 'the lock engaged');
       assert.equal(centreOf(page.inner), fixedBefore, 'fixed header content does not move on open');
       assert.equal(centreOf(page.flow), flowBefore, 'in-flow content does not move on open');
 
@@ -708,7 +806,7 @@ suite('ui-alert-dialog', () => {
         'compensation released on close',
       );
     } finally {
-      page.teardown();
+      await page.teardown();
     }
   });
 
