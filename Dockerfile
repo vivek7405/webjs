@@ -107,26 +107,29 @@ RUN npm run build:dist --workspace=@webjsdev/core
 # `webjs.start.before` (`webjs db migrate`), not at build time.
 
 # UI registry: the registry JSON is composed on demand by the route handlers
-# (no build step). But the ui-website's component DETAIL pages statically import
-# the component SOURCES from `components/ui/*.ts`, which the `prestart` hook
-# generates by copying them out of packages/ui/packages/registry/. A start
-# command that serves directly (the `bun webjs.js start` form, which bypasses
-# npm `prestart`, the same way the Tailwind step below is needed) would 500 on
-# every component page without these files, so bake them at build time here.
-# `copy-registry.js` is pure filesystem (no runtime / network / DB), so it is
-# build-safe.
-RUN cd packages/ui/packages/website && node scripts/copy-registry.js
+# (no build step). But the gallery's component DETAIL pages statically import
+# the component SOURCES from `components/ui/*.ts`, which are a gitignored
+# mirror of packages/ui/packages/registry/. A start command that serves
+# directly (the `bun webjs.js start` form, which bypasses npm `prestart`, the
+# same way the Tailwind step below is needed) would 500 on every component page
+# without these files, so bake them at build time here. The mirror now lands in
+# the marketing app, since that is where the gallery lives (#1099).
+# `copy-registry.mjs` is pure filesystem (no runtime / network / DB), so it is
+# build-safe, and it MUST run before the Tailwind step below: the generated
+# sources are a scanned @source, so their utility classes are missing from the
+# stylesheet otherwise.
+RUN cd website && node scripts/copy-registry.mjs
 
 # Tailwind: compile per-app CSS (every app with a stylesheet uses the CLI, no
-# browser runtime). The `docs` service is absent on purpose: it renders no HTML
-# at all now, only redirects to webjs.dev/docs, so it has no stylesheet.
+# browser runtime). The `docs` and `ui-website` services are absent on purpose:
+# both render no HTML at all now, only redirects (to webjs.dev/docs and
+# webjs.dev/ui), so neither has a stylesheet.
 # Each compose service's command invokes `webjs.js start` directly, which
 # bypasses the per-package `prestart: css:build` hook in npm; the CSS has
 # to be ready in the image. Keep this list in sync with the apps that
 # have a public/input.css and a `css:build` script in their package.json.
 RUN npx tailwindcss -i website/public/input.css                       -o website/public/tailwind.css                       --minify \
- && npx tailwindcss -i examples/blog/public/input.css                 -o examples/blog/public/tailwind.css                 --minify \
- && npx tailwindcss -i packages/ui/packages/website/public/input.css  -o packages/ui/packages/website/public/tailwind.css  --minify
+ && npx tailwindcss -i examples/blog/public/input.css                 -o examples/blog/public/tailwind.css                 --minify
 
 # Default env vars. Railway / compose set their own per service.
 ENV NODE_ENV=production

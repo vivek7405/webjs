@@ -6,28 +6,20 @@
   "imports": {
     "#*": "./*"
   },
-  "description": "Registry host + docs site for @webjsdev/ui. Serves /r/<name>.json and renders per-component docs.",
+  "description": "Redirect-only host for ui.webjs.dev. The component gallery and the registry API are served by the marketing site at webjs.dev/ui.",
   "scripts": {
     "dev": "webjs dev --port ${PORT:-5003}",
-    "start": "webjs start",
-    "css:build": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify",
-    "preview:build": "node scripts/copy-registry.js"
-  },
-  "webjs": {
-    "dev": {
-      "before": ["node scripts/copy-registry.js", "npm run css:build"],
-      "regenerate": [{ "output": "public/tailwind.css", "command": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify", "inputs": ["app", "components", "../../registry/components", "public/input.css"] }]
-    },
-    "start": { "before": ["node scripts/copy-registry.js", "npm run css:build"] }
+    "start": "webjs start"
   },
   "dependencies": {
     "@webjsdev/cli": "^0.10.0",
     "@webjsdev/core": "^0.7.0",
-    "@webjsdev/server": "^0.8.0",
-    "@webjsdev/ui-registry": "*"
+    "@webjsdev/server": "^0.8.0"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "^4.2.2",
     "@types/node": "^24.0.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
   }
 }

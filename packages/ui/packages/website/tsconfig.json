@@ -3,37 +3,14 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
     "types": ["node"],
     "noEmit": true,
-    "checkJs": false,
-    "allowJs": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": false,
-    "erasableSyntaxOnly": true,
-    "jsx": "preserve",
-    "plugins": [
-      {
-        "name": "@webjsdev/intellisense"
-      }
-    ]
+    "erasableSyntaxOnly": true
   },
-  "include": [
-    "app/**/*",
-    "components/**/*",
-    "lib/**/*",
-    "middleware.js",
-    "middleware.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    ".webjs"
-  ]
+  "include": ["app/**/*", "middleware.ts"],
+  "exclude": ["node_modules", ".webjs"]
 }
