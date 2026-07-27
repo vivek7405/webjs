@@ -492,10 +492,12 @@ export async function ssrUnauthorized(route, opts) {
  * keeps whatever reuse the page declared. `Vary` stays too, as belt-and-braces
  * for caches that do honour it.
  *
- * Note this also drops the response out of the conditional-GET funnel, whose
- * `isCacheable` excludes `private`. That is deliberate: the client router
- * revalidates its own fetches (#1131) and dedupes through its snapshot cache,
- * so a fragment ETag was buying nothing.
+ * The response KEEPS its validator. `private` forbids shared storage, not
+ * validation, so the funnel still attaches an ETag (see conditional-get.js,
+ * which stopped excluding `private` for exactly this reason). That matters:
+ * the router fetches partials with `cache: 'no-cache'` (#1131), so without a
+ * validator every prefetch and soft navigation would re-download the whole
+ * fragment instead of being answered 304.
  *
  * @param {Response} res
  */
@@ -555,7 +557,7 @@ function htmlResponse(html, status, req, url, metadata) {
   // applySwap and publishedBuildId() in importmap.js.
   headers.set('x-webjs-build', publishedBuildId());
   headers.set('x-webjs-src', appSourceId());
-  // Buffered (string) body: opt into the conditional-GET funnel so a
+  // Buffered (string) body: opt into the conditional-GET funnel.
   // A cacheable page (metadata.cacheControl) gets a weak ETag + 304. The
   // funnel excludes only the no-store default; a `private` page IS validated,
   // which is what keeps the router's partial responses cheap (#1140).

@@ -105,7 +105,7 @@ An ETag is a short fingerprint of a response, like a version stamp. WebJs puts o
 
 This is on by default and needs no code. It covers cacheable SSR pages, static assets in `public/`, your app's source modules, and the core and vendor runtime uniformly. The ETag is the hash of the response body, so an identical body always produces an identical ETag.
 
-Crucially, it is careful about privacy. A `no-store` page (the default for dynamic and per-user pages) and any `private` response get no ETag and never 304, because a shared cache keyed on the URL could otherwise replay one user's validator to another. The same private-content instinct as the `revalidate` rule, applied one layer down.
+Crucially, it is careful about privacy. A `no-store` page (the default for dynamic and per-user pages) and a `no-store` response gets no ETag and never 304s, because it forbids storage outright and so has nothing to validate. A `private` response is validated normally: `private` forbids only SHARED storage, and the ETag hashes that response's own body, so one user's validator can never match another's. The same private-content instinct as the `revalidate` rule, applied one layer down.
 
 # Layer 5: content-hash asset URLs
 

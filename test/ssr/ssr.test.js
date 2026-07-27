@@ -1020,6 +1020,63 @@ test('ssrPage: a REDUCED response is never shared-cacheable, whatever the page d
     'a full document keeps the page-declared Cache-Control byte for byte');
 });
 
+test('ssrPage: a QUALIFIED private is still downgraded on a fragment (#1140)', async () => {
+  // `private="x-user"` marks only the NAMED header fields private per RFC 9111
+  // and leaves the response itself storable by a shared cache, so it must not
+  // be mistaken for an already-unshareable value and passed through.
+  const { route, appDir } = await makeRoute({
+    pageSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export const metadata = { cacheControl: 'private="x-user", public, max-age=60, s-maxage=600' };\n` +
+      `export default function Page() { return html\`<p>page body</p>\`; }\n`,
+    layoutSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export default function Layout({ children }) { return html\`<div class="OUTER">\${children}</div>\`; }\n`,
+    metadata:
+      `export const metadata = { cacheControl: 'private="x-user", public, max-age=60, s-maxage=600' };\n`,
+  });
+  const url = new URL('http://localhost/');
+  const req = new Request(url.toString(), { headers: { 'x-webjs-have': '/:/' } });
+  const resp = await ssrPage(route, {}, url, { dev: false, appDir, req });
+  const body = await resp.text();
+  assert.ok(!body.includes('OUTER'), 'sanity: the response really was reduced');
+
+  const cc = resp.headers.get('cache-control') || '';
+  assert.doesNotMatch(cc, /(^|,)\s*public\s*(,|$)/, `public must be stripped, got: ${cc}`);
+  assert.doesNotMatch(cc, /s-maxage/i, `the shared TTL must be stripped, got: ${cc}`);
+  assert.match(cc, /(^|,)\s*private\s*(,|$)/, `a bare private must be added, got: ${cc}`);
+});
+
+test('ssrPage: a quoted directive argument survives the downgrade intact (#1140)', async () => {
+  // A quoted argument carries a comma INSIDE it. A splitter that is not
+  // quote-aware tears it in two, and re-joining reassembles it with DIFFERENT
+  // inner spacing, so the argument no longer round-trips byte for byte. The
+  // no-space form is what discriminates: with a space after the comma the
+  // naive split happens to rebuild the original and proves nothing.
+  const declared = 'public, max-age=60, s-maxage=600, no-cache="Set-Cookie,X-Foo"';
+  const { route, appDir } = await makeRoute({
+    pageSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export const metadata = { cacheControl: '${declared}' };\n` +
+      `export default function Page() { return html\`<p>page body</p>\`; }\n`,
+    layoutSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export default function Layout({ children }) { return html\`<div class="OUTER">\${children}</div>\`; }\n`,
+    metadata:
+      `export const metadata = { cacheControl: '${declared}' };\n`,
+  });
+  const url = new URL('http://localhost/');
+  const req = new Request(url.toString(), { headers: { 'x-webjs-have': '/:/' } });
+  const resp = await ssrPage(route, {}, url, { dev: false, appDir, req });
+  await resp.text();
+
+  const cc = resp.headers.get('cache-control') || '';
+  assert.ok(cc.includes('no-cache="Set-Cookie,X-Foo"'),
+    `the quoted argument must survive byte for byte, got: ${cc}`);
+  assert.match(cc, /(^|,)\s*private\s*(,|$)/, `still downgraded, got: ${cc}`);
+  assert.doesNotMatch(cc, /s-maxage/i, `shared TTL stripped, got: ${cc}`);
+});
+
 test('ssrPage: a non-200 never inherits the page cacheControl (#1140)', async () => {
   // The page-action re-render is a 422 carrying the submitter's own field
   // values and errors. It must not go out shared-cacheable just because the

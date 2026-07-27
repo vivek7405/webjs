@@ -7,8 +7,11 @@
  * The headline behaviours:
  *   - a cacheable page (metadata.cacheControl public) gets an ETag, and a
  *     repeat request with a matching If-None-Match gets a 304 with no body;
- *   - a no-store page gets NO ETag and never 304s (no cross-session 304 on
- *     private content);
+ *   - a no-store page gets NO ETag and never 304s (storage is forbidden, so
+ *     there is nothing to validate);
+ *   - a `private` page DOES get an ETag and 304s: private forbids SHARED
+ *     storage, not validation, which is what keeps the client router's
+ *     partial responses cheap (#1140);
  *   - a static asset / app module gets an ETag and 304s on a match;
  *   - a non-matching If-None-Match returns 200 + the full body;
  *   - the ETag is stable for identical content across requests.
@@ -192,7 +195,7 @@ test('a no-store (dynamic / per-user) page gets NO ETag and never 304s', async (
   assert.equal(first.headers.get('x-webjs-buffered'), null, 'internal buffered marker never leaks');
 
   // Even if a client replays the page's prior body hash, a no-store page must
-  // not 304 (no cross-session 304 on private content).
+  // not 304 (no-store forbids storage, so there is nothing to validate).
   const replay = await app.handle(
     new Request('http://x/', { headers: { 'if-none-match': '*' } })
   );
