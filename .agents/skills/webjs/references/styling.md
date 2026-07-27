@@ -127,6 +127,10 @@ The default stack is a static compiled Tailwind stylesheet (`css:build` compiles
     --border:           light-dark(#e2e5e9, #3d434b);
     --ring:             light-dark(#9aa1a9, #6c737b);
     --destructive:      light-dark(#b3261e, #f2b8b5);
+    /* every FILL token needs its foreground pair, and the pair flips per
+       theme: a dark fill takes light text, a light one takes dark text */
+    --primary-foreground:     light-dark(#ffffff, #191c20);
+    --destructive-foreground: light-dark(#ffffff, #601410);
     /* a derived token tracks BOTH themes for free via var(--primary) */
     --primary-tint: color-mix(in srgb, var(--primary) 22%, transparent);
   }
@@ -141,7 +145,7 @@ The default stack is a static compiled Tailwind stylesheet (`css:build` compiles
 
 **Edge cases.** `light-dark()` is COLOUR-only. A colour needed in just one theme sets the unused side to a no-op (`light-dark(#fff, transparent)`). A derived token that references a `light-dark()` one (like `--primary-tint` above) tracks both themes automatically. A NON-colour token that must differ per theme (a shadow's geometry, a gradient, a size, an image) cannot use `light-dark()`; give it a `:root[data-theme='dark']` override plus an `@media (prefers-color-scheme: dark) { :root:not([data-theme]) { ... } }` rule for the OS default.
 
-**The ui class helpers build on these tokens.** `buttonClass()` / `cardClass()` / `inputClass()` / `badgeClass()` emit Tailwind utilities that reference the same tokens (`bg-primary`, `border-border`), so theming the tokens re-skins every helper at once.
+**The ui class helpers build on these tokens.** `buttonClass()` / `cardClass()` / `inputClass()` / `badgeClass()` emit Tailwind utilities that reference the same tokens (`bg-primary`, `border-border`), so theming the tokens re-skins every helper at once. A filled variant pairs `bg-<token>` with `text-<token>-foreground`, so **define the `-foreground` half of every fill token you override**, or that variant's text falls back to whatever it inherits. Check the pair in BOTH themes: the palette above uses a deep red in light and a light red in dark, so a single near-white foreground would read at 6.5:1 in light and 1.7:1 in dark. That is why the two halves flip together rather than the fill carrying a fixed white.
 
 **Focus rings.** The design system applies ONE themed, keyboard-only focus ring globally in the theme CSS: `@layer base { * { @apply border-border outline-ring/50 } }` themes the outline COLOUR to `--ring/50`, and a `:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-ring) 50%, transparent); outline-offset: 2px }` forces a SOLID outline. That second rule matters: `outline-ring/50` alone leaves `outline-style: auto`, so the browser draws its OWN focus ring (which can look thick and white and ignore the colour). So every focusable element (button, link, input) shares one `--ring`-coloured ring with no per-element styling (a native `<button>` renders it a touch wider than a link, a Chromium form-control quirk, but the colour is the same). Do NOT re-add a focus style on a light-DOM element (`buttonClass` deliberately carries none), and NEVER remove it (`outline: none` with no replacement fails WCAG 2.4.7). `:focus-visible` already limits the ring to keyboard / programmatic focus, not a mouse click. A SHADOW-DOM component is the ONE exception: a document rule cannot cross the shadow boundary, so it styles its own focus in `static styles`, matching the global ring EXACTLY (`--ring` at 50%, the same as `outline-ring/50`): `button:focus-visible { outline: 2px solid color-mix(in oklab, var(--color-ring) 50%, transparent); outline-offset: 2px }`. Without it, its controls fall back to the raw browser outline (thick, light on a dark theme, and shown on window-refocus).
 
