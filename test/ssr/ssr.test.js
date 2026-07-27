@@ -1020,6 +1020,27 @@ test('ssrPage: a REDUCED response is never shared-cacheable, whatever the page d
     'a full document keeps the page-declared Cache-Control byte for byte');
 });
 
+test('ssrPage: a non-200 never inherits the page cacheControl (#1140)', async () => {
+  // The page-action re-render is a 422 carrying the submitter's own field
+  // values and errors. It must not go out shared-cacheable just because the
+  // page opted into public caching.
+  const { route, appDir } = await makeRoute({
+    pageSrc:
+      `import { html } from ${JSON.stringify(HTML_MODULE_URL)};\n` +
+      `export const metadata = { cacheControl: 'public, max-age=60, s-maxage=600' };\n` +
+      `export default function Page() { return html\`<p>page body</p>\`; }\n`,
+    metadata:
+      `export const metadata = { cacheControl: 'public, max-age=60, s-maxage=600' };\n`,
+  });
+  const url = new URL('http://localhost/');
+  const ok = await ssrPage(route, {}, url, { dev: false, appDir });
+  assert.equal(ok.headers.get('cache-control'), 'public, max-age=60, s-maxage=600',
+    'a 200 still honours the page cacheControl');
+  const errored = await ssrPage(route, {}, url, { dev: false, appDir, status: 422 });
+  assert.equal(errored.headers.get('cache-control'), 'no-store',
+    'a 422 re-render is never cacheable');
+});
+
 test('ssrPage: a REDUCED have-response carries Vary: X-Webjs-Have; a full one does not (#1009)', async () => {
   // A reduced response (outer chrome omitted) under a URL-only cache key is
   // latent cache poisoning: a shared cache could serve the fragment to a

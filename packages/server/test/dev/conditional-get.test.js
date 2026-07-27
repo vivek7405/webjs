@@ -112,6 +112,37 @@ test('cacheable page: a NON-matching If-None-Match returns 200 + full body', asy
   assert.ok(body.includes('cacheable'), 'full body is served on a mismatch');
 });
 
+/* ---------------- private (router fragment): still validated ---------------- */
+
+test('a PRIVATE response still gets an ETag and 304s (#1140)', async () => {
+  // The client router's partial responses are private by construction, and it
+  // fetches them with `cache: 'no-cache'` (#1131) precisely so a revalidation
+  // is a cheap conditional request. Excluding private from the validator path
+  // made every prefetch and soft navigation re-download the whole fragment.
+  //
+  // The old worry was a "cross-session" 304 on per-user content. It cannot
+  // happen: the ETag hashes THIS response's body, so two users with different
+  // bodies get different ETags and neither can match the other's, while two
+  // users with identical bodies are asking about identical bytes.
+  const appDir = makeApp({
+    'app/page.js':
+      `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+      `export const metadata = { cacheControl: 'private, max-age=60' };\n` +
+      `export default function P() { return html\`<h1>private body</h1>\`; }\n`,
+  });
+  const app = await createRequestHandler({ appDir, dev: true });
+  const first = await app.handle(new Request('http://x/'));
+  await first.text();
+  assert.equal(first.headers.get('cache-control'), 'private, max-age=60');
+  const etag = first.headers.get('etag');
+  assert.ok(etag, 'a private response carries a validator');
+
+  const second = await app.handle(new Request('http://x/', { headers: { 'if-none-match': etag } }));
+  const body = await second.text();
+  assert.equal(second.status, 304, 'a matching validator 304s');
+  assert.equal(body.length, 0, 'a 304 has no body');
+});
+
 /* ---------------- no-store page: no ETag, no 304 ---------------- */
 
 test('a no-store (dynamic / per-user) page gets NO ETag and never 304s', async () => {

@@ -164,12 +164,11 @@ export async function ssrPage(route, params, url, opts) {
         frameRes.headers.append('vary', 'X-Webjs-Frame');
         // #1009: a subtree sliced from a REDUCED render inherits its variance.
         if (reduced) frameRes.headers.append('vary', 'X-Webjs-Have');
-        // Today this response is built without page metadata, so it is already
-        // `no-store` and privateFragment is a no-op. Called anyway so the
-        // invariant holds by construction rather than by that coincidence: if
-        // the frame response ever starts carrying the page's cacheControl, it
-        // must not become shared-cacheable.
-        privateFragment(frameRes);
+        // No privateFragment call here on purpose: this response is built
+        // WITHOUT page metadata, so it is already `no-store` and the call
+        // would be dead code with nothing to assert against. The property is
+        // locked by a test instead, which fails if the frame response ever
+        // starts carrying the page's cacheControl.
         return frameRes;
       }
     }
@@ -502,12 +501,30 @@ export async function ssrUnauthorized(route, opts) {
  */
 function privateFragment(res) {
   const cc = res.headers.get('cache-control') || '';
-  if (/(?:^|,)\s*(?:no-store|private)\s*(?:,|$)/i.test(cc)) return;
-  // Strip the shared-cache directives, keep the client-facing ones.
-  const kept = cc
-    .split(',')
-    .map((d) => d.trim())
-    .filter((d) => d && !/^public$/i.test(d) && !/^s-maxage=/i.test(d) && !/^proxy-revalidate$/i.test(d));
+  if (!cc) return;
+  // Split on commas that are NOT inside a quoted argument: a directive may
+  // carry one (`no-cache="Set-Cookie, X-Foo"`, `private="x-user"`), and a naive
+  // split tears those apart.
+  const directives = [];
+  let buf = '';
+  let inQuotes = false;
+  for (const ch of cc) {
+    if (ch === '"') inQuotes = !inQuotes;
+    if (ch === ',' && !inQuotes) { directives.push(buf.trim()); buf = ''; continue; }
+    buf += ch;
+  }
+  directives.push(buf.trim());
+
+  // `name` is everything before the first `=`, trimmed, so `s-maxage = 600`
+  // and `private="x-user"` are recognised as the directives they are.
+  const nameOf = (d) => d.split('=')[0].trim().toLowerCase();
+  // Already unshareable: leave it exactly as the author wrote it. Matching on
+  // the parsed name catches the argument forms a regex over the raw string
+  // would miss.
+  if (directives.some((d) => nameOf(d) === 'no-store' || nameOf(d) === 'private')) return;
+
+  const SHARED_ONLY = new Set(['public', 's-maxage', 'proxy-revalidate']);
+  const kept = directives.filter((d) => d && !SHARED_ONLY.has(nameOf(d)));
   kept.unshift('private');
   res.headers.set('cache-control', kept.join(', '));
 }
@@ -523,9 +540,10 @@ function privateFragment(res) {
  */
 function htmlResponse(html, status, req, url, metadata) {
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
-  // Default: no caching. Pages are dynamic by default: the developer
-  // opts in to caching explicitly via metadata.cacheControl.
-  headers.set('cache-control', metadata?.cacheControl || 'no-store');
+  // Default: no caching. Pages are dynamic by default: the developer opts in
+  // explicitly via metadata.cacheControl. A non-200 does NOT inherit it
+  // (#1140); see streamingHtmlResponse for why.
+  headers.set('cache-control', status === 200 ? (metadata?.cacheControl || 'no-store') : 'no-store');
   // X-Webjs-Build carries the published build id so the client
   // router can detect post-deploy importmap changes on EVERY
   // response, including the X-Webjs-Have partial responses that
@@ -2002,8 +2020,11 @@ function streamingHtmlResponse(prefix, bodyHtml, closer, ctx, status, req, url, 
   const encoder = new TextEncoder();
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
   // Default: no caching. Pages are dynamic by default: the developer
-  // opts in to caching explicitly via metadata.cacheControl.
-  headers.set('cache-control', metadata?.cacheControl || 'no-store');
+  // opts in to caching explicitly via metadata.cacheControl. A non-200 does
+  // NOT inherit it (#1140): the page-action re-render is a 422 carrying the
+  // submitter's own field values and errors, which must never be handed to a
+  // shared cache just because the page opted into public caching.
+  headers.set('cache-control', status === 200 ? (metadata?.cacheControl || 'no-store') : 'no-store');
   // See htmlResponse: published build id on every response for the
   // client router's importmap-mismatch detection on partial swaps.
   headers.set('x-webjs-build', publishedBuildId());

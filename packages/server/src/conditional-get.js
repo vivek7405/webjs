@@ -77,11 +77,25 @@ const STRIP_ON_304 = ['content-length', 'content-encoding', 'content-type'];
 
 /**
  * Is this response cacheable enough to carry a validator?  Cacheable means a
- * 200 whose `Cache-Control` is present and does not forbid storage. A
- * `no-store` or `private` response is excluded (private / per-user content
- * must never get a cross-session 304). `no-cache` is INCLUDED: it means
- * "revalidate before reuse", and a 304 is exactly that revalidation answer,
- * so dev's `no-cache` assets still benefit.
+ * 200 whose `Cache-Control` is present and does not forbid STORAGE. Only
+ * `no-store` is excluded. `no-cache` is INCLUDED: it means "revalidate before
+ * reuse", and a 304 is exactly that revalidation answer, so dev's `no-cache`
+ * assets still benefit.
+ *
+ * `private` is INCLUDED too (#1140). It was excluded on the theory that
+ * per-user content must never get a "cross-session" 304, but that cannot
+ * happen: the ETag is a hash of THIS response's body, and a 304 is returned
+ * only when the client's own `If-None-Match` matches it. Two users with
+ * different bodies get different ETags, so neither can ever match the other's;
+ * two users with identical bodies are asking about identical bytes, where a
+ * 304 is the correct answer and carries no body either way. `private` already
+ * forbids the one real hazard, a SHARED cache storing the response.
+ *
+ * Excluding it had a concrete cost. The client router's partial responses are
+ * private by construction, and it fetches them with `cache: 'no-cache'` (#1131)
+ * precisely so a revalidation is a cheap 304 rather than a re-download. With
+ * no validator attached, every prefetch and soft navigation re-downloaded the
+ * whole fragment.
  *
  * @param {Response} res
  * @returns {boolean}
@@ -90,7 +104,7 @@ function isCacheable(res) {
   if (res.status !== 200) return false;
   const cc = res.headers.get('cache-control');
   if (!cc) return false;
-  return !/(?:^|,)\s*(?:no-store|private)\s*(?:,|$)/i.test(cc);
+  return !/(?:^|,)\s*no-store\s*(?:,|$)/i.test(cc);
 }
 
 /**
