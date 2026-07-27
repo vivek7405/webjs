@@ -170,7 +170,7 @@ export default function Layout({ children }: { children: any }) {
           --border-strong: oklch(0.44 0 0 / 0.92);
           --accent:        oklch(0.7 0.16 52);
           --accent-hover:  oklch(0.75 0.16 52);
-          --accent-fg:     oklch(0.17 0.02 52);
+          --accent-fg:     oklch(0.1 0.01 52);
           --logo-from:     oklch(0.8 0.16 58);
           --logo-to:       oklch(0.62 0.18 44);
           --glow-strength: 0.16;
@@ -201,7 +201,7 @@ export default function Layout({ children }: { children: any }) {
         --border-strong: oklch(0.44 0 0 / 0.92);
         --accent:        oklch(0.7 0.16 52);
         --accent-hover:  oklch(0.75 0.16 52);
-        --accent-fg:     oklch(0.17 0.02 52);
+        --accent-fg:     oklch(0.1 0.01 52);
         --logo-from:     oklch(0.8 0.16 58);
         --logo-to:       oklch(0.62 0.18 44);
         --glow-strength: 0.16;
