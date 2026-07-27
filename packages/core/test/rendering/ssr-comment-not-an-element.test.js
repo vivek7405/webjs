@@ -15,6 +15,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { html, renderToString, WebComponent } from '../../index.js';
+import { unsafeHTML } from '../../src/directives.js';
 
 class CommentProbe extends WebComponent {
   render() { return html`<b>RENDERED</b>`; }
@@ -253,6 +254,48 @@ test('iframe fallback content is text, not markup', async () => {
   );
   assert.ok(!out.includes('RENDERED'), 'a component tag inside an iframe does not render');
   assert.ok(out.includes('<span>after</span>'), 'markup after the iframe survives');
+});
+
+test('a component inside noscript still renders', async () => {
+  // The exclusion that matters most, and the one a future widening of the
+  // text-only list would silently break. A browser with scripting disabled
+  // parses noscript content as markup, and that reader is exactly who
+  // server-rendered output exists for, so components inside it must render.
+  const out = await renderToString(
+    html`<div><noscript><comment-probe></comment-probe></noscript></div>`
+  );
+  assert.ok(out.includes('RENDERED'), 'noscript content is markup, not text');
+});
+
+test('a component inside a template still renders', async () => {
+  // The other exclusion: template content is parsed, and Declarative Shadow DOM
+  // and the streamed swap templates both depend on components inside it.
+  const out = await renderToString(
+    html`<div><template><comment-probe></comment-probe></template></div>`
+  );
+  assert.ok(out.includes('RENDERED'), 'template content is parsed as markup');
+});
+
+test('the other text-only elements are text too', async () => {
+  // iframe is covered separately as the realistic case; these pin the rest of
+  // the set so a future trim of the predicate reds a test instead of silently
+  // reintroducing the document-destroying path.
+  for (const tag of ['xmp', 'noembed', 'noframes']) {
+    const out = await renderToString(
+      html`<div>${unsafeHTML(`<${tag}>see <comment-probe> here</${tag}>`)}<span>after</span></div>`
+    );
+    assert.ok(!out.includes('RENDERED'), `a component tag inside <${tag}> does not render`);
+    assert.ok(out.includes('<span>after</span>'), `markup after <${tag}> survives`);
+  }
+});
+
+test('plaintext runs to the end of the document', async () => {
+  // plaintext has no end tag at all: everything after it is text, so nothing
+  // following can be a component.
+  const out = await renderToString(
+    html`<div><plaintext>see <comment-probe> here</div>`
+  );
+  assert.ok(!out.includes('RENDERED'), 'nothing after plaintext is instantiated');
 });
 
 test('a markup declaration does not expose the markup after it', async () => {
