@@ -274,16 +274,11 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
          attribute the way it did when each element carried its own handler. -->
     <div class="docs-backdrop"></div>
 
-    <!-- The OUTER container matches the shared header (max-w-[1240px] mx-auto
-         px-6) so the sidebar's left edge sits flush under the wordmark above
-         it, while the CONTENT column below is capped independently at 800px.
-         The two are separate decisions and worth keeping separate: alignment
-         is a property of the page frame, and 800px is the comfortable ceiling
-         for a reference page read line by line. #1101 moved both to 1240/820
-         together, which fixed neither.
-
-         The slack lands as extra space between the sidebar and the text
-         rather than as a longer line, which is the trade being made here. -->
+    <!-- Same container as the shared header (max-w-[1240px] mx-auto px-6), so
+         the sidebar's left edge lines up with the wordmark above it and the
+         content column lines up with every other page on the site. A
+         full-bleed docs shell was the other tell that this section was pasted
+         in from somewhere else. -->
     <div class="max-w-[1240px] mx-auto px-6 grid grid-cols-[248px_1fr] gap-10 min-h-screen max-[860px]:grid-cols-1 max-[860px]:gap-0">
       <aside
         id="docs-sidebar"
@@ -310,7 +305,7 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
           `)}
         </nav>
       </aside>
-      <main id="main" tabindex="-1" class="min-w-0 max-w-[800px] pt-10 pb-16 focus:outline-none">
+      <main id="main" tabindex="-1" class="min-w-0 max-w-[820px] pt-10 pb-16 focus:outline-none">
         <button
           class="docs-nav-toggle hidden max-[860px]:inline-flex items-center gap-2 mb-6 px-3 py-2 rounded-lg border border-border bg-bg-elev text-fg-muted text-sm cursor-pointer transition-colors duration-fast hover:text-fg hover:border-border-strong"
           aria-controls="docs-sidebar"
