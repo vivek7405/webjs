@@ -21,8 +21,14 @@ dir=$(dirname "$fp")
 if [ ! -d "$dir" ]; then exit 0; fi
 if ! git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then exit 0; fi
 
-gd=$(git -C "$dir" rev-parse --git-dir 2>/dev/null) || exit 0
-gcd=$(git -C "$dir" rev-parse --git-common-dir 2>/dev/null) || exit 0
+# Both paths ABSOLUTE, or the comparison lies: invoked via -C on a SUBDIR of
+# the primary, git prints --git-dir absolute and --git-common-dir relative
+# (../../.git), so a raw string compare misclassifies the primary as a linked
+# worktree and the gate fails open for the whole source tree (caught in
+# review; the tests only covered root-level files).
+gd=$(git -C "$dir" rev-parse --path-format=absolute --git-dir 2>/dev/null) || exit 0
+gcd=$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exit 0
+if [ -z "$gd" ] || [ -z "$gcd" ]; then exit 0; fi
 # Linked worktree: --git-dir carries /worktrees/<name> and differs from the
 # common dir. Only the primary checkout has them equal.
 if [ "$gd" != "$gcd" ]; then exit 0; fi

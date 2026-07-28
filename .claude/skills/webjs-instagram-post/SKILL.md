@@ -111,10 +111,12 @@ only has to exist for that one call, then it is deleted.
 ```sh
 SLUG=works-without-javascript                 # match the post topic
 BR=chore/ig-social-$SLUG
-git -C "$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')" worktree add -b "$BR" ../webjs-ig-social origin/main  # rooted at the PRIMARY checkout, so it never nests under a task worktree
-mkdir -p ../webjs-ig-social/website/public/social
-cp "$OUT" ../webjs-ig-social/website/public/social/$SLUG.jpg
-( cd "$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')/../webjs-ig-social"
+PRIMARY=$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')  # every path below roots here, so nothing nests under a task worktree or lands beside the session cwd
+git -C "$PRIMARY" worktree add -b "$BR" ../webjs-ig-social origin/main
+IG="$PRIMARY/../webjs-ig-social"
+mkdir -p "$IG/website/public/social"
+cp "$OUT" "$IG/website/public/social/$SLUG.jpg"
+( cd "$IG"
   git add website/public/social/$SLUG.jpg
   git commit -q -m "chore: add $SLUG Instagram social card asset"
   git push -q -u origin "$BR" )
@@ -126,7 +128,7 @@ IMG="https://raw.githubusercontent.com/webjsdev/webjs/$BR/website/public/social/
 After the post is published in Step 4, tear the branch down so nothing lingers:
 
 ```sh
-git worktree remove ../webjs-ig-social --force
+git -C "$PRIMARY" worktree remove ../webjs-ig-social --force  # PRIMARY from the setup block above
 git branch -D "$BR"
 git push origin --delete "$BR"
 ```

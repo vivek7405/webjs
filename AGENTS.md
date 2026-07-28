@@ -65,7 +65,7 @@ A Skill is model-invoked, so it fires only when the model judges a match. The `.
 
 ### Autonomous mode (sandbox / bypass permissions)
 
-When interactive approval is disabled, never block on questions. Auto-decide: on `main`, auto-create `feature/<task-slug>`; auto-rebase if the parent moved; auto-merge when ready; **delete** feature/fix branches after merge but **keep** long-lived ones (dev, staging, release/*); auto-generate meaningful commit messages; fix failing tests / convention violations rather than asking. Autonomous mode is MORE disciplined, not less, with the same quality bar.
+When interactive approval is disabled, never block on questions. Auto-decide: cut the task's worktree from `origin/main` (auto-create `<prefix>/<task-slug>` per the label scheme); auto-rebase if the parent moved; auto-merge when ready; **delete** feature/fix branches after merge but **keep** long-lived ones (dev, staging, release/*); auto-generate meaningful commit messages; fix failing tests / convention violations rather than asking. Autonomous mode is MORE disciplined, not less, with the same quality bar.
 
 ### Code workflow (mandatory)
 
