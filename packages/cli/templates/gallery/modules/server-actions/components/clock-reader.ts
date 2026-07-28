@@ -23,8 +23,10 @@ export class ClockReader extends WebComponent {
   private busy = signal(false);
   private error = signal('');
 
-  private now(): string {
-    return new Date().toLocaleTimeString('en-US', { hour12: false });
+  // Both timestamps are formatted here, in the visitor's timezone, so the server
+  // instant and the click time are directly comparable wherever this is deployed.
+  private clock(value: Date | string): string {
+    return new Date(value).toLocaleTimeString('en-US', { hour12: false });
   }
 
   async read() {
@@ -33,7 +35,7 @@ export class ClockReader extends WebComponent {
     if (this.busy.get()) return;
     this.busy.set(true);
     this.error.set('');
-    const clickedAt = this.now();
+    const clickedAt = this.clock(new Date());
     try {
       // A GET action returns its value directly. The stub THROWS on a transport
       // failure, so the call is guarded the same way the envelope is narrowed.
@@ -67,23 +69,28 @@ export class ClockReader extends WebComponent {
       <div class="${cardClass()} grid gap-4 p-5 max-w-[520px]">
         <div class="flex flex-wrap gap-2">
           <button type="button" @click=${() => this.read()} ?disabled=${this.busy.get()}
+            aria-busy=${this.busy.get() ? 'true' : 'false'}
             class=${buttonClass()}>Read</button>
           <button type="button" @click=${() => this.bump()} ?disabled=${this.busy.get()}
+            aria-busy=${this.busy.get() ? 'true' : 'false'}
             class=${buttonClass({ variant: 'secondary' })}>Bump the counter</button>
         </div>
-        ${rows.length
-          ? html`
-              <ul class="m-0 grid gap-1 list-none p-0 font-mono text-sm">
-                ${rows.map((r) => html`
-                  <li class="flex justify-between gap-4">
-                    <span class="text-foreground">reading #${r.reading}, served ${r.serving} at ${r.at}</span>
-                    <span class="text-muted-foreground">clicked ${r.clickedAt}</span>
-                  </li>
-                `)}
-              </ul>
-            `
-          : html`<p class="m-0 text-sm text-muted-foreground">Press Read twice in a row, then bump and read again.</p>`}
-        ${this.error.get() ? html`<p class="m-0 text-sm text-destructive">${this.error.get()}</p>` : ''}
+        <!-- The results are swapped in after a click, so they are announced. -->
+        <div role="status" aria-live="polite">
+          ${rows.length
+            ? html`
+                <ul class="m-0 grid gap-1 list-none p-0 font-mono text-sm">
+                  ${rows.map((r) => html`
+                    <li class="flex justify-between gap-4">
+                      <span class="text-foreground">reading #${r.reading}, served ${r.serving} at ${this.clock(r.at)}</span>
+                      <span class="text-muted-foreground">clicked ${r.clickedAt}</span>
+                    </li>
+                  `)}
+                </ul>
+              `
+            : html`<p class="m-0 text-sm text-muted-foreground">Press Read twice in a row, then bump and read again.</p>`}
+        </div>
+        ${this.error.get() ? html`<p role="alert" class="m-0 text-sm text-destructive">${this.error.get()}</p>` : ''}
       </div>
     `;
   }

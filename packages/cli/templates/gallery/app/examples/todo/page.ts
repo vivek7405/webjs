@@ -14,7 +14,8 @@ import '#modules/todo/components/todo-app.ts';
 export const metadata: Metadata = { title: 'Todo (optimistic UI) | examples' };
 
 export default async function TodoExample() {
-  // SSR-fetched and seeded, so <todo-app> paints the real list on first byte.
+  // Fetched here on the server and handed down as a property, so <todo-app>
+  // paints the real list on the first byte with nothing to fetch on hydration.
   const todos = await listTodos();
   return html`
     ${pageHeading('Optimistic todo')}

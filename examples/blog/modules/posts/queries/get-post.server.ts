@@ -5,9 +5,12 @@ import { formatPost } from '#modules/posts/utils/slugify.ts';
 import type { PostFormatted } from '#modules/posts/types.ts';
 
 // A GET server action (#488): a single-post read declares its HTTP semantics
-// via reserved sibling exports. Calls from a page / route.ts run the function
-// directly, but exposed at a route() boundary the GET is cacheable, ETag-aware
-// and SSR-seeded. The per-post `post:` tag (resolved from the `slug` arg) is
+// via reserved sibling exports. They shape the RPC endpoint a browser import
+// hits, where the GET is cacheable and ETag-aware. A call from a page or a
+// route.ts runs the function in-process and skips all of it (route() picks up
+// only a declared validate and middleware, never the cache exports), so an
+// endpoint that wants caching sets its own headers. The per-post `post:` tag
+// (resolved from the `slug` arg) is
 // what `deletePost` evicts. Cache stays private (the default); a public blog
 // post is identical for everyone, but private is the safe baseline.
 export const method = 'GET';

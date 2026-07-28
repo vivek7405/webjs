@@ -27,9 +27,12 @@ export const cache = 10;
 export const tags = () => ['clock'];
 
 export async function readClock(): Promise<{ reading: number; serving: number; at: string }> {
+  // `at` goes over the wire as an ISO instant, not a formatted local time: the
+  // card sits it next to a browser-side timestamp, and a server in another
+  // timezone would otherwise put the two columns hours apart.
   // `serving` counts the times this body actually ran, so a repeat call answered
   // from the browser cache is visible: the number does not move. It is also why
   // this particular read never answers a 304, since a per-execution counter gives
   // every response a different ETag. A read whose result is stable does.
-  return { ...serveReading(), at: new Date().toLocaleTimeString('en-US', { hour12: false }) };
+  return { ...serveReading(), at: new Date().toISOString() };
 }
