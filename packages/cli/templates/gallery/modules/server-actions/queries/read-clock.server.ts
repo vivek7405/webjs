@@ -14,12 +14,14 @@
 //   tags       labels this cached entry so a mutation can evict it by name.
 //
 // One function per file is required once a file carries these config exports.
-import { currentReading } from '../utils/clock.server.ts';
+import { serveReading } from '../utils/clock.server.ts';
 
 export const method = 'GET';
 export const cache = 10;
 export const tags = () => ['clock'];
 
-export async function readClock(): Promise<{ reading: number; at: string }> {
-  return { reading: currentReading(), at: new Date().toLocaleTimeString('en-US', { hour12: false }) };
+export async function readClock(): Promise<{ reading: number; serving: number; at: string }> {
+  // `serving` counts the times this body actually ran, so a repeat call answered
+  // from the browser cache is visible: the number does not move.
+  return { ...serveReading(), at: new Date().toLocaleTimeString('en-US', { hour12: false }) };
 }

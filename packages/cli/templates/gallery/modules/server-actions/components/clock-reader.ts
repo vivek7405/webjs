@@ -13,6 +13,7 @@ import { bumpClock } from '../actions/bump-clock.server.ts';
 
 interface Row {
   reading: number;
+  serving: number;
   at: string;
   readAt: string;
 }
@@ -59,8 +60,8 @@ export class ClockReader extends WebComponent {
               <ul class="m-0 grid gap-1 list-none p-0 font-mono text-sm">
                 ${rows.map((r) => html`
                   <li class="flex justify-between gap-4">
-                    <span class="text-foreground">reading #${r.reading}, server ${r.at}</span>
-                    <span class="text-muted-foreground">read at ${r.readAt}</span>
+                    <span class="text-foreground">reading #${r.reading}, served ${r.serving} at ${r.at}</span>
+                    <span class="text-muted-foreground">clicked ${r.readAt}</span>
                   </li>
                 `)}
               </ul>

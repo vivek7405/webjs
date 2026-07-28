@@ -46,9 +46,10 @@ export default function ServerActionsExample() {
     <p class="text-muted-foreground mb-4">
       <code class="font-mono">tags</code> labels the cached entry and
       <code class="font-mono">invalidates</code> on the mutation evicts it by name.
-      Press Read twice inside ten seconds: the server value stays frozen while the read
-      time keeps moving, which is the browser cache answering. Then bump the counter and
-      read again. The value changes immediately, because the mutation reported its
+      The read reports how many times it actually ran on the server, so press Read twice
+      inside ten seconds and that count does not move: the second answer came from the
+      browser cache without reaching the server. Then bump the counter and read again.
+      The count moves and the value is fresh, because the mutation reported its
       invalidated tag and the next read bypassed the stale entry instead of waiting out
       the window.
     </p>
