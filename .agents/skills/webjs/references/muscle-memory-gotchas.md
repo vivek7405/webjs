@@ -53,8 +53,11 @@ The reason is a source leak. During SSR a `.server.ts` import is the ACTUAL func
 // WRONG: throws at render; it would have leaked the action's body.
 import { submitFeedback } from '#modules/feedback/actions/submit-feedback.server.ts';
 html`<form method="post" action=${submitFeedback}>`;
-// RIGHT: post to the page's own url and handle it in the page's `action` export.
-html`<form method="post" action="">`;
+// RIGHT: omit action entirely to post to the page's own url, and handle the
+// submission in that page's `action` export. (Omit it rather than writing
+// action="": the HTML spec requires a non-empty URL when the attribute is
+// present, so the empty string is a conformance error.)
+html`<form method="post">`;
 ```
 
 A string stays a string: `action="/search"` and `action=${'/search'}` are unchanged. Other attributes keep their existing stringify behaviour; only `action` and `formaction` are claimed.
