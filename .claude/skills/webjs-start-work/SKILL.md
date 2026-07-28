@@ -318,19 +318,19 @@ Beyond review findings, proactively record the *reasoning* behind a PR as commen
 
 A review round is a READING pass, not a test run. The reviewer subagent reads the diff and the files; it does not execute suites. So a round costs seconds of wall clock, and the loop stays cheap **only if you do not attach a slow test run to each round**.
 
-**During the loop, run ONLY the fast layers:**
-- the specific unit test files covering the code you touched (`node --test <paths>`), and
-- targeted probe scripts when you need to confirm real behaviour rather than infer it.
+**Run NO test suite inside the loop.** Not the e2e suite, not the full Node suite, not the browser suite, not the Bun matrix, not the four-app boot check, and not `npm test` either. A round reads code; a suite tells you nothing a reading pass needs, and a finding fixed in round 2 invalidates whatever round 1's run told you anyway.
 
-**Do NOT run, at any point inside the loop:** the e2e suite (`WEBJS_E2E=1 …`, ~4 min), the full Node suite (`node scripts/run-node-tests.js`, ~5 min), the browser suite (`npm run test:browser`), the Bun matrix (`node scripts/run-bun-tests.js`), or the four-app dogfood boot check. A finding fixed in round 2 cannot change what the e2e did in round 1 in any way you could act on before the loop ends, so running them per round is pure repetition.
+The only two things worth executing mid-loop are both seconds long and are part of MAKING a fix, not part of reviewing it:
+- the specific test file(s) covering the line you just changed (`node --test <paths>`), to confirm the fix does what you think, and
+- a targeted probe script when you need to observe real behaviour instead of inferring it from the source.
 
-**After the LAST clean round, run the slow layers exactly once**, and only the ones the change can affect (a pure-prose docs change needs none; a renderer change needs browser and e2e; a listener/serializer change needs Bun). Report those results in the PR body.
+**Verification happens once, after the last clean round, and CI is the mechanism.** Push, `gh pr ready <N>`, and let the pipeline run everything in parallel on its own hardware. Run a suite locally at that point only for what CI does not gate (Bun parity, see below) or when you need the failure detail sooner than CI can produce it. Report the results in the PR body.
 
 **Prefer CI over a local slow run, but know exactly what CI gates.** Only FIVE checks are required by `main` branch protection: `Conventions (webjs check)`, `Unit + integration (node --test)`, `Browser (web-test-runner / Playwright)`, `E2E (Puppeteer against the blog example)`, and `Build (@webjsdev/core dist)`. Those five you can safely leave to CI: push, `gh pr ready <N>`, then `gh pr checks <N>` (add `--watch --interval 30` to block until they settle), and re-run locally only when you need the failure detail sooner.
 
 The other jobs (`Bun runtime smoke + test matrix`, `E2E (blog served on Bun)`, `In-repo app tests`, `Postgres prod-engine round-trip`, `Docker image build`) DO run on every PR but are NOT required, so a red one does not block the merge button. Verify the list rather than trusting this paragraph, since protection changes: `gh api repos/webjsdev/webjs/branches/main/protection --jq '.required_status_checks.contexts'`. Consequence that matters: **Bun parity is not enforced by the merge gate.** When the change touches runtime-sensitive code, read the Bun job's result explicitly (or run it locally) before merging; do not assume a green merge button means Bun passed.
 
-**Never BLOCK on CI between rounds.** Pushing is fire-and-forget: push, then immediately start the next review round while the jobs run. Do NOT sit on `gh pr checks --watch` between rounds, and do NOT pause the loop "until CI comes back". CI takes minutes, a round takes seconds, and a round that finds something means another push anyway, which supersedes the run you were waiting on. Read CI EXACTLY ONCE, after the last clean round, with a plain `gh pr checks <N>` (no `--watch`); only if something is still pending at that point is `--watch` appropriate. Waiting on a CI run that a later commit will invalidate is the same waste as re-running e2e per round.
+**Never wait for CI during the loop.** Push and immediately start the next round. No `gh pr checks --watch`, no pausing "until CI comes back". Read CI once, after the last clean round.
 
 **Baseline comparisons are worth it once, never repeatedly.** When a suite has pre-existing failures, comparing the failure SET against an `origin/main` worktree is the only way to tell a regression from ambient breakage, and it is worth the one run. Doing it again after each fix is not: re-diff only if a NEW failure name appears.
 
