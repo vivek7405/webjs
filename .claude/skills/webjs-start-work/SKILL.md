@@ -357,6 +357,14 @@ The draft PR is already open (step 6), so reviews post to it from the first roun
    - Asks for a numbered list with `file:line` references. Problems only, no suggestions.
    - Ends with: "If you find nothing genuinely wrong, say exactly `CLEAN` and stop. Do not pad."
 
+   **If the subagent cannot run, fall back; never stall.** The subagent is the PREFERRED reviewer, not a required one. It can fail in three ways that all look different and must all be handled the same: the spawn is declined at the permission prompt, the tool returns an error or a missing result, or the agent returns something unusable. In every case: retry AT MOST once, then **review the diff yourself inline and keep the loop going**. A blocked reviewer must never become a blocked loop.
+
+   Two rules that make the fallback honest:
+   - **A failed tool call is not work in progress.** An error or a missing result means nothing is running. Do not wait for it, do not poll for it, and do not tell the user it is "still going". If unsure, confirm with `TaskList` (empty means nothing is in flight) and move on immediately.
+   - **Self-review shares your blind spots, so compensate.** When reviewing your own diff, do not only re-read it: write a throwaway probe script that EXERCISES the claim (render the thing, call the function, assert the observable behaviour) and run it. Reading your own code confirms what you meant; probing it shows what it does. On this repo that difference has already caught a real bug that pure reading missed.
+
+   Say which mode the review ran in when you report, so a weaker inline round is visible rather than passing as a fresh-eyes one.
+
 2. **For each finding the subagent reports**, do exactly ONE of these three. There is no fourth option, and "mention it and move on" is not allowed:
    - **Fix it** on the branch (commit + push to update the PR), OR
    - **Reject it** explicitly with a one-sentence reason written in your reply to the user and in the PR body. Rejection has to be defensible (e.g. "the agent flagged X as a security issue but X runs server-side only and never reaches user input"). False positives are real; reject them on the merits, don't just hand-wave. OR
