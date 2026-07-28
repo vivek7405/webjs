@@ -71,37 +71,6 @@
  * opts in with `border-right: var(--wj-scrollbar-compensation, 0px) solid transparent`
  * (a transparent border composes with existing padding, and a background paints
  * across it, so a header keeps its own chrome full bleed).
- *
- * @example
- * ```html
- * <ui-dialog>
- *   <ui-dialog-trigger>
- *     <button class=${buttonClass({ variant: 'outline' })}>Edit profile</button>
- *   </ui-dialog-trigger>
- *   <ui-dialog-content>
- *     <div class=${dialogHeaderClass()}>
- *       <h2 data-slot="dialog-title" class=${dialogTitleClass()}>Edit profile</h2>
- *       <p data-slot="dialog-description" class=${dialogDescriptionClass()}>Make changes and click save.</p>
- *     </div>
- *     <div class="grid gap-3">
- *       <label class=${labelClass()} for="dlg-name">Name</label>
- *       <input class=${inputClass()} id="dlg-name" placeholder="Your name">
- *     </div>
- *     <div class=${dialogFooterClass()}>
- *       <ui-dialog-close><button class=${buttonClass({ variant: 'outline' })}>Cancel</button></ui-dialog-close>
- *       <button class=${buttonClass()}>Save</button>
- *     </div>
- *   </ui-dialog-content>
- * </ui-dialog>
- *
- * <!-- Suppress the auto-injected top-right X close button. -->
- * <ui-dialog-content show-close-button="false">
- *   <div class=${dialogHeaderClass()}>
- *     <h2 data-slot="dialog-title" class=${dialogTitleClass()}>Quiet dialog</h2>
- *   </div>
- * </ui-dialog-content>
- * ```
-
  */
 import { WebComponent, html, unsafeHTML, prop } from '@webjsdev/core';
 import { ref, createRef } from '@webjsdev/core/directives';
@@ -269,10 +238,12 @@ function lockScroll(): void {
 
 function unlockScroll(): void {
   const state = scrollLockState();
-  // An unlock with no matching lock is a no-op, NOT the last release. Clamping
-  // to zero and restoring would replay a stale snapshot onto whatever the page
-  // owns now, and it is reachable: a dialog with no content child returns from
-  // _setup() before locking, while _teardown() always unlocks.
+  // An unlock with no matching lock is a no-op, NOT the last release: clamping to
+  // zero and restoring would replay a stale snapshot onto whatever the page owns
+  // now. Belt-and-braces as things stand, because _teardown() only unlocks what
+  // its own element locked, so no path through the components can reach here with
+  // a zero count. It is kept because the cost is one comparison and the failure
+  // it prevents is silent.
   if (state.count === 0) return;
   state.count--;
   if (state.count === 0) {

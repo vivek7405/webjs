@@ -135,6 +135,7 @@ function installStyles(): void {
 // about both scrollbar geometry and gutter support. When mechanism 1 works the
 // measured residual is zero, so no padding is applied and the custom property is
 // never set: the two mechanisms cannot double-compensate.
+//
 // The lock's state is DOCUMENT level, so it is keyed on globalThis rather than
 // module scope. dialog.ts and alert-dialog.ts ship as separate copies (so
 // `webjs ui add alert-dialog` stays self contained), and two independent
@@ -219,10 +220,12 @@ function lockScroll(): void {
 
 function unlockScroll(): void {
   const state = scrollLockState();
-  // An unlock with no matching lock is a no-op, NOT the last release. Clamping
-  // to zero and restoring would replay a stale snapshot onto whatever the page
-  // owns now, and it is reachable: a dialog with no content child returns from
-  // _setup() before locking, while _teardown() always unlocks.
+  // An unlock with no matching lock is a no-op, NOT the last release: clamping to
+  // zero and restoring would replay a stale snapshot onto whatever the page owns
+  // now. Belt-and-braces as things stand, because _teardown() only unlocks what
+  // its own element locked, so no path through the components can reach here with
+  // a zero count. It is kept because the cost is one comparison and the failure
+  // it prevents is silent.
   if (state.count === 0) return;
   state.count--;
   if (state.count === 0) {
