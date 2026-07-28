@@ -111,10 +111,10 @@ only has to exist for that one call, then it is deleted.
 ```sh
 SLUG=works-without-javascript                 # match the post topic
 BR=chore/ig-social-$SLUG
-git worktree add -b "$BR" ../webjs-ig-social origin/main
+git -C "$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')" worktree add -b "$BR" ../webjs-ig-social origin/main  # rooted at the PRIMARY checkout, so it never nests under a task worktree
 mkdir -p ../webjs-ig-social/website/public/social
 cp "$OUT" ../webjs-ig-social/website/public/social/$SLUG.jpg
-( cd ../webjs-ig-social
+( cd "$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')/../webjs-ig-social"
   git add website/public/social/$SLUG.jpg
   git commit -q -m "chore: add $SLUG Instagram social card asset"
   git push -q -u origin "$BR" )

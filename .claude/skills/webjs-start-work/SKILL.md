@@ -63,22 +63,16 @@ The user's request typically names an issue by number (e.g. `#112`) or by descri
 
    If not present, add it: `gh project item-add 1 --owner webjsdev --url https://github.com/webjsdev/webjs/issues/<N>`.
 
-3. **Verify we're on `main` with a clean tree and pull latest.** If the working tree is dirty or already on a feature branch, STOP and ask the user how to proceed. Do not silently abandon their work.
+3. **Fetch, and leave the primary checkout alone.** `git fetch origin`. The task's worktree cuts from `origin/main`, so a dirty or mid-something primary checkout neither blocks starting nor gets "fixed"; it is never edited at all (enforced by `.claude/hooks/require-worktree-for-edits.sh`, which blocks tracked-file edits in a primary checkout).
+
+4. **Create the task's WORKTREE and push its branch immediately.** One task, one worktree, ALWAYS; there is no lone-agent plain-branch path, because "no other agent is active" is unverifiable mid-task. Pick the prefix from the issue labels: `enhancement` to `feat/`, `bug` to `fix/`, `documentation` to `docs/`, otherwise `chore/`. Build the slug from the issue title (lowercase, kebab-case, max 30 chars, drop conjunctions). The push happens right away so the work survives any local-machine failure even before the first commit.
 
    ```sh
-   git status --porcelain    # must be empty
-   git branch --show-current # must be main
-   git pull origin main
+   git worktree add -b <prefix>/<slug> ../<repo>-<slug> origin/main
+   git -C ../<repo>-<slug> push -u origin <prefix>/<slug>
    ```
 
-4. **Create the feature branch AND push it to origin immediately.** Pick the prefix from the issue labels: `enhancement` to `feat/`, `bug` to `fix/`, `documentation` to `docs/`, otherwise `chore/`. Build the slug from the issue title (lowercase, kebab-case, max 30 chars, drop conjunctions). The empty branch goes to GitHub right away so the work survives any local-machine failure even before the first commit.
-
-   ```sh
-   git checkout -b <prefix>/<slug>
-   git push -u origin <prefix>/<slug>
-   ```
-
-   After this step, ALSO push after every subsequent commit (`git push` is cheap and is the safety net against losing work). Do not batch multiple commits before pushing.
+   ALL work for the task happens inside that worktree, by absolute path when the session's cwd resets. A fresh worktree has NO `node_modules`; see AGENTS.md for the symlink remedy (#954). Cleanup after merge is automatic (`cleanup-merged-worktree.sh`). After this step, ALSO push after every subsequent commit (`git push` is cheap and is the safety net against losing work). Do not batch multiple commits before pushing.
 
 5. **Move the project card from Todo to In progress.** Resolve the four IDs and call `item-edit`:
 
