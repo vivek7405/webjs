@@ -135,6 +135,10 @@ Doc drift is the #1 way a framework rots. Documentation MUST stay in sync with c
    - **Smoke** (`test/examples/*/smoke/*`): the example apps still boot and serve their key routes.
    - **Cross-runtime (Bun)** (`node scripts/run-bun-tests.js`, needs `bun` on PATH; the `test/bun/*.mjs` scripts run under both runtimes): webjs runs on **Node 24+ OR Bun** (#508), so a change to runtime-sensitive code MUST be proven on Bun, not just Node. "Runtime-sensitive" = the serializer (Blob/File/FormData/typed arrays), the server request/listener path (the node:http vs `Bun.serve` shells, SSE, WebSocket upgrade, compression, timeouts), streams + `node:fs` (anything using `Readable.fromWeb` / `pipeline` / `createWriteStream`), `node:crypto`, the TS stripper, `AsyncLocalStorage`, or ANY `node:*` API whose behaviour Bun may implement differently. The Bun matrix (`scripts/run-bun-tests.js`) re-runs the `node:test` suite under `bun test` and FAILS on a genuine divergence; a divergence is a REAL bug to fix in the framework (this session found 5: a FormData fresh-identity serializer crash, a `Readable.fromWeb` `put()` hang, the amaro vs Node TS-strip error code, a JSC vs V8 error-message format, a link-unsafe `node:module` named import), not something to skip. Add a `test/bun/<feature>.mjs` cross-runtime assert script (wired into the CI `bun` job) for any new surface that touches the listener / serializer / streaming path. A test that is legitimately Node-only (asserts a node:http internal, the built-in stripper, `module.registerHooks` seeding, the node `ws`-library subsystem) goes on the runner's documented `DENYLIST` with a reason and a note of where the Bun behaviour IS covered; if a file MIXES runtime-agnostic and Node-only tests, SPLIT the Node-only ones into their own file so the rest still runs on Bun. See the skill's `references/testing.md`.
 
+   **Run the slow layers ONCE, at the end. Never inside the review loop.** The layers below cost minutes each (e2e ~4 min, the full Node suite ~5 min, the Bun matrix and the browser suite similar), so running them per review round burns most of a session on repeated work that cannot have changed. The correct order is: fast layers during the loop, slow layers once after the LAST clean round, and only for the layers the change can actually affect. See "Cost discipline in the loop" under the self-review loop below for the full rule.
+
+   Also: **CI already runs the browser, e2e (Node AND Bun), Bun-matrix, four-app, Postgres, Docker and Build jobs as required checks on every PR**, and merge is gated on them. So the local run is a fast-feedback convenience, not the gate. Once the branch is pushed and the loop is clean, prefer pushing and reading `gh pr checks <N>` over re-running the same suites locally. Do NOT run a slow suite locally to "confirm" something CI is about to check anyway, unless you need the failure detail sooner than CI can give it.
+
    The trap: **`npm test` does NOT run the browser, e2e, or Bun layers** (browser needs `wtr`; e2e is gated behind `WEBJS_E2E=1`; the Bun matrix is a separate `node scripts/run-bun-tests.js` and runs only the Node path otherwise). A green `npm test` is necessary but NOT sufficient. If the change can affect client behaviour or the served wire, you MUST run `npm run test:browser` and/or `WEBJS_E2E=1 node --test test/e2e/e2e.test.mjs`; if it touches runtime-sensitive code (above), you MUST run `node scripts/run-bun-tests.js` (with `bun` installed) and the `test/bun/*.mjs` scripts under Bun, then report the result. Reasoning "the unit tests pass" while shipping a change that alters what the browser downloads, OR that diverges on Bun, is the exact failure this rule exists to prevent.
 
    Acceptance criteria phrased in browser terms ("network probe", "renders without JS", "hydrates", "no console errors") are a hard signal that an e2e or browser test is REQUIRED, not optional. For each layer, either add/update coverage and run it, or write "N/A because <reason>" in the PR body. If a pre-existing test in a layer you ran is already red on `main`, say so explicitly (with proof) rather than letting it look like your regression.
@@ -310,6 +314,24 @@ Beyond review findings, proactively record the *reasoning* behind a PR as commen
 
 **What's worth capturing (judgement, not a checklist):** why an approach won over a credible alternative; an experiment tried and reverted, with the reason; a tradeoff accepted knowingly (a cold-start cost, a known-small race window left in, a documented edge case); a constraint or invariant discovered mid-work; anything you would want explained if you returned to the PR with no memory of the conversation. Skip the trivial: routine fixes, mechanical edits, anything the diff already makes obvious. The bar is "would a future agent be missing important context without this", not "log everything". When the PR body already covers a decision, a short comment is fine or skip it; do not duplicate the whole body into a comment.
 
+### Cost discipline in the loop (read before the first round)
+
+A review round is a READING pass, not a test run. The reviewer subagent reads the diff and the files; it does not execute suites. So a round costs seconds of wall clock, and the loop stays cheap **only if you do not attach a slow test run to each round**.
+
+**During the loop, run ONLY the fast layers:**
+- the specific unit test files covering the code you touched (`node --test <paths>`), and
+- targeted probe scripts when you need to confirm real behaviour rather than infer it.
+
+**Do NOT run, at any point inside the loop:** the e2e suite (`WEBJS_E2E=1 …`, ~4 min), the full Node suite (`node scripts/run-node-tests.js`, ~5 min), the browser suite (`npm run test:browser`), the Bun matrix (`node scripts/run-bun-tests.js`), or the four-app dogfood boot check. A finding fixed in round 2 cannot change what the e2e did in round 1 in any way you could act on before the loop ends, so running them per round is pure repetition.
+
+**After the LAST clean round, run the slow layers exactly once**, and only the ones the change can affect (a pure-prose docs change needs none; a renderer change needs browser and e2e; a listener/serializer change needs Bun). Report those results in the PR body.
+
+**Prefer CI over a local slow run.** Every PR's required checks already include Unit+integration, Browser, E2E (Node and Bun), Bun matrix, four-app, Postgres, Docker and Build, and merge is blocked until they pass. So after the loop converges: push, `gh pr ready <N>`, then `gh pr checks <N>` (add `--watch --interval 30` to block until they settle). Re-running the same suite locally to "confirm" what CI is about to run is duplicated work; do it only when you need the failure detail sooner than CI can produce it.
+
+**Baseline comparisons are worth it once, never repeatedly.** When a suite has pre-existing failures, comparing the failure SET against an `origin/main` worktree is the only way to tell a regression from ambient breakage, and it is worth the one run. Doing it again after each fix is not: re-diff only if a NEW failure name appears.
+
+If you catch yourself starting a multi-minute suite while the loop is still finding things, stop. That is the exact waste this section exists to prevent.
+
 ### How the loop works
 
 The draft PR is already open (step 6), so reviews post to it from the first round. Do NOT mark it ready for review or report "ready for merge" yet. Run rounds of self-review until ONE round finds zero new issues. Each round must:
@@ -340,7 +362,7 @@ The draft PR is already open (step 6), so reviews post to it from the first roun
 
 3. **If the round found any findings (even rejected ones)**, run another round with a fresh subagent. The new round picks a slightly different focus prompt: if round 1 was broad, round 2 zooms in on the file you most edited; if round 2 zoomed in, round 3 zooms out to cross-file consistency, etc. Rotate focus to avoid the agent rediscovering the same surface.
 
-4. **If the round reports `CLEAN`**, the loop is done.
+4. **If the round reports `CLEAN`**, the loop is done. THIS is the point at which the slow layers run, once (see "Cost discipline in the loop" above), not before.
 
 The minimum is TWO rounds. A clean first round is rare and usually means the review was too shallow; if round 1 is clean, spawn a second one with a sharper, narrower focus before believing the result.
 
