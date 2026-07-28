@@ -1,6 +1,7 @@
 import { html, isTemplate } from './html.js';
 import { BINDING_PREFIXES } from './binding-prefixes.js';
 import { escapeText, escapeAttr } from './escape.js';
+import { assertNotFunctionActionAttr } from './form-action.js';
 import { lookup, lookupModuleUrl, allTags } from './registry.js';
 import { stylesToString, isCSS } from './css.js';
 import { isRepeat } from './repeat.js';
@@ -323,11 +324,17 @@ async function renderTemplate(tr, ctx) {
           state = 'in-tag';
           attrName = '';
         } else {
+          // #1154: never stringify a function into action=/formaction= (it
+          // would serialize a server action's source into the served HTML).
+          assertNotFunctionActionAttr(val, attrName, currentTag);
           out += `"${escapeAttr(String(val ?? ''))}"`;
           state = 'in-tag';
           attrName = '';
         }
       } else if (state === 'attr-quoted' || state === 'attr-unquoted') {
+        // Same guard for a hole inside a quoted/unquoted value, the
+        // `action="${fn}"` and mixed `action="/x/${fn}"` shapes (#1154).
+        assertNotFunctionActionAttr(val, attrName, currentTag);
         out += escapeAttr(String(val ?? ''));
       }
     }
