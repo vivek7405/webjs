@@ -43,19 +43,18 @@ const users = await getUsers();
 
 There is no React `cache()`, `use()`, or `unstable_cache`. Caching is the `cache()` query helper, `export const revalidate` on a page, or `export const cache` on a GET action.
 
-### A plain function in `<form action=${fn}>` is refused, not stringified
+### A function in `<form action=${fn}>` is refused, not stringified
 
-Next binds a Server Action with `<form action={createTodo}>`, and React serializes the binding into hidden fields. WebJs reads the same shape, but only for a real `'use server'` action. Any other function is a hard render error.
+Next binds a Server Action with `<form action={createTodo}>` and React serializes the binding into hidden fields. WebJs does not read that shape. A function interpolated into `action=` is a hard render error.
 
-The reason is a source leak. During SSR a `.server.ts` import is the ACTUAL function (the RPC stub exists only in the browser), and `action=` is an ordinary attribute hole, so stringifying it would write the function's body, secrets included, into the HTML every visitor downloads. So the renderer throws instead, on the server and on the client, for `action=` and `formaction=` alike, in every hole shape (`action=${fn}`, `action="${fn}"`, `action="/x/${fn}"`).
+The reason is a source leak. During SSR a `.server.ts` import is the ACTUAL function (the RPC stub exists only in the browser), and `action=` is an ordinary attribute hole, so stringifying it would write the function's body, secrets included, into the HTML every visitor downloads. The renderer throws instead, on the server and on the client, for `action=` and `formaction=` alike, in every hole shape (`action=${fn}`, `action="${fn}"`, `action="/x/${fn}"`).
 
 ```ts
-// WRONG: a local handler. Throws at render; it would have leaked its body.
-const onSubmit = async (fd: FormData) => { /* ... */ };
-html`<form method="post" action=${onSubmit}>`;
-// RIGHT: a 'use server' action imported from a *.server.ts module.
+// WRONG: throws at render; it would have leaked the action's body.
 import { submitFeedback } from '#modules/feedback/actions/submit-feedback.server.ts';
 html`<form method="post" action=${submitFeedback}>`;
+// RIGHT: post to the page's own url and handle it in the page's `action` export.
+html`<form method="post" action="">`;
 ```
 
 A string stays a string: `action="/search"` and `action=${'/search'}` are unchanged. Other attributes keep their existing stringify behaviour; only `action` and `formaction` are claimed.

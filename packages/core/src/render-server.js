@@ -1,7 +1,7 @@
 import { html, isTemplate } from './html.js';
 import { BINDING_PREFIXES } from './binding-prefixes.js';
 import { escapeText, escapeAttr } from './escape.js';
-import { assertNotFunctionActionAttr, commitFormActionAttr } from './form-action.js';
+import { assertNotFunctionActionAttr } from './form-action.js';
 import { lookup, lookupModuleUrl, allTags } from './registry.js';
 import { stylesToString, isCSS } from './css.js';
 import { isRepeat } from './repeat.js';
@@ -152,13 +152,6 @@ async function renderTemplate(tr, ctx) {
   let commentDashes = 0;
   let currentTag = '';   // lowercased tag name currently being parsed
   let rawTail = '';      // rolling lowercased tail, tracks </script>/</style>
-  // Form-action binding (#1155). A `<form action=${action}>` commits its
-  // attribute mid-tag, but the identity field it needs is a CHILD, so the
-  // markup is buffered here and flushed the moment the open tag closes.
-  // `seenAttrs` tracks what the author already wrote on the current tag so a
-  // forced `method` / `enctype` never duplicates an explicit one.
-  let pendingFormField = '';
-  let seenAttrs = new Set();
 
   for (let i = 0; i < strings.length; i++) {
     const s = strings[i];
@@ -202,9 +195,6 @@ async function renderTemplate(tr, ctx) {
         case 'in-tag':
           out += c;
           if (c === '>') {
-            // The open tag just closed, so a buffered form-action identity
-            // field can now be emitted as the form's first child (#1155).
-            if (pendingFormField) { out += pendingFormField; pendingFormField = ''; }
             state = isRawtextTag(currentTag) ? 'rawtext' : 'text';
             if (state === 'rawtext') rawTail = '';
           } else if (!/\s/.test(c) && c !== '/') {
@@ -223,34 +213,20 @@ async function renderTemplate(tr, ctx) {
           }
           break;
         case 'attr-name':
-          // Record every attribute the author wrote on this tag, so a forced
-          // method/enctype (#1155) never duplicates an explicit one.
-          if (c === '=') { state = 'after-eq'; seenAttrs.add(attrName.toLowerCase()); out += c; }
-          else if (/\s/.test(c)) { state = 'in-tag'; seenAttrs.add(attrName.toLowerCase()); attrName = ''; out += c; }
-          else if (c === '>') {
-            state = 'text';
-            seenAttrs.add(attrName.toLowerCase());
-            attrName = '';
-            out += c;
-            if (pendingFormField) { out += pendingFormField; pendingFormField = ''; }
-          }
+          if (c === '=') { state = 'after-eq'; out += c; }
+          else if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; out += c; }
+          else if (c === '>') { state = 'text'; attrName = ''; out += c; }
           else { attrName += c; out += c; }
           break;
         case 'after-eq':
           if (c === '"' || c === "'") { state = 'attr-quoted'; attrQuote = c; out += c; }
           else if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; out += c; }
-          else if (c === '>') {
-            state = 'text'; attrName = ''; out += c;
-            if (pendingFormField) { out += pendingFormField; pendingFormField = ''; }
-          }
+          else if (c === '>') { state = 'text'; attrName = ''; out += c; }
           else { state = 'attr-unquoted'; out += c; }
           break;
         case 'attr-unquoted':
           if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; out += c; }
-          else if (c === '>') {
-            state = 'text'; attrName = ''; out += c;
-            if (pendingFormField) { out += pendingFormField; pendingFormField = ''; }
-          }
+          else if (c === '>') { state = 'text'; attrName = ''; out += c; }
           else out += c;
           break;
         case 'attr-quoted':
@@ -348,22 +324,16 @@ async function renderTemplate(tr, ctx) {
           state = 'in-tag';
           attrName = '';
         } else {
-          // A function bound to action=/formaction= is either an identifiable
-          // server action (emit the identity field, #1155) or refused
-          // outright (#1154); it is never stringified.
-          const bound = commitFormActionAttr(val, attrName, currentTag, seenAttrs);
-          if (bound) {
-            out += bound.attrValue + bound.forced;
-            pendingFormField = bound.field;
-          } else {
-            out += `"${escapeAttr(String(val ?? ''))}"`;
-          }
+          // #1154: never stringify a function into action=/formaction= (it
+          // would serialize a server action's source into the served HTML).
+          assertNotFunctionActionAttr(val, attrName, currentTag);
+          out += `"${escapeAttr(String(val ?? ''))}"`;
           state = 'in-tag';
           attrName = '';
         }
       } else if (state === 'attr-quoted' || state === 'attr-unquoted') {
-        // A hole INSIDE a value (`action="${fn}"`, mixed `action="/x/${fn}"`)
-        // cannot carry an identity field, so a function here is always refused.
+        // Same guard for a hole inside a quoted/unquoted value, the
+        // `action="${fn}"` and mixed `action="/x/${fn}"` shapes (#1154).
         assertNotFunctionActionAttr(val, attrName, currentTag);
         out += escapeAttr(String(val ?? ''));
       }
@@ -1805,9 +1775,6 @@ async function streamTemplate(tr, ctx, controller) {
   let rawTail = '';
   // Buffer used for attribute handling where we may need to backtrack.
   let buf = '';
-  // Form-action binding (#1155), mirroring renderTemplate.
-  let pendingFormField = '';
-  let seenAttrs = new Set();
 
   for (let i = 0; i < strings.length; i++) {
     const s = strings[i];
@@ -1821,8 +1788,8 @@ async function streamTemplate(tr, ctx, controller) {
         case 'tag-open':
           buf += c;
           if (c === '!') state = 'bang-1';
-          else if (c === '/') { state = 'tag-name'; currentTag = ''; seenAttrs = new Set(); }
-          else if (/[a-zA-Z]/.test(c)) { state = 'tag-name'; currentTag = c.toLowerCase(); seenAttrs = new Set(); }
+          else if (c === '/') { state = 'tag-name'; currentTag = ''; }
+          else if (/[a-zA-Z]/.test(c)) { state = 'tag-name'; currentTag = c.toLowerCase(); }
           else state = 'text';
           break;
         case 'bang-1':
@@ -1851,7 +1818,6 @@ async function streamTemplate(tr, ctx, controller) {
         case 'in-tag':
           buf += c;
           if (c === '>') {
-            if (pendingFormField) { buf += pendingFormField; pendingFormField = ''; }
             state = isRawtextTag(currentTag) ? 'rawtext' : 'text';
             if (state === 'rawtext') rawTail = '';
           } else if (!/\s/.test(c) && c !== '/') {
@@ -1870,29 +1836,20 @@ async function streamTemplate(tr, ctx, controller) {
           }
           break;
         case 'attr-name':
-          if (c === '=') { state = 'after-eq'; seenAttrs.add(attrName.toLowerCase()); buf += c; }
-          else if (/\s/.test(c)) { state = 'in-tag'; seenAttrs.add(attrName.toLowerCase()); attrName = ''; buf += c; }
-          else if (c === '>') {
-            state = 'text'; seenAttrs.add(attrName.toLowerCase()); attrName = ''; buf += c;
-            if (pendingFormField) { buf += pendingFormField; pendingFormField = ''; }
-          }
+          if (c === '=') { state = 'after-eq'; buf += c; }
+          else if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; buf += c; }
+          else if (c === '>') { state = 'text'; attrName = ''; buf += c; }
           else { attrName += c; buf += c; }
           break;
         case 'after-eq':
           if (c === '"' || c === "'") { state = 'attr-quoted'; attrQuote = c; buf += c; }
           else if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; buf += c; }
-          else if (c === '>') {
-            state = 'text'; attrName = ''; buf += c;
-            if (pendingFormField) { buf += pendingFormField; pendingFormField = ''; }
-          }
+          else if (c === '>') { state = 'text'; attrName = ''; buf += c; }
           else { state = 'attr-unquoted'; buf += c; }
           break;
         case 'attr-unquoted':
           if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; buf += c; }
-          else if (c === '>') {
-            state = 'text'; attrName = ''; buf += c;
-            if (pendingFormField) { buf += pendingFormField; pendingFormField = ''; }
-          }
+          else if (c === '>') { state = 'text'; attrName = ''; buf += c; }
           else buf += c;
           break;
         case 'attr-quoted':
@@ -1934,16 +1891,12 @@ async function streamTemplate(tr, ctx, controller) {
           state = 'in-tag';
           attrName = '';
         } else {
-          // Same contract as the buffered renderer (they must not diverge; see
-          // commitFormActionAttr). Before this, a STREAMED page emitted a bound
-          // action's source verbatim while the buffered path already refused it.
-          const bound = commitFormActionAttr(val, attrName, currentTag, seenAttrs);
-          if (bound) {
-            buf += bound.attrValue + bound.forced;
-            pendingFormField = bound.field;
-          } else {
-            buf += `"${escapeAttr(String(val ?? ''))}"`;
-          }
+          // The SAME guard as the buffered renderer above. This is a second,
+          // independent state machine, so it does not inherit that one: before
+          // this, a STREAMED page emitted a bound function's whole source while
+          // the buffered path already refused it.
+          assertNotFunctionActionAttr(val, attrName, currentTag);
+          buf += `"${escapeAttr(String(val ?? ''))}"`;
           state = 'in-tag';
           attrName = '';
         }
