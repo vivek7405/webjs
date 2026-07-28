@@ -10,8 +10,8 @@
  * This app owns its copy of the kit's dialog (`components/ui/dialog.ts`, the
  * shadcn model), so the header and the lock have to stay in step by hand. That is
  * exactly how the app kept the #1144 shift for two review rounds after the kit
- * was fixed: the marketing site's copy is a gitignored mirror and tracked
- * automatically, this one did not.
+ * was fixed. The marketing site's copy is a gitignored mirror, so it picked the
+ * fix up automatically; this one is real tracked source and did not.
  *
  * The opt-in is a single declaration in the root layout's inline `<style>`, so
  * nothing else on the page would notice it going missing, and the shift would

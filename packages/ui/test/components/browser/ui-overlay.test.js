@@ -203,15 +203,26 @@ async function buildFixedHeaderPage(rootStyles = {}) {
   header.style.cssText =
     'position:fixed;top:0;left:0;right:0;height:40px;background:#345;' +
     'border-right:var(--wj-scrollbar-compensation, 0px) solid transparent;';
-  // A centred child AND a left-aligned one. They move for different reasons, and
-  // measuring only the centred one is how a wrong placement passed review: the
-  // website opt-in sat on a max-width bar, which held the centred nav still while
-  // the left-aligned logo kept shifting the full scrollbar width.
+  // Mirrors the real site's shape, because the shape is what the placement bug
+  // turned on: a viewport-width painting header wrapping a `max-width` centring
+  // bar, with a LEADING child in flow inside that bar.
+  //
+  // Both probes are load-bearing and they move for different reasons. When the
+  // viewport widens, the bar re-centres, which shifts its centre AND its leading
+  // child. Insetting the header undoes both. Insetting the BAR would hold its
+  // centre while its leading child kept moving, since the bar's own box is capped
+  // by max-width, and that is exactly the wrong placement that reached review.
+  // A leading child positioned against the header rather than the bar would be
+  // inert here, because the header's left edge never moves.
   const inner = document.createElement('div');
-  inner.style.cssText = 'max-width:400px;margin:0 auto;height:40px;';
+  inner.style.cssText =
+    'max-width:400px;margin:0 auto;height:40px;display:flex;justify-content:space-between;';
   const leading = document.createElement('div');
-  leading.style.cssText = 'position:absolute;left:0;top:0;width:20px;height:40px;';
-  header.appendChild(leading);
+  leading.style.cssText = 'width:20px;height:40px;';
+  const trailing = document.createElement('div');
+  trailing.style.cssText = 'width:20px;height:40px;';
+  inner.appendChild(leading);
+  inner.appendChild(trailing);
   header.appendChild(inner);
   document.body.appendChild(header);
 
