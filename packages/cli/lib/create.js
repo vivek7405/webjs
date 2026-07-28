@@ -950,7 +950,10 @@ export default cors({
 // the URL and be ETag/304-aware; 'cache' is what makes the response cacheable at
 // all (the max-age in seconds, private by default, do NOT add { public: true }
 // unless the data is identical for EVERY visitor); 'tags' label the cached entry so a
-// mutation can evict it. One function per file.
+// mutation can evict it. All three shape the RPC endpoint a browser import hits,
+// so they do nothing for the in-process call in app/api/users/route.ts; they are
+// here as the idiom to carry into a client that imports the action. One function
+// per file.
 export const method = 'GET';
 export const cache = 30;
 export const tags = () => ['users'];
@@ -969,10 +972,9 @@ export async function listUsers() {
 // evict once the action completes without throwing, so a client that read
 // listUsers() refetches fresh instead of serving a stale browser-cached value.
 // (A returned { success: false } envelope still evicts, since the action ran.)
-// Like every config export, it applies on a BOUNDARY: the RPC endpoint a browser
-// import hits, or a route() adapter given the module namespace. The route.ts in
-// this template calls the function directly, which is in-process and skips them.
-// One function per file.
+// It applies on the RPC endpoint a browser import hits. The route.ts in this
+// template calls the function directly, which is in-process, so the config
+// exports do not fire there. One function per file.
 export const invalidates = () => ['users'];
 export async function createUser(input: { name: string; email: string }) {
   // TODO: validate input, persist to database
@@ -983,11 +985,12 @@ export async function createUser(input: { name: string; email: string }) {
  * /api/users: thin route wrapper over typed server actions.
  * Business logic lives in modules/users/, not here.
  *
- * These calls are in-process, so the actions' config exports (method / cache /
- * tags / invalidates / validate / middleware) do NOT apply here: they run on a
- * boundary. Swap to the namespace form of the route() adapter from
- * \@webjsdev/server (import * as q; export const GET = route(q)) to have this
- * endpoint honour them.
+ * These calls are in-process, so the actions' config exports do NOT apply here.
+ * method / cache / tags / invalidates shape the RPC endpoint a browser import
+ * hits, and nothing else applies them, so this endpoint sets its own headers if
+ * it wants caching. The namespace form of the route() adapter from
+ * \@webjsdev/server (import * as q; export const GET = route(q)) picks up the
+ * declared validate and middleware, which are the two an endpoint can reuse.
  */
 import { listUsers } from '#modules/users/queries/list-users.server.ts';
 import { createUser } from '#modules/users/actions/create-user.server.ts';
