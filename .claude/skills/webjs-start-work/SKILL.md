@@ -316,7 +316,7 @@ Beyond review findings, proactively record the *reasoning* behind a PR as commen
 
 ### Cost discipline in the loop (read before the first round)
 
-A review round is a READING pass, not a test run. The reviewer subagent reads the diff and the files; it does not execute suites. So a round costs seconds of wall clock, and the loop stays cheap **only if you do not attach a slow test run to each round**.
+A review round is a READING pass, not a test run. It costs seconds. Anything that turns a round into minutes is waste.
 
 **Run NO test suite inside the loop.** Not the e2e suite, not the full Node suite, not the browser suite, not the Bun matrix, not the four-app boot check, and not `npm test` either. A round reads code; a suite tells you nothing a reading pass needs, and a finding fixed in round 2 invalidates whatever round 1's run told you anyway.
 
@@ -326,7 +326,7 @@ The only two things worth executing mid-loop are both seconds long and are part 
 
 **Verification happens once, after the last clean round, and CI is the mechanism.** Push, `gh pr ready <N>`, and let the pipeline run everything in parallel on its own hardware. Run a suite locally at that point only for what CI does not gate (Bun parity, see below) or when you need the failure detail sooner than CI can produce it. Report the results in the PR body.
 
-**Prefer CI over a local slow run, but know exactly what CI gates.** Only FIVE checks are required by `main` branch protection: `Conventions (webjs check)`, `Unit + integration (node --test)`, `Browser (web-test-runner / Playwright)`, `E2E (Puppeteer against the blog example)`, and `Build (@webjsdev/core dist)`. Those five you can safely leave to CI: push, `gh pr ready <N>`, then `gh pr checks <N>` (add `--watch --interval 30` to block until they settle), and re-run locally only when you need the failure detail sooner.
+**Prefer CI over a local slow run, but know exactly what CI gates.** Only FIVE checks are required by `main` branch protection: `Conventions (webjs check)`, `Unit + integration (node --test)`, `Browser (web-test-runner / Playwright)`, `E2E (Puppeteer against the blog example)`, and `Build (@webjsdev/core dist)`. Those five you can safely leave to CI: push, `gh pr ready <N>`, then read `gh pr checks <N>` once. Re-run one locally only when you need the failure detail sooner.
 
 The other jobs (`Bun runtime smoke + test matrix`, `E2E (blog served on Bun)`, `In-repo app tests`, `Postgres prod-engine round-trip`, `Docker image build`) DO run on every PR but are NOT required, so a red one does not block the merge button. Verify the list rather than trusting this paragraph, since protection changes: `gh api repos/webjsdev/webjs/branches/main/protection --jq '.required_status_checks.contexts'`. Consequence that matters: **Bun parity is not enforced by the merge gate.** When the change touches runtime-sensitive code, read the Bun job's result explicitly (or run it locally) before merging; do not assume a green merge button means Bun passed.
 
