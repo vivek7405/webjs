@@ -1889,6 +1889,12 @@ async function streamTemplate(tr, ctx, controller) {
         const name = attrName.slice(1);
         const kind = BINDING_PREFIXES[prefix];
         if (kind === 'event' || kind === 'prop') {
+          // Same native-element carve-out the buffered machine applies: the
+          // binding is dropped here either way, but a native `.action` DOES
+          // reflect on the client, so refusing at SSR keeps a page from
+          // rendering clean on the server and throwing on hydration. A custom
+          // element's `.action` is an ordinary author prop and stays legal.
+          if (!currentTag.includes('-')) assertNotFunctionActionAttr(val, name, currentTag);
           buf = buf.slice(0, attrStart);
           state = 'in-tag';
           attrName = '';
