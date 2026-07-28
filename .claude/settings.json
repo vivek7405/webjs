@@ -1,4 +1,9 @@
 {
+  "permissions": {
+    "allow": [
+      "Agent"
+    ]
+  },
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -11,6 +16,15 @@
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/require-worktree-for-edits.sh"
+          }
+        ]
+      },
       {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [

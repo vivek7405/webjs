@@ -178,6 +178,8 @@ it applies, then update or consciously skip each.
 
 ## Per-change sync procedure
 
+Run the mandatory generate + boot + check verifications in PARALLEL when more than one template is affected: each verification is its own background Bash task, launched in one batch, with EVERY task's result collected before the sync is declared done (a forgotten background boot is a silently unverified template). Prefer the in-process harness (`createRequestHandler` + `Request` objects, the dogfood boot-check pattern in the start-work skill): it binds no port, so parallel runs cannot collide. When a real `webjs dev` listen is unavoidable, give each boot a distinct `--port`.
+
 1. Identify the change's IDENTIFYING TOKENS: the demo route (`app/features/<x>`,
    `app/api/features/<x>`), the template name, the generated file path, the
    convention phrase, or the scoping phrase (e.g. "full-stack only").
@@ -212,6 +214,8 @@ it applies, then update or consciously skip each.
    marker). The scaffold teaches by its comments; a thin demo is a bug.
 
 ## Audit-mode procedure (sweep the scaffold for drift)
+
+Fan the sweep out like the doc-sync audit: one read-only `Explore` agent per surface of the map, spawned in one message; the agents report and the edits stay in the main session.
 
 1. List the shipped scaffold changes (new demos, new template, scoping changes,
    changed generated files).

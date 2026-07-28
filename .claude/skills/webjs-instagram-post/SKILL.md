@@ -111,10 +111,12 @@ only has to exist for that one call, then it is deleted.
 ```sh
 SLUG=works-without-javascript                 # match the post topic
 BR=chore/ig-social-$SLUG
-git worktree add -b "$BR" ../webjs-ig-social origin/main
-mkdir -p ../webjs-ig-social/website/public/social
-cp "$OUT" ../webjs-ig-social/website/public/social/$SLUG.jpg
-( cd ../webjs-ig-social
+PRIMARY=$(git worktree list --porcelain | sed -n 's/^worktree //p' | head -1)  # every path below roots here, so nothing nests under a task worktree or lands beside the session cwd (sed, not awk: awk splits a path containing spaces)
+git -C "$PRIMARY" worktree add -b "$BR" ../webjs-ig-social origin/main
+IG="$PRIMARY/../webjs-ig-social"
+mkdir -p "$IG/website/public/social"
+cp "$OUT" "$IG/website/public/social/$SLUG.jpg"
+( cd "$IG"
   git add website/public/social/$SLUG.jpg
   git commit -q -m "chore: add $SLUG Instagram social card asset"
   git push -q -u origin "$BR" )
@@ -126,7 +128,12 @@ IMG="https://raw.githubusercontent.com/webjsdev/webjs/$BR/website/public/social/
 After the post is published in Step 4, tear the branch down so nothing lingers:
 
 ```sh
-git worktree remove ../webjs-ig-social --force
+# Shell state does NOT survive across tool calls, and Step 4's user
+# confirmation sits between setup and here, so re-derive BOTH variables
+# (an empty $PRIMARY silently degrades `git -C ""` to cwd-relative).
+PRIMARY=${PRIMARY:-$(git worktree list --porcelain | sed -n 's/^worktree //p' | head -1)}
+BR=${BR:-chore/ig-social-<slug>}   # fill the slug if the variable is gone
+git -C "$PRIMARY" worktree remove ../webjs-ig-social --force
 git branch -D "$BR"
 git push origin --delete "$BR"
 ```

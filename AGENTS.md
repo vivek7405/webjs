@@ -37,15 +37,15 @@ itself): commands, repo-health git config, changelog flow, dev error overlay.
 
 ### Before starting ANY work: verify and sync the branch
 
-1. `git branch --show-current`. If on `main` / `master`, **STOP** and `git checkout -b feature/<task-slug>`.
+1. Work NEVER happens in the primary checkout. Cut the task's worktree first: `git worktree add -b <prefix>/<task-slug> ../<repo>-<task-slug> origin/main`, and do ALL work there.
 2. Verify the branch matches the task. Don't mix unrelated work.
 3. Sync with parent: `git fetch origin && git log HEAD..origin/main --oneline`. If there are upstream commits, `git rebase origin/main` first.
 
-Claude Code enforces step 1 via `.claude/hooks/guard-branch-context.sh`. Other agents check manually.
+Claude Code enforces step 1 via `.claude/hooks/require-worktree-for-edits.sh` (blocks tracked-file edits in a primary checkout; test `test/hooks/require-worktree-for-edits.test.mjs`, escape hatch `WEBJS_NO_WORKTREE_GATE=1`). Other agents check manually.
 
-### One task per git worktree when agents run concurrently
+### One task per git worktree, ALWAYS
 
-WebJs is worked by MULTIPLE agents at once. If more than one agent (or more than one in-flight task) shares ONE working checkout, they collide: a `git checkout` in one moves `HEAD` under the other, so the next commit lands on the WRONG branch. This has happened (a `chore: release` commit landed on an unrelated `feat/` branch, with a contaminated changelog). So give each task its own worktree:
+WebJs is worked by MULTIPLE agents at once, and "no other agent is active right now" is unverifiable mid-task (another session can start any minute), so the worktree rule is unconditional. If more than one agent (or more than one in-flight task) shares ONE working checkout, they collide: a `git checkout` in one moves `HEAD` under the other, so the next commit lands on the WRONG branch. This has happened (a `chore: release` commit landed on an unrelated `feat/` branch, with a contaminated changelog). So give each task its own worktree:
 
 ```sh
 git worktree add -b <prefix>/<slug> ../<repo>-<slug> origin/main
@@ -55,7 +55,7 @@ cd ../<repo>-<slug>          # do ALL work for the task here
 
 **A fresh worktree has NO `node_modules`** (git worktrees do not copy it), so running an app from one (`webjs dev` / `webjs start`, the test runner, a scaffolded app) fails to resolve `@webjsdev/*` until you install or link it. `webjs doctor` warns for this exact case (#954) and `webjs dev` / `webjs start` print the cause + remedy instead of a raw `ERR_MODULE_NOT_FOUND`. Fix by installing in the worktree (`npm install`) or symlinking the primary checkout's modules (`ln -s ../<primary-checkout>/node_modules node_modules`). When only a subset of `@webjsdev/*` packages was edited, link those from the worktree and the rest from the primary checkout so a built `dist/` (e.g. `@webjsdev/core`) still resolves.
 
-Git enforces one-branch-per-worktree, so separate worktrees make the collision impossible. Before any commit in a shared checkout, confirm `git branch --show-current` is still the branch you created; if it moved, you are colliding, switch to a worktree. A lone agent in a clean checkout may still use a plain branch. The repo's `.hooks/pre-commit` additionally BLOCKS a published-library (`core`/`server`/`cli`/`mcp`/`ui`/`intellisense`) version bump on any non-`chore/release-*` branch, the canonical wrong-branch-release symptom.
+Git enforces one-branch-per-worktree, so separate worktrees make the collision impossible. There is NO lone-agent exception: every task cuts a worktree, and the primary checkout stays an untouched mirror of main (tracked-file edits there are hook-blocked). The repo's `.hooks/pre-commit` additionally BLOCKS a published-library (`core`/`server`/`cli`/`mcp`/`ui`/`intellisense`) version bump on any non-`chore/release-*` branch, the canonical wrong-branch-release symptom.
 
 **Cleanup is automatic after a merge.** The `.claude/hooks/cleanup-merged-worktree.sh` PostToolUse hook fires after any `gh pr merge` and removes each linked worktree whose branch is merged AND whose tree is clean, so a merged branch's worktree never leaks (accumulated stale worktrees are exactly what it prevents). It is conservative: it KEEPS anything with uncommitted changes, an unmerged branch, or the worktree you ran the merge from (you cannot remove your current directory, so `cd` out and `git worktree remove` it yourself), and never touches the primary checkout. Disable with `WEBJS_NO_WORKTREE_CLEANUP=1`. Test: `test/hooks/cleanup-merged-worktree.test.mjs`.
 
@@ -65,7 +65,7 @@ A Skill is model-invoked, so it fires only when the model judges a match. The `.
 
 ### Autonomous mode (sandbox / bypass permissions)
 
-When interactive approval is disabled, never block on questions. Auto-decide: on `main`, auto-create `feature/<task-slug>`; auto-rebase if the parent moved; auto-merge when ready; **delete** feature/fix branches after merge but **keep** long-lived ones (dev, staging, release/*); auto-generate meaningful commit messages; fix failing tests / convention violations rather than asking. Autonomous mode is MORE disciplined, not less, with the same quality bar.
+When interactive approval is disabled, never block on questions. Auto-decide: cut the task's worktree from `origin/main` (auto-create `<prefix>/<task-slug>` per the label scheme); auto-rebase if the parent moved; auto-merge when ready; **delete** feature/fix branches after merge but **keep** long-lived ones (dev, staging, release/*); auto-generate meaningful commit messages; fix failing tests / convention violations rather than asking. Autonomous mode is MORE disciplined, not less, with the same quality bar.
 
 ### Code workflow (mandatory)
 

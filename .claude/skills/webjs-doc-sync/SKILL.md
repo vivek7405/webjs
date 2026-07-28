@@ -84,6 +84,8 @@ applies, then update or consciously skip each.
 
 ## Per-change sync procedure
 
+The surface checks below are independent reads, so run them fanned out: one read-only `Explore` agent per doc surface, spawned in ONE message, each answering "does this surface describe the changed behavior, and does it still tell the truth at head?". The agents REPORT; the edits stay in the main session, because parallel writers on overlapping docs collide. A single-surface change needs no fan-out.
+
 1. Identify the change's IDENTIFYING TOKENS: the export name, CLI flag, config
    key, file-convention string, or feature phrase a doc would mention.
 2. Grep those tokens across every surface to see where the feature is (or should
@@ -102,6 +104,8 @@ applies, then update or consciously skip each.
    code-shaped doc (a `.tsx` doc page) changed.
 
 ## Audit-mode procedure (sweep shipped work for drift)
+
+An audit is the fan-out's best case: every surface of the map gets its own read-only `Explore` agent, all spawned in one message, so the sweep costs the slowest surface rather than the sum. Reads fan out, writes stay here.
 
 Use this to find existing gaps (for example, across the Done items on the project
 board):

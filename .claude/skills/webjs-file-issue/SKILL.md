@@ -39,6 +39,8 @@ If the user's description is very thin (e.g. "track adding dark mode as a todo")
 
    A few greps now save the implementing agent a cold-start investigation later, and the difference is visible in the filed issue.
 
+   **For an issue touching more than one area, fan the grounding out instead of hunting serially.** The four collections above are independent reads, so spawn parallel READ-ONLY `Explore` agents in ONE message, one per concern (where-to-edit paths; landmines via `git log` and prior-issue search; invariants from AGENTS.md; test and doc surfaces), then synthesize their returns into the Implementation-notes section yourself. Explore agents cannot write, which is the point: nothing edits the repo mid-filing. Inline grounding stays fine for a small single-area issue. Either way the gate is unchanged: a body that fails the cold-start test is unready, however it was researched.
+
    **Cold-start test, apply it to your own draft before filing.** Reread the body as if you had never seen this conversation. Could you start work from it alone, without asking a single clarifying question and without first having to find where the relevant code lives? If not, it is not ready. Two concrete failure signs: the body names an area ("the router", "the prefetch logic") rather than a path, or it describes the symptom without saying where the fix goes.
 
    The user should never have to ask for this. If they do, the skill was not followed.
