@@ -21,6 +21,7 @@ interface Row {
 export class ClockReader extends WebComponent {
   private rows = signal<Row[]>([]);
   private busy = signal(false);
+  private error = signal('');
 
   private now(): string {
     return new Date().toLocaleTimeString('en-US', { hour12: false });
@@ -28,9 +29,14 @@ export class ClockReader extends WebComponent {
 
   async read() {
     this.busy.set(true);
+    this.error.set('');
     try {
+      // A GET action returns its value directly. The stub THROWS on a transport
+      // failure, so the call is guarded the same way the envelope is narrowed.
       const r = await readClock();
       this.rows.set([{ ...r, readAt: this.now() }, ...this.rows.get()].slice(0, 6));
+    } catch {
+      this.error.set('The read failed. Is the server still running?');
     } finally {
       this.busy.set(false);
     }
@@ -38,8 +44,13 @@ export class ClockReader extends WebComponent {
 
   async bump() {
     this.busy.set(true);
+    this.error.set('');
     try {
-      await bumpClock();
+      // A mutation returns the ActionResult envelope, so narrow on success.
+      const r = await bumpClock();
+      if (!r.success) this.error.set(r.error ?? 'The bump failed.');
+    } catch {
+      this.error.set('The bump failed. Is the server still running?');
     } finally {
       this.busy.set(false);
     }
@@ -67,6 +78,7 @@ export class ClockReader extends WebComponent {
               </ul>
             `
           : html`<p class="m-0 text-sm text-muted-foreground">Press Read twice in a row, then bump and read again.</p>`}
+        ${this.error.get() ? html`<p class="m-0 text-sm text-destructive">${this.error.get()}</p>` : ''}
       </div>
     `;
   }

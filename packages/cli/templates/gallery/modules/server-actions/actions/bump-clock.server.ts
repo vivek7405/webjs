@@ -8,11 +8,13 @@
 // bypasses its browser-cached copy instead of serving a value the mutation just
 // made wrong. Without this export the read would keep answering from cache until
 // its max-age elapsed.
+import type { ActionResult } from '@webjsdev/server';
 import { bumpReading } from '../utils/clock.server.ts';
 
 export const invalidates = () => ['clock'];
 
-export async function bumpClock(): Promise<{ ok: true }> {
-  bumpReading();
-  return { ok: true };
+export async function bumpClock(): Promise<ActionResult<{ reading: number }>> {
+  // Mutations return the ActionResult envelope, so a caller narrows one shape
+  // whether the write succeeded or failed.
+  return { success: true, data: { reading: bumpReading() } };
 }

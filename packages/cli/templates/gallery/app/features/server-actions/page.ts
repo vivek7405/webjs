@@ -28,10 +28,13 @@ export default function ServerActionsExample() {
       framework reads statically, the same way a page declares
       <code class="font-mono">export const revalidate</code>. The read below sets
       <code class="font-mono">method = 'GET'</code>, so its args ride the URL, it is
-      CSRF-exempt, it carries <code class="font-mono">Cache-Control</code> plus a weak
-      ETag (a revalidation answers 304), and its result is SSR-seeded so a first paint
-      costs no hydration round-trip. An action with no
-      <code class="font-mono">method</code> export is a POST mutation.
+      CSRF-exempt, and it carries <code class="font-mono">Cache-Control</code> plus a
+      weak ETag, so a revalidated read whose result has not changed answers 304. An
+      action with no
+      <code class="font-mono">method</code> export is a POST mutation. Seeding is a
+      separate mechanism and needs no verb: any action invoked during SSR has its
+      result serialized into the page, so the first client call reads that seed
+      instead of a hydration round-trip.
     </p>
     <p class="text-muted-foreground mb-4">
       <code class="font-mono">cache = 10</code> is the max-age in seconds, and it is

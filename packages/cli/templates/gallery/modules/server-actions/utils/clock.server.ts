@@ -16,6 +16,7 @@ export function serveReading(): { reading: number; serving: number } {
   return { reading, serving: servings };
 }
 
-export function bumpReading(): void {
+export function bumpReading(): number {
   reading += 1;
+  return reading;
 }

@@ -3,10 +3,11 @@
 // sibling exports the framework reads statically, the same way a page declares
 // `export const revalidate`.
 //
-//   method     'GET' rides the args in the URL, is CSRF-exempt, carries
-//              Cache-Control plus a weak ETag (a revalidation answers 304), and
-//              is SSR-seeded so a first paint costs no hydration round-trip.
-//              With no `method` export an action is a POST mutation.
+//   method     'GET' rides the args in the URL, is CSRF-exempt, and carries
+//              Cache-Control plus a weak ETag (a revalidation answers 304). With
+//              no `method` export an action is a POST mutation. (SSR seeding is
+//              NOT a GET feature: every action invoked during an SSR render is
+//              seeded into the page, whatever its verb.)
 //   cache      the max-age in seconds. PRIVATE by default. Only pass
 //              { public: true } for data identical for EVERY visitor, since a
 //              shared cache keys the entry on the URL and args alone. Same
@@ -22,6 +23,8 @@ export const tags = () => ['clock'];
 
 export async function readClock(): Promise<{ reading: number; serving: number; at: string }> {
   // `serving` counts the times this body actually ran, so a repeat call answered
-  // from the browser cache is visible: the number does not move.
+  // from the browser cache is visible: the number does not move. It is also why
+  // this particular read never answers a 304, since a per-execution counter gives
+  // every response a different ETag. A read whose result is stable does.
   return { ...serveReading(), at: new Date().toLocaleTimeString('en-US', { hour12: false }) };
 }

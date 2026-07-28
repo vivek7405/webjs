@@ -425,7 +425,14 @@ test('the server-actions card demonstrates every HTTP-verb config export', async
 
     const card = await readFile(join(cwd, 'demo', 'app', 'features', 'server-actions', 'page.ts'), 'utf8');
     assert.match(card, /<clock-reader>/, 'the card mounts the demo');
+    // The tag alone is not enough: without the module import the element never
+    // registers and the demo renders as an empty tag with everything still green.
+    assert.match(card, /import '#modules\/server-actions\/components\/clock-reader\.ts'/, 'the card imports the demo module');
     assert.match(card, /public: true/, 'the card states the shared-cache safety rule');
+
+    // A mutation returns the ActionResult envelope, like every other gallery
+    // mutation, so the card does not teach two contracts side by side.
+    assert.match(mutation, /ActionResult</, 'the mutation returns the envelope');
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }
