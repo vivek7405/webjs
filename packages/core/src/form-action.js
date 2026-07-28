@@ -33,7 +33,7 @@ export function assertNotFunctionActionAttr(val, attrName, tag) {
 }
 
 /** @param {string} attrName @returns {boolean} */
-export function isFormActionAttr(attrName) {
+function isFormActionAttr(attrName) {
   const name = String(attrName).toLowerCase();
   return name === 'action' || name === 'formaction';
 }
