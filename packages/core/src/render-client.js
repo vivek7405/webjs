@@ -1,6 +1,7 @@
 import { isTemplate, MARKER } from './html.js';
 import { BINDING_PREFIXES, isBindingPrefix } from './binding-prefixes.js';
 import { escapeAttr } from './escape.js';
+import { assertNotFunctionActionAttr } from './form-action.js';
 import { isRepeat } from './repeat.js';
 import { isUnsafeHTML, isLive, isKeyed, isGuard, isTemplateContent, isRef, isCache, isUntil, isAsyncAppend, isAsyncReplace, isWatch } from './directives.js';
 import { Signal } from './signal.js';
@@ -671,7 +672,13 @@ function applyPart(part, value, _prev, allValues) {
       break;
     case 'attr': {
       if (value == null || value === false) part.el.removeAttribute(part.name);
-      else part.el.setAttribute(part.name, String(value));
+      else {
+        // #1154: refuse to stringify a function into action=/formaction=
+        // (mirrors the SSR guard, so a client re-render cannot write a
+        // server action's source into the live DOM).
+        assertNotFunctionActionAttr(value, part.name, part.el.localName);
+        part.el.setAttribute(part.name, String(value));
+      }
       break;
     }
     case 'prop':
@@ -692,7 +699,10 @@ function applyPart(part, value, _prev, allValues) {
       const mp = /** @type {{ statics: string[], group: number[] }} */ (/** @type any */ (part));
       let val = mp.statics[0];
       for (let j = 0; j < mp.group.length; j++) {
-        val += String((allValues ? allValues[mp.group[j]] : value) ?? '');
+        const piece = allValues ? allValues[mp.group[j]] : value;
+        // #1154: same function guard for each piece of a mixed attribute.
+        assertNotFunctionActionAttr(piece, part.name, part.el.localName);
+        val += String(piece ?? '');
         val += mp.statics[j + 1] || '';
       }
       part.el.setAttribute(part.name, val);
