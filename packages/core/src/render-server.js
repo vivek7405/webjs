@@ -290,6 +290,13 @@ async function renderTemplate(tr, ctx) {
             continue;
           }
           if (!currentTag.includes('-')) {
+            // A native element's `.prop` is dropped at SSR, so this path never
+            // leaked. It still refuses a function in `.action` so the rule does
+            // not depend on which renderer sees it first: the client guards the
+            // same binding (there `action` reflects, so it DOES leak), and a
+            // page that renders clean on the server and throws on hydration is
+            // a worse failure than one that refuses at the earliest point.
+            assertNotFunctionActionAttr(val, name, currentTag);
             state = 'in-tag';
             attrName = '';
             continue;

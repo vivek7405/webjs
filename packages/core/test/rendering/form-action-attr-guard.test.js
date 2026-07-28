@@ -136,3 +136,103 @@ test('functions in OTHER attributes keep the existing stringify behaviour', asyn
   const out = await renderToString(html`<div title=${leaky}></div>`, { ssr: true });
   assert.ok(out.startsWith('<div title="'));
 });
+
+// --- Bypasses found reviewing the first cut of the guard -------------------
+//
+// The guard originally compared the RAW attribute name. The SSR state machines
+// accumulate the name as authored and only the unquoted `after-eq` branch
+// splits the binding sigil off, so a QUOTED binding hole arrived at the guard
+// still carrying its `.` / `?` / `@` and slipped past the comparison. The
+// renderer then treated it as an ordinary attribute and stringified it, which
+// is the same leak this file exists to close.
+
+test('quoted property hole .action="${fn}" throws (sigil is stripped before matching)', async () => {
+  const out = await renderToString(html`<form .action="${leaky}"></form>`, { ssr: true })
+    .then((html) => html, (e) => e);
+  assert.ok(out instanceof Error, 'must throw, not render');
+  assert.match(out.message, /function was interpolated into \.action=/);
+  assert.doesNotMatch(out.message, /SECRET/, 'the message must not carry what it withholds');
+});
+
+test('quoted boolean hole ?action="${fn}" throws', async () => {
+  await assert.rejects(
+    () => renderToString(html`<form ?action="${leaky}"></form>`, { ssr: true }),
+    /function was interpolated into \?action=/,
+  );
+});
+
+test('quoted event hole @action="${fn}" throws', async () => {
+  await assert.rejects(
+    () => renderToString(html`<form @action="${leaky}"></form>`, { ssr: true }),
+    /function was interpolated into @action=/,
+  );
+});
+
+test('quoted .formaction="${fn}" on a submit button throws', async () => {
+  await assert.rejects(
+    () => renderToString(html`<button type="submit" .formaction="${leaky}"></button>`, { ssr: true }),
+    /function was interpolated into \.formaction=/,
+  );
+});
+
+// `String(val)` is what every commit site does, and Array.prototype.toString
+// runs each element through String() too, so wrapping the action in an array
+// leaked exactly as passing it bare did.
+
+test('an array-wrapped function action=${[fn]} throws', async () => {
+  await assert.rejects(
+    () => renderToString(html`<form action=${[leaky]}></form>`, { ssr: true }),
+    /function was interpolated into action=/,
+  );
+});
+
+test('a nested array action=${[[fn]]} throws (Array toString joins recursively)', async () => {
+  await assert.rejects(
+    () => renderToString(html`<form action=${[[leaky]]}></form>`, { ssr: true }),
+    /function was interpolated into action=/,
+  );
+});
+
+test('an array of plain strings still renders, the array check is not a blanket refusal', async () => {
+  const out = await renderToString(html`<form action=${['/a', '/b']}></form>`, { ssr: true });
+  assert.match(out, /action="\/a,\/b"/);
+});
+
+// `.action` on a NATIVE element is dropped at SSR, so it never leaked there.
+// It still refuses, so a page cannot render clean on the server and then throw
+// on hydration, where `action` reflects and the leak is real.
+
+test('.action=${fn} on a native form throws at SSR even though the prop would be dropped', async () => {
+  await assert.rejects(
+    () => renderToString(html`<form .action=${leaky}></form>`, { ssr: true }),
+    /function was interpolated into action=/,
+  );
+});
+
+test('a custom element keeps accepting a function on an unclaimed prop', async () => {
+  const out = await renderToString(html`<my-widget .onSelect=${leaky}></my-widget>`, { ssr: true });
+  assert.doesNotMatch(out, /SECRET/, 'an unserializable prop is dropped, not serialized');
+});
+
+test('a URL object action still renders, only functions are refused', async () => {
+  const out = await renderToString(html`<form action=${new URL('https://example.com/p')}></form>`, { ssr: true });
+  assert.match(out, /action="https:\/\/example\.com\/p"/);
+});
+
+// A component's render errors are isolated per component (#469), so a throw
+// from inside one does NOT propagate: dev swaps in an error box, prod renders
+// the component empty and the page still returns 200. That makes the refusal
+// invisible on this path, so what has to be pinned is the security property
+// rather than the throw. The leak must not reappear just because the error
+// was swallowed.
+test('a function action inside a component leaks nothing, even though the throw is isolated', async () => {
+  const { WebComponent } = await import('../../src/component.js');
+  class Guarded extends WebComponent({}) {
+    render() { return html`<form action=${leaky}></form>`; }
+  }
+  Guarded.register('guarded-leak-form');
+
+  const out = await renderToString(html`<div><guarded-leak-form></guarded-leak-form></div>`, { ssr: true });
+  assert.doesNotMatch(out, /SECRET/, 'the isolated error path must not emit the source');
+  assert.doesNotMatch(out, /async function/, 'no function source of any kind');
+});

@@ -1,3 +1,5 @@
+import { isBindingPrefix } from './binding-prefixes.js';
+
 /**
  * Form-action attribute guard (#1154).
  *
@@ -31,14 +33,49 @@
  * @param {string} [tag] lowercased owner tag, for the error message
  */
 export function assertNotFunctionActionAttr(val, attrName, tag) {
-  if (typeof val !== 'function') return;
+  if (!carriesFunction(val)) return;
   if (!isFormActionAttr(attrName)) return;
   throw new Error(formActionError(attrName, tag));
 }
 
-/** @param {string} attrName @returns {boolean} */
+/**
+ * Does stringifying this value expose a function's source?
+ *
+ * The commit sites do `String(val)`, and `Array.prototype.toString` stringifies
+ * each element through `String()` too, so `action=${[serverAction]}` leaks
+ * exactly as `action=${serverAction}` does. Recursive because nested arrays
+ * join the same way.
+ *
+ * Deliberately NOT a check on the stringified result: sniffing the output for
+ * something function-shaped would misfire on a legitimate URL, and the value's
+ * shape is the thing actually being claimed. An object with a hand-written
+ * `toString` that returns a function's source is out of scope; that is
+ * deliberate exfiltration, not the accident this guards.
+ *
+ * @param {unknown} val
+ * @returns {boolean}
+ */
+function carriesFunction(val) {
+  if (typeof val === 'function') return true;
+  return Array.isArray(val) && val.some(carriesFunction);
+}
+
+/**
+ * Is this the name of a form-action attribute?
+ *
+ * Strips a leading binding sigil before comparing. The SSR state machines
+ * accumulate the AUTHORED name, and only the unquoted `after-eq` branch splits
+ * the prefix off, so a quoted hole arrives here as `.action` / `?action` /
+ * `@action` with the sigil still attached. Comparing the raw name let every one
+ * of those through, which is the same leak wearing a different hat: the
+ * renderer treats a quoted binding hole as a plain attribute and stringifies it.
+ *
+ * @param {string} attrName
+ * @returns {boolean}
+ */
 function isFormActionAttr(attrName) {
-  const name = String(attrName).toLowerCase();
+  let name = String(attrName).toLowerCase();
+  if (isBindingPrefix(name[0])) name = name.slice(1);
   return name === 'action' || name === 'formaction';
 }
 

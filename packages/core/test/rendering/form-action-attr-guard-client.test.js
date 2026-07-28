@@ -85,3 +85,60 @@ test('string action still renders on the client', () => {
   const form = host.querySelector('form');
   assert.equal(form.getAttribute('action'), '/submit');
 });
+
+// --- Bypasses found reviewing the first cut of the guard -------------------
+//
+// A quoted binding hole compiles to a plain `attr` part whose name still
+// carries the sigil, so comparing the raw name let `.action="${fn}"` through
+// on this side too. These pin the client half of that fix.
+
+test('client refuses a quoted property hole .action="${fn}"', () => {
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(html`<form .action="${fakeAction}"></form>`, host),
+    /function was interpolated into \.action=/,
+  );
+  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
+});
+
+test('client refuses a quoted boolean hole ?action="${fn}"', () => {
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(html`<form ?action="${fakeAction}"></form>`, host),
+    /function was interpolated into \?action=/,
+  );
+  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
+});
+
+test('client refuses a quoted event hole @action="${fn}"', () => {
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(html`<form @action="${fakeAction}"></form>`, host),
+    /function was interpolated into @action=/,
+  );
+  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
+});
+
+test('client refuses an array-wrapped function', () => {
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(html`<form action=${[fakeAction]}></form>`, host),
+    /function was interpolated into action=/,
+  );
+  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
+});
+
+test('client refuses an array-wrapped function inside a mixed hole', () => {
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(html`<form action="/x/${[fakeAction]}"></form>`, host),
+    /function was interpolated into action=/,
+  );
+  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
+});
+
+test('client still renders an array of plain strings', () => {
+  const host = document.createElement('div');
+  render(html`<form action=${['/a', '/b']}></form>`, host);
+  assert.equal(host.querySelector('form').getAttribute('action'), '/a,/b');
+});

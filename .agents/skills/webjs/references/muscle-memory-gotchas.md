@@ -47,16 +47,16 @@ There is no React `cache()`, `use()`, or `unstable_cache`. Caching is the `cache
 
 Next binds a Server Action with `<form action={createTodo}>` and React serializes the binding into hidden fields. WebJs does not read that shape. A function interpolated into `action=` is a hard render error.
 
-The reason is a source leak. During SSR a `.server.ts` import is the ACTUAL function (the RPC stub exists only in the browser), and `action=` is an ordinary attribute hole, so stringifying it would write the function's body, secrets included, into the HTML every visitor downloads. The renderer throws instead, on the server and on the client, for `action=` and `formaction=` alike, in every hole shape (`action=${fn}`, `action="${fn}"`, `action="/x/${fn}"`).
+The reason is a source leak. During SSR a `.server.ts` import is the ACTUAL function (the RPC stub exists only in the browser), and `action=` is an ordinary attribute hole, so stringifying it would write the function's body, secrets included, into the HTML every visitor downloads. The renderer throws instead, on the server and on the client, for `action=` and `formaction=` alike.
+
+The refusal covers the shape, not one spelling of it. Every hole form is refused (`action=${fn}`, `action="${fn}"`, the mixed `action="/x/${fn}"`), with or without a binding sigil (`.action=`, `?action=`, `@action=`, quoted or not), and whether the function arrives bare or wrapped in an array (`action=${[fn]}`), since an array stringifies each element through `String()` and leaks identically. `.action=${fn}` on a native form is refused at SSR too, even though the property itself is dropped there, so a page cannot render clean on the server and then throw on hydration.
 
 ```ts
 // WRONG: throws at render; it would have leaked the action's body.
 import { submitFeedback } from '#modules/feedback/actions/submit-feedback.server.ts';
 html`<form method="post" action=${submitFeedback}>`;
 // RIGHT: omit action entirely to post to the page's own url, and handle the
-// submission in that page's `action` export. (Omit it rather than writing
-// action="": the HTML spec requires a non-empty URL when the attribute is
-// present, so the empty string is a conformance error.)
+// submission in that page's `action` export.
 html`<form method="post">`;
 ```
 
