@@ -78,10 +78,12 @@ test('string-valued action renders byte-identically to before', async () => {
   );
 });
 
-// The STREAMING renderer is a second, independent state machine. It was missed
-// by the first pass of this fix and kept emitting the action's whole body while
-// the buffered renderer already refused it, so it gets its own coverage rather
-// than being assumed to inherit the guard.
+// The STREAMING renderer is a second, independent state machine, missed by the
+// first pass of this fix. It is reached only through
+// `renderToStream(v, { ssr: false })`, which no page render uses (the server
+// renders every page, Suspense included, via `renderToString`), so this was a
+// public-API hole and not a live page leak. It gets its own coverage rather
+// than being assumed to inherit the buffered renderer's guard.
 test('the streaming renderer refuses the same function (ssr:false path)', async () => {
   await assert.rejects(
     () => drain(renderToStream(html`<form action=${leaky}></form>`, { ssr: false })),
@@ -95,6 +97,32 @@ test('the streaming renderer never emits the source', async () => {
     out = await drain(renderToStream(html`<form action=${leaky}></form>`, { ssr: false }));
   } catch { /* expected */ }
   assert.ok(!out.includes('SECRET'), 'streamed output must not carry the function source');
+});
+
+// The unquoted shape lands in the streaming machine's `after-eq` branch; the
+// quoted and mixed shapes land in its SEPARATE `attr-quoted`/`attr-unquoted`
+// branch. Without these two, that second branch could be deleted outright and
+// the suite would stay green, which is the same guard-asymmetry this whole
+// change exists to prevent, just moved into the test layer.
+test('the streaming renderer refuses a quoted hole', async () => {
+  await assert.rejects(
+    () => drain(renderToStream(html`<form action="${leaky}"></form>`, { ssr: false })),
+    /function was interpolated into action=/,
+  );
+});
+
+test('the streaming renderer refuses a mixed hole', async () => {
+  await assert.rejects(
+    () => drain(renderToStream(html`<form action="/x/${leaky}"></form>`, { ssr: false })),
+    /function was interpolated into action=/,
+  );
+});
+
+test('the streaming renderer refuses formaction', async () => {
+  await assert.rejects(
+    () => drain(renderToStream(html`<button formaction=${leaky}></button>`, { ssr: false })),
+    /function was interpolated into formaction=/,
+  );
 });
 
 test('streaming keeps string-valued actions working', async () => {

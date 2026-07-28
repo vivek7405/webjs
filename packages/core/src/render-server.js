@@ -1893,8 +1893,10 @@ async function streamTemplate(tr, ctx, controller) {
         } else {
           // The SAME guard as the buffered renderer above. This is a second,
           // independent state machine, so it does not inherit that one: before
-          // this, a STREAMED page emitted a bound function's whole source while
-          // the buffered path already refused it.
+          // this it stringified the function while the buffered path already
+          // refused it. Reached only via `renderToStream(v, { ssr: false })`,
+          // which no page render uses, so this was a public-API hole rather
+          // than a live page leak.
           assertNotFunctionActionAttr(val, attrName, currentTag);
           buf += `"${escapeAttr(String(val ?? ''))}"`;
           state = 'in-tag';
