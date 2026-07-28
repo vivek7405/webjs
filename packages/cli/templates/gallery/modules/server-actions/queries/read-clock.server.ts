@@ -1,0 +1,25 @@
+'use server';
+// A GET server action. An action declares its HTTP semantics through reserved
+// sibling exports the framework reads statically, the same way a page declares
+// `export const revalidate`.
+//
+//   method     'GET' rides the args in the URL, is CSRF-exempt, carries
+//              Cache-Control plus a weak ETag (a revalidation answers 304), and
+//              is SSR-seeded so a first paint costs no hydration round-trip.
+//              With no `method` export an action is a POST mutation.
+//   cache      the max-age in seconds. PRIVATE by default. Only pass
+//              { public: true } for data identical for EVERY visitor, since a
+//              shared cache keys the entry on the URL and args alone. Same
+//              safety rule as a page's `export const revalidate`.
+//   tags       labels this cached entry so a mutation can evict it by name.
+//
+// One function per file is required once a file carries these config exports.
+import { currentReading } from '../utils/clock.server.ts';
+
+export const method = 'GET';
+export const cache = 10;
+export const tags = () => ['clock'];
+
+export async function readClock(): Promise<{ reading: number; at: string }> {
+  return { reading: currentReading(), at: new Date().toLocaleTimeString('en-US', { hour12: false }) };
+}

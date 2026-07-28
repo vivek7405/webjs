@@ -34,7 +34,9 @@ export default function CachingExample() {
       Only for pages identical for every visitor. For per-user or per-query data
       use <code>cache()</code> with <code>tags</code> and
       <code>revalidateTag</code>, or a GET action's
-      <code>export const cache</code>.
+      <code>export const cache</code>, which the
+      <a class="text-primary underline underline-offset-2" href="/features/server-actions">server actions card</a>
+      demonstrates end to end.
     </p>
     <p class="text-muted-foreground text-sm">
       A mutation evicts the cache on demand. Click below (it calls
