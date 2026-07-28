@@ -324,7 +324,7 @@ The draft PR is already open (step 6), so reviews post to it from the first roun
 **Shape the rounds for wall clock: one parallel fan-out, then delta-scoped verification.** Sequential broad rounds re-read the same surface N times; this shape reads it once, in parallel, then re-reads only what changed.
 
 - **Round 1 is a fan-out of 3 or 4 NARROW reviewers spawned in parallel** (one message, multiple Agent calls, so they run concurrently), each with a distinct lens: correctness of the change, internal consistency of the touched sections, does-it-actually-satisfy-the-issue, and a mechanical pass (invariant 11, config validity, cross-references, sentinel grammar). Narrow parallel lenses cost one round's wall clock and cover more than one broad reviewer, and each stays cold on the others' blind spots. Each lens is its own spawn under the liveness rules below: a failed lens re-spawns individually without voiding the others, the round is complete only when EVERY lens has returned findings or `CLEAN`, the lenses' findings post as ONE aggregated review object, and the whole fan-out counts as ONE round.
-- **Every later round is delta-scoped: ONE reviewer on the fixes**, fed the fix commits' diff plus the paragraphs they touched, never the whole surface again. If it finds something, fix and repeat the delta shape; re-run the fan-out only when a fix rewrote something well outside the original diff.
+- **Every later round is delta-scoped: ONE reviewer on what the last round changed**, fed the fix commits' diff plus the paragraphs they touched (or, after a clean fan-out with no fix commits, the riskiest section of the original diff), never the whole surface again. If it finds something, fix and repeat the delta shape; re-run the fan-out only when a fix rewrote something well outside the original diff.
 - **Starve reviewers of context they do not need.** Each gets the PR diff, the PR title and body (the author's claims, which the review checks against), the touched files, and the rule files it judges against (`AGENTS.md`, `CONVENTIONS.md`), nothing more. NEVER feed them prior PR comments or reviews (measured on #1159: the comment payload alone reached 171 KB by the fifth round and dominated its cost), and never a growing already-handled exclusion list. Dedupe repeat findings yourself: a duplicate costs you a second of reading, while the exclusion list costs every reviewer minutes of ingestion.
 
 Each round must:
@@ -348,7 +348,7 @@ Each round must:
 
    Pass a prompt that:
    - Names the PR number and branch.
-   - Tells it to fetch the diff (`gh pr diff <N> --repo webjsdev/webjs`) and read the changed files in context. Those plus the rule files, never prior PR comments or reviews, per the starve rule above. A delta round scopes this to the fix commits' diff and the paragraphs they touched; the delta pass after a clean fan-out, where no fix commits exist, scopes to the riskiest section of the original diff instead.
+   - Tells it to fetch the diff (`gh pr diff <N> --repo webjsdev/webjs`) and read the changed files in context. Those plus the PR title and body (`gh pr view <N> --json title,body`) and the rule files, never prior PR comments or reviews, per the starve rule above. A delta round scopes this to the fix commits' diff and the paragraphs they touched; the delta pass after a clean fan-out, where no fix commits exist, scopes to the riskiest section of the original diff instead.
    - Instructs it to look for: bugs, regressions, security issues, missed edge cases, broken invariants, doc drift, test gaps, stylistic problems against `AGENTS.md` and `CONVENTIONS.md` (root and per-package).
    - Asks for a numbered list with `file:line` references. Problems only, no suggestions.
    - Contains, verbatim: "If you find nothing genuinely wrong, say exactly `CLEAN` on its own line and stop." plus a no-padding instruction. Keep `CLEAN` and its "on its own line" exactly as written; the loop tests for that literal sentinel, so a paraphrase in the prompt makes a clean round unrecognisable.
@@ -404,7 +404,7 @@ You start with no prior context on this PR. Steps:
 2. Run `gh pr view <N> --repo webjsdev/webjs --json title,body` to see what the author claims it does.
 3. Read every file the diff touches in its current state (not just the diff hunks) so you see edits in context.
 4. Read root AGENTS.md, the per-package AGENTS.md for each touched package, and CONVENTIONS.md if a scaffolded template was touched.
-5. Specifically check: <the reviewer's charter: a fan-out reviewer's single lens, or for a delta round the specific fixes under verification, e.g. "whether the regression test actually fails when the code change is reverted">.
+5. Specifically check: <the reviewer's charter: a fan-out reviewer's single lens, a delta round's specific fixes under verification (e.g. "whether the regression test actually fails when the code change is reverted"), or the riskiest section of the original diff for the pass after a clean fan-out>.
 
 Report findings as a numbered list with file:line references. Problems only. No suggestions, no nits about style if the rule isn't enforceable. If you find nothing genuinely wrong, say exactly `CLEAN` on its own line and stop. Do not pad with "looks good overall" or summaries.
 
