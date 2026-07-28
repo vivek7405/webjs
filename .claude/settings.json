@@ -1,4 +1,9 @@
 {
+  "permissions": {
+    "allow": [
+      "Agent"
+    ]
+  },
   "hooks": {
     "UserPromptSubmit": [
       {
