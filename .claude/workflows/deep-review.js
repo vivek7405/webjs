@@ -3,7 +3,7 @@ export const meta = {
   description: 'Deep multi-agent PR review: parallel finder lenses, then adversarial verification, reporting only confirmed findings',
   whenToUse: 'High-risk PRs where a single review pass is not enough. Works on any repo. Pass the PR number as args, or { pr, repo } to target another repository.',
   phases: [
-    { title: 'Find', detail: 'six lenses over the PR in parallel, two pinned to distinct models' },
+    { title: 'Find', detail: 'six lenses over the PR in parallel, half on opus and half on fable' },
     { title: 'Verify', detail: 'adversarial refuters per finding, majority rules' },
   ],
 }
@@ -73,16 +73,16 @@ Fetch your evidence from GitHub so it works regardless of the local checkout:
 Do NOT fetch PR comments or prior reviews. If the repo carries contributor rules (AGENTS.md, CONTRIBUTING.md, CONVENTIONS.md, or similar at the root or per-package), read the relevant ones and judge against them.`
 
 const LENSES = [
-  { key: 'correctness', prompt: 'Correctness of the change itself: logic errors, inverted conditions, off-by-ones, broken control flow, wrong API usage, error paths that swallow or misreport. Trace each changed function end to end.' },
-  { key: 'security', prompt: 'Security: injection, authz/authn gaps, CSRF surface changes, secrets or server-only code reaching the client, open redirects, unsafe deserialization, trust-boundary violations. Weight anything on an authentication, serialization, or request-dispatch path most heavily.' },
-  { key: 'blast-radius', prompt: 'Ripple effects: for every symbol, export, config key, or rule the diff touches, grep the WHOLE repo at head for its other users and check each still holds. A small change that breaks a distant caller is your only quarry.' },
+  { key: 'correctness', prompt: 'Correctness of the change itself: logic errors, inverted conditions, off-by-ones, broken control flow, wrong API usage, error paths that swallow or misreport. Trace each changed function end to end.', model: 'opus' },
+  { key: 'security', prompt: 'Security: injection, authz/authn gaps, CSRF surface changes, secrets or server-only code reaching the client, open redirects, unsafe deserialization, trust-boundary violations. Weight anything on an authentication, serialization, or request-dispatch path most heavily.', model: 'fable' },
+  { key: 'blast-radius', prompt: 'Ripple effects: for every symbol, export, config key, or rule the diff touches, grep the WHOLE repo at head for its other users and check each still holds. A small change that breaks a distant caller is your only quarry.', model: 'opus' },
   { key: 'tests', prompt: 'Test adequacy: would the PR\'s tests FAIL if each functional change were reverted (counterfactual)? Name any changed behavior with no failing-test proof, any test asserting the mock rather than the behavior, and any test layer the repo\'s contributor rules demand that this change touches but does not cover.', model: 'opus' },
-  { key: 'invariants-docs', prompt: 'Invariants and doc drift: check the diff against every invariant and convention the repo\'s contributor rules state, and check every doc surface that describes the changed behavior still tells the truth at head.' },
+  { key: 'invariants-docs', prompt: 'Invariants and doc drift: check the diff against every invariant and convention the repo\'s contributor rules state, and check every doc surface that describes the changed behavior still tells the truth at head.', model: 'fable' },
   { key: 'fresh-eyes', prompt: 'Broad second-opinion pass: read the diff cold and report anything genuinely wrong, with no assigned angle. Prefer depth on the riskiest hunk over breadth.', model: 'fable' },
 ]
-// Two lenses pin two DISTINCT models (fable and opus) so that whatever model
-// the orchestrating session runs, at least one lens differs from it. A single
-// pinned model is a no-op whenever it coincides with the session default.
+// Every lens pins its model: half opus, half fable. Two model families
+// reading the same diff have different blind spots, and pinning all six makes
+// the split deterministic instead of inheriting whatever the session runs.
 
 phase('Find')
 log(`deep-review of PR ${pr}${repo ? ` in ${repo}` : ''}: ${LENSES.length} lenses in parallel`)
