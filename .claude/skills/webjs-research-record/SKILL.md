@@ -26,6 +26,10 @@ The framework's reference docs (the skill at `.agents/skills/webjs/`) exist ONLY
 
 A research record has **no code diff**. A PR is a "merge this diff" object, so a research PR needs an empty-commit hack and leaves a dangling branch behind (see the now-deleted branch from #559). An issue is the native home for a writeup with threaded discussion. It is filterable by the `research` label, and it fits the project model where the GitHub Project board backed by issues is the source of truth. Earlier records used closed PRs (#546, #553); the convention going forward is a labeled issue. Do not convert the old PRs unless asked.
 
+## Investigate in parallel
+
+A comparison or options analysis is multi-angle work, and each angle is an independent read: one option's codebase evidence, the prior art, the project's own constraints in AGENTS.md, what the ecosystem does. For a multi-option or multi-angle investigation, spawn one read-only `Explore` agent per option or angle in ONE message, each returning evidence with concrete file paths and citations, then synthesize yourself. Reads fan out; the writeup and its judgment stay with you, because the record's voice and conclusions are the caller's, not an agent vote. A single-question spike needs no fan-out. Nothing here changes WHERE the record lands (the closed `research`-labeled issue below).
+
 ## Lifecycle: backlog item then findings in the SAME issue
 
 Research often starts as a planned **backlog item**, an OPEN `research`-labeled issue ("research whether X") sitting in the board's Todo column. When an agent actually does the research, the findings go into **that same issue**, NOT a new PR:
