@@ -3,8 +3,12 @@
  *
  * Both SSR state machines and the client renderer import from here so the
  * rule cannot drift between them. It already drifted once: the guard was
- * added to the buffered renderer alone, leaving the Suspense-streaming path
- * emitting a server action's whole body into the response.
+ * added to the buffered `renderTemplate` alone, leaving `streamTemplate`
+ * stringifying the function. That second machine is reached only through
+ * `renderToStream(v, { ssr: false })`, which no page render uses (the server
+ * renders every page, Suspense included, via `renderToString`), so it was a
+ * public-API hole rather than a live page leak. Worth closing on its own
+ * terms, and worth noting as the reason the rule lives in one place.
  */
 
 /**

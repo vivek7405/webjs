@@ -682,6 +682,15 @@ function applyPart(part, value, _prev, allValues) {
       break;
     }
     case 'prop':
+      // `.action=${fn}` on a NATIVE element is a leak too, not just the
+      // attribute form: `action` is a reflected IDL attribute, so assigning a
+      // function stringifies it into the element's own `action` content
+      // attribute in a real browser. Guarded on native elements only; a custom
+      // element's `.action` is an ordinary author-defined property that never
+      // reflects, and passing a function to one is legitimate.
+      if (!part.el.localName.includes('-')) {
+        assertNotFunctionActionAttr(value, part.name, part.el.localName);
+      }
       /** @type any */ (part.el)[part.name] = value;
       break;
     case 'bool':
