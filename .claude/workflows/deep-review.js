@@ -9,7 +9,7 @@ export const meta = {
   ],
 }
 
-// args: a PR number ("123" or 123), an "owner/repo#123" string, or { pr, repo, lenses }.
+// args: a PR number ("123" or 123), an "owner/repo#123" string, or { pr, repo, lenses, maxAgents }.
 // When no repo is given, every agent detects it from its own cwd via gh.
 // lenses: optional [{ key, prompt }] of extra lenses; when given, the scout is
 // skipped and these run as the dynamic set instead.
@@ -31,7 +31,7 @@ const givenLenses = (args && typeof args === 'object' && Array.isArray(args.lens
 // silently dropped.
 const rawMax = (args && typeof args === 'object' && Number.isFinite(Number(args.maxAgents))) ? Number(args.maxAgents) : 24
 const MAX_AGENTS = Math.min(60, Math.max(8, Math.floor(rawMax)))
-if (!pr) throw new Error('Pass the PR number as args, e.g. Workflow({ name: "deep-review", args: "123" }), or "owner/repo#123", or { pr, repo }')
+if (!pr) throw new Error('Pass the PR number as args, e.g. Workflow({ name: "deep-review", args: "123" }), or "owner/repo#123", or { pr, repo, lenses, maxAgents }')
 
 const REPO_FLAG = repo ? ` --repo ${repo}` : ''
 const REPO_NOTE = repo
