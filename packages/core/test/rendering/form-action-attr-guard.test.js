@@ -236,3 +236,47 @@ test('a function action inside a component leaks nothing, even though the throw 
   assert.doesNotMatch(out, /SECRET/, 'the isolated error path must not emit the source');
   assert.doesNotMatch(out, /async function/, 'no function source of any kind');
 });
+
+// --- Carve-outs, and the machines agreeing on them ------------------------
+//
+// A guard that refused everything would satisfy every assertion above, so what
+// stays LEGAL has to be pinned just as hard. Both bindings below never
+// stringify their value, so neither can leak, and refusing them would break
+// ordinary code.
+
+test('an unquoted @action=${fn} event binding stays legal on both machines', async () => {
+  const buffered = await renderToString(html`<form @action=${leaky}></form>`, { ssr: true });
+  assert.doesNotMatch(buffered, /SECRET/);
+  const streamed = await drain(renderToStream(html`<form @action=${leaky}></form>`, { ssr: false }));
+  assert.doesNotMatch(streamed, /SECRET/);
+});
+
+test('a custom element keeps a function on its own .action property', async () => {
+  const buffered = await renderToString(html`<my-el .action=${leaky}></my-el>`, { ssr: true });
+  assert.doesNotMatch(buffered, /SECRET/, 'an unserializable prop is dropped, never serialized');
+  const streamed = await drain(renderToStream(html`<my-el .action=${leaky}></my-el>`, { ssr: false }));
+  assert.doesNotMatch(streamed, /SECRET/);
+});
+
+test('an unquoted ?action=${fn} is refused rather than emitting a bare action=""', async () => {
+  // Never leaked, but a truthy function silently produced `action=""`, which is
+  // never what anyone meant. Refusing keeps the documented rule true for `?`.
+  await assert.rejects(
+    () => renderToString(html`<form ?action=${leaky}></form>`, { ssr: true }),
+    /function was interpolated into action=/,
+  );
+  await assert.rejects(
+    () => drain(renderToStream(html`<form ?action=${leaky}></form>`, { ssr: false })),
+    /function was interpolated into action=/,
+  );
+});
+
+test('a self-referential array renders instead of overflowing the stack', async () => {
+  // `Array.prototype.join` has a cycle guard, so `String(cyclic)` is ''. The
+  // function walk has to match that; a naive recursion turned a render that
+  // used to succeed into a RangeError.
+  const cyclic = [];
+  cyclic.push(cyclic);
+  const out = await renderToString(html`<form action=${cyclic}></form>`, { ssr: true });
+  assert.match(out, /action=""/);
+});

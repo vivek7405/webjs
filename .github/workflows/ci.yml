@@ -108,6 +108,12 @@ jobs:
       # so this is the cross-shell parity proof.
       - name: webjs listener parity on Bun
         run: bun test/bun/listener.mjs
+      # The form-action leak guard (#1154) on Bun: a divergence here is a
+      # divergence in whether a server action's SOURCE reaches the served HTML,
+      # so it cannot be left to the Node suite alone. Covers both SSR state
+      # machines, which have twice drifted apart on the binding shapes.
+      - name: WebJs form-action guard parity on Bun
+        run: bun test/bun/form-action-guard.mjs
       # Listener overhead reductions on Bun (#756): the out-of-band IP stamp (no
       # Request clone), the buffered sync-compression fast path, the streamed-head
       # non-blocking classifier, and the basePath rebuild spoof guard. Run as the

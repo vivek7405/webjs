@@ -326,6 +326,10 @@ async function renderTemplate(tr, ctx) {
           state = 'in-tag';
           attrName = '';
         } else if (kind === 'bool') {
+          // Never leaked (a boolean binding stringifies nothing), but
+          // `?action=${fn}` is meaningless in every case and refusing it keeps
+          // the rule true for every sigil rather than only the quoted ones.
+          assertNotFunctionActionAttr(val, name, currentTag);
           out = out.slice(0, attrStart);
           if (val) out += `${name}=""`;
           state = 'in-tag';
@@ -1889,16 +1893,26 @@ async function streamTemplate(tr, ctx, controller) {
         const name = attrName.slice(1);
         const kind = BINDING_PREFIXES[prefix];
         if (kind === 'event' || kind === 'prop') {
-          // Same native-element carve-out the buffered machine applies: the
-          // binding is dropped here either way, but a native `.action` DOES
-          // reflect on the client, so refusing at SSR keeps a page from
-          // rendering clean on the server and throwing on hydration. A custom
-          // element's `.action` is an ordinary author prop and stays legal.
-          if (!currentTag.includes('-')) assertNotFunctionActionAttr(val, name, currentTag);
+          // Guard `prop` ONLY, matching the buffered machine. An `@action`
+          // event binding is dropped here and never stringified, and a
+          // function is the LEGITIMATE value for one (`<my-el @action=${fn}>`
+          // listens for an `action` event), so refusing it would be a false
+          // positive. `.action` differs: on a native element it reflects on
+          // the client, so refusing at SSR keeps a page from rendering clean
+          // on the server and throwing on hydration. A custom element's
+          // `.action` is an ordinary author prop and stays legal.
+          if (kind === 'prop' && !currentTag.includes('-')) {
+            assertNotFunctionActionAttr(val, name, currentTag);
+          }
           buf = buf.slice(0, attrStart);
           state = 'in-tag';
           attrName = '';
         } else if (kind === 'bool') {
+          // A boolean binding stringifies nothing, so this never leaked, but
+          // `?action=${fn}` is meaningless in every case (a truthy function
+          // emits a bare `action=""`), and refusing it keeps the rule the docs
+          // state true for every sigil rather than true only when quoted.
+          assertNotFunctionActionAttr(val, name, currentTag);
           buf = buf.slice(0, attrStart);
           if (val) buf += `${name}=""`;
           state = 'in-tag';

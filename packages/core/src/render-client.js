@@ -694,10 +694,17 @@ function applyPart(part, value, _prev, allValues) {
       /** @type any */ (part.el)[part.name] = value;
       break;
     case 'bool':
+      // #1154: never leaked (a boolean binding stringifies nothing), but
+      // `?action=${fn}` is meaningless in every case, and refusing it keeps
+      // this renderer agreeing with both SSR machines.
+      assertNotFunctionActionAttr(value, part.name, part.el.localName);
       if (value) part.el.setAttribute(part.name, '');
       else part.el.removeAttribute(part.name);
       break;
     case 'event':
+      // NOT guarded, deliberately. An event binding never stringifies its
+      // value, and a function is the legitimate thing to pass one, so
+      // `<my-el @action=${handler}>` has to keep working.
       part.handler = typeof value === 'function' ? /** @type any */ (value) : null;
       break;
     case 'element':

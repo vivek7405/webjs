@@ -46,17 +46,43 @@ suite('form-action guard in a real browser', () => {
   test('.action=${fn} property binding cannot reflect the source into the attribute', () => {
     // THE case linkedom cannot see. Without the guard, `el.action = fn` here
     // reflects the stringified function into the live `action` attribute.
+    //
+    // Renders the SAME template with a string first, so there is a real,
+    // attached form to inspect afterwards. On a fresh host a throwing part
+    // leaves the container empty, and every assertion below would then hold
+    // vacuously against a form that does not exist, which is exactly what this
+    // test would be worth nothing for.
     const host = mount();
-    let threw = null;
-    try { render(html`<form .action=${secretAction}></form>`, host); }
-    catch (e) { threw = e; }
-    assert.ok(threw, 'render must throw');
-    assert.ok(!document.body.innerHTML.includes('BROWSER_LEAK_MARKER'), 'no source in the document');
+    const tpl = (v) => html`<form .action=${v}></form>`;
+    render(tpl('/submit'), host);
+
     const form = host.querySelector('form');
-    if (form) {
-      assert.ok(!String(form.getAttribute('action') || '').includes('BROWSER_LEAK_MARKER'), 'no source in the action attribute');
-      assert.ok(!String(form.action || '').includes('BROWSER_LEAK_MARKER'), 'no source on the action property');
-    }
+    assert.ok(form, 'the string render must produce a form to inspect');
+    // Confirms the property really does reflect in this browser. If it did not,
+    // the leak this test guards could not happen and the test would be inert.
+    assert.ok(String(form.action).includes('/submit'), 'action must reflect, else this test proves nothing');
+
+    let threw = null;
+    try { render(tpl(secretAction), host); } catch (e) { threw = e; }
+    assert.ok(threw, 'render must throw');
+
+    const after = host.querySelector('form');
+    assert.ok(after, 'the form must still be attached after the refusal');
+    assert.ok(!String(after.getAttribute('action') || '').includes('BROWSER_LEAK_MARKER'), 'no source in the action attribute');
+    assert.ok(!String(after.action || '').includes('BROWSER_LEAK_MARKER'), 'no source on the action property');
+    assert.ok(!document.body.innerHTML.includes('BROWSER_LEAK_MARKER'), 'no source in the document');
+  });
+
+  test('a custom element keeps its own .action property, which does not reflect', () => {
+    // The carve-out the guard depends on: a custom element's `.action` is an
+    // ordinary author-defined property, so a function there is legitimate and
+    // nothing reflects into markup.
+    const host = mount();
+    render(html`<my-action-holder .action=${secretAction}></my-action-holder>`, host);
+    const el = host.querySelector('my-action-holder');
+    assert.ok(el, 'the custom element renders');
+    assert.equal(typeof el.action, 'function', 'the property is kept as a function');
+    assert.ok(!document.body.innerHTML.includes('BROWSER_LEAK_MARKER'), 'and nothing reflects into markup');
   });
 
   test('a refused re-render leaves the previously rendered action intact', () => {

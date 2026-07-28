@@ -89,56 +89,83 @@ test('string action still renders on the client', () => {
 // --- Bypasses found reviewing the first cut of the guard -------------------
 //
 // A quoted binding hole compiles to a plain `attr` part whose name still
-// carries the sigil, so comparing the raw name let `.action="${fn}"` through
-// on this side too. These pin the client half of that fix.
+// carries the sigil, so comparing the raw name let `.action="${fn}"` through on
+// this side too.
+//
+// Each case renders the SAME template with a good value first and only then
+// swaps in the bad one, per the note above. That matters twice over: on a fresh
+// host a throwing part leaves the container empty, so a "no secret in the DOM"
+// assertion would hold with or without the guard; and only a same-template
+// re-render patches in place, so only then is there a live form whose surviving
+// state is worth asserting.
+
+/**
+ * @param {(v: unknown) => unknown} tpl a template taking the value under test
+ * @param {unknown} bad the value that must be refused
+ * @param {RegExp} messagePattern
+ * @param {string} goodRendered what the good value leaves in the DOM
+ */
+function refusesOnRerender(tpl, bad, messagePattern, goodRendered = '/submit') {
+  const host = document.createElement('div');
+  render(tpl('/submit'), host);
+  const before = host.innerHTML;
+  assert.ok(host.querySelector('form'), 'the good value must render a form');
+  assert.ok(before.includes(goodRendered), `expected ${goodRendered} in ${before}`);
+
+  assert.throws(() => render(tpl(bad), host), messagePattern);
+
+  assert.ok(host.querySelector('form'), 'the previously rendered form must still be there');
+  assert.equal(host.innerHTML, before, 'the refused render must leave the DOM untouched');
+  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
+}
 
 test('client refuses a quoted property hole .action="${fn}"', () => {
-  const host = document.createElement('div');
-  assert.throws(
-    () => render(html`<form .action="${fakeAction}"></form>`, host),
-    /function was interpolated into \.action=/,
-  );
-  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
-});
-
-test('client refuses a quoted boolean hole ?action="${fn}"', () => {
-  const host = document.createElement('div');
-  assert.throws(
-    () => render(html`<form ?action="${fakeAction}"></form>`, host),
-    /function was interpolated into \?action=/,
-  );
-  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
+  refusesOnRerender((v) => html`<form .action="${v}"></form>`, fakeAction, /function was interpolated into \.action=/);
 });
 
 test('client refuses a quoted event hole @action="${fn}"', () => {
-  const host = document.createElement('div');
-  assert.throws(
-    () => render(html`<form @action="${fakeAction}"></form>`, host),
-    /function was interpolated into @action=/,
-  );
-  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
+  refusesOnRerender((v) => html`<form @action="${v}"></form>`, fakeAction, /function was interpolated into @action=/);
 });
 
 test('client refuses an array-wrapped function', () => {
-  const host = document.createElement('div');
-  assert.throws(
-    () => render(html`<form action=${[fakeAction]}></form>`, host),
-    /function was interpolated into action=/,
-  );
-  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
+  refusesOnRerender((v) => html`<form action=${v}></form>`, [fakeAction], /function was interpolated into action=/);
 });
 
 test('client refuses an array-wrapped function inside a mixed hole', () => {
+  refusesOnRerender((v) => html`<form action="/x/${v}"></form>`, [fakeAction], /function was interpolated into action=/, '/x//submit');
+});
+
+test('client refuses an unquoted boolean hole ?action=${fn}', () => {
+  // A boolean binding renders the bare attribute for any truthy value, so the
+  // good render leaves `action=""` rather than the value itself.
+  refusesOnRerender((v) => html`<form ?action=${v}></form>`, fakeAction, /function was interpolated into action=/, 'action=""');
+});
+
+// The carve-outs. An event binding never stringifies its value and a function
+// is the legitimate thing to pass one, so refusing it would be a false
+// positive.
+
+test('an unquoted @action=${fn} event binding stays legal', () => {
   const host = document.createElement('div');
-  assert.throws(
-    () => render(html`<form action="/x/${[fakeAction]}"></form>`, host),
-    /function was interpolated into action=/,
-  );
-  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
+  render(html`<form @action=${fakeAction}></form>`, host);
+  const form = host.querySelector('form');
+  assert.ok(form, 'the form still renders');
+  assert.ok(!form.hasAttribute('action'), 'an event binding writes no action attribute');
+  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'and leaks nothing');
 });
 
 test('client still renders an array of plain strings', () => {
   const host = document.createElement('div');
   render(html`<form action=${['/a', '/b']}></form>`, host);
   assert.equal(host.querySelector('form').getAttribute('action'), '/a,/b');
+});
+
+test('a self-referential array does not crash the render', () => {
+  // `Array.prototype.join` has a cycle guard, so `String(cyclic)` is ''. The
+  // function check has to match that rather than recurse forever.
+  const cyclic = [];
+  cyclic.push(cyclic);
+  const host = document.createElement('div');
+  render(html`<form action=${cyclic}></form>`, host);
+  assert.equal(host.querySelector('form').getAttribute('action'), '');
 });

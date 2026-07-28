@@ -32,7 +32,15 @@ async function drain(stream) {
   return out;
 }
 
-/** Every shape that must be refused, in both SSR machines. */
+/**
+ * Every shape that must be refused, in both SSR machines.
+ *
+ * The UNQUOTED sigil forms are load-bearing here, not padding: the two machines
+ * route bindings through separate branches, and they have already drifted apart
+ * on exactly those (one refused `.action=${fn}` while the other dropped it, and
+ * a later fix over-corrected into refusing `@action=${fn}` on one side only).
+ * A parity file that enumerates only the quoted shapes cannot see either.
+ */
 const refused = {
   'action=${fn}': () => html`<form action=${leaky}></form>`,
   'action="${fn}"': () => html`<form action="${leaky}"></form>`,
@@ -42,6 +50,7 @@ const refused = {
   'quoted bool ?action="${fn}"': () => html`<form ?action="${leaky}"></form>`,
   'quoted event @action="${fn}"': () => html`<form @action="${leaky}"></form>`,
   'native prop .action=${fn}': () => html`<form .action=${leaky}></form>`,
+  'unquoted bool ?action=${fn}': () => html`<form ?action=${leaky}></form>`,
   'array-wrapped action=${[fn]}': () => html`<form action=${[leaky]}></form>`,
 };
 
@@ -54,13 +63,45 @@ for (const [name, mk] of Object.entries(refused)) {
   assert.ok(!threw.message.includes('BUN_PARITY_SECRET'),
     `[${runtime}] the refusal message must not carry the source it withholds (${name})`);
 
-  // Streaming renderer, the second, independent state machine.
+  // Streaming renderer, the second, independent state machine. Matches the
+  // message too: asserting only that SOMETHING threw would be satisfied by any
+  // unrelated error, which is how a machine that refuses for the wrong reason
+  // slips through a parity check.
   let streamThrew = null;
   try { await drain(renderToStream(mk(), { ssr: false })); } catch (e) { streamThrew = e; }
   assert.ok(streamThrew, `[${runtime}] streaming SSR must refuse ${name}`);
+  assert.match(streamThrew.message, /function was interpolated into/,
+    `[${runtime}] streaming must refuse ${name} for the RIGHT reason`);
   assert.ok(!streamThrew.message.includes('BUN_PARITY_SECRET'),
     `[${runtime}] streaming refusal must not carry the source (${name})`);
 }
+
+/**
+ * The carve-outs, which matter as much as the refusals: a guard that refused
+ * everything would satisfy every assertion above. Both machines must AGREE that
+ * these stay legal.
+ */
+const allowed = {
+  'unquoted event @action=${fn}': () => html`<form @action=${leaky}></form>`,
+  'custom-element event @action=${fn}': () => html`<my-el @action=${leaky}></my-el>`,
+  'custom-element prop .action=${fn}': () => html`<my-el .action=${leaky}></my-el>`,
+};
+
+for (const [name, mk] of Object.entries(allowed)) {
+  const buffered = await renderToString(mk(), { ssr: true });
+  assert.ok(!buffered.includes('BUN_PARITY_SECRET'), `[${runtime}] ${name} must not leak (buffered)`);
+
+  const streamed = await drain(renderToStream(mk(), { ssr: false }));
+  assert.ok(!streamed.includes('BUN_PARITY_SECRET'), `[${runtime}] ${name} must not leak (streaming)`);
+}
+
+// A self-referential array stringifies to '' because `Array.prototype.join` has
+// a cycle guard. The function check has to match that rather than recurse, on
+// both engines.
+const cyclic = [];
+cyclic.push(cyclic);
+const cyclicOut = await renderToString(html`<form action=${cyclic}></form>`, { ssr: true });
+assert.match(cyclicOut, /action=""/, `[${runtime}] a cyclic array must render, not overflow the stack`);
 
 // The passthrough must stay byte-identical across runtimes: refusing everything
 // would also pass the assertions above, so pin what still works.

@@ -49,7 +49,24 @@ Next binds a Server Action with `<form action={createTodo}>` and React serialize
 
 The reason is a source leak. During SSR a `.server.ts` import is the ACTUAL function (the RPC stub exists only in the browser), and `action=` is an ordinary attribute hole, so stringifying it would write the function's body, secrets included, into the HTML every visitor downloads. The renderer throws instead, on the server and on the client, for `action=` and `formaction=` alike.
 
-The refusal covers the shape, not one spelling of it. Every hole form is refused (`action=${fn}`, `action="${fn}"`, the mixed `action="/x/${fn}"`), with or without a binding sigil (`.action=`, `?action=`, `@action=`, quoted or not), and whether the function arrives bare or wrapped in an array (`action=${[fn]}`), since an array stringifies each element through `String()` and leaks identically. `.action=${fn}` on a native form is refused at SSR too, even though the property itself is dropped there, so a page cannot render clean on the server and then throw on hydration.
+The refusal covers the shape, not one spelling of it. Every hole form is refused (`action=${fn}`, `action="${fn}"`, the mixed `action="/x/${fn}"`), and so is a function wrapped in an array (`action=${[fn]}`), since an array stringifies each element through `String()` and leaks identically.
+
+Two carve-outs, both because those bindings never stringify their value:
+
+| Written as | Refused? | Why |
+|---|---|---|
+| `action=` / `formaction=` | yes | ordinary attribute, stringified into the HTML |
+| `.action=` on a native form | yes | the property reflects, so the source lands in the DOM on the client |
+| `.action=` on a custom element | **no** | an ordinary author-defined property, never reflected; a function is a legitimate value |
+| `?action=` | yes | never leaked, but it is meaningless, so it is refused rather than silently emitting a bare `action=""` |
+| `@action=` unquoted | **no** | an event listener, and a function is exactly what one takes |
+| `@action="${fn}"` quoted | yes | quoting makes it an ordinary attribute again, so it leaks |
+
+That last row is the one to remember: quoting a binding hole turns it back into a plain attribute, which is why invariant 4 requires `@`, `.` and `?` holes to be unquoted.
+
+`.action=${fn}` on a native form is refused during SSR too, even though the property is dropped there and nothing could leak, so a page cannot render clean on the server and then throw on hydration.
+
+**Inside a component you may never see the error.** Per-component SSR error isolation contains the throw, so development shows an error box in place of the component and production renders it empty with the page still returning 200. A form that has silently vanished in production is this bug wearing a disguise; the message is in the server log. Nothing leaks either way.
 
 ```ts
 // WRONG: throws at render; it would have leaked the action's body.

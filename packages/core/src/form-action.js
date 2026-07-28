@@ -46,6 +46,12 @@ export function assertNotFunctionActionAttr(val, attrName, tag) {
  * exactly as `action=${serverAction}` does. Recursive because nested arrays
  * join the same way.
  *
+ * Tracks visited arrays because `Array.prototype.join` has a cycle guard and
+ * this has to match it. A self-referential array stringifies to `''` rather
+ * than recursing forever, so a naive walk would turn a render that used to
+ * succeed into a stack overflow. Refusing to leak must not become a new way
+ * to crash.
+ *
  * Deliberately NOT a check on the stringified result: sniffing the output for
  * something function-shaped would misfire on a legitimate URL, and the value's
  * shape is the thing actually being claimed. An object with a hand-written
@@ -53,11 +59,16 @@ export function assertNotFunctionActionAttr(val, attrName, tag) {
  * deliberate exfiltration, not the accident this guards.
  *
  * @param {unknown} val
+ * @param {Set<unknown>} [seen]
  * @returns {boolean}
  */
-function carriesFunction(val) {
+function carriesFunction(val, seen) {
   if (typeof val === 'function') return true;
-  return Array.isArray(val) && val.some(carriesFunction);
+  if (!Array.isArray(val)) return false;
+  const visited = seen || new Set();
+  if (visited.has(val)) return false;
+  visited.add(val);
+  return val.some((v) => carriesFunction(v, visited));
 }
 
 /**
