@@ -70,6 +70,8 @@ Thumbs.db
 !.claude/hooks/**
 !.claude/skills/
 !.claude/skills/**
+!.claude/workflows/
+!.claude/workflows/**
 
 # test artifacts
 coverage/
