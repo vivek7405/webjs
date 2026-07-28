@@ -3,12 +3,17 @@
 // sibling exports the framework reads statically, the same way a page declares
 // `export const revalidate`.
 //
-//   method     'GET' rides the args in the URL, is CSRF-exempt, and carries
-//              Cache-Control plus a weak ETag (a revalidation answers 304). With
+//   method     'GET' rides the args in the URL, is CSRF-exempt, and carries a weak
+//              ETag (a revalidation answers 304). It does NOT cache on its own: a
+//              GET with no `cache` export is `no-store`. With
 //              no `method` export an action is a POST mutation. (SSR seeding is
-//              NOT a GET feature: every action invoked during an SSR render is
-//              seeded into the page, whatever its verb.)
-//   cache      the max-age in seconds. PRIVATE by default. Only pass
+//              NOT a GET feature: an action invoked during a fully buffered SSR
+//              render is seeded into the page whatever its verb. A streamed page
+//              emits no seed block at all.)
+//   cache      the max-age in seconds, and what makes the response cacheable at
+//              all. The number is shorthand for the object form, so
+//              { maxAge: 10, swr: 30 } adds a stale-while-revalidate grace
+//              window. PRIVATE by default. Only pass
 //              { public: true } for data identical for EVERY visitor, since a
 //              shared cache keys the entry on the URL and args alone. Same
 //              safety rule as a page's `export const revalidate`.

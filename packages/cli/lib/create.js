@@ -947,9 +947,9 @@ export default cors({
 
 // A GET server action (#488): a read declares its HTTP semantics via reserved
 // sibling exports the framework reads statically. 'method' makes the call ride
-// the URL (cacheable, ETag/304-aware); 'cache' is the
-// max-age in seconds (private by default, do NOT add { public: true } unless the
-// data is identical for EVERY visitor); 'tags' label the cached entry so a
+// the URL and be ETag/304-aware; 'cache' is what makes the response cacheable at
+// all (the max-age in seconds, private by default, do NOT add { public: true }
+// unless the data is identical for EVERY visitor); 'tags' label the cached entry so a
 // mutation can evict it. One function per file.
 export const method = 'GET';
 export const cache = 30;
@@ -966,10 +966,13 @@ export async function listUsers() {
 
 // A mutation server action (#488). With no 'method' export it defaults to POST
 // (CSRF-protected, rich request body). 'invalidates' lists the cache tags to
-// evict once the action completes without throwing, so the next listUsers() read
-// refetches fresh instead of serving a stale browser-cached value. (A returned
-// { success: false } envelope still evicts, since the action ran.) One function
-// per file.
+// evict once the action completes without throwing, so a client that read
+// listUsers() refetches fresh instead of serving a stale browser-cached value.
+// (A returned { success: false } envelope still evicts, since the action ran.)
+// Like every config export, it applies on a BOUNDARY: the RPC endpoint a browser
+// import hits, or a route() adapter given the module namespace. The route.ts in
+// this template calls the function directly, which is in-process and skips them.
+// One function per file.
 export const invalidates = () => ['users'];
 export async function createUser(input: { name: string; email: string }) {
   // TODO: validate input, persist to database
@@ -979,6 +982,12 @@ export async function createUser(input: { name: string; email: string }) {
     await writeFile(join(appDir, 'app', 'api', 'users', 'route.ts'), `/**
  * /api/users: thin route wrapper over typed server actions.
  * Business logic lives in modules/users/, not here.
+ *
+ * These calls are in-process, so the actions' config exports (method / cache /
+ * tags / invalidates / validate / middleware) do NOT apply here: they run on a
+ * boundary. Swap to the namespace form of the route() adapter from
+ * \@webjsdev/server (import * as q; export const GET = route(q)) to have this
+ * endpoint honour them.
  */
 import { listUsers } from '#modules/users/queries/list-users.server.ts';
 import { createUser } from '#modules/users/actions/create-user.server.ts';

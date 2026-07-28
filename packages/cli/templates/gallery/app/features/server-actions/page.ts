@@ -28,13 +28,17 @@ export default function ServerActionsExample() {
       framework reads statically, the same way a page declares
       <code class="font-mono">export const revalidate</code>. The read below sets
       <code class="font-mono">method = 'GET'</code>, so its args ride the URL, it is
-      CSRF-exempt, and it carries <code class="font-mono">Cache-Control</code> plus a
-      weak ETag, so a revalidated read whose result has not changed answers 304. An
-      action with no
+      CSRF-exempt, and it carries a weak ETag, so a revalidated read whose result has
+      not changed answers 304. Caching itself is opted into by the
+      <code class="font-mono">cache</code> export below, not by the verb: a GET without
+      one is <code class="font-mono">no-store</code>. An action with no
       <code class="font-mono">method</code> export is a POST mutation. Seeding is a
-      separate mechanism and needs no verb: any action invoked during SSR has its
-      result serialized into the page, so the first client call reads that seed
-      instead of a hydration round-trip.
+      separate mechanism and needs no verb: an action invoked during a fully
+      buffered SSR render has its result serialized into the page, so the first
+      client call reads that seed instead of making a hydration round-trip. A page
+      that streams (a <code class="font-mono">Suspense</code> or
+      <code class="font-mono">&lt;webjs-suspense&gt;</code> boundary) emits no seed
+      block, so its actions do call out on hydration.
     </p>
     <p class="text-muted-foreground mb-4">
       <code class="font-mono">cache = 10</code> is the max-age in seconds, and it is
@@ -42,9 +46,11 @@ export default function ServerActionsExample() {
       <code class="font-mono">{ public: true }</code> only when the data is identical
       for every visitor, because a shared cache keys the entry on the URL and args
       alone. That is the same safety rule as a page's
-      <code class="font-mono">export const revalidate</code>. Add
-      <code class="font-mono">swr</code> to keep serving an expired entry while the
-      browser revalidates it in the background.
+      <code class="font-mono">export const revalidate</code>. The number is shorthand
+      for the object form, so
+      <code class="font-mono">cache = { maxAge: 10, swr: 30 }</code> keeps serving an
+      expired entry for another thirty seconds while the browser revalidates it in
+      the background. There is no separate <code class="font-mono">swr</code> export.
     </p>
     <p class="text-muted-foreground mb-4">
       <code class="font-mono">tags</code> labels the cached entry and
