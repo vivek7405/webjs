@@ -357,13 +357,14 @@ The draft PR is already open (step 6), so reviews post to it from the first roun
    - Asks for a numbered list with `file:line` references. Problems only, no suggestions.
    - Ends with: "If you find nothing genuinely wrong, say exactly `CLEAN` and stop. Do not pad."
 
-   **If the subagent cannot run, fall back; never stall.** The subagent is the PREFERRED reviewer, not a required one. It can fail in three ways that all look different and must all be handled the same: the spawn is declined at the permission prompt, the tool returns an error or a missing result, or the agent returns something unusable. In every case: retry AT MOST once, then **review the diff yourself inline and keep the loop going**. A blocked reviewer must never become a blocked loop.
+   **The subagent reviewer is REQUIRED. Reviewing your own diff inline is NOT an acceptable substitute.** The whole value is that the reviewer has none of your context and therefore none of your blind spots; a self-review re-derives the same assumptions that produced the bug. So never quietly downgrade a round to an inline pass and never report a round as done when it ran inline.
 
-   Two rules that make the fallback honest:
-   - **A failed tool call is not work in progress.** An error or a missing result means nothing is running. Do not wait for it, do not poll for it, and do not tell the user it is "still going". If unsure, confirm with `TaskList` (empty means nothing is in flight) and move on immediately.
-   - **Self-review shares your blind spots, so compensate.** When reviewing your own diff, do not only re-read it: write a throwaway probe script that EXERCISES the claim (render the thing, call the function, assert the observable behaviour) and run it. Reading your own code confirms what you meant; probing it shows what it does. On this repo that difference has already caught a real bug that pure reading missed.
+   **Surface a broken subagent IMMEDIATELY, in the same turn you notice.** The failure modes look different and are all handled the same way: the spawn is declined at the permission prompt, the tool returns an error or a missing result, the agent returns something unusable, or it produces nothing for an unreasonably long time. In every case:
+   - **A failed or missing tool result is NOT work in progress.** Nothing is running. Do not wait on it, do not poll it, and never tell the user it is "still going". Confirm with `TaskList` (empty means nothing is in flight) and say so at once.
+   - **Always spawn the reviewer with `run_in_background: false`**, so a failure comes back as a result you can see rather than a task you might sit on.
+   - **Tell the user the moment a round cannot run**, state plainly that the review is blocked and why, and ask how to proceed. Retry once if the failure looks transient. Do NOT silently substitute a weaker review, and do NOT let the loop stall in silence, which is the worst of both (no review AND no progress).
 
-   Say which mode the review ran in when you report, so a weaker inline round is visible rather than passing as a fresh-eyes one.
+   A blocked reviewer stops the loop and becomes a question for the user. It never becomes an inline round, and it never becomes an unreported wait.
 
 2. **For each finding the subagent reports**, do exactly ONE of these three. There is no fourth option, and "mention it and move on" is not allowed:
    - **Fix it** on the branch (commit + push to update the PR), OR
