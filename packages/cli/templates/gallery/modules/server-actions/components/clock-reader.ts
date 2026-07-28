@@ -15,7 +15,7 @@ interface Row {
   reading: number;
   serving: number;
   at: string;
-  readAt: string;
+  clickedAt: string;
 }
 
 export class ClockReader extends WebComponent {
@@ -28,13 +28,17 @@ export class ClockReader extends WebComponent {
   }
 
   async read() {
+    // `?disabled` only lands on the next render commit, so a second click in the
+    // same task would fire a second request. The signal is the real guard.
+    if (this.busy.get()) return;
     this.busy.set(true);
     this.error.set('');
+    const clickedAt = this.now();
     try {
       // A GET action returns its value directly. The stub THROWS on a transport
       // failure, so the call is guarded the same way the envelope is narrowed.
       const r = await readClock();
-      this.rows.set([{ ...r, readAt: this.now() }, ...this.rows.get()].slice(0, 6));
+      this.rows.set([{ ...r, clickedAt }, ...this.rows.get()].slice(0, 6));
     } catch {
       this.error.set('The read failed. Is the server still running?');
     } finally {
@@ -43,6 +47,7 @@ export class ClockReader extends WebComponent {
   }
 
   async bump() {
+    if (this.busy.get()) return;
     this.busy.set(true);
     this.error.set('');
     try {
@@ -72,7 +77,7 @@ export class ClockReader extends WebComponent {
                 ${rows.map((r) => html`
                   <li class="flex justify-between gap-4">
                     <span class="text-foreground">reading #${r.reading}, served ${r.serving} at ${r.at}</span>
-                    <span class="text-muted-foreground">clicked ${r.readAt}</span>
+                    <span class="text-muted-foreground">clicked ${r.clickedAt}</span>
                   </li>
                 `)}
               </ul>

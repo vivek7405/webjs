@@ -1,8 +1,9 @@
 'use server';
 // A READ is a `'use server'` action so the client (and SSR) can call it via the
 // normal import (rewritten to a typed RPC stub). `method = 'GET'` rides args in
-// the URL, is CSRF-exempt, and its result is SSR-seeded so the component does
-// not re-fetch on hydration.
+// the URL and is CSRF-exempt. (Its result is also SSR-seeded so the component
+// does not re-fetch on hydration, but that happens for an action of any verb,
+// not because this one is a GET.)
 import { db } from '#db/connection.server.ts';
 import type { Todo } from '../types.ts';
 

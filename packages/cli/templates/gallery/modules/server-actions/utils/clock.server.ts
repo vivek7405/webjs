@@ -8,6 +8,11 @@
 // EXECUTED on the server, which is what makes a browser-cache hit visible: a
 // response served from cache does not run this function, so the number does not
 // move.
+//
+// Both are per-PROCESS and shared by every visitor, which is fine for a demo but
+// is exactly why a real app puts this in the database. On a deployed gallery
+// someone else's bump moves your reading, and your first read opens at whatever
+// serving number the process is on.
 let reading = 1;
 let servings = 0;
 
