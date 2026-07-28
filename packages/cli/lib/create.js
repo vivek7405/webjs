@@ -947,7 +947,7 @@ export default cors({
 
 // A GET server action (#488): a read declares its HTTP semantics via reserved
 // sibling exports the framework reads statically. 'method' makes the call ride
-// the URL (cacheable, ETag/304-aware, SSR-seeded on first paint); 'cache' is the
+// the URL (cacheable, ETag/304-aware); 'cache' is the
 // max-age in seconds (private by default, do NOT add { public: true } unless the
 // data is identical for EVERY visitor); 'tags' label the cached entry so a
 // mutation can evict it. One function per file.
@@ -966,8 +966,10 @@ export async function listUsers() {
 
 // A mutation server action (#488). With no 'method' export it defaults to POST
 // (CSRF-protected, rich request body). 'invalidates' lists the cache tags to
-// evict on success, so the next listUsers() read refetches fresh instead of
-// serving a stale browser-cached value. One function per file.
+// evict once the action completes without throwing, so the next listUsers() read
+// refetches fresh instead of serving a stale browser-cached value. (A returned
+// { success: false } envelope still evicts, since the action ran.) One function
+// per file.
 export const invalidates = () => ['users'];
 export async function createUser(input: { name: string; email: string }) {
   // TODO: validate input, persist to database
