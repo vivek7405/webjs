@@ -301,6 +301,65 @@ suite('ui-dialog scroll lock layout', () => {
     await import(`${COMPONENTS_DIR}/dialog.ts`);
   });
 
+  // A dialog whose own content scrolls is the case where the two scrollbars could
+  // interact: the page's is being removed at the same moment the dialog's appears.
+  // The residual is measured off the ROOT element's box, which a scrollbar inside
+  // the top layer does not touch, so the two should be independent. Asserting it
+  // rather than assuming it, and asserting the dialog stays scrollable, since a
+  // scroll lock that also froze the dialog would be a worse bug than the shift.
+  test('a dialog whose own content scrolls does not disturb the compensation', async function () {
+    const page = await buildFixedHeaderPage();
+    try {
+      if (!requireClassicScrollbar(this)) return;
+
+      const root = page.track(
+        await mount(html`
+          <ui-dialog>
+            <ui-dialog-content>
+              <ui-dialog-title>Tall</ui-dialog-title>
+              <div style="height:3000px"></div>
+            </ui-dialog-content>
+          </ui-dialog>
+        `),
+      );
+      const dialog = root.querySelector('ui-dialog');
+      const fixedBefore = centreOf(page.inner);
+      const leadingBefore = centreOf(page.leading);
+      const flowBefore = centreOf(page.flow);
+
+      dialog.show();
+      await tick();
+
+      assert.equal(document.body.style.overflow, 'hidden', 'the lock engaged');
+      assert.equal(centreOf(page.inner), fixedBefore, 'centred header content does not move');
+      assert.equal(centreOf(page.leading), leadingBefore, 'left-aligned header content does not move');
+      assert.equal(centreOf(page.flow), flowBefore, 'in-flow content does not move');
+
+      // The dialog's content really does overflow, so this is not a vacuous pass.
+      const native = dialog.querySelector('dialog[data-slot="dialog-native"]');
+      const panel = dialog.querySelector('[data-slot="dialog"]');
+      const scroller = [native, panel].find((el) => el && el.scrollHeight > el.clientHeight);
+      assert.ok(scroller, 'the tall dialog actually overflows somewhere');
+
+      // And it is still scrollable while the page underneath is locked.
+      scroller.scrollTop = 200;
+      assert.ok(scroller.scrollTop > 0, 'the dialog still scrolls while the page is locked');
+
+      dialog.hide();
+      await tick();
+      assert.equal(centreOf(page.inner), fixedBefore, 'centred content back where it started');
+      assert.equal(centreOf(page.leading), leadingBefore, 'left-aligned content back where it started');
+      assert.equal(
+        document.documentElement.style.getPropertyValue('--wj-scrollbar-compensation'),
+        '',
+        'compensation released',
+      );
+      assert.equal(document.documentElement.style.paddingRight, '', 'no padding left behind');
+    } finally {
+      await page.teardown();
+    }
+  });
+
   test('opening a dialog leaves a position:fixed header exactly where it was', async function () {
     const page = await buildFixedHeaderPage();
     try {
