@@ -7,11 +7,17 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-let html, renderToString;
+let html, renderToString, renderToStream;
 before(async () => {
   ({ html } = await import('../../src/html.js'));
-  ({ renderToString } = await import('../../src/render-server.js'));
+  ({ renderToString, renderToStream } = await import('../../src/render-server.js'));
 });
+
+async function drain(stream) {
+  let out = '';
+  for await (const c of stream) out += typeof c === 'string' ? c : new TextDecoder().decode(c);
+  return out;
+}
 
 // The secret sentinel must never appear in any output, thrown or not.
 const SECRET = 'postgres://user:SECRET@host/db';
@@ -70,6 +76,30 @@ test('string-valued action renders byte-identically to before', async () => {
     await renderToString(html`<form action="/x?a=${1}"></form>`, { ssr: true }),
     '<form action="/x?a=1"></form>',
   );
+});
+
+// The STREAMING renderer is a second, independent state machine. It was missed
+// by the first pass of this fix and kept emitting the action's whole body while
+// the buffered renderer already refused it, so it gets its own coverage rather
+// than being assumed to inherit the guard.
+test('the streaming renderer refuses the same function (ssr:false path)', async () => {
+  await assert.rejects(
+    () => drain(renderToStream(html`<form action=${leaky}></form>`, { ssr: false })),
+    /function was interpolated into action=/,
+  );
+});
+
+test('the streaming renderer never emits the source', async () => {
+  let out = '';
+  try {
+    out = await drain(renderToStream(html`<form action=${leaky}></form>`, { ssr: false }));
+  } catch { /* expected */ }
+  assert.ok(!out.includes('SECRET'), 'streamed output must not carry the function source');
+});
+
+test('streaming keeps string-valued actions working', async () => {
+  const out = await drain(renderToStream(html`<form action=${'/submit'}></form>`, { ssr: false }));
+  assert.match(out, /action="\/submit"/);
 });
 
 test('functions in OTHER attributes keep the existing stringify behaviour', async () => {
