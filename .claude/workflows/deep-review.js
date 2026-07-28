@@ -1,7 +1,7 @@
 export const meta = {
   name: 'deep-review',
   description: 'Deep multi-agent PR review: parallel finder lenses, then adversarial verification; confirmed findings are actionable, jury-rejected ones return for the audit trail',
-  whenToUse: 'The round-1 review for any PR entering a review loop, or a heavyweight pass on demand. Works on any repo. Pass the PR number as args, "owner/repo#123" for another repository, or { pr, repo, lenses } where explicit lenses skip the scout.',
+  whenToUse: 'The round-1 review for any PR entering a review loop, or a heavyweight pass on demand. Works on any repo. Pass the PR number as args, "owner/repo#123" for another repository, or { pr, repo, lenses, maxAgents } where explicit lenses skip the scout and maxAgents caps the whole run (default 24).',
   phases: [
     { title: 'Scope', detail: 'a scout reads the diff and proposes dynamic lenses for this PR' },
     { title: 'Find', detail: 'six fixed lenses plus up to six dynamic ones, in parallel, split across opus and fable' },
@@ -25,6 +25,12 @@ else if (typeof args === 'string' && args.trim()) {
   repo = args.repo ? String(args.repo) : null
 }
 const givenLenses = (args && typeof args === 'object' && Array.isArray(args.lenses)) ? args.lenses : null
+// Hard agent budget for the WHOLE run (scout + finders + jurors). Degrades
+// gracefully: dynamic lenses are trimmed first, jury sizes shrink next, and a
+// finding the budget cannot verify is returned marked unverified, never
+// silently dropped.
+const rawMax = (args && typeof args === 'object' && Number.isFinite(Number(args.maxAgents))) ? Number(args.maxAgents) : 24
+const MAX_AGENTS = Math.min(60, Math.max(8, Math.floor(rawMax)))
 if (!pr) throw new Error('Pass the PR number as args, e.g. Workflow({ name: "deep-review", args: "123" }), or "owner/repo#123", or { pr, repo }')
 
 const REPO_FLAG = repo ? ` --repo ${repo}` : ''
@@ -109,11 +115,13 @@ const LENS_PROPOSALS = {
 }
 
 phase('Scope')
+let spent = 0
 let dynamic = []
 if (givenLenses) {
   dynamic = givenLenses.slice(0, 6).map((l) => ({ key: String(l.key), prompt: String(l.prompt) }))
   log(`using ${dynamic.length} caller-provided dynamic lenses, scout skipped`)
 } else {
+  spent += 1
   const scout = await agent(
     `${SAFETY}
 
@@ -126,6 +134,13 @@ Each proposal is a key plus a one-paragraph reviewer charter written like an ord
   )
   dynamic = ((scout && scout.lenses) || []).slice(0, 6)
   log(`scout proposed ${dynamic.length} dynamic lens(es)${dynamic.length ? ': ' + dynamic.map((l) => l.key).join(', ') : ''}`)
+}
+// Budget: fixed lenses always run; dynamic ones fit in what remains after
+// reserving at least 4 jury slots for the verify phase.
+const dynamicAllowed = Math.max(0, MAX_AGENTS - spent - LENSES.length - 4)
+if (dynamic.length > dynamicAllowed) {
+  log(`agent budget ${MAX_AGENTS}: trimming dynamic lenses ${dynamic.length} to ${dynamicAllowed}`)
+  dynamic = dynamic.slice(0, dynamicAllowed)
 }
 const DYNAMIC = dynamic.map((l, i) => ({ key: `dyn-${l.key}`, prompt: l.prompt, model: i % 2 === 0 ? 'fable' : 'opus' }))
 const ALL_LENSES = [...LENSES, ...DYNAMIC]
@@ -155,7 +170,7 @@ const toVerify = deduped.slice(0, CAP)
 if (deduped.length > CAP) log(`capping verification at ${CAP} of ${deduped.length} deduped findings (dropped ${deduped.length - CAP} lowest-severity; re-run after fixes to catch them)`)
 log(`${all.length} raw findings, ${deduped.length} after dedup, verifying ${toVerify.length}`)
 
-if (toVerify.length === 0) return { pr, repo, confirmed: [], rejected: [], stats: { raw: all.length, deduped: deduped.length, verified: 0, lenses: ALL_LENSES.length, dynamic: DYNAMIC.map((l) => l.key) }, note: 'no findings survived dedup; treat as a clean deep pass' }
+if (toVerify.length === 0) return { pr, repo, confirmed: [], rejected: [], unverified: [], stats: { raw: all.length, deduped: deduped.length, verified: 0, lenses: ALL_LENSES.length, dynamic: DYNAMIC.map((l) => l.key), maxAgents: MAX_AGENTS }, note: 'no findings survived dedup; treat as a clean deep pass' }
 
 phase('Verify')
 // Adaptive adversarial jury: 3 refuters for critical, 2 for major, 1 for minor.
@@ -163,8 +178,23 @@ phase('Verify')
 // on a major finding survives (fail-open toward treating it as real).
 const juries = { critical: 3, major: 2, minor: 1 }
 
-const verified = await parallel(toVerify.map((f) => () =>
-  parallel(Array.from({ length: juries[f.severity] }, (_, i) => () =>
+// Allocate jurors within the remaining budget, severity-first (toVerify is
+// already severity-sorted). A finding allocated zero jurors is returned
+// UNVERIFIED rather than silently dropped.
+spent += ALL_LENSES.length
+let juryBudget = Math.max(0, MAX_AGENTS - spent)
+const allocated = []
+const unverified = []
+for (const f of toVerify) {
+  const take = Math.min(juries[f.severity], juryBudget)
+  if (take === 0) { unverified.push(f); continue }
+  juryBudget -= take
+  allocated.push({ f, take })
+}
+if (unverified.length) log(`agent budget ${MAX_AGENTS}: ${unverified.length} finding(s) returned unverified (no jury slots left); raise maxAgents or re-run after fixes`)
+
+const verified = await parallel(allocated.map(({ f, take }) => () =>
+  parallel(Array.from({ length: take }, (_, i) => () =>
     agent(
       `${SAFETY}\n\nYou are an adversarial verifier. A reviewer claims this defect in PR ${pr}:\n\nFILE: ${f.file}:${f.line}\nCLAIM: ${f.title}\nSCENARIO: ${f.detail}\n\nTry to REFUTE it. Read the actual code at head, trace the scenario, and decide whether the defect is real. Angle ${i + 1}: ${i === 0 ? 'does the claimed scenario actually reproduce in the code as written?' : i === 1 ? 'is the behavior actually correct or intended, making the claim a false positive?' : 'is this already guarded, tested, or handled somewhere the finder did not look?'} If you cannot confirm the defect is real, refuted=true.`,
       { label: `refute:${f.file.split('/').pop()}:${f.line}`, phase: 'Verify', schema: VERDICT },
@@ -188,6 +218,7 @@ return {
   repo,
   confirmed,
   rejected,
-  stats: { raw: all.length, deduped: deduped.length, verified: toVerify.length, lenses: ALL_LENSES.length, dynamic: DYNAMIC.map((l) => l.key) },
+  unverified,
+  stats: { raw: all.length, deduped: deduped.length, verified: allocated.length, lenses: ALL_LENSES.length, dynamic: DYNAMIC.map((l) => l.key), maxAgents: MAX_AGENTS },
   note: 'Confirmed findings feed the normal review loop: fix, post as one review object, then a delta round. Rejected ones carry their refuters\' reasons for the audit trail.',
 }
