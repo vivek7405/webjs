@@ -1,7 +1,7 @@
 export const meta = {
   name: 'deep-review',
   description: 'Deep multi-agent PR review: parallel finder lenses, then adversarial verification, reporting only confirmed findings',
-  whenToUse: 'High-risk PRs where a single review pass is not enough. Works on any repo. Pass the PR number as args, or { pr, repo } to target another repository.',
+  whenToUse: 'The round-1 review for any PR entering a review loop, or a heavyweight pass on demand. Works on any repo. Pass the PR number as args, "owner/repo#123" for another repository, or { pr, repo, lenses } where explicit lenses skip the scout.',
   phases: [
     { title: 'Scope', detail: 'a scout reads the diff and proposes dynamic lenses for this PR' },
     { title: 'Find', detail: 'six fixed lenses plus up to six dynamic ones, in parallel, split across opus and fable' },
