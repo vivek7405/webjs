@@ -204,26 +204,43 @@ async function buildFixedHeaderPage(rootStyles = {}) {
     'position:fixed;top:0;left:0;right:0;height:40px;background:#345;' +
     'border-right:var(--wj-scrollbar-compensation, 0px) solid transparent;';
   // Mirrors the real site's shape, because the shape is what the placement bug
-  // turned on: a viewport-width painting header wrapping a `max-width` centring
-  // bar, with a LEADING child in flow inside that bar.
+  // turned on: a viewport-width painting header, wrapping a `max-width` centring
+  // bar, holding a leading child and a `flex: 1` centred region.
   //
-  // Both probes are load-bearing and they move for different reasons. When the
-  // viewport widens, the bar re-centres, which shifts its centre AND its leading
-  // child. Insetting the header undoes both. Insetting the BAR would hold its
-  // centre while its leading child kept moving, since the bar's own box is capped
-  // by max-width, and that is exactly the wrong placement that reached review.
-  // A leading child positioned against the header rather than the bar would be
-  // inert here, because the header's left edge never moves.
-  const inner = document.createElement('div');
-  inner.style.cssText =
-    'max-width:400px;margin:0 auto;height:40px;display:flex;justify-content:space-between;';
+  // That flex-1 region is why BOTH probes are needed, and it is the detail an
+  // earlier version of this fixture got wrong. Insetting the bar shrinks the
+  // flex-1 region, which pulls its centred content back to where it started, so
+  // the centred probe reports no movement. The leading child is `flex: none` and
+  // rides the bar's own shift, so it keeps moving. That is exactly the wrong
+  // placement that reached review, and the leading probe is the ONLY thing here
+  // that catches it. Measured at a 1000px viewport with a 15px scrollbar:
+  //
+  //   opt-in       leading   centred
+  //   none           +7.5      +7.5
+  //   on the bar     +7.5       0.0   <- the wrong placement, centred probe blind
+  //   on the header   0.0       0.0   <- what ships
+  //
+  // `box-sizing: border-box` on the bar is load-bearing too and must be explicit:
+  // the WTR page ships no reset, and under content-box `max-width` caps the
+  // CONTENT box, so a right border grows the border box instead of insetting the
+  // content and the leading probe goes inert. The live sites get border-box from
+  // Tailwind's preflight, so this matches them.
+  const bar = document.createElement('div');
+  bar.style.cssText =
+    'box-sizing:border-box;max-width:400px;margin:0 auto;height:40px;display:flex;';
   const leading = document.createElement('div');
-  leading.style.cssText = 'width:20px;height:40px;';
+  leading.style.cssText = 'width:20px;height:40px;flex:none;';
+  const nav = document.createElement('div');
+  nav.style.cssText = 'flex:1;display:flex;justify-content:center;';
+  const inner = document.createElement('div');
+  inner.style.cssText = 'width:40px;height:40px;';
   const trailing = document.createElement('div');
-  trailing.style.cssText = 'width:20px;height:40px;';
-  inner.appendChild(leading);
-  inner.appendChild(trailing);
-  header.appendChild(inner);
+  trailing.style.cssText = 'width:20px;height:40px;flex:none;';
+  nav.appendChild(inner);
+  bar.appendChild(leading);
+  bar.appendChild(nav);
+  bar.appendChild(trailing);
+  header.appendChild(bar);
   document.body.appendChild(header);
 
   // WebKit only materialises a custom root scrollbar after a layout pass, so
