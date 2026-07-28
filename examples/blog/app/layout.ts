@@ -265,6 +265,18 @@ export default function RootLayout({ children }: LayoutProps) {
           radial-gradient(58% 44% at 50% -4%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 100%), transparent), transparent 72%),
           radial-gradient(40% 36% at 88% 8%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 60%), transparent), transparent 70%);
       }
+      /* #1144: while a modal holds the page scroll lock, an engine that ignores
+         scrollbar-gutter widens the viewport, and this header is position: fixed
+         so it lays out against the viewport and cannot be reached by the padding
+         that holds in-flow content still. A TRANSPARENT RIGHT BORDER is the
+         opt-in: it insets the content by the published amount while the
+         background still paints across it (backgrounds fill the border box), so
+         the chrome stays full bleed. A border also composes with whatever
+         padding the element already has, which padding-right cannot: that form
+         has to restate the base value, once per responsive variant. Declared
+         after the Tailwind link above, so it wins the border-right-color the
+         border-* utilities also set. Resolves to 0px at every other moment. */
+      .site-header { border-right: var(--wj-scrollbar-compensation, 0px) solid transparent; }
       ::selection { background: var(--primary-tint); color: var(--foreground); }
       ::-webkit-scrollbar { width: 10px; height: 10px; }
       ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }

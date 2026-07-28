@@ -206,3 +206,32 @@ new ResizeObserver(apply).observe(hdr);
 ```
 
 For a dashboard, an alternative is an app-shell scroll container (a non-scrolling `100dvh` flex column with `<main>` as the internal scroller), which needs no offset but changes the scroll model.
+
+### A fixed header and a modal that locks scroll
+
+Anything that locks page scroll (a modal, a drawer, an off-canvas menu) hides the page scrollbar, and a classic scrollbar takes real layout width, so hiding it widens the viewport. The usual compensation is padding the body, which holds in-flow content still. **It does nothing for a fixed header**, because a fixed box lays out against the initial containing block, never against the body's padding box, so the header widens with the viewport and its centred content slides right by half the scrollbar width.
+
+`@webjsdev/ui`'s `<ui-dialog>` / `<ui-alert-dialog>` handle this for you (#1144). Their scroll lock reserves the scrollbar gutter for its duration, so the viewport width never changes and nothing moves. It leaves the gutter alone if your page already declared its own `scrollbar-gutter`, on the assumption that a page which made that choice meant it.
+
+Engines differ, and the lock does not need to know which one it is on. Where the gutter is honoured (measured on Chromium) nothing moves and the lock does nothing else. Where it is ignored (measured on WebKit) the viewport does widen, so the lock measures how much, pads `<html>` by it to hold in-flow content still (added to any padding you already had, and restored on close), and publishes the amount as `--wj-scrollbar-compensation` so a fixed element can opt in with one line:
+
+```css
+header { position: fixed; inset-inline: 0; top: 0; border-right: var(--wj-scrollbar-compensation, 0px) solid transparent; }
+```
+
+A transparent border rather than `padding-right`, for two reasons. It composes with whatever padding the element already has, where a padding form has to restate that base value and restate it again per responsive variant. And a background still paints across a border, so a header that carries its own background stays full bleed instead of ending short of the edge. Declare it after your Tailwind link if you use the `border-*` utilities, since those set `border-right-color` too.
+
+The property is only set while a lock is active AND the viewport actually widened, so the `0px` fallback covers every other moment and the two mechanisms never double-compensate. If you find inline `padding-right` on your `<html>` while a modal is open, that is this, and it comes off on close.
+
+**Put it on the element that is both viewport-width and painting.** Both halves are load-bearing, and getting either wrong fails quietly.
+
+- **Viewport-width**, or a left-aligned child still moves. Insetting a `max-width` container holds its CENTRED children still but not its leading ones, because the container's own box is not what widened. This is easy to miss: measure a left-aligned child, not just a centred one.
+- **Painting**, or the background stops short of the widened edge. Insetting a wrapper that paints nothing insets the child that does, which leaves an unpainted strip.
+
+In this repo `examples/blog` has one element that is both (the fixed header paints its own chrome, so the border goes straight on it), and `website` has a non-painting fixed wrapper around a painting header around a centring bar, where the header is the one that qualifies.
+
+Rolling your own scroll lock? Three things the kit learned the hard way, and the first is that almost every implementation of this (including Next's own dev overlay and Radix) gets the fixed case wrong by design.
+
+1. Reserve the gutter rather than relying on padding alone, or a fixed element will jump however carefully you compensate the body.
+2. When you do pad, pad `<html>`, not `<body>`. A `max-width` body does not widen when the viewport does, so padding it misses the shift entirely, while padding the root holds in-flow content whatever the body's width is.
+3. Measure the root's own border box to decide the amount. `documentElement.clientWidth` can grow while nothing actually moved (Chromium reports exactly that under a reserved gutter), and a `position: fixed` probe reads its pre-lock box on WebKit until the next rendering update, so both mislead.

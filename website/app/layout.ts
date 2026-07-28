@@ -308,6 +308,23 @@ export default function RootLayout({ children }: { children: unknown }) {
         display: inline-block; width: 1.15em; height: 1.15em;
         vertical-align: -0.18em; color: var(--heart);
       }
+      /* #1144: while a modal holds the page scroll lock, an engine that ignores
+         scrollbar-gutter widens the viewport, and .site-top is position: fixed so
+         it lays out against the viewport and cannot be reached by the padding
+         that holds in-flow content still. The opt-in goes on the HEADER, which is
+         the element that is both viewport-width and painting. Both properties are
+         load-bearing. Viewport-width means insetting its content box undoes the
+         widening exactly, for left-aligned children as much as centred ones (the
+         centring bar is capped by max-width, so insetting THAT moved the nav but
+         left the logo shifting the full amount). Painting means the background
+         still covers the inset, since backgrounds fill the border box, so the
+         chrome stays edge to edge. Measured at a 1400px viewport with a 15px
+         scrollbar and the gutter suppressed: logo 0.0, nav 0.0, chrome 0..1400.
+         A transparent border rather than padding-right, because it composes with
+         whatever padding is already there instead of restating it. The child
+         selector outranks the border-* utilities that also set
+         border-right-color, so cascade order does not matter. */
+      .site-top > header { border-right: var(--wj-scrollbar-compensation, 0px) solid transparent; }
       .glow-layer { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
       .glow-layer::before {
         content: ''; position: absolute; inset: 0;

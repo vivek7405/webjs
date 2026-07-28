@@ -185,7 +185,7 @@ tracked source, the standard shadcn "you own it" pattern.
 | 1b | `collapsible` | `collapsibleClass`, `collapsibleTriggerClass`, `collapsibleContentClass`. Compose with `<details>` + `<summary>`. |
 | 1b | `progress` | `progressClass()`, apply to native `<progress value max>`. Browser draws the bar via `::-webkit-progress-value` and `::-moz-progress-bar`. Omit `value` for the indeterminate / pulse state. |
 | 2  | `toggle-group` | `<ui-toggle-group type value variant size>` + `<ui-toggle-group-item value>`. Roving tabindex (one Tab stop) with Arrow / Home / End navigation, plus `aria-pressed` per item. |
-| 2  | `dialog` | `<ui-dialog>` + `<ui-dialog-trigger>` / `<ui-dialog-content>` / `<ui-dialog-close>`. Built on native `<dialog>.showModal()`, top-layer rendering, ::backdrop overlay, focus trap, Escape close, and focus restoration are all platform-provided. We add body-scroll lock + class helpers for `dialogHeader/Title/Description/Footer`. On open it wires `aria-labelledby` / `aria-describedby` to the `data-slot="dialog-title"` / `dialog-description` nodes (falling back to the first heading / paragraph). |
+| 2  | `dialog` | `<ui-dialog>` + `<ui-dialog-trigger>` / `<ui-dialog-content>` / `<ui-dialog-close>`. Built on native `<dialog>.showModal()`, top-layer rendering, ::backdrop overlay, focus trap, Escape close, and focus restoration are all platform-provided. We add a scroll lock (refcounted, and shift-free for a `position: fixed` header, see invariant 5) + class helpers for `dialogHeader/Title/Description/Footer`. On open it wires `aria-labelledby` / `aria-describedby` to the `data-slot="dialog-title"` / `dialog-description` nodes (falling back to the first heading / paragraph). |
 | 2  | `alert-dialog` | Like dialog, role=alertdialog. Native Escape close is cancelled via the `cancel` event; no backdrop-click dismissal. `<ui-alert-dialog-action>` / `<ui-alert-dialog-cancel>`. Wires `aria-labelledby` / `aria-describedby` to its `alert-dialog-title` / `alert-dialog-description` the same way. |
 | 2  | `tooltip` | `<ui-tooltip delay-duration>`, hover/focus + delay. Content uses `popover="manual"` for top-layer rendering. The trigger references the tip via `aria-describedby` (APG tooltip wiring). |
 | 2  | `hover-card` | `<ui-hover-card open-delay close-delay>`, hover with linger-keep-open. Content uses `popover="manual"` for top-layer rendering. The trigger (focusable, also opens on focus) gets `aria-haspopup` / `aria-expanded` / `aria-controls`. |
@@ -304,6 +304,20 @@ when the caller passes an explicit custom `--registry <url>`.
    - `variant="destructive"` → `variant="destructive"` (same)
    - `onValueChange={fn}` → `addEventListener('ui-value-change', fn)`
    - `asChild` → drop the wrapper, apply the class helper directly
+
+   **Deliberate divergence, dialog scroll lock (#1144).** shadcn (via Radix)
+   compensates the hidden scrollbar by padding the body only, which leaves a
+   `position: fixed` header sliding right by half the scrollbar width. Since
+   WebJs recommends exactly that pinned-header pattern (#610), our lock instead
+   reserves the scrollbar gutter (unless the page already declared its own), and
+   where the engine ignores `scrollbar-gutter` (measured on WebKit, honoured on
+   Chromium) it pads `<html>` by the measured residual and publishes it as
+   `--wj-scrollbar-compensation` for a fixed element to opt into. Nothing branches
+   on the engine: the residual is measured, so an engine nobody tested behaves
+   correctly either way. The refcount is shared across both component copies via
+   `globalThis`, because release order is not guaranteed to be LIFO. This is
+   presentation and lifecycle, not API: every tag, variant, and data attribute
+   still matches shadcn.
 
 6. **Native form controls participate in `<form>` submission natively.**
    `<input type="checkbox" class=${checkboxClass()}>` is a real input , 
