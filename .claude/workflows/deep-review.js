@@ -4,7 +4,7 @@ export const meta = {
   whenToUse: 'The round-1 review for any PR entering a review loop, or a heavyweight pass on demand. Works on any repo. Pass the PR number as args, "owner/repo#123" for another repository, or { pr, repo, lenses, maxAgents } where explicit lenses skip the scout and maxAgents caps the whole run (default 24).',
   phases: [
     { title: 'Scope', detail: 'a scout reads the diff and proposes dynamic lenses for this PR' },
-    { title: 'Find', detail: 'six fixed lenses plus up to six dynamic ones, in parallel, split across opus and fable' },
+    { title: 'Find', detail: 'six fixed lenses plus up to six dynamic ones, in parallel, at most three pinned to fable and the rest opus' },
     { title: 'Verify', detail: 'adversarial refuters per finding, majority rules' },
   ],
 }
@@ -93,7 +93,10 @@ const LENSES = [
 // Every fixed lens pins its model: half opus, half fable. Two model families
 // reading the same diff have different blind spots, and pinning makes the
 // split deterministic instead of inheriting whatever the session runs.
-// Dynamic lenses alternate between the two families by index.
+// MAX_FABLE caps fable-pinned reviewers across the whole run: the three fixed
+// fable lenses spend the budget, so dynamic lenses take opus. Diversity is
+// preserved (both families always read the diff) at a fixed fable cost.
+const MAX_FABLE = 3
 
 const LENS_PROPOSALS = {
   type: 'object',
@@ -142,7 +145,12 @@ if (dynamic.length > dynamicAllowed) {
   log(`agent budget ${MAX_AGENTS}: trimming dynamic lenses ${dynamic.length} to ${dynamicAllowed}`)
   dynamic = dynamic.slice(0, dynamicAllowed)
 }
-const DYNAMIC = dynamic.map((l, i) => ({ key: `dyn-${l.key}`, prompt: l.prompt, model: i % 2 === 0 ? 'fable' : 'opus' }))
+let fableUsed = LENSES.filter((l) => l.model === 'fable').length
+const DYNAMIC = dynamic.map((l) => {
+  const model = fableUsed < MAX_FABLE ? 'fable' : 'opus'
+  if (model === 'fable') fableUsed += 1
+  return { key: `dyn-${l.key}`, prompt: l.prompt, model }
+})
 const ALL_LENSES = [...LENSES, ...DYNAMIC]
 
 phase('Find')
@@ -170,7 +178,7 @@ const toVerify = deduped.slice(0, CAP)
 if (deduped.length > CAP) log(`capping verification at ${CAP} of ${deduped.length} deduped findings (dropped ${deduped.length - CAP} lowest-severity; re-run after fixes to catch them)`)
 log(`${all.length} raw findings, ${deduped.length} after dedup, verifying ${toVerify.length}`)
 
-if (toVerify.length === 0) return { pr, repo, confirmed: [], rejected: [], unverified: [], stats: { raw: all.length, deduped: deduped.length, verified: 0, lenses: ALL_LENSES.length, dynamic: DYNAMIC.map((l) => l.key), maxAgents: MAX_AGENTS }, note: 'no findings survived dedup; treat as a clean deep pass' }
+if (toVerify.length === 0) return { pr, repo, confirmed: [], rejected: [], unverified: [], stats: { raw: all.length, deduped: deduped.length, verified: 0, lenses: ALL_LENSES.length, dynamic: DYNAMIC.map((l) => l.key), maxAgents: MAX_AGENTS, fable: ALL_LENSES.filter((l) => l.model === 'fable').length }, note: 'no findings survived dedup; treat as a clean deep pass' }
 
 phase('Verify')
 // Adaptive adversarial jury: 3 refuters for critical, 2 for major, 1 for minor.
@@ -219,6 +227,6 @@ return {
   confirmed,
   rejected,
   unverified,
-  stats: { raw: all.length, deduped: deduped.length, verified: allocated.length, lenses: ALL_LENSES.length, dynamic: DYNAMIC.map((l) => l.key), maxAgents: MAX_AGENTS },
+  stats: { raw: all.length, deduped: deduped.length, verified: allocated.length, lenses: ALL_LENSES.length, dynamic: DYNAMIC.map((l) => l.key), maxAgents: MAX_AGENTS, fable: ALL_LENSES.filter((l) => l.model === 'fable').length },
   note: 'Confirmed findings feed the normal review loop: fix, post as one review object, then a delta round. Rejected ones carry their refuters\' reasons for the audit trail.',
 }
