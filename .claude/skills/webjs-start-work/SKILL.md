@@ -135,6 +135,10 @@ Doc drift is the #1 way a framework rots. Documentation MUST stay in sync with c
    - **Smoke** (`test/examples/*/smoke/*`): the example apps still boot and serve their key routes.
    - **Cross-runtime (Bun)** (`node scripts/run-bun-tests.js`, needs `bun` on PATH; the `test/bun/*.mjs` scripts run under both runtimes): webjs runs on **Node 24+ OR Bun** (#508), so a change to runtime-sensitive code MUST be proven on Bun, not just Node. "Runtime-sensitive" = the serializer (Blob/File/FormData/typed arrays), the server request/listener path (the node:http vs `Bun.serve` shells, SSE, WebSocket upgrade, compression, timeouts), streams + `node:fs` (anything using `Readable.fromWeb` / `pipeline` / `createWriteStream`), `node:crypto`, the TS stripper, `AsyncLocalStorage`, or ANY `node:*` API whose behaviour Bun may implement differently. The Bun matrix (`scripts/run-bun-tests.js`) re-runs the `node:test` suite under `bun test` and FAILS on a genuine divergence; a divergence is a REAL bug to fix in the framework (this session found 5: a FormData fresh-identity serializer crash, a `Readable.fromWeb` `put()` hang, the amaro vs Node TS-strip error code, a JSC vs V8 error-message format, a link-unsafe `node:module` named import), not something to skip. Add a `test/bun/<feature>.mjs` cross-runtime assert script (wired into the CI `bun` job) for any new surface that touches the listener / serializer / streaming path. A test that is legitimately Node-only (asserts a node:http internal, the built-in stripper, `module.registerHooks` seeding, the node `ws`-library subsystem) goes on the runner's documented `DENYLIST` with a reason and a note of where the Bun behaviour IS covered; if a file MIXES runtime-agnostic and Node-only tests, SPLIT the Node-only ones into their own file so the rest still runs on Bun. See the skill's `references/testing.md`.
 
+   **Run these layers ONCE, at the end, not once per review round.** They cost minutes each (e2e ~4 min, the full Node suite ~5 min, the Bun matrix and the browser suite similar), so running them between rounds burns a session on repeats. This changes WHEN they run, never WHETHER: everything the paragraph below mandates still has to happen before the PR is marked ready. See "Cost discipline in the loop" under the self-review loop for the timing rule.
+
+   Also: **CI runs the browser, e2e (Node AND Bun), Bun-matrix, four-app, Postgres, Docker and Build jobs on every PR**, so for those a local run is fast feedback rather than the only signal. Note that only five checks are REQUIRED by branch protection, and they are not simply five of the jobs just listed: they are `Conventions (webjs check)`, `Unit + integration (node --test)`, `Browser (web-test-runner / Playwright)`, `E2E (Puppeteer against the blog example)` and `Build (@webjsdev/core dist)`. Everything else, INCLUDING both Bun jobs, runs without gating the merge button.
+
    The trap: **`npm test` does NOT run the browser, e2e, or Bun layers** (browser needs `wtr`; e2e is gated behind `WEBJS_E2E=1`; the Bun matrix is a separate `node scripts/run-bun-tests.js` and runs only the Node path otherwise). A green `npm test` is necessary but NOT sufficient. If the change can affect client behaviour or the served wire, you MUST run `npm run test:browser` and/or `WEBJS_E2E=1 node --test test/e2e/e2e.test.mjs`; if it touches runtime-sensitive code (above), you MUST run `node scripts/run-bun-tests.js` (with `bun` installed) and the `test/bun/*.mjs` scripts under Bun, then report the result. Reasoning "the unit tests pass" while shipping a change that alters what the browser downloads, OR that diverges on Bun, is the exact failure this rule exists to prevent.
 
    Acceptance criteria phrased in browser terms ("network probe", "renders without JS", "hydrates", "no console errors") are a hard signal that an e2e or browser test is REQUIRED, not optional. For each layer, either add/update coverage and run it, or write "N/A because <reason>" in the PR body. If a pre-existing test in a layer you ran is already red on `main`, say so explicitly (with proof) rather than letting it look like your regression.
@@ -310,6 +314,28 @@ Beyond review findings, proactively record the *reasoning* behind a PR as commen
 
 **What's worth capturing (judgement, not a checklist):** why an approach won over a credible alternative; an experiment tried and reverted, with the reason; a tradeoff accepted knowingly (a cold-start cost, a known-small race window left in, a documented edge case); a constraint or invariant discovered mid-work; anything you would want explained if you returned to the PR with no memory of the conversation. Skip the trivial: routine fixes, mechanical edits, anything the diff already makes obvious. The bar is "would a future agent be missing important context without this", not "log everything". When the PR body already covers a decision, a short comment is fine or skip it; do not duplicate the whole body into a comment.
 
+### Cost discipline in the loop (read before the first round)
+
+A review round is a READING pass, not a test run. It costs seconds. Anything that turns a round into minutes is waste.
+
+**Do not run a whole SUITE inside the loop.** Not the e2e suite, not the full Node suite, not the browser suite, not the Bun matrix, not the four-app boot check. A round reads code; a suite tells a reading pass nothing, and a finding fixed in round 2 invalidates whatever round 1's run reported anyway.
+
+What you DO run mid-loop, because both are seconds long and both are part of MAKING a fix rather than reviewing it:
+- the specific test file(s) covering the line you just changed (`node --test <paths>`). This also satisfies the repo's commit rule, which requires a commit's own tests to pass before it lands, NOT the whole suite to be re-run per commit.
+- a targeted probe script, when you need to observe real behaviour instead of inferring it from the source.
+
+**The full verification happens once, after the last clean round.** Run every layer the Definition of done requires for this change (browser and e2e for anything browser-facing, the Bun matrix for anything runtime-sensitive, the four-app check for a framework change), then push and read CI. This rule defers those runs to a single pass; it never excuses skipping one. Report the results in the PR body.
+
+**Prefer CI over a local slow run, but know exactly what CI gates.** Only FIVE checks are required by `main` branch protection: `Conventions (webjs check)`, `Unit + integration (node --test)`, `Browser (web-test-runner / Playwright)`, `E2E (Puppeteer against the blog example)`, and `Build (@webjsdev/core dist)`. Those five you can safely leave to CI: push, `gh pr ready <N>`, then read `gh pr checks <N>` once. Re-run one locally only when you need the failure detail sooner.
+
+The other jobs (`Bun runtime smoke + test matrix`, `E2E (blog served on Bun)`, `In-repo app tests`, `Postgres prod-engine round-trip`, `Docker image build`) DO run on every PR but are NOT required, so a red one does not block the merge button. Verify the list rather than trusting this paragraph, since protection changes: `gh api repos/webjsdev/webjs/branches/main/protection --jq '.required_status_checks.contexts'`. Consequence that matters: **Bun parity is not enforced by the merge gate.** When the change touches runtime-sensitive code, read the Bun job's result explicitly (or run it locally) before merging; do not assume a green merge button means Bun passed.
+
+**Never wait for CI during the loop.** Push and immediately start the next round. No `gh pr checks --watch`, no pausing "until CI comes back". Read CI once, after the last clean round.
+
+**Baseline comparisons are worth it once, never repeatedly.** When a suite has pre-existing failures, comparing the failure SET against an `origin/main` worktree is the only way to tell a regression from ambient breakage, and it is worth the one run. Doing it again after each fix is not: re-diff only if a NEW failure name appears.
+
+If you catch yourself starting a multi-minute suite while the loop is still finding things, stop. That is the exact waste this section exists to prevent.
+
 ### How the loop works
 
 The draft PR is already open (step 6), so reviews post to it from the first round. Do NOT mark it ready for review or report "ready for merge" yet. Run rounds of self-review until ONE round finds zero new issues. Each round must:
@@ -331,6 +357,15 @@ The draft PR is already open (step 6), so reviews post to it from the first roun
    - Asks for a numbered list with `file:line` references. Problems only, no suggestions.
    - Ends with: "If you find nothing genuinely wrong, say exactly `CLEAN` and stop. Do not pad."
 
+   **The subagent reviewer is REQUIRED. Reviewing your own diff inline is NOT an acceptable substitute.** The whole value is that the reviewer has none of your context and therefore none of your blind spots; a self-review re-derives the same assumptions that produced the bug. So never quietly downgrade a round to an inline pass and never report a round as done when it ran inline.
+
+   **Surface a broken subagent IMMEDIATELY, in the same turn you notice.** The failure modes look different and are all handled the same way: the spawn is declined at the permission prompt, the tool returns an error or a missing result, the agent returns something unusable, or it produces nothing for an unreasonably long time. In every case:
+   - **A failed or missing tool result is NOT work in progress.** Nothing is running. Do not wait on it, do not poll it, and never tell the user it is "still going". Confirm with `TaskList` (empty means nothing is in flight) and say so at once.
+   - **Always spawn the reviewer with `run_in_background: false`**, so a failure comes back as a result you can see rather than a task you might sit on.
+   - **Tell the user the moment a round cannot run**, state plainly that the review is blocked and why, and ask how to proceed. Retry once if the failure looks transient. Do NOT silently substitute a weaker review, and do NOT let the loop stall in silence, which is the worst of both (no review AND no progress).
+
+   A blocked reviewer stops the loop and becomes a question for the user. It never becomes an inline round, and it never becomes an unreported wait.
+
 2. **For each finding the subagent reports**, do exactly ONE of these three. There is no fourth option, and "mention it and move on" is not allowed:
    - **Fix it** on the branch (commit + push to update the PR), OR
    - **Reject it** explicitly with a one-sentence reason written in your reply to the user and in the PR body. Rejection has to be defensible (e.g. "the agent flagged X as a security issue but X runs server-side only and never reaches user input"). False positives are real; reject them on the merits, don't just hand-wave. OR
@@ -340,7 +375,7 @@ The draft PR is already open (step 6), so reviews post to it from the first roun
 
 3. **If the round found any findings (even rejected ones)**, run another round with a fresh subagent. The new round picks a slightly different focus prompt: if round 1 was broad, round 2 zooms in on the file you most edited; if round 2 zoomed in, round 3 zooms out to cross-file consistency, etc. Rotate focus to avoid the agent rediscovering the same surface.
 
-4. **If the round reports `CLEAN`**, the loop is done.
+4. **If the round reports `CLEAN`**, the loop is done. THIS is the point at which the slow layers run, once (see "Cost discipline in the loop" above), not before.
 
 The minimum is TWO rounds. A clean first round is rare and usually means the review was too shallow; if round 1 is clean, spawn a second one with a sharper, narrower focus before believing the result.
 
