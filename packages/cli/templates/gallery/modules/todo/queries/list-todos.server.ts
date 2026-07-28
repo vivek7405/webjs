@@ -1,8 +1,10 @@
 'use server';
 // A READ is a `'use server'` action so the client (and SSR) can call it via the
 // normal import (rewritten to a typed RPC stub). `method = 'GET'` rides args in
-// the URL, is CSRF-exempt, and its result is SSR-seeded so the component does
-// not re-fetch on hydration.
+// the URL and is CSRF-exempt. It declares no `cache`, so the response is
+// `no-store`: the verb marks the read as safe, the `cache` export is what makes
+// it cacheable. The todo page awaits this server-side and hands the rows down as
+// a `.todos=${...}` property, so nothing re-fetches it on the client.
 import { db } from '#db/connection.server.ts';
 import type { Todo } from '../types.ts';
 

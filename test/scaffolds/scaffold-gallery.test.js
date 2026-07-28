@@ -388,3 +388,52 @@ test('the full-stack auth card wires a real, protected auth baseline', async () 
     await rm(cwd, { recursive: true, force: true });
   }
 });
+
+test('the server-actions card demonstrates every HTTP-verb config export', async () => {
+  // The reserved sibling exports (#488) are config, not module exports, so the
+  // gallery-coverage manifest cannot gate them. Assert the card ships a working
+  // demo of each: without this, `method` / `cache` / `tags` / `invalidates` can
+  // silently drop out of the scaffold the way they were missing before #1151.
+  const cwd = await tempCwd();
+  try {
+    await scaffoldApp('demo', cwd, { template: 'full-stack' });
+    const mod = join(cwd, 'demo', 'modules', 'server-actions');
+
+    const read = await readFile(join(mod, 'queries', 'read-clock.server.ts'), 'utf8');
+    assert.match(read, /^'use server';/, 'the cached read is an RPC action');
+    assert.match(read, /export const method = 'GET'/, 'declares the GET verb');
+    assert.match(read, /export const cache = \d+/, 'declares a cache window');
+    assert.match(read, /export const tags = /, 'tags the cached entry');
+
+    const mutation = await readFile(join(mod, 'actions', 'bump-clock.server.ts'), 'utf8');
+    assert.match(mutation, /export const invalidates = /, 'the mutation evicts the tag');
+    assert.doesNotMatch(mutation, /export const method/, 'a mutation is POST by default');
+
+    // The GET and the mutation each own their file: a configured file with more
+    // than one callable function is a `webjs check` error.
+    for (const [label, src] of [['read', read], ['mutation', mutation]]) {
+      assert.equal([...src.matchAll(/^export async function /gm)].length, 1, `${label} keeps one function per configured file`);
+    }
+
+    // Teaching surface: a copied `{ public: true }` on a per-user read is a real
+    // cross-user leak, so the gallery names the flag in prose (comments and card
+    // copy) but never in code an agent would paste.
+    for (const [f, src] of [['queries/read-clock.server.ts', read], ['actions/bump-clock.server.ts', mutation]]) {
+      const code = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+      assert.doesNotMatch(code, /public:\s*true/, `${f} does not ship a shared-cache read`);
+    }
+
+    const card = await readFile(join(cwd, 'demo', 'app', 'features', 'server-actions', 'page.ts'), 'utf8');
+    assert.match(card, /<clock-reader>/, 'the card mounts the demo');
+    // The tag alone is not enough: without the module import the element never
+    // registers and the demo renders as an empty tag with everything still green.
+    assert.match(card, /import '#modules\/server-actions\/components\/clock-reader\.ts'/, 'the card imports the demo module');
+    assert.match(card, /public: true/, 'the card states the shared-cache safety rule');
+
+    // A mutation returns the ActionResult envelope, like every other gallery
+    // mutation, so the card does not teach two contracts side by side.
+    assert.match(mutation, /ActionResult</, 'the mutation returns the envelope');
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});

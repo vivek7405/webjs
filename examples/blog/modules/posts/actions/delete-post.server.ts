@@ -8,8 +8,10 @@ import { listPosts } from '#modules/posts/queries/list-posts.server.ts';
 import type { ActionResult } from '#modules/auth/types.ts';
 
 // A mutation (#488, POST by default). `invalidates` lists the cache tags to
-// evict on success, so a later getPost GET for this slug refetches instead of
-// serving a stale browser-cached value. (The listPosts.invalidate() call below
+// evict once the action completes without throwing, so a later getPost GET for
+// this slug refetches instead of serving a stale browser-cached value. Note the
+// 401 path below still evicts: eviction is gated on the action having RUN, so a
+// returned { success: false } envelope counts. (The listPosts.invalidate() call below
 // is the separate server-side query cache; this is the HTTP-boundary tag set.)
 export const invalidates = (input: { slug: string }) => ['posts', `post:${input.slug}`];
 export async function deletePost(
