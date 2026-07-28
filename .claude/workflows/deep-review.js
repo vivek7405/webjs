@@ -3,13 +3,16 @@ export const meta = {
   description: 'Deep multi-agent PR review: parallel finder lenses, then adversarial verification, reporting only confirmed findings',
   whenToUse: 'High-risk PRs where a single review pass is not enough. Works on any repo. Pass the PR number as args, or { pr, repo } to target another repository.',
   phases: [
-    { title: 'Find', detail: 'six lenses over the PR in parallel, half on opus and half on fable' },
+    { title: 'Scope', detail: 'a scout reads the diff and proposes dynamic lenses for this PR' },
+    { title: 'Find', detail: 'six fixed lenses plus up to six dynamic ones, in parallel, split across opus and fable' },
     { title: 'Verify', detail: 'adversarial refuters per finding, majority rules' },
   ],
 }
 
-// args: a PR number ("123" or 123), an "owner/repo#123" string, or { pr, repo }.
+// args: a PR number ("123" or 123), an "owner/repo#123" string, or { pr, repo, lenses }.
 // When no repo is given, every agent detects it from its own cwd via gh.
+// lenses: optional [{ key, prompt }] of extra lenses; when given, the scout is
+// skipped and these run as the dynamic set instead.
 let pr = null
 let repo = null
 if (typeof args === 'number') pr = String(args)
@@ -21,6 +24,7 @@ else if (typeof args === 'string' && args.trim()) {
   pr = String(args.pr)
   repo = args.repo ? String(args.repo) : null
 }
+const givenLenses = (args && typeof args === 'object' && Array.isArray(args.lenses)) ? args.lenses : null
 if (!pr) throw new Error('Pass the PR number as args, e.g. Workflow({ name: "deep-review", args: "123" }), or "owner/repo#123", or { pr, repo }')
 
 const REPO_FLAG = repo ? ` --repo ${repo}` : ''
@@ -80,14 +84,56 @@ const LENSES = [
   { key: 'invariants-docs', prompt: 'Invariants and doc drift: check the diff against every invariant and convention the repo\'s contributor rules state, and check every doc surface that describes the changed behavior still tells the truth at head.', model: 'fable' },
   { key: 'fresh-eyes', prompt: 'Broad second-opinion pass: read the diff cold and report anything genuinely wrong, with no assigned angle. Prefer depth on the riskiest hunk over breadth.', model: 'fable' },
 ]
-// Every lens pins its model: half opus, half fable. Two model families
-// reading the same diff have different blind spots, and pinning all six makes
-// the split deterministic instead of inheriting whatever the session runs.
+// Every fixed lens pins its model: half opus, half fable. Two model families
+// reading the same diff have different blind spots, and pinning makes the
+// split deterministic instead of inheriting whatever the session runs.
+// Dynamic lenses alternate between the two families by index.
+
+const LENS_PROPOSALS = {
+  type: 'object',
+  required: ['lenses'],
+  properties: {
+    lenses: {
+      type: 'array',
+      maxItems: 6,
+      items: {
+        type: 'object',
+        required: ['key', 'prompt'],
+        properties: {
+          key: { type: 'string', description: 'short kebab-case name for the lens' },
+          prompt: { type: 'string', description: 'one-paragraph reviewer charter: what this lens hunts and why THIS PR earns it' },
+        },
+      },
+    },
+  },
+}
+
+phase('Scope')
+let dynamic = []
+if (givenLenses) {
+  dynamic = givenLenses.slice(0, 6).map((l) => ({ key: String(l.key), prompt: String(l.prompt) }))
+  log(`using ${dynamic.length} caller-provided dynamic lenses, scout skipped`)
+} else {
+  const scout = await agent(
+    `${SAFETY}
+
+You are the SCOUT for a deep review of PR ${pr}. Read the diff and the PR body, understand what kind of work this PR actually does, and propose ZERO to six ADDITIONAL review lenses tailored to it. Six fixed lenses already run regardless, so never duplicate their ground: correctness of the changed logic, security, repo-wide ripple effects of touched symbols, test adequacy and counterfactuals, invariant and doc drift, and a broad fresh-eyes pass.
+
+Propose a lens only when THIS PR's nature earns it. Examples of the kind of thing that earns one: concurrency or race conditions if the diff touches async coordination; serialization compatibility if a wire format changed; migration or data-loss paths if storage schemas moved; API backward compatibility if public signatures changed; performance if a hot path was rewritten; accessibility if UI semantics changed; prompt-injection surfaces if agent-facing prose or tooling changed. Zero is a fine answer for a PR whose nature the fixed six already cover.
+
+Each proposal is a key plus a one-paragraph reviewer charter written like an order: what to hunt, where in this diff, and what evidence would confirm it.`,
+    { label: 'scout:lenses', phase: 'Scope', schema: LENS_PROPOSALS },
+  )
+  dynamic = ((scout && scout.lenses) || []).slice(0, 6)
+  log(`scout proposed ${dynamic.length} dynamic lens(es)${dynamic.length ? ': ' + dynamic.map((l) => l.key).join(', ') : ''}`)
+}
+const DYNAMIC = dynamic.map((l, i) => ({ key: `dyn-${l.key}`, prompt: l.prompt, model: i % 2 === 0 ? 'fable' : 'opus' }))
+const ALL_LENSES = [...LENSES, ...DYNAMIC]
 
 phase('Find')
-log(`deep-review of PR ${pr}${repo ? ` in ${repo}` : ''}: ${LENSES.length} lenses in parallel`)
+log(`deep-review of PR ${pr}${repo ? ` in ${repo}` : ''}: ${ALL_LENSES.length} lenses in parallel (${LENSES.length} fixed, ${DYNAMIC.length} dynamic)`)
 
-const found = await parallel(LENSES.map((l) => () =>
+const found = await parallel(ALL_LENSES.map((l) => () =>
   agent(
     `${SAFETY}\n\nYou are ONE review lens over PR ${pr}. Your single charter:\n${l.prompt}\n\nReport only genuine problems with concrete failure scenarios. No style nits, no suggestions, no padding. Return an empty findings array if you find nothing real.`,
     { label: `find:${l.key}`, phase: 'Find', schema: FINDINGS, ...(l.model ? { model: l.model } : {}) },
@@ -109,7 +155,7 @@ const toVerify = deduped.slice(0, CAP)
 if (deduped.length > CAP) log(`capping verification at ${CAP} of ${deduped.length} deduped findings (dropped ${deduped.length - CAP} lowest-severity; re-run after fixes to catch them)`)
 log(`${all.length} raw findings, ${deduped.length} after dedup, verifying ${toVerify.length}`)
 
-if (toVerify.length === 0) return { pr, repo, confirmed: [], rejected: [], stats: { raw: all.length, deduped: deduped.length, verified: 0, lenses: LENSES.length }, note: 'no findings survived dedup; treat as a clean deep pass' }
+if (toVerify.length === 0) return { pr, repo, confirmed: [], rejected: [], stats: { raw: all.length, deduped: deduped.length, verified: 0, lenses: ALL_LENSES.length, dynamic: DYNAMIC.map((l) => l.key) }, note: 'no findings survived dedup; treat as a clean deep pass' }
 
 phase('Verify')
 // Adaptive adversarial jury: 3 refuters for critical, 2 for major, 1 for minor.
@@ -142,6 +188,6 @@ return {
   repo,
   confirmed,
   rejected,
-  stats: { raw: all.length, deduped: deduped.length, verified: toVerify.length, lenses: LENSES.length },
+  stats: { raw: all.length, deduped: deduped.length, verified: toVerify.length, lenses: ALL_LENSES.length, dynamic: DYNAMIC.map((l) => l.key) },
   note: 'Confirmed findings feed the normal review loop: fix, post as one review object, then a delta round. Rejected ones carry their refuters\' reasons for the audit trail.',
 }
