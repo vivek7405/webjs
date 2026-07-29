@@ -76,6 +76,9 @@ test('the skill carries the substantive gate and its two-tier exit', () => {
   // the chat report expands the same ledger instead of a bare name list.
   assert.match(skill, /FINAL summary review on the PR also carries a deferral ledger/);
   assert.match(skill, /expand each deferral right there, mirroring the PR ledger/);
+  // The chat report must END by directly asking whether to file follow-ups.
+  assert.match(skill, /END WITH A DIRECT QUESTION/);
+  assert.match(skill, /silence is never consent/);
 });
 
 test('deep-review findings carry a required tier with the gate wording', () => {
