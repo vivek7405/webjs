@@ -23,8 +23,15 @@ import { renderToString, renderToStream } from '../../packages/core/src/render-s
 
 const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`;
 
-const SECRET = 'postgres://user:BUN_PARITY_SECRET@host/db';
-async function leaky(input) { const conn = SECRET; return { ok: true, conn, input }; }
+// The marker is written INLINE, not read from a `const` the body references.
+// `String(fn)` reproduces the SOURCE, so a body that says `const conn = SECRET`
+// stringifies to the identifier and never contains the marker at all. Every
+// `!includes(BUN_PARITY_SECRET)` assertion below would then be trivially true
+// and this whole file would prove nothing about leaks.
+async function leaky(input) {
+  const conn = 'postgres://user:BUN_PARITY_SECRET@host/db';
+  return { ok: true, conn, input };
+}
 
 async function drain(stream) {
   let out = '';
@@ -106,12 +113,16 @@ assert.match(cyclicOut, /action=""/, `[${runtime}] a cyclic array must render, n
 // The SCOPE boundary, on both machines. Every other passthrough above is
 // `action`-valued, so none of them would notice a change that widened the claim
 // to drop function values in every attribute. This is the one that would.
+// Asserts on the SECRET marker, not on a stringification format, per the note
+// at the top: the marker is inside the function body and every engine that
+// stringifies the function at all will carry it, while `async function leaky`
+// is a formatting detail JSC and V8 need not agree on.
 const otherBuffered = await renderToString(html`<div title=${leaky}></div>`, { ssr: true });
-assert.match(otherBuffered, /async function leaky/,
+assert.ok(otherBuffered.includes('BUN_PARITY_SECRET'),
   `[${runtime}] an unclaimed attribute must still stringify (buffered)`);
 
 const otherStreamed = await drain(renderToStream(html`<div title=${leaky}></div>`, { ssr: false }));
-assert.match(otherStreamed, /async function leaky/,
+assert.ok(otherStreamed.includes('BUN_PARITY_SECRET'),
   `[${runtime}] an unclaimed attribute must still stringify (streaming)`);
 
 // The passthrough must stay byte-identical across runtimes: refusing everything

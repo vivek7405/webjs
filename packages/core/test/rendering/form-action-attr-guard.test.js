@@ -19,6 +19,25 @@ async function drain(stream) {
   return out;
 }
 
+/**
+ * Drain a stream into a CALLER-OWNED buffer, so what was already flushed
+ * survives a throw.
+ *
+ * `drain()` accumulates into a local and loses it when the iteration throws, so
+ * a test that drains a refused render and then inspects the result is always
+ * inspecting an empty string, whatever the renderer actually put on the wire.
+ * That matters here more than it looks: a streaming renderer can flush bytes
+ * BEFORE it refuses, and those bytes are already on their way to the client.
+ * "It threw" is not the same claim as "the client received nothing".
+ *
+ * @param {any} stream
+ * @param {{ text: string }} sink written to as chunks arrive
+ */
+async function drainInto(stream, sink) {
+  for await (const c of stream) sink.text += typeof c === 'string' ? c : new TextDecoder().decode(c);
+  return sink.text;
+}
+
 // The secret sentinel must never appear in any output, thrown or not.
 const SECRET = 'postgres://user:SECRET@host/db';
 async function leaky(input) { const conn = SECRET; return { success: true, conn, input }; }
@@ -91,12 +110,21 @@ test('the streaming renderer refuses the same function (ssr:false path)', async 
   );
 });
 
-test('the streaming renderer never emits the source', async () => {
-  let out = '';
-  try {
-    out = await drain(renderToStream(html`<form action=${leaky}></form>`, { ssr: false }));
-  } catch { /* expected */ }
-  assert.ok(!out.includes('SECRET'), 'streamed output must not carry the function source');
+test('the streaming renderer never emits the source, not even before it refuses', async () => {
+  // Uses `drainInto` on purpose. Draining into a local and reading it after the
+  // catch always sees an empty string, because the throw discards it, so the
+  // assertion passes no matter what went out. Verified: making the streaming
+  // machine enqueue the source and THEN refuse left the whole file green.
+  //
+  // The claim being pinned is about the wire, not the exception. A stream can
+  // flush bytes before it refuses, and those bytes are already gone.
+  const sink = { text: '' };
+  await assert.rejects(
+    () => drainInto(renderToStream(html`<form action=${leaky}></form>`, { ssr: false }), sink),
+    /function was interpolated into action=/,
+  );
+  assert.ok(!sink.text.includes('SECRET'), `flushed bytes must not carry the source, got: ${sink.text}`);
+  assert.ok(!sink.text.includes('async function'), 'no function source of any kind reached the client');
 });
 
 // The unquoted shape lands in the streaming machine's `after-eq` branch; the
@@ -151,7 +179,8 @@ test('the streaming renderer keeps the same scope boundary', async () => {
   // invisible on the other two: dropping function values in every attribute in
   // the streaming machine kept the whole suite green.
   const out = await drain(renderToStream(html`<div title=${leaky}></div>`, { ssr: false }));
-  assert.match(out, /async function leaky/, 'an unclaimed attribute still stringifies on the streaming path');
+  assert.match(out, /SECRET/, 'an unclaimed attribute still stringifies on the streaming path');
+  assert.match(out, /async function leaky/, 'specifically, the function source');
 });
 
 // --- Bypasses found reviewing the first cut of the guard -------------------

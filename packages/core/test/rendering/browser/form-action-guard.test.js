@@ -65,11 +65,14 @@ suite('form-action guard in a real browser', () => {
     // reflects the stringified function into the live `action` attribute.
     //
     // Renders the SAME template with a string first, so there is a real,
-    // attached form to inspect afterwards. Without it, a throwing part leaves
-    // the container empty and the two "no marker in this element" checks below
-    // would hold against a form that does not exist. (The `assert.ok(form)`
-    // checks would FAIL in that case rather than pass, so they are not part of
-    // the problem; it is specifically the absence assertions that go hollow.)
+    // attached form to inspect afterwards. Without it a throwing part leaves the
+    // container empty, and the only assertion that would still PASS is the
+    // document-wide one at the end, which is exactly the one that proves least.
+    // The element-scoped checks do not go quietly in that case: `assert.ok`
+    // fails on the null form, and the two `after.getAttribute` / `after.action`
+    // reads throw a TypeError. So the string render is not protecting them from
+    // being hollow, it is what gives the test an element to make its real claim
+    // about at all.
     const host = mount();
     const tpl = (v) => html`<form .action=${v}></form>`;
     render(tpl('/submit'), host);
