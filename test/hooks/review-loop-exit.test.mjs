@@ -67,9 +67,11 @@ test('the skill carries the substantive gate and its two-tier exit', () => {
   assert.match(skill, /A counterfactual CLAIM decays/);
   assert.match(skill, /true of a commit, not a branch/);
   // The loop never files follow-up issues on its own; deferral is recorded
-  // on the PR and filing is the user's call from the report.
+  // on the PR and filing is the user's call from the report. Deferral can
+  // never swallow a finding on the PR's own changed code.
   assert.match(skill, /the loop NEVER files a follow-up issue on its own/);
   assert.match(skill, /awaiting your call on filing/);
+  assert.match(skill, /NEVER out of scope, whatever its size/);
 });
 
 test('deep-review findings carry a required tier with the gate wording', () => {
