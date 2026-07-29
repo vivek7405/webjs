@@ -39,11 +39,11 @@ export const SWATCHES: Swatch[] = [
  *
  * It is lighter in dark mode and darker in light mode for the same reason in
  * both cases, contrast against the page. That flip is also why --accent-fg
- * exists: amber at 0.82 lightness takes near-black text (9.9:1), amber at 0.54
+ * exists: amber at 0.74 lightness takes near-black text (8.3:1), amber at 0.54
  * takes white (5.4:1).
  */
 export const ACCENTS: Swatch[] = [
-  { token: '--accent', name: 'Amber', role: 'Primary button, closing CTA', dark: 'oklch(0.82 0.15 52)', light: 'oklch(0.54 0.16 52)' },
-  { token: '--accent-fg', name: 'On amber', role: 'Text and icons on the accent', dark: 'oklch(0.17 0.02 52)', light: 'oklch(1 0 0)' },
-  { token: '--accent-live', name: 'Live', role: 'Glow, live dots, focus rings', dark: 'oklch(0.80 0.14 52)', light: 'oklch(0.63 0.17 50)' },
+  { token: '--accent', name: 'Amber', role: 'Primary button, closing CTA', dark: 'oklch(0.74 0.19 52)', light: 'oklch(0.54 0.16 52)' },
+  { token: '--accent-fg', name: 'On amber', role: 'Text and icons on the accent', dark: 'oklch(0.08 0.01 52)', light: 'oklch(1 0 0)' },
+  { token: '--accent-live', name: 'Live', role: 'Glow, live dots, focus rings', dark: 'oklch(0.74 0.18 52)', light: 'oklch(0.63 0.17 50)' },
 ];
