@@ -9,7 +9,9 @@
 //   'attr'       unquoted `action=${fn}`, including an array-wrapped value
 //   'attr-mixed' EVERY quoted single hole (`action="${fn}"`, `.action="${fn}"`,
 //                `?action="${fn}"`, `@action="${fn}"`) plus a true mixed value
-//   'prop'       unquoted `.action=${fn}` on a native element
+//   'prop'       unquoted `.action=${fn}` on an element that REFLECTS it
+//                (a form, or `.formAction` on a button/input); elsewhere the
+//                property is an expando and is deliberately left alone
 //   'bool'       unquoted `?action=${fn}`
 //
 // The second row is the counter-intuitive one: quoting a hole does not keep it

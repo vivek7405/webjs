@@ -4,9 +4,17 @@ import { isBindingPrefix } from './binding-prefixes.js';
  * Form-action attribute guard (#1154).
  *
  * Both SSR state machines and the client renderer import from here so the
- * rule cannot drift between them. There are four commit sites across three
- * renderers and they are easy to change one at a time, which is why the
- * predicate lives in one module rather than at each site.
+ * rule cannot drift between them. Each renderer commits attribute, boolean and
+ * property holes on separate branches, so the rule has more call sites than it
+ * looks like from any one file, and they are easy to change one at a time.
+ * That is why the predicate lives here rather than at each site.
+ *
+ * Two entry points, and the difference between them is the point:
+ * `assertNotFunctionActionAttr` is name-based, because an ATTRIBUTE is
+ * stringified into the markup on whatever tag it appears.
+ * `assertNotFunctionReflectedActionProp` is name-and-tag-based, because a
+ * PROPERTY only reaches the markup where the DOM reflects it. Using the first
+ * on the property path refused `<div .action=${fn}>`, which never leaked.
  *
  * The second SSR machine (`streamTemplate`) is reached only through
  * `renderToStream(v, { ssr: false })`, which no page render uses: the server
