@@ -39,8 +39,17 @@ async function drainInto(stream, sink) {
 }
 
 // The secret sentinel must never appear in any output, thrown or not.
-const SECRET = 'postgres://user:SECRET@host/db';
-async function leaky(input) { const conn = SECRET; return { success: true, conn, input }; }
+// The marker is INLINE in the body on purpose. `String(fn)` reproduces source,
+// so a body that reads the marker from an outer `const` stringifies to the
+// IDENTIFIER and never to the value. These assertions happened to survive that
+// only because the identifier was itself called SECRET; renaming it would have
+// silently turned every `/SECRET/` check into a tautology. The same shape was a
+// live defect in `test/bun/form-action-guard.mjs`, where the marker and the
+// identifier did not share a name and nothing matched.
+async function leaky(input) {
+  const conn = 'postgres://user:SECRET_MARKER@host/db';
+  return { success: true, conn, input };
+}
 
 test('unquoted action=${fn} throws instead of leaking source', async () => {
   await assert.rejects(
