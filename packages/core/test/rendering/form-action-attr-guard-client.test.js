@@ -60,6 +60,26 @@ test('client render of mixed action="/x/${fn}" throws', () => {
   );
 });
 
+// Case folding on the client half too. Pinned here as well as on the SSR
+// machines because the client renderer reaches isFormActionAttr through its own
+// four clauses, and a normalization that only the SSR tests covered would leave
+// a client re-render free to write the source into a live DOM.
+test('client render of camelCase formAction=${fn} throws', () => {
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(html`<button type="submit" formAction=${fakeAction}></button>`, host),
+    /function was interpolated into formaction=/,
+  );
+});
+
+test('client re-render swapping in an upper-case ACTION=${fn} throws, live DOM stays clean', () => {
+  const host = document.createElement('div');
+  const tpl = (a) => html`<form method="post" ACTION=${a}></form>`;
+  render(tpl('/ok'), host);
+  assert.throws(() => render(tpl(fakeAction), host), /function was interpolated into action=/);
+  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
+});
+
 // Re-render over an ALREADY-MOUNTED form. Here the host really does hold a live
 // element, so if the guard let the value through, the source would be sitting
 // in the DOM and this would catch it.

@@ -149,6 +149,44 @@ test('formaction=${fn} on a submit button throws', async () => {
   );
 });
 
+// Case normalization was the ONE branch of the guard with no test. Mutation
+// testing every branch against this suite, seven of eight mutants red it and
+// this was the survivor: dropping `.toLowerCase()` from isFormActionAttr kept
+// all 46 unit tests and the whole Bun table green while `<form ACTION=${fn}>`
+// and `<button formAction=${fn}>` rendered the source in full. Every shape
+// tested up to here spells the attribute lowercase, so nothing was pinning it.
+//
+// The uncovered spelling is not exotic: `formAction={serverAction}` is React's
+// canonical submit-button binding, so it is the Next muscle memory this guard
+// exists for, and it was the one spelling held up by an untested call.
+test('camelCase formAction=${fn} throws (React spells it this way)', async () => {
+  await assert.rejects(
+    () => renderToString(html`<form method="post"><button formAction=${leaky}>Go</button></form>`, { ssr: true }),
+    /function was interpolated into formaction=/,
+  );
+});
+
+test('upper-case ACTION=${fn} throws', async () => {
+  await assert.rejects(
+    () => renderToString(html`<form method="post" ACTION=${leaky}></form>`, { ssr: true }),
+    /function was interpolated into action=/,
+  );
+});
+
+test('a quoted mixed-case Action="${fn}" throws (sigil strip and case-fold compose)', async () => {
+  await assert.rejects(
+    () => renderToString(html`<form method="post" Action="${leaky}"></form>`, { ssr: true }),
+    /function was interpolated into action=/,
+  );
+});
+
+test('the streaming renderer folds case too', async () => {
+  await assert.rejects(
+    () => drain(renderToStream(html`<button formAction=${leaky}></button>`, { ssr: false })),
+    /function was interpolated into formaction=/,
+  );
+});
+
 test('no thrown message ever carries the function source', async () => {
   for (const tpl of [
     html`<form action=${leaky}></form>`,

@@ -81,6 +81,12 @@ const refused = {
   'native prop .action=${fn}': () => html`<form .action=${leaky}></form>`,
   'unquoted bool ?action=${fn}': () => html`<form ?action=${leaky}></form>`,
   'array-wrapped action=${[fn]}': () => html`<form action=${[leaky]}></form>`,
+  // Case folding, on both runtimes: every other row here spells the attribute
+  // lowercase, and with those alone the `.toLowerCase()` in isFormActionAttr
+  // could be deleted with this whole table still green while `formAction=`
+  // leaked. camelCase is React's spelling, so it is the likeliest arrival.
+  'camelCase formAction=${fn}': () => html`<button type="submit" formAction=${leaky}></button>`,
+  'upper-case ACTION=${fn}': () => html`<form ACTION=${leaky}></form>`,
 };
 
 for (const [name, mk] of Object.entries(refused)) {
