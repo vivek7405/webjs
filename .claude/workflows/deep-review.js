@@ -168,19 +168,23 @@ const found = await parallel(ALL_LENSES.map((l) => () =>
 const all = found.filter(Boolean).flatMap((r) => r.findings)
 const byKey = new Map()
 const rank = { critical: 0, major: 1, minor: 2 }
-// Tier outranks severity at a file:line collision: the tier decides the
-// loop's exit, so a prose finding must never evict a substantive one at
-// the same line. Severity orders within a tier.
-const subst = (f) => f.tier === 'substantive'
+// Tier outranks severity EVERYWHERE findings compete: the tier decides
+// the loop's exit, so a prose finding must never evict a substantive one,
+// at a same-line dedup collision, in the CAP slice, or in the jury-budget
+// walk (the latter two follow this sort). Severity orders within a tier.
+// A missing tier counts as substantive, the gate's fail-open direction.
+const subst = (f) => f.tier !== 'prose'
 for (const f of all) {
   const key = `${f.file}:${f.line}`
   const prev = byKey.get(key)
   if (!prev || (subst(f) && !subst(prev)) || (subst(f) === subst(prev) && rank[f.severity] < rank[prev.severity])) byKey.set(key, f)
 }
-const deduped = [...byKey.values()].sort((a, b) => rank[a.severity] - rank[b.severity])
+const deduped = [...byKey.values()].sort((a, b) => (Number(subst(b)) - Number(subst(a))) || (rank[a.severity] - rank[b.severity]))
 const CAP = 12
 const toVerify = deduped.slice(0, CAP)
-if (deduped.length > CAP) log(`capping verification at ${CAP} of ${deduped.length} deduped findings (dropped ${deduped.length - CAP} lowest-severity; re-run after fixes to catch them)`)
+// The CAP tail is returned in `unverified`, never silently dropped.
+const capDropped = deduped.slice(CAP)
+if (capDropped.length) log(`capping verification at ${CAP} of ${deduped.length} deduped findings (${capDropped.length} returned unverified; raise maxAgents or re-run after fixes)`)
 log(`${all.length} raw findings, ${deduped.length} after dedup, verifying ${toVerify.length}`)
 
 if (toVerify.length === 0) return { pr, repo, confirmed: [], rejected: [], unverified: [], stats: { raw: all.length, deduped: deduped.length, verified: 0, lenses: ALL_LENSES.length, dynamic: DYNAMIC.map((l) => l.key), maxAgents: MAX_AGENTS, fable: ALL_LENSES.filter((l) => l.model === 'fable').length }, note: 'no findings survived dedup; treat as a clean deep pass' }
@@ -231,7 +235,7 @@ return {
   repo,
   confirmed,
   rejected,
-  unverified,
+  unverified: [...unverified, ...capDropped],
   stats: { raw: all.length, deduped: deduped.length, verified: allocated.length, lenses: ALL_LENSES.length, dynamic: DYNAMIC.map((l) => l.key), maxAgents: MAX_AGENTS, fable: ALL_LENSES.filter((l) => l.model === 'fable').length },
   note: 'Confirmed findings feed the normal review loop: fix, post as one review object, then a delta round. Rejected ones carry their refuters\' reasons for the audit trail.',
 }

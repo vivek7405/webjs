@@ -32,8 +32,9 @@ test('the skill carries the substantive gate and its two-tier exit', () => {
   for (const phrase of [/ability to OBSERVE the defect it claims to cover/g, /factual claim about runtime behavior in docs/g]) {
     assert.ok((skill.match(phrase) || []).length >= 2, `${phrase} must anchor both the definition and the template`);
   }
-  // A number in docs stating runtime behavior is surface three, not prose.
-  assert.match(skill, /a number in docs that states runtime behavior/);
+  // A number in docs stating runtime behavior is surface three, not prose,
+  // in the normative definition AND the delta prompt template.
+  assert.ok((skill.match(/a number in docs that states runtime behavior/g) || []).length >= 2, 'docs-number qualifier must anchor both the definition and the template');
   // Fail-open direction for untagged findings from a tag-capable reviewer,
   // and the one tagless-reviewer kind the orchestrator classifies itself.
   assert.match(skill, /arrives UNTAGGED from a reviewer whose result shape carries the tag is treated as substantive/);
@@ -65,9 +66,14 @@ test('deep-review findings carry a required tier with the gate wording', () => {
   assert.match(workflow, /a number in docs that states runtime behavior/);
   // The tier is orthogonal to severity, stated so dedup changes stay honest.
   assert.match(workflow, /surface classification, not a severity judgment/);
-  // Dedup must never let a prose finding evict a substantive one at the
-  // same file:line (the tier decides the loop's exit).
+  // Tier outranks severity everywhere findings compete: the same-line
+  // dedup collision, the tier-first sort that drives the CAP slice and
+  // the jury-budget walk, and a missing tier fails OPEN (substantive).
   assert.match(workflow, /subst\(f\) && !subst\(prev\)/);
+  assert.match(workflow, /const subst = \(f\) => f\.tier !== 'prose'/);
+  assert.match(workflow, /Number\(subst\(b\)\) - Number\(subst\(a\)\)/);
+  // The CAP tail is returned in unverified, never silently dropped.
+  assert.match(workflow, /\.\.\.unverified, \.\.\.capDropped/);
 });
 
 test('deep-review.js stays valid in the async workflow context', () => {
@@ -89,4 +95,8 @@ test('the routed review directive states the substantive exit, not the old absol
   // The tagless-reviewer clause stays in lockstep with the skill's gate:
   // orchestrator-classified, doubt to substantive, prose recorded.
   assert.match(hook, /recorded like a downgrade/);
+  // The directive and the skill prescribe the SAME round-1 reviewer: the
+  // deep-review workflow, with code-review findings as auxiliary input.
+  assert.match(hook, /round 1 is the deep-review workflow/);
+  assert.match(hook, /auxiliary input/);
 });
