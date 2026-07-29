@@ -27,8 +27,10 @@ else if (typeof args === 'string' && args.trim()) {
 const givenLenses = (args && typeof args === 'object' && Array.isArray(args.lenses)) ? args.lenses : null
 // Hard agent budget for the WHOLE run (scout + finders + jurors). Degrades
 // gracefully: dynamic lenses are trimmed first, jury sizes shrink next, and a
-// finding the budget cannot verify is returned marked unverified, never
-// silently dropped.
+// finding the run cannot verify is returned marked unverified, never
+// silently dropped. Two distinct causes with two distinct remedies: a jury
+// budget shortfall (raise maxAgents) and the fixed per-run verification cap
+// (CAP below; re-run after fixes, maxAgents cannot recover it).
 const rawMax = (args && typeof args === 'object' && Number.isFinite(Number(args.maxAgents))) ? Number(args.maxAgents) : 24
 const MAX_AGENTS = Math.min(60, Math.max(8, Math.floor(rawMax)))
 if (!pr) throw new Error('Pass the PR number as args, e.g. Workflow({ name: "deep-review", args: "123" }), or "owner/repo#123", or { pr, repo, lenses, maxAgents }')
@@ -47,13 +49,14 @@ const FINDINGS = {
       type: 'array',
       items: {
         type: 'object',
-        required: ['file', 'line', 'title', 'detail', 'severity'],
+        required: ['file', 'line', 'title', 'detail', 'severity', 'tier'],
         properties: {
           file: { type: 'string', description: 'repo-relative path' },
           line: { type: 'number', description: '1-indexed line at the PR head' },
           title: { type: 'string', description: 'one-sentence statement of the defect' },
           detail: { type: 'string', description: 'concrete failure scenario: inputs/state leading to wrong behavior' },
           severity: { type: 'string', enum: ['critical', 'major', 'minor'] },
+          tier: { type: 'string', enum: ['substantive', 'prose'], description: "substantive when the finding touches shipped source, a test's ability to observe the defect it claims to cover, or a factual claim about runtime behavior in docs; prose for everything else (wording, counts, style)" },
         },
       },
     },
@@ -158,7 +161,7 @@ log(`deep-review of PR ${pr}${repo ? ` in ${repo}` : ''}: ${ALL_LENSES.length} l
 
 const found = await parallel(ALL_LENSES.map((l) => () =>
   agent(
-    `${SAFETY}\n\nYou are ONE review lens over PR ${pr}. Your single charter:\n${l.prompt}\n\nReport only genuine problems with concrete failure scenarios. No style nits, no suggestions, no padding. Return an empty findings array if you find nothing real.`,
+    `${SAFETY}\n\nYou are ONE review lens over PR ${pr}. Your single charter:\n${l.prompt}\n\nReport only genuine problems with concrete failure scenarios. No style nits, no suggestions, no padding. Return an empty findings array if you find nothing real.\n\nTag each finding's tier: "substantive" when it touches shipped source, a test's ability to OBSERVE the defect it claims to cover (a tautological assertion that stays green with the bug present is substantive), or a factual claim about runtime behavior in docs (a number in docs that states runtime behavior, a default, a limit, a condition list, is this surface, not prose); "prose" for everything else (wording, PR-body counts, comment style, review artifacts). The tier is a surface classification, not a severity judgment.`,
     { label: `find:${l.key}`, phase: 'Find', schema: FINDINGS, ...(l.model ? { model: l.model } : {}) },
   )))
 
@@ -167,15 +170,23 @@ const found = await parallel(ALL_LENSES.map((l) => () =>
 const all = found.filter(Boolean).flatMap((r) => r.findings)
 const byKey = new Map()
 const rank = { critical: 0, major: 1, minor: 2 }
+// Tier outranks severity EVERYWHERE findings compete: the tier decides
+// the loop's exit, so a prose finding must never evict a substantive one,
+// at a same-line dedup collision, in the CAP slice, or in the jury-budget
+// walk (the latter two follow this sort). Severity orders within a tier.
+// A missing tier counts as substantive, the gate's fail-open direction.
+const subst = (f) => f.tier !== 'prose'
 for (const f of all) {
   const key = `${f.file}:${f.line}`
   const prev = byKey.get(key)
-  if (!prev || rank[f.severity] < rank[prev.severity]) byKey.set(key, f)
+  if (!prev || (subst(f) && !subst(prev)) || (subst(f) === subst(prev) && rank[f.severity] < rank[prev.severity])) byKey.set(key, f)
 }
-const deduped = [...byKey.values()].sort((a, b) => rank[a.severity] - rank[b.severity])
+const deduped = [...byKey.values()].sort((a, b) => (Number(subst(b)) - Number(subst(a))) || (rank[a.severity] - rank[b.severity]))
 const CAP = 12
 const toVerify = deduped.slice(0, CAP)
-if (deduped.length > CAP) log(`capping verification at ${CAP} of ${deduped.length} deduped findings (dropped ${deduped.length - CAP} lowest-severity; re-run after fixes to catch them)`)
+// The CAP tail is returned in `unverified`, never silently dropped.
+const capDropped = deduped.slice(CAP)
+if (capDropped.length) log(`capping verification at ${CAP} of ${deduped.length} deduped findings (${capDropped.length} returned unverified; the cap is fixed, so re-run after fixes to catch them)`)
 log(`${all.length} raw findings, ${deduped.length} after dedup, verifying ${toVerify.length}`)
 
 if (toVerify.length === 0) return { pr, repo, confirmed: [], rejected: [], unverified: [], stats: { raw: all.length, deduped: deduped.length, verified: 0, lenses: ALL_LENSES.length, dynamic: DYNAMIC.map((l) => l.key), maxAgents: MAX_AGENTS, fable: ALL_LENSES.filter((l) => l.model === 'fable').length }, note: 'no findings survived dedup; treat as a clean deep pass' }
@@ -186,9 +197,11 @@ phase('Verify')
 // on a major finding survives (fail-open toward treating it as real).
 const juries = { critical: 3, major: 2, minor: 1 }
 
-// Allocate jurors within the remaining budget, severity-first (toVerify is
-// already severity-sorted). A finding allocated zero jurors is returned
-// UNVERIFIED rather than silently dropped.
+// Allocate jurors within the remaining budget in toVerify's order, which
+// is tier-first with severity within a tier (the sort above), so
+// substantive findings claim jurors before prose ones. A finding
+// allocated zero jurors is returned UNVERIFIED rather than silently
+// dropped.
 spent += ALL_LENSES.length
 let juryBudget = Math.max(0, MAX_AGENTS - spent)
 const allocated = []
@@ -216,7 +229,9 @@ const verified = await parallel(allocated.map(({ f, take }) => () =>
       return { ...f, confirmed: !dead, jury: cast.length, refutes, reasons: cast.map((v) => v.reason) }
     })))
 
-const results = verified.filter(Boolean)
+// A dead jury SLOT (the whole parallel task resolved falsy) gets the same
+// fail-open the empty jury does: the finding stays CONFIRMED, never lost.
+const results = allocated.map(({ f }, i) => verified[i] || { ...f, confirmed: true, jury: 0, refutes: 0, reasons: [] })
 const confirmed = results.filter((r) => r.confirmed)
 const rejected = results.filter((r) => !r.confirmed)
 log(`confirmed ${confirmed.length}, refuted ${rejected.length}`)
@@ -226,7 +241,7 @@ return {
   repo,
   confirmed,
   rejected,
-  unverified,
+  unverified: [...unverified, ...capDropped],
   stats: { raw: all.length, deduped: deduped.length, verified: allocated.length, lenses: ALL_LENSES.length, dynamic: DYNAMIC.map((l) => l.key), maxAgents: MAX_AGENTS, fable: ALL_LENSES.filter((l) => l.model === 'fable').length },
   note: 'Confirmed findings feed the normal review loop: fix, post as one review object, then a delta round. Rejected ones carry their refuters\' reasons for the audit trail.',
 }
