@@ -235,43 +235,36 @@ export default function RootLayout({ children }: { children: unknown }) {
       /* Foundation tokens + effects that Tailwind utilities cannot express. */
       /* A single static gradient glow layer. It used to breathe (two layers
          cross-faded on a 16s loop), removed so nothing animates on the page. */
-      /* The palette is near-monochrome by policy.
-         Neutrals carry the page and colour is rationed, because a site that
-         tints every surface reads as decorated rather than designed. Chroma on
-         the greys is deliberately tiny (0.003..0.008 on hue 60..75), enough to
-         warm them off engine-grey and no more. The brand ramp (--grad, amber
-         through orange into magenta) is reserved for the mark, focus, and live
-         state. It is NOT the primary button: the primary action is plain
-         foreground on background, which is both the highest contrast pairing
-         available and the reason the one accented thing on a page still reads
-         as special. */
+      /* Colour is rationed, not absent.
+         Neutrals carry the page, and they are WARM: a real chroma on hue
+         60..75 rather than a trace of one. A near-zero-chroma version of this
+         palette was tried and read cold and clinical in light mode, where the
+         warmth is doing most of the work. The accent then appears in exactly
+         the places that ask for a click, the primary button and the closing
+         CTA, plus live and focus state. It never tints a content panel or a
+         heading, which is what keeps those few amber surfaces meaningful
+         instead of decorative. */
       :root {
         color-scheme: light dark;
-        --fg:            oklch(0.19 0.006 60);
-        --fg-muted:      oklch(0.45 0.008 60);
-        --fg-subtle:     oklch(0.57 0.008 62);
-        --bg:            oklch(0.99 0.002 75);
+        --fg:            oklch(0.20 0.018 60);
+        --fg-muted:      oklch(0.44 0.02 60);
+        --fg-subtle:     oklch(0.50 0.02 65);
+        --bg:            oklch(0.985 0.008 75);
         --bg-elev:       oklch(1 0 0);
-        --bg-subtle:     oklch(0.965 0.003 75);
-        --bg-sunken:     oklch(0.945 0.004 70);
-        --border:        oklch(0.89 0.004 70 / 0.9);
-        --border-strong: oklch(0.80 0.006 70 / 0.95);
-        --accent:        oklch(0.55 0.16 52);
+        --bg-subtle:     oklch(0.96 0.008 75);
+        --bg-sunken:     oklch(0.93 0.01 70);
+        --border:        oklch(0.88 0.012 70 / 0.9);
+        --border-strong: oklch(0.78 0.014 70 / 0.95);
+        --accent:        oklch(0.54 0.16 52);
         --accent-hover:  oklch(0.5 0.16 52);
         --accent-fg:     oklch(1 0 0);
-        /* The two far stops of the signature ramp. --accent is the amber end,
-           --accent-2 the magenta end, --accent-mid the orange that keeps the
-           interpolation from passing through a muddy brown. */
-        --accent-mid:    oklch(0.57 0.21 28);
-        --accent-2:      oklch(0.55 0.24 356);
-        --grad:          linear-gradient(100deg, var(--accent) 0%, var(--accent-mid) 45%, var(--accent-2) 100%);
         --heart:         oklch(0.64 0.22 6);
-        --accent-live:   oklch(0.62 0.17 50);
-        --glow-a:        oklch(0.70 0.16 45);
-        --glow-b:        oklch(0.62 0.22 356);
+        --accent-live:   oklch(0.63 0.17 50);
+        --glow-a:        oklch(0.63 0.17 44);
+        --glow-b:        oklch(0.60 0.20 358);
         --accent-tint:   color-mix(in oklch, var(--accent-live) 14%, transparent);
-        --logo-from:     oklch(0.60 0.18 52);
-        --logo-to:       oklch(0.52 0.23 356);
+        --logo-from:     oklch(0.63 0.17 50);
+        --logo-to:       oklch(0.44 0.11 52);
         --accent-text:    var(--accent);
         --accent-surface: color-mix(in oklch, var(--accent-live) 12%, transparent);
         --accent-border:  color-mix(in oklch, var(--accent-live) 28%, transparent);
@@ -293,7 +286,6 @@ export default function RootLayout({ children }: { children: unknown }) {
           --bg: oklch(0.115 0.003 60); --bg-elev: oklch(0.155 0.004 60); --bg-subtle: oklch(0.185 0.004 60); --bg-sunken: oklch(0.088 0.003 60);
           --border: oklch(1 0 0 / 0.10); --border-strong: oklch(1 0 0 / 0.17);
           --accent: oklch(0.80 0.16 65); --accent-hover: oklch(0.85 0.15 68); --accent-fg: oklch(0.18 0.03 60);
-          --accent-mid: oklch(0.74 0.19 30); --accent-2: oklch(0.68 0.24 358);
           --accent-live: oklch(0.78 0.16 58);
           --glow-a: oklch(0.74 0.19 40); --glow-b: oklch(0.68 0.24 358);
           --logo-from: oklch(0.84 0.16 68); --logo-to: oklch(0.68 0.24 358);
@@ -310,7 +302,6 @@ export default function RootLayout({ children }: { children: unknown }) {
         --bg: oklch(0.115 0.003 60); --bg-elev: oklch(0.155 0.004 60); --bg-subtle: oklch(0.185 0.004 60); --bg-sunken: oklch(0.088 0.003 60);
         --border: oklch(1 0 0 / 0.10); --border-strong: oklch(1 0 0 / 0.17);
         --accent: oklch(0.80 0.16 65); --accent-hover: oklch(0.85 0.15 68); --accent-fg: oklch(0.18 0.03 60);
-        --accent-mid: oklch(0.74 0.19 30); --accent-2: oklch(0.68 0.24 358);
         --accent-live: oklch(0.78 0.16 58);
         --glow-a: oklch(0.74 0.19 40); --glow-b: oklch(0.68 0.24 358);
         --logo-from: oklch(0.84 0.16 68); --logo-to: oklch(0.68 0.24 358);
@@ -377,16 +368,6 @@ export default function RootLayout({ children }: { children: unknown }) {
           radial-gradient(46% 34% at 86% 4%, color-mix(in oklch, var(--glow-b) calc(var(--glow-strength) * 62%), transparent), transparent 72%),
           radial-gradient(44% 32% at 10% 12%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 46%), transparent), transparent 70%);
       }
-      /* Gradient text and gradient fills are the one brand treatment Tailwind
-         utilities cannot state in a single place, since the ramp is three stops
-         from custom properties. Declared once here so every surface that wants
-         the signature reads the same definition. */
-      .grad-text {
-        background: var(--grad);
-        -webkit-background-clip: text; background-clip: text;
-        color: transparent;
-      }
-      .grad-bg { background: var(--grad); }
       .scroll-thin { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color var(--t); }
       .scroll-thin:hover { scrollbar-color: color-mix(in oklch, var(--fg-subtle) 70%, transparent) transparent; }
       .scroll-thin::-webkit-scrollbar { height: 8px; width: 8px; }

@@ -14,7 +14,7 @@ import { DOCS_PATH, DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 // dependency, html, is already loaded by the components, so the real cost is a
 // single tiny module fetch.
 import { highlight } from '#lib/highlight.ts';
-import { BTN_PRIMARY, BTN_GHOST, INSTALL } from '#lib/design.ts';
+import { BTN_PRIMARY, BTN_GHOST, INSTALL, PANEL_CTA } from '#lib/design.ts';
 
 // The home page intentionally sets NO title/description/og here. The root
 // layout's generateMetadata is the single source for the <title>, description,
@@ -211,7 +211,7 @@ export default function LandingPage() {
         </div>
         <div class="mt-6 flex justify-center">
           <div class=${INSTALL}>
-            <span class="text-fg-subtle select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
+            <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
           </div>
         </div>
       </div>
@@ -441,11 +441,11 @@ middleware.ts</pre>
 
     <section class="py-16 text-center" id="get-started">
       <div class="max-w-[1080px] mx-auto px-6">
-        <div class="max-w-[760px] mx-auto p-[clamp(32px,5vw,64px)] rounded-[20px] border border-border bg-bg-elev shadow-[var(--shadow-sm)]">
+        <div class="max-w-[760px] mx-auto p-[clamp(32px,5vw,64px)] ${PANEL_CTA}">
           <h2 class="font-display font-extrabold text-h2 leading-[1.1] tracking-[-0.03em] mt-0 mb-3">Start building on web standards</h2>
           <p class="text-fg-muted mx-auto mb-8 max-w-[46ch]">Scaffold a full-stack app in one command, with pages, an API, components, and a database wired up.</p>
           <div class=${INSTALL}>
-            <span class="text-fg-subtle select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
+            <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
           </div>
           <div class="flex gap-3 justify-center flex-wrap mt-7">
             <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>

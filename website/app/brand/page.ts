@@ -230,12 +230,14 @@ export default function BrandPage() {
         </div>
 
         <div class="rounded-2xl border border-border bg-bg-elev p-7">
-          <p class="text-[13px] font-semibold text-fg mb-1">One accent, used sparingly</p>
+          <p class="text-[13px] font-semibold text-fg mb-1">One accent, spent where it counts</p>
           <p class="text-[13.5px] text-fg-muted leading-relaxed max-w-[62ch]">
             A single warm accent (<code class="font-mono text-[12px]">--accent</code>)
-            marks live state, focus, and the occasional link. It never fills a
-            button and never tints a panel. The marks themselves carry no colour
-            at all, so nothing in the identity depends on it.
+            fills the primary button and the closing call to action, and marks
+            live and focus state. Those are the surfaces asking for a click.
+            Everything else stays neutral, which is what makes them land. The
+            marks themselves carry no colour at all, so the identity survives
+            wherever the accent cannot go.
           </p>
         </div>
       </div>

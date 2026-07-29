@@ -1,6 +1,6 @@
 import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
-import { BTN_PRIMARY, BTN_GHOST, INSTALL } from '#lib/design.ts';
+import { BTN_PRIMARY, BTN_GHOST, INSTALL, PANEL_CTA } from '#lib/design.ts';
 import { DOCS_START_PATH, GH_URL, EXAMPLE_BLOG_URL, NEW_TAB } from '#lib/links.ts';
 
 /**
@@ -187,7 +187,7 @@ Counter.register('counter');
 
     <section class="py-16 text-center" id="get-started">
       <div class="max-w-[1080px] mx-auto px-6">
-        <div class="max-w-[760px] mx-auto p-[clamp(32px,5vw,64px)] rounded-[20px] border border-border bg-bg-elev shadow-[var(--shadow-sm)]">
+        <div class="max-w-[760px] mx-auto p-[clamp(32px,5vw,64px)] ${PANEL_CTA}">
           <h2 class="font-display font-extrabold text-h2 leading-[1.1] tracking-[-0.03em] mt-0 mb-3">Point your agent at WebJs</h2>
           <p class="text-fg-muted mx-auto mb-8 max-w-[48ch]">Scaffold a full-stack app in one command, then let any model read the source and build. Pages, an API, components, and a database, all on web standards.</p>
           <div class=${INSTALL}>
