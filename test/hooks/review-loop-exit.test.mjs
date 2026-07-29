@@ -72,6 +72,8 @@ test('the skill carries the substantive gate and its two-tier exit', () => {
   assert.match(skill, /the loop NEVER files a follow-up issue on its own/);
   assert.match(skill, /awaiting your call on filing/);
   assert.match(skill, /NEVER out of scope, whatever its size/);
+  // The final summary review on the PR carries the deferral ledger.
+  assert.match(skill, /FINAL summary review on the PR also carries a deferral ledger/);
 });
 
 test('deep-review findings carry a required tier with the gate wording', () => {
