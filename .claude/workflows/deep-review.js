@@ -27,8 +27,10 @@ else if (typeof args === 'string' && args.trim()) {
 const givenLenses = (args && typeof args === 'object' && Array.isArray(args.lenses)) ? args.lenses : null
 // Hard agent budget for the WHOLE run (scout + finders + jurors). Degrades
 // gracefully: dynamic lenses are trimmed first, jury sizes shrink next, and a
-// finding the budget cannot verify is returned marked unverified, never
-// silently dropped.
+// finding the run cannot verify is returned marked unverified, never
+// silently dropped. Two distinct causes with two distinct remedies: a jury
+// budget shortfall (raise maxAgents) and the fixed per-run verification cap
+// (CAP below; re-run after fixes, maxAgents cannot recover it).
 const rawMax = (args && typeof args === 'object' && Number.isFinite(Number(args.maxAgents))) ? Number(args.maxAgents) : 24
 const MAX_AGENTS = Math.min(60, Math.max(8, Math.floor(rawMax)))
 if (!pr) throw new Error('Pass the PR number as args, e.g. Workflow({ name: "deep-review", args: "123" }), or "owner/repo#123", or { pr, repo, lenses, maxAgents }')
@@ -184,7 +186,7 @@ const CAP = 12
 const toVerify = deduped.slice(0, CAP)
 // The CAP tail is returned in `unverified`, never silently dropped.
 const capDropped = deduped.slice(CAP)
-if (capDropped.length) log(`capping verification at ${CAP} of ${deduped.length} deduped findings (${capDropped.length} returned unverified; raise maxAgents or re-run after fixes)`)
+if (capDropped.length) log(`capping verification at ${CAP} of ${deduped.length} deduped findings (${capDropped.length} returned unverified; the cap is fixed, so re-run after fixes to catch them)`)
 log(`${all.length} raw findings, ${deduped.length} after dedup, verifying ${toVerify.length}`)
 
 if (toVerify.length === 0) return { pr, repo, confirmed: [], rejected: [], unverified: [], stats: { raw: all.length, deduped: deduped.length, verified: 0, lenses: ALL_LENSES.length, dynamic: DYNAMIC.map((l) => l.key), maxAgents: MAX_AGENTS, fable: ALL_LENSES.filter((l) => l.model === 'fable').length }, note: 'no findings survived dedup; treat as a clean deep pass' }
@@ -195,9 +197,11 @@ phase('Verify')
 // on a major finding survives (fail-open toward treating it as real).
 const juries = { critical: 3, major: 2, minor: 1 }
 
-// Allocate jurors within the remaining budget, severity-first (toVerify is
-// already severity-sorted). A finding allocated zero jurors is returned
-// UNVERIFIED rather than silently dropped.
+// Allocate jurors within the remaining budget in toVerify's order, which
+// is tier-first with severity within a tier (the sort above), so
+// substantive findings claim jurors before prose ones. A finding
+// allocated zero jurors is returned UNVERIFIED rather than silently
+// dropped.
 spent += ALL_LENSES.length
 let juryBudget = Math.max(0, MAX_AGENTS - spent)
 const allocated = []
@@ -225,7 +229,9 @@ const verified = await parallel(allocated.map(({ f, take }) => () =>
       return { ...f, confirmed: !dead, jury: cast.length, refutes, reasons: cast.map((v) => v.reason) }
     })))
 
-const results = verified.filter(Boolean)
+// A dead jury SLOT (the whole parallel task resolved falsy) gets the same
+// fail-open the empty jury does: the finding stays CONFIRMED, never lost.
+const results = allocated.map(({ f }, i) => verified[i] || { ...f, confirmed: true, jury: 0, refutes: 0, reasons: [] })
 const confirmed = results.filter((r) => r.confirmed)
 const rejected = results.filter((r) => !r.confirmed)
 log(`confirmed ${confirmed.length}, refuted ${rejected.length}`)

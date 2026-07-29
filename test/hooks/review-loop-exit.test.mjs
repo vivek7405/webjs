@@ -72,8 +72,14 @@ test('deep-review findings carry a required tier with the gate wording', () => {
   assert.match(workflow, /subst\(f\) && !subst\(prev\)/);
   assert.match(workflow, /const subst = \(f\) => f\.tier !== 'prose'/);
   assert.match(workflow, /Number\(subst\(b\)\) - Number\(subst\(a\)\)/);
-  // The CAP tail is returned in unverified, never silently dropped.
+  // The CAP tail is returned in unverified, never silently dropped, and
+  // its remedy is stated correctly (the cap is fixed; maxAgents cannot
+  // recover it).
   assert.match(workflow, /\.\.\.unverified, \.\.\.capDropped/);
+  assert.match(workflow, /the cap is fixed, so re-run after fixes/);
+  assert.match(skill, /cannot recover a capped finding/);
+  // A dead jury slot fails open to CONFIRMED instead of vanishing.
+  assert.match(workflow, /verified\[i\] \|\| \{ \.\.\.f, confirmed: true, jury: 0/);
 });
 
 test('deep-review.js stays valid in the async workflow context', () => {
@@ -99,4 +105,8 @@ test('the routed review directive states the substantive exit, not the old absol
   // deep-review workflow, with code-review findings as auxiliary input.
   assert.match(hook, /round 1 is the deep-review workflow/);
   assert.match(hook, /auxiliary input/);
+  // Self-classification is scoped to the code-review skill's own findings;
+  // untagged findings from tag-capable reviewers stay substantive.
+  assert.match(hook, /from the code-review skill itself/);
+  assert.match(hook, /any tag-capable reviewer is simply treated as substantive/);
 });
