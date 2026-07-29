@@ -1,6 +1,7 @@
 import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import { COMPONENT_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE } from '#lib/samples.ts';
+import { BTN_PRIMARY, BTN_GHOST, INSTALL } from '#lib/design.ts';
 import { DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 import { faqJsonLd } from '#lib/faq.ts';
 import { highlight } from '#lib/highlight.ts';
@@ -29,7 +30,7 @@ import { highlight } from '#lib/highlight.ts';
  *  - SoftwareApplication + BreadcrumbList + FAQPage structured data
  *  - alternates.canonical, since this page is the one canonical definition
  *
- * Reuses the home page's design language (KICKER, BTN, INSTALL, the terminal
+ * Reuses the home page's design language (the shared lib/design.ts recipes, the terminal
  * "windows", the bento CARD) so the site reads as one system.
  */
 
@@ -147,8 +148,6 @@ export function generateMetadata() {
 
 // Shared class strings, kept in lockstep with app/page.ts and app/why-webjs/page.ts
 // so the three render as one design system.
-const BTN = 'inline-flex items-center gap-2 px-[22px] py-[13px] rounded-full font-semibold text-[15px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
-const INSTALL = 'flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-[14px] text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]';
 const WIN = 'flex flex-col flex-1 m-0 min-w-0 max-w-full rounded-2xl overflow-hidden border border-border bg-bg-elev shadow-[var(--shadow)]';
 const WINBAR = 'flex items-center gap-[7px] px-[14px] py-[10px] border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]';
 const WINNAME = 'ml-2 font-mono font-medium text-[12px] leading-none text-fg-subtle';
@@ -235,11 +234,11 @@ export default function WhatIsWebJs() {
           knows.
         </p>
         <div class="flex gap-3 justify-center flex-wrap mb-8">
-          <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>
+          <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>
             Get started
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
           </a>
-          <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href="/why-webjs">Why WebJs exists</a>
+          <a class=${BTN_GHOST} href="/why-webjs">Why WebJs exists</a>
         </div>
         <div class=${INSTALL}>
           <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
@@ -341,8 +340,8 @@ export default function WhatIsWebJs() {
             <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
           </div>
           <div class="flex gap-3 justify-center flex-wrap">
-            <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>Read the docs</a>
-            <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href=${GH_URL} target="_blank" rel="noopener noreferrer">View on GitHub${NEW_TAB}</a>
+            <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>Read the docs</a>
+            <a class=${BTN_GHOST} href=${GH_URL} target="_blank" rel="noopener noreferrer">View on GitHub${NEW_TAB}</a>
           </div>
           <p class="mt-14 pt-8 border-t border-border max-w-[52ch] mx-auto text-[14px] leading-[1.7] text-fg-subtle">
             Compare WebJs with <a class="text-fg-muted hover:text-accent underline underline-offset-2" href="/compare/webjs-vs-nextjs">Next.js</a>,

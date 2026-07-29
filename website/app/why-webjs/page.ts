@@ -1,5 +1,6 @@
 import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
+import { BTN_PRIMARY, BTN_GHOST, INSTALL } from '#lib/design.ts';
 import { DOCS_START_PATH, GH_URL, EXAMPLE_BLOG_URL, NEW_TAB } from '#lib/links.ts';
 
 /**
@@ -43,8 +44,6 @@ export function generateMetadata(ctx: { url: string }) {
 
 // Shared class strings, kept in lockstep with app/page.ts so the two pages
 // render as one design system.
-const BTN = 'inline-flex items-center gap-2 px-[22px] py-[13px] rounded-full font-semibold text-[15px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
-const INSTALL = 'flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-[14px] text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]';
 const WIN = 'flex flex-col flex-1 m-0 min-w-0 max-w-full rounded-2xl overflow-hidden border border-border bg-bg-elev shadow-[var(--shadow)]';
 const WINBAR = 'flex items-center gap-[7px] px-[14px] py-[10px] border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]';
 const WINNAME = 'ml-2 font-mono font-medium text-[12px] leading-none text-fg-subtle';
@@ -89,11 +88,11 @@ export default function Why() {
         model, on the web components and standard HTML every model already knows.
       </p>
       <div class="flex gap-3 justify-center flex-wrap mb-8">
-        <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>
+        <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>
           Get started
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
         </a>
-        <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href="/compare">See how it compares</a>
+        <a class=${BTN_GHOST} href="/compare">See how it compares</a>
       </div>
       <div class=${INSTALL}>
         <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
@@ -188,18 +187,18 @@ Counter.register('counter');
 
     <section class="py-16 text-center" id="get-started">
       <div class="max-w-[1080px] mx-auto px-6">
-        <div class="max-w-[760px] mx-auto p-[clamp(32px,5vw,64px)] rounded-[22px] border border-border-strong bg-[color-mix(in_oklch,var(--accent-live)_7%,var(--color-bg-elev))] shadow-[var(--shadow-glow)]">
+        <div class="max-w-[760px] mx-auto p-[clamp(32px,5vw,64px)] rounded-[20px] border border-border bg-bg-elev shadow-[var(--shadow-sm)]">
           <h2 class="font-display font-extrabold text-h2 leading-[1.1] tracking-[-0.03em] mt-0 mb-3">Point your agent at WebJs</h2>
           <p class="text-fg-muted mx-auto mb-8 max-w-[48ch]">Scaffold a full-stack app in one command, then let any model read the source and build. Pages, an API, components, and a database, all on web standards.</p>
           <div class=${INSTALL}>
             <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
           </div>
           <div class="flex gap-3 justify-center flex-wrap mt-7">
-            <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>
+            <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>
               Get started
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </a>
-            <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href=${EXAMPLE_BLOG_URL} target="_blank" rel="noopener noreferrer">See a live app${NEW_TAB}</a>
+            <a class=${BTN_GHOST} href=${EXAMPLE_BLOG_URL} target="_blank" rel="noopener noreferrer">See a live app${NEW_TAB}</a>
           </div>
         </div>
       </div>

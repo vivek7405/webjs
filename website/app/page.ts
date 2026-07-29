@@ -14,6 +14,7 @@ import { DOCS_PATH, DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 // dependency, html, is already loaded by the components, so the real cost is a
 // single tiny module fetch.
 import { highlight } from '#lib/highlight.ts';
+import { BTN_PRIMARY, BTN_GHOST, INSTALL } from '#lib/design.ts';
 
 // The home page intentionally sets NO title/description/og here. The root
 // layout's generateMetadata is the single source for the <title>, description,
@@ -111,15 +112,6 @@ const WIN = 'flex flex-col flex-1 m-0 min-w-0 max-w-full rounded-2xl overflow-hi
 const WINBAR = 'flex items-center gap-[7px] px-[14px] py-[10px] border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]';
 const WINNAME = 'ml-2 font-mono font-medium text-[12px] leading-none text-fg-subtle';
 const DOTS = html`<span class="w-[11px] h-[11px] rounded-full bg-[#ff5f57]"></span><span class="w-[11px] h-[11px] rounded-full bg-[#febc2e]"></span><span class="w-[11px] h-[11px] rounded-full bg-[#28c840]"></span>`;
-// Buttons are deliberately compact. An oversized pill with a coloured glow
-// reads as a landing-page advert; a small, high-contrast control reads as a
-// tool. The primary action is plain foreground on background (white on black
-// in dark, black on white in light), which is the highest contrast pairing the
-// palette has and keeps the brand accent free for the mark and live state.
-const BTN = 'inline-flex items-center gap-2 h-[42px] px-[18px] rounded-[10px] font-semibold text-[14.5px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
-const BTN_PRIMARY = `${BTN} bg-fg text-bg border-transparent hover:opacity-[0.88]`;
-const BTN_GHOST = `${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_55%,transparent)] hover:border-fg-subtle hover:bg-bg-subtle`;
-const INSTALL = 'inline-flex items-center gap-2.5 max-w-full px-[15px] py-[11px] text-left font-mono text-[13.5px] leading-none text-fg-muted rounded-[10px] border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,transparent)]';
 // Bento-grid card wrapper, shared by the "Why webjs" and "Small by design" cells.
 const CARD = 'p-6 bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors duration-200 flex flex-col justify-between h-full';
 
@@ -268,11 +260,11 @@ export default function LandingPage() {
         </div>
         <div class="grid grid-cols-1 min-[900px]:grid-cols-2 gap-4 items-stretch">
           <div class="flex flex-col min-w-0">
-            <p class="font-mono font-semibold text-[11px] leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-[10px] ml-1">The component you write</p>
+            <p class="text-[13px] font-medium leading-[1.4] text-fg-subtle mb-[10px] ml-1">The component you write</p>
             ${codeWindow('components/like-button.ts', PE_COMPONENT)}
           </div>
           <div class="flex flex-col min-w-0">
-            <p class="font-mono font-semibold text-[11px] leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-[10px] ml-1">What the browser receives</p>
+            <p class="text-[13px] font-medium leading-[1.4] text-fg-subtle mb-[10px] ml-1">What the browser receives</p>
             <figure class=${WIN}>
               <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>view-source</span></figcaption>
               <pre class="scroll-thin m-0 p-[18px] overflow-x-auto font-mono text-[13px] leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="server-rendered HTML"><code>${highlight(SSR_OUTPUT)}</code></pre>
@@ -284,7 +276,7 @@ export default function LandingPage() {
           </div>
         </div>
         <div class="flex flex-wrap gap-[10px] justify-center mt-8">
-          ${PE_CHIPS.map(c => html`<span class="font-mono font-semibold text-[11px] leading-none tracking-[0.04em] uppercase text-fg px-[14px] py-[9px] rounded-full border border-border bg-bg-elev/40 backdrop-blur-sm shadow-[var(--shadow-sm)] hover:border-border-strong hover:bg-bg-subtle transition-all duration-[140ms]">${c}</span>`)}
+          ${PE_CHIPS.map(c => html`<span class="text-[12.5px] font-medium leading-none text-fg-muted px-[14px] py-[9px] rounded-full border border-border bg-bg-elev/40 backdrop-blur-sm shadow-[var(--shadow-sm)] hover:border-border-strong hover:bg-bg-subtle transition-all duration-[140ms]">${c}</span>`)}
         </div>
       </div>
     </section>
@@ -297,15 +289,15 @@ export default function LandingPage() {
         </div>
         <div class="grid gap-4 grid-cols-1 max-w-[560px] mx-auto min-[900px]:grid-cols-3 min-[900px]:max-w-none">
           <div class="flex flex-col min-w-0">
-            <p class="font-mono font-semibold text-[11px] leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-[10px] ml-1">Interactive component</p>
+            <p class="text-[13px] font-medium leading-[1.4] text-fg-subtle mb-[10px] ml-1">Interactive component</p>
             ${codeWindow('components/like-button.ts', COMPONENT_SAMPLE)}
           </div>
           <div class="flex flex-col min-w-0">
-            <p class="font-mono font-semibold text-[11px] leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-[10px] ml-1">Server action (RPC)</p>
+            <p class="text-[13px] font-medium leading-[1.4] text-fg-subtle mb-[10px] ml-1">Server action (RPC)</p>
             ${codeWindow('actions/get-post.server.ts', ACTION_SAMPLE)}
           </div>
           <div class="flex flex-col min-w-0">
-            <p class="font-mono font-semibold text-[11px] leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-[10px] ml-1">SSR page</p>
+            <p class="text-[13px] font-medium leading-[1.4] text-fg-subtle mb-[10px] ml-1">SSR page</p>
             ${codeWindow('app/posts/[id]/page.ts', PAGE_SAMPLE)}
           </div>
         </div>
@@ -425,7 +417,7 @@ export default function LandingPage() {
         </div>
         <div class="grid gap-4 grid-cols-1 max-w-[560px] mx-auto min-[900px]:grid-cols-2 min-[900px]:max-w-[760px]">
           <div class="flex flex-col gap-3 p-6 min-w-0 rounded-2xl border border-border bg-bg-elev">
-            <span class="font-mono font-semibold text-[10px] leading-none tracking-[0.16em] uppercase text-fg-subtle">Full-stack</span>
+            <span class="text-[12px] font-medium leading-none text-fg-subtle">Full-stack</span>
             <h3 class="font-display font-bold text-[1.15rem] leading-[1.25] m-0">Pages + API + components</h3>
             <p class="m-0 text-[13.5px] leading-[1.6] text-fg-muted">SSR pages, web components, server actions, Drizzle, streaming, and a browsable feature gallery. Auth (login, sessions, a protected route) ships as a gallery card. The default.</p>
             <pre class="scroll-thin m-0 px-[14px] py-3 overflow-x-auto rounded-[10px] border border-border bg-bg-sunken font-mono text-[12px] leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/page.ts
@@ -434,7 +426,7 @@ actions/posts.server.ts</pre>
             <div class="cmd-foot pt-2 mt-auto font-mono text-[12.5px] leading-[1.6] text-fg-muted max-w-full min-w-0"><copy-cmd>npm create webjs@latest my-app</copy-cmd></div>
           </div>
           <div class="flex flex-col gap-3 p-6 min-w-0 rounded-2xl border border-border bg-bg-elev">
-            <span class="font-mono font-semibold text-[10px] leading-none tracking-[0.16em] uppercase text-fg-subtle">Backend (API)</span>
+            <span class="text-[12px] font-medium leading-none text-fg-subtle">Backend (API)</span>
             <h3 class="font-display font-bold text-[1.15rem] leading-[1.25] m-0">Route handlers + Database</h3>
             <p class="m-0 text-[13.5px] leading-[1.6] text-fg-muted">A backend-only app, no UI or SSR. File-based route handlers, modules, middleware, rate limiting, WebSockets, a database, and a backend-features gallery.</p>
             <pre class="scroll-thin m-0 px-[14px] py-3 overflow-x-auto rounded-[10px] border border-border bg-bg-sunken font-mono text-[12px] leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/api/users/route.ts
@@ -449,18 +441,18 @@ middleware.ts</pre>
 
     <section class="py-16 text-center" id="get-started">
       <div class="max-w-[1080px] mx-auto px-6">
-        <div class="max-w-[760px] mx-auto p-[clamp(32px,5vw,64px)] rounded-[22px] border border-border-strong bg-[color-mix(in_oklch,var(--accent-live)_7%,var(--color-bg-elev))] shadow-[var(--shadow-glow)]">
+        <div class="max-w-[760px] mx-auto p-[clamp(32px,5vw,64px)] rounded-[20px] border border-border bg-bg-elev shadow-[var(--shadow-sm)]">
           <h2 class="font-display font-extrabold text-h2 leading-[1.1] tracking-[-0.03em] mt-0 mb-3">Start building on web standards</h2>
           <p class="text-fg-muted mx-auto mb-8 max-w-[46ch]">Scaffold a full-stack app in one command, with pages, an API, components, and a database wired up.</p>
           <div class=${INSTALL}>
-            <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
+            <span class="text-fg-subtle select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
           </div>
           <div class="flex gap-3 justify-center flex-wrap mt-7">
-            <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>
+            <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>
               Get started
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </a>
-            <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href=${DOCS_PATH}>Read the docs</a>
+            <a class=${BTN_GHOST} href=${DOCS_PATH}>Read the docs</a>
           </div>
         </div>
       </div>
