@@ -280,3 +280,15 @@ test('a self-referential array renders instead of overflowing the stack', async 
   const out = await renderToString(html`<form action=${cyclic}></form>`, { ssr: true });
   assert.match(out, /action=""/);
 });
+
+test('the streaming renderer refuses .action=${fn} on a native form', async () => {
+  // The streaming machine's native-prop clause. Mapping every guard call site
+  // to a test that fails when it is reverted showed this one pinned ONLY by
+  // `test/bun/form-action-guard.mjs`, so the whole rendering suite stayed green
+  // with it deleted. Covered here too, since a clause guarded by a single
+  // cross-runtime script is one file away from being unguarded.
+  await assert.rejects(
+    () => drain(renderToStream(html`<form .action=${leaky}></form>`, { ssr: false })),
+    /function was interpolated into action=/,
+  );
+});
