@@ -104,10 +104,13 @@ test('string action still renders on the client', () => {
 // A quoted binding hole keeps its sigil in the part's name, so comparing the
 // raw name let `.action="${fn}"` through on this side too.
 //
-// See the clause map in the file header for which `applyPart` branch each
-// shape reaches. Within THIS section: the four quoted cases pin 'attr-mixed',
-// the array-wrapped case pins 'attr', and the unquoted `?action=${fn}` case
-// pins 'bool'.
+// The file header's clause map is keyed by hole SHAPE, and every test below
+// names its shape, so read the clause off that map. There is deliberately no
+// per-section restatement of it here: an aggregate summary is a second copy
+// that drifts from the first, and both times this section tried to carry one it
+// ended up wrong (miscounting the quoted cases, and attributing 'attr' to a
+// test that pins 'attr-mixed', since two tests here are array-wrapped and they
+// land in different clauses).
 //
 // Each case renders the SAME template with a good value first and only then
 // swaps in the bad one, per the note above. That matters twice over: on a fresh

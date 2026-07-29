@@ -133,8 +133,16 @@ test('streaming keeps string-valued actions working', async () => {
 test('functions in OTHER attributes keep the existing stringify behaviour', async () => {
   // Narrow claim: only action/formaction throw. Anything else is unchanged
   // (arguably also a bug, but out of #1154's scope by design).
+  //
+  // This pins the SCOPE BOUNDARY, so it has to assert the source really is
+  // still written out. `out.startsWith('<div title="')` was not enough: an
+  // empty `title=""` satisfies it just as well, so a change that dropped
+  // function values everywhere would have left this green while silently
+  // widening the claim this PR deliberately kept narrow.
   const out = await renderToString(html`<div title=${leaky}></div>`, { ssr: true });
-  assert.ok(out.startsWith('<div title="'));
+  assert.match(out, /^<div title="/);
+  assert.match(out, /SECRET/, 'an unclaimed attribute still stringifies the function, source and all');
+  assert.match(out, /async function leaky/, 'specifically, the function source');
 });
 
 // --- Bypasses found reviewing the first cut of the guard -------------------
