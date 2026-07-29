@@ -50,9 +50,15 @@ export function brandMark(id: string, opts: { size?: number; fill?: 'grad' | 'cu
           <stop offset="52%" stop-color="var(--accent-mid)"/>
           <stop offset="100%" stop-color="var(--logo-to)"/>
         </linearGradient>
+        <!-- The slice sits LOW and thin on purpose. Cut any thicker, or any
+             higher than the middle apex, and it severs the W into floating
+             fragments that stop reading as a letter at large sizes. Down here
+             it crosses only the lower legs, so the mark stays whole, and at
+             favicon sizes it falls below a pixel and degrades to a plain W
+             rather than to mush. -->
         <mask id="${id}-slice">
           <rect width="64" height="64" fill="#fff"/>
-          <rect x="0" y="32.6" width="64" height="3" fill="#000"/>
+          <rect x="0" y="38" width="64" height="1.8" fill="#000"/>
         </mask>
       </defs>
       <g mask="url(#${id}-slice)">
