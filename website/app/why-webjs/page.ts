@@ -43,7 +43,6 @@ export function generateMetadata(ctx: { url: string }) {
 
 // Shared class strings, kept in lockstep with app/page.ts so the two pages
 // render as one design system.
-const KICKER = 'inline-flex flex-wrap justify-center gap-[10px] font-mono font-semibold text-[12px] leading-[1.4] tracking-[0.18em] uppercase text-[var(--accent-text)]';
 const BTN = 'inline-flex items-center gap-2 px-[22px] py-[13px] rounded-full font-semibold text-[15px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
 const INSTALL = 'flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-[14px] text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]';
 const WIN = 'flex flex-col flex-1 m-0 min-w-0 max-w-full rounded-2xl overflow-hidden border border-border bg-bg-elev shadow-[var(--shadow)]';
@@ -78,7 +77,6 @@ export default function Why() {
     <main id="main" tabindex="-1" class="focus:outline-none">
 
     <section class="text-center px-6 pt-[clamp(48px,7vw,96px)] pb-10 md:pb-16">
-      <div class=${KICKER}>Built for the AI era</div>
       <h1 class="font-display font-extrabold text-display leading-[1.04] tracking-[-0.035em] mx-auto mt-4 mb-4 max-w-[16ch] text-balance">
         The framework your AI agent already understands
       </h1>
@@ -105,7 +103,6 @@ export default function Why() {
     <section class="py-16">
       <div class="max-w-[1080px] mx-auto px-6">
         <div class="max-w-[720px] mx-auto mb-12 text-center">
-          <div class=${KICKER}>Read the source, not the training set</div>
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Nothing is hidden behind a build step</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">
             No build step means two things, and both help your agent. The
@@ -155,7 +152,6 @@ Counter.register('counter');
     <section class="py-16">
       <div class="max-w-[1080px] mx-auto px-6">
         <div class="max-w-[720px] mx-auto mb-12 text-center">
-          <div class=${KICKER}>Why agents thrive here</div>
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Four reasons the loop just works</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">Every one of these falls out of a single decision: no build step, on web standards.</p>
         </div>
@@ -173,7 +169,6 @@ Counter.register('counter');
     <section class="py-16">
       <div class="max-w-[1080px] mx-auto px-6">
         <div class="max-w-[760px] mx-auto text-center">
-          <div class=${KICKER}>Model-agnostic by construction</div>
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Experiment with any model, freely</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0 mb-4">
             Because the framework itself is the context, you are not locked to

@@ -90,13 +90,36 @@ const SSR_OUTPUT = `<like-button count="3">
   <button>♥ 3</button>
 </like-button>`;
 
+// The hero stage shows this source beside the very component it declares,
+// running. Keep the two in step: the panel to its right is a real
+// <like-button>, so an edit here that drifts from components/like-button.ts
+// turns the page's central claim into a lie.
+const HERO_SAMPLE = `class LikeButton extends WebComponent({ count: Number }) {
+  render() {
+    return html\`<button @click=\${() => this.count++}>
+      ♥ \${this.count}
+    </button>\`;
+  }
+}
+LikeButton.register('like-button');
+
+// No build step. No bundler. No virtual DOM.
+// The panel to the right is this file, server-rendered
+// and upgraded in place. Click it.`;
+
 const WIN = 'flex flex-col flex-1 m-0 min-w-0 max-w-full rounded-2xl overflow-hidden border border-border bg-bg-elev shadow-[var(--shadow)]';
 const WINBAR = 'flex items-center gap-[7px] px-[14px] py-[10px] border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]';
 const WINNAME = 'ml-2 font-mono font-medium text-[12px] leading-none text-fg-subtle';
 const DOTS = html`<span class="w-[11px] h-[11px] rounded-full bg-[#ff5f57]"></span><span class="w-[11px] h-[11px] rounded-full bg-[#febc2e]"></span><span class="w-[11px] h-[11px] rounded-full bg-[#28c840]"></span>`;
-const KICKER = 'inline-flex flex-wrap justify-center gap-[10px] font-mono font-semibold text-[12px] leading-[1.4] tracking-[0.18em] uppercase text-[var(--accent-text)]';
-const BTN = 'inline-flex items-center gap-2 px-[22px] py-[13px] rounded-full font-semibold text-[15px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
-const INSTALL = 'flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-[14px] text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]';
+// Buttons are deliberately compact. An oversized pill with a coloured glow
+// reads as a landing-page advert; a small, high-contrast control reads as a
+// tool. The primary action is plain foreground on background (white on black
+// in dark, black on white in light), which is the highest contrast pairing the
+// palette has and keeps the brand accent free for the mark and live state.
+const BTN = 'inline-flex items-center gap-2 h-[42px] px-[18px] rounded-[10px] font-semibold text-[14.5px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
+const BTN_PRIMARY = `${BTN} bg-fg text-bg border-transparent hover:opacity-[0.88]`;
+const BTN_GHOST = `${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_55%,transparent)] hover:border-fg-subtle hover:bg-bg-subtle`;
+const INSTALL = 'inline-flex items-center gap-2.5 max-w-full px-[15px] py-[11px] text-left font-mono text-[13.5px] leading-none text-fg-muted rounded-[10px] border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,transparent)]';
 // Bento-grid card wrapper, shared by the "Why webjs" and "Small by design" cells.
 const CARD = 'p-6 bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors duration-200 flex flex-col justify-between h-full';
 
@@ -155,37 +178,86 @@ export default function LandingPage() {
         transition: border-color 140ms, background-color 140ms;
       }
       like-button button:hover { border-color: var(--border-strong); }
+      /* The hero copy of the same element, scaled up. It is the one thing on
+         the page a reader is invited to click, so it is sized as a control
+         rather than as an inline badge, and it is the single surface where the
+         brand accent appears as a hover state. */
+      .hero-stage like-button button {
+        gap: 0.5rem;
+        padding: 0.7rem 1.25rem;
+        border-radius: 0.75rem;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .hero-stage like-button button:hover {
+        border-color: var(--accent);
+        background: color-mix(in oklch, var(--accent) 10%, var(--bg-elev));
+      }
+      .hero-stage like-button button:active { transform: translateY(1px); }
     </style>
 
     <main id="main" tabindex="-1" class="focus:outline-none">
-    <section class="text-center px-6 pt-[clamp(48px,7vw,96px)] pb-10 md:pb-18">
-      <h1 class="font-display font-extrabold text-display leading-[1.04] tracking-[-0.035em] mx-auto mt-2 mb-4 max-w-[15ch] text-balance">
-        The web framework for AI agents
-      </h1>
-      <p class="text-lede leading-[1.6] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
-        WebJs is a full-stack framework built on web components, SSR, and
-        progressive enhancement, with zero build step. Standards that outlast
-        frameworks. Runs on Node 24+ or Bun.
-      </p>
-      <div class="flex gap-3 justify-center flex-wrap mb-8">
-        <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>
-          Get started
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </a>
-        <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href=${GH_URL} target="_blank" rel="noopener noreferrer">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.37.5 0 5.78 0 12.29c0 5.2 3.44 9.6 8.21 11.16.6.11.82-.25.82-.58l-.01-2.03c-3.34.71-4.04-1.58-4.04-1.58-.55-1.36-1.34-1.72-1.34-1.72-1.09-.73.08-.72.08-.72 1.2.08 1.84 1.22 1.84 1.22 1.07 1.8 2.81 1.28 3.5.98.11-.76.42-1.28.76-1.58-2.67-.3-5.47-1.31-5.47-5.83 0-1.29.47-2.34 1.23-3.17-.12-.3-.53-1.51.12-3.15 0 0 1-.32 3.3 1.21a11.5 11.5 0 0 1 6 0c2.3-1.53 3.3-1.21 3.3-1.21.65 1.64.24 2.85.12 3.15.77.83 1.23 1.88 1.23 3.17 0 4.53-2.81 5.53-5.49 5.82.43.37.81 1.1.81 2.22l-.01 3.29c0 .33.22.7.83.58A12.01 12.01 0 0 0 24 12.29C24 5.78 18.63.5 12 .5z"/></svg>
-          Star on GitHub${NEW_TAB}
-        </a>
+    <section class="px-6 pt-[clamp(52px,7.5vw,112px)] pb-[clamp(40px,6vw,72px)]">
+      <div class="text-center">
+        <h1 class="font-display font-extrabold text-display leading-[0.98] tracking-[-0.042em] mx-auto mt-2 mb-6 max-w-[16ch] text-balance">
+          The web framework for AI agents
+        </h1>
+        <p class="text-lede leading-[1.55] text-fg-muted max-w-[58ch] mx-auto mb-9 text-pretty">
+          Full-stack on <span class="text-fg font-medium">web components</span>, real SSR, and
+          progressive enhancement, with <span class="text-fg font-medium">zero build step</span>.
+          Lean enough for an agent to read end to end. Runs on Node 24+ or Bun.
+        </p>
+        <div class="flex gap-3 justify-center flex-wrap items-center">
+          <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>
+            Get started
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </a>
+          <a class=${BTN_GHOST} href=${GH_URL} target="_blank" rel="noopener noreferrer">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.37.5 0 5.78 0 12.29c0 5.2 3.44 9.6 8.21 11.16.6.11.82-.25.82-.58l-.01-2.03c-3.34.71-4.04-1.58-4.04-1.58-.55-1.36-1.34-1.72-1.34-1.72-1.09-.73.08-.72.08-.72 1.2.08 1.84 1.22 1.84 1.22 1.07 1.8 2.81 1.28 3.5.98.11-.76.42-1.28.76-1.58-2.67-.3-5.47-1.31-5.47-5.83 0-1.29.47-2.34 1.23-3.17-.12-.3-.53-1.51.12-3.15 0 0 1-.32 3.3 1.21a11.5 11.5 0 0 1 6 0c2.3-1.53 3.3-1.21 3.3-1.21.65 1.64.24 2.85.12 3.15.77.83 1.23 1.88 1.23 3.17 0 4.53-2.81 5.53-5.49 5.82.43.37.81 1.1.81 2.22l-.01 3.29c0 .33.22.7.83.58A12.01 12.01 0 0 0 24 12.29C24 5.78 18.63.5 12 .5z"/></svg>
+            Star on GitHub${NEW_TAB}
+          </a>
+        </div>
+        <div class="mt-6 flex justify-center">
+          <div class=${INSTALL}>
+            <span class="text-fg-subtle select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
+          </div>
+        </div>
       </div>
-      <div class=${INSTALL}>
-        <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
+
+      <!-- The stage. Source on the left, the component that source declares
+           running on the right. It is the one claim on this page that cannot
+           be faked by a screenshot: the button is a real like-button element,
+           SSR'd into the HTML and upgraded in place, so a reader with
+           JavaScript off still sees it rendered and one with JavaScript on can
+           click it. (The tag name is written WITHOUT angle brackets on
+           purpose. A literal tag inside a comment in an html template is still
+           seen by the SSR pass, which renders it as a real component and
+           breaks the surrounding markup.) -->
+      <div class="hero-stage mt-[clamp(44px,5.5vw,72px)] max-w-[1000px] mx-auto grid grid-cols-1 min-[880px]:grid-cols-[1.12fr_0.88fr] rounded-[16px] overflow-hidden border border-border-strong bg-bg-sunken shadow-[var(--shadow)]">
+        <div class="min-w-0 border-b min-[880px]:border-b-0 min-[880px]:border-r border-border">
+          <div class=${WINBAR}>${DOTS}<span class=${WINNAME}>components/like-button.ts</span></div>
+          <pre class="scroll-thin m-0 p-5 overflow-x-auto font-mono text-[12.5px] leading-[1.72] [tab-size:2] text-left" tabindex="0" aria-label="like-button component source"><code>${highlight(HERO_SAMPLE)}</code></pre>
+        </div>
+        <div class="flex flex-col min-w-0 bg-bg">
+          <div class="flex items-center justify-between gap-2 px-[14px] py-[10px] border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]">
+            <span class="font-mono font-semibold text-[11px] tracking-[0.09em] uppercase text-fg-subtle">Rendered</span>
+            <span class="inline-flex items-center gap-[6px] font-mono text-[11px] text-fg-subtle">
+              <span class="w-[6px] h-[6px] rounded-full bg-accent shadow-[0_0_8px_var(--accent)]"></span>live
+            </span>
+          </div>
+          <div class="flex-1 grid place-items-center px-6 py-10">
+            <like-button count="3"></like-button>
+          </div>
+          <div class="px-4 py-3 border-t border-border text-center font-mono text-[11px] leading-[1.5] text-fg-subtle">
+            Server-rendered first, then upgraded. Click it.
+          </div>
+        </div>
       </div>
     </section>
 
     <section class="py-16">
       <div class="max-w-[1080px] mx-auto px-6">
         <div class="max-w-[720px] mx-auto mb-12 text-center">
-          <div class=${KICKER}>Progressive enhancement</div>
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Real HTML first. JavaScript only when it earns it.</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">
             Pages and components render to real HTML on the server, so the page
@@ -220,7 +292,6 @@ export default function LandingPage() {
     <section class="py-16">
       <div class="max-w-[1320px] mx-auto px-6">
         <div class="max-w-[720px] mx-auto mb-12 text-center">
-          <div class=${KICKER}>Show, don't tell</div>
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The whole stack, in three files</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">A component, a server action, and a page. No build, no boilerplate, all web standards.</p>
         </div>
@@ -244,7 +315,6 @@ export default function LandingPage() {
     <section class="py-16">
       <div class="max-w-[1080px] mx-auto px-6">
         <div class="max-w-[720px] mx-auto mb-12 text-center">
-          <div class=${KICKER}>Why webjs</div>
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Modern full-stack, on web standards</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">Everything you need to ship, none of the build toolchain you don't.</p>
         </div>
@@ -331,7 +401,6 @@ export default function LandingPage() {
     <section class="py-16">
       <div class="max-w-[1080px] mx-auto px-6">
         <div class="max-w-[720px] mx-auto mb-12 text-center">
-          <div class=${KICKER}>Small by design</div>
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Light enough for AI</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">A zero build step means the source you read is what runs. Because the framework ships without compilation layers, an AI agent can read and reason about the entire WebJs source end to end, straight from node_modules.</p>
         </div>
@@ -352,7 +421,6 @@ export default function LandingPage() {
     <section id="templates" class="scroll-mt-24 py-16">
       <div class="max-w-[1080px] mx-auto px-6">
         <div class="max-w-[720px] mx-auto mb-12 text-center">
-          <div class=${KICKER}>One framework, two templates</div>
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Start where you are</h2>
         </div>
         <div class="grid gap-4 grid-cols-1 max-w-[560px] mx-auto min-[900px]:grid-cols-2 min-[900px]:max-w-[760px]">

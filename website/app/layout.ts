@@ -2,6 +2,7 @@ import { html, cspNonce } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
 import { DOCS_START_PATH, UI_PATH, EXAMPLE_BLOG_URL, GH_URL, NEW_TAB } from '#lib/links.ts';
 import { siteFooter } from '#lib/site-footer.ts';
+import { brandLockup } from '#lib/brand.ts';
 
 /**
  * Root layout for the redesigned marketing site.
@@ -234,30 +235,48 @@ export default function RootLayout({ children }: { children: unknown }) {
       /* Foundation tokens + effects that Tailwind utilities cannot express. */
       /* A single static gradient glow layer. It used to breathe (two layers
          cross-faded on a 16s loop), removed so nothing animates on the page. */
+      /* The palette is near-monochrome by policy.
+         Neutrals carry the page and colour is rationed, because a site that
+         tints every surface reads as decorated rather than designed. Chroma on
+         the greys is deliberately tiny (0.003..0.008 on hue 60..75), enough to
+         warm them off engine-grey and no more. The brand ramp (--grad, amber
+         through orange into magenta) is reserved for the mark, focus, and live
+         state. It is NOT the primary button: the primary action is plain
+         foreground on background, which is both the highest contrast pairing
+         available and the reason the one accented thing on a page still reads
+         as special. */
       :root {
         color-scheme: light dark;
-        --fg:            oklch(0.20 0.018 60);
-        --fg-muted:      oklch(0.44 0.02 60);
-        --fg-subtle:     oklch(0.50 0.02 65);
-        --bg:            oklch(0.985 0.008 75);
+        --fg:            oklch(0.19 0.006 60);
+        --fg-muted:      oklch(0.45 0.008 60);
+        --fg-subtle:     oklch(0.57 0.008 62);
+        --bg:            oklch(0.99 0.002 75);
         --bg-elev:       oklch(1 0 0);
-        --bg-subtle:     oklch(0.96 0.008 75);
-        --bg-sunken:     oklch(0.93 0.01 70);
-        --border:        oklch(0.88 0.012 70 / 0.9);
-        --border-strong: oklch(0.78 0.014 70 / 0.95);
-        --accent:        oklch(0.54 0.16 52);
+        --bg-subtle:     oklch(0.965 0.003 75);
+        --bg-sunken:     oklch(0.945 0.004 70);
+        --border:        oklch(0.89 0.004 70 / 0.9);
+        --border-strong: oklch(0.80 0.006 70 / 0.95);
+        --accent:        oklch(0.55 0.16 52);
         --accent-hover:  oklch(0.5 0.16 52);
         --accent-fg:     oklch(1 0 0);
+        /* The two far stops of the signature ramp. --accent is the amber end,
+           --accent-2 the magenta end, --accent-mid the orange that keeps the
+           interpolation from passing through a muddy brown. */
+        --accent-mid:    oklch(0.57 0.21 28);
+        --accent-2:      oklch(0.55 0.24 356);
+        --grad:          linear-gradient(100deg, var(--accent) 0%, var(--accent-mid) 45%, var(--accent-2) 100%);
         --heart:         oklch(0.64 0.22 6);
-        --accent-live:   oklch(0.63 0.17 50);
-        --glow-a:        oklch(0.63 0.17 44);
+        --accent-live:   oklch(0.62 0.17 50);
+        --glow-a:        oklch(0.70 0.16 45);
+        --glow-b:        oklch(0.62 0.22 356);
         --accent-tint:   color-mix(in oklch, var(--accent-live) 14%, transparent);
-        --logo-from:     oklch(0.63 0.17 50);
-        --logo-to:       oklch(0.44 0.11 52);
+        --logo-from:     oklch(0.60 0.18 52);
+        --logo-to:       oklch(0.52 0.23 356);
         --accent-text:    var(--accent);
         --accent-surface: color-mix(in oklch, var(--accent-live) 12%, transparent);
         --accent-border:  color-mix(in oklch, var(--accent-live) 28%, transparent);
-        --glow-strength: 0.16;
+        --glow-strength: 0.05;
+        --dot-strength: 0.05;
         --font-display: 'Inter Tight', 'Inter', system-ui, -apple-system, sans-serif;
         --font-sans:    'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
         --font-serif:   ui-serif, 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, Cambria, serif;
@@ -269,26 +288,36 @@ export default function RootLayout({ children }: { children: unknown }) {
       }
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme='light']) {
-          --heart: oklch(0.74 0.18 6);
-          --fg: oklch(0.96 0 0); --fg-muted: oklch(0.74 0 0); --fg-subtle: oklch(0.62 0 0);
-          --bg: oklch(0 0 0); --bg-elev: oklch(0.135 0 0); --bg-subtle: oklch(0.09 0 0); --bg-sunken: oklch(0 0 0);
-          --border: oklch(0.32 0 0 / 0.9); --border-strong: oklch(0.44 0 0 / 0.92);
-          --accent: oklch(0.7 0.16 52); --accent-hover: oklch(0.75 0.16 52); --accent-fg: oklch(0.1 0.01 52); --logo-from: oklch(0.8 0.16 58); --logo-to: oklch(0.62 0.18 44);
-          --glow-strength: 0.16;
+          --heart: oklch(0.74 0.19 6);
+          --fg: oklch(0.97 0.004 70); --fg-muted: oklch(0.71 0.006 65); --fg-subtle: oklch(0.56 0.007 60);
+          --bg: oklch(0.115 0.003 60); --bg-elev: oklch(0.155 0.004 60); --bg-subtle: oklch(0.185 0.004 60); --bg-sunken: oklch(0.088 0.003 60);
+          --border: oklch(1 0 0 / 0.10); --border-strong: oklch(1 0 0 / 0.17);
+          --accent: oklch(0.80 0.16 65); --accent-hover: oklch(0.85 0.15 68); --accent-fg: oklch(0.18 0.03 60);
+          --accent-mid: oklch(0.74 0.19 30); --accent-2: oklch(0.68 0.24 358);
+          --accent-live: oklch(0.78 0.16 58);
+          --glow-a: oklch(0.74 0.19 40); --glow-b: oklch(0.68 0.24 358);
+          --logo-from: oklch(0.84 0.16 68); --logo-to: oklch(0.68 0.24 358);
+          --glow-strength: 0.07;
+          --dot-strength: 0.045;
           --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
-          --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
+          --shadow: 0 20px 60px oklch(0 0 0 / 0.5), 0 4px 14px oklch(0 0 0 / 0.35);
         }
       }
       :root[data-theme='dark'] {
         color-scheme: dark;
-        --heart: oklch(0.74 0.18 6);
-        --fg: oklch(0.96 0 0); --fg-muted: oklch(0.74 0 0); --fg-subtle: oklch(0.62 0 0);
-        --bg: oklch(0 0 0); --bg-elev: oklch(0.135 0 0); --bg-subtle: oklch(0.09 0 0); --bg-sunken: oklch(0 0 0);
-        --border: oklch(0.32 0 0 / 0.9); --border-strong: oklch(0.44 0 0 / 0.92);
-        --accent: oklch(0.7 0.16 52); --accent-hover: oklch(0.75 0.16 52); --accent-fg: oklch(0.1 0.01 52); --logo-from: oklch(0.8 0.16 58); --logo-to: oklch(0.62 0.18 44);
-        --glow-strength: 0.16;
+        --heart: oklch(0.74 0.19 6);
+        --fg: oklch(0.97 0.004 70); --fg-muted: oklch(0.71 0.006 65); --fg-subtle: oklch(0.56 0.007 60);
+        --bg: oklch(0.115 0.003 60); --bg-elev: oklch(0.155 0.004 60); --bg-subtle: oklch(0.185 0.004 60); --bg-sunken: oklch(0.088 0.003 60);
+        --border: oklch(1 0 0 / 0.10); --border-strong: oklch(1 0 0 / 0.17);
+        --accent: oklch(0.80 0.16 65); --accent-hover: oklch(0.85 0.15 68); --accent-fg: oklch(0.18 0.03 60);
+        --accent-mid: oklch(0.74 0.19 30); --accent-2: oklch(0.68 0.24 358);
+        --accent-live: oklch(0.78 0.16 58);
+        --glow-a: oklch(0.74 0.19 40); --glow-b: oklch(0.68 0.24 358);
+        --logo-from: oklch(0.84 0.16 68); --logo-to: oklch(0.68 0.24 358);
+        --glow-strength: 0.07;
+        --dot-strength: 0.045;
         --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
-        --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
+        --shadow: 0 20px 60px oklch(0 0 0 / 0.5), 0 4px 14px oklch(0 0 0 / 0.35);
       }
       :root[data-theme='light'] { color-scheme: light; }
       @media (prefers-reduced-motion: reduce) {
@@ -325,13 +354,39 @@ export default function RootLayout({ children }: { children: unknown }) {
          selector outranks the border-* utilities that also set
          border-right-color, so cascade order does not matter. */
       .site-top > header { border-right: var(--wj-scrollbar-compensation, 0px) solid transparent; }
+      /* The page backdrop, two fixed layers that never animate. ::before is a
+         dot grid, masked to fade out below the fold so it reads as texture
+         behind the hero and disappears under long-form reading. ::after is the
+         brand glow, three offset radials on the amber and magenta ends of the
+         ramp, which is what stops a near-black page from looking flat. Both
+         scale from one number per theme (--dot-strength, --glow-strength), so
+         the light translation tones the whole backdrop down by editing two
+         values rather than six gradients. */
       .glow-layer { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
       .glow-layer::before {
         content: ''; position: absolute; inset: 0;
-        background:
-          radial-gradient(58% 44% at 50% -4%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 100%), transparent), transparent 72%),
-          radial-gradient(40% 36% at 88% 8%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 60%), transparent), transparent 70%);
+        background-image: radial-gradient(circle at 1px 1px, color-mix(in oklch, var(--fg) calc(var(--dot-strength) * 100%), transparent) 1px, transparent 0);
+        background-size: 34px 34px;
+        -webkit-mask-image: radial-gradient(125% 68% at 50% 0%, #000 32%, transparent 78%);
+        mask-image: radial-gradient(125% 68% at 50% 0%, #000 32%, transparent 78%);
       }
+      .glow-layer::after {
+        content: ''; position: absolute; inset: 0;
+        background:
+          radial-gradient(58% 40% at 50% -6%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 100%), transparent), transparent 70%),
+          radial-gradient(46% 34% at 86% 4%, color-mix(in oklch, var(--glow-b) calc(var(--glow-strength) * 62%), transparent), transparent 72%),
+          radial-gradient(44% 32% at 10% 12%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 46%), transparent), transparent 70%);
+      }
+      /* Gradient text and gradient fills are the one brand treatment Tailwind
+         utilities cannot state in a single place, since the ramp is three stops
+         from custom properties. Declared once here so every surface that wants
+         the signature reads the same definition. */
+      .grad-text {
+        background: var(--grad);
+        -webkit-background-clip: text; background-clip: text;
+        color: transparent;
+      }
+      .grad-bg { background: var(--grad); }
       .scroll-thin { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color var(--t); }
       .scroll-thin:hover { scrollbar-color: color-mix(in oklch, var(--fg-subtle) 70%, transparent) transparent; }
       .scroll-thin::-webkit-scrollbar { height: 8px; width: 8px; }
@@ -365,9 +420,8 @@ export default function RootLayout({ children }: { children: unknown }) {
     <div class="site-top fixed inset-x-0 top-0 z-20">
     <header class="backdrop-blur-md bg-[color-mix(in_oklch,var(--color-bg)_78%,transparent)] border-b border-border">
       <div class="max-w-[1240px] mx-auto px-6 py-[11px] flex items-center justify-between gap-4">
-        <a class="inline-flex items-center gap-[9px] no-underline text-fg font-display font-extrabold text-[17px] leading-none tracking-[-0.02em] shrink-0" href="/">
-          <span class="w-[22px] h-[22px] rounded-[7px] bg-gradient-to-br from-[var(--logo-from)] to-[var(--logo-to)] shadow-[0_2px_10px_var(--accent-tint)]"></span>
-          webjs
+        <a class="inline-flex items-center no-underline text-fg shrink-0 transition-opacity duration-fast hover:opacity-80" href="/" aria-label="WebJs home">
+          ${brandLockup('hdr', { size: 25, text: 18 })}
         </a>
 
         <nav class="hidden md:flex items-center gap-0.5 justify-center flex-1 mx-4" aria-label="Primary">

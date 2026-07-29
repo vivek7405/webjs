@@ -147,7 +147,6 @@ export function generateMetadata() {
 
 // Shared class strings, kept in lockstep with app/page.ts and app/why-webjs/page.ts
 // so the three render as one design system.
-const KICKER = 'inline-flex flex-wrap justify-center gap-[10px] font-mono font-semibold text-[12px] leading-[1.4] tracking-[0.18em] uppercase text-[var(--accent-text)]';
 const BTN = 'inline-flex items-center gap-2 px-[22px] py-[13px] rounded-full font-semibold text-[15px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
 const INSTALL = 'flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-[14px] text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]';
 const WIN = 'flex flex-col flex-1 m-0 min-w-0 max-w-full rounded-2xl overflow-hidden border border-border bg-bg-elev shadow-[var(--shadow)]';
@@ -219,7 +218,6 @@ export default function WhatIsWebJs() {
     <main id="main" tabindex="-1" class="focus:outline-none">
 
       <section class="text-center px-6 pt-[clamp(48px,7vw,96px)] pb-10 md:pb-16">
-        <div class=${KICKER}>WebJs, explained</div>
         <h1 class="font-display font-extrabold text-display leading-[1.04] tracking-[-0.035em] mx-auto mt-4 mb-6 max-w-[14ch] text-balance">
           What is WebJs?
         </h1>
@@ -251,7 +249,6 @@ export default function WhatIsWebJs() {
       <section class="py-16">
         <div class="max-w-[1080px] mx-auto px-6">
           <div class="max-w-[720px] mx-auto mb-12 text-center">
-            <div class=${KICKER}>The whole stack, three files</div>
             <h2 class=${H2}>What a WebJs app looks like</h2>
             <p class=${PROSE}>
               A component, a server function, and a page. These are ordinary files in your project,
@@ -279,7 +276,6 @@ export default function WhatIsWebJs() {
       <section class="py-16">
         <div class="max-w-[1080px] mx-auto px-6">
           <div class="max-w-[720px] mx-auto mb-12 text-center">
-            <div class=${KICKER}>What you get</div>
             <h2 class=${H2}>What WebJs does for you</h2>
             <p class=${PROSE}>
               WebJs is a full framework rather than a rendering library, so routing, data, and the
@@ -300,7 +296,6 @@ export default function WhatIsWebJs() {
       <section class="py-16">
         <div class="max-w-[760px] mx-auto px-6">
           <div class="mb-10 text-center">
-            <div class=${KICKER}>Same name, different projects</div>
             <h2 class=${H2}>Other things called WebJS</h2>
             <p class=${PROSE}>
               The name is shared. If you arrived looking for one of these, they are not this project.
@@ -320,7 +315,6 @@ export default function WhatIsWebJs() {
       <section class="py-16">
         <div class="max-w-[760px] mx-auto px-6">
           <div class="mb-10 text-center">
-            <div class=${KICKER}>Common questions</div>
             <h2 class=${H2}>WebJs FAQ</h2>
           </div>
           <div class="grid gap-3">
