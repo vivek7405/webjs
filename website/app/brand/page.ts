@@ -79,8 +79,8 @@ export default function BrandPage() {
     <style>
       /* The clear-space diagram. Drawn with real boxes rather than an image so
          it stays crisp at any zoom and follows the theme. */
-      .cs-guide { outline: 1px dashed color-mix(in oklch, var(--accent) 55%, transparent); }
-      .cs-pad { background: color-mix(in oklch, var(--accent) 9%, transparent); }
+      .cs-guide { outline: 1px dashed color-mix(in oklch, var(--fg) 40%, transparent); }
+      .cs-pad { background: color-mix(in oklch, var(--fg) 7%, transparent); }
     </style>
 
     <main id="main" tabindex="-1" class="focus:outline-none">
@@ -210,9 +210,9 @@ export default function BrandPage() {
           <p class=${PROSE}>
             Dark is the primary theme and light is a translation of it, not a
             separate design. Neutrals carry the page: they hold a trace of warmth
-            and nothing more. The three-stop ramp is reserved for the mark, focus
-            rings, and live state, which is what keeps it meaningful when it does
-            appear. Every chip below is painted with the token it names.
+            and nothing more. The marks are greyscale, so the palette below is
+            the product's, not the identity's. Every chip is painted with the
+            token it names.
           </p>
         </div>
 
@@ -294,8 +294,8 @@ export default function BrandPage() {
                 <p class="text-[14px] text-fg-muted leading-relaxed">
                   The CLI (<code class="font-mono text-[13px] bg-bg-subtle px-1.5 py-0.5 rounded">webjs create</code>),
                   the packages (<code class="font-mono text-[13px] bg-bg-subtle px-1.5 py-0.5 rounded">@webjsdev/core</code>),
-                  the domain (webjs.dev), and the wordmark in the logo, which is
-                  set lowercase by design.
+                  the domain (webjs.dev), and the repository path. The lockup
+                  itself is set as WebJs, matching the prose.
                 </p>
               </div>
             </div>
