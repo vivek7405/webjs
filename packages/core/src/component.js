@@ -1399,7 +1399,23 @@ class WebComponentBase extends Base {
     return Promise.resolve(pending).then(
       (tpl) => {
         if (token !== this.__renderToken) return; // superseded by a newer render
-        clientRender(tpl, this._renderRoot);
+        // The COMMIT throws too, not just the fetch, and a sibling rejection
+        // handler cannot see it: `.then(onFulfil, onRejected)` never routes
+        // onFulfil's own throw to onRejected. Left uncaught, the returned
+        // promise rejected and _performRender's `.then` had no rejection
+        // handler, so the error escaped as an unhandled rejection,
+        // renderError() never ran, __pendingAsyncCommits never decremented
+        // (wedging it >= 1 forever, which also disables the non-committing
+        // cycle's _resolveUpdate escape), and updateComplete never settled.
+        // The sync path routes an identical throw to the same boundary, so
+        // this is what makes the two paths agree.
+        try {
+          clientRender(tpl, this._renderRoot);
+        } catch (commitError) {
+          this._handleRenderError(
+            commitError instanceof Error ? commitError : new Error(String(commitError)),
+          );
+        }
       },
       (error) => {
         if (token !== this.__renderToken) return;

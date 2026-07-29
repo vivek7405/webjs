@@ -318,6 +318,40 @@ test('renderError catches exceptions thrown from render() and uses its fallback'
   assert.ok(el, 'component survived a throwing render');
 });
 
+test('a throw from the COMMIT of an async render() is contained like a sync one', async () => {
+  // Regression: `.then(onFulfil, onRejected)` does not route onFulfil's own
+  // throw to onRejected, so a commit that threw (a guard refusal, a value with
+  // a throwing toString) rejected the pending commit, and _performRender's
+  // `.then` had no rejection handler. The error escaped as an unhandled
+  // rejection, renderError() never ran, and updateComplete never settled.
+  //
+  // Asserted on the three observable consequences rather than the mechanism,
+  // because each one reds on its own when the try/catch in _commitAsync is
+  // reverted (measured: renderError not called, updateComplete never settles,
+  // __pendingAsyncCommits stuck at 1). The value below throws from String(),
+  // which is what a commit does to an attribute hole.
+  const boom = { toString() { throw new Error('commit failed'); } };
+  let errorArg = null;
+  class C extends WebComponent {
+    async render() { await 0; return html`<div title=${boom}></div>`; }
+    renderError(e) { errorArg = e; return html`<p>fallback</p>`; }
+  }
+  C.register('async-commit-throw');
+  const el = document.createElement('async-commit-throw');
+  document.body.appendChild(el);
+
+  // Bounded, and crossing the bound is a hard failure that names itself
+  // rather than a pass: an unsettled updateComplete is the bug.
+  const settled = await Promise.race([
+    Promise.resolve(el.updateComplete).then(() => 'settled', () => 'settled'),
+    new Promise((r) => setTimeout(() => r('NEVER SETTLED'), 500)),
+  ]);
+  assert.equal(settled, 'settled', 'updateComplete must settle after a failed async commit');
+  assert.ok(errorArg instanceof Error, 'renderError() receives the commit error');
+  assert.match(errorArg.message, /commit failed/, 'and the real error, not a wrapper');
+  assert.equal(el.__pendingAsyncCommits, 0, 'the in-flight count is released, not wedged');
+});
+
 /* -------------------- lazy controllers set: ensure graceful behavior -------------------- */
 
 test('WebComponent without static properties still constructs cleanly', () => {
