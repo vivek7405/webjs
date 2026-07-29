@@ -59,7 +59,7 @@ node 26  Authorization: `Bearer ${VENDOR_API_KEY}`      identifier only
 bun 1.3  Authorization: "Bearer sk_live_…"              the key itself
 ```
 
-Do not go looking for the rule that decides when it folds. There is one, it is a transpiler's internal business, and it is stranger than anyone guesses: on bun 1.3.14 the FIRST module-scope `const` in a file folds and later ones do not, so moving a declaration up a few lines changes whether your key is in the HTML. Two careful readers of this code got that rule wrong in two different ways before it was measured.
+Do not go looking for the rule that decides when it folds. Four separate attempts were made to write that rule down while this guard was being reviewed, each measured, and each falsified by the next: export status, read count, declaration position, and whether the module has an import were all proposed and all produced counterexamples on the same bun version. Whatever the optimizer is really keying on, it is not something to encode in a habit.
 
 So treat everything reachable from the action as exposed. That is the assumption the refusal is built on, it is the only one that holds across runtimes, and it is the only one that stays true when the transpiler changes.
 

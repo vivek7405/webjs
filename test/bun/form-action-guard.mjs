@@ -41,16 +41,15 @@ const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${p
 // the marker, which would make every `!includes(BUN_PARITY_SECRET)` assertion
 // below trivially true and this whole file proof of nothing.
 //
-// On Bun the same construction MIGHT instead expose the marker, because Bun
-// folds a module-scope `const` string into the body. Whether it does is not
-// something to reason about per file: on bun 1.3.14 only the FIRST module-scope
-// `const` folds, so in this file `const runtime` above already occupies that
-// slot and a hoisted marker would stay hidden here while folding in a file that
-// declared it first.
+// On Bun the same construction MIGHT instead expose the marker, because Bun can
+// fold a module-scope `const` string into the body. Whether it does here is not
+// worth deriving: four attempts to state the folding rule were measured while
+// this guard was reviewed, and each was falsified by the next.
 //
-// That is the whole argument for inlining rather than for picking a side. The
-// construction's behaviour depends on declaration order in the containing
-// module, which is not a property a test should be sensitive to at all.
+// That unpredictability IS the argument for inlining. A test whose marker is
+// visible only under some transpiler heuristic is a test that can go quietly
+// tautological when the heuristic shifts, which is exactly what it must never
+// do. Inlining removes the dependency instead of reasoning about it.
 async function leaky(input) {
   const conn = 'postgres://user:BUN_PARITY_SECRET@host/db';
   return { ok: true, conn, input };

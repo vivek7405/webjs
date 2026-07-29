@@ -32,15 +32,16 @@ async function drain(stream) {
  * not big enough. Four wrong answers preceded this, so the mechanism is worth
  * stating exactly rather than by analogy.
  *
- * Two things decide how much a consumer keeps, and BOTH matter. Chunks written
- * while the `new ReadableStream` constructor is still running land in the queue,
- * which `controller.error()` later clears. Chunks written after it returns go
- * straight to whatever read requests are pending, bypassing the queue entirely,
- * and `streamTemplate` awaits at every text hole, so any template with holes
- * writes most of its output on that second path. An earlier version of this
- * note claimed everything is enqueued synchronously and nothing is ever
- * pending; instrumenting the controller shows 2 of 6 enqueues inside the
- * constructor for a three-hole template and 4 after it.
+ * Chunks written while the `new ReadableStream` constructor is still running
+ * land in the queue that `controller.error()` later clears, and that is the
+ * path that matters here: for the template below, and for the patched machine
+ * the ladder was measured on, every chunk is written during the constructor.
+ * (A second path exists, since `streamTemplate` awaits at text holes and a
+ * chunk written after the constructor returns goes straight to a pending read.
+ * A three-hole template splits 2 in the constructor and 4 after. No template in
+ * this file has a text hole, so it plays no part in any of the numbers below,
+ * and it is mentioned only because two earlier versions of this note explained
+ * the behaviour with whichever path they happened to be wrong about.)
  *
  * Either way the recovery is per read: N reads issued in one synchronous run
  * recover N chunks. So consumers form a ladder with no top, measured against a
