@@ -343,10 +343,14 @@ test('a throw from the COMMIT of an async render() is contained like a sync one'
   // Bounded, and crossing the bound is a hard failure that names itself
   // rather than a pass: an unsettled updateComplete is the bug.
   const settled = await Promise.race([
-    Promise.resolve(el.updateComplete).then(() => 'settled', () => 'settled'),
+    // resolve and reject are NOT the same outcome here. A change that rejected
+    // updateComplete instead of resolving it would keep renderError() firing and
+    // the counter releasing, while every `await el.updateComplete` in app and
+    // framework code started throwing: the unhandled rejection this contains.
+    Promise.resolve(el.updateComplete).then(() => 'resolved', () => 'REJECTED'),
     new Promise((r) => setTimeout(() => r('NEVER SETTLED'), 500)),
   ]);
-  assert.equal(settled, 'settled', 'updateComplete must settle after a failed async commit');
+  assert.equal(settled, 'resolved', 'updateComplete must RESOLVE, not reject, after a contained commit failure');
   assert.ok(errorArg instanceof Error, 'renderError() receives the commit error');
   assert.match(errorArg.message, /commit failed/, 'and the real error, not a wrapper');
   assert.equal(el.__pendingAsyncCommits, 0, 'the in-flight count is released, not wedged');
@@ -369,10 +373,14 @@ test('a REJECTED thenable from an update() override settles the cycle too', asyn
   document.body.appendChild(el);
 
   const settled = await Promise.race([
-    Promise.resolve(el.updateComplete).then(() => 'settled', () => 'settled'),
+    // resolve and reject are NOT the same outcome here. A change that rejected
+    // updateComplete instead of resolving it would keep renderError() firing and
+    // the counter releasing, while every `await el.updateComplete` in app and
+    // framework code started throwing: the unhandled rejection this contains.
+    Promise.resolve(el.updateComplete).then(() => 'resolved', () => 'REJECTED'),
     new Promise((r) => setTimeout(() => r('NEVER SETTLED'), 500)),
   ]);
-  assert.equal(settled, 'settled', 'updateComplete must settle after a rejected commit');
+  assert.equal(settled, 'resolved', 'updateComplete must RESOLVE, not reject, after a contained rejection');
   assert.ok(errorArg instanceof Error, 'the rejection reaches renderError()');
   assert.match(errorArg.message, /prepare failed/);
   assert.equal(el.__pendingAsyncCommits, 0, 'the in-flight count is released, not wedged');

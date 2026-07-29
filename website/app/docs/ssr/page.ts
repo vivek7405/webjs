@@ -165,6 +165,8 @@ async function loadExpensiveItems() {
     </table>
     <p>The custom-element <code>.prop</code> path supports rich types out of the box: Array, Object, Date, Map, Set, BigInt, and reference cycles. Functions, class instances with private state, and DOM nodes are unserializable; they drop with a dev warning. See <a href="/docs/components">Components</a> for the full property-binding semantics.</p>
 
+    <p><strong>One exception to the table above: a function in <code>action=</code> or <code>formaction=</code> is refused, not serialized.</strong> Stringifying a function writes its source into the HTML, and during SSR an imported <code>'use server'</code> action is the real function, so that source is the action's whole body. Under those two names the attribute row, the boolean row, and the native <code>.prop</code> row (on a <code>&lt;form&gt;</code>, or <code>.formAction</code> on a button or input, where the property reflects) all throw instead. Every other attribute behaves exactly as the table says, and a string-valued action is unchanged. See <a href="/docs/troubleshooting">Troubleshooting</a>.</p>
+
     <h2>Metadata in &lt;head&gt;</h2>
     <p>The SSR pipeline collects metadata from the layout chain and the page, then injects it into the document <code>&lt;head&gt;</code>. You declare metadata via a named export:</p>
 

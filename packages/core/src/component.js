@@ -100,6 +100,25 @@ function defaultHasChanged(a, b) {
 }
 
 /**
+ * `String(v)` that cannot itself throw.
+ *
+ * A rejection reason is whatever the author rejected with, and not every value
+ * converts to a primitive: `Object.create(null)` has no `toString`, and a
+ * revoked Proxy throws on any operation. Coercing one in an error-reporting
+ * path turned a reportable failure into a second, unreported one.
+ *
+ * @param {unknown} v
+ * @returns {string}
+ */
+function safeString(v) {
+  try {
+    return String(v);
+  } catch {
+    return Object.prototype.toString.call(v);
+  }
+}
+
+/**
  * A minimal base for HTML Custom Elements that mirrors Lit's ergonomics
  * while staying JSDoc-only and no-build.
  *
@@ -1206,10 +1225,20 @@ class WebComponentBase extends Base {
         // still runs either way: it does its own token check before touching
         // anything, and the decrement it owns has to happen regardless or the
         // counter wedges exactly as it did before this handler existed.
-        if (token === this.__renderToken) {
-          this._handleRenderError(error instanceof Error ? error : new Error(String(error)));
+        // `finally`, not a trailing statement: the release must survive
+        // anything the reporting path throws. `String(error)` is evaluated in
+        // the argument expression, OUTSIDE _handleRenderError's own try/catch,
+        // so a rejection reason that cannot be coerced (a null-prototype
+        // object, a revoked Proxy) threw a TypeError straight out of this
+        // handler and skipped the decrement, wedging the counter in exactly
+        // the way this handler exists to prevent.
+        try {
+          if (token === this.__renderToken) {
+            this._handleRenderError(error instanceof Error ? error : new Error(safeString(error)));
+          }
+        } finally {
+          settle();
         }
-        settle();
       });
       return;
     }

@@ -193,12 +193,14 @@ suite('async render() on the client', () => {
       // updateComplete that never settles is precisely the bug, so awaiting it
       // unguarded would hang the run instead of reporting it.
       const settled = await Promise.race([
-        el.updateComplete.then(() => 'settled', () => 'settled'),
+        // resolve and reject are different outcomes: a rejecting updateComplete
+        // keeps renderError() firing while every awaiting caller starts throwing.
+        el.updateComplete.then(() => 'resolved', () => 'REJECTED'),
         tick(1000).then(() => 'NEVER SETTLED'),
       ]);
       await tick(5);
 
-      assert.equal(settled, 'settled', 'updateComplete must settle after a failed commit');
+      assert.equal(settled, 'resolved', 'updateComplete must RESOLVE, not reject, after a contained commit failure');
       assert.ok(el.querySelector('.err'), 'renderError committed');
       assert.match(el.querySelector('.err').textContent, /interpolated into action=/);
       assert.equal(escaped.length, 0, 'the refusal must not reach window.unhandledrejection');
