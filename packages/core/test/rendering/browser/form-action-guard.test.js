@@ -25,11 +25,28 @@ async function secretAction(formData) {
   return CONNECTION;
 }
 
+/**
+ * A host attached to the live document, which the reflection cases need: an
+ * IDL attribute only reflects on an element that is really in a document.
+ *
+ * Each host is removed after its test. Without that, `document.body` accumulates
+ * every earlier test's markup, and the document-wide leak assertions below stop
+ * describing the test they sit in. It is not theoretical: with the prop guard
+ * reverted, the custom-element case failed on the marker left behind by the
+ * PREVIOUS case, which is a misattribution that would send someone debugging the
+ * wrong test.
+ */
+const mounted = [];
 function mount() {
   const host = document.createElement('div');
   document.body.appendChild(host);
+  mounted.push(host);
   return host;
 }
+
+teardown(() => {
+  while (mounted.length) mounted.pop().remove();
+});
 
 suite('form-action guard in a real browser', () => {
 
