@@ -161,6 +161,56 @@ suite('async render() on the client', () => {
     }
   });
 
+  // Sibling of the test above, and a different failure: there the FETCH
+  // rejects, here the fetch resolves and the COMMIT throws. The two used to
+  // disagree, because `.then(onFulfil, onRejected)` does not route onFulfil's
+  // own throw to its sibling handler.
+  //
+  // Run in a real browser rather than only under linkedom because this is the
+  // shipped combination: an async render returning the refused `.action=${fn}`
+  // binding on a native form, where `action` is a reflected IDL attribute that
+  // a DOM shim does not model. The imported action is an RPC stub on the
+  // client, still a function, so the guard fires here exactly as it would in
+  // an app.
+  test('a throw from the COMMIT of an async render reaches renderError(), not the window', async () => {
+    const tag = uniq('async-commit-err');
+    const origError = console.error;
+    console.error = () => {};
+    const escaped = [];
+    const onRejection = (e) => { escaped.push(e); e.preventDefault(); };
+    window.addEventListener('unhandledrejection', onRejection);
+    try {
+      const serverAction = async function saveTodo(input) { return { ok: true }; };
+      class C extends WebComponent {
+        async render() { await tick(2); return html`<form .action=${serverAction}></form>`; }
+        renderError(e) { return html`<p class="err">${e.message}</p>`; }
+      }
+      C.register(tag);
+      const el = document.createElement(tag);
+      container().appendChild(el);
+
+      // Bounded on purpose, and crossing the bound is a hard failure: an
+      // updateComplete that never settles is precisely the bug, so awaiting it
+      // unguarded would hang the run instead of reporting it.
+      const settled = await Promise.race([
+        el.updateComplete.then(() => 'settled', () => 'settled'),
+        tick(1000).then(() => 'NEVER SETTLED'),
+      ]);
+      await tick(5);
+
+      assert.equal(settled, 'settled', 'updateComplete must settle after a failed commit');
+      assert.ok(el.querySelector('.err'), 'renderError committed');
+      assert.match(el.querySelector('.err').textContent, /interpolated into action=/);
+      assert.equal(escaped.length, 0, 'the refusal must not reach window.unhandledrejection');
+      assert.equal(el.__pendingAsyncCommits, 0, 'the in-flight count is released, not wedged');
+      // The whole point of the guard: nothing carrying the source reaches the DOM.
+      assert.ok(!el.innerHTML.includes('saveTodo'), 'no function source in the live DOM');
+    } finally {
+      window.removeEventListener('unhandledrejection', onRejection);
+      console.error = origError;
+    }
+  });
+
   test('race guard: the NEW render commits, a later-resolving STALE one is dropped', async () => {
     const tag = uniq('async-race');
     const gates = [];
