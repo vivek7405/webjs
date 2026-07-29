@@ -197,3 +197,18 @@ test('a self-referential array does not crash the render', () => {
   render(html`<form action=${cyclic}></form>`, host);
   assert.equal(host.querySelector('form').getAttribute('action'), '');
 });
+
+test('the client keeps the same scope boundary for unclaimed attributes', () => {
+  // The boundary belongs on EVERY renderer. Pinning it on the buffered SSR path
+  // alone left the widening it guards against invisible here: dropping function
+  // values in every attribute in `applyPart` kept the whole suite green.
+  const host = document.createElement('div');
+  render(html`<div title=${fakeAction}></div>`, host);
+  const title = host.querySelector('div').getAttribute('title');
+  assert.match(title, /CLIENT_SECRET/, 'an unclaimed attribute still stringifies the function');
+
+  // Same for the mixed path, which is a separate commit site.
+  const host2 = document.createElement('div');
+  render(html`<div title="x/${fakeAction}"></div>`, host2);
+  assert.match(host2.querySelector('div').getAttribute('title'), /CLIENT_SECRET/, 'and on the mixed path');
+});

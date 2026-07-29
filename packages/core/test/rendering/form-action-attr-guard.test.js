@@ -145,6 +145,15 @@ test('functions in OTHER attributes keep the existing stringify behaviour', asyn
   assert.match(out, /async function leaky/, 'specifically, the function source');
 });
 
+test('the streaming renderer keeps the same scope boundary', async () => {
+  // The boundary has to be pinned on EVERY renderer, not just the buffered one.
+  // Pinning it on `renderToString` alone left the widening this guards against
+  // invisible on the other two: dropping function values in every attribute in
+  // the streaming machine kept the whole suite green.
+  const out = await drain(renderToStream(html`<div title=${leaky}></div>`, { ssr: false }));
+  assert.match(out, /async function leaky/, 'an unclaimed attribute still stringifies on the streaming path');
+});
+
 // --- Bypasses found reviewing the first cut of the guard -------------------
 //
 // The guard originally compared the RAW attribute name. The SSR state machines

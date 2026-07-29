@@ -103,6 +103,17 @@ cyclic.push(cyclic);
 const cyclicOut = await renderToString(html`<form action=${cyclic}></form>`, { ssr: true });
 assert.match(cyclicOut, /action=""/, `[${runtime}] a cyclic array must render, not overflow the stack`);
 
+// The SCOPE boundary, on both machines. Every other passthrough above is
+// `action`-valued, so none of them would notice a change that widened the claim
+// to drop function values in every attribute. This is the one that would.
+const otherBuffered = await renderToString(html`<div title=${leaky}></div>`, { ssr: true });
+assert.match(otherBuffered, /async function leaky/,
+  `[${runtime}] an unclaimed attribute must still stringify (buffered)`);
+
+const otherStreamed = await drain(renderToStream(html`<div title=${leaky}></div>`, { ssr: false }));
+assert.match(otherStreamed, /async function leaky/,
+  `[${runtime}] an unclaimed attribute must still stringify (streaming)`);
+
 // The passthrough must stay byte-identical across runtimes: refusing everything
 // would also pass the assertions above, so pin what still works.
 const okBuffered = await renderToString(html`<form method="post" action=${'/submit'}></form>`, { ssr: true });
@@ -114,4 +125,4 @@ assert.match(okStream, /action="\/submit"/, `[${runtime}] a string action must s
 const okArray = await renderToString(html`<form action=${['/a', '/b']}></form>`, { ssr: true });
 assert.match(okArray, /action="\/a,\/b"/, `[${runtime}] an array of strings is not a function`);
 
-console.log(`[${runtime}] form-action guard parity OK: ${Object.keys(refused).length} refused shapes, 3 passthroughs`);
+console.log(`[${runtime}] form-action guard parity OK: ${Object.keys(refused).length} refused shapes, ${Object.keys(allowed).length} carve-outs, 5 passthroughs`);

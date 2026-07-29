@@ -65,19 +65,23 @@ suite('form-action guard in a real browser', () => {
     // reflects the stringified function into the live `action` attribute.
     //
     // Renders the SAME template with a string first, so there is a real,
-    // attached form to inspect afterwards. On a fresh host a throwing part
-    // leaves the container empty, and every assertion below would then hold
-    // vacuously against a form that does not exist, which is exactly what this
-    // test would be worth nothing for.
+    // attached form to inspect afterwards. Without it, a throwing part leaves
+    // the container empty and the two "no marker in this element" checks below
+    // would hold against a form that does not exist. (The `assert.ok(form)`
+    // checks would FAIL in that case rather than pass, so they are not part of
+    // the problem; it is specifically the absence assertions that go hollow.)
     const host = mount();
     const tpl = (v) => html`<form .action=${v}></form>`;
     render(tpl('/submit'), host);
 
     const form = host.querySelector('form');
     assert.ok(form, 'the string render must produce a form to inspect');
-    // Confirms the property really does reflect in this browser. If it did not,
-    // the leak this test guards could not happen and the test would be inert.
-    assert.ok(String(form.action).includes('/submit'), 'action must reflect, else this test proves nothing');
+    // Confirms the property really does REFLECT in this browser, which is the
+    // premise of the whole file. It has to read the CONTENT ATTRIBUTE: the
+    // `form.action` IDL getter returns what was assigned even where nothing
+    // reflects (linkedom does exactly that), so asserting on the getter would
+    // be an inertness check that is itself inert.
+    assert.equal(form.getAttribute('action'), '/submit', 'action must reflect, else this test proves nothing');
 
     let threw = null;
     try { render(tpl(secretAction), host); } catch (e) { threw = e; }
