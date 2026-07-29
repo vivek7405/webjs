@@ -28,50 +28,60 @@ async function drain(stream) {
  * inspecting an empty string, whatever the consumer actually got. "It threw" is
  * not the same claim as "the client received nothing".
  *
- * Keeps SEVERAL reads outstanding at once, which is the shape that sees the
- * most, and getting to it took three wrong answers worth writing down.
+ * Issues a large SYNCHRONOUS burst of reads, and fails loudly if the burst was
+ * not big enough. Four wrong answers preceded this, so the mechanism is worth
+ * stating exactly rather than by analogy.
  *
- * `controller.error()` clears the stream's queue, so how much of what was
- * enqueued before a refusal survives depends entirely on where each chunk
- * landed. A chunk enqueued while a read request is PENDING is handed to that
- * request directly and never enters the queue, so the reset cannot destroy it.
- * A chunk that lands in the queue is gone. Consumers therefore differ, measured
- * against a machine patched to flush its buffer, enqueue three pad chunks and
- * then the source, and refuse, with no yield anywhere:
+ * `renderToStream` enqueues everything from inside the `new ReadableStream`
+ * constructor, synchronously, and `controller.error()` runs a microtask after
+ * the constructor returns. No read request can be pending during that, since
+ * `getReader()` does not exist yet. So the queue is fully populated and then
+ * cleared, and what a consumer keeps is exactly what its synchronously-issued
+ * `read()` calls DEQUEUED before the clearing microtask ran: N reads in one
+ * synchronous run recover N chunks, one for one.
  *
- *   for await                     prefix only
- *   getReader(), sequential loop   prefix + pad0
- *   one read always outstanding    prefix + pad0 + pad1
- *   many reads outstanding         prefix + pads + THE SOURCE
+ * That makes consumers a ladder with no top, measured against a machine patched
+ * to flush its buffer, enqueue pad chunks, enqueue the source, then refuse:
  *
- * So `for await` sees least and a pipelined reader sees most, and a test that
- * drains either of the first two calls a real leak clean. `renderToStream` has
- * no in-repo consumer, so nothing constrains which shape a host uses, and the
- * only safe thing to pin is the worst case.
+ *   for await                    prefix only
+ *   sequential getReader() loop  prefix + 1 chunk
+ *   burst of N                   prefix + N chunks
+ *
+ * Any FIXED burst is therefore guessable: a batch of 16 silently passed a leak
+ * sitting behind 20 pad chunks. The bound cannot be removed (the burst has to
+ * be sized before anything is awaited), so instead exhausting it is made a
+ * hard failure. If every read in the burst returned a chunk, this throws rather
+ * than reporting a clean drain, which turns the false green into a red that
+ * says what to do about it.
  *
  * @param {any} stream
  * @param {{ text: string }} sink written to as chunks arrive
  */
+const DRAIN_BURST = 4096;
+
 async function drainInto(stream, sink) {
   const reader = stream.getReader();
   const decode = (v) => (typeof v === 'string' ? v : new TextDecoder().decode(v));
   for (;;) {
-    // A batch of concurrently-pending reads. Anything enqueued into one of
-    // these bypasses the queue, so it survives the error that follows.
-    const batch = Array.from({ length: 16 }, () => reader.read());
+    const burst = Array.from({ length: DRAIN_BURST }, () => reader.read());
     let done = false;
     let failure = null;
-    for (const pending of batch) {
+    let chunks = 0;
+    for (const pending of burst) {
       try {
         const { done: d, value } = await pending;
         if (d) done = true;
-        else if (value !== undefined) sink.text += decode(value);
+        else if (value !== undefined) { sink.text += decode(value); chunks++; }
       } catch (e) {
-        // Record and keep draining: later reads in the batch may still hold
-        // chunks that were handed over before the error, and those are exactly
-        // what this helper exists to catch.
         failure = failure || e;
       }
+    }
+    if (!done && !failure && chunks === DRAIN_BURST) {
+      throw new Error(
+        `drainInto exhausted its ${DRAIN_BURST}-read burst without reaching the end or an error. `
+        + 'The stream had more queued chunks than the burst could dequeue, so this drain is no '
+        + 'longer reading the worst case. Raise DRAIN_BURST.',
+      );
     }
     if (failure) throw failure;
     if (done) break;
@@ -167,12 +177,12 @@ test('the streaming renderer never emits the source, not even before it refuses'
   // local loses everything when the iteration throws, and a test inspecting
   // that local is inspecting an empty string no matter what the consumer got.
   //
-  // And it reads with several requests outstanding at once, because consumer
-  // shapes do not see the same bytes and that one sees the most: a chunk handed
-  // to a pending read bypasses the queue that `error()` clears. A `for await`
-  // drain, and even a sequential reader loop, both call a real leak clean.
-  // Pinning anything short of the worst case makes a green result meaningless.
-  // See `drainInto` for the measured ladder.
+  // And it reads in one large synchronous burst, because what a consumer keeps
+  // is exactly what its synchronously-issued reads dequeued before the clearing
+  // microtask: N reads recover N chunks. A `for await` drain, and even a
+  // sequential reader loop, both call a real leak clean, and any fixed burst is
+  // guessable, so `drainInto` treats exhausting its burst as a hard failure
+  // rather than a clean drain.
   const sink = { text: '' };
   await assert.rejects(
     () => drainInto(renderToStream(html`<form action=${leaky}></form>`, { ssr: false }), sink),

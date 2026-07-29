@@ -51,13 +51,15 @@ The reason is a source leak. During SSR a `.server.ts` import is the ACTUAL func
 
 What escapes is the SOURCE the runtime reports, and how much that includes depends on the runtime. The body always goes: your query shapes, your table and column names, your internal paths, and any credential written inline.
 
-Whether an OUTER value goes with it is not something to rely on either way. `Function.prototype.toString` returns source text, so on Node a module-scope `const` the body reads appears as its identifier. Bun transpiles the module first and constant-folds that literal into the body, so the same action reports the VALUE:
+Whether an OUTER value goes with it is not something to rely on either way. `Function.prototype.toString` returns source text, so on Node a module-scope `const` the body reads appears as its identifier. Bun transpiles the module before the engine sees it and can fold that literal into the body, so the same action reports the VALUE:
 
 ```
 // const VENDOR_API_KEY = 'sk_live_…';  then used as `Bearer ${VENDOR_API_KEY}`
 node 26  Authorization: `Bearer ${VENDOR_API_KEY}`      identifier only
 bun 1.3  Authorization: "Bearer sk_live_…"              the key itself
 ```
+
+Measured on bun 1.3.14, a module-scope `const` string folds whether or not it is exported and whether it is read once or many times; a `let` does not. Do not build a habit on that boundary, though, since it belongs to a transpiler and can move under you.
 
 So treat everything reachable from the action as exposed. That is the assumption the refusal is built on, and it is the only one that holds across runtimes.
 

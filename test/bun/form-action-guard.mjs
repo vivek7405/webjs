@@ -41,11 +41,17 @@ const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${p
 // the marker, which would make every `!includes(BUN_PARITY_SECRET)` assertion
 // below trivially true and this whole file proof of nothing.
 //
-// On Bun it would be load-bearing in the other direction, and that asymmetry is
-// the reason to avoid the construction entirely rather than reason about it per
-// runtime: Bun constant-folds a module-scope literal into the body (see the
-// header), so the SAME code that hides the marker on Node exposes it here.
-// Inlining makes the file behave identically on both.
+// On Bun it would be load-bearing in the other direction, which is the reason
+// to avoid the construction entirely rather than reason about it per runtime:
+// Bun folds a module-scope `const` string into the body, so the SAME code that
+// hides the marker on Node exposes it here. Measured directly rather than
+// inferred from the header sample above, which shows a FUNCTION-LOCAL const and
+// says nothing about module scope:
+//
+//   const K = 'sk_live_VALUE'; …`Bearer ${K}`   node -> `Bearer ${K}`
+//                                               bun  -> "Bearer sk_live_VALUE"
+//
+// Inlining makes this file behave identically on both.
 async function leaky(input) {
   const conn = 'postgres://user:BUN_PARITY_SECRET@host/db';
   return { ok: true, conn, input };
