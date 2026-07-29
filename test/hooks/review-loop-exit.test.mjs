@@ -73,8 +73,9 @@ test('deep-review findings carry a required tier with the gate wording', () => {
   assert.match(workflow, /const subst = \(f\) => f\.tier !== 'prose'/);
   assert.match(workflow, /Number\(subst\(b\)\) - Number\(subst\(a\)\)/);
   // The CAP tail is returned in unverified, never silently dropped, and
-  // its remedy is stated correctly (the cap is fixed; maxAgents cannot
-  // recover it).
+  // its remedy is stated correctly in both the workflow log and (third
+  // assertion, against the SKILL file) the skill's round-1 bullet: the
+  // cap is fixed, maxAgents cannot recover it.
   assert.match(workflow, /\.\.\.unverified, \.\.\.capDropped/);
   assert.match(workflow, /the cap is fixed, so re-run after fixes/);
   assert.match(skill, /cannot recover a capped finding/);
