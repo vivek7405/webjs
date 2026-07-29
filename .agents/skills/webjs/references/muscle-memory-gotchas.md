@@ -67,6 +67,8 @@ The refusal covers the shape, not one spelling of it. Every hole form is refused
 
 **Commenting the form out does not disable the hole.** A comment is HTML, the interpolation is JavaScript, and the renderer emits a comment's holes raw, so `<!-- <form action=${createTodo}> -->` still ships the whole action body with no throw and no log. Delete the binding instead of commenting around it. This is the one shape in this section that leaks silently, which is exactly why it is worth knowing.
 
+It is not special to comments. `String(fn)` returns source text wherever it runs, so a bare function in a text child (`<div>${fn}</div>`) or any unclaimed attribute (`title=${fn}`) writes the same body out. Only the two form-action attribute names are refused today; treat a function anywhere else in a template as a mistake that ships, and reach for `@event=${fn}` or a custom element's `.prop=${fn}`, neither of which stringifies.
+
 The refused and allowed shapes in full. Every "no" row is a binding that stringifies nothing, so refusing it would break working code rather than close a leak:
 
 | Written as | Refused? | Why |
