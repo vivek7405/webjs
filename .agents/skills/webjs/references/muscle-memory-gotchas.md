@@ -91,7 +91,7 @@ That last row is the one to remember: quoting a binding hole turns it back into 
 Two things that "renders it empty" understates, both worth knowing before you go looking:
 
 - **Anything slotted into the failing component goes with it.** The isolation replaces the element from its opening tag through its matching close, so a shell or layout component whose template holds the bad form takes the page's whole authored body with it. Put `action=${fn}` in a shared header and every page renders a 200 with an empty body, not one missing header.
-- **On a route with a `loading.{js,ts}`, there is no log line either.** That wraps the page in a `Suspense` boundary, so the page body renders AFTER the 200 and the shell have been flushed, and a boundary that throws there is currently swallowed with no server log, no `onError`, and no error boundary. The visitor gets chrome and an empty body; with JS off the skeleton simply stays. That silence is a framework gap rather than intended behaviour, tracked separately.
+- **On a route with a `loading.{js,ts}`, there is no log line either.** That wraps the page in a `Suspense` boundary, so the page body renders AFTER the 200 and the shell have been flushed, and a boundary that throws there is currently swallowed with no server log, no `onError`, and no error boundary. The visitor gets chrome and an empty body; with JS off the skeleton simply stays. That silence is a known framework gap rather than intended behaviour, so do not read the missing log line as evidence the render succeeded.
 
 ```ts
 // WRONG: throws at render; it would have leaked the action's body.
