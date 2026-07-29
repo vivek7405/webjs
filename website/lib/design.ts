@@ -24,24 +24,24 @@
 /**
  * The radius scale:
  *
- *   28px copy button   7px    (25% of its height)
- *   42px button       10px    (24%)
- *   52px install bar  16px    (31%, rounded-2xl)
+ *   buttons            full pill   the free-standing actions
+ *   28px copy button   7px         a control nested inside a surface
+ *   52px install bar  16px         rounded-2xl
  *   cards, windows    16px
  *   full-width panels 20px, and 22px on the closing CTA
  *
- * Everything here is a rounded rectangle; full pills were tried and the square
- * shape reads better against the type. The rule when adding one is to scale the
- * radius with the element's own height, roughly a quarter of it, because
- * curvature is read relative to size. Holding a single number across different
- * heights makes the taller element look squarer, which is what happened when
- * the 52px install bar was forced down to the button's 10px: at 19% of its
- * height it looked pinched next to controls reading 24%.
+ * Two rules. A free-standing action is a PILL, so its shape says "press me"
+ * before its colour does; this is also what the live site does. Everything
+ * that is a SURFACE takes a radius scaled to its own height, roughly a quarter
+ * of it, because curvature is read relative to size. Holding one number across
+ * different heights makes the taller element look squarer, which is what
+ * happened when the 52px install bar was forced to a button's 10px: at 19% of
+ * its height it looked pinched beside controls reading 24%.
  */
 
 /** Shared control geometry. Compose with a surface, do not use bare. */
 const BTN_BASE =
-  'inline-flex items-center gap-2 h-[42px] px-[18px] rounded-[10px] font-semibold text-[14.5px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
+  'inline-flex items-center gap-2 h-[42px] px-[20px] rounded-full font-semibold text-[14.5px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
 
 /**
  * The single strongest action on a view. At most one per screen.
