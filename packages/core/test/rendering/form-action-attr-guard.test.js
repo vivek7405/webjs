@@ -30,16 +30,23 @@ async function drain(stream) {
  *
  * What this captures is precisely the security-relevant quantity, and it is
  * narrower than "everything the renderer enqueued". `renderToStream` fails via
- * `controller.error()`, which per spec CLEARS the stream's queue, so a chunk
- * that was enqueued but not yet read is destroyed rather than delivered.
- * Verified: patching the streaming machine to flush its buffer and then enqueue
- * the source as a separate chunk, a real consumer receives `<p>hello</p><form
- * action="` and never the source. So the queue-clearing is itself a mitigation,
- * and `sink.text` is what a client could actually have seen.
+ * `controller.error()`, which per spec clears the stream's QUEUE. Whether a
+ * chunk enqueued shortly before that reaches the consumer depends on where it
+ * landed, and both cases were checked rather than assumed:
  *
- * The consequence for coverage, stated plainly: this reds when the source
- * reaches the consumer, which is the case worth catching, and stays green when
- * a would-be leaking chunk is destroyed before delivery, which is not a leak.
+ *   enqueued into the queue, then `error()` with no yield in between
+ *     -> destroyed. A consumer patched to flush the buffer and enqueue the
+ *        source as a second chunk receives `<p>hello</p><form action="` and
+ *        never the source.
+ *   enqueued while a read is pending, or with ANY await before the refusal
+ *     -> delivered. The same patch plus a 5ms yield before the guard hands the
+ *        consumer the whole function body.
+ *
+ * The second is a real leak and this test reds on it. The first is not a leak,
+ * because nothing reached the client, and this test stays green. So the
+ * coverage lines up with the thing worth caring about: `sink.text` is what a
+ * client could actually have seen, and every shape that puts the source in
+ * front of a consumer fails here.
  *
  * @param {any} stream
  * @param {{ text: string }} sink written to as chunks arrive
