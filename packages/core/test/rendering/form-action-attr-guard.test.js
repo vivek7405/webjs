@@ -32,27 +32,29 @@ async function drain(stream) {
  * not big enough. Four wrong answers preceded this, so the mechanism is worth
  * stating exactly rather than by analogy.
  *
- * `renderToStream` enqueues everything from inside the `new ReadableStream`
- * constructor, synchronously, and `controller.error()` runs a microtask after
- * the constructor returns. No read request can be pending during that, since
- * `getReader()` does not exist yet. So the queue is fully populated and then
- * cleared, and what a consumer keeps is exactly what its synchronously-issued
- * `read()` calls DEQUEUED before the clearing microtask ran: N reads in one
- * synchronous run recover N chunks, one for one.
+ * Two things decide how much a consumer keeps, and BOTH matter. Chunks written
+ * while the `new ReadableStream` constructor is still running land in the queue,
+ * which `controller.error()` later clears. Chunks written after it returns go
+ * straight to whatever read requests are pending, bypassing the queue entirely,
+ * and `streamTemplate` awaits at every text hole, so any template with holes
+ * writes most of its output on that second path. An earlier version of this
+ * note claimed everything is enqueued synchronously and nothing is ever
+ * pending; instrumenting the controller shows 2 of 6 enqueues inside the
+ * constructor for a three-hole template and 4 after it.
  *
- * That makes consumers a ladder with no top, measured against a machine patched
- * to flush its buffer, enqueue pad chunks, enqueue the source, then refuse:
+ * Either way the recovery is per read: N reads issued in one synchronous run
+ * recover N chunks. So consumers form a ladder with no top, measured against a
+ * machine patched to flush its buffer, enqueue pad chunks, enqueue the source,
+ * then refuse:
  *
- *   for await                    prefix only
- *   sequential getReader() loop  prefix + 1 chunk
- *   burst of N                   prefix + N chunks
+ *   for await                    the prefix alone
+ *   sequential getReader() loop  the prefix and one more chunk
+ *   burst of N                   N chunks in total
  *
  * Any FIXED burst is therefore guessable: a batch of 16 silently passed a leak
- * sitting behind 20 pad chunks. The bound cannot be removed (the burst has to
- * be sized before anything is awaited), so instead exhausting it is made a
- * hard failure. If every read in the burst returned a chunk, this throws rather
- * than reporting a clean drain, which turns the false green into a red that
- * says what to do about it.
+ * sitting behind 20 pad chunks. The bound cannot be removed, since the burst is
+ * sized before anything is awaited, so instead running out of it is made a hard
+ * failure rather than a clean-looking drain.
  *
  * @param {any} stream
  * @param {{ text: string }} sink written to as chunks arrive
@@ -76,15 +78,22 @@ async function drainInto(stream, sink) {
         failure = failure || e;
       }
     }
-    if (!done && !failure && chunks === DRAIN_BURST) {
-      throw new Error(
-        `drainInto exhausted its ${DRAIN_BURST}-read burst without reaching the end or an error. `
-        + 'The stream had more queued chunks than the burst could dequeue, so this drain is no '
-        + 'longer reading the worst case. Raise DRAIN_BURST.',
-      );
-    }
     if (failure) throw failure;
     if (done) break;
+    if (chunks === DRAIN_BURST) {
+      // Every read came back with a chunk, so the burst may have stopped short
+      // of the end. May, not did: a stream holding EXACTLY this many chunks and
+      // then closing looks identical here, and throwing on that would be a
+      // false alarm. One more read settles it, and it is safe to await now
+      // because a stream still producing has nothing left to protect.
+      const { done: ended } = await reader.read();
+      if (ended) break;
+      throw new Error(
+        `drainInto ran out of its ${DRAIN_BURST}-read burst with the stream still producing. `
+        + 'Chunks beyond the burst were never dequeued, so this drain is no longer reading the '
+        + 'worst case and a leak could hide behind them. Raise DRAIN_BURST.',
+      );
+    }
   }
   return sink.text;
 }

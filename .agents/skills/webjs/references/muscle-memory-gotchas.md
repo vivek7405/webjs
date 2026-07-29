@@ -59,9 +59,9 @@ node 26  Authorization: `Bearer ${VENDOR_API_KEY}`      identifier only
 bun 1.3  Authorization: "Bearer sk_live_…"              the key itself
 ```
 
-Measured on bun 1.3.14, a module-scope `const` string folds whether or not it is exported and whether it is read once or many times; a `let` does not. Do not build a habit on that boundary, though, since it belongs to a transpiler and can move under you.
+Do not go looking for the rule that decides when it folds. There is one, it is a transpiler's internal business, and it is stranger than anyone guesses: on bun 1.3.14 the FIRST module-scope `const` in a file folds and later ones do not, so moving a declaration up a few lines changes whether your key is in the HTML. Two careful readers of this code got that rule wrong in two different ways before it was measured.
 
-So treat everything reachable from the action as exposed. That is the assumption the refusal is built on, and it is the only one that holds across runtimes.
+So treat everything reachable from the action as exposed. That is the assumption the refusal is built on, it is the only one that holds across runtimes, and it is the only one that stays true when the transpiler changes.
 
 The refusal covers the shape, not one spelling of it. Every hole form is refused (`action=${fn}`, `action="${fn}"`, the mixed `action="/x/${fn}"`), and so is a function wrapped in an array (`action=${[fn]}`), since an array stringifies each element through `String()` and leaks identically.
 

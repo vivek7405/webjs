@@ -41,17 +41,16 @@ const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${p
 // the marker, which would make every `!includes(BUN_PARITY_SECRET)` assertion
 // below trivially true and this whole file proof of nothing.
 //
-// On Bun it would be load-bearing in the other direction, which is the reason
-// to avoid the construction entirely rather than reason about it per runtime:
-// Bun folds a module-scope `const` string into the body, so the SAME code that
-// hides the marker on Node exposes it here. Measured directly rather than
-// inferred from the header sample above, which shows a FUNCTION-LOCAL const and
-// says nothing about module scope:
+// On Bun the same construction MIGHT instead expose the marker, because Bun
+// folds a module-scope `const` string into the body. Whether it does is not
+// something to reason about per file: on bun 1.3.14 only the FIRST module-scope
+// `const` folds, so in this file `const runtime` above already occupies that
+// slot and a hoisted marker would stay hidden here while folding in a file that
+// declared it first.
 //
-//   const K = 'sk_live_VALUE'; …`Bearer ${K}`   node -> `Bearer ${K}`
-//                                               bun  -> "Bearer sk_live_VALUE"
-//
-// Inlining makes this file behave identically on both.
+// That is the whole argument for inlining rather than for picking a side. The
+// construction's behaviour depends on declaration order in the containing
+// module, which is not a property a test should be sensitive to at all.
 async function leaky(input) {
   const conn = 'postgres://user:BUN_PARITY_SECRET@host/db';
   return { ok: true, conn, input };
