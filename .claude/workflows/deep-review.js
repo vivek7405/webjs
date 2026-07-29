@@ -47,13 +47,14 @@ const FINDINGS = {
       type: 'array',
       items: {
         type: 'object',
-        required: ['file', 'line', 'title', 'detail', 'severity'],
+        required: ['file', 'line', 'title', 'detail', 'severity', 'tier'],
         properties: {
           file: { type: 'string', description: 'repo-relative path' },
           line: { type: 'number', description: '1-indexed line at the PR head' },
           title: { type: 'string', description: 'one-sentence statement of the defect' },
           detail: { type: 'string', description: 'concrete failure scenario: inputs/state leading to wrong behavior' },
           severity: { type: 'string', enum: ['critical', 'major', 'minor'] },
+          tier: { type: 'string', enum: ['substantive', 'prose'], description: "substantive when the finding touches shipped source, a test's ability to observe the defect it claims to cover, or a factual claim about runtime behavior in docs; prose for everything else (wording, counts, style)" },
         },
       },
     },
@@ -158,7 +159,7 @@ log(`deep-review of PR ${pr}${repo ? ` in ${repo}` : ''}: ${ALL_LENSES.length} l
 
 const found = await parallel(ALL_LENSES.map((l) => () =>
   agent(
-    `${SAFETY}\n\nYou are ONE review lens over PR ${pr}. Your single charter:\n${l.prompt}\n\nReport only genuine problems with concrete failure scenarios. No style nits, no suggestions, no padding. Return an empty findings array if you find nothing real.`,
+    `${SAFETY}\n\nYou are ONE review lens over PR ${pr}. Your single charter:\n${l.prompt}\n\nReport only genuine problems with concrete failure scenarios. No style nits, no suggestions, no padding. Return an empty findings array if you find nothing real.\n\nTag each finding's tier: "substantive" when it touches shipped source, a test's ability to OBSERVE the defect it claims to cover (a tautological assertion that stays green with the bug present is substantive), or a factual claim about runtime behavior in docs; "prose" for everything else (wording, counts, comment style, review artifacts). The tier is a surface classification, not a severity judgment.`,
     { label: `find:${l.key}`, phase: 'Find', schema: FINDINGS, ...(l.model ? { model: l.model } : {}) },
   )))
 
