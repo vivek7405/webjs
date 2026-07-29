@@ -1,3 +1,6 @@
+import { html } from '@webjsdev/core';
+import { NEW_TAB } from '#lib/links.ts';
+
 /**
  * The design system's shared class recipes.
  *
@@ -66,15 +69,47 @@ export const BTN_GHOST = `${BTN_BASE} text-fg border-border-strong bg-[color-mix
 export const INSTALL =
   `flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-[14px] text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]`;
 
+/* ---------------------------------------------------------------------------
+   Layout.
+
+   Two widths and one vertical rhythm, so a new page does not invent its own.
+   The widths exist because the site has two kinds of page and they want
+   different measures: a marketing page lays things out across the viewport, a
+   reading page wants a line length that stays comfortable, which is what caps
+   READING at 840px (roughly 75 characters at the body size).
+--------------------------------------------------------------------------- */
+
+/** Full-width marketing content: the hero, feature grids, the stage. */
+export const WIDE = 'max-w-[1120px] mx-auto px-6';
+
+/** Long-form reading: the blog, articles, and comparison hubs and posts. */
+export const READING = 'max-w-[840px] mx-auto px-6';
+
+/** One section's vertical rhythm. Every marketing section uses this, not its own. */
+export const SECTION = 'py-16';
+
 /** Section heading, and the paragraph that follows it. */
 export const H2 = 'font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance';
 export const PROSE = 'text-fg-muted text-[1.05rem] leading-[1.6] m-0';
 
-/** The centred intro block above a section's content. */
-export const SECTION_HEAD = 'max-w-[720px] mx-auto mb-12 text-center';
-
-/** A plain elevated panel, for content that is not asking for a click. */
-export const PANEL = 'rounded-[20px] border border-border bg-bg-elev shadow-[var(--shadow-sm)]';
+/**
+ * The header at the top of a long-form hub or index page.
+ *
+ * This existed three times, byte for byte apart from its words, on /blog,
+ * /articles, and /compare. Each copy also carried an uppercase mono eyebrow
+ * over the title, the device that was removed from every other page, so the
+ * three pages that shared a header were also the three still carrying a
+ * pattern the rest of the site had dropped. One function makes that class of
+ * drift impossible: there is nowhere left for a fourth variant to appear.
+ */
+export function pageHeader(title: string, lede: string) {
+  return html`
+    <header class="mb-10">
+      <h1 class="font-serif text-[clamp(28px,4vw,40px)] leading-[1.05] tracking-tight text-fg mb-3">${title}</h1>
+      <p class="text-fg-muted text-[15px] leading-relaxed max-w-[640px]">${lede}</p>
+    </header>
+  `;
+}
 
 /**
  * The closing call to action, the one panel that is allowed to glow.
@@ -93,5 +128,48 @@ export const PANEL = 'rounded-[20px] border border-border bg-bg-elev shadow-[var
 export const PANEL_CTA =
   'rounded-[22px] border border-border-strong bg-[var(--cta-surface)] shadow-[var(--shadow-glow)]';
 
-/** The small label that names a code window or a paired example. */
-export const MICRO_LABEL = 'text-[13px] font-medium leading-[1.4] text-fg-subtle mb-[10px] ml-1';
+/**
+ * The closing call to action, composed rather than assembled per page.
+ *
+ * Three pages built this out of the same parts by hand, which is how the panel,
+ * the install bar, and the two buttons drifted out of step with each other.
+ * Passing the words in leaves nothing per-page to get wrong.
+ *
+ * `install` is opt-in because /why-webjs closes on the docs link alone, without
+ * the command.
+ */
+export function ctaPanel(opts: {
+  title: string;
+  lede: string;
+  install?: boolean;
+  primary: { href: string; label: string };
+  secondary?: { href: string; label: string; ext?: boolean };
+}) {
+  return html`
+    <section class="${SECTION} text-center" id="get-started">
+      <div class="${WIDE}">
+        <div class="max-w-[760px] mx-auto p-[clamp(32px,5vw,64px)] ${PANEL_CTA}">
+          <h2 class="font-display font-extrabold text-h2 leading-[1.1] tracking-[-0.03em] mt-0 mb-3">${opts.title}</h2>
+          <p class="text-fg-muted mx-auto mb-8 max-w-[52ch]">${opts.lede}</p>
+          ${opts.install === false ? '' : html`
+            <div class=${INSTALL}>
+              <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
+            </div>
+          `}
+          <div class="flex gap-3 justify-center flex-wrap mt-7">
+            <a class=${BTN_PRIMARY} href=${opts.primary.href}>
+              ${opts.primary.label}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </a>
+            ${opts.secondary ? html`
+              <a class=${BTN_GHOST} href=${opts.secondary.href}
+                 target=${opts.secondary.ext ? '_blank' : '_self'}
+                 rel=${opts.secondary.ext ? 'noopener noreferrer' : ''}>${opts.secondary.label}${opts.secondary.ext ? NEW_TAB : ''}</a>
+            ` : ''}
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+

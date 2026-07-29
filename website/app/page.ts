@@ -14,7 +14,7 @@ import { DOCS_PATH, DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 // dependency, html, is already loaded by the components, so the real cost is a
 // single tiny module fetch.
 import { highlight } from '#lib/highlight.ts';
-import { BTN_PRIMARY, BTN_GHOST, INSTALL, PANEL_CTA } from '#lib/design.ts';
+import { BTN_PRIMARY, BTN_GHOST, INSTALL, ctaPanel } from '#lib/design.ts';
 
 // The home page intentionally sets NO title/description/og here. The root
 // layout's generateMetadata is the single source for the <title>, description,
@@ -419,24 +419,12 @@ middleware.ts</pre>
       </div>
     </section>
 
-    <section class="py-16 text-center" id="get-started">
-      <div class="max-w-[1080px] mx-auto px-6">
-        <div class="max-w-[760px] mx-auto p-[clamp(32px,5vw,64px)] ${PANEL_CTA}">
-          <h2 class="font-display font-extrabold text-h2 leading-[1.1] tracking-[-0.03em] mt-0 mb-3">Start building with AI</h2>
-          <p class="text-fg-muted mx-auto mb-8 max-w-[56ch]">Run the command below in your terminal, launch your AI coding agent from the app folder, and tell it what you would like to build.</p>
-          <div class=${INSTALL}>
-            <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
-          </div>
-          <div class="flex gap-3 justify-center flex-wrap mt-7">
-            <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>
-              Get started
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </a>
-            <a class=${BTN_GHOST} href=${DOCS_PATH}>Read the docs</a>
-          </div>
-        </div>
-      </div>
-    </section>
+    ${ctaPanel({
+      title: 'Start building with AI',
+      lede: 'Run the command below in your terminal, launch your AI coding agent from the app folder, and tell it what you would like to build.',
+      primary: { href: DOCS_START_PATH, label: 'Get started' },
+      secondary: { href: DOCS_PATH, label: 'Read the docs' },
+    })}
 
     </main>
   `;

@@ -1,4 +1,5 @@
 import { html } from '@webjsdev/core';
+import { READING, pageHeader } from '#lib/design.ts';
 import { listArticles } from '#modules/articles/queries/list-articles.server.ts';
 
 /**
@@ -23,14 +24,8 @@ export const metadata = {
 export default async function Articles() {
   const articles = await listArticles();
   return html`
-    <main id="main" tabindex="-1" class="max-w-[840px] mx-auto px-6 py-12 focus:outline-none">
-      <header class="mb-10">
-        <p class="font-mono text-[11px] uppercase tracking-[0.15em] text-accent font-semibold mb-2">Articles</p>
-        <h1 class="font-serif text-[clamp(28px,4vw,40px)] leading-[1.05] tracking-tight text-fg mb-3">Explainers for the web platform</h1>
-        <p class="text-fg-muted text-[15px] leading-relaxed max-w-[640px]">
-          Evergreen explainers on how the web platform works and the ideas WebJs is built on: web components, building with no build step, server-side rendering, and running TypeScript straight from the runtime. Reference reading, not release notes.
-        </p>
-      </header>
+    <main id="main" tabindex="-1" class="${READING} py-12 focus:outline-none">
+      ${pageHeader('Explainers for the web platform', 'Evergreen explainers on how the web platform works and the ideas WebJs is built on: web components, building with no build step, server-side rendering, and running TypeScript straight from the runtime. Reference reading, not release notes.')}
 
       ${articles.length === 0
         ? html`<p class="text-fg-subtle italic">No articles yet.</p>`

@@ -1,4 +1,5 @@
 import { html } from '@webjsdev/core';
+import { READING, pageHeader } from '#lib/design.ts';
 import { listComparisons } from '#modules/compare/queries/list-comparisons.server.ts';
 
 /**
@@ -18,14 +19,8 @@ export const metadata = {
 export default async function Compare() {
   const comparisons = await listComparisons();
   return html`
-    <main id="main" tabindex="-1" class="max-w-[840px] mx-auto px-6 py-12 focus:outline-none">
-      <header class="mb-10">
-        <p class="font-mono text-[11px] uppercase tracking-[0.15em] text-accent font-semibold mb-2">Compare</p>
-        <h1 class="font-serif text-[clamp(28px,4vw,40px)] leading-[1.05] tracking-tight text-fg mb-3">How WebJs compares</h1>
-        <p class="text-fg-muted text-[15px] leading-relaxed max-w-[640px]">
-          Honest head-to-head write-ups: where WebJs agrees with each framework, where it genuinely differs, and who should pick which. No trashing the alternative, and each one says where the other tool is the better call.
-        </p>
-      </header>
+    <main id="main" tabindex="-1" class="${READING} py-12 focus:outline-none">
+      ${pageHeader('How WebJs compares', 'Honest head-to-head write-ups: where WebJs agrees with each framework, where it genuinely differs, and who should pick which. No trashing the alternative, and each one says where the other tool is the better call.')}
 
       ${comparisons.length === 0
         ? html`<p class="text-fg-subtle italic">No comparisons yet.</p>`

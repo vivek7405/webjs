@@ -1,6 +1,6 @@
 import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
-import { BTN_PRIMARY, BTN_GHOST, INSTALL, PANEL_CTA } from '#lib/design.ts';
+import { BTN_PRIMARY, BTN_GHOST, INSTALL, ctaPanel } from '#lib/design.ts';
 import { DOCS_START_PATH, GH_URL, EXAMPLE_BLOG_URL, NEW_TAB } from '#lib/links.ts';
 
 /**
@@ -185,24 +185,12 @@ Counter.register('counter');
       </div>
     </section>
 
-    <section class="py-16 text-center" id="get-started">
-      <div class="max-w-[1080px] mx-auto px-6">
-        <div class="max-w-[760px] mx-auto p-[clamp(32px,5vw,64px)] ${PANEL_CTA}">
-          <h2 class="font-display font-extrabold text-h2 leading-[1.1] tracking-[-0.03em] mt-0 mb-3">Point your agent at WebJs</h2>
-          <p class="text-fg-muted mx-auto mb-8 max-w-[48ch]">Scaffold a full-stack app in one command, then let any model read the source and build. Pages, an API, components, and a database, all on web standards.</p>
-          <div class=${INSTALL}>
-            <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
-          </div>
-          <div class="flex gap-3 justify-center flex-wrap mt-7">
-            <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>
-              Get started
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </a>
-            <a class=${BTN_GHOST} href=${EXAMPLE_BLOG_URL} target="_blank" rel="noopener noreferrer">See a live app${NEW_TAB}</a>
-          </div>
-        </div>
-      </div>
-    </section>
+    ${ctaPanel({
+      title: 'Point your agent at WebJs',
+      lede: 'Scaffold a full-stack app in one command, then let any model read the source and build. Pages, an API, components, and a database, all on web standards.',
+      primary: { href: DOCS_START_PATH, label: 'Get started' },
+      secondary: { href: EXAMPLE_BLOG_URL, label: 'See a live app', ext: true },
+    })}
 
     </main>
   `;
