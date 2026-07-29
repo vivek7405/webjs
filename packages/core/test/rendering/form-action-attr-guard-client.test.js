@@ -1,6 +1,19 @@
 // #1154, client half: the browser renderer refuses the same commit, so a
-// client re-render can never write a function's source into the live DOM
-// (`applyPart`'s 'attr' and 'attr-mixed' cases). Runs under linkedom.
+// client re-render can never write a function's source into the live DOM.
+// Runs under linkedom.
+//
+// Four `applyPart` clauses guard this, and the tests below pin all four.
+// Established by neutering each one separately, not by reading, because which
+// clause a given hole shape reaches is not what it looks like:
+//
+//   'attr'       unquoted `action=${fn}`, including an array-wrapped value
+//   'attr-mixed' EVERY quoted single hole (`action="${fn}"`, `.action="${fn}"`,
+//                `?action="${fn}"`, `@action="${fn}"`) plus a true mixed value
+//   'prop'       unquoted `.action=${fn}` on a native element
+//   'bool'       unquoted `?action=${fn}`
+//
+// The second row is the counter-intuitive one: quoting a hole does not keep it
+// in the 'attr' case, it moves it to 'attr-mixed'.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
@@ -91,13 +104,10 @@ test('string action still renders on the client', () => {
 // A quoted binding hole keeps its sigil in the part's name, so comparing the
 // raw name let `.action="${fn}"` through on this side too.
 //
-// WHICH clause each case pins, verified by reverting them one at a time rather
-// than assumed: a quoted single hole compiles to an `attr-mixed` part, NOT a
-// plain `attr` one, so the quoted cases below exercise the guard in the
-// `attr-mixed` piece loop. Neutering the `attr` case leaves them green. The
-// plain `attr` guard is pinned by the UNQUOTED cases (`action=${fn}` and the
-// array-wrapped one). Worth stating because the obvious reading is backwards,
-// and an edit to the wrong branch would look covered.
+// See the clause map in the file header for which `applyPart` branch each
+// shape reaches. Within THIS section: the four quoted cases pin 'attr-mixed',
+// the array-wrapped case pins 'attr', and the unquoted `?action=${fn}` case
+// pins 'bool'.
 //
 // Each case renders the SAME template with a good value first and only then
 // swaps in the bad one, per the note above. That matters twice over: on a fresh
@@ -135,21 +145,11 @@ test('client refuses a quoted event hole @action="${fn}"', () => {
 });
 
 test('client refuses a quoted boolean hole ?action="${fn}"', () => {
-  // Written directly rather than through the helper: a quoted `?action` is an
-  // ordinary attribute, so the good render leaves a literal `?action="/submit"`
-  // rather than the `action` the helper checks for. Kept because dropping it
-  // would leave this shape with NO client coverage; the SSR machines cover it,
-  // but this is a separate renderer.
-  const host = document.createElement('div');
-  const tpl = (v) => html`<form ?action="${v}"></form>`;
-  render(tpl('/submit'), host);
-  const before = host.innerHTML;
-  assert.ok(host.querySelector('form'), 'the good value must render a form');
-
-  assert.throws(() => render(tpl(fakeAction), host), /function was interpolated into \?action=/);
-
-  assert.equal(host.innerHTML, before, 'the refused render must leave the DOM untouched');
-  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
+  // Quoting moves this into 'attr-mixed' like the other quoted holes, so the
+  // good value renders as a literal `?action="/submit"` and the helper's
+  // default check fits. (Only the UNQUOTED bool below needs an override, since
+  // a boolean binding drops the value and writes a bare `action=""`.)
+  refusesOnRerender((v) => html`<form ?action="${v}"></form>`, fakeAction, /function was interpolated into \?action=/);
 });
 
 test('client refuses an array-wrapped function', () => {
