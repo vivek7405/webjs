@@ -1198,7 +1198,17 @@ class WebComponentBase extends Base {
       // documented override point and may return one, so the handler belongs
       // at this site rather than only at the one implementation of it.
       pendingCommit.then(settle, (error) => {
-        this._handleRenderError(error instanceof Error ? error : new Error(String(error)));
+        // The token check gates the DOM write, NOT the release. A superseded
+        // cycle rejecting late (a discarded fetch, or the #492 abort of its own
+        // in-flight action surfacing as an AbortError) must not commit its
+        // error state over the newer render that already replaced it, which is
+        // the same rule both handlers inside _commitAsync follow. `settle()`
+        // still runs either way: it does its own token check before touching
+        // anything, and the decrement it owns has to happen regardless or the
+        // counter wedges exactly as it did before this handler existed.
+        if (token === this.__renderToken) {
+          this._handleRenderError(error instanceof Error ? error : new Error(String(error)));
+        }
         settle();
       });
       return;
