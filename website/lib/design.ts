@@ -21,9 +21,23 @@
  *   rather than per-page pixel values, so the rhythm holds across pages.
  */
 
+/**
+ * The radius scale. Three steps, chosen by what a thing IS, not by its size:
+ *
+ *   RADIUS_CONTROL (10px)  things you click: buttons, the install bar, inputs
+ *   rounded-2xl    (16px)  cards and code windows
+ *   rounded-[20px]         full-width panels, the closing CTA
+ *
+ * A control and a card sitting side by side at different radii is the tell
+ * that a scale is missing, which is exactly what happened when the install bar
+ * was restored from the live site: there the buttons were full pills, so its
+ * 16px looked right next to them, and here it did not.
+ */
+export const RADIUS_CONTROL = 'rounded-[10px]';
+
 /** Shared control geometry. Compose with a surface, do not use bare. */
 const BTN_BASE =
-  'inline-flex items-center gap-2 h-[42px] px-[18px] rounded-[10px] font-semibold text-[14.5px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
+  `inline-flex items-center gap-2 h-[42px] px-[18px] ${RADIUS_CONTROL} font-semibold text-[14.5px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]`;
 
 /**
  * The single strongest action on a view. At most one per screen.
@@ -39,14 +53,15 @@ export const BTN_GHOST = `${BTN_BASE} text-fg border-border-strong bg-[color-mix
 /**
  * The copy-to-clipboard install command.
  *
- * Kept at the live site's proportions. A tightened-up version was tried (less
- * padding, a 10px radius, no blur or shadow) and read as cramped: this bar is
- * a primary call to action in its own right, not a caption, so it wants the
- * generous padding, the 2xl radius, and the backdrop blur that lift it off the
- * page.
+ * The live site's proportions (generous padding, the backdrop blur and shadow
+ * that lift it off the page), because this bar is a primary call to action in
+ * its own right and a tightened version read as a caption. But it takes the
+ * CONTROL radius, not the card radius it carries in production: it sits inches
+ * from the buttons, and matching them is what makes the group read as one set
+ * of controls rather than three unrelated shapes.
  */
 export const INSTALL =
-  'flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-[14px] text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]';
+  `flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-[14px] text-left font-mono text-sm leading-[1.6] text-fg-muted ${RADIUS_CONTROL} border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]`;
 
 /** Section heading, and the paragraph that follows it. */
 export const H2 = 'font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance';
