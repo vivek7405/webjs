@@ -20,15 +20,26 @@ async function drain(stream) {
 }
 
 /**
- * Drain a stream into a CALLER-OWNED buffer, so what was already flushed
+ * Drain a stream into a CALLER-OWNED buffer, so what the consumer RECEIVED
  * survives a throw.
  *
  * `drain()` accumulates into a local and loses it when the iteration throws, so
  * a test that drains a refused render and then inspects the result is always
- * inspecting an empty string, whatever the renderer actually put on the wire.
- * That matters here more than it looks: a streaming renderer can flush bytes
- * BEFORE it refuses, and those bytes are already on their way to the client.
- * "It threw" is not the same claim as "the client received nothing".
+ * inspecting an empty string, whatever the consumer actually got. "It threw" is
+ * not the same claim as "the client received nothing".
+ *
+ * What this captures is precisely the security-relevant quantity, and it is
+ * narrower than "everything the renderer enqueued". `renderToStream` fails via
+ * `controller.error()`, which per spec CLEARS the stream's queue, so a chunk
+ * that was enqueued but not yet read is destroyed rather than delivered.
+ * Verified: patching the streaming machine to flush its buffer and then enqueue
+ * the source as a separate chunk, a real consumer receives `<p>hello</p><form
+ * action="` and never the source. So the queue-clearing is itself a mitigation,
+ * and `sink.text` is what a client could actually have seen.
+ *
+ * The consequence for coverage, stated plainly: this reds when the source
+ * reaches the consumer, which is the case worth catching, and stays green when
+ * a would-be leaking chunk is destroyed before delivery, which is not a leak.
  *
  * @param {any} stream
  * @param {{ text: string }} sink written to as chunks arrive
@@ -122,17 +133,19 @@ test('the streaming renderer refuses the same function (ssr:false path)', async 
 test('the streaming renderer never emits the source, not even before it refuses', async () => {
   // Uses `drainInto` on purpose. Draining into a local and reading it after the
   // catch always sees an empty string, because the throw discards it, so the
-  // assertion passes no matter what went out. Verified: making the streaming
-  // machine enqueue the source and THEN refuse left the whole file green.
+  // assertion passes no matter what the consumer got. Verified: making the
+  // streaming machine enqueue the source and THEN refuse left the whole file
+  // green.
   //
-  // The claim being pinned is about the wire, not the exception. A stream can
-  // flush bytes before it refuses, and those bytes are already gone.
+  // The claim being pinned is about what a client could have RECEIVED, not
+  // about the exception. See `drainInto` for why that is narrower than what the
+  // renderer enqueued, and why the difference is in our favour.
   const sink = { text: '' };
   await assert.rejects(
     () => drainInto(renderToStream(html`<form action=${leaky}></form>`, { ssr: false }), sink),
     /function was interpolated into action=/,
   );
-  assert.ok(!sink.text.includes('SECRET'), `flushed bytes must not carry the source, got: ${sink.text}`);
+  assert.ok(!sink.text.includes('SECRET'), `received bytes must not carry the source, got: ${sink.text}`);
   assert.ok(!sink.text.includes('async function'), 'no function source of any kind reached the client');
 });
 

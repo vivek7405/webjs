@@ -12,9 +12,20 @@
  * the Node test suite stayed green.
  *
  * The runtime-sensitive part is not the string building, it is what each engine
- * does with `String(fn)` and with the async render path around it. JSC and V8
- * format function source differently, so the assertions check for the SECRET
- * marker itself rather than an exact stringification.
+ * does with `String(fn)` and with the async render path around it. Assertions
+ * therefore check for the SECRET marker rather than for a stringification
+ * shape, and the reason is worth stating precisely, because the obvious one is
+ * wrong. `Function.prototype.toString` is spec'd to return the exact source
+ * text, so JSC and V8 do NOT format it differently. What differs is that Bun
+ * TRANSPILES the module before the engine ever sees it, so the source a
+ * function reports is the rewritten source:
+ *
+ *   node 26.1.0 : async function leaky(input) { const conn = '…'; return { ok: true, conn, input }; }
+ *   bun  1.3.14 : async function leaky(input) { return { ok: !0, conn: "…", input }; }
+ *
+ * Constant folded, `true` minified to `!0`, reindented. A string LITERAL
+ * survives that intact, which is exactly why the marker is the right thing to
+ * assert on and a formatting pattern is not.
  */
 import assert from 'node:assert/strict';
 
@@ -113,10 +124,9 @@ assert.match(cyclicOut, /action=""/, `[${runtime}] a cyclic array must render, n
 // The SCOPE boundary, on both machines. Every other passthrough above is
 // `action`-valued, so none of them would notice a change that widened the claim
 // to drop function values in every attribute. This is the one that would.
-// Asserts on the SECRET marker, not on a stringification format, per the note
-// at the top: the marker is inside the function body and every engine that
-// stringifies the function at all will carry it, while `async function leaky`
-// is a formatting detail JSC and V8 need not agree on.
+// Asserts on the SECRET marker rather than a stringification shape, for the
+// reason given at the top of the file: Bun transpiles the module, so the source
+// a function reports is rewritten, and a string literal is what survives that.
 const otherBuffered = await renderToString(html`<div title=${leaky}></div>`, { ssr: true });
 assert.ok(otherBuffered.includes('BUN_PARITY_SECRET'),
   `[${runtime}] an unclaimed attribute must still stringify (buffered)`);
