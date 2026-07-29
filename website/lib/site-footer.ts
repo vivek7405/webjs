@@ -1,5 +1,6 @@
 import { html } from '@webjsdev/core';
 import { DOCS_START_PATH, UI_PATH, EXAMPLE_BLOG_URL, GH_URL, DISCORD_URL, NEW_TAB } from '#lib/links.ts';
+import { brandLockup } from '#lib/brand.ts';
 
 /**
  * The site-wide footer, rendered once by the root layout (app/layout.ts) so it
@@ -28,6 +29,7 @@ export function siteFooter() {
             <h4 class="text-xs font-bold uppercase tracking-wider text-fg">Resources</h4>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/what-is-webjs">What is WebJs?</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/why-webjs">Why WebJs</a>
+            <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/brand">Brand</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/blog">Blog</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/articles">Articles</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/changelog">Changelog</a>
@@ -48,7 +50,7 @@ export function siteFooter() {
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${DISCORD_URL} target="_blank" rel="noopener noreferrer">Discord${NEW_TAB}</a>
           </div>
           <div class="flex flex-col gap-3">
-            <h4 class="text-xs font-bold uppercase tracking-wider text-fg">webjs</h4>
+            <a href="/" aria-label="WebJs home" class="no-underline text-fg inline-flex w-fit transition-opacity duration-fast hover:opacity-80">${brandLockup('ftr', { size: 24, text: 17 })}</a>
             <p class="m-0 text-xs text-fg-muted leading-relaxed">The web framework for AI agents. Full-stack web components, SSR, zero build step.</p>
           </div>
         </nav>
