@@ -88,9 +88,16 @@ test('string action still renders on the client', () => {
 
 // --- Bypasses found reviewing the first cut of the guard -------------------
 //
-// A quoted binding hole compiles to a plain `attr` part whose name still
-// carries the sigil, so comparing the raw name let `.action="${fn}"` through on
-// this side too.
+// A quoted binding hole keeps its sigil in the part's name, so comparing the
+// raw name let `.action="${fn}"` through on this side too.
+//
+// WHICH clause each case pins, verified by reverting them one at a time rather
+// than assumed: a quoted single hole compiles to an `attr-mixed` part, NOT a
+// plain `attr` one, so the quoted cases below exercise the guard in the
+// `attr-mixed` piece loop. Neutering the `attr` case leaves them green. The
+// plain `attr` guard is pinned by the UNQUOTED cases (`action=${fn}` and the
+// array-wrapped one). Worth stating because the obvious reading is backwards,
+// and an edit to the wrong branch would look covered.
 //
 // Each case renders the SAME template with a good value first and only then
 // swaps in the bad one, per the note above. That matters twice over: on a fresh
@@ -125,6 +132,24 @@ test('client refuses a quoted property hole .action="${fn}"', () => {
 
 test('client refuses a quoted event hole @action="${fn}"', () => {
   refusesOnRerender((v) => html`<form @action="${v}"></form>`, fakeAction, /function was interpolated into @action=/);
+});
+
+test('client refuses a quoted boolean hole ?action="${fn}"', () => {
+  // Written directly rather than through the helper: a quoted `?action` is an
+  // ordinary attribute, so the good render leaves a literal `?action="/submit"`
+  // rather than the `action` the helper checks for. Kept because dropping it
+  // would leave this shape with NO client coverage; the SSR machines cover it,
+  // but this is a separate renderer.
+  const host = document.createElement('div');
+  const tpl = (v) => html`<form ?action="${v}"></form>`;
+  render(tpl('/submit'), host);
+  const before = host.innerHTML;
+  assert.ok(host.querySelector('form'), 'the good value must render a form');
+
+  assert.throws(() => render(tpl(fakeAction), host), /function was interpolated into \?action=/);
+
+  assert.equal(host.innerHTML, before, 'the refused render must leave the DOM untouched');
+  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
 });
 
 test('client refuses an array-wrapped function', () => {
