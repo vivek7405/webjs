@@ -54,6 +54,22 @@ test('the skill carries the substantive gate and its two-tier exit', () => {
   // failure taxonomy covers the prose pass explicitly.
   assert.match(skill, /prose-pass reviewer that cannot be produced at all ends the loop BLOCKED/);
   assert.match(skill, /or the prose-pass reviewer, cannot be produced/);
+  // The round budget bounds the loop: 5 substantive rounds, OVER BUDGET is
+  // a non-converged exit with its own report, and the failure taxonomy
+  // carries it.
+  assert.match(skill, /5 substantive rounds, raised only by the user's instruction/);
+  assert.match(skill, /ends it as OVER BUDGET/);
+  assert.match(skill, /An OVER-BUDGET loop reports the rounds run/);
+  assert.match(skill, /round budget \(default 5 substantive rounds, user-raisable per task\) is spent/);
+  // Mid-loop fixes carry proof: the red\/green toggle inside the loop-speed
+  // bullet, the non-discriminating-test re-run, and claim decay.
+  assert.match(skill, /make an older test non-discriminating without failing it/);
+  assert.match(skill, /A counterfactual CLAIM decays/);
+  assert.match(skill, /true of a commit, not a branch/);
+  // The loop never files follow-up issues on its own; deferral is recorded
+  // on the PR and filing is the user's call from the report.
+  assert.match(skill, /the loop NEVER files a follow-up issue on its own/);
+  assert.match(skill, /awaiting your call on filing/);
 });
 
 test('deep-review findings carry a required tier with the gate wording', () => {
@@ -110,4 +126,6 @@ test('the routed review directive states the substantive exit, not the old absol
   // untagged findings from tag-capable reviewers stay substantive.
   assert.match(hook, /from the code-review skill itself/);
   assert.match(hook, /any tag-capable reviewer is simply treated as substantive/);
+  // The directive states the round budget the skill mandates.
+  assert.match(hook, /budget of 5 substantive rounds bounds the whole loop/);
 });
