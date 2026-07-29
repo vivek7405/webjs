@@ -1176,7 +1176,7 @@ class WebComponentBase extends Base {
       // (shouldUpdate=false) running during the fetch does NOT resolve
       // updateComplete early: the pending commit owns the resolution.
       this.__pendingAsyncCommits = (this.__pendingAsyncCommits || 0) + 1;
-      pendingCommit.then(() => {
+      const settle = () => {
         // Always decrement first, even when superseded, so the in-flight
         // count never leaks (a superseded cycle returns below without
         // committing, but it is no longer pending).
@@ -1189,6 +1189,17 @@ class WebComponentBase extends Base {
         }
         // --- 7-8 + updateComplete ---
         this._postCommit(changedProperties);
+      };
+      // A rejection has to settle the cycle too, or the counter stays >= 1
+      // forever: that both wedges `updateComplete` for this instance and
+      // disables the `!this.__pendingAsyncCommits` escape below for every
+      // later non-committing cycle. `_commitAsync` is written not to reject,
+      // but it is not the only thenable that reaches here: `update()` is a
+      // documented override point and may return one, so the handler belongs
+      // at this site rather than only at the one implementation of it.
+      pendingCommit.then(settle, (error) => {
+        this._handleRenderError(error instanceof Error ? error : new Error(String(error)));
+        settle();
       });
       return;
     }

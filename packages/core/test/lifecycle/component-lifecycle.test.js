@@ -352,6 +352,32 @@ test('a throw from the COMMIT of an async render() is contained like a sync one'
   assert.equal(el.__pendingAsyncCommits, 0, 'the in-flight count is released, not wedged');
 });
 
+test('a REJECTED thenable from an update() override settles the cycle too', async () => {
+  // The commit-throw fix guarantees _commitAsync never rejects, which is not
+  // the same as handling a rejection at the site that awaits it. update() is a
+  // documented override point and may return any thenable, so a rejecting one
+  // reproduced the original wedge verbatim: counter stuck >= 1, updateComplete
+  // never settling, the error escaping as an unhandled rejection.
+  let errorArg = null;
+  class C extends WebComponent {
+    render() { return html`<p>x</p>`; }
+    renderError(e) { errorArg = e; return undefined; }
+    update() { return Promise.reject(new Error('prepare failed')); }
+  }
+  C.register('async-update-reject');
+  const el = document.createElement('async-update-reject');
+  document.body.appendChild(el);
+
+  const settled = await Promise.race([
+    Promise.resolve(el.updateComplete).then(() => 'settled', () => 'settled'),
+    new Promise((r) => setTimeout(() => r('NEVER SETTLED'), 500)),
+  ]);
+  assert.equal(settled, 'settled', 'updateComplete must settle after a rejected commit');
+  assert.ok(errorArg instanceof Error, 'the rejection reaches renderError()');
+  assert.match(errorArg.message, /prepare failed/);
+  assert.equal(el.__pendingAsyncCommits, 0, 'the in-flight count is released, not wedged');
+});
+
 /* -------------------- lazy controllers set: ensure graceful behavior -------------------- */
 
 test('WebComponent without static properties still constructs cleanly', () => {
