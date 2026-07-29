@@ -56,6 +56,15 @@ async function drain(stream) {
  * sized before anything is awaited, so instead running out of it is made a hard
  * failure rather than a clean-looking drain.
  *
+ * Worth being blunt about what this buys on the SHIPPED path: nothing. The
+ * template the caller below uses has a single attribute hole and no text hole,
+ * so the guard refuses before anything is enqueued at all, and instrumenting
+ * the controller records exactly one event, the error. `sink.text` is therefore
+ * always empty there, and both assertions hold trivially. All of this machinery
+ * exists for the counterfactual, where a regression that writes before refusing
+ * DOES enqueue, and where the difference between draining well and draining
+ * badly is the difference between catching that and waving it through.
+ *
  * @param {any} stream
  * @param {{ text: string }} sink written to as chunks arrive
  */
