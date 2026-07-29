@@ -1,7 +1,7 @@
 import { html, isTemplate } from './html.js';
 import { BINDING_PREFIXES } from './binding-prefixes.js';
 import { escapeText, escapeAttr } from './escape.js';
-import { assertNotFunctionActionAttr } from './form-action.js';
+import { assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp } from './form-action.js';
 import { lookup, lookupModuleUrl, allTags } from './registry.js';
 import { stylesToString, isCSS } from './css.js';
 import { isRepeat } from './repeat.js';
@@ -291,12 +291,16 @@ async function renderTemplate(tr, ctx) {
           }
           if (!currentTag.includes('-')) {
             // A native element's `.prop` is dropped at SSR, so this path never
-            // leaked. It still refuses a function in `.action` so the rule does
-            // not depend on which renderer sees it first: the client guards the
-            // same binding (there `action` reflects, so it DOES leak), and a
-            // page that renders clean on the server and throws on hydration is
-            // a worse failure than one that refuses at the earliest point.
-            assertNotFunctionActionAttr(val, name, currentTag);
+            // leaked here. It still refuses a function where the property is a
+            // REFLECTED IDL attribute (`.action` on a form, `.formAction` on a
+            // button or input), so the rule does not depend on which renderer
+            // sees it first: the client sets that property for real and the
+            // reflection writes the source into the DOM. A page that renders
+            // clean on the server and throws on hydration is a worse failure
+            // than one that refuses at the earliest point. Elsewhere the
+            // property is a plain expando that reflects nothing, so refusing
+            // it would be a false positive.
+            assertNotFunctionReflectedActionProp(val, name, currentTag);
             state = 'in-tag';
             attrName = '';
             continue;
@@ -1897,12 +1901,14 @@ async function streamTemplate(tr, ctx, controller) {
           // event binding is dropped here and never stringified, and a
           // function is the LEGITIMATE value for one (`<my-el @action=${fn}>`
           // listens for an `action` event), so refusing it would be a false
-          // positive. `.action` differs: on a native element it reflects on
-          // the client, so refusing at SSR keeps a page from rendering clean
-          // on the server and throwing on hydration. A custom element's
-          // `.action` is an ordinary author prop and stays legal.
+          // positive. `.action` differs where the property REFLECTS: on a form
+          // (and `.formAction` on a button or input) the client assignment
+          // writes the source into the DOM, so refusing at SSR keeps a page
+          // from rendering clean on the server and throwing on hydration.
+          // Elsewhere, including a custom element, the property reflects
+          // nothing and a function stays legal.
           if (kind === 'prop' && !currentTag.includes('-')) {
-            assertNotFunctionActionAttr(val, name, currentTag);
+            assertNotFunctionReflectedActionProp(val, name, currentTag);
           }
           buf = buf.slice(0, attrStart);
           state = 'in-tag';

@@ -1,7 +1,7 @@
 import { isTemplate, MARKER } from './html.js';
 import { BINDING_PREFIXES, isBindingPrefix } from './binding-prefixes.js';
 import { escapeAttr } from './escape.js';
-import { assertNotFunctionActionAttr } from './form-action.js';
+import { assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp } from './form-action.js';
 import { isRepeat } from './repeat.js';
 import { isUnsafeHTML, isLive, isKeyed, isGuard, isTemplateContent, isRef, isCache, isUntil, isAsyncAppend, isAsyncReplace, isWatch } from './directives.js';
 import { Signal } from './signal.js';
@@ -682,15 +682,17 @@ function applyPart(part, value, _prev, allValues) {
       break;
     }
     case 'prop':
-      // `.action=${fn}` on a NATIVE element is a leak too, not just the
-      // attribute form: `action` is a reflected IDL attribute, so assigning a
-      // function stringifies it into the element's own `action` content
-      // attribute in a real browser. Guarded on native elements only; a custom
-      // element's `.action` is an ordinary author-defined property that never
-      // reflects, and passing a function to one is legitimate.
-      if (!part.el.localName.includes('-')) {
-        assertNotFunctionActionAttr(value, part.name, part.el.localName);
-      }
+      // `.action=${fn}` is a leak too, not just the attribute form, but only
+      // where the property is a REFLECTED IDL attribute: assigning a function
+      // to `form.action` (or `.formAction` on a button/input) stringifies it
+      // into that element's own content attribute in a real browser. On any
+      // other native tag it is a plain expando that reflects nothing, and on a
+      // custom element it is an author-defined property, so a function is
+      // legitimate in both. The helper owns that distinction.
+      //
+      // Not covered here, because it is not a commit: a custom element's prop
+      // declared `reflect: true` writes String(value) from its own setter.
+      assertNotFunctionReflectedActionProp(value, part.name, part.el.localName);
       /** @type any */ (part.el)[part.name] = value;
       break;
     case 'bool':

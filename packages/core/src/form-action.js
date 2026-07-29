@@ -23,7 +23,9 @@ import { isBindingPrefix } from './binding-prefixes.js';
  * `String(val)`, so without this guard the action's SOURCE, secrets included,
  * is serialized into the served HTML. The client renderer guards the same
  * commit so a client re-render cannot write the source into the live DOM
- * either.
+ * through a template binding. It does NOT cover property REFLECTION: a prop
+ * declared `reflect: true` writes `String(value)` to its attribute from the
+ * setter, which is not a commit site and is not reachable from here.
  *
  * Name-based on purpose (`action`, plus `formaction`, the submit-button
  * override, which leaks identically): a function stringified under these
@@ -38,6 +40,53 @@ export function assertNotFunctionActionAttr(val, attrName, tag) {
   if (!carriesFunction(val)) return;
   if (!isFormActionAttr(attrName)) return;
   throw new Error(formActionError(attrName, tag));
+}
+
+/**
+ * Refuse a function in a `.prop` binding, but ONLY where that property is a
+ * reflected IDL attribute and therefore really does write the source out.
+ *
+ * The attribute form leaks on any tag, because an attribute is stringified
+ * into the HTML wherever it appears. A PROPERTY is different: it leaks only
+ * when the DOM reflects it back to an attribute, and that is per element.
+ * `action` reflects on `<form>`; `formAction` reflects on `<button>` and
+ * `<input>`. Anywhere else (`<div .action=${fn}>`, `<li .action=${fn}>`, and
+ * `.action` on a `<button>`) the property is a plain expando: nothing is
+ * stringified and nothing reaches the markup.
+ *
+ * Gating on "is not a custom element" instead refused all of those, which is a
+ * false positive on a binding WebJs supports and that never leaked. A guard
+ * that turns a working delegated-command pattern (`<button .action=${() =>
+ * save(row)}>`) into a render error is not a narrower claim, it is a wrong one.
+ *
+ * A custom element is excluded for the same reason rather than a different
+ * one: it has no IDL reflection, so its `.action` is an author-defined
+ * property and a function is a legitimate value. Note the separate path that
+ * DOES write the source there, a prop declared `reflect: true`, which runs in
+ * the setter and never reaches any commit site.
+ *
+ * @param {unknown} val the hole's resolved value
+ * @param {string} propName the property being assigned (any case)
+ * @param {string} [tag] lowercased owner tag
+ */
+export function assertNotFunctionReflectedActionProp(val, propName, tag) {
+  if (!reflectsAsFormAction(propName, tag)) return;
+  assertNotFunctionActionAttr(val, propName, tag);
+}
+
+/**
+ * Is `propName` an IDL attribute that `tag` reflects to a content attribute?
+ * @param {string} propName
+ * @param {string} [tag]
+ * @returns {boolean}
+ */
+function reflectsAsFormAction(propName, tag) {
+  let name = String(propName).toLowerCase();
+  if (isBindingPrefix(name[0])) name = name.slice(1);
+  const owner = String(tag || '').toLowerCase();
+  if (name === 'action') return owner === 'form';
+  if (name === 'formaction') return owner === 'button' || owner === 'input';
+  return false;
 }
 
 /**

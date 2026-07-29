@@ -104,6 +104,25 @@ test('client .action=${fn} property binding on a native form throws', () => {
   );
 });
 
+// The reflection boundary on the client, where the property assignment is real
+// rather than dropped. `.action` reflects on <form>, `.formAction` on
+// <button>/<input>; everywhere else it is an expando that writes no markup.
+test('client .formAction=${fn} throws on a button, where it reflects', () => {
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(html`<button .formAction=${fakeAction}></button>`, host),
+    /function was interpolated into formaction=/,
+  );
+});
+
+test('client .action=${fn} on a non-reflecting native element is left alone', () => {
+  const host = document.createElement('div');
+  render(html`<div .action=${fakeAction}>hi</div>`, host);
+  const el = host.querySelector('div');
+  assert.equal(typeof el.action, 'function', 'the expando is set, as it always was');
+  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'and nothing reaches the markup');
+});
+
 test('a custom element keeps accepting a function on .action', () => {
   // Not a reflected IDL attribute, just an author-defined property, so passing
   // a function is legitimate and must not be refused.

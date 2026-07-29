@@ -87,6 +87,7 @@ const refused = {
   // leaked. camelCase is React's spelling, so it is the likeliest arrival.
   'camelCase formAction=${fn}': () => html`<button type="submit" formAction=${leaky}></button>`,
   'upper-case ACTION=${fn}': () => html`<form ACTION=${leaky}></form>`,
+  'reflecting prop .formAction=${fn} on a button': () => html`<button .formAction=${leaky}></button>`,
 };
 
 for (const [name, mk] of Object.entries(refused)) {
@@ -120,6 +121,10 @@ const allowed = {
   'unquoted event @action=${fn}': () => html`<form @action=${leaky}></form>`,
   'custom-element event @action=${fn}': () => html`<my-el @action=${leaky}></my-el>`,
   'custom-element prop .action=${fn}': () => html`<my-el .action=${leaky}></my-el>`,
+  // The `.prop` guard keys on REFLECTION, not on "is a native element", so
+  // these must stay legal on both runtimes: a plain expando writes no markup.
+  'native prop .action=${fn} on a div': () => html`<div .action=${leaky}></div>`,
+  'native prop .action=${fn} on a button': () => html`<button .action=${leaky}></button>`,
 };
 
 for (const [name, mk] of Object.entries(allowed)) {

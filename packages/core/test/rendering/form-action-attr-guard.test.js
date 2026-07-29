@@ -377,6 +377,50 @@ test('.action=${fn} on a native form throws at SSR even though the prop would be
   );
 });
 
+// The `.prop` guard fires on REFLECTION, not on "is a native element". Those
+// are different sets, and gating on the second refused four shapes that never
+// leaked. Both sides are pinned here, because the suite passed either way:
+// nothing covered a `.prop` binding on a native element that is not a form.
+//
+//   reflects (must throw)      .action on <form>, .formAction on <button>/<input>
+//   plain expando (must not)   .action anywhere else, .formAction anywhere else
+test('.formAction=${fn} throws on a button and an input, where it reflects', async () => {
+  await assert.rejects(
+    () => renderToString(html`<button .formAction=${leaky}></button>`, { ssr: true }),
+    /function was interpolated into formaction=/,
+  );
+  await assert.rejects(
+    () => renderToString(html`<input .formAction=${leaky} />`, { ssr: true }),
+    /function was interpolated into formaction=/,
+  );
+});
+
+test('.action=${fn} on a native element that does NOT reflect it still renders', async () => {
+  // A plain expando: nothing is stringified and nothing reaches the markup, so
+  // refusing it would break a supported binding (the delegated-command shape
+  // `<button .action=${() => save(row)}>`) to prevent a leak that cannot occur.
+  for (const tpl of [
+    html`<div .action=${leaky}>hi</div>`,
+    html`<button .action=${leaky}>hi</button>`,
+    html`<li .action=${leaky}>hi</li>`,
+    html`<div .formAction=${leaky}>hi</div>`,
+  ]) {
+    const out = await renderToString(tpl, { ssr: true });
+    assert.doesNotMatch(out, /SECRET/, 'a dropped prop must not carry the source');
+    assert.match(out, /hi/, 'and the element must still render');
+  }
+});
+
+test('the streaming renderer draws the same reflection boundary', async () => {
+  await assert.rejects(
+    () => drain(renderToStream(html`<button .formAction=${leaky}></button>`, { ssr: false })),
+    /function was interpolated into formaction=/,
+  );
+  const out = await drain(renderToStream(html`<div .action=${leaky}>hi</div>`, { ssr: false }));
+  assert.doesNotMatch(out, /SECRET/);
+  assert.match(out, /hi/);
+});
+
 test('a custom element keeps accepting a function on an unclaimed prop', async () => {
   const out = await renderToString(html`<my-widget .onSelect=${leaky}></my-widget>`, { ssr: true });
   assert.doesNotMatch(out, /SECRET/, 'an unserializable prop is dropped, not serialized');
