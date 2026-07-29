@@ -1919,11 +1919,10 @@ async function streamTemplate(tr, ctx, controller) {
           attrName = '';
         } else {
           // The SAME guard as the buffered renderer above. This is a second,
-          // independent state machine, so it does not inherit that one: before
-          // this it stringified the function while the buffered path already
-          // refused it. Reached only via `renderToStream(v, { ssr: false })`,
-          // which no page render uses, so this was a public-API hole rather
-          // than a live page leak.
+          // independent state machine, so it inherits nothing from that one;
+          // a change to the rule has to land in both. Reached only via
+          // `renderToStream(v, { ssr: false })`, which no page render uses, so
+          // this covers the public API surface rather than a page leak.
           assertNotFunctionActionAttr(val, attrName, currentTag);
           buf += `"${escapeAttr(String(val ?? ''))}"`;
           state = 'in-tag';

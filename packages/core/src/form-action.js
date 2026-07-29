@@ -4,13 +4,15 @@ import { isBindingPrefix } from './binding-prefixes.js';
  * Form-action attribute guard (#1154).
  *
  * Both SSR state machines and the client renderer import from here so the
- * rule cannot drift between them. It already drifted once: the guard was
- * added to the buffered `renderTemplate` alone, leaving `streamTemplate`
- * stringifying the function. That second machine is reached only through
- * `renderToStream(v, { ssr: false })`, which no page render uses (the server
- * renders every page, Suspense included, via `renderToString`), so it was a
- * public-API hole rather than a live page leak. Worth closing on its own
- * terms, and worth noting as the reason the rule lives in one place.
+ * rule cannot drift between them. There are four commit sites across three
+ * renderers and they are easy to change one at a time, which is why the
+ * predicate lives in one module rather than at each site.
+ *
+ * The second SSR machine (`streamTemplate`) is reached only through
+ * `renderToStream(v, { ssr: false })`, which no page render uses: the server
+ * renders every page, Suspense included, via `renderToString`. Guarding it is
+ * about the public API surface rather than a live page leak, so do not infer
+ * from a bug there that pages were affected.
  */
 
 /**

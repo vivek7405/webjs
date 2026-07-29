@@ -139,9 +139,13 @@ self-review loop.
   is never called on the server, so anything there only runs after
   hydration. Initial data for components comes from the page function
   (server-side fetch plus pass as attribute/property), NOT from `fetch` calls
-  in `connectedCallback`. For write-paths, prefer `<form action=...>` plus
-  server action over `fetch` plus click handler. The framework upgrades plain
-  forms to partial-swap submissions automatically.
+  in `connectedCallback`. For write-paths, prefer a plain `<form method="post">`
+  posting to the page's own URL, handled by that page's `action` export, over
+  `fetch` plus a click handler. The framework upgrades plain forms to
+  partial-swap submissions automatically. Never interpolate a server action
+  into the attribute (`<form action=${createPost}>`): that Next binding is
+  refused at render time, since stringifying the function would leak its
+  source into the HTML.
 - **Client navigation is auto-magic.** Real `<a href>` and `<form action>`
   get partial-swap behavior with no opt-in. Because layouts persist across
   navigation, put shared chrome (sidenav, header) in `layout.ts` and

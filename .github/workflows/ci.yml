@@ -111,7 +111,7 @@ jobs:
       # The form-action leak guard (#1154) on Bun: a divergence here is a
       # divergence in whether a server action's SOURCE reaches the served HTML,
       # so it cannot be left to the Node suite alone. Covers both SSR state
-      # machines, which have twice drifted apart on the binding shapes.
+      # machines, which are independent and must be kept in step by hand.
       - name: WebJs form-action guard parity on Bun
         run: bun test/bun/form-action-guard.mjs
       # Listener overhead reductions on Bun (#756): the out-of-band IP stamp (no

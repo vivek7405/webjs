@@ -59,7 +59,7 @@ node 26  Authorization: `Bearer ${VENDOR_API_KEY}`      identifier only
 bun 1.3  Authorization: "Bearer sk_live_…"              the key itself
 ```
 
-Do not go looking for the rule that decides when it folds. Four separate attempts were made to write that rule down while this guard was being reviewed, each measured, and each falsified by the next: export status, read count, declaration position, and whether the module has an import were all proposed and all produced counterexamples on the same bun version. Whatever the optimizer is really keying on, it is not something to encode in a habit.
+Do not go looking for the rule that decides when it folds. Export status, read count, declaration position, and whether the module has an import have each been measured as the deciding factor and each produced a counterexample on the same bun version, so whatever the optimizer keys on is finer than any of them. The two rows above are one measurement on two specific versions, not a per-runtime guarantee: read them as proof that the boundary moves, never as a promise that Node keeps an outer binding private.
 
 So treat everything reachable from the action as exposed. That is the assumption the refusal is built on, it is the only one that holds across runtimes, and it is the only one that stays true when the transpiler changes.
 
@@ -71,7 +71,7 @@ Two carve-outs, both because those bindings never stringify their value:
 |---|---|---|
 | `action=` / `formaction=` | yes | ordinary attribute, stringified into the HTML |
 | `.action=` on a native form | yes | the property reflects, so the source lands in the DOM on the client |
-| `.action=` on a custom element | **no** | an ordinary author-defined property, never reflected; a function is a legitimate value |
+| `.action=` on a custom element | **no** | an author-defined property, not a reflected IDL attribute; a function is a legitimate value. Holds for a PLAIN prop: one declared `reflect: true` writes `String(value)` to the attribute on a path outside these commit sites, so it still emits the source |
 | `?action=` | yes | never leaked, but it is meaningless, so it is refused rather than silently emitting a bare `action=""` |
 | `@action=` unquoted | **no** | an event listener, and a function is exactly what one takes |
 | `@action="${fn}"` quoted | yes | quoting makes it an ordinary attribute again, so it leaks |
