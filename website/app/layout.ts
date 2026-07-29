@@ -285,8 +285,8 @@ export default function RootLayout({ children }: { children: unknown }) {
           --border: oklch(0.32 0 0 / 0.9); --border-strong: oklch(0.44 0 0 / 0.92);
           --accent: oklch(0.74 0.19 52); --accent-hover: oklch(0.79 0.18 52); --accent-fg: oklch(0.08 0.01 52); --logo-from: oklch(0.8 0.16 58); --logo-to: oklch(0.62 0.18 44);
         --accent-live: oklch(0.74 0.18 52);
-        --glow-a: oklch(0.85 0.12 52);
-          --glow-strength: 0.16;
+        --glow-a: oklch(0.42 0.10 52);
+          --glow-strength: 0.30;
           --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
           --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
         }
@@ -299,8 +299,8 @@ export default function RootLayout({ children }: { children: unknown }) {
         --border: oklch(0.32 0 0 / 0.9); --border-strong: oklch(0.44 0 0 / 0.92);
         --accent: oklch(0.74 0.19 52); --accent-hover: oklch(0.79 0.18 52); --accent-fg: oklch(0.08 0.01 52); --logo-from: oklch(0.8 0.16 58); --logo-to: oklch(0.62 0.18 44);
         --accent-live: oklch(0.74 0.18 52);
-        --glow-a: oklch(0.85 0.12 52);
-        --glow-strength: 0.16;
+        --glow-a: oklch(0.42 0.10 52);
+        --glow-strength: 0.30;
         --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
         --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
       }
