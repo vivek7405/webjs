@@ -63,14 +63,18 @@ Do not go looking for the rule that decides when it folds. Export status, read c
 
 So treat everything reachable from the action as exposed. That is the assumption the refusal is built on, it is the only one that holds across runtimes, and it is the only one that stays true when the transpiler changes.
 
-The refusal covers the shape, not one spelling of it. Every hole form is refused (`action=${fn}`, `action="${fn}"`, the mixed `action="/x/${fn}"`), and so is a function wrapped in an array (`action=${[fn]}`), since an array stringifies each element through `String()` and leaks identically.
+The refusal covers the shape, not one spelling of it. Every hole form is refused (`action=${fn}`, `action="${fn}"`, the mixed `action="/x/${fn}"`), and so is a function wrapped in an array (`action=${[fn]}`), since an array stringifies each element through `String()` and leaks identically. Casing does not help either: `formAction=` and `ACTION=` fold to the same rule.
 
-Two carve-outs, both because those bindings never stringify their value:
+**Commenting the form out does not disable the hole.** A comment is HTML, the interpolation is JavaScript, and the renderer emits a comment's holes raw, so `<!-- <form action=${createTodo}> -->` still ships the whole action body with no throw and no log. Delete the binding instead of commenting around it. This is the one shape in this section that leaks silently, which is exactly why it is worth knowing.
+
+The refused and allowed shapes in full. Every "no" row is a binding that stringifies nothing, so refusing it would break working code rather than close a leak:
 
 | Written as | Refused? | Why |
 |---|---|---|
 | `action=` / `formaction=` | yes | ordinary attribute, stringified into the HTML |
 | `.action=` on a native form | yes | the property reflects, so the source lands in the DOM on the client |
+| `.formAction=` on a button or input | yes | same reason, that is where `formAction` reflects |
+| `.action=` on any other native tag | **no** | a plain expando (`<div .action=${fn}>`, `<button .action=${fn}>`), reflecting nothing, so nothing reaches the markup |
 | `.action=` on a custom element | **no** | an author-defined property, not a reflected IDL attribute; a function is a legitimate value. Holds for a PLAIN prop: one declared `reflect: true` writes `String(value)` to the attribute on a path outside these commit sites, so it still emits the source |
 | `?action=` | yes | never leaked, but it is meaningless, so it is refused rather than silently emitting a bare `action=""` |
 | `@action=` unquoted | **no** | an event listener, and a function is exactly what one takes |
@@ -81,6 +85,11 @@ That last row is the one to remember: quoting a binding hole turns it back into 
 `.action=${fn}` on a native form is refused during SSR too, even though the property is dropped there and nothing could leak, so a page cannot render clean on the server and then throw on hydration.
 
 **Inside a component you may never see the error.** Per-component SSR error isolation contains the throw, so development shows an error box in place of the component and production renders it empty with the page still returning 200. A form that has silently vanished in production is this bug wearing a disguise; the message is in the server log. Nothing leaks either way.
+
+Two things that "renders it empty" understates, both worth knowing before you go looking:
+
+- **Anything slotted into the failing component goes with it.** The isolation replaces the element from its opening tag through its matching close, so a shell or layout component whose template holds the bad form takes the page's whole authored body with it. Put `action=${fn}` in a shared header and every page renders a 200 with an empty body, not one missing header.
+- **On a route with a `loading.{js,ts}`, there is no log line either.** That wraps the page in a `Suspense` boundary, so the page body renders AFTER the 200 and the shell have been flushed, and a boundary that throws there is currently swallowed with no server log, no `onError`, and no error boundary. The visitor gets chrome and an empty body; with JS off the skeleton simply stays. That silence is a framework gap rather than intended behaviour, tracked separately.
 
 ```ts
 // WRONG: throws at render; it would have leaked the action's body.
