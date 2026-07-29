@@ -47,7 +47,9 @@ There is no React `cache()`, `use()`, or `unstable_cache`. Caching is the `cache
 
 Next binds a Server Action with `<form action={createTodo}>` and React serializes the binding into hidden fields. WebJs does not read that shape. A function interpolated into `action=` is a hard render error.
 
-The reason is a source leak. During SSR a `.server.ts` import is the ACTUAL function (the RPC stub exists only in the browser), and `action=` is an ordinary attribute hole, so stringifying it would write the function's body, secrets included, into the HTML every visitor downloads. The renderer throws instead, on the server and on the client, for `action=` and `formaction=` alike.
+The reason is a source leak. During SSR a `.server.ts` import is the ACTUAL function (the RPC stub exists only in the browser), and `action=` is an ordinary attribute hole, so stringifying it would write the function's body into the HTML every visitor downloads, including any literal inside it. The renderer throws instead, on the server and on the client, for `action=` and `formaction=` alike.
+
+Precisely what escapes is the SOURCE, not the closure. `Function.prototype.toString` returns source text, so a value the body reads from an outer binding shows up as its identifier and not its value. That is a smaller leak than "all your secrets" and still a bad one: the body gives away your query shapes, your table and column names, your internal paths, and any credential someone wrote inline.
 
 The refusal covers the shape, not one spelling of it. Every hole form is refused (`action=${fn}`, `action="${fn}"`, the mixed `action="/x/${fn}"`), and so is a function wrapped in an array (`action=${[fn]}`), since an array stringifies each element through `String()` and leaks identically.
 
