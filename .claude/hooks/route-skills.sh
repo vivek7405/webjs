@@ -187,7 +187,7 @@ fi
 if has '(review|audit) (the |my |this )?(pr|diff|branch|change|changes|code|commit)' \
    || has 'code ?review' \
    || has '(review|look) .{0,20}(over )?for (bug|issue|correctness|regression)'; then
-  add_match "code-review: the request is to review code. Invoke the code-review skill (it reviews the diff for correctness bugs plus reuse and simplification). Treat review as a LOOP with the webjs-start-work skill's exit: after fixing findings, re-review until a round finds nothing SUBSTANTIVE (shipped source, a test's ability to observe the defect it claims to cover, or a factual runtime claim in docs), then one bounded prose pass ends it. Never report done off a round that found something substantive. Findings this skill reports carry no tier tag, so classify them against those three surfaces yourself, treating a doubtful one as substantive."
+  add_match "code-review: the request is to review code. Invoke the code-review skill (it reviews the diff for correctness bugs plus reuse and simplification). Treat review as a LOOP with the webjs-start-work skill's exit: after fixing findings, re-review until a round finds nothing SUBSTANTIVE (shipped source, a test's ability to observe the defect it claims to cover, or a factual runtime claim in docs), then one bounded prose pass ends it. Never report done off a round that found something substantive. Findings this skill reports carry no tier tag (a fixed result schema), the one reviewer kind the gate has you classify yourself: doubt resolves to substantive, and every prose classification is recorded like a downgrade, a one-sentence reason on the finding's thread."
 fi
 
 # --- verify: prove the change works by running the app ------------------

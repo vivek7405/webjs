@@ -168,10 +168,14 @@ const found = await parallel(ALL_LENSES.map((l) => () =>
 const all = found.filter(Boolean).flatMap((r) => r.findings)
 const byKey = new Map()
 const rank = { critical: 0, major: 1, minor: 2 }
+// Tier outranks severity at a file:line collision: the tier decides the
+// loop's exit, so a prose finding must never evict a substantive one at
+// the same line. Severity orders within a tier.
+const subst = (f) => f.tier === 'substantive'
 for (const f of all) {
   const key = `${f.file}:${f.line}`
   const prev = byKey.get(key)
-  if (!prev || rank[f.severity] < rank[prev.severity]) byKey.set(key, f)
+  if (!prev || (subst(f) && !subst(prev)) || (subst(f) === subst(prev) && rank[f.severity] < rank[prev.severity])) byKey.set(key, f)
 }
 const deduped = [...byKey.values()].sort((a, b) => rank[a.severity] - rank[b.severity])
 const CAP = 12
