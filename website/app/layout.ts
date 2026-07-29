@@ -261,15 +261,13 @@ export default function RootLayout({ children }: { children: unknown }) {
         --heart:         oklch(0.64 0.22 6);
         --accent-live:   oklch(0.63 0.17 50);
         --glow-a:        oklch(0.63 0.17 44);
-        --glow-b:        oklch(0.60 0.20 358);
         --accent-tint:   color-mix(in oklch, var(--accent-live) 14%, transparent);
         --logo-from:     oklch(0.63 0.17 50);
         --logo-to:       oklch(0.44 0.11 52);
         --accent-text:    var(--accent);
         --accent-surface: color-mix(in oklch, var(--accent-live) 12%, transparent);
         --accent-border:  color-mix(in oklch, var(--accent-live) 28%, transparent);
-        --glow-strength: 0.05;
-        --dot-strength: 0.05;
+        --glow-strength: 0.16;
         --font-display: 'Inter Tight', 'Inter', system-ui, -apple-system, sans-serif;
         --font-sans:    'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
         --font-serif:   ui-serif, 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, Cambria, serif;
@@ -281,34 +279,26 @@ export default function RootLayout({ children }: { children: unknown }) {
       }
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme='light']) {
-          --heart: oklch(0.74 0.19 6);
-          --fg: oklch(0.97 0.004 70); --fg-muted: oklch(0.71 0.006 65); --fg-subtle: oklch(0.56 0.007 60);
-          --bg: oklch(0.115 0.003 60); --bg-elev: oklch(0.155 0.004 60); --bg-subtle: oklch(0.185 0.004 60); --bg-sunken: oklch(0.088 0.003 60);
-          --border: oklch(1 0 0 / 0.10); --border-strong: oklch(1 0 0 / 0.17);
-          --accent: oklch(0.80 0.16 65); --accent-hover: oklch(0.85 0.15 68); --accent-fg: oklch(0.18 0.03 60);
-          --accent-live: oklch(0.78 0.16 58);
-          --glow-a: oklch(0.74 0.19 40); --glow-b: oklch(0.68 0.24 358);
-          --logo-from: oklch(0.84 0.16 68); --logo-to: oklch(0.68 0.24 358);
-          --glow-strength: 0.07;
-          --dot-strength: 0.045;
+          --heart: oklch(0.74 0.18 6);
+          --fg: oklch(0.96 0 0); --fg-muted: oklch(0.74 0 0); --fg-subtle: oklch(0.62 0 0);
+          --bg: oklch(0 0 0); --bg-elev: oklch(0.135 0 0); --bg-subtle: oklch(0.09 0 0); --bg-sunken: oklch(0 0 0);
+          --border: oklch(0.32 0 0 / 0.9); --border-strong: oklch(0.44 0 0 / 0.92);
+          --accent: oklch(0.7 0.16 52); --accent-hover: oklch(0.75 0.16 52); --accent-fg: oklch(0.1 0.01 52); --logo-from: oklch(0.8 0.16 58); --logo-to: oklch(0.62 0.18 44);
+          --glow-strength: 0.16;
           --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
-          --shadow: 0 20px 60px oklch(0 0 0 / 0.5), 0 4px 14px oklch(0 0 0 / 0.35);
+          --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
         }
       }
       :root[data-theme='dark'] {
         color-scheme: dark;
-        --heart: oklch(0.74 0.19 6);
-        --fg: oklch(0.97 0.004 70); --fg-muted: oklch(0.71 0.006 65); --fg-subtle: oklch(0.56 0.007 60);
-        --bg: oklch(0.115 0.003 60); --bg-elev: oklch(0.155 0.004 60); --bg-subtle: oklch(0.185 0.004 60); --bg-sunken: oklch(0.088 0.003 60);
-        --border: oklch(1 0 0 / 0.10); --border-strong: oklch(1 0 0 / 0.17);
-        --accent: oklch(0.80 0.16 65); --accent-hover: oklch(0.85 0.15 68); --accent-fg: oklch(0.18 0.03 60);
-        --accent-live: oklch(0.78 0.16 58);
-        --glow-a: oklch(0.74 0.19 40); --glow-b: oklch(0.68 0.24 358);
-        --logo-from: oklch(0.84 0.16 68); --logo-to: oklch(0.68 0.24 358);
-        --glow-strength: 0.07;
-        --dot-strength: 0.045;
+        --heart: oklch(0.74 0.18 6);
+        --fg: oklch(0.96 0 0); --fg-muted: oklch(0.74 0 0); --fg-subtle: oklch(0.62 0 0);
+        --bg: oklch(0 0 0); --bg-elev: oklch(0.135 0 0); --bg-subtle: oklch(0.09 0 0); --bg-sunken: oklch(0 0 0);
+        --border: oklch(0.32 0 0 / 0.9); --border-strong: oklch(0.44 0 0 / 0.92);
+        --accent: oklch(0.7 0.16 52); --accent-hover: oklch(0.75 0.16 52); --accent-fg: oklch(0.1 0.01 52); --logo-from: oklch(0.8 0.16 58); --logo-to: oklch(0.62 0.18 44);
+        --glow-strength: 0.16;
         --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
-        --shadow: 0 20px 60px oklch(0 0 0 / 0.5), 0 4px 14px oklch(0 0 0 / 0.35);
+        --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
       }
       :root[data-theme='light'] { color-scheme: light; }
       @media (prefers-reduced-motion: reduce) {
@@ -345,28 +335,18 @@ export default function RootLayout({ children }: { children: unknown }) {
          selector outranks the border-* utilities that also set
          border-right-color, so cascade order does not matter. */
       .site-top > header { border-right: var(--wj-scrollbar-compensation, 0px) solid transparent; }
-      /* The page backdrop, two fixed layers that never animate. ::before is a
-         dot grid, masked to fade out below the fold so it reads as texture
-         behind the hero and disappears under long-form reading. ::after is the
-         brand glow, three offset radials on the amber and magenta ends of the
-         ramp, which is what stops a near-black page from looking flat. Both
-         scale from one number per theme (--dot-strength, --glow-strength), so
-         the light translation tones the whole backdrop down by editing two
-         values rather than six gradients. */
+      /* The page backdrop is deliberately UNCHANGED from what webjs.dev
+         serves: one fixed layer, two radials off --glow-a, no animation. A
+         dot-grid texture and a third magenta radial were tried here and
+         reverted. They tinted every page, which is a site-wide change, and the
+         glow that was actually wanted belongs to the closing CTA panel, where
+         it comes from --shadow-glow on the panel itself. */
       .glow-layer { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
       .glow-layer::before {
         content: ''; position: absolute; inset: 0;
-        background-image: radial-gradient(circle at 1px 1px, color-mix(in oklch, var(--fg) calc(var(--dot-strength) * 100%), transparent) 1px, transparent 0);
-        background-size: 34px 34px;
-        -webkit-mask-image: radial-gradient(125% 68% at 50% 0%, #000 32%, transparent 78%);
-        mask-image: radial-gradient(125% 68% at 50% 0%, #000 32%, transparent 78%);
-      }
-      .glow-layer::after {
-        content: ''; position: absolute; inset: 0;
         background:
-          radial-gradient(58% 40% at 50% -6%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 100%), transparent), transparent 70%),
-          radial-gradient(46% 34% at 86% 4%, color-mix(in oklch, var(--glow-b) calc(var(--glow-strength) * 62%), transparent), transparent 72%),
-          radial-gradient(44% 32% at 10% 12%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 46%), transparent), transparent 70%);
+          radial-gradient(58% 44% at 50% -4%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 100%), transparent), transparent 72%),
+          radial-gradient(40% 36% at 88% 8%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 60%), transparent), transparent 70%);
       }
       .scroll-thin { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color var(--t); }
       .scroll-thin:hover { scrollbar-color: color-mix(in oklch, var(--fg-subtle) 70%, transparent) transparent; }

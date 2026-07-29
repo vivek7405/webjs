@@ -1,7 +1,7 @@
 import { html } from '@webjsdev/core';
 import { BTN_PRIMARY, BTN_GHOST, H2, PROSE } from '#lib/design.ts';
 import { brandMark } from '#lib/brand.ts';
-import { SWATCHES, type Swatch } from '#lib/brand-tokens.ts';
+import { SWATCHES, ACCENTS, type Swatch } from '#lib/brand-tokens.ts';
 
 /**
  * /brand
@@ -121,7 +121,7 @@ export default function BrandPage() {
         <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
           ${ASSETS.map(a => html`
             <div class="flex flex-col rounded-2xl border border-border bg-bg-elev overflow-hidden">
-              <div class="h-40 flex items-center justify-center px-8 ${a.on === 'dark' ? 'bg-[oklch(0.115_0.003_60)]' : 'bg-[oklch(0.99_0.002_75)]'}">
+              <div class="h-40 flex items-center justify-center px-8 ${a.on === 'dark' ? 'bg-[oklch(0_0_0)]' : 'bg-[oklch(0.985_0.008_75)]'}">
                 <img src="/public/brand/${a.file}" alt=${a.name} class="max-h-14 w-auto" />
               </div>
               <div class="flex flex-col flex-1 p-5 border-t border-border">
@@ -231,14 +231,35 @@ export default function BrandPage() {
 
         <div class="rounded-2xl border border-border bg-bg-elev p-7">
           <p class="text-[13px] font-semibold text-fg mb-1">One accent, spent where it counts</p>
-          <p class="text-[13.5px] text-fg-muted leading-relaxed max-w-[62ch]">
-            A single warm accent (<code class="font-mono text-[12px]">--accent</code>)
-            fills the primary button and the closing call to action, and marks
-            live and focus state. Those are the surfaces asking for a click.
-            Everything else stays neutral, which is what makes them land. The
-            marks themselves carry no colour at all, so the identity survives
-            wherever the accent cannot go.
+          <p class="text-[13.5px] text-fg-muted leading-relaxed max-w-[62ch] mb-6">
+            A single warm amber fills the primary button and the closing call to
+            action, and marks live and focus state. Those are the surfaces asking
+            for a click. Everything else stays neutral, which is what makes them
+            land. The marks themselves carry no colour at all, so the identity
+            survives wherever the accent cannot go.
           </p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1 mb-7">
+            <div>
+              <p class="text-[12px] font-semibold text-fg-subtle mb-2">Dark</p>
+              ${ACCENTS.map(s => swatchRow(s, 'dark'))}
+            </div>
+            <div>
+              <p class="text-[12px] font-semibold text-fg-subtle mb-2">Light</p>
+              ${ACCENTS.map(s => swatchRow(s, 'light'))}
+            </div>
+          </div>
+
+          <div class="pt-6 border-t border-border">
+            <p class="text-[12px] font-semibold text-fg-subtle mb-4">Where it is allowed to appear</p>
+            <div class="flex flex-wrap items-center gap-4">
+              <span class="${BTN_PRIMARY} pointer-events-none">Primary action</span>
+              <span class="${BTN_GHOST} pointer-events-none">Everything else</span>
+              <span class="inline-flex items-center gap-[7px] font-mono text-[12px] text-fg-subtle">
+                <span class="w-[7px] h-[7px] rounded-full bg-accent shadow-[0_0_8px_var(--accent)]"></span>live state
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </section>
