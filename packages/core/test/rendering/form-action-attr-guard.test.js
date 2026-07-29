@@ -28,31 +28,53 @@ async function drain(stream) {
  * inspecting an empty string, whatever the consumer actually got. "It threw" is
  * not the same claim as "the client received nothing".
  *
- * Reads through `getReader()` rather than `for await`, deliberately. Different
- * consumer shapes see DIFFERENT amounts of what was enqueued before the
- * refusal, and the difference is not yield-versus-no-yield, it is how many
- * microtask hops the consumer's next `read()` costs relative to the rejection
- * reaching `controller.error()`. Measured against a streaming machine patched
- * to flush its buffer, enqueue the source as a second chunk, then refuse:
+ * Keeps SEVERAL reads outstanding at once, which is the shape that sees the
+ * most, and getting to it took three wrong answers worth writing down.
  *
- *   getReader() loop  -> receives the source, with no yield anywhere
- *   for await         -> receives only `<p>hello</p><form action="`
- *   pipeTo(writable)  -> receives only the prefix, until any await intervenes
+ * `controller.error()` clears the stream's queue, so how much of what was
+ * enqueued before a refusal survives depends entirely on where each chunk
+ * landed. A chunk enqueued while a read request is PENDING is handed to that
+ * request directly and never enters the queue, so the reset cannot destroy it.
+ * A chunk that lands in the queue is gone. Consumers therefore differ, measured
+ * against a machine patched to flush its buffer, enqueue three pad chunks and
+ * then the source, and refuse, with no yield anywhere:
  *
- * A `for await` drain therefore reports LESS than a real consumer can get, and
- * `renderToStream` has no in-repo consumer, so the shape an HTTP sink actually
- * uses (`getReader`, `pipeTo`) is the one that has to be pinned. Reading the
- * most permissive shape is what makes a green result meaningful.
+ *   for await                     prefix only
+ *   getReader(), sequential loop   prefix + pad0
+ *   one read always outstanding    prefix + pad0 + pad1
+ *   many reads outstanding         prefix + pads + THE SOURCE
+ *
+ * So `for await` sees least and a pipelined reader sees most, and a test that
+ * drains either of the first two calls a real leak clean. `renderToStream` has
+ * no in-repo consumer, so nothing constrains which shape a host uses, and the
+ * only safe thing to pin is the worst case.
  *
  * @param {any} stream
  * @param {{ text: string }} sink written to as chunks arrive
  */
 async function drainInto(stream, sink) {
   const reader = stream.getReader();
+  const decode = (v) => (typeof v === 'string' ? v : new TextDecoder().decode(v));
   for (;;) {
-    const { done, value } = await reader.read();
+    // A batch of concurrently-pending reads. Anything enqueued into one of
+    // these bypasses the queue, so it survives the error that follows.
+    const batch = Array.from({ length: 16 }, () => reader.read());
+    let done = false;
+    let failure = null;
+    for (const pending of batch) {
+      try {
+        const { done: d, value } = await pending;
+        if (d) done = true;
+        else if (value !== undefined) sink.text += decode(value);
+      } catch (e) {
+        // Record and keep draining: later reads in the batch may still hold
+        // chunks that were handed over before the error, and those are exactly
+        // what this helper exists to catch.
+        failure = failure || e;
+      }
+    }
+    if (failure) throw failure;
     if (done) break;
-    sink.text += typeof value === 'string' ? value : new TextDecoder().decode(value);
   }
   return sink.text;
 }
@@ -145,11 +167,12 @@ test('the streaming renderer never emits the source, not even before it refuses'
   // local loses everything when the iteration throws, and a test inspecting
   // that local is inspecting an empty string no matter what the consumer got.
   //
-  // And it reads through `getReader()`, because consumer shapes do not see the
-  // same bytes: with the streaming machine patched to enqueue the source and
-  // then refuse, a reader loop receives the source while a `for await` drain
-  // sees only the prefix. Pinning the shape that sees the LEAST would make a
-  // green result meaningless. See `drainInto`.
+  // And it reads with several requests outstanding at once, because consumer
+  // shapes do not see the same bytes and that one sees the most: a chunk handed
+  // to a pending read bypasses the queue that `error()` clears. A `for await`
+  // drain, and even a sequential reader loop, both call a real leak clean.
+  // Pinning anything short of the worst case makes a green result meaningless.
+  // See `drainInto` for the measured ladder.
   const sink = { text: '' };
   await assert.rejects(
     () => drainInto(renderToStream(html`<form action=${leaky}></form>`, { ssr: false }), sink),

@@ -49,7 +49,17 @@ Next binds a Server Action with `<form action={createTodo}>` and React serialize
 
 The reason is a source leak. During SSR a `.server.ts` import is the ACTUAL function (the RPC stub exists only in the browser), and `action=` is an ordinary attribute hole, so stringifying it would write the function's body into the HTML every visitor downloads, including any literal inside it. The renderer throws instead, on the server and on the client, for `action=` and `formaction=` alike.
 
-Precisely what escapes is the SOURCE, not the closure. `Function.prototype.toString` returns source text, so a value the body reads from an outer binding shows up as its identifier and not its value. That is a smaller leak than "all your secrets" and still a bad one: the body gives away your query shapes, your table and column names, your internal paths, and any credential someone wrote inline.
+What escapes is the SOURCE the runtime reports, and how much that includes depends on the runtime. The body always goes: your query shapes, your table and column names, your internal paths, and any credential written inline.
+
+Whether an OUTER value goes with it is not something to rely on either way. `Function.prototype.toString` returns source text, so on Node a module-scope `const` the body reads appears as its identifier. Bun transpiles the module first and constant-folds that literal into the body, so the same action reports the VALUE:
+
+```
+// const VENDOR_API_KEY = 'sk_live_…';  then used as `Bearer ${VENDOR_API_KEY}`
+node 26  Authorization: `Bearer ${VENDOR_API_KEY}`      identifier only
+bun 1.3  Authorization: "Bearer sk_live_…"              the key itself
+```
+
+So treat everything reachable from the action as exposed. That is the assumption the refusal is built on, and it is the only one that holds across runtimes.
 
 The refusal covers the shape, not one spelling of it. Every hole form is refused (`action=${fn}`, `action="${fn}"`, the mixed `action="/x/${fn}"`), and so is a function wrapped in an array (`action=${[fn]}`), since an array stringifies each element through `String()` and leaks identically.
 

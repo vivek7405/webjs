@@ -34,11 +34,18 @@ import { renderToString, renderToStream } from '../../packages/core/src/render-s
 
 const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`;
 
-// The marker is written INLINE, not read from a `const` the body references.
-// `String(fn)` reproduces the SOURCE, so a body that says `const conn = SECRET`
-// stringifies to the identifier and never contains the marker at all. Every
-// `!includes(BUN_PARITY_SECRET)` assertion below would then be trivially true
-// and this whole file would prove nothing about leaks.
+// The marker is written INLINE, not read from a module-scope `const`.
+//
+// On Node that is load-bearing: `String(fn)` reproduces source, so a body
+// saying `const conn = SECRET` stringifies to the identifier and never contains
+// the marker, which would make every `!includes(BUN_PARITY_SECRET)` assertion
+// below trivially true and this whole file proof of nothing.
+//
+// On Bun it would be load-bearing in the other direction, and that asymmetry is
+// the reason to avoid the construction entirely rather than reason about it per
+// runtime: Bun constant-folds a module-scope literal into the body (see the
+// header), so the SAME code that hides the marker on Node exposes it here.
+// Inlining makes the file behave identically on both.
 async function leaky(input) {
   const conn = 'postgres://user:BUN_PARITY_SECRET@host/db';
   return { ok: true, conn, input };
