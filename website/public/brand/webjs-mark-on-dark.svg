@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="WebJs">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="24 -4 248 186" width="248" height="186" role="img" aria-label="WebJs">
   <defs>
-    <linearGradient id="bg" x1="6" y1="8" x2="58" y2="56" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffb444"/><stop offset=".52" stop-color="#ff735e"/><stop offset="1" stop-color="#ff3c98"/>
-    </linearGradient>
-    <mask id="bm"><rect width="64" height="64" fill="#fff"/><rect y="38" width="64" height="1.8" fill="#000"/></mask>
+    <mask id="a" maskUnits="userSpaceOnUse" x="24" y="-4" width="248" height="186">
+      <rect x="24" y="-4" width="248" height="186" fill="#000"/>
+      <g transform="translate(40,0) skewX(-14)">
+        <path d="M10 10 L60 150 L110 66 L160 150 L210 10" fill="none" stroke="#fff" stroke-width="32" stroke-linejoin="miter" stroke-linecap="butt"/>
+      </g>
+      <rect x="24" y="80" width="248" height="11" fill="#000"/>
+    </mask>
   </defs>
-  <g mask="url(#bm)"><g transform="translate(6.8,0) skewX(-12)">
-    <path d="M10 16 L22 48 L32 30 L42 48 L54 16" fill="none" stroke="#f7f5f2" stroke-width="8" stroke-linejoin="miter"/>
-  </g></g>
+  <rect x="24" y="-4" width="248" height="186" fill="#ffffff" mask="url(#a)"/>
 </svg>

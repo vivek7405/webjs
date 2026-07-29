@@ -1,7 +1,7 @@
 import { html } from '@webjsdev/core';
 import { BTN_PRIMARY, BTN_GHOST, H2, PROSE } from '#lib/design.ts';
 import { brandMark } from '#lib/brand.ts';
-import { SWATCHES, RAMP, type Swatch } from '#lib/brand-tokens.ts';
+import { SWATCHES, type Swatch } from '#lib/brand-tokens.ts';
 
 /**
  * /brand
@@ -43,13 +43,13 @@ const ASSETS = [
   {
     file: 'webjs-lockup-on-light.svg',
     name: 'Lockup, light backgrounds',
-    use: 'The same lockup with the ink and ramp retuned for a light surface. Do not invert the dark file, the ramp goes muddy.',
+    use: 'The same drawing with the ink flipped for a light surface. Use this file rather than a CSS invert, which flips the paper along with the ink.',
     on: 'light' as const,
   },
   {
-    file: 'webjs-mark-gradient.svg',
+    file: 'webjs-monogram.svg',
     name: 'Monogram',
-    use: 'For square and cramped placements: avatars, favicons, app icons, stickers, a multi-brand logo row.',
+    use: 'For square and cramped placements: avatars, favicons, app icons, stickers, a multi-brand logo row. Bare W files are in the download for placing on your own background.',
     on: 'dark' as const,
   },
 ];
@@ -102,7 +102,7 @@ export default function BrandPage() {
           </a>
           <a class=${BTN_GHOST} href="#usage">Usage rules</a>
         </div>
-        <p class="mt-4 font-mono text-[12px] text-fg-subtle">SVG, 7 files, under 20 KB total</p>
+        <p class="mt-4 font-mono text-[12px] text-fg-subtle">SVG, 5 files, light and dark variants</p>
       </div>
     </section>
 
@@ -111,9 +111,10 @@ export default function BrandPage() {
         <div class="max-w-[680px] mb-10">
           <h2 class=${H2}>The marks</h2>
           <p class=${PROSE}>
-            The identity is a forward-leaning W cut by a band of negative space.
-            The lean and the cut are what make it read as motion rather than as a
-            letter, so both survive every redraw.
+            The identity is a forward-leaning W cut by a band of negative space,
+            set against an italic wordmark that leans with it. The monogram is
+            not a badge beside the name, it is the W of WebJs, and one slice cuts
+            the whole lockup as a single object. Every mark is greyscale.
           </p>
         </div>
 
@@ -168,7 +169,7 @@ export default function BrandPage() {
           <div class="rounded-2xl border border-border bg-bg-elev p-8 flex flex-col">
             <div class="flex-1 flex items-end justify-center gap-12 pb-2">
               <div class="text-center flex flex-col items-center">
-                ${brandMark('cs-a', { size: 24 })}
+                ${brandMark('cs-a', { height: 24 })}
                 <p class="mt-3 font-mono text-[11px] leading-[1.5] text-fg-subtle">24 px<br>monogram floor</p>
               </div>
               <div class="text-center flex flex-col items-center">
@@ -228,27 +229,14 @@ export default function BrandPage() {
           </div>
         </div>
 
-        <div class="rounded-2xl border border-border bg-bg-elev overflow-hidden">
-          <div class="h-24 grad-bg" aria-hidden="true"></div>
-          <div class="p-7 border-t border-border">
-            <p class="text-[13px] font-semibold text-fg mb-1">The signature ramp</p>
-            <p class="text-[13.5px] text-fg-muted leading-relaxed mb-5 max-w-[62ch]">
-              Interpolated in oklch, which is why it passes through orange instead
-              of the grey-brown a naive sRGB blend between amber and magenta
-              produces.
-            </p>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              ${RAMP.map(s => html`
-                <div class="flex items-center gap-3">
-                  <span class="w-9 h-9 rounded-lg shrink-0 border border-border" style="background:${s.dark}"></span>
-                  <span class="min-w-0">
-                    <span class="block text-[13.5px] font-semibold text-fg leading-tight">${s.name}</span>
-                    <code class="block font-mono text-[11.5px] text-fg-subtle truncate">${s.token}</code>
-                  </span>
-                </div>
-              `)}
-            </div>
-          </div>
+        <div class="rounded-2xl border border-border bg-bg-elev p-7">
+          <p class="text-[13px] font-semibold text-fg mb-1">One accent, used sparingly</p>
+          <p class="text-[13.5px] text-fg-muted leading-relaxed max-w-[62ch]">
+            A single warm accent (<code class="font-mono text-[12px]">--accent</code>)
+            marks live state, focus, and the occasional link. It never fills a
+            button and never tints a panel. The marks themselves carry no colour
+            at all, so nothing in the identity depends on it.
+          </p>
         </div>
       </div>
     </section>

@@ -421,7 +421,7 @@ export default function RootLayout({ children }: { children: unknown }) {
     <header class="backdrop-blur-md bg-[color-mix(in_oklch,var(--color-bg)_78%,transparent)] border-b border-border">
       <div class="max-w-[1240px] mx-auto px-6 py-[11px] flex items-center justify-between gap-4">
         <a class="inline-flex items-center no-underline text-fg shrink-0 transition-opacity duration-fast hover:opacity-80" href="/" aria-label="WebJs home">
-          ${brandLockup('hdr', { size: 25, text: 18 })}
+          ${brandLockup('hdr', { height: 21 })}
         </a>
 
         <nav class="hidden md:flex items-center gap-0.5 justify-center flex-1 mx-4" aria-label="Primary">

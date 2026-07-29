@@ -50,7 +50,7 @@ export function siteFooter() {
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${DISCORD_URL} target="_blank" rel="noopener noreferrer">Discord${NEW_TAB}</a>
           </div>
           <div class="flex flex-col gap-3">
-            <a href="/" aria-label="WebJs home" class="no-underline text-fg inline-flex w-fit transition-opacity duration-fast hover:opacity-80">${brandLockup('ftr', { size: 24, text: 17 })}</a>
+            <a href="/" aria-label="WebJs home" class="no-underline text-fg inline-flex w-fit transition-opacity duration-fast hover:opacity-80">${brandLockup('ftr', { height: 22 })}</a>
             <p class="m-0 text-xs text-fg-muted leading-relaxed">The web framework for AI agents. Full-stack web components, SSR, zero build step.</p>
           </div>
         </nav>
