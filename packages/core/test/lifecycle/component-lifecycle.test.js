@@ -318,6 +318,127 @@ test('renderError catches exceptions thrown from render() and uses its fallback'
   assert.ok(el, 'component survived a throwing render');
 });
 
+test('a throw from the COMMIT of an async render() is contained like a sync one', async () => {
+  // Regression: `.then(onFulfil, onRejected)` does not route onFulfil's own
+  // throw to onRejected, so a commit that threw (a guard refusal, a value with
+  // a throwing toString) rejected the pending commit, and _performRender's
+  // `.then` had no rejection handler. The error escaped as an unhandled
+  // rejection, renderError() never ran, and updateComplete never settled.
+  //
+  // Asserted on the three observable consequences rather than the mechanism,
+  // because each one reds on its own when the try/catch in _commitAsync is
+  // reverted (measured: renderError not called, updateComplete never settles,
+  // __pendingAsyncCommits stuck at 1). The value below throws from String(),
+  // which is what a commit does to an attribute hole.
+  const boom = { toString() { throw new Error('commit failed'); } };
+  let errorArg = null;
+  class C extends WebComponent {
+    async render() { await 0; return html`<div title=${boom}></div>`; }
+    renderError(e) { errorArg = e; return html`<p>fallback</p>`; }
+  }
+  C.register('async-commit-throw');
+  const el = document.createElement('async-commit-throw');
+  document.body.appendChild(el);
+
+  // Bounded, and crossing the bound is a hard failure that names itself
+  // rather than a pass: an unsettled updateComplete is the bug.
+  const settled = await Promise.race([
+    // resolve and reject are NOT the same outcome here. A change that rejected
+    // updateComplete instead of resolving it would keep renderError() firing and
+    // the counter releasing, while every `await el.updateComplete` in app and
+    // framework code started throwing: the unhandled rejection this contains.
+    Promise.resolve(el.updateComplete).then(() => 'resolved', () => 'REJECTED'),
+    new Promise((r) => setTimeout(() => r('NEVER SETTLED'), 500)),
+  ]);
+  assert.equal(settled, 'resolved', 'updateComplete must RESOLVE, not reject, after a contained commit failure');
+  assert.ok(errorArg instanceof Error, 'renderError() receives the commit error');
+  assert.match(errorArg.message, /commit failed/, 'and the real error, not a wrapper');
+  assert.equal(el.__pendingAsyncCommits, 0, 'the in-flight count is released, not wedged');
+});
+
+test('a REJECTED thenable from an update() override settles the cycle too', async () => {
+  // The commit-throw fix guarantees _commitAsync never rejects, which is not
+  // the same as handling a rejection at the site that awaits it. update() is a
+  // documented override point and may return any thenable, so a rejecting one
+  // reproduced the original wedge verbatim: counter stuck >= 1, updateComplete
+  // never settling, the error escaping as an unhandled rejection.
+  let errorArg = null;
+  class C extends WebComponent {
+    render() { return html`<p>x</p>`; }
+    renderError(e) { errorArg = e; return undefined; }
+    update() { return Promise.reject(new Error('prepare failed')); }
+  }
+  C.register('async-update-reject');
+  const el = document.createElement('async-update-reject');
+  document.body.appendChild(el);
+
+  const settled = await Promise.race([
+    // resolve and reject are NOT the same outcome here. A change that rejected
+    // updateComplete instead of resolving it would keep renderError() firing and
+    // the counter releasing, while every `await el.updateComplete` in app and
+    // framework code started throwing: the unhandled rejection this contains.
+    Promise.resolve(el.updateComplete).then(() => 'resolved', () => 'REJECTED'),
+    new Promise((r) => setTimeout(() => r('NEVER SETTLED'), 500)),
+  ]);
+  assert.equal(settled, 'resolved', 'updateComplete must RESOLVE, not reject, after a contained rejection');
+  assert.ok(errorArg instanceof Error, 'the rejection reaches renderError()');
+  assert.match(errorArg.message, /prepare failed/);
+  assert.equal(el.__pendingAsyncCommits, 0, 'the in-flight count is released, not wedged');
+});
+
+test('a SUPERSEDED cycle rejecting late does not clobber the newer render', async () => {
+  // The token check gates the DOM write, not the release. Without it, a
+  // discarded cycle's rejection (a dropped fetch, or #492 aborting its own
+  // in-flight action) commits its error state over the render that already
+  // replaced it, and the user sees an error for work that was correctly
+  // thrown away.
+  let gate;
+  class C extends WebComponent({ v: prop(String) }) {
+    renderError(e) { return html`<p class="err">ERR</p>`; }
+    update(changed) {
+      if (this.v === 'A') return new Promise((_, rej) => { gate = () => rej(new Error('stale')); });
+      return super.update(changed);
+    }
+    render() { return html`<p class="live">v=${this.v}</p>`; }
+  }
+  C.register('stale-reject-el');
+  const el = document.createElement('stale-reject-el');
+  el.v = 'A';
+  document.body.appendChild(el);
+  await new Promise((r) => setTimeout(r, 10));
+  el.v = 'B';                                     // supersedes A and commits
+  await new Promise((r) => setTimeout(r, 10));
+  assert.match(el.innerHTML, /v=B/, 'precondition: B is the live render');
+
+  gate();                                         // A rejects, too late to matter
+  await new Promise((r) => setTimeout(r, 10));
+  assert.match(el.innerHTML, /v=B/, 'the superseded rejection must leave the live DOM alone');
+  assert.doesNotMatch(el.innerHTML, /ERR/, 'and must not commit its error state');
+  assert.equal(el.__pendingAsyncCommits, 0, 'while still releasing the in-flight count');
+});
+
+test('a commit throw is contained even when update() discards the commit promise', async () => {
+  // This is what distinguishes the try/catch inside _commitAsync from the
+  // rejection handler at the awaiting site. When update() returns its OWN
+  // thenable, _commitAsync's promise is not the one awaited, so a commit throw
+  // that only rejected it would be an unhandled rejection nobody sees while
+  // the awaited promise resolves normally. With the try/catch, the throw is
+  // routed at the point it happens.
+  const boom = { toString() { throw new Error('discarded commit failure'); } };
+  let errorArg = null;
+  class C extends WebComponent({}) {
+    renderError(e) { errorArg = e; return html`<p>fallback</p>`; }
+    async render() { await 0; return html`<div title=${boom}></div>`; }
+    async update(changed) { super.update(changed); }   // returns its own promise, drops _commitAsync's
+  }
+  C.register('discarded-commit-promise');
+  const el = document.createElement('discarded-commit-promise');
+  document.body.appendChild(el);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.ok(errorArg instanceof Error, 'renderError() still receives the commit error');
+  assert.match(errorArg.message, /discarded commit failure/);
+});
+
 /* -------------------- lazy controllers set: ensure graceful behavior -------------------- */
 
 test('WebComponent without static properties still constructs cleanly', () => {

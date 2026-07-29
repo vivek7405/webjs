@@ -645,6 +645,8 @@ render() {
     <h2>Properties vs Attributes in Templates</h2>
     <p>Templates support three binding prefixes for setting values on elements:</p>
 
+    <p><strong>One carve-out applies to all three below: a function in <code>action=</code> or <code>formaction=</code> is refused, not stringified.</strong> Stringifying a function writes its source into the HTML, and during SSR an imported <code>'use server'</code> action is the real function, so that source is the action's whole body. Every hole form is refused under those two names (plain, quoted, mixed, array-wrapped, and <code>.action=\${fn}</code> on a native form, which reflects into the live DOM). A function stays legal on an unquoted <code>@action=\${fn}</code> listener and on a custom element's own <code>.action</code> property, because neither stringifies it. So where the rules below say a value is stringified, that a native property binding drops at SSR, or that a boolean hole emits the attribute when truthy, read them as holding for every attribute except these two. See <a href="/docs/troubleshooting">Troubleshooting</a>.</p>
+
     <h3>Regular Attributes: <code>attr=\${value}</code></h3>
     <p>Sets an HTML attribute. The value is stringified. If the value is <code>null</code>, <code>undefined</code>, or <code>false</code>, the attribute is removed.</p>
 

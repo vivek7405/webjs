@@ -1,6 +1,7 @@
 import { html, isTemplate } from './html.js';
 import { BINDING_PREFIXES } from './binding-prefixes.js';
 import { escapeText, escapeAttr } from './escape.js';
+import { assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp } from './form-action.js';
 import { lookup, lookupModuleUrl, allTags } from './registry.js';
 import { stylesToString, isCSS } from './css.js';
 import { isRepeat } from './repeat.js';
@@ -289,6 +290,17 @@ async function renderTemplate(tr, ctx) {
             continue;
           }
           if (!currentTag.includes('-')) {
+            // A native element's `.prop` is dropped at SSR, so this path never
+            // leaked here. It still refuses a function where the property is a
+            // REFLECTED IDL attribute (`.action` on a form, `.formAction` on a
+            // button or input), so the rule does not depend on which renderer
+            // sees it first: the client sets that property for real and the
+            // reflection writes the source into the DOM. A page that renders
+            // clean on the server and throws on hydration is a worse failure
+            // than one that refuses at the earliest point. Elsewhere the
+            // property is a plain expando that reflects nothing, so refusing
+            // it would be a false positive.
+            assertNotFunctionReflectedActionProp(val, name, currentTag);
             state = 'in-tag';
             attrName = '';
             continue;
@@ -318,16 +330,26 @@ async function renderTemplate(tr, ctx) {
           state = 'in-tag';
           attrName = '';
         } else if (kind === 'bool') {
+          // Never leaked (a boolean binding stringifies nothing), but
+          // `?action=${fn}` is meaningless in every case and refusing it keeps
+          // the rule true for every sigil rather than only the quoted ones.
+          assertNotFunctionActionAttr(val, name, currentTag);
           out = out.slice(0, attrStart);
           if (val) out += `${name}=""`;
           state = 'in-tag';
           attrName = '';
         } else {
+          // #1154: never stringify a function into action=/formaction= (it
+          // would serialize a server action's source into the served HTML).
+          assertNotFunctionActionAttr(val, attrName, currentTag);
           out += `"${escapeAttr(String(val ?? ''))}"`;
           state = 'in-tag';
           attrName = '';
         }
       } else if (state === 'attr-quoted' || state === 'attr-unquoted') {
+        // Same guard for a hole inside a quoted/unquoted value, the
+        // `action="${fn}"` and mixed `action="/x/${fn}"` shapes (#1154).
+        assertNotFunctionActionAttr(val, attrName, currentTag);
         out += escapeAttr(String(val ?? ''));
       }
     }
@@ -1875,20 +1897,45 @@ async function streamTemplate(tr, ctx, controller) {
         const name = attrName.slice(1);
         const kind = BINDING_PREFIXES[prefix];
         if (kind === 'event' || kind === 'prop') {
+          // Guard `prop` ONLY, matching the buffered machine. An `@action`
+          // event binding is dropped here and never stringified, and a
+          // function is the LEGITIMATE value for one (`<my-el @action=${fn}>`
+          // listens for an `action` event), so refusing it would be a false
+          // positive. `.action` differs where the property REFLECTS: on a form
+          // (and `.formAction` on a button or input) the client assignment
+          // writes the source into the DOM, so refusing at SSR keeps a page
+          // from rendering clean on the server and throwing on hydration.
+          // Elsewhere, including a custom element, the property reflects
+          // nothing and a function stays legal.
+          if (kind === 'prop' && !currentTag.includes('-')) {
+            assertNotFunctionReflectedActionProp(val, name, currentTag);
+          }
           buf = buf.slice(0, attrStart);
           state = 'in-tag';
           attrName = '';
         } else if (kind === 'bool') {
+          // A boolean binding stringifies nothing, so this never leaked, but
+          // `?action=${fn}` is meaningless in every case (a truthy function
+          // emits a bare `action=""`), and refusing it keeps the rule the docs
+          // state true for every sigil rather than true only when quoted.
+          assertNotFunctionActionAttr(val, name, currentTag);
           buf = buf.slice(0, attrStart);
           if (val) buf += `${name}=""`;
           state = 'in-tag';
           attrName = '';
         } else {
+          // The SAME guard as the buffered renderer above. This is a second,
+          // independent state machine, so it inherits nothing from that one;
+          // a change to the rule has to land in both. Reached only via
+          // `renderToStream(v, { ssr: false })`, which no page render uses, so
+          // this covers the public API surface rather than a page leak.
+          assertNotFunctionActionAttr(val, attrName, currentTag);
           buf += `"${escapeAttr(String(val ?? ''))}"`;
           state = 'in-tag';
           attrName = '';
         }
       } else if (state === 'attr-quoted' || state === 'attr-unquoted') {
+        assertNotFunctionActionAttr(val, attrName, currentTag);
         buf += escapeAttr(String(val ?? ''));
       }
     }

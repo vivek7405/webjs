@@ -100,6 +100,25 @@ function defaultHasChanged(a, b) {
 }
 
 /**
+ * `String(v)` that cannot itself throw.
+ *
+ * A rejection reason is whatever the author rejected with, and not every value
+ * converts to a primitive: `Object.create(null)` has no `toString`, and a
+ * revoked Proxy throws on any operation. Coercing one in an error-reporting
+ * path turned a reportable failure into a second, unreported one.
+ *
+ * @param {unknown} v
+ * @returns {string}
+ */
+function safeString(v) {
+  try {
+    return String(v);
+  } catch {
+    return Object.prototype.toString.call(v);
+  }
+}
+
+/**
  * A minimal base for HTML Custom Elements that mirrors Lit's ergonomics
  * while staying JSDoc-only and no-build.
  *
@@ -1176,7 +1195,7 @@ class WebComponentBase extends Base {
       // (shouldUpdate=false) running during the fetch does NOT resolve
       // updateComplete early: the pending commit owns the resolution.
       this.__pendingAsyncCommits = (this.__pendingAsyncCommits || 0) + 1;
-      pendingCommit.then(() => {
+      const settle = () => {
         // Always decrement first, even when superseded, so the in-flight
         // count never leaks (a superseded cycle returns below without
         // committing, but it is no longer pending).
@@ -1189,6 +1208,37 @@ class WebComponentBase extends Base {
         }
         // --- 7-8 + updateComplete ---
         this._postCommit(changedProperties);
+      };
+      // A rejection has to settle the cycle too, or the counter stays >= 1
+      // forever: that both wedges `updateComplete` for this instance and
+      // disables the `!this.__pendingAsyncCommits` escape below for every
+      // later non-committing cycle. `_commitAsync` is written not to reject,
+      // but it is not the only thenable that reaches here: `update()` is a
+      // documented override point and may return one, so the handler belongs
+      // at this site rather than only at the one implementation of it.
+      pendingCommit.then(settle, (error) => {
+        // The token check gates the DOM write, NOT the release. A superseded
+        // cycle rejecting late (a discarded fetch, or the #492 abort of its own
+        // in-flight action surfacing as an AbortError) must not commit its
+        // error state over the newer render that already replaced it, which is
+        // the same rule both handlers inside _commitAsync follow. `settle()`
+        // still runs either way: it does its own token check before touching
+        // anything, and the decrement it owns has to happen regardless or the
+        // counter wedges exactly as it did before this handler existed.
+        // `finally`, not a trailing statement: the release must survive
+        // anything the reporting path throws. `String(error)` is evaluated in
+        // the argument expression, OUTSIDE _handleRenderError's own try/catch,
+        // so a rejection reason that cannot be coerced (a null-prototype
+        // object, a revoked Proxy) threw a TypeError straight out of this
+        // handler and skipped the decrement, wedging the counter in exactly
+        // the way this handler exists to prevent.
+        try {
+          if (token === this.__renderToken) {
+            this._handleRenderError(error instanceof Error ? error : new Error(safeString(error)));
+          }
+        } finally {
+          settle();
+        }
       });
       return;
     }
@@ -1399,7 +1449,23 @@ class WebComponentBase extends Base {
     return Promise.resolve(pending).then(
       (tpl) => {
         if (token !== this.__renderToken) return; // superseded by a newer render
-        clientRender(tpl, this._renderRoot);
+        // The COMMIT throws too, not just the fetch, and a sibling rejection
+        // handler cannot see it: `.then(onFulfil, onRejected)` never routes
+        // onFulfil's own throw to onRejected. Left uncaught, the returned
+        // promise rejected and _performRender's `.then` had no rejection
+        // handler, so the error escaped as an unhandled rejection,
+        // renderError() never ran, __pendingAsyncCommits never decremented
+        // (wedging it >= 1 forever, which also disables the non-committing
+        // cycle's _resolveUpdate escape), and updateComplete never settled.
+        // The sync path routes an identical throw to the same boundary, so
+        // this is what makes the two paths agree.
+        try {
+          clientRender(tpl, this._renderRoot);
+        } catch (commitError) {
+          this._handleRenderError(
+            commitError instanceof Error ? commitError : new Error(String(commitError)),
+          );
+        }
       },
       (error) => {
         if (token !== this.__renderToken) return;

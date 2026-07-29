@@ -1,6 +1,7 @@
 import { isTemplate, MARKER } from './html.js';
 import { BINDING_PREFIXES, isBindingPrefix } from './binding-prefixes.js';
 import { escapeAttr } from './escape.js';
+import { assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp } from './form-action.js';
 import { isRepeat } from './repeat.js';
 import { isUnsafeHTML, isLive, isKeyed, isGuard, isTemplateContent, isRef, isCache, isUntil, isAsyncAppend, isAsyncReplace, isWatch } from './directives.js';
 import { Signal } from './signal.js';
@@ -671,17 +672,41 @@ function applyPart(part, value, _prev, allValues) {
       break;
     case 'attr': {
       if (value == null || value === false) part.el.removeAttribute(part.name);
-      else part.el.setAttribute(part.name, String(value));
+      else {
+        // #1154: refuse to stringify a function into action=/formaction=
+        // (mirrors the SSR guard, so a client re-render cannot write a
+        // server action's source into the live DOM).
+        assertNotFunctionActionAttr(value, part.name, part.el.localName);
+        part.el.setAttribute(part.name, String(value));
+      }
       break;
     }
     case 'prop':
+      // `.action=${fn}` is a leak too, not just the attribute form, but only
+      // where the property is a REFLECTED IDL attribute: assigning a function
+      // to `form.action` (or `.formAction` on a button/input) stringifies it
+      // into that element's own content attribute in a real browser. On any
+      // other native tag it is a plain expando that reflects nothing, and on a
+      // custom element it is an author-defined property, so a function is
+      // legitimate in both. The helper owns that distinction.
+      //
+      // Not covered here, because it is not a commit: a custom element's prop
+      // declared `reflect: true` writes String(value) from its own setter.
+      assertNotFunctionReflectedActionProp(value, part.name, part.el.localName);
       /** @type any */ (part.el)[part.name] = value;
       break;
     case 'bool':
+      // #1154: never leaked (a boolean binding stringifies nothing), but
+      // `?action=${fn}` is meaningless in every case, and refusing it keeps
+      // this renderer agreeing with both SSR machines.
+      assertNotFunctionActionAttr(value, part.name, part.el.localName);
       if (value) part.el.setAttribute(part.name, '');
       else part.el.removeAttribute(part.name);
       break;
     case 'event':
+      // NOT guarded, deliberately. An event binding never stringifies its
+      // value, and a function is the legitimate thing to pass one, so
+      // `<my-el @action=${handler}>` has to keep working.
       part.handler = typeof value === 'function' ? /** @type any */ (value) : null;
       break;
     case 'element':
@@ -692,7 +717,10 @@ function applyPart(part, value, _prev, allValues) {
       const mp = /** @type {{ statics: string[], group: number[] }} */ (/** @type any */ (part));
       let val = mp.statics[0];
       for (let j = 0; j < mp.group.length; j++) {
-        val += String((allValues ? allValues[mp.group[j]] : value) ?? '');
+        const piece = allValues ? allValues[mp.group[j]] : value;
+        // #1154: same function guard for each piece of a mixed attribute.
+        assertNotFunctionActionAttr(piece, part.name, part.el.localName);
+        val += String(piece ?? '');
         val += mp.statics[j + 1] || '';
       }
       part.el.setAttribute(part.name, val);
