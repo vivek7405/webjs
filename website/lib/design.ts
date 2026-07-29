@@ -36,9 +36,17 @@ export const BTN_PRIMARY = `${BTN_BASE} bg-accent text-accent-fg border-transpar
 /** Every other action. Reads as secondary without competing for attention. */
 export const BTN_GHOST = `${BTN_BASE} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_55%,transparent)] hover:border-fg-subtle hover:bg-bg-subtle`;
 
-/** The copy-to-clipboard install command. */
+/**
+ * The copy-to-clipboard install command.
+ *
+ * Kept at the live site's proportions. A tightened-up version was tried (less
+ * padding, a 10px radius, no blur or shadow) and read as cramped: this bar is
+ * a primary call to action in its own right, not a caption, so it wants the
+ * generous padding, the 2xl radius, and the backdrop blur that lift it off the
+ * page.
+ */
 export const INSTALL =
-  'inline-flex items-center gap-2.5 max-w-full px-[15px] py-[11px] text-left font-mono text-[13.5px] leading-none text-fg-muted rounded-[10px] border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,transparent)]';
+  'flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-[14px] text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]';
 
 /** Section heading, and the paragraph that follows it. */
 export const H2 = 'font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance';

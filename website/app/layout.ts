@@ -283,7 +283,9 @@ export default function RootLayout({ children }: { children: unknown }) {
           --fg: oklch(0.96 0 0); --fg-muted: oklch(0.74 0 0); --fg-subtle: oklch(0.62 0 0);
           --bg: oklch(0 0 0); --bg-elev: oklch(0.135 0 0); --bg-subtle: oklch(0.09 0 0); --bg-sunken: oklch(0 0 0);
           --border: oklch(0.32 0 0 / 0.9); --border-strong: oklch(0.44 0 0 / 0.92);
-          --accent: oklch(0.7 0.16 52); --accent-hover: oklch(0.75 0.16 52); --accent-fg: oklch(0.1 0.01 52); --logo-from: oklch(0.8 0.16 58); --logo-to: oklch(0.62 0.18 44);
+          --accent: oklch(0.82 0.15 52); --accent-hover: oklch(0.87 0.13 52); --accent-fg: oklch(0.17 0.02 52); --logo-from: oklch(0.8 0.16 58); --logo-to: oklch(0.62 0.18 44);
+        --accent-live: oklch(0.80 0.14 52);
+        --glow-a: oklch(0.85 0.12 52);
           --glow-strength: 0.16;
           --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
           --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
@@ -295,7 +297,9 @@ export default function RootLayout({ children }: { children: unknown }) {
         --fg: oklch(0.96 0 0); --fg-muted: oklch(0.74 0 0); --fg-subtle: oklch(0.62 0 0);
         --bg: oklch(0 0 0); --bg-elev: oklch(0.135 0 0); --bg-subtle: oklch(0.09 0 0); --bg-sunken: oklch(0 0 0);
         --border: oklch(0.32 0 0 / 0.9); --border-strong: oklch(0.44 0 0 / 0.92);
-        --accent: oklch(0.7 0.16 52); --accent-hover: oklch(0.75 0.16 52); --accent-fg: oklch(0.1 0.01 52); --logo-from: oklch(0.8 0.16 58); --logo-to: oklch(0.62 0.18 44);
+        --accent: oklch(0.82 0.15 52); --accent-hover: oklch(0.87 0.13 52); --accent-fg: oklch(0.17 0.02 52); --logo-from: oklch(0.8 0.16 58); --logo-to: oklch(0.62 0.18 44);
+        --accent-live: oklch(0.80 0.14 52);
+        --glow-a: oklch(0.85 0.12 52);
         --glow-strength: 0.16;
         --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
         --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
