@@ -159,7 +159,7 @@ log(`deep-review of PR ${pr}${repo ? ` in ${repo}` : ''}: ${ALL_LENSES.length} l
 
 const found = await parallel(ALL_LENSES.map((l) => () =>
   agent(
-    `${SAFETY}\n\nYou are ONE review lens over PR ${pr}. Your single charter:\n${l.prompt}\n\nReport only genuine problems with concrete failure scenarios. No style nits, no suggestions, no padding. Return an empty findings array if you find nothing real.\n\nTag each finding's tier: "substantive" when it touches shipped source, a test's ability to OBSERVE the defect it claims to cover (a tautological assertion that stays green with the bug present is substantive), or a factual claim about runtime behavior in docs; "prose" for everything else (wording, counts, comment style, review artifacts). The tier is a surface classification, not a severity judgment.`,
+    `${SAFETY}\n\nYou are ONE review lens over PR ${pr}. Your single charter:\n${l.prompt}\n\nReport only genuine problems with concrete failure scenarios. No style nits, no suggestions, no padding. Return an empty findings array if you find nothing real.\n\nTag each finding's tier: "substantive" when it touches shipped source, a test's ability to OBSERVE the defect it claims to cover (a tautological assertion that stays green with the bug present is substantive), or a factual claim about runtime behavior in docs (a number in docs that states runtime behavior, a default, a limit, a condition list, is this surface, not prose); "prose" for everything else (wording, PR-body counts, comment style, review artifacts). The tier is a surface classification, not a severity judgment.`,
     { label: `find:${l.key}`, phase: 'Find', schema: FINDINGS, ...(l.model ? { model: l.model } : {}) },
   )))
 

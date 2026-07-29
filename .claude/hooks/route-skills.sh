@@ -177,13 +177,17 @@ fi
 # --- code-review: review the diff before a PR is ready ------------------
 # Triggers: review the PR/diff/branch/changes, code review, look it over
 # for bugs. Reviewing every change before it is marked ready is a standing
-# expectation, and a review is a LOOP (re-review until a round is clean).
+# expectation, and a review is a LOOP with the substantive-gate exit the
+# webjs-start-work skill defines (loop on substantive findings, then one
+# bounded prose pass). Keep this directive in lockstep with that skill's
+# exit condition; test/hooks/review-loop-exit.test.mjs asserts the
+# pre-#1171 clean-round absolute stays gone.
 # code-review is a built-in Claude Code skill (no in-repo SKILL.md, so the
 # portability test that guards project skills does not cover it).
 if has '(review|audit) (the |my |this )?(pr|diff|branch|change|changes|code|commit)' \
    || has 'code ?review' \
    || has '(review|look) .{0,20}(over )?for (bug|issue|correctness|regression)'; then
-  add_match "code-review: the request is to review code. Invoke the code-review skill (it reviews the diff for correctness bugs plus reuse and simplification). Treat review as a LOOP: after fixing findings, re-review until a round is clean. Never report done off a round that found something."
+  add_match "code-review: the request is to review code. Invoke the code-review skill (it reviews the diff for correctness bugs plus reuse and simplification). Treat review as a LOOP with the webjs-start-work skill's exit: after fixing findings, re-review until a round finds nothing SUBSTANTIVE (shipped source, a test's ability to observe the defect it claims to cover, or a factual runtime claim in docs), then one bounded prose pass ends it. Never report done off a round that found something substantive. Findings this skill reports carry no tier tag, so classify them against those three surfaces yourself, treating a doubtful one as substantive."
 fi
 
 # --- verify: prove the change works by running the app ------------------
