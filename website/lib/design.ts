@@ -11,8 +11,8 @@
  * The rules encoded below:
  *
  * - Controls are compact. Size and colour are separate decisions: the primary
- *   button carries the brand amber, but it stays a small control rather than a
- *   large pill, which is what keeps it reading as a tool.
+ *   button carries the brand amber, but at 42px with a 10px radius it reads as
+ *   a tool rather than as a banner.
  * - The accent has exactly two jobs, the primary action and the closing CTA,
  *   plus live and focus state. It never tints a content panel, a section
  *   heading, or a label. Rationing it to the places that ask for a click is
@@ -22,22 +22,26 @@
  */
 
 /**
- * The radius scale. Three steps, chosen by what a thing IS, not by its size:
+ * The radius scale:
  *
- *   RADIUS_CONTROL (10px)  things you click: buttons, the install bar, inputs
- *   rounded-2xl    (16px)  cards and code windows
- *   rounded-[20px]         full-width panels, the closing CTA
+ *   28px copy button   7px    (25% of its height)
+ *   42px button       10px    (24%)
+ *   52px install bar  16px    (31%, rounded-2xl)
+ *   cards, windows    16px
+ *   full-width panels 20px, and 22px on the closing CTA
  *
- * A control and a card sitting side by side at different radii is the tell
- * that a scale is missing, which is exactly what happened when the install bar
- * was restored from the live site: there the buttons were full pills, so its
- * 16px looked right next to them, and here it did not.
+ * Everything here is a rounded rectangle; full pills were tried and the square
+ * shape reads better against the type. The rule when adding one is to scale the
+ * radius with the element's own height, roughly a quarter of it, because
+ * curvature is read relative to size. Holding a single number across different
+ * heights makes the taller element look squarer, which is what happened when
+ * the 52px install bar was forced down to the button's 10px: at 19% of its
+ * height it looked pinched next to controls reading 24%.
  */
-export const RADIUS_CONTROL = 'rounded-[10px]';
 
 /** Shared control geometry. Compose with a surface, do not use bare. */
 const BTN_BASE =
-  `inline-flex items-center gap-2 h-[42px] px-[18px] ${RADIUS_CONTROL} font-semibold text-[14.5px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]`;
+  'inline-flex items-center gap-2 h-[42px] px-[18px] rounded-[10px] font-semibold text-[14.5px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
 
 /**
  * The single strongest action on a view. At most one per screen.
@@ -55,13 +59,12 @@ export const BTN_GHOST = `${BTN_BASE} text-fg border-border-strong bg-[color-mix
  *
  * The live site's proportions (generous padding, the backdrop blur and shadow
  * that lift it off the page), because this bar is a primary call to action in
- * its own right and a tightened version read as a caption. But it takes the
- * CONTROL radius, not the card radius it carries in production: it sits inches
- * from the buttons, and matching them is what makes the group read as one set
- * of controls rather than three unrelated shapes.
+ * its own right and a tightened version read as a caption. It keeps the 2xl
+ * radius, which is softer than the buttons beside it in absolute terms but
+ * proportionally right for something 10px taller.
  */
 export const INSTALL =
-  `flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-[14px] text-left font-mono text-sm leading-[1.6] text-fg-muted ${RADIUS_CONTROL} border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]`;
+  `flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-[14px] text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]`;
 
 /** Section heading, and the paragraph that follows it. */
 export const H2 = 'font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance';
@@ -76,12 +79,19 @@ export const PANEL = 'rounded-[20px] border border-border bg-bg-elev shadow-[var
 /**
  * The closing call to action, the one panel that is allowed to glow.
  *
- * It earns the accent because it is the only panel on a page whose entire job
- * is to be clicked. Everything above it stays neutral, which is precisely what
+ * It earns the glow because it is the only panel on a page whose entire job is
+ * to be clicked. Everything above it stays neutral, which is precisely what
  * makes this one land when the reader reaches it.
+ *
+ * The FILL is a token rather than a literal because the two themes want
+ * different things from it. On light, a faint accent tint separates the panel
+ * from the page. On dark it did the opposite: over a black page the same tint
+ * turned the panel muddy, the same reason the backdrop wash read as brown. So
+ * dark takes the plain elevated surface and lets the glow alone do the work.
+ * See --cta-surface in app/layout.ts.
  */
 export const PANEL_CTA =
-  'rounded-[22px] border border-border-strong bg-[color-mix(in_oklch,var(--accent-live)_7%,var(--color-bg-elev))] shadow-[var(--shadow-glow)]';
+  'rounded-[22px] border border-border-strong bg-[var(--cta-surface)] shadow-[var(--shadow-glow)]';
 
 /** The small label that names a code window or a paired example. */
 export const MICRO_LABEL = 'text-[13px] font-medium leading-[1.4] text-fg-subtle mb-[10px] ml-1';

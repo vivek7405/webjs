@@ -54,3 +54,5 @@ export const SSR_OUTPUT = `<!-- what the browser receives, before any JS -->
      form submits to a server action. JavaScript
      then upgrades the click in place, only where
      an interaction actually needs it. -->`;
+
+export const USAGE_SAMPLE = `<like-button count="3"></like-button>`;

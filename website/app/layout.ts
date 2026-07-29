@@ -76,8 +76,8 @@ export function generateMetadata(ctx: { url: string }) {
   };
 }
 
-const navLink = 'text-fg-muted no-underline font-medium text-sm px-[11px] py-2 rounded-lg transition-colors duration-[140ms] hover:text-fg hover:bg-bg-subtle';
-const panelLink = 'text-fg-muted no-underline font-medium text-sm px-3 py-[10px] rounded-[9px] hover:text-fg hover:bg-bg-subtle';
+const navLink = 'text-fg-muted no-underline font-medium text-sm px-[11px] py-2 rounded-lg transition-colors duration-[140ms] hover:text-fg hover:bg-[var(--hover-surface)]';
+const panelLink = 'text-fg-muted no-underline font-medium text-sm px-3 py-[10px] rounded-[9px] hover:text-fg hover:bg-[var(--hover-surface)]';
 
 export default function RootLayout({ children }: { children: unknown }) {
   const nonce = cspNonce();
@@ -274,18 +274,34 @@ export default function RootLayout({ children }: { children: unknown }) {
         --font-mono:    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
         --shadow-sm: 0 1px 2px oklch(0.5 0.06 55 / 0.08);
         --shadow:    0 8px 30px oklch(0.5 0.08 55 / 0.10), 0 2px 6px oklch(0.5 0.06 55 / 0.06);
+        /* The closing CTA's fill. Light keeps a faint accent tint, which
+           separates the panel from the page. Dark takes the plain elevated
+           surface: over black the same tint went muddy rather than warm, so
+           the glow alone carries it there. */
+        /* Hover lift for nav links and other bare targets. An ALPHA overlay,
+           not a solid colour, for two reasons. It composes over the header's
+           translucent blurred background instead of fighting it, and it gives
+           the same perceived step in both themes: the solid --bg-subtle was a
+           0.09 lift on a black page, which is real in numbers and invisible to
+           the eye, while the same token in light was a 0.025 step that read
+           clearly because the eye is adapted to a bright field. */
+        --hover-surface: oklch(0 0 0 / 0.055);
+        --cta-surface: color-mix(in oklch, var(--accent-live) 7%, var(--bg-elev));
         --shadow-glow: 0 0 0 1px var(--accent-tint), 0 14px 50px color-mix(in oklch, var(--accent-live) 18%, transparent);
         --t: 240ms;
       }
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme='light']) {
           --heart: oklch(0.74 0.18 6);
-          --fg: oklch(0.96 0 0); --fg-muted: oklch(0.74 0 0); --fg-subtle: oklch(0.62 0 0);
-          --bg: oklch(0 0 0); --bg-elev: oklch(0.135 0 0); --bg-subtle: oklch(0.09 0 0); --bg-sunken: oklch(0 0 0);
-          --border: oklch(0.32 0 0 / 0.9); --border-strong: oklch(0.44 0 0 / 0.92);
-          --accent: oklch(0.74 0.19 52); --accent-hover: oklch(0.79 0.18 52); --accent-fg: oklch(0.08 0.01 52); --logo-from: oklch(0.8 0.16 58); --logo-to: oklch(0.62 0.18 44);
-        --accent-live: oklch(0.74 0.18 52);
+          --fg: oklch(0.98 0 0); --fg-muted: oklch(0.80 0 0); --fg-subtle: oklch(0.68 0 0);
+          --bg: oklch(0 0 0); --bg-elev: oklch(0.12 0 0); --bg-subtle: oklch(0.08 0 0); --bg-sunken: oklch(0 0 0);
+          --border: oklch(0.26 0 0 / 0.9); --border-strong: oklch(0.38 0 0 / 0.95);
+          --accent: oklch(0.78 0.18 58); --accent-hover: oklch(0.83 0.17 58); --accent-fg: oklch(0 0 0); --logo-from: oklch(0.82 0.17 58); --logo-to: oklch(0.64 0.18 44);
+          --accent-live: oklch(0.78 0.18 58);
+          --glow-a: transparent;
           --glow-strength: 0;
+          --cta-surface: transparent;
+          --hover-surface: oklch(1 0 0 / 0.09);
           --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
           --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
         }
@@ -293,12 +309,15 @@ export default function RootLayout({ children }: { children: unknown }) {
       :root[data-theme='dark'] {
         color-scheme: dark;
         --heart: oklch(0.74 0.18 6);
-        --fg: oklch(0.96 0 0); --fg-muted: oklch(0.74 0 0); --fg-subtle: oklch(0.62 0 0);
-        --bg: oklch(0 0 0); --bg-elev: oklch(0.135 0 0); --bg-subtle: oklch(0.09 0 0); --bg-sunken: oklch(0 0 0);
-        --border: oklch(0.32 0 0 / 0.9); --border-strong: oklch(0.44 0 0 / 0.92);
-        --accent: oklch(0.74 0.19 52); --accent-hover: oklch(0.79 0.18 52); --accent-fg: oklch(0.08 0.01 52); --logo-from: oklch(0.8 0.16 58); --logo-to: oklch(0.62 0.18 44);
-        --accent-live: oklch(0.74 0.18 52);
+        --fg: oklch(0.98 0 0); --fg-muted: oklch(0.80 0 0); --fg-subtle: oklch(0.68 0 0);
+        --bg: oklch(0 0 0); --bg-elev: oklch(0.12 0 0); --bg-subtle: oklch(0.08 0 0); --bg-sunken: oklch(0 0 0);
+        --border: oklch(0.26 0 0 / 0.9); --border-strong: oklch(0.38 0 0 / 0.95);
+        --accent: oklch(0.78 0.18 58); --accent-hover: oklch(0.83 0.17 58); --accent-fg: oklch(0 0 0); --logo-from: oklch(0.82 0.17 58); --logo-to: oklch(0.64 0.18 44);
+        --accent-live: oklch(0.78 0.18 58);
+        --glow-a: transparent;
         --glow-strength: 0;
+        --cta-surface: transparent;
+        --hover-surface: oklch(1 0 0 / 0.09);
         --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
         --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
       }
@@ -395,7 +414,7 @@ export default function RootLayout({ children }: { children: unknown }) {
           <theme-toggle></theme-toggle>
 
           <details class="mobile-menu relative md:hidden">
-            <summary class="cursor-pointer w-[38px] h-[38px] inline-flex items-center justify-center rounded-[9px] text-fg-muted hover:bg-bg-subtle hover:text-fg" aria-label="Toggle navigation">
+            <summary class="cursor-pointer w-[38px] h-[38px] inline-flex items-center justify-center rounded-[9px] text-fg-muted hover:bg-[var(--hover-surface)] hover:text-fg" aria-label="Toggle navigation">
               <svg class="open-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></svg>
               <svg class="close-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </summary>

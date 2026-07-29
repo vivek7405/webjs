@@ -1,7 +1,7 @@
 import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import '#components/like-button.ts';
-import { COMPONENT_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE } from '#lib/samples.ts';
+import { COMPONENT_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE, USAGE_SAMPLE } from '#lib/samples.ts';
 import { DOCS_PATH, DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 // highlight() runs only at SSR (codeWindow renders its output into the served
 // HTML), but it does ship to the client as a small dead module: the page loads
@@ -109,7 +109,7 @@ LikeButton.register('like-button');
 // and upgraded in place. Click it.`;
 
 const WIN = 'flex flex-col flex-1 m-0 min-w-0 max-w-full rounded-2xl overflow-hidden border border-border bg-bg-elev shadow-[var(--shadow)]';
-const WINBAR = 'flex items-center gap-[7px] px-[14px] py-[10px] border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]';
+const WINBAR = 'flex items-center gap-[7px] h-[42px] px-[14px] border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]';
 const WINNAME = 'ml-2 font-mono font-medium text-[12px] leading-none text-fg-subtle';
 const DOTS = html`<span class="w-[11px] h-[11px] rounded-full bg-[#ff5f57]"></span><span class="w-[11px] h-[11px] rounded-full bg-[#febc2e]"></span><span class="w-[11px] h-[11px] rounded-full bg-[#28c840]"></span>`;
 // Bento-grid card wrapper, shared by the "Why webjs" and "Small by design" cells.
@@ -194,9 +194,9 @@ export default function LandingPage() {
         <h1 class="font-display font-extrabold text-display leading-[0.98] tracking-[-0.042em] mx-auto mt-2 mb-6 max-w-[16ch] text-balance">
           The web framework for AI agents
         </h1>
-        <p class="text-lede leading-[1.55] text-fg-muted max-w-[58ch] mx-auto mb-9 text-pretty">
-          Full-stack on <span class="text-fg font-medium">web components</span>, real SSR, and
-          progressive enhancement, with <span class="text-fg font-medium">zero build step</span>.
+        <p class="text-lede leading-[1.55] text-fg-muted max-w-[62ch] mx-auto mb-9 text-pretty">
+          WebJs is a full-stack framework built on <span class="text-fg font-medium">web components</span>, SSR, and
+          progressive enhancement with <span class="text-fg font-medium">zero build step</span>.
           Lean enough for an agent to read end to end. Runs on Node 24+ or Bun.
         </p>
         <div class="flex gap-3 justify-center flex-wrap items-center">
@@ -215,36 +215,6 @@ export default function LandingPage() {
           </div>
         </div>
       </div>
-
-      <!-- The stage. Source on the left, the component that source declares
-           running on the right. It is the one claim on this page that cannot
-           be faked by a screenshot: the button is a real like-button element,
-           SSR'd into the HTML and upgraded in place, so a reader with
-           JavaScript off still sees it rendered and one with JavaScript on can
-           click it. (The tag name is written WITHOUT angle brackets on
-           purpose. A literal tag inside a comment in an html template is still
-           seen by the SSR pass, which renders it as a real component and
-           breaks the surrounding markup.) -->
-      <div class="hero-stage mt-[clamp(44px,5.5vw,72px)] max-w-[1000px] mx-auto grid grid-cols-1 min-[880px]:grid-cols-[1.12fr_0.88fr] rounded-[16px] overflow-hidden border border-border-strong bg-bg-sunken shadow-[var(--shadow)]">
-        <div class="min-w-0 border-b min-[880px]:border-b-0 min-[880px]:border-r border-border">
-          <div class=${WINBAR}>${DOTS}<span class=${WINNAME}>components/like-button.ts</span></div>
-          <pre class="scroll-thin m-0 p-5 overflow-x-auto font-mono text-[12.5px] leading-[1.72] [tab-size:2] text-left" tabindex="0" aria-label="like-button component source"><code>${highlight(HERO_SAMPLE)}</code></pre>
-        </div>
-        <div class="flex flex-col min-w-0 bg-bg">
-          <div class="flex items-center justify-between gap-2 px-[14px] py-[10px] border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]">
-            <span class="font-mono font-semibold text-[11px] tracking-[0.09em] uppercase text-fg-subtle">Rendered</span>
-            <span class="inline-flex items-center gap-[6px] font-mono text-[11px] text-fg-subtle">
-              <span class="w-[6px] h-[6px] rounded-full bg-accent shadow-[0_0_8px_var(--accent)]"></span>live
-            </span>
-          </div>
-          <div class="flex-1 grid place-items-center px-6 py-10">
-            <like-button count="3"></like-button>
-          </div>
-          <div class="px-4 py-3 border-t border-border text-center font-mono text-[11px] leading-[1.5] text-fg-subtle">
-            Server-rendered first, then upgraded. Click it.
-          </div>
-        </div>
-      </div>
     </section>
 
     <section class="py-16">
@@ -258,23 +228,33 @@ export default function LandingPage() {
             statically elided, never shipped.
           </p>
         </div>
-        <div class="grid grid-cols-1 min-[900px]:grid-cols-2 gap-4 items-stretch">
-          <div class="flex flex-col min-w-0">
-            <p class="text-[13px] font-medium leading-[1.4] text-fg-subtle mb-[10px] ml-1">The component you write</p>
-            ${codeWindow('components/like-button.ts', PE_COMPONENT)}
+
+        <div class="hero-stage max-w-[1000px] mx-auto grid grid-cols-1 min-[880px]:grid-cols-[1.12fr_0.88fr] rounded-[16px] overflow-hidden border border-border-strong bg-bg-sunken shadow-[var(--shadow)]">
+          <div class="min-w-0 border-b min-[880px]:border-b-0 min-[880px]:border-r border-border">
+            <div class=${WINBAR}>${DOTS}<span class=${WINNAME}>components/like-button.ts</span></div>
+            <pre class="scroll-thin m-0 p-5 overflow-x-auto font-mono text-[12.5px] leading-[1.72] [tab-size:2] text-left" tabindex="0" aria-label="like-button component source"><code>${highlight(HERO_SAMPLE)}</code></pre>
           </div>
-          <div class="flex flex-col min-w-0">
-            <p class="text-[13px] font-medium leading-[1.4] text-fg-subtle mb-[10px] ml-1">What the browser receives</p>
-            <figure class=${WIN}>
-              <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>view-source</span></figcaption>
-              <pre class="scroll-thin m-0 p-[18px] overflow-x-auto font-mono text-[13px] leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="server-rendered HTML"><code>${highlight(SSR_OUTPUT)}</code></pre>
-              <div class="flex items-center justify-between gap-3 px-[18px] py-[14px] border-t border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_50%,transparent)]">
-                <span class="font-mono text-[11px] tracking-[0.04em] text-fg-subtle">Renders as a real component, click to count</span>
-                <like-button count="3"></like-button>
-              </div>
-            </figure>
+          <div class="flex flex-col min-w-0 bg-bg">
+            <input type="checkbox" id="stage-usage" class="sr-only peer" />
+            <div class="flex items-center justify-between gap-2 h-[42px] px-[14px] border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]">
+              <span class="inline-flex items-center gap-[6px] font-mono text-[11px] text-fg-subtle">
+                <span class="w-[6px] h-[6px] rounded-full bg-accent shadow-[0_0_8px_var(--accent)] peer-checked:opacity-0"></span>live
+              </span>
+              <label for="stage-usage" class="cursor-pointer select-none font-mono font-semibold text-[10.5px] tracking-[0.08em] uppercase text-fg-subtle hover:text-fg transition-colors px-2 py-1 -mr-1 rounded-[7px] hover:bg-[var(--hover-surface)]">
+                <span class="peer-checked:hidden">Show usage</span>
+                <span class="hidden peer-checked:inline">Show rendered</span>
+              </label>
+            </div>
+            <div class="flex-1 grid place-items-center px-6 py-10 peer-checked:hidden">
+              <like-button count="3"></like-button>
+            </div>
+            <pre class="hidden peer-checked:block flex-1 m-0 p-5 overflow-x-auto font-mono text-[12.5px] leading-[1.72] text-left" aria-label="like-button usage"><code>${highlight(USAGE_SAMPLE)}</code></pre>
+            <div class="px-4 py-3 border-t border-border text-center font-mono text-[11px] leading-[1.5] text-fg-subtle">
+              Server-rendered first, then upgraded. Click it.
+            </div>
           </div>
         </div>
+
         <div class="flex flex-wrap gap-[10px] justify-center mt-8">
           ${PE_CHIPS.map(c => html`<span class="text-[12.5px] font-medium leading-none text-fg-muted px-[14px] py-[9px] rounded-full border border-border bg-bg-elev/40 backdrop-blur-sm shadow-[var(--shadow-sm)] hover:border-border-strong hover:bg-bg-subtle transition-all duration-[140ms]">${c}</span>`)}
         </div>
@@ -442,8 +422,8 @@ middleware.ts</pre>
     <section class="py-16 text-center" id="get-started">
       <div class="max-w-[1080px] mx-auto px-6">
         <div class="max-w-[760px] mx-auto p-[clamp(32px,5vw,64px)] ${PANEL_CTA}">
-          <h2 class="font-display font-extrabold text-h2 leading-[1.1] tracking-[-0.03em] mt-0 mb-3">Start building on web standards</h2>
-          <p class="text-fg-muted mx-auto mb-8 max-w-[46ch]">Scaffold a full-stack app in one command, with pages, an API, components, and a database wired up.</p>
+          <h2 class="font-display font-extrabold text-h2 leading-[1.1] tracking-[-0.03em] mt-0 mb-3">Start building with AI</h2>
+          <p class="text-fg-muted mx-auto mb-8 max-w-[56ch]">Run the command below in your terminal, launch your AI coding agent from the app folder, and tell it what you would like to build.</p>
           <div class=${INSTALL}>
             <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
           </div>

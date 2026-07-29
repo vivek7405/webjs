@@ -49,8 +49,14 @@ const ASSETS = [
   {
     file: 'webjs-monogram.svg',
     name: 'Monogram',
-    use: 'For square and cramped placements: avatars, favicons, app icons, stickers, a multi-brand logo row. Bare W files are in the download for placing on your own background.',
+    use: 'For square and cramped placements: avatars, favicons, app icons, stickers, a multi-brand logo row.',
     on: 'dark' as const,
+  },
+  {
+    file: 'webjs-monogram-on-light.svg',
+    name: 'Monogram, light backgrounds',
+    use: 'The same tile inverted, for a light surface. Bare W files with no tile at all are in the download, for placing on a background of your own.',
+    on: 'light' as const,
   },
 ];
 
@@ -102,7 +108,7 @@ export default function BrandPage() {
           </a>
           <a class=${BTN_GHOST} href="#usage">Usage rules</a>
         </div>
-        <p class="mt-4 font-mono text-[12px] text-fg-subtle">SVG, 5 files, light and dark variants</p>
+        <p class="mt-4 font-mono text-[12px] text-fg-subtle">SVG, 6 files, light and dark variants</p>
       </div>
     </section>
 
@@ -118,11 +124,11 @@ export default function BrandPage() {
           </p>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           ${ASSETS.map(a => html`
             <div class="flex flex-col rounded-2xl border border-border bg-bg-elev overflow-hidden">
-              <div class="h-40 flex items-center justify-center px-8 ${a.on === 'dark' ? 'bg-[oklch(0_0_0)]' : 'bg-[oklch(0.985_0.008_75)]'}">
-                <img src="/public/brand/${a.file}" alt=${a.name} class="max-h-14 w-auto" />
+              <div class="h-36 flex items-center justify-center px-7 ${a.on === 'dark' ? 'bg-[oklch(0_0_0)]' : 'bg-[oklch(0.985_0.008_75)]'}">
+                <img src="/public/brand/${a.file}" alt=${a.name} class="max-h-12 w-auto" />
               </div>
               <div class="flex flex-col flex-1 p-5 border-t border-border">
                 <h3 class="text-[15px] font-bold text-fg mb-1.5">${a.name}</h3>
