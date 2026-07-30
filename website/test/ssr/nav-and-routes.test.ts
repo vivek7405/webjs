@@ -77,3 +77,23 @@ test('no internal link still points at the old /why path', async () => {
     assert.ok(!/href="\/why"/.test(out), 'no chrome link targets the pre-rename path');
   }
 });
+
+test('the footer writes the brand name with proper casing', async () => {
+  // Invariant 11: WebJs is capitalized wherever it NAMES the project in prose,
+  // and the lowercase `webjs` form is reserved for literal code tokens (a CLI
+  // command, the domain, an `@webjsdev` package, a config key, an env var).
+  // The footer renders on EVERY page, so a slip here is the most-viewed
+  // instance of the brand name on the site, and it shipped that way once
+  // already (#1190).
+  //
+  // The edit-time hook that enforces casing only scans NEW content, so a string
+  // already in the tree is never re-checked and CI has no equivalent. This test
+  // is that missing check, scoped to the one surface that matters most.
+  const out = await renderToString(siteFooter());
+  assert.ok(out.includes('Built with WebJs'), 'footer credits the brand with proper casing');
+  assert.ok(!/Built with webjs/.test(out), 'and never the lowercase code-token form');
+
+  // Route paths are NOT prose and must stay lowercase, so guard against an
+  // over-eager fix that "corrects" the hrefs and breaks every comparison link.
+  assert.ok(out.includes('href="/compare/webjs-vs-nextjs"'), 'url paths stay lowercase');
+});
