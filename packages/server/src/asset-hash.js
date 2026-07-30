@@ -456,9 +456,18 @@ export function versionModuleImports(source, importerAbs) {
  * never be matched here. That is the whole reason this matches tags rather
  * than bare `src="…"` occurrences.
  *
+ * The trailing guard is `(?![-\w])`, NOT `\b`. A word boundary treats `-` as a
+ * terminator, so `\b` also matched hyphenated CUSTOM ELEMENTS: `<img-zoom>`,
+ * `<link-preview>`, `<source-map>`. This framework is web-components-first, so
+ * those are ordinary component names, and their `src` / `href` is a reactive
+ * PROP, meaning author data. Rewriting it changed the value a component
+ * hydrates with, so `this.src.endsWith('.svg')` went false and an equality
+ * check against the path a server action returned stopped matching, and the
+ * value churned every deploy.
+ *
  * @type {RegExp}
  */
-const ASSET_TAG_RE = /<(?:link|script|img|source)\b[^>]*>/gi;
+const ASSET_TAG_RE = /<(?:link|script|img|source)(?![-\w])[^>]*>/gi;
 
 /**
  * `href` / `src` inside an already-matched tag, either quote style. `srcset`
@@ -468,6 +477,17 @@ const ASSET_TAG_RE = /<(?:link|script|img|source)\b[^>]*>/gi;
  * @type {RegExp}
  */
 const ASSET_ATTR_RE = /(\s(?:href|src)\s*=\s*)(["'])([^"']*)\2/gi;
+
+/**
+ * A `<link>` whose href is a HINT for a later request rather than the request
+ * itself. See the call site: versioning one desynchronizes it from whatever
+ * actually fetches the asset. `modulepreload` is listed for completeness, but
+ * those hrefs are framework-emitted and already carry `?v=`, so the
+ * already-queried guard skips them anyway.
+ *
+ * @type {RegExp}
+ */
+const PRELOAD_REL_RE = /\srel\s*=\s*["']?(?:preload|prefetch|modulepreload|dns-prefetch|preconnect)\b/i;
 
 /**
  * Append `?v=<content-hash>` to same-origin asset urls an APP AUTHOR wrote by
@@ -505,7 +525,15 @@ export function versionAssetUrls(html, basePath = '') {
   if (!_enabled || !_appDir) return html;
   if (typeof html !== 'string' || html.indexOf('<') === -1) return html;
   return html.replace(ASSET_TAG_RE, (tag) => (
-    tag.replace(ASSET_ATTR_RE, (whole, lead, quote, url) => {
+    // A preload / prefetch hint does not FETCH the asset, it warms the cache
+    // for a request some OTHER consumer makes later, and the preload cache is
+    // keyed on the full url including the query. The obvious case is a font:
+    // the real request comes from `@font-face url()` inside the stylesheet,
+    // and CSS `url()` is deliberately out of scope here, so versioning the
+    // hint guarantees it can never match. The asset is then fetched TWICE and
+    // the browser logs "preloaded but not used", turning an optimization into
+    // a pessimization. Leave the hint on the url its consumer will request.
+    PRELOAD_REL_RE.test(tag) ? tag : tag.replace(ASSET_ATTR_RE, (whole, lead, quote, url) => {
       // Leave an author-supplied query alone: appending to it risks changing
       // a meaning we do not own, and `withAssetHash` would merge with `&`.
       if (!url || url.indexOf('?') !== -1) return whole;
@@ -544,17 +572,20 @@ export function versionAssetUrls(html, basePath = '') {
  * attribute into a synchronous read of an arbitrarily large file on the
  * render path.
  *
- * So mirror the serve gate in `dev.js` exactly: under `public/`, plus the two
- * root-served remaps and the root favicon. A path outside that set is left
- * untouched and never touches the filesystem, which is also why the check is
- * a pure string test performed BEFORE any resolution.
+ * So the gate is `public/` only. A path outside it is left untouched and never
+ * touches the filesystem, which is why the check is a pure string test run
+ * BEFORE any resolution.
  *
- * Note the three root-served paths pass this gate but currently no-op anyway:
- * the serve path REMAPS them into `public/` (`/sw.js` to `/public/sw.js`)
- * while `resolveUrlToFile` does not, so the file is not found and the url is
- * returned unchanged. That is the correct fail-safe, and they stay listed
- * here so this gate reads as the mirror of the serve gate that it is rather
- * than silently diverging from it.
+ * The three root-served paths (`/favicon.ico`, `/sw.js`, `/offline.html`) are
+ * deliberately NOT admitted, even though the serve path answers them. It
+ * REMAPS them into `public/` while `resolveUrlToFile` does not, so admitting
+ * them hashed the wrong file: with a stray `favicon.ico` at the project root,
+ * `/favicon.ico` was stamped with the hash of the ROOT file while the server
+ * served `public/favicon.ico`'s bytes, and stamped them `immutable` for a
+ * year. Changing the real icon then left the url byte-identical, pinning the
+ * stale copy indefinitely, which is worse than the 1h cache this replaces.
+ * Admitting them would need the remap replicated here, and they gain nothing:
+ * a page references its icon as `/public/favicon.svg` anyway.
  *
  * @param {string} url
  * @param {string} basePath
@@ -572,8 +603,5 @@ function isServablePublicUrl(url, basePath) {
   // A traversal segment can escape `public/` after `join` normalises it, and
   // the serve path rejects exactly this, so refuse rather than resolve.
   if (decoded.includes('..')) return false;
-  return decoded.startsWith('/public/')
-    || decoded === '/favicon.ico'
-    || decoded === '/sw.js'
-    || decoded === '/offline.html';
+  return decoded.startsWith('/public/');
 }

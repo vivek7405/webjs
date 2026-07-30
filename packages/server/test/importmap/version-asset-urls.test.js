@@ -164,6 +164,53 @@ test('a traversal out of public/ is refused', () => {
   }
 });
 
+test('a hyphenated custom element is never rewritten', () => {
+  // This framework is web-components-first, so `img-*` / `link-*` / `source-*`
+  // are ordinary component names and their `src` / `href` is a reactive PROP,
+  // i.e. author data. A `\b` guard treats `-` as a word boundary and matched
+  // them, so a component hydrated with a mutated prop: `this.src` no longer
+  // ended in `.svg`, an equality check against the path a server action
+  // returned stopped matching, and the value churned on every deploy.
+  for (const tag of [
+    '<img-zoom src="/public/app.css"></img-zoom>',
+    '<link-preview href="/public/app.css"></link-preview>',
+    '<source-map src="/public/app.css"></source-map>',
+    '<script-editor src="/public/app.css"></script-editor>',
+  ]) {
+    assert.equal(versionAssetUrls(tag), tag, `${tag} is a component, not an asset tag`);
+  }
+});
+
+test('a preload hint is left on the url its consumer will request', () => {
+  // A preload does not fetch the asset, it warms the cache for a request some
+  // OTHER consumer makes, and that cache is keyed on the full url including
+  // the query. A font's real request comes from `@font-face url()` in CSS,
+  // which is out of scope here, so versioning the hint guarantees a miss: the
+  // font is fetched twice and the browser logs "preloaded but not used".
+  for (const rel of ['preload', 'prefetch', 'preconnect']) {
+    const tag = `<link rel="${rel}" href="/public/app.css" as="style">`;
+    assert.equal(versionAssetUrls(tag), tag, `rel=${rel} is a hint, not the request`);
+  }
+  // A normal stylesheet link IS the request, so it still gets versioned.
+  assert.match(
+    versionAssetUrls('<link rel="stylesheet" href="/public/app.css">'),
+    /\?v=[0-9a-f]+/,
+  );
+});
+
+test('a root-served path is not fingerprinted against the wrong file', () => {
+  // The serve path REMAPS /favicon.ico into public/, and resolveUrlToFile does
+  // not. Admitting it hashed a stray project-root file while the server served
+  // public/'s bytes, and stamped them immutable for a year, so changing the
+  // real icon left the url identical and pinned the stale copy indefinitely.
+  writeFileSync(join(appDir, 'favicon.ico'), 'STRAY-ROOT-FILE');
+  writeFileSync(join(appDir, 'public', 'favicon.ico'), 'THE-REAL-ONE');
+  for (const url of ['/favicon.ico', '/sw.js', '/offline.html']) {
+    const html = `<link rel="icon" href="${url}">`;
+    assert.equal(versionAssetUrls(html), html, `${url} must not be versioned from the wrong file`);
+  }
+});
+
 test('a fragment is preserved and the query goes before it', () => {
   // An SVG sprite (`#icon`) and a media fragment (`#t=10,20`) are real. Naively
   // appending would emit `/x.svg#logo?v=H`: the browser then requests `/x.svg`
