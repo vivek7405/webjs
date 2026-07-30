@@ -255,17 +255,6 @@
 .t-num { color: oklch(0.55 0.12 215); }
 .t-punc{ color: var(--fg-muted); }
 .t-id  { color: var(--fg); }
- /* The hero stage's source pane is a dark editor in BOTH themes, so it takes
-    the dark token set unconditionally (the theme-scoped rules below cannot
-    reach it in light mode). */
-.stage-code .t-str { color: oklch(0.80 0.14 150); }
-.stage-code .t-kw  { color: oklch(0.76 0.14 295); }
-.stage-code .t-fn  { color: oklch(0.75 0.13 250); }
-.stage-code .t-type{ color: oklch(0.80 0.10 200); }
-.stage-code .t-num { color: oklch(0.72 0.12 215); }
-.stage-code .t-id  { color: oklch(0.95 0.005 70); }
-.stage-code .t-punc{ color: oklch(0.68 0.01 60); }
-.stage-code .t-com { color: oklch(0.55 0.01 60); font-style: italic; }
 
 :root[data-theme='dark'] .t-str { color: oklch(0.80 0.14 150); }
 :root[data-theme='dark'] .t-kw  { color: oklch(0.76 0.14 295); }
