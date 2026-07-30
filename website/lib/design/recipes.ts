@@ -64,7 +64,7 @@ export const BTN_GHOST = `${BTN_BASE} text-fg border-border-strong bg-[color-mix
  * proportionally right for something 10px taller.
  */
 export const INSTALL =
-  `flex items-center gap-2 w-fit max-w-full mx-auto px-4 py-3.5 text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]`;
+  `flex items-center gap-2 w-fit max-w-full mx-auto px-4 py-3.5 text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-subtle)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]`;
 
 /* ---------------------------------------------------------------------------
    Layout.
