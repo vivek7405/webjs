@@ -1,5 +1,5 @@
 /**
- * Unit tests for the SSR code highlighter (lib/highlight.ts).
+ * Unit tests for the SSR code highlighter (lib/utils/highlight.ts).
  *
  * highlight() turns a plain code string into themed token spans at server
  * render time. These tests render the result with renderToString and assert
@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { html } from '@webjsdev/core';
 import { renderToString } from '@webjsdev/core/server';
-import { highlight, highlightToHtml } from '#lib/highlight.ts';
+import { highlight, highlightToHtml } from '#lib/utils/highlight.ts';
 import { renderPostBody } from '#modules/blog/utils/render-post.ts';
 
 const render = (code: string) => renderToString(html`<pre>${highlight(code)}</pre>`);
@@ -26,7 +26,7 @@ test('every token class highlight() emits is styled in public/input.css', () => 
   // the whole suite while shipping plain (unstyled) code samples, so pin the
   // contract (mirrors the no-animations pin in layout-ssr.test.ts).
   const read = (p: string) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), 'utf8');
-  const classes = [...read('../../lib/highlight.ts').matchAll(/'(t-[a-z]+)'/g)].map((m) => m[1]);
+  const classes = [...read('../../lib/utils/highlight.ts').matchAll(/'(t-[a-z]+)'/g)].map((m) => m[1]);
   const css = read('../../public/input.css');
   assert.ok(classes.length >= 6, `extracted the emitted token classes, got ${classes.join(',')}`);
   for (const cls of new Set(classes)) {

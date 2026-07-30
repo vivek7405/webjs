@@ -3,7 +3,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseFrontmatter } from '#lib/frontmatter.ts';
+import { parseFrontmatter } from '#lib/utils/frontmatter.ts';
 import type { Comparison } from '#modules/compare/types.ts';
 
 // website/modules/compare/queries/list-comparisons.server.ts is 4 levels

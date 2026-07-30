@@ -435,7 +435,7 @@ export default function RootLayout({ children }: { children: unknown }) {
 
     <!-- Progressive-enhancement syntax highlighting for the documentation's
          code samples, scoped to .prose-docs so the marketing pages keep the
-         spans lib/highlight.ts already emitted at SSR. It lives HERE rather
+         spans lib/utils/highlight.ts already emitted at SSR. It lives HERE rather
          than in the docs sub-layout because the root layout is never swapped
          by the client router: a copy inside the swap range would depend on
          the router re-executing it, and would never run at all for a reader

@@ -1,7 +1,7 @@
 import { html, unsafeHTML, notFound } from '@webjsdev/core';
 import { getArticle } from '#modules/articles/queries/get-article.server.ts';
 import { renderPostBody } from '#modules/blog/utils/render-post.ts';
-import { parseFaq, faqJsonLd } from '#lib/faq.ts';
+import { parseFaq, faqJsonLd } from '#lib/utils/faq.ts';
 
 /**
  * /articles/[slug]

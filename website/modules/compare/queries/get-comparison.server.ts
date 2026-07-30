@@ -3,7 +3,7 @@
 import { readFile } from 'node:fs/promises';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseFrontmatter } from '#lib/frontmatter.ts';
+import { parseFrontmatter } from '#lib/utils/frontmatter.ts';
 import type { ComparisonWithBody } from '#modules/compare/types.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

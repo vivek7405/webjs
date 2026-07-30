@@ -1,7 +1,7 @@
 import { html, unsafeHTML, notFound } from '@webjsdev/core';
 import { getComparison } from '#modules/compare/queries/get-comparison.server.ts';
 import { renderPostBody } from '#modules/blog/utils/render-post.ts';
-import { parseFaq, faqJsonLd } from '#lib/faq.ts';
+import { parseFaq, faqJsonLd } from '#lib/utils/faq.ts';
 import { NEW_TAB } from '#lib/links.ts';
 
 /**

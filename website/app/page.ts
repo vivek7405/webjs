@@ -13,7 +13,7 @@ import { DOCS_PATH, DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 // code through one would just duplicate the raw sample in the HTML). Its only
 // dependency, html, is already loaded by the components, so the real cost is a
 // single tiny module fetch.
-import { highlight } from '#lib/highlight.ts';
+import { highlight } from '#lib/utils/highlight.ts';
 import { BTN_PRIMARY, BTN_GHOST, INSTALL, ctaPanel } from '#lib/design.ts';
 
 // The home page intentionally sets NO title/description/og here. The root

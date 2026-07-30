@@ -3,8 +3,8 @@ import '#components/copy-cmd.ts';
 import { COMPONENT_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE } from '#lib/samples.ts';
 import { BTN_PRIMARY, BTN_GHOST, INSTALL } from '#lib/design.ts';
 import { DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
-import { faqJsonLd } from '#lib/faq.ts';
-import { highlight } from '#lib/highlight.ts';
+import { faqJsonLd } from '#lib/utils/faq.ts';
+import { highlight } from '#lib/utils/highlight.ts';
 
 /**
  * /what-is-webjs
@@ -26,7 +26,7 @@ import { highlight } from '#lib/highlight.ts';
  *  - a definition in the first 160 characters, so the meta description and the
  *    opening paragraph both stand alone as an answer snippet
  *  - a visible FAQ that is the SAME source as the FAQPage JSON-LD (via
- *    lib/faq.ts), because Google discounts schema not present on the page
+ *    lib/utils/faq.ts), because Google discounts schema not present on the page
  *  - SoftwareApplication + BreadcrumbList + FAQPage structured data
  *  - alternates.canonical, since this page is the one canonical definition
  *

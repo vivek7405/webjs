@@ -20,7 +20,7 @@
  *     screen-reader cue); an internal `/path` link navigates in place.
  */
 
-import { highlightToHtml } from '#lib/highlight.ts';
+import { highlightToHtml } from '#lib/utils/highlight.ts';
 
 function inline(s: string): string {
   let out = s
