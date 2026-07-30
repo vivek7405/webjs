@@ -2132,8 +2132,13 @@ function streamingHtmlResponse(prefix, bodyHtml, closer, ctx, status, req, url, 
             // <script> is here for legacy / extremely-restrictive
             // environments. Either way it must be nonce-signed.
             const scriptNonce = nonce ? ` nonce="${escapeAttr(nonce)}"` : '';
+            // Fingerprint authored asset urls here too (#1194). A streamed
+            // boundary is enqueued directly and never passes through
+            // `buildDocumentParts`, so without this the SAME `<img>` would get
+            // `?v=` in the shell but not inside a Suspense boundary, which is
+            // a difference no author would predict from where they wrote it.
             const chunk =
-              `<template data-webjs-resolve="${r.id}">${r.html}</template>` +
+              `<template data-webjs-resolve="${r.id}">${versionAssetUrls(r.html, basePath())}</template>` +
               `<script${scriptNonce}>window.__webjsResolve&&__webjsResolve("${r.id}")</script>`;
             controller.enqueue(encoder.encode(chunk));
           }
