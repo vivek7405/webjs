@@ -62,7 +62,7 @@ export function renderPostBody(md: string): string {
 
   function flushItem() {
     if (curItem.length) {
-      out.push(`<li class="text-fg-muted text-[17px] leading-[1.8] relative pl-[28px] my-[12px] before:content-['•'] before:absolute before:left-[6px] before:top-0 before:text-fg-subtle before:font-bold">${inline(curItem.join(' '))}</li>`);
+      out.push(`<li class="text-fg text-[17px] leading-[1.8] relative pl-[28px] my-[12px] before:content-['•'] before:absolute before:left-[6px] before:top-0 before:text-fg-subtle before:font-bold">${inline(curItem.join(' '))}</li>`);
       curItem = [];
     }
   }
@@ -113,7 +113,7 @@ export function renderPostBody(md: string): string {
       out.push(`<h4 class="font-mono text-[12px] uppercase tracking-[0.18em] font-semibold text-fg-subtle mt-[40px] mb-[16px]">${inline(line.slice(4).trim())}</h4>`);
     } else if (/^> /.test(line)) {
       endList();
-      out.push(`<blockquote class="border-l-2 border-accent pl-[20px] my-[40px] italic text-fg-muted text-[17px] leading-[1.7]">${inline(line.slice(2).trim())}</blockquote>`);
+      out.push(`<blockquote class="border-l-2 border-accent pl-[20px] my-[40px] italic text-fg text-[17px] leading-[1.7]">${inline(line.slice(2).trim())}</blockquote>`);
     } else if (/^- /.test(line)) {
       flushItem();
       startList();
@@ -124,7 +124,7 @@ export function renderPostBody(md: string): string {
       flushItem();
     } else {
       endList();
-      out.push(`<p class="text-fg-muted text-[17px] leading-[1.8] my-[28px]">${inline(line.trim())}</p>`);
+      out.push(`<p class="text-fg text-[17px] leading-[1.8] my-[28px]">${inline(line.trim())}</p>`);
     }
   }
   endList();

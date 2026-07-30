@@ -34,7 +34,7 @@ export default async function Blog() {
                     : ''}
                 </header>
                 <h2 class="font-serif text-section leading-[1.15] tracking-tight text-fg m-0 mb-2">${p.title}</h2>
-                <p class="text-fg-muted text-sm leading-relaxed m-0">${p.description}</p>
+                <p class="text-fg text-sm leading-relaxed m-0">${p.description}</p>
               </a>
             </article>
           `)}
