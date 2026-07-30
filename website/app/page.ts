@@ -213,7 +213,7 @@ export default function LandingPage() {
           </p>
         </div>
 
-        <div class="hero-stage max-w-5xl mx-auto grid grid-cols-1 wide:grid-cols-[0.88fr_1.12fr] rounded-2xl overflow-hidden border border-border-strong bg-bg-sunken shadow-[var(--shadow)]">
+        <div class="hero-stage max-w-5xl mx-auto grid grid-cols-1 wide:grid-cols-2 rounded-2xl overflow-hidden border border-border-strong bg-bg-sunken shadow-[var(--shadow)]">
           <div class="min-w-0 border-b wide:border-b-0 wide:border-r border-border bg-bg-elev">
             <div class=${WINBAR}>${DOTS}<span class=${WINNAME}>components/like-button.ts</span></div>
             <pre class="scroll-thin m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] [tab-size:2] text-left" tabindex="0" aria-label="like-button component source"><code>${highlight(HERO_SAMPLE)}</code></pre>
