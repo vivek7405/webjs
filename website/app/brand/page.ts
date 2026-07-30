@@ -74,7 +74,7 @@ function swatchRow(s: Swatch, theme: 'dark' | 'light') {
       <span class="w-9 h-9 rounded-lg shrink-0 border border-border" style="background:${value}"></span>
       <span class="min-w-0">
         <span class="block text-sm font-semibold text-fg leading-tight">${s.name}</span>
-        <code class="block font-mono text-2xs text-fg-subtle truncate">${s.token}</code>
+        <code class="block font-mono text-xs text-fg-subtle truncate">${s.token}</code>
       </span>
     </div>
   `;
@@ -176,12 +176,12 @@ export default function BrandPage() {
             <div class="flex-1 flex items-end justify-center gap-12 pb-2">
               <div class="text-center flex flex-col items-center">
                 ${brandMark('cs-a', { height: 24 })}
-                <p class="mt-3 font-mono text-2xs leading-[1.5] text-fg-subtle">24 px<br>monogram floor</p>
+                <p class="mt-3 font-mono text-xs leading-[1.5] text-fg-subtle">24 px<br>monogram floor</p>
               </div>
               <div class="text-center flex flex-col items-center">
                 <img src="/public/brand/webjs-lockup-on-dark.svg" alt="" class="w-24 h-auto hidden dark:block" />
                 <img src="/public/brand/webjs-lockup-on-light.svg" alt="" class="w-24 h-auto dark:hidden" />
-                <p class="mt-3 font-mono text-2xs leading-[1.5] text-fg-subtle">96 px wide<br>lockup floor</p>
+                <p class="mt-3 font-mono text-xs leading-[1.5] text-fg-subtle">96 px wide<br>lockup floor</p>
               </div>
             </div>
             <div class="mt-7 pt-5 border-t border-border">

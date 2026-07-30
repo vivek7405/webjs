@@ -295,10 +295,10 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
           ${nav.map((s) => html`
             ${typeof s.count === 'number'
               ? html`<div class="flex items-baseline justify-between px-2 mt-6 mb-2 first:mt-0">
-                  <span class="font-mono text-2xs font-semibold tracking-[0.15em] uppercase text-fg-subtle">${s.title}</span>
-                  <span class="font-mono text-2xs text-fg-subtle">${s.count}</span>
+                  <span class="font-mono text-xs font-semibold tracking-widest uppercase text-fg-subtle">${s.title}</span>
+                  <span class="font-mono text-xs text-fg-subtle">${s.count}</span>
                 </div>`
-              : html`<div class="font-mono text-2xs font-semibold tracking-[0.15em] uppercase text-fg-subtle px-2 mt-6 mb-2 first:mt-0">${s.title}</div>`}
+              : html`<div class="font-mono text-xs font-semibold tracking-widest uppercase text-fg-subtle px-2 mt-6 mb-2 first:mt-0">${s.title}</div>`}
             ${s.items.map((it) => html`
               <a class="block py-1.5 px-2 my-px rounded-md text-fg-muted no-underline text-sm transition-colors duration-fast hover:text-fg hover:bg-bg-subtle" href=${it.href}>${it.label}</a>
             `)}

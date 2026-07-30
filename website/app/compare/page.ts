@@ -28,7 +28,7 @@ export default async function Compare() {
             <article class="border border-border rounded-xl bg-bg-elev p-5 sm:p-6 mb-5 shadow-sm transition-colors hover:border-border-strong">
               <a href=${'/compare/' + c.slug} class="block no-underline text-fg">
                 <header class="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-2">
-                  <span class="font-mono text-2xs uppercase tracking-[0.12em] text-fg-subtle">WebJs vs ${c.competitor}</span>
+                  <span class="font-mono text-xs uppercase tracking-widest text-fg-subtle">WebJs vs ${c.competitor}</span>
                 </header>
                 <h2 class="font-serif text-[clamp(20px,3vw,26px)] leading-[1.15] tracking-tight text-fg m-0 mb-2">${c.tagline}</h2>
                 <p class="text-fg-muted text-sm leading-relaxed m-0">${c.description}</p>

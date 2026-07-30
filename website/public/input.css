@@ -48,12 +48,6 @@
   --font-serif:   var(--font-serif);
   --font-mono:    var(--font-mono);
 
-  /* One step below Tailwind's xs, for micro-labels (window chrome, captions).
-     Everything smaller than this was collapsed into it: the site carried six
-     sizes between 8 and 11.5px, all within a few percent of each other, which
-     is below the ~25% separation a scale needs to be worth having. */
-  --text-2xs: 11px;
-
   /* No custom container tokens. Tailwind's built-in scale already widens its
      gaps as the values grow (2xl 672, 3xl 768, 4xl 896, 6xl 1152, 7xl 1280),
      which is the separation rule a hand-rolled set would only be reinventing.

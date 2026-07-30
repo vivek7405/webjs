@@ -257,15 +257,15 @@ export default function WhatIsWebJs() {
           </div>
           <div class="grid grid-cols-1 min-[900px]:grid-cols-3 gap-4 items-stretch">
             <div class="flex flex-col min-w-0">
-              <p class="font-mono font-semibold text-2xs leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-2.5 ml-1">A component</p>
+              <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">A component</p>
               ${codeWindow('components/like-button.ts', COMPONENT_SAMPLE, 'A WebJs web component with a signal')}
             </div>
             <div class="flex flex-col min-w-0">
-              <p class="font-mono font-semibold text-2xs leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-2.5 ml-1">A server function</p>
+              <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">A server function</p>
               ${codeWindow('actions/get-post.server.ts', ACTION_SAMPLE, 'A WebJs server action reading from the database')}
             </div>
             <div class="flex flex-col min-w-0">
-              <p class="font-mono font-semibold text-2xs leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-2.5 ml-1">A page</p>
+              <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">A page</p>
               ${codeWindow('app/posts/[id]/page.ts', PAGE_SAMPLE, 'A WebJs page composing the action and the component')}
             </div>
           </div>

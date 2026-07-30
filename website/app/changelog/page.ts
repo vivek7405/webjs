@@ -21,7 +21,7 @@ export default async function Changelog() {
   return html`
     <main id="main" tabindex="-1" class="max-w-3xl mx-auto px-6 py-12 focus:outline-none">
       <header class="mb-10">
-        <p class="font-mono text-2xs uppercase tracking-[0.15em] text-accent font-semibold mb-2">Changelog</p>
+        <p class="font-mono text-xs uppercase tracking-widest text-accent font-semibold mb-2">Changelog</p>
         <h1 class="font-serif text-[clamp(28px,4vw,40px)] leading-[1.05] tracking-tight text-fg mb-3">What shipped</h1>
         <p class="text-fg-muted text-sm leading-relaxed max-w-2xl">
           Per-package, per-version release notes for <code class="font-mono text-sm bg-bg-subtle px-1 py-0.5 rounded">@webjsdev/core</code>,
@@ -44,8 +44,8 @@ export default async function Changelog() {
               <header class="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-3">
                 ${pkgBadge(e.shortPkg)}
                 <h2 class="font-mono text-lg font-semibold text-fg tracking-tight m-0">v${e.version}</h2>
-                <time class="font-mono text-2xs text-fg-subtle tracking-tight">${e.date.slice(0, 10)}</time>
-                <span class="text-2xs text-fg-subtle">${e.commitCount} change${e.commitCount === 1 ? '' : 's'}</span>
+                <time class="font-mono text-xs text-fg-subtle tracking-tight">${e.date.slice(0, 10)}</time>
+                <span class="text-xs text-fg-subtle">${e.commitCount} change${e.commitCount === 1 ? '' : 's'}</span>
               </header>
               <div class="[overflow-wrap:anywhere]">${unsafeHTML(renderEntryBody(e.body))}</div>
             </article>

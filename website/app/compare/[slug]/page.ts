@@ -80,7 +80,7 @@ export default async function ComparePage({ params }: { params: { slug: string }
       </nav>
 
       <header class="mb-16">
-        <p class="font-mono text-xs uppercase tracking-[0.14em] text-accent font-semibold mb-5">WebJs vs ${c.competitor}</p>
+        <p class="font-mono text-xs uppercase tracking-widest text-accent font-semibold mb-5">WebJs vs ${c.competitor}</p>
         <h1 class="font-serif text-[clamp(36px,6vw,56px)] leading-[1.05] tracking-tight text-fg m-0 mb-6">${c.title}</h1>
         <p class="text-fg-muted text-lg leading-[1.55] m-0 font-serif italic">${c.tagline}</p>
         ${c.link

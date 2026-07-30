@@ -265,7 +265,7 @@ export default async function ComponentDoc({ params }: { params: { name: string 
       <div class="mt-4 flex flex-wrap gap-2 text-xs">
         <span class="rounded-md border border-border px-2 py-1 text-fg-muted">${item.type.replace('registry:', '')}</span>
         ${registryDeps.map((d: string) => html`<a href="/ui/${d}" class="rounded-md border border-border px-2 py-1 no-underline text-fg-muted hover:bg-bg-subtle hover:text-fg transition-colors">↳ ${d}</a>`)}
-        ${npmDeps.map((d: string) => html`<code class="rounded-md px-2 py-1 text-2xs bg-bg-subtle text-fg-muted">${d}</code>`)}
+        ${npmDeps.map((d: string) => html`<code class="rounded-md px-2 py-1 text-xs bg-bg-subtle text-fg-muted">${d}</code>`)}
       </div>
     </header>
 

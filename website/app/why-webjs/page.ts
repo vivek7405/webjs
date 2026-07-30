@@ -114,7 +114,7 @@ export default function Why() {
         </div>
         <div class="grid grid-cols-1 min-[900px]:grid-cols-2 gap-4 items-stretch max-w-3xl mx-auto">
           <div class="flex flex-col min-w-0">
-            <p class="font-mono font-semibold text-2xs leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-2.5 ml-1">The framework, readable in node_modules</p>
+            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">The framework, readable in node_modules</p>
             <figure class=${WIN}>
               <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>terminal</span></figcaption>
               <pre class="scroll-thin m-0 p-[18px] overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="Listing and grepping the framework source in node_modules"><code><span class="text-accent">$</span> ls node_modules/@webjsdev/core/src
@@ -130,7 +130,7 @@ server/src/ssr.js: const html = await renderToString(tree)
             </figure>
           </div>
           <div class="flex flex-col min-w-0">
-            <p class="font-mono font-semibold text-2xs leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-2.5 ml-1">Your app code, served to the browser as written</p>
+            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Your app code, served to the browser as written</p>
             <figure class=${WIN}>
               <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>terminal</span></figcaption>
               <pre class="scroll-thin m-0 p-[18px] overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="Fetching an app module served unbundled"><code><span class="text-accent">$</span> curl localhost:5001/components/counter.ts

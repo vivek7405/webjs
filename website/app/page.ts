@@ -237,10 +237,10 @@ export default function LandingPage() {
           <div class="flex flex-col min-w-0 bg-bg">
             <input type="checkbox" id="stage-usage" class="sr-only peer" />
             <div class="flex items-center justify-between gap-2 h-[42px] px-3.5 border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]">
-              <span class="inline-flex items-center gap-1.5 font-mono text-2xs text-fg-subtle">
+              <span class="inline-flex items-center gap-1.5 font-mono text-xs text-fg-subtle">
                 <span class="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_var(--accent)] peer-checked:opacity-0"></span>live
               </span>
-              <label for="stage-usage" class="cursor-pointer select-none font-mono font-semibold text-2xs tracking-[0.08em] uppercase text-fg-subtle hover:text-fg transition-colors px-2 py-1 -mr-1 rounded-[7px] hover:bg-[var(--hover-surface)]">
+              <label for="stage-usage" class="cursor-pointer select-none font-mono font-semibold text-xs tracking-widest uppercase text-fg-subtle hover:text-fg transition-colors px-2 py-1 -mr-1 rounded-[7px] hover:bg-[var(--hover-surface)]">
                 <span class="peer-checked:hidden">Show usage</span>
                 <span class="hidden peer-checked:inline">Show rendered</span>
               </label>
@@ -249,7 +249,7 @@ export default function LandingPage() {
               <like-button count="3"></like-button>
             </div>
             <pre class="hidden peer-checked:block flex-1 m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] text-left" aria-label="like-button usage"><code>${highlight(USAGE_SAMPLE)}</code></pre>
-            <div class="px-4 py-3 border-t border-border text-center font-mono text-2xs leading-[1.5] text-fg-subtle">
+            <div class="px-4 py-3 border-t border-border text-center font-mono text-xs leading-[1.5] text-fg-subtle">
               Server-rendered first, then upgraded. Click it.
             </div>
           </div>
@@ -297,7 +297,7 @@ export default function LandingPage() {
               <h3 class="font-display font-bold text-[1.05rem] leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Zero build step</h3>
               <p class="m-0 text-sm leading-[1.6] text-fg-muted">Source files run as-is, so what you write is exactly what the browser serves. An AI agent debugs against the real served code, never a bundled or minified artifact.</p>
             </div>
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-2xs leading-[1.6] text-[var(--editor-fg)]">
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.6] text-[var(--editor-fg)]">
               <div class="flex items-center gap-1.5 text-fg-subtle mb-2 border-b border-[var(--editor-border)] pb-1.5 select-none">
                 <span class="w-2 h-2 rounded-full bg-[#28c840]"></span><span>bun dev</span>
               </div>
@@ -310,7 +310,7 @@ export default function LandingPage() {
               <h3 class="font-display font-bold text-[1.05rem] leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Light DOM web components</h3>
               <p class="m-0 text-sm leading-[1.6] text-fg-muted">Web components that render to light DOM, so Tailwind and global CSS just work, no shadow plumbing.</p>
             </div>
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-2xs leading-[1.5] select-none text-[var(--editor-fg)]">
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.5] select-none text-[var(--editor-fg)]">
               <div class="text-[var(--code-punc)]">&lt;<span class="text-[var(--code-tag)]">like-button</span>&gt;</div>
               <div class="pl-4 text-[var(--code-punc)]">&lt;<span class="text-[var(--code-tag)]">button</span> <span class="text-[var(--code-attr)]">class</span>=<span class="text-[var(--code-str)]">"px-3 rounded bg-accent"</span>&gt;</div>
               <div class="pl-8 text-[var(--code-text)]">&hearts; Like</div>
@@ -324,9 +324,9 @@ export default function LandingPage() {
               <h3 class="font-display font-bold text-[1.05rem] leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Server actions (RPC)</h3>
               <p class="m-0 text-sm leading-[1.6] text-fg-muted">Mark a file <code class="font-mono text-[0.9em]">'use server'</code> and import it. Date, Map, Set, BigInt, and Blob all round-trip across the wire with real http verbs (GET, POST, PUT, PATCH, DELETE).</p>
             </div>
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex items-center justify-between text-2xs font-mono select-none text-[var(--editor-fg)]">
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex items-center justify-between text-xs font-mono select-none text-[var(--editor-fg)]">
               <div class="text-fg-subtle px-2 py-1 bg-[var(--editor-bg)] rounded border border-[var(--editor-border)]">Client</div>
-              <div class="flex-1 flex items-center justify-center relative"><span class="h-px bg-[var(--editor-border)] flex-1 mx-2"></span><span class="absolute text-2xs bg-[var(--editor-sidebar-bg)] text-[var(--accent-text)] px-1 border border-[var(--editor-border)] rounded">RPC</span></div>
+              <div class="flex-1 flex items-center justify-center relative"><span class="h-px bg-[var(--editor-border)] flex-1 mx-2"></span><span class="absolute text-xs bg-[var(--editor-sidebar-bg)] text-[var(--accent-text)] px-1 border border-[var(--editor-border)] rounded">RPC</span></div>
               <div class="text-fg-subtle px-2 py-1 bg-[var(--editor-bg)] rounded border border-[var(--editor-border)]">Server action</div>
             </div>
           </div>
@@ -339,7 +339,7 @@ export default function LandingPage() {
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex flex-col gap-2 text-[var(--editor-fg)]">
               <div class="h-3 w-1/3 bg-[var(--editor-border)] rounded"></div>
               <div class="h-8 w-full bg-[var(--editor-bg)] rounded border border-[var(--editor-border)] flex items-center px-3 gap-2 select-none">
-                <span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-text)]"></span><span class="text-2xs font-mono text-fg-subtle">streaming data chunk...</span>
+                <span class="w-1.5 h-1.5 rounded-full bg-[var(--accent-text)]"></span><span class="text-xs font-mono text-fg-subtle">streaming data chunk...</span>
               </div>
             </div>
           </div>
@@ -350,8 +350,8 @@ export default function LandingPage() {
               <p class="m-0 text-sm leading-[1.6] text-fg-muted">Real HTML first. Links navigate, forms submit, and pages read before JavaScript loads. No hydration overhead.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex flex-wrap gap-1.5 justify-center select-none text-[var(--editor-fg)]">
-              <span class="px-2 py-1 bg-bg-subtle border border-border text-fg-muted text-2xs font-mono rounded">No hydration lock</span>
-              <span class="px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] text-fg-subtle text-2xs font-mono rounded">Static elision</span>
+              <span class="px-2 py-1 bg-bg-subtle border border-border text-fg-muted text-xs font-mono rounded">No hydration lock</span>
+              <span class="px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] text-fg-subtle text-xs font-mono rounded">Static elision</span>
             </div>
           </div>
 
@@ -360,7 +360,7 @@ export default function LandingPage() {
               <h3 class="font-display font-bold text-[1.05rem] leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Built-in essentials</h3>
               <p class="m-0 text-sm leading-[1.6] text-fg-muted">Auth, sessions, cache, rate limits, and websockets are built right in. Pluggable adapters, zero glue.</p>
             </div>
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-2.5 flex flex-col gap-1.5 font-mono text-2xs text-[var(--editor-fg)] select-none">
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-2.5 flex flex-col gap-1.5 font-mono text-xs text-[var(--editor-fg)] select-none">
               <div class="flex justify-between items-center px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded"><span>Auth &amp; sessions</span> <span class="text-[var(--accent-text)]">&check;</span></div>
               <div class="flex justify-between items-center px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded"><span>Rate limiting</span> <span class="text-[var(--accent-text)]">&check;</span></div>
             </div>

@@ -88,6 +88,18 @@ export const READING = 'max-w-3xl mx-auto px-6';
 /** One section's vertical rhythm. Every marketing section uses this, not its own. */
 export const SECTION = 'py-16';
 
+/**
+ * A small uppercase label: window chrome, card kickers, sidebar section names.
+ *
+ * Built from Tailwind's own steps rather than a custom size. A token one pixel
+ * below text-xs existed here and no reader could perceive the difference,
+ * which is also why shadcn ships no type tokens at all.
+ */
+export const LABEL = 'text-xs font-semibold uppercase tracking-widest text-fg-subtle';
+
+/** Small supporting text that is not a label: dates, counts, captions. */
+export const META = 'text-xs text-fg-subtle';
+
 /** Section heading, and the paragraph that follows it. */
 export const H2 = 'font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance';
 export const PROSE = 'text-fg-muted text-[1.05rem] leading-[1.6] m-0';

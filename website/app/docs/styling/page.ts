@@ -173,14 +173,14 @@ import { html } from '@webjsdev/core';
 /** \`label\` kicker: small caps, accent colour, above headings. */
 export function rubric(label: string) {
   return html\`
-    &lt;span class="block font-mono text-2xs leading-none font-semibold tracking-[0.2em] uppercase text-primary mb-4"&gt;● \${label}&lt;/span&gt;
+    &lt;span class="block font-mono text-xs leading-none font-semibold tracking-widest uppercase text-primary mb-4"&gt;● \${label}&lt;/span&gt;
   \`;
 }
 
 /** "← label" back link. */
 export function backLink(href: string, label: string) {
   return html\`
-    &lt;a href=\${href} class="inline-block mb-12 text-muted-foreground/70 no-underline font-mono text-2xs uppercase tracking-[0.15em] duration-fast hover:text-foreground"&gt;← \${label}&lt;/a&gt;
+    &lt;a href=\${href} class="inline-block mb-12 text-muted-foreground/70 no-underline font-mono text-xs uppercase tracking-widest duration-fast hover:text-foreground"&gt;← \${label}&lt;/a&gt;
   \`;
 }</pre>
 
