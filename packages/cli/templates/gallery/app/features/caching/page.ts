@@ -3,9 +3,9 @@
 // changes once per window: reload inside 10s and it is identical, reload after
 // and it refreshes. SAFETY: only cache a page that is identical for every
 // visitor (no cookies(), no session, no per-user data), since the key is the URL
-// alone. For per-query reads use cache() + tags with revalidateTag; for assets
-// use HTTP Cache-Control + ETag (conditional GET).
-import { html } from '@webjsdev/core';
+// alone. For per-query reads use cache() + tags with revalidateTag; for a
+// public/ asset use asset(), demonstrated at the bottom of this page.
+import { html, asset } from '@webjsdev/core';
 import type { Metadata } from '@webjsdev/core';
 import { pageHeading, lede } from '#lib/utils/ui.ts';
 import '#modules/caching/components/cache-buster.ts';
@@ -46,5 +46,27 @@ export default function CachingExample() {
       copy until the window elapses.
     </p>
     <cache-buster></cache-buster>
+
+    <h2 class="mt-8 mb-2 font-semibold">Caching a public/ asset</h2>
+    <p class="mb-2">
+      A file in <code>public/</code> sits at a stable url, so after a deploy a
+      browser or CDN can keep serving the PREVIOUS bytes until its cache
+      expires. Wrap the url in <code>asset()</code> and it gains a content hash,
+      which the framework then serves <code>immutable</code> for a year:
+    </p>
+    <pre class="mb-2 overflow-x-auto rounded-md bg-muted p-3 text-sm"><code>&lt;link rel="stylesheet" href=\${asset('/public/tailwind.css')}&gt;</code></pre>
+    <p class="mb-2">
+      This app's stylesheet resolves to
+      <code class="font-mono text-primary">${asset('/public/tailwind.css')}</code>
+      (the hash appears in production only, so dev output stays byte-identical).
+      New bytes mean a new url, so a stale copy can never be served.
+    </p>
+    <p class="text-muted-foreground text-sm">
+      Mark the thing that FETCHES, not a hint. Wrapping a
+      <code>&lt;link rel="preload"&gt;</code> whose asset is really fetched by an
+      <code>@font-face url()</code> in your CSS would version the hint but not
+      the request, so the preload could never match and the file would download
+      twice.
+    </p>
   `;
 }

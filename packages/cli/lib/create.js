@@ -1148,7 +1148,7 @@ ${uiThemeRaw}
     // or shed the whole gallery at once with `gallery:clear`.
     await copyGallery(appDir);
 
-  await writeFile(join(appDir, 'app', 'layout.ts'), `import { html, cspNonce } from '@webjsdev/core';
+  await writeFile(join(appDir, 'app', 'layout.ts'), `import { html, cspNonce, asset } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
 
 /**
@@ -1226,9 +1226,16 @@ export default function RootLayout({ children }: { children: unknown }) {
          public/tailwind.css by css:build (run automatically by the dev and start
          tasks; in dev it is also recompiled on request when a source changes, so
          it never goes stale). A real stylesheet, so the app is fully styled with
-         JavaScript DISABLED (no in-browser compile). -->
+         JavaScript DISABLED (no in-browser compile).
 
-    <link rel="stylesheet" href="/public/tailwind.css">
+         asset() adds a content hash in production (/public/tailwind.css?v=...)
+         and the framework then serves it immutable for a year, so a deploy that
+         changes the CSS changes the url and no browser or CDN can serve the old
+         bytes. Mark the thing that FETCHES: do not wrap a <link rel="preload">
+         whose asset is really fetched by an @font-face url() in the CSS, or the
+         preload can never match the request and the file downloads twice. -->
+
+    <link rel="stylesheet" href=\${asset('/public/tailwind.css')}>
     <style>
       /* Design tokens: ONE definition per colour via light-dark(LIGHT, DARK), so
          a palette change lands in a single place (DRY). The token NAMES are

@@ -301,6 +301,12 @@
     },
     "watch": {
       "demo": "modules/directives/components/directive-demo.ts"
+    },
+    "asset": {
+      "demo": "app/features/caching/page.ts"
+    },
+    "setAssetUrlProvider": {
+      "exempt": "internal: server-only asset url provider setup"
     }
   },
   "serverSpecifier": "@webjsdev/server",
