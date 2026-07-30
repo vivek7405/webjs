@@ -91,7 +91,7 @@ export default function BrandPage() {
 
     <main id="main" tabindex="-1" class="focus:outline-none">
 
-    <section class="px-6 pt-[clamp(48px,7vw,88px)] pb-12 border-b border-border">
+    <section class="px-6 pt-12 md:pt-16 lg:pt-22 pb-12 border-b border-border">
       <div class="max-w-6xl mx-auto">
         <h1 class="font-display font-extrabold text-display leading-[1.0] tracking-[-0.04em] mb-5 max-w-[13ch] text-balance">
           Brand and logo assets
@@ -281,17 +281,17 @@ export default function BrandPage() {
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div class="p-7 rounded-2xl border border-border bg-bg-elev">
-            <p class="font-display text-[2.4rem] font-extrabold tracking-[-0.035em] leading-none text-fg mb-4">Ag</p>
+            <p class="font-display text-4xl font-extrabold tracking-[-0.035em] leading-none text-fg mb-4">Ag</p>
             <h3 class="text-sm font-bold text-fg mb-1.5">Inter Tight</h3>
             <p class="text-sm text-fg-muted leading-relaxed">Headlines and section headings, at weight 700 to 800 with tracking pulled to <code class="font-mono text-xs">-0.03em</code>.</p>
           </div>
           <div class="p-7 rounded-2xl border border-border bg-bg-elev">
-            <p class="font-sans text-[2.4rem] font-semibold leading-none text-fg mb-4">Ag</p>
+            <p class="font-sans text-4xl font-semibold leading-none text-fg mb-4">Ag</p>
             <h3 class="text-sm font-bold text-fg mb-1.5">Inter</h3>
             <p class="text-sm text-fg-muted leading-relaxed">Body prose, ledes, navigation, and everything in the documentation, at <code class="font-mono text-xs">1.6</code> line height.</p>
           </div>
           <div class="p-7 rounded-2xl border border-border bg-bg-elev">
-            <p class="font-mono text-[2.4rem] font-medium leading-none text-fg mb-4">Ag</p>
+            <p class="font-mono text-4xl font-medium leading-none text-fg mb-4">Ag</p>
             <h3 class="text-sm font-bold text-fg mb-1.5">JetBrains Mono</h3>
             <p class="text-sm text-fg-muted leading-relaxed">Code, terminal commands, token names, and version tags. Never used for running prose.</p>
           </div>

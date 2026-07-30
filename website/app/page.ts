@@ -189,7 +189,7 @@ export default function LandingPage() {
     </style>
 
     <main id="main" tabindex="-1" class="focus:outline-none">
-    <section class="px-6 pt-[clamp(52px,7.5vw,112px)] pb-[clamp(40px,6vw,72px)]">
+    <section class="px-6 pt-12 md:pt-20 lg:pt-28 pb-10 md:pb-14 lg:pb-18">
       <div class="text-center">
         <h1 class="font-display font-extrabold text-display leading-[0.98] tracking-[-0.042em] mx-auto mt-2 mb-6 max-w-[16ch] text-balance">
           The web framework for AI agents
@@ -221,7 +221,7 @@ export default function LandingPage() {
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Real HTML first. JavaScript only when it earns it.</h2>
-          <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">
+          <p class="text-fg-muted text-base leading-[1.6] m-0">
             Pages and components render to real HTML on the server, so the page
             reads, links navigate, and forms submit before a single script loads.
             There is no hydration runtime to pay for, and dead JavaScript is
@@ -265,7 +265,7 @@ export default function LandingPage() {
       <div class="max-w-7xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The whole stack, in three files</h2>
-          <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">A component, a server action, and a page. No build, no boilerplate, all web standards.</p>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">A component, a server action, and a page. No build, no boilerplate, all web standards.</p>
         </div>
         <div class="grid gap-4 grid-cols-1 max-w-2xl mx-auto wide:grid-cols-3 wide:max-w-none">
           <div class="flex flex-col min-w-0">
@@ -288,13 +288,13 @@ export default function LandingPage() {
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Modern full-stack, on web standards</h2>
-          <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">Everything you need to ship, none of the build toolchain you don't.</p>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">Everything you need to ship, none of the build toolchain you don't.</p>
         </div>
         <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 xs:grid-cols-2 wide:grid-cols-3 shadow-[var(--shadow-sm)]">
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-[1.05rem] leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Zero build step</h3>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Zero build step</h3>
               <p class="m-0 text-sm leading-[1.6] text-fg-muted">Source files run as-is, so what you write is exactly what the browser serves. An AI agent debugs against the real served code, never a bundled or minified artifact.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.6] text-[var(--editor-fg)]">
@@ -307,7 +307,7 @@ export default function LandingPage() {
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-[1.05rem] leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Light DOM web components</h3>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Light DOM web components</h3>
               <p class="m-0 text-sm leading-[1.6] text-fg-muted">Web components that render to light DOM, so Tailwind and global CSS just work, no shadow plumbing.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.5] select-none text-[var(--editor-fg)]">
@@ -321,7 +321,7 @@ export default function LandingPage() {
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-[1.05rem] leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Server actions (RPC)</h3>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Server actions (RPC)</h3>
               <p class="m-0 text-sm leading-[1.6] text-fg-muted">Mark a file <code class="font-mono text-[0.9em]">'use server'</code> and import it. Date, Map, Set, BigInt, and Blob all round-trip across the wire with real http verbs (GET, POST, PUT, PATCH, DELETE).</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex items-center justify-between text-xs font-mono select-none text-[var(--editor-fg)]">
@@ -333,7 +333,7 @@ export default function LandingPage() {
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-[1.05rem] leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Streaming Suspense</h3>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Streaming Suspense</h3>
               <p class="m-0 text-sm leading-[1.6] text-fg-muted">Stream slow regions progressively. The shell paints instantly, fallbacks render, and async data fills in as it resolves.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex flex-col gap-2 text-[var(--editor-fg)]">
@@ -346,7 +346,7 @@ export default function LandingPage() {
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-[1.05rem] leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Progressive enhancement</h3>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Progressive enhancement</h3>
               <p class="m-0 text-sm leading-[1.6] text-fg-muted">Real HTML first. Links navigate, forms submit, and pages read before JavaScript loads. No hydration overhead.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 flex flex-wrap gap-1.5 justify-center select-none text-[var(--editor-fg)]">
@@ -357,7 +357,7 @@ export default function LandingPage() {
 
           <div class="${CARD}">
             <div class="mb-6">
-              <h3 class="font-display font-bold text-[1.05rem] leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Built-in essentials</h3>
+              <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Built-in essentials</h3>
               <p class="m-0 text-sm leading-[1.6] text-fg-muted">Auth, sessions, cache, rate limits, and websockets are built right in. Pluggable adapters, zero glue.</p>
             </div>
             <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-2.5 flex flex-col gap-1.5 font-mono text-xs text-[var(--editor-fg)] select-none">
@@ -374,18 +374,18 @@ export default function LandingPage() {
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Light enough for AI</h2>
-          <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">A zero build step means the source you read is what runs. Because the framework ships without compilation layers, an AI agent can read and reason about the entire WebJs source end to end, straight from node_modules.</p>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">A zero build step means the source you read is what runs. Because the framework ships without compilation layers, an AI agent can read and reason about the entire WebJs source end to end, straight from node_modules.</p>
         </div>
         <div class="grid gap-px bg-border grid-cols-1 xs:grid-cols-2 wide:grid-cols-4 rounded-2xl border border-border overflow-hidden shadow-[var(--shadow-sm)]">
           ${STATS.map(s => html`
             <div class="p-8 text-center bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors">
-              <div class="font-display font-extrabold leading-none tracking-[-0.03em] text-[clamp(1.9rem,1.3rem+1.6vw,2.7rem)] text-fg">${s.big}</div>
-              <div class="mt-3 font-semibold text-[0.95rem]">${s.label}</div>
+              <div class="font-display font-extrabold leading-none tracking-[-0.03em] text-doc-h1 text-fg">${s.big}</div>
+              <div class="mt-3 font-semibold text-sm">${s.label}</div>
               <p class="mt-1.5 m-0 text-sm leading-[1.55] text-fg-muted">${s.sub}</p>
             </div>
           `)}
         </div>
-        <p class="mt-8 mx-auto max-w-3xl text-center text-[1.02rem] leading-[1.6] text-fg-muted">Familiar from day one. WebJs uses Next.js-style file-based routing and lit-style web components, conventions both people and agents already know.</p>
+        <p class="mt-8 mx-auto max-w-3xl text-center text-base leading-[1.6] text-fg-muted">Familiar from day one. WebJs uses Next.js-style file-based routing and lit-style web components, conventions both people and agents already know.</p>
         <p class="mt-6 mx-auto max-w-3xl text-center text-fg-subtle text-xs leading-[1.5]">Gzipped production sizes. A Next.js app ships a client bundle around ~99 KB gzipped (react, react-dom, and the Next runtime); <code class="font-mono">@webjsdev/core</code> is self-sufficient at ~29 KB gzipped with zero runtime dependencies and no build step.</p>
       </div>
     </section>
@@ -398,7 +398,7 @@ export default function LandingPage() {
         <div class="grid gap-4 grid-cols-1 max-w-2xl mx-auto wide:grid-cols-2 wide:max-w-3xl">
           <div class="flex flex-col gap-3 p-6 min-w-0 rounded-2xl border border-border bg-bg-elev">
             <span class="text-xs font-medium leading-none text-fg-subtle">Full-stack</span>
-            <h3 class="font-display font-bold text-[1.15rem] leading-[1.25] m-0">Pages + API + components</h3>
+            <h3 class="font-display font-bold text-lg leading-[1.25] m-0">Pages + API + components</h3>
             <p class="m-0 text-sm leading-[1.6] text-fg-muted">SSR pages, web components, server actions, Drizzle, streaming, and a browsable feature gallery. Auth (login, sessions, a protected route) ships as a gallery card. The default.</p>
             <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-sunken font-mono text-xs leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/page.ts
 components/counter.ts
@@ -407,7 +407,7 @@ actions/posts.server.ts</pre>
           </div>
           <div class="flex flex-col gap-3 p-6 min-w-0 rounded-2xl border border-border bg-bg-elev">
             <span class="text-xs font-medium leading-none text-fg-subtle">Backend (API)</span>
-            <h3 class="font-display font-bold text-[1.15rem] leading-[1.25] m-0">Route handlers + Database</h3>
+            <h3 class="font-display font-bold text-lg leading-[1.25] m-0">Route handlers + Database</h3>
             <p class="m-0 text-sm leading-[1.6] text-fg-muted">A backend-only app, no UI or SSR. File-based route handlers, modules, middleware, rate limiting, WebSockets, a database, and a backend-features gallery.</p>
             <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-sunken font-mono text-xs leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/api/users/route.ts
 app/api/chat/route.ts

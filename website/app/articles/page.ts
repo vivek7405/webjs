@@ -37,7 +37,7 @@ export default async function Articles() {
                       ${a.tags.map((t) => html`<span class=${BADGE}>${t}</span>`)}
                     </header>`
                   : ''}
-                <h2 class="font-serif text-[clamp(20px,3vw,26px)] leading-[1.15] tracking-tight text-fg m-0 mb-2">${a.title}</h2>
+                <h2 class="font-serif text-section leading-[1.15] tracking-tight text-fg m-0 mb-2">${a.title}</h2>
                 <p class="text-fg-muted text-sm leading-relaxed m-0">${a.description || a.tagline}</p>
               </a>
             </article>

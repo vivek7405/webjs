@@ -83,7 +83,7 @@ export default async function BlogPost({ params }: { params: { slug: string } })
           ${post.tags.length > 0 ? html`<span class="text-fg-subtle/40 text-xs">·</span>` : ''}
           ${post.tags.map((t) => html`<span class=${BADGE}>${t}</span>`)}
         </div>
-        <h1 class="font-serif text-[clamp(36px,6vw,56px)] leading-[1.05] tracking-tight text-fg m-0 mb-6">${post.title}</h1>
+        <h1 class="font-serif text-hero leading-[1.05] tracking-tight text-fg m-0 mb-6">${post.title}</h1>
         <p class="text-fg-muted text-lg leading-[1.55] m-0 font-serif italic">${post.description}</p>
       </header>
 

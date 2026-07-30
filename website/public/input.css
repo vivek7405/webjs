@@ -69,6 +69,13 @@
   --breakpoint-mid:  700px;
   --breakpoint-wide: 900px;
 
+  /* Fluid heading steps. Tailwind has no fluid type scale, so clamp() is the
+     right tool here; what was wrong was repeating the same clamp inline on
+     page after page. Named once, used everywhere. */
+  --text-hero:    clamp(36px, 6vw, 56px);
+  --text-hub:     clamp(28px, 4vw, 40px);
+  --text-section: clamp(20px, 3vw, 26px);
+
   --text-display: clamp(2.9rem, 1.55rem + 4.5vw, 5.5rem);
   --text-h2:      clamp(1.7rem, 1.2rem + 1.4vw, 2.5rem);
   --text-lede:    clamp(1.08rem, 0.98rem + 0.4vw, 1.28rem);

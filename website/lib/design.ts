@@ -117,7 +117,7 @@ export const META = 'text-xs text-fg-subtle';
 
 /** Section heading, and the paragraph that follows it. */
 export const H2 = 'font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance';
-export const PROSE = 'text-fg-muted text-[1.05rem] leading-[1.6] m-0';
+export const PROSE = 'text-fg-muted text-base leading-[1.6] m-0';
 
 /**
  * The header at the top of a long-form hub or index page.
@@ -133,7 +133,7 @@ export function pageHeader(title: string, lede: unknown, eyebrow?: string) {
   return html`
     <header class="mb-10">
       ${eyebrow ? html`<p class=${EYEBROW}>${eyebrow}</p>` : ''}
-      <h1 class="font-serif text-[clamp(28px,4vw,40px)] leading-[1.05] tracking-tight text-fg mb-3">${title}</h1>
+      <h1 class="font-serif text-hub leading-[1.05] tracking-tight text-fg mb-3">${title}</h1>
       <p class="text-fg-muted text-sm leading-relaxed max-w-2xl">${lede}</p>
     </header>
   `;
@@ -186,7 +186,7 @@ export function ctaPanel(opts: {
   return html`
     <section class="${SECTION} text-center" id="get-started">
       <div class="${WIDE}">
-        <div class="max-w-3xl mx-auto p-[clamp(32px,5vw,64px)] ${PANEL_CTA}">
+        <div class="max-w-3xl mx-auto p-8 md:p-12 lg:p-16 ${PANEL_CTA}">
           <h2 class="font-display font-extrabold text-h2 leading-[1.1] tracking-[-0.03em] mt-0 mb-3">${opts.title}</h2>
           <p class="text-fg-muted mx-auto mb-8 max-w-[52ch]">${opts.lede}</p>
           ${opts.install === false ? '' : html`

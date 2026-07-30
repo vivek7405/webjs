@@ -154,7 +154,7 @@ const WINNAME = 'ml-2 font-mono font-medium text-xs leading-none text-fg-subtle'
 const DOTS = html`<span class="w-2.5 h-2.5 rounded-full bg-[#ff5f57]"></span><span class="w-2.5 h-2.5 rounded-full bg-[#febc2e]"></span><span class="w-2.5 h-2.5 rounded-full bg-[#28c840]"></span>`;
 const CARD = 'p-6 bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors duration-200 flex flex-col h-full';
 const H2 = 'font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance';
-const PROSE = 'text-fg-muted text-[1.05rem] leading-[1.7] m-0';
+const PROSE = 'text-fg-muted text-base leading-[1.7] m-0';
 
 // The capability inventory. Answers the implicit second half of the question,
 // "and what does it actually give me", in concrete nouns rather than adjectives.
@@ -216,7 +216,7 @@ export default function WhatIsWebJs() {
   return html`
     <main id="main" tabindex="-1" class="focus:outline-none">
 
-      <section class="text-center px-6 pt-[clamp(48px,7vw,96px)] pb-10 md:pb-16">
+      <section class="text-center px-6 pt-12 md:pt-16 lg:pt-24 pb-10 md:pb-16">
         <h1 class="font-display font-extrabold text-display leading-[1.04] tracking-[-0.035em] mx-auto mt-4 mb-6 max-w-[14ch] text-balance">
           What is WebJs?
         </h1>
@@ -225,7 +225,7 @@ export default function WhatIsWebJs() {
           framework built on web components.</strong> It server-renders every page and component to
           real HTML, needs no build step or bundler, and runs on Node 24+ or Bun.
         </p>
-        <p class="text-[1.05rem] leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
+        <p class="text-base leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
           Nothing is hidden from your agent. The framework ships in node_modules as plain
           JavaScript it can read end to end, and your app code is served to the browser
           exactly as written. Any model

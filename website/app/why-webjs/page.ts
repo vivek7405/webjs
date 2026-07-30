@@ -75,7 +75,7 @@ export default function Why() {
   return html`
     <main id="main" tabindex="-1" class="focus:outline-none">
 
-    <section class="text-center px-6 pt-[clamp(48px,7vw,96px)] pb-10 md:pb-16">
+    <section class="text-center px-6 pt-12 md:pt-16 lg:pt-24 pb-10 md:pb-16">
       <h1 class="font-display font-extrabold text-display leading-[1.04] tracking-[-0.035em] mx-auto mt-4 mb-4 max-w-[16ch] text-balance">
         The framework your AI agent already understands
       </h1>
@@ -103,7 +103,7 @@ export default function Why() {
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Nothing is hidden behind a build step</h2>
-          <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">
+          <p class="text-fg-muted text-base leading-[1.6] m-0">
             No build step means two things, and both help your agent. The
             framework itself sits in node_modules as plain JavaScript with JSDoc,
             so an agent reads it end to end and fits it into context. And your own
@@ -152,12 +152,12 @@ Counter.register('counter');
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Four reasons the loop just works</h2>
-          <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">Every one of these falls out of a single decision: no build step, on web standards.</p>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">Every one of these falls out of a single decision: no build step, on web standards.</p>
         </div>
         <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 xs:grid-cols-2 shadow-[var(--shadow-sm)]">
           ${REASONS.map(r => html`
             <div class="${CARD}">
-              <h3 class="font-display font-bold text-[1.1rem] leading-[1.3] tracking-[-0.02em] mt-0 mb-2">${r.title}</h3>
+              <h3 class="font-display font-bold text-lg leading-[1.3] tracking-[-0.02em] mt-0 mb-2">${r.title}</h3>
               <p class="m-0 text-sm leading-[1.65] text-fg-muted">${r.body}</p>
             </div>
           `)}
@@ -169,14 +169,14 @@ Counter.register('counter');
       <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Experiment with any model, freely</h2>
-          <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0 mb-4">
+          <p class="text-fg-muted text-base leading-[1.6] m-0 mb-4">
             Because the framework itself is the context, you are not locked to
             the one model that happened to memorize a given API. Point a large
             model or a small one at a WebJs project and it fits the source into
             context and gets to work. Switch models between tasks and the output
             stays reliable, because they are all reading the same readable code.
           </p>
-          <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">
+          <p class="text-fg-muted text-base leading-[1.6] m-0">
             Human developers get the same deal. There is no hidden compiler
             output to reverse engineer when something breaks. You open the file,
             read the JavaScript, and see exactly what ran.
