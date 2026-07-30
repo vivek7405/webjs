@@ -149,9 +149,9 @@ export function generateMetadata() {
 // Shared class strings, kept in lockstep with app/page.ts and app/why-webjs/page.ts
 // so the three render as one design system.
 const WIN = 'flex flex-col flex-1 m-0 min-w-0 max-w-full rounded-2xl overflow-hidden border border-border bg-bg-elev shadow-[var(--shadow)]';
-const WINBAR = 'flex items-center gap-[7px] px-[14px] py-[10px] border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]';
-const WINNAME = 'ml-2 font-mono font-medium text-[12px] leading-none text-fg-subtle';
-const DOTS = html`<span class="w-[11px] h-[11px] rounded-full bg-[#ff5f57]"></span><span class="w-[11px] h-[11px] rounded-full bg-[#febc2e]"></span><span class="w-[11px] h-[11px] rounded-full bg-[#28c840]"></span>`;
+const WINBAR = 'flex items-center gap-1.5 px-3.5 py-2.5 border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]';
+const WINNAME = 'ml-2 font-mono font-medium text-xs leading-none text-fg-subtle';
+const DOTS = html`<span class="w-2.5 h-2.5 rounded-full bg-[#ff5f57]"></span><span class="w-2.5 h-2.5 rounded-full bg-[#febc2e]"></span><span class="w-2.5 h-2.5 rounded-full bg-[#28c840]"></span>`;
 const CARD = 'p-6 bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors duration-200 flex flex-col h-full';
 const H2 = 'font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance';
 const PROSE = 'text-fg-muted text-[1.05rem] leading-[1.7] m-0';
@@ -207,7 +207,7 @@ function codeWindow(title: string, sample: string, label: string) {
   return html`
     <figure class=${WIN}>
       <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>${title}</span></figcaption>
-      <pre class="scroll-thin m-0 p-[18px] overflow-x-auto font-mono text-[13px] leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label=${label}><code>${highlight(sample)}</code></pre>
+      <pre class="scroll-thin m-0 p-[18px] overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label=${label}><code>${highlight(sample)}</code></pre>
     </figure>
   `;
 }
@@ -246,7 +246,7 @@ export default function WhatIsWebJs() {
       </section>
 
       <section class="py-16">
-        <div class="max-w-[1080px] mx-auto px-6">
+        <div class="max-w-[1120px] mx-auto px-6">
           <div class="max-w-[720px] mx-auto mb-12 text-center">
             <h2 class=${H2}>What a WebJs app looks like</h2>
             <p class=${PROSE}>
@@ -257,15 +257,15 @@ export default function WhatIsWebJs() {
           </div>
           <div class="grid grid-cols-1 min-[900px]:grid-cols-3 gap-4 items-stretch">
             <div class="flex flex-col min-w-0">
-              <p class="font-mono font-semibold text-[11px] leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-[10px] ml-1">A component</p>
+              <p class="font-mono font-semibold text-2xs leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-2.5 ml-1">A component</p>
               ${codeWindow('components/like-button.ts', COMPONENT_SAMPLE, 'A WebJs web component with a signal')}
             </div>
             <div class="flex flex-col min-w-0">
-              <p class="font-mono font-semibold text-[11px] leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-[10px] ml-1">A server function</p>
+              <p class="font-mono font-semibold text-2xs leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-2.5 ml-1">A server function</p>
               ${codeWindow('actions/get-post.server.ts', ACTION_SAMPLE, 'A WebJs server action reading from the database')}
             </div>
             <div class="flex flex-col min-w-0">
-              <p class="font-mono font-semibold text-[11px] leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-[10px] ml-1">A page</p>
+              <p class="font-mono font-semibold text-2xs leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-2.5 ml-1">A page</p>
               ${codeWindow('app/posts/[id]/page.ts', PAGE_SAMPLE, 'A WebJs page composing the action and the component')}
             </div>
           </div>
@@ -273,7 +273,7 @@ export default function WhatIsWebJs() {
       </section>
 
       <section class="py-16">
-        <div class="max-w-[1080px] mx-auto px-6">
+        <div class="max-w-[1120px] mx-auto px-6">
           <div class="max-w-[720px] mx-auto mb-12 text-center">
             <h2 class=${H2}>What WebJs does for you</h2>
             <p class=${PROSE}>
@@ -284,8 +284,8 @@ export default function WhatIsWebJs() {
           <div class="grid grid-cols-1 min-[700px]:grid-cols-2 min-[1000px]:grid-cols-3 gap-px bg-border rounded-2xl overflow-hidden border border-border">
             ${CAPABILITIES.map((c) => html`
               <div class=${CARD}>
-                <h3 class="font-display font-bold text-[17px] leading-[1.3] tracking-[-0.01em] m-0 mb-2 text-fg">${c.title}</h3>
-                <p class="text-fg-muted text-[14.5px] leading-[1.65] m-0">${c.body}</p>
+                <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.01em] m-0 mb-2 text-fg">${c.title}</h3>
+                <p class="text-fg-muted text-sm leading-[1.65] m-0">${c.body}</p>
               </div>
             `)}
           </div>
@@ -303,8 +303,8 @@ export default function WhatIsWebJs() {
           <dl class="m-0 grid gap-4">
             ${OTHER_PROJECTS.map((p) => html`
               <div class="rounded-2xl border border-border bg-bg-elev p-5">
-                <dt class="font-display font-bold text-[16px] leading-[1.3] text-fg m-0 mb-1.5">${p.name}</dt>
-                <dd class="text-fg-muted text-[14.5px] leading-[1.65] m-0 ml-0">${p.body}</dd>
+                <dt class="font-display font-bold text-base leading-[1.3] text-fg m-0 mb-1.5">${p.name}</dt>
+                <dd class="text-fg-muted text-sm leading-[1.65] m-0 ml-0">${p.body}</dd>
               </div>
             `)}
           </dl>
@@ -319,10 +319,10 @@ export default function WhatIsWebJs() {
           <div class="grid gap-3">
             ${FAQ.map((item) => html`
               <details class="group rounded-2xl border border-border bg-bg-elev px-5 py-4">
-                <summary class="cursor-pointer list-none font-display font-semibold text-[16px] leading-[1.4] text-fg marker:content-none">
+                <summary class="cursor-pointer list-none font-display font-semibold text-base leading-[1.4] text-fg marker:content-none">
                   ${item.question}
                 </summary>
-                <p class="text-fg-muted text-[14.5px] leading-[1.7] mt-3 mb-0">${item.answer}</p>
+                <p class="text-fg-muted text-sm leading-[1.7] mt-3 mb-0">${item.answer}</p>
               </details>
             `)}
           </div>
@@ -343,7 +343,7 @@ export default function WhatIsWebJs() {
             <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>Read the docs</a>
             <a class=${BTN_GHOST} href=${GH_URL} target="_blank" rel="noopener noreferrer">View on GitHub${NEW_TAB}</a>
           </div>
-          <p class="mt-14 pt-8 border-t border-border max-w-[52ch] mx-auto text-[14px] leading-[1.7] text-fg-subtle">
+          <p class="mt-14 pt-8 border-t border-border max-w-[52ch] mx-auto text-sm leading-[1.7] text-fg-subtle">
             Compare WebJs with <a class="text-fg-muted hover:text-accent underline underline-offset-2" href="/compare/webjs-vs-nextjs">Next.js</a>,
             <a class="text-fg-muted hover:text-accent underline underline-offset-2" href="/compare/webjs-vs-lit">Lit</a>, and
             <a class="text-fg-muted hover:text-accent underline underline-offset-2" href="/compare/webjs-vs-astro">Astro</a>, or read

@@ -34,11 +34,11 @@ export default async function Articles() {
               <a href=${'/articles/' + a.slug} class="block no-underline text-fg">
                 ${a.tags.length > 0
                   ? html`<header class="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-3">
-                      ${a.tags.map((t) => html`<span class="bg-fg-subtle/10 text-fg-subtle font-mono text-[10.5px] uppercase tracking-[0.1em] px-2 py-0.5 rounded">${t}</span>`)}
+                      ${a.tags.map((t) => html`<span class="bg-fg-subtle/10 text-fg-subtle font-mono text-2xs uppercase tracking-[0.1em] px-2 py-0.5 rounded">${t}</span>`)}
                     </header>`
                   : ''}
                 <h2 class="font-serif text-[clamp(20px,3vw,26px)] leading-[1.15] tracking-tight text-fg m-0 mb-2">${a.title}</h2>
-                <p class="text-fg-muted text-[14.5px] leading-relaxed m-0">${a.description || a.tagline}</p>
+                <p class="text-fg-muted text-sm leading-relaxed m-0">${a.description || a.tagline}</p>
               </a>
             </article>
           `)}

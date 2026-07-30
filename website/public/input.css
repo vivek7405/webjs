@@ -48,6 +48,12 @@
   --font-serif:   var(--font-serif);
   --font-mono:    var(--font-mono);
 
+  /* One step below Tailwind's xs, for micro-labels (window chrome, captions).
+     Everything smaller than this was collapsed into it: the site carried six
+     sizes between 8 and 11.5px, all within a few percent of each other, which
+     is below the ~25% separation a scale needs to be worth having. */
+  --text-2xs: 11px;
+
   --text-display: clamp(2.9rem, 1.55rem + 4.5vw, 5.5rem);
   --text-h2:      clamp(1.7rem, 1.2rem + 1.4vw, 2.5rem);
   --text-lede:    clamp(1.08rem, 0.98rem + 0.4vw, 1.28rem);

@@ -27,13 +27,13 @@ export default async function Blog() {
             <article class="border border-border rounded-xl bg-bg-elev p-5 sm:p-6 mb-5 shadow-sm transition-colors hover:border-border-strong">
               <a href=${'/blog/' + p.slug} class="block no-underline text-fg">
                 <header class="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-3">
-                  <time class="font-mono text-[11.5px] text-fg-subtle tracking-tight">${p.date.slice(0, 10)}</time>
+                  <time class="font-mono text-2xs text-fg-subtle tracking-tight">${p.date.slice(0, 10)}</time>
                   ${p.tags.length > 0
-                    ? p.tags.map((t) => html`<span class="bg-fg-subtle/10 text-fg-subtle font-mono text-[10.5px] uppercase tracking-[0.1em] px-2 py-0.5 rounded">${t}</span>`)
+                    ? p.tags.map((t) => html`<span class="bg-fg-subtle/10 text-fg-subtle font-mono text-2xs uppercase tracking-[0.1em] px-2 py-0.5 rounded">${t}</span>`)
                     : ''}
                 </header>
                 <h2 class="font-serif text-[clamp(20px,3vw,26px)] leading-[1.15] tracking-tight text-fg m-0 mb-2">${p.title}</h2>
-                <p class="text-fg-muted text-[14.5px] leading-relaxed m-0">${p.description}</p>
+                <p class="text-fg-muted text-sm leading-relaxed m-0">${p.description}</p>
               </a>
             </article>
           `)}

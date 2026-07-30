@@ -44,7 +44,7 @@ import { NEW_TAB } from '#lib/links.ts';
 
 /** Shared control geometry. Compose with a surface, do not use bare. */
 const BTN_BASE =
-  'inline-flex items-center gap-2 h-[42px] px-[20px] rounded-full font-semibold text-[14.5px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
+  'inline-flex items-center gap-2 h-[42px] px-5 rounded-full font-semibold text-sm leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
 
 /**
  * The single strongest action on a view. At most one per screen.
@@ -67,7 +67,7 @@ export const BTN_GHOST = `${BTN_BASE} text-fg border-border-strong bg-[color-mix
  * proportionally right for something 10px taller.
  */
 export const INSTALL =
-  `flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-[14px] text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]`;
+  `flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-3.5 text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]`;
 
 /* ---------------------------------------------------------------------------
    Layout.
@@ -106,7 +106,7 @@ export function pageHeader(title: string, lede: string) {
   return html`
     <header class="mb-10">
       <h1 class="font-serif text-[clamp(28px,4vw,40px)] leading-[1.05] tracking-tight text-fg mb-3">${title}</h1>
-      <p class="text-fg-muted text-[15px] leading-relaxed max-w-[640px]">${lede}</p>
+      <p class="text-fg-muted text-sm leading-relaxed max-w-[640px]">${lede}</p>
     </header>
   `;
 }

@@ -73,8 +73,8 @@ function swatchRow(s: Swatch, theme: 'dark' | 'light') {
     <div class="flex items-center gap-3 py-2">
       <span class="w-9 h-9 rounded-lg shrink-0 border border-border" style="background:${value}"></span>
       <span class="min-w-0">
-        <span class="block text-[13.5px] font-semibold text-fg leading-tight">${s.name}</span>
-        <code class="block font-mono text-[11.5px] text-fg-subtle truncate">${s.token}</code>
+        <span class="block text-sm font-semibold text-fg leading-tight">${s.name}</span>
+        <code class="block font-mono text-2xs text-fg-subtle truncate">${s.token}</code>
       </span>
     </div>
   `;
@@ -108,13 +108,13 @@ export default function BrandPage() {
           </a>
           <a class=${BTN_GHOST} href="#usage">Usage rules</a>
         </div>
-        <p class="mt-4 font-mono text-[12px] text-fg-subtle">SVG, 6 files, light and dark variants</p>
+        <p class="mt-4 font-mono text-xs text-fg-subtle">SVG, 6 files, light and dark variants</p>
       </div>
     </section>
 
     <section class="py-16 px-6">
       <div class="max-w-[1120px] mx-auto">
-        <div class="max-w-[680px] mb-10">
+        <div class="max-w-[720px] mb-10">
           <h2 class=${H2}>The marks</h2>
           <p class=${PROSE}>
             The identity is a forward-leaning W cut by a band of negative space,
@@ -131,9 +131,9 @@ export default function BrandPage() {
                 <img src="/public/brand/${a.file}" alt=${a.name} class="max-h-12 w-auto" />
               </div>
               <div class="flex flex-col flex-1 p-5 border-t border-border">
-                <h3 class="text-[15px] font-bold text-fg mb-1.5">${a.name}</h3>
-                <p class="text-[13.5px] text-fg-muted leading-relaxed flex-1">${a.use}</p>
-                <a href="/public/brand/${a.file}" download class="mt-4 font-mono text-[12px] text-fg hover:text-accent transition-colors no-underline">
+                <h3 class="text-sm font-bold text-fg mb-1.5">${a.name}</h3>
+                <p class="text-sm text-fg-muted leading-relaxed flex-1">${a.use}</p>
+                <a href="/public/brand/${a.file}" download class="mt-4 font-mono text-xs text-fg hover:text-accent transition-colors no-underline">
                   ${a.file} &darr;
                 </a>
               </div>
@@ -145,7 +145,7 @@ export default function BrandPage() {
 
     <section class="py-16 px-6 bg-bg-subtle/40 border-y border-border" id="usage">
       <div class="max-w-[1120px] mx-auto">
-        <div class="max-w-[680px] mb-10">
+        <div class="max-w-[720px] mb-10">
           <h2 class=${H2}>Clear space and minimum size</h2>
           <p class=${PROSE}>
             Both rules are expressed in one unit, the height of the monogram in
@@ -164,8 +164,8 @@ export default function BrandPage() {
               </div>
             </div>
             <div class="mt-7 pt-5 border-t border-border">
-              <h3 class="text-[15px] font-bold text-fg mb-1.5">Keep 1 W clear on every side</h3>
-              <p class="text-[13.5px] text-fg-muted leading-relaxed">
+              <h3 class="text-sm font-bold text-fg mb-1.5">Keep 1 W clear on every side</h3>
+              <p class="text-sm text-fg-muted leading-relaxed">
                 Nothing enters the shaded zone: no text, no rules, no other logo,
                 no busy part of a photograph. When in doubt, give it more.
               </p>
@@ -176,17 +176,17 @@ export default function BrandPage() {
             <div class="flex-1 flex items-end justify-center gap-12 pb-2">
               <div class="text-center flex flex-col items-center">
                 ${brandMark('cs-a', { height: 24 })}
-                <p class="mt-3 font-mono text-[11px] leading-[1.5] text-fg-subtle">24 px<br>monogram floor</p>
+                <p class="mt-3 font-mono text-2xs leading-[1.5] text-fg-subtle">24 px<br>monogram floor</p>
               </div>
               <div class="text-center flex flex-col items-center">
-                <img src="/public/brand/webjs-lockup-on-dark.svg" alt="" class="w-[96px] h-auto hidden dark:block" />
-                <img src="/public/brand/webjs-lockup-on-light.svg" alt="" class="w-[96px] h-auto dark:hidden" />
-                <p class="mt-3 font-mono text-[11px] leading-[1.5] text-fg-subtle">96 px wide<br>lockup floor</p>
+                <img src="/public/brand/webjs-lockup-on-dark.svg" alt="" class="w-24 h-auto hidden dark:block" />
+                <img src="/public/brand/webjs-lockup-on-light.svg" alt="" class="w-24 h-auto dark:hidden" />
+                <p class="mt-3 font-mono text-2xs leading-[1.5] text-fg-subtle">96 px wide<br>lockup floor</p>
               </div>
             </div>
             <div class="mt-7 pt-5 border-t border-border">
-              <h3 class="text-[15px] font-bold text-fg mb-1.5">Below the floor, switch marks</h3>
-              <p class="text-[13.5px] text-fg-muted leading-relaxed">
+              <h3 class="text-sm font-bold text-fg mb-1.5">Below the floor, switch marks</h3>
+              <p class="text-sm text-fg-muted leading-relaxed">
                 The lockup stops being readable under 96 px wide. Use the monogram
                 instead of shrinking it further. The slice through the W thins out
                 below 24 px and the mark degrades to a plain W, which is intended.
@@ -201,8 +201,8 @@ export default function BrandPage() {
               <div class="w-7 h-7 rounded-full bg-bg-subtle text-fg-muted flex items-center justify-center mb-3.5" aria-hidden="true">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
               </div>
-              <h4 class="text-[14px] font-bold text-fg mb-1.5">${t}</h4>
-              <p class="text-[13px] text-fg-muted leading-relaxed">${d}</p>
+              <h4 class="text-sm font-bold text-fg mb-1.5">${t}</h4>
+              <p class="text-sm text-fg-muted leading-relaxed">${d}</p>
             </div>
           `)}
         </div>
@@ -211,7 +211,7 @@ export default function BrandPage() {
 
     <section class="py-16 px-6">
       <div class="max-w-[1120px] mx-auto">
-        <div class="max-w-[680px] mb-10">
+        <div class="max-w-[720px] mb-10">
           <h2 class=${H2}>Colour</h2>
           <p class=${PROSE}>
             Dark is the primary theme and light is a translation of it, not a
@@ -225,19 +225,19 @@ export default function BrandPage() {
         <div class="rounded-2xl border border-border bg-bg-elev overflow-hidden mb-5">
           <div class="grid grid-cols-1 md:grid-cols-2">
             <div class="p-7 md:border-r border-b md:border-b-0 border-border">
-              <p class="text-[13px] font-semibold text-fg mb-4">Dark, the primary theme</p>
+              <p class="text-sm font-semibold text-fg mb-4">Dark, the primary theme</p>
               ${SWATCHES.map(s => swatchRow(s, 'dark'))}
             </div>
             <div class="p-7">
-              <p class="text-[13px] font-semibold text-fg mb-4">Light, the translation</p>
+              <p class="text-sm font-semibold text-fg mb-4">Light, the translation</p>
               ${SWATCHES.map(s => swatchRow(s, 'light'))}
             </div>
           </div>
         </div>
 
         <div class="rounded-2xl border border-border bg-bg-elev p-7">
-          <p class="text-[13px] font-semibold text-fg mb-1">One accent, spent where it counts</p>
-          <p class="text-[13.5px] text-fg-muted leading-relaxed max-w-[62ch] mb-6">
+          <p class="text-sm font-semibold text-fg mb-1">One accent, spent where it counts</p>
+          <p class="text-sm text-fg-muted leading-relaxed max-w-[62ch] mb-6">
             A single warm amber fills the primary button and the closing call to
             action, and marks live and focus state. Those are the surfaces asking
             for a click. Everything else stays neutral, which is what makes them
@@ -247,22 +247,22 @@ export default function BrandPage() {
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1 mb-7">
             <div>
-              <p class="text-[12px] font-semibold text-fg-subtle mb-2">Dark</p>
+              <p class="text-xs font-semibold text-fg-subtle mb-2">Dark</p>
               ${ACCENTS.map(s => swatchRow(s, 'dark'))}
             </div>
             <div>
-              <p class="text-[12px] font-semibold text-fg-subtle mb-2">Light</p>
+              <p class="text-xs font-semibold text-fg-subtle mb-2">Light</p>
               ${ACCENTS.map(s => swatchRow(s, 'light'))}
             </div>
           </div>
 
           <div class="pt-6 border-t border-border">
-            <p class="text-[12px] font-semibold text-fg-subtle mb-4">Where it is allowed to appear</p>
+            <p class="text-xs font-semibold text-fg-subtle mb-4">Where it is allowed to appear</p>
             <div class="flex flex-wrap items-center gap-4">
               <span class="${BTN_PRIMARY} pointer-events-none">Primary action</span>
               <span class="${BTN_GHOST} pointer-events-none">Everything else</span>
-              <span class="inline-flex items-center gap-[7px] font-mono text-[12px] text-fg-subtle">
-                <span class="w-[7px] h-[7px] rounded-full bg-accent shadow-[0_0_8px_var(--accent)]"></span>live state
+              <span class="inline-flex items-center gap-1.5 font-mono text-xs text-fg-subtle">
+                <span class="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_var(--accent)]"></span>live state
               </span>
             </div>
           </div>
@@ -272,7 +272,7 @@ export default function BrandPage() {
 
     <section class="py-16 px-6 bg-bg-subtle/40 border-y border-border">
       <div class="max-w-[1120px] mx-auto">
-        <div class="max-w-[680px] mb-10">
+        <div class="max-w-[720px] mb-10">
           <h2 class=${H2}>Typography</h2>
           <p class=${PROSE}>
             Three faces, each with one job. All are variable, self-hosted, and
@@ -282,18 +282,18 @@ export default function BrandPage() {
         <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div class="p-7 rounded-2xl border border-border bg-bg-elev">
             <p class="font-display text-[2.4rem] font-extrabold tracking-[-0.035em] leading-none text-fg mb-4">Ag</p>
-            <h3 class="text-[15px] font-bold text-fg mb-1.5">Inter Tight</h3>
-            <p class="text-[13.5px] text-fg-muted leading-relaxed">Headlines and section headings, at weight 700 to 800 with tracking pulled to <code class="font-mono text-[12px]">-0.03em</code>.</p>
+            <h3 class="text-sm font-bold text-fg mb-1.5">Inter Tight</h3>
+            <p class="text-sm text-fg-muted leading-relaxed">Headlines and section headings, at weight 700 to 800 with tracking pulled to <code class="font-mono text-xs">-0.03em</code>.</p>
           </div>
           <div class="p-7 rounded-2xl border border-border bg-bg-elev">
             <p class="font-sans text-[2.4rem] font-semibold leading-none text-fg mb-4">Ag</p>
-            <h3 class="text-[15px] font-bold text-fg mb-1.5">Inter</h3>
-            <p class="text-[13.5px] text-fg-muted leading-relaxed">Body prose, ledes, navigation, and everything in the documentation, at <code class="font-mono text-[12px]">1.6</code> line height.</p>
+            <h3 class="text-sm font-bold text-fg mb-1.5">Inter</h3>
+            <p class="text-sm text-fg-muted leading-relaxed">Body prose, ledes, navigation, and everything in the documentation, at <code class="font-mono text-xs">1.6</code> line height.</p>
           </div>
           <div class="p-7 rounded-2xl border border-border bg-bg-elev">
             <p class="font-mono text-[2.4rem] font-medium leading-none text-fg mb-4">Ag</p>
-            <h3 class="text-[15px] font-bold text-fg mb-1.5">JetBrains Mono</h3>
-            <p class="text-[13.5px] text-fg-muted leading-relaxed">Code, terminal commands, token names, and version tags. Never used for running prose.</p>
+            <h3 class="text-sm font-bold text-fg mb-1.5">JetBrains Mono</h3>
+            <p class="text-sm text-fg-muted leading-relaxed">Code, terminal commands, token names, and version tags. Never used for running prose.</p>
           </div>
         </div>
       </div>
@@ -311,18 +311,18 @@ export default function BrandPage() {
             </p>
             <div class="rounded-2xl border border-border bg-bg-elev">
               <div class="p-5 border-b border-border">
-                <p class="text-[13px] font-semibold text-fg mb-2.5">Correct</p>
-                <p class="text-[14px] text-fg-muted leading-relaxed">WebJs ships without a build step.<br>Most WebJs apps run on Node 24+ or Bun.<br>Run <code class="font-mono text-[13px] bg-bg-subtle px-1.5 py-0.5 rounded">webjs dev</code> to start.</p>
+                <p class="text-sm font-semibold text-fg mb-2.5">Correct</p>
+                <p class="text-sm text-fg-muted leading-relaxed">WebJs ships without a build step.<br>Most WebJs apps run on Node 24+ or Bun.<br>Run <code class="font-mono text-sm bg-bg-subtle px-1.5 py-0.5 rounded">webjs dev</code> to start.</p>
               </div>
               <div class="p-5 border-b border-border">
-                <p class="text-[13px] font-semibold text-fg mb-2.5">Incorrect</p>
-                <p class="text-[14px] text-fg-subtle leading-relaxed line-through decoration-1">WEBJS, WebJS, Webjs, web.js, Web JS</p>
+                <p class="text-sm font-semibold text-fg mb-2.5">Incorrect</p>
+                <p class="text-sm text-fg-subtle leading-relaxed line-through decoration-1">WEBJS, WebJS, Webjs, web.js, Web JS</p>
               </div>
               <div class="p-5">
-                <p class="text-[13px] font-semibold text-fg mb-2.5">Lowercase is correct here</p>
-                <p class="text-[14px] text-fg-muted leading-relaxed">
-                  The CLI (<code class="font-mono text-[13px] bg-bg-subtle px-1.5 py-0.5 rounded">webjs create</code>),
-                  the packages (<code class="font-mono text-[13px] bg-bg-subtle px-1.5 py-0.5 rounded">@webjsdev/core</code>),
+                <p class="text-sm font-semibold text-fg mb-2.5">Lowercase is correct here</p>
+                <p class="text-sm text-fg-muted leading-relaxed">
+                  The CLI (<code class="font-mono text-sm bg-bg-subtle px-1.5 py-0.5 rounded">webjs create</code>),
+                  the packages (<code class="font-mono text-sm bg-bg-subtle px-1.5 py-0.5 rounded">@webjsdev/core</code>),
                   the domain (webjs.dev), and the repository path. The lockup
                   itself is set as WebJs, matching the prose.
                 </p>
@@ -338,19 +338,19 @@ export default function BrandPage() {
               anything.
             </p>
             <div class="rounded-2xl border border-border bg-bg-elev p-6">
-              <h3 class="text-[14px] font-bold text-fg mb-1.5">You may, without asking</h3>
-              <p class="text-[13.5px] text-fg-muted leading-relaxed mb-5">
+              <h3 class="text-sm font-bold text-fg mb-1.5">You may, without asking</h3>
+              <p class="text-sm text-fg-muted leading-relaxed mb-5">
                 Use the marks unmodified to refer to WebJs in articles, talks,
                 documentation, courses, and comparisons; state that your project
                 is built with WebJs; and link to this site.
               </p>
-              <h3 class="text-[14px] font-bold text-fg mb-1.5">Please ask first</h3>
-              <p class="text-[13.5px] text-fg-muted leading-relaxed mb-5">
+              <h3 class="text-sm font-bold text-fg mb-1.5">Please ask first</h3>
+              <p class="text-sm text-fg-muted leading-relaxed mb-5">
                 Merchandise, a modified mark, a name or logo confusingly similar
                 to this one, or any use that implies partnership, sponsorship, or
                 official status.
               </p>
-              <p class="pt-5 border-t border-border text-[12.5px] text-fg-subtle leading-relaxed">
+              <p class="pt-5 border-t border-border text-xs text-fg-subtle leading-relaxed">
                 If you are unsure, open a discussion on GitHub and ask. The answer
                 is usually yes.
               </p>
