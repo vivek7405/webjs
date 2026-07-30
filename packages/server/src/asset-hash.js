@@ -268,6 +268,46 @@ export function withAssetHash(url, basePath = '') {
 }
 
 /**
+ * Resolve one author-marked asset path to its fingerprinted url. This is the
+ * body behind the isomorphic `asset()` helper (#1194); `dev.js` installs it
+ * via `setAssetUrlProvider` at boot.
+ *
+ * The `public/` gate is defensive, not decorative. `resolveUrlToFile` maps any
+ * same-origin path under the PROJECT ROOT, so an app that passed request- or
+ * user-derived data in (`asset(user.avatarPath)`) would otherwise read and
+ * publish a content hash for `/.env`, `/db/app.db`, or a `.server.ts`, leaking
+ * both that the file exists and a fingerprint of its exact bytes for files the
+ * serve path deliberately 404s. Mirror the static-asset route instead: under
+ * `public/`, no traversal. Anything else returns unchanged WITHOUT touching
+ * the disk, so a rejected path costs nothing and reveals nothing.
+ *
+ * A fragment is split before hashing. `withAssetHash` appends the query, so
+ * passing the whole thing would emit `/x.svg#icon?v=H`: the browser then
+ * requests `/x.svg` with no query (losing the immutable caching this exists
+ * for) and the fragment becomes `icon?v=H`, matching no element id.
+ *
+ * @param {string} p          the author-supplied path
+ * @param {string} [bp]       the active base path
+ * @returns {string}          the fingerprinted url, or `p` unchanged
+ */
+export function resolveAssetUrl(p, bp = '') {
+  if (typeof p !== 'string' || p[0] !== '/' || p[1] === '/') return p;
+  let probe = p;
+  if (bp && probe.startsWith(bp + '/')) probe = probe.slice(bp.length);
+  const cuts = [probe.indexOf('?'), probe.indexOf('#')].filter((i) => i !== -1);
+  let decoded = probe.slice(0, cuts.length ? Math.min(...cuts) : probe.length);
+  try { decoded = decodeURIComponent(decoded); } catch { /* keep raw */ }
+  if (decoded.includes('..') || !decoded.startsWith('/public/')) return p;
+  const h = p.indexOf('#');
+  const path = h === -1 ? p : p.slice(0, h);
+  const frag = h === -1 ? '' : p.slice(h);
+  // An author-supplied query is left alone: it may carry meaning we do not
+  // own, and appending would merge with `&`.
+  if (path.includes('?')) return p;
+  return withAssetHash(path, bp) + frag;
+}
+
+/**
  * Static `import` specifier with positional indices. Mirrors module-graph.js's
  * `IMPORT_RE` (side-effect / default / namespace / named imports), but captures
  * the quote (group 1) and specifier (group 2) so the `/d` flag yields the
