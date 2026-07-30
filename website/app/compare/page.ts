@@ -1,5 +1,6 @@
 import { html } from '@webjsdev/core';
-import { READING, pageHeader } from '#lib/design.ts';
+import { READING} from '#lib/design.ts';
+import { pageHeader } from '#lib/utils/ui.ts';
 import { listComparisons } from '#modules/compare/queries/list-comparisons.server.ts';
 
 /**
