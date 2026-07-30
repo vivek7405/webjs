@@ -131,6 +131,50 @@ test('it is a no-op when fingerprinting is disabled', () => {
 });
 
 /*
+ * Security: the transform runs over the whole rendered document, and an app's
+ * markup can carry ATTACKER-CONTROLLED data (`<img src=${user.avatarUrl}>`, a
+ * markdown image, a CMS path). `resolveUrlToFile` maps any same-origin path
+ * under the PROJECT ROOT, so without a gate the renderer would readFileSync +
+ * hash any file there and publish the result, leaking existence and a stable
+ * fingerprint of the bytes for files the serve path deliberately 404s.
+ */
+test('a private file is never read or fingerprinted', () => {
+  writeFileSync(join(appDir, '.env'), 'DATABASE_URL=postgres://u:SECRET@h/db');
+  mkdirSync(join(appDir, 'db'), { recursive: true });
+  writeFileSync(join(appDir, 'db', 'app.db'), 'SQLITE FORMAT 3');
+  mkdirSync(join(appDir, 'lib'), { recursive: true });
+  writeFileSync(join(appDir, 'lib', 'session.server.ts'), 'export const KEY = 1');
+
+  for (const url of ['/.env', '/db/app.db', '/lib/session.server.ts']) {
+    const html = `<img src="${url}">`;
+    assert.equal(
+      versionAssetUrls(html), html,
+      `${url} must not be fingerprinted: publishing a hash leaks its existence and its bytes`,
+    );
+  }
+});
+
+test('a traversal out of public/ is refused', () => {
+  writeFileSync(join(appDir, '.env'), 'SECRET=1');
+  // `join` normalises `..`, so without an explicit refusal these would resolve
+  // to appDir/.env while still looking like a public path.
+  for (const url of ['/public/../.env', '/public/%2E%2E/.env']) {
+    const html = `<link href="${url}">`;
+    assert.equal(versionAssetUrls(html), html, `${url} must not escape public/`);
+  }
+});
+
+test('a fragment is preserved and the query goes before it', () => {
+  // An SVG sprite (`#icon`) and a media fragment (`#t=10,20`) are real. Naively
+  // appending would emit `/x.svg#logo?v=H`: the browser then requests `/x.svg`
+  // with NO query, losing the immutable caching this exists for, and the
+  // fragment becomes `logo?v=H`, matching no element id.
+  const out = versionAssetUrls('<img src="/public/brand/logo.svg#logo">');
+  assert.match(out, /src="\/public\/brand\/logo\.svg\?v=[0-9a-f]+#logo"/);
+  assert.ok(!/#logo\?v=/.test(out), 'the query must not land after the fragment');
+});
+
+/*
  * Wiring: the unit tests above prove the transform, these prove it is actually
  * REACHED by the SSR document assembly. `buildDocumentParts` is the single seam
  * every response path funnels through (buffered, streamed, and `buildDocument`),

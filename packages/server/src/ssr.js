@@ -157,7 +157,16 @@ export async function ssrPage(route, params, url, opts) {
     if (frameId && suspenseCtx.pending.length === 0) {
       const subtree = extractFrameSubtree(body, frameId);
       if (subtree !== null) {
-        const frameRes = htmlResponse(subtree, opts.status || 200, opts.req, url);
+        // Fingerprint authored asset urls here too (#1194). This branch slices
+        // the raw render output and returns BEFORE `buildDocumentParts`, so
+        // without this the same `<img>` inside a `<webjs-frame>` would ship
+        // versioned on a full page load and un-versioned on a frame nav. The
+        // frame swap would then overwrite the fingerprinted attribute in the
+        // live DOM with the stable url, dropping it back to the short cache
+        // and re-opening exactly the staleness this change closes. It also
+        // keeps frame-render.js's byte-equivalence invariant (the subtree
+        // matches what the client would have extracted from the full page).
+        const frameRes = htmlResponse(versionAssetUrls(subtree, basePath()), opts.status || 200, opts.req, url);
         // The subtree is sliced by the x-webjs-frame REQUEST header, so a
         // shared cache must never serve it to a request that did not send
         // one (the same #1009 poisoning shape as the reduced-have case).

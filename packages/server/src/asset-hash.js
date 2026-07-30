@@ -509,8 +509,71 @@ export function versionAssetUrls(html, basePath = '') {
       // Leave an author-supplied query alone: appending to it risks changing
       // a meaning we do not own, and `withAssetHash` would merge with `&`.
       if (!url || url.indexOf('?') !== -1) return whole;
-      const versioned = withAssetHash(url, basePath);
-      return versioned === url ? whole : `${lead}${quote}${versioned}${quote}`;
+      if (!isServablePublicUrl(url, basePath)) return whole;
+      // Split a fragment BEFORE hashing. `withAssetHash` appends `?v=` to
+      // whatever it is handed, so passing the whole thing would emit
+      // `/x.svg#logo?v=H`: the browser then requests `/x.svg` with no query
+      // (losing the immutable caching this exists for) AND the fragment
+      // becomes `logo?v=H`, which matches no element id. An SVG sprite
+      // (`#icon`) and a media fragment (`#t=10,20`) are both real, so the
+      // fragment is preserved and re-appended after the query.
+      const hashIdx = url.indexOf('#');
+      const path = hashIdx === -1 ? url : url.slice(0, hashIdx);
+      const frag = hashIdx === -1 ? '' : url.slice(hashIdx);
+      const versioned = withAssetHash(path, basePath);
+      if (versioned === path) return whole;
+      return `${lead}${quote}${versioned}${frag}${quote}`;
     })
   ));
+}
+
+/**
+ * Is this url one the STATIC-ASSET serve path would actually serve?
+ *
+ * This gate exists for security, not tidiness. `resolveUrlToFile` maps any
+ * same-origin path to `join(_appDir, …)` and only checks containment against
+ * `_appDir`, which is the PROJECT ROOT. That was harmless while
+ * `withAssetHash` saw framework-emitted urls exclusively, but an author's
+ * markup can carry ATTACKER-CONTROLLED data (`<img src=${user.avatarUrl}>`,
+ * a markdown image, a CMS-configured path). Without this check, such a value
+ * makes the renderer `readFileSync` + hash ANY file under the project root
+ * and publish the result: `<img src="/.env">` comes back as
+ * `/.env?v=<hash>`, leaking both that the file exists and a stable
+ * fingerprint of its exact bytes (so a rotation, or a guessed value, is
+ * detectable), for files the serve path deliberately 404s. It also turns one
+ * attribute into a synchronous read of an arbitrarily large file on the
+ * render path.
+ *
+ * So mirror the serve gate in `dev.js` exactly: under `public/`, plus the two
+ * root-served remaps and the root favicon. A path outside that set is left
+ * untouched and never touches the filesystem, which is also why the check is
+ * a pure string test performed BEFORE any resolution.
+ *
+ * Note the three root-served paths pass this gate but currently no-op anyway:
+ * the serve path REMAPS them into `public/` (`/sw.js` to `/public/sw.js`)
+ * while `resolveUrlToFile` does not, so the file is not found and the url is
+ * returned unchanged. That is the correct fail-safe, and they stay listed
+ * here so this gate reads as the mirror of the serve gate that it is rather
+ * than silently diverging from it.
+ *
+ * @param {string} url
+ * @param {string} basePath
+ * @returns {boolean}
+ */
+function isServablePublicUrl(url, basePath) {
+  if (url[0] !== '/' || url[1] === '/') return false;
+  let p = url;
+  if (basePath && p.startsWith(basePath + '/')) p = p.slice(basePath.length);
+  // Strip query / fragment before classifying, matching resolveUrlToFile.
+  const q = p.indexOf('?'); if (q !== -1) p = p.slice(0, q);
+  const h = p.indexOf('#'); if (h !== -1) p = p.slice(0, h);
+  let decoded = p;
+  try { decoded = decodeURIComponent(p); } catch { /* keep raw */ }
+  // A traversal segment can escape `public/` after `join` normalises it, and
+  // the serve path rejects exactly this, so refuse rather than resolve.
+  if (decoded.includes('..')) return false;
+  return decoded.startsWith('/public/')
+    || decoded === '/favicon.ico'
+    || decoded === '/sw.js'
+    || decoded === '/offline.html';
 }
