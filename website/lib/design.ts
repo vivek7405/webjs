@@ -44,7 +44,7 @@ import { NEW_TAB } from '#lib/links.ts';
 
 /** Shared control geometry. Compose with a surface, do not use bare. */
 const BTN_BASE =
-  'inline-flex items-center gap-2 h-[42px] px-5 rounded-full font-semibold text-sm leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
+  'inline-flex items-center gap-2 h-10 px-5 rounded-full font-semibold text-sm leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
 
 /**
  * The single strongest action on a view. At most one per screen.
@@ -67,7 +67,7 @@ export const BTN_GHOST = `${BTN_BASE} text-fg border-border-strong bg-[color-mix
  * proportionally right for something 10px taller.
  */
 export const INSTALL =
-  `flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-3.5 text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]`;
+  `flex items-center gap-2 w-fit max-w-full mx-auto px-4 py-3.5 text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]`;
 
 /* ---------------------------------------------------------------------------
    Layout.
@@ -83,7 +83,7 @@ export const INSTALL =
 export const WIDE = 'max-w-6xl mx-auto px-6';
 
 /** Long-form reading: the blog, articles, and comparison hubs and posts. */
-export const READING = 'max-w-[840px] mx-auto px-6';
+export const READING = 'max-w-210 mx-auto px-6';
 
 /** One section's vertical rhythm. Every marketing section uses this, not its own. */
 export const SECTION = 'py-16';
@@ -100,12 +100,17 @@ export const LABEL = 'text-xs font-semibold uppercase tracking-widest text-fg-su
 /**
  * A tag chip on a post or article card.
  *
- * Deliberately the quietest thing on the card. It sits in a row of up to six
- * above a headline, so it takes the tighter tracking and lighter weight that
- * the single EYEBROW above a page title does not need.
+ * Deliberately the quietest thing on the card: it sits in a row of up to six
+ * above a headline and must not compete with the title it annotates.
+ *
+ * It stays on text-xs. Tailwind has no step below 12px, and that is a
+ * deliberate floor rather than an omission, so the chip is made smaller
+ * through the properties that DO have steps: padding, leading, and tracking.
+ * An arbitrary 10px was tried here and reverted, because minting an off-scale
+ * size for one component is how a scale stops being one.
  */
 export const BADGE =
-  'bg-fg-subtle/10 text-fg-subtle font-mono text-[10px] uppercase tracking-wider px-1.5 py-px rounded';
+  'bg-fg-subtle/10 text-fg-subtle font-mono text-xs leading-none uppercase tracking-wide px-1.5 py-1 rounded';
 
 /** Small supporting text that is not a label: dates, counts, captions. */
 export const META = 'text-xs text-fg-subtle';
@@ -159,7 +164,7 @@ export const EYEBROW = 'font-mono text-xs uppercase tracking-widest text-accent 
  * See --cta-surface in app/layout.ts.
  */
 export const PANEL_CTA =
-  'rounded-[22px] border border-border-strong bg-[var(--cta-surface)] shadow-[var(--shadow-glow)]';
+  'rounded-3xl border border-border-strong bg-[var(--cta-surface)] shadow-[var(--shadow-glow)]';
 
 /**
  * The closing call to action, composed rather than assembled per page.

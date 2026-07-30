@@ -61,6 +61,14 @@
      A custom set also risks colliding: --container-prose overrode the built-in
      max-w-prose, which is a 65ch line-length cap, not a pixel width. */
 
+  /* One named breakpoint. Three thresholds (860, 880, 900) were being used for
+     the same moment, a two-column grid collapsing, so they are one value now.
+     Declaring it here is the Tailwind-native way to add a breakpoint and gives
+     both `wide:` and `max-wide:`. */
+  --breakpoint-xs:   560px;
+  --breakpoint-mid:  700px;
+  --breakpoint-wide: 900px;
+
   --text-display: clamp(2.9rem, 1.55rem + 4.5vw, 5.5rem);
   --text-h2:      clamp(1.7rem, 1.2rem + 1.4vw, 2.5rem);
   --text-lede:    clamp(1.08rem, 0.98rem + 0.4vw, 1.28rem);

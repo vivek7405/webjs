@@ -207,7 +207,7 @@ function codeWindow(title: string, sample: string, label: string) {
   return html`
     <figure class=${WIN}>
       <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>${title}</span></figcaption>
-      <pre class="scroll-thin m-0 p-[18px] overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label=${label}><code>${highlight(sample)}</code></pre>
+      <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label=${label}><code>${highlight(sample)}</code></pre>
     </figure>
   `;
 }
@@ -255,7 +255,7 @@ export default function WhatIsWebJs() {
               browser receives.
             </p>
           </div>
-          <div class="grid grid-cols-1 min-[900px]:grid-cols-3 gap-4 items-stretch">
+          <div class="grid grid-cols-1 wide:grid-cols-3 gap-4 items-stretch">
             <div class="flex flex-col min-w-0">
               <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">A component</p>
               ${codeWindow('components/like-button.ts', COMPONENT_SAMPLE, 'A WebJs web component with a signal')}
@@ -281,7 +281,7 @@ export default function WhatIsWebJs() {
               production concerns arrive together instead of as six decisions you make yourself.
             </p>
           </div>
-          <div class="grid grid-cols-1 min-[700px]:grid-cols-2 min-[1000px]:grid-cols-3 gap-px bg-border rounded-2xl overflow-hidden border border-border">
+          <div class="grid grid-cols-1 mid:grid-cols-2 lg:grid-cols-3 gap-px bg-border rounded-2xl overflow-hidden border border-border">
             ${CAPABILITIES.map((c) => html`
               <div class=${CARD}>
                 <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.01em] m-0 mb-2 text-fg">${c.title}</h3>

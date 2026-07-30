@@ -438,7 +438,7 @@ export default async function ComponentDoc({ params }: { params: { name: string 
            scrollbar renders inside its own element's border box. Put the
            overflow on an outer div and the scrollbar sits outside the visible
            rectangle, detached from the card it is scrolling. -->
-      <div class="prose-docs ui-code"><pre class="text-xs max-h-[480px] overflow-y-auto"><code>${source}</code></pre></div>
+      <div class="prose-docs ui-code"><pre class="text-xs max-h-120 overflow-y-auto"><code>${source}</code></pre></div>
     </section>
   `;
 }

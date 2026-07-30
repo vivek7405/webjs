@@ -279,10 +279,10 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
          content column lines up with every other page on the site. A
          full-bleed docs shell was the other tell that this section was pasted
          in from somewhere else. -->
-    <div class="max-w-7xl mx-auto px-6 grid grid-cols-[248px_1fr] gap-10 min-h-screen max-[860px]:grid-cols-1 max-[860px]:gap-0">
+    <div class="max-w-7xl mx-auto px-6 grid grid-cols-[248px_1fr] gap-10 min-h-screen max-wide:grid-cols-1 max-wide:gap-0">
       <aside
         id="docs-sidebar"
-        class="docs-sidebar flex flex-col py-10 text-sm max-[860px]:px-5"
+        class="docs-sidebar flex flex-col py-10 text-sm max-wide:px-5"
         aria-label=${label}
       >
         ${asideTop ?? ''}
@@ -307,7 +307,7 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
       </aside>
       <main id="main" tabindex="-1" class="min-w-0 max-w-3xl pt-10 pb-16 focus:outline-none">
         <button
-          class="docs-nav-toggle hidden max-[860px]:inline-flex items-center gap-2 mb-6 px-3 py-2 rounded-lg border border-border bg-bg-elev text-fg-muted text-sm cursor-pointer transition-colors duration-fast hover:text-fg hover:border-border-strong"
+          class="docs-nav-toggle hidden max-wide:inline-flex items-center gap-2 mb-6 px-3 py-2 rounded-lg border border-border bg-bg-elev text-fg-muted text-sm cursor-pointer transition-colors duration-fast hover:text-fg hover:border-border-strong"
           aria-controls="docs-sidebar"
           aria-expanded="false"
         >

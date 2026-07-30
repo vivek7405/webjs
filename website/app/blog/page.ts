@@ -18,7 +18,7 @@ export const metadata = {
 export default async function Blog() {
   const posts = await listPosts();
   return html`
-    <main id="main" tabindex="-1" class="max-w-[840px] mx-auto px-6 py-12 focus:outline-none">
+    <main id="main" tabindex="-1" class="max-w-210 mx-auto px-6 py-12 focus:outline-none">
       ${pageHeader('Notes from building webjs', 'Posts on the design decisions, the trade-offs, the things that did not work, and what the framework looks like in production.', 'Blog')}
 
       ${posts.length === 0

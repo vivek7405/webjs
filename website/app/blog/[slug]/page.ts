@@ -70,7 +70,7 @@ export default async function BlogPost({ params }: { params: { slug: string } })
   if (!post) notFound();
 
   return html`
-    <main id="main" tabindex="-1" class="max-w-[840px] mx-auto px-6 py-16 focus:outline-none">
+    <main id="main" tabindex="-1" class="max-w-210 mx-auto px-6 py-16 focus:outline-none">
       <nav class="mb-12">
         <a href="/blog" class="font-mono text-xs text-fg-subtle no-underline hover:text-fg tracking-wide">← All posts</a>
       </nav>
@@ -89,7 +89,7 @@ export default async function BlogPost({ params }: { params: { slug: string } })
 
       <article class="mt-4">${unsafeHTML(renderPostBody(post.body))}</article>
 
-      <footer class="mt-[104px] pt-9 border-t border-border">
+      <footer class="mt-26 pt-9 border-t border-border">
         <a href="/blog" class="font-mono text-xs text-fg-subtle no-underline hover:text-fg tracking-wide">← All posts</a>
       </footer>
     </main>

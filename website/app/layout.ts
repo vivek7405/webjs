@@ -76,8 +76,8 @@ export function generateMetadata(ctx: { url: string }) {
   };
 }
 
-const navLink = 'text-fg-muted no-underline font-medium text-sm px-[11px] py-2 rounded-lg transition-colors duration-[140ms] hover:text-fg hover:bg-[var(--hover-surface)]';
-const panelLink = 'text-fg-muted no-underline font-medium text-sm px-3 py-[10px] rounded-[9px] hover:text-fg hover:bg-[var(--hover-surface)]';
+const navLink = 'text-fg-muted no-underline font-medium text-sm px-3 py-2 rounded-lg transition-colors duration-[140ms] hover:text-fg hover:bg-[var(--hover-surface)]';
+const panelLink = 'text-fg-muted no-underline font-medium text-sm px-3 py-2.5 rounded-lg hover:text-fg hover:bg-[var(--hover-surface)]';
 
 export default function RootLayout({ children }: { children: unknown }) {
   const nonce = cspNonce();
@@ -401,7 +401,7 @@ export default function RootLayout({ children }: { children: unknown }) {
 
     <div class="site-top fixed inset-x-0 top-0 z-20">
     <header class="backdrop-blur-md bg-[color-mix(in_oklch,var(--color-bg)_78%,transparent)] border-b border-border">
-      <div class="max-w-7xl mx-auto px-6 py-[11px] flex items-center justify-between gap-4">
+      <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
         <a class="inline-flex items-center no-underline text-fg shrink-0 transition-opacity duration-fast hover:opacity-80" href="/" aria-label="WebJs home">
           ${brandLockup('hdr', { height: 21 })}
         </a>
@@ -414,11 +414,11 @@ export default function RootLayout({ children }: { children: unknown }) {
           <theme-toggle></theme-toggle>
 
           <details class="mobile-menu relative md:hidden">
-            <summary class="cursor-pointer w-[38px] h-[38px] inline-flex items-center justify-center rounded-[9px] text-fg-muted hover:bg-[var(--hover-surface)] hover:text-fg" aria-label="Toggle navigation">
+            <summary class="cursor-pointer w-9 h-9 inline-flex items-center justify-center rounded-lg text-fg-muted hover:bg-[var(--hover-surface)] hover:text-fg" aria-label="Toggle navigation">
               <svg class="open-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></svg>
               <svg class="close-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </summary>
-            <nav class="absolute right-0 top-[calc(100%+10px)] min-w-[210px] flex flex-col gap-0.5 bg-bg-elev border border-border rounded-[14px] shadow-[var(--shadow)] p-2 z-50" aria-label="Mobile">
+            <nav class="absolute right-0 top-[calc(100%+10px)] min-w-52 flex flex-col gap-0.5 bg-bg-elev border border-border rounded-xl shadow-[var(--shadow)] p-2 z-50" aria-label="Mobile">
               ${NAV.map(n => html`<a class=${panelLink} href=${n.href} target=${n.ext ? '_blank' : '_self'} rel=${n.ext ? 'noopener noreferrer' : ''}>${n.label}${n.ext ? NEW_TAB : ''}</a>`)}
             </nav>
           </details>

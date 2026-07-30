@@ -109,7 +109,7 @@ LikeButton.register('like-button');
 // and upgraded in place. Click it.`;
 
 const WIN = 'flex flex-col flex-1 m-0 min-w-0 max-w-full rounded-2xl overflow-hidden border border-border bg-bg-elev shadow-[var(--shadow)]';
-const WINBAR = 'flex items-center gap-1.5 h-[42px] px-3.5 border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]';
+const WINBAR = 'flex items-center gap-1.5 h-10 px-3.5 border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]';
 const WINNAME = 'ml-2 font-mono font-medium text-xs leading-none text-fg-subtle';
 const DOTS = html`<span class="w-2.5 h-2.5 rounded-full bg-[#ff5f57]"></span><span class="w-2.5 h-2.5 rounded-full bg-[#febc2e]"></span><span class="w-2.5 h-2.5 rounded-full bg-[#28c840]"></span>`;
 // Bento-grid card wrapper, shared by the "Why webjs" and "Small by design" cells.
@@ -119,7 +119,7 @@ function codeWindow(title: string, sample: string) {
   return html`
     <figure class=${WIN}>
       <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>${title}</span></figcaption>
-      <pre class="scroll-thin m-0 p-[18px] overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label=${title + ' code sample'}><code>${highlight(sample)}</code></pre>
+      <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label=${title + ' code sample'}><code>${highlight(sample)}</code></pre>
     </figure>
   `;
 }
@@ -229,18 +229,18 @@ export default function LandingPage() {
           </p>
         </div>
 
-        <div class="hero-stage max-w-6xl mx-auto grid grid-cols-1 min-[880px]:grid-cols-[1.12fr_0.88fr] rounded-[16px] overflow-hidden border border-border-strong bg-bg-sunken shadow-[var(--shadow)]">
-          <div class="min-w-0 border-b min-[880px]:border-b-0 min-[880px]:border-r border-border">
+        <div class="hero-stage max-w-6xl mx-auto grid grid-cols-1 wide:grid-cols-[1.12fr_0.88fr] rounded-2xl overflow-hidden border border-border-strong bg-bg-sunken shadow-[var(--shadow)]">
+          <div class="min-w-0 border-b wide:border-b-0 wide:border-r border-border">
             <div class=${WINBAR}>${DOTS}<span class=${WINNAME}>components/like-button.ts</span></div>
             <pre class="scroll-thin m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] [tab-size:2] text-left" tabindex="0" aria-label="like-button component source"><code>${highlight(HERO_SAMPLE)}</code></pre>
           </div>
           <div class="flex flex-col min-w-0 bg-bg">
             <input type="checkbox" id="stage-usage" class="sr-only peer" />
-            <div class="flex items-center justify-between gap-2 h-[42px] px-3.5 border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]">
+            <div class="flex items-center justify-between gap-2 h-10 px-3.5 border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]">
               <span class="inline-flex items-center gap-1.5 font-mono text-xs text-fg-subtle">
                 <span class="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_var(--accent)] peer-checked:opacity-0"></span>live
               </span>
-              <label for="stage-usage" class="cursor-pointer select-none font-mono font-semibold text-xs tracking-widest uppercase text-fg-subtle hover:text-fg transition-colors px-2 py-1 -mr-1 rounded-[7px] hover:bg-[var(--hover-surface)]">
+              <label for="stage-usage" class="cursor-pointer select-none font-mono font-semibold text-xs tracking-widest uppercase text-fg-subtle hover:text-fg transition-colors px-2 py-1 -mr-1 rounded-lg hover:bg-[var(--hover-surface)]">
                 <span class="peer-checked:hidden">Show usage</span>
                 <span class="hidden peer-checked:inline">Show rendered</span>
               </label>
@@ -267,7 +267,7 @@ export default function LandingPage() {
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The whole stack, in three files</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">A component, a server action, and a page. No build, no boilerplate, all web standards.</p>
         </div>
-        <div class="grid gap-4 grid-cols-1 max-w-2xl mx-auto min-[900px]:grid-cols-3 min-[900px]:max-w-none">
+        <div class="grid gap-4 grid-cols-1 max-w-2xl mx-auto wide:grid-cols-3 wide:max-w-none">
           <div class="flex flex-col min-w-0">
             <p class="text-sm font-medium leading-[1.4] text-fg-subtle mb-2.5 ml-1">Interactive component</p>
             ${codeWindow('components/like-button.ts', COMPONENT_SAMPLE)}
@@ -290,7 +290,7 @@ export default function LandingPage() {
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Modern full-stack, on web standards</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">Everything you need to ship, none of the build toolchain you don't.</p>
         </div>
-        <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 min-[560px]:grid-cols-2 min-[900px]:grid-cols-3 shadow-[var(--shadow-sm)]">
+        <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 xs:grid-cols-2 wide:grid-cols-3 shadow-[var(--shadow-sm)]">
 
           <div class="${CARD}">
             <div class="mb-6">
@@ -376,7 +376,7 @@ export default function LandingPage() {
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Light enough for AI</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">A zero build step means the source you read is what runs. Because the framework ships without compilation layers, an AI agent can read and reason about the entire WebJs source end to end, straight from node_modules.</p>
         </div>
-        <div class="grid gap-px bg-border grid-cols-1 min-[560px]:grid-cols-2 min-[900px]:grid-cols-4 rounded-2xl border border-border overflow-hidden shadow-[var(--shadow-sm)]">
+        <div class="grid gap-px bg-border grid-cols-1 xs:grid-cols-2 wide:grid-cols-4 rounded-2xl border border-border overflow-hidden shadow-[var(--shadow-sm)]">
           ${STATS.map(s => html`
             <div class="p-8 text-center bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors">
               <div class="font-display font-extrabold leading-none tracking-[-0.03em] text-[clamp(1.9rem,1.3rem+1.6vw,2.7rem)] text-fg">${s.big}</div>
@@ -395,12 +395,12 @@ export default function LandingPage() {
         <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Start where you are</h2>
         </div>
-        <div class="grid gap-4 grid-cols-1 max-w-2xl mx-auto min-[900px]:grid-cols-2 min-[900px]:max-w-3xl">
+        <div class="grid gap-4 grid-cols-1 max-w-2xl mx-auto wide:grid-cols-2 wide:max-w-3xl">
           <div class="flex flex-col gap-3 p-6 min-w-0 rounded-2xl border border-border bg-bg-elev">
             <span class="text-xs font-medium leading-none text-fg-subtle">Full-stack</span>
             <h3 class="font-display font-bold text-[1.15rem] leading-[1.25] m-0">Pages + API + components</h3>
             <p class="m-0 text-sm leading-[1.6] text-fg-muted">SSR pages, web components, server actions, Drizzle, streaming, and a browsable feature gallery. Auth (login, sessions, a protected route) ships as a gallery card. The default.</p>
-            <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-[10px] border border-border bg-bg-sunken font-mono text-xs leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/page.ts
+            <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-sunken font-mono text-xs leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/page.ts
 components/counter.ts
 actions/posts.server.ts</pre>
             <div class="cmd-foot pt-2 mt-auto font-mono text-xs leading-[1.6] text-fg-muted max-w-full min-w-0"><copy-cmd>npm create webjs@latest my-app</copy-cmd></div>
@@ -409,7 +409,7 @@ actions/posts.server.ts</pre>
             <span class="text-xs font-medium leading-none text-fg-subtle">Backend (API)</span>
             <h3 class="font-display font-bold text-[1.15rem] leading-[1.25] m-0">Route handlers + Database</h3>
             <p class="m-0 text-sm leading-[1.6] text-fg-muted">A backend-only app, no UI or SSR. File-based route handlers, modules, middleware, rate limiting, WebSockets, a database, and a backend-features gallery.</p>
-            <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-[10px] border border-border bg-bg-sunken font-mono text-xs leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/api/users/route.ts
+            <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-sunken font-mono text-xs leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/api/users/route.ts
 app/api/chat/route.ts
 middleware.ts</pre>
             <div class="cmd-foot pt-2 mt-auto font-mono text-xs leading-[1.6] text-fg-muted max-w-full min-w-0"><copy-cmd>npm create webjs@latest my-api -- --template api</copy-cmd></div>

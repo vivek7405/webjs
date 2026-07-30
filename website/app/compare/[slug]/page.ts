@@ -74,7 +74,7 @@ export default async function ComparePage({ params }: { params: { slug: string }
   if (!c) notFound();
 
   return html`
-    <main id="main" tabindex="-1" class="max-w-[840px] mx-auto px-6 py-16 focus:outline-none">
+    <main id="main" tabindex="-1" class="max-w-210 mx-auto px-6 py-16 focus:outline-none">
       <nav class="mb-12">
         <a href="/compare" class="font-mono text-xs text-fg-subtle no-underline hover:text-fg tracking-wide">← All comparisons</a>
       </nav>
@@ -95,7 +95,7 @@ export default async function ComparePage({ params }: { params: { slug: string }
 
       <article class="mt-4">${unsafeHTML(renderPostBody(c.body))}</article>
 
-      <footer class="mt-[104px] pt-9 border-t border-border flex flex-wrap gap-x-6 gap-y-3">
+      <footer class="mt-26 pt-9 border-t border-border flex flex-wrap gap-x-6 gap-y-3">
         <a href="/compare" class="font-mono text-xs text-fg-subtle no-underline hover:text-fg tracking-wide">← All comparisons</a>
         <a href="/blog" class="font-mono text-xs text-fg-subtle no-underline hover:text-fg tracking-wide">Read the blog →</a>
       </footer>

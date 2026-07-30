@@ -112,12 +112,12 @@ export default function Why() {
             minified artifact.
           </p>
         </div>
-        <div class="grid grid-cols-1 min-[900px]:grid-cols-2 gap-4 items-stretch max-w-3xl mx-auto">
+        <div class="grid grid-cols-1 wide:grid-cols-2 gap-4 items-stretch max-w-3xl mx-auto">
           <div class="flex flex-col min-w-0">
             <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">The framework, readable in node_modules</p>
             <figure class=${WIN}>
               <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>terminal</span></figcaption>
-              <pre class="scroll-thin m-0 p-[18px] overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="Listing and grepping the framework source in node_modules"><code><span class="text-accent">$</span> ls node_modules/@webjsdev/core/src
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="Listing and grepping the framework source in node_modules"><code><span class="text-accent">$</span> ls node_modules/@webjsdev/core/src
 component.js    html.js         render-client.js
 css.js          directives.js   render-server.js
 serialize.js    router-client.js
@@ -133,7 +133,7 @@ server/src/ssr.js: const html = await renderToString(tree)
             <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Your app code, served to the browser as written</p>
             <figure class=${WIN}>
               <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>terminal</span></figcaption>
-              <pre class="scroll-thin m-0 p-[18px] overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="Fetching an app module served unbundled"><code><span class="text-accent">$</span> curl localhost:5001/components/counter.ts
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="Fetching an app module served unbundled"><code><span class="text-accent">$</span> curl localhost:5001/components/counter.ts
 import { WebComponent } from '@webjsdev/core';
 
 class Counter extends WebComponent({ count: Number }) {
@@ -154,7 +154,7 @@ Counter.register('counter');
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Four reasons the loop just works</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">Every one of these falls out of a single decision: no build step, on web standards.</p>
         </div>
-        <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 min-[560px]:grid-cols-2 shadow-[var(--shadow-sm)]">
+        <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 xs:grid-cols-2 shadow-[var(--shadow-sm)]">
           ${REASONS.map(r => html`
             <div class="${CARD}">
               <h3 class="font-display font-bold text-[1.1rem] leading-[1.3] tracking-[-0.02em] mt-0 mb-2">${r.title}</h3>

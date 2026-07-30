@@ -158,9 +158,9 @@ export default function BrandPage() {
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
           <div class="rounded-2xl border border-border bg-bg-elev p-8 flex flex-col">
             <div class="flex-1 flex items-center justify-center">
-              <div class="cs-pad cs-guide p-[34px] rounded">
-                <img src="/public/brand/webjs-lockup-on-dark.svg" alt="Clear space around the lockup" class="h-[34px] w-auto hidden dark:block" />
-                <img src="/public/brand/webjs-lockup-on-light.svg" alt="Clear space around the lockup" class="h-[34px] w-auto dark:hidden" />
+              <div class="cs-pad cs-guide p-8 rounded">
+                <img src="/public/brand/webjs-lockup-on-dark.svg" alt="Clear space around the lockup" class="h-8 w-auto hidden dark:block" />
+                <img src="/public/brand/webjs-lockup-on-light.svg" alt="Clear space around the lockup" class="h-8 w-auto dark:hidden" />
               </div>
             </div>
             <div class="mt-7 pt-5 border-t border-border">
