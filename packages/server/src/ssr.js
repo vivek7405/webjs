@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { renderToString, isNotFound, isRedirect, isForbidden, isUnauthorized, lookupModuleUrl, isLazy, cspNonce } from '@webjsdev/core';
 import { importMapTag, vendorIntegrityFor, publishedBuildId, appSourceId, basePath, vendorPreconnectOrigins, vendorPreloadTargets } from './importmap.js';
 import { withBasePath } from './base-path.js';
-import { withAssetHash } from './asset-hash.js';
+import { withAssetHash, versionAssetUrls } from './asset-hash.js';
 import { jsonForScriptTag } from './script-tag-json.js';
 import { transitiveDeps, bareImports } from './module-graph.js';
 import { seedingEnabled, collectSeeds, buildSeedScript } from './action-seed.js';
@@ -1176,6 +1176,17 @@ function buildHeadInner(opts) {
  * @returns {{ prefix: string, streamBody: string, closer: string }}
  */
 function buildDocumentParts(body, wrapOpts) {
+  // Content-hash asset urls the APP AUTHOR wrote by hand (#1194). Applied here
+  // rather than at each response site so every caller (buffered, streamed, and
+  // `buildDocument`) is covered by one seam. A pure no-op in dev and whenever
+  // fingerprinting is off, so output stays byte-identical there.
+  //
+  // The basePath is applied to author urls by the app itself (an author writes
+  // the url they want served), so it is passed only for FILE RESOLUTION, the
+  // same way `withAssetHash` uses it.
+  const bp = basePath();
+  const fpAssets = (s) => versionAssetUrls(s, bp);
+
   const shell = extractUserShell(body);
   if (shell) {
     const headInner = buildHeadInner(wrapOpts);
@@ -1187,12 +1198,12 @@ function buildDocumentParts(body, wrapOpts) {
       `<!doctype html>\n<html${shell.htmlAttrs}>\n<head${shell.headAttrs}>\n` +
       composedHead +
       `\n</head>\n<body${shell.bodyAttrs}>\n`;
-    return { prefix, streamBody: hoist.body, closer: `\n</body>\n</html>` };
+    return { prefix: fpAssets(prefix), streamBody: fpAssets(hoist.body), closer: `\n</body>\n</html>` };
   }
   // No user shell: framework owns the wrapper.
   const headHtml = wrapHead(wrapOpts);
   const { head, body: bodyOut } = hoistHeadTags(headHtml, body);
-  return { prefix: head, streamBody: bodyOut, closer: `\n</body>\n</html>` };
+  return { prefix: fpAssets(head), streamBody: fpAssets(bodyOut), closer: `\n</body>\n</html>` };
 }
 
 // Re-export for unit testing.

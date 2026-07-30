@@ -447,3 +447,70 @@ export function versionModuleImports(source, importerAbs) {
   }
   return out + source.slice(last);
 }
+
+/**
+ * An asset-bearing element in the SSR'd document. Anchored on the literal tag
+ * name, which is what keeps a RENDERED CODE SAMPLE safe: the highlighter
+ * escapes `<` to `&lt;` (and splits the token across spans), so a sample that
+ * displays `<img src="/public/x.png">` never contains a literal `<img` and can
+ * never be matched here. That is the whole reason this matches tags rather
+ * than bare `src="…"` occurrences.
+ *
+ * @type {RegExp}
+ */
+const ASSET_TAG_RE = /<(?:link|script|img|source)\b[^>]*>/gi;
+
+/**
+ * `href` / `src` inside an already-matched tag, either quote style. `srcset`
+ * is deliberately excluded: it is a comma-separated candidate list with
+ * descriptors, so it needs its own parse rather than a whole-value rewrite.
+ *
+ * @type {RegExp}
+ */
+const ASSET_ATTR_RE = /(\s(?:href|src)\s*=\s*)(["'])([^"']*)\2/gi;
+
+/**
+ * Append `?v=<content-hash>` to same-origin asset urls an APP AUTHOR wrote by
+ * hand in a template, so they cannot serve stale bytes at a live url.
+ *
+ * The framework already fingerprints every url it emits itself (module
+ * specifiers, importmap targets, modulepreload hints), and `versionModuleImports`
+ * does the same for author-written module specifiers in served source. This
+ * closes the last gap: a `<link rel="stylesheet" href="/public/app.css">` or an
+ * `<img src="/public/logo.svg">` written in a layout.
+ *
+ * Why it matters beyond cache-busting: `dev.js` already serves a `?v=`-carrying
+ * `/public/*` request `immutable` for a year, while an un-versioned one gets the
+ * 1h fallback. So fingerprinting these urls both makes staleness structurally
+ * impossible (new bytes mean a new url) and upgrades them from a 1 hour cache to
+ * an immutable one. Without it, a CDN keeps serving the previous copy after a
+ * deploy until something purges it, which is exactly what shipped two visible
+ * regressions on webjs.dev in one day (#1179 then #1185).
+ *
+ * Per-url behaviour is `withAssetHash`, so every existing guard applies
+ * unchanged: a no-op when fingerprinting is disabled (dev, so dev output stays
+ * byte-identical), and for a cross-origin, protocol-relative, relative, or
+ * unresolvable url. A url that already carries a query is skipped here too,
+ * since it is author-controlled and may be meaningful.
+ *
+ * The base path is a parameter rather than module state on purpose: a setter
+ * that a call site forgets fails silently and only on a sub-path deploy, which
+ * is the hardest place to notice it. Same signature shape as `withAssetHash`.
+ *
+ * @param {string} html   the assembled document (or a fragment of it)
+ * @param {string} [basePath]  the active base path, already applied to the urls
+ * @returns {string}
+ */
+export function versionAssetUrls(html, basePath = '') {
+  if (!_enabled || !_appDir) return html;
+  if (typeof html !== 'string' || html.indexOf('<') === -1) return html;
+  return html.replace(ASSET_TAG_RE, (tag) => (
+    tag.replace(ASSET_ATTR_RE, (whole, lead, quote, url) => {
+      // Leave an author-supplied query alone: appending to it risks changing
+      // a meaning we do not own, and `withAssetHash` would merge with `&`.
+      if (!url || url.indexOf('?') !== -1) return whole;
+      const versioned = withAssetHash(url, basePath);
+      return versioned === url ? whole : `${lead}${quote}${versioned}${quote}`;
+    })
+  ));
+}
