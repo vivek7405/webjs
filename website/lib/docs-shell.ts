@@ -274,12 +274,12 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
          attribute the way it did when each element carried its own handler. -->
     <div class="docs-backdrop"></div>
 
-    <!-- Same container as the shared header (max-w-shell mx-auto px-6), so
+    <!-- Same container as the shared header (max-w-7xl mx-auto px-6), so
          the sidebar's left edge lines up with the wordmark above it and the
          content column lines up with every other page on the site. A
          full-bleed docs shell was the other tell that this section was pasted
          in from somewhere else. -->
-    <div class="max-w-shell mx-auto px-6 grid grid-cols-[248px_1fr] gap-10 min-h-screen max-[860px]:grid-cols-1 max-[860px]:gap-0">
+    <div class="max-w-7xl mx-auto px-6 grid grid-cols-[248px_1fr] gap-10 min-h-screen max-[860px]:grid-cols-1 max-[860px]:gap-0">
       <aside
         id="docs-sidebar"
         class="docs-sidebar flex flex-col py-10 text-sm max-[860px]:px-5"
@@ -305,7 +305,7 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
           `)}
         </nav>
       </aside>
-      <main id="main" tabindex="-1" class="min-w-0 max-w-reading pt-10 pb-16 focus:outline-none">
+      <main id="main" tabindex="-1" class="min-w-0 max-w-3xl pt-10 pb-16 focus:outline-none">
         <button
           class="docs-nav-toggle hidden max-[860px]:inline-flex items-center gap-2 mb-6 px-3 py-2 rounded-lg border border-border bg-bg-elev text-fg-muted text-sm cursor-pointer transition-colors duration-fast hover:text-fg hover:border-border-strong"
           aria-controls="docs-sidebar"

@@ -246,8 +246,8 @@ export default function WhatIsWebJs() {
       </section>
 
       <section class="py-16">
-        <div class="max-w-wide mx-auto px-6">
-          <div class="max-w-narrow mx-auto mb-12 text-center">
+        <div class="max-w-6xl mx-auto px-6">
+          <div class="max-w-3xl mx-auto mb-12 text-center">
             <h2 class=${H2}>What a WebJs app looks like</h2>
             <p class=${PROSE}>
               A component, a server function, and a page. These are ordinary files in your project,
@@ -273,8 +273,8 @@ export default function WhatIsWebJs() {
       </section>
 
       <section class="py-16">
-        <div class="max-w-wide mx-auto px-6">
-          <div class="max-w-narrow mx-auto mb-12 text-center">
+        <div class="max-w-6xl mx-auto px-6">
+          <div class="max-w-3xl mx-auto mb-12 text-center">
             <h2 class=${H2}>What WebJs does for you</h2>
             <p class=${PROSE}>
               WebJs is a full framework rather than a rendering library, so routing, data, and the
@@ -293,7 +293,7 @@ export default function WhatIsWebJs() {
       </section>
 
       <section class="py-16">
-        <div class="max-w-panel mx-auto px-6">
+        <div class="max-w-3xl mx-auto px-6">
           <div class="mb-10 text-center">
             <h2 class=${H2}>Other things called WebJS</h2>
             <p class=${PROSE}>
@@ -312,7 +312,7 @@ export default function WhatIsWebJs() {
       </section>
 
       <section class="py-16">
-        <div class="max-w-panel mx-auto px-6">
+        <div class="max-w-3xl mx-auto px-6">
           <div class="mb-10 text-center">
             <h2 class=${H2}>WebJs FAQ</h2>
           </div>
@@ -330,7 +330,7 @@ export default function WhatIsWebJs() {
       </section>
 
       <section class="py-16 pb-24">
-        <div class="max-w-panel mx-auto px-6 text-center">
+        <div class="max-w-3xl mx-auto px-6 text-center">
           <h2 class=${H2}>Try it in one command</h2>
           <p class="${PROSE} max-w-[52ch] mx-auto mb-8">
             The scaffold gives you routing, a database layer, and a styled layout, so you start from a

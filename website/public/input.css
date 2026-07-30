@@ -54,24 +54,18 @@
      is below the ~25% separation a scale needs to be worth having. */
   --text-2xs: 11px;
 
-  /* Container measures. These were ten different inline pixel values across
-     app/ and lib/, which is the same eyeballing problem the type sizes had,
-     one level up: nobody can tell 820px from 840px, but the reader does feel
-     a page where every section starts at a slightly different width.
+  /* No custom container tokens. Tailwind's built-in scale already widens its
+     gaps as the values grow (2xl 672, 3xl 768, 4xl 896, 6xl 1152, 7xl 1280),
+     which is the separation rule a hand-rolled set would only be reinventing.
+     The site uses four of those steps:
 
-     Each one has a job rather than a number:
-       prose    a comfortable measure for a single column of text
-       narrow   a section's intro block, sitting inside wide
-       panel    the closing call to action
-       reading  the long-form column on /blog, /articles, /compare
-       wide     marketing sections
-       shell    the header and footer chrome, the widest thing on the site */
-  --container-prose:   640px;
-  --container-narrow:  720px;
-  --container-panel:   760px;
-  --container-reading: 840px;
-  --container-wide:   1120px;
-  --container-shell:  1240px;
+       max-w-2xl   a single measure of text
+       max-w-3xl   a section intro, the closing panel, the long-form column
+       max-w-6xl   marketing sections
+       max-w-7xl   the header and footer chrome
+
+     A custom set also risks colliding: --container-prose overrode the built-in
+     max-w-prose, which is a 65ch line-length cap, not a pixel width. */
 
   --text-display: clamp(2.9rem, 1.55rem + 4.5vw, 5.5rem);
   --text-h2:      clamp(1.7rem, 1.2rem + 1.4vw, 2.5rem);

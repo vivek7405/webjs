@@ -100,8 +100,8 @@ export default function Why() {
     </section>
 
     <section class="py-16">
-      <div class="max-w-wide mx-auto px-6">
-        <div class="max-w-narrow mx-auto mb-12 text-center">
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Nothing is hidden behind a build step</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">
             No build step means two things, and both help your agent. The
@@ -112,7 +112,7 @@ export default function Why() {
             minified artifact.
           </p>
         </div>
-        <div class="grid grid-cols-1 min-[900px]:grid-cols-2 gap-4 items-stretch max-w-reading mx-auto">
+        <div class="grid grid-cols-1 min-[900px]:grid-cols-2 gap-4 items-stretch max-w-3xl mx-auto">
           <div class="flex flex-col min-w-0">
             <p class="font-mono font-semibold text-2xs leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-2.5 ml-1">The framework, readable in node_modules</p>
             <figure class=${WIN}>
@@ -149,8 +149,8 @@ Counter.register('counter');
     </section>
 
     <section class="py-16">
-      <div class="max-w-wide mx-auto px-6">
-        <div class="max-w-narrow mx-auto mb-12 text-center">
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Four reasons the loop just works</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">Every one of these falls out of a single decision: no build step, on web standards.</p>
         </div>
@@ -166,8 +166,8 @@ Counter.register('counter');
     </section>
 
     <section class="py-16">
-      <div class="max-w-wide mx-auto px-6">
-        <div class="max-w-panel mx-auto text-center">
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="max-w-3xl mx-auto text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Experiment with any model, freely</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0 mb-4">
             Because the framework itself is the context, you are not locked to

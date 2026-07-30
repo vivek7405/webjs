@@ -40,7 +40,7 @@ export default function RootLayout({ children }: { children: unknown }) {
         /* …etc */
       }
     &lt;/style&gt;
-    &lt;main class="max-w-panel mx-auto px-4 py-12"&gt;
+    &lt;main class="max-w-3xl mx-auto px-4 py-12"&gt;
       \${children}
     &lt;/main&gt;
   \`;

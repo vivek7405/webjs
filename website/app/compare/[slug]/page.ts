@@ -74,7 +74,7 @@ export default async function ComparePage({ params }: { params: { slug: string }
   if (!c) notFound();
 
   return html`
-    <main id="main" tabindex="-1" class="max-w-reading mx-auto px-6 py-16 focus:outline-none">
+    <main id="main" tabindex="-1" class="max-w-3xl mx-auto px-6 py-16 focus:outline-none">
       <nav class="mb-12">
         <a href="/compare" class="font-mono text-xs text-fg-subtle no-underline hover:text-fg tracking-wide">← All comparisons</a>
       </nav>
