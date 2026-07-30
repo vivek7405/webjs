@@ -18,11 +18,19 @@
  */
 import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const OUT = resolve(process.argv[2] || 'public/og.png');
+// The card carries the REAL authored lockup rather than a redrawn copy, for
+// the same reason the site does: a redraw is how the logo drifted once
+// already. It is INLINED into the document rather than referenced as an
+// <img>: the lockup renders its name with an embedded data-URI font, and
+// Chromium ignores @font-face inside an SVG used as an image, so the img
+// form silently drops the wordmark. Inline SVG is part of the document and
+// loads the font normally.
+const LOCKUP_SVG = readFileSync(resolve('public/brand/webjs-lockup-on-dark.svg'), 'utf8');
 
 // Dark-theme tokens, copied from the :root[data-theme='dark'] block in
 // app/layout.ts so the card and the site stay in lockstep (pure-black
@@ -33,8 +41,8 @@ const T = {
   fg: 'oklch(0.96 0 0)',
   fgMuted: 'oklch(0.74 0 0)',
   fgSubtle: 'oklch(0.62 0 0)',
-  accent: 'oklch(0.7 0.16 52)',
-  accentLive: 'oklch(0.63 0.17 50)',
+  accent: 'oklch(0.78 0.18 58)',
+  accentLive: 'oklch(0.78 0.18 58)',
   border: 'oklch(0.32 0 0 / 0.9)',
   // The logo mark stops, copied from the dark-theme --logo-from/--logo-to in
   // app/layout.ts. An OG card is not theme-adaptive (social unfurlers render
@@ -43,7 +51,7 @@ const T = {
   logoTo: 'oklch(0.62 0.18 44)',
 };
 
-const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+const html0 = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800&family=Inter:wght@400;500&family=JetBrains+Mono:wght@500&display=swap">
@@ -70,14 +78,8 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
     padding:72px 76px;
     display:flex; flex-direction:column;
   }
-  .brand{ display:flex; align-items:center; gap:16px; }
-  .mark{
-    width:46px; height:46px; border-radius:15px;
-    background:linear-gradient(135deg, ${T.logoFrom}, ${T.logoTo});
-    box-shadow:0 6px 22px color-mix(in oklch, ${T.logoFrom} 40%, transparent),
-               inset 0 1px 0 color-mix(in oklch, white 30%, transparent);
-  }
-  .word{ font-family:'Inter Tight',sans-serif; font-weight:700; font-size:31px; letter-spacing:-0.02em; }
+  .brand{ display:flex; align-items:center; }
+  .brand svg{ height:44px; width:auto; display:block; }
   .mid{ flex:1; display:flex; flex-direction:column; justify-content:center; }
   h1{
     font-family:'Inter Tight',sans-serif; font-weight:800;
@@ -105,7 +107,7 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <body>
   <div class="glow"></div>
   <div class="frame">
-    <div class="brand"><div class="mark"></div><div class="word">webjs</div></div>
+    <div class="brand">__LOCKUP__</div>
     <div class="mid">
       <h1>The <span class="accent">web framework</span> for AI agents</h1>
       <p class="lede">A full-stack framework built on web components, SSR, and progressive enhancement, with zero build step. Standards that outlast frameworks.</p>
@@ -119,6 +121,7 @@ const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
     </div>
   </div>
 </body></html>`;
+const html = html0.replace('__LOCKUP__', LOCKUP_SVG);
 
 const tmp = mkdtempSync(join(tmpdir(), 'webjs-og-'));
 const big = join(tmp, 'og-2x.png');

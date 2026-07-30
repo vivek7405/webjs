@@ -275,11 +275,17 @@ export default function BrandPage() {
         <div class="max-w-3xl mb-10">
           <h2 class=${H2}>Typography</h2>
           <p class=${PROSE}>
-            Three faces, each with one job. All are variable, self-hosted, and
-            already loaded by this page.
+            Four faces, each with one job. The three brand faces are variable
+            and self-hosted; the editorial serif is deliberately a system stack,
+            so it costs zero bytes and renders in the reader's native voice.
           </p>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div class="p-7 rounded-2xl border border-border bg-bg-elev">
+            <p class="font-serif text-4xl leading-none text-fg mb-4">Ag</p>
+            <h3 class="text-[15px] font-bold text-fg mb-1.5">Editorial serif</h3>
+            <p class="text-sm text-fg-muted leading-relaxed">Hub titles, docs headings, and long-form pages. A system serif stack (<code class="font-mono text-xs">ui-serif</code>), the reading voice beside the geometric brand faces.</p>
+          </div>
           <div class="p-7 rounded-2xl border border-border bg-bg-elev">
             <p class="font-display text-4xl font-extrabold tracking-[-0.035em] leading-none text-fg mb-4">Ag</p>
             <h3 class="text-sm font-bold text-fg mb-1.5">Inter Tight</h3>
