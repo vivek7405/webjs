@@ -39,7 +39,7 @@ export default async function Articles() {
                     </header>`
                   : ''}
                 <h2 class="font-serif text-section leading-[1.15] tracking-tight text-fg m-0 mb-2">${a.title}</h2>
-                <p class="text-fg-muted dark:text-fg text-sm leading-relaxed m-0">${a.description || a.tagline}</p>
+                <p class="text-fg text-sm leading-relaxed m-0">${a.description || a.tagline}</p>
               </a>
             </article>
           `)}
