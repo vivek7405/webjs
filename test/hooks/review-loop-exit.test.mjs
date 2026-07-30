@@ -39,21 +39,26 @@ test('the skill carries the substantive gate and its two-tier exit', () => {
   // and the one tagless-reviewer kind the orchestrator classifies itself.
   assert.match(skill, /arrives UNTAGGED from a reviewer whose result shape carries the tag is treated as substantive/);
   assert.match(skill, /structurally cannot tag/);
-  // The bounded prose pass and its non-round status.
-  assert.match(skill, /never counts toward the round total or the two-round minimum/);
+  // The exit: the converging round's prose findings apply without a
+  // re-review round, and there is no standalone prose pass to relitigate.
+  assert.match(skill, /apply that round's prose-tier fixes WITHOUT re-review and stop/);
+  assert.match(skill, /converging round's prose-tier findings ARE the sweep/);
+  assert.ok(!skill.includes('prose pass'), 'the standalone prose pass must not resurface in the skill');
+  // A prose fix that touches a substantive surface still gets its one
+  // delta-scoped check (the gate's exception survives the pass removal).
+  assert.match(skill, /gets one delta-scoped check of THAT FIX ALONE/);
   // The re-tag license is asymmetric and downgrades are auditable.
   assert.match(skill, /DOWNGRADE to prose is treated like a rejection/);
   assert.match(skill, /recorded on the finding's thread/);
-  // The two-round minimum survives a prose-only round 1, in step 4 AND in
-  // the round-1 bullet that restates the exit.
-  assert.match(skill, /whether clean or prose-only, still gets the delta-shaped pass/);
-  assert.match(skill, /still gets the delta-shaped pass the two-round minimum requires before the prose pass/);
+  // Round 1 is tiered by the diff's PATHS (never by judged importance), a
+  // mixed diff escalates, and the minimum is one round, so a clean round 1
+  // converges without a forced extra pass.
+  assert.match(skill, /Round 1's shape is decided by the SURFACES in the PR's diff, a path check/);
+  assert.match(skill, /one shipped-source path is enough/);
+  assert.match(skill, /The minimum is ONE round/);
+  assert.match(skill, /pulls shipped source into a light-tier PR re-runs round 1 at the DEEP tier/);
   // An untagged list is still a valid round (round counting stays sane).
   assert.match(skill, /untagged findings treated as substantive per the gate/);
-  // An unproducible prose-pass reviewer is BLOCKED, not converged, and the
-  // failure taxonomy covers the prose pass explicitly.
-  assert.match(skill, /prose-pass reviewer that cannot be produced at all ends the loop BLOCKED/);
-  assert.match(skill, /or the prose-pass reviewer, cannot be produced/);
   // The round budget bounds the loop: 5 substantive rounds, OVER BUDGET is
   // a non-converged exit with its own report, and the failure taxonomy
   // carries it.
@@ -91,6 +96,12 @@ test('deep-review findings carry a required tier with the gate wording', () => {
   assert.match(workflow, /a number in docs that states runtime behavior/);
   // The tier is orthogonal to severity, stated so dedup changes stay honest.
   assert.match(workflow, /surface classification, not a severity judgment/);
+  // The trimmed defaults hold: 16 agents, at most three dynamic lenses,
+  // and whenToUse scopes round 1 to shipped-source diffs.
+  assert.match(workflow, /\? Number\(args\.maxAgents\) : 16/);
+  assert.match(workflow, /maxItems: 3/);
+  assert.match(workflow, /ZERO to three ADDITIONAL review lenses/);
+  assert.match(workflow, /whose diff touches shipped source/);
   // Tier outranks severity everywhere findings compete: the same-line
   // dedup collision, the tier-first sort that drives the CAP slice and
   // the jury-budget walk, and a missing tier fails OPEN (substantive).
@@ -122,14 +133,16 @@ test('the routed review directive states the substantive exit, not the old absol
   // relitigation; it must not resurface in the injected directive.
   assert.ok(!hook.includes('until a round is clean'), 'route-skills.sh reverted to the pre-#1171 exit');
   assert.match(hook, /nothing SUBSTANTIVE/);
-  assert.match(hook, /prose pass/);
+  assert.ok(!hook.includes('prose pass ends it'), 'route-skills.sh reverted to the standalone prose pass');
+  assert.match(hook, /prose-tier findings are applied without re-review/);
   assert.match(hook, /found something substantive/);
   // The tagless-reviewer clause stays in lockstep with the skill's gate:
   // orchestrator-classified, doubt to substantive, prose recorded.
   assert.match(hook, /recorded like a downgrade/);
-  // The directive and the skill prescribe the SAME round-1 reviewer: the
-  // deep-review workflow, with code-review findings as auxiliary input.
-  assert.match(hook, /round 1 is the deep-review workflow/);
+  // The directive and the skill prescribe the SAME tiered round-1 reviewer,
+  // with code-review findings as auxiliary input.
+  assert.match(hook, /round 1 is the deep-review workflow when the diff touches shipped source/);
+  assert.match(hook, /one broad fresh reviewer otherwise/);
   assert.match(hook, /auxiliary input/);
   // Self-classification is scoped to the code-review skill's own findings;
   // untagged findings from tag-capable reviewers stay substantive.

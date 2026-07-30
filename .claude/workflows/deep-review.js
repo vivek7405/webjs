@@ -1,10 +1,10 @@
 export const meta = {
   name: 'deep-review',
   description: 'Deep multi-agent PR review: parallel finder lenses, then adversarial verification; confirmed findings are actionable, jury-rejected ones return for the audit trail',
-  whenToUse: 'The round-1 review for any PR entering a review loop, or a heavyweight pass on demand. Works on any repo. Pass the PR number as args, "owner/repo#123" for another repository, or { pr, repo, lenses, maxAgents } where explicit lenses skip the scout and maxAgents caps the whole run (default 24).',
+  whenToUse: 'The round-1 review for a PR whose diff touches shipped source (packages/*/src, packages/cli/lib, packages/cli/templates), or a heavyweight pass on demand. Works on any repo. Pass the PR number as args, "owner/repo#123" for another repository, or { pr, repo, lenses, maxAgents } where explicit lenses skip the scout and maxAgents caps the whole run (default 16).',
   phases: [
     { title: 'Scope', detail: 'a scout reads the diff and proposes dynamic lenses for this PR' },
-    { title: 'Find', detail: 'six fixed lenses plus up to six dynamic ones, in parallel, at most three pinned to fable and the rest opus' },
+    { title: 'Find', detail: 'six fixed lenses plus up to three dynamic ones, in parallel, at most three pinned to fable and the rest opus' },
     { title: 'Verify', detail: 'adversarial refuters per finding, majority rules' },
   ],
 }
@@ -31,7 +31,7 @@ const givenLenses = (args && typeof args === 'object' && Array.isArray(args.lens
 // silently dropped. Two distinct causes with two distinct remedies: a jury
 // budget shortfall (raise maxAgents) and the fixed per-run verification cap
 // (CAP below; re-run after fixes, maxAgents cannot recover it).
-const rawMax = (args && typeof args === 'object' && Number.isFinite(Number(args.maxAgents))) ? Number(args.maxAgents) : 24
+const rawMax = (args && typeof args === 'object' && Number.isFinite(Number(args.maxAgents))) ? Number(args.maxAgents) : 16
 const MAX_AGENTS = Math.min(60, Math.max(8, Math.floor(rawMax)))
 if (!pr) throw new Error('Pass the PR number as args, e.g. Workflow({ name: "deep-review", args: "123" }), or "owner/repo#123", or { pr, repo, lenses, maxAgents }')
 
@@ -107,7 +107,7 @@ const LENS_PROPOSALS = {
   properties: {
     lenses: {
       type: 'array',
-      maxItems: 6,
+      maxItems: 3,
       items: {
         type: 'object',
         required: ['key', 'prompt'],
@@ -124,21 +124,21 @@ phase('Scope')
 let spent = 0
 let dynamic = []
 if (givenLenses) {
-  dynamic = givenLenses.slice(0, 6).map((l) => ({ key: String(l.key), prompt: String(l.prompt) }))
+  dynamic = givenLenses.slice(0, 3).map((l) => ({ key: String(l.key), prompt: String(l.prompt) }))
   log(`using ${dynamic.length} caller-provided dynamic lenses, scout skipped`)
 } else {
   spent += 1
   const scout = await agent(
     `${SAFETY}
 
-You are the SCOUT for a deep review of PR ${pr}. Read the diff and the PR body, understand what kind of work this PR actually does, and propose ZERO to six ADDITIONAL review lenses tailored to it. Six fixed lenses already run regardless, so never duplicate their ground: correctness of the changed logic, security, repo-wide ripple effects of touched symbols, test adequacy and counterfactuals, invariant and doc drift, and a broad fresh-eyes pass.
+You are the SCOUT for a deep review of PR ${pr}. Read the diff and the PR body, understand what kind of work this PR actually does, and propose ZERO to three ADDITIONAL review lenses tailored to it. Six fixed lenses already run regardless, so never duplicate their ground: correctness of the changed logic, security, repo-wide ripple effects of touched symbols, test adequacy and counterfactuals, invariant and doc drift, and a broad fresh-eyes pass.
 
 Propose a lens only when THIS PR's nature earns it. Examples of the kind of thing that earns one: concurrency or race conditions if the diff touches async coordination; serialization compatibility if a wire format changed; migration or data-loss paths if storage schemas moved; API backward compatibility if public signatures changed; performance if a hot path was rewritten; accessibility if UI semantics changed; prompt-injection surfaces if agent-facing prose or tooling changed. Zero is a fine answer for a PR whose nature the fixed six already cover.
 
 Each proposal is a key plus a one-paragraph reviewer charter written like an order: what to hunt, where in this diff, and what evidence would confirm it.`,
     { label: 'scout:lenses', phase: 'Scope', schema: LENS_PROPOSALS },
   )
-  dynamic = ((scout && scout.lenses) || []).slice(0, 6)
+  dynamic = ((scout && scout.lenses) || []).slice(0, 3)
   log(`scout proposed ${dynamic.length} dynamic lens(es)${dynamic.length ? ': ' + dynamic.map((l) => l.key).join(', ') : ''}`)
 }
 // Budget: fixed lenses always run; dynamic ones fit in what remains after
