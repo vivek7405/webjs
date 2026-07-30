@@ -114,14 +114,25 @@ export const PROSE = 'text-fg-muted text-[1.05rem] leading-[1.6] m-0';
  * pattern the rest of the site had dropped. One function makes that class of
  * drift impossible: there is nowhere left for a fourth variant to appear.
  */
-export function pageHeader(title: string, lede: string) {
+export function pageHeader(title: string, lede: unknown, eyebrow?: string) {
   return html`
     <header class="mb-10">
+      ${eyebrow ? html`<p class=${EYEBROW}>${eyebrow}</p>` : ''}
       <h1 class="font-serif text-[clamp(28px,4vw,40px)] leading-[1.05] tracking-tight text-fg mb-3">${title}</h1>
       <p class="text-fg-muted text-sm leading-relaxed max-w-2xl">${lede}</p>
     </header>
   `;
 }
+
+/**
+ * The accent eyebrow above a hub title.
+ *
+ * This is the ONE uppercase label the site keeps, and the accent is what earns
+ * it: it names the section a reader has landed in, at the top of the page,
+ * once. The grey uppercase labels that used to sit above every section heading
+ * were a different thing wearing the same clothes, and they are gone.
+ */
+export const EYEBROW = 'font-mono text-xs uppercase tracking-widest text-accent font-semibold mb-2';
 
 /**
  * The closing call to action, the one panel that is allowed to glow.
