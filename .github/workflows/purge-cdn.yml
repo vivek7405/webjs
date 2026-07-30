@@ -103,6 +103,7 @@ jobs:
 
           railway_query() {
             local out
+            : > /tmp/railway-last-error
             for hdr in "Project-Access-Token: ${RAILWAY_TOKEN}" "Authorization: Bearer ${RAILWAY_TOKEN}"; do
               out=$(curl -sS --max-time 20 -X POST "$RAILWAY_API" \
                 -H "$hdr" -H "Content-Type: application/json" --data "$payload" 2>/dev/null || true)
@@ -112,6 +113,9 @@ jobs:
                 printf '%s' "$out"
                 return 0
               fi
+              # Keep the server's own words for the diagnostic below. This is
+              # an error body, never the token.
+              printf '%s\n' "${out:0:400}" >> /tmp/railway-last-error
             done
             return 1
           }
@@ -121,16 +125,27 @@ jobs:
           echo "Looking for the Railway deployment of ${SHA} (up to $(( WAIT_BUDGET / 60 ))m)..."
 
           status=""
+          got_response=false
           while [ "$(date +%s)" -lt "$deadline" ]; do
             resp=$(railway_query || true)
             if [ -z "$resp" ]; then
               echo "  Railway API not answering cleanly yet"
             else
+              got_response=true
               # A brand new push takes a few seconds to appear, so an empty
               # match keeps polling rather than concluding anything.
-              status=$(printf '%s' "$resp" \
-                | jq -r --arg sha "$SHA" '[.data.deployments.edges[]?.node | select((.meta.commitHash // "") == $sha) | .status] | first // ""' \
-                2>/dev/null || echo "")
+              # `meta` may arrive as an object OR as a JSON-encoded string,
+              # and this could not be checked against the live API ahead of
+              # time. Indexing a string with `.commitHash` is a jq ERROR, not
+              # a null, so the unguarded form would swallow every response,
+              # poll to the deadline and silently never purge. Normalize both
+              # shapes before reading the sha.
+              status=$(printf '%s' "$resp" | jq -r --arg sha "$SHA" '
+                [ .data.deployments.edges[]?.node
+                  | . as $n
+                  | ((.meta // {}) | if type == "string" then (fromjson? // {}) else . end) as $m
+                  | select(($m.commitHash // "") == $sha)
+                  | $n.status ] | first // ""' 2>/dev/null || echo "")
               case "$status" in
                 SUCCESS)
                   echo "Deployment SUCCESS: new bytes are live, purge is warranted."
@@ -154,6 +169,32 @@ jobs:
             fi
             sleep 15
           done
+
+          # Never a single clean response means the credential or the endpoint
+          # is wrong, not that the deploy is slow. That MUST be loud: a job
+          # that quietly stops purging is exactly how the edge goes stale
+          # without anyone noticing, which is the bug this workflow exists to
+          # prevent.
+          if [ "$got_response" != "true" ]; then
+            echo "::error::No valid response from the Railway API in $(( WAIT_BUDGET / 60 ))m."
+            echo "RAILWAY_TOKEN is likely missing the project, expired, or of the wrong type."
+            echo "Last response body from the API:"
+            sed 's/^/  /' /tmp/railway-last-error 2>/dev/null | head -10 || true
+            exit 1
+          fi
+
+          # Dump what the API actually returned. Without this, a field-name or
+          # response-shape mismatch is indistinguishable from "the deploy never
+          # happened", and the job would quietly stop purging forever while
+          # still reporting green.
+          if [ -n "${resp:-}" ]; then
+            echo "Most recent deployments the API reported for this service:"
+            printf '%s' "$resp" | jq -r '
+              .data.deployments.edges[]?.node
+              | ((.meta // {}) | if type == "string" then (fromjson? // {}) else . end) as $m
+              | "  \(.status)  \(($m.commitHash // "<no commitHash field>")[0:8])  \(.createdAt)"' \
+              2>/dev/null | head -5 || true
+          fi
 
           # Deliberately not a failure. The whole point of #1192 is that this
           # job must not cry wolf; an unresolved deployment is reported and
