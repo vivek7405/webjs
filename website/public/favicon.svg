@@ -2,10 +2,10 @@
   <!-- P6d Velocity W favicon: dark rounded tile, the exact hero W (thicker
        stroke, lower middle chevron, forward lean) scaled in, with the slice. -->
   <rect x="2" y="2" width="116" height="116" rx="30" fill="#0b0b0f" stroke="#3a3a42" stroke-width="3"/>
-  <g transform="translate(-5.37,17.44) scale(0.4480)">
+  <g transform="translate(1.63,22) scale(0.4)">
     <g transform="translate(40,0) skewX(-14)">
       <path d="M10 10 L60 150 L110 66 L160 150 L210 10" fill="none" stroke="#fff" stroke-width="32" stroke-linejoin="miter" stroke-linecap="butt"/>
     </g>
   </g>
-  <rect x="4.0" y="51.0" width="112.0" height="7.8" fill="#0b0b0f"/>
+  <rect x="10" y="52" width="100" height="7" fill="#0b0b0f"/>
 </svg>
