@@ -17,7 +17,7 @@ import '#components/preview-tabs.ts';
 // ---------------------------------------------------------------------------
 // Side-effect imports: the TIER-2 component modules, so their custom elements
 // register and a preview containing a <ui-*> tag upgrades in the browser. The
-// modules are mirrored from packages/ui/packages/registry into components/ui/
+// modules are mirrored from packages/ui/packages/registry into modules/ui/components/
 // by scripts/copy-registry.mjs (run by webjs.dev.before / webjs.start.before
 // and baked into the deploy image), so the source the server renders is the
 // same source the browser is served.

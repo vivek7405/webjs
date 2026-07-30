@@ -633,7 +633,7 @@ const EXAMPLES: Record<string, string> = {
   sonner: `
     <div class="flex flex-col items-center gap-3">
       <ui-sonner position="bottom-right"></ui-sonner>
-      <button class="\${buttonClass({ variant: 'outline' })}" onclick="import('/components/ui/sonner.ts').then(m => m.toast.success('Saved!', {description: 'Your changes were saved.'}))">Show toast</button>
+      <button class="\${buttonClass({ variant: 'outline' })}" onclick="import('/modules/ui/components/sonner.ts').then(m => m.toast.success('Saved!', {description: 'Your changes were saved.'}))">Show toast</button>
     </div>
   `,
 };
@@ -1045,14 +1045,14 @@ function sonnerTypeExamples(): Record<string, string> {
       return `
         <div class="flex items-center gap-3">
           <ui-sonner position="bottom-right"></ui-sonner>
-          <button class="\${buttonClass({ variant: 'outline' })}" onclick="import('/components/ui/sonner.ts').then(m => m.toast.promise(new Promise(r => setTimeout(r, 2000)), { loading: 'Loading…', success: 'Done!', error: 'Failed' }))">Show loading</button>
+          <button class="\${buttonClass({ variant: 'outline' })}" onclick="import('/modules/ui/components/sonner.ts').then(m => m.toast.promise(new Promise(r => setTimeout(r, 2000)), { loading: 'Loading…', success: 'Done!', error: 'Failed' }))">Show loading</button>
         </div>
       `;
     }
     return `
       <div class="flex items-center gap-3">
         <ui-sonner position="bottom-right"></ui-sonner>
-        <button class="\${buttonClass({ variant: 'outline' })}" onclick="import('/components/ui/sonner.ts').then(m => m.toast${type === 'default' ? '' : '.' + type}('${type[0].toUpperCase() + type.slice(1)} toast', { description: 'Example ${type} toast.' }))">Show ${type}</button>
+        <button class="\${buttonClass({ variant: 'outline' })}" onclick="import('/modules/ui/components/sonner.ts').then(m => m.toast${type === 'default' ? '' : '.' + type}('${type[0].toUpperCase() + type.slice(1)} toast', { description: 'Example ${type} toast.' }))">Show ${type}</button>
       </div>
     `;
   };

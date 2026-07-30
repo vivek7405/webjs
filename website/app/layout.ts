@@ -402,7 +402,7 @@ export default function RootLayout({ children }: { children: unknown }) {
     <div class="site-top fixed inset-x-0 top-0 z-20">
     <header class="backdrop-blur-md bg-[color-mix(in_oklch,var(--color-bg)_78%,transparent)] border-b border-border">
       <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
-        <a class="inline-flex items-center no-underline text-fg shrink-0 transition-opacity duration-fast hover:opacity-80" href="/" aria-label="WebJs home">
+        <a class="inline-flex items-center no-underline text-fg shrink-0 transition-opacity duration-150 hover:opacity-80" href="/" aria-label="WebJs home">
           ${brandLockup('hdr', { height: 21 })}
         </a>
 

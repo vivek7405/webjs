@@ -25,7 +25,7 @@ export const metadata = {
 export default async function Articles() {
   const articles = await listArticles();
   return html`
-    <main id="main" tabindex="-1" class="max-w-210 mx-auto px-6 py-12 focus:outline-none">
+    <main id="main" tabindex="-1" class="${READING} py-12 focus:outline-none">
       ${pageHeader('Explainers for the web platform', 'Evergreen explainers on how the web platform works and the ideas WebJs is built on: web components, building with no build step, server-side rendering, and running TypeScript straight from the runtime. Reference reading, not release notes.', 'Articles')}
 
       ${articles.length === 0

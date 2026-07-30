@@ -17,7 +17,9 @@ import { WebComponent, html } from '@webjsdev/core';
  */
 export class LikeButton extends WebComponent({ count: Number }) {
   render() {
-    return html`<button @click=${() => this.count++}>♥ ${this.count}</button>`;
+    return html`<button @click=${() => this.count++}>
+      ♥ ${this.count}
+    </button>`;
   }
 }
 

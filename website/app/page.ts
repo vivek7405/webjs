@@ -75,23 +75,6 @@ const STATS = [
 // keep working with JavaScript disabled, because the server sends real HTML.
 const PE_CHIPS = ['No hydration runtime', 'Content reads', 'Links navigate', 'Forms submit', 'Display components ship 0 KB'];
 
-// A self-contained component for the progressive-enhancement pair. The
-// reactive `count` prop reflects to an attribute, which is why the rendered
-// output below carries count="3". Plain strings keep backticks / ${...}
-// literal so the SSR highlighter colors them.
-const PE_COMPONENT = `class LikeButton extends WebComponent({ count: Number }) {
-  render() {
-    return html\`<button @click=\${() => this.count++}>
-      ♥ \${this.count}
-    </button>\`;
-  }
-}
-LikeButton.register('like-button');`;
-
-const SSR_OUTPUT = `<like-button count="3">
-  <button>♥ 3</button>
-</like-button>`;
-
 // The hero stage shows this source beside the very component it declares,
 // running. Keep the two in step: the panel to its right is a real
 // <like-button>, so an edit here that drifts from components/like-button.ts
@@ -235,21 +218,21 @@ export default function LandingPage() {
             <div class=${WINBAR}>${DOTS}<span class=${WINNAME}>components/like-button.ts</span></div>
             <pre class="scroll-thin m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] [tab-size:2] text-left" tabindex="0" aria-label="like-button component source"><code>${highlight(HERO_SAMPLE)}</code></pre>
           </div>
-          <div class="flex flex-col min-w-0 bg-bg">
+          <div class="group/stage flex flex-col min-w-0 bg-bg">
             <input type="checkbox" id="stage-usage" class="sr-only peer" />
             <div class="flex items-center justify-between gap-2 h-10 px-3.5 border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]">
               <span class="inline-flex items-center gap-1.5 font-mono text-xs text-fg-subtle">
-                <span class="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_var(--accent)] peer-checked:opacity-0"></span>live
+                <span class="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_var(--accent)] transition-opacity group-has-[:checked]/stage:opacity-0"></span>live
               </span>
               <label for="stage-usage" class="cursor-pointer select-none font-mono font-semibold text-xs tracking-widest uppercase text-fg-subtle hover:text-fg transition-colors px-2 py-1 -mr-1 rounded-lg hover:bg-[var(--hover-surface)]">
-                <span class="peer-checked:hidden">Show usage</span>
-                <span class="hidden peer-checked:inline">Show rendered</span>
+                <span class="group-has-[:checked]/stage:hidden">Show usage</span>
+                <span class="hidden group-has-[:checked]/stage:inline">Show rendered</span>
               </label>
             </div>
-            <div class="flex-1 grid place-items-center px-6 py-10 peer-checked:hidden">
+            <div class="flex-1 grid place-items-center px-6 py-10 group-has-[:checked]/stage:hidden">
               <like-button count="3"></like-button>
             </div>
-            <pre class="hidden peer-checked:block flex-1 m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] text-left" aria-label="like-button usage"><code>${highlight(USAGE_SAMPLE)}</code></pre>
+            <pre class="hidden group-has-[:checked]/stage:block flex-1 m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] text-left" aria-label="like-button usage"><code>${highlight(USAGE_SAMPLE)}</code></pre>
             <div class="px-4 py-3 border-t border-border text-center font-mono text-xs leading-[1.5] text-fg-subtle">
               Server-rendered first, then upgraded. Click it.
             </div>

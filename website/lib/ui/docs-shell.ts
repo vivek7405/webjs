@@ -207,13 +207,11 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
          context entirely and leaves the header usable while the drawer is
          open. */
       .docs-backdrop { display: none; }
-      /* 859.98, not 860. Tailwind's max-[860px] variant compiles to
-         "not all and (min-width: 860px)", which EXCLUDES exactly 860, while a
-         hand-written max-width of 860px includes it. At that one width the
-         grid had already collapsed to a single column and the menu button was
-         already hidden, while these drawer rules had not taken over, so the
-         page had no navigation at all. */
-      @media (max-width: 859.98px) {
+      /* 899.98, not 900: the collapse must flip at the same moment as the
+         max-wide: utilities (--breakpoint-wide: 900px), and a hand-written
+         900px max-width would OVERLAP the 900px min-width for one device
+         pixel. Keep this in step with --breakpoint-wide in input.css. */
+      @media (max-width: 899.98px) {
         .docs-sidebar {
           position: fixed;
           top: var(--header-h); left: 0; bottom: 0;
@@ -306,14 +304,14 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
                 </div>`
               : html`<div class="font-mono text-xs font-semibold tracking-widest uppercase text-fg-subtle px-2 mt-6 mb-2 first:mt-0">${s.title}</div>`}
             ${s.items.map((it) => html`
-              <a class="block py-1.5 px-2 my-px rounded-md text-fg-muted no-underline text-sm transition-colors duration-fast hover:text-fg hover:bg-bg-subtle" href=${it.href}>${it.label}</a>
+              <a class="block py-1.5 px-2 my-px rounded-md text-fg-muted no-underline text-sm transition-colors duration-150 hover:text-fg hover:bg-bg-subtle" href=${it.href}>${it.label}</a>
             `)}
           `)}
         </nav>
       </aside>
       <main id="main" tabindex="-1" class="min-w-0 max-w-3xl pt-10 pb-16 focus:outline-none">
         <button
-          class="docs-nav-toggle hidden max-wide:inline-flex items-center gap-2 mb-6 px-3 py-2 rounded-lg border border-border bg-bg-elev text-fg-muted text-sm cursor-pointer transition-colors duration-fast hover:text-fg hover:border-border-strong"
+          class="docs-nav-toggle hidden max-wide:inline-flex items-center gap-2 mb-6 px-3 py-2 rounded-lg border border-border bg-bg-elev text-fg-muted text-sm cursor-pointer transition-colors duration-150 hover:text-fg hover:border-border-strong"
           aria-controls="docs-sidebar"
           aria-expanded="false"
         >

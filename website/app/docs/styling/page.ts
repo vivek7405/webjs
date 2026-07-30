@@ -22,7 +22,7 @@ export default function Styling() {
   --color-muted-foreground: var(--muted-foreground);
   --font-serif:             var(--font-serif);
   --text-display:           clamp(2.6rem, 1.6rem + 3.2vw, 4.25rem);
-  --duration-fast:          140ms;
+  --duration-150:          140ms;
 }
 
 // app/layout.ts excerpt
@@ -49,7 +49,7 @@ export default function RootLayout({ children }: { children: unknown }) {
     <p>From any page or component you now write things like:</p>
     <pre>&lt;h1 class="font-serif text-display text-foreground mb-6"&gt;Hello&lt;/h1&gt;
 &lt;p class="text-muted-foreground font-sans"&gt;Lede copy&lt;/p&gt;
-&lt;a class="text-primary hover:underline duration-fast"&gt;Link&lt;/a&gt;</pre>
+&lt;a class="text-primary hover:underline duration-150"&gt;Link&lt;/a&gt;</pre>
 
     <h2>Light-DOM components</h2>
     <p>Light DOM is the default for any <code>WebComponent</code>. Tailwind classes apply as they would on plain HTML:</p>
@@ -180,13 +180,13 @@ export function rubric(label: string) {
 /** "← label" back link. */
 export function backLink(href: string, label: string) {
   return html\`
-    &lt;a href=\${href} class="inline-block mb-12 text-muted-foreground/70 no-underline font-mono text-xs uppercase tracking-widest duration-fast hover:text-foreground"&gt;← \${label}&lt;/a&gt;
+    &lt;a href=\${href} class="inline-block mb-12 text-muted-foreground/70 no-underline font-mono text-xs uppercase tracking-widest duration-150 hover:text-foreground"&gt;← \${label}&lt;/a&gt;
   \`;
 }</pre>
 
     <p>Consume anywhere:</p>
     <pre>// app/blog/[slug]/page.ts
-
+import { rubric, backLink } from '#lib/utils/ui.ts';
 
 export default function Post({ params }) {
   return html\`

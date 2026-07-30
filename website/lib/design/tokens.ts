@@ -43,7 +43,7 @@ export const SWATCHES: Swatch[] = [
  * takes white (5.4:1).
  */
 export const ACCENTS: Swatch[] = [
-  { token: '--accent', name: 'Electric Gold-Amber', role: 'Primary button, closing CTA', dark: 'oklch(0.78 0.18 58)', light: 'oklch(0.58 0.18 52)' },
-  { token: '--accent-fg', name: 'On accent', role: 'Text and icons on the accent', dark: 'oklch(0.08 0.01 58)', light: 'oklch(1 0 0)' },
-  { token: '--accent-live', name: 'Live', role: 'Glow, live dots, focus rings', dark: 'oklch(0.78 0.18 58)', light: 'oklch(0.68 0.19 52)' },
+  { token: '--accent', name: 'Electric Gold-Amber', role: 'Primary button, closing CTA', dark: 'oklch(0.78 0.18 58)', light: 'oklch(0.54 0.16 52)' },
+  { token: '--accent-fg', name: 'On accent', role: 'Text and icons on the accent', dark: 'oklch(0 0 0)', light: 'oklch(1 0 0)' },
+  { token: '--accent-live', name: 'Live', role: 'Glow, live dots, focus rings', dark: 'oklch(0.78 0.18 58)', light: 'oklch(0.63 0.17 50)' },
 ];

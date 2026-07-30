@@ -17,8 +17,9 @@
    bootstrap in app/layout.ts). Pointing the variant at that same signal is what
    keeps a component preview in step with the page around it: without this, a
    reader on a dark OS who picks light gets light page tokens and dark
-   component internals. The marketing pages use no `dark:` utilities at all, so
-   redefining the variant changes nothing outside the previews. */
+   component internals. The marketing chrome now uses `dark:` too (the
+   theme-aware brand marks in lib/design/brand.ts), which is fine for the same
+   reason: both consumers want the variant to mean the PAGE theme. */
 @custom-variant dark {
   @media (prefers-color-scheme: dark) {
     &:where(:root:not([data-theme='light']) *) { @slot; }
@@ -88,8 +89,6 @@
   --text-doc-h1: clamp(2rem, 1.5rem + 1.6vw, 2.6rem);
   --text-doc-h2: clamp(1.3rem, 1.1rem + 0.7vw, 1.6rem);
 
-  --duration-fast: 140ms;
-  --duration-slow: 220ms;
 }
 
 /* --------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import { html } from '@webjsdev/core';
-import { READING} from '#lib/design/recipes.ts';
+import { READING } from '#lib/design/recipes.ts';
 import { pageHeader } from '#lib/ui/page-header.ts';
 import { listComparisons } from '#modules/compare/queries/list-comparisons.server.ts';
 
@@ -20,7 +20,7 @@ export const metadata = {
 export default async function Compare() {
   const comparisons = await listComparisons();
   return html`
-    <main id="main" tabindex="-1" class="max-w-210 mx-auto px-6 py-12 focus:outline-none">
+    <main id="main" tabindex="-1" class="${READING} py-12 focus:outline-none">
       ${pageHeader('How WebJs compares', 'Honest head-to-head write-ups: where WebJs agrees with each framework, where it genuinely differs, and who should pick which. No trashing the alternative, and each one says where the other tool is the better call.', 'Compare')}
 
       ${comparisons.length === 0

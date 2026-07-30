@@ -11,8 +11,8 @@
  * The rules encoded below:
  *
  * - Controls are compact. Size and colour are separate decisions: the primary
- *   button carries the brand amber, but at 42px with a 10px radius it reads as
- *   a tool rather than as a banner.
+ *   button carries the brand amber, but at 42px tall it reads as a control
+ *   rather than as a banner.
  * - The accent has exactly two jobs, the primary action and the closing CTA,
  *   plus live and focus state. It never tints a content panel, a section
  *   heading, or a label. Rationing it to the places that ask for a click is

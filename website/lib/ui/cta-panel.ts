@@ -15,8 +15,8 @@ import { NEW_TAB } from '#lib/links.ts';
  * the install bar, and the two buttons drifted out of step with each other.
  * Passing the words in leaves nothing per-page to get wrong.
  *
- * `install` is opt-in because /why-webjs closes on the docs link alone, without
- * the command.
+ * The install bar renders by default; pass `install: false` for a closing
+ * panel without the command.
  */
 export function ctaPanel(opts: {
   title: string;
