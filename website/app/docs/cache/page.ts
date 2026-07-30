@@ -102,6 +102,19 @@ export const metadata = {
 
     <p>Note that <code>max-age=0</code> is a common default worth thinking about. It keeps the browser revalidating on every view, which is right when deploys must be visible immediately, but it means a stored copy is never reused directly. A small non-zero value is what produces real browser cache hits on back/forward and repeat visits.</p>
 
+    <h2>Static Assets: asset()</h2>
+    <p>A file in <code>public/</code> is served at a stable url, so after a deploy a browser or CDN can keep serving the PREVIOUS bytes until its cache expires. Wrap the url in <code>asset()</code> and it gains a content hash, which the framework then serves <code>immutable</code> for a year:</p>
+
+    <pre>import { html, asset } from '@webjsdev/core';
+
+export default function RootLayout({ children }) {
+  return html\`&lt;link rel="stylesheet" href=\${asset('/public/app.css')}&gt;\`;
+}</pre>
+
+    <p>In production that renders <code>/public/app.css?v=&lt;hash&gt;</code>. New bytes mean a new url, so no cache can serve a stale copy, and the year-long <code>immutable</code> lifetime is safe precisely because the url changes when the file does. The same url un-marked gets a short <code>max-age</code> instead. <code>asset()</code> is isomorphic and safe to call from a layout: the server resolves it, the browser has no resolver and returns the path unchanged. It is off in development, so dev output stays byte-identical, and only <code>public/</code> paths resolve.</p>
+
+    <p><strong>Mark the thing that FETCHES, not a hint.</strong> Do not wrap a <code>&lt;link rel="preload"&gt;</code> whose asset is really fetched by an <code>@font-face url()</code> in your stylesheet. The preload cache is keyed on the full url, so a versioned hint can never satisfy the un-versioned request the CSS makes, and the file downloads twice. Framework-emitted urls (your modules, the core runtime, vendor bundles) are fingerprinted automatically and need no marking.</p>
+
     <h2>Server HTML Response Cache (export const revalidate)</h2>
     <p>For a page that renders identical HTML for every visitor, opt into the server HTML response cache so the SSR pipeline runs once per window instead of once per request (webjs's no-build equivalent of Next.js's Full Route Cache and ISR). Declare a revalidation window on the page module:</p>
 
