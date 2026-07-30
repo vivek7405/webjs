@@ -178,8 +178,9 @@ fi
 # Triggers: review the PR/diff/branch/changes, code review, look it over
 # for bugs. Reviewing every change before it is marked ready is a standing
 # expectation, and a review is a LOOP with the substantive-gate exit the
-# webjs-start-work skill defines (loop on substantive findings, then one
-# bounded prose pass). Keep this directive in lockstep with that skill's
+# webjs-start-work skill defines (loop on substantive findings; the
+# converging round's prose findings apply without re-review). Keep this
+# directive in lockstep with that skill's
 # exit condition; test/hooks/review-loop-exit.test.mjs asserts the
 # pre-#1171 clean-round absolute stays gone.
 # code-review is a built-in Claude Code skill (no in-repo SKILL.md, so the
@@ -187,7 +188,7 @@ fi
 if has '(review|audit) (the |my |this )?(pr|diff|branch|change|changes|code|commit)' \
    || has 'code ?review' \
    || has '(review|look) .{0,20}(over )?for (bug|issue|correctness|regression)'; then
-  add_match "code-review: the request is to review code. Invoke the code-review skill (it reviews the diff for correctness bugs plus reuse and simplification). A review of a PR runs the webjs-start-work self-review loop, whose round 1 is the deep-review workflow; the code-review skill's findings feed that loop as auxiliary input, not as a round of it. Treat review as a LOOP with that skill's exit: after fixing findings, re-review until a round finds nothing SUBSTANTIVE (shipped source, a test's ability to observe the defect it claims to cover, or a factual runtime claim in docs), then one bounded prose pass ends it, and a budget of 5 substantive rounds bounds the whole loop (over budget, stop and report rather than continuing). Never report done off a round that found something substantive. Findings from the code-review skill itself carry no tier tag (its fixed result schema), so it is the one reviewer kind whose findings you classify yourself: doubt resolves to substantive, and every prose classification is recorded like a downgrade, a one-sentence reason on the finding's thread. An untagged finding from any tag-capable reviewer is simply treated as substantive."
+  add_match "code-review: the request is to review code. Invoke the code-review skill (it reviews the diff for correctness bugs plus reuse and simplification). A review of a PR runs the webjs-start-work self-review loop, whose round 1 is the deep-review workflow when the diff touches shipped source (packages/*/src, packages/cli/lib, packages/cli/templates) and one broad fresh reviewer otherwise; the code-review skill's findings feed that loop as auxiliary input, not as a round of it. Treat review as a LOOP with that skill's exit: after fixing findings, re-review until a round finds nothing SUBSTANTIVE (shipped source, a test's ability to observe the defect it claims to cover, or a factual runtime claim in docs); that round's prose-tier findings are applied without re-review and end the loop, and a budget of 5 substantive rounds bounds the whole loop (over budget, stop and report rather than continuing). Never report done off a round that found something substantive. Findings from the code-review skill itself carry no tier tag (its fixed result schema), so it is the one reviewer kind whose findings you classify yourself: doubt resolves to substantive, and every prose classification is recorded like a downgrade, a one-sentence reason on the finding's thread. An untagged finding from any tag-capable reviewer is simply treated as substantive."
 fi
 
 # --- verify: prove the change works by running the app ------------------
