@@ -92,7 +92,7 @@ export default function BrandPage() {
     <main id="main" tabindex="-1" class="focus:outline-none">
 
     <section class="px-6 pt-[clamp(48px,7vw,88px)] pb-12 border-b border-border">
-      <div class="max-w-[1120px] mx-auto">
+      <div class="max-w-wide mx-auto">
         <h1 class="font-display font-extrabold text-display leading-[1.0] tracking-[-0.04em] mb-5 max-w-[13ch] text-balance">
           Brand and logo assets
         </h1>
@@ -113,8 +113,8 @@ export default function BrandPage() {
     </section>
 
     <section class="py-16 px-6">
-      <div class="max-w-[1120px] mx-auto">
-        <div class="max-w-[720px] mb-10">
+      <div class="max-w-wide mx-auto">
+        <div class="max-w-narrow mb-10">
           <h2 class=${H2}>The marks</h2>
           <p class=${PROSE}>
             The identity is a forward-leaning W cut by a band of negative space,
@@ -144,8 +144,8 @@ export default function BrandPage() {
     </section>
 
     <section class="py-16 px-6 bg-bg-subtle/40 border-y border-border" id="usage">
-      <div class="max-w-[1120px] mx-auto">
-        <div class="max-w-[720px] mb-10">
+      <div class="max-w-wide mx-auto">
+        <div class="max-w-narrow mb-10">
           <h2 class=${H2}>Clear space and minimum size</h2>
           <p class=${PROSE}>
             Both rules are expressed in one unit, the height of the monogram in
@@ -210,8 +210,8 @@ export default function BrandPage() {
     </section>
 
     <section class="py-16 px-6">
-      <div class="max-w-[1120px] mx-auto">
-        <div class="max-w-[720px] mb-10">
+      <div class="max-w-wide mx-auto">
+        <div class="max-w-narrow mb-10">
           <h2 class=${H2}>Colour</h2>
           <p class=${PROSE}>
             Dark is the primary theme and light is a translation of it, not a
@@ -271,8 +271,8 @@ export default function BrandPage() {
     </section>
 
     <section class="py-16 px-6 bg-bg-subtle/40 border-y border-border">
-      <div class="max-w-[1120px] mx-auto">
-        <div class="max-w-[720px] mb-10">
+      <div class="max-w-wide mx-auto">
+        <div class="max-w-narrow mb-10">
           <h2 class=${H2}>Typography</h2>
           <p class=${PROSE}>
             Three faces, each with one job. All are variable, self-hosted, and
@@ -300,7 +300,7 @@ export default function BrandPage() {
     </section>
 
     <section class="py-16 px-6">
-      <div class="max-w-[1120px] mx-auto">
+      <div class="max-w-wide mx-auto">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
           <div>
             <h2 class=${H2}>Writing the name</h2>

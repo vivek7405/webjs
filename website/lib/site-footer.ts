@@ -16,7 +16,7 @@ import { brandLockup } from '#lib/brand.ts';
 export function siteFooter() {
   return html`
     <footer class="mt-24 border-t border-border py-16 px-6 bg-bg-subtle/30">
-      <div class="max-w-[1120px] mx-auto">
+      <div class="max-w-wide mx-auto">
         <nav class="grid grid-cols-2 md:grid-cols-5 gap-8 mb-12" aria-label="Footer">
           <div class="flex flex-col gap-3">
             <h4 class="text-xs font-bold uppercase tracking-wider text-fg">Product</h4>

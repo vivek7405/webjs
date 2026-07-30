@@ -54,6 +54,25 @@
      is below the ~25% separation a scale needs to be worth having. */
   --text-2xs: 11px;
 
+  /* Container measures. These were ten different inline pixel values across
+     app/ and lib/, which is the same eyeballing problem the type sizes had,
+     one level up: nobody can tell 820px from 840px, but the reader does feel
+     a page where every section starts at a slightly different width.
+
+     Each one has a job rather than a number:
+       prose    a comfortable measure for a single column of text
+       narrow   a section's intro block, sitting inside wide
+       panel    the closing call to action
+       reading  the long-form column on /blog, /articles, /compare
+       wide     marketing sections
+       shell    the header and footer chrome, the widest thing on the site */
+  --container-prose:   640px;
+  --container-narrow:  720px;
+  --container-panel:   760px;
+  --container-reading: 840px;
+  --container-wide:   1120px;
+  --container-shell:  1240px;
+
   --text-display: clamp(2.9rem, 1.55rem + 4.5vw, 5.5rem);
   --text-h2:      clamp(1.7rem, 1.2rem + 1.4vw, 2.5rem);
   --text-lede:    clamp(1.08rem, 0.98rem + 0.4vw, 1.28rem);

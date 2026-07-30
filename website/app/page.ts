@@ -218,8 +218,8 @@ export default function LandingPage() {
     </section>
 
     <section class="py-16">
-      <div class="max-w-[1120px] mx-auto px-6">
-        <div class="max-w-[720px] mx-auto mb-12 text-center">
+      <div class="max-w-wide mx-auto px-6">
+        <div class="max-w-narrow mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Real HTML first. JavaScript only when it earns it.</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">
             Pages and components render to real HTML on the server, so the page
@@ -229,7 +229,7 @@ export default function LandingPage() {
           </p>
         </div>
 
-        <div class="hero-stage max-w-[1000px] mx-auto grid grid-cols-1 min-[880px]:grid-cols-[1.12fr_0.88fr] rounded-[16px] overflow-hidden border border-border-strong bg-bg-sunken shadow-[var(--shadow)]">
+        <div class="hero-stage max-w-wide mx-auto grid grid-cols-1 min-[880px]:grid-cols-[1.12fr_0.88fr] rounded-[16px] overflow-hidden border border-border-strong bg-bg-sunken shadow-[var(--shadow)]">
           <div class="min-w-0 border-b min-[880px]:border-b-0 min-[880px]:border-r border-border">
             <div class=${WINBAR}>${DOTS}<span class=${WINNAME}>components/like-button.ts</span></div>
             <pre class="scroll-thin m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] [tab-size:2] text-left" tabindex="0" aria-label="like-button component source"><code>${highlight(HERO_SAMPLE)}</code></pre>
@@ -262,12 +262,12 @@ export default function LandingPage() {
     </section>
 
     <section class="py-16">
-      <div class="max-w-[1320px] mx-auto px-6">
-        <div class="max-w-[720px] mx-auto mb-12 text-center">
+      <div class="max-w-shell mx-auto px-6">
+        <div class="max-w-narrow mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The whole stack, in three files</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">A component, a server action, and a page. No build, no boilerplate, all web standards.</p>
         </div>
-        <div class="grid gap-4 grid-cols-1 max-w-[640px] mx-auto min-[900px]:grid-cols-3 min-[900px]:max-w-none">
+        <div class="grid gap-4 grid-cols-1 max-w-prose mx-auto min-[900px]:grid-cols-3 min-[900px]:max-w-none">
           <div class="flex flex-col min-w-0">
             <p class="text-sm font-medium leading-[1.4] text-fg-subtle mb-2.5 ml-1">Interactive component</p>
             ${codeWindow('components/like-button.ts', COMPONENT_SAMPLE)}
@@ -285,8 +285,8 @@ export default function LandingPage() {
     </section>
 
     <section class="py-16">
-      <div class="max-w-[1120px] mx-auto px-6">
-        <div class="max-w-[720px] mx-auto mb-12 text-center">
+      <div class="max-w-wide mx-auto px-6">
+        <div class="max-w-narrow mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Modern full-stack, on web standards</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">Everything you need to ship, none of the build toolchain you don't.</p>
         </div>
@@ -371,8 +371,8 @@ export default function LandingPage() {
     </section>
 
     <section class="py-16">
-      <div class="max-w-[1120px] mx-auto px-6">
-        <div class="max-w-[720px] mx-auto mb-12 text-center">
+      <div class="max-w-wide mx-auto px-6">
+        <div class="max-w-narrow mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Light enough for AI</h2>
           <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">A zero build step means the source you read is what runs. Because the framework ships without compilation layers, an AI agent can read and reason about the entire WebJs source end to end, straight from node_modules.</p>
         </div>
@@ -385,17 +385,17 @@ export default function LandingPage() {
             </div>
           `)}
         </div>
-        <p class="mt-8 mx-auto max-w-[720px] text-center text-[1.02rem] leading-[1.6] text-fg-muted">Familiar from day one. WebJs uses Next.js-style file-based routing and lit-style web components, conventions both people and agents already know.</p>
-        <p class="mt-6 mx-auto max-w-[720px] text-center text-fg-subtle text-xs leading-[1.5]">Gzipped production sizes. A Next.js app ships a client bundle around ~99 KB gzipped (react, react-dom, and the Next runtime); <code class="font-mono">@webjsdev/core</code> is self-sufficient at ~29 KB gzipped with zero runtime dependencies and no build step.</p>
+        <p class="mt-8 mx-auto max-w-narrow text-center text-[1.02rem] leading-[1.6] text-fg-muted">Familiar from day one. WebJs uses Next.js-style file-based routing and lit-style web components, conventions both people and agents already know.</p>
+        <p class="mt-6 mx-auto max-w-narrow text-center text-fg-subtle text-xs leading-[1.5]">Gzipped production sizes. A Next.js app ships a client bundle around ~99 KB gzipped (react, react-dom, and the Next runtime); <code class="font-mono">@webjsdev/core</code> is self-sufficient at ~29 KB gzipped with zero runtime dependencies and no build step.</p>
       </div>
     </section>
 
     <section id="templates" class="scroll-mt-24 py-16">
-      <div class="max-w-[1120px] mx-auto px-6">
-        <div class="max-w-[720px] mx-auto mb-12 text-center">
+      <div class="max-w-wide mx-auto px-6">
+        <div class="max-w-narrow mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Start where you are</h2>
         </div>
-        <div class="grid gap-4 grid-cols-1 max-w-[640px] mx-auto min-[900px]:grid-cols-2 min-[900px]:max-w-[760px]">
+        <div class="grid gap-4 grid-cols-1 max-w-prose mx-auto min-[900px]:grid-cols-2 min-[900px]:max-w-panel">
           <div class="flex flex-col gap-3 p-6 min-w-0 rounded-2xl border border-border bg-bg-elev">
             <span class="text-xs font-medium leading-none text-fg-subtle">Full-stack</span>
             <h3 class="font-display font-bold text-[1.15rem] leading-[1.25] m-0">Pages + API + components</h3>
@@ -415,7 +415,7 @@ middleware.ts</pre>
             <div class="cmd-foot pt-2 mt-auto font-mono text-xs leading-[1.6] text-fg-muted max-w-full min-w-0"><copy-cmd>npm create webjs@latest my-api -- --template api</copy-cmd></div>
           </div>
         </div>
-        <p class="mt-8 mx-auto max-w-[720px] text-center text-fg-subtle text-sm leading-[1.55]">Prefer Bun? Add <code class="font-mono">--runtime bun</code> to either template, or run <code class="font-mono">bun create webjs my-app</code> to flavor the scaffold for Bun automatically.</p>
+        <p class="mt-8 mx-auto max-w-narrow text-center text-fg-subtle text-sm leading-[1.55]">Prefer Bun? Add <code class="font-mono">--runtime bun</code> to either template, or run <code class="font-mono">bun create webjs my-app</code> to flavor the scaffold for Bun automatically.</p>
       </div>
     </section>
 

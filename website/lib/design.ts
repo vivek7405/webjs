@@ -80,10 +80,10 @@ export const INSTALL =
 --------------------------------------------------------------------------- */
 
 /** Full-width marketing content: the hero, feature grids, the stage. */
-export const WIDE = 'max-w-[1120px] mx-auto px-6';
+export const WIDE = 'max-w-wide mx-auto px-6';
 
 /** Long-form reading: the blog, articles, and comparison hubs and posts. */
-export const READING = 'max-w-[840px] mx-auto px-6';
+export const READING = 'max-w-reading mx-auto px-6';
 
 /** One section's vertical rhythm. Every marketing section uses this, not its own. */
 export const SECTION = 'py-16';
@@ -106,7 +106,7 @@ export function pageHeader(title: string, lede: string) {
   return html`
     <header class="mb-10">
       <h1 class="font-serif text-[clamp(28px,4vw,40px)] leading-[1.05] tracking-tight text-fg mb-3">${title}</h1>
-      <p class="text-fg-muted text-sm leading-relaxed max-w-[640px]">${lede}</p>
+      <p class="text-fg-muted text-sm leading-relaxed max-w-prose">${lede}</p>
     </header>
   `;
 }
@@ -148,7 +148,7 @@ export function ctaPanel(opts: {
   return html`
     <section class="${SECTION} text-center" id="get-started">
       <div class="${WIDE}">
-        <div class="max-w-[760px] mx-auto p-[clamp(32px,5vw,64px)] ${PANEL_CTA}">
+        <div class="max-w-panel mx-auto p-[clamp(32px,5vw,64px)] ${PANEL_CTA}">
           <h2 class="font-display font-extrabold text-h2 leading-[1.1] tracking-[-0.03em] mt-0 mb-3">${opts.title}</h2>
           <p class="text-fg-muted mx-auto mb-8 max-w-[52ch]">${opts.lede}</p>
           ${opts.install === false ? '' : html`
