@@ -83,7 +83,7 @@ export const INSTALL =
 export const WIDE = 'max-w-6xl mx-auto px-6';
 
 /** Long-form reading: the blog, articles, and comparison hubs and posts. */
-export const READING = 'max-w-3xl mx-auto px-6';
+export const READING = 'max-w-[840px] mx-auto px-6';
 
 /** One section's vertical rhythm. Every marketing section uses this, not its own. */
 export const SECTION = 'py-16';
