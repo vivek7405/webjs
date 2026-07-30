@@ -49,7 +49,7 @@ The purge is zone-wide rather than a path list: all four hostnames (`webjs.dev`,
   cmp /tmp/o /tmp/e && echo fresh || echo stale
   ```
 
-The assets that actually caused those incidents no longer depend on this purge. `tailwind.css`, both brand lockups, and the highlight script are marked with `asset()` (#1194) in `website/app/layout.ts` and `website/lib/design/brand.ts`, so each carries a `?v=<content-hash>` and is served `immutable` for a year. New bytes mean a new url, which no cache can serve stale.
+The assets that actually caused those incidents no longer depend on this purge. `tailwind.css`, the brand lockups and marks, and the highlight script are marked with `asset()` (#1194) in `website/app/layout.ts` and `website/lib/design/brand.ts`, so each carries a `?v=<content-hash>` and is served `immutable` for a year. New bytes mean a new url, which no cache can serve stale.
 
 Some urls are deliberately NOT marked, and that is the point of an opt-in helper rather than an automatic rewrite:
 
@@ -122,6 +122,11 @@ The whole flow is tool-agnostic: the universal pre-commit hook fires for every `
 npm runs first; if it fails (auth, network, transient registry error), the GitHub Release step is skipped and the workflow fails. After fixing, a re-run picks up where it left off: the npm-side check makes the completed package a no-op and only the missing release lands.
 
 The workflow uses `NPM_TOKEN` (repo secret) and the auto-provisioned `GITHUB_TOKEN`. Free for public repos.
+
+**When `server` or the scaffold consumes a NEW `@webjsdev/core` export, core MUST publish first.** `packages/server/src/dev.js` and `context.js` import core symbols statically (`setAssetUrlProvider`, `setCspNonceProvider`), and `webjs create` emits an app that imports them too. A server published against an older core dies at module load with `does not provide an export named ...`, and a cli published first makes every freshly scaffolded app 500 on every route. Two things force the right order:
+
+1. **Give `changelog/core/<version>.md` the EARLIEST `date:` of the batch.** The publish loop sorts by that timestamp ASC, and the tie-break on equal timestamps is filename DESC, which would publish `server` BEFORE `core`. The loop is `set -e` sequential, so core-first is also the fail-safe order: if core's publish fails, nothing after it ships and no skew can reach the registry.
+2. **Bump the declared range in the same release PR.** `packages/server/package.json` still declares `"@webjsdev/core": "^0.7.1"`, which every published core satisfies, so npm cannot catch the skew. Raising it to the version that actually carries the new export makes the resolver enforce the coupling permanently, independent of publish order. The scaffold cannot be range-protected (it installs `@latest`), so it relies on the ordering above.
 
 **Update the global CLI after the publish lands.** The maintainer scaffolds and dogfoods with the globally installed `webjs` CLI, which lags a release until refreshed. So once `release.yml` has published (verify `npm view @webjsdev/cli version` matches the released version), refresh the global CLI on every manager: `npm update -g webjsdev`, `bun add -g webjsdev`, and `mise use -g npm:webjsdev@latest`. Run them AFTER the publish, never at merge time (they pull the LATEST PUBLISHED version). The `mise use` line is the one that actually moves a mise-shimmed `webjs` (a shim on PATH ahead of the npm/bun globals); verify with `mise which webjs`. This is reminded automatically by the `.claude/hooks/release-global-update.sh` PostToolUse hook, which fires when a `chore/release-*` PR merges (escape hatch `WEBJS_NO_RELEASE_GLOBAL_UPDATE=1`, regression test `test/hooks/release-global-update.test.mjs`).
 
