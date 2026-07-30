@@ -1,12 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="24 -4 248 196" width="248" height="196" role="img" aria-label="WebJs">
-  <defs>
-    <mask id="w" maskUnits="userSpaceOnUse" x="24" y="-4" width="248" height="196">
-      <rect x="24" y="-4" width="248" height="196" fill="#000"/>
-      <g transform="translate(40,0) skewX(-14)">
-        <path d="M10 10 L60 150 L110 66 L160 150 L210 10" fill="none" stroke="#fff" stroke-width="32" stroke-linejoin="miter" stroke-linecap="butt"/>
-      </g>
-      <rect x="24" y="80" width="248" height="11" fill="#000"/>
-    </mask>
-  </defs>
-  <rect x="24" y="-4" width="248" height="196" fill="#000000" mask="url(#w)"/>
+  <path fill="#000000" d="M 31.097 15.381 L 38.064 80.000 L 222.044 80.000 L 261.233 15.381 L 233.781 4.619 L 188.064 80.000 L 157.007 80.000 L 141.344 34.718 L 103.100 80.000 L 72.044 80.000 L 63.916 4.619 Z"/>
+  <path fill="#000000" d="M 39.250 91.000 L 49.642 187.390 L 125.745 97.282 L 156.915 187.390 L 215.372 91.000 L 181.393 91.000 L 168.287 112.610 L 160.812 91.000 L 93.810 91.000 L 75.559 112.610 L 73.230 91.000 Z"/>
 </svg>
