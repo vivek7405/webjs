@@ -381,7 +381,7 @@ export default function LandingPage() {
         </div>
         <div class="grid gap-4 grid-cols-1 max-w-2xl mx-auto wide:grid-cols-2 wide:max-w-3xl">
           <div class="flex flex-col gap-3 p-6 min-w-0 rounded-2xl border border-border bg-bg-elev">
-            <span class="text-xs font-medium leading-none text-fg-subtle">Full-stack</span>
+            <span class="text-xs font-medium leading-none text-accent">Full-stack</span>
             <h3 class="font-display font-bold text-lg leading-[1.25] m-0">Pages + API + components</h3>
             <p class="m-0 text-sm leading-[1.6] text-fg-muted">SSR pages, web components, server actions, Drizzle, streaming, and a browsable feature gallery. Auth (login, sessions, a protected route) ships as a gallery card. The default.</p>
             <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-subtle font-mono text-xs leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/page.ts
@@ -390,7 +390,7 @@ actions/posts.server.ts</pre>
             <div class="cmd-foot pt-2 mt-auto font-mono text-xs leading-[1.6] text-fg-muted max-w-full min-w-0"><copy-cmd>npm create webjs@latest my-app</copy-cmd></div>
           </div>
           <div class="flex flex-col gap-3 p-6 min-w-0 rounded-2xl border border-border bg-bg-elev">
-            <span class="text-xs font-medium leading-none text-fg-subtle">Backend (API)</span>
+            <span class="text-xs font-medium leading-none text-accent">Backend (API)</span>
             <h3 class="font-display font-bold text-lg leading-[1.25] m-0">Route handlers + Database</h3>
             <p class="m-0 text-sm leading-[1.6] text-fg-muted">A backend-only app, no UI or SSR. File-based route handlers, modules, middleware, rate limiting, WebSockets, a database, and a backend-features gallery.</p>
             <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-subtle font-mono text-xs leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/api/users/route.ts
