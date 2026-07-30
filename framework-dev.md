@@ -49,7 +49,14 @@ The purge is zone-wide rather than a path list: all four hostnames (`webjs.dev`,
   cmp /tmp/o /tmp/e && echo fresh || echo stale
   ```
 
-The permanent fix for the assets themselves is a content hash in the url, the way the framework already fingerprints module imports and its own emitted urls (`?v=`, #243). `tailwind.css` and the brand marks are referenced by hand-written urls in `website/app/layout.ts` and `website/lib/design/brand.ts`, which that machinery never sees, so they stay on stable urls and depend on this purge. Fingerprinting them would retire the dependency; the workflow stays worthwhile as the safety net for anything else on a stable url.
+The assets that actually caused those incidents no longer depend on this purge. `tailwind.css`, both brand lockups, and the highlight script are marked with `asset()` (#1194) in `website/app/layout.ts` and `website/lib/design/brand.ts`, so each carries a `?v=<content-hash>` and is served `immutable` for a year. New bytes mean a new url, which no cache can serve stale.
+
+Some urls are deliberately NOT marked, and that is the point of an opt-in helper rather than an automatic rewrite:
+
+- the three **font preloads**, because the real request comes from `@font-face url()` in the compiled stylesheet and CSS `url()` is not rewritten. The preload cache is keyed on the full url, so a versioned hint could never satisfy the unversioned request, and each font would be fetched twice.
+- the **favicons**, whose hrefs are parsed literally by the SEO repo-health tests guarding the #1088 size bug, and where fingerprinting buys almost nothing.
+
+The purge workflow therefore STAYS as the safety net for everything still on a stable url (an asset referenced from CSS, a `srcset` candidate, an un-marked path), and it remains the way to clear the edge after a deploy that changes one of those.
 
 ---
 
