@@ -30,6 +30,7 @@ import {
   setElisionFingerprint,
   withAssetHash,
   resolveAssetUrl,
+  assetHashFor,
 } from '../../src/asset-hash.js';
 
 let root;
@@ -83,6 +84,31 @@ test('a public asset hash does not move with the elision verdict', () => {
   setElisionFingerprint('');
   clearAssetHashCache();
   assert.equal(seen.size, 1, `the url must depend on bytes alone, saw: ${[...seen].join(' ')}`);
+});
+
+test('a core file hash does not move with the elision verdict either', () => {
+  // Same bug as the public/ case, one directory over, and invisible in this
+  // monorepo: a REAL install resolves core to <appDir>/node_modules/@webjsdev/
+  // core, which IS under appDir, whereas the workspace symlink here lands
+  // outside it. So the fold silently applied to core in every deployed app.
+  // Core is served verbatim (never elision-transformed), so folding buys
+  // nothing and would re-download the whole runtime on any deploy that merely
+  // flipped an unrelated component's elidability.
+  const realInstallCore = join(appDir, 'node_modules', '@webjsdev', 'core');
+  mkdirSync(realInstallCore, { recursive: true });
+  const coreFile = join(realInstallCore, 'webjs-core-browser.js');
+  writeFileSync(coreFile, 'export const core = 1;');
+  setAssetRoots({ appDir, coreDir: realInstallCore, enabled: true });
+
+  const seen = new Set();
+  for (const fp of ['', 'verdict-a', 'verdict-b']) {
+    setElisionFingerprint(fp);
+    clearAssetHashCache();
+    seen.add(assetHashFor(coreFile));
+  }
+  setElisionFingerprint('');
+  clearAssetHashCache();
+  assert.equal(seen.size, 1, `core must hash over bytes alone, saw: ${[...seen].join(' ')}`);
 });
 
 test('a fragment survives and the query precedes it', () => {

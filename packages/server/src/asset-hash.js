@@ -159,20 +159,32 @@ export function assetHashFor(absPath) {
     const bytes = readFileSync(absPath);
     const h = createHash('sha256').update(bytes);
     // An app module's served body is elision-transformed, so fold the verdict
-    // fingerprint in (see `_elisionFp`). Core / public files are never
-    // transformed, so they hash over their bytes alone. Empty fp leaves an app
-    // module's hash at exactly `sha256(bytes)`.
+    // fingerprint in (see `_elisionFp`). Core and `public/` files are never
+    // transformed, so they hash over their bytes alone, which the two
+    // exclusions below enforce rather than merely assume. Empty fp leaves an
+    // app module's hash at exactly `sha256(bytes)`.
     //
-    // `public/` must be excluded EXPLICITLY, not merely intended: it lives
-    // under `_appDir`, so the containment test alone admits it. That was inert
-    // while only module specifiers reached here, but `asset()` (#1194) routes
-    // public paths through this function, and folding the verdict in would
-    // move every marked asset url whenever an UNRELATED component flipped
-    // between elidable and interactive. A deploy touching no public byte would
-    // then re-download every stylesheet, image, and script, which is the exact
-    // cost the content hash exists to avoid.
+    // Both exclusions are EXPLICIT because the containment test alone admits
+    // them, and the intent above is otherwise silently false:
+    //
+    //   - `public/` sits under `_appDir`. Inert while only module specifiers
+    //     reached here, but `asset()` (#1194) routes public paths through this
+    //     function.
+    //   - `_coreDir` sits under `_appDir` too in a REAL install, where it
+    //     resolves to `<appDir>/node_modules/@webjsdev/core`. It escapes only
+    //     in this monorepo, where the workspace symlink lands outside, which
+    //     is exactly why no in-repo test ever caught it.
+    //
+    // Neither file set is elision-transformed (core is served verbatim by
+    // `fileResponse`), so folding the verdict in buys nothing and costs
+    // correctness: any deploy that merely flips an UNRELATED component between
+    // elidable and interactive would move their urls, re-downloading the whole
+    // core runtime plus every marked stylesheet, image, and script even though
+    // not one of those bytes changed. That is the precise cost a content hash
+    // exists to avoid.
     if (_elisionFp && _appDir && absPath.startsWith(_appDir + sep)
-        && !absPath.startsWith(join(_appDir, 'public') + sep)) {
+        && !absPath.startsWith(join(_appDir, 'public') + sep)
+        && !(_coreDir && absPath.startsWith(_coreDir + sep))) {
       h.update('\0');
       h.update(_elisionFp);
     }
