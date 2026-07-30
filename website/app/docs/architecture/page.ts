@@ -94,7 +94,7 @@ export default function Architecture() {
     <h2>Imports: the <code>#</code> root alias</h2>
     <p>App-internal imports use the <code>#</code> path alias instead of deep <code>../../../</code> relatives:</p>
     <pre>import { db } from '#db/connection.server.ts';
-import { Button } from '#components/ui/button.ts';
+import { Button } from '#modules/ui/components/button.ts';
 import { listPosts } from '#modules/posts/queries/list-posts.server.ts';</pre>
     <p>This is Node's native <code>package.json</code> <code>"imports"</code> field. The scaffold ships a single catch-all key, so every top-level folder is aliased and a new one needs no config change:</p>
     <pre>"imports": { "#*": "./*" }</pre>

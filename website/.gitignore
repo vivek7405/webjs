@@ -4,5 +4,6 @@
 # import the components for live previews. Hand-written site components
 # and lib modules live directly in components/*.ts and lib/*.ts, which
 # stay tracked; only these generated subdirectories are ignored.
-/components/ui/
-/lib/ui/
+/modules/ui/components/
+/lib/utils/cn.ts
+/lib/utils/dom.ts

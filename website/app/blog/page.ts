@@ -1,6 +1,6 @@
 import { html } from '@webjsdev/core';
 import { READING, BADGE } from '#lib/design.ts';
-import { pageHeader } from '#lib/utils/ui/page-header.ts';
+import { pageHeader } from '#lib/utils/ui.ts';
 import { listPosts } from '#modules/blog/queries/list-posts.server.ts';
 
 /**

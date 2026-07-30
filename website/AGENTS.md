@@ -54,10 +54,10 @@ website/
     copy-cmd.ts        click-to-copy command line (light DOM, always-on button)
     doc-search.ts      the docs sidebar search field
     preview-tabs.ts    Preview / Code toggle around a gallery demo
-    ui/                GITIGNORED mirror of the @webjsdev/ui registry sources,
-                       written by scripts/copy-registry.mjs. NEVER hand-write
-                       here: it is wiped every dev cycle and never reaches the
-                       deploy. Hand-written components go in components/ itself.
+                       (components/ui/ is intentionally EMPTY here, left free
+                       for `webjs ui add` to own, exactly as the scaffold
+                       expects. The gallery's preview copies live in
+                       modules/ui/components/ instead, see below.)
   lib/
     highlight.ts       SSR syntax highlighter for the code samples
     frontmatter.ts     parse changelog/blog markdown frontmatter
@@ -67,8 +67,19 @@ website/
     docs-llms.server.ts  enumerates the doc pages on disk (sitemap, llms.txt)
     links.ts           cross-app URLs + in-app paths for the header and footer
     site-footer.ts     the footer, rendered by the root layout on every page
-    ui/                GITIGNORED, same as components/ui/ (the kit's cn helper)
+    utils/cn.ts        GITIGNORED. The kit's cn helper, mirrored to the exact
+    utils/dom.ts       path `webjs ui add` writes it to in a real app.
+    utils/ui.ts        repeated markup-chunk helpers (the scaffold's pattern):
+                       page header, closing CTA, site footer, docs shell
   modules/
+    ui/components/     GITIGNORED mirror of the @webjsdev/ui registry sources,
+                       written by scripts/copy-registry.mjs. NEVER hand-write
+                       here: it is wiped every dev cycle. It lives under the
+                       gallery's own module rather than in components/ui/
+                       because it is gallery INFRASTRUCTURE (live previews),
+                       not this site's UI kit. That keeps components/ui/ free
+                       so `webjs ui add` works here the same way it does in a
+                       scaffolded app.
     ui/queries/registry.server.ts  composes the registry JSON on demand from
                        packages/ui/packages/registry/ (the source of truth).
                        This is what /ui/registry/** serves.
@@ -76,7 +87,8 @@ website/
   scripts/             manual dev tools, NOT part of build/deploy
     fetch-fonts.mjs    download the self-hosted variable woff2 fonts
     generate-og.mjs    regenerate the OG social card (needs playwright + ImageMagick)
-    copy-registry.mjs  mirror the kit sources into components/ui/ + lib/ui/.
+    copy-registry.mjs  mirror the kit sources into modules/ui/components/ +
+                       lib/utils/{cn,dom}.ts.
                        Runs via webjs.dev.before / webjs.start.before and is
                        baked into the deploy image (#526), so a component page
                        never boots without its imports.

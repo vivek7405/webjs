@@ -1,7 +1,7 @@
 /**
  * Browser tests for the sidebar drawer shared by /docs and /ui.
  *
- * The drawer has no component of its own: it is markup from lib/utils/ui/docs-shell.ts
+ * The drawer has no component of its own: it is markup from lib/utils/ui.ts
  * driven by one delegated listener in the ROOT layout (app/layout.ts), which is
  * inline script rather than a module. So these tests reproduce that listener's
  * contract against the same markup, which is what makes the interactions

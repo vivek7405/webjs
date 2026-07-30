@@ -1,9 +1,9 @@
-import { docsShell } from '#lib/utils/ui/docs-shell.ts';
+import { docsShell } from '#lib/utils/ui.ts';
 import { loadRegistryIndex } from '#modules/ui/queries/registry.server.ts';
 import { splitByTier } from '#modules/ui/utils/tier.ts';
 
 /**
- * Component-library sub-layout: the same shell as /docs (lib/utils/ui/docs-shell.ts),
+ * Component-library sub-layout: the same shell as /docs (lib/utils/ui.ts),
  * with the component list in the sidebar instead of the docs page tree.
  *
  * This is a NON-ROOT layout (invariant 8), so it writes no document shell.

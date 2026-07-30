@@ -15,7 +15,7 @@ import { DOCS_PATH, DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 // single tiny module fetch.
 import { highlight } from '#lib/utils/highlight.ts';
 import { BTN_PRIMARY, BTN_GHOST, INSTALL} from '#lib/design.ts';
-import { ctaPanel } from '#lib/utils/ui/cta-panel.ts';
+import { ctaPanel } from '#lib/utils/ui.ts';
 
 // The home page intentionally sets NO title/description/og here. The root
 // layout's generateMetadata is the single source for the <title>, description,

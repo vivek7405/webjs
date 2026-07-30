@@ -52,8 +52,8 @@ export default async function UiIntro() {
         collapsible sit on <code>&lt;details&gt;</code>, progress on
         <code>&lt;progress value max&gt;</code>, popover on the <code>popover</code> attribute.
       </p>
-      <pre>import { cardClass, cardHeaderClass, cardTitleClass, cardContentClass } from '#components/ui/card.ts';
-import { buttonClass } from '#components/ui/button.ts';
+      <pre>import { cardClass, cardHeaderClass, cardTitleClass, cardContentClass } from '#modules/ui/components/card.ts';
+import { buttonClass } from '#modules/ui/components/button.ts';
 
 &lt;div class=\${cardClass()}&gt;
   &lt;div class=\${cardHeaderClass()}&gt;

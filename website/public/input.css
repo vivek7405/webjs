@@ -8,8 +8,8 @@
    without naming them here. An explicit @source is scanned regardless of
    gitignore, and it ADDS to the automatic scan rather than replacing it, so
    the tracked app/, lib/, and modules/ trees keep being picked up. */
-@source "../components/ui/**/*.{ts,js}";
-@source "../lib/ui/**/*.{ts,js}";
+@source "../modules/ui/components/**/*.{ts,js}";
+@source "../lib/utils/{cn,dom}.ts";
 
 /* The kit's components carry `dark:` utilities, and Tailwind's default `dark:`
    is the OS preference alone. This site's theme is the OS preference UNLESS
