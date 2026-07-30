@@ -28,10 +28,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# A newer push supersedes an older in-flight wait. Never cancel mid-purge:
-# the purge step itself is the short, non-idempotent-looking part (it is in
-# fact idempotent, but a cancelled run that already purged would report as
-# failed and hide a successful eviction).
+# Nothing here reads or writes repo contents (there is no checkout), so the
+# job needs no GITHUB_TOKEN scopes at all.
+permissions: {}
+
+# A newer push supersedes an older in-flight wait. Never cancel mid-purge: a
+# run cancelled after it already purged would report as failed and hide a
+# successful eviction.
 concurrency:
   group: purge-cdn
   cancel-in-progress: false
@@ -40,6 +43,9 @@ jobs:
   purge:
     name: Wait for the deploy, then purge
     runs-on: ubuntu-latest
+    # Comfortably above the wait step's own 15-minute budget, so the step's
+    # explanatory failure always fires before the job-level kill (which would
+    # leave no diagnosis in the log).
     timeout-minutes: 25
     env:
       # A zone id identifies a domain, it is not a credential, so it lives in
@@ -49,6 +55,8 @@ jobs:
       # the readiness check bypasses the very cache this job is about to
       # purge (asking webjs.dev could be answered from the edge).
       ORIGIN: https://webjs.up.railway.app
+      # How long to wait for the deploy before giving up, in seconds.
+      WAIT_BUDGET: 900
 
     steps:
       - name: Wait for the new build to be live on the origin
@@ -56,41 +64,47 @@ jobs:
         run: |
           set -euo pipefail
           started=$(date +%s)
+          deadline=$(( started + WAIT_BUDGET ))
 
           # /__webjs/version (#239) reports {version, build, node, uptime}.
           # `uptime` resets when Railway restarts the process for a deploy, so
           # "uptime < seconds elapsed since this run began" proves the restart
           # happened AFTER this push, rather than matching some earlier deploy
           # that was already live when the run started.
-          echo "Waiting for a process restart on $ORIGIN newer than this run..."
-          for _ in $(seq 1 60); do
+          #
+          # The loop is deadline-driven rather than a fixed iteration count so
+          # the budget stays 15 minutes whatever the per-request latency is; a
+          # count multiplied by (curl timeout + sleep) can silently drift past
+          # the job's own timeout and lose the diagnostic message below.
+          echo "Waiting up to $(( WAIT_BUDGET / 60 ))m for a process restart on $ORIGIN newer than this run..."
+          while [ "$(date +%s)" -lt "$deadline" ]; do
             elapsed=$(( $(date +%s) - started ))
+            # `|| true` on every extraction: under `set -e` a failing jq (a
+            # non-JSON body from a mid-deploy error page) would abort the step
+            # at the assignment instead of retrying, turning a transient blip
+            # into a hard failure.
             body=$(curl -fsS --max-time 10 "$ORIGIN/__webjs/version" 2>/dev/null || true)
+            uptime=$(printf '%s' "$body" | jq -r '.uptime // empty' 2>/dev/null || true)
+            build=$(printf '%s' "$body" | jq -r '.build // empty' 2>/dev/null || true)
 
-            if [ -n "$body" ]; then
-              uptime=$(printf '%s' "$body" | jq -r '.uptime // empty')
-              build=$(printf '%s' "$body" | jq -r '.build // empty')
-              if [ -n "$uptime" ]; then
-                # jq compares as floats; uptime is fractional seconds.
-                if [ "$(jq -n --argjson u "$uptime" --argjson e "$elapsed" '$u < $e')" = "true" ]; then
-                  echo "Origin restarted ${uptime}s ago, within the ${elapsed}s since this run began."
-                  echo "Live build: $build"
-                  exit 0
-                fi
-                echo "  origin uptime ${uptime}s >= elapsed ${elapsed}s, deploy not live yet"
+            if [ -n "$uptime" ]; then
+              if [ "$(jq -n --argjson u "$uptime" --argjson e "$elapsed" '$u < $e' 2>/dev/null || echo false)" = "true" ]; then
+                echo "Origin restarted ${uptime}s ago, within the ${elapsed}s since this run began."
+                echo "Live build: $build"
+                exit 0
               fi
+              echo "  origin uptime ${uptime}s >= elapsed ${elapsed}s, deploy not live yet"
             else
-              echo "  origin not answering yet (mid-deploy restart is expected here)"
+              echo "  origin not answering with a version yet (a mid-deploy restart looks like this)"
             fi
             sleep 15
           done
 
-          echo "::error::No new deploy observed on $ORIGIN within the timeout."
+          echo "::error::No new deploy observed on $ORIGIN within $(( WAIT_BUDGET / 60 ))m."
           echo "Refusing to purge: evicting the cache while the origin still serves the"
           echo "previous build would repopulate the edge with stale bytes, which is the"
           echo "exact failure this workflow exists to prevent."
-          echo "If the deploy did land later, re-run this workflow manually from the"
-          echo "Actions tab to purge."
+          echo "If the deploy landed later, re-run this workflow from the Actions tab to purge."
           exit 1
 
       - name: Purge the Cloudflare cache
@@ -120,7 +134,7 @@ jobs:
             --data '{"purge_everything":true}')
 
           echo "$response" | jq .
-          if [ "$(printf '%s' "$response" | jq -r '.success')" != "true" ]; then
+          if [ "$(printf '%s' "$response" | jq -r '.success' 2>/dev/null || echo false)" != "true" ]; then
             echo "::error::Cloudflare rejected the purge."
             exit 1
           fi
@@ -129,19 +143,30 @@ jobs:
       - name: Confirm the edge now matches the origin
         run: |
           set -euo pipefail
-          # The purge is asynchronous at the edge, so give it a moment before
-          # sampling. This is a smoke check, not a guarantee for every pop.
+          # The purge is asynchronous across pops, so give it a moment before
+          # sampling. This is a smoke check on one asset, not a guarantee for
+          # every pop, which is why it warns rather than failing the job: the
+          # purge itself already succeeded and reported its own status.
           sleep 20
 
           # tailwind.css is the asset that actually broke in #1179, so it is
-          # the one worth asserting on.
-          origin_etag=$(curl -fsS -I --max-time 10 "$ORIGIN/public/tailwind.css" | tr -d '\r' | awk 'tolower($1)=="etag:"{print $2}')
-          edge_etag=$(curl -fsS -I --max-time 10 "https://webjs.dev/public/tailwind.css" | tr -d '\r' | awk 'tolower($1)=="etag:"{print $2}')
+          # the one worth sampling.
+          etag_of() {
+            curl -fsS -I --max-time 10 "$1" 2>/dev/null | tr -d '\r' \
+              | awk 'tolower($1)=="etag:"{print $2}' || true
+          }
+          origin_etag=$(etag_of "$ORIGIN/public/tailwind.css")
+          edge_etag=$(etag_of "https://webjs.dev/public/tailwind.css")
 
           echo "origin etag: ${origin_etag:-<none>}"
           echo "edge etag:   ${edge_etag:-<none>}"
 
-          if [ -n "$origin_etag" ] && [ -n "$edge_etag" ] && [ "$origin_etag" != "$edge_etag" ]; then
+          if [ -z "$origin_etag" ] || [ -z "$edge_etag" ]; then
+            # Cloudflare can strip ETags depending on zone settings, so a
+            # missing header is inconclusive, NOT proof the edge is correct.
+            echo "::warning::Could not compare ETags (one side did not send one)."
+            echo "This check is inconclusive; the purge above reported success."
+          elif [ "$origin_etag" != "$edge_etag" ]; then
             echo "::warning::Edge and origin ETags still differ for /public/tailwind.css."
             echo "This can be a slow pop rather than a real failure. Re-check with:"
             echo "  curl -sI https://webjs.dev/public/tailwind.css | grep -i 'etag\\|cf-cache-status'"
