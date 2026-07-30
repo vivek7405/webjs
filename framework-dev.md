@@ -49,7 +49,11 @@ The purge is zone-wide rather than a path list: all four hostnames (`webjs.dev`,
   cmp /tmp/o /tmp/e && echo fresh || echo stale
   ```
 
-The permanent fix for the assets themselves is a content hash in the url, the way the framework already fingerprints module imports and its own emitted urls (`?v=`, #243). `tailwind.css` and the brand marks are referenced by hand-written urls in `website/app/layout.ts` and `website/lib/design/brand.ts`, which that machinery never sees, so they stay on stable urls and depend on this purge. Fingerprinting them would retire the dependency; the workflow stays worthwhile as the safety net for anything else on a stable url.
+Author-written asset urls ARE content-hashed as of #1194, so the assets that caused those two incidents can no longer go stale. A `<link rel="stylesheet" href="/public/tailwind.css">` written by hand in a layout is served as `/public/tailwind.css?v=<hash>`, the same `?v=` treatment the framework already gave its own emitted urls and author-written module specifiers (#243, #369). New bytes therefore mean a new url, and `dev.js` already serves a `?v=`-carrying `/public/` request `immutable` for a year rather than the 1h fallback, so these assets got a large caching win alongside the correctness one.
+
+`versionAssetUrls` (in `packages/server/src/asset-hash.js`) runs from `buildDocumentParts` in `ssr.js`, the single seam every response path funnels through, and it matches `href` / `src` on `<link>` / `<script>` / `<img>` / `<source>` only. The tag-name anchoring is load-bearing, not incidental: this site renders CODE SAMPLES of markup, and a bare `src="…"` match would rewrite the code a reader is looking at. A highlighted sample escapes `<` and splits the token across spans, so a literal `<img` never appears inside one. Any change to that matcher must keep the code-sample test in `packages/server/test/importmap/version-asset-urls.test.js` passing.
+
+The purge workflow STAYS regardless. It is the safety net for anything still on a stable url (an asset referenced from CSS rather than markup, a `srcset` candidate list, which is deliberately not rewritten, or anything a future page emits outside those four tags), and it is what clears the edge when a deploy changes something the fingerprinter does not cover.
 
 ---
 
