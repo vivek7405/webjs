@@ -43,7 +43,10 @@ test('the skill carries the substantive gate and its two-tier exit', () => {
   // re-review round, and there is no standalone prose pass to relitigate.
   assert.match(skill, /apply that round's prose-tier fixes WITHOUT re-review and stop/);
   assert.match(skill, /converging round's prose-tier findings ARE the sweep/);
-  assert.ok(!skill.includes('prose pass'), 'the standalone prose pass must not resurface in the skill');
+  assert.ok(!/prose[- ]pass/i.test(skill), 'the standalone prose pass must not resurface in the skill (either spelling)');
+  // The failure taxonomy names the light-tier reviewer instead of the
+  // removed prose-pass reviewer.
+  assert.match(skill, /a light-tier broad reviewer, or a delta spawn/);
   // A prose fix that touches a substantive surface still gets its one
   // delta-scoped check (the gate's exception survives the pass removal).
   assert.match(skill, /gets one delta-scoped check of THAT FIX ALONE/);
@@ -133,7 +136,7 @@ test('the routed review directive states the substantive exit, not the old absol
   // relitigation; it must not resurface in the injected directive.
   assert.ok(!hook.includes('until a round is clean'), 'route-skills.sh reverted to the pre-#1171 exit');
   assert.match(hook, /nothing SUBSTANTIVE/);
-  assert.ok(!hook.includes('prose pass ends it'), 'route-skills.sh reverted to the standalone prose pass');
+  assert.ok(!/prose[- ]pass/i.test(hook), 'route-skills.sh reverted to the standalone prose pass (directive or comment)');
   assert.match(hook, /prose-tier findings are applied without re-review/);
   assert.match(hook, /found something substantive/);
   // The tagless-reviewer clause stays in lockstep with the skill's gate:
