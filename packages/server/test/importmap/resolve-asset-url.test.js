@@ -27,6 +27,7 @@ import { join } from 'node:path';
 import {
   setAssetRoots,
   clearAssetHashCache,
+  setElisionFingerprint,
   withAssetHash,
   resolveAssetUrl,
 } from '../../src/asset-hash.js';
@@ -66,6 +67,24 @@ test('the hash changes when the bytes change', () => {
   assert.notEqual(resolveAssetUrl('/public/app.css'), before);
 });
 
+test('a public asset hash does not move with the elision verdict', () => {
+  // public/ lives under appDir, so the elision-fingerprint fold admits it
+  // unless excluded explicitly. That was inert while only module specifiers
+  // were hashed; asset() routes public paths here. Without the exclusion a
+  // deploy that merely flips an UNRELATED component between elidable and
+  // interactive changes every marked asset url, so every visitor re-downloads
+  // byte-identical files, which is the cost the hash exists to avoid.
+  const seen = new Set();
+  for (const fp of ['', 'verdict-a', 'verdict-b']) {
+    setElisionFingerprint(fp);
+    clearAssetHashCache();
+    seen.add(resolveAssetUrl('/public/app.css'));
+  }
+  setElisionFingerprint('');
+  clearAssetHashCache();
+  assert.equal(seen.size, 1, `the url must depend on bytes alone, saw: ${[...seen].join(' ')}`);
+});
+
 test('a fragment survives and the query precedes it', () => {
   // An SVG sprite (`#icon`) and a media fragment (`#t=10,20`) are real.
   // Appending naively would emit `/logo.svg#icon?v=H`, which requests the
@@ -85,6 +104,9 @@ test('a private file is never read, whatever the caller passes', () => {
   writeFileSync(join(appDir, 'db', 'app.db'), 'SQLITE FORMAT 3');
   mkdirSync(join(appDir, 'lib'), { recursive: true });
   writeFileSync(join(appDir, 'lib', 'session.server.ts'), 'export const KEY = 1');
+  // Every path here must EXIST, or it is refused by the missing-file fail-safe
+  // rather than by the gate under test, and the assertion proves nothing.
+  writeFileSync(join(appDir, 'package.json'), '{"name":"probe"}');
 
   for (const p of ['/.env', '/db/app.db', '/lib/session.server.ts', '/package.json']) {
     assert.equal(resolveAssetUrl(p), p, `${p} must not be fingerprinted`);

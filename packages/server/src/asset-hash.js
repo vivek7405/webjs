@@ -162,7 +162,17 @@ export function assetHashFor(absPath) {
     // fingerprint in (see `_elisionFp`). Core / public files are never
     // transformed, so they hash over their bytes alone. Empty fp leaves an app
     // module's hash at exactly `sha256(bytes)`.
-    if (_elisionFp && _appDir && absPath.startsWith(_appDir + sep)) {
+    //
+    // `public/` must be excluded EXPLICITLY, not merely intended: it lives
+    // under `_appDir`, so the containment test alone admits it. That was inert
+    // while only module specifiers reached here, but `asset()` (#1194) routes
+    // public paths through this function, and folding the verdict in would
+    // move every marked asset url whenever an UNRELATED component flipped
+    // between elidable and interactive. A deploy touching no public byte would
+    // then re-download every stylesheet, image, and script, which is the exact
+    // cost the content hash exists to avoid.
+    if (_elisionFp && _appDir && absPath.startsWith(_appDir + sep)
+        && !absPath.startsWith(join(_appDir, 'public') + sep)) {
       h.update('\0');
       h.update(_elisionFp);
     }

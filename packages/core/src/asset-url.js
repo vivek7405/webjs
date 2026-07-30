@@ -28,6 +28,19 @@
  * The sibling `cspNonce()` carries the same server/browser asymmetry and the
  * same scoping, for the same hydration reason.
  *
+ * Call it INSIDE the render function, not at module scope. A depth-0 call is a
+ * module-scope side effect, which the elision analyser reads as client work, so
+ * hoisting `const CSS = asset('/public/app.css')` pins the whole page or layout
+ * into the browser bundle for no benefit. Resolver ordering is not the issue
+ * (the server installs its resolver at boot, before any app module loads).
+ *
+ * Mark files that change only with a DEPLOY. The hash is memoized for the
+ * process lifetime, and prod never rebuilds, so a `public/` file rewritten in
+ * place while the server runs keeps its old url while being served `immutable`
+ * for a year. A build artifact (a compiled stylesheet, a bundled script, a
+ * committed image) is exactly right; a runtime-written upload is not, and
+ * should keep its plain path (or carry its own version in the filename).
+ *
  * Why this is opt-in rather than automatic. An earlier attempt (#1196)
  * rewrote asset urls by matching the assembled HTML, and two deep-review
  * rounds found six major defects, five of them the same bug: at that layer

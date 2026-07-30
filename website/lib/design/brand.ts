@@ -16,11 +16,14 @@ import { html, asset } from '@webjsdev/core';
  * hidden variant's download is noise.
  */
 
-// Paths, not resolved urls. `asset()` is called at RENDER time below rather
-// than here: a module-scope call would freeze the value at import time, and
-// whether that beats the server installing its resolver at boot is an
-// ordering detail no reader should have to reason about. Calling per render
-// is correct regardless of import order and costs a memoized lookup.
+// Paths, not resolved urls. `asset()` is called at RENDER time below, never at
+// module scope. The reason is not resolver ordering (the server installs its
+// resolver at boot, before any app module loads, so a module-scope call would
+// in fact resolve): a depth-0 call is a module-scope SIDE EFFECT, and the
+// elision analyser treats that as client work, which pins the whole importing
+// page or layout into the browser bundle. Hoisting the constant here would
+// therefore ship this module and its importer for no benefit. Calling inside
+// the template keeps the module inert and costs a memoized lookup.
 const LOCKUP_DARK = '/public/brand/webjs-lockup-on-dark.svg';
 const LOCKUP_LIGHT = '/public/brand/webjs-lockup-on-light.svg';
 
