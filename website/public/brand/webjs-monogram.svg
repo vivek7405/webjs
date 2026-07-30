@@ -1,3 +1,10 @@
+<!-- The W is positioned OPTICALLY, not bounding-box centred. Its forward
+     lean throws the top-right tip and the bottom-left foot to the extremes, so
+     centring the bbox makes the mark read as static and slightly adrift, while
+     seating it toward the lean keeps the movement the drawing is about. Owner
+     call, 2026-07-30, after rendering the centred and tighter variants side by
+     side. Margins are intentionally uneven: L 17.3% R 6.7% T 25.2% B 15.2%.
+     Do not "correct" this to equal margins. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
   <!-- P6d Velocity W favicon: dark rounded tile, the exact hero W (thicker
        stroke, lower middle chevron, forward lean) scaled in, with the slice. -->

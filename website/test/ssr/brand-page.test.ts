@@ -9,7 +9,8 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { renderToString } from '@webjsdev/core/server';
@@ -35,5 +36,35 @@ test('every asset /brand offers for download exists and is path-weight', async (
     if (f.endsWith('.svg')) {
       assert.ok(statSync(p).size < 10_000, `${f} should be path-weight, is ${statSync(p).size} bytes`);
     }
+  }
+});
+
+/**
+ * The download bundle is assembled by hand (there is no generator), so nothing
+ * stops an edit to a mark from leaving a stale copy inside the zip. That is not
+ * a cosmetic drift: the zip is what a third party actually redistributes, so a
+ * stale entry ships the OLD logo everywhere the bundle is used while the site
+ * shows the new one. Byte-compare every entry against its public file.
+ */
+test('the brand zip carries the current bytes of every mark', () => {
+  const dir = resolve(ROOT, 'public/brand');
+  const zip = resolve(dir, 'webjs-brand-assets.zip');
+  assert.ok(existsSync(zip), 'brand asset bundle missing');
+
+  const names = execFileSync('unzip', ['-Z', '-1', zip], { encoding: 'utf8' })
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  assert.ok(names.length >= 5, `expected the mark set in the zip, saw ${names.length}`);
+
+  for (const name of names) {
+    const onDisk = resolve(dir, name);
+    assert.ok(existsSync(onDisk), `zip carries ${name}, which is not in public/brand`);
+    const inZip = execFileSync('unzip', ['-p', zip, name], { maxBuffer: 1 << 22 });
+    assert.deepEqual(
+      inZip,
+      readFileSync(onDisk),
+      `${name} in the zip is stale, rebuild public/brand/webjs-brand-assets.zip`,
+    );
   }
 });
