@@ -92,7 +92,7 @@ LikeButton.register('like-button');
 // The panel to the right is this file, server-rendered
 // and upgraded in place. Click it.`;
 
-const WIN = 'flex flex-col flex-1 m-0 min-w-0 max-w-full rounded-2xl overflow-hidden border border-border bg-bg-elev shadow-[var(--shadow)]';
+const WIN = 'flex flex-col flex-1 m-0 min-w-0 max-w-full rounded-2xl overflow-hidden border border-border bg-bg-subtle shadow-[var(--shadow)]';
 const WINBAR = 'flex items-center gap-1.5 h-10 px-3.5 border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]';
 const WINNAME = 'ml-2 font-mono font-medium text-xs leading-none text-fg-subtle';
 const DOTS = html`<span class="w-2.5 h-2.5 rounded-full bg-[#ff5f57]"></span><span class="w-2.5 h-2.5 rounded-full bg-[#febc2e]"></span><span class="w-2.5 h-2.5 rounded-full bg-[#28c840]"></span>`;
@@ -117,7 +117,7 @@ export default function LandingPage() {
          the three syntax hues need a dark override. */
       :root {
         --editor-bg: var(--bg-elev);
-        --editor-sidebar-bg: var(--bg-sunken);
+        --editor-sidebar-bg: var(--bg-subtle);
         --editor-tab-bg: var(--bg-sunken);
         --editor-active-tab-bg: var(--bg-elev);
         --editor-status-bg: var(--bg-sunken);
@@ -214,7 +214,7 @@ export default function LandingPage() {
         </div>
 
         <div class="hero-stage max-w-5xl mx-auto grid grid-cols-1 wide:grid-cols-2 rounded-2xl overflow-hidden border border-border-strong bg-bg-sunken shadow-[var(--shadow)]">
-          <div class="min-w-0 border-b wide:border-b-0 wide:border-r border-border bg-bg-elev">
+          <div class="min-w-0 border-b wide:border-b-0 wide:border-r border-border bg-bg-subtle">
             <div class=${WINBAR}>${DOTS}<span class=${WINNAME}>components/like-button.ts</span></div>
             <pre class="scroll-thin m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] [tab-size:2] text-left" tabindex="0" aria-label="like-button component source"><code>${highlight(HERO_SAMPLE)}</code></pre>
           </div>
@@ -384,7 +384,7 @@ export default function LandingPage() {
             <span class="text-xs font-medium leading-none text-fg-subtle">Full-stack</span>
             <h3 class="font-display font-bold text-lg leading-[1.25] m-0">Pages + API + components</h3>
             <p class="m-0 text-sm leading-[1.6] text-fg-muted">SSR pages, web components, server actions, Drizzle, streaming, and a browsable feature gallery. Auth (login, sessions, a protected route) ships as a gallery card. The default.</p>
-            <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-sunken font-mono text-xs leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/page.ts
+            <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-subtle font-mono text-xs leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/page.ts
 components/counter.ts
 actions/posts.server.ts</pre>
             <div class="cmd-foot pt-2 mt-auto font-mono text-xs leading-[1.6] text-fg-muted max-w-full min-w-0"><copy-cmd>npm create webjs@latest my-app</copy-cmd></div>
@@ -393,7 +393,7 @@ actions/posts.server.ts</pre>
             <span class="text-xs font-medium leading-none text-fg-subtle">Backend (API)</span>
             <h3 class="font-display font-bold text-lg leading-[1.25] m-0">Route handlers + Database</h3>
             <p class="m-0 text-sm leading-[1.6] text-fg-muted">A backend-only app, no UI or SSR. File-based route handlers, modules, middleware, rate limiting, WebSockets, a database, and a backend-features gallery.</p>
-            <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-sunken font-mono text-xs leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/api/users/route.ts
+            <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-subtle font-mono text-xs leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/api/users/route.ts
 app/api/chat/route.ts
 middleware.ts</pre>
             <div class="cmd-foot pt-2 mt-auto font-mono text-xs leading-[1.6] text-fg-muted max-w-full min-w-0"><copy-cmd>npm create webjs@latest my-api -- --template api</copy-cmd></div>
