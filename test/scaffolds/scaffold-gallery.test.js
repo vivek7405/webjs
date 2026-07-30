@@ -229,6 +229,17 @@ test('full-stack gallery:clear strips the app to a barebones blank slate', async
     assert.doesNotMatch(layout, /--(?:background|foreground|primary):/, 'reset layout ships no design-token palette');
     assert.match(layout, /background:\s*Canvas/, 'reset layout uses OS system colours');
 
+    // The blank slate keeps the asset() marking (#1194). The clear script writes
+    // its OWN layout, so it can silently drop what create.js emitted: an
+    // un-marked /public/tailwind.css sits at a stable url, and a later deploy
+    // then serves the PREVIOUS stylesheet from a CDN or service-worker cache.
+    // This is the reset path an agent runs before building the real app, so a
+    // regression here ships to every app that ever cleared the gallery.
+    assert.match(layout, /href=\$\{asset\('\/public\/tailwind\.css'\)\}/,
+      'reset layout still content-hashes the stylesheet via asset()');
+    assert.match(layout, /import \{[^}]*\basset\b[^}]*\} from '@webjsdev\/core'/,
+      'and imports asset so the reset layout type-checks');
+
     // The reset home is minimal: no <theme-toggle>, no gallery links.
     const home = await readFile(join(appDir, 'app', 'page.ts'), 'utf8');
     assert.doesNotMatch(home, /theme-toggle/, 'reset home drops theme-toggle');

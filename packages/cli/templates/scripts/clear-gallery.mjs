@@ -173,7 +173,7 @@ export default function Home() {
 }
 
 function MINIMAL_LAYOUT() {
-  return `import { html } from '@webjsdev/core';
+  return `import { html, asset } from '@webjsdev/core';
 
 /**
  * Root layout: the ONLY file that writes the document shell. It links the
@@ -194,7 +194,11 @@ export const metadata = { icons: '/public/favicon.svg' };
 export default function RootLayout({ children }: { children: unknown }) {
   return html\`
     <meta name="color-scheme" content="light dark">
-    <link rel="stylesheet" href="/public/tailwind.css">
+    <!-- asset() content-hashes the url in production, so a deploy that changes
+         the CSS changes the url and the framework serves it immutable for a
+         year. Without it this stable url can serve the PREVIOUS stylesheet
+         from a CDN or a service-worker cache after a deploy. -->
+    <link rel="stylesheet" href=\${asset('/public/tailwind.css')}>
     <style>
       html, body { margin: 0; }
       body {
