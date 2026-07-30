@@ -1,5 +1,5 @@
 import { html } from '@webjsdev/core';
-import { READING, pageHeader } from '#lib/design.ts';
+import { READING, pageHeader, BADGE } from '#lib/design.ts';
 import { listArticles } from '#modules/articles/queries/list-articles.server.ts';
 
 /**
@@ -34,7 +34,7 @@ export default async function Articles() {
               <a href=${'/articles/' + a.slug} class="block no-underline text-fg">
                 ${a.tags.length > 0
                   ? html`<header class="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-3">
-                      ${a.tags.map((t) => html`<span class="bg-fg-subtle/10 text-fg-subtle font-mono text-xs uppercase tracking-widest px-2 py-0.5 rounded">${t}</span>`)}
+                      ${a.tags.map((t) => html`<span class=${BADGE}>${t}</span>`)}
                     </header>`
                   : ''}
                 <h2 class="font-serif text-[clamp(20px,3vw,26px)] leading-[1.15] tracking-tight text-fg m-0 mb-2">${a.title}</h2>

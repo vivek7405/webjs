@@ -97,6 +97,16 @@ export const SECTION = 'py-16';
  */
 export const LABEL = 'text-xs font-semibold uppercase tracking-widest text-fg-subtle';
 
+/**
+ * A tag chip on a post or article card.
+ *
+ * Deliberately the quietest thing on the card. It sits in a row of up to six
+ * above a headline, so it takes the tighter tracking and lighter weight that
+ * the single EYEBROW above a page title does not need.
+ */
+export const BADGE =
+  'bg-fg-subtle/10 text-fg-subtle font-mono text-[10px] uppercase tracking-wider px-1.5 py-px rounded';
+
 /** Small supporting text that is not a label: dates, counts, captions. */
 export const META = 'text-xs text-fg-subtle';
 
