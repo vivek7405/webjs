@@ -1,0 +1,150 @@
+name: Purge CDN
+
+# Evicts the Cloudflare edge cache after a site deploy reaches the origin.
+#
+# Why this exists: the site's static assets (/public/tailwind.css, the brand
+# SVGs) are served with `cache-control: public, max-age=14400` at STABLE urls,
+# so without a purge Cloudflare keeps serving the previous copy for up to four
+# hours after a deploy. That shipped two visible regressions in one day (a
+# pre-redesign stylesheet after #1179, then the un-fixed logo marks after
+# #1185), each needing a manual dashboard purge somebody had to remember.
+#
+# Why it waits instead of purging on push: Railway auto-deploys from a push to
+# main and the build takes minutes. Purging immediately would evict the cache
+# while the origin still serves the OLD bytes, the next visitor would
+# repopulate the cache with exactly those old bytes, and the site would be
+# stale for another four hours with nothing to show for the run. So the job
+# confirms the new build is live on the ORIGIN first, and fails loudly rather
+# than purging if it never shows up.
+#
+# Required secret: CLOUDFLARE_API_TOKEN, scoped to Zone / Cache Purge / Purge
+# on the webjs.dev zone only (not an account-wide token). See framework-dev.md.
+#
+# Manual purge: run this workflow from the Actions tab (workflow_dispatch),
+# which skips the deploy wait and purges immediately.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push supersedes an older in-flight wait. Never cancel mid-purge:
+# the purge step itself is the short, non-idempotent-looking part (it is in
+# fact idempotent, but a cancelled run that already purged would report as
+# failed and hide a successful eviction).
+concurrency:
+  group: purge-cdn
+  cancel-in-progress: false
+
+jobs:
+  purge:
+    name: Wait for the deploy, then purge
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # A zone id identifies a domain, it is not a credential, so it lives in
+      # the workflow rather than costing a second required secret.
+      ZONE_ID: 46692b879a06f3a6a987b99915560393
+      # The Railway service domain for @webjsdev/website. Polled directly so
+      # the readiness check bypasses the very cache this job is about to
+      # purge (asking webjs.dev could be answered from the edge).
+      ORIGIN: https://webjs.up.railway.app
+
+    steps:
+      - name: Wait for the new build to be live on the origin
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          started=$(date +%s)
+
+          # /__webjs/version (#239) reports {version, build, node, uptime}.
+          # `uptime` resets when Railway restarts the process for a deploy, so
+          # "uptime < seconds elapsed since this run began" proves the restart
+          # happened AFTER this push, rather than matching some earlier deploy
+          # that was already live when the run started.
+          echo "Waiting for a process restart on $ORIGIN newer than this run..."
+          for _ in $(seq 1 60); do
+            elapsed=$(( $(date +%s) - started ))
+            body=$(curl -fsS --max-time 10 "$ORIGIN/__webjs/version" 2>/dev/null || true)
+
+            if [ -n "$body" ]; then
+              uptime=$(printf '%s' "$body" | jq -r '.uptime // empty')
+              build=$(printf '%s' "$body" | jq -r '.build // empty')
+              if [ -n "$uptime" ]; then
+                # jq compares as floats; uptime is fractional seconds.
+                if [ "$(jq -n --argjson u "$uptime" --argjson e "$elapsed" '$u < $e')" = "true" ]; then
+                  echo "Origin restarted ${uptime}s ago, within the ${elapsed}s since this run began."
+                  echo "Live build: $build"
+                  exit 0
+                fi
+                echo "  origin uptime ${uptime}s >= elapsed ${elapsed}s, deploy not live yet"
+              fi
+            else
+              echo "  origin not answering yet (mid-deploy restart is expected here)"
+            fi
+            sleep 15
+          done
+
+          echo "::error::No new deploy observed on $ORIGIN within the timeout."
+          echo "Refusing to purge: evicting the cache while the origin still serves the"
+          echo "previous build would repopulate the edge with stale bytes, which is the"
+          echo "exact failure this workflow exists to prevent."
+          echo "If the deploy did land later, re-run this workflow manually from the"
+          echo "Actions tab to purge."
+          exit 1
+
+      - name: Purge the Cloudflare cache
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is not set. Add it as a repository secret,"
+            echo "scoped to Zone / Cache Purge / Purge on the webjs.dev zone."
+            exit 1
+          fi
+
+          # Zone-wide rather than a file list. Every site hostname
+          # (webjs.dev, example-blog / docs / ui .webjs.dev) is proxied inside
+          # this one zone, so a single call covers them all, and a zone purge
+          # cannot silently miss an asset the way a hand-maintained path list
+          # does. Purging evicts only; nothing is deleted, and the next
+          # request refetches from the origin.
+          #
+          # --fail-with-body matters: a bare curl exits 0 on a 4xx, so without
+          # it a rejected purge (bad or expired token) would report success.
+          response=$(curl --fail-with-body -sS -X POST \
+            "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/purge_cache" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{"purge_everything":true}')
+
+          echo "$response" | jq .
+          if [ "$(printf '%s' "$response" | jq -r '.success')" != "true" ]; then
+            echo "::error::Cloudflare rejected the purge."
+            exit 1
+          fi
+          echo "Cache purged for the webjs.dev zone."
+
+      - name: Confirm the edge now matches the origin
+        run: |
+          set -euo pipefail
+          # The purge is asynchronous at the edge, so give it a moment before
+          # sampling. This is a smoke check, not a guarantee for every pop.
+          sleep 20
+
+          # tailwind.css is the asset that actually broke in #1179, so it is
+          # the one worth asserting on.
+          origin_etag=$(curl -fsS -I --max-time 10 "$ORIGIN/public/tailwind.css" | tr -d '\r' | awk 'tolower($1)=="etag:"{print $2}')
+          edge_etag=$(curl -fsS -I --max-time 10 "https://webjs.dev/public/tailwind.css" | tr -d '\r' | awk 'tolower($1)=="etag:"{print $2}')
+
+          echo "origin etag: ${origin_etag:-<none>}"
+          echo "edge etag:   ${edge_etag:-<none>}"
+
+          if [ -n "$origin_etag" ] && [ -n "$edge_etag" ] && [ "$origin_etag" != "$edge_etag" ]; then
+            echo "::warning::Edge and origin ETags still differ for /public/tailwind.css."
+            echo "This can be a slow pop rather than a real failure. Re-check with:"
+            echo "  curl -sI https://webjs.dev/public/tailwind.css | grep -i 'etag\\|cf-cache-status'"
+          else
+            echo "Edge matches the origin."
+          fi

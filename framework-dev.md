@@ -17,6 +17,28 @@ Net: edit the `HEALTHCHECK` for the Docker contract, keep `railway.json` for the
 
 ---
 
+### CDN cache: purged automatically after each deploy
+
+`webjs.dev` sits behind Cloudflare, and the site's static assets (`/public/tailwind.css`, the brand SVGs) are served with `cache-control: public, max-age=14400` at STABLE urls. Without an eviction the edge therefore keeps serving the PREVIOUS copy for up to four hours after a deploy. That shipped two visible regressions in one day (a pre-redesign stylesheet after #1179, then the un-fixed logo marks after #1185), and staleness is per-asset rather than all-or-nothing, so the site can look half-updated.
+
+`.github/workflows/purge-cdn.yml` handles this on every push to `main`. It does NOT purge immediately: Railway auto-deploys from the same push and the build takes minutes, so an immediate purge would evict the cache while the origin still served the old bytes and the next visitor would repopulate the edge with exactly those bytes. Instead the job polls `GET /__webjs/version` (#239) on the Railway ORIGIN (bypassing the cache it is about to purge) until the reported `uptime` is lower than the time elapsed since the run began, which proves the process restarted for THIS push, then issues a zone-wide `purge_everything`. On timeout it fails loudly rather than purging, because a mistimed purge is the precise failure the workflow exists to prevent.
+
+The purge is zone-wide rather than a path list: all four hostnames (`webjs.dev`, `example-blog.webjs.dev`, `docs.webjs.dev`, `ui.webjs.dev`) are proxied inside the one `webjs.dev` zone, so a single call covers them, and a zone purge cannot silently miss an asset the way a hand-maintained list does. Purging evicts only; nothing is deleted.
+
+- **Required secret:** `CLOUDFLARE_API_TOKEN`, scoped to **Zone / Cache Purge / Purge** on the `webjs.dev` zone only. Do not reuse a broad account-wide token.
+- **Manual purge:** run the "Purge CDN" workflow from the Actions tab (`workflow_dispatch`), which skips the deploy wait and purges straight away. Use this if a deploy landed after the wait timed out.
+- **Checking staleness by hand:** compare the edge against the origin rather than trusting `cf-cache-status`, since a `HIT` on fresh content is fine and only differing bytes are a problem.
+
+  ```sh
+  curl -s https://webjs.up.railway.app/public/tailwind.css -o /tmp/o
+  curl -s https://webjs.dev/public/tailwind.css -o /tmp/e
+  cmp /tmp/o /tmp/e && echo fresh || echo stale
+  ```
+
+The permanent fix for the assets themselves is a content hash in the url, the way the framework already fingerprints module imports and its own emitted urls (`?v=`, #243). `tailwind.css` and the brand marks are referenced by hand-written urls in `website/app/layout.ts` and `website/lib/design/brand.ts`, which that machinery never sees, so they stay on stable urls and depend on this purge. Fingerprinting them would retire the dependency; the workflow stays worthwhile as the safety net for anything else on a stable url.
+
+---
+
 ### Repo health: worktree-safe git config (core.bare / hooksPath)
 
 This repo uses git worktrees (the review subagents spawn throwaway ones under `.claude/worktrees/`). Git's worktree machinery can leave `core.bare=true` in the shared `.git/config`, which is lethal to the main checkout: every git operation that needs a work tree then fails with `fatal: this operation must be run in a work tree`. The shared value is harmless only while the main worktree carries a per-worktree override (`extensions.worktreeConfig=true` plus a `.git/config.worktree` pinning `core.bare=false`).
