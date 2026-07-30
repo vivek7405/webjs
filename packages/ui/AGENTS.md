@@ -134,10 +134,10 @@ website/                          the marketing site, at the repo root
   app/ui/registry/index.json/route.ts    GET /ui/registry/index.json, flat list
   app/ui/registry/[name]/route.ts        GET /ui/registry/<name>.json (the CLI fetches here)
   modules/ui/queries/registry.server.ts  composes registry JSON on demand from THIS package
-  components/ui/, lib/ui/         GITIGNORED mirror of ../registry/, written by scripts/copy-registry.mjs
+  modules/ui/components/, lib/utils/{cn,dom}.ts   GITIGNORED mirror of ../registry/, written by scripts/copy-registry.mjs
 ```
 
-### ⚠️ Mirror footgun : do NOT hand-write files into the marketing site's `components/ui/`
+### ⚠️ Mirror footgun : do NOT hand-write files into the marketing site's `modules/ui/components/`
 
 The marketing site is a consumer of this kit (its `/ui` pages import the
 components to render live previews), so `website/components/ui/` and

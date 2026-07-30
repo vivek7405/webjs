@@ -1,4 +1,6 @@
 import { html } from '@webjsdev/core';
+import { READING, BADGE } from '#lib/design/recipes.ts';
+import { pageHeader } from '#lib/ui/page-header.ts';
 import { listArticles } from '#modules/articles/queries/list-articles.server.ts';
 
 /**
@@ -23,14 +25,8 @@ export const metadata = {
 export default async function Articles() {
   const articles = await listArticles();
   return html`
-    <main id="main" tabindex="-1" class="max-w-[840px] mx-auto px-6 py-12 focus:outline-none">
-      <header class="mb-10">
-        <p class="font-mono text-[11px] uppercase tracking-[0.15em] text-accent font-semibold mb-2">Articles</p>
-        <h1 class="font-serif text-[clamp(28px,4vw,40px)] leading-[1.05] tracking-tight text-fg mb-3">Explainers for the web platform</h1>
-        <p class="text-fg-muted text-[15px] leading-relaxed max-w-[640px]">
-          Evergreen explainers on how the web platform works and the ideas WebJs is built on: web components, building with no build step, server-side rendering, and running TypeScript straight from the runtime. Reference reading, not release notes.
-        </p>
-      </header>
+    <main id="main" tabindex="-1" class="${READING} py-12 focus:outline-none">
+      ${pageHeader('Explainers for the web platform', 'Evergreen explainers on how the web platform works and the ideas WebJs is built on: web components, building with no build step, server-side rendering, and running TypeScript straight from the runtime. Reference reading, not release notes.', 'Articles')}
 
       ${articles.length === 0
         ? html`<p class="text-fg-subtle italic">No articles yet.</p>`
@@ -39,11 +35,11 @@ export default async function Articles() {
               <a href=${'/articles/' + a.slug} class="block no-underline text-fg">
                 ${a.tags.length > 0
                   ? html`<header class="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-3">
-                      ${a.tags.map((t) => html`<span class="bg-fg-subtle/10 text-fg-subtle font-mono text-[10.5px] uppercase tracking-[0.1em] px-2 py-0.5 rounded">${t}</span>`)}
+                      ${a.tags.map((t) => html`<span class=${BADGE}>${t}</span>`)}
                     </header>`
                   : ''}
-                <h2 class="font-serif text-[clamp(20px,3vw,26px)] leading-[1.15] tracking-tight text-fg m-0 mb-2">${a.title}</h2>
-                <p class="text-fg-muted text-[14.5px] leading-relaxed m-0">${a.description || a.tagline}</p>
+                <h2 class="font-serif text-section leading-[1.15] tracking-tight text-fg m-0 mb-2">${a.title}</h2>
+                <p class="text-fg text-sm leading-relaxed m-0">${a.description || a.tagline}</p>
               </a>
             </article>
           `)}

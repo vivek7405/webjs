@@ -1,9 +1,10 @@
 import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import { COMPONENT_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE } from '#lib/samples.ts';
+import { BTN_PRIMARY, BTN_GHOST, INSTALL } from '#lib/design/recipes.ts';
 import { DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
-import { faqJsonLd } from '#lib/faq.ts';
-import { highlight } from '#lib/highlight.ts';
+import { faqJsonLd } from '#lib/utils/faq.ts';
+import { highlight } from '#lib/utils/highlight.ts';
 
 /**
  * /what-is-webjs
@@ -25,11 +26,11 @@ import { highlight } from '#lib/highlight.ts';
  *  - a definition in the first 160 characters, so the meta description and the
  *    opening paragraph both stand alone as an answer snippet
  *  - a visible FAQ that is the SAME source as the FAQPage JSON-LD (via
- *    lib/faq.ts), because Google discounts schema not present on the page
+ *    lib/utils/faq.ts), because Google discounts schema not present on the page
  *  - SoftwareApplication + BreadcrumbList + FAQPage structured data
  *  - alternates.canonical, since this page is the one canonical definition
  *
- * Reuses the home page's design language (KICKER, BTN, INSTALL, the terminal
+ * Reuses the home page's design language (the shared lib/design/recipes.ts recipes, the terminal
  * "windows", the bento CARD) so the site reads as one system.
  */
 
@@ -147,16 +148,13 @@ export function generateMetadata() {
 
 // Shared class strings, kept in lockstep with app/page.ts and app/why-webjs/page.ts
 // so the three render as one design system.
-const KICKER = 'inline-flex flex-wrap justify-center gap-[10px] font-mono font-semibold text-[12px] leading-[1.4] tracking-[0.18em] uppercase text-[var(--accent-text)]';
-const BTN = 'inline-flex items-center gap-2 px-[22px] py-[13px] rounded-full font-semibold text-[15px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
-const INSTALL = 'flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-[14px] text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]';
 const WIN = 'flex flex-col flex-1 m-0 min-w-0 max-w-full rounded-2xl overflow-hidden border border-border bg-bg-elev shadow-[var(--shadow)]';
-const WINBAR = 'flex items-center gap-[7px] px-[14px] py-[10px] border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]';
-const WINNAME = 'ml-2 font-mono font-medium text-[12px] leading-none text-fg-subtle';
-const DOTS = html`<span class="w-[11px] h-[11px] rounded-full bg-[#ff5f57]"></span><span class="w-[11px] h-[11px] rounded-full bg-[#febc2e]"></span><span class="w-[11px] h-[11px] rounded-full bg-[#28c840]"></span>`;
+const WINBAR = 'flex items-center gap-1.5 px-3.5 py-2.5 border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]';
+const WINNAME = 'ml-2 font-mono font-medium text-xs leading-none text-fg-subtle';
+const DOTS = html`<span class="w-2.5 h-2.5 rounded-full bg-[#ff5f57]"></span><span class="w-2.5 h-2.5 rounded-full bg-[#febc2e]"></span><span class="w-2.5 h-2.5 rounded-full bg-[#28c840]"></span>`;
 const CARD = 'p-6 bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors duration-200 flex flex-col h-full';
 const H2 = 'font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance';
-const PROSE = 'text-fg-muted text-[1.05rem] leading-[1.7] m-0';
+const PROSE = 'text-fg-muted text-base leading-[1.7] m-0';
 
 // The capability inventory. Answers the implicit second half of the question,
 // "and what does it actually give me", in concrete nouns rather than adjectives.
@@ -209,7 +207,7 @@ function codeWindow(title: string, sample: string, label: string) {
   return html`
     <figure class=${WIN}>
       <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>${title}</span></figcaption>
-      <pre class="scroll-thin m-0 p-[18px] overflow-x-auto font-mono text-[13px] leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label=${label}><code>${highlight(sample)}</code></pre>
+      <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label=${label}><code>${highlight(sample)}</code></pre>
     </figure>
   `;
 }
@@ -218,8 +216,7 @@ export default function WhatIsWebJs() {
   return html`
     <main id="main" tabindex="-1" class="focus:outline-none">
 
-      <section class="text-center px-6 pt-[clamp(48px,7vw,96px)] pb-10 md:pb-16">
-        <div class=${KICKER}>WebJs, explained</div>
+      <section class="text-center px-6 pt-12 md:pt-16 lg:pt-24 pb-10 md:pb-16">
         <h1 class="font-display font-extrabold text-display leading-[1.04] tracking-[-0.035em] mx-auto mt-4 mb-6 max-w-[14ch] text-balance">
           What is WebJs?
         </h1>
@@ -228,7 +225,7 @@ export default function WhatIsWebJs() {
           framework built on web components.</strong> It server-renders every page and component to
           real HTML, needs no build step or bundler, and runs on Node 24+ or Bun.
         </p>
-        <p class="text-[1.05rem] leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
+        <p class="text-base leading-[1.7] text-fg-muted max-w-[56ch] mx-auto mb-8 text-pretty">
           Nothing is hidden from your agent. The framework ships in node_modules as plain
           JavaScript it can read end to end, and your app code is served to the browser
           exactly as written. Any model
@@ -237,11 +234,11 @@ export default function WhatIsWebJs() {
           knows.
         </p>
         <div class="flex gap-3 justify-center flex-wrap mb-8">
-          <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>
+          <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>
             Get started
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
           </a>
-          <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href="/why-webjs">Why WebJs exists</a>
+          <a class=${BTN_GHOST} href="/why-webjs">Why WebJs exists</a>
         </div>
         <div class=${INSTALL}>
           <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
@@ -249,9 +246,8 @@ export default function WhatIsWebJs() {
       </section>
 
       <section class="py-16">
-        <div class="max-w-[1080px] mx-auto px-6">
-          <div class="max-w-[720px] mx-auto mb-12 text-center">
-            <div class=${KICKER}>The whole stack, three files</div>
+        <div class="max-w-6xl mx-auto px-6">
+          <div class="max-w-3xl mx-auto mb-12 text-center">
             <h2 class=${H2}>What a WebJs app looks like</h2>
             <p class=${PROSE}>
               A component, a server function, and a page. These are ordinary files in your project,
@@ -259,17 +255,17 @@ export default function WhatIsWebJs() {
               browser receives.
             </p>
           </div>
-          <div class="grid grid-cols-1 min-[900px]:grid-cols-3 gap-4 items-stretch">
+          <div class="grid grid-cols-1 wide:grid-cols-3 gap-4 items-stretch">
             <div class="flex flex-col min-w-0">
-              <p class="font-mono font-semibold text-[11px] leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-[10px] ml-1">A component</p>
+              <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">A component</p>
               ${codeWindow('components/like-button.ts', COMPONENT_SAMPLE, 'A WebJs web component with a signal')}
             </div>
             <div class="flex flex-col min-w-0">
-              <p class="font-mono font-semibold text-[11px] leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-[10px] ml-1">A server function</p>
+              <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">A server function</p>
               ${codeWindow('actions/get-post.server.ts', ACTION_SAMPLE, 'A WebJs server action reading from the database')}
             </div>
             <div class="flex flex-col min-w-0">
-              <p class="font-mono font-semibold text-[11px] leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-[10px] ml-1">A page</p>
+              <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">A page</p>
               ${codeWindow('app/posts/[id]/page.ts', PAGE_SAMPLE, 'A WebJs page composing the action and the component')}
             </div>
           </div>
@@ -277,20 +273,19 @@ export default function WhatIsWebJs() {
       </section>
 
       <section class="py-16">
-        <div class="max-w-[1080px] mx-auto px-6">
-          <div class="max-w-[720px] mx-auto mb-12 text-center">
-            <div class=${KICKER}>What you get</div>
+        <div class="max-w-6xl mx-auto px-6">
+          <div class="max-w-3xl mx-auto mb-12 text-center">
             <h2 class=${H2}>What WebJs does for you</h2>
             <p class=${PROSE}>
               WebJs is a full framework rather than a rendering library, so routing, data, and the
               production concerns arrive together instead of as six decisions you make yourself.
             </p>
           </div>
-          <div class="grid grid-cols-1 min-[700px]:grid-cols-2 min-[1000px]:grid-cols-3 gap-px bg-border rounded-2xl overflow-hidden border border-border">
+          <div class="grid grid-cols-1 mid:grid-cols-2 lg:grid-cols-3 gap-px bg-border rounded-2xl overflow-hidden border border-border">
             ${CAPABILITIES.map((c) => html`
               <div class=${CARD}>
-                <h3 class="font-display font-bold text-[17px] leading-[1.3] tracking-[-0.01em] m-0 mb-2 text-fg">${c.title}</h3>
-                <p class="text-fg-muted text-[14.5px] leading-[1.65] m-0">${c.body}</p>
+                <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.01em] m-0 mb-2 text-fg">${c.title}</h3>
+                <p class="text-fg-muted text-sm leading-[1.65] m-0">${c.body}</p>
               </div>
             `)}
           </div>
@@ -298,9 +293,8 @@ export default function WhatIsWebJs() {
       </section>
 
       <section class="py-16">
-        <div class="max-w-[760px] mx-auto px-6">
+        <div class="max-w-3xl mx-auto px-6">
           <div class="mb-10 text-center">
-            <div class=${KICKER}>Same name, different projects</div>
             <h2 class=${H2}>Other things called WebJS</h2>
             <p class=${PROSE}>
               The name is shared. If you arrived looking for one of these, they are not this project.
@@ -309,8 +303,8 @@ export default function WhatIsWebJs() {
           <dl class="m-0 grid gap-4">
             ${OTHER_PROJECTS.map((p) => html`
               <div class="rounded-2xl border border-border bg-bg-elev p-5">
-                <dt class="font-display font-bold text-[16px] leading-[1.3] text-fg m-0 mb-1.5">${p.name}</dt>
-                <dd class="text-fg-muted text-[14.5px] leading-[1.65] m-0 ml-0">${p.body}</dd>
+                <dt class="font-display font-bold text-base leading-[1.3] text-fg m-0 mb-1.5">${p.name}</dt>
+                <dd class="text-fg-muted text-sm leading-[1.65] m-0 ml-0">${p.body}</dd>
               </div>
             `)}
           </dl>
@@ -318,18 +312,17 @@ export default function WhatIsWebJs() {
       </section>
 
       <section class="py-16">
-        <div class="max-w-[760px] mx-auto px-6">
+        <div class="max-w-3xl mx-auto px-6">
           <div class="mb-10 text-center">
-            <div class=${KICKER}>Common questions</div>
             <h2 class=${H2}>WebJs FAQ</h2>
           </div>
           <div class="grid gap-3">
             ${FAQ.map((item) => html`
               <details class="group rounded-2xl border border-border bg-bg-elev px-5 py-4">
-                <summary class="cursor-pointer list-none font-display font-semibold text-[16px] leading-[1.4] text-fg marker:content-none">
+                <summary class="cursor-pointer list-none font-display font-semibold text-base leading-[1.4] text-fg marker:content-none">
                   ${item.question}
                 </summary>
-                <p class="text-fg-muted text-[14.5px] leading-[1.7] mt-3 mb-0">${item.answer}</p>
+                <p class="text-fg-muted text-sm leading-[1.7] mt-3 mb-0">${item.answer}</p>
               </details>
             `)}
           </div>
@@ -337,7 +330,7 @@ export default function WhatIsWebJs() {
       </section>
 
       <section class="py-16 pb-24">
-        <div class="max-w-[760px] mx-auto px-6 text-center">
+        <div class="max-w-3xl mx-auto px-6 text-center">
           <h2 class=${H2}>Try it in one command</h2>
           <p class="${PROSE} max-w-[52ch] mx-auto mb-8">
             The scaffold gives you routing, a database layer, and a styled layout, so you start from a
@@ -347,10 +340,10 @@ export default function WhatIsWebJs() {
             <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
           </div>
           <div class="flex gap-3 justify-center flex-wrap">
-            <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>Read the docs</a>
-            <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href=${GH_URL} target="_blank" rel="noopener noreferrer">View on GitHub${NEW_TAB}</a>
+            <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>Read the docs</a>
+            <a class=${BTN_GHOST} href=${GH_URL} target="_blank" rel="noopener noreferrer">View on GitHub${NEW_TAB}</a>
           </div>
-          <p class="mt-14 pt-8 border-t border-border max-w-[52ch] mx-auto text-[14px] leading-[1.7] text-fg-subtle">
+          <p class="mt-14 pt-8 border-t border-border max-w-[52ch] mx-auto text-sm leading-[1.7] text-fg-subtle">
             Compare WebJs with <a class="text-fg-muted hover:text-accent underline underline-offset-2" href="/compare/webjs-vs-nextjs">Next.js</a>,
             <a class="text-fg-muted hover:text-accent underline underline-offset-2" href="/compare/webjs-vs-lit">Lit</a>, and
             <a class="text-fg-muted hover:text-accent underline underline-offset-2" href="/compare/webjs-vs-astro">Astro</a>, or read

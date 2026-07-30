@@ -38,7 +38,7 @@ export default async function Sitemap() {
   // that happen to share the name.
   const PRIORITY: Record<string, number> = { '/': 1.0, '/what-is-webjs': 0.9 };
 
-  const staticRoutes = ['/', '/what-is-webjs', '/blog', '/articles', '/compare', '/why-webjs', '/changelog', '/ui'].map((path) => ({
+  const staticRoutes = ['/', '/what-is-webjs', '/blog', '/articles', '/compare', '/why-webjs', '/changelog', '/ui', '/brand'].map((path) => ({
     url: `${SITE_URL}${path}`,
     changeFrequency: 'weekly' as const,
     priority: PRIORITY[path] ?? 0.7,

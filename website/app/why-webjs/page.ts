@@ -1,6 +1,8 @@
 import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
-import { DOCS_START_PATH, GH_URL, EXAMPLE_BLOG_URL, NEW_TAB } from '#lib/links.ts';
+import { BTN_PRIMARY, BTN_GHOST, INSTALL} from '#lib/design/recipes.ts';
+import { ctaPanel } from '#lib/ui/cta-panel.ts';
+import { DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 
 /**
  * /why-webjs
@@ -43,13 +45,10 @@ export function generateMetadata(ctx: { url: string }) {
 
 // Shared class strings, kept in lockstep with app/page.ts so the two pages
 // render as one design system.
-const KICKER = 'inline-flex flex-wrap justify-center gap-[10px] font-mono font-semibold text-[12px] leading-[1.4] tracking-[0.18em] uppercase text-[var(--accent-text)]';
-const BTN = 'inline-flex items-center gap-2 px-[22px] py-[13px] rounded-full font-semibold text-[15px] leading-none no-underline border cursor-pointer transition-all duration-[140ms]';
-const INSTALL = 'flex items-center gap-2 w-fit max-w-full mx-auto px-[18px] py-[14px] text-left font-mono text-sm leading-[1.6] text-fg-muted rounded-2xl border border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_70%,transparent)] backdrop-blur-sm shadow-[var(--shadow-sm)]';
 const WIN = 'flex flex-col flex-1 m-0 min-w-0 max-w-full rounded-2xl overflow-hidden border border-border bg-bg-elev shadow-[var(--shadow)]';
-const WINBAR = 'flex items-center gap-[7px] px-[14px] py-[10px] border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]';
-const WINNAME = 'ml-2 font-mono font-medium text-[12px] leading-none text-fg-subtle';
-const DOTS = html`<span class="w-[11px] h-[11px] rounded-full bg-[#ff5f57]"></span><span class="w-[11px] h-[11px] rounded-full bg-[#febc2e]"></span><span class="w-[11px] h-[11px] rounded-full bg-[#28c840]"></span>`;
+const WINBAR = 'flex items-center gap-1.5 px-3.5 py-2.5 border-b border-border bg-[color-mix(in_oklch,var(--color-bg-sunken)_60%,var(--color-bg-elev))]';
+const WINNAME = 'ml-2 font-mono font-medium text-xs leading-none text-fg-subtle';
+const DOTS = html`<span class="w-2.5 h-2.5 rounded-full bg-[#ff5f57]"></span><span class="w-2.5 h-2.5 rounded-full bg-[#febc2e]"></span><span class="w-2.5 h-2.5 rounded-full bg-[#28c840]"></span>`;
 const CARD = 'p-6 bg-bg-elev hover:bg-[color-mix(in_oklch,var(--bg-elev)_92%,var(--fg))] transition-colors duration-200 flex flex-col h-full';
 
 // The four reasons an agent builds WebJs apps well, rendered as a bento grid
@@ -77,8 +76,7 @@ export default function Why() {
   return html`
     <main id="main" tabindex="-1" class="focus:outline-none">
 
-    <section class="text-center px-6 pt-[clamp(48px,7vw,96px)] pb-10 md:pb-16">
-      <div class=${KICKER}>Built for the AI era</div>
+    <section class="text-center px-6 pt-12 md:pt-16 lg:pt-24 pb-10 md:pb-16">
       <h1 class="font-display font-extrabold text-display leading-[1.04] tracking-[-0.035em] mx-auto mt-4 mb-4 max-w-[16ch] text-balance">
         The framework your AI agent already understands
       </h1>
@@ -91,11 +89,11 @@ export default function Why() {
         model, on the web components and standard HTML every model already knows.
       </p>
       <div class="flex gap-3 justify-center flex-wrap mb-8">
-        <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>
+        <a class=${BTN_PRIMARY} href=${DOCS_START_PATH}>
           Get started
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
         </a>
-        <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href="/compare">See how it compares</a>
+        <a class=${BTN_GHOST} href="/compare">See how it compares</a>
       </div>
       <div class=${INSTALL}>
         <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
@@ -103,11 +101,10 @@ export default function Why() {
     </section>
 
     <section class="py-16">
-      <div class="max-w-[1080px] mx-auto px-6">
-        <div class="max-w-[720px] mx-auto mb-12 text-center">
-          <div class=${KICKER}>Read the source, not the training set</div>
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Nothing is hidden behind a build step</h2>
-          <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">
+          <p class="text-fg-muted text-base leading-[1.6] m-0">
             No build step means two things, and both help your agent. The
             framework itself sits in node_modules as plain JavaScript with JSDoc,
             so an agent reads it end to end and fits it into context. And your own
@@ -116,12 +113,12 @@ export default function Why() {
             minified artifact.
           </p>
         </div>
-        <div class="grid grid-cols-1 min-[900px]:grid-cols-2 gap-4 items-stretch max-w-[900px] mx-auto">
+        <div class="grid grid-cols-1 wide:grid-cols-2 gap-4 items-stretch max-w-3xl mx-auto">
           <div class="flex flex-col min-w-0">
-            <p class="font-mono font-semibold text-[11px] leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-[10px] ml-1">The framework, readable in node_modules</p>
+            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">The framework, readable in node_modules</p>
             <figure class=${WIN}>
               <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>terminal</span></figcaption>
-              <pre class="scroll-thin m-0 p-[18px] overflow-x-auto font-mono text-[13px] leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="Listing and grepping the framework source in node_modules"><code><span class="text-accent">$</span> ls node_modules/@webjsdev/core/src
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="Listing and grepping the framework source in node_modules"><code><span class="text-accent">$</span> ls node_modules/@webjsdev/core/src
 component.js    html.js         render-client.js
 css.js          directives.js   render-server.js
 serialize.js    router-client.js
@@ -134,10 +131,10 @@ server/src/ssr.js: const html = await renderToString(tree)
             </figure>
           </div>
           <div class="flex flex-col min-w-0">
-            <p class="font-mono font-semibold text-[11px] leading-[1.4] tracking-[0.12em] uppercase text-fg-subtle mb-[10px] ml-1">Your app code, served to the browser as written</p>
+            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Your app code, served to the browser as written</p>
             <figure class=${WIN}>
               <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>terminal</span></figcaption>
-              <pre class="scroll-thin m-0 p-[18px] overflow-x-auto font-mono text-[13px] leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="Fetching an app module served unbundled"><code><span class="text-accent">$</span> curl localhost:5001/components/counter.ts
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="Fetching an app module served unbundled"><code><span class="text-accent">$</span> curl localhost:5001/components/counter.ts
 import { WebComponent } from '@webjsdev/core';
 
 class Counter extends WebComponent({ count: Number }) {
@@ -153,16 +150,15 @@ Counter.register('counter');
     </section>
 
     <section class="py-16">
-      <div class="max-w-[1080px] mx-auto px-6">
-        <div class="max-w-[720px] mx-auto mb-12 text-center">
-          <div class=${KICKER}>Why agents thrive here</div>
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="max-w-3xl mx-auto mb-12 text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Four reasons the loop just works</h2>
-          <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">Every one of these falls out of a single decision: no build step, on web standards.</p>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">Every one of these falls out of a single decision: no build step, on web standards.</p>
         </div>
-        <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 min-[560px]:grid-cols-2 shadow-[var(--shadow-sm)]">
+        <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 xs:grid-cols-2 shadow-[var(--shadow-sm)]">
           ${REASONS.map(r => html`
             <div class="${CARD}">
-              <h3 class="font-display font-bold text-[1.1rem] leading-[1.3] tracking-[-0.02em] mt-0 mb-2">${r.title}</h3>
+              <h3 class="font-display font-bold text-lg leading-[1.3] tracking-[-0.02em] mt-0 mb-2">${r.title}</h3>
               <p class="m-0 text-sm leading-[1.65] text-fg-muted">${r.body}</p>
             </div>
           `)}
@@ -171,18 +167,17 @@ Counter.register('counter');
     </section>
 
     <section class="py-16">
-      <div class="max-w-[1080px] mx-auto px-6">
-        <div class="max-w-[760px] mx-auto text-center">
-          <div class=${KICKER}>Model-agnostic by construction</div>
+      <div class="max-w-6xl mx-auto px-6">
+        <div class="max-w-3xl mx-auto text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Experiment with any model, freely</h2>
-          <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0 mb-4">
+          <p class="text-fg-muted text-base leading-[1.6] m-0 mb-4">
             Because the framework itself is the context, you are not locked to
             the one model that happened to memorize a given API. Point a large
             model or a small one at a WebJs project and it fits the source into
             context and gets to work. Switch models between tasks and the output
             stays reliable, because they are all reading the same readable code.
           </p>
-          <p class="text-fg-muted text-[1.05rem] leading-[1.6] m-0">
+          <p class="text-fg-muted text-base leading-[1.6] m-0">
             Human developers get the same deal. There is no hidden compiler
             output to reverse engineer when something breaks. You open the file,
             read the JavaScript, and see exactly what ran.
@@ -191,24 +186,12 @@ Counter.register('counter');
       </div>
     </section>
 
-    <section class="py-16 text-center" id="get-started">
-      <div class="max-w-[1080px] mx-auto px-6">
-        <div class="max-w-[760px] mx-auto p-[clamp(32px,5vw,64px)] rounded-[22px] border border-border-strong bg-[color-mix(in_oklch,var(--accent-live)_7%,var(--color-bg-elev))] shadow-[var(--shadow-glow)]">
-          <h2 class="font-display font-extrabold text-h2 leading-[1.1] tracking-[-0.03em] mt-0 mb-3">Point your agent at WebJs</h2>
-          <p class="text-fg-muted mx-auto mb-8 max-w-[48ch]">Scaffold a full-stack app in one command, then let any model read the source and build. Pages, an API, components, and a database, all on web standards.</p>
-          <div class=${INSTALL}>
-            <span class="text-accent select-none" aria-hidden="true">$</span><copy-cmd>npm create webjs@latest my-app</copy-cmd>
-          </div>
-          <div class="flex gap-3 justify-center flex-wrap mt-7">
-            <a class="${BTN} bg-accent text-accent-fg border-transparent shadow-[var(--shadow-glow)] hover:bg-accent-hover hover:-translate-y-0.5" href=${DOCS_START_PATH}>
-              Get started
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </a>
-            <a class="${BTN} text-fg border-border-strong bg-[color-mix(in_oklch,var(--color-bg-elev)_60%,transparent)] hover:border-fg-muted hover:-translate-y-0.5" href=${EXAMPLE_BLOG_URL} target="_blank" rel="noopener noreferrer">See a live app${NEW_TAB}</a>
-          </div>
-        </div>
-      </div>
-    </section>
+    ${ctaPanel({
+      title: 'Point your agent at WebJs',
+      lede: 'Scaffold a full-stack app in one command, then let any model read the source and build. Pages, an API, components, and a database, all on web standards.',
+      primary: { href: DOCS_START_PATH, label: 'Get started' },
+      secondary: { href: GH_URL, label: 'View on GitHub', ext: true },
+    })}
 
     </main>
   `;

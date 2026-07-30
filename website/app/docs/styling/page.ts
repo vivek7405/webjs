@@ -22,7 +22,7 @@ export default function Styling() {
   --color-muted-foreground: var(--muted-foreground);
   --font-serif:             var(--font-serif);
   --text-display:           clamp(2.6rem, 1.6rem + 3.2vw, 4.25rem);
-  --duration-fast:          140ms;
+  --duration-150:          140ms;
 }
 
 // app/layout.ts excerpt
@@ -40,7 +40,7 @@ export default function RootLayout({ children }: { children: unknown }) {
         /* …etc */
       }
     &lt;/style&gt;
-    &lt;main class="max-w-[760px] mx-auto px-4 py-12"&gt;
+    &lt;main class="max-w-3xl mx-auto px-4 py-12"&gt;
       \${children}
     &lt;/main&gt;
   \`;
@@ -49,7 +49,7 @@ export default function RootLayout({ children }: { children: unknown }) {
     <p>From any page or component you now write things like:</p>
     <pre>&lt;h1 class="font-serif text-display text-foreground mb-6"&gt;Hello&lt;/h1&gt;
 &lt;p class="text-muted-foreground font-sans"&gt;Lede copy&lt;/p&gt;
-&lt;a class="text-primary hover:underline duration-fast"&gt;Link&lt;/a&gt;</pre>
+&lt;a class="text-primary hover:underline duration-150"&gt;Link&lt;/a&gt;</pre>
 
     <h2>Light-DOM components</h2>
     <p>Light DOM is the default for any <code>WebComponent</code>. Tailwind classes apply as they would on plain HTML:</p>
@@ -110,7 +110,7 @@ class MyCard extends WebComponent {
     <p>Two layout defects ship silently because the checker and the type-checker are static (they never render the pixels), so both only show once you render and interact. Both have a one-line fix.</p>
     <p><strong>Light-DOM component hosts are <code>display: block</code> by default.</strong> A custom element is <code>display: inline</code> in plain CSS, which would collapse a light-DOM component used as a block container (a board, a card, a panel) to its content size. The framework marks every light host <code>data-wj-host</code> and injects one rule in a low-priority cascade layer, <code>@layer webjs-host &#123; :where([data-wj-host]) &#123; display: block &#125; &#125;</code>, so a container fills its parent. The layer keeps it overridable by any author style, including Tailwind utilities (<code>class="flex"</code>, <code>grid</code>, <code>hidden</code>) whose layer wins; a <code>[hidden]</code> carve-out keeps <code>?hidden</code> working. Want an inline light component? Opt out with <code>my-badge &#123; display: inline &#125;</code>.</p>
     <p><strong>Shadow-DOM hosts are NOT marked.</strong> A document rule targeting the host would override the shadow tree's own <code>:host</code> display, so the framework leaves shadow hosts alone. A shadow-DOM component sets its host display the idiomatic way, <code>:host &#123; display: block &#125;</code> (or <code>flex</code> / <code>grid</code>) in <code>static styles</code>, which is fully respected. Set it for a shadow block container (an unstyled shadow host stays <code>display: inline</code>).</p>
-    <p><strong>Size the HOST, not just an inner wrapper.</strong> The host custom element is the box the parent lays out. <code>display: block</code> stops the inline-collapse, but a host that is a flex/grid item in a centering parent (<code>flex justify-center</code>, <code>grid place-items-center</code>) is still sized to its content unless it carries width itself. Put <code>w-full max-w-[...]</code> on the host, not only on an inner <code>&lt;div&gt;</code> (an inner <code>w-full</code> resolves against a collapsed host and the whole component shrinks). Symptom: a board or card renders tiny even though its inner grid says <code>w-full max-w-[400px]</code>.</p>
+    <p><strong>Size the HOST, not just an inner wrapper.</strong> The host custom element is the box the parent lays out. <code>display: block</code> stops the inline-collapse, but a host that is a flex/grid item in a centering parent (<code>flex justify-center</code>, <code>grid place-items-center</code>) is still sized to its content unless it carries width itself. Put <code>w-full max-w-[...]</code> on the host, not only on an inner <code>&lt;div&gt;</code> (an inner <code>w-full</code> resolves against a collapsed host and the whole component shrinks). Symptom: a board or card renders tiny even though its inner grid says <code>w-full max-w-100</code>.</p>
     <p><strong>An even grid uses <code>1fr</code> tracks, never <code>auto</code> rows.</strong> The reflow bug (a cell grows when it gets content while the others shrink) comes from <code>auto</code>-sized rows. Put <code>aspect-ratio</code> on the CONTAINER, size the tracks explicitly, and cap the cells:</p>
 
     <pre>&lt;!-- a 3x3 board whose cells stay equal and square as it fills --&gt;
@@ -173,14 +173,14 @@ import { html } from '@webjsdev/core';
 /** \`label\` kicker: small caps, accent colour, above headings. */
 export function rubric(label: string) {
   return html\`
-    &lt;span class="block font-mono text-[11px] leading-none font-semibold tracking-[0.2em] uppercase text-primary mb-4"&gt;● \${label}&lt;/span&gt;
+    &lt;span class="block font-mono text-xs leading-none font-semibold tracking-widest uppercase text-primary mb-4"&gt;● \${label}&lt;/span&gt;
   \`;
 }
 
 /** "← label" back link. */
 export function backLink(href: string, label: string) {
   return html\`
-    &lt;a href=\${href} class="inline-block mb-12 text-muted-foreground/70 no-underline font-mono text-[11px] uppercase tracking-[0.15em] duration-fast hover:text-foreground"&gt;← \${label}&lt;/a&gt;
+    &lt;a href=\${href} class="inline-block mb-12 text-muted-foreground/70 no-underline font-mono text-xs uppercase tracking-widest duration-150 hover:text-foreground"&gt;← \${label}&lt;/a&gt;
   \`;
 }</pre>
 

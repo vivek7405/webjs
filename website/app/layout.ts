@@ -1,7 +1,8 @@
 import { html, cspNonce } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
-import { DOCS_START_PATH, UI_PATH, EXAMPLE_BLOG_URL, GH_URL, NEW_TAB } from '#lib/links.ts';
-import { siteFooter } from '#lib/site-footer.ts';
+import { DOCS_START_PATH, UI_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
+import { siteFooter } from '#lib/ui/site-footer.ts';
+import { brandLockup } from '#lib/design/brand.ts';
 
 /**
  * Root layout for the redesigned marketing site.
@@ -13,7 +14,7 @@ import { siteFooter } from '#lib/site-footer.ts';
  * clamp, the fixed static glow layer, the hover-only scrollbar (`.scroll-thin`),
  * and the <details> icon swap. Everything else is Tailwind.
  *
- * Shared link config (DOCS_START_PATH / UI_PATH / EXAMPLE_BLOG_URL / GH_URL / NEW_TAB) lives in
+ * Shared link config (DOCS_START_PATH / UI_PATH / GH_URL / NEW_TAB) lives in
  * lib/links.ts, imported here and by app/page.ts.
  */
 
@@ -23,7 +24,6 @@ const DESCRIPTION = 'An AI-first full-stack web framework built on web component
 const NAV = [
   { label: 'Docs', href: DOCS_START_PATH, ext: false },
   { label: 'UI', href: UI_PATH, ext: false },
-  { label: 'Demo', href: EXAMPLE_BLOG_URL, ext: true },
   { label: 'Blog', href: '/blog', ext: false },
   { label: 'Compare', href: '/compare', ext: false },
   { label: 'Changelog', href: '/changelog', ext: false },
@@ -75,8 +75,8 @@ export function generateMetadata(ctx: { url: string }) {
   };
 }
 
-const navLink = 'text-fg-muted no-underline font-medium text-sm px-[11px] py-2 rounded-lg transition-colors duration-[140ms] hover:text-fg hover:bg-bg-subtle';
-const panelLink = 'text-fg-muted no-underline font-medium text-sm px-3 py-[10px] rounded-[9px] hover:text-fg hover:bg-bg-subtle';
+const navLink = 'text-fg-muted no-underline font-medium text-sm px-3 py-2 rounded-lg transition-colors duration-[140ms] hover:text-fg hover:bg-[var(--hover-surface)]';
+const panelLink = 'text-fg-muted no-underline font-medium text-sm px-3 py-2.5 rounded-lg hover:text-fg hover:bg-[var(--hover-surface)]';
 
 export default function RootLayout({ children }: { children: unknown }) {
   const nonce = cspNonce();
@@ -148,7 +148,7 @@ export default function RootLayout({ children }: { children: unknown }) {
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', measure);
         else measure();
       })();
-      // The sidebar drawer shared by /docs and /ui (lib/docs-shell.ts) is
+      // The sidebar drawer shared by /docs and /ui (lib/ui/docs-shell.ts) is
       // driven entirely from here, and both halves of that are deliberate.
       //
       // Its open state is an attribute on <body>, which is OUTSIDE every swap
@@ -234,6 +234,15 @@ export default function RootLayout({ children }: { children: unknown }) {
       /* Foundation tokens + effects that Tailwind utilities cannot express. */
       /* A single static gradient glow layer. It used to breathe (two layers
          cross-faded on a 16s loop), removed so nothing animates on the page. */
+      /* Colour is rationed, not absent.
+         Neutrals carry the page, and they are WARM: a real chroma on hue
+         60..75 rather than a trace of one. A near-zero-chroma version of this
+         palette was tried and read cold and clinical in light mode, where the
+         warmth is doing most of the work. The accent then appears in exactly
+         the places that ask for a click, the primary button and the closing
+         CTA, plus live and focus state. It never tints a content panel or a
+         heading, which is what keeps those few amber surfaces meaningful
+         instead of decorative. */
       :root {
         color-scheme: light dark;
         --fg:            oklch(0.20 0.018 60);
@@ -264,17 +273,34 @@ export default function RootLayout({ children }: { children: unknown }) {
         --font-mono:    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
         --shadow-sm: 0 1px 2px oklch(0.5 0.06 55 / 0.08);
         --shadow:    0 8px 30px oklch(0.5 0.08 55 / 0.10), 0 2px 6px oklch(0.5 0.06 55 / 0.06);
+        /* The closing CTA's fill. Light keeps a faint accent tint, which
+           separates the panel from the page. Dark takes the plain elevated
+           surface: over black the same tint went muddy rather than warm, so
+           the glow alone carries it there. */
+        /* Hover lift for nav links and other bare targets. An ALPHA overlay,
+           not a solid colour, for two reasons. It composes over the header's
+           translucent blurred background instead of fighting it, and it gives
+           the same perceived step in both themes: the solid --bg-subtle was a
+           0.09 lift on a black page, which is real in numbers and invisible to
+           the eye, while the same token in light was a 0.025 step that read
+           clearly because the eye is adapted to a bright field. */
+        --hover-surface: oklch(0 0 0 / 0.055);
+        --cta-surface: color-mix(in oklch, var(--accent-live) 7%, var(--bg-elev));
         --shadow-glow: 0 0 0 1px var(--accent-tint), 0 14px 50px color-mix(in oklch, var(--accent-live) 18%, transparent);
         --t: 240ms;
       }
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme='light']) {
           --heart: oklch(0.74 0.18 6);
-          --fg: oklch(0.96 0 0); --fg-muted: oklch(0.74 0 0); --fg-subtle: oklch(0.62 0 0);
-          --bg: oklch(0 0 0); --bg-elev: oklch(0.135 0 0); --bg-subtle: oklch(0.09 0 0); --bg-sunken: oklch(0 0 0);
-          --border: oklch(0.32 0 0 / 0.9); --border-strong: oklch(0.44 0 0 / 0.92);
-          --accent: oklch(0.7 0.16 52); --accent-hover: oklch(0.75 0.16 52); --accent-fg: oklch(0.1 0.01 52); --logo-from: oklch(0.8 0.16 58); --logo-to: oklch(0.62 0.18 44);
-          --glow-strength: 0.16;
+          --fg: oklch(0.98 0 0); --fg-muted: oklch(0.80 0 0); --fg-subtle: oklch(0.68 0 0);
+          --bg: oklch(0 0 0); --bg-elev: oklch(0.12 0 0); --bg-subtle: oklch(0.08 0 0); --bg-sunken: oklch(0 0 0);
+          --border: oklch(0.26 0 0 / 0.9); --border-strong: oklch(0.38 0 0 / 0.95);
+          --accent: oklch(0.78 0.18 58); --accent-hover: oklch(0.83 0.17 58); --accent-fg: oklch(0 0 0); --logo-from: oklch(0.82 0.17 58); --logo-to: oklch(0.64 0.18 44);
+          --accent-live: oklch(0.78 0.18 58);
+          --glow-a: transparent;
+          --glow-strength: 0;
+          --cta-surface: transparent;
+          --hover-surface: oklch(1 0 0 / 0.09);
           --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
           --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
         }
@@ -282,11 +308,15 @@ export default function RootLayout({ children }: { children: unknown }) {
       :root[data-theme='dark'] {
         color-scheme: dark;
         --heart: oklch(0.74 0.18 6);
-        --fg: oklch(0.96 0 0); --fg-muted: oklch(0.74 0 0); --fg-subtle: oklch(0.62 0 0);
-        --bg: oklch(0 0 0); --bg-elev: oklch(0.135 0 0); --bg-subtle: oklch(0.09 0 0); --bg-sunken: oklch(0 0 0);
-        --border: oklch(0.32 0 0 / 0.9); --border-strong: oklch(0.44 0 0 / 0.92);
-        --accent: oklch(0.7 0.16 52); --accent-hover: oklch(0.75 0.16 52); --accent-fg: oklch(0.1 0.01 52); --logo-from: oklch(0.8 0.16 58); --logo-to: oklch(0.62 0.18 44);
-        --glow-strength: 0.16;
+        --fg: oklch(0.98 0 0); --fg-muted: oklch(0.80 0 0); --fg-subtle: oklch(0.68 0 0);
+        --bg: oklch(0 0 0); --bg-elev: oklch(0.12 0 0); --bg-subtle: oklch(0.08 0 0); --bg-sunken: oklch(0 0 0);
+        --border: oklch(0.26 0 0 / 0.9); --border-strong: oklch(0.38 0 0 / 0.95);
+        --accent: oklch(0.78 0.18 58); --accent-hover: oklch(0.83 0.17 58); --accent-fg: oklch(0 0 0); --logo-from: oklch(0.82 0.17 58); --logo-to: oklch(0.64 0.18 44);
+        --accent-live: oklch(0.78 0.18 58);
+        --glow-a: transparent;
+        --glow-strength: 0;
+        --cta-surface: transparent;
+        --hover-surface: oklch(1 0 0 / 0.09);
         --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
         --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
       }
@@ -325,6 +355,12 @@ export default function RootLayout({ children }: { children: unknown }) {
          selector outranks the border-* utilities that also set
          border-right-color, so cascade order does not matter. */
       .site-top > header { border-right: var(--wj-scrollbar-compensation, 0px) solid transparent; }
+      /* The page backdrop is deliberately UNCHANGED from what webjs.dev
+         serves: one fixed layer, two radials off --glow-a, no animation. A
+         dot-grid texture and a third magenta radial were tried here and
+         reverted. They tinted every page, which is a site-wide change, and the
+         glow that was actually wanted belongs to the closing CTA panel, where
+         it comes from --shadow-glow on the panel itself. */
       .glow-layer { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
       .glow-layer::before {
         content: ''; position: absolute; inset: 0;
@@ -364,10 +400,9 @@ export default function RootLayout({ children }: { children: unknown }) {
 
     <div class="site-top fixed inset-x-0 top-0 z-20">
     <header class="backdrop-blur-md bg-[color-mix(in_oklch,var(--color-bg)_78%,transparent)] border-b border-border">
-      <div class="max-w-[1240px] mx-auto px-6 py-[11px] flex items-center justify-between gap-4">
-        <a class="inline-flex items-center gap-[9px] no-underline text-fg font-display font-extrabold text-[17px] leading-none tracking-[-0.02em] shrink-0" href="/">
-          <span class="w-[22px] h-[22px] rounded-[7px] bg-gradient-to-br from-[var(--logo-from)] to-[var(--logo-to)] shadow-[0_2px_10px_var(--accent-tint)]"></span>
-          webjs
+      <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+        <a class="inline-flex items-center no-underline text-fg shrink-0 transition-opacity duration-150 hover:opacity-80" href="/" aria-label="WebJs home">
+          ${brandLockup('hdr', { height: 26 })}
         </a>
 
         <nav class="hidden md:flex items-center gap-0.5 justify-center flex-1 mx-4" aria-label="Primary">
@@ -378,11 +413,11 @@ export default function RootLayout({ children }: { children: unknown }) {
           <theme-toggle></theme-toggle>
 
           <details class="mobile-menu relative md:hidden">
-            <summary class="cursor-pointer w-[38px] h-[38px] inline-flex items-center justify-center rounded-[9px] text-fg-muted hover:bg-bg-subtle hover:text-fg" aria-label="Toggle navigation">
+            <summary class="cursor-pointer w-9 h-9 inline-flex items-center justify-center rounded-lg text-fg-muted hover:bg-[var(--hover-surface)] hover:text-fg" aria-label="Toggle navigation">
               <svg class="open-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></svg>
               <svg class="close-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </summary>
-            <nav class="absolute right-0 top-[calc(100%+10px)] min-w-[210px] flex flex-col gap-0.5 bg-bg-elev border border-border rounded-[14px] shadow-[var(--shadow)] p-2 z-50" aria-label="Mobile">
+            <nav class="absolute right-0 top-[calc(100%+10px)] min-w-52 flex flex-col gap-0.5 bg-bg-elev border border-border rounded-xl shadow-[var(--shadow)] p-2 z-50" aria-label="Mobile">
               ${NAV.map(n => html`<a class=${panelLink} href=${n.href} target=${n.ext ? '_blank' : '_self'} rel=${n.ext ? 'noopener noreferrer' : ''}>${n.label}${n.ext ? NEW_TAB : ''}</a>`)}
             </nav>
           </details>
@@ -399,7 +434,7 @@ export default function RootLayout({ children }: { children: unknown }) {
 
     <!-- Progressive-enhancement syntax highlighting for the documentation's
          code samples, scoped to .prose-docs so the marketing pages keep the
-         spans lib/highlight.ts already emitted at SSR. It lives HERE rather
+         spans lib/utils/highlight.ts already emitted at SSR. It lives HERE rather
          than in the docs sub-layout because the root layout is never swapped
          by the client router: a copy inside the swap range would depend on
          the router re-executing it, and would never run at all for a reader

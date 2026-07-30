@@ -1,5 +1,5 @@
 import { html } from '@webjsdev/core';
-import { docsShell } from '#lib/docs-shell.ts';
+import { docsShell } from '#lib/ui/docs-shell.ts';
 import '#components/doc-search.ts';
 
 /**
@@ -13,7 +13,7 @@ import '#components/doc-search.ts';
  * design system, one set of tokens, no parallel shell to drift.
  *
  * The shell itself (sidebar, mobile drawer, .prose-docs typography) lives in
- * lib/docs-shell.ts, shared with the component library at /ui, so the two
+ * lib/ui/docs-shell.ts, shared with the component library at /ui, so the two
  * sections cannot drift apart. This file contributes only the docs nav tree
  * and the docs-scoped metadata.
  *
@@ -76,7 +76,7 @@ const NAV_SECTIONS = [
   },
   {
     // The component library is its own section at /ui, with the same shell as
-    // these pages (see lib/docs-shell.ts). This entry is a cross-link out of
+    // these pages (see lib/ui/docs-shell.ts). This entry is a cross-link out of
     // the docs rather than a doc page: /docs/ui used to hold a second,
     // hand-written description of the kit that had drifted badly (it
     // advertised roughly 55 components against an actual 32 and showed a

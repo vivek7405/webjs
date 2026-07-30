@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Copy the @webjsdev/ui registry component sources into this site's
- * components/ui/ (plus the kit's lib/ into lib/ui/) so the /ui gallery
+ * modules/ui/components/ (plus the kit's lib/ into lib/utils/) so the /ui gallery
  * pages can import them and render live previews.
  *
  * Both destinations are gitignored: they mirror the canonical sources in
@@ -13,7 +13,11 @@
  *
  * Each component's relative `../lib/utils.ts` / `../lib/dom.ts` import
  * (the registry's local layout) is rewritten to `../../lib/ui/*` (this
- * site's layout: `components/ui/<name>.ts` is two levels above `lib/ui/`).
+ * site's layout). The kit's helpers land at `lib/utils/cn.ts` and
+ * `lib/utils/dom.ts`, which is exactly where `webjs ui add` writes them in a
+ * real app (see packages/ui/src/commands/add.js: "the scaffold puts it at
+ * lib/utils/dom.ts, next to cn.ts"). The site is the dogfood, so the mirror
+ * matches what a user gets rather than inventing its own location.
  * Missing the dom.ts rewrite 500s SSR (#819).
  */
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, copyFileSync, rmSync } from 'node:fs';
@@ -29,12 +33,32 @@ const LIB_SRC = join(REGISTRY_ROOT, 'lib', 'utils.ts');
 // onBeforeCache lives in its own client-only module since the #819 split.
 const LIB_DOM_SRC = join(REGISTRY_ROOT, 'lib', 'dom.ts');
 
-const COMPONENTS_DST = join(SITE_ROOT, 'components', 'ui');
-const LIB_DST_DIR = join(SITE_ROOT, 'lib', 'ui');
+const COMPONENTS_DST = join(SITE_ROOT, 'modules', 'ui', 'components');
+const LIB_DST_DIR = join(SITE_ROOT, 'lib', 'utils');
 
 if (!existsSync(COMPONENTS_SRC)) {
   console.error(`[website] ui registry components not found at ${COMPONENTS_SRC}`);
   process.exit(1);
+}
+
+// One-time migration: earlier layouts generated into components/ui/ and
+// lib/ui/. Those paths are tracked/hand-written space now, so stale generated
+// copies there would shadow real modules. Only files carrying the old
+// generated import signature are removed, so nothing hand-written can match.
+const LEGACY = [
+  [join(SITE_ROOT, 'components', 'ui'), /from '(\.\/lib\/|\.\.\/\.\.\/lib\/ui\/)/],
+];
+for (const [dir, sig] of LEGACY) {
+  if (!existsSync(dir)) continue;
+  for (const name of readdirSync(dir)) {
+    const f = join(dir, name);
+    if (name.endsWith('.ts')) {
+      try { if (sig.test(readFileSync(f, 'utf8'))) rmSync(f); } catch { /* keep */ }
+    }
+  }
+  const lib = join(dir, 'lib');
+  if (existsSync(lib)) rmSync(lib, { recursive: true });
+  try { if (readdirSync(dir).length === 0) rmSync(dir, { recursive: true }); } catch { /* keep */ }
 }
 
 mkdirSync(COMPONENTS_DST, { recursive: true });
@@ -70,18 +94,18 @@ for (const name of readdirSync(COMPONENTS_DST)) {
 }
 
 let changed = 0;
-if (writeIfChanged(join(LIB_DST_DIR, 'utils.ts'), readFileSync(LIB_SRC, 'utf8'))) changed++;
+if (writeIfChanged(join(LIB_DST_DIR, 'cn.ts'), readFileSync(LIB_SRC, 'utf8'))) changed++;
 if (writeIfChanged(join(LIB_DST_DIR, 'dom.ts'), readFileSync(LIB_DOM_SRC, 'utf8'))) changed++;
 
 for (const name of upstream) {
   const rewritten = readFileSync(join(COMPONENTS_SRC, name), 'utf8')
-    .replaceAll("'../lib/utils.ts'", "'../../lib/ui/utils.ts'")
-    .replaceAll('"../lib/utils.ts"', '"../../lib/ui/utils.ts"')
-    .replaceAll("'../lib/dom.ts'", "'../../lib/ui/dom.ts'")
-    .replaceAll('"../lib/dom.ts"', '"../../lib/ui/dom.ts"');
+    .replaceAll("'../lib/utils.ts'", "'../../../lib/utils/cn.ts'")
+    .replaceAll('"../lib/utils.ts"', '"../../../lib/utils/cn.ts"')
+    .replaceAll("'../lib/dom.ts'", "'../../../lib/utils/dom.ts'")
+    .replaceAll('"../lib/dom.ts"', '"../../../lib/utils/dom.ts"');
   if (writeIfChanged(join(COMPONENTS_DST, name), rewritten)) changed++;
 }
 
 console.log(
-  `[website] ui registry mirror: ${upstream.size} components + lib/ui/{utils,dom}.ts, ${changed} file(s) written`,
+  `[website] ui gallery mirror: ${upstream.size} components + lib/utils/{cn,dom}.ts, ${changed} file(s) written`,
 );

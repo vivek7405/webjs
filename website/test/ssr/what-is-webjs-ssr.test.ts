@@ -16,7 +16,7 @@ import { renderToString } from '@webjsdev/core/server';
 import WhatIsWebJs, { generateMetadata } from '#app/what-is-webjs/page.ts';
 import Sitemap from '#app/sitemap.ts';
 import { GET as llmsGet } from '#app/llms.txt/route.ts';
-import { siteFooter } from '#lib/site-footer.ts';
+import { siteFooter } from '#lib/ui/site-footer.ts';
 
 const CANONICAL = 'https://webjs.dev/what-is-webjs';
 

@@ -1,6 +1,12 @@
 import { html } from '@webjsdev/core';
 
 /**
+ * A composed page fragment (the lib/ui convention): an SSR-time function
+ * returning html. It renders and disappears. Nothing here registers a custom
+ * element. Interactive elements live in components/.
+ */
+
+/**
  * The shared documentation shell: the page-tree sidebar column plus the
  * content column, extracted from app/docs/layout.ts so the component
  * library at /ui renders the exact same chrome as /docs instead of
@@ -201,13 +207,11 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
          context entirely and leaves the header usable while the drawer is
          open. */
       .docs-backdrop { display: none; }
-      /* 859.98, not 860. Tailwind's max-[860px] variant compiles to
-         "not all and (min-width: 860px)", which EXCLUDES exactly 860, while a
-         hand-written max-width of 860px includes it. At that one width the
-         grid had already collapsed to a single column and the menu button was
-         already hidden, while these drawer rules had not taken over, so the
-         page had no navigation at all. */
-      @media (max-width: 859.98px) {
+      /* 899.98, not 900: the collapse must flip at the same moment as the
+         max-wide: utilities (--breakpoint-wide: 900px), and a hand-written
+         900px max-width would OVERLAP the 900px min-width for one device
+         pixel. Keep this in step with --breakpoint-wide in input.css. */
+      @media (max-width: 899.98px) {
         .docs-sidebar {
           position: fixed;
           top: var(--header-h); left: 0; bottom: 0;
@@ -274,15 +278,15 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
          attribute the way it did when each element carried its own handler. -->
     <div class="docs-backdrop"></div>
 
-    <!-- Same container as the shared header (max-w-[1240px] mx-auto px-6), so
+    <!-- Same container as the shared header (max-w-7xl mx-auto px-6), so
          the sidebar's left edge lines up with the wordmark above it and the
          content column lines up with every other page on the site. A
          full-bleed docs shell was the other tell that this section was pasted
          in from somewhere else. -->
-    <div class="max-w-[1240px] mx-auto px-6 grid grid-cols-[248px_1fr] gap-10 min-h-screen max-[860px]:grid-cols-1 max-[860px]:gap-0">
+    <div class="max-w-7xl mx-auto px-6 grid grid-cols-[248px_1fr] gap-10 min-h-screen max-wide:grid-cols-1 max-wide:gap-0">
       <aside
         id="docs-sidebar"
-        class="docs-sidebar flex flex-col py-10 text-sm max-[860px]:px-5"
+        class="docs-sidebar flex flex-col py-10 text-sm max-wide:px-5"
         aria-label=${label}
       >
         ${asideTop ?? ''}
@@ -295,19 +299,19 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
           ${nav.map((s) => html`
             ${typeof s.count === 'number'
               ? html`<div class="flex items-baseline justify-between px-2 mt-6 mb-2 first:mt-0">
-                  <span class="font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle">${s.title}</span>
-                  <span class="font-mono text-[10px] text-fg-subtle">${s.count}</span>
+                  <span class="font-mono text-xs font-semibold tracking-widest uppercase text-fg-subtle">${s.title}</span>
+                  <span class="font-mono text-xs text-fg-subtle">${s.count}</span>
                 </div>`
-              : html`<div class="font-mono text-[10px] font-semibold tracking-[0.15em] uppercase text-fg-subtle px-2 mt-6 mb-2 first:mt-0">${s.title}</div>`}
+              : html`<div class="font-mono text-xs font-semibold tracking-widest uppercase text-fg-subtle px-2 mt-6 mb-2 first:mt-0">${s.title}</div>`}
             ${s.items.map((it) => html`
-              <a class="block py-1.5 px-2 my-px rounded-md text-fg-muted no-underline text-sm transition-colors duration-fast hover:text-fg hover:bg-bg-subtle" href=${it.href}>${it.label}</a>
+              <a class="block py-1.5 px-2 my-px rounded-md text-fg-muted no-underline text-sm transition-colors duration-150 hover:text-fg hover:bg-bg-subtle" href=${it.href}>${it.label}</a>
             `)}
           `)}
         </nav>
       </aside>
-      <main id="main" tabindex="-1" class="min-w-0 max-w-[820px] pt-10 pb-16 focus:outline-none">
+      <main id="main" tabindex="-1" class="min-w-0 max-w-3xl pt-10 pb-16 focus:outline-none">
         <button
-          class="docs-nav-toggle hidden max-[860px]:inline-flex items-center gap-2 mb-6 px-3 py-2 rounded-lg border border-border bg-bg-elev text-fg-muted text-sm cursor-pointer transition-colors duration-fast hover:text-fg hover:border-border-strong"
+          class="docs-nav-toggle hidden max-wide:inline-flex items-center gap-2 mb-6 px-3 py-2 rounded-lg border border-border bg-bg-elev text-fg-muted text-sm cursor-pointer transition-colors duration-150 hover:text-fg hover:border-border-strong"
           aria-controls="docs-sidebar"
           aria-expanded="false"
         >

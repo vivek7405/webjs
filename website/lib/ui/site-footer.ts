@@ -1,5 +1,12 @@
 import { html } from '@webjsdev/core';
-import { DOCS_START_PATH, UI_PATH, EXAMPLE_BLOG_URL, GH_URL, DISCORD_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_START_PATH, UI_PATH, GH_URL, DISCORD_URL, NEW_TAB } from '#lib/links.ts';
+import { brandLockup } from '#lib/design/brand.ts';
+
+/**
+ * A composed page fragment (the lib/ui convention): an SSR-time function
+ * returning html. It renders and disappears. Nothing here registers a custom
+ * element. Interactive elements live in components/.
+ */
 
 /**
  * The site-wide footer, rendered once by the root layout (app/layout.ts) so it
@@ -15,19 +22,19 @@ import { DOCS_START_PATH, UI_PATH, EXAMPLE_BLOG_URL, GH_URL, DISCORD_URL, NEW_TA
 export function siteFooter() {
   return html`
     <footer class="mt-24 border-t border-border py-16 px-6 bg-bg-subtle/30">
-      <div class="max-w-[1080px] mx-auto">
+      <div class="max-w-7xl mx-auto">
         <nav class="grid grid-cols-2 md:grid-cols-5 gap-8 mb-12" aria-label="Footer">
           <div class="flex flex-col gap-3">
             <h4 class="text-xs font-bold uppercase tracking-wider text-fg">Product</h4>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${DOCS_START_PATH}>Docs</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${UI_PATH}>UI components</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/#templates">Templates</a>
-            <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${EXAMPLE_BLOG_URL} target="_blank" rel="noopener noreferrer">Showcase${NEW_TAB}</a>
           </div>
           <div class="flex flex-col gap-3">
             <h4 class="text-xs font-bold uppercase tracking-wider text-fg">Resources</h4>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/what-is-webjs">What is WebJs?</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/why-webjs">Why WebJs</a>
+            <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/brand">Brand</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/blog">Blog</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/articles">Articles</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/changelog">Changelog</a>
@@ -48,7 +55,7 @@ export function siteFooter() {
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${DISCORD_URL} target="_blank" rel="noopener noreferrer">Discord${NEW_TAB}</a>
           </div>
           <div class="flex flex-col gap-3">
-            <h4 class="text-xs font-bold uppercase tracking-wider text-fg">webjs</h4>
+            <a href="/" aria-label="WebJs home" class="no-underline text-fg inline-flex w-fit transition-opacity duration-150 hover:opacity-80">${brandLockup('ftr', { height: 26 })}</a>
             <p class="m-0 text-xs text-fg-muted leading-relaxed">The web framework for AI agents. Full-stack web components, SSR, zero build step.</p>
           </div>
         </nav>

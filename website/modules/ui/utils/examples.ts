@@ -17,15 +17,15 @@
  */
 import {
   buttonClass,
-} from '#components/ui/button.ts';
+} from '#modules/ui/components/button.ts';
 import {
   badgeClass,
-} from '#components/ui/badge.ts';
+} from '#modules/ui/components/badge.ts';
 import {
   alertClass,
   alertTitleClass,
   alertDescriptionClass,
-} from '#components/ui/alert.ts';
+} from '#modules/ui/components/alert.ts';
 import {
   cardClass,
   cardHeaderClass,
@@ -33,28 +33,28 @@ import {
   cardDescriptionClass,
   cardContentClass,
   cardFooterClass,
-} from '#components/ui/card.ts';
-import { inputClass } from '#components/ui/input.ts';
-import { labelClass } from '#components/ui/label.ts';
-import { textareaClass } from '#components/ui/textarea.ts';
-import { checkboxClass } from '#components/ui/checkbox.ts';
-import { radioClass, radioGroupClass } from '#components/ui/radio-group.ts';
-import { switchInputClass, switchTrackClass } from '#components/ui/switch.ts';
+} from '#modules/ui/components/card.ts';
+import { inputClass } from '#modules/ui/components/input.ts';
+import { labelClass } from '#modules/ui/components/label.ts';
+import { textareaClass } from '#modules/ui/components/textarea.ts';
+import { checkboxClass } from '#modules/ui/components/checkbox.ts';
+import { radioClass, radioGroupClass } from '#modules/ui/components/radio-group.ts';
+import { switchInputClass, switchTrackClass } from '#modules/ui/components/switch.ts';
 import {
   nativeSelectWrapperClass,
   nativeSelectClass,
   nativeSelectIconClass,
-} from '#components/ui/native-select.ts';
+} from '#modules/ui/components/native-select.ts';
 import {
   avatarClass,
   avatarImageClass,
   avatarFallbackClass,
   avatarGroupClass,
-} from '#components/ui/avatar.ts';
-import { separatorClass } from '#components/ui/separator.ts';
-import { skeletonClass } from '#components/ui/skeleton.ts';
-import { aspectRatioClass } from '#components/ui/aspect-ratio.ts';
-import { kbdClass, kbdGroupClass } from '#components/ui/kbd.ts';
+} from '#modules/ui/components/avatar.ts';
+import { separatorClass } from '#modules/ui/components/separator.ts';
+import { skeletonClass } from '#modules/ui/components/skeleton.ts';
+import { aspectRatioClass } from '#modules/ui/components/aspect-ratio.ts';
+import { kbdClass, kbdGroupClass } from '#modules/ui/components/kbd.ts';
 import {
   tableContainerClass,
   tableClass,
@@ -64,59 +64,59 @@ import {
   tableHeadClass,
   tableCellClass,
   tableCaptionClass,
-} from '#components/ui/table.ts';
-import { toggleClass } from '#components/ui/toggle.ts';
-import { progressClass } from '#components/ui/progress.ts';
-import { tabsListClass } from '#components/ui/tabs.ts';
+} from '#modules/ui/components/table.ts';
+import { toggleClass } from '#modules/ui/components/toggle.ts';
+import { progressClass } from '#modules/ui/components/progress.ts';
+import { tabsListClass } from '#modules/ui/components/tabs.ts';
 import {
   breadcrumbListClass,
   breadcrumbItemClass,
   breadcrumbLinkClass,
   breadcrumbPageClass,
   breadcrumbSeparatorClass,
-} from '#components/ui/breadcrumb.ts';
+} from '#modules/ui/components/breadcrumb.ts';
 import {
   paginationClass,
   paginationContentClass,
   paginationLinkClass,
   paginationPreviousClass,
   paginationNextClass,
-} from '#components/ui/pagination.ts';
+} from '#modules/ui/components/pagination.ts';
 import {
   fieldClass,
   hintClass,
   stackClass,
-} from '#lib/ui/utils.ts';
+} from '#lib/utils/cn.ts';
 import {
   dialogHeaderClass,
   dialogTitleClass,
   dialogDescriptionClass,
   dialogFooterClass,
-} from '#components/ui/dialog.ts';
+} from '#modules/ui/components/dialog.ts';
 import {
   popoverContentClass,
   popoverHeaderClass,
   popoverTitleClass,
   popoverDescriptionClass,
-} from '#components/ui/popover.ts';
+} from '#modules/ui/components/popover.ts';
 import {
   accordionClass,
   accordionItemClass,
   accordionTriggerClass,
   accordionContentClass,
-} from '#components/ui/accordion.ts';
+} from '#modules/ui/components/accordion.ts';
 import {
   collapsibleClass,
   collapsibleTriggerClass,
   collapsibleContentClass,
-} from '#components/ui/collapsible.ts';
+} from '#modules/ui/components/collapsible.ts';
 import {
   alertDialogContentClass,
   alertDialogHeaderClass,
   alertDialogTitleClass,
   alertDialogDescriptionClass,
   alertDialogFooterClass,
-} from '#components/ui/alert-dialog.ts';
+} from '#modules/ui/components/alert-dialog.ts';
 
 // --------------------------------------------------------------------------
 // Single source of truth for previews (#866 follow-up)
@@ -633,7 +633,7 @@ const EXAMPLES: Record<string, string> = {
   sonner: `
     <div class="flex flex-col items-center gap-3">
       <ui-sonner position="bottom-right"></ui-sonner>
-      <button class="\${buttonClass({ variant: 'outline' })}" onclick="import('/components/ui/sonner.ts').then(m => m.toast.success('Saved!', {description: 'Your changes were saved.'}))">Show toast</button>
+      <button class="\${buttonClass({ variant: 'outline' })}" onclick="import('/modules/ui/components/sonner.ts').then(m => m.toast.success('Saved!', {description: 'Your changes were saved.'}))">Show toast</button>
     </div>
   `,
 };
@@ -1045,14 +1045,14 @@ function sonnerTypeExamples(): Record<string, string> {
       return `
         <div class="flex items-center gap-3">
           <ui-sonner position="bottom-right"></ui-sonner>
-          <button class="\${buttonClass({ variant: 'outline' })}" onclick="import('/components/ui/sonner.ts').then(m => m.toast.promise(new Promise(r => setTimeout(r, 2000)), { loading: 'Loading…', success: 'Done!', error: 'Failed' }))">Show loading</button>
+          <button class="\${buttonClass({ variant: 'outline' })}" onclick="import('/modules/ui/components/sonner.ts').then(m => m.toast.promise(new Promise(r => setTimeout(r, 2000)), { loading: 'Loading…', success: 'Done!', error: 'Failed' }))">Show loading</button>
         </div>
       `;
     }
     return `
       <div class="flex items-center gap-3">
         <ui-sonner position="bottom-right"></ui-sonner>
-        <button class="\${buttonClass({ variant: 'outline' })}" onclick="import('/components/ui/sonner.ts').then(m => m.toast${type === 'default' ? '' : '.' + type}('${type[0].toUpperCase() + type.slice(1)} toast', { description: 'Example ${type} toast.' }))">Show ${type}</button>
+        <button class="\${buttonClass({ variant: 'outline' })}" onclick="import('/modules/ui/components/sonner.ts').then(m => m.toast${type === 'default' ? '' : '.' + type}('${type[0].toUpperCase() + type.slice(1)} toast', { description: 'Example ${type} toast.' }))">Show ${type}</button>
       </div>
     `;
   };

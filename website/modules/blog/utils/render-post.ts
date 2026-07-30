@@ -20,7 +20,7 @@
  *     screen-reader cue); an internal `/path` link navigates in place.
  */
 
-import { highlightToHtml } from '#lib/highlight.ts';
+import { highlightToHtml } from '#lib/utils/highlight.ts';
 
 function inline(s: string): string {
   let out = s
@@ -44,7 +44,7 @@ function inline(s: string): string {
     const cue = external ? '<span class="sr-only"> (opens in a new tab)</span>' : '';
     return `<a href="${href}" class="text-accent no-underline hover:underline"${attrs}>${t}${cue}</a>`;
   });
-  out = out.replace(/`([^`]+)`/g, '<code class="font-mono text-[0.9em] bg-bg-subtle text-fg px-[6px] py-[2px] rounded">$1</code>');
+  out = out.replace(/`([^`]+)`/g, '<code class="font-mono text-[0.9em] bg-fg/8 text-fg px-[6px] py-[2px] rounded">$1</code>');
   out = out.replace(/\*\*([^\n]+?)\*\*/g, '<strong class="font-semibold text-fg">$1</strong>');
   out = out.replace(/(^|[^\w])_([^_\s][^_]*[^_\s]|[^_\s])_(?=$|[^\w])/g, '$1<em>$2</em>');
   out = out.replace(/(^|[^*\w])\*([^*\s][^*]*[^*\s]|[^*\s])\*(?=$|[^*\w])/g, '$1<em>$2</em>');
@@ -62,7 +62,7 @@ export function renderPostBody(md: string): string {
 
   function flushItem() {
     if (curItem.length) {
-      out.push(`<li class="text-fg-muted text-[17px] leading-[1.8] relative pl-[28px] my-[12px] before:content-['•'] before:absolute before:left-[6px] before:top-0 before:text-fg-subtle before:font-bold">${inline(curItem.join(' '))}</li>`);
+      out.push(`<li class="text-fg text-[17px] leading-[1.8] relative pl-[28px] my-[12px] before:content-['•'] before:absolute before:left-[6px] before:top-0 before:text-fg-subtle before:font-bold">${inline(curItem.join(' '))}</li>`);
       curItem = [];
     }
   }
@@ -86,7 +86,7 @@ export function renderPostBody(md: string): string {
         const body = HIGHLIGHTED.has(codeLang.toLowerCase())
           ? highlightToHtml(src)
           : src.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        out.push(`<pre class="bg-bg-subtle border border-border rounded-lg my-[48px] overflow-x-auto"><code class="font-mono text-[13px] leading-[1.7] text-fg whitespace-pre block px-[24px] py-[20px]"${codeLang ? ` data-lang="${codeLang}"` : ''}>${body}</code></pre>`);
+        out.push(`<pre class="bg-fg/8 border border-border rounded-lg my-[48px] overflow-x-auto"><code class="font-mono text-[13px] leading-[1.7] text-fg whitespace-pre block px-[24px] py-[20px]"${codeLang ? ` data-lang="${codeLang}"` : ''}>${body}</code></pre>`);
         codeBuf = [];
         codeLang = '';
         inCode = false;
@@ -113,7 +113,7 @@ export function renderPostBody(md: string): string {
       out.push(`<h4 class="font-mono text-[12px] uppercase tracking-[0.18em] font-semibold text-fg-subtle mt-[40px] mb-[16px]">${inline(line.slice(4).trim())}</h4>`);
     } else if (/^> /.test(line)) {
       endList();
-      out.push(`<blockquote class="border-l-2 border-accent pl-[20px] my-[40px] italic text-fg-muted text-[17px] leading-[1.7]">${inline(line.slice(2).trim())}</blockquote>`);
+      out.push(`<blockquote class="border-l-2 border-accent pl-[20px] my-[40px] italic text-fg text-[17px] leading-[1.7]">${inline(line.slice(2).trim())}</blockquote>`);
     } else if (/^- /.test(line)) {
       flushItem();
       startList();
@@ -124,7 +124,7 @@ export function renderPostBody(md: string): string {
       flushItem();
     } else {
       endList();
-      out.push(`<p class="text-fg-muted text-[17px] leading-[1.8] my-[28px]">${inline(line.trim())}</p>`);
+      out.push(`<p class="text-fg text-[17px] leading-[1.8] my-[28px]">${inline(line.trim())}</p>`);
     }
   }
   endList();

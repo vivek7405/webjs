@@ -76,7 +76,7 @@ export class DocSearch extends WebComponent {
           <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
         </svg>
         <input
-          class="w-full font-sans text-[13px] leading-[1.4] py-2 pr-3 pl-8 border border-border rounded-lg bg-bg-elev text-fg outline-none transition-colors duration-fast focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-tint)] placeholder:text-fg-subtle"
+          class="w-full font-sans text-[13px] leading-[1.4] py-2 pr-3 pl-8 border border-border rounded-lg bg-bg-elev text-fg outline-none transition-colors duration-150 focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-tint)] placeholder:text-fg-subtle"
           type="search"
           placeholder="Search docs…"
           .value=${query}
@@ -89,7 +89,7 @@ export class DocSearch extends WebComponent {
             ${loading ? html`<div class="p-3 text-center text-[13px] text-fg-subtle">Searching…</div>` :
               results.length === 0 ? html`<div class="p-3 text-center text-[13px] text-fg-subtle">No results for "${query}"</div>` :
               results.map(r => html`
-                <a class="block p-2.5 px-3 no-underline text-fg border-b border-border last:border-b-0 transition-colors duration-fast hover:bg-accent-tint"
+                <a class="block p-2.5 px-3 no-underline text-fg border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-accent-tint"
                    href=${r.path}
                    @click=${(e: Event) => { e.preventDefault(); this.goTo(r.path); }}>
                   <div class="font-semibold text-[13px] mb-0.5">${r.title}</div>

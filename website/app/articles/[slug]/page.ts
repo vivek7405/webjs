@@ -1,7 +1,7 @@
 import { html, unsafeHTML, notFound } from '@webjsdev/core';
 import { getArticle } from '#modules/articles/queries/get-article.server.ts';
 import { renderPostBody } from '#modules/blog/utils/render-post.ts';
-import { parseFaq, faqJsonLd } from '#lib/faq.ts';
+import { parseFaq, faqJsonLd } from '#lib/utils/faq.ts';
 
 /**
  * /articles/[slug]
@@ -77,21 +77,21 @@ export default async function ArticlePage({ params }: { params: { slug: string }
   if (!a) notFound();
 
   return html`
-    <main id="main" tabindex="-1" class="max-w-[840px] mx-auto px-[24px] py-[64px] focus:outline-none">
-      <nav class="mb-[48px]">
-        <a href="/articles" class="font-mono text-[12px] text-fg-subtle no-underline hover:text-fg tracking-wide">← All articles</a>
+    <main id="main" tabindex="-1" class="max-w-210 mx-auto px-6 py-16 focus:outline-none">
+      <nav class="mb-12">
+        <a href="/articles" class="font-mono text-xs text-fg-subtle no-underline hover:text-fg tracking-wide">← All articles</a>
       </nav>
 
-      <header class="mb-[64px]">
-        <h1 class="font-serif text-[clamp(36px,6vw,56px)] leading-[1.05] tracking-tight text-fg m-0 mb-[24px]">${a.title}</h1>
-        <p class="text-fg-muted text-[19px] leading-[1.55] m-0 font-serif italic">${a.tagline}</p>
+      <header class="mb-16">
+        <h1 class="font-serif text-hero leading-[1.05] tracking-tight text-fg m-0 mb-6">${a.title}</h1>
+        <p class="text-fg-muted text-lg leading-[1.55] m-0 font-serif italic">${a.tagline}</p>
       </header>
 
-      <article class="mt-[16px]">${unsafeHTML(renderPostBody(a.body))}</article>
+      <article class="mt-4">${unsafeHTML(renderPostBody(a.body))}</article>
 
-      <footer class="mt-[104px] pt-[36px] border-t border-border flex flex-wrap gap-x-[24px] gap-y-[12px]">
-        <a href="/articles" class="font-mono text-[12px] text-fg-subtle no-underline hover:text-fg tracking-wide">← All articles</a>
-        <a href="/compare" class="font-mono text-[12px] text-fg-subtle no-underline hover:text-fg tracking-wide">Compare WebJs →</a>
+      <footer class="mt-26 pt-9 border-t border-border flex flex-wrap gap-x-6 gap-y-3">
+        <a href="/articles" class="font-mono text-xs text-fg-subtle no-underline hover:text-fg tracking-wide">← All articles</a>
+        <a href="/compare" class="font-mono text-xs text-fg-subtle no-underline hover:text-fg tracking-wide">Compare WebJs →</a>
       </footer>
     </main>
   `;

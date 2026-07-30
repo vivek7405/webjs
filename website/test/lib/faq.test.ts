@@ -1,5 +1,5 @@
 /**
- * Unit tests for the shared FAQ convention parser (lib/faq.ts).
+ * Unit tests for the shared FAQ convention parser (lib/utils/faq.ts).
  *
  * The parser turns a `## FAQ` markdown section into structured items that
  * BOTH render (as normal markdown) and feed a `FAQPage` JSON-LD block, so
@@ -7,7 +7,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFaq, faqJsonLd } from '#lib/faq.ts';
+import { parseFaq, faqJsonLd } from '#lib/utils/faq.ts';
 
 const BODY = `Intro paragraph.
 
