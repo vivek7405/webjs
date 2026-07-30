@@ -1,6 +1,7 @@
 name: Purge CDN
 
-# Evicts the Cloudflare edge cache after a site deploy reaches the origin.
+# Evicts the Cloudflare edge cache after a site deploy actually reaches the
+# origin.
 #
 # Why this exists: the site's static assets (/public/tailwind.css, the brand
 # SVGs) are served with `cache-control: public, max-age=14400` at STABLE urls,
@@ -9,19 +10,30 @@ name: Purge CDN
 # pre-redesign stylesheet after #1179, then the un-fixed logo marks after
 # #1185), each needing a manual dashboard purge somebody had to remember.
 #
-# Why it waits instead of purging on push: Railway auto-deploys from a push to
-# main and the build takes minutes. Purging immediately would evict the cache
-# while the origin still serves the OLD bytes, the next visitor would
-# repopulate the cache with exactly those old bytes, and the site would be
-# stale for another four hours with nothing to show for the run. So the job
-# confirms the new build is live on the ORIGIN first, and fails loudly rather
-# than purging if it never shows up.
+# Why it waits instead of purging on push: Railway builds take minutes, and
+# purging before the new bytes are live would evict the cache while the origin
+# still serves the OLD ones, so the next visitor repopulates the edge with
+# exactly those, leaving the site stale for another four hours.
 #
-# Required secret: CLOUDFLARE_API_TOKEN, scoped to Zone / Cache Purge / Purge
-# on the webjs.dev zone only (not an account-wide token). See framework-dev.md.
+# Why it asks Railway rather than watching the origin: the first version of
+# this workflow inferred the deploy from process uptime, assuming every push to
+# main produces one. It does not. Railway marked #1189's own merge commit
+# SKIPPED (it touched only .github and a .md), no restart ever happened, and
+# the job failed after a 15 minute wait. Inferring the deploy makes every
+# docs-only commit a red X, and a job that cries wolf on routine commits is
+# worse than no job. So this asks Railway for the deployment matching the
+# pushed sha and reads its real status (#1192).
+#
+# Required secrets:
+#   RAILWAY_TOKEN         a Railway PROJECT token for this project's production
+#                         environment (narrower than an account token).
+#   CLOUDFLARE_API_TOKEN  scoped to Zone / Cache Purge / Purge on the webjs.dev
+#                         zone only.
+# Both are REPOSITORY secrets: this job declares no `environment:`, so an
+# environment-scoped secret would arrive empty. See framework-dev.md.
 #
 # Manual purge: run this workflow from the Actions tab (workflow_dispatch),
-# which skips the deploy wait and purges immediately.
+# which skips the deploy wait entirely and purges immediately.
 
 on:
   push:
@@ -43,77 +55,164 @@ jobs:
   purge:
     name: Wait for the deploy, then purge
     runs-on: ubuntu-latest
-    # Comfortably above the wait step's own 15-minute budget, so the step's
-    # explanatory failure always fires before the job-level kill (which would
-    # leave no diagnosis in the log).
+    # Comfortably above the wait step's own budget, so the step's explanatory
+    # exit always happens before the job-level kill (which would leave no
+    # diagnosis in the log).
     timeout-minutes: 25
     env:
-      # A zone id identifies a domain, it is not a credential, so it lives in
-      # the workflow rather than costing a second required secret.
+      # Ids identify resources and are not credentials, so they live in the
+      # workflow rather than costing extra secrets.
       ZONE_ID: 46692b879a06f3a6a987b99915560393
-      # The Railway service domain for @webjsdev/website. Polled directly so
-      # the readiness check bypasses the very cache this job is about to
-      # purge (asking webjs.dev could be answered from the edge).
+      RAILWAY_API: https://backboard.railway.com/graphql/v2
+      RAILWAY_PROJECT_ID: 1d05ab75-b64e-4920-94ef-1ca7d04778fc
+      RAILWAY_ENVIRONMENT_ID: 2e30b2f6-d166-48d3-9ae7-17176fb0942f
+      RAILWAY_SERVICE_ID: 2eb044b7-8698-43d3-959b-37c8925eb653
+      # The Railway service domain for @webjsdev/website, used only by the
+      # post-purge smoke check so it can compare the edge against the origin.
       ORIGIN: https://webjs.up.railway.app
-      # How long to wait for the deploy before giving up, in seconds.
+      # How long to wait for the deployment to reach a terminal status.
       WAIT_BUDGET: 900
 
     steps:
-      - name: Wait for the new build to be live on the origin
+      - name: Resolve the Railway deployment for this commit
+        id: deploy
         if: github.event_name == 'push'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo "::error::RAILWAY_TOKEN is not set. Add it as a REPOSITORY secret"
+            echo "(a Railway project token for the production environment)."
+            exit 1
+          fi
+
+          # Railway's API sits behind Cloudflare, which answers `error code:
+          # 1010` to clients whose user agent looks automated (python urllib is
+          # blocked outright), so this must go through curl.
+          #
+          # A project token authenticates with `Project-Access-Token`, an
+          # account token with `Authorization: Bearer`. Which one applies
+          # depends on the token the owner created, so try both and keep
+          # whichever answers without a GraphQL error.
+          query='query deployments($input: DeploymentListInput!, $first: Int) { deployments(input: $input, first: $first) { edges { node { id status createdAt meta } } } }'
+          payload=$(jq -n --arg q "$query" \
+            --arg p "$RAILWAY_PROJECT_ID" --arg e "$RAILWAY_ENVIRONMENT_ID" --arg s "$RAILWAY_SERVICE_ID" \
+            '{query: $q, variables: {first: 30, input: {projectId: $p, environmentId: $e, serviceId: $s}}}')
+
+          railway_query() {
+            local out
+            : > /tmp/railway-last-error
+            for hdr in "Project-Access-Token: ${RAILWAY_TOKEN}" "Authorization: Bearer ${RAILWAY_TOKEN}"; do
+              out=$(curl -sS --max-time 20 -X POST "$RAILWAY_API" \
+                -H "$hdr" -H "Content-Type: application/json" --data "$payload" 2>/dev/null || true)
+              # A GraphQL error comes back with HTTP 200 and an `errors` array,
+              # so the status code alone proves nothing.
+              if [ -n "$out" ] && [ "$(printf '%s' "$out" | jq -r '.errors == null' 2>/dev/null || echo false)" = "true" ]; then
+                printf '%s' "$out"
+                return 0
+              fi
+              # Keep the server's own words for the diagnostic below. This is
+              # an error body, never the token.
+              printf '%s\n' "${out:0:400}" >> /tmp/railway-last-error
+            done
+            return 1
+          }
+
           started=$(date +%s)
           deadline=$(( started + WAIT_BUDGET ))
+          echo "Looking for the Railway deployment of ${SHA} (up to $(( WAIT_BUDGET / 60 ))m)..."
 
-          # /__webjs/version (#239) reports {version, build, node, uptime}.
-          # `uptime` resets when Railway restarts the process for a deploy, so
-          # "uptime < seconds elapsed since this run began" proves the restart
-          # happened AFTER this push, rather than matching some earlier deploy
-          # that was already live when the run started.
-          #
-          # The loop is deadline-driven rather than a fixed iteration count so
-          # the budget stays 15 minutes whatever the per-request latency is; a
-          # count multiplied by (curl timeout + sleep) can silently drift past
-          # the job's own timeout and lose the diagnostic message below.
-          echo "Waiting up to $(( WAIT_BUDGET / 60 ))m for a process restart on $ORIGIN newer than this run..."
+          status=""
+          got_response=false
           while [ "$(date +%s)" -lt "$deadline" ]; do
-            elapsed=$(( $(date +%s) - started ))
-            # `|| true` on every extraction: under `set -e` a failing jq (a
-            # non-JSON body from a mid-deploy error page) would abort the step
-            # at the assignment instead of retrying, turning a transient blip
-            # into a hard failure.
-            body=$(curl -fsS --max-time 10 "$ORIGIN/__webjs/version" 2>/dev/null || true)
-            uptime=$(printf '%s' "$body" | jq -r '.uptime // empty' 2>/dev/null || true)
-            build=$(printf '%s' "$body" | jq -r '.build // empty' 2>/dev/null || true)
-
-            if [ -n "$uptime" ]; then
-              if [ "$(jq -n --argjson u "$uptime" --argjson e "$elapsed" '$u < $e' 2>/dev/null || echo false)" = "true" ]; then
-                echo "Origin restarted ${uptime}s ago, within the ${elapsed}s since this run began."
-                echo "Live build: $build"
-                exit 0
-              fi
-              echo "  origin uptime ${uptime}s >= elapsed ${elapsed}s, deploy not live yet"
+            resp=$(railway_query || true)
+            if [ -z "$resp" ]; then
+              echo "  Railway API not answering cleanly yet"
             else
-              echo "  origin not answering with a version yet (a mid-deploy restart looks like this)"
+              got_response=true
+              # A brand new push takes a few seconds to appear, so an empty
+              # match keeps polling rather than concluding anything.
+              # `meta` may arrive as an object OR as a JSON-encoded string,
+              # and this could not be checked against the live API ahead of
+              # time. Indexing a string with `.commitHash` is a jq ERROR, not
+              # a null, so the unguarded form would swallow every response,
+              # poll to the deadline and silently never purge. Normalize both
+              # shapes before reading the sha.
+              status=$(printf '%s' "$resp" | jq -r --arg sha "$SHA" '
+                [ .data.deployments.edges[]?.node
+                  | . as $n
+                  | ((.meta // {}) | if type == "string" then (fromjson? // {}) else . end) as $m
+                  | select(($m.commitHash // "") == $sha)
+                  | $n.status ] | first // ""' 2>/dev/null || echo "")
+              case "$status" in
+                SUCCESS)
+                  echo "Deployment SUCCESS: new bytes are live, purge is warranted."
+                  echo "should_purge=true" >> "$GITHUB_OUTPUT"
+                  exit 0 ;;
+                SKIPPED)
+                  echo "::notice::Railway SKIPPED this commit, so the origin is unchanged."
+                  echo "Nothing is stale at the edge, so there is nothing to purge."
+                  echo "should_purge=false" >> "$GITHUB_OUTPUT"
+                  exit 0 ;;
+                FAILED|CRASHED|REMOVED)
+                  echo "::warning::Deployment status ${status}: no new content reached the origin."
+                  echo "Skipping the purge, which would only cost a cold cache for no benefit."
+                  echo "should_purge=false" >> "$GITHUB_OUTPUT"
+                  exit 0 ;;
+                "")
+                  echo "  no deployment recorded for this sha yet" ;;
+                *)
+                  echo "  deployment ${status}, still in progress" ;;
+              esac
             fi
             sleep 15
           done
 
-          echo "::error::No new deploy observed on $ORIGIN within $(( WAIT_BUDGET / 60 ))m."
-          echo "Refusing to purge: evicting the cache while the origin still serves the"
-          echo "previous build would repopulate the edge with stale bytes, which is the"
-          echo "exact failure this workflow exists to prevent."
-          echo "If the deploy landed later, re-run this workflow from the Actions tab to purge."
-          exit 1
+          # Never a single clean response means the credential or the endpoint
+          # is wrong, not that the deploy is slow. That MUST be loud: a job
+          # that quietly stops purging is exactly how the edge goes stale
+          # without anyone noticing, which is the bug this workflow exists to
+          # prevent.
+          if [ "$got_response" != "true" ]; then
+            echo "::error::No valid response from the Railway API in $(( WAIT_BUDGET / 60 ))m."
+            echo "RAILWAY_TOKEN is likely missing the project, expired, or of the wrong type."
+            echo "Last response body from the API:"
+            sed 's/^/  /' /tmp/railway-last-error 2>/dev/null | head -10 || true
+            exit 1
+          fi
+
+          # Dump what the API actually returned. Without this, a field-name or
+          # response-shape mismatch is indistinguishable from "the deploy never
+          # happened", and the job would quietly stop purging forever while
+          # still reporting green.
+          if [ -n "${resp:-}" ]; then
+            echo "Most recent deployments the API reported for this service:"
+            printf '%s' "$resp" | jq -r '
+              .data.deployments.edges[]?.node
+              | ((.meta // {}) | if type == "string" then (fromjson? // {}) else . end) as $m
+              | (($m.commitHash // "") | if . == "" then "<no commitHash>" else .[0:8] end) as $short
+              | "  \(.status)  \($short)  \(.createdAt)"' \
+              2>/dev/null | head -5 || true
+          fi
+
+          # Deliberately not a failure. The whole point of #1192 is that this
+          # job must not cry wolf; an unresolved deployment is reported and
+          # left for a manual run rather than red-Xing a routine commit.
+          echo "::warning::No terminal deployment status for ${SHA} within $(( WAIT_BUDGET / 60 ))m."
+          echo "Not purging. If the deploy landed later, run this workflow from the"
+          echo "Actions tab to purge manually."
+          echo "should_purge=false" >> "$GITHUB_OUTPUT"
 
       - name: Purge the Cloudflare cache
+        if: github.event_name == 'workflow_dispatch' || steps.deploy.outputs.should_purge == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "::error::CLOUDFLARE_API_TOKEN is not set. Add it as a repository secret,"
+            echo "::error::CLOUDFLARE_API_TOKEN is not set. Add it as a REPOSITORY secret,"
             echo "scoped to Zone / Cache Purge / Purge on the webjs.dev zone."
             exit 1
           fi
@@ -141,6 +240,7 @@ jobs:
           echo "Cache purged for the webjs.dev zone."
 
       - name: Confirm the edge now matches the origin
+        if: github.event_name == 'workflow_dispatch' || steps.deploy.outputs.should_purge == 'true'
         run: |
           set -euo pipefail
           # The purge is asynchronous across pops, so give it a moment before

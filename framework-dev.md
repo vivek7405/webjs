@@ -21,11 +21,25 @@ Net: edit the `HEALTHCHECK` for the Docker contract, keep `railway.json` for the
 
 `webjs.dev` sits behind Cloudflare, and the site's static assets (`/public/tailwind.css`, the brand SVGs) are served with `cache-control: public, max-age=14400` at STABLE urls. Without an eviction the edge therefore keeps serving the PREVIOUS copy for up to four hours after a deploy. That shipped two visible regressions in one day (a pre-redesign stylesheet after #1179, then the un-fixed logo marks after #1185), and staleness is per-asset rather than all-or-nothing, so the site can look half-updated.
 
-`.github/workflows/purge-cdn.yml` handles this on every push to `main`. It does NOT purge immediately: Railway auto-deploys from the same push and the build takes minutes, so an immediate purge would evict the cache while the origin still served the old bytes and the next visitor would repopulate the edge with exactly those bytes. Instead the job polls `GET /__webjs/version` (#239) on the Railway ORIGIN (bypassing the cache it is about to purge) until the reported `uptime` is lower than the time elapsed since the run began, which proves the process restarted for THIS push, then issues a zone-wide `purge_everything`. On timeout it fails loudly rather than purging, because a mistimed purge is the precise failure the workflow exists to prevent.
+`.github/workflows/purge-cdn.yml` handles this on every push to `main`. It does NOT purge immediately: a Railway build takes minutes, so an immediate purge would evict the cache while the origin still served the old bytes and the next visitor would repopulate the edge with exactly those. Instead the job asks Railway's GraphQL API for the deployment whose `meta.commitHash` matches the pushed sha and reads its real status, then issues a zone-wide `purge_everything` only on `SUCCESS`.
+
+It is a SEPARATE workflow rather than a step in `release.yml` on purpose: `release.yml` fires only on pushes touching `changelog/**` (an npm package release), while the site redeploys on ordinary merges. None of the four website merges on 2026-07-30 touched `changelog/`, so a purge living there would have fired for none of them.
+
+Reading the deployment status rather than inferring it is the second design (#1192). The first version watched the origin's `/__webjs/version` `uptime` for a restart, assuming every push to `main` produces a deploy. It does not: Railway marked #1189's own merge commit `SKIPPED` (it touched only `.github` and a `.md`), no restart ever happened, and the job failed after a 15 minute wait. Every docs-only commit would have been a red X, and a job that cries wolf on routine commits stops being read. So the status now decides:
+
+| Deployment status | Action |
+|---|---|
+| `SUCCESS` | purge |
+| `SKIPPED` | no purge, notice. Railway did not deploy, so the origin is unchanged and nothing is stale |
+| `FAILED` / `CRASHED` / `REMOVED` | no purge, warning. No new content reached the origin |
+| in progress, or no record yet | keep polling |
+| nothing terminal within 15 minutes | no purge, warning, run still GREEN. Use the manual run below |
 
 The purge is zone-wide rather than a path list: all four hostnames (`webjs.dev`, `example-blog.webjs.dev`, `docs.webjs.dev`, `ui.webjs.dev`) are proxied inside the one `webjs.dev` zone, so a single call covers them, and a zone purge cannot silently miss an asset the way a hand-maintained list does. Purging evicts only; nothing is deleted.
 
-- **Required secret:** `CLOUDFLARE_API_TOKEN`, scoped to **Zone / Cache Purge / Purge** on the `webjs.dev` zone only. Do not reuse a broad account-wide token.
+- **Required secrets**, both REPOSITORY secrets. The job declares no `environment:`, so an environment-scoped secret arrives EMPTY and the step fails on the explicit "not set" branch:
+  - `CLOUDFLARE_API_TOKEN`, scoped to **Zone / Cache Purge / Purge** on the `webjs.dev` zone only. Do not reuse a broad account-wide token.
+  - `RAILWAY_TOKEN`, a Railway **project** token for this project's `production` environment (narrower than an account token). A project token authenticates with the `Project-Access-Token` header and an account token with `Authorization: Bearer`, so the workflow tries both and keeps whichever answers without a GraphQL error.
 - **Manual purge:** run the "Purge CDN" workflow from the Actions tab (`workflow_dispatch`), which skips the deploy wait and purges straight away. Use this if a deploy landed after the wait timed out.
 - **Checking staleness by hand:** compare the edge against the origin rather than trusting `cf-cache-status`, since a `HIT` on fresh content is fine and only differing bytes are a problem.
 
