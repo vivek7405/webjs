@@ -34,6 +34,8 @@ export const DOCS_START_PATH = '/docs/getting-started';
 export const UI_PATH = '/ui';
 export const GH_URL = 'https://github.com/webjsdev/webjs';
 export const DISCORD_URL = 'https://discord.gg/qZScjWWNA8';
+export const X_URL = 'https://x.com/webjsdev';
+export const BLUESKY_URL = 'https://bsky.app/profile/webjs.bsky.social';
 
 // Visually-hidden cue appended inside target="_blank" links so a screen reader
 // announces the new-tab context change.

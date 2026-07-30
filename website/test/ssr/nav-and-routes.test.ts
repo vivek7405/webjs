@@ -43,6 +43,22 @@ test('the footer Resources column carries Why WebJs', async () => {
   assert.ok(out.includes('href="/what-is-webjs"'), 'still alongside What is WebJs?');
 });
 
+test('the footer Community column carries the social profiles', async () => {
+  // The footer is the only chrome that links the social accounts, so a dropped
+  // entry here is the account becoming unreachable from the site. Each opens in
+  // a new tab, which needs the noopener/noreferrer pair and the screen-reader
+  // cue that the rest of the column already carries.
+  const out = await renderToString(siteFooter());
+  for (const href of ['https://x.com/webjsdev', 'https://bsky.app/profile/webjs.bsky.social']) {
+    const anchor = out.slice(out.indexOf(`href="${href}"`));
+    assert.ok(out.includes(`href="${href}"`), `footer links ${href}`);
+    assert.ok(anchor.startsWith(`href="${href}" target="_blank" rel="noopener noreferrer"`), `${href} opens safely in a new tab`);
+    assert.ok(anchor.slice(0, 400).includes('opens in a new tab'), `${href} announces the new-tab context`);
+  }
+  assert.ok(out.includes('>X<'), 'the X link is labelled');
+  assert.ok(out.includes('>Bluesky<'), 'the Bluesky link is labelled');
+});
+
 test('the header still carries the rest of the nav', async () => {
   // Counterweight to the removal assertions: prove we removed ONE entry, not
   // that the nav failed to render at all.
