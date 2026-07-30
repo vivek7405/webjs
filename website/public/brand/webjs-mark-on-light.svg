@@ -1,12 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="24 -4 248 186" width="248" height="186" role="img" aria-label="WebJs">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="24 -4 248 196" width="248" height="196" role="img" aria-label="WebJs">
   <defs>
-    <mask id="b" maskUnits="userSpaceOnUse" x="24" y="-4" width="248" height="186">
-      <rect x="24" y="-4" width="248" height="186" fill="#000"/>
+    <mask id="w" maskUnits="userSpaceOnUse" x="24" y="-4" width="248" height="196">
+      <rect x="24" y="-4" width="248" height="196" fill="#000"/>
       <g transform="translate(40,0) skewX(-14)">
         <path d="M10 10 L60 150 L110 66 L160 150 L210 10" fill="none" stroke="#fff" stroke-width="32" stroke-linejoin="miter" stroke-linecap="butt"/>
       </g>
       <rect x="24" y="80" width="248" height="11" fill="#000"/>
     </mask>
   </defs>
-  <rect x="24" y="-4" width="248" height="186" fill="#000000" mask="url(#b)"/>
+  <rect x="24" y="-4" width="248" height="196" fill="#000000" mask="url(#w)"/>
 </svg>

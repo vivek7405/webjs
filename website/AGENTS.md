@@ -38,7 +38,7 @@ website/
     docs/              /docs/<topic>, the reference documentation (#1098 moved
                        it here from docs.webjs.dev). layout.ts holds the nav
                        tree + docs-scoped metadata; the shell itself is shared,
-                       see lib/docs-shell.ts.
+                       see lib/ui/docs-shell.ts.
     ui/                /ui, the @webjsdev/ui component gallery (#1099 moved it
                        here from ui.webjs.dev). page.ts is the introduction,
                        [name]/page.ts one page per component, layout.ts the
@@ -148,7 +148,7 @@ is split by editorial intent, which is what decides where a piece goes:
   an article owns the general term, a blog post owns the WebJs-specific angle.
 - **FAQ convention.** End an article or comparison body with a `## FAQ`
   section, each question a `### <question>` heading followed by its answer
-  paragraph. `lib/faq.ts` (`parseFaq`) turns that into a `FAQPage` JSON-LD
+  paragraph. `lib/utils/faq.ts` (`parseFaq`) turns that into a `FAQPage` JSON-LD
   block. The FAQ is BOTH rendered (normal markdown) and emitted as schema,
   so the two never drift (Google discounts FAQ schema that is not visible
   on the page). Blog posts do NOT use FAQ.

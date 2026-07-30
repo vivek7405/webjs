@@ -23,13 +23,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const OUT = resolve(process.argv[2] || 'public/og.png');
-// The card carries the REAL authored lockup rather than a redrawn copy, for
-// the same reason the site does: a redraw is how the logo drifted once
-// already. It is INLINED into the document rather than referenced as an
-// <img>: the lockup renders its name with an embedded data-URI font, and
-// Chromium ignores @font-face inside an SVG used as an image, so the img
-// form silently drops the wordmark. Inline SVG is part of the document and
-// loads the font normally.
+// The card carries the REAL lockup file rather than a redrawn copy, for the
+// same reason the site does: a redraw is how the logo drifted once already.
+// Inlined rather than <img> so the card render has no file:// fetch to race.
 const LOCKUP_SVG = readFileSync(resolve('public/brand/webjs-lockup-on-dark.svg'), 'utf8');
 
 // Dark-theme tokens, copied from the :root[data-theme='dark'] block in

@@ -41,6 +41,26 @@ if (!existsSync(COMPONENTS_SRC)) {
   process.exit(1);
 }
 
+// One-time migration: earlier layouts generated into components/ui/ and
+// lib/ui/. Those paths are tracked/hand-written space now, so stale generated
+// copies there would shadow real modules. Only files carrying the old
+// generated import signature are removed, so nothing hand-written can match.
+const LEGACY = [
+  [join(SITE_ROOT, 'components', 'ui'), /from '(\.\/lib\/|\.\.\/\.\.\/lib\/ui\/)/],
+];
+for (const [dir, sig] of LEGACY) {
+  if (!existsSync(dir)) continue;
+  for (const name of readdirSync(dir)) {
+    const f = join(dir, name);
+    if (name.endsWith('.ts')) {
+      try { if (sig.test(readFileSync(f, 'utf8'))) rmSync(f); } catch { /* keep */ }
+    }
+  }
+  const lib = join(dir, 'lib');
+  if (existsSync(lib)) rmSync(lib, { recursive: true });
+  try { if (readdirSync(dir).length === 0) rmSync(dir, { recursive: true }); } catch { /* keep */ }
+}
+
 mkdirSync(COMPONENTS_DST, { recursive: true });
 mkdirSync(LIB_DST_DIR, { recursive: true });
 
