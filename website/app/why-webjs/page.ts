@@ -1,7 +1,7 @@
 import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import { BTN_PRIMARY, BTN_GHOST, INSTALL} from '#lib/design.ts';
-import { ctaPanel } from '#lib/utils/ui.ts';
+import { ctaPanel } from '#lib/utils/ui/cta-panel.ts';
 import { DOCS_START_PATH, GH_URL, EXAMPLE_BLOG_URL, NEW_TAB } from '#lib/links.ts';
 
 /**

@@ -141,7 +141,7 @@ function dedent(snippet: string): string {
  * escaped (text interpolation, not unsafeHTML) so the markup shows as source.
  *
  * Wrapped in `.prose-docs` on purpose. That is the site's one code surface
- * (declared in lib/docs-shell.ts) and the scope the client highlighter reads,
+ * (declared in lib/utils/ui/docs-shell.ts) and the scope the client highlighter reads,
  * so a snippet here gets the same card and the same token colors as one in the
  * documentation, for free. `.ui-code` drops the trailing block margin the
  * prose rules add, since a tab pane is not a paragraph flow.
@@ -434,7 +434,7 @@ export default async function ComponentDoc({ params }: { params: { name: string 
       <h2 class=${SECTION_HEADING}>Source: <code class="text-xs px-1.5 py-0.5 rounded bg-bg-subtle">components/ui/${item.name}.ts</code></h2>
       <!-- The height cap and the scroll live on the PRE, not on a wrapper
            around it. The pre is what carries the border, background, and
-           rounded corners (from .prose-docs in lib/docs-shell.ts), and a
+           rounded corners (from .prose-docs in lib/utils/ui/docs-shell.ts), and a
            scrollbar renders inside its own element's border box. Put the
            overflow on an outer div and the scrollbar sits outside the visible
            rectangle, detached from the card it is scrolling. -->

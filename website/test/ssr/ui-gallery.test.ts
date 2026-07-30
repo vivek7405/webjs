@@ -74,7 +74,7 @@ test('there is exactly one header, one footer, and one theme toggle', async () =
 });
 
 test('the gallery uses the SAME sidebar shell as the docs', async () => {
-  // Not merely "has a sidebar": the same one, from lib/docs-shell.ts. The
+  // Not merely "has a sidebar": the same one, from lib/utils/ui/docs-shell.ts. The
   // whole reason that module was extracted is that two hand-maintained
   // sidebars drift, which is how the old site ended up looking foreign.
   const [ui, docs] = await Promise.all([bodyOf(UI_COMPONENT), bodyOf(DOC_PATH)]);

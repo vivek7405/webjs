@@ -119,10 +119,10 @@ test('the docs use the marketing design tokens, with no duplicate theme block', 
   // A second @theme block is how the two sites drifted apart the first time,
   // so neither the docs layout nor the shared shell it renders may declare
   // one: they read the root layout's tokens. The shell moved to
-  // lib/docs-shell.ts when /ui started sharing it, so both files are guarded.
+  // lib/utils/ui/docs-shell.ts when /ui started sharing it, so both files are guarded.
   const docsLayout = readFileSync(resolve(WEBSITE_ROOT, 'app/docs/layout.ts'), 'utf8');
-  const shell = readFileSync(resolve(WEBSITE_ROOT, 'lib/docs-shell.ts'), 'utf8');
-  for (const [name, src] of [['app/docs/layout.ts', docsLayout], ['lib/docs-shell.ts', shell]] as const) {
+  const shell = readFileSync(resolve(WEBSITE_ROOT, 'lib/utils/ui/docs-shell.ts'), 'utf8');
+  for (const [name, src] of [['app/docs/layout.ts', docsLayout], ['lib/utils/ui/docs-shell.ts', shell]] as const) {
     assert.ok(!src.includes('@theme'), `${name} declares no design tokens`);
     assert.ok(
       !/--fg\s*:|--bg\s*:|--accent\s*:/.test(src),
@@ -141,7 +141,7 @@ test('the docs prose restores list markers over the Tailwind preflight', () => {
   // as an arbitrary layout inconsistency rather than a list. Deleting the
   // restatement brings that straight back, and nothing else would catch it:
   // the page renders fine, just wrong.
-  const shell = readFileSync(resolve(WEBSITE_ROOT, 'lib/docs-shell.ts'), 'utf8');
+  const shell = readFileSync(resolve(WEBSITE_ROOT, 'lib/utils/ui/docs-shell.ts'), 'utf8');
   assert.match(shell, /\.prose-docs ul \{[^}]*list-style: disc/, 'ul markers restored');
   assert.match(shell, /\.prose-docs ol \{[^}]*list-style: decimal/, 'ol markers restored');
 });
