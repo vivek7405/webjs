@@ -23,7 +23,7 @@ import { html } from '@webjsdev/core';
 import { renderToString } from '@webjsdev/core/server';
 import RootLayout from '#app/layout.ts';
 import Sitemap from '#app/sitemap.ts';
-import { siteFooter } from '#lib/utils/ui.ts';
+import { siteFooter } from '#lib/ui/site-footer.ts';
 
 const WEBSITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 

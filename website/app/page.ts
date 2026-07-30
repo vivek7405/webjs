@@ -14,8 +14,8 @@ import { DOCS_PATH, DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 // dependency, html, is already loaded by the components, so the real cost is a
 // single tiny module fetch.
 import { highlight } from '#lib/utils/highlight.ts';
-import { BTN_PRIMARY, BTN_GHOST, INSTALL} from '#lib/design.ts';
-import { ctaPanel } from '#lib/utils/ui.ts';
+import { BTN_PRIMARY, BTN_GHOST, INSTALL} from '#lib/design/recipes.ts';
+import { ctaPanel } from '#lib/ui/cta-panel.ts';
 
 // The home page intentionally sets NO title/description/og here. The root
 // layout's generateMetadata is the single source for the <title>, description,

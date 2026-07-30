@@ -1,7 +1,7 @@
 import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import { COMPONENT_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE } from '#lib/samples.ts';
-import { BTN_PRIMARY, BTN_GHOST, INSTALL } from '#lib/design.ts';
+import { BTN_PRIMARY, BTN_GHOST, INSTALL } from '#lib/design/recipes.ts';
 import { DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 import { faqJsonLd } from '#lib/utils/faq.ts';
 import { highlight } from '#lib/utils/highlight.ts';
@@ -30,7 +30,7 @@ import { highlight } from '#lib/utils/highlight.ts';
  *  - SoftwareApplication + BreadcrumbList + FAQPage structured data
  *  - alternates.canonical, since this page is the one canonical definition
  *
- * Reuses the home page's design language (the shared lib/design.ts recipes, the terminal
+ * Reuses the home page's design language (the shared lib/design/recipes.ts recipes, the terminal
  * "windows", the bento CARD) so the site reads as one system.
  */
 

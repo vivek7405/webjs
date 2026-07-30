@@ -1,7 +1,7 @@
 import { html } from '@webjsdev/core';
-import { BTN_PRIMARY, BTN_GHOST, H2, PROSE } from '#lib/design.ts';
-import { brandMark } from '#lib/brand.ts';
-import { SWATCHES, ACCENTS, type Swatch } from '#lib/brand-tokens.ts';
+import { BTN_PRIMARY, BTN_GHOST, H2, PROSE } from '#lib/design/recipes.ts';
+import { brandMark } from '#lib/design/brand.ts';
+import { SWATCHES, ACCENTS, type Swatch } from '#lib/design/tokens.ts';
 
 /**
  * /brand
@@ -11,7 +11,7 @@ import { SWATCHES, ACCENTS, type Swatch } from '#lib/brand-tokens.ts';
  * Two things this page must keep doing, because both were wrong in its first
  * draft and neither is caught by a test:
  *
- * 1. The swatches PAINT the token values from lib/brand-tokens.ts. They do not
+ * 1. The swatches PAINT the token values from lib/design/tokens.ts. They do not
  *    restate a colour in prose. The draft captioned the palette "electric
  *    cyan" beside amber chips, which is the failure mode a page like this
  *    invites.

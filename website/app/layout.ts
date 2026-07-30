@@ -1,8 +1,8 @@
 import { html, cspNonce } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
 import { DOCS_START_PATH, UI_PATH, EXAMPLE_BLOG_URL, GH_URL, NEW_TAB } from '#lib/links.ts';
-import { siteFooter } from '#lib/utils/ui.ts';
-import { brandLockup } from '#lib/brand.ts';
+import { siteFooter } from '#lib/ui/site-footer.ts';
+import { brandLockup } from '#lib/design/brand.ts';
 
 /**
  * Root layout for the redesigned marketing site.
@@ -149,7 +149,7 @@ export default function RootLayout({ children }: { children: unknown }) {
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', measure);
         else measure();
       })();
-      // The sidebar drawer shared by /docs and /ui (lib/utils/ui.ts) is
+      // The sidebar drawer shared by /docs and /ui (lib/ui/docs-shell.ts) is
       // driven entirely from here, and both halves of that are deliberate.
       //
       // Its open state is an attribute on <body>, which is OUTSIDE every swap

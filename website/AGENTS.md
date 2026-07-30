@@ -59,18 +59,26 @@ website/
                        expects. The gallery's preview copies live in
                        modules/ui/components/ instead, see below.)
   lib/
-    highlight.ts       SSR syntax highlighter for the code samples
-    frontmatter.ts     parse changelog/blog markdown frontmatter
-    faq.ts             parse a `## FAQ` markdown section into FAQPage JSON-LD
-    docs-shell.ts      the sidebar + drawer + .prose-docs typography, SHARED by
+    design/            the design system, one subsystem in one folder
+      recipes.ts       class recipes + the scale (BTN_*, EYEBROW, layout widths)
+      brand.ts         the logo lockup and monogram fragments
+      tokens.ts        the palette as data, painted by /brand
+    ui/                composed page fragments, one per file. SSR-time functions
+                       returning `html`; nothing here registers a custom element
+      page-header.ts   hub eyebrow + title + lede
+      cta-panel.ts     the closing call to action
+      site-footer.ts   the footer, rendered by the root layout on every page
+      docs-shell.ts    the sidebar + drawer + .prose-docs typography, SHARED by
                        /docs and /ui so the two sections cannot drift apart
-    docs-llms.server.ts  enumerates the doc pages on disk (sitemap, llms.txt)
+    utils/             pure helpers (compute, never render)
+      highlight.ts     SSR syntax highlighter for the code samples
+      frontmatter.ts   parse changelog/blog markdown frontmatter
+      faq.ts           parse a `## FAQ` markdown section into FAQPage JSON-LD
+      cn.ts dom.ts     GITIGNORED. The kit's helpers, mirrored to the exact
+                       path `webjs ui add` writes them to in a real app
     links.ts           cross-app URLs + in-app paths for the header and footer
-    site-footer.ts     the footer, rendered by the root layout on every page
-    utils/cn.ts        GITIGNORED. The kit's cn helper, mirrored to the exact
-    utils/dom.ts       path `webjs ui add` writes it to in a real app.
-    utils/ui.ts        repeated markup-chunk helpers (the scaffold's pattern):
-                       page header, closing CTA, site footer, docs shell
+    samples.ts         the code samples shown on the marketing pages
+    docs-llms.server.ts  enumerates the doc pages on disk (sitemap, llms.txt)
   modules/
     ui/components/     GITIGNORED mirror of the @webjsdev/ui registry sources,
                        written by scripts/copy-registry.mjs. NEVER hand-write
@@ -94,6 +102,17 @@ website/
                        never boots without its imports.
   public/              favicon, og image, self-hosted fonts, static assets
 ```
+
+## How lib/ grows
+
+The scaffold starts flat (a lone `lib/utils/ui.ts` and nothing else), and this
+site follows the same rule it grew by: a file stays loose at `lib/*.ts` while
+it is a standalone app-wide value, and a SUBSYSTEM gets its own `lib/<name>/`
+folder once it reaches about three related files. The design system
+(`lib/design/`) and the composed page fragments (`lib/ui/`) both crossed that
+bar; `links.ts` and `samples.ts` have not, so they stay loose. Fragments in
+`lib/ui/` are one file per fragment for the same reason the framework keeps
+one action per file: the filename is the index.
 
 The site is intentionally one page in long-form scroll. When you edit
 copy, find the section in `app/page.ts` (search for the visible text

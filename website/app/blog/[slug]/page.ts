@@ -1,5 +1,5 @@
 import { html, unsafeHTML, notFound } from '@webjsdev/core';
-import { BADGE } from '#lib/design.ts';
+import { BADGE } from '#lib/design/recipes.ts';
 import { getPost } from '#modules/blog/queries/get-post.server.ts';
 import { renderPostBody } from '#modules/blog/utils/render-post.ts';
 

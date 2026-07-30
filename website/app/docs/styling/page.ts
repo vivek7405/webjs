@@ -186,7 +186,7 @@ export function backLink(href: string, label: string) {
 
     <p>Consume anywhere:</p>
     <pre>// app/blog/[slug]/page.ts
-import { rubric, backLink } from '#lib/utils/ui.ts';
+
 
 export default function Post({ params }) {
   return html\`
