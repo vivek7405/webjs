@@ -5,7 +5,7 @@ import { NEW_TAB } from '#lib/links.ts';
 /**
  * A composed page fragment (the lib/ui convention): an SSR-time function
  * returning html. It renders and disappears. Nothing here registers a custom
- * element; interactive elements live in components/.
+ * element. Interactive elements live in components/.
  */
 
 /**

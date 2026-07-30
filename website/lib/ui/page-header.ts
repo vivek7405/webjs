@@ -4,7 +4,7 @@ import { EYEBROW } from '#lib/design/recipes.ts';
 /**
  * A composed page fragment (the lib/ui convention): an SSR-time function
  * returning html. It renders and disappears. Nothing here registers a custom
- * element; interactive elements live in components/.
+ * element. Interactive elements live in components/.
  */
 
 /**

@@ -276,7 +276,7 @@ export default function BrandPage() {
           <h2 class=${H2}>Typography</h2>
           <p class=${PROSE}>
             Four faces, each with one job. The three brand faces are variable
-            and self-hosted; the editorial serif is deliberately a system stack,
+            and self-hosted. The editorial serif is deliberately a system stack,
             so it costs zero bytes and renders in the reader's native voice.
           </p>
         </div>
@@ -347,8 +347,8 @@ export default function BrandPage() {
               <h3 class="text-sm font-bold text-fg mb-1.5">You may, without asking</h3>
               <p class="text-sm text-fg-muted leading-relaxed mb-5">
                 Use the marks unmodified to refer to WebJs in articles, talks,
-                documentation, courses, and comparisons; state that your project
-                is built with WebJs; and link to this site.
+                documentation, courses, and comparisons. State that your project
+                is built with WebJs, and link to this site.
               </p>
               <h3 class="text-sm font-bold text-fg mb-1.5">Please ask first</h3>
               <p class="text-sm text-fg-muted leading-relaxed mb-5">
