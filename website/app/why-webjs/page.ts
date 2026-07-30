@@ -2,7 +2,7 @@ import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import { BTN_PRIMARY, BTN_GHOST, INSTALL} from '#lib/design/recipes.ts';
 import { ctaPanel } from '#lib/ui/cta-panel.ts';
-import { DOCS_START_PATH, GH_URL, EXAMPLE_BLOG_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 
 /**
  * /why-webjs
@@ -190,7 +190,7 @@ Counter.register('counter');
       title: 'Point your agent at WebJs',
       lede: 'Scaffold a full-stack app in one command, then let any model read the source and build. Pages, an API, components, and a database, all on web standards.',
       primary: { href: DOCS_START_PATH, label: 'Get started' },
-      secondary: { href: EXAMPLE_BLOG_URL, label: 'See a live app', ext: true },
+      secondary: { href: GH_URL, label: 'View on GitHub', ext: true },
     })}
 
     </main>

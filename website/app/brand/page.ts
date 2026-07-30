@@ -318,7 +318,7 @@ export default function BrandPage() {
             <div class="rounded-2xl border border-border bg-bg-elev">
               <div class="p-5 border-b border-border">
                 <p class="text-sm font-semibold text-fg mb-2.5">Correct</p>
-                <p class="text-sm text-fg-muted leading-relaxed">WebJs ships without a build step.<br>Most WebJs apps run on Node 24+ or Bun.<br>Run <code class="font-mono text-sm bg-bg-subtle px-1.5 py-0.5 rounded">webjs dev</code> to start.</p>
+                <p class="text-sm text-fg-muted leading-relaxed">WebJs ships without a build step.<br>Most WebJs apps run on Node 24+ or Bun.<br>Run <code class="font-mono text-sm bg-fg/8 px-1.5 py-0.5 rounded">webjs dev</code> to start.</p>
               </div>
               <div class="p-5 border-b border-border">
                 <p class="text-sm font-semibold text-fg mb-2.5">Incorrect</p>
@@ -327,8 +327,8 @@ export default function BrandPage() {
               <div class="p-5">
                 <p class="text-sm font-semibold text-fg mb-2.5">Lowercase is correct here</p>
                 <p class="text-sm text-fg-muted leading-relaxed">
-                  The CLI (<code class="font-mono text-sm bg-bg-subtle px-1.5 py-0.5 rounded">webjs create</code>),
-                  the packages (<code class="font-mono text-sm bg-bg-subtle px-1.5 py-0.5 rounded">@webjsdev/core</code>),
+                  The CLI (<code class="font-mono text-sm bg-fg/8 px-1.5 py-0.5 rounded">webjs create</code>),
+                  the packages (<code class="font-mono text-sm bg-fg/8 px-1.5 py-0.5 rounded">@webjsdev/core</code>),
                   the domain (webjs.dev), and the repository path. The lockup
                   itself is set as WebJs, matching the prose.
                 </p>

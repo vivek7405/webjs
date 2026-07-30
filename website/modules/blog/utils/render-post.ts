@@ -44,7 +44,7 @@ function inline(s: string): string {
     const cue = external ? '<span class="sr-only"> (opens in a new tab)</span>' : '';
     return `<a href="${href}" class="text-accent no-underline hover:underline"${attrs}>${t}${cue}</a>`;
   });
-  out = out.replace(/`([^`]+)`/g, '<code class="font-mono text-[0.9em] bg-bg-subtle text-fg px-[6px] py-[2px] rounded">$1</code>');
+  out = out.replace(/`([^`]+)`/g, '<code class="font-mono text-[0.9em] bg-fg/8 text-fg px-[6px] py-[2px] rounded">$1</code>');
   out = out.replace(/\*\*([^\n]+?)\*\*/g, '<strong class="font-semibold text-fg">$1</strong>');
   out = out.replace(/(^|[^\w])_([^_\s][^_]*[^_\s]|[^_\s])_(?=$|[^\w])/g, '$1<em>$2</em>');
   out = out.replace(/(^|[^*\w])\*([^*\s][^*]*[^*\s]|[^*\s])\*(?=$|[^*\w])/g, '$1<em>$2</em>');
@@ -86,7 +86,7 @@ export function renderPostBody(md: string): string {
         const body = HIGHLIGHTED.has(codeLang.toLowerCase())
           ? highlightToHtml(src)
           : src.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        out.push(`<pre class="bg-bg-subtle border border-border rounded-lg my-[48px] overflow-x-auto"><code class="font-mono text-[13px] leading-[1.7] text-fg whitespace-pre block px-[24px] py-[20px]"${codeLang ? ` data-lang="${codeLang}"` : ''}>${body}</code></pre>`);
+        out.push(`<pre class="bg-fg/8 border border-border rounded-lg my-[48px] overflow-x-auto"><code class="font-mono text-[13px] leading-[1.7] text-fg whitespace-pre block px-[24px] py-[20px]"${codeLang ? ` data-lang="${codeLang}"` : ''}>${body}</code></pre>`);
         codeBuf = [];
         codeLang = '';
         inCode = false;

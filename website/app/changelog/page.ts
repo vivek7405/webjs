@@ -24,15 +24,15 @@ export default async function Changelog() {
         <p class="font-mono text-xs uppercase tracking-widest text-accent font-semibold mb-2">Changelog</p>
         <h1 class="font-serif text-hub leading-[1.05] tracking-tight text-fg mb-3">What shipped</h1>
         <p class="text-fg-muted text-sm leading-relaxed max-w-2xl">
-          Per-package, per-version release notes for <code class="font-mono text-sm bg-bg-subtle px-1 py-0.5 rounded">@webjsdev/core</code>,
-          <code class="font-mono text-sm bg-bg-subtle px-1 py-0.5 rounded">/server</code>,
-          <code class="font-mono text-sm bg-bg-subtle px-1 py-0.5 rounded">/cli</code>,
-          <code class="font-mono text-sm bg-bg-subtle px-1 py-0.5 rounded">/intellisense</code>,
-          <code class="font-mono text-sm bg-bg-subtle px-1 py-0.5 rounded">/ui</code>, and
-          <code class="font-mono text-sm bg-bg-subtle px-1 py-0.5 rounded">/mcp</code>,
+          Per-package, per-version release notes for <code class="font-mono text-sm bg-fg/8 px-1 py-0.5 rounded">@webjsdev/core</code>,
+          <code class="font-mono text-sm bg-fg/8 px-1 py-0.5 rounded">/server</code>,
+          <code class="font-mono text-sm bg-fg/8 px-1 py-0.5 rounded">/cli</code>,
+          <code class="font-mono text-sm bg-fg/8 px-1 py-0.5 rounded">/intellisense</code>,
+          <code class="font-mono text-sm bg-fg/8 px-1 py-0.5 rounded">/ui</code>, and
+          <code class="font-mono text-sm bg-fg/8 px-1 py-0.5 rounded">/mcp</code>,
           plus the WebJs editor extensions for VS Code
-          (<code class="font-mono text-sm bg-bg-subtle px-1 py-0.5 rounded">vscode</code>) and Neovim
-          (<code class="font-mono text-sm bg-bg-subtle px-1 py-0.5 rounded">nvim</code>).
+          (<code class="font-mono text-sm bg-fg/8 px-1 py-0.5 rounded">vscode</code>) and Neovim
+          (<code class="font-mono text-sm bg-fg/8 px-1 py-0.5 rounded">nvim</code>).
           Each version-bump produces one entry, automatically.
         </p>
       </header>

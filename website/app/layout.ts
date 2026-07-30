@@ -1,6 +1,6 @@
 import { html, cspNonce } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
-import { DOCS_START_PATH, UI_PATH, EXAMPLE_BLOG_URL, GH_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_START_PATH, UI_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 import { siteFooter } from '#lib/ui/site-footer.ts';
 import { brandLockup } from '#lib/design/brand.ts';
 
@@ -14,7 +14,7 @@ import { brandLockup } from '#lib/design/brand.ts';
  * clamp, the fixed static glow layer, the hover-only scrollbar (`.scroll-thin`),
  * and the <details> icon swap. Everything else is Tailwind.
  *
- * Shared link config (DOCS_START_PATH / UI_PATH / EXAMPLE_BLOG_URL / GH_URL / NEW_TAB) lives in
+ * Shared link config (DOCS_START_PATH / UI_PATH / GH_URL / NEW_TAB) lives in
  * lib/links.ts, imported here and by app/page.ts.
  */
 
@@ -24,7 +24,6 @@ const DESCRIPTION = 'An AI-first full-stack web framework built on web component
 const NAV = [
   { label: 'Docs', href: DOCS_START_PATH, ext: false },
   { label: 'UI', href: UI_PATH, ext: false },
-  { label: 'Demo', href: EXAMPLE_BLOG_URL, ext: true },
   { label: 'Blog', href: '/blog', ext: false },
   { label: 'Compare', href: '/compare', ext: false },
   { label: 'Changelog', href: '/changelog', ext: false },

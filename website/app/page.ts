@@ -158,6 +158,20 @@ export default function LandingPage() {
          the page a reader is invited to click, so it is sized as a control
          rather than as an inline badge, and it is the single surface where the
          brand accent appears as a hover state. */
+      .stage-code { background: oklch(0.09 0.005 60); }
+      .stage-code > div:first-child {
+        background: oklch(0.13 0.006 60);
+        border-color: oklch(1 0 0 / 0.09);
+      }
+      .stage-code > div:first-child span:last-child { color: oklch(0.62 0.01 60); }
+      .stage-code pre {
+        color: oklch(0.95 0.005 70);
+        --code-tag: oklch(0.78 0.13 250);
+        --code-attr: oklch(0.66 0.16 150);
+        --code-str: oklch(0.80 0.15 145);
+        --code-text: oklch(0.95 0.005 70);
+        --code-punc: oklch(0.68 0.01 60);
+      }
       .hero-stage like-button button {
         gap: 0.5rem;
         padding: 0.7rem 1.25rem;
@@ -214,7 +228,7 @@ export default function LandingPage() {
         </div>
 
         <div class="hero-stage max-w-6xl mx-auto grid grid-cols-1 wide:grid-cols-[1.12fr_0.88fr] rounded-2xl overflow-hidden border border-border-strong bg-bg-sunken shadow-[var(--shadow)]">
-          <div class="min-w-0 border-b wide:border-b-0 wide:border-r border-border">
+          <div class="stage-code min-w-0 border-b wide:border-b-0 wide:border-r border-border">
             <div class=${WINBAR}>${DOTS}<span class=${WINNAME}>components/like-button.ts</span></div>
             <pre class="scroll-thin m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] [tab-size:2] text-left" tabindex="0" aria-label="like-button component source"><code>${highlight(HERO_SAMPLE)}</code></pre>
           </div>

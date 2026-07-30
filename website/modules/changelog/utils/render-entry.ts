@@ -14,7 +14,7 @@ function inline(s: string): string {
     .replace(/>/g, '&gt;');
   out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, t, u) =>
     `<a href="${u}" class="text-accent no-underline hover:underline" rel="noopener noreferrer">${t}</a>`);
-  out = out.replace(/`([^`]+)`/g, '<code class="font-mono text-[12.5px] bg-bg-subtle text-fg px-1 py-0.5 rounded">$1</code>');
+  out = out.replace(/`([^`]+)`/g, '<code class="font-mono text-[12.5px] bg-fg/8 text-fg px-1 py-0.5 rounded">$1</code>');
   // **bold** non-greedy single-line: must allow asterisks inside the
   // span so titles like "**data-webjs-prop-* side-channel**" still
   // parse. The previous [^*]+ rejected the embedded asterisk and

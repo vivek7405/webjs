@@ -216,10 +216,7 @@ the stylesheet against a stale mirror silently omits the utility classes the
 gallery previews need. In prod, `npm start` and `webjs start` are equivalent
 too, via `webjs.start.before`.
 
-Set `EXAMPLE_BLOG_URL` to point the "Demo" link at the live example-blog app
-when deploying; locally, `.env` in this directory sets it to the sibling app's
-localhost port. Everything else in the nav is an in-app route and needs no env
-var: Blog, Changelog, Docs, and the UI gallery. (Docs and the gallery used to
+Every nav entry is an in-app route and needs no env var: Blog, Changelog, Docs, and the UI gallery. (Docs and the gallery used to
 need one each. They were separate `docs.webjs.dev` and `ui.webjs.dev` apps
 until #1098 and #1099 moved them here under `app/docs/` and `app/ui/`, so
 `DOCS_URL` and `UI_URL` are both gone.)

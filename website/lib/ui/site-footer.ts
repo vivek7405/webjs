@@ -1,5 +1,5 @@
 import { html } from '@webjsdev/core';
-import { DOCS_START_PATH, UI_PATH, EXAMPLE_BLOG_URL, GH_URL, DISCORD_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_START_PATH, UI_PATH, GH_URL, DISCORD_URL, NEW_TAB } from '#lib/links.ts';
 import { brandLockup } from '#lib/design/brand.ts';
 
 /**
@@ -22,14 +22,13 @@ import { brandLockup } from '#lib/design/brand.ts';
 export function siteFooter() {
   return html`
     <footer class="mt-24 border-t border-border py-16 px-6 bg-bg-subtle/30">
-      <div class="max-w-6xl mx-auto">
+      <div class="max-w-7xl mx-auto">
         <nav class="grid grid-cols-2 md:grid-cols-5 gap-8 mb-12" aria-label="Footer">
           <div class="flex flex-col gap-3">
             <h4 class="text-xs font-bold uppercase tracking-wider text-fg">Product</h4>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${DOCS_START_PATH}>Docs</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${UI_PATH}>UI components</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href="/#templates">Templates</a>
-            <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${EXAMPLE_BLOG_URL} target="_blank" rel="noopener noreferrer">Showcase${NEW_TAB}</a>
           </div>
           <div class="flex flex-col gap-3">
             <h4 class="text-xs font-bold uppercase tracking-wider text-fg">Resources</h4>

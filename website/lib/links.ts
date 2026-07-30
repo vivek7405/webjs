@@ -32,9 +32,6 @@ export const DOCS_START_PATH = '/docs/getting-started';
  * because already-published CLI versions fetch from them.
  */
 export const UI_PATH = '/ui';
-// EXAMPLE_BLOG_URL points at the live example-blog app (a real WebJs app), surfaced as
-// the "Demo" nav link.
-export const EXAMPLE_BLOG_URL = env.EXAMPLE_BLOG_URL || 'https://example-blog.webjs.dev';
 export const GH_URL = 'https://github.com/webjsdev/webjs';
 export const DISCORD_URL = 'https://discord.gg/qZScjWWNA8';
 
