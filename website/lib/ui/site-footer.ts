@@ -1,5 +1,5 @@
 import { html } from '@webjsdev/core';
-import { DOCS_START_PATH, UI_PATH, GH_URL, DISCORD_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_START_PATH, UI_PATH, GH_URL, DISCORD_URL, X_URL, BLUESKY_URL, NEW_TAB } from '#lib/links.ts';
 import { brandLockup } from '#lib/design/brand.ts';
 
 /**
@@ -53,6 +53,8 @@ export function siteFooter() {
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${GH_URL} target="_blank" rel="noopener noreferrer">GitHub${NEW_TAB}</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${GH_URL + '/discussions'} target="_blank" rel="noopener noreferrer">Discussions${NEW_TAB}</a>
             <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${DISCORD_URL} target="_blank" rel="noopener noreferrer">Discord${NEW_TAB}</a>
+            <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${X_URL} target="_blank" rel="noopener noreferrer">X${NEW_TAB}</a>
+            <a class="text-fg-muted hover:text-accent no-underline text-sm transition-colors" href=${BLUESKY_URL} target="_blank" rel="noopener noreferrer">Bluesky${NEW_TAB}</a>
           </div>
           <div class="flex flex-col gap-3">
             <a href="/" aria-label="WebJs home" class="no-underline text-fg inline-flex w-fit transition-opacity duration-150 hover:opacity-80">${brandLockup('ftr', { height: 26 })}</a>
