@@ -192,7 +192,8 @@ jobs:
             printf '%s' "$resp" | jq -r '
               .data.deployments.edges[]?.node
               | ((.meta // {}) | if type == "string" then (fromjson? // {}) else . end) as $m
-              | "  \(.status)  \(($m.commitHash // "<no commitHash field>")[0:8])  \(.createdAt)"' \
+              | (($m.commitHash // "") | if . == "" then "<no commitHash>" else .[0:8] end) as $short
+              | "  \(.status)  \($short)  \(.createdAt)"' \
               2>/dev/null | head -5 || true
           fi
 
