@@ -200,20 +200,13 @@ calling an action), re-enable it and delete the assertion in
 - Each section in `page.ts` is a `<section>` wrapper for predictable
   scroll anchors.
 - **Code blocks follow three accessibility rules.** `test/ssr/pre-block-a11y.test.ts`
-  enforces them on the three MARKETING pages (`/`, `/what-is-webjs`,
-  `/why-webjs`). The `/docs/**` and `/ui/**` pages are NOT covered yet: their
-  `<pre>` blocks scroll via `.prose-docs pre { overflow-x: auto }` in
-  `lib/ui/docs-shell.ts` and carry no `tabindex`, so rule 3 is currently
-  violated there. Follow the rules in any new markup, and extend the test's
-  `PAGES` list when you bring a section into line.
-  A `<pre>` maps to ARIA role `generic`, where ARIA prohibits an
-  author-supplied name, so a named block carries `role="region"` to make
-  the name legal. A named region is a landmark, so no two blocks on a
-  page may share a name (`aria-label="Example files"` on two cards is
-  the mistake to avoid; name each for what it shows). And a block with
-  `overflow-x-auto` is a scroll container at some viewport width, so it
-  carries `tabindex="0"`, since a scroll container no keyboard can reach
-  is unusable without a pointer.
+  enforces them, but only on the pages in its `PAGES` list, currently the three
+  marketing pages. Coverage is PARTIAL and the rest of the site is not clean:
+  sections outside that list still render a `<pre>` with no `tabindex`, whether
+  the scroll comes from an `overflow-x-auto` utility or from
+  `.prose-docs pre { overflow-x: auto }` in `lib/ui/docs-shell.ts`. Do not read
+  the list as an inventory of what is left. Follow the rules in any new markup,
+  and add a page to `PAGES` once its section satisfies them.
 
 ## Run
 

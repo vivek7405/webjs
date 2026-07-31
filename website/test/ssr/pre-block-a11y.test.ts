@@ -14,10 +14,10 @@
  *     keyboard can reach is unusable without a pointer.
  *
  * This lives in its own file, and loops over the pages in PAGES, because the
- * rules belong to the site rather than to any one page. PAGES is the three
- * marketing pages, NOT every page that renders a code block: the /docs and /ui
- * pages scroll their blocks through a stylesheet rule and do not satisfy rule 3
- * yet. Add a page here as it is brought into line.
+ * rules belong to the site rather than to any one page. PAGES is NOT every page
+ * that renders a code block: coverage is partial, other sections do not satisfy
+ * rule 3 yet, and this list is not an inventory of which. Add a page here once
+ * its section satisfies the rules.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -57,9 +57,10 @@ for (const page of PAGES) {
   });
 
   test(`every code block marked scrollable on ${page.name} can be reached by keyboard`, async () => {
-    // Detected by the utility class, so a block made scrollable only by a
-    // stylesheet rule is out of scope here. Every block on these three pages
-    // carries the class, which is why that is sufficient for them.
+    // Scrollability is read from the utility class, which is sufficient here
+    // because every block on these pages carries it. A block scrolled only by a
+    // stylesheet rule would not be seen, so this detector suits the PAGES list
+    // rather than the site.
     const scrollable = preTags(await renderToString(page.render())).filter((t) => has(t, /\boverflow-x-auto\b/));
     assert.ok(scrollable.length > 0, 'the page renders at least one scrollable code block');
     for (const tag of scrollable) {
