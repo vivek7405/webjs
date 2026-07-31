@@ -24,40 +24,44 @@ test('the pitch page SSRs with its headline, terminals, reason cards, and a main
   assert.ok(out.includes('<main id="main"'), 'wraps content in a main landmark');
 });
 
-test('the pitch page argues the defaults arrive unasked, and that quality holds across models', async () => {
+test('the pitch page argues the prompt carries no architecture, and that quality holds across models', async () => {
   // The page used to argue model-agnosticism only from the model side (any
-  // model CAN read the source). These are the reader-side half. The first claim
-  // is deliberately NOT "you need not know the framework's vocabulary", which
-  // is a non-claim: an agent resolves internals for a technical and a
-  // non-technical prompter alike. It is that the things nobody thinks to ask
-  // for arrive anyway, which is a property of the defaults rather than of the
-  // wording of the prompt.
+  // model CAN read the source). This is the reader-side half, and the claim is
+  // deliberately NOT "you need not know the framework's vocabulary", which is
+  // a non-claim: an agent resolves internals for a technical and a
+  // non-technical prompter alike, so nobody needed that vocabulary either way.
+  // The claim is comparative and about WHO CLOSES THE OPEN DECISIONS. Where
+  // they are open, the prompt closes them. Here the framework already did.
   const out = await renderToString(Why());
-  assert.ok(out.includes('You should not have to know what to ask for'), 'includes the unasked-for section heading');
-  assert.ok(out.includes('no reason to know exists'), 'names the gap as not knowing a thing exists, not as not knowing its name');
+  assert.ok(out.includes('The prompt does not have to carry the architecture'), 'includes the section heading');
+  assert.ok(out.includes('has to be closed by'), 'names the mechanism as an open decision someone must close');
   assert.ok(out.includes('quality of what comes back'), 'ties model-agnosticism to output quality, not just to whether a model works');
 });
 
-test('the section names defaults the prompt never asked for', async () => {
-  // The prose carries the argument, but these four cards are what make it
-  // concrete, and an unasserted card grid could be deleted with the rest of the
-  // file still green. Each card must also stay a genuine DEFAULT: if one is
-  // ever reworded into something the prompt has to request, the section's claim
-  // is gone while every other assertion here still passes.
+test('the two prompts differ only by the architecture one of them has to spell out', async () => {
+  // The contrast IS the argument, so both panels are pinned, and so is the
+  // property that makes the contrast real: the appended instructions appear in
+  // one prompt and in neither the other prompt nor as something WebJs asks for.
   const out = await renderToString(Why());
-  const prompt = out.slice(out.indexOf('aria-label="A prompt written the way'), out.indexOf('Nothing in that sentence'));
-  assert.ok(prompt.includes('Let customers book a table'), 'the prompt is a request written the way somebody would say it out loud');
-  assert.ok(prompt.includes('staff see who is coming in'), 'the slice really is the whole prompt panel');
+  const open = out.slice(out.indexOf('aria-label="A prompt that has to specify'), out.indexOf('Where they are already made'));
+  const made = out.slice(out.indexOf('aria-label="The same request on WebJs'), out.indexOf('Both prompts should produce'));
 
-  for (const claim of ['The information is really kept', 'It works when the code does not load', 'It looks like one product', 'Strangers cannot walk in']) {
-    assert.ok(out.includes(claim), `the section names ${claim} among what arrives unasked`);
+  const ask = 'Build me a table booking app';
+  assert.ok(open.includes(ask), 'both panels open on the same request');
+  assert.ok(made.includes(ask), 'both panels open on the same request');
+  assert.ok(made.includes('that is the whole prompt'), 'the WebJs panel says the request is the whole prompt');
+
+  // Every instruction the other prompt has to append must be absent here, or
+  // the two panels are not actually showing a difference.
+  for (const appended of ['real database', 'render the pages on the server', 'design tokens', 'sessions and a login', 'production ready']) {
+    assert.ok(open.includes(appended), `the open-decision prompt has to append ${appended}`);
+    assert.ok(!made.includes(appended), `the WebJs prompt never appends ${appended}, which is the whole contrast`);
   }
-  assert.ok(out.includes('arrives anyway'), 'says outright that these arrive without being requested');
 
-  // None of the four may appear in the prompt, or the section is demonstrating
-  // the opposite of what it claims.
-  for (const asked of ['database', 'design system', 'session', 'secure', 'production']) {
-    assert.ok(!prompt.includes(asked), `the prompt never asks for ${asked}, which is the entire point of the four cards below it`);
+  // And each appended instruction has to correspond to something the section
+  // then claims arrives anyway, so the contrast resolves instead of dangling.
+  for (const arrives of ['Architecture', 'Code', 'Database', 'Design system']) {
+    assert.ok(out.includes(`>${arrives}</h3>`), `the section names ${arrives} among what arrives without being asked`);
   }
 });
 
@@ -67,7 +71,7 @@ test('the /why-webjs description answers in the snippet window a SERP actually s
   const { description } = generateMetadata({ url: 'https://webjs.dev/why-webjs' });
   const firstSentence = description.slice(0, description.indexOf('. ') + 1);
   assert.ok(firstSentence.length <= 160, `first sentence is ${firstSentence.length} chars, over the 160-char snippet window`);
-  assert.ok(firstSentence.includes('nobody thinks to ask for'), 'the unasked-for claim is inside the snippet window, not past it');
+  assert.ok(firstSentence.includes('the whole prompt'), 'the whole-prompt claim is inside the snippet window, not past it');
 });
 
 test('why metadata is self-consistent and points at the dedicated /why-webjs social card', () => {

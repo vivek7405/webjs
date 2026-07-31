@@ -24,7 +24,7 @@ export function generateMetadata(ctx: { url: string }) {
   const image = `${origin}/public/og-why.png`;
   const title = 'Why WebJs - The Framework Your AI Agent Already Understands';
   const description =
-    'WebJs gives an AI-built app what nobody thinks to ask for: real storage, pages that work before scripts load, one design system, security by default. Nothing is hidden behind a build step either, so any AI model reads the framework source from node_modules, reasons about the whole stack, and debugs it. No training data required, no single blessed model, on the web components and HTML every model already knows.';
+    'WebJs is a full-stack JavaScript framework where Build me an app is the whole prompt. The architecture, the code, a real database, and a design system arrive without being specified, because the framework already made those calls rather than leaving them for your prompt to close. Nothing is hidden behind a build step either, so any AI model reads the framework source from node_modules and reasons about the whole stack. No training data required, no single blessed model.';
   return {
     title,
     description,
@@ -72,26 +72,26 @@ const REASONS = [
   },
 ];
 
-// The things an experienced developer adds without being asked, and that a
-// person outside the field has no reason to know they should ask for. Each is a
-// DEFAULT of the framework or of what `webjs create` scaffolds, not an outcome
-// the prompt has to request, which is the whole claim of the section.
-const UNASKED = [
+// What comes back from the one-sentence prompt. These are the four things the
+// prompt would otherwise have had to specify, so each must stay a genuine
+// DEFAULT of the framework or of what `webjs create` scaffolds. If one ever
+// becomes something the prompt has to request, the section's claim is gone.
+const ARRIVES = [
   {
-    title: 'The information is really kept',
-    body: 'Not a list living inside the code that empties every time the app restarts. A scaffolded app arrives wired to a real database with a schema and migrations, and the conventions point an agent at it rather than at a temporary stand-in. Swap in whichever database you prefer later. The point is that one is there from the first command, without anybody asking.',
+    title: 'Architecture',
+    body: 'Where a page lives, where a form submission is handled, and which code is allowed to touch the server are settled by the framework, not improvised per app. The result comes out in the shape a reviewer expects.',
   },
   {
-    title: 'It works when the code does not load',
-    body: 'Every page and component is rendered to finished HTML on the server, so text reads, links work, and forms submit before a single script arrives. Scripts are added for the parts that genuinely need to react, so a bad connection degrades the app instead of emptying it.',
+    title: 'Code',
+    body: 'Server-rendered pages that work before any script loads, typed calls from the browser to the server, and no build step in between. Running webjs check catches what is outright wrong before it ships.',
   },
   {
-    title: 'It looks like one product',
-    body: 'Colour, type, and spacing come from a small set of design tokens the layout sets once, so every screen the app grows shares them instead of each being styled from scratch. Change the palette in that one place and the whole app follows.',
+    title: 'Database',
+    body: 'A scaffolded app is wired to a real database with a schema and migrations from the first command, so an agent reaches for that rather than a list of items living in the code. Swap the database later if you want a different one.',
   },
   {
-    title: 'Strangers cannot walk in',
-    body: 'Sessions and sign-in are part of the framework rather than something bolted on later, a request that tries to act on your app from another site is refused, and the security headers browsers look for are set for you. None of it is a step somebody has to remember.',
+    title: 'Design system',
+    body: 'A palette, type scale, and spacing live as design tokens the layout sets once, so every screen the app grows shares them, and changing how the whole thing looks stays a single edit.',
   },
 ];
 
@@ -191,39 +191,56 @@ Counter.register('counter');
 
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">
-        <div class="max-w-3xl mx-auto mb-10 text-center">
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">You should not have to know what to ask for</h2>
+        <div class="max-w-3xl mx-auto mb-12 text-center">
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The prompt does not have to carry the architecture</h2>
           <p class="text-fg-muted text-base leading-[1.6] m-0">
-            The hard part of asking for software is not describing what you
-            want. It is knowing the dozen things an experienced developer would
-            add without being asked, and never thinking to say them. Somebody
-            asking for their first app does not say keep the information
-            somewhere it survives a restart, or make sure the pages still work
-            when the code fails to load, or keep every screen looking like the
-            same product. Those are the difference between a demo and something
-            you can put in front of customers, and they are exactly what a
-            person outside the field has no reason to know exists.
+            Most frameworks leave the big decisions open, and that flexibility
+            is the point of them. But an open decision has to be closed by
+            somebody, and when an agent is writing the code, that somebody is
+            whoever wrote the prompt. So the request grows an appendix of
+            technical instructions, and every one of them is a thing you had to
+            know to ask for. WebJs has already made those calls, so the request
+            stays the request.
           </p>
         </div>
-        <div class="max-w-xl mx-auto mb-10">
-          <figure class=${WIN}>
-            <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>prompt</span></figcaption>
-            <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2]" role="region" tabindex="0" aria-label="A prompt written the way somebody would say it out loud"><code><span class="text-accent">&gt;</span> Let customers book a table, and let my
-  staff see who is coming in today.</code></pre>
-          </figure>
+        <div class="grid grid-cols-1 wide:grid-cols-2 gap-4 items-stretch max-w-3xl mx-auto mb-12">
+          <div class="flex flex-col min-w-0">
+            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Where the decisions are still open</p>
+            <figure class=${WIN}>
+              <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>prompt</span></figcaption>
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="A prompt that has to specify the architecture as well as the app"><code><span class="text-accent">&gt;</span> Build me a table booking app
+
+<span class="text-fg-subtle">  and put the data in a real database,</span>
+<span class="text-fg-subtle">  and render the pages on the server,</span>
+<span class="text-fg-subtle">  and set up design tokens for the look,</span>
+<span class="text-fg-subtle">  and add sessions and a login,</span>
+<span class="text-fg-subtle">  and keep the server code off the client,</span>
+<span class="text-fg-subtle">  and make it production ready</span></code></pre>
+            </figure>
+          </div>
+          <div class="flex flex-col min-w-0">
+            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Where they are already made</p>
+            <figure class=${WIN}>
+              <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>prompt</span></figcaption>
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="The same request on WebJs, with no architecture appended"><code><span class="text-accent">&gt;</span> Build me a table booking app
+
+<span class="text-fg-subtle">  # that is the whole prompt. the rest</span>
+<span class="text-fg-subtle">  # is not left to the model to guess,</span>
+<span class="text-fg-subtle">  # so it is not yours to specify.</span></code></pre>
+            </figure>
+          </div>
         </div>
         <div class="max-w-3xl mx-auto mb-8 text-center">
           <p class="text-fg-muted text-base leading-[1.6] m-0">
-            Nothing in that sentence asks for any of the following. All of it
-            arrives anyway, because it is what WebJs does by default rather than
-            something the prompt has to request.
+            Both prompts should produce something you can put in front of
+            customers. Only one of them made that your job to spell out.
           </p>
         </div>
         <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 xs:grid-cols-2 shadow-[var(--shadow-sm)] max-w-3xl mx-auto">
-          ${UNASKED.map(u => html`
+          ${ARRIVES.map(a => html`
             <div class="${CARD}">
-              <h3 class="font-display font-bold text-lg leading-[1.3] tracking-[-0.02em] mt-0 mb-2">${u.title}</h3>
-              <p class="m-0 text-sm leading-[1.65] text-fg-muted">${u.body}</p>
+              <h3 class="font-display font-bold text-lg leading-[1.3] tracking-[-0.02em] mt-0 mb-2">${a.title}</h3>
+              <p class="m-0 text-sm leading-[1.65] text-fg-muted">${a.body}</p>
             </div>
           `)}
         </div>
