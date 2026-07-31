@@ -17,6 +17,7 @@ import { cn } from '#lib/utils/cn.ts';
 import { createTodo } from '../actions/create-todo.server.ts';
 import { toggleTodo } from '../actions/toggle-todo.server.ts';
 import { deleteTodo } from '../actions/delete-todo.server.ts';
+import { submitTodo } from '../actions/submit-todo.server.ts';
 import type { Todo } from '../types.ts';
 
 type Op =
@@ -95,9 +96,9 @@ export class TodoApp extends WebComponent({
           </div>
         </header>
 
-        <!-- Add: a real <form> so it works with JS off (posts to the page action);
-             with JS, @submit intercepts and runs the optimistic path. -->
-        <form method="post" action="" @submit=${(e: SubmitEvent) => this.add(e)}
+        <!-- Add: a real <form> bound to the server action, so it works with JS
+             off; with JS, @submit intercepts and runs the optimistic path. -->
+        <form action=${submitTodo} @submit=${(e: SubmitEvent) => this.add(e)}
           class="${cardClass()} flex items-center gap-2 p-2 pl-4 shadow-[0_1px_0_0_color-mix(in_oklch,var(--foreground)_5%,transparent)]">
           <input type="hidden" name="intent" value="create" />
           <input name="title" required maxlength="280" autocomplete="off" placeholder="What needs doing?"
@@ -109,7 +110,9 @@ export class TodoApp extends WebComponent({
         <ul class="list-none m-0 p-0 grid gap-2">
           ${list.length ? list.map((todo) => html`
             <li>
-              <form method="post" action=""
+              <!-- One form, two submit buttons: each carries its own
+                   name="intent", which the bound action dispatches on. -->
+              <form action=${submitTodo}
                 class="group flex items-center gap-3 px-3 py-2.5 rounded-xl bg-card border border-border transition-colors hover:border-border-strong ${todo.pending ? 'opacity-55' : ''}">
                 <input type="hidden" name="id" value=${todo.id} />
                 <!-- Toggle is a submit button (degrades to a form POST no-JS); with JS

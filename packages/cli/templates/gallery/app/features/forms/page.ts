@@ -1,11 +1,14 @@
-// forms: the no-JS write path. A real <form method="post"> posts to this page's
-// `action` export, and the framework re-renders the SAME page with the result on
-// `actionData`. WHY it matters: the form works with JS OFF (server round-trip),
-// and with JS the client router applies the response in place (no full reload).
-// Never reach for fetch() + a click handler where a <form> + page action does.
-// On failure the framework re-renders at 422 with the result; on success it
-// does a 303 Post-Redirect-Get, so we redirect to ?sent=1 to show a confirmation.
+// forms: the no-JS write path. Bind a server action straight into the form with
+// `action=${sendMessage}` and that is the whole wiring: the framework posts to
+// this page's own url, runs the action, and re-renders the SAME page with the
+// result on `actionData`. WHY it matters: the form works with JS OFF (a plain
+// server round-trip), and with JS the client router applies the response in
+// place (no full reload). Never reach for fetch() + a click handler where a
+// bound <form> does. On failure the framework re-renders at 422 with the
+// result; on success it does a 303 Post-Redirect-Get, so we redirect to ?sent=1
+// to show a confirmation.
 import { html } from '@webjsdev/core';
+import { sendMessage, type Result } from '#modules/forms/actions/send-message.server.ts';
 import { cardClass } from '#components/ui/card.ts';
 import { inputClass } from '#components/ui/input.ts';
 import { buttonClass } from '#components/ui/button.ts';
@@ -13,13 +16,6 @@ import { pageHeading } from '#lib/utils/ui.ts';
 import type { Metadata } from '@webjsdev/core';
 
 export const metadata: Metadata = { title: 'Forms (no-JS PE) | features' };
-
-interface Result {
-  success: boolean;
-  fieldErrors?: Record<string, string>;
-  values?: Record<string, string>;
-  redirect?: string;
-}
 
 const field = (label: string, name: string, input: unknown, error?: string) => html`
   <div class="grid gap-1.5">
@@ -48,34 +44,12 @@ export default function FormsFeature({ searchParams, actionData }: { searchParam
   const v = actionData?.values ?? {};
   return html`
     <h1 class="text-h2 font-bold mb-2">Forms</h1>
-    <p class="text-muted-foreground mb-5 max-w-[460px]">A real <code>&lt;form&gt;</code> posting to this page's <code>action</code>. It works with JS off; validation errors come back on <code>actionData</code>.</p>
-    <form method="post" action="" class="${cardClass()} max-w-[460px] grid gap-4 p-5">
+    <p class="text-muted-foreground mb-5 max-w-[460px]">A real <code>&lt;form&gt;</code> bound to a server action. It works with JS off; validation errors come back on <code>actionData</code>.</p>
+    <form action=${sendMessage} class="${cardClass()} max-w-[460px] grid gap-4 p-5">
       ${field('Name', 'name', html`<input id="name" name="name" value=${v.name ?? ''} class=${inputCls} placeholder="Ada Lovelace" />`, errs.name)}
       ${field('Email', 'email', html`<input id="email" name="email" type="email" value=${v.email ?? ''} class=${inputCls} placeholder="ada@example.com" />`, errs.email)}
       ${field('Message', 'message', html`<textarea id="message" name="message" rows="3" class=${inputCls} placeholder="Say hello...">${v.message ?? ''}</textarea>`, errs.message)}
       <button type="submit" class="${buttonClass()} justify-self-start">Send message</button>
     </form>
   `;
-}
-
-// The page action runs on a non-GET submission to this URL (the no-JS write
-// path). Validate, then return a failure (re-renders at 422 with fieldErrors +
-// values) or a success with a same-site `redirect` (a 303 PRG to the confirmation).
-//
-// FOOTGUN: to redirect on success, RETURN `{ success: true, redirect: '/path' }`
-// (a 303 See Other, so the browser follows with a GET). Do NOT THROW `redirect()`
-// from a page action, that is a 307 which PRESERVES the POST method and body, so
-// the browser re-POSTs to the target and re-runs the mutation (a duplicate write).
-// Throw `redirect()` only from a page render / GET context, never a page action.
-export async function action({ formData }: { formData: FormData }): Promise<Result> {
-  const name = String(formData.get('name') ?? '').trim();
-  const email = String(formData.get('email') ?? '').trim();
-  const message = String(formData.get('message') ?? '').trim();
-  const fieldErrors: Record<string, string> = {};
-  if (!name) fieldErrors.name = 'Your name is required.';
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fieldErrors.email = 'A valid email is required.';
-  if (message.length < 5) fieldErrors.message = 'Message must be at least 5 characters.';
-  if (Object.keys(fieldErrors).length) return { success: false, fieldErrors, values: { name, email, message } };
-  // A real app would persist / email here. We just confirm.
-  return { success: true, redirect: '/features/forms?sent=1' };
 }
