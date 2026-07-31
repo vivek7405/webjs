@@ -742,6 +742,11 @@ function applyPart(part, value, _prev, allValues) {
       // Not covered here, because it is not a commit: a custom element's prop
       // declared `reflect: true` writes String(value) from its own setter.
       assertNotFunctionReflectedActionProp(value, part.name, part.el.localName);
+      // #1155: `method` / `enctype` are REFLECTED IDL attributes on a form, so
+      // `.method=${'get'}` writes the content attribute in a real browser
+      // (linkedom keeps it an expando, which is why this needs saying rather
+      // than testing under linkedom alone). A bound form is re-checked.
+      noteBoundFormAttrWrite(part.el, part.name);
       /** @type any */ (part.el)[part.name] = value;
       break;
     case 'bool':
@@ -749,6 +754,10 @@ function applyPart(part, value, _prev, allValues) {
       // `?action=${fn}` is meaningless in every case, and refusing it keeps
       // this renderer agreeing with both SSR machines.
       assertNotFunctionActionAttr(value, part.name, part.el.localName);
+      // #1155: a boolean write reaches `method` / `enctype` too. `?enctype=${b}`
+      // toggling on writes an EMPTY enctype, which is unparseable and which SSR
+      // refuses, so a bound form has to be re-checked here like any other write.
+      noteBoundFormAttrWrite(part.el, part.name);
       if (value) part.el.setAttribute(part.name, '');
       else part.el.removeAttribute(part.name);
       break;

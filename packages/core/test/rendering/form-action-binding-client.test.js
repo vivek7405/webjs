@@ -23,11 +23,12 @@ before(() => {
   globalThis.HTMLElement = window.HTMLElement;
 });
 
-let html, render, FORM_ACTION_ID_KEY;
+let html, render, FORM_ACTION_ID_KEY, asyncAppend;
 before(async () => {
   ({ html } = await import('../../src/html.js'));
   ({ render } = await import('../../src/render-client.js'));
   ({ FORM_ACTION_ID_KEY } = await import('../../src/form-action.js'));
+  ({ asyncAppend } = await import('../../src/directives.js'));
 });
 
 /**
@@ -259,12 +260,16 @@ test('a re-render that changes only a child value neither re-binds nor duplicate
 });
 
 // The commit path has FIVE flush sites, one per parts-application loop, and the
-// tests above reach only the two that a root-level template goes through
-// (`createInstance` / `updateInstance`). The three below cover the rest: a
-// nested child hole, a keyed list built detached, and the streamed-continuation
-// path. The last is the one with no enclosing pass to fall back on, so a
-// missing flush there ships a form with no identity field at all until some
-// later unrelated render happens to drain the queue.
+// tests above reach only the two a root-level template goes through
+// (`createInstance` / `updateInstance`). The ones below cover the rest: a
+// nested child hole, an array of templates built detached, and the
+// streamed-continuation path.
+//
+// Each nested site has its own `finally { discardPendingFormActionBinds() }`,
+// so removing any one flush DROPS that pass's queue rather than deferring it to
+// an enclosing pass. The streamed one is still the worst to lose, because
+// `consumeAsyncStream` swallows a throw into a `console.error`, so a form that
+// failed to bind there ships silently instead of failing the render.
 
 test('a bound form inside a NESTED child hole is bound', () => {
   const fn = HOISTED();
@@ -276,7 +281,7 @@ test('a bound form inside a NESTED child hole is bound', () => {
   assert.equal(form.getAttribute('method'), 'post');
 });
 
-test('a bound form inside a keyed list is bound, once per row', () => {
+test('a bound form inside an array of templates is bound, once per row', () => {
   const fn = HOISTED();
   const host = document.createElement('div');
   const rows = ['a', 'b', 'c'];
@@ -297,6 +302,73 @@ test('a bound form in a nested hole still refuses a bad method', () => {
     () => render(html`<div>${html`<form action=${fn} method=${'get'}></form>`}</div>`, host),
     /cannot work/,
   );
+});
+
+test('a bound form in a STREAMED continuation is bound', async () => {
+  // `consumeAsyncStream` catches a throw into a console.error, so a missing
+  // flush here would ship an identity-less form with nothing in the render to
+  // signal it. That makes this the flush site whose absence is quietest.
+  const fn = HOISTED();
+  const host = document.createElement('div');
+  async function* chunks() {
+    yield html`<form action=${fn}><input name="a"></form>`;
+  }
+  render(html`<div>${asyncAppend(chunks())}</div>`, host);
+  await new Promise((r) => setTimeout(r, 20));
+
+  const form = host.querySelector('form');
+  assert.ok(form, 'the streamed chunk rendered its form');
+  assert.equal(form.querySelectorAll('input[name="__webjs_action"]').length, 1,
+    'and it carries exactly one identity field');
+  assert.equal(form.getAttribute('method'), 'post');
+});
+
+test('a boolean write on a bound form is re-checked', () => {
+  // `?enctype=${b}` toggling on writes an EMPTY enctype, which is unparseable
+  // and which SSR refuses. The bool branch is a separate commit path from
+  // `attr` and `attr-mixed`.
+  const fn = HOISTED();
+  const host = document.createElement('div');
+  const tpl = (b) => html`<form action=${fn} ?enctype=${b}></form>`;
+  render(tpl(false), host);
+  assert.throws(() => render(tpl(true), host), /cannot work/);
+});
+
+test('releasing a binding takes back ONLY the attributes the bind forced', () => {
+  // SSR of `<form action=${'/legacy'}>` emits no method at all, so a client
+  // that kept `method="post" enctype="multipart/form-data"` would POST
+  // multipart to a url the server renders as an ordinary GET form.
+  const fn = HOISTED();
+  const host = document.createElement('div');
+  const tpl = (a) => html`<form action=${a}></form>`;
+  render(tpl(fn), host);
+  assert.equal(host.querySelector('form').getAttribute('method'), 'post');
+
+  render(tpl('/legacy'), host);
+  const form = host.querySelector('form');
+  assert.equal(form.getAttribute('action'), '/legacy');
+  assert.equal(form.hasAttribute('method'), false, 'the forced method is taken back');
+  assert.equal(form.hasAttribute('enctype'), false, 'and the forced enctype');
+});
+
+test("releasing a binding KEEPS an author's own method", () => {
+  // The other half: it must take back what the BIND added and nothing else.
+  const fn = HOISTED();
+  const host = document.createElement('div');
+  const tpl = (a) => html`<form action=${a} method="post"></form>`;
+  render(tpl(fn), host);
+  render(tpl('/legacy'), host);
+  const form = host.querySelector('form');
+  assert.equal(form.getAttribute('method'), 'post', "the author's own method survives");
+  assert.equal(form.hasAttribute('enctype'), false, 'while the forced enctype is taken back');
+});
+
+test('a missing enctype is explained as an enctype, not as a method', () => {
+  const fn = HOISTED();
+  const host = document.createElement('div');
+  const tpl = (e) => html`<form action=${fn} enctype=${e}></form>`;
+  render(tpl('multipart/form-data'), host);
+  assert.throws(() => render(tpl(null), host), /lost its enctype attribute.*file input/s);
 });
 
 test('a failed render does not poison the NEXT one', () => {

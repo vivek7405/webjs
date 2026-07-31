@@ -387,6 +387,13 @@ const _boundForms = new WeakSet();
 const _pendingRevalidate = [];
 
 /**
+ * Attributes the BIND supplied on each form, so releasing one can take back
+ * exactly what it added and nothing the author wrote.
+ * @type {WeakMap<Element, string[]>}
+ */
+const _forcedAttrs = new WeakMap();
+
+/**
  * Is `name` an attribute whose value decides whether a bound form can submit?
  * @param {string} name
  * @returns {boolean}
@@ -435,13 +442,15 @@ function assertStillSubmittable(form) {
   const method = form.getAttribute('method');
   const enctype = form.getAttribute('enctype');
   if (method == null || enctype == null) {
+    const missing = method == null ? 'method' : 'enctype';
+    const why = method == null
+      ? 'A form with no method submits as GET, which sends no body, so the action would never run.'
+      : 'A form with no enctype submits urlencoded, so a file input sends only the filename.';
     throw new Error(
-      `[webjs] a bound <form action=\${action}> lost its `
-      + `${method == null ? 'method' : 'enctype'} attribute during a re-render. `
-      + `A form with no method submits as GET, which sends no body, so the `
-      + `action would never run. Leave both to WebJs (it supplies method="post" `
-      + `and an enctype) rather than driving them from a hole that can resolve `
-      + `to null.`,
+      `[webjs] a bound <form action=\${action}> lost its ${missing} attribute `
+      + `during a re-render. ${why} Leave both to WebJs (it supplies `
+      + `method="post" and an enctype) rather than driving them from a hole `
+      + `that can resolve to null.`,
     );
   }
   assertSubmittableForm(method, enctype);
@@ -467,6 +476,16 @@ export function releaseFormAction(el) {
       child.remove();
       break;
     }
+  }
+  // Take back the attributes the BIND added, and only those. Leaving them puts
+  // the two renderers out of step again: SSR of `<form action=${'/legacy'}>`
+  // emits no method at all, so a client that kept `method="post"
+  // enctype="multipart/form-data"` would POST multipart to a url the server
+  // renders as an ordinary GET form.
+  const forced = _forcedAttrs.get(el);
+  if (forced) {
+    for (const name of forced) el.removeAttribute(name);
+    _forcedAttrs.delete(el);
   }
 }
 
@@ -495,8 +514,13 @@ export function bindFormActionElement(form, fn) {
   const method = form.getAttribute('method');
   assertSubmittableForm(method, form.getAttribute('enctype'));
   form.removeAttribute('action');
-  if (method == null) form.setAttribute('method', 'post');
-  if (!form.hasAttribute('enctype')) form.setAttribute('enctype', 'multipart/form-data');
+  const forced = [];
+  if (method == null) { form.setAttribute('method', 'post'); forced.push('method'); }
+  if (!form.hasAttribute('enctype')) {
+    form.setAttribute('enctype', 'multipart/form-data');
+    forced.push('enctype');
+  }
+  if (forced.length) _forcedAttrs.set(form, forced);
 
   let field = null;
   for (const el of form.children) {
@@ -513,7 +537,7 @@ export function bindFormActionElement(form, fn) {
   }
   field.setAttribute('value', id);
   // Remember it, so a later `method` / `enctype` write on this same form is
-  // validated against the binding (see `assertBoundFormAttrWrite`).
+  // validated against the binding (see `noteBoundFormAttrWrite`).
   _boundForms.add(form);
 }
 
