@@ -102,7 +102,7 @@ export default function BrandPage() {
           terms further down the page.
         </p>
         <div class="flex gap-3 flex-wrap">
-          <a class=${BTN_PRIMARY} href="/public/brand/webjs-brand-assets.zip" download>
+          <a class=${BTN_PRIMARY} href=${asset('/public/brand/webjs-brand-assets.zip')} download>
             Download all assets
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </a>
@@ -133,7 +133,7 @@ export default function BrandPage() {
               <div class="flex flex-col flex-1 p-5 border-t border-border">
                 <h3 class="text-sm font-bold text-fg mb-1.5">${a.name}</h3>
                 <p class="text-sm text-fg-muted leading-relaxed flex-1">${a.use}</p>
-                <a href="/public/brand/${a.file}" download class="mt-4 font-mono text-xs text-fg hover:text-accent transition-colors no-underline">
+                <a href=${asset('/public/brand/' + a.file)} download class="mt-4 font-mono text-xs text-fg hover:text-accent transition-colors no-underline">
                   ${a.file} &darr;
                 </a>
               </div>

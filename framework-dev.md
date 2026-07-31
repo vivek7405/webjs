@@ -49,7 +49,7 @@ The purge is zone-wide rather than a path list: all four hostnames (`webjs.dev`,
   cmp /tmp/o /tmp/e && echo fresh || echo stale
   ```
 
-The assets that actually caused those incidents no longer depend on this purge. `tailwind.css`, the brand lockups and marks, and the highlight script are marked with `asset()` (#1194) in `website/app/layout.ts` and `website/lib/design/brand.ts`, so each carries a `?v=<content-hash>` and is served `immutable` for a year. New bytes mean a new url, which no cache can serve stale.
+The assets that actually caused those incidents no longer depend on this purge. `tailwind.css`, the brand lockups and marks, and the highlight script are marked with `asset()` (#1194) in `website/app/layout.ts`, `website/lib/design/brand.ts`, and `website/app/brand/page.ts` (whose images AND download links are marked, so a designer cannot download the previous drawing while the thumbnail above it shows the new one), so each carries a `?v=<content-hash>` and is served `immutable` for a year. `examples/blog/app/layout.ts` marks its stylesheet for the same reason, since `example-blog.webjs.dev` sits in the same Cloudflare zone. New bytes mean a new url, which no cache can serve stale.
 
 Some urls are deliberately NOT marked, and that is the point of an opt-in helper rather than an automatic rewrite:
 
