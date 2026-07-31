@@ -161,7 +161,7 @@ const PROSE = 'text-fg-muted text-base leading-[1.7] m-0';
 const CAPABILITIES = [
   {
     title: 'AI-first, readable end to end',
-    body: 'Predictable file conventions, one server function per file, and an explicit .server.ts boundary keep the context a change needs small, so an agent can edit one route without reading the whole app. Because those conventions decide the shape, a non-technical request in ordinary words still produces a well-structured app, and the result holds up across models of very different sizes. Every app ships an AGENTS.md contract that Claude Code, Cursor, Copilot, Gemini, and opencode read from one source, and the framework itself is plain JavaScript with JSDoc in node_modules rather than a compiled bundle.',
+    body: 'Predictable file conventions, one server function per file, and an explicit .server.ts boundary keep the context small, so an agent edits one route without reading the whole app, and a request written in ordinary words still lands in the right shape. Every app ships one AGENTS.md contract that Claude Code, Cursor, Copilot, Gemini, and opencode all read, and the framework is plain JavaScript rather than a compiled bundle.',
   },
   {
     title: 'Web components, server-rendered',

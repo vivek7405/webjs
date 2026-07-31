@@ -24,7 +24,7 @@ export function generateMetadata(ctx: { url: string }) {
   const image = `${origin}/public/og-why.png`;
   const title = 'Why WebJs - The Framework Your AI Agent Already Understands';
   const description =
-    'WebJs is a full-stack JavaScript framework that serves the framework source and your app code exactly as written, so any AI model can read the whole stack from node_modules, reason about it, and debug it. No training data required, no single blessed model. Describe an app in plain language and the file conventions land it in the right shape, whatever model you use. Built on the web components, HTML, and JavaScript every model already knows.';
+    'WebJs is a full-stack JavaScript framework you can describe in plain language, because the file conventions land an app in the right shape whatever model you use. Nothing is hidden behind a build step, so any AI model reads the framework source from node_modules, reasons about the whole stack, and debugs it. No training data required, no single blessed model, on the web components and HTML every model already knows.';
   return {
     title,
     description,
@@ -118,7 +118,7 @@ export default function Why() {
             <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">The framework, readable in node_modules</p>
             <figure class=${WIN}>
               <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>terminal</span></figcaption>
-              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="Listing and grepping the framework source in node_modules"><code><span class="text-accent">$</span> ls node_modules/@webjsdev/core/src
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="Listing and grepping the framework source in node_modules"><code><span class="text-accent">$</span> ls node_modules/@webjsdev/core/src
 component.js    html.js         render-client.js
 css.js          directives.js   render-server.js
 serialize.js    router-client.js
@@ -134,7 +134,7 @@ server/src/ssr.js: const html = await renderToString(tree)
             <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Your app code, served to the browser as written</p>
             <figure class=${WIN}>
               <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>terminal</span></figcaption>
-              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="Fetching an app module served unbundled"><code><span class="text-accent">$</span> curl localhost:5001/components/counter.ts
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="Fetching an app module served unbundled"><code><span class="text-accent">$</span> curl localhost:5001/components/counter.ts
 import { WebComponent } from '@webjsdev/core';
 
 class Counter extends WebComponent({ count: Number }) {
@@ -186,9 +186,8 @@ Counter.register('counter');
             <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">What you ask for</p>
             <figure class=${WIN}>
               <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>prompt</span></figcaption>
-              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="A plain-language prompt with no technical terms in it"><code><span class="text-accent">&gt;</span> Build a page where customers can book a
-  table, save the bookings, and let staff
-  see today's list.
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="A plain-language prompt with no technical terms in it"><code><span class="text-accent">&gt;</span> Let customers book a table, save the
+  bookings, and give staff today's list.
 
 <span class="text-fg-subtle"># no framework terms, no file names, no</span>
 <span class="text-fg-subtle"># architecture. just the thing you want.</span></code></pre>
@@ -197,8 +196,8 @@ Counter.register('counter');
           <div class="flex flex-col min-w-0">
             <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Where the conventions put it</p>
             <figure class=${WIN}>
-              <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>terminal</span></figcaption>
-              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="The files a WebJs app grows for that request"><code>app/book/page.ts
+              <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>files</span></figcaption>
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="The files a WebJs app grows for that request"><code>app/book/page.ts
 <span class="text-fg-subtle">  the page, server-rendered to real HTML</span>
 app/staff/bookings/page.ts
 <span class="text-fg-subtle">  the list, behind the session check</span>
@@ -224,13 +223,13 @@ db/schema.server.ts
             stays reliable, because they are all reading the same readable code.
           </p>
           <p class="text-fg-muted text-base leading-[1.6] m-0 mb-4">
-            That shows up in the quality of what comes back, not just in whether
-            a model can work at all. Large or small, every model is reading the
-            same source and following the same conventions, so the architecture
-            it reaches for, the code it writes, and the design system it applies
-            come out looking like one project rather than three. You still read
-            what an agent hands you. What you stop doing is re-deciding the
-            shape of the app every time you change model.
+            That shows up in the quality of what comes back, not only in whether
+            a model can participate. Routing, the server boundary, and the file
+            layout are settled by convention, and the palette lives in design
+            tokens the root layout sets once, so a smaller model is filling
+            those in rather than inventing them. Taste is still yours to
+            direct, and you still read what an agent hands you. What you stop
+            doing is re-deciding the shape of the app every time you switch.
           </p>
           <p class="text-fg-muted text-base leading-[1.6] m-0">
             Human developers get the same deal. There is no hidden compiler
