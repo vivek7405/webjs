@@ -79,11 +79,11 @@ const REASONS = [
 const ARRIVES = [
   {
     title: 'Architecture',
-    body: 'Where a page lives, where a form submission is handled, and which code is allowed to touch the server are settled by the framework, not improvised per app. Every app also ships the conventions an agent works to, so the habits come with the project rather than out of your prompt.',
+    body: 'Where a page lives, where a form submission is handled, and which code is allowed to touch the server are settled by the framework, not improvised per app. The result comes out in the shape a reviewer expects.',
   },
   {
     title: 'Code',
-    body: 'Types run the whole way through. A server function keeps its argument and return types at the call site in the browser, and the route table becomes a typed union of every path and its params, so an agent has the real types to hand rather than a reason to reach for any. Nobody had to ask it to keep the types honest.',
+    body: 'Server-rendered pages that work before any script loads, and no build step in between. Types run the whole way through, so a server function keeps its argument and return types at the call site and an agent has no reason to reach for any. Running webjs check catches what is outright wrong before it ships.',
   },
   {
     title: 'Database',
