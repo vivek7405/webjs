@@ -82,8 +82,10 @@ export type ActionResult&lt;T&gt; =
   | { success: true; data: T }
   | { success: false; error: string; status: number };
 
+export interface CreatePostInput { title: string; body: string }
+
 export async function createPost(
-  input: unknown
+  input: CreatePostInput
 ): Promise&lt;ActionResult&lt;PostFormatted&gt;&gt; {
   // server-only code: database queries, auth checks, etc.
   const me = await currentUser();
@@ -93,7 +95,7 @@ export async function createPost(
     <pre>// components/new-post-form.ts: client component
 import { createPost } from '#modules/posts/actions/create-post.server.ts';
 
-// TypeScript knows createPost accepts (input: unknown)
+// TypeScript knows createPost accepts (input: CreatePostInput)
 // and returns Promise&lt;ActionResult&lt;PostFormatted&gt;&gt;
 const result = await createPost({ title, body });
 if (result.success) {
@@ -101,6 +103,27 @@ if (result.success) {
   console.log(result.data.slug);
 }</pre>
     <p>At runtime, the browser never receives the server code. WebJs replaces the import with a thin RPC stub that calls <code>POST /__webjs/action/:hash/createPost</code>. But TypeScript's type checker sees through the <code>.server.ts</code> boundary and validates argument/return types at compile time.</p>
+
+    <h3>Derive the type, never <code>unknown</code> or <code>any</code></h3>
+    <p>That guarantee is only worth what your annotations are worth. An action typed <code>input: unknown</code> still runs, still passes <code>tsc</code>, and still passes <code>webjs check</code> (both are valid TypeScript, so this is a convention rather than a correctness rule), but it hands the call site nothing. Every value crossing an app boundary in WebJs already has a type you can reach, so reach for it.</p>
+    <table>
+      <thead><tr><th>Boundary</th><th>Write this</th><th>Not this</th></tr></thead>
+      <tbody>
+        <tr><td>A database row</td><td><code>export type Post = typeof posts.$inferSelect</code></td><td>a hand-written interface that drifts from the schema</td></tr>
+        <tr><td>That row inside a shipping component</td><td><code>import type { Post } from '#db/schema.server.ts'</code></td><td><code>any[]</code>, or re-declaring the shape</td></tr>
+        <tr><td>An action's input</td><td>a named <code>interface</code></td><td><code>input: unknown</code> / <code>input: any</code></td></tr>
+        <tr><td>An action's result</td><td><code>ActionResult&lt;T&gt;</code></td><td><code>Promise&lt;any&gt;</code></td></tr>
+        <tr><td>A page</td><td><code>PageProps&lt;'/blog/[slug]'&gt;</code></td><td><code>{ params: Record&lt;string, any&gt; }</code></td></tr>
+        <tr><td>A layout</td><td><code>LayoutProps</code></td><td><code>{ children: unknown }</code></td></tr>
+        <tr><td>A route handler's 2nd argument</td><td><code>RouteHandlerContext</code></td><td><code>{ params: any }</code></td></tr>
+        <tr><td>A client-router href</td><td>the generated <code>Route</code> union</td><td>a bare <code>string</code></td></tr>
+        <tr><td>A reactive property</td><td><code>prop&lt;Student&gt;(Object)</code></td><td><code>prop(Object)</code> plus a cast at every read</td></tr>
+      </tbody>
+    </table>
+    <p><code>unknown</code> is the more tempting of the two escape hatches because it reads as the safe one. It is safe only in that it forces a narrow at the read site. As a boundary type it is exactly as uninformative as <code>any</code>, and it pushes a cast into every consumer.</p>
+    <p>Where <code>unknown</code> IS right, first case: a payload nothing has vouched for yet, narrowed on the very next line. A <code>route.ts</code> handler's <code>await req.json()</code>, an action's <code>export const validate</code>, a <code>catch</code> binding (already <code>unknown</code> under <code>strict</code>). The test is what the next line does.</p>
+    <p>Second case, and it is NOT narrowed: a parameter of YOUR OWN helper that forwards its argument into an <code>html</code> template hole. A hole renders a string, a number, a <code>TemplateResult</code>, an array of those, a directive result, or nothing, so a helper like <code>lede(content: unknown)</code> is correctly typed and <code>TemplateResult</code> alone would be too narrow. This is about a value you accept, never one the framework hands you: a layout's <code>children</code> also lands in a hole, but <code>LayoutProps</code> already types it as a <code>TemplateResult</code>.</p>
+    <p>Everywhere else it is a missing type, not a safe one: <code>unknown</code> surviving into a return type, a component prop, a layout's <code>children</code>, or an action signature is the shape to fix. <code>any</code> gets no carve-out at all, since it does not defer checking, it disables it.</p>
 
     <h2>Typed metadata and page props</h2>
     <p>The same isomorphic <code>@webjsdev/core</code> surface a page already imports <code>html</code> from also exports the types for its routing files, so metadata, page / layout / route-handler props, and client-router hrefs all type-check. Every one is a pure type (zero runtime, erased at strip time, no build cost).</p>

@@ -75,13 +75,13 @@ WebJs sends no `Set-Cookie` riding the SSR HTML for CSRF, because there is no to
 ```ts
 // app/layout.ts (root layout for a visitor-identical app)
 import { html } from '@webjsdev/core';
-import type { Metadata } from '@webjsdev/core';
+import type { Metadata, LayoutProps } from '@webjsdev/core';
 
 export const metadata: Metadata = {
   cacheControl: 'public, max-age=300',
 };
 
-export default function RootLayout({ children }: { children: unknown }) {
+export default function RootLayout({ children }: LayoutProps) {
   return html`<main class="max-w-[760px]">${children}</main>`;
 }
 ```

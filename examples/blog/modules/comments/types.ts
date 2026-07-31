@@ -6,3 +6,6 @@ export type CommentFormatted = {
   body: string;
   createdAt: string;
 };
+
+/** What a caller sends to createComment. The contract, enforced at runtime. */
+export type CreateCommentInput = { postId: number; body: string };

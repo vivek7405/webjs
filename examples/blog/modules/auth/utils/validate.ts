@@ -3,6 +3,13 @@
  * the same rules for a better UX.
  */
 
+// Each type is a CONTRACT an action's signature declares, so a caller
+// type-checks against it; the validator below is the runtime enforcement.
+// Signup needs two because the wire shape and the narrowed shape differ: a
+// caller may omit `name`, and the validator always resolves it to `string |
+// null`. Login's wire shape and narrowed shape are identical, so one type
+// serves both.
+export type SignupPayload = { email: string; password: string; name?: string | null };
 export type SignupInput = { email: string; password: string; name: string | null };
 export type LoginInput = { email: string; password: string };
 

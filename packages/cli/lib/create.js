@@ -1149,6 +1149,7 @@ ${uiThemeRaw}
     await copyGallery(appDir);
 
   await writeFile(join(appDir, 'app', 'layout.ts'), `import { html, cspNonce, asset } from '@webjsdev/core';
+import type { LayoutProps } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
 
 /**
@@ -1167,7 +1168,11 @@ import '#components/theme-toggle.ts';
 // lives at public/favicon.svg and serves at /public/favicon.svg.
 export const metadata = { icons: '/public/favicon.svg' };
 
-export default function RootLayout({ children }: { children: unknown }) {
+// LayoutProps types every layout argument (children, params, searchParams,
+// url) from the framework, so children is a TemplateResult rather than an
+// untyped value. Derive types like this everywhere instead of widening to
+// unknown; see .agents/skills/webjs/references/typescript.md.
+export default function RootLayout({ children }: LayoutProps) {
   // Read the in-flight request's CSP nonce so the theme-detection inline script
   // passes strict CSP. Returns '' when no CSP nonce is set.
   const nonce = cspNonce();

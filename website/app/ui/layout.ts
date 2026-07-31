@@ -1,3 +1,4 @@
+import type { LayoutProps } from '@webjsdev/core';
 import { docsShell } from '#lib/ui/docs-shell.ts';
 import { loadRegistryIndex } from '#modules/ui/queries/registry.server.ts';
 import { splitByTier } from '#modules/ui/utils/tier.ts';
@@ -57,7 +58,7 @@ export function generateMetadata(ctx: { url: string }) {
   };
 }
 
-export default async function UiLayout({ children }: { children: unknown }) {
+export default async function UiLayout({ children }: LayoutProps) {
   const all = await loadRegistryIndex();
   const { tier1, tier2 } = splitByTier(all.filter((i) => i.type === 'registry:ui'));
 

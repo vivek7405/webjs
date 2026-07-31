@@ -28,10 +28,13 @@ class TodoList extends WebComponent({
     source: () => this.todos,
     update: (state, title: string) => [
       ...state,
-      // A client-only placeholder id for the pending row; the real id arrives
-      // from the server on reconcile, so the `as any` cast on this temp row is
-      // fine (the row is dropped when the promise settles).
-      { id: crypto.randomUUID() as any, title, completed: false, pending: true },
+      // A client-only placeholder id for the pending row. The real id arrives
+      // from the server on reconcile, when this row is dropped. No cast is
+      // needed because `Todo['id']` is a string here (the schema uses a uuid
+      // primary key). Against an auto-increment integer id there is no honest
+      // client-side value, so model the temp row instead (an optional id, or a
+      // `tempId` the reducer keys on) rather than casting one in.
+      { id: crypto.randomUUID(), title, completed: false, createdAt: new Date(), pending: true },
     ],
   });
 
@@ -46,9 +49,12 @@ class TodoList extends WebComponent({
 
     const result = await promise;
     if (result.success && result.data) {
-      // Reconcile: the optimistic entry has ALREADY auto-released (the promise
-      // settled), so `this.todos` holds only confirmed rows here. Append the
-      // server's canonical row, matching the order the `update` reducer used.
+      // Reconcile: the optimistic row is never written to `this.todos`. The
+      // overlay holds only the PAYLOAD, and `update` rebuilds the row from it
+      // on each `.value` read, so this prop holds only confirmed rows. Append
+      // the server's canonical row, matching the order the `update` reducer
+      // used. (The overlay entry auto-released when the promise settled, so
+      // `.value` does not double-count it on the next paint.)
       this.todos = [...this.todos, result.data];
     }
   }

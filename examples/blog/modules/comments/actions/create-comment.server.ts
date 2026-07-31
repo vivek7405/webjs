@@ -6,24 +6,27 @@ import { currentUser } from '#modules/auth/queries/current-user.server.ts';
 import { publish } from '#modules/comments/utils/bus.ts';
 import { formatComment } from '#modules/comments/utils/format.ts';
 import type { ActionResult } from '#modules/auth/types.ts';
-import type { CommentFormatted } from '#modules/comments/types.ts';
+import type { CommentFormatted, CreateCommentInput } from '#modules/comments/types.ts';
 
 // A mutation (#488, POST by default). A new comment invalidates the per-post
 // `comments:` tag, matching listComments' tags, so a fresh page render gets the
 // new comment even before the live WebSocket push.
-export const invalidates = (input: { postId: number }) => ['comments', `comments:${input.postId}`];
+export const invalidates = (input: CreateCommentInput) => ['comments', `comments:${input.postId}`];
 
 /**
  * Add a comment to a post. Requires auth. Publishes to the comments bus
  * so live subscribers (WebSocket clients) pick it up instantly.
  */
+// The parameter declares the CONTRACT (so <comment-form> type-checks its call);
+// the checks below ENFORCE it, since this action is also reachable from
+// route.ts with a raw JSON body.
 export async function createComment(
-  input: { postId: number; body: string } | { postId: unknown; body: unknown },
+  input: CreateCommentInput,
 ): Promise<ActionResult<CommentFormatted>> {
   const me = await currentUser();
   if (!me) return { success: false, error: 'Not signed in', status: 401 };
-  const postId = Number((input as any)?.postId);
-  const body = typeof (input as any)?.body === 'string' ? (input as any).body.trim() : '';
+  const postId = Number(input?.postId);
+  const body = typeof input?.body === 'string' ? input.body.trim() : '';
   if (!Number.isFinite(postId)) return { success: false, error: 'postId required', status: 400 };
   if (!body) return { success: false, error: 'body is required', status: 400 };
   if (body.length > 2000) return { success: false, error: 'body too long', status: 400 };

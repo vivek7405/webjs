@@ -81,8 +81,9 @@ webjs create my-app --runtime bun</pre>
 
     <h3>app/layout.ts</h3>
     <pre>import { html } from '@webjsdev/core';
+import type { LayoutProps } from '@webjsdev/core';
 
-export default function Layout({ children }: { children: unknown }) {
+export default function Layout({ children }: LayoutProps) {
   return html\`
     &lt;h1&gt;My App&lt;/h1&gt;
     \${children}

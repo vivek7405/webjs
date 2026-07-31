@@ -263,9 +263,10 @@ export const metadata = {
     <h2>Full SSR Example</h2>
     <pre>// app/layout.ts
 import { html } from '@webjsdev/core';
+import type { LayoutProps } from '@webjsdev/core';
 export const metadata = { title: 'My App' };
 
-export default function RootLayout({ children }: { children: unknown }) {
+export default function RootLayout({ children }: LayoutProps) {
   return html\`
     &lt;nav&gt;&lt;a href="/"&gt;Home&lt;/a&gt; &lt;a href="/about"&gt;About&lt;/a&gt;&lt;/nav&gt;
     &lt;main&gt;\${children}&lt;/main&gt;

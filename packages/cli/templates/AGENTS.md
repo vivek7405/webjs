@@ -31,11 +31,37 @@ This is what separates a working app from a broken one.
 
 ## Type everything (all templates)
 
-Define explicit TypeScript interfaces and discriminated unions for your data
-payloads and action inputs and outputs (and, in a UI app, component props and
-optimistic updates). Narrow an `ActionResult` with
-`if (result.success && result.data)`. Never reach for `any` or a loose
-`as any` cast.
+Full-stack type safety is what the `.server.ts` boundary buys you: a client
+component importing a server action resolves to that action's real signature at
+type-check time, with no build step and no code generation in between. So
+DERIVE the type at every boundary instead of widening it:
+
+- A database row: `export type Todo = typeof todos.$inferSelect` in
+  `db/schema.server.ts` (`$inferInsert` for a write), carried into a
+  browser-shipped component with `import type` (erased before it reaches the
+  browser, so it does not trip the server-import boundary).
+- An action's input: a named `interface`. Its result: `ActionResult<T>`.
+  Narrow with `if (result.success && result.data)`.
+- Routing files: `PageProps<'/blog/[slug]'>`, `LayoutProps`,
+  `RouteHandlerContext`, all from `@webjsdev/core`. Run `npx webjsdev types`
+  for the typed `Route` union and per-route `params`.
+- A reactive property: `prop<Student>(Object)`, `prop<Tag[]>(Array)`.
+
+Never reach for `any` or a loose `as any` cast, and do not reach for `unknown`
+either just because it looks safer. `unknown` is right for a payload nothing
+has vouched for yet, narrowed on the very next line (a `route.ts` `await
+req.json()`, an action's `export const validate` or a validator it delegates
+to, a `catch` binding), and for a parameter of YOUR OWN helper that forwards
+into an `html` template hole (a hole renders a string, a number, a
+`TemplateResult`, or an array of those, so `TemplateResult` alone is too
+narrow). That second case is about a value you accept, never one the framework
+already types. Everywhere else it is a missing type, not a safe one: `unknown`
+that survives into a return type, a component prop, a layout's `children`, or
+an action signature is the shape to fix.
+Nothing enforces this (both are valid TypeScript, so `webjs check` and `tsc`
+pass either way), which is exactly why it is written down. The full ladder,
+with an end-to-end example, is in
+`.agents/skills/webjs/references/typescript.md`.
 
 Keep server-only code (database drivers, secrets, `node:*` builtins) in
 `.server.ts` modules. There are exactly two kinds:

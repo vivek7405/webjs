@@ -6,7 +6,7 @@ import { slugify, formatPost } from '#modules/posts/utils/slugify.ts';
 import { currentUser } from '#modules/auth/queries/current-user.server.ts';
 import { listPosts } from '#modules/posts/queries/list-posts.server.ts';
 import type { ActionResult } from '#modules/auth/types.ts';
-import type { PostFormatted } from '#modules/posts/types.ts';
+import type { PostFormatted, CreatePostInput } from '#modules/posts/types.ts';
 
 // A mutation (#488, POST by default). A new post invalidates the `posts` tag
 // so the next listing / GET read refetches. (listPosts.invalidate() below is
@@ -17,8 +17,12 @@ export const invalidates = () => ['posts'];
  * Create a post authored by the currently-logged-in user. Reads the user
  * from the request context (AsyncLocalStorage): no userId parameter.
  */
+// The parameter declares the CONTRACT (CreatePostInput already lives in
+// modules/posts/types.ts), so <new-post> type-checks its call. The runtime
+// checks below stay because this action is also reachable from route.ts
+// with a raw JSON body.
 export async function createPost(
-  input: unknown,
+  input: CreatePostInput,
 ): Promise<ActionResult<PostFormatted>> {
   const me = await currentUser();
   if (!me) return { success: false, error: 'Not signed in', status: 401 };

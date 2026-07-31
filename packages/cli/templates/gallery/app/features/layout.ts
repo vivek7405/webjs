@@ -1,4 +1,5 @@
 import { html } from '@webjsdev/core';
+import type { LayoutProps } from '@webjsdev/core';
 import { backLink } from '#lib/utils/ui.ts';
 import '#modules/gallery/components/gallery-nav.ts';
 
@@ -45,8 +46,11 @@ const STACK_CSS = `
 // sidebar is hidden, so a slim back link keeps a demo from being a dead end.
 // Nested layouts (like the auth dashboard's sub-nav) render inside ${children}.
 // A non-root layout, so it never writes the document shell (the framework does).
-export default function FeaturesLayout({ children, url }: { children: unknown; url: URL | string }) {
-  const path = typeof url === 'string' ? new URL(url, 'http://x').pathname : url.pathname;
+// LayoutProps types every argument a layout receives, so `url` is known to be
+// an absolute URL string (the framework passes url.toString()) and needs no
+// defensive widening or runtime typeof check.
+export default function FeaturesLayout({ children, url }: LayoutProps) {
+  const path = new URL(url).pathname;
   return html`
     <style>${SIDENAV_CSS}${STACK_CSS}</style>
     <div class="lg:hidden mb-6">${backLink('/', html`&larr; Gallery`)}</div>
