@@ -396,9 +396,10 @@ class TodoList extends WebComponent({
 
     const result = await promise;
     if (result.success && result.data) {
-      // The optimistic row lives in the overlay `optimistic()` keeps, never in
-      // `this.todos`, so this prop holds only confirmed rows. Append the
-      // server's row, matching the order the `update` reducer used.
+      // The optimistic row is never written to `this.todos`: the overlay holds
+      // only the payload and `update` rebuilds the row on each `.value` read,
+      // so this prop holds only confirmed rows. Append the server's row,
+      // matching the order the `update` reducer used.
       this.todos = [...this.todos, result.data];
     }
   }

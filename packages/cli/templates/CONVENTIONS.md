@@ -25,8 +25,8 @@ is the short version.
   the showcase, then grow the app in place. `AGENTS.md` has the full
   template-specific playbook.
 - **Derive types at every boundary.** Rows from `$inferSelect`, action inputs
-  from an `interface`, routing files from `PageProps` / `LayoutProps`.
-  `unknown` only for an unvouched payload or an `html` hole. Never `any`.
+  from an `interface`, routing files from `PageProps` / `LayoutProps`. Never
+  `any`, and never `unknown` where a real type exists.
 - **Progressive enhancement is the default.** Pages render as HTML, `<a>`
   navigates, `<form>` + a page action submits, all with JavaScript off; opt into
   interactivity per behaviour inside a component.

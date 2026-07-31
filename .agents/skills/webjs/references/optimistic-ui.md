@@ -49,11 +49,12 @@ class TodoList extends WebComponent({
 
     const result = await promise;
     if (result.success && result.data) {
-      // Reconcile: the optimistic row lives in the overlay `optimistic()`
-      // keeps, never in `this.todos`, so this prop holds only confirmed rows.
-      // Append the server's canonical row, matching the order the `update`
-      // reducer used. (The overlay entry auto-released when the promise
-      // settled, so `.value` does not double-count it on the next paint.)
+      // Reconcile: the optimistic row is never written to `this.todos`. The
+      // overlay holds only the PAYLOAD, and `update` rebuilds the row from it
+      // on each `.value` read, so this prop holds only confirmed rows. Append
+      // the server's canonical row, matching the order the `update` reducer
+      // used. (The overlay entry auto-released when the promise settled, so
+      // `.value` does not double-count it on the next paint.)
       this.todos = [...this.todos, result.data];
     }
   }

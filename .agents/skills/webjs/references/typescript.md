@@ -6,7 +6,7 @@
 - **Erasable syntax only** (`erasableSyntaxOnly: true`) and the exact list of banned constructs, with their allowed rewrites.
 - The **pluggable stripper** (Node 24+ built-in vs `amaro` on Bun) and how the browser gets stripped source.
 - **Full-stack type safety**: the rule (derive the type at every boundary, never `unknown` / `any`), server-action types flowing to the call site, and the `import type` carrier rule across the `.server` boundary.
-- **Typing pages, layouts, and route handlers** with `PageProps` / `LayoutProps` / `RouteHandlerContext` and the generated route union (`webjs types`).
+- **Typing pages, layouts, and route handlers** with `PageProps` / `LayoutProps` / `RouteHandlerContext` and the generated route union (`npx webjsdev types`).
 
 Read this when you are writing `.ts` in a WebJs app, hit a strip-time 500, or want typed params and hrefs. For action signatures and the serializer wire see `data-and-actions.md`. For typing reactive props see `components.md`.
 

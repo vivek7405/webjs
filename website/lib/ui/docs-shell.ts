@@ -1,4 +1,5 @@
 import { html } from '@webjsdev/core';
+import type { TemplateResult } from '@webjsdev/core';
 
 /**
  * A composed page fragment (the lib/ui convention): an SSR-time function
@@ -57,7 +58,10 @@ export type DocsShellOptions = {
    * in .prose-docs themselves.
    */
   contentClass: string;
-  children: unknown;
+  /** Typed, not `unknown`: both callers pass a layout's `children`, which
+   *  `LayoutProps` already types. `asideTop` above stays `unknown` because it
+   *  is an arbitrary hole value this helper accepts from anywhere. */
+  children: TemplateResult;
 };
 
 export function docsShell({ nav, label, menuLabel, asideTop, contentClass, children }: DocsShellOptions) {
