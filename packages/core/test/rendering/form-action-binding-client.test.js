@@ -230,6 +230,47 @@ test('a re-render that changes only a child value neither re-binds nor duplicate
   assert.equal(form.querySelector('input[name="a"]').getAttribute('value'), 'two');
 });
 
+// The commit path has FIVE flush sites, one per parts-application loop, and the
+// tests above reach only the two that a root-level template goes through
+// (`createInstance` / `updateInstance`). The three below cover the rest: a
+// nested child hole, a keyed list built detached, and the streamed-continuation
+// path. The last is the one with no enclosing pass to fall back on, so a
+// missing flush there ships a form with no identity field at all until some
+// later unrelated render happens to drain the queue.
+
+test('a bound form inside a NESTED child hole is bound', () => {
+  const fn = HOISTED();
+  const host = document.createElement('div');
+  render(html`<div>${html`<form action=${fn}><input name="a"></form>`}</div>`, host);
+  const form = host.querySelector('form');
+  assert.ok(form, 'the nested form rendered');
+  assert.equal(form.querySelectorAll('input[name="__webjs_action"]').length, 1);
+  assert.equal(form.getAttribute('method'), 'post');
+});
+
+test('a bound form inside a keyed list is bound, once per row', () => {
+  const fn = HOISTED();
+  const host = document.createElement('div');
+  const rows = ['a', 'b', 'c'];
+  render(html`<ul>${rows.map((r) => html`<li><form action=${fn}><input name=${r}></form></li>`)}</ul>`, host);
+  const forms = host.querySelectorAll('form');
+  assert.equal(forms.length, 3, 'every row rendered');
+  for (const form of forms) {
+    assert.equal(form.querySelectorAll('input[name="__webjs_action"]').length, 1,
+      'each row carries exactly one identity field');
+  }
+});
+
+test('a bound form in a nested hole still refuses a bad method', () => {
+  // Proves the nested path runs the same validation, not just the same bind.
+  const fn = HOISTED();
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(html`<div>${html`<form action=${fn} method=${'get'}></form>`}</div>`, host),
+    /cannot work/,
+  );
+});
+
 test('a failed render does not poison the NEXT one', () => {
   // The queue is module-level state, so a pass that throws BETWEEN queueing a
   // form and flushing (here a `formaction=${fn}` refusal later in the same
