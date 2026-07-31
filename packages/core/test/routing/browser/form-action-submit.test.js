@@ -1,8 +1,11 @@
 /**
- * Real-browser tests for the client router's enhanced handling of page-action
- * form submissions (#244): a `<form method="POST">` to a page that exports an
- * `action`. The no-JS path is a native form round-trip; the JS path rides the
- * partial-swap pipeline. This pins the two responses the page-action server
+ * Real-browser tests for the client router's enhanced handling of bound form
+ * submissions (#1155): a `<form action=${importedAction}>` renders as a plain
+ * form posting to the page's own url, carrying the action's identity in a
+ * hidden field. The no-JS path is a native form round-trip; the JS path rides
+ * the partial-swap pipeline, posting the SAME body to the SAME url, which is
+ * what makes the two paths identical by construction rather than by two
+ * implementations agreeing. This pins the two responses the dispatcher
  * produces:
  *
  *   - 422 re-render (validation failure): HTML of a 4xx status is applied in
@@ -22,7 +25,7 @@ import { enableClientRouter } from '../../../src/router-client.js';
 import { assert } from '../../../../../test/browser-assert.js';
 const tick = () => new Promise((r) => setTimeout(r, 20));
 
-suite('Client router: page-action form submissions (#244)', () => {
+suite('Client router: bound form submissions (#1155)', () => {
   // LAST-RESORT navigation backstop for a loaded runner: if the router under
   // pressure fails a boundary scan and degrades to a full page load, the
   // native form submission would navigate the WTR page away and kill the
@@ -102,24 +105,54 @@ suite('Client router: page-action form submissions (#244)', () => {
     return { count: () => reloads, installed: () => installed };
   }
 
-  test('a POST form sends FormData as the request body (enhanced path engages)', async () => {
+  test('a bound form posts to the page own url and carries the identity field', async () => {
+    // The rendered form has NO `action` attribute (the renderer omits it so the
+    // browser posts to the current document), so this also pins that the router
+    // resolves an attribute-less form to the page url rather than skipping it.
     setup(() => new Response('<!--wj:children:/:/--><p>ok</p><!--/wj:children:/-->', {
       headers: { 'content-type': 'text/html', 'x-webjs-build': '' },
     }));
+    const here = location.pathname;
     try {
       render(html`
-        <form method="POST" action="/signup">
+        <form method="post" enctype="multipart/form-data">
+          <input type="hidden" name="__webjs_action" value="a1b2c3d4e5/signup">
           <input name="email" value="a@b.com">
           <button type="submit">go</button>
         </form>
       `, container);
       container.querySelector('button').click();
       await tick();
-      const post = calls.find((c) => c.url.includes('/signup'));
+      const post = calls[0];
       assert.ok(post, 'router issued the submission fetch');
+      assert.equal(new URL(post.url).pathname, here, 'posts to the page own url');
       assert.equal((post.init.method || 'GET').toUpperCase(), 'POST', 'method is POST');
       assert.ok(post.init.body instanceof FormData, 'body is FormData');
       assert.equal(post.init.body.get('email'), 'a@b.com', 'FormData carries the field');
+      assert.equal(post.init.body.get('__webjs_action'), 'a1b2c3d4e5/signup',
+        'and the identity, without which the server has nothing to dispatch on');
+    } finally { teardown(); }
+  });
+
+  test("a submit button's own name/value rides along with the identity", async () => {
+    // A multi-button form tells its buttons apart by the submitter's name.
+    // Both have to survive, which is also why `formaction=${fn}` is refused
+    // rather than supported: a per-submitter identity would want that same pair.
+    setup(() => new Response('<!--wj:children:/:/--><p>ok</p><!--/wj:children:/-->', {
+      headers: { 'content-type': 'text/html', 'x-webjs-build': '' },
+    }));
+    try {
+      render(html`
+        <form method="post">
+          <input type="hidden" name="__webjs_action" value="a1b2c3d4e5/act">
+          <button type="submit" name="intent" value="publish">publish</button>
+        </form>
+      `, container);
+      container.querySelector('button').click();
+      await tick();
+      const body = calls[0].init.body;
+      assert.equal(body.get('intent'), 'publish', "the submitter's name/value is submitted");
+      assert.equal(body.get('__webjs_action'), 'a1b2c3d4e5/act', 'alongside the identity');
     } finally { teardown(); }
   });
 
@@ -131,7 +164,7 @@ suite('Client router: page-action form submissions (#244)', () => {
     // than leaning on a single inline flag.
     const marker = `pa-422-${Math.random().toString(36).slice(2)}`;
     setup(() => new Response(
-      `<!--wj:children:/:/--><main><form method="POST" action="/signup"><p class="error" id="${marker}">Enter a valid email</p>` +
+      `<!--wj:children:/:/--><main><form method="post"><p class="error" id="${marker}">Enter a valid email</p>` +
       '<input name="email" value="bad"></form></main><!--/wj:children:/-->',
       { status: 422, headers: { 'content-type': 'text/html', 'x-webjs-build': '' } },
     ));
@@ -139,7 +172,8 @@ suite('Client router: page-action form submissions (#244)', () => {
     try {
       render(html`
         <main>
-          <form method="POST" action="/signup">
+          <form method="post">
+            <input type="hidden" name="__webjs_action" value="a1b2c3d4e5/signup">
             <input name="email" value="bad">
             <button type="submit">go</button>
           </form>
@@ -148,7 +182,7 @@ suite('Client router: page-action form submissions (#244)', () => {
       container.querySelector('button').click();
       await tick();
 
-      assert.ok(calls.some((c) => c.url.includes('/signup')), 'fetch was issued');
+      assert.ok(calls.length, 'fetch was issued');
       assert.equal(reload.count(), 0, '422 HTML must be applied in place, never a full reload');
       // The 422 body was actually applied to the live DOM (the field error is
       // now present), which a full reload would never achieve from a fetch stub.
@@ -171,13 +205,14 @@ suite('Client router: page-action form submissions (#244)', () => {
     const before = location.pathname;
     try {
       render(html`
-        <form method="POST" action="/signup">
+        <form method="post">
+          <input type="hidden" name="__webjs_action" value="a1b2c3d4e5/signup">
           <button type="submit">go</button>
         </form>
       `, container);
       container.querySelector('button').click();
       await tick();
-      assert.ok(calls.some((c) => c.url.includes('/signup')), 'fetch was issued');
+      assert.ok(calls.length, 'fetch was issued');
       assert.equal(location.pathname, '/welcome', 'history advanced to the redirected URL');
     } finally {
       // Restore history so later tests start clean.

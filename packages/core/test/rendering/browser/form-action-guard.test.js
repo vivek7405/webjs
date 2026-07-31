@@ -50,14 +50,40 @@ teardown(() => {
 
 suite('form-action guard in a real browser', () => {
 
-  test('action=${fn} throws and writes nothing to the document', () => {
+  test('action=${fn} on an unidentifiable function throws and writes nothing', () => {
+    // #1155 made this shape a BINDING, so it refuses on identity rather than on
+    // stringification. Nothing may reach the document either way, which is the
+    // claim that has to hold whichever refusal fires.
     const host = mount();
     let threw = null;
     try { render(html`<form method="post" action=${secretAction}></form>`, host); }
     catch (e) { threw = e; }
     assert.ok(threw, 'render must throw');
-    assert.ok(/function was interpolated into action=/.test(threw.message), threw.message);
+    assert.ok(/is not a server action/.test(threw.message), threw.message);
     assert.ok(!document.body.innerHTML.includes('BROWSER_LEAK_MARKER'), 'no source in the document');
+  });
+
+  test('a BOUND action produces a real, submittable form (#1155)', () => {
+    // The end state the whole feature is for, asserted in a real browser
+    // through the DOM the browser would actually submit: `new FormData(form)`
+    // is what a native submission serializes, so if the identity field were
+    // outside the form, or the method not a POST, this is where it shows.
+    const host = mount();
+    const stub = async () => {};
+    Object.defineProperty(stub, '$$webjsAction', { value: 'a1b2c3d4e5/subscribe' });
+    render(html`<form action=${stub}><input name="email" value="a@b.com"></form>`, host);
+
+    const form = host.querySelector('form');
+    assert.ok(form, 'the form renders');
+    assert.equal(form.method, 'post', 'method is forced to post');
+    assert.equal(form.enctype, 'multipart/form-data', 'enctype is forced');
+    // The IDL getter resolves an ABSENT action to the document url, which is
+    // exactly the behaviour the omitted attribute is for. Assert the attribute.
+    assert.equal(form.hasAttribute('action'), false, 'no action attribute, so it posts to this page');
+    const fd = new FormData(form);
+    assert.equal(fd.get('__webjs_action'), 'a1b2c3d4e5/subscribe', 'the identity is submitted');
+    assert.equal(fd.get('email'), 'a@b.com', 'alongside the real fields');
+    assert.ok(!document.body.innerHTML.includes('BROWSER_LEAK_MARKER'), 'and no source anywhere');
   });
 
   test('.action=${fn} property binding cannot reflect the source into the attribute', () => {
@@ -114,6 +140,8 @@ suite('form-action guard in a real browser', () => {
     const host = mount();
     const tpl = (a) => html`<form method="post" action=${a}></form>`;
     render(tpl('/submit'), host);
+    // Reaches the identity refusal, not the stringify one, and the point is the
+    // same either way: a refusal must not half-write the attribute.
     const before = host.querySelector('form').getAttribute('action');
     assert.equal(before, '/submit');
 
