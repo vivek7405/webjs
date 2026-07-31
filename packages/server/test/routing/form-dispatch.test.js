@@ -38,10 +38,17 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const CORE = JSON.stringify(
   pathToFileURL(resolve(__dirname, '../../../core/index.js')).toString(),
 );
+// Same reason as CORE: a tmpdir fixture cannot resolve the bare specifier.
+const SERVER = JSON.stringify(
+  pathToFileURL(resolve(__dirname, '../../index.js')).toString(),
+);
 
 let tmpRoot;
 before(() => { tmpRoot = mkdtempSync(join(tmpdir(), 'webjs-form-dispatch-')); });
 after(() => { rmSync(tmpRoot, { recursive: true, force: true }); });
+
+/** The most recent app dir, so a test can mutate its files mid-run. */
+let lastAppDir = null;
 
 function makeApp(files) {
   const appDir = mkdtempSync(join(tmpRoot, 'app-'));
@@ -50,6 +57,7 @@ function makeApp(files) {
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, body);
   }
+  lastAppDir = appDir;
   return appDir;
 }
 
@@ -213,19 +221,36 @@ test('a page that binds no action answers 405 on POST, not 404', async () => {
   assert.equal(post.headers.get('allow'), 'GET, HEAD');
 });
 
-test('a non-form POST to a page is 405 without the body being read', async () => {
-  const app = await createRequestHandler({
-    appDir: makeApp(SIGNUP_APP),
-    dev: true,
+test('a non-form POST to a page is 405, decided BEFORE the body is parsed', async () => {
+  // The ordering is the point: an unauthenticated POST to any page url should
+  // not make the server buffer bytes an attacker chose. It needs an observable
+  // discriminator, because a stream probe measures Node rather than this code
+  // (the `Request` constructor starts pulling a stream body on the next tick on
+  // its own). An OVER-LIMIT body is that discriminator: the body cap lives
+  // inside `parseFormBody`, so if the content-type gate were deleted this would
+  // come back 413. A 405 proves the gate answered first.
+  const appDir = makeApp({
+    ...SIGNUP_APP,
+    'package.json': JSON.stringify({ webjs: { maxMultipartBytes: 40 } }),
   });
+  const app = await createRequestHandler({ appDir, dev: true });
   await app.warmup();
 
   const resp = await app.handle(new Request('http://x/signup', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: '{"email":"a@b.com"}',
+    body: JSON.stringify({ email: 'z'.repeat(500) }),
   }));
-  assert.equal(resp.status, 405);
+  assert.equal(resp.status, 405, 'the content-type gate answers before the body is read (a 413 would mean it parsed)');
+
+  // The counterpart, so the cap itself is still proven live on this app: the
+  // SAME over-limit body under a FORM content type does reach the parser.
+  const big = await app.handle(new Request('http://x/signup', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: 'email=' + 'z'.repeat(500),
+  }));
+  assert.equal(big.status, 413, 'a form-shaped over-limit body is a 413');
 });
 
 test('an identity whose hash no longer resolves re-renders with a resubmit message', async () => {
@@ -535,6 +560,20 @@ export default () => html\`<form action=\${go}><p>ok</p></form>\`;
   const backslash = await submit(app, '/go', { next: '/\\evil.example.com' });
   assert.equal(backslash.headers.get('location'), '/go', 'backslash-prefixed redirect must be ignored');
 
+  // An ASCII TAB is removed by the URL parser BEFORE parsing, so `/<TAB>/host`
+  // reaches the browser as `//host` and resolves cross-origin. LF and CR are
+  // rejected by `Headers`, but a tab is a legal field-value character and rides
+  // to the wire intact, so the guard has to strip them itself. Measured:
+  // `new URL('/\t/evil.com', origin).href` is `https://evil.com/`.
+  for (const sneaky of ['/\t/evil.example.com', '/\t\t/evil.example.com', '/x/..\t/../\t/evil.example.com']) {
+    const res = await submit(app, '/go', { next: sneaky });
+    const loc = res.headers.get('location') || '';
+    assert.doesNotMatch(loc, /[\t\n\r]/, `a stripped-whitespace target must not reach the Location header (${JSON.stringify(sneaky)})`);
+    const resolved = new URL(loc, 'https://good.example/go').origin;
+    assert.equal(resolved, 'https://good.example',
+      `must stay same-origin, got ${resolved} from ${JSON.stringify(sneaky)}`);
+  }
+
   const ok = await submit(app, '/go', { next: '/dashboard?tab=1' });
   assert.equal(ok.headers.get('location'), '/dashboard?tab=1', 'same-site local path is honored');
 });
@@ -596,6 +635,136 @@ export default () => html\`<form action=\${ad}></form>\`;
   const resp = await app.handle(new Request('http://x/admin', form({ x: '1' })));
   assert.equal(resp.status, 401, 'segment middleware runs before the dispatcher');
   assert.equal(await resp.text(), 'blocked');
+});
+
+test("a thrown action is a sanitized 500 and reaches the onError sink", async () => {
+  // The prod-sanitization contract (#749) applies here too: a raw driver
+  // message must not reach the browser, and the APM sink must still see the
+  // original. Neither had any coverage on this path.
+  const seen = [];
+  const app = await createRequestHandler({
+    appDir: makeApp({
+      'modules/t/actions/t.server.ts': `'use server';\nexport async function boom() { throw new Error('pg: violates unique constraint "users_email_key"'); }\n`,
+      'app/t/page.ts': `
+import { html } from ${CORE};
+import { boom } from '../../modules/t/actions/t.server.ts';
+export default () => html\`<form action=\${boom}></form>\`;
+`,
+    }),
+    dev: false,
+    onError: (e) => seen.push(e),
+  });
+  await app.warmup();
+
+  const quiet = console.error;
+  console.error = () => {};
+  let resp;
+  try { resp = await submit(app, '/t', {}); } finally { console.error = quiet; }
+
+  assert.equal(resp.status, 500);
+  const body = await resp.text();
+  assert.doesNotMatch(body, /users_email_key/, 'the raw driver message must not reach the client');
+  assert.match(body, /digest/, 'a correlation digest is offered instead');
+  assert.equal(seen.length, 1, 'the APM sink saw the throw');
+  assert.match(String(seen[0].message), /users_email_key/, 'and it saw the ORIGINAL error');
+});
+
+test("the action's invalidates tags are evicted on the form path", async () => {
+  // Claimed in the docs and the PR body, previously untested. A mutation that
+  // does not evict leaves a cached read serving pre-mutation data.
+  const app = await createRequestHandler({
+    appDir: makeApp({
+      'modules/inv/actions/inv.server.ts': `
+'use server';
+import { cache } from ${SERVER};
+export const invalidates = () => ['posts'];
+export async function addPost() { return { success: true }; }
+`,
+      'app/inv/page.ts': `
+import { html } from ${CORE};
+import { addPost } from '../../modules/inv/actions/inv.server.ts';
+export default () => html\`<form action=\${addPost}></form>\`;
+`,
+    }),
+    dev: true,
+  });
+  await app.warmup();
+
+  const { cache: serverCache } = await import('../../index.js');
+  let hits = 0;
+  const read = serverCache(async () => { hits += 1; return hits; }, { key: 'posts-read', tags: ['posts'] });
+  assert.equal(await read(), 1);
+  assert.equal(await read(), 1, 'the second read is cached');
+
+  const resp = await submit(app, '/inv', {});
+  assert.equal(resp.status, 303);
+  assert.equal(await read(), 2, 'the submission evicted the `posts` tag, so the read recomputed');
+});
+
+test('a streamed return is refused rather than answered with a broken body', async () => {
+  // The RPC stub decodes frames; a submission is answered with a redirect or a
+  // page, and with JS off there is no consumer at all. Documented, untested.
+  const app = await createRequestHandler({
+    appDir: makeApp({
+      'modules/s/actions/s.server.ts': `'use server';\nexport async function tokens() { return (async function* () { yield 'a'; yield 'b'; })(); }\n`,
+      'app/s/page.ts': `
+import { html } from ${CORE};
+import { tokens } from '../../modules/s/actions/s.server.ts';
+export default () => html\`<form action=\${tokens}></form>\`;
+`,
+    }),
+    dev: true,
+  });
+  await app.warmup();
+
+  const quiet = console.error;
+  console.error = () => {};
+  let resp;
+  try { resp = await submit(app, '/s', {}); } finally { console.error = quiet; }
+  assert.equal(resp.status, 500, 'refused loudly, not a 303 reporting a success that streamed nowhere');
+  assert.match(await resp.text(), /stream/i);
+});
+
+test('an action module that throws at import is a 500, not a resubmit message', async () => {
+  // The failure mode this guards: the hash resolves (the index only hashes
+  // paths, it never imports), so folding an import throw into "skew" would
+  // answer every submission with "please submit again" forever while
+  // discarding the real error. The RPC path and a page render both surface a
+  // logged 500 for the same module, so the form path must not go quiet.
+  const app = await createRequestHandler({
+    appDir: makeApp({
+      'modules/boom/actions/boom.server.ts': `
+'use server';
+export async function boom() { return { success: true }; }
+`,
+      'app/boom/page.ts': `
+import { html } from ${CORE};
+import { boom } from '../../modules/boom/actions/boom.server.ts';
+export default () => html\`<form action=\${boom}></form>\`;
+`,
+    }),
+    dev: true,
+  });
+  await app.warmup();
+
+  const page = await (await app.handle(new Request('http://x/boom'))).text();
+  const id = identityOf(page);
+  assert.ok(id, 'the page rendered a bound form');
+
+  // Break the module AFTER the identity was minted, which is exactly the
+  // shape of a bad env var read at module scope in a fresh environment.
+  const dir = lastAppDir;
+  writeFileSync(join(dir, 'modules/boom/actions/boom.server.ts'),
+    `'use server';\nthrow new Error('BOOM_AT_IMPORT');\nexport async function boom() { return { success: true }; }\n`);
+
+  const quiet = console.error;
+  console.error = () => {};
+  let resp;
+  try {
+    resp = await app.handle(new Request('http://x/boom', form({ __webjs_action: id })));
+  } finally { console.error = quiet; }
+  assert.equal(resp.status, 500, 'an import failure is a server fault, not skew');
+  assert.doesNotMatch(await resp.text(), /submit again/, 'and must not tell the user to resubmit');
 });
 
 test('segment middleware also wraps a submission that binds nothing', async () => {

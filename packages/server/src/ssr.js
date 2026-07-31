@@ -297,7 +297,7 @@ export async function ssrPage(route, params, url, opts) {
       outBody,
       closer,
       suspenseCtx,
-      // Normally 200. After a failed page `action` submission the caller passes
+      // Normally 200. After a failed form-action submission the caller passes
       // 422 (or another 4xx) so the re-rendered page with field errors carries
       // the right status for both the no-JS reload and the enhanced swap (#244).
       opts.status || 200,
@@ -346,7 +346,7 @@ export async function ssrPage(route, params, url, opts) {
       // navigation (an auth bounce, a gate). 302 Found is the conventional
       // code there, so it is the default when the caller did not pick one. An
       // explicit `redirect(url, status)` overrides it. (Action redirects, a
-      // POST, default to 307 in page-action.js so the method is preserved.)
+      // POST, default to 307 in form-dispatch.js so the method is preserved.)
       return new Response(null, { status: e.status || 302, headers: { location: e.url } });
     }
     if (isNotFound(err)) {
@@ -459,7 +459,7 @@ export async function ssrNotFound(notFoundFile, opts) {
 /**
  * 403 response for a thrown forbidden() (#848). Renders the nearest
  * forbidden.{js,ts} in the page's chain, else a default 403 page. Shared by the
- * page-render catch (ssr.js) and the page-action write path (page-action.js) so
+ * page-render catch (ssr.js) and the form-action write path (form-dispatch.js) so
  * both behave identically.
  * @param {{ forbiddens?: string[] }} route
  * @param {{ dev: boolean, appDir: string, req?: Request, url?: URL }} opts
@@ -674,7 +674,7 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
 }
 
 async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
-  // Reuse a caller-supplied page module when present (the page-action
+  // Reuse a caller-supplied page module when present (the form-action
   // re-render passes the exact module whose `action` just ran, so the
   // failure re-render shares that single evaluation instead of re-importing
   // and re-running the module's top-level side effects).
@@ -2052,7 +2052,7 @@ function streamingHtmlResponse(prefix, bodyHtml, closer, ctx, status, req, url, 
   const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
   // Default: no caching. Pages are dynamic by default: the developer
   // opts in to caching explicitly via metadata.cacheControl. A non-200 does
-  // NOT inherit it (#1140): the page-action re-render is a 422 carrying the
+  // NOT inherit it (#1140): the form-action re-render is a 422 carrying the
   // submitter's own field values and errors, which must never be handed to a
   // shared cache just because the page opted into public caching.
   headers.set('cache-control', status === 200 ? (metadata?.cacheControl || 'no-store') : 'no-store');
@@ -2141,7 +2141,7 @@ function streamingHtmlResponse(prefix, bodyHtml, closer, ctx, status, req, url, 
  * serves a single evaluation; in dev a cache-bust query forces a fresh
  * evaluation so source edits take effect (which also re-runs the module's
  * top-level side effects, the reason pages/layouts must keep their top level
- * side-effect-free). Exported so page-action.js loads the page module the same
+ * side-effect-free). Exported so form-dispatch.js loads the page module the same
  * way the SSR re-render does.
  *
  * @param {string} file

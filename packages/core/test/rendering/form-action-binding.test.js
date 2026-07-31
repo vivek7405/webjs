@@ -88,9 +88,9 @@ test('an attribute written AFTER the action hole still counts as present', async
   // `method="get"` after the hole.
   withResolver();
   const out = await renderToString(
-    html`<form action=${submitFeedback} enctype="text/plain"></form>`, { ssr: true });
+    html`<form action=${submitFeedback} enctype="application/x-www-form-urlencoded"></form>`, { ssr: true });
   assert.equal(out.match(/enctype=/g).length, 1, 'exactly one enctype attribute');
-  assert.match(out, /enctype="text\/plain"/);
+  assert.match(out, /enctype="application\/x-www-form-urlencoded"/);
 });
 
 test('a method= inside an unrelated attribute VALUE does not count as present', async () => {
@@ -124,6 +124,32 @@ test('a hole-provided method is judged on its resolved value', async () => {
     html`<form method=${'post'} action=${submitFeedback}></form>`, { ssr: true });
   assert.match(ok, /method="post"/);
   assert.equal(ok.match(/method=/g).length, 1);
+});
+
+test('an enctype the server cannot parse is refused', async () => {
+  // `text/plain` is legal HTML and useless here: the router sends FormData, so
+  // the form would work under JS and be a bare 405 without it. That is exactly
+  // the works-one-way-only near-miss this module refuses everywhere else.
+  withResolver();
+  await assert.rejects(
+    () => renderToString(html`<form enctype="text/plain" action=${submitFeedback}></form>`, { ssr: true }),
+    /cannot work/,
+  );
+  await assert.rejects(
+    () => drain(renderToStream(html`<form enctype="text/plain" action=${submitFeedback}></form>`, { ssr: false })),
+    /cannot work/,
+  );
+});
+
+test('both parseable enctypes stay legal, case-insensitively', async () => {
+  // The carve-out: a guard that refused every author enctype would satisfy the
+  // assertion above just as well.
+  withResolver();
+  for (const enc of ['application/x-www-form-urlencoded', 'multipart/form-data', 'MULTIPART/FORM-DATA']) {
+    const out = await renderToString(html`<form enctype=${enc} action=${submitFeedback}></form>`, { ssr: true });
+    assert.match(out, new RegExp(`enctype="${enc}"`), `${enc} is kept`);
+    assert.equal(out.match(/enctype=/g).length, 1, 'and not doubled');
+  }
 });
 
 test('an unidentifiable function is refused, never rendered as an inert form', async () => {

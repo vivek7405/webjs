@@ -1426,14 +1426,21 @@ export async function checkConventions(appDir) {
           const names = importedLocalNames(im[1]);
           if (!names.length) continue;
           const target = resolveImport(spec, abs, appDir);
+          // ONLY a GET is contradictory, and the rule must say exactly what the
+          // dispatcher does or it is a false positive. A browser form always
+          // submits as a POST, and the dispatcher runs a PUT / PATCH / DELETE
+          // action on that POST: the declared verb governs the RPC transport,
+          // not whether the function can serve a form. A GET is different in
+          // kind (CSRF-exempt, args in the url, no body), which is why it is
+          // the one the dispatcher answers with a 405.
           const method = target ? methodByAbs.get(target) : undefined;
-          if (!method || method === 'POST') continue;
+          if (method !== 'GET') continue;
           for (const { local, imported } of names) {
             if (!bound.has(local)) continue;
             violations.push({
               rule: 'form-action-not-a-get-action',
               file: rel,
-              message: `Binds \`${imported}\` to a form, but \`${spec}\` declares \`method = '${method}'\`. A ${method} action rides its arguments in the url and skips the CSRF check, so it cannot answer a form POST; the submission is a 405.`,
+              message: `Binds \`${imported}\` to a form, but \`${spec}\` declares \`method = 'GET'\`. A GET action rides its arguments in the url and skips the CSRF check, so it cannot answer a form POST; the submission is a 405.`,
               fix: `Drop the \`method\` export from \`${spec}\` (an action with no method is a POST, which is what a form submits), or bind an action that takes a POST.`,
             });
           }

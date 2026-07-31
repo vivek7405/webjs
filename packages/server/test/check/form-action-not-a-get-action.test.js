@@ -79,6 +79,26 @@ export default () => html\`<form action=\${saveIt}></form>\`;
   await rm(dir, { recursive: true, force: true });
 });
 
+test('does NOT flag a PUT / PATCH / DELETE action, which the dispatcher runs fine', async () => {
+  // A browser form always submits as a POST, and the dispatcher runs those
+  // actions on it: the declared verb governs the RPC transport, not whether the
+  // function can serve a form. Only a GET is contradictory (CSRF-exempt, args
+  // in the url, no body), and it is the only one the dispatcher 405s. A rule
+  // that flags more than the runtime rejects is a false positive telling
+  // authors to change working code.
+  for (const verb of ['PUT', 'PATCH', 'DELETE']) {
+    const dir = await makeApp({
+      'modules/w/actions/w.server.ts': `'use server';\nexport const method = '${verb}';\nexport async function writeIt(fd) { return fd; }\n`,
+      'app/page.ts': `import { html } from '@webjsdev/core';
+import { writeIt } from '../modules/w/actions/w.server.ts';
+export default () => html\`<form action=\${writeIt}></form>\`;
+`,
+    });
+    assert.equal(hits(await checkConventions(dir)).length, 0, `${verb} must not be flagged`);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('does NOT flag a GET action that is merely IMPORTED, not bound to a form', async () => {
   // Calling a GET action from a page is the normal way to read data. Only
   // binding one to a form is the contradiction.

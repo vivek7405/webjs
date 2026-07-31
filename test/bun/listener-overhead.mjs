@@ -81,7 +81,12 @@ try {
   // redirect Location. The action receives a REBUILT request (parseFormBody),
   // so this proves the trusted IP survives the rebuild and a spoofed header
   // does not win (#756 review must-fix).
-  w('ipcheck.server.ts', `'use server';\nimport { redirect } from ${JSON.stringify(CORE)};\nimport { clientIp, getRequest } from ${JSON.stringify(SERVER)};\nexport async function seeIp() { throw redirect('/?seenip=' + encodeURIComponent(clientIp(getRequest()))); }`);
+  // The REBUILT request (parseFormBody's copy) is visible only to middleware, so
+  // that is where #756's propagation is proven; the action additionally reports
+  // the ambient request's ip, which is what an action naturally reads. Both must
+  // resist the spoofed header, and they travel by different mechanisms (the
+  // out-of-band WeakMap re-stamp vs the ALS store).
+  w('ipcheck.server.ts', `'use server';\nimport { redirect } from ${JSON.stringify(CORE)};\nimport { clientIp, getRequest, actionContext } from ${JSON.stringify(SERVER)};\nexport const middleware = [async (ctx: any, next: any) => { ctx.context.rebuiltIp = clientIp(ctx.request); return next(); }];\nexport async function seeIp() { const q = new URLSearchParams({ seenip: clientIp(getRequest()), rebuiltip: String(actionContext().rebuiltIp) }); throw redirect('/?' + q.toString()); }`);
   w('app/ipcheck/page.ts', `import { html } from ${JSON.stringify(CORE)};\nimport { seeIp } from '../../ipcheck.server.ts';\nexport default () => html\`<main><form action=\${seeIp}><button>go</button></form></main>\`;`);
   // A genuinely STREAMED, compressible body whose SECOND chunk is far off. The
   // compression classifier must not block the response head on it (#756 review).
@@ -135,8 +140,11 @@ try {
   });
   const loc = actRes.headers.get('location') || '';
   assert.ok(/seenip=/.test(loc), `[${runtime}] the action redirected with the seen ip (loc=${loc})`);
-  assert.ok(!/seenip=6\.6\.6\.6/.test(loc), `[${runtime}] a spoofed header must NOT survive the form-dispatch rebuild`);
-  assert.ok(!/seenip=_anon_/.test(loc), `[${runtime}] the trusted IP survived the rebuild (not anon)`);
+  assert.ok(/rebuiltip=/.test(loc), `[${runtime}] and with the ip read off the REBUILT request (loc=${loc})`);
+  assert.ok(!/seenip=6\.6\.6\.6/.test(loc), `[${runtime}] a spoofed header must NOT reach the ambient request`);
+  assert.ok(!/rebuiltip=6\.6\.6\.6/.test(loc), `[${runtime}] a spoofed header must NOT survive the form-dispatch rebuild`);
+  assert.ok(!/seenip=_anon_/.test(loc), `[${runtime}] the trusted IP survived to the action (not anon)`);
+  assert.ok(!/rebuiltip=_anon_/.test(loc), `[${runtime}] the trusted IP was propagated onto the rebuilt request (not anon)`);
 
   // (4) A STREAMED compressible body must not have its response head withheld
   // until its slow second chunk (#756 review MUST-FIX 2): the buffered-vs-streamed
@@ -165,7 +173,8 @@ try {
   bw('app/layout.ts', `import { html } from ${JSON.stringify(CORE)};\nexport default ({ children }: { children: unknown }) => html\`<!doctype html><html><head></head><body>\${children}</body></html>\`;`);
   bw('app/page.ts', `import { html } from ${JSON.stringify(CORE)};\nexport default () => html\`<main>bp</main>\`;`);
   bw('app/api/ip/route.ts', `import { clientIp } from ${JSON.stringify(SERVER)};\nexport async function GET(req: Request) {\n  return new Response(clientIp(req), { headers: { 'content-type': 'text/plain' } });\n}`);
-  bw('app/ipcheck/page.ts', `import { html, redirect } from ${JSON.stringify(CORE)};\nimport { clientIp } from ${JSON.stringify(SERVER)};\nexport const action = async ({ request }: { request: Request }) => { throw redirect('/?seenip=' + encodeURIComponent(clientIp(request))); };\nexport default () => html\`<main>ipcheck</main>\`;`);
+  bw('ipcheck.server.ts', `'use server';\nimport { redirect } from ${JSON.stringify(CORE)};\nimport { clientIp, actionContext } from ${JSON.stringify(SERVER)};\nexport const middleware = [async (ctx: any, next: any) => { ctx.context.rebuiltIp = clientIp(ctx.request); return next(); }];\nexport async function seeIp() { throw redirect('/?seenip=' + encodeURIComponent(String(actionContext().rebuiltIp))); }`);
+  bw('app/ipcheck/page.ts', `import { html } from ${JSON.stringify(CORE)};\nimport { seeIp } from '../../ipcheck.server.ts';\nexport default () => html\`<main><form action=\${seeIp}><button>go</button></form></main>\`;`);
   let bpClose;
   try {
     const { server: bpServer, close: c2 } = await startServer({ appDir: bpDir, dev: true, compress: true, port: 0, logger: quiet });
@@ -175,14 +184,25 @@ try {
     const bpIp = (await (await fetch(`${bpBase}/mnt/api/ip`, { headers: { 'x-webjs-remote-ip': '6.6.6.6' } })).text()).trim();
     assert.notEqual(bpIp, '6.6.6.6', `[${runtime}] a basePath rebuild must NOT trust a spoofed x-webjs-remote-ip`);
     assert.notEqual(bpIp, '_anon_', `[${runtime}] the trusted IP survived the basePath rebuild`);
+    // Read the identity off the rendered page, so the POST below is the one a
+    // browser would send. Submitting without it answers 405 with no Location,
+    // which would make the negative assertion below vacuously true and leave
+    // this guard passing even if the spoof came back.
+    const bpPage = await (await fetch(`${bpBase}/mnt/ipcheck`)).text();
+    const bpId = /name="__webjs_action" value="([^"]*)"/.exec(bpPage);
+    assert.ok(bpId, `[${runtime}] the basePath ipcheck page rendered a bound form`);
     const bpAct = await fetch(`${bpBase}/mnt/ipcheck`, {
       method: 'POST',
       redirect: 'manual',
       headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-webjs-remote-ip': '6.6.6.6' },
-      body: 'x=1',
+      body: new URLSearchParams({ __webjs_action: bpId[1], x: '1' }).toString(),
     });
     const bpLoc = bpAct.headers.get('location') || '';
-    assert.ok(!/seenip=6\.6\.6\.6/.test(bpLoc), `[${runtime}] spoof must not survive basePath + page-action rebuild (loc=${bpLoc})`);
+    // POSITIVE first: an empty Location must FAIL rather than satisfy the
+    // negative regex below.
+    assert.ok(/seenip=/.test(bpLoc), `[${runtime}] the basePath action redirected with the seen ip (loc=${bpLoc})`);
+    assert.ok(!/seenip=6\.6\.6\.6/.test(bpLoc), `[${runtime}] spoof must not survive basePath + form-dispatch rebuild (loc=${bpLoc})`);
+    assert.ok(!/seenip=_anon_/.test(bpLoc), `[${runtime}] the trusted IP survived the basePath + form-dispatch rebuild`);
   } finally {
     try { if (bpClose) await bpClose(); } catch {}
     rmSync(bpDir, { recursive: true, force: true });

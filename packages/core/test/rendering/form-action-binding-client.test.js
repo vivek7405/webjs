@@ -101,16 +101,24 @@ test('the identity field survives a child update', () => {
 
 test("an author's method and enctype are left alone", () => {
   const host = document.createElement('div');
-  render(html`<form method="POST" enctype="text/plain" action=${stub(ID)}></form>`, host);
+  render(html`<form method="POST" enctype="application/x-www-form-urlencoded" action=${stub(ID)}></form>`, host);
   const form = host.querySelector('form');
   assert.equal(form.getAttribute('method'), 'POST');
-  assert.equal(form.getAttribute('enctype'), 'text/plain');
+  assert.equal(form.getAttribute('enctype'), 'application/x-www-form-urlencoded');
 });
 
 test('a method the action cannot use is refused, matching SSR', () => {
   const host = document.createElement('div');
   assert.throws(
     () => render(html`<form method="get" action=${stub(ID)}></form>`, host),
+    /cannot work/,
+  );
+});
+
+test('an enctype the server cannot parse is refused, matching SSR', () => {
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(html`<form enctype="text/plain" action=${stub(ID)}></form>`, host),
     /cannot work/,
   );
 });

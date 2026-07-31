@@ -224,6 +224,43 @@ export function assertIdentifiableAction(id, tag) {
 }
 
 /**
+ * The enctypes a form submission can actually be parsed from. `text/plain` is
+ * legal HTML and useless here: the server parses a submission as multipart or
+ * urlencoded, so a `text/plain` bound form runs under JS (the router sends
+ * FormData) and is a bare 405 without it. That is precisely the
+ * works-one-way-only near-miss this module refuses everywhere else, so it is
+ * refused here too rather than silently corrected.
+ */
+const PARSEABLE_ENCTYPES = new Set(['multipart/form-data', 'application/x-www-form-urlencoded']);
+
+/**
+ * The shared refusal for a bound form whose own attributes contradict the
+ * binding. Kept in one place because SSR reads the emitted start tag and the
+ * client reads the live element, and the two must refuse identically.
+ * @param {string | null | undefined} method
+ * @param {string | null | undefined} enctype
+ */
+function assertSubmittableForm(method, enctype) {
+  if (method != null && !/^post$/i.test(method.trim())) {
+    throw new Error(
+      `[webjs] <form method="${method}" action=\${action}> cannot work: a bound `
+      + `server action is submitted as a POST body, and a "${method}" form sends `
+      + `no body. Drop the method attribute (WebJs emits method="post") or `
+      + `remove the bound action.`,
+    );
+  }
+  if (enctype != null && !PARSEABLE_ENCTYPES.has(enctype.trim().toLowerCase())) {
+    throw new Error(
+      `[webjs] <form enctype="${enctype}" action=\${action}> cannot work: a form `
+      + `submission is parsed as multipart/form-data or `
+      + `application/x-www-form-urlencoded, and a "${enctype}" body is neither, so `
+      + `the submission would run under JS and do nothing without it. Drop the `
+      + `enctype attribute (WebJs emits multipart/form-data).`,
+    );
+  }
+}
+
+/**
  * Rewrite a form's START TAG for a bound action and produce the hidden field
  * that must follow it.
  *
@@ -251,15 +288,7 @@ export function assertIdentifiableAction(id, tag) {
  */
 export function bindFormActionStartTag(startTag, id) {
   const attrs = parseStartTagAttrs(startTag);
-  const method = attrs.get('method');
-  if (method != null && !/^post$/i.test(method.trim())) {
-    throw new Error(
-      `[webjs] <form method="${method}" action=\${action}> cannot work: a bound `
-      + `server action is submitted as a POST body, and a "${method}" form sends `
-      + `no body. Drop the method attribute (WebJs emits method="post") or `
-      + `remove the bound action.`,
-    );
-  }
+  assertSubmittableForm(attrs.get('method'), attrs.get('enctype'));
   // The close is `>` or `/>`; a self-closing form is not valid HTML but the
   // scanner can still hand one over, so keep whichever the author wrote.
   const close = startTag.endsWith('/>') ? '/>' : '>';
@@ -301,16 +330,9 @@ export function formActionHiddenField(id) {
  */
 export function bindFormActionElement(form, fn) {
   const id = assertIdentifiableAction(formActionId(fn), form.localName);
-  form.removeAttribute('action');
   const method = form.getAttribute('method');
-  if (method != null && !/^post$/i.test(method.trim())) {
-    throw new Error(
-      `[webjs] <form method="${method}" action=\${action}> cannot work: a bound `
-      + `server action is submitted as a POST body, and a "${method}" form sends `
-      + `no body. Drop the method attribute (WebJs emits method="post") or `
-      + `remove the bound action.`,
-    );
-  }
+  assertSubmittableForm(method, form.getAttribute('enctype'));
+  form.removeAttribute('action');
   if (method == null) form.setAttribute('method', 'post');
   if (!form.hasAttribute('enctype')) form.setAttribute('enctype', 'multipart/form-data');
 

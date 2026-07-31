@@ -762,7 +762,7 @@ export async function createRequestHandler(opts) {
   // package.json `webjs.maxBodyBytes` / `webjs.maxMultipartBytes` plus the env
   // overrides. The secure defaults (1 MiB JSON/RPC, 10 MiB form) apply when
   // unconfigured. Stamped on every request via `setBodyLimits` so `readBody`
-  // (used inside route handlers) enforces the same cap the RPC and page-action
+  // (used inside route handlers) enforces the same cap the RPC and form-dispatch
   // paths do.
   const bodyLimits = await readBodyLimitsFromApp(appDir);
 
@@ -1195,7 +1195,7 @@ export async function createRequestHandler(opts) {
 
       // Make the resolved body-size limits (issue #237) readable from the
       // request scope, so `readBody` inside a route handler enforces the same
-      // cap the framework's own RPC / page-action body reads do.
+      // cap the framework's own RPC / form-dispatch body reads do.
       setBodyLimits(state.bodyLimits);
 
       let pathname = '/';
@@ -1363,7 +1363,7 @@ export async function createRequestHandler(opts) {
             // to the inbound `x-webjs-remote-ip` header that the copied
             // `req.headers` still carries, which a client can spoof. So strip
             // that header on the rebuild and propagate the framework-trusted IP
-            // across the new object, the same pattern page-action.js uses.
+            // across the new object, the same pattern form-dispatch.js uses.
             const headers = new Headers(req.headers);
             headers.delete('x-webjs-remote-ip');
             const hasBody = req.method !== 'GET' && req.method !== 'HEAD';

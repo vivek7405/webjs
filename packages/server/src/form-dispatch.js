@@ -97,6 +97,17 @@ function isFailureResult(result) {
  * URL. A user-controlled redirect target is an open-redirect vector, so a
  * non-local value is dropped and the caller falls back to the page's own path.
  *
+ * The check runs on the string the BROWSER will parse, not the one the action
+ * returned, and those differ. The WHATWG URL parser REMOVES every ASCII tab,
+ * LF, and CR from a URL before parsing, so `/<TAB>/evil.com` reaches the parser
+ * as `//evil.com` and resolves cross-origin. `Headers` rejects a LF or CR in a
+ * field value, but a tab is a legal HTTP field-value character and rides
+ * through to the wire intact (measured: `new URL('/\t/evil.com', origin).href`
+ * is `https://evil.com/`, and Chromium follows it to the attacker host). So
+ * strip those three FIRST and validate what is left, which also makes the
+ * returned value exactly what the browser sees. A raw tab in a Location is
+ * malformed regardless; a legitimate path percent-encodes it.
+ *
  * A thrown `redirect(absoluteUrl)` (the nav sentinel) is intentionally NOT
  * routed through here: that is the author-controlled escape hatch for a
  * legitimate external redirect.
@@ -106,13 +117,16 @@ function isFailureResult(result) {
  */
 function sameSiteRedirect(target) {
   if (typeof target !== 'string') return null;
+  // What the URL parser will actually see (tab / LF / CR are removed anywhere
+  // in the string, not only at the front).
+  const url = target.replace(/[\t\n\r]/g, '');
   // Must start with a single slash (a leading `//` is protocol-relative and
   // would navigate cross-origin).
-  if (!target.startsWith('/') || target.startsWith('//')) return null;
+  if (!url.startsWith('/') || url.startsWith('//')) return null;
   // A backslash after the leading slash (`/\evil.com`) is normalized by some
   // browsers into a protocol-relative URL, so reject it too.
-  if (target.startsWith('/\\')) return null;
-  return target;
+  if (url.startsWith('/\\')) return null;
+  return url;
 }
 
 /**
@@ -269,6 +283,15 @@ export async function runFormAction(route, params, url, req, ssrOpts, deps) {
 
   const found = await lookupActionIdentity(actionIndex, id);
   if (!found.ok) {
+    // The action's module threw at import (a bad env var read at module scope,
+    // a syntax error in dev). That is a server fault, not skew: telling the
+    // user to resubmit would loop them forever against a module that cannot
+    // load, and swallowing the error would leave nothing in the log or the APM
+    // sink. Surface it the way any other action throw is surfaced.
+    if (found.reason === 'load-failed') {
+      if (typeof onError === 'function') onError(found.error);
+      return await formActionErrorResponse(found.error, ssrOpts.dev);
+    }
     if (found.reason === 'skew') {
       return ssrPage(route, params, url, {
         ...ssrOpts, req,

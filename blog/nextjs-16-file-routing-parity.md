@@ -39,7 +39,7 @@ export default function AdminForbidden() {
 }
 ```
 
-This is the one place the habit needs adjusting, because the throw model has edges. These work from a page or layout render, and from a page `action` (the no-JS write path, the function that handles a form POST to the page's own URL). They do NOT belong in a `route.ts` handler, which is raw HTTP and should return a `Response` itself. And inside a `'use server'` RPC action, a raw `forbidden()` throw becomes a generic 500, because an action's job is to return a value, not to throw control flow. For an auth failure inside an action, return an `ActionResult`.
+This is the one place the habit needs adjusting, because the throw model has edges. These work from a page or layout render, and from a form-bound server action (the no-JS write path, the action a `<form action=${fn}>` submits to). They do NOT belong in a `route.ts` handler, which is raw HTTP and should return a `Response` itself. And inside a `'use server'` RPC action, a raw `forbidden()` throw becomes a generic 500, because an action's job is to return a value, not to throw control flow. For an auth failure inside an action, return an `ActionResult`.
 
 ```ts
 // modules/posts/actions/delete-post.server.ts

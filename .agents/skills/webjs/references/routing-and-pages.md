@@ -32,7 +32,7 @@ export default function About() {
 
 `params` and `searchParams` are awaitable AND synchronously readable (`params.id` and `await params` both work, Next.js 15/16 parity). Throw `notFound()` or `redirect(url)` to short-circuit. Reach data through a `.server.ts` query; never import the DB driver into a page.
 
-Optional named exports: `metadata` / `generateMetadata` (below), `export const revalidate` (seconds, opts into the HTML response cache, only for a page identical for every visitor), and `export const action` (the write path, below).
+Optional named exports: `metadata` / `generateMetadata` (below) and `export const revalidate` (seconds, opts into the HTML response cache, only for a page identical for every visitor). There is no `action` export; the write path is a form bound to a `'use server'` action (below).
 
 ## Layouts (`app/**/layout.ts`)
 

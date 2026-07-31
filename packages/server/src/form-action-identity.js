@@ -99,16 +99,28 @@ async function scanForIdentity(idx, fn) {
  * Resolve an identity string back to the function it names, for the form
  * dispatcher.
  *
- * Returns a `reason` rather than a bare null on failure, because the two
- * failures need different responses. An unknown HASH is a deploy skew (a form
- * rendered by an older build, submitted against a newer one), which re-renders
- * the page with a resubmit message. An unknown FUNCTION inside a known file is
- * a real 404: that file exists and simply has no such export.
+ * Returns a `reason` rather than a bare null on failure, because the failures
+ * need different responses. An unknown HASH is a deploy skew (a form rendered
+ * by an older build, submitted against a newer one), which re-renders the page
+ * with a resubmit message. An unknown FUNCTION inside a known file is a real
+ * 404: that file exists and simply has no such export.
+ *
+ * A module that THROWS at import is a third case, and folding it into skew was
+ * a real defect. The hash resolves (the index only hashes paths, it never
+ * imports), so a `.server.ts` whose module scope throws (a DB connection built
+ * at load with a missing env var) would answer every submission with "please
+ * submit again" forever, with the actual error discarded: no log line, no
+ * `onError`, nothing. The same broken module surfaces a logged 500 through a
+ * page render and through the RPC endpoint, which lets `loadModule` throw on
+ * purpose, so the form path was the one place it went silent. The error is
+ * carried out instead and the caller turns it into a sanitized, digest-logged
+ * 500 like any other action throw.
  *
  * @param {import('./actions.js').ActionIndex} idx
  * @param {string} id the submitted `<hash>/<fn>` value
  * @returns {Promise<{ ok: true, file: string, fnName: string, module: Record<string, unknown> }
- *   | { ok: false, reason: 'malformed' | 'skew' | 'unknown-fn' }>}
+ *   | { ok: false, reason: 'malformed' | 'skew' | 'unknown-fn' }
+ *   | { ok: false, reason: 'load-failed', error: unknown }>}
  */
 export async function lookupActionIdentity(idx, id) {
   const raw = typeof id === 'string' ? id : '';
@@ -121,8 +133,8 @@ export async function lookupActionIdentity(idx, id) {
   let module;
   try {
     module = await import(pathToFileURL(file).toString() + (idx.dev ? `?t=${Date.now()}-${Math.random().toString(36).slice(2)}` : ''));
-  } catch {
-    return { ok: false, reason: 'skew' };
+  } catch (error) {
+    return { ok: false, reason: 'load-failed', error };
   }
   return { ok: true, file, fnName, module };
 }
