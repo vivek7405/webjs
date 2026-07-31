@@ -24,8 +24,8 @@ export default function ProgressiveEnhancement() {
       <li><strong>Page rendering.</strong> Every <code>page.ts</code> runs on the server and emits HTML. Layouts, metadata, OG tags, the page body all arrive in the first response.</li>
       <li><strong>Custom elements' initial markup.</strong> Every web component's <code>render()</code> runs server-side. Light-DOM components serialize as direct children, and shadow-DOM components emit Declarative Shadow DOM so scoped styles paint before JS loads.</li>
       <li><strong>Navigation.</strong> <code>&lt;a href="..."&gt;</code> is a real link. The client router enhances it into a partial-swap when JS is active. With JS off, the browser performs a standard navigation.</li>
-      <li><strong>Form submissions (write-paths).</strong> Server actions are reachable as plain HTML form POSTs:
-        <pre>&lt;form action="/actions/createPost" method="post"&gt;
+      <li><strong>Form submissions (write-paths).</strong> A server action binds straight into the form and submits as a plain HTML POST:
+        <pre>&lt;form action=\${createPost}&gt;
   &lt;input name="title"&gt;
   &lt;textarea name="body"&gt;&lt;/textarea&gt;
   &lt;button type="submit"&gt;Save&lt;/button&gt;
@@ -121,31 +121,33 @@ Counter.register('my-counter');</pre>
   ${'${post.title}'}
 &lt;/button&gt;</pre>
 
-    <h3>2. Use <code>&lt;form&gt;</code> + a page action for writes</h3>
+    <h3>2. Use <code>&lt;form action=\${importedAction}&gt;</code> for writes</h3>
 
     <p>
-      A <code>page.ts</code> may export an <code>action</code> alongside its default render function. A non-GET <code>&lt;form&gt;</code> submission to the page's own URL runs the action, which returns an <code>ActionResult</code>. It works as a plain HTML POST when JS is off, and as a partial-swap submission when JS is on. <strong>One piece of code covers both ends of the spectrum, and no form library is involved.</strong>
+      Bind a <code>'use server'</code> action into the form and that is the whole wiring. The renderer omits the <code>action</code> attribute so the form posts to the page's own URL, supplies <code>method="post"</code> and an enctype, and emits a hidden field carrying the action's identity. The submission runs the action, which returns an <code>ActionResult</code>. It works as a plain HTML POST when JS is off, and as a partial-swap submission when JS is on. <strong>One piece of code covers both ends of the spectrum, and no form library is involved.</strong>
     </p>
 
     <p>
       The action validates on the server, then returns one of two outcomes. A <strong>success</strong> result is a <code>303 See Other</code> to <code>result.redirect</code> (Post/Redirect/Get). A <strong>failure</strong> result re-SSRs the same page at <code>422</code> with the result on <code>ctx.actionData</code>, so the page repopulates the fields from <code>actionData.values</code> and shows the messages from <code>actionData.fieldErrors</code>.
     </p>
 
-    <pre>// app/posts/page.ts
-import { html } from '@webjsdev/core';
-import { createPost } from '#modules/posts/actions/create-post.server.ts';
-
-// runs only on the server, receives the already-parsed formData
-export async function action({ formData }: { formData: FormData }) {
+    <pre>// modules/posts/actions/create-post.server.ts
+'use server';
+// A form-bound action always receives the FormData.
+export async function createPost(formData: FormData) {
   const title = String(formData.get('title') || '').trim();
   const body = String(formData.get('body') || '').trim();
   const values = { title, body };
   if (!title) {
     return { success: false, fieldErrors: { title: 'Title is required' }, values, status: 422 };
   }
-  const post = await createPost({ title, body });
-  return { success: true, redirect: \`/posts/\${post.id}\` };
+  const post = await db.insert(posts).values({ title, body }).returning();
+  return { success: true, redirect: \`/posts/\${post[0].id}\` };
 }
+
+// app/posts/page.ts
+import { html } from '@webjsdev/core';
+import { createPost } from '#modules/posts/actions/create-post.server.ts';
 
 export default function NewPost({ actionData }: {
   actionData?: { fieldErrors?: Record&lt;string, string&gt;; values?: Record&lt;string, string&gt; };
@@ -153,7 +155,7 @@ export default function NewPost({ actionData }: {
   const errors = actionData?.fieldErrors || {};
   const values = actionData?.values || {};
   return html\`
-    &lt;form method="POST"&gt;
+    &lt;form action=\${createPost}&gt;
       &lt;input name="title" value=\${values.title || ''} required&gt;
       \${errors.title ? html\`&lt;p class="error"&gt;\${errors.title}&lt;/p&gt;\` : ''}
       &lt;textarea name="body" required&gt;\${values.body || ''}&lt;/textarea&gt;
@@ -163,7 +165,11 @@ export default function NewPost({ actionData }: {
 }</pre>
 
     <p>
-      With JS off the browser submits, follows the 303, or renders the 422. With JS on the client router applies the 422 in place (no reload, typed input preserved) and follows the 303 via fetch. Avoid the pattern of <code>fetch('/api/...')</code> + a click handler for write-paths. That's JS-required by construction.
+      With JS off the browser submits, follows the 303, or renders the 422. With JS on the client router posts the same body to the same URL, applies the 422 in place (no reload, typed input preserved) and follows the 303 via fetch, so the two paths are identical by construction rather than by two implementations agreeing. Both are Origin-verified, so a no-JS form needs no CSRF token field. Avoid the pattern of <code>fetch('/api/...')</code> + a click handler for write-paths. That's JS-required by construction.
+    </p>
+
+    <p>
+      A form that binds nothing gets a <code>405</code>: there is no page <code>action</code> export to catch a bare <code>&lt;form method="post"&gt;</code>. A form with several submit buttons binds one action and dispatches on a button's <code>name</code>, since <code>formaction=\${fn}</code> is refused.
     </p>
 
     <h3>3. Make components render correctly on the server</h3>
@@ -254,7 +260,7 @@ class Cart extends WebComponent {
     <ul>
       <li>Reload the page. Content should paint. Look for an empty container, a stuck loading skeleton, or a JS-rendered widget showing nothing. Those indicate a hydration-dependent first paint.</li>
       <li>Navigate via the page's links. Each should produce a full page load that lands on the right URL.</li>
-      <li>Submit each form. Each should POST to its action URL and render the resulting page.</li>
+      <li>Submit each form. Each should POST to its own page URL and render the resulting page.</li>
       <li>Interactive widgets (counters, dropdowns) won't react. That's expected and fine. The widget's <em>initial</em> state should still be visible.</li>
     </ul>
 

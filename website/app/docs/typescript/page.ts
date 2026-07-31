@@ -142,7 +142,7 @@ export const metadata: Metadata = {
 export async function generateMetadata(ctx: MetadataContext): Promise&lt;Metadata&gt; {
   return { title: ${'`Post: ${ctx.params.slug}`'}, metadataBase: new URL(ctx.url).origin };
 }</pre>
-    <p><code>Metadata</code> covers every field the SSR pipeline reads. Each field is optional, and string-or-object fields (<code>title</code>, <code>viewport</code>, <code>robots</code>, <code>appleWebApp</code>, <code>icons</code>) are unions, so both forms type-check. <code>MetadataContext</code> is <code>{ params, searchParams, url, actionData }</code> (where <code>actionData</code> is set only on a failed-page-action re-render). See <a href="/docs/metadata-routes">Metadata Routes</a> for the full field reference.</p>
+    <p><code>Metadata</code> covers every field the SSR pipeline reads. Each field is optional, and string-or-object fields (<code>title</code>, <code>viewport</code>, <code>robots</code>, <code>appleWebApp</code>, <code>icons</code>) are unions, so both forms type-check. <code>MetadataContext</code> is <code>{ params, searchParams, url, actionData }</code> (where <code>actionData</code> is set only on a failed form-action re-render). See <a href="/docs/metadata-routes">Metadata Routes</a> for the full field reference.</p>
 
     <h3>Page / layout / route-handler props (<code>PageProps</code>, <code>LayoutProps</code>, <code>RouteHandlerContext</code>)</h3>
     <p>A page default export receives <code>{ params, searchParams, url, actionData }</code>; a layout receives the same plus <code>children</code>; a <code>route.ts</code> handler receives <code>(request, { params })</code>. Type each with the exported helpers so a typo in a param name or a wrong-typed field is a compile-time error (#258).</p>

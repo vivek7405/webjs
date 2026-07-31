@@ -62,28 +62,18 @@ if (!check.valid) return new Response('Forbidden', { status: 403 });</pre>
     <p>An explicit <code>expiresIn</code> of <code>0</code> or a negative number fails CLOSED (the minted URL is already expired), so a "no access" intent never silently becomes a 1-hour grant. The 1-hour default applies only when <code>expiresIn</code> is omitted.</p>
 
     <h2>Recipe: upload, persist, and serve back</h2>
-    <p>A file upload is a <code>&lt;form enctype="multipart/form-data"&gt;</code> posting to a page <code>action</code>. With JS disabled it is a native round-trip, with JS the client router upgrades it in place. No upload library, no <code>fetch</code>. The bytes are streamed to storage via <code>getFileStore()</code>, never buffered whole.</p>
+    <p>A file upload is a <code>&lt;form&gt;</code> bound to a <code>'use server'</code> action. The renderer supplies the <code>multipart/form-data</code> enctype an upload needs, so the binding is the whole wiring. With JS disabled it is a native round-trip, with JS the client router upgrades it in place. No upload library, no <code>fetch</code>. The bytes are streamed to storage via <code>getFileStore()</code>, never buffered whole.</p>
 
     <pre>// app/avatar/page.ts
 import { html } from '@webjsdev/core';
 import { saveAvatar } from '#modules/avatar/actions/save-avatar.server.ts';
-
-export async function action({ formData }: { formData: FormData }) {
-  const file = formData.get('avatar');               // a web File
-  if (!(file instanceof File) || file.size === 0) {
-    return { success: false, fieldErrors: { avatar: 'Choose an image' }, status: 422 };
-  }
-  const result = await saveAvatar(file);             // persists + returns the key
-  if (!result.success) return result;
-  return { success: true, redirect: '/avatar' };
-}
 
 export default function Avatar({ actionData }: {
   actionData?: { fieldErrors?: Record&lt;string, string&gt; };
 }) {
   const errors = actionData?.fieldErrors || {};
   return html\`
-    &lt;form method="POST" enctype="multipart/form-data" class="flex flex-col gap-3"&gt;
+    &lt;form action=\${saveAvatar} class="flex flex-col gap-3"&gt;
       &lt;input name="avatar" type="file" accept="image/*" required&gt;
       \${errors.avatar ? html\`&lt;p class="text-sm text-red-600"&gt;\${errors.avatar}&lt;/p&gt;\` : ''}
       &lt;button type="submit"&gt;Upload&lt;/button&gt;
@@ -91,7 +81,7 @@ export default function Avatar({ actionData }: {
   \`;
 }</pre>
 
-    <p>The page <code>action</code> delegates to a <code>'use server'</code> action that streams the file to storage with a generated, traversal-safe key and persists that key on the DB row.</p>
+    <p>The bound action receives the <code>FormData</code>, pulls the <code>File</code> out of it, and streams it to storage with a generated, traversal-safe key, persisting that key on the DB row.</p>
 
     <pre>// modules/avatar/actions/save-avatar.server.ts
 'use server';
@@ -100,7 +90,11 @@ import { eq } from 'drizzle-orm';
 import { db } from '#db/connection.server.ts';
 import { users } from '#db/schema.server.ts';
 
-export async function saveAvatar(file: File) {
+export async function saveAvatar(formData: FormData) {
+  const file = formData.get('avatar');               // a web File
+  if (!(file instanceof File) || file.size === 0) {
+    return { success: false, fieldErrors: { avatar: 'Choose an image' }, status: 422 };
+  }
   const key = generateKey(file.name);                // &lt;uuid&gt;.&lt;ext&gt;, safe
   const { size, contentType } = await getFileStore().put(key, file); // streams to disk
   if (size &gt; 5 * 1024 * 1024) {                      // app-level policy check
@@ -108,7 +102,7 @@ export async function saveAvatar(file: File) {
     return { success: false, fieldErrors: { avatar: 'Max 5 MB' }, status: 422 };
   }
   await db.update(users).set({ avatarKey: key }).where(eq(users.id, 'me'));
-  return { success: true, data: { key, contentType } };
+  return { success: true, redirect: '/avatar', data: { key, contentType } };
 }</pre>
 
     <p>Serve the stored file from a <code>route.ts</code>, streaming <code>get(key)</code> and gating it behind a signed URL so the object is not world-readable by key alone.</p>

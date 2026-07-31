@@ -119,7 +119,7 @@ import { listPosts } from '#modules/posts/queries/list-posts.server.ts';</pre>
     </p>
     <ul>
       <li><strong>Read-paths:</strong> the SSR'd HTML is the user's first interaction. With JS disabled, content reads, <code>&lt;a&gt;</code> links navigate, and display-only custom elements render correctly.</li>
-      <li><strong>Write-paths:</strong> server actions are reachable as plain HTML form POSTs. A <code>&lt;form action=${"/actions/foo"}&gt;</code> works without JavaScript, and the framework upgrades it to a partial-swap submission once the client router is active.</li>
+      <li><strong>Write-paths:</strong> a server action binds straight into the form. A <code>&lt;form action=${"${createPost}"}&gt;</code> posts to the page's own URL and works without JavaScript, and the framework upgrades it to a partial-swap submission once the client router is active.</li>
       <li><strong>Interactivity:</strong> JavaScript is only required for behaviors that <em>respond</em> to user input: <code>@click</code>, a signal mutation, drag handlers, focus management. The component's <em>initial</em> render is HTML either way. A counter shows "0" without JS, and only the +/- click handling needs scripts.</li>
     </ul>
     <p>See <a href="/docs/progressive-enhancement">Progressive Enhancement</a> for the full design rationale and patterns.</p>
