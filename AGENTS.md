@@ -396,7 +396,10 @@ class TodoList extends WebComponent({
 
     const result = await promise;
     if (result.success && result.data) {
-      this.todos = [...this.todos.filter(t => t.pending), result.data, ...this.todos.filter(t => !t.pending)];
+      // The optimistic entry has ALREADY auto-released (the promise settled),
+      // so `this.todos` holds only confirmed rows. Append the server's row,
+      // matching the order the `update` reducer used.
+      this.todos = [...this.todos, result.data];
     }
   }
 
