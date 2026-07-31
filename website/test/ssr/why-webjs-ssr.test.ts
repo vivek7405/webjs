@@ -24,36 +24,40 @@ test('the pitch page SSRs with its headline, terminals, reason cards, and a main
   assert.ok(out.includes('<main id="main"'), 'wraps content in a main landmark');
 });
 
-test('the pitch page makes the plain-language prompt and cross-model quality argument', async () => {
+test('the pitch page argues the defaults arrive unasked, and that quality holds across models', async () => {
   // The page used to argue model-agnosticism only from the model side (any
-  // model CAN read the source). These two claims are the reader-side half: a
-  // non-technical prompt still lands on the right structure, and the quality
-  // of the output does not swing with the size of the model.
+  // model CAN read the source). These are the reader-side half. The first claim
+  // is deliberately NOT "you need not know the framework's vocabulary", which
+  // is a non-claim: an agent resolves internals for a technical and a
+  // non-technical prompter alike. It is that the things nobody thinks to ask
+  // for arrive anyway, which is a property of the defaults rather than of the
+  // wording of the prompt.
   const out = await renderToString(Why());
-  assert.ok(out.includes('Describe what you want in plain language'), 'includes the plain-language section heading');
-  assert.ok(out.includes('architecture from a sentence'), 'says the conventions decide the shape, not the prompt');
+  assert.ok(out.includes('You should not have to know what to ask for'), 'includes the unasked-for section heading');
+  assert.ok(out.includes('no reason to know exists'), 'names the gap as not knowing a thing exists, not as not knowing its name');
   assert.ok(out.includes('quality of what comes back'), 'ties model-agnosticism to output quality, not just to whether a model works');
 });
 
-test('the plain-language section pairs a prompt against the files the conventions produce', async () => {
-  // The prose above the demo carries the argument, but the two windows are what
-  // SHOW it, and they were previously unasserted: the whole grid could be
-  // deleted with every test in this file still green. These pin both panels,
-  // their correspondence, and the accessible name each scrollable block needs.
+test('the section names defaults the prompt never asked for', async () => {
+  // The prose carries the argument, but these four cards are what make it
+  // concrete, and an unasserted card grid could be deleted with the rest of the
+  // file still green. Each card must also stay a genuine DEFAULT: if one is
+  // ever reworded into something the prompt has to request, the section's claim
+  // is gone while every other assertion here still passes.
   const out = await renderToString(Why());
-  assert.ok(out.includes('Let customers book a table'), 'the prompt panel carries a request written in ordinary words');
-  for (const file of ['app/book/page.ts', 'app/staff/bookings/page.ts', 'modules/bookings/actions/create.server.ts', 'db/schema.server.ts']) {
-    assert.ok(out.includes(file), `the file panel answers the prompt with ${file}`);
-  }
-  assert.ok(out.includes('<span class="ml-2 font-mono font-medium text-xs leading-none text-fg-subtle">files</span>'), 'the file listing is labelled files, not terminal');
+  const prompt = out.slice(out.indexOf('aria-label="A prompt written the way'), out.indexOf('Nothing in that sentence'));
+  assert.ok(prompt.includes('Let customers book a table'), 'the prompt is a request written the way somebody would say it out loud');
+  assert.ok(prompt.includes('staff see who is coming in'), 'the slice really is the whole prompt panel');
 
-  // The section's whole claim is that the prompt needs no framework vocabulary,
-  // so assert that property of the prompt panel itself rather than tripwiring
-  // one historical phrasing, which any reworded regression would walk past.
-  const prompt = out.slice(out.indexOf('aria-label="A plain-language prompt'), out.indexOf('Where the conventions put it'));
-  assert.ok(prompt.includes('Let customers'), 'the slice really is the prompt panel');
-  for (const jargon of ['page.ts', '.server.ts', 'route', 'component', 'schema', 'action']) {
-    assert.ok(!prompt.includes(jargon), `the prompt says nothing about ${jargon}, so it reads as a request rather than a spec`);
+  for (const claim of ['The information is really kept', 'It works when the code does not load', 'It looks like one product', 'Strangers cannot walk in']) {
+    assert.ok(out.includes(claim), `the section names ${claim} among what arrives unasked`);
+  }
+  assert.ok(out.includes('arrives anyway'), 'says outright that these arrive without being requested');
+
+  // None of the four may appear in the prompt, or the section is demonstrating
+  // the opposite of what it claims.
+  for (const asked of ['database', 'design system', 'session', 'secure', 'production']) {
+    assert.ok(!prompt.includes(asked), `the prompt never asks for ${asked}, which is the entire point of the four cards below it`);
   }
 });
 
@@ -63,7 +67,7 @@ test('the /why-webjs description answers in the snippet window a SERP actually s
   const { description } = generateMetadata({ url: 'https://webjs.dev/why-webjs' });
   const firstSentence = description.slice(0, description.indexOf('. ') + 1);
   assert.ok(firstSentence.length <= 160, `first sentence is ${firstSentence.length} chars, over the 160-char snippet window`);
-  assert.ok(firstSentence.includes('plain language'), 'the plain-language claim is inside the snippet window, not past it');
+  assert.ok(firstSentence.includes('nobody thinks to ask for'), 'the unasked-for claim is inside the snippet window, not past it');
 });
 
 test('why metadata is self-consistent and points at the dedicated /why-webjs social card', () => {

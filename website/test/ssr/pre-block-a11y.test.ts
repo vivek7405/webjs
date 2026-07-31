@@ -1,18 +1,20 @@
 /**
- * The accessible name on every code block the marketing pages render.
+ * The accessibility rules every code block on the marketing pages follows.
  *
- * A <pre> maps to ARIA role `generic`, and ARIA prohibits an author-supplied
- * name on `generic`, so a bare <pre aria-label="..."> gives a spec-following
- * screen reader a name it will not announce. Every block that carries a name
- * therefore carries an explicit `role="region"` to make that name one ARIA
- * permits, and because a named region is a landmark, the names have to be
- * unique per page or they collapse into an ambiguous pair in the landmark list.
+ * Three rules, each checkable from the rendered markup alone:
  *
- * This lives in its own file rather than inside each page's test because the
- * rule is a property of the SITE, not of one page. The pages here were fixed
- * together, and pinning them together is what stops the next one from drifting
- * back: the sweep that fixed them originally covered one page, and the other
- * two went unobserved until a review caught it.
+ *  1. A named block carries `role="region"`. A <pre> maps to ARIA role
+ *     `generic`, and ARIA prohibits an author-supplied name on `generic`, so a
+ *     bare <pre aria-label="..."> hands a spec-following screen reader a name
+ *     it will not announce.
+ *  2. No two blocks on a page share a name. A named region is a landmark, and
+ *     duplicates collapse into an ambiguous pair in the landmark list.
+ *  3. A block that can scroll carries `tabindex="0"`. `overflow-x-auto` makes
+ *     it a scroll container at some viewport width, and a scroll container no
+ *     keyboard can reach is unusable without a pointer.
+ *
+ * This lives in its own file, and loops over every page that renders code
+ * blocks, because the rules belong to the site rather than to any one page.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -26,9 +28,9 @@ function preTags(html: string) {
   return html.match(/<pre\b[^>]*>/g) ?? [];
 }
 
-function nameOf(tag: string) {
-  return tag.match(/aria-label="([^"]*)"/)?.[1];
-}
+const nameOf = (tag: string) => tag.match(/aria-label="([^"]*)"/)?.[1];
+/** Read attributes by name, never by position: order is not a defect. */
+const has = (tag: string, attr: RegExp) => attr.test(tag);
 
 const PAGES = [
   { name: '/', render: () => Home() },
@@ -39,14 +41,10 @@ const PAGES = [
 for (const page of PAGES) {
   test(`every named code block on ${page.name} carries a role that permits the name`, async () => {
     const tags = preTags(await renderToString(page.render()));
-    assert.ok(tags.length > 0, 'the page renders at least one code block');
     const named = tags.filter(nameOf);
-    assert.ok(named.length > 0, 'the page renders at least one NAMED code block, so this test has something to check');
+    assert.ok(named.length > 0, 'the page renders at least one named code block, so this test has something to check');
     for (const tag of named) {
-      // Read the role by attribute, not by position: an order-sensitive regex
-      // would red on correct markup that simply wrote the attributes the other
-      // way round.
-      assert.match(tag, /\brole="region"/, `a named pre is missing role=region, so its name is one ARIA prohibits: ${nameOf(tag)}`);
+      assert.ok(has(tag, /\brole="region"/), `a named pre is missing role=region, so its name is one ARIA prohibits: ${nameOf(tag)}`);
     }
   });
 
@@ -54,18 +52,12 @@ for (const page of PAGES) {
     const named = preTags(await renderToString(page.render())).map(nameOf).filter(Boolean);
     assert.deepEqual([...new Set(named)], named, `duplicate landmark names on ${page.name}: ${named.join(', ')}`);
   });
-}
 
-test('a code block with no name needs no role, so it adds no landmark', async () => {
-  // The home page's toggled usage block holds one short line that never becomes
-  // a scroll container at a real viewport width. It carries no name and no
-  // focus stop on purpose, and promoting it would add an empty-ish landmark and
-  // a permanent tab stop on content nothing can interact with.
-  const tags = preTags(await renderToString(Home()));
-  const unnamed = tags.filter((t) => !nameOf(t));
-  assert.ok(unnamed.length > 0, 'the home page still renders an unnamed code block');
-  for (const tag of unnamed) {
-    assert.doesNotMatch(tag, /\brole="region"/, 'an unnamed block claims a landmark role it has no name for');
-    assert.doesNotMatch(tag, /\btabindex=/, 'an unnamed, non-scrolling block takes a tab stop for nothing');
-  }
-});
+  test(`every scrollable code block on ${page.name} can be reached by keyboard`, async () => {
+    const scrollable = preTags(await renderToString(page.render())).filter((t) => has(t, /\boverflow-x-auto\b/));
+    assert.ok(scrollable.length > 0, 'the page renders at least one scrollable code block');
+    for (const tag of scrollable) {
+      assert.ok(has(tag, /\btabindex="0"/), `a scrollable pre has no focus stop, so only a pointer can scroll it: ${nameOf(tag) ?? tag.slice(0, 80)}`);
+    }
+  });
+}

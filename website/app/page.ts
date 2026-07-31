@@ -232,7 +232,7 @@ export default function LandingPage() {
             <div class="flex-1 grid place-items-center px-6 py-10 group-has-[:checked]/stage:hidden">
               <like-button count="3"></like-button>
             </div>
-            <pre class="hidden group-has-[:checked]/stage:block flex-1 m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] text-left"><code>${highlight(USAGE_SAMPLE)}</code></pre>
+            <pre class="hidden group-has-[:checked]/stage:block flex-1 m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] text-left" role="region" tabindex="0" aria-label="like-button usage"><code>${highlight(USAGE_SAMPLE)}</code></pre>
             <div class="px-4 py-3 border-t border-border text-center font-mono text-xs leading-[1.5] text-fg-subtle">
               Server-rendered first, then upgraded. Click it.
             </div>

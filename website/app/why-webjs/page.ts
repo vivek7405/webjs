@@ -24,7 +24,7 @@ export function generateMetadata(ctx: { url: string }) {
   const image = `${origin}/public/og-why.png`;
   const title = 'Why WebJs - The Framework Your AI Agent Already Understands';
   const description =
-    'WebJs is a full-stack JavaScript framework you describe in plain language, because the file conventions land an app in the right shape whatever model you use. Nothing is hidden behind a build step, so any AI model reads the framework source from node_modules, reasons about the whole stack, and debugs it. No training data required, no single blessed model, on the web components and HTML every model already knows.';
+    'WebJs gives an AI-built app what nobody thinks to ask for: real storage, pages that work before scripts load, one design system, security by default. Nothing is hidden behind a build step either, so any AI model reads the framework source from node_modules, reasons about the whole stack, and debugs it. No training data required, no single blessed model, on the web components and HTML every model already knows.';
   return {
     title,
     description,
@@ -69,6 +69,29 @@ const REASONS = [
   {
     title: 'Standard HTML and JavaScript',
     body: 'WebJs is built on web components, custom elements, SSR, and forms. Every model, small or large, is already trained on the platform primitives, so the muscle memory transfers instead of fighting a bespoke abstraction.',
+  },
+];
+
+// The things an experienced developer adds without being asked, and that a
+// person outside the field has no reason to know they should ask for. Each is a
+// DEFAULT of the framework or of what `webjs create` scaffolds, not an outcome
+// the prompt has to request, which is the whole claim of the section.
+const UNASKED = [
+  {
+    title: 'The information is really kept',
+    body: 'Not a list living inside the code that empties every time the app restarts. A scaffolded app arrives wired to a real database with a schema and migrations, and the conventions point an agent at it rather than at a temporary stand-in. Swap in whichever database you prefer later. The point is that one is there from the first command, without anybody asking.',
+  },
+  {
+    title: 'It works when the code does not load',
+    body: 'Every page and component is rendered to finished HTML on the server, so text reads, links work, and forms submit before a single script arrives. Scripts are added for the parts that genuinely need to react, so a bad connection degrades the app instead of emptying it.',
+  },
+  {
+    title: 'It looks like one product',
+    body: 'Colour, type, and spacing come from a small set of design tokens the layout sets once, so every screen the app grows shares them instead of each being styled from scratch. Change the palette in that one place and the whole app follows.',
+  },
+  {
+    title: 'Strangers cannot walk in',
+    body: 'Sessions and sign-in are part of the framework rather than something bolted on later, a request that tries to act on your app from another site is refused, and the security headers browsers look for are set for you. None of it is a step somebody has to remember.',
   },
 ];
 
@@ -168,45 +191,41 @@ Counter.register('counter');
 
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">
-        <div class="max-w-3xl mx-auto mb-12 text-center">
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Describe what you want in plain language</h2>
+        <div class="max-w-3xl mx-auto mb-10 text-center">
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">You should not have to know what to ask for</h2>
           <p class="text-fg-muted text-base leading-[1.6] m-0">
-            You do not have to know what a route handler or a server action is
-            to ask for one. Say what the app should do, the way you would say it
-            out loud, and the agent still lands on the right structure, because
-            the structure was decided before the prompt was written. Where a
-            page lives, where a form submission is handled, and where database
-            code is allowed to run are all answered by file and folder
-            convention, so the model fills in a shape instead of inventing an
-            architecture from a sentence.
+            The hard part of asking for software is not describing what you
+            want. It is knowing the dozen things an experienced developer would
+            add without being asked, and never thinking to say them. Somebody
+            asking for their first app does not say keep the information
+            somewhere it survives a restart, or make sure the pages still work
+            when the code fails to load, or keep every screen looking like the
+            same product. Those are the difference between a demo and something
+            you can put in front of customers, and they are exactly what a
+            person outside the field has no reason to know exists.
           </p>
         </div>
-        <div class="grid grid-cols-1 wide:grid-cols-2 gap-4 items-stretch max-w-3xl mx-auto">
-          <div class="flex flex-col min-w-0">
-            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">What you ask for</p>
-            <figure class=${WIN}>
-              <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>prompt</span></figcaption>
-              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="A plain-language prompt with no technical terms in it"><code><span class="text-accent">&gt;</span> Let customers book a table, save the
-  bookings, and give staff today's list.
-
-<span class="text-fg-subtle"># no framework terms, no file names, no</span>
-<span class="text-fg-subtle"># architecture. just the thing you want.</span></code></pre>
-            </figure>
-          </div>
-          <div class="flex flex-col min-w-0">
-            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Where the conventions put it</p>
-            <figure class=${WIN}>
-              <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>files</span></figcaption>
-              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="The files a WebJs app grows for that request"><code>app/book/page.ts
-<span class="text-fg-subtle">  the page, server-rendered to real HTML</span>
-app/staff/bookings/page.ts
-<span class="text-fg-subtle">  the staff view, its own route</span>
-modules/bookings/actions/create.server.ts
-<span class="text-fg-subtle">  the write, server-side by extension</span>
-db/schema.server.ts
-<span class="text-fg-subtle">  the table it all reads and writes</span></code></pre>
-            </figure>
-          </div>
+        <div class="max-w-xl mx-auto mb-10">
+          <figure class=${WIN}>
+            <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>prompt</span></figcaption>
+            <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2]" role="region" tabindex="0" aria-label="A prompt written the way somebody would say it out loud"><code><span class="text-accent">&gt;</span> Let customers book a table, and let my
+  staff see who is coming in today.</code></pre>
+          </figure>
+        </div>
+        <div class="max-w-3xl mx-auto mb-8 text-center">
+          <p class="text-fg-muted text-base leading-[1.6] m-0">
+            Nothing in that sentence asks for any of the following. All of it
+            arrives anyway, because it is what WebJs does by default rather than
+            something the prompt has to request.
+          </p>
+        </div>
+        <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 xs:grid-cols-2 shadow-[var(--shadow-sm)] max-w-3xl mx-auto">
+          ${UNASKED.map(u => html`
+            <div class="${CARD}">
+              <h3 class="font-display font-bold text-lg leading-[1.3] tracking-[-0.02em] mt-0 mb-2">${u.title}</h3>
+              <p class="m-0 text-sm leading-[1.65] text-fg-muted">${u.body}</p>
+            </div>
+          `)}
         </div>
       </div>
     </section>

@@ -199,6 +199,16 @@ calling an action), re-enable it and delete the assertion in
   (same palette / type scale as the blog and docs).
 - Each section in `page.ts` is a `<section>` wrapper for predictable
   scroll anchors.
+- **Code blocks follow three accessibility rules**, enforced by
+  `test/ssr/pre-block-a11y.test.ts` across every page that renders one.
+  A `<pre>` maps to ARIA role `generic`, where ARIA prohibits an
+  author-supplied name, so a named block carries `role="region"` to make
+  the name legal. A named region is a landmark, so no two blocks on a
+  page may share a name (`aria-label="Example files"` on two cards is
+  the mistake to avoid; name each for what it shows). And a block with
+  `overflow-x-auto` is a scroll container at some viewport width, so it
+  carries `tabindex="0"`, since a scroll container no keyboard can reach
+  is unusable without a pointer.
 
 ## Run
 
