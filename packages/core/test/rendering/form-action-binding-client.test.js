@@ -207,6 +207,34 @@ test('an action hole that resolves to a URL releases the binding', () => {
     'the stale identity field must not survive the release');
 });
 
+test('an action hole that resolves to null releases the binding too', () => {
+  // The removal branch is a separate path from the string one, and SSR renders
+  // this template with no identity at all, so keeping the field would leave the
+  // client submitting to an action the server never bound.
+  const fn = HOISTED();
+  const host = document.createElement('div');
+  const tpl = (a) => html`<form action=${a}></form>`;
+  render(tpl(fn), host);
+  assert.equal(host.querySelectorAll('input[name="__webjs_action"]').length, 1);
+  render(tpl(null), host);
+  assert.equal(host.querySelectorAll('input[name="__webjs_action"]').length, 0,
+    'the identity must not survive an action hole going null');
+});
+
+test('a bound form with no author-written attributes survives a plain re-render', () => {
+  // The absent-is-an-error rule must not fire on the attributes the BIND
+  // supplied. A child-only re-render touches no attribute, so nothing is noted,
+  // but this pins the shape most apps actually write.
+  const fn = HOISTED();
+  const host = document.createElement('div');
+  const tpl = (v) => html`<form action=${fn}><input name="a" value=${v}></form>`;
+  render(tpl('1'), host);
+  render(tpl('2'), host);
+  const form = host.querySelector('form');
+  assert.equal(form.getAttribute('method'), 'post');
+  assert.equal(form.getAttribute('enctype'), 'multipart/form-data');
+});
+
 test('an ordinary form that binds no action keeps its method hole', () => {
   // The carve-out for the write-path check: it must be a no-op on any form that
   // is not bound, or a plain search form stops working.

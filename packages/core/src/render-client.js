@@ -693,8 +693,14 @@ function applyPart(part, value, _prev, allValues) {
       // the form falls back to the HTML default GET, which is the same silent
       // break as writing `"get"` outright.
       noteBoundFormAttrWrite(part.el, part.name);
-      if (value == null || value === false) part.el.removeAttribute(part.name);
-      else if (isBoundFormAction(value, part.name, part.el.localName)) {
+      if (value == null || value === false) {
+        // An `action` hole resolving to null / false un-binds the form just as
+        // a string url does, so the identity goes with it. Without this the
+        // field survives and the form still submits to the old action, while
+        // SSR renders the same template with no identity at all.
+        if (String(part.name).toLowerCase() === 'action') releaseFormAction(part.el);
+        part.el.removeAttribute(part.name);
+      } else if (isBoundFormAction(value, part.name, part.el.localName)) {
         // #1155: the ONE supported form-action binding, applied to the live
         // form exactly as SSR wrote it. A component that ships re-renders its
         // whole template on hydration, so without this the SSR'd hidden field
