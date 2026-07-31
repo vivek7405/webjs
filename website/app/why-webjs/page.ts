@@ -91,7 +91,7 @@ const ARRIVES = [
   },
   {
     title: 'Design system',
-    body: 'A palette, type scale, and spacing live as design tokens the layout sets once, so every screen the app grows shares them, and changing how the whole thing looks stays a single edit.',
+    body: 'A palette and a type scale ship as design tokens rather than values scattered through components, so every screen the app grows shares them and restyling the whole thing means editing the tokens, not hunting through the markup.',
   },
 ];
 

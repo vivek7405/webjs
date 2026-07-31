@@ -13,8 +13,11 @@
  *     it a scroll container at some viewport width, and a scroll container no
  *     keyboard can reach is unusable without a pointer.
  *
- * This lives in its own file, and loops over every page that renders code
- * blocks, because the rules belong to the site rather than to any one page.
+ * This lives in its own file, and loops over the pages in PAGES, because the
+ * rules belong to the site rather than to any one page. PAGES is the three
+ * marketing pages, NOT every page that renders a code block: the /docs and /ui
+ * pages scroll their blocks through a stylesheet rule and do not satisfy rule 3
+ * yet. Add a page here as it is brought into line.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -53,7 +56,10 @@ for (const page of PAGES) {
     assert.deepEqual([...new Set(named)], named, `duplicate landmark names on ${page.name}: ${named.join(', ')}`);
   });
 
-  test(`every scrollable code block on ${page.name} can be reached by keyboard`, async () => {
+  test(`every code block marked scrollable on ${page.name} can be reached by keyboard`, async () => {
+    // Detected by the utility class, so a block made scrollable only by a
+    // stylesheet rule is out of scope here. Every block on these three pages
+    // carries the class, which is why that is sufficient for them.
     const scrollable = preTags(await renderToString(page.render())).filter((t) => has(t, /\boverflow-x-auto\b/));
     assert.ok(scrollable.length > 0, 'the page renders at least one scrollable code block');
     for (const tag of scrollable) {
