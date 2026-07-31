@@ -159,10 +159,32 @@ export function assetHashFor(absPath) {
     const bytes = readFileSync(absPath);
     const h = createHash('sha256').update(bytes);
     // An app module's served body is elision-transformed, so fold the verdict
-    // fingerprint in (see `_elisionFp`). Core / public files are never
-    // transformed, so they hash over their bytes alone. Empty fp leaves an app
-    // module's hash at exactly `sha256(bytes)`.
-    if (_elisionFp && _appDir && absPath.startsWith(_appDir + sep)) {
+    // fingerprint in (see `_elisionFp`). Core and `public/` files are never
+    // transformed, so they hash over their bytes alone, which the two
+    // exclusions below enforce rather than merely assume. Empty fp leaves an
+    // app module's hash at exactly `sha256(bytes)`.
+    //
+    // Both exclusions are EXPLICIT because the containment test alone admits
+    // them, and the intent above is otherwise silently false:
+    //
+    //   - `public/` sits under `_appDir`. Inert while only module specifiers
+    //     reached here, but `asset()` (#1194) routes public paths through this
+    //     function.
+    //   - `_coreDir` sits under `_appDir` too in a REAL install, where it
+    //     resolves to `<appDir>/node_modules/@webjsdev/core`. It escapes only
+    //     in this monorepo, where the workspace symlink lands outside, which
+    //     is exactly why no in-repo test ever caught it.
+    //
+    // Neither file set is elision-transformed (core is served verbatim by
+    // `fileResponse`), so folding the verdict in buys nothing and costs
+    // correctness: any deploy that merely flips an UNRELATED component between
+    // elidable and interactive would move their urls, re-downloading the whole
+    // core runtime plus every marked stylesheet, image, and script even though
+    // not one of those bytes changed. That is the precise cost a content hash
+    // exists to avoid.
+    if (_elisionFp && _appDir && absPath.startsWith(_appDir + sep)
+        && !absPath.startsWith(join(_appDir, 'public') + sep)
+        && !(_coreDir && absPath.startsWith(_coreDir + sep))) {
       h.update('\0');
       h.update(_elisionFp);
     }
@@ -265,6 +287,46 @@ export function withAssetHash(url, basePath = '') {
   // merge with `&` if one is somehow present.
   const sepChar = url.includes('?') ? '&' : '?';
   return `${url}${sepChar}v=${hash}`;
+}
+
+/**
+ * Resolve one author-marked asset path to its fingerprinted url. This is the
+ * body behind the isomorphic `asset()` helper (#1194); `dev.js` installs it
+ * via `setAssetUrlProvider` at boot.
+ *
+ * The `public/` gate is defensive, not decorative. `resolveUrlToFile` maps any
+ * same-origin path under the PROJECT ROOT, so an app that passed request- or
+ * user-derived data in (`asset(user.avatarPath)`) would otherwise read and
+ * publish a content hash for `/.env`, `/db/app.db`, or a `.server.ts`, leaking
+ * both that the file exists and a fingerprint of its exact bytes for files the
+ * serve path deliberately 404s. Mirror the static-asset route instead: under
+ * `public/`, no traversal. Anything else returns unchanged WITHOUT touching
+ * the disk, so a rejected path costs nothing and reveals nothing.
+ *
+ * A fragment is split before hashing. `withAssetHash` appends the query, so
+ * passing the whole thing would emit `/x.svg#icon?v=H`: the browser then
+ * requests `/x.svg` with no query (losing the immutable caching this exists
+ * for) and the fragment becomes `icon?v=H`, matching no element id.
+ *
+ * @param {string} p          the author-supplied path
+ * @param {string} [bp]       the active base path
+ * @returns {string}          the fingerprinted url, or `p` unchanged
+ */
+export function resolveAssetUrl(p, bp = '') {
+  if (typeof p !== 'string' || p[0] !== '/' || p[1] === '/') return p;
+  let probe = p;
+  if (bp && probe.startsWith(bp + '/')) probe = probe.slice(bp.length);
+  const cuts = [probe.indexOf('?'), probe.indexOf('#')].filter((i) => i !== -1);
+  let decoded = probe.slice(0, cuts.length ? Math.min(...cuts) : probe.length);
+  try { decoded = decodeURIComponent(decoded); } catch { /* keep raw */ }
+  if (decoded.includes('..') || !decoded.startsWith('/public/')) return p;
+  const h = p.indexOf('#');
+  const path = h === -1 ? p : p.slice(0, h);
+  const frag = h === -1 ? '' : p.slice(h);
+  // An author-supplied query is left alone: it may carry meaning we do not
+  // own, and appending would merge with `&`.
+  if (path.includes('?')) return p;
+  return withAssetHash(path, bp) + frag;
 }
 
 /**

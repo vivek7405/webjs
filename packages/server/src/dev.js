@@ -93,7 +93,8 @@ import { setVendorEntries, setCoreInstall, publishBuildId, setAppSourceId, setBa
 import { readBasePath, stripBasePath, withBasePath } from './base-path.js';
 import { propagateTrustedRemoteIp } from './rate-limit.js';
 import { readAllowedOrigins } from './csrf.js';
-import { setAssetRoots, clearAssetHashCache, setElisionFingerprint, withAssetHash, assetHashFor, versionModuleImports } from './asset-hash.js';
+import { setAssetUrlProvider } from '@webjsdev/core';
+import { setAssetRoots, clearAssetHashCache, setElisionFingerprint, withAssetHash, assetHashFor, versionModuleImports, resolveAssetUrl } from './asset-hash.js';
 import { urlFromRequest } from './forwarded.js';
 import { compileHeaderRules, applySecurityHeaders, webRequestIsHttps } from './headers.js';
 import {
@@ -623,6 +624,21 @@ export async function createRequestHandler(opts) {
   // importmap hash with `{ fingerprint: false }`, so the boot-published build
   // id is a stable deploy fingerprint independent of per-file content hashes.
   setAssetRoots({ appDir, coreDir, enabled: !dev });
+
+  // Install the resolver behind the isomorphic `asset()` helper (#1194), the
+  // same provider seam `cspNonce()` uses. An author writes
+  // `href=${asset('/public/app.css')}` and gets the fingerprinted url on the
+  // server; the browser has no provider and returns the path unchanged.
+  //
+  // The `public/` gate is defensive rather than decorative. `resolveUrlToFile`
+  // maps any same-origin path under the PROJECT ROOT, so an app that passed
+  // request- or user-derived data here (`asset(user.avatarPath)`) would
+  // otherwise read and publish a content hash for `/.env`, `/db/app.db`, or a
+  // `.server.ts`, leaking both existence and a fingerprint of the bytes for
+  // files the serve path deliberately 404s. Mirror the static-asset route:
+  // under `public/`, no traversal. Everything else returns unchanged, having
+  // never touched the disk.
+  setAssetUrlProvider((p) => resolveAssetUrl(p, basePath()));
 
   // SSR action-result seeding (#472). Install the process-global module load
   // hook NOW, at boot, before any `'use server'` action module is imported (ESM

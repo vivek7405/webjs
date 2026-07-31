@@ -116,6 +116,7 @@ Find the right export fast. Load the linked reference for full examples.
 - `notFound()` / `redirect(url[, status])` control-flow throws (page/layout/action only, NOT `route.ts`). `forbidden()` / `unauthorized()` render the nearest boundary.
 - `Suspense({fallback, children})` page-level streaming; `<webjs-suspense>` component-level streaming.
 - `optimistic()` optimistic UI; `navigate(url)` / `revalidate(url?)` client-router control; `connectWS` / `richFetch`.
+- `asset(path)` content-hashes a `public/` url so a deploy cannot serve stale bytes (`href=${asset('/public/app.css')}`), served `immutable` for a year. Page / layout / metadata route only, inside the render function. See `references/built-ins.md`.
 - Types: `Metadata`, `PageProps<R>`, `LayoutProps<R>`, `RouteHandlerContext<R>`, `WebjsConfig`.
 - `@webjsdev/core/server`: `renderToString` / `renderToStream` (Node side).
 - `@webjsdev/core/directives`: `repeat`, `unsafeHTML` (trusted only), `live`, `keyed`, `guard`, `cache`, `until`, `watch(signal)`, `ref` / `createRef`, `asyncAppend` / `asyncReplace`, `templateContent`. `Task` / `TaskStatus` live at `@webjsdev/core/task`, context (`createContext` / `ContextProvider` / `ContextConsumer`) at `/context`. See `references/components.md` for the directive table + Task + context.

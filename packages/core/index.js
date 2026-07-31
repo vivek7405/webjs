@@ -15,6 +15,7 @@ export { render } from './src/render-client.js';
 export { escapeText, escapeAttr } from './src/escape.js';
 export { notFound, redirect, forbidden, unauthorized, isNotFound, isRedirect, isForbidden, isUnauthorized } from './src/nav.js';
 export { cspNonce, setCspNonceProvider } from './src/csp-nonce.js';
+export { asset, setAssetUrlProvider } from './src/asset-url.js';
 export { repeat, isRepeat } from './src/repeat.js';
 export { Suspense, isSuspense } from './src/suspense.js';
 export { connectWS } from './src/websocket-client.js';

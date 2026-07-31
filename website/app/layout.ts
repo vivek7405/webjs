@@ -1,4 +1,4 @@
-import { html, cspNonce } from '@webjsdev/core';
+import { html, cspNonce, asset } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
 import { DOCS_START_PATH, UI_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 import { siteFooter } from '#lib/ui/site-footer.ts';
@@ -229,7 +229,7 @@ export default function RootLayout({ children }: { children: unknown }) {
       });
     </script>
 
-    <link rel="stylesheet" href="/public/tailwind.css">
+    <link rel="stylesheet" href=${asset('/public/tailwind.css')}>
     <style>
       /* Foundation tokens + effects that Tailwind utilities cannot express. */
       /* A single static gradient glow layer. It used to breathe (two layers
@@ -439,6 +439,6 @@ export default function RootLayout({ children }: { children: unknown }) {
          by the client router: a copy inside the swap range would depend on
          the router re-executing it, and would never run at all for a reader
          whose first docs page arrives by soft navigation. -->
-    <script src="/public/code-highlight.js" defer nonce="${nonce}"></script>
+    <script src=${asset('/public/code-highlight.js')} defer nonce="${nonce}"></script>
   `;
 }

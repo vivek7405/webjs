@@ -56,8 +56,14 @@ test('full-stack scaffold pre-initialises the Webjs UI kit', async () => {
     // CSS delivery (#947): the layout links a STATIC compiled stylesheet (works
     // with JS off), not the browser runtime. The Tailwind @theme maps live in
     // public/input.css; the token VALUES stay inline in the layout (plain CSS).
-    assert.match(layout, /<link rel="stylesheet" href="\/public\/tailwind\.css">/,
-      'layout links the static compiled stylesheet');
+    // The href goes through asset() (#1194), so the compiled stylesheet carries
+    // a content hash in production and is served immutable: a deploy that
+    // changes the CSS changes the url, and no browser or CDN can serve the old
+    // bytes at the stable path. Still a plain static stylesheet, JS-off safe.
+    assert.match(layout, /<link rel="stylesheet" href=\$\{asset\('\/public\/tailwind\.css'\)\}>/,
+      'layout links the static compiled stylesheet through asset()');
+    assert.match(layout, /import \{[^}]*\basset\b[^}]*\} from '@webjsdev\/core'/,
+      'and imports asset from core');
     assert.doesNotMatch(layout, /tailwind-browser\.js|type="text\/tailwindcss"/,
       'layout no longer ships the Tailwind browser runtime');
     const inputCss = await readFile(join(appDir, 'public', 'input.css'), 'utf8');

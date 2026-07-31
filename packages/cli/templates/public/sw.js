@@ -15,8 +15,17 @@
  *   - Same-origin static assets (the per-file ESM modules, the framework
  *     runtime under /__webjs/core/, vendor bundles, public assets) are
  *     stale-while-revalidate, so a repeat visit works offline. In production
- *     these URLs carry a ?v=<hash> content fingerprint, so a changed file gets
- *     a new URL and the cache can never serve stale bytes.
+ *     the FRAMEWORK-emitted URLs (modules, the core runtime, vendor bundles)
+ *     carry a ?v=<hash> content fingerprint automatically, so a changed file
+ *     gets a new URL and the cache cannot serve stale bytes for those.
+ *
+ *     A public/ asset is the exception: its URL is fingerprinted only when you
+ *     mark it with asset() (href=${asset('/public/app.css')}). An un-marked
+ *     public/ URL is stable across deploys, so this worker serves the CACHED
+ *     copy and revalidates behind it, and the first load after a deploy shows
+ *     the OLD bytes. The cache version below will not necessarily rescue you,
+ *     because the build id it derives from is a deploy fingerprint rather than
+ *     a per-file content hash. Mark any public/ asset whose bytes change.
  *
  * Versioning ties to the deploy. The page registers this worker as
  * `/sw.js?v=<data-webjs-build>` (the importmap build id), so a new deploy

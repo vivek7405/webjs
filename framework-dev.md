@@ -49,7 +49,14 @@ The purge is zone-wide rather than a path list: all four hostnames (`webjs.dev`,
   cmp /tmp/o /tmp/e && echo fresh || echo stale
   ```
 
-The permanent fix for the assets themselves is a content hash in the url, the way the framework already fingerprints module imports and its own emitted urls (`?v=`, #243). `tailwind.css` and the brand marks are referenced by hand-written urls in `website/app/layout.ts` and `website/lib/design/brand.ts`, which that machinery never sees, so they stay on stable urls and depend on this purge. Fingerprinting them would retire the dependency; the workflow stays worthwhile as the safety net for anything else on a stable url.
+The assets that actually caused those incidents no longer depend on this purge. `tailwind.css`, the brand lockups and marks, and the highlight script are marked with `asset()` (#1194) in `website/app/layout.ts`, `website/lib/design/brand.ts`, and `website/app/brand/page.ts` (whose images AND download links are marked, so a designer cannot download the previous drawing while the thumbnail above it shows the new one), so each carries a `?v=<content-hash>` and is served `immutable` for a year. `examples/blog/app/layout.ts` marks its stylesheet for the same reason, since `example-blog.webjs.dev` sits in the same Cloudflare zone. New bytes mean a new url, which no cache can serve stale.
+
+Some urls are deliberately NOT marked, and that is the point of an opt-in helper rather than an automatic rewrite:
+
+- the three **font preloads**, because the real request comes from `@font-face url()` in the compiled stylesheet and CSS `url()` is not rewritten. The preload cache is keyed on the full url, so a versioned hint could never satisfy the unversioned request, and each font would be fetched twice.
+- the **favicons**, whose hrefs are parsed literally by the SEO repo-health tests guarding the #1088 size bug, and where fingerprinting buys almost nothing.
+
+The purge workflow therefore STAYS as the safety net for everything still on a stable url (an asset referenced from CSS, a `srcset` candidate, an un-marked path), and it remains the way to clear the edge after a deploy that changes one of those.
 
 ---
 
@@ -115,6 +122,11 @@ The whole flow is tool-agnostic: the universal pre-commit hook fires for every `
 npm runs first; if it fails (auth, network, transient registry error), the GitHub Release step is skipped and the workflow fails. After fixing, a re-run picks up where it left off: the npm-side check makes the completed package a no-op and only the missing release lands.
 
 The workflow uses `NPM_TOKEN` (repo secret) and the auto-provisioned `GITHUB_TOKEN`. Free for public repos.
+
+**When `server` or the scaffold consumes a NEW `@webjsdev/core` export, core MUST publish first.** `packages/server/src/dev.js` and `context.js` import core symbols statically (`setAssetUrlProvider`, `setCspNonceProvider`), and `webjs create` emits an app that imports them too. A server published against an older core dies at module load with `does not provide an export named ...`, and a cli published first makes every freshly scaffolded app 500 on every route. Two things force the right order:
+
+1. **Give `changelog/core/<version>.md` the EARLIEST `date:` of the batch.** The publish loop sorts by that timestamp ASC, and the tie-break on equal timestamps is filename DESC, which would publish `server` BEFORE `core`. The loop is `set -e` sequential, so core-first is also the fail-safe order: if core's publish fails, nothing after it ships and no skew can reach the registry.
+2. **Bump the declared range in the same release PR.** `packages/server/package.json` still declares `"@webjsdev/core": "^0.7.1"`, which every published core satisfies, so npm cannot catch the skew. Raising it to the version that actually carries the new export makes the resolver enforce the coupling permanently, independent of publish order. The scaffold cannot be range-protected (it installs `@latest`), so it relies on the ordering above.
 
 **Update the global CLI after the publish lands.** The maintainer scaffolds and dogfoods with the globally installed `webjs` CLI, which lags a release until refreshed. So once `release.yml` has published (verify `npm view @webjsdev/cli version` matches the released version), refresh the global CLI on every manager: `npm update -g webjsdev`, `bun add -g webjsdev`, and `mise use -g npm:webjsdev@latest`. Run them AFTER the publish, never at merge time (they pull the LATEST PUBLISHED version). The `mise use` line is the one that actually moves a mise-shimmed `webjs` (a shim on PATH ahead of the npm/bun globals); verify with `mise which webjs`. This is reminded automatically by the `.claude/hooks/release-global-update.sh` PostToolUse hook, which fires when a `chore/release-*` PR merges (escape hatch `WEBJS_NO_RELEASE_GLOBAL_UPDATE=1`, regression test `test/hooks/release-global-update.test.mjs`).
 

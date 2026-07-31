@@ -102,6 +102,21 @@ export const metadata = {
 
     <p>Note that <code>max-age=0</code> is a common default worth thinking about. It keeps the browser revalidating on every view, which is right when deploys must be visible immediately, but it means a stored copy is never reused directly. A small non-zero value is what produces real browser cache hits on back/forward and repeat visits.</p>
 
+    <h2>Static Assets: asset()</h2>
+    <p>A file in <code>public/</code> is served at a stable url, so after a deploy a browser or CDN can keep serving the PREVIOUS bytes until its cache expires. Wrap the url in <code>asset()</code> and it gains a content hash, which the framework then serves <code>immutable</code> for a year:</p>
+
+    <pre>import { html, asset } from '@webjsdev/core';
+
+export default function RootLayout({ children }) {
+  return html\`&lt;link rel="stylesheet" href=\${asset('/public/app.css')}&gt;\`;
+}</pre>
+
+    <p>In production that renders <code>/public/app.css?v=&lt;hash&gt;</code>. New bytes mean a new url, so no cache can serve a stale copy, and the year-long <code>immutable</code> lifetime is safe precisely because the url changes when the file does. The same url un-marked gets a short <code>max-age</code> instead. <code>asset()</code> resolves on the server; the browser has no resolver and returns the path unchanged. Call it from a <strong>page, layout, or metadata route</strong>, which render only on the server. Inside a component that ships to the browser it quietly forfeits the caching it was for: hydration is a full client re-render, so the bare path overwrites the hashed one and the asset is fetched twice. The url stays valid either way, so this is a convention rather than something <code>webjs check</code> rejects. It is off in development, so dev output stays byte-identical, and only <code>public/</code> paths resolve.</p>
+
+    <p>Two smaller rules follow from how it works. Call <code>asset()</code> <strong>inside the render function</strong>, not at module scope: a top-level call is a side effect the elision analyser reads as client work, so hoisting it into a constant ships the whole page or layout to the browser. And mark only files that change with a <strong>deploy</strong>: the hash is memoized for the process lifetime, so a <code>public/</code> file rewritten in place while the server runs would keep its old url while being served <code>immutable</code> for a year. A compiled stylesheet or a committed image is the right shape; a runtime-written upload is not.</p>
+
+    <p><strong>Mark the thing that FETCHES, not a hint.</strong> Do not wrap a <code>&lt;link rel="preload"&gt;</code> whose asset is really fetched by an <code>@font-face url()</code> in your stylesheet. The preload cache is keyed on the full url, so a versioned hint can never satisfy the un-versioned request the CSS makes, and the file downloads twice. Framework-emitted urls (your modules, the core runtime, vendor bundles) are fingerprinted automatically and need no marking.</p>
+
     <h2>Server HTML Response Cache (export const revalidate)</h2>
     <p>For a page that renders identical HTML for every visitor, opt into the server HTML response cache so the SSR pipeline runs once per window instead of once per request (webjs's no-build equivalent of Next.js's Full Route Cache and ISR). Declare a revalidation window on the page module:</p>
 

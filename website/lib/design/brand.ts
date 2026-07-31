@@ -1,4 +1,4 @@
-import { html } from '@webjsdev/core';
+import { html, asset } from '@webjsdev/core';
 
 /**
  * The brand marks.
@@ -16,6 +16,14 @@ import { html } from '@webjsdev/core';
  * hidden variant's download is noise.
  */
 
+// Paths, not resolved urls. `asset()` is called at RENDER time below, never at
+// module scope. The reason is not resolver ordering (the server installs its
+// resolver at boot, before any app module loads, so a module-scope call would
+// in fact resolve): a depth-0 call is a module-scope SIDE EFFECT, and the
+// elision analyser treats that as client work, which pins the whole importing
+// page or layout into the browser bundle. Hoisting the constant here would
+// therefore ship this module and its importer for no benefit. Calling inside
+// the template keeps the module inert and costs a memoized lookup.
 const LOCKUP_DARK = '/public/brand/webjs-lockup-on-dark.svg';
 const LOCKUP_LIGHT = '/public/brand/webjs-lockup-on-light.svg';
 
@@ -37,8 +45,8 @@ export function brandLockup(_id: string, opts: { height?: number } = {}) {
   const cls = `block w-auto`;
   return html`
     <span class="inline-flex items-center" style="height:${h}px">
-      <img src=${LOCKUP_DARK} alt="WebJs" width=${Math.round(h * RATIO)} height=${h} class="${cls} hidden dark:block" style="height:${h}px" />
-      <img src=${LOCKUP_LIGHT} alt="WebJs" width=${Math.round(h * RATIO)} height=${h} class="${cls} dark:hidden" style="height:${h}px" />
+      <img src=${asset(LOCKUP_DARK)} alt="WebJs" width=${Math.round(h * RATIO)} height=${h} class="${cls} hidden dark:block" style="height:${h}px" />
+      <img src=${asset(LOCKUP_LIGHT)} alt="WebJs" width=${Math.round(h * RATIO)} height=${h} class="${cls} dark:hidden" style="height:${h}px" />
     </span>
   `;
 }
@@ -55,8 +63,8 @@ export function brandMark(_id: string, opts: { height?: number } = {}) {
   const h = opts.height ?? 24;
   return html`
     <span class="inline-flex items-center" style="height:${h}px">
-      <img src="/public/brand/webjs-mark-on-dark.svg" alt="WebJs" class="block w-auto hidden dark:block" style="height:${h}px" />
-      <img src="/public/brand/webjs-mark-on-light.svg" alt="WebJs" class="block w-auto dark:hidden" style="height:${h}px" />
+      <img src=${asset('/public/brand/webjs-mark-on-dark.svg')} alt="WebJs" class="block w-auto hidden dark:block" style="height:${h}px" />
+      <img src=${asset('/public/brand/webjs-mark-on-light.svg')} alt="WebJs" class="block w-auto dark:hidden" style="height:${h}px" />
     </span>
   `;
 }

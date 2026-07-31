@@ -1,4 +1,4 @@
-import { html, cspNonce, type Metadata, type LayoutProps } from '@webjsdev/core';
+import { html, cspNonce, asset, type Metadata, type LayoutProps } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
 
 const navLink = (href: string, label: string) => html`
@@ -135,7 +135,7 @@ export default function RootLayout({ children }: LayoutProps) {
         }
       });
     </script>
-    <link rel="stylesheet" href="/public/tailwind.css">
+    <link rel="stylesheet" href=${asset('/public/tailwind.css')}>
     <style>
       :root {
         color-scheme: light dark;

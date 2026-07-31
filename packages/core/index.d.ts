@@ -104,6 +104,7 @@ export { Task, TaskStatus } from './src/task.js';
 // src/*.d.ts (#388 fixed the index.d.ts drift from index.js).
 export { signal, computed, effect, batch, isSignal, Signal } from './src/signal.js';
 export { cspNonce, setCspNonceProvider } from './src/csp-nonce.js';
+export { asset, setAssetUrlProvider } from './src/asset-url.js';
 export { takeSeed, scanSeeds, SEED_MISS } from './src/action-seed-client.js';
 export { markStale, registerKeyTags, consumeStale, parseTagHeader, fetchMark } from './src/action-cache-client.js';
 // Client action-abort plumbing (#492): a superseded async render aborts its

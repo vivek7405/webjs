@@ -140,6 +140,16 @@ jobs:
       # silently vanish on the other. Asserts both directions.
       - name: SSR comment and raw-text handling on Bun
         run: bun test/bun/comment-not-an-element.mjs
+      # asset() url resolution on Bun (#1194): the helper reads the file
+      # synchronously, hashes it with node:crypto, and compares node:path
+      # containment to decide whether a url may be fingerprinted at all. A
+      # divergence would either hand the two runtimes different urls for one
+      # file (thrashing every client's immutable cache across a mixed fleet) or
+      # weaken the gate that keeps a private file from being hashed and
+      # published. Asserts the hash, the fragment split, verdict-independence,
+      # and the traversal refusals.
+      - name: asset() url resolution on Bun
+        run: bun test/bun/asset-url.mjs
       # Dev hot reload on Bun (#514): start `webjs dev` under Bun, edit a
       # re-imported route module, and assert the response updates with NO manual
       # restart. The CLI re-execs under `bun --hot` on Bun (vs `node --watch` on
