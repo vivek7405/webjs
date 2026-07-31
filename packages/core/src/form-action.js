@@ -400,7 +400,10 @@ const _forcedAttrs = new WeakMap();
  */
 function affectsSubmittability(name) {
   const attr = String(name).toLowerCase();
-  return attr === 'method' || attr === 'enctype';
+  // `encoding` is a legacy IDL alias of `enctype` on HTMLFormElement, so
+  // `.encoding=${'text/plain'}` reaches the same content attribute and has to
+  // be noted alongside it.
+  return attr === 'method' || attr === 'enctype' || attr === 'encoding';
 }
 
 /**

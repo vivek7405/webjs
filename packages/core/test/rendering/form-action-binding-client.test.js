@@ -323,6 +323,36 @@ test('a bound form in a STREAMED continuation is bound', async () => {
   assert.equal(form.getAttribute('method'), 'post');
 });
 
+test('bind, release, and re-bind leave no stale forced attributes', () => {
+  // `_forcedAttrs` is written by the bind, so a form that cycles has to end up
+  // with exactly what its LAST bind added, not an accumulation.
+  const a1 = HOISTED();
+  const a2 = HOISTED();
+  const host = document.createElement('div');
+  const tpl = (a) => html`<form action=${a}></form>`;
+  render(tpl(a1), host);
+  render(tpl('/legacy'), host);
+  render(tpl(a2), host);
+  render(tpl('/other'), host);
+  const form = host.querySelector('form');
+  assert.equal(form.getAttribute('action'), '/other');
+  assert.equal(form.hasAttribute('method'), false, 'no forced method survives the last release');
+  assert.equal(form.hasAttribute('enctype'), false);
+  assert.equal(form.querySelectorAll('input[name="__webjs_action"]').length, 0);
+});
+
+test('swapping one bound action for another keeps a single identity field', () => {
+  const a1 = HOISTED();
+  const a2 = HOISTED();
+  const host = document.createElement('div');
+  const tpl = (a) => html`<form action=${a}></form>`;
+  render(tpl(a1), host);
+  render(tpl(a2), host);
+  const form = host.querySelector('form');
+  assert.equal(form.querySelectorAll('input[name="__webjs_action"]').length, 1);
+  assert.equal(form.getAttribute('method'), 'post');
+});
+
 test('a boolean write on a bound form is re-checked', () => {
   // `?enctype=${b}` toggling on writes an EMPTY enctype, which is unparseable
   // and which SSR refuses. The bool branch is a separate commit path from
