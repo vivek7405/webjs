@@ -81,7 +81,8 @@ try {
   // redirect Location. The action receives a REBUILT request (parseFormBody),
   // so this proves the trusted IP survives the rebuild and a spoofed header
   // does not win (#756 review must-fix).
-  w('app/ipcheck/page.ts', `import { html, redirect } from ${JSON.stringify(CORE)};\nimport { clientIp } from ${JSON.stringify(SERVER)};\nexport const action = async ({ request }: { request: Request }) => { throw redirect('/?seenip=' + encodeURIComponent(clientIp(request))); };\nexport default () => html\`<main>ipcheck</main>\`;`);
+  w('ipcheck.server.ts', `'use server';\nimport { redirect } from ${JSON.stringify(CORE)};\nimport { clientIp, getRequest } from ${JSON.stringify(SERVER)};\nexport async function seeIp() { throw redirect('/?seenip=' + encodeURIComponent(clientIp(getRequest()))); }`);
+  w('app/ipcheck/page.ts', `import { html } from ${JSON.stringify(CORE)};\nimport { seeIp } from '../../ipcheck.server.ts';\nexport default () => html\`<main><form action=\${seeIp}><button>go</button></form></main>\`;`);
   // A genuinely STREAMED, compressible body whose SECOND chunk is far off. The
   // compression classifier must not block the response head on it (#756 review).
   w('app/api/slow/route.ts', `export async function GET() {\n  const enc = new TextEncoder();\n  let pulled = 0;\n  const stream = new ReadableStream({\n    start(c) { c.enqueue(enc.encode('shell-chunk-' + 'a'.repeat(64) + ';')); },\n    async pull(c) { if (pulled++) { c.close(); return; } await new Promise((r) => setTimeout(r, 400)); c.enqueue(enc.encode('boundary-chunk;')); c.close(); },\n  });\n  return new Response(stream, { headers: { 'content-type': 'text/html; charset=utf-8' } });\n}`);
@@ -120,16 +121,21 @@ try {
   assert.notEqual(ip, '_anon_', `[${runtime}] the framework-stamped socket IP reached clientIp`);
   assert.ok(ip.length > 0, `[${runtime}] a remote IP was resolved (${ip})`);
 
-  // (3) The spoof must not survive the page-action request rebuild (#756 review).
+  // (3) The spoof must not survive the form-dispatch request rebuild (#756
+  // review). The identity is read off the rendered page rather than computed,
+  // so this submits exactly what a browser would.
+  const ipPage = await (await fetch(`${base}/ipcheck`)).text();
+  const ipId = /name="__webjs_action" value="([^"]*)"/.exec(ipPage);
+  assert.ok(ipId, `[${runtime}] the ipcheck page rendered a bound form`);
   const actRes = await fetch(`${base}/ipcheck`, {
     method: 'POST',
     redirect: 'manual',
     headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-webjs-remote-ip': '6.6.6.6' },
-    body: 'x=1',
+    body: new URLSearchParams({ __webjs_action: ipId[1], x: '1' }).toString(),
   });
   const loc = actRes.headers.get('location') || '';
   assert.ok(/seenip=/.test(loc), `[${runtime}] the action redirected with the seen ip (loc=${loc})`);
-  assert.ok(!/seenip=6\.6\.6\.6/.test(loc), `[${runtime}] a spoofed header must NOT survive the page-action rebuild`);
+  assert.ok(!/seenip=6\.6\.6\.6/.test(loc), `[${runtime}] a spoofed header must NOT survive the form-dispatch rebuild`);
   assert.ok(!/seenip=_anon_/.test(loc), `[${runtime}] the trusted IP survived the rebuild (not anon)`);
 
   // (4) A STREAMED compressible body must not have its response head withheld
