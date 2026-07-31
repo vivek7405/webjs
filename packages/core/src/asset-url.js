@@ -34,6 +34,12 @@
  * into the browser bundle for no benefit. Resolver ordering is not the issue
  * (the server installs its resolver at boot, before any app module loads).
  *
+ * Under `webjs.basePath`, write the prefix yourself: `asset('/app/public/x.css')`.
+ * The framework only base-path-prefixes urls IT emits, so an author-written
+ * url is already your responsibility (an un-prefixed one 404s under a
+ * sub-path deploy with or without this helper). `asset()` strips the prefix
+ * to find the file and keeps it on the url it returns.
+ *
  * Mark files that change only with a DEPLOY. The hash is memoized for the
  * process lifetime, and prod never rebuilds, so a `public/` file rewritten in
  * place while the server runs keeps its old url while being served `immutable`

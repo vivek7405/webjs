@@ -1,4 +1,4 @@
-import { html } from '@webjsdev/core';
+import { html, asset } from '@webjsdev/core';
 import { BTN_PRIMARY, BTN_GHOST, H2, PROSE } from '#lib/design/recipes.ts';
 import { brandMark } from '#lib/design/brand.ts';
 import { SWATCHES, ACCENTS, type Swatch } from '#lib/design/tokens.ts';
@@ -128,7 +128,7 @@ export default function BrandPage() {
           ${ASSETS.map(a => html`
             <div class="flex flex-col rounded-2xl border border-border bg-bg-elev overflow-hidden">
               <div class="h-36 flex items-center justify-center px-7 ${a.on === 'dark' ? 'bg-[oklch(0_0_0)]' : 'bg-[oklch(0.985_0.008_75)]'}">
-                <img src="/public/brand/${a.file}" alt=${a.name} class="max-h-12 w-auto" />
+                <img src=${asset('/public/brand/' + a.file)} alt=${a.name} class="max-h-12 w-auto" />
               </div>
               <div class="flex flex-col flex-1 p-5 border-t border-border">
                 <h3 class="text-sm font-bold text-fg mb-1.5">${a.name}</h3>
@@ -159,8 +159,8 @@ export default function BrandPage() {
           <div class="rounded-2xl border border-border bg-bg-elev p-8 flex flex-col">
             <div class="flex-1 flex items-center justify-center">
               <div class="cs-pad cs-guide p-8 rounded">
-                <img src="/public/brand/webjs-lockup-on-dark.svg" alt="Clear space around the lockup" class="h-8 w-auto hidden dark:block" />
-                <img src="/public/brand/webjs-lockup-on-light.svg" alt="Clear space around the lockup" class="h-8 w-auto dark:hidden" />
+                <img src=${asset('/public/brand/webjs-lockup-on-dark.svg')} alt="Clear space around the lockup" class="h-8 w-auto hidden dark:block" />
+                <img src=${asset('/public/brand/webjs-lockup-on-light.svg')} alt="Clear space around the lockup" class="h-8 w-auto dark:hidden" />
               </div>
             </div>
             <div class="mt-7 pt-5 border-t border-border">
@@ -179,8 +179,8 @@ export default function BrandPage() {
                 <p class="mt-3 font-mono text-xs leading-[1.5] text-fg-subtle">24 px<br>monogram floor</p>
               </div>
               <div class="text-center flex flex-col items-center">
-                <img src="/public/brand/webjs-lockup-on-dark.svg" alt="" class="w-24 h-auto hidden dark:block" />
-                <img src="/public/brand/webjs-lockup-on-light.svg" alt="" class="w-24 h-auto dark:hidden" />
+                <img src=${asset('/public/brand/webjs-lockup-on-dark.svg')} alt="" class="w-24 h-auto hidden dark:block" />
+                <img src=${asset('/public/brand/webjs-lockup-on-light.svg')} alt="" class="w-24 h-auto dark:hidden" />
                 <p class="mt-3 font-mono text-xs leading-[1.5] text-fg-subtle">96 px wide<br>lockup floor</p>
               </div>
             </div>

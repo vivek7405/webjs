@@ -88,8 +88,9 @@ test('a prod handler renders asset() fingerprinted and serves it immutable', asy
 });
 
 test('a dev handler leaves asset() urls untouched', async () => {
-  // Fingerprinting is prod-only so dev output stays byte-identical, and a
-  // dev server never installs the resolver.
+  // Fingerprinting is prod-only so dev output stays byte-identical. Note the
+  // resolver IS installed in dev too (dev.js wires it unconditionally); what
+  // makes dev a no-op is `_enabled` inside withAssetHash, two modules away.
   const appDir = makeApp(FILES);
   const app = await createRequestHandler({ appDir, dev: true });
   const html = await (await app.handle(new Request('http://x/'))).text();
