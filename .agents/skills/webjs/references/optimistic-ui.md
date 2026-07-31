@@ -29,9 +29,11 @@ class TodoList extends WebComponent({
     update: (state, title: string) => [
       ...state,
       // A client-only placeholder id for the pending row. The real id arrives
-      // from the server on reconcile, when this row is dropped. No cast: the
-      // row type carries the client-only flag (`pending?: boolean`), so the
-      // temp row type-checks as a plain `Todo`.
+      // from the server on reconcile, when this row is dropped. No cast is
+      // needed because `Todo['id']` is a string here (the schema uses a uuid
+      // primary key). Against an auto-increment integer id there is no honest
+      // client-side value, so model the temp row instead (an optional id, or a
+      // `tempId` the reducer keys on) rather than casting one in.
       { id: crypto.randomUUID(), title, completed: false, pending: true },
     ],
   });

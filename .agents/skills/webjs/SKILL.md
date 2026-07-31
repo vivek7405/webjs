@@ -68,7 +68,7 @@ Common bundles:
 5. **Add interactivity per behaviour.** Reach for a component (and a signal or `@event`) only where the UI is genuinely interactive. A display-only component is elided from the browser.
 6. **Validate input at the boundary.** Declare `export const validate` on an action; the RPC and `route()` boundaries run it.
 7. **Default mutations to optimistic UI** where the client can predict the result (`optimistic()` from `@webjsdev/core`).
-8. **Type every boundary from its source, never `unknown` or `any`.** The row type comes from the schema (`typeof todos.$inferSelect`), the action's input from a named `interface` and its result from `ActionResult<T>`, the routing files from `PageProps` / `LayoutProps` / `RouteHandlerContext`. `unknown` belongs only on a payload nothing has vouched for yet, narrowed on the next line. See `references/typescript.md`.
+8. **Type every boundary from its source, never `unknown` or `any`.** The row type comes from the schema (`typeof todos.$inferSelect`), the action's input from a named `interface` and its result from `ActionResult<T>`, the routing files from `PageProps` / `LayoutProps` / `RouteHandlerContext`. `unknown` belongs on a payload nothing has vouched for yet that the next line narrows, and on a value headed for an `html` template hole; everywhere else it is a missing type. See `references/typescript.md`.
 9. **Test the narrowest meaningful layer**, and render the app in a real browser for any UI change (static checks do not catch a collapsed layout).
 
 ## Project Layout

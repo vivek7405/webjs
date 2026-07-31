@@ -313,14 +313,19 @@ export async function createPost(input: CreatePostInput): Promise&lt;ActionResul
   const user = await currentUser();
   if (!user) return { success: false, error: 'Not signed in', status: 401 };
 
-  const title = input.title.trim();
+  // The parameter declares the contract; these checks ENFORCE it, because the
+  // same action is reachable from a route.ts REST endpoint with a raw JSON body.
+  const title = typeof input?.title === 'string' ? input.title.trim() : '';
+  const body = typeof input?.body === 'string' ? input.body : '';
   if (!title) return { success: false, error: 'title is required', status: 400 };
 
-  const [post] = await db.insert(posts).values({ title, body: input.body, authorId: user.id }).returning();
+  const [post] = await db.insert(posts).values({ title, body, authorId: user.id }).returning();
   return { success: true, data: post };
 }</pre>
 
-    <p>Note the named input type. The action declares the contract it accepts, so the calling component type-checks against the real signature and a renamed field is a compile error on both sides. Typing the parameter <code>unknown</code> or <code>any</code> here would give that up and push a cast into every caller. Runtime enforcement of the same shape is a separate job, and it belongs in <code>export const validate</code>, which runs on the RPC boundary before the action body and is the one place an untrusted payload is legitimately <code>unknown</code>.</p>
+    <p>Note the named input type. The action declares the contract it accepts, so the calling component type-checks against the real signature and a renamed field is a compile error on both sides. Typing the parameter <code>unknown</code> or <code>any</code> here would give that up and push a cast into every caller.</p>
+
+    <p>The declared type is a compile-time contract, not a runtime guarantee, so it does not replace validation. Keep the runtime checks (or declare <code>export const validate</code>, which runs on the RPC boundary before the action body and is the one place an untrusted payload is legitimately <code>unknown</code>) for every action a REST endpoint can also reach. The two are complementary: the type is what makes the call site safe, the check is what makes the wire safe.</p>
 
     <p>This pattern makes error handling explicit on the client side without relying on try/catch. The caller checks <code>result.success</code> and branches accordingly. It also works naturally over a <code>route.ts</code> REST endpoint, where the caller receives the same JSON shape.</p>
 

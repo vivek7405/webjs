@@ -43,16 +43,19 @@ DERIVE the type at every boundary instead of widening it:
 - An action's input: a named `interface`. Its result: `ActionResult<T>`.
   Narrow with `if (result.success && result.data)`.
 - Routing files: `PageProps<'/blog/[slug]'>`, `LayoutProps`,
-  `RouteHandlerContext`, all from `@webjsdev/core`. Run `npx webjsdev types`
+  `RouteHandlerContext`, all from `@webjsdev/core`. Run `webjs types`
   for the typed `Route` union and per-route `params`.
 - A reactive property: `prop<Student>(Object)`, `prop<Tag[]>(Array)`.
 
 Never reach for `any` or a loose `as any` cast, and do not reach for `unknown`
-either just because it looks safer. `unknown` is right in exactly one place: a
-payload nothing has vouched for yet, narrowed on the very next line (a
-`route.ts` `await req.json()`, an action's `export const validate`, a `catch`
-binding). `unknown` that survives into a return type, a component prop, a
-layout's `children`, or an action signature is a missing type, not a safe one.
+either just because it looks safer. `unknown` is right for a payload nothing
+has vouched for yet, narrowed on the very next line (a `route.ts` `await
+req.json()`, an action's `export const validate`, a `catch` binding), and for a
+value headed for an `html` template hole (a hole renders a string, a number, a
+`TemplateResult`, or an array of those, so `TemplateResult` alone is too
+narrow). Everywhere else it is a missing type, not a safe one: `unknown` that
+survives into a return type, a component prop, a layout's `children`, or an
+action signature is the shape to fix.
 Nothing enforces this (both are valid TypeScript, so `webjs check` and `tsc`
 pass either way), which is exactly why it is written down. The full ladder,
 with an end-to-end example, is in

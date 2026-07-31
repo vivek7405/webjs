@@ -21,7 +21,10 @@ import { createServer } from 'node:net';
 // the real imports once puppeteer-core is in package.json. Reaching for `any`
 // here would silently un-type every call below.
 type Page = {
-  goto(url: string, opts?: { waitUntil?: string; timeout?: number }): Promise<unknown>;
+  // goto resolves an HTTPResponse this file never reads, and modelling that
+  // type would mean re-declaring puppeteer's. Returning void is the honest
+  // narrow shape for the surface actually used.
+  goto(url: string, opts?: { waitUntil?: string; timeout?: number }): Promise<void>;
   title(): Promise<string>;
   on(event: string, handler: (e: Error) => void): void;
   removeAllListeners(event: string): void;
