@@ -1,7 +1,10 @@
 import { isTemplate, MARKER } from './html.js';
 import { BINDING_PREFIXES, isBindingPrefix } from './binding-prefixes.js';
 import { escapeAttr } from './escape.js';
-import { assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp } from './form-action.js';
+import {
+  assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp,
+  bindFormActionElement, isBoundFormAction,
+} from './form-action.js';
 import { isRepeat } from './repeat.js';
 import { isUnsafeHTML, isLive, isKeyed, isGuard, isTemplateContent, isRef, isCache, isUntil, isAsyncAppend, isAsyncReplace, isWatch } from './directives.js';
 import { Signal } from './signal.js';
@@ -672,7 +675,14 @@ function applyPart(part, value, _prev, allValues) {
       break;
     case 'attr': {
       if (value == null || value === false) part.el.removeAttribute(part.name);
-      else {
+      else if (isBoundFormAction(value, part.name, part.el.localName)) {
+        // #1155: the ONE supported form-action binding, applied to the live
+        // form exactly as SSR wrote it. A component that ships re-renders its
+        // whole template on hydration, so without this the SSR'd hidden field
+        // would be replaced by an `action` attribute holding a stringified
+        // function, and the form would post to a garbage url.
+        bindFormActionElement(/** @type any */ (part.el), value);
+      } else {
         // #1154: refuse to stringify a function into action=/formaction=
         // (mirrors the SSR guard, so a client re-render cannot write a
         // server action's source into the live DOM).

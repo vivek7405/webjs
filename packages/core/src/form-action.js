@@ -1,44 +1,155 @@
 import { isBindingPrefix } from './binding-prefixes.js';
+import { escapeAttr } from './escape.js';
 
 /**
- * Form-action attribute guard (#1154).
+ * Form actions: binding a `'use server'` action straight into a form (#1155),
+ * and the guard that refuses every OTHER way a function could reach the markup
+ * (#1154).
+ *
+ * ONE supported shape, and it is the shape a Next-trained author already
+ * writes:
+ *
+ *   import { submitFeedback } from '#modules/feedback/actions/submit.server.ts';
+ *   html`<form action=${submitFeedback}> ... </form>`
+ *
+ * The renderers do not stringify that function. They resolve its IDENTITY
+ * (`<file-hash>/<export-name>`, the same naming the RPC endpoint uses), drop
+ * the `action` attribute so the form posts to the page's own url, force the
+ * attributes the submission needs (`method="post"`, `enctype`), and emit one
+ * hidden field carrying the identity. The server resolves that field back to
+ * the function and runs it. Nothing about the action's source reaches the
+ * browser, and the form works with JS off because it is an ordinary HTML
+ * submission.
+ *
+ * Every other function-in-an-action shape stays REFUSED, because it would
+ * stringify the function's body into the served HTML. At SSR a `'use server'`
+ * import is the REAL server function (the RPC stub only exists in the
+ * browser), so a plain `String(val)` commit serializes the action's body,
+ * secrets included, to every visitor. The refusal list is deliberately wider
+ * than the leak: a quoted `action="${fn}"`, `?action=${fn}`, an array holding
+ * a function, `formaction=` anywhere, and `action=` on a tag that is not a
+ * `<form>` all refuse, so there is exactly one way to write this and no
+ * silently-broken near-miss.
+ *
+ * `formaction=${fn}` on a submit button is refused rather than supported. It
+ * is legal HTML, and a per-submitter identity could ride the submitter's own
+ * `name`/`value` pair, but that pair is also how a multi-button form tells its
+ * buttons apart, so supporting it would either clobber an author's own
+ * `name=` or need a second parallel wire. Refusing states the boundary; a form
+ * per action is the shape to write instead.
  *
  * Both SSR state machines and the client renderer import from here so the
- * rule cannot drift between them. Each renderer commits attribute, boolean and
- * property holes on separate branches, so the rule has more call sites than it
- * looks like from any one file, and they are easy to change one at a time.
- * That is why the predicate lives here rather than at each site.
- *
- * Two entry points, and the difference between them is the point:
- * `assertNotFunctionActionAttr` is name-based, because an ATTRIBUTE is
- * stringified into the markup on whatever tag it appears.
- * `assertNotFunctionReflectedActionProp` is name-and-tag-based, because a
- * PROPERTY only reaches the markup where the DOM reflects it. Using the first
- * on the property path refused `<div .action=${fn}>`, which never leaked.
+ * rules cannot drift between them. Each renderer commits attribute, boolean
+ * and property holes on separate branches, so they have more call sites than
+ * it looks like from any one file and are easy to change one at a time. That
+ * is why the predicates live here rather than at each site.
  *
  * The second SSR machine (`streamTemplate`) is reached only through
  * `renderToStream(v, { ssr: false })`, which no page render uses: the server
- * renders every page, Suspense included, via `renderToString`. Guarding it is
- * about the public API surface rather than a live page leak, so do not infer
- * from a bug there that pages were affected.
+ * renders every page, Suspense included, via `renderToString`. It is kept in
+ * lockstep for the public API surface rather than for a live page.
  */
+
+/**
+ * The hidden field carrying a bound action's identity. The server's form
+ * dispatcher reads it off the submitted `FormData`; nothing else is
+ * authoritative, so a form that lost this field is never dispatched by
+ * guesswork.
+ */
+export const FORM_ACTION_FIELD = '__webjs_action';
+
+/**
+ * The property a generated client RPC stub carries its own identity on.
+ * Written by the generated stub source (`packages/server/src/actions.js`), read
+ * here. A plain string property rather than a symbol because the stub is
+ * generated source that only imports the framework's runtime helpers.
+ */
+export const FORM_ACTION_ID_KEY = '$$webjsAction';
+
+/** @type {((fn: Function) => (string | null | Promise<string | null>)) | null} */
+let _resolver = null;
+
+/**
+ * Internal: server-only wiring. `@webjsdev/server` installs the resolver that
+ * maps a REAL server-action function back to its `<hash>/<fn>` identity, which
+ * it knows from the module load hook that registered the function. The browser
+ * never calls this: a stub carries its identity on itself, so
+ * `formActionId` resolves synchronously there.
+ *
+ * @param {(fn: Function) => (string | null | Promise<string | null>)} fn
+ * @returns {void}
+ */
+export function setFormActionResolver(fn) {
+  _resolver = fn;
+}
+
+/**
+ * The identity of an action function, or null when it has none.
+ *
+ * Synchronous, and that is a constraint rather than a preference: the client
+ * renderer commits attributes synchronously, so identity has to be readable
+ * without awaiting there. A stub carries its own, so the client path is a
+ * property read. On the server the resolver is consulted, and it may answer
+ * with a promise, which `resolveFormActionId` awaits and this does not.
+ *
+ * @param {unknown} fn
+ * @returns {string | null}
+ */
+export function formActionId(fn) {
+  if (typeof fn !== 'function') return null;
+  const own = /** @type any */ (fn)[FORM_ACTION_ID_KEY];
+  return typeof own === 'string' && own ? own : null;
+}
+
+/**
+ * The identity of an action function, consulting the server resolver when the
+ * function does not carry one. Used by the SSR renderers, which are async.
+ *
+ * @param {unknown} fn
+ * @returns {Promise<string | null>}
+ */
+export async function resolveFormActionId(fn) {
+  const own = formActionId(fn);
+  if (own) return own;
+  if (typeof fn !== 'function' || !_resolver) return null;
+  try {
+    const id = await _resolver(/** @type {Function} */ (fn));
+    return typeof id === 'string' && id ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Is this hole the ONE supported form-action binding: an unquoted
+ * `action=${fn}` on a `<form>`?
+ *
+ * Both halves matter. Unquoted, because quoting turns a binding hole back into
+ * a plain attribute the renderer stringifies, and there is no way to bind half
+ * an action into a url. On a `<form>`, because that is the only element whose
+ * `action` submits anything; anywhere else the attribute is inert and binding
+ * a function to it means the author expected something that will never happen.
+ *
+ * @param {unknown} val the hole's resolved value
+ * @param {string} attrName the AUTHORED attribute name (no sigil, unquoted branch)
+ * @param {string} [tag] lowercased owner tag
+ * @returns {boolean}
+ */
+export function isBoundFormAction(val, attrName, tag) {
+  if (typeof val !== 'function') return false;
+  if (String(attrName).toLowerCase() !== 'action') return false;
+  return String(tag || '').toLowerCase() === 'form';
+}
 
 /**
  * Refuse to stringify a function interpolated into a form-action attribute.
  *
- * At SSR a `'use server'` import is the REAL server function (the RPC stub
- * only exists in the browser), and a plain attribute hole commits via
- * `String(val)`, so without this guard the action's SOURCE, secrets included,
- * is serialized into the served HTML. The client renderer guards the same
- * commit so a client re-render cannot write the source into the live DOM
- * through a template binding. It does NOT cover property REFLECTION: a prop
- * declared `reflect: true` writes `String(value)` to its attribute from the
- * setter, which is not a commit site and is not reachable from here.
- *
  * Name-based on purpose (`action`, plus `formaction`, the submit-button
- * override, which leaks identically): a function stringified under these
- * names is never useful on any tag, and other attributes keep today's
- * stringify behaviour so the claim stays narrow.
+ * override, which leaks identically): a function stringified under these names
+ * is never useful on any tag, and other attributes keep today's stringify
+ * behaviour so the claim stays narrow. The one supported shape
+ * (`isBoundFormAction`) is claimed by the caller BEFORE this runs, so
+ * everything reaching here is a shape with no meaning.
  *
  * @param {unknown} val the hole's resolved value
  * @param {string} attrName the attribute being committed (any case)
@@ -73,6 +184,11 @@ export function assertNotFunctionActionAttr(val, attrName, tag) {
  * DOES write the source there, a prop declared `reflect: true`, which runs in
  * the setter and never reaches any commit site.
  *
+ * `<form .action=${fn}>` is refused rather than treated as the supported
+ * binding: the supported one is the plain `action=${fn}` attribute, and a
+ * `.prop` binding on a native element is dropped at SSR, so accepting it would
+ * mean a form that submits under JS and does nothing without it.
+ *
  * @param {unknown} val the hole's resolved value
  * @param {string} propName the property being assigned (any case)
  * @param {string} [tag] lowercased owner tag
@@ -80,6 +196,184 @@ export function assertNotFunctionActionAttr(val, attrName, tag) {
 export function assertNotFunctionReflectedActionProp(val, propName, tag) {
   if (!reflectsAsFormAction(propName, tag)) return;
   assertNotFunctionActionAttr(val, propName, tag);
+}
+
+/**
+ * Refuse a bound action the renderer cannot identify.
+ *
+ * A function reaches here having passed `isBoundFormAction`, so the author
+ * meant it as a server action. If identity resolution came back empty it is
+ * not one: a local closure, a plain helper, or a `'use server'` module the
+ * server never registered. Emitting the form anyway would produce markup that
+ * looks right and silently posts nowhere, which is the one outcome a
+ * progressive-enhancement form must never have, so this throws instead.
+ *
+ * @param {string | null} id
+ * @param {string} [tag]
+ * @returns {string} the identity, narrowed
+ */
+export function assertIdentifiableAction(id, tag) {
+  if (id) return id;
+  throw new Error(
+    `[webjs] the function in action= on <${tag || 'form'}> is not a server action. `
+    + `Only a function imported from a 'use server' *.server.{js,ts} module can be `
+    + `bound to a form, because the identity the browser submits has to resolve `
+    + `back to something the server can run. Move the handler into a server `
+    + `action and import it, or pass a url string.`,
+  );
+}
+
+/**
+ * Rewrite a form's START TAG for a bound action and produce the hidden field
+ * that must follow it.
+ *
+ * `startTag` is the already-committed `<form ...>` text, holes included, so
+ * this reads the attributes the browser will actually see rather than the ones
+ * the template literal spelled out. That matters for a hole-provided
+ * `method=${m}`, which no scan of the source template could resolve.
+ *
+ * Three edits, none of them optional:
+ *   - `action` is gone already (the caller drops it at the hole), so the form
+ *     posts to the page's own url. Omitted rather than emitted as `action=""`,
+ *     which the HTML spec treats as a conformance error.
+ *   - `method="post"` when absent. A GET form puts its fields in the query
+ *     string and sends no body, so a bound action would never run.
+ *   - `enctype="multipart/form-data"` when absent, so a file input works on
+ *     the no-JS path. Text-only fields round-trip identically either way.
+ *
+ * An explicit `method="get"` throws rather than being silently upgraded: the
+ * author wrote two things that cannot both be true, and quietly picking one
+ * hides the mistake.
+ *
+ * @param {string} startTag the emitted start tag, ending in `>`
+ * @param {string} id the action identity
+ * @returns {{ tag: string, hidden: string }}
+ */
+export function bindFormActionStartTag(startTag, id) {
+  const attrs = parseStartTagAttrs(startTag);
+  const method = attrs.get('method');
+  if (method != null && !/^post$/i.test(method.trim())) {
+    throw new Error(
+      `[webjs] <form method="${method}" action=\${action}> cannot work: a bound `
+      + `server action is submitted as a POST body, and a "${method}" form sends `
+      + `no body. Drop the method attribute (WebJs emits method="post") or `
+      + `remove the bound action.`,
+    );
+  }
+  // The close is `>` or `/>`; a self-closing form is not valid HTML but the
+  // scanner can still hand one over, so keep whichever the author wrote.
+  const close = startTag.endsWith('/>') ? '/>' : '>';
+  const head = startTag.slice(0, startTag.length - close.length);
+  let inject = '';
+  if (!attrs.has('method')) inject += ' method="post"';
+  if (!attrs.has('enctype')) inject += ' enctype="multipart/form-data"';
+  return { tag: head + inject + close, hidden: formActionHiddenField(id) };
+}
+
+/**
+ * The hidden field carrying a bound action's identity into the submission.
+ * @param {string} id
+ * @returns {string}
+ */
+export function formActionHiddenField(id) {
+  return `<input type="hidden" name="${FORM_ACTION_FIELD}" value="${escapeAttr(id)}">`;
+}
+
+/**
+ * Apply a bound action to a LIVE form element, producing the same three edits
+ * SSR makes. Runs when a shipping component re-renders a template holding
+ * `<form action=${fn}>`: that render rebuilds the form from the template, so
+ * the SSR'd hidden field is gone and has to be put back.
+ *
+ * The identity is read synchronously off the stub, which is what the browser
+ * import of a `'use server'` module resolves to. A function with no identity
+ * throws for the same reason it does at SSR: a form that looks right and posts
+ * nowhere is the one outcome this feature cannot have.
+ *
+ * The field is inserted as the form's FIRST child, ahead of every child-part
+ * marker the template clone already contains, so a later child update cannot
+ * take it out again. Idempotent: a re-render finds the existing field and only
+ * refreshes its value.
+ *
+ * @param {HTMLFormElement} form
+ * @param {Function} fn
+ * @returns {void}
+ */
+export function bindFormActionElement(form, fn) {
+  const id = assertIdentifiableAction(formActionId(fn), form.localName);
+  form.removeAttribute('action');
+  const method = form.getAttribute('method');
+  if (method != null && !/^post$/i.test(method.trim())) {
+    throw new Error(
+      `[webjs] <form method="${method}" action=\${action}> cannot work: a bound `
+      + `server action is submitted as a POST body, and a "${method}" form sends `
+      + `no body. Drop the method attribute (WebJs emits method="post") or `
+      + `remove the bound action.`,
+    );
+  }
+  if (method == null) form.setAttribute('method', 'post');
+  if (!form.hasAttribute('enctype')) form.setAttribute('enctype', 'multipart/form-data');
+
+  let field = null;
+  for (const el of form.children) {
+    if (el.localName === 'input' && el.getAttribute('name') === FORM_ACTION_FIELD) {
+      field = el;
+      break;
+    }
+  }
+  if (!field) {
+    field = form.ownerDocument.createElement('input');
+    field.setAttribute('type', 'hidden');
+    field.setAttribute('name', FORM_ACTION_FIELD);
+    form.insertBefore(field, form.firstChild);
+  }
+  field.setAttribute('value', id);
+}
+
+/**
+ * Parse the attributes of an emitted start tag into `name -> value`, where a
+ * valueless attribute maps to the empty string.
+ *
+ * A real tokenizer rather than a regex over the whole tag, because the tag is
+ * emitted HTML and an attribute VALUE can contain anything: `<form
+ * data-note="use method=get here" action=${fn}>` has to report no `method`
+ * attribute, and a regex looking for `method=` reports one. Getting that wrong
+ * means silently skipping the forced `method="post"` and shipping a form that
+ * submits nothing.
+ *
+ * @param {string} startTag
+ * @returns {Map<string, string>}
+ */
+export function parseStartTagAttrs(startTag) {
+  /** @type {Map<string, string>} */
+  const attrs = new Map();
+  // Skip `<` and the tag name.
+  let i = 1;
+  while (i < startTag.length && !/[\s/>]/.test(startTag[i])) i++;
+  while (i < startTag.length) {
+    while (i < startTag.length && /[\s/]/.test(startTag[i])) i++;
+    if (i >= startTag.length || startTag[i] === '>') break;
+    let name = '';
+    while (i < startTag.length && !/[\s/>=]/.test(startTag[i])) name += startTag[i++];
+    while (i < startTag.length && /\s/.test(startTag[i])) i++;
+    if (startTag[i] !== '=') {
+      if (name) attrs.set(name.toLowerCase(), '');
+      continue;
+    }
+    i++; // the `=`
+    while (i < startTag.length && /\s/.test(startTag[i])) i++;
+    let value = '';
+    const q = startTag[i];
+    if (q === '"' || q === "'") {
+      i++;
+      while (i < startTag.length && startTag[i] !== q) value += startTag[i++];
+      i++; // closing quote
+    } else {
+      while (i < startTag.length && !/[\s>]/.test(startTag[i])) value += startTag[i++];
+    }
+    if (name) attrs.set(name.toLowerCase(), value);
+  }
+  return attrs;
 }
 
 /**
@@ -151,7 +445,9 @@ function isFormActionAttr(attrName) {
 
 /**
  * The refusal message. Deliberately never echoes the function's source, which
- * is the very thing being withheld.
+ * is the very thing being withheld. It names the one supported shape, because
+ * every refused shape here is a near-miss of it and the author's next question
+ * is what to write instead.
  * @param {string} attrName
  * @param {string} [tag]
  */
@@ -159,5 +455,6 @@ function formActionError(attrName, tag) {
   return `[webjs] a function was interpolated into ${String(attrName).toLowerCase()}= `
     + `on <${tag || 'form'}>. Stringifying a function into HTML would leak its `
     + `source (a 'use server' action's body included) to every visitor, so this `
-    + `is refused. Pass a URL string instead.`;
+    + `is refused. To run a server action from a form, write an unquoted `
+    + `action=\${action} on the <form> itself. Anywhere else, pass a URL string.`;
 }

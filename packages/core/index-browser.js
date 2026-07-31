@@ -31,6 +31,10 @@ export { escapeText, escapeAttr } from './src/escape.js';
 export { notFound, redirect, forbidden, unauthorized, isNotFound, isRedirect, isForbidden, isUnauthorized } from './src/nav.js';
 export { cspNonce } from './src/csp-nonce.js';
 export { asset } from './src/asset-url.js';
+// Form actions (#1155). The field name is shared with the server dispatcher;
+// `setFormActionResolver` is server-only wiring and is stripped here, because
+// a browser stub carries its own identity and needs no resolver.
+export { FORM_ACTION_FIELD, FORM_ACTION_ID_KEY } from './src/form-action.js';
 export { repeat, isRepeat } from './src/repeat.js';
 export { Suspense, isSuspense } from './src/suspense.js';
 export { connectWS } from './src/websocket-client.js';

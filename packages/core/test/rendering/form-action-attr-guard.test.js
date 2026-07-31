@@ -1,9 +1,18 @@
-// #1154: a function interpolated into a form-action attribute must throw,
-// never stringify. At SSR a `'use server'` import is the REAL function, so
+// #1154: a function interpolated into a form-action attribute must never
+// stringify. At SSR a `'use server'` import is the REAL function, so
 // `String(fn)` would serialize the action's source (secrets included) into
-// the served HTML. Covers every hole shape that used to leak (unquoted,
-// quoted, mixed, and `formaction` on a submit button), plus the byte-identical
-// passthrough for string-valued action attributes.
+// the served HTML. Covers every hole shape that used to leak (quoted, mixed,
+// and `formaction` on a submit button), plus the byte-identical passthrough
+// for string-valued action attributes.
+//
+// #1155 later made ONE of those shapes meaningful rather than merely refused:
+// an unquoted `action=${fn}` on a `<form>` binds the action. It still cannot
+// stringify anything, so the security claim is unchanged, but the refusal it
+// hits is now the identity one ("is not a server action") for a function the
+// server never registered, which is every function in this file. The binding
+// itself has its own suite in `form-action-binding.test.js`; here the point is
+// that the source never escapes on any path.
+const NOT_AN_ACTION = /is not a server action/;
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -124,7 +133,7 @@ async function leaky(input) {
 test('unquoted action=${fn} throws instead of leaking source', async () => {
   await assert.rejects(
     () => renderToString(html`<form method="post" action=${leaky}></form>`, { ssr: true }),
-    /function was interpolated into action=/,
+    NOT_AN_ACTION,
   );
 });
 
@@ -167,9 +176,11 @@ test('camelCase formAction=${fn} throws (React spells it this way)', async () =>
 });
 
 test('upper-case ACTION=${fn} throws', async () => {
+  // Attribute names are case-insensitive in HTML, so this is the binding shape
+  // spelled loudly and it hits the identity refusal, not the stringify one.
   await assert.rejects(
     () => renderToString(html`<form method="post" ACTION=${leaky}></form>`, { ssr: true }),
-    /function was interpolated into action=/,
+    NOT_AN_ACTION,
   );
 });
 
@@ -223,7 +234,7 @@ test('string-valued action renders byte-identically to before', async () => {
 test('the streaming renderer refuses the same function (ssr:false path)', async () => {
   await assert.rejects(
     () => drain(renderToStream(html`<form action=${leaky}></form>`, { ssr: false })),
-    /function was interpolated into action=/,
+    NOT_AN_ACTION,
   );
 });
 
@@ -243,7 +254,7 @@ test('the streaming renderer never emits the source, not even before it refuses'
   const sink = { text: '' };
   await assert.rejects(
     () => drainInto(renderToStream(html`<form action=${leaky}></form>`, { ssr: false }), sink),
-    /function was interpolated into action=/,
+    NOT_AN_ACTION,
   );
   assert.ok(!sink.text.includes('SECRET'), `received bytes must not carry the source, got: ${sink.text}`);
   assert.ok(!sink.text.includes('async function'), 'no function source of any kind reached the client');
