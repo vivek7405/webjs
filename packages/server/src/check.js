@@ -3,6 +3,7 @@ import { join, relative, sep, basename, dirname } from 'node:path';
 import { walk } from './fs-walk.js';
 import {
   redactStringsAndTemplates,
+  redactToPlaceholders,
   extractWebComponentClassBodies,
   matchClosingBrace,
   parsePropEntries,
@@ -133,6 +134,11 @@ export const RULES = [
     name: 'one-action-per-configured-file',
     description:
       'A `\'use server\'` action file that declares HTTP-verb config (any of `method` / `cache` / `tags` / `invalidates` / `validate`, #488) must export exactly ONE callable action function. The config is file-level (it applies to the action in the file), so a second exported function would silently inherit the same verb / cache, which is almost never intended and makes the contract ambiguous. Move the extra function to its own `.server.ts` file (the one-function-per-file convention), or, if it is a private helper, do not export it. Files with no verb config are unaffected.',
+  },
+  {
+    name: 'form-action-not-a-get-action',
+    description:
+      'Flags `<form action=${someAction}>` bound to a `\'use server\'` action whose file declares `export const method = \'GET\'` (#488). A GET action is a READ: it is CSRF-exempt and rides its arguments in the url, while a form submission is a CSRF-checked POST carrying a body, so the two contracts contradict each other and the submission is answered with a 405 at runtime. The rule reads the imported action\'s own file, so it only fires when the binding really does resolve to a GET-declared action. Fix by dropping the `method` export (an action with no `method` is a POST, which is what a form wants) or by binding a different action; if the form really is a read, use a plain `<form method="get" action="/search">` with no bound action.',
   },
   {
     name: 'no-redirect-in-api-route',
@@ -475,6 +481,36 @@ function enumerableExports(scan) {
  * @param {string} clause  the text between `import` and `from`
  * @returns {string[]|null}
  */
+/**
+ * The `{ local, imported }` pairs a named import clause binds, for a rule that
+ * has to match the LOCAL name against code (`action=${reader}`) while reporting
+ * the IMPORTED one (`readIt`, which is what the target module calls it).
+ *
+ * `importedValueNames` cannot serve here: it returns only the imported side,
+ * which is the wrong name to match against a template hole under `as`.
+ *
+ * @param {string} clause  the text between `import` and `from`
+ * @returns {{ local: string, imported: string }[]}
+ */
+function importedLocalNames(clause) {
+  if (/^\s*type\b/.test(clause)) return [];
+  const brace = clause.match(/\{([^}]*)\}/);
+  if (!brace) return [];
+  /** @type {{ local: string, imported: string }[]} */
+  const out = [];
+  for (const part of brace[1].split(',')) {
+    const seg = part.trim().replace(/^type\s+/, '');
+    if (!seg) continue;
+    const as = seg.split(/\s+as\s+/);
+    const imported = as[0].trim();
+    const local = (as[1] || as[0]).trim();
+    if (/^[A-Za-z_$][\w$]*$/.test(local) && /^[A-Za-z_$][\w$]*$/.test(imported)) {
+      out.push({ local, imported });
+    }
+  }
+  return out;
+}
+
 function importedValueNames(clause) {
   if (/^\s*type\b/.test(clause)) return null; // import type { ... }
   const brace = clause.match(/\{([^}]*)\}/);
@@ -1328,6 +1364,79 @@ export async function checkConventions(appDir) {
             message: `Imports \`${name}\` from \`${spec}\`, but that module does not export \`${name}\`. The binding is undefined at runtime and crashes on first use (often a renamed or removed export, e.g. a dropped schema table).`,
             fix: `Add \`${name}\` to \`${spec}\`, correct the imported name, or remove the import.`,
           });
+        }
+      }
+    }
+  }
+
+  // --- Rule: form-action-not-a-get-action (#1155) ---
+  // `<form action=${fn}>` binds a server action to a POST submission. An action
+  // declaring `method = 'GET'` cannot serve one: it is CSRF-exempt and takes its
+  // args in the url, so the dispatcher answers 405. Catch it at edit time.
+  {
+    // A `'use server'` file's declared method, or absent when it declares none.
+    const methodByAbs = new Map();
+    for (const f of files) {
+      if (!/\.server\.m?[jt]s$/.test(f.rel)) continue;
+      if (!hasUseServerDirective(f.content)) continue;
+      const m = /\bexport\s+const\s+method\s*(?::[^=]*)?=\s*['"`]([A-Za-z]+)['"`]/.exec(f.scan);
+      if (m) methodByAbs.set(f.abs, m[1].toUpperCase());
+    }
+    if (methodByAbs.size) {
+      const reImport = /\bimport\s+([^'";]*?)\bfrom\s*(['"])/g;
+      for (const { abs, rel, content } of files) {
+        // PLACEHOLDER redaction, not either mask, and the choice is forced.
+        // The default mask blanks a tagged template outright, so a real
+        // `html`<form action=${fn}>`` disappears and the rule could never fire;
+        // the fully-blanked mask does the same. Placeholder mode keeps `${...}`
+        // holes as REAL code while turning each literal BODY into one opaque
+        // `__STR_n__` token, so a live binding is readable and a `<form
+        // action=${x}>` shown as text inside a docs sample is a single token
+        // with no hole in it. That distinction is the whole carve-out: the
+        // framework's own website renders this exact shape as a code sample.
+        const { redacted, literals } = redactToPlaceholders(content);
+        // A hole binds a form when the literal segment IMMEDIATELY before it
+        // ends inside a `<form ...` start tag at `action=`. Reading the segment
+        // rather than the whole template is what keeps `<div action=${x}>` and
+        // a `formaction=` on a button out: both are refused at render time, and
+        // neither is this rule's failure mode.
+        const bound = new Set();
+        for (const m of redacted.matchAll(/__STR_(\d+)__\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g)) {
+          const before = literals[Number(m[1])] || '';
+          // The last `<` opens the tag the hole sits in. Requiring no `>`
+          // after it keeps the match inside that one start tag.
+          const tagAt = before.lastIndexOf('<');
+          if (tagAt < 0) continue;
+          const tag = before.slice(tagAt);
+          if (tag.includes('>')) continue;
+          if (!/^<form\b/i.test(tag)) continue;
+          if (!/\saction=$/i.test(tag)) continue;
+          bound.add(m[2]);
+        }
+        if (!bound.size) continue;
+        reImport.lastIndex = 0;
+        let im;
+        while ((im = reImport.exec(redacted))) {
+          // The specifier is a placeholder token in this view, so read the real
+          // one back out of `literals`.
+          const tok = /__STR_(\d+)__/.exec(redacted.slice(reImport.lastIndex, reImport.lastIndex + 24));
+          if (!tok) continue;
+          const spec = literals[Number(tok[1])] || '';
+          if (!/^(?:\.|#)/.test(spec)) continue;
+          const names = importedLocalNames(im[1]);
+          if (!names.length) continue;
+          const target = resolveImport(spec, abs, appDir);
+          const method = target ? methodByAbs.get(target) : undefined;
+          if (!method || method === 'POST') continue;
+          for (const { local, imported } of names) {
+            if (!bound.has(local)) continue;
+            violations.push({
+              rule: 'form-action-not-a-get-action',
+              file: rel,
+              message: `Binds \`${imported}\` to a form, but \`${spec}\` declares \`method = '${method}'\`. A ${method} action rides its arguments in the url and skips the CSRF check, so it cannot answer a form POST; the submission is a 405.`,
+              fix: `Drop the \`method\` export from \`${spec}\` (an action with no method is a POST, which is what a form submits), or bind an action that takes a POST.`,
+            });
+          }
         }
       }
     }
