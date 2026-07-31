@@ -241,8 +241,8 @@ export async function runFormAction(route, params, url, req, ssrOpts, deps) {
   if (!looksLikeFormSubmission(req)) return methodNotAllowed();
 
   // CSRF, before the body is read and before anything runs. Same Origin /
-  // Sec-Fetch-Site check the RPC endpoint applies (`csrf.js`); the page-action
-  // path it replaces had none, and was shielded only by SameSite=Lax cookies.
+  // Sec-Fetch-Site check the RPC endpoint applies (`csrf.js`). The page `action`
+  // export this replaces had none, and was shielded only by SameSite=Lax cookies.
   const origin = verifyOrigin(req, allowedOrigins);
   if (!origin.ok) return new Response('CSRF validation failed', { status: 403 });
 

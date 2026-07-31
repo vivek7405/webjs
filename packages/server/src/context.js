@@ -17,7 +17,7 @@ import { setCspNonceProvider, cspNonce } from '@webjsdev/core';
  *
  * `bodyLimits` holds the resolved request body-size caps (issue #237) so
  * `readBody` (used inside `route.{js,ts}` handlers, which have no handle to the
- * server state) can enforce the same limit the RPC and page-action paths do. The
+ * server state) can enforce the same limit the RPC and form-dispatch paths do. The
  * handler writes it per request via `setBodyLimits`.
  *
  * `requestId` holds the per-request correlation id (issue #239). The handler

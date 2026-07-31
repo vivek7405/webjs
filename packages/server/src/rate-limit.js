@@ -126,8 +126,8 @@ function trustedRemoteIp(req) {
 
 /**
  * Carry the trusted remote IP from `src` to a freshly-rebuilt `dst` Request
- * (#756). When the framework re-wraps a request (the page-action body rebuild in
- * `page-action.js`), the out-of-band WeakMap key is a new object, so the trusted
+ * (#756). When the framework re-wraps a request (the form-submission body rebuild
+ * in `form-dispatch.js`), the out-of-band WeakMap key is a new object, so the trusted
  * IP would be lost and `clientIp(dst)` would fall back to the (spoofable) header
  * the rebuild copied over. Propagating the trusted value via the WeakMap keeps
  * `dst` authoritative on BOTH runtimes (it reads `trustedRemoteIp(src)`, which is

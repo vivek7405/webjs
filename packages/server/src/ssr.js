@@ -41,7 +41,7 @@ export async function ssrPage(route, params, url, opts) {
   // and is threaded back through `opts.pageModule` so renderChain reuses the
   // same evaluation (no double-load). A cache HIT serves the stored HTML
   // without re-running the page function. Skipped entirely (no opt-in read,
-  // no double behaviour) for the page-action re-render (actionData / a non-200
+  // no double behaviour) for the form-action re-render (actionData / a non-200
   // status) and for a partial-nav request (X-Webjs-Have), whose bytes depend
   // on the request and must not be shared under the full-URL key.
   const cacheEligible =
