@@ -139,29 +139,90 @@ test('a HOLE-provided method / enctype after the action hole is still refused', 
   }
 });
 
-test('a LATER re-render that breaks an already-bound form is refused', () => {
-  // A re-render re-applies only the parts whose values CHANGED. With the action
-  // unchanged, the end-of-pass validation never sees this form again, so the
-  // write has to be checked where it happens.
+// The re-render cases below all HOIST the action function. That is load-bearing
+// rather than tidy: `updateInstance` skips a part whose value is `Object.is`
+// to the last one, so minting a fresh stub inside the template makes the action
+// part re-apply and re-bind on every render. The bind re-validates from
+// scratch, which means the assertion passes on the strength of the FIRST fix
+// and says nothing about the write-path check it claims to cover. Both halves
+// of that were true of an earlier version of these tests, so each was satisfied
+// by the other and neither was pinned.
+const HOISTED = () => {
+  const fn = async () => {};
+  Object.defineProperty(fn, FORM_ACTION_ID_KEY, { value: ID });
+  return fn;
+};
+
+test('a re-render that breaks an already-bound form is refused (unquoted hole)', () => {
+  const fn = HOISTED();
   const host = document.createElement('div');
-  const tpl = (enc) => html`<form action=${stub(ID)} enctype=${enc}></form>`;
+  const tpl = (enc) => html`<form action=${fn} enctype=${enc}></form>`;
   render(tpl('multipart/form-data'), host);
   assert.throws(() => render(tpl('text/plain'), host), /cannot work/);
 });
 
-test('an ordinary form that binds no action keeps its method hole', () => {
-  // The carve-out for the write-site check: it must be a no-op on any form
-  // that is not bound, or a plain search form stops working.
+test('a re-render that breaks an already-bound form is refused (QUOTED hole)', () => {
+  // A quoted hole compiles to a different commit branch (`attr-mixed`), and it
+  // is the more common spelling. Instrumenting the branches one at a time is
+  // how this one got missed.
+  const fn = HOISTED();
   const host = document.createElement('div');
-  render(html`<form method=${'get'} action="/search"><input name="q"></form>`, host);
-  const form = host.querySelector('form');
-  assert.equal(form.getAttribute('method'), 'get');
-  assert.equal(form.getAttribute('action'), '/search');
+  const tpl = (m) => html`<form action=${fn} method="${m}"></form>`;
+  render(tpl('post'), host);
+  assert.throws(() => render(tpl('get'), host), /cannot work/);
 });
 
-test('a legal re-render of a bound form still updates and does not re-bind', () => {
+test('a re-render that REMOVES method or enctype is refused', () => {
+  // A removal is not neutral: a form with no `method` submits as GET, which
+  // sends no body, so the action never runs. SSR refuses the same template (a
+  // null hole renders `method=""`), so accepting it here would put the two
+  // renderers back out of step.
+  for (const attr of ['method', 'enctype']) {
+    const fn = HOISTED();
+    const host = document.createElement('div');
+    const tpl = attr === 'method'
+      ? (v) => html`<form action=${fn} method=${v}></form>`
+      : (v) => html`<form action=${fn} enctype=${v}></form>`;
+    render(tpl(attr === 'method' ? 'post' : 'multipart/form-data'), host);
+    assert.throws(() => render(tpl(null), host), /lost its/, `removing ${attr} must be refused`);
+  }
+});
+
+test('an action hole that resolves to a URL releases the binding', () => {
+  // `action=${flag ? act : '/legacy'}`. Two things have to happen: the stale
+  // identity field goes (or the form posts the old action's identity to its new
+  // url), and later `method` writes stop being judged against a binding that no
+  // longer exists.
+  const fn = HOISTED();
   const host = document.createElement('div');
-  const tpl = (v) => html`<form action=${stub(ID)}><input name="a" value=${v}></form>`;
+  const tpl = (a, m) => html`<form action=${a} method=${m}></form>`;
+  render(tpl(fn, 'post'), host);
+  assert.equal(host.querySelectorAll('input[name="__webjs_action"]').length, 1);
+
+  render(tpl('/legacy', 'get'), host);   // must NOT throw
+  const form = host.querySelector('form');
+  assert.equal(form.getAttribute('action'), '/legacy');
+  assert.equal(form.getAttribute('method'), 'get', 'an ordinary form may be a GET again');
+  assert.equal(form.querySelectorAll('input[name="__webjs_action"]').length, 0,
+    'the stale identity field must not survive the release');
+});
+
+test('an ordinary form that binds no action keeps its method hole', () => {
+  // The carve-out for the write-path check: it must be a no-op on any form that
+  // is not bound, or a plain search form stops working.
+  const host = document.createElement('div');
+  const tpl = (m) => html`<form method=${m} action="/search"><input name="q"></form>`;
+  render(tpl('get'), host);
+  render(tpl(null), host);   // removing method on an UNBOUND form is fine
+  const form = host.querySelector('form');
+  assert.equal(form.getAttribute('action'), '/search');
+  assert.equal(form.hasAttribute('method'), false);
+});
+
+test('a re-render that changes only a child value neither re-binds nor duplicates', () => {
+  const fn = HOISTED();
+  const host = document.createElement('div');
+  const tpl = (v) => html`<form action=${fn}><input name="a" value=${v}></form>`;
   render(tpl('one'), host);
   render(tpl('two'), host);
   const form = host.querySelector('form');

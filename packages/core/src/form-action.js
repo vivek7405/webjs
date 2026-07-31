@@ -344,9 +344,17 @@ export function queueFormActionBind(form, fn) {
  * @returns {void}
  */
 export function flushFormActionBinds() {
-  if (!_pendingBinds.length) return;
-  const pending = _pendingBinds.splice(0, _pendingBinds.length);
-  for (const { form, fn } of pending) bindFormActionElement(form, fn);
+  if (_pendingBinds.length) {
+    const pending = _pendingBinds.splice(0, _pendingBinds.length);
+    for (const { form, fn } of pending) bindFormActionElement(form, fn);
+  }
+  if (_pendingRevalidate.length) {
+    const forms = _pendingRevalidate.splice(0, _pendingRevalidate.length);
+    for (const form of forms) {
+      if (!_boundForms.has(form)) continue;   // released during this same pass
+      assertStillSubmittable(form);
+    }
+  }
 }
 
 /**
@@ -365,6 +373,7 @@ export function flushFormActionBinds() {
  */
 export function discardPendingFormActionBinds() {
   _pendingBinds.length = 0;
+  _pendingRevalidate.length = 0;
 }
 
 /**
@@ -374,32 +383,91 @@ export function discardPendingFormActionBinds() {
  */
 const _boundForms = new WeakSet();
 
+/** Bound forms to re-validate at the end of this pass. @type {HTMLFormElement[]} */
+const _pendingRevalidate = [];
+
 /**
- * Validate a `method` / `enctype` write against a form that is already bound.
+ * Is `name` an attribute whose value decides whether a bound form can submit?
+ * @param {string} name
+ * @returns {boolean}
+ */
+function affectsSubmittability(name) {
+  const attr = String(name).toLowerCase();
+  return attr === 'method' || attr === 'enctype';
+}
+
+/**
+ * Note that a bound form's `method` / `enctype` was written, so the end of the
+ * pass re-checks it.
  *
- * The flush above covers the commit pass that CREATES the binding, but a
- * re-render only re-applies the parts whose values changed: if the action is
- * unchanged and only `enctype=${e}` moves, nothing re-validates and the form
- * silently becomes unsubmittable. This runs at the mutation site instead, which
- * is the one place that write is visible.
- *
- * A no-op for any element that is not a bound form, so an ordinary
- * `<form method=${m}>` with no action is untouched.
+ * Deferred rather than checked at the write, for the same reason that moved the
+ * bind itself: a write site sees ONE attribute mid-pass, so validating there
+ * judges a half-built tag. Deferring also makes every write path equivalent,
+ * which matters because there are three (a value, a REMOVAL, and the separate
+ * mixed-attribute branch a QUOTED hole compiles to) and instrumenting them one
+ * at a time is how two of the three got missed.
  *
  * @param {Element} el
- * @param {string} name  the attribute being written
- * @param {unknown} value
+ * @param {string} name
  * @returns {void}
  */
-export function assertBoundFormAttrWrite(el, name, value) {
+export function noteBoundFormAttrWrite(el, name) {
+  if (!_boundForms.has(el) || !affectsSubmittability(name)) return;
+  _pendingRevalidate.push(/** @type any */ (el));
+}
+
+/**
+ * Re-check a bound form after a write to its `method` / `enctype`.
+ *
+ * Stricter than `assertSubmittableForm`, and it has to be: that one treats an
+ * ABSENT attribute as "not set yet, the renderer will supply it", which is
+ * right before a bind and wrong after one. Binding always leaves both present,
+ * so absent HERE means this pass removed it, and a removal is not neutral: a
+ * `<form>` with no `method` submits as GET, which is the same silent break as
+ * writing `"get"` outright. SSR refuses the same template (a null hole renders
+ * `method=""`, which is not `post`), so accepting it would put the two
+ * renderers back out of step.
+ *
+ * @param {HTMLFormElement} form
+ * @returns {void}
+ */
+function assertStillSubmittable(form) {
+  const method = form.getAttribute('method');
+  const enctype = form.getAttribute('enctype');
+  if (method == null || enctype == null) {
+    throw new Error(
+      `[webjs] a bound <form action=\${action}> lost its `
+      + `${method == null ? 'method' : 'enctype'} attribute during a re-render. `
+      + `A form with no method submits as GET, which sends no body, so the `
+      + `action would never run. Leave both to WebJs (it supplies method="post" `
+      + `and an enctype) rather than driving them from a hole that can resolve `
+      + `to null.`,
+    );
+  }
+  assertSubmittableForm(method, enctype);
+}
+
+/**
+ * Release a form that no longer carries a bound action.
+ *
+ * Reached when an action hole resolves to something else (`action=${flag ? act
+ * : '/legacy'}`). Two things have to go: the membership, or every later
+ * `method` write on a now-ordinary form would be judged against a binding that
+ * is gone, and the hidden identity field, or the form would post the old
+ * action's identity to its new url.
+ *
+ * @param {Element} el
+ * @returns {void}
+ */
+export function releaseFormAction(el) {
   if (!_boundForms.has(el)) return;
-  const attr = String(name).toLowerCase();
-  if (attr !== 'method' && attr !== 'enctype') return;
-  const next = value == null ? null : String(value);
-  assertSubmittableForm(
-    attr === 'method' ? next : el.getAttribute('method'),
-    attr === 'enctype' ? next : el.getAttribute('enctype'),
-  );
+  _boundForms.delete(el);
+  for (const child of el.children) {
+    if (child.localName === 'input' && child.getAttribute('name') === FORM_ACTION_FIELD) {
+      child.remove();
+      break;
+    }
+  }
 }
 
 /**

@@ -4,7 +4,7 @@ import { escapeAttr } from './escape.js';
 import {
   assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp,
   queueFormActionBind, flushFormActionBinds, discardPendingFormActionBinds,
-  assertBoundFormAttrWrite, isBoundFormAction,
+  noteBoundFormAttrWrite, releaseFormAction, isBoundFormAction,
 } from './form-action.js';
 import { isRepeat } from './repeat.js';
 import { isUnsafeHTML, isLive, isKeyed, isGuard, isTemplateContent, isRef, isCache, isUntil, isAsyncAppend, isAsyncReplace, isWatch } from './directives.js';
@@ -687,6 +687,12 @@ function applyPart(part, value, _prev, allValues) {
       applyChild(part, value);
       break;
     case 'attr': {
+      // #1155: any write to a bound form's `method` / `enctype` is noted for
+      // the end-of-pass re-check. It sits ahead of the branches below so it
+      // covers the REMOVAL path too: `method=${null}` strips the attribute and
+      // the form falls back to the HTML default GET, which is the same silent
+      // break as writing `"get"` outright.
+      noteBoundFormAttrWrite(part.el, part.name);
       if (value == null || value === false) part.el.removeAttribute(part.name);
       else if (isBoundFormAction(value, part.name, part.el.localName)) {
         // #1155: the ONE supported form-action binding, applied to the live
@@ -709,11 +715,11 @@ function applyPart(part, value, _prev, allValues) {
         // (mirrors the SSR guard, so a client re-render cannot write a
         // server action's source into the live DOM).
         assertNotFunctionActionAttr(value, part.name, part.el.localName);
-        // #1155: a `method` / `enctype` write on an ALREADY-bound form has to
-        // be validated here, because a re-render re-applies only the parts
-        // whose values changed. With the action unchanged, nothing else would
-        // look at it, and the form would quietly become unsubmittable.
-        assertBoundFormAttrWrite(part.el, part.name, value);
+        // #1155: an `action` that resolves to something other than an action
+        // (`action=${flag ? act : '/legacy'}`) releases the binding, so the
+        // stale identity field goes with it and later `method` writes are no
+        // longer judged against a binding that is gone.
+        if (String(part.name).toLowerCase() === 'action') releaseFormAction(part.el);
         part.el.setAttribute(part.name, String(value));
       }
       break;
@@ -750,6 +756,11 @@ function applyPart(part, value, _prev, allValues) {
       applyElement(part, value);
       break;
     case 'attr-mixed': {
+      // #1155: a QUOTED hole compiles to this branch, not `attr`, so a bound
+      // form's `method="${verb}"` lands here and needs the same end-of-pass
+      // re-check. This is the more common spelling, and it was the branch the
+      // first cut of the write-path check missed entirely.
+      noteBoundFormAttrWrite(part.el, part.name);
       // Reconstruct the attribute from static pieces + all dynamic values.
       const mp = /** @type {{ statics: string[], group: number[] }} */ (/** @type any */ (part));
       let val = mp.statics[0];
