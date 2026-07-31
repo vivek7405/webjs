@@ -1,14 +1,13 @@
 import type { CommentFormatted } from '#modules/comments/types.ts';
+import type { Comment, User } from '#db/schema.server.ts';
 
-// The row this formats is a comments row plus the author it was joined or
-// spliced with. Typing it means a renamed column is a compile error here
-// rather than an `undefined` in the rendered comment.
-type CommentRow = {
-  id: number;
-  postId: number;
-  body: string;
-  createdAt: Date;
-  author?: { name?: string | null; email?: string | null } | null;
+// The row is a comments row DERIVED from the schema, plus the author the
+// caller joined or spliced onto it. `import type` is what lets a schema type
+// cross the `.server.ts` boundary: the stripper erases it, so nothing pulls the
+// DB driver in. Rename a column and every call site is a compile error instead
+// of an `undefined` in the rendered comment.
+type CommentRow = Comment & {
+  author?: Pick<User, 'name' | 'email'> | null;
 };
 
 export function formatComment(c: CommentRow): CommentFormatted {

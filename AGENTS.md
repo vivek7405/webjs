@@ -342,7 +342,7 @@ type ActionResult<T> =
 
 **Full-stack type safety is the point of the `.server.{js,ts}` boundary, so an app that types its boundaries `unknown` or `any` gives up WebJs's central guarantee for nothing.** There is no build step and no code generation between the two sides: a client component importing a server action resolves to the action's real signature at type-check time, so the type is already there to be used. Nothing enforces this (both are valid TypeScript, so `tsc` and `webjs check` pass either way), which is exactly why it is written down.
 
-Derive the type at every boundary: a DB row from the schema (`typeof todos.$inferSelect`, carried into a shipping component with `import type`), an action's input from a named `interface` and its result from `ActionResult<T>`, a page from `PageProps<'/blog/[slug]'>`, a layout from `LayoutProps`, a route handler's second argument from `RouteHandlerContext`, an href from the generated `Route` union (`webjs types`), a reactive property from `prop<Student>(Object)`.
+Derive the type at every boundary: a DB row from the schema (`typeof todos.$inferSelect`, carried into a shipping component with `import type`), an action's input from a named `interface` and its result from `ActionResult<T>`, a page from `PageProps<'/blog/[slug]'>`, a layout from `LayoutProps`, a route handler's second argument from `RouteHandlerContext`, an href from the generated `Route` union (`npx webjsdev types`), a reactive property from `prop<Student>(Object)`.
 
 `unknown` is right for a payload nothing has vouched for yet, narrowed on the next line (a `route.ts` `await req.json()`, an action's `export const validate`, a `catch` binding), and for a value headed for an `html` template hole (a hole renders a string, a number, a `TemplateResult`, or an array of those, so `TemplateResult` alone is too narrow). Everywhere else it is a missing type, not a safe one: `unknown` surviving into a return type, a component prop, or an action signature is the shape to fix. `any` has no carve-out at all. Full ladder, with the end-to-end example, in `references/typescript.md`.
 
@@ -381,7 +381,7 @@ class TodoList extends WebComponent({
       ...state,
       // No cast needed: `Todo['id']` is a string (a uuid primary key). Against
       // an auto-increment integer id, model the temp row instead of casting.
-      { id: crypto.randomUUID(), title, completed: false, pending: true },
+      { id: crypto.randomUUID(), title, completed: false, createdAt: new Date(), pending: true },
     ],
   });
 

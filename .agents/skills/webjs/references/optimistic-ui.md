@@ -34,7 +34,7 @@ class TodoList extends WebComponent({
       // primary key). Against an auto-increment integer id there is no honest
       // client-side value, so model the temp row instead (an optional id, or a
       // `tempId` the reducer keys on) rather than casting one in.
-      { id: crypto.randomUUID(), title, completed: false, pending: true },
+      { id: crypto.randomUUID(), title, completed: false, createdAt: new Date(), pending: true },
     ],
   });
 

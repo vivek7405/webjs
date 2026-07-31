@@ -43,7 +43,7 @@ DERIVE the type at every boundary instead of widening it:
 - An action's input: a named `interface`. Its result: `ActionResult<T>`.
   Narrow with `if (result.success && result.data)`.
 - Routing files: `PageProps<'/blog/[slug]'>`, `LayoutProps`,
-  `RouteHandlerContext`, all from `@webjsdev/core`. Run `webjs types`
+  `RouteHandlerContext`, all from `@webjsdev/core`. Run `npx webjsdev types`
   for the typed `Route` union and per-route `params`.
 - A reactive property: `prop<Student>(Object)`, `prop<Tag[]>(Array)`.
 

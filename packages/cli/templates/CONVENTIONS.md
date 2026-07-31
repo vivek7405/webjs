@@ -24,9 +24,9 @@ is the short version.
   teaches the same and survives the clear), run `npm run gallery:clear` to shed
   the showcase, then grow the app in place. `AGENTS.md` has the full
   template-specific playbook.
-- **Derive types, never `unknown` or `any`.** Rows from the schema
-  (`$inferSelect`), an action's input from a named `interface`, routing files
-  from `PageProps` / `LayoutProps` / `RouteHandlerContext`.
+- **Derive types at every boundary.** Rows from `$inferSelect`, action inputs
+  from an `interface`, routing files from `PageProps` / `LayoutProps`.
+  `unknown` only for an unvouched payload or an `html` hole. Never `any`.
 - **Progressive enhancement is the default.** Pages render as HTML, `<a>`
   navigates, `<form>` + a page action submits, all with JavaScript off; opt into
   interactivity per behaviour inside a component.

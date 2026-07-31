@@ -1,4 +1,5 @@
 import type { PostFormatted } from '#modules/posts/types.ts';
+import type { Post, User } from '#db/schema.server.ts';
 
 /** Produce a URL-safe slug from a title. Truncates at 60 chars. */
 export function slugify(s: string): string {
@@ -9,14 +10,12 @@ export function slugify(s: string): string {
     .slice(0, 60);
 }
 
-type PostRow = {
-  id: number;
-  slug: string;
-  title: string;
-  body: string;
-  authorId: number;
-  createdAt: Date;
-  author?: { name: string | null; email: string } | null;
+// Derived from the schema, not re-declared: a renamed column is a compile
+// error at every call site instead of an `undefined` in the rendered post.
+// `import type` erases before anything reaches the browser, so a schema type
+// crosses the `.server.ts` boundary safely.
+type PostRow = Post & {
+  author?: Pick<User, 'name' | 'email'> | null;
 };
 
 export function formatPost(post: PostRow): PostFormatted {

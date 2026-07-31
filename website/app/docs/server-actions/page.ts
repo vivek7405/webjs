@@ -316,8 +316,9 @@ export async function createPost(input: CreatePostInput): Promise&lt;ActionResul
   // The parameter declares the contract; these checks ENFORCE it, because the
   // same action is reachable from a route.ts REST endpoint with a raw JSON body.
   const title = typeof input?.title === 'string' ? input.title.trim() : '';
-  const body = typeof input?.body === 'string' ? input.body : '';
+  const body = typeof input?.body === 'string' ? input.body.trim() : '';
   if (!title) return { success: false, error: 'title is required', status: 400 };
+  if (!body) return { success: false, error: 'body is required', status: 400 };
 
   const [post] = await db.insert(posts).values({ title, body, authorId: user.id }).returning();
   return { success: true, data: post };
