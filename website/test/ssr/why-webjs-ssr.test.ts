@@ -53,7 +53,7 @@ test('the two prompts differ only by the architecture one of them has to spell o
 
   // Every instruction the other prompt has to append must be absent here, or
   // the two panels are not actually showing a difference.
-  for (const appended of ['real database', 'render the pages on the server', 'design tokens', 'sessions and a login', 'production ready']) {
+  for (const appended of ['real database', 'design system', 'production ready code and architecture']) {
     assert.ok(open.includes(appended), `the open-decision prompt has to append ${appended}`);
     assert.ok(!made.includes(appended), `the WebJs prompt never appends ${appended}, which is the whole contrast`);
   }

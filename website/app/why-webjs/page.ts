@@ -211,11 +211,8 @@ Counter.register('counter');
               <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="A prompt that has to specify the architecture as well as the app"><code><span class="text-accent">&gt;</span> Build me a table booking app
 
 <span class="text-fg-subtle">  and put the data in a real database,</span>
-<span class="text-fg-subtle">  and render the pages on the server,</span>
-<span class="text-fg-subtle">  and set up design tokens for the look,</span>
-<span class="text-fg-subtle">  and add sessions and a login,</span>
-<span class="text-fg-subtle">  and keep the server code off the client,</span>
-<span class="text-fg-subtle">  and make it production ready</span></code></pre>
+<span class="text-fg-subtle">  and use a design system, and write</span>
+<span class="text-fg-subtle">  production ready code and architecture</span></code></pre>
             </figure>
           </div>
           <div class="flex flex-col min-w-0">
