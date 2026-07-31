@@ -19,7 +19,7 @@
  * non-public or traversal path is refused WITHOUT reading the file.
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -82,5 +82,10 @@ assert.equal(seen.size, 1, `${runtime}: a public url must depend on bytes alone`
 for (const p of ['/.env', '/public/../.env', '/public/%2E%2E/.env', '/etc/passwd']) {
   assert.equal(resolveAssetUrl(p), p, `${runtime}: ${p} must be refused unchanged`);
 }
+
+// Clean up the fixture, matching every sibling in this directory. Both `npm
+// test` and the Bun CI step run this file, so leaking would strand a
+// `webjs-asset-bun-*` directory in the temp dir on every single run.
+rmSync(root, { recursive: true, force: true });
 
 console.log(`[asset-url] ok on ${runtime}`);
