@@ -95,7 +95,7 @@ The ladder, in the order to climb it:
 | A page | `PageProps<'/blog/[slug]'>` | `{ params: Record<string, any> }` |
 | A layout | `LayoutProps` (whose `children` is a `TemplateResult`) | `{ children: unknown }` |
 | A route handler's 2nd argument | `RouteHandlerContext<'/api/users/[id]'>` | `{ params: any }` |
-| A client-router href | the generated `Route` union (`npx webjsdev types`, or `webjs types` from an npm script) | a bare `string` |
+| A client-router href | the generated `Route` union (`npx webjsdev types`; `npm run dev` also emits it) | a bare `string` |
 | A reactive property | `prop<Student>(Object)`, `prop<Tag[]>(Array)` | `prop(Object)` plus a cast at every read |
 | An optimistic temp row | the pending shape on the row type (`pending?: boolean`) | `as any` on the temp id |
 
@@ -136,11 +136,13 @@ export async function POST(req: Request) {
 }
 ```
 
-The test is what the next line does. Correct `unknown` here is narrowed immediately by a parse, a validator, or a type guard, and the narrowed type is what the rest of the function sees. Three spots qualify: a `route.ts` handler's `await req.json()` (above), a `catch (e)` binding (already `unknown` under `strict`), and an action's `export const validate`, which runs on the RPC boundary against a payload nothing has vouched for yet. In `validate`, returning `data` that `satisfies` the action's input type is what carries a real type into the action body. See `data-and-actions.md`.
+The test is what the next line does. Correct `unknown` here is narrowed immediately by a parse, a validator, or a type guard, and the narrowed type is what the rest of the function sees. Anything standing at that boundary qualifies: a `route.ts` handler's `await req.json()` (above), a `catch (e)` binding (already `unknown` under `strict`), an action's `export const validate`, and any validator function those delegate to. In a validator, returning `data` that `satisfies` the action's input type is what carries a real type into the action body. See `data-and-actions.md`.
 
-**Case two: a value destined for an `html` template hole, which is NOT narrowed.** A hole renders a string, a number, a `TemplateResult`, an array of those, a directive result, or nothing, so a helper like `lede(content: unknown)` is correctly typed and `TemplateResult` alone would be too narrow. Narrow it only when the helper genuinely accepts one shape (`backLink(href: string, ...)`).
+**Case two: a parameter of YOUR OWN helper that forwards its argument into an `html` template hole, which is NOT narrowed.** A hole renders a string, a number, a `TemplateResult`, an array of those, a directive result, or nothing, so a helper like `lede(content: unknown)` is correctly typed and `TemplateResult` alone would be too narrow. Narrow it only when the helper genuinely accepts one shape (`backLink(href: string, ...)`).
 
-Everywhere else `unknown` is a missing type, not a safe one: surviving into a return type, a component prop, or an action signature is the shape to fix.
+This case is about a value YOU accept, never one the framework hands you. A layout's `children` also ends up in a hole, but the framework already types it (`LayoutProps.children` is a `TemplateResult`), so `{ children: unknown }` is a discarded type, not this carve-out.
+
+Everywhere else `unknown` is a missing type, not a safe one: surviving into a return type, a component prop, a layout's `children`, or an action signature is the shape to fix.
 
 `any` gets no carve-out at all in app code. It does not defer checking, it disables it, so a validator typed `(input: any)` un-types everything downstream of the call.
 

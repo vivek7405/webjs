@@ -344,7 +344,7 @@ type ActionResult<T> =
 
 Derive the type at every boundary: a DB row from the schema (`typeof todos.$inferSelect`, carried into a shipping component with `import type`), an action's input from a named `interface` and its result from `ActionResult<T>`, a page from `PageProps<'/blog/[slug]'>`, a layout from `LayoutProps`, a route handler's second argument from `RouteHandlerContext`, an href from the generated `Route` union (`npx webjsdev types`), a reactive property from `prop<Student>(Object)`.
 
-`unknown` is right for a payload nothing has vouched for yet, narrowed on the next line (a `route.ts` `await req.json()`, an action's `export const validate`, a `catch` binding), and for a value headed for an `html` template hole (a hole renders a string, a number, a `TemplateResult`, or an array of those, so `TemplateResult` alone is too narrow). Everywhere else it is a missing type, not a safe one: `unknown` surviving into a return type, a component prop, or an action signature is the shape to fix. `any` has no carve-out at all. Full ladder, with the end-to-end example, in `references/typescript.md`.
+`unknown` is right for a payload nothing has vouched for yet, narrowed on the next line (a `route.ts` `await req.json()`, an action's `export const validate`, a `catch` binding), and for a value headed for an `html` template hole (a hole renders a string, a number, a `TemplateResult`, or an array of those, so `TemplateResult` alone is too narrow). Everywhere else it is a missing type, not a safe one: `unknown` surviving into a return type, a component prop, a layout's `children`, or an action signature is the shape to fix. The template-hole case covers a parameter of YOUR OWN helper, never a value the framework already types. `any` has no carve-out at all. Full ladder, with the end-to-end example, in `references/typescript.md`.
 
 ---
 
@@ -396,9 +396,9 @@ class TodoList extends WebComponent({
 
     const result = await promise;
     if (result.success && result.data) {
-      // The optimistic entry has ALREADY auto-released (the promise settled),
-      // so `this.todos` holds only confirmed rows. Append the server's row,
-      // matching the order the `update` reducer used.
+      // The optimistic row lives in the overlay `optimistic()` keeps, never in
+      // `this.todos`, so this prop holds only confirmed rows. Append the
+      // server's row, matching the order the `update` reducer used.
       this.todos = [...this.todos, result.data];
     }
   }

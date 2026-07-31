@@ -49,9 +49,11 @@ class TodoList extends WebComponent({
 
     const result = await promise;
     if (result.success && result.data) {
-      // Reconcile: the optimistic entry has ALREADY auto-released (the promise
-      // settled), so `this.todos` holds only confirmed rows here. Append the
-      // server's canonical row, matching the order the `update` reducer used.
+      // Reconcile: the optimistic row lives in the overlay `optimistic()`
+      // keeps, never in `this.todos`, so this prop holds only confirmed rows.
+      // Append the server's canonical row, matching the order the `update`
+      // reducer used. (The overlay entry auto-released when the promise
+      // settled, so `.value` does not double-count it on the next paint.)
       this.todos = [...this.todos, result.data];
     }
   }
