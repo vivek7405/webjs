@@ -3,7 +3,7 @@ import { BINDING_PREFIXES, isBindingPrefix } from './binding-prefixes.js';
 import { escapeAttr } from './escape.js';
 import {
   assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp,
-  bindFormActionElement, isBoundFormAction,
+  queueFormActionBind, flushFormActionBinds, assertBoundFormAttrWrite, isBoundFormAction,
 } from './form-action.js';
 import { isRepeat } from './repeat.js';
 import { isUnsafeHTML, isLive, isKeyed, isGuard, isTemplateContent, isRef, isCache, isUntil, isAsyncAppend, isAsyncReplace, isWatch } from './directives.js';
@@ -522,6 +522,7 @@ function createInstance(tr, container) {
     applyPart(bound[i], tr.values[i], undefined, tr.values);
     lastValues.push(tr.values[i]);
   }
+  flushFormActionBinds();
 
   /** @type any */ (container).replaceChildren(startNode, ...frag.childNodes, endNode);
 
@@ -613,6 +614,7 @@ function updateInstance(inst, values) {
     }
     inst.lastValues[i] = next;
   }
+  flushFormActionBinds();
 }
 
 /**
@@ -681,12 +683,26 @@ function applyPart(part, value, _prev, allValues) {
         // whole template on hydration, so without this the SSR'd hidden field
         // would be replaced by an `action` attribute holding a stringified
         // function, and the form would post to a garbage url.
-        bindFormActionElement(/** @type any */ (part.el), value);
+        //
+        // QUEUED, not applied here. The binding's own validation reads the
+        // form's `method` and `enctype`, and a hole-provided one written AFTER
+        // the action hole has not been committed yet at this point, so
+        // validating now would read `null` and let `<form action=${fn}
+        // method=${'get'}>` through on the client while SSR (which validates
+        // the whole start tag at its `>`) refuses it. Flushed once the
+        // instance's parts are all applied, so both renderers see the same
+        // final attributes.
+        queueFormActionBind(/** @type any */ (part.el), value);
       } else {
         // #1154: refuse to stringify a function into action=/formaction=
         // (mirrors the SSR guard, so a client re-render cannot write a
         // server action's source into the live DOM).
         assertNotFunctionActionAttr(value, part.name, part.el.localName);
+        // #1155: a `method` / `enctype` write on an ALREADY-bound form has to
+        // be validated here, because a re-render re-applies only the parts
+        // whose values changed. With the action unchanged, nothing else would
+        // look at it, and the form would quietly become unsubmittable.
+        assertBoundFormAttrWrite(part.el, part.name, value);
         part.el.setAttribute(part.name, String(value));
       }
       break;
@@ -1139,6 +1155,7 @@ function applyChildInnerRaw(part, value) {
       applyPart(bound[i], tr.values[i], undefined, tr.values);
       lastValues.push(tr.values[i]);
     }
+    flushFormActionBinds();
     const nodes = [startNode, ...frag.childNodes, endNode];
     marker.parentNode?.insertBefore(nodesToFrag(nodes), marker);
     // Slot parts in this nested template need their one-shot apply just
@@ -1198,6 +1215,7 @@ function buildDetached(tr) {
     applyPart(bound[i], tr.values[i], undefined, tr.values);
     lastValues.push(tr.values[i]);
   }
+  flushFormActionBinds();
   // Slot parts need their one-shot apply exactly like createInstance and the
   // nested-template path. The fragment is still detached here, so the
   // slot-part's own deferred finalize (a one-microtask retry when the parent
@@ -2038,6 +2056,7 @@ function renderToNodes(value) {
     for (let i = 0; i < tr.values.length; i++) {
       applyPart(bound[i], tr.values[i], undefined, tr.values);
     }
+    flushFormActionBinds();
     // Slot parts need their one-shot apply here too (same contract as
     // createInstance / nested templates / buildDetached): the caller
     // (consumeAsyncStream) inserts these nodes synchronously in the same

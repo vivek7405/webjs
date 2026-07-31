@@ -123,6 +123,52 @@ test('an enctype the server cannot parse is refused, matching SSR', () => {
   );
 });
 
+test('a HOLE-provided method / enctype after the action hole is still refused', () => {
+  // The parity trap. The client applies parts in template order, so an
+  // attribute written AFTER the action hole has not been committed when the
+  // action part runs. Validating at that moment reads `null` and lets the form
+  // through, while SSR (which validates the whole start tag at its `>`) refuses
+  // it: the client would ship a form that submits its fields in the query
+  // string and never runs the action.
+  for (const tpl of [
+    () => html`<form action=${stub(ID)} method=${'get'}></form>`,
+    () => html`<form action=${stub(ID)} enctype=${'text/plain'}></form>`,
+  ]) {
+    const host = document.createElement('div');
+    assert.throws(() => render(tpl(), host), /cannot work/);
+  }
+});
+
+test('a LATER re-render that breaks an already-bound form is refused', () => {
+  // A re-render re-applies only the parts whose values CHANGED. With the action
+  // unchanged, the end-of-pass validation never sees this form again, so the
+  // write has to be checked where it happens.
+  const host = document.createElement('div');
+  const tpl = (enc) => html`<form action=${stub(ID)} enctype=${enc}></form>`;
+  render(tpl('multipart/form-data'), host);
+  assert.throws(() => render(tpl('text/plain'), host), /cannot work/);
+});
+
+test('an ordinary form that binds no action keeps its method hole', () => {
+  // The carve-out for the write-site check: it must be a no-op on any form
+  // that is not bound, or a plain search form stops working.
+  const host = document.createElement('div');
+  render(html`<form method=${'get'} action="/search"><input name="q"></form>`, host);
+  const form = host.querySelector('form');
+  assert.equal(form.getAttribute('method'), 'get');
+  assert.equal(form.getAttribute('action'), '/search');
+});
+
+test('a legal re-render of a bound form still updates and does not re-bind', () => {
+  const host = document.createElement('div');
+  const tpl = (v) => html`<form action=${stub(ID)}><input name="a" value=${v}></form>`;
+  render(tpl('one'), host);
+  render(tpl('two'), host);
+  const form = host.querySelector('form');
+  assert.equal(form.querySelectorAll('input[name="__webjs_action"]').length, 1);
+  assert.equal(form.querySelector('input[name="a"]').getAttribute('value'), 'two');
+});
+
 test('a function with no identity is refused, never rendered as an inert form', () => {
   const host = document.createElement('div');
   assert.throws(

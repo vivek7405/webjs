@@ -29,6 +29,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { createRequestHandler } from '../../src/dev.js';
+import { hashFile } from '../../src/actions.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // A tmpdir app fixture cannot resolve the bare `@webjsdev/core` specifier
@@ -47,9 +48,6 @@ let tmpRoot;
 before(() => { tmpRoot = mkdtempSync(join(tmpdir(), 'webjs-form-dispatch-')); });
 after(() => { rmSync(tmpRoot, { recursive: true, force: true }); });
 
-/** The most recent app dir, so a test can mutate its files mid-run. */
-let lastAppDir = null;
-
 function makeApp(files) {
   const appDir = mkdtempSync(join(tmpRoot, 'app-'));
   for (const [rel, body] of Object.entries(files)) {
@@ -57,7 +55,6 @@ function makeApp(files) {
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, body);
   }
-  lastAppDir = appDir;
   return appDir;
 }
 
@@ -407,6 +404,32 @@ export default ({ actionData }) => html\`<form action=\${guarded}><p class="out"
   assert.match(await resp.text(), /denied/);
 });
 
+test('a PUT / PATCH / DELETE action DOES run on a form submission', async () => {
+  // The runtime half of the `form-action-not-a-get-action` narrowing. A browser
+  // form always submits as POST, and the declared verb governs the RPC
+  // transport rather than whether the function can serve a form. Without this,
+  // the check rule's silence for these verbs rests on an untested claim, and a
+  // future non-GET rejection in the dispatcher would leave both suites green
+  // with the rule out of sync again.
+  for (const verb of ['PUT', 'PATCH', 'DELETE']) {
+    const app = await createRequestHandler({
+      appDir: makeApp({
+        'modules/v/actions/v.server.ts': `'use server';\nexport const method = '${verb}';\nexport async function writeIt(fd) { return { success: true, redirect: '/ok-' + String(fd.get('n')) }; }\n`,
+        'app/v/page.ts': `
+import { html } from ${CORE};
+import { writeIt } from '../../modules/v/actions/v.server.ts';
+export default () => html\`<form action=\${writeIt}></form>\`;
+`,
+      }),
+      dev: true,
+    });
+    await app.warmup();
+    const resp = await submit(app, '/v', { n: verb });
+    assert.equal(resp.status, 303, `${verb} must run on a form POST`);
+    assert.equal(resp.headers.get('location'), `/ok-${verb}`);
+  }
+});
+
 test("an action declaring method = 'GET' cannot be a form target", async () => {
   // A GET action is CSRF-exempt and rides its args in the url, so binding one
   // to a POST form is a contradiction. `webjs check` catches it at edit time;
@@ -731,40 +754,37 @@ test('an action module that throws at import is a 500, not a resubmit message', 
   // answer every submission with "please submit again" forever while
   // discarding the real error. The RPC path and a page render both surface a
   // logged 500 for the same module, so the form path must not go quiet.
-  const app = await createRequestHandler({
-    appDir: makeApp({
-      'modules/boom/actions/boom.server.ts': `
-'use server';
-export async function boom() { return { success: true }; }
-`,
-      'app/boom/page.ts': `
+  //
+  // The broken module is one the PAGE never imports, and the submission names
+  // its identity directly. That is the real shape (a form held from another
+  // instance, or an older page), and it is also the only construction that
+  // behaves the same on both runtimes: rewriting a module's file and relying on
+  // a `?t=` cache-busted re-import does not work on Bun, which serves the
+  // cached module and ignores the query (measured on bun 1.3.14).
+  const seen = [];
+  const appDir = makeApp({
+    'modules/ok/actions/ok.server.ts': `'use server';\nexport async function fine() { return { success: true }; }\n`,
+    'modules/boom/actions/boom.server.ts': `'use server';\nthrow new Error('BOOM_AT_IMPORT');\nexport async function boom() { return { success: true }; }\n`,
+    'app/boom/page.ts': `
 import { html } from ${CORE};
-import { boom } from '../../modules/boom/actions/boom.server.ts';
-export default () => html\`<form action=\${boom}></form>\`;
+import { fine } from '../../modules/ok/actions/ok.server.ts';
+export default () => html\`<form action=\${fine}></form>\`;
 `,
-    }),
-    dev: true,
   });
+  const app = await createRequestHandler({ appDir, dev: true, onError: (e) => seen.push(e) });
   await app.warmup();
-
-  const page = await (await app.handle(new Request('http://x/boom'))).text();
-  const id = identityOf(page);
-  assert.ok(id, 'the page rendered a bound form');
-
-  // Break the module AFTER the identity was minted, which is exactly the
-  // shape of a bad env var read at module scope in a fresh environment.
-  const dir = lastAppDir;
-  writeFileSync(join(dir, 'modules/boom/actions/boom.server.ts'),
-    `'use server';\nthrow new Error('BOOM_AT_IMPORT');\nexport async function boom() { return { success: true }; }\n`);
+  const brokenHash = await hashFile(join(appDir, 'modules/boom/actions/boom.server.ts'));
 
   const quiet = console.error;
   console.error = () => {};
   let resp;
   try {
-    resp = await app.handle(new Request('http://x/boom', form({ __webjs_action: id })));
+    resp = await app.handle(new Request('http://x/boom', form({ __webjs_action: `${brokenHash}/boom` })));
   } finally { console.error = quiet; }
   assert.equal(resp.status, 500, 'an import failure is a server fault, not skew');
   assert.doesNotMatch(await resp.text(), /submit again/, 'and must not tell the user to resubmit');
+  assert.equal(seen.length, 1, 'the APM sink saw it');
+  assert.match(String(seen[0]), /BOOM_AT_IMPORT/, 'and saw the ORIGINAL error, which was the discarded half');
 });
 
 test('segment middleware also wraps a submission that binds nothing', async () => {

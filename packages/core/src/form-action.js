@@ -309,6 +309,83 @@ export function formActionHiddenField(id) {
 }
 
 /**
+ * Bound-action binds recorded during one commit pass, applied by
+ * `flushFormActionBinds` once every part has been committed.
+ *
+ * The deferral is not an optimization. The binding validates the form's
+ * `method` and `enctype`, and a hole-provided one written AFTER the action
+ * hole has not been applied when the action part commits, so validating at
+ * commit time reads `null` and lets `<form action=${fn} method=${'get'}>`
+ * through on the client while SSR refuses it (SSR validates the whole start
+ * tag at its `>`, so it always sees the final attributes). That divergence
+ * ships a form which submits its fields in the query string and never runs the
+ * action, which is the outcome the guard exists to prevent.
+ *
+ * @type {{ form: HTMLFormElement, fn: Function }[]}
+ */
+const _pendingBinds = [];
+
+/**
+ * Record a bound action to apply after the current commit pass.
+ * @param {HTMLFormElement} form
+ * @param {Function} fn
+ * @returns {void}
+ */
+export function queueFormActionBind(form, fn) {
+  _pendingBinds.push({ form, fn });
+}
+
+/**
+ * Apply every queued bind, now that the whole instance's attributes are final.
+ *
+ * The queue is drained BEFORE the first bind runs, so a throw cannot leave a
+ * stale entry behind to be re-applied (and re-thrown) by an unrelated later
+ * render.
+ *
+ * @returns {void}
+ */
+export function flushFormActionBinds() {
+  if (!_pendingBinds.length) return;
+  const pending = _pendingBinds.splice(0, _pendingBinds.length);
+  for (const { form, fn } of pending) bindFormActionElement(form, fn);
+}
+
+/**
+ * Forms that carry a bound action, so a LATER attribute change on one can be
+ * validated against the binding.
+ * @type {WeakSet<Element>}
+ */
+const _boundForms = new WeakSet();
+
+/**
+ * Validate a `method` / `enctype` write against a form that is already bound.
+ *
+ * The flush above covers the commit pass that CREATES the binding, but a
+ * re-render only re-applies the parts whose values changed: if the action is
+ * unchanged and only `enctype=${e}` moves, nothing re-validates and the form
+ * silently becomes unsubmittable. This runs at the mutation site instead, which
+ * is the one place that write is visible.
+ *
+ * A no-op for any element that is not a bound form, so an ordinary
+ * `<form method=${m}>` with no action is untouched.
+ *
+ * @param {Element} el
+ * @param {string} name  the attribute being written
+ * @param {unknown} value
+ * @returns {void}
+ */
+export function assertBoundFormAttrWrite(el, name, value) {
+  if (!_boundForms.has(el)) return;
+  const attr = String(name).toLowerCase();
+  if (attr !== 'method' && attr !== 'enctype') return;
+  const next = value == null ? null : String(value);
+  assertSubmittableForm(
+    attr === 'method' ? next : el.getAttribute('method'),
+    attr === 'enctype' ? next : el.getAttribute('enctype'),
+  );
+}
+
+/**
  * Apply a bound action to a LIVE form element, producing the same three edits
  * SSR makes. Runs when a shipping component re-renders a template holding
  * `<form action=${fn}>`: that render rebuilds the form from the template, so
@@ -350,6 +427,9 @@ export function bindFormActionElement(form, fn) {
     form.insertBefore(field, form.firstChild);
   }
   field.setAttribute('value', id);
+  // Remember it, so a later `method` / `enctype` write on this same form is
+  // validated against the binding (see `assertBoundFormAttrWrite`).
+  _boundForms.add(form);
 }
 
 /**

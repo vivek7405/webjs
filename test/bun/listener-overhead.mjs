@@ -18,7 +18,7 @@
  * (2) the framework-trusted remote IP reaches `clientIp` (stamped out of band on
  *     Bun without a Request clone, via the header on node), and a client-spoofed
  *     `x-webjs-remote-ip` does NOT override it,
- * (3) the spoof does not survive the page-action body rebuild (`parseFormBody`),
+ * (3) the spoof does not survive the form-dispatch body rebuild (`parseFormBody`),
  * (4) a STREAMED compressible body does not have its response head withheld until
  *     its slow second chunk (the buffered-vs-streamed classifier must not block on
  *     the second read, #756 review MUST-FIX 2), and

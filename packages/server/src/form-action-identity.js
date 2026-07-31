@@ -102,8 +102,13 @@ async function scanForIdentity(idx, fn) {
  * Returns a `reason` rather than a bare null on failure, because the failures
  * need different responses. An unknown HASH is a deploy skew (a form rendered
  * by an older build, submitted against a newer one), which re-renders the page
- * with a resubmit message. An unknown FUNCTION inside a known file is a real
- * 404: that file exists and simply has no such export.
+ * with a resubmit message.
+ *
+ * An unknown FUNCTION inside a known file is NOT decided here: this resolves
+ * the file and hands back its module namespace, and the caller decides whether
+ * the named export is a callable action (it also has to reject a reserved
+ * config export, which only it knows about). That is why there is no
+ * `unknown-fn` reason.
  *
  * A module that THROWS at import is a third case, and folding it into skew was
  * a real defect. The hash resolves (the index only hashes paths, it never
@@ -119,7 +124,7 @@ async function scanForIdentity(idx, fn) {
  * @param {import('./actions.js').ActionIndex} idx
  * @param {string} id the submitted `<hash>/<fn>` value
  * @returns {Promise<{ ok: true, file: string, fnName: string, module: Record<string, unknown> }
- *   | { ok: false, reason: 'malformed' | 'skew' | 'unknown-fn' }
+ *   | { ok: false, reason: 'malformed' | 'skew' }
  *   | { ok: false, reason: 'load-failed', error: unknown }>}
  */
 export async function lookupActionIdentity(idx, id) {

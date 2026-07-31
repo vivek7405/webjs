@@ -586,7 +586,7 @@ export async function updateProfile(input: { name: string }) {
 }
 ```
 
-Call it from a client component via a normal import (rewritten to an RPC stub). A component is one custom element per file (`class X extends WebComponent { render() { return html\`…\`; } }` then `X.register('x-tag')`). Full recipes, including the no-JS page-action form, are in `references/data-and-actions.md`.
+Call it from a client component via a normal import (rewritten to an RPC stub). A component is one custom element per file (`class X extends WebComponent { render() { return html\`…\`; } }` then `X.register('x-tag')`). Full recipes, including the no-JS bound form, are in `references/data-and-actions.md`.
 
 ---
 
