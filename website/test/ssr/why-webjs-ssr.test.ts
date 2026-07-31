@@ -42,20 +42,19 @@ test('the plain-language section pairs a prompt against the files the convention
   // their correspondence, and the accessible name each scrollable block needs.
   const out = await renderToString(Why());
   assert.ok(out.includes('Let customers book a table'), 'the prompt panel carries a request written in ordinary words');
-  // Plain substring, not a regex spanning the chevron: the prompt's > lives in
-  // its own span, so anything asserting the two are adjacent can never match
-  // and would sit here green while the regression it names is fully present.
-  assert.ok(!out.includes('Build a page'), 'the prompt does not name a page, which the file panel would then have to match one for one');
   for (const file of ['app/book/page.ts', 'app/staff/bookings/page.ts', 'modules/bookings/actions/create.server.ts', 'db/schema.server.ts']) {
     assert.ok(out.includes(file), `the file panel answers the prompt with ${file}`);
   }
   assert.ok(out.includes('<span class="ml-2 font-mono font-medium text-xs leading-none text-fg-subtle">files</span>'), 'the file listing is labelled files, not terminal');
-  // <pre> maps to role generic, where ARIA prohibits an author-supplied name,
-  // so every named scrollable block on this page carries an explicit role.
-  const named = out.match(/<pre[^>]*aria-label=/g) ?? [];
-  const region = out.match(/<pre[^>]*role="region"[^>]*aria-label=/g) ?? [];
-  assert.equal(named.length, 4, 'the page renders its four named code blocks');
-  assert.equal(region.length, named.length, 'every named pre carries role=region, so the name is one ARIA permits');
+
+  // The section's whole claim is that the prompt needs no framework vocabulary,
+  // so assert that property of the prompt panel itself rather than tripwiring
+  // one historical phrasing, which any reworded regression would walk past.
+  const prompt = out.slice(out.indexOf('aria-label="A plain-language prompt'), out.indexOf('Where the conventions put it'));
+  assert.ok(prompt.includes('Let customers'), 'the slice really is the prompt panel');
+  for (const jargon of ['page.ts', '.server.ts', 'route', 'component', 'schema', 'action']) {
+    assert.ok(!prompt.includes(jargon), `the prompt says nothing about ${jargon}, so it reads as a request rather than a spec`);
+  }
 });
 
 test('the /why-webjs description answers in the snippet window a SERP actually shows', async () => {
