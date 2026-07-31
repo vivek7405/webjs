@@ -1,4 +1,5 @@
 import { html, cspNonce, asset } from '@webjsdev/core';
+import type { LayoutProps } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
 import { DOCS_START_PATH, UI_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 import { siteFooter } from '#lib/ui/site-footer.ts';
@@ -78,7 +79,7 @@ export function generateMetadata(ctx: { url: string }) {
 const navLink = 'text-fg-muted no-underline font-medium text-sm px-3 py-2 rounded-lg transition-colors duration-[140ms] hover:text-fg hover:bg-[var(--hover-surface)]';
 const panelLink = 'text-fg-muted no-underline font-medium text-sm px-3 py-2.5 rounded-lg hover:text-fg hover:bg-[var(--hover-surface)]';
 
-export default function RootLayout({ children }: { children: unknown }) {
+export default function RootLayout({ children }: LayoutProps) {
   const nonce = cspNonce();
   return html`
     <!-- Favicons, ordered raster first on purpose. Google's favicon crawler takes

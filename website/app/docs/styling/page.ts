@@ -27,8 +27,9 @@ export default function Styling() {
 
 // app/layout.ts excerpt
 import { html } from '@webjsdev/core';
+import type { LayoutProps } from '@webjsdev/core';
 
-export default function RootLayout({ children }: { children: unknown }) {
+export default function RootLayout({ children }: LayoutProps) {
   return html\`
     &lt;link rel="stylesheet" href="/public/tailwind.css"&gt;
     &lt;style&gt;
@@ -265,6 +266,7 @@ export default function Dashboard() {
     <h3>Layout scope</h3>
     <pre>// app/layout.ts
 import { html, css } from '@webjsdev/core';
+import type { LayoutProps } from '@webjsdev/core';
 
 const STYLES = css\`
   .layout-root {
@@ -273,7 +275,7 @@ const STYLES = css\`
   }
 \`;
 
-export default function RootLayout({ children }: { children: unknown }) {
+export default function RootLayout({ children }: LayoutProps) {
   return html\`
     &lt;style&gt;\${STYLES.text}&lt;/style&gt;
     &lt;div class="layout-root"&gt;

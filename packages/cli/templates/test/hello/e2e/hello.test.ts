@@ -12,9 +12,23 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 
-let browser: any, page: any, serverProcess: any, baseUrl: string;
+// puppeteer-core is an optional dev dependency, so `import type { Browser,
+// Page } from 'puppeteer-core'` does not resolve until you install it. These
+// minimal structural types keep the file typed in the meantime; swap them for
+// the real imports once puppeteer-core is in package.json. Reaching for `any`
+// here would silently un-type every call below.
+type Page = {
+  goto(url: string, opts?: { waitUntil?: string; timeout?: number }): Promise<unknown>;
+  title(): Promise<string>;
+  on(event: string, handler: (e: Error) => void): void;
+  removeAllListeners(event: string): void;
+};
+type Browser = { newPage(): Promise<Page>; close(): Promise<void> };
+
+let browser: Browser, page: Page, serverProcess: ChildProcess, baseUrl: string;
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {

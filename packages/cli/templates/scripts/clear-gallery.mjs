@@ -174,6 +174,7 @@ export default function Home() {
 
 function MINIMAL_LAYOUT() {
   return `import { html, asset } from '@webjsdev/core';
+import type { LayoutProps } from '@webjsdev/core';
 
 /**
  * Root layout: the ONLY file that writes the document shell. It links the
@@ -191,7 +192,7 @@ function MINIMAL_LAYOUT() {
 // hand-written <link> in the template body is ignored by browsers).
 export const metadata = { icons: '/public/favicon.svg' };
 
-export default function RootLayout({ children }: { children: unknown }) {
+export default function RootLayout({ children }: LayoutProps) {
   return html\`
     <meta name="color-scheme" content="light dark">
     <!-- asset() content-hashes the url in production, so a deploy that changes

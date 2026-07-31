@@ -136,6 +136,8 @@ export async function POST(req: Request) {
 
 The test is what the next line does. Correct `unknown` is narrowed immediately by a parse, a validator, or a type guard, and the narrowed type is what the rest of the function sees. `unknown` that survives into a return type, a component prop, or an action signature is a missing type, not a safe one. A `catch (e)` binding is already `unknown` under `strict`, which is the same pattern.
 
+A value destined for an `html` template hole is the third: a hole renders a string, a number, a `TemplateResult`, an array of those, a directive result, or nothing, so a helper like `lede(content: unknown)` is correctly typed and `TemplateResult` alone would be too narrow. Narrow it only when the helper genuinely accepts one shape (`backLink(href: string, ...)`).
+
 An action's `export const validate` is the other canonical spot: it runs on the RPC boundary against a payload nothing has vouched for yet, so `(input: unknown)` is right there, and returning `data` that `satisfies` the action's input type is what carries a real type into the action body. See `data-and-actions.md`.
 
 `any` gets no such carve-out in app code. It does not defer checking, it disables it, so a validator typed `(input: any)` un-types everything downstream of the call.

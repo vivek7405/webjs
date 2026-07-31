@@ -1,4 +1,5 @@
 import { html } from '@webjsdev/core';
+import type { LayoutProps } from '@webjsdev/core';
 import { docsShell } from '#lib/ui/docs-shell.ts';
 import '#components/doc-search.ts';
 
@@ -152,7 +153,7 @@ export function generateMetadata(ctx: { url: string }) {
   };
 }
 
-export default function DocsLayout({ children }: { children: unknown }) {
+export default function DocsLayout({ children }: LayoutProps) {
   return docsShell({
     nav: NAV_SECTIONS,
     label: 'Documentation',

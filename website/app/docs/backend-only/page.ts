@@ -152,10 +152,13 @@ export async function createUser({ name, email }: { name: string; email: string 
 import { route } from '@webjsdev/server';
 import { listUsers, createUser } from '#actions/users.server.ts';
 
-const validateUser = (input: any) =&gt; {
-  if (!input.name || typeof input.name !== 'string') throw new Error('name is required');
-  if (!input.email || typeof input.email !== 'string') throw new Error('email is required');
-  return input;
+// unknown is correct here: this is the narrowing site for an untrusted
+// payload. It returns the narrowed shape, so the action stays fully typed.
+const validateUser = (input: unknown) =&gt; {
+  const raw = (input ?? {}) as Record&lt;string, unknown&gt;;
+  if (typeof raw.name !== 'string' || !raw.name) throw new Error('name is required');
+  if (typeof raw.email !== 'string' || !raw.email) throw new Error('email is required');
+  return { name: raw.name, email: raw.email };
 };
 
 export const GET = route(listUsers);

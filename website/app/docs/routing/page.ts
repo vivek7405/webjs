@@ -109,8 +109,9 @@ export default async function BlogPost({ params, searchParams, url }: Ctx) {
     <h3>Root Layout</h3>
     <pre>// app/layout.ts
 import { html } from '@webjsdev/core';
+import type { LayoutProps } from '@webjsdev/core';
 
-export default function RootLayout({ children }: { children: unknown }) {
+export default function RootLayout({ children }: LayoutProps) {
   return html\`
     &lt;nav&gt;&lt;a href="/"&gt;Home&lt;/a&gt; | &lt;a href="/about"&gt;About&lt;/a&gt;&lt;/nav&gt;
     &lt;main&gt;\${children}&lt;/main&gt;
@@ -121,8 +122,9 @@ export default function RootLayout({ children }: { children: unknown }) {
     <h3>Nested Layout</h3>
     <pre>// app/dashboard/layout.ts
 import { html } from '@webjsdev/core';
+import type { LayoutProps } from '@webjsdev/core';
 
-export default function DashboardLayout({ children }: { children: unknown }) {
+export default function DashboardLayout({ children }: LayoutProps) {
   return html\`
     &lt;div class="dashboard"&gt;
       &lt;aside&gt;

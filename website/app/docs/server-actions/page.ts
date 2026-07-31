@@ -307,19 +307,20 @@ export const POST = route(createPost, { validate: CreatePostSchema.parse });</pr
   | { success: true; data: T }
   | { success: false; error: string; status: number };
 
-export async function createPost(input: unknown): Promise&lt;ActionResult&lt;Post&gt;&gt; {
+export interface CreatePostInput { title: string; body: string }
+
+export async function createPost(input: CreatePostInput): Promise&lt;ActionResult&lt;Post&gt;&gt; {
   const user = await currentUser();
   if (!user) return { success: false, error: 'Not signed in', status: 401 };
 
-  if (!input || typeof input !== 'object') {
-    return { success: false, error: 'Invalid input', status: 400 };
-  }
-  const { title, body } = input as { title: string; body: string };
+  const title = input.title.trim();
   if (!title) return { success: false, error: 'title is required', status: 400 };
 
-  const [post] = await db.insert(posts).values({ title, body, authorId: user.id }).returning();
+  const [post] = await db.insert(posts).values({ title, body: input.body, authorId: user.id }).returning();
   return { success: true, data: post };
 }</pre>
+
+    <p>Note the named input type. The action declares the contract it accepts, so the calling component type-checks against the real signature and a renamed field is a compile error on both sides. Typing the parameter <code>unknown</code> or <code>any</code> here would give that up and push a cast into every caller. Runtime enforcement of the same shape is a separate job, and it belongs in <code>export const validate</code>, which runs on the RPC boundary before the action body and is the one place an untrusted payload is legitimately <code>unknown</code>.</p>
 
     <p>This pattern makes error handling explicit on the client side without relying on try/catch. The caller checks <code>result.success</code> and branches accordingly. It also works naturally over a <code>route.ts</code> REST endpoint, where the caller receives the same JSON shape.</p>
 
