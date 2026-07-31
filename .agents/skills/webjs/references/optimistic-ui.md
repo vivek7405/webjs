@@ -28,10 +28,11 @@ class TodoList extends WebComponent({
     source: () => this.todos,
     update: (state, title: string) => [
       ...state,
-      // A client-only placeholder id for the pending row; the real id arrives
-      // from the server on reconcile, so the `as any` cast on this temp row is
-      // fine (the row is dropped when the promise settles).
-      { id: crypto.randomUUID() as any, title, completed: false, pending: true },
+      // A client-only placeholder id for the pending row. The real id arrives
+      // from the server on reconcile, when this row is dropped. No cast: the
+      // row type carries the client-only flag (`pending?: boolean`), so the
+      // temp row type-checks as a plain `Todo`.
+      { id: crypto.randomUUID(), title, completed: false, pending: true },
     ],
   });
 

@@ -19,7 +19,7 @@ to these `references/`:
 | `references/styling.md` | Tailwind, light-DOM tag-prefix rule, tokens, fixed headers, no-reflow layout |
 | `references/client-router-and-streaming.md` | Client router, prefetch, frames, view transitions, Suspense streaming |
 | `references/optimistic-ui.md` | Optimistic UI for a user-facing mutation |
-| `references/typescript.md` | TypeScript at runtime, erasable syntax, full-stack types |
+| `references/typescript.md` | TypeScript at runtime, erasable syntax, full-stack types, the derive-the-type rule (never `unknown` / `any`) |
 | `references/testing.md` | Unit, browser, e2e tests, the `handle()` harness, Bun parity |
 | `references/built-ins.md` | Auth, caching, env vars, rate limit, file storage, the `webjs` config block |
 | `references/runtime.md` | Node vs Bun, running the app, deploying, runtime-specific differences |
@@ -338,6 +338,16 @@ type ActionResult<T> =
 
 ---
 
+## Types: derive them, never `unknown` or `any`
+
+**Full-stack type safety is the point of the `.server.{js,ts}` boundary, so an app that types its boundaries `unknown` or `any` gives up WebJs's central guarantee for nothing.** There is no build step and no code generation between the two sides: a client component importing a server action resolves to the action's real signature at type-check time, so the type is already there to be used. Nothing enforces this (both are valid TypeScript, so `tsc` and `webjs check` pass either way), which is exactly why it is written down.
+
+Derive the type at every boundary: a DB row from the schema (`typeof todos.$inferSelect`, carried into a shipping component with `import type`), an action's input from a named `interface` and its result from `ActionResult<T>`, a page from `PageProps<'/blog/[slug]'>`, a layout from `LayoutProps`, a route handler's second argument from `RouteHandlerContext`, an href from the generated `Route` union (`npx webjsdev types`), a reactive property from `prop<Student>(Object)`.
+
+`unknown` is right in exactly one place: a payload nothing has vouched for yet, narrowed on the next line (a `route.ts` `await req.json()`, an action's `export const validate`, a `catch` binding). `unknown` that survives into a return type, a component prop, or an action signature is a missing type, not a safe one, and `any` has no carve-out at all. Full ladder, with the end-to-end example, in `references/typescript.md`.
+
+---
+
 ## Styling: Tailwind-first
 
 **Tailwind is the strong default for pages AND light-DOM components.** The lit reflex to scope CSS in a shadow root with `static styles` is the habit to resist in light DOM. When a class bundle repeats, extract it into a `lib/utils/ui.ts` helper returning an `` html`...` `` fragment (SSR-time), NOT a CSS class (no `@apply`). Reserve raw CSS for what utilities cannot express (design tokens / `@theme`, `@property` + `@keyframes`, scrollbar, `prefers-reduced-motion`, complex `color-mix()` / gradients); in light DOM the tag-prefix invariant (#7) still holds, and shadow-DOM components legitimately use `static styles = css\`\``. **Pin a header with `position: fixed`, never `position: sticky`** (a sticky header flickers on iOS WebKit during a client-router nav, #610, because the preserved header plus the scroll-to-top trips a WebKit sticky-repaint bug that the GPU-promotion hacks do NOT fix, so reserve the header height on the content with a `--header-height` offset). See `references/styling.md`.
@@ -369,7 +379,8 @@ class TodoList extends WebComponent({
     source: () => this.todos,
     update: (state, title: string) => [
       ...state,
-      { id: crypto.randomUUID() as any, title, completed: false, pending: true },
+      // No cast: `Todo` carries the client-only `pending?: boolean` flag.
+      { id: crypto.randomUUID(), title, completed: false, pending: true },
     ],
   });
 

@@ -45,7 +45,7 @@ Classify the task first, then load the smallest useful reference set. Each refer
 | Client router, prefetch, frames, view transitions, Suspense streaming        | `references/client-router-and-streaming.md`   |
 | Optimistic UI for a user-facing mutation                                     | `references/optimistic-ui.md`                 |
 | The `@webjsdev/ui` component kit (a `components.json` is present): class helpers, tokens, `add` / `view`, the MCP `ui` tool | `references/ui-kit.md`                         |
-| TypeScript at runtime, erasable syntax, full-stack types                     | `references/typescript.md`                     |
+| TypeScript at runtime, erasable syntax, full-stack types, the derive-the-type rule (never `unknown` / `any`) | `references/typescript.md`                     |
 | Unit, browser, e2e tests, the `handle()` harness, Bun parity                 | `references/testing.md`                        |
 | Auth, caching, env vars, rate limit, file storage, the `webjs` config block  | `references/built-ins.md`                      |
 | Node vs Bun, running the app, deploying, runtime-specific differences        | `references/runtime.md`                        |
@@ -68,7 +68,8 @@ Common bundles:
 5. **Add interactivity per behaviour.** Reach for a component (and a signal or `@event`) only where the UI is genuinely interactive. A display-only component is elided from the browser.
 6. **Validate input at the boundary.** Declare `export const validate` on an action; the RPC and `route()` boundaries run it.
 7. **Default mutations to optimistic UI** where the client can predict the result (`optimistic()` from `@webjsdev/core`).
-8. **Test the narrowest meaningful layer**, and render the app in a real browser for any UI change (static checks do not catch a collapsed layout).
+8. **Type every boundary from its source, never `unknown` or `any`.** The row type comes from the schema (`typeof todos.$inferSelect`), the action's input from a named `interface` and its result from `ActionResult<T>`, the routing files from `PageProps` / `LayoutProps` / `RouteHandlerContext`. `unknown` belongs only on a payload nothing has vouched for yet, narrowed on the next line. See `references/typescript.md`.
+9. **Test the narrowest meaningful layer**, and render the app in a real browser for any UI change (static checks do not catch a collapsed layout).
 
 ## Project Layout
 

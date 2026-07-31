@@ -41,7 +41,8 @@ The default export receives `{ children, params, searchParams, url }` and must e
 ```ts
 // app/layout.ts (root)
 import { html } from '@webjsdev/core';
-export default function RootLayout({ children }: { children: unknown }) {
+import type { LayoutProps } from '@webjsdev/core';
+export default function RootLayout({ children }: LayoutProps) {
   return html`<html lang="en"><head></head><body>${children}</body></html>`;
 }
 ```

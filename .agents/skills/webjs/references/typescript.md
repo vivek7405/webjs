@@ -5,7 +5,7 @@
 - TypeScript at runtime with **no build step**: `.ts` / `.mts` is stripped in place, not compiled.
 - **Erasable syntax only** (`erasableSyntaxOnly: true`) and the exact list of banned constructs, with their allowed rewrites.
 - The **pluggable stripper** (Node 24+ built-in vs `amaro` on Bun) and how the browser gets stripped source.
-- **Full-stack type safety**: server-action types flow to the call site, `import type` crosses the `.server` boundary, plus the carrier rule.
+- **Full-stack type safety**: the rule (derive the type at every boundary, never `unknown` / `any`), server-action types flowing to the call site, and the `import type` carrier rule across the `.server` boundary.
 - **Typing pages, layouts, and route handlers** with `PageProps` / `LayoutProps` / `RouteHandlerContext` and the generated route union (`webjs types`).
 
 Read this when you are writing `.ts` in a WebJs app, hit a strip-time 500, or want typed params and hrefs. For action signatures and the serializer wire see `data-and-actions.md`. For typing reactive props see `components.md`.
@@ -76,6 +76,69 @@ Prefer explicit `.ts` extensions in imports. A `.js` specifier pointing at a `.t
 `erasableSyntaxOnly: true` is the non-negotiable line. It aligns the compiler's accepted syntax with the stripper's, so violations surface as diagnostics instead of a runtime 500.
 
 ## Full-stack type safety
+
+### The rule: derive the type, never `unknown` or `any`
+
+Every value crossing an app boundary in WebJs already has a type you can reach, so reach for it. Writing `unknown` or `any` at a boundary throws away the framework's central guarantee, and it does so silently: the app still runs, the checker just stops helping. Nothing catches this for you. Both are valid TypeScript, so `webjs check` will not flag them (it is a correctness tool, and this is a convention), and `tsc --noEmit` passes happily.
+
+`unknown` is the more dangerous of the two, because it reads as the safe choice. It is safe only in the sense that it forces a narrow at the read site. As a boundary type it is exactly as uninformative as `any`, and it pushes a cast into every consumer.
+
+The ladder, in the order to climb it:
+
+| Boundary | Write this | Not this |
+|---|---|---|
+| A database row | `export type Todo = typeof todos.$inferSelect` in `db/schema.server.ts` (`$inferInsert` for a write) | a hand-written interface that drifts from the schema |
+| That row inside a shipping component | `import type { Todo } from '#db/schema.server.ts'` | `any[]`, or re-declaring the shape by hand |
+| A server action's input | a named `interface CreatePostInput` | `input: unknown` / `input: any` |
+| A server action's result | `Promise<ActionResult<Post>>` | `Promise<any>` |
+| `export const validate` | `(input: unknown)`, narrowed in the body, returning `data` that `satisfies` the action's input type | `(input: any)`, which un-types the returned `data` too |
+| A page | `PageProps<'/blog/[slug]'>` | `{ params: Record<string, any> }` |
+| A layout | `LayoutProps` (whose `children` is a `TemplateResult`) | `{ children: unknown }` |
+| A route handler's 2nd argument | `RouteHandlerContext<'/api/users/[id]'>` | `{ params: any }` |
+| A client-router href | the generated `Route` union (`npx webjsdev types`) | a bare `string` |
+| A reactive property | `prop<Student>(Object)`, `prop<Tag[]>(Array)` | `prop(Object)` plus a cast at every read |
+| An optimistic temp row | the pending shape on the row type (`pending?: boolean`) | `as any` on the temp id |
+
+One flow, end to end, with no escape hatch anywhere in it:
+
+```ts
+// db/schema.server.ts
+export const posts = table('posts', { id: uuidPk(), title: text().notNull(), body: text().notNull() });
+export type Post = typeof posts.$inferSelect;      // derived, never hand-written
+
+// modules/posts/actions/create-post.server.ts
+'use server';
+import type { Post } from '#db/schema.server.ts';  // type-only: erased before the browser sees it
+export interface CreatePostInput { title: string; body: string }
+export const validate = (input: unknown) => { /* narrows, returns data satisfying CreatePostInput */ };
+export async function createPost(input: CreatePostInput): Promise<ActionResult<Post>> { /* ... */ }
+
+// modules/posts/components/new-post.ts
+import { createPost } from '#modules/posts/actions/create-post.server.ts';
+const r = await createPost({ title, body });
+if (r.success && r.data) r.data.title;             // Post.title: string, checked at the call site
+```
+
+The payoff is not stylistic. A typo in `r.data.titel`, a renamed column, a changed action signature, and a page reading `params.slugg` are all compile errors in that version and all silent runtime `undefined` in the `unknown` version.
+
+### Where `unknown` is still the right type
+
+`unknown` is correct for a value that genuinely has no type yet, at the moment before it is narrowed:
+
+```ts
+// app/api/webhook/route.ts
+export async function POST(req: Request) {
+  const body: unknown = await req.json();   // correct: nothing has vouched for this yet
+  const parsed = parseWebhook(body);        // narrowed on the very next line
+  return Response.json({ ok: parsed.kind });
+}
+```
+
+The test is what the next line does. Correct `unknown` is narrowed immediately by a parse, a validator, or a type guard, and the narrowed type is what the rest of the function sees. `unknown` that survives into a return type, a component prop, or an action signature is a missing type, not a safe one. A `catch (e)` binding is already `unknown` under `strict`, which is the same pattern.
+
+An action's `export const validate` is the other canonical spot: it runs on the RPC boundary against a payload nothing has vouched for yet, so `(input: unknown)` is right there, and returning `data` that `satisfies` the action's input type is what carries a real type into the action body. See `data-and-actions.md`.
+
+`any` gets no such carve-out in app code. It does not defer checking, it disables it, so a validator typed `(input: any)` un-types everything downstream of the call.
 
 ### Server actions type-check automatically
 

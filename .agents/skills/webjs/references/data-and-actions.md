@@ -105,15 +105,23 @@ Declare `export const validate` beside the action. It runs SERVER-SIDE before th
 ```ts
 // modules/posts/actions/create-post.server.ts
 'use server';
-export const validate = (input: any) => {
+export interface CreatePostInput { title: string; body: string }
+
+// `unknown` is CORRECT here and nowhere else in this file: the validator IS
+// the narrowing site for an untrusted wire payload. Never `any`, which would
+// un-type the returned `data` and with it the action's own input.
+export const validate = (input: unknown) => {
+  const raw = (input ?? {}) as Record<string, unknown>;
   const fieldErrors: Record<string, string> = {};
-  const title = String(input?.title || '').trim();
+  const title = String(raw.title ?? '').trim();
   if (!title) fieldErrors.title = 'Title is required';
-  if (String(input?.body || '').length < 10) fieldErrors.body = 'Too short';
+  if (String(raw.body ?? '').length < 10) fieldErrors.body = 'Too short';
   if (Object.keys(fieldErrors).length) return { success: false, fieldErrors };
-  return { success: true, data: { title, body: String(input.body) } };
+  // `satisfies` ties the validator's output to the action's input, so the two
+  // cannot drift apart.
+  return { success: true, data: { title, body: String(raw.body) } satisfies CreatePostInput };
 };
-export async function createPost(input: { title: string; body: string }) { /* runs only when valid */ }
+export async function createPost(input: CreatePostInput) { /* runs only when valid */ }
 ```
 
 A client call resolves with the failure envelope (it does NOT throw), so the component reads `result.fieldErrors`. A zod adapter wraps `safeParse` so its result becomes the envelope; the framework stays zod-free.
