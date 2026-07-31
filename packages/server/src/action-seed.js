@@ -1,5 +1,17 @@
 /**
- * SSR action-result seeding (#472), follow-up to async render (#469).
+ * The `'use server'` module load hook: action IDENTITY (#1155) and SSR
+ * action-result seeding (#472, follow-up to async render #469).
+ *
+ * Two jobs share ONE hook because they need the same thing, a handle on every
+ * exported action function at the moment its module loads, and installing two
+ * hooks to get it twice would be pure cost.
+ *
+ * They are gated differently, and that difference is the point. SEEDING is an
+ * optimization an app can switch off (`webjs.seed: false` / `WEBJS_SEED=0`).
+ * IDENTITY is not optional: it is what lets `<form action=${action}>` resolve
+ * to something the server can run, so a seeding-disabled app would otherwise
+ * have every no-JS form silently stop working. So the hook installs
+ * unconditionally and only the seed COLLECTION is gated.
  *
  * When a component's `async render()` does a bare `const u = await getUser(id)`
  * during SSR, the action runs server-side and its result is baked into the
@@ -24,7 +36,7 @@
  * into an ambient `AsyncLocalStorage` collector WHENEVER a collector is active,
  * and is a pure passthrough otherwise.
  *
- * The facade SOURCE and the wrapping (`__seedWrap`, `buildSeedFacade`) are
+ * The facade SOURCE and the wrapping (`__actionWrap`, `buildSeedFacade`) are
  * runtime-neutral; only the INSTALL mechanism differs by runtime (`#529`), chosen
  * by `serverRuntime()`: Node uses the synchronous `module.registerHooks` load
  * hook (Node 24+, main-thread); Bun uses a `Bun.plugin` `onLoad` (Bun has no
@@ -60,10 +72,25 @@ import { serverRuntime } from './listener-core.js';
 /** Ambient per-render seed collector. `Map<key, value>` or undefined. */
 const als = new AsyncLocalStorage();
 
-/** Set once the load hook is installed (the flag is on at boot). */
-let _enabled = false;
+/** Whether seed COLLECTION is on (the `webjs.seed` switch). */
+let _seedEnabled = false;
+/** Whether the load hook is installed at all (so identity is available). */
+let _hookInstalled = false;
 /** Idempotency guard: `module.registerHooks` must run at most once. */
 let _registered = false;
+
+/**
+ * `action function -> { file, fnName }` for every export the hook wrapped.
+ *
+ * A WeakMap rather than a property on the function: the wrapped value may be a
+ * Proxy whose property writes pass through to the target, so stamping it would
+ * mutate the app's own function object, and a frozen action would make the
+ * stamp fail silently. Both the wrapper and the original are registered,
+ * because which one a caller holds depends on whether seeding is on.
+ *
+ * @type {WeakMap<Function, { file: string, fnName: string }>}
+ */
+const _identity = new WeakMap();
 
 /** Memoized `absPath -> hash` so a hot action call does not re-hash per call. */
 const _hashCache = new Map();
@@ -78,19 +105,42 @@ const SELF_URL = import.meta.url;
  * @returns {boolean}
  */
 export function seedingEnabled() {
-  return _enabled;
+  return _seedEnabled && _hookInstalled;
+}
+
+/**
+ * Whether the load hook is installed, and therefore whether action identity is
+ * being registered. False only on a runtime with neither `module.registerHooks`
+ * nor `Bun.plugin`, where the form-action resolver falls back to a module scan.
+ * @returns {boolean}
+ */
+export function identityHookInstalled() {
+  return _hookInstalled;
+}
+
+/**
+ * The `{ file, fnName }` an action function was exported as, or null when the
+ * hook never saw it (a module loaded before the hook installed, or a runtime
+ * with no hook).
+ * @param {unknown} fn
+ * @returns {{ file: string, fnName: string } | null}
+ */
+export function actionIdentityOf(fn) {
+  if (typeof fn !== 'function') return null;
+  return _identity.get(/** @type {Function} */ (fn)) || null;
 }
 
 /**
  * Compute (and memoize) the action file's hash the SAME way the RPC stub /
  * action index do (`hashFile` over the absolute path string), so the seed key
- * the server emits matches the key the client stub looks up. A path mismatch
+ * the server emits matches the key the client stub looks up, and so a bound
+ * form action's identity matches the one the dispatcher resolves. A path mismatch
  * (e.g. a symlinked appDir whose realpath differs) only yields a key MISS,
  * which safely degrades to a normal RPC.
  * @param {string} absPath
  * @returns {Promise<string>}
  */
-async function hashFor(absPath) {
+export async function actionFileHash(absPath) {
   let h = _hashCache.get(absPath);
   if (h === undefined) {
     h = await hashFile(absPath);
@@ -117,7 +167,7 @@ async function recordSeed(collector, file, fnName, args, value) {
   // streamed action is never seeded; the client streams it fresh on each call.
   if (isStreamable(value)) return;
   try {
-    const hash = await hashFor(file);
+    const hash = await actionFileHash(file);
     const argsKey = await stringify(args);
     collector.set(`${hash}/${fnName}/${argsKey}`, value);
   } catch {
@@ -126,19 +176,45 @@ async function recordSeed(collector, file, fnName, args, value) {
 }
 
 /**
- * Wrap one exported action function so that, when a collector is active, its
- * resolved result is recorded. Outside a collector (the RPC endpoint path) it is
- * a transparent passthrough. Non-functions (a `const VERSION = '1.0'` export)
- * pass through untouched, and the Proxy forwards property reads, so any
- * metadata an app or the framework attaches to the function still resolves
- * through the wrapper.
+ * Register one exported action function's identity, and, when seeding is on,
+ * wrap it so that a resolved result is recorded into an active collector.
+ *
+ * Identity is registered unconditionally: it is what `<form action=${action}>`
+ * resolves through (#1155), so it cannot depend on the seed switch.
+ *
+ * The Proxy is NOT created when seeding is off. Outside a collector it is a
+ * transparent passthrough anyway, so with collection disabled it would be pure
+ * indirection on every action call for the lifetime of the process. Identity
+ * is registered for BOTH the original and the wrapper, so a caller resolves
+ * whichever of the two it happens to hold.
+ *
+ * Non-functions (a `const VERSION = '1.0'` export) pass through untouched, and
+ * the Proxy forwards property reads, so any metadata an app or the framework
+ * attaches to the function still resolves through the wrapper.
+ *
  * @param {string} file absolute action file path
  * @param {string} fnName
  * @param {unknown} orig
  * @returns {unknown}
  */
-export function __seedWrap(file, fnName, orig) {
+export function __actionWrap(file, fnName, orig) {
   if (typeof orig !== 'function') return orig;
+  _identity.set(orig, { file, fnName });
+  if (!_seedEnabled) return orig;
+  const wrapped = seedProxy(file, fnName, orig);
+  _identity.set(wrapped, { file, fnName });
+  return wrapped;
+}
+
+/**
+ * The seed-recording Proxy. Split out of `__actionWrap` so the identity
+ * registration above reads as the unconditional half and this as the gated one.
+ * @param {string} file
+ * @param {string} fnName
+ * @param {Function} orig
+ * @returns {Function}
+ */
+function seedProxy(file, fnName, orig) {
   return new Proxy(orig, {
     apply(target, thisArg, args) {
       const collector = als.getStore();
@@ -201,7 +277,7 @@ export function extractExportNames(src) {
 /**
  * Build the facade module source for a `'use server'` action module: it imports
  * the REAL module via a `?webjs-seed-orig` query (which the hook passes through
- * unwrapped) and re-exports each function wrapped through `__seedWrap`.
+ * unwrapped) and re-exports each function through `__actionWrap`.
  * @param {string} origUrl the real module URL, WITHOUT the seed query
  * @param {string} absPath the real module's absolute file path (the hash basis)
  * @param {{ names: string[], hasDefault: boolean }} exports
@@ -212,7 +288,7 @@ function buildFacade(origUrl, absPath, exports) {
   const origSpec = JSON.stringify(origUrl + sep + 'webjs-seed-orig');
   const file = JSON.stringify(absPath);
   let out = `import * as __orig from ${origSpec};\n`;
-  out += `import { __seedWrap as __w } from ${JSON.stringify(SELF_URL)};\n`;
+  out += `import { __actionWrap as __w } from ${JSON.stringify(SELF_URL)};\n`;
   // Fail-open catch-all (#535). Re-export every named binding of the real module.
   // An explicit `export const NAME = __w(...)` below SHADOWS the matching star
   // binding (an explicit export wins over a star re-export of the same name, with
@@ -296,16 +372,22 @@ function seedLoadHook(url, context, nextLoad) {
 }
 
 /**
- * Install the seed load hook (idempotent). Called once at boot from `dev.js`
- * when seeding is enabled, BEFORE any action module is imported (a module loaded
- * before the hook would already be cached unwrapped). The install mechanism is
- * chosen by `serverRuntime()` (#529): Node's synchronous `module.registerHooks`,
- * or a `Bun.plugin` `onLoad` on Bun. A no-op on a second call. Async because the
- * Bun path dynamically imports `action-seed-bun.js` (so the `Bun.*` global is
- * never referenced on Node); the Node path resolves synchronously.
+ * Install the `'use server'` load hook (idempotent). Called once at boot from
+ * `dev.js`, BEFORE any action module is imported (a module loaded before the
+ * hook would already be cached unwrapped). The install mechanism is chosen by
+ * `serverRuntime()` (#529): Node's synchronous `module.registerHooks`, or a
+ * `Bun.plugin` `onLoad` on Bun. A no-op on a second call. Async because the Bun
+ * path dynamically imports `action-seed-bun.js` (so the `Bun.*` global is never
+ * referenced on Node); the Node path resolves synchronously.
+ *
+ * The hook installs whatever `seed` says, because action IDENTITY (#1155) rides
+ * it and is not optional. `seed` gates only whether results are COLLECTED.
+ *
+ * @param {{ seed?: boolean }} [opts]
  * @returns {Promise<void>}
  */
-export async function registerSeedHooks() {
+export async function registerActionHooks(opts = {}) {
+  _seedEnabled = opts.seed !== false;
   if (_registered) return;
   _registered = true;
 
@@ -313,20 +395,22 @@ export async function registerSeedHooks() {
     // Bun has no module.registerHooks; install the same facade via Bun.plugin.
     const { installBunSeedPlugin } = await import('./action-seed-bun.js');
     installBunSeedPlugin({ isSeedCandidate, buildSeedFacade, serverFileRe: SERVER_FILE_RE });
-    _enabled = true;
+    _hookInstalled = true;
     return;
   }
 
-  // A runtime that is neither Node-with-registerHooks nor Bun: seeding stays
-  // OFF (fail-open). `seedingEnabled()` is false, ssr.js emits no seed block,
+  // A runtime that is neither Node-with-registerHooks nor Bun. Seeding stays
+  // OFF (fail-open): `seedingEnabled()` is false, ssr.js emits no seed block,
   // and the client RPC stub falls back to a normal fetch. Never wrong data.
+  // Identity has no such graceful degradation, so the form-action resolver
+  // falls back to a module scan instead (see `resolveActionIdentity`).
   if (typeof nodeModule.registerHooks !== 'function') {
-    console.warn('[webjs] SSR action-result seeding (#472) is disabled: this runtime has neither module.registerHooks nor Bun.plugin. Async-render components re-fetch on hydration; no correctness impact.');
+    console.warn('[webjs] the \'use server\' load hook is not installed: this runtime has neither module.registerHooks nor Bun.plugin. SSR action-result seeding (#472) is off, and form-action identity (#1155) resolves by scanning the action index instead.');
     return;
   }
 
   nodeModule.registerHooks({ load: seedLoadHook });
-  _enabled = true;
+  _hookInstalled = true;
 }
 
 /**
