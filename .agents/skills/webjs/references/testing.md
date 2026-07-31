@@ -48,7 +48,7 @@ test/
 
 ## The `handle()` harness (`@webjsdev/server/testing`)
 
-`createRequestHandler({ appDir }).handle(request)` drives the FULL request pipeline (middleware, routing, SSR, page actions, server-action RPC, auth, CSRF) and returns a native `Response`. It is the same entry the framework's own suite uses, so the most realistic way to test an app is to fire a `Request` through it and assert on the `Response`, with no spawned process and no network. `@webjsdev/server/testing` ships thin builders over that `handle()`, each a few lines over native `Request` / `Response` that reuse the REAL cookie names, header names, and wire serializer. For a browser test that needs to drive the app in a real DOM, `createBrowserTestHandler()` from `@webjsdev/server/testing` exposes the same `handle()` pipeline to the WTR Chromium session.
+`createRequestHandler({ appDir }).handle(request)` drives the FULL request pipeline (middleware, routing, SSR, form-dispatched actions, server-action RPC, auth, CSRF) and returns a native `Response`. It is the same entry the framework's own suite uses, so the most realistic way to test an app is to fire a `Request` through it and assert on the `Response`, with no spawned process and no network. `@webjsdev/server/testing` ships thin builders over that `handle()`, each a few lines over native `Request` / `Response` that reuse the REAL cookie names, header names, and wire serializer. For a browser test that needs to drive the app in a real DOM, `createBrowserTestHandler()` from `@webjsdev/server/testing` exposes the same `handle()` pipeline to the WTR Chromium session.
 
 ```js
 import { createRequestHandler } from '@webjsdev/server';

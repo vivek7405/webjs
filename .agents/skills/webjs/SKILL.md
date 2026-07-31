@@ -22,7 +22,7 @@ WebJs is an AI-first, web-components-first framework with **no build step**: sou
 - **`*.server.ts`** is the one server boundary. With `'use server'` its exports are RPC-callable from the client (the import is rewritten to a stub); without it the file is a server-only utility whose browser import throws at load. This, not a component annotation, is how a dependency (the DB driver, secrets, `node:*`) is kept off the client.
 - **`route.ts`** is a server-only HTTP handler (named `GET`/`POST` exports), the one routing file that is NOT isomorphic.
 
-**Progressive enhancement is the default architecture.** With JS off, content reads, `<a>` navigates, and `<form>` server actions submit. JS is opt-in per interactive behaviour. Never write a first paint that depends on hydration.
+**Progressive enhancement is the default architecture.** With JS off, content reads, `<a>` navigates, and a `<form action=${importedAction}>` submits to its server action. JS is opt-in per interactive behaviour. Never write a first paint that depends on hydration.
 
 ## When To Use This Skill
 
@@ -54,7 +54,7 @@ Classify the task first, then load the smallest useful reference set. Each refer
 
 Common bundles:
 
-- **Form or CRUD feature** then routing-and-pages, data-and-actions, testing; add auth if user-specific
+- **Form or CRUD feature** then data-and-actions, routing-and-pages, testing; add auth if user-specific
 - **Interactive widget** then components, styling; add client-router-and-streaming only if it streams
 - **Protected area** then auth-and-sessions, routing-and-pages, testing
 - **Instant-feeling mutation** then data-and-actions, optimistic-ui
@@ -105,6 +105,7 @@ App-internal imports use the `#` root alias (`import { db } from '#db/connection
 9. No backtick characters inside an `html\`...\`` body, even in comments (it closes the literal and 500s).
 10. TypeScript must be erasable (`erasableSyntaxOnly: true`): no `enum`, no value `namespace`, no constructor parameter properties, no legacy decorators.
 11. Reactive properties are declared ONLY through the base-class factory `extends WebComponent({ count: Number })`. Never a `static properties` block, never a class-field initializer (it clobbers the reactive accessor).
+12. A form that writes binds its action: `<form action=${importedAction}>`. A quoted `action="${fn}"`, a `formaction=${fn}`, `action=${fn}` off a `<form>`, a bound form with `method="get"`, and a non-action function all throw. A page has no `action` export, so a bare `<form method="post">` is a 405.
 
 ## Export Map
 
@@ -189,24 +190,32 @@ class Counter extends WebComponent({ count: prop(Number) }) {
 Counter.register('my-counter');
 ```
 
-### The no-JS write path (a page action)
+### The no-JS write path (a form-bound action)
 
 ```ts
-// app/contact/page.ts
-export const action = async ({ formData }) => {
+// modules/contact/actions/send-message.server.ts
+'use server';
+export async function sendMessage(formData: FormData) {
   const email = String(formData.get('email') || '');
   if (!email) return { success: false, fieldErrors: { email: 'required' } };
   return { success: true, redirect: '/thanks' };
-};
-export default function Contact({ actionData }) { /* render form + actionData errors */ }
+}
+
+// app/contact/page.ts
+import { sendMessage } from '#modules/contact/actions/send-message.server.ts';
+export default function Contact({ actionData }) {
+  return html`<form action=${sendMessage}><input name="email"></form>`;
+}
 ```
 
-Success is a 303 (PRG); failure re-renders the page at 422 with the result on `actionData`. With JS the client router applies the response in place.
+Binding the action is the whole wiring: the renderer omits `action` (so the form posts to the page's own url), supplies `method="post"` and an enctype, and emits a hidden `__webjs_action` identity field. A form-bound action always receives the `FormData`.
+
+Success is a 303 (PRG); failure re-renders the page at 422 with the result on `actionData`. With JS the client router applies the response in place. A submission that binds nothing is a 405, and the submission is Origin-verified like an RPC call.
 
 ## Security And Session Defaults
 
 - Never ship demo secrets. Require session and provider secrets from the environment and fail fast if missing.
-- Action RPC CSRF is an Origin / `Sec-Fetch-Site` check, not a token cookie. A safe GET action is CSRF-exempt. A `route.ts` REST endpoint is NOT covered: authenticate every mutating endpoint, validate, rate-limit.
+- CSRF is an Origin / `Sec-Fetch-Site` check on both the action RPC and the form-submit path, not a token cookie. A safe GET action is CSRF-exempt. A `route.ts` REST endpoint is NOT covered: authenticate every mutating endpoint, validate, rate-limit.
 - Prod action errors are sanitized to a generic message plus a digest. Put a user-facing message on the `ActionResult` `{ success: false, error }` envelope, never on a raw throw.
 - Use `forbidden()` for an authenticated user lacking permission, `unauthorized()` for an unauthenticated request. Inside a `'use server'` RPC action, return an `ActionResult` for an auth failure instead of throwing.
 - For CORS use `cors()` from `@webjsdev/server`; `credentials: true` REQUIRES an explicit origin allowlist, never `'*'`.
@@ -225,6 +234,9 @@ Success is a 303 (PRG); failure re-renders the page at 422 with the result on `a
 - Using a `static properties` block or a class-field initializer for reactive props instead of the `WebComponent({ ... })` factory.
 - Quoting an event / property / boolean hole (`@click="${fn}"`).
 - Writing `fetch()` to call your own server instead of importing the action.
+- Writing a bare `<form method="post">` and expecting a page `action` export to catch it. There is no such export; bind the action with `action=${fn}` or the submission is a 405.
+- Reaching for `formaction=${fn}` on a submit button to give one form several actions. It is refused; write one form per action.
+- Binding an action whose file declares `export const method = 'GET'`. That is a 405 at runtime and a `webjs check` error.
 - Throwing `redirect()` / `notFound()` inside a `route.ts` handler (uncaught 500). Return a `Response` there.
 - A placeholder first paint that fetches in `connectedCallback`. SSR does not call `connectedCallback`; put first-paint data in the constructor (server-known inputs) or use `async render()`.
 - A browser global (`window`, `document`, `localStorage`) in the constructor or `render()`. It throws at SSR; do browser-only work in `connectedCallback`.

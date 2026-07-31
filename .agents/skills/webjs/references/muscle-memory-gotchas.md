@@ -27,7 +27,7 @@ export async function GET() { redirect('/login'); }
 export async function GET(req: Request) { return Response.redirect(new URL('/login', req.url), 303); }
 ```
 
-Do NOT throw `redirect()` from a page `action` to bounce a form POST either. The method-preserving 307 default re-POSTs the body and re-runs the mutation. Return an `ActionResult` with a `redirect` field instead (a 303 PRG), or throw only for a real external redirect.
+Do NOT throw `redirect()` from a form-bound action to bounce a form POST either. The method-preserving 307 default re-POSTs the body and re-runs the mutation. Return an `ActionResult` with a `redirect` field instead (a 303 PRG), or throw only for a real external redirect.
 
 ### Reads are server actions, not `fetch()` in a Server Component
 
@@ -43,11 +43,18 @@ const users = await getUsers();
 
 There is no React `cache()`, `use()`, or `unstable_cache`. Caching is the `cache()` query helper, `export const revalidate` on a page, or `export const cache` on a GET action.
 
-### A function in `<form action=${fn}>` is refused, not stringified
+### `<form action=${fn}>` binds, in exactly one shape
 
-Next binds a Server Action with `<form action={createTodo}>` and React serializes the binding into hidden fields. WebJs does not read that shape. A function interpolated into `action=` is a hard render error.
+Next binds a Server Action with `<form action={createTodo}>`, and WebJs reads the same shape, so this muscle memory transfers. The mechanism underneath differs, and the difference is what the rest of this section is about: React serializes the binding (bound arguments included) into hidden fields, while WebJs emits ONE hidden field carrying the action's `<hash>/<fn>` identity and no arguments. A per-row action therefore takes its row id from a hidden input in the form, never from `action.bind(null, id)`.
 
-The reason is a source leak. During SSR a `.server.ts` import is the ACTUAL function (the RPC stub exists only in the browser), and `action=` is an ordinary attribute hole, so stringifying it would write the function's body into the HTML every visitor downloads, including any literal inside it. The renderer throws instead, on the server and on the client, for `action=` and `formaction=` alike.
+```ts
+import { submitFeedback } from '#modules/feedback/actions/submit-feedback.server.ts';
+html`<form action=${submitFeedback}><input name="email"></form>`;
+```
+
+That is the whole wiring. The renderer omits the `action` attribute (so the form posts to the page's own url), supplies `method="post"` and an enctype, and emits the identity field. Writing `method="get"` on a bound form throws, because a GET form sends no body and the action could never run.
+
+**Only the bare, unquoted `action=${fn}` on a `<form>` binds.** Every near-miss is a hard render error rather than a silently-inert form, and the reason is a source leak. During SSR a `.server.ts` import is the ACTUAL function (the RPC stub exists only in the browser), and `action=` is an ordinary attribute hole, so stringifying it would write the function's body into the HTML every visitor downloads, including any literal inside it. The renderer throws instead, on the server and on the client, for `action=` and `formaction=` alike.
 
 What escapes is the SOURCE the runtime reports, and how much that includes depends on the runtime. The body always goes: your query shapes, your table and column names, your internal paths, and any credential written inline.
 
@@ -63,18 +70,21 @@ Do not go looking for the rule that decides when it folds. Export status, read c
 
 So treat everything reachable from the action as exposed. That is the assumption the refusal is built on, it is the only one that holds across runtimes, and it is the only one that stays true when the transpiler changes.
 
-The refusal covers the shape, not one spelling of it. Every hole form is refused (`action=${fn}`, `action="${fn}"`, the mixed `action="/x/${fn}"`), and so is a function wrapped in an array (`action=${[fn]}`), since an array stringifies each element through `String()` and leaks identically. Casing does not help either: `formAction=` and `ACTION=` fold to the same rule.
+The refusal covers the shape, not one spelling of it. A quoted `action="${fn}"` and the mixed `action="/x/${fn}"` are refused, because quoting turns a binding hole back into a plain attribute; so is a function wrapped in an array (`action=${[fn]}`), since an array stringifies each element through `String()` and leaks identically. `formaction=` is refused everywhere. Attribute names fold case, so `ACTION=${fn}` on a `<form>` BINDS like the lowercase spelling, while `formAction=${fn}` on a button is refused like `formaction=`.
 
-**Commenting the form out does not disable the hole.** A comment is HTML, the interpolation is JavaScript, and the renderer emits a comment's holes raw, so `<!-- <form action=${createTodo}> -->` still ships the whole action body with no throw and no log. Delete the binding instead of commenting around it. This is the one shape in this section that leaks silently, which is exactly why it is worth knowing.
+**Commenting the form out does not disable the hole.** A comment is HTML, the interpolation is JavaScript, and the renderer emits a comment's holes raw, so a hole inside `<!-- ... -->` never reaches the binding branch and is stringified instead: `<!-- <form action=${createTodo}> -->` ships the whole action body with no throw and no log. Commenting out a WORKING binding is therefore not a way to disable it, it is a way to turn it into a leak. Delete the form or move it out of the template. This is the one shape in this section that leaks silently, which is exactly why it is worth knowing.
 
-It is not special to comments. `String(fn)` returns source text wherever it runs, so a bare function in a text child (`<div>${fn}</div>`) or any unclaimed attribute (`title=${fn}`) writes the same body out. Only the two form-action attribute names are refused today; treat a function anywhere else in a template as a mistake that ships, and reach for `@event=${fn}` or a custom element's `.prop=${fn}`, neither of which stringifies.
+It is not special to comments. `String(fn)` returns source text wherever it runs, so a bare function in a text child (`<div>${fn}</div>`) or any unclaimed attribute (`title=${fn}`) writes the same body out. Only the two form-action attribute names are claimed today; treat a function anywhere else in a template as a mistake that ships, and reach for `@event=${fn}` or a custom element's `.prop=${fn}`, neither of which stringifies.
 
-The refused and allowed shapes in full. Every "no" row is a binding that stringifies nothing, so refusing it would break working code rather than close a leak:
+The bound, refused, and allowed shapes in full. Every "no" row is a binding that stringifies nothing, so refusing it would break working code rather than close a leak:
 
 | Written as | Refused? | Why |
 |---|---|---|
-| `action=` / `formaction=` | yes | ordinary attribute, stringified into the HTML |
-| `.action=` on a native form | yes | the property reflects, so the source lands in the DOM on the client |
+| `action=${fn}` unquoted, on a `<form>` | **no, it BINDS** | the one supported shape: the identity is resolved and emitted as a hidden field, nothing is stringified |
+| `action=${fn}` on any other tag | yes | `action` submits nothing off a `<form>`, so it is an ordinary attribute and the function would be stringified |
+| `action="${fn}"`, or a mixed `action="/x/${fn}"` | yes | quoting turns a binding hole back into a plain attribute |
+| `formaction=` anywhere | yes | a per-submitter identity would have to ride the submitter's own `name`/`value`, which is how a multi-button form tells its buttons apart. Write one form per action |
+| `.action=` on a native form | yes | the supported binding is the plain attribute, and a `.prop` on a native element drops at SSR, so accepting it would mean a form that submits under JS and does nothing without it |
 | `.formAction=` on a button or input | yes | same reason, that is where `formAction` reflects |
 | `.action=` on any other native tag | **no** | a plain expando (`<div .action=${fn}>`, `<button .action=${fn}>`), reflecting nothing, so nothing reaches the markup |
 | `.action=` on a custom element | **no** | an author-defined property, not a reflected IDL attribute; a function is a legitimate value. Holds for a PLAIN prop: one declared `reflect: true` writes `String(value)` to the attribute on a path outside these commit sites, so it still emits the source |
@@ -94,15 +104,15 @@ Two things that "renders it empty" understates, both worth knowing before you go
 - **On a route with a `loading.{js,ts}`, there is no log line either.** That wraps the page in a `Suspense` boundary, so the page body renders AFTER the 200 and the shell have been flushed, and a boundary that throws there is currently swallowed with no server log, no `onError`, and no error boundary. The visitor gets chrome and an empty body; with JS off the skeleton simply stays. That silence is a known framework gap rather than intended behaviour, so do not read the missing log line as evidence the render succeeded.
 
 ```ts
-// WRONG: throws at render; it would have leaked the action's body.
 import { submitFeedback } from '#modules/feedback/actions/submit-feedback.server.ts';
-html`<form method="post" action=${submitFeedback}>`;
-// RIGHT: omit action entirely to post to the page's own url, and handle the
-// submission in that page's `action` export.
-html`<form method="post">`;
+// RIGHT: bind the imported action. method and enctype are supplied.
+html`<form action=${submitFeedback}><input name="email"></form>`;
+// WRONG: a bare form binds nothing, so the submission is a 405. There is no
+// page `action` export to catch it.
+html`<form method="post"><input name="email"></form>`;
 ```
 
-A string stays a string: `action="/search"` and `action=${'/search'}` are unchanged. Other attributes keep their existing stringify behaviour; only `action` and `formaction` are claimed.
+A string stays a string: `action="/search"` and `action=${'/search'}` are unchanged, which is what a search form (`<form method="get" action="/search">`) and a `route.ts` endpoint both want. Other attributes keep their existing stringify behaviour; only a FUNCTION under `action` / `formaction` is claimed.
 
 ### `params` and `searchParams` are awaitable AND synchronously readable
 
