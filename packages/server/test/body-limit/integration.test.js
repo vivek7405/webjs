@@ -180,35 +180,46 @@ test('counterfactual: with the cap off (0) the same over-limit body succeeds', a
   assert.equal(resp.status, 200, 'with the cap disabled the large body goes through');
 });
 
-/* --------------- page-action form path --------------- */
+/* --------------- form-submission path --------------- */
 
-test('page action form: over-limit multipart/urlencoded body is 413, under-limit runs', async () => {
+test('form submission: over-limit multipart/urlencoded body is 413, under-limit runs', async () => {
   const appDir = makeApp({
-    'app/signup/page.js': `
-      import { html } from ${CORE};
-      export async function action({ formData }) {
+    'signup.server.js': `
+      'use server';
+      export async function signup(formData) {
         return { success: true, redirect: '/welcome', data: { email: formData.get('email') } };
       }
-      export default function P({ actionData }) { return html\`<form method="POST"></form>\`; }
+    `,
+    'app/signup/page.js': `
+      import { html } from ${CORE};
+      import { signup } from '../../signup.server.js';
+      export default function P() { return html\`<form action=\${signup}></form>\`; }
     `,
     // Form/multipart cap deliberately tiny so a small urlencoded body trips it.
-    'package.json': JSON.stringify({ webjs: { maxMultipartBytes: 30 } }),
+    'package.json': JSON.stringify({ webjs: { maxMultipartBytes: 60 } }),
   });
   const app = await createRequestHandler({ appDir, dev: true });
+
+  // The identity is read off the rendered page, so this exercises the same
+  // string a browser would submit rather than one the test made up.
+  const page = await (await app.handle(new Request('http://x/signup'))).text();
+  const id = /name="__webjs_action" value="([^"]*)"/.exec(page)[1];
 
   // Under the limit: success => 303 PRG.
   const ok = await app.handle(new Request('http://x/signup', {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: 'email=a@b.co',
+    body: `__webjs_action=${encodeURIComponent(id)}&email=a@b.co`,
   }));
   assert.equal(ok.status, 303);
 
-  // Over the limit: 413 before the action runs.
+  // Over the limit: 413 before the body is parsed, so before the identity is
+  // even readable. That ordering is the point: the cap cannot depend on
+  // anything inside the body it is capping.
   const big = await app.handle(new Request('http://x/signup', {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: 'email=' + 'z'.repeat(200),
+    body: `__webjs_action=${encodeURIComponent(id)}&email=` + 'z'.repeat(200),
   }));
   assert.equal(big.status, 413);
 });

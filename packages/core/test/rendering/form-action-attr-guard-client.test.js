@@ -40,6 +40,13 @@ before(async () => {
 
 async function fakeAction() { const S = 'CLIENT_SECRET'; return S; }
 
+// #1155 made ONE shape here meaningful rather than merely refused: an unquoted
+// `action=${fn}` on a `<form>` binds the action. It still stringifies nothing,
+// so every leak claim below is unchanged, but for a function the browser stub
+// never stamped, which is every function in this file, the refusal it hits is
+// the identity one.
+const NOT_AN_ACTION = /is not a server action/;
+
 // NOTE on what these DON'T assert: `createInstance` applies every part before
 // it calls `container.replaceChildren(...)`, so a throwing part leaves `host`
 // empty no matter what. An `assert.ok(!host.innerHTML.includes(SECRET))` here
@@ -50,7 +57,7 @@ test('client render of action=${fn} throws', () => {
   const host = document.createElement('div');
   assert.throws(
     () => render(html`<form method="post" action=${fakeAction}></form>`, host),
-    /function was interpolated into action=/,
+    NOT_AN_ACTION,
   );
 });
 
@@ -78,7 +85,7 @@ test('client re-render swapping in an upper-case ACTION=${fn} throws, live DOM s
   const host = document.createElement('div');
   const tpl = (a) => html`<form method="post" ACTION=${a}></form>`;
   render(tpl('/ok'), host);
-  assert.throws(() => render(tpl(fakeAction), host), /function was interpolated into action=/);
+  assert.throws(() => render(tpl(fakeAction), host), NOT_AN_ACTION);
   assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
 });
 
@@ -90,9 +97,10 @@ test('re-render swapping a string action for a function throws, live DOM stays c
   const tpl = (a) => html`<form method="post" action=${a}></form>`;
   render(tpl('/ok'), host);
   assert.equal(host.querySelector('form').getAttribute('action'), '/ok');
-  assert.throws(() => render(tpl(fakeAction), host), /function was interpolated into action=/);
+  assert.throws(() => render(tpl(fakeAction), host), NOT_AN_ACTION);
   assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'live DOM must not carry the source');
-  assert.equal(host.querySelector('form').getAttribute('action'), '/ok', 'the prior value must survive');
+  assert.equal(host.querySelector('form').getAttribute('action'), '/ok',
+    'the prior value must survive: identity is checked before the attribute is touched');
 });
 
 // `.action=${fn}` is a PROPERTY binding, a different commit site from the

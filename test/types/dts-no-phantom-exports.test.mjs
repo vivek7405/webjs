@@ -96,7 +96,7 @@ const BROWSER_SURFACES = [
     name: '@webjsdev/core',
     dir: 'packages/core',
     overlay: 'index.d.ts',
-    intentionalAbsent: ['renderToString', 'renderToStream', 'setCspNonceProvider', 'setAssetUrlProvider'],
+    intentionalAbsent: ['renderToString', 'renderToStream', 'setCspNonceProvider', 'setAssetUrlProvider', 'setFormActionResolver'],
     // Resolve the browser entry AUTHORITATIVELY via the real importmap builder
     // (not a regex on the fallback literal), so a rename in the actual dev-mode
     // mapping follows. `distMode: false` selects the src browser entry

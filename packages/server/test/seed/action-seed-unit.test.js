@@ -2,7 +2,7 @@
  * Unit tests for SSR action-result seeding (#472), the pure pieces that need
  * neither the process-global load hook nor a running app:
  *   - export-name extraction for the facade,
- *   - the `__seedWrap` Proxy: records inside a collector, passthrough outside,
+ *   - the `__actionWrap` Proxy: records inside a collector, passthrough outside,
  *     non-function passthrough, and a function's own custom property
  *     forwarding through the Proxy,
  *   - `collectSeeds` ambient collection across a nested async chain,
@@ -12,20 +12,27 @@
  * The load-hook + facade path is covered in seed-hook.test.js (isolated process,
  * because `module.registerHooks` is process-global).
  */
-import { test } from 'node:test';
+import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  __seedWrap,
+  __actionWrap,
   extractExportNames,
   buildSeedFacade,
   collectSeeds,
   buildSeedScript,
+  registerActionHooks,
+  actionIdentityOf,
 } from '../../src/action-seed.js';
 import { hashFile } from '../../src/actions.js';
 import { stringify, parse } from '@webjsdev/core';
 
 const FILE = '/app/actions/users.server.js';
+
+// `__actionWrap` only builds the recording Proxy when seed collection is on,
+// so the wrap tests below have to say so. Identity registration is separate and
+// unconditional, which the identity tests at the bottom of this file pin.
+before(async () => { await registerActionHooks({ seed: true }); });
 
 test('extractExportNames finds function / const / class / list / default exports', () => {
   const src = `
@@ -82,9 +89,9 @@ test('buildSeedFacade emits an export* catch-all so a MISSED export is fail-open
   );
 });
 
-test('__seedWrap records a resolved async result inside a collector', async () => {
+test('__actionWrap records a resolved async result inside a collector', async () => {
   const real = async (id) => ({ id, name: `user-${id}` });
-  const wrapped = __seedWrap(FILE, 'getUser', real);
+  const wrapped = __actionWrap(FILE, 'getUser', real);
   const { value, collector } = await collectSeeds(async () => {
     return wrapped(5);
   });
@@ -96,8 +103,8 @@ test('__seedWrap records a resolved async result inside a collector', async () =
 });
 
 test('a streamed result (#489) is NOT seeded, and does not drop other seeds', async () => {
-  const stream = __seedWrap(FILE, 'tokens', async function* () { yield 'a'; });
-  const normal = __seedWrap(FILE, 'getUser', async (id) => ({ id }));
+  const stream = __actionWrap(FILE, 'tokens', async function* () { yield 'a'; });
+  const normal = __actionWrap(FILE, 'getUser', async (id) => ({ id }));
   const { collector } = await collectSeeds(async () => {
     const gen = stream(); // an async generator (streamable), must not record
     await normal(7);       // a normal value, must still record
@@ -115,36 +122,36 @@ test('a streamed result (#489) is NOT seeded, and does not drop other seeds', as
   assert.match(script, /__webjs-seeds/);
 });
 
-test('__seedWrap is a passthrough OUTSIDE a collector (the RPC endpoint path)', async () => {
+test('__actionWrap is a passthrough OUTSIDE a collector (the RPC endpoint path)', async () => {
   let ran = false;
   const real = async () => { ran = true; return 42; };
-  const wrapped = __seedWrap(FILE, 'fn', real);
+  const wrapped = __actionWrap(FILE, 'fn', real);
   // No collectSeeds wrapper -> no ambient store -> no recording, just the call.
   const out = await wrapped();
   assert.equal(out, 42);
   assert.equal(ran, true);
 });
 
-test('__seedWrap passes a non-function export through untouched', () => {
-  assert.equal(__seedWrap(FILE, 'VERSION', '1.0'), '1.0');
+test('__actionWrap passes a non-function export through untouched', () => {
+  assert.equal(__actionWrap(FILE, 'VERSION', '1.0'), '1.0');
   const obj = { a: 1 };
-  assert.equal(__seedWrap(FILE, 'CONFIG', obj), obj);
+  assert.equal(__actionWrap(FILE, 'CONFIG', obj), obj);
 });
 
-test('__seedWrap forwards a function\'s own custom properties through the Proxy', () => {
+test('__actionWrap forwards a function\'s own custom properties through the Proxy', () => {
   // The facade Proxy must be transparent: any metadata a framework or app
   // attaches to the action function (its own enumerable / non-enumerable props)
   // is readable through the wrapper, so the wrap never hides attached config.
   const fn = async () => 'pong';
   /** @type any */ (fn).__custom = { method: 'GET', path: '/ping' };
-  const wrapped = __seedWrap(FILE, 'ping', fn);
+  const wrapped = __actionWrap(FILE, 'ping', fn);
   assert.deepEqual(/** @type any */ (wrapped).__custom, { method: 'GET', path: '/ping' },
     'a custom property is read through the Proxy');
 });
 
 test('collectSeeds collects across a nested async chain, keyed by args', async () => {
-  const getUser = __seedWrap(FILE, 'getUser', async (id) => ({ id }));
-  const getPosts = __seedWrap(FILE, 'getPosts', async (uid) => [uid]);
+  const getUser = __actionWrap(FILE, 'getUser', async (id) => ({ id }));
+  const getPosts = __actionWrap(FILE, 'getPosts', async (uid) => [uid]);
   async function component(id) {
     const u = await getUser(id);
     const p = await getPosts(id);
@@ -166,7 +173,7 @@ test('collectSeeds collects across a nested async chain, keyed by args', async (
 test('the recorded key equals the key a client stub would compute', async () => {
   // The stub computes: takeSeed(HASH, fn, await stringify(args)). Prove the
   // server records under EXACTLY that key for the same args.
-  const wrapped = __seedWrap(FILE, 'getUser', async (id) => id);
+  const wrapped = __actionWrap(FILE, 'getUser', async (id) => id);
   const { collector } = await collectSeeds(async () => wrapped(99));
   const stubHash = await hashFile(FILE); // the stub embeds this same value
   const stubArgsKey = await stringify([99]); // the stub computes this client-side
@@ -195,4 +202,39 @@ test('buildSeedScript: emits an escaped application/json block that round-trips'
   assert.equal(seed.name, '<script>alert(1)</script>', 'rich payload survives');
   assert.ok(seed.joined instanceof Date, 'Date round-trips through the seed wire');
   assert.equal(seed.joined.getUTCFullYear(), 2020);
+});
+
+// --- Identity (#1155) --------------------------------------------------------
+//
+// A bound `<form action=${action}>` resolves through this registry, so it has
+// to be populated whatever the seed switch says. The two halves are tested
+// apart because the seed switch is exactly what could accidentally gate both.
+
+test('__actionWrap registers identity for the value it hands back', () => {
+  const fn = async () => 'x';
+  const out = __actionWrap(FILE, 'saveUser', fn);
+  assert.deepEqual(actionIdentityOf(out), { file: FILE, fnName: 'saveUser' });
+});
+
+test('identity is registered for the ORIGINAL too, not only the wrapper', () => {
+  // Which of the two a caller holds depends on the seed switch, and a page that
+  // imported the module before the switch was read would otherwise resolve
+  // nothing.
+  const fn = async () => 'x';
+  __actionWrap(FILE, 'saveUser', fn);
+  assert.deepEqual(actionIdentityOf(fn), { file: FILE, fnName: 'saveUser' });
+});
+
+test('identity survives seed collection being turned off', async () => {
+  await registerActionHooks({ seed: false });
+  const fn = async () => 'x';
+  const out = __actionWrap(FILE, 'offSwitch', fn);
+  assert.equal(out, fn, 'with collection off there is no Proxy to pay for');
+  assert.deepEqual(actionIdentityOf(out), { file: FILE, fnName: 'offSwitch' });
+  await registerActionHooks({ seed: true });
+});
+
+test('a non-function export registers no identity', () => {
+  assert.equal(actionIdentityOf(__actionWrap(FILE, 'VERSION', '1.0')), null);
+  assert.equal(actionIdentityOf(undefined), null);
 });

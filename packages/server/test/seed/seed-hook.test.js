@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { registerSeedHooks, seedingEnabled, collectSeeds } from '../../src/action-seed.js';
+import { registerActionHooks, seedingEnabled, collectSeeds, actionIdentityOf } from '../../src/action-seed.js';
 import { hashFile } from '../../src/actions.js';
 import { stringify } from '@webjsdev/core';
 
@@ -50,12 +50,12 @@ before(async () => {
   exoticUrl = pathToFileURL(exotic).toString();
 
   // Install the global hook BEFORE importing the fixtures (ESM caches by URL).
-  await registerSeedHooks();
+  await registerActionHooks({ seed: true });
 });
 
 after(() => { rmSync(dir, { recursive: true, force: true }); });
 
-test('registerSeedHooks marks seeding enabled', () => {
+test('registerActionHooks marks seeding enabled', () => {
   assert.equal(seedingEnabled(), true);
 });
 
