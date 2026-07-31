@@ -3,6 +3,12 @@
  * the same rules for a better UX.
  */
 
+// Two types per form on purpose. The *Payload is the CONTRACT a caller
+// declares (what the action's signature accepts, so a client component
+// type-checks against it); the *Input is the NARROWED result the validator
+// returns. Keeping them separate is what lets an action be typed without
+// lying about a wire payload nothing has vouched for yet.
+export type SignupPayload = { email: string; password: string; name?: string | null };
 export type SignupInput = { email: string; password: string; name: string | null };
 export type LoginInput = { email: string; password: string };
 

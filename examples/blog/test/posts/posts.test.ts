@@ -18,6 +18,7 @@ import { withRequest } from '@webjsdev/server';
 import { setStore, memoryStore } from '@webjsdev/server';
 
 import { signup } from '#modules/auth/actions/signup.server.ts';
+import type { CreatePostInput } from '#modules/posts/types.ts';
 import { listPosts } from '#modules/posts/queries/list-posts.server.ts';
 import { getPost } from '#modules/posts/queries/get-post.server.ts';
 import { createPost } from '#modules/posts/actions/create-post.server.ts';
@@ -134,7 +135,11 @@ describe('posts', () => {
 
   test('createPost with non-object input returns error', async () => {
     const result = await withSession(authToken, () =>
-      createPost(null as unknown),
+      // A deliberate contract violation: the point of this test is that the
+      // action's RUNTIME guard still fires for a caller that ignores the type
+      // (a raw JSON body through route.ts). The cast is what makes that
+      // intent explicit rather than leaving the parameter untyped.
+      createPost(null as unknown as CreatePostInput),
     );
     assert.equal(result.success, false);
     if (result.success) return;

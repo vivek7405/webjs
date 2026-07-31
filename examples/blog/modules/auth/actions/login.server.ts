@@ -4,11 +4,15 @@ import { db } from '#db/connection.server.ts';
 import { verifyPassword } from '#lib/password.server.ts';
 import { createSession } from '#lib/session.server.ts';
 import { validateLogin } from '#modules/auth/utils/validate.ts';
+import type { LoginInput } from '#modules/auth/utils/validate.ts';
 import type { ActionResult, PublicUser } from '#modules/auth/types.ts';
 
 /** Authenticate by email + password; open a new session. */
+// The parameter declares the CONTRACT (so a caller type-checks against it);
+// validateLogin is the runtime enforcement, since this action is also
+// reachable from route.ts with a raw JSON body.
 export async function login(
-  input: unknown,
+  input: LoginInput,
 ): Promise<ActionResult<{ user: PublicUser; token: string }>> {
   let parsed;
   try { parsed = validateLogin(input); }
