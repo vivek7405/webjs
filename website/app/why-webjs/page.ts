@@ -24,7 +24,7 @@ export function generateMetadata(ctx: { url: string }) {
   const image = `${origin}/public/og-why.png`;
   const title = 'Why WebJs - The Framework Your AI Agent Already Understands';
   const description =
-    'WebJs is a full-stack JavaScript framework you can describe in plain language, because the file conventions land an app in the right shape whatever model you use. Nothing is hidden behind a build step, so any AI model reads the framework source from node_modules, reasons about the whole stack, and debugs it. No training data required, no single blessed model, on the web components and HTML every model already knows.';
+    'WebJs is a full-stack JavaScript framework you describe in plain language, because the file conventions land an app in the right shape whatever model you use. Nothing is hidden behind a build step, so any AI model reads the framework source from node_modules, reasons about the whole stack, and debugs it. No training data required, no single blessed model, on the web components and HTML every model already knows.';
   return {
     title,
     description,
@@ -200,7 +200,7 @@ Counter.register('counter');
               <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="The files a WebJs app grows for that request"><code>app/book/page.ts
 <span class="text-fg-subtle">  the page, server-rendered to real HTML</span>
 app/staff/bookings/page.ts
-<span class="text-fg-subtle">  the list, behind the session check</span>
+<span class="text-fg-subtle">  the staff view, its own route</span>
 modules/bookings/actions/create.server.ts
 <span class="text-fg-subtle">  the write, server-side by extension</span>
 db/schema.server.ts

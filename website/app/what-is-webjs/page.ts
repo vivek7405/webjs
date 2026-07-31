@@ -161,7 +161,7 @@ const PROSE = 'text-fg-muted text-base leading-[1.7] m-0';
 const CAPABILITIES = [
   {
     title: 'AI-first, readable end to end',
-    body: 'Predictable file conventions, one server function per file, and an explicit .server.ts boundary keep the context small, so an agent edits one route without reading the whole app, and a request written in ordinary words still lands in the right shape. Every app ships one AGENTS.md contract that Claude Code, Cursor, Copilot, Gemini, and opencode all read, and the framework is plain JavaScript rather than a compiled bundle.',
+    body: 'Predictable file conventions and an explicit .server.ts boundary decide the shape of an app, so an agent edits one route without reading the whole app, and ordinary words are enough to ask for a new one. Every app ships an AGENTS.md contract that Claude Code, Cursor, Copilot, Gemini, and opencode read from one source, and the framework itself is plain JavaScript with JSDoc in node_modules rather than a compiled bundle.',
   },
   {
     title: 'Web components, server-rendered',
@@ -207,7 +207,7 @@ function codeWindow(title: string, sample: string, label: string) {
   return html`
     <figure class=${WIN}>
       <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>${title}</span></figcaption>
-      <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label=${label}><code>${highlight(sample)}</code></pre>
+      <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label=${label}><code>${highlight(sample)}</code></pre>
     </figure>
   `;
 }

@@ -35,6 +35,35 @@ test('the pitch page makes the plain-language prompt and cross-model quality arg
   assert.ok(out.includes('quality of what comes back'), 'ties model-agnosticism to output quality, not just to whether a model works');
 });
 
+test('the plain-language section pairs a prompt against the files the conventions produce', async () => {
+  // The prose above the demo carries the argument, but the two windows are what
+  // SHOW it, and they were previously unasserted: the whole grid could be
+  // deleted with every test in this file still green. These pin both panels,
+  // their correspondence, and the accessible name each scrollable block needs.
+  const out = await renderToString(Why());
+  assert.ok(out.includes('Let customers book a table'), 'the prompt panel carries a request written in ordinary words');
+  assert.ok(!/&gt; Build a page/.test(out), 'the prompt does not name a page, which the file panel would then have to match one for one');
+  for (const file of ['app/book/page.ts', 'app/staff/bookings/page.ts', 'modules/bookings/actions/create.server.ts', 'db/schema.server.ts']) {
+    assert.ok(out.includes(file), `the file panel answers the prompt with ${file}`);
+  }
+  assert.ok(out.includes('<span class="ml-2 font-mono font-medium text-xs leading-none text-fg-subtle">files</span>'), 'the file listing is labelled files, not terminal');
+  // <pre> maps to role generic, where ARIA prohibits an author-supplied name,
+  // so every named scrollable block on this page carries an explicit role.
+  const named = out.match(/<pre[^>]*aria-label=/g) ?? [];
+  const region = out.match(/<pre[^>]*role="region"[^>]*aria-label=/g) ?? [];
+  assert.equal(named.length, 4, 'the page renders its four named code blocks');
+  assert.equal(region.length, named.length, 'every named pre carries role=region, so the name is one ARIA permits');
+});
+
+test('the /why-webjs description answers in the snippet window a SERP actually shows', async () => {
+  // Mirrors the assertion on /what-is-webjs. The claim this page leads with is
+  // only worth adding if it survives truncation, and nothing pinned that here.
+  const { description } = generateMetadata({ url: 'https://webjs.dev/why-webjs' });
+  const firstSentence = description.slice(0, description.indexOf('. ') + 1);
+  assert.ok(firstSentence.length <= 160, `first sentence is ${firstSentence.length} chars, over the 160-char snippet window`);
+  assert.ok(firstSentence.includes('plain language'), 'the plain-language claim is inside the snippet window, not past it');
+});
+
 test('why metadata is self-consistent and points at the dedicated /why-webjs social card', () => {
   const m = generateMetadata({ url: 'https://webjs.dev/why-webjs' });
   assert.equal(m.openGraph.title, m.title, 'og:title matches the <title>');
