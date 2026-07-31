@@ -2696,16 +2696,22 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
 });
 
 // ---------------------------------------------------------------------------
-// Page server actions: the no-JS form write-path (#244)
+// Form actions: the no-JS write path (#1155)
 //
-// The `/feedback` route exports a page `action`. A `<form method="POST">`
-// posts to it. We exercise BOTH the JS-disabled native path and the JS-enabled
-// client-router path, asserting the SAME field-error UI and the same PRG
-// redirect, plus a network probe that the enhanced path issues exactly one POST
-// and does NOT full-reload on the 422.
+// `/feedback` binds a module action with `<form action=${submitFeedback}>`. We
+// exercise BOTH the JS-disabled native path and the JS-enabled client-router
+// path, asserting the SAME field-error UI and the same PRG redirect, plus a
+// network probe that the enhanced path issues exactly one POST and does NOT
+// full-reload on the 422.
+//
+// JS-disabled is the load-bearing half. Progressive enhancement is the
+// framework's headline invariant, and a bound form is the one place a hidden
+// field the RENDERER emitted has to survive all the way into a native browser
+// submission for anything to happen at all. Nothing below stubs that: a real
+// browser with scripting off submits the real markup.
 // ---------------------------------------------------------------------------
 
-describe('E2E: page server actions (no-JS + enhanced)', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1 to run E2E tests' }, () => {
+describe('E2E: form actions (no-JS + enhanced)', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1 to run E2E tests' }, () => {
   let paBrowser, paServer, paBase;
 
   before(async () => {
@@ -2727,6 +2733,37 @@ describe('E2E: page server actions (no-JS + enhanced)', { skip: !process.env.WEB
       paServer.kill('SIGTERM');
       await new Promise((r) => { paServer.on('exit', r); setTimeout(r, 3000); });
     }
+  });
+
+  test('JS DISABLED: the served markup carries the identity and no action attribute', async () => {
+    // The premise every other case here rests on. With JS off, whatever the
+    // server sent IS the form, so if the identity field were missing or emitted
+    // outside the <form>, the submissions below would post an empty body and
+    // the failure would look like an action bug rather than a markup one.
+    const p = await paBrowser.newPage();
+    await p.setJavaScriptEnabled(false);
+    try {
+      await p.goto(`${paBase}/feedback`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+      const form = await p.evaluate(() => {
+        const f = document.querySelector('form');
+        const field = f && f.querySelector('input[name="__webjs_action"]');
+        return {
+          hasAction: !!f && f.hasAttribute('action'),
+          method: f ? f.method : null,
+          identity: field ? field.value : null,
+          // What the browser would actually serialize on submit.
+          submitted: f ? new FormData(f).get('__webjs_action') : null,
+        };
+      });
+      assert.equal(form.hasAction, false, 'no action attribute, so it posts to this page');
+      assert.equal(form.method, 'post', 'method is post');
+      assert.ok(/^[0-9a-f]{10}\/submitFeedback$/.test(form.identity || ''),
+        `identity field must name the action, got ${form.identity}`);
+      assert.equal(form.submitted, form.identity, 'and it is inside the form, so it is submitted');
+      const src = await p.content();
+      assert.ok(!src.includes('already subscribed'),
+        'the action body must not ship: its validation message appears only after a submit');
+    } finally { await p.close(); }
   });
 
   test('JS DISABLED: invalid submit re-renders the page with the error + preserved input', async () => {
