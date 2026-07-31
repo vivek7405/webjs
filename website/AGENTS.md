@@ -199,6 +199,14 @@ calling an action), re-enable it and delete the assertion in
   (same palette / type scale as the blog and docs).
 - Each section in `page.ts` is a `<section>` wrapper for predictable
   scroll anchors.
+- **Code blocks follow three accessibility rules.** `test/ssr/pre-block-a11y.test.ts`
+  enforces them, but only on the pages in its `PAGES` list, currently the three
+  marketing pages. Coverage is PARTIAL and the rest of the site is not clean:
+  sections outside that list still render a `<pre>` with no `tabindex`, whether
+  the scroll comes from an `overflow-x-auto` utility or from
+  `.prose-docs pre { overflow-x: auto }` in `lib/ui/docs-shell.ts`. Do not read
+  the list as an inventory of what is left. Follow the rules in any new markup,
+  and add a page to `PAGES` once its section satisfies them.
 
 ## Run
 

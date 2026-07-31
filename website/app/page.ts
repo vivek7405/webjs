@@ -103,7 +103,7 @@ function codeWindow(title: string, sample: string) {
   return html`
     <figure class=${WIN}>
       <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>${title}</span></figcaption>
-      <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label=${title + ' code sample'}><code>${highlight(sample)}</code></pre>
+      <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label=${title + ' code sample'}><code>${highlight(sample)}</code></pre>
     </figure>
   `;
 }
@@ -216,7 +216,7 @@ export default function LandingPage() {
         <div class="hero-stage max-w-5xl mx-auto grid grid-cols-1 wide:grid-cols-2 rounded-2xl overflow-hidden border border-border-strong bg-bg-sunken shadow-[var(--shadow)]">
           <div class="min-w-0 border-b wide:border-b-0 wide:border-r border-border bg-bg-subtle">
             <div class=${WINBAR}>${DOTS}<span class=${WINNAME}>components/like-button.ts</span></div>
-            <pre class="scroll-thin m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] [tab-size:2] text-left" tabindex="0" aria-label="like-button component source"><code>${highlight(HERO_SAMPLE)}</code></pre>
+            <pre class="scroll-thin m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] [tab-size:2] text-left" role="region" tabindex="0" aria-label="like-button component source"><code>${highlight(HERO_SAMPLE)}</code></pre>
           </div>
           <div class="group/stage flex flex-col min-w-0 bg-bg">
             <input type="checkbox" id="stage-usage" class="sr-only peer" />
@@ -232,7 +232,7 @@ export default function LandingPage() {
             <div class="flex-1 grid place-items-center px-6 py-10 group-has-[:checked]/stage:hidden">
               <like-button count="3"></like-button>
             </div>
-            <pre class="hidden group-has-[:checked]/stage:block flex-1 m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] text-left" aria-label="like-button usage"><code>${highlight(USAGE_SAMPLE)}</code></pre>
+            <pre class="hidden group-has-[:checked]/stage:block flex-1 m-0 p-5 overflow-x-auto font-mono text-xs leading-[1.72] text-left" role="region" tabindex="0" aria-label="like-button usage"><code>${highlight(USAGE_SAMPLE)}</code></pre>
             <div class="px-4 py-3 border-t border-border text-center font-mono text-xs leading-[1.5] text-fg-subtle">
               Server-rendered first, then upgraded. Click it.
             </div>
@@ -384,7 +384,7 @@ export default function LandingPage() {
             <span class="text-xs font-medium leading-none text-accent">Full-stack</span>
             <h3 class="font-display font-bold text-lg leading-[1.25] m-0">Pages + API + components</h3>
             <p class="m-0 text-sm leading-[1.6] text-fg-muted">SSR pages, web components, server actions, Drizzle, streaming, and a browsable feature gallery. Auth (login, sessions, a protected route) ships as a gallery card. The default.</p>
-            <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-subtle font-mono text-xs leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/page.ts
+            <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-subtle font-mono text-xs leading-[1.6] text-fg-muted" role="region" tabindex="0" aria-label="Example files in a full-stack app">app/page.ts
 components/counter.ts
 actions/posts.server.ts</pre>
             <div class="cmd-foot pt-2 mt-auto font-mono text-xs leading-[1.6] text-fg-muted max-w-full min-w-0"><copy-cmd>npm create webjs@latest my-app</copy-cmd></div>
@@ -393,7 +393,7 @@ actions/posts.server.ts</pre>
             <span class="text-xs font-medium leading-none text-accent">Backend (API)</span>
             <h3 class="font-display font-bold text-lg leading-[1.25] m-0">Route handlers + Database</h3>
             <p class="m-0 text-sm leading-[1.6] text-fg-muted">A backend-only app, no UI or SSR. File-based route handlers, modules, middleware, rate limiting, WebSockets, a database, and a backend-features gallery.</p>
-            <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-subtle font-mono text-xs leading-[1.6] text-fg-muted" tabindex="0" aria-label="Example files">app/api/users/route.ts
+            <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-subtle font-mono text-xs leading-[1.6] text-fg-muted" role="region" tabindex="0" aria-label="Example files in an API app">app/api/users/route.ts
 app/api/chat/route.ts
 middleware.ts</pre>
             <div class="cmd-foot pt-2 mt-auto font-mono text-xs leading-[1.6] text-fg-muted max-w-full min-w-0"><copy-cmd>npm create webjs@latest my-api -- --template api</copy-cmd></div>

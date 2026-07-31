@@ -24,7 +24,7 @@ export function generateMetadata(ctx: { url: string }) {
   const image = `${origin}/public/og-why.png`;
   const title = 'Why WebJs - The Framework Your AI Agent Already Understands';
   const description =
-    'WebJs is a full-stack JavaScript framework that serves the framework source and your app code exactly as written, so any AI model can read the whole stack from node_modules, reason about it, and debug it. No training data required, no single blessed model. Built on the web components, HTML, and JavaScript every model already knows.';
+    'WebJs is a full-stack JavaScript framework where Build me an app is the whole prompt. The architecture, the code, a real database, and a design system arrive without being specified, because the framework already made those calls rather than leaving them for your prompt to close. Nothing is hidden behind a build step either, so any AI model reads the framework source from node_modules and reasons about the whole stack. No training data required, no single blessed model.';
   return {
     title,
     description,
@@ -69,6 +69,29 @@ const REASONS = [
   {
     title: 'Standard HTML and JavaScript',
     body: 'WebJs is built on web components, custom elements, SSR, and forms. Every model, small or large, is already trained on the platform primitives, so the muscle memory transfers instead of fighting a bespoke abstraction.',
+  },
+];
+
+// What comes back from the one-sentence prompt. These are the four things the
+// prompt would otherwise have had to specify, so each must stay a genuine
+// DEFAULT of the framework or of what `webjs create` scaffolds. If one ever
+// becomes something the prompt has to request, the section's claim is gone.
+const ARRIVES = [
+  {
+    title: 'Architecture',
+    body: 'Where a page lives, where a form submission is handled, and which code is allowed to touch the server are settled by the framework, not improvised per app. The result comes out in the shape a reviewer expects.',
+  },
+  {
+    title: 'Code',
+    body: 'Server-rendered pages that work before any script loads, and no build step in between. Types run the whole way through, so a server function keeps its argument and return types at the call site and an agent has no reason to reach for any. Running webjs check catches what is outright wrong before it ships.',
+  },
+  {
+    title: 'Database',
+    body: 'A scaffolded app is wired to a real database with a schema and migrations from the first command, so an agent reaches for that rather than a list of items living in the code. Swap the database later if you want a different one.',
+  },
+  {
+    title: 'Design system',
+    body: 'A palette and a type scale ship as design tokens rather than values scattered through components, so every screen the app grows shares them and restyling the whole thing means editing the tokens, not hunting through the markup.',
   },
 ];
 
@@ -118,7 +141,7 @@ export default function Why() {
             <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">The framework, readable in node_modules</p>
             <figure class=${WIN}>
               <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>terminal</span></figcaption>
-              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="Listing and grepping the framework source in node_modules"><code><span class="text-accent">$</span> ls node_modules/@webjsdev/core/src
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="Listing and grepping the framework source in node_modules"><code><span class="text-accent">$</span> ls node_modules/@webjsdev/core/src
 component.js    html.js         render-client.js
 css.js          directives.js   render-server.js
 serialize.js    router-client.js
@@ -134,7 +157,7 @@ server/src/ssr.js: const html = await renderToString(tree)
             <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Your app code, served to the browser as written</p>
             <figure class=${WIN}>
               <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>terminal</span></figcaption>
-              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="Fetching an app module served unbundled"><code><span class="text-accent">$</span> curl localhost:5001/components/counter.ts
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="Fetching an app module served unbundled"><code><span class="text-accent">$</span> curl localhost:5001/components/counter.ts
 import { WebComponent } from '@webjsdev/core';
 
 class Counter extends WebComponent({ count: Number }) {
@@ -168,6 +191,61 @@ Counter.register('counter');
 
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">
+        <div class="max-w-3xl mx-auto mb-12 text-center">
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The prompt does not have to carry the architecture</h2>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">
+            Most frameworks leave the big decisions open, and that flexibility
+            is the point of them. But an open decision has to be closed by
+            somebody, and when an agent is writing the code, that somebody is
+            whoever wrote the prompt. So the request grows an appendix of
+            technical instructions, and every one of them is a thing you had to
+            know to ask for. WebJs has already made those calls, so the request
+            stays the request.
+          </p>
+        </div>
+        <div class="grid grid-cols-1 wide:grid-cols-2 gap-4 items-stretch max-w-3xl mx-auto mb-12">
+          <div class="flex flex-col min-w-0">
+            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Where the decisions are still open</p>
+            <figure class=${WIN}>
+              <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>prompt</span></figcaption>
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="A prompt that has to specify the architecture as well as the app"><code><span class="text-accent">&gt;</span> Build me a table booking app
+
+<span class="text-fg-subtle">  and put the data in a real database,</span>
+<span class="text-fg-subtle">  use a design system, and write</span>
+<span class="text-fg-subtle">  production ready code and architecture</span></code></pre>
+            </figure>
+          </div>
+          <div class="flex flex-col min-w-0">
+            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Where they are already made</p>
+            <figure class=${WIN}>
+              <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>prompt</span></figcaption>
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" role="region" tabindex="0" aria-label="The same request on WebJs, with no architecture appended"><code><span class="text-accent">&gt;</span> Build me a table booking app
+
+<span class="text-fg-subtle">  # that is the whole prompt. the rest</span>
+<span class="text-fg-subtle">  # is not left to the model to guess,</span>
+<span class="text-fg-subtle">  # so it is not yours to specify.</span></code></pre>
+            </figure>
+          </div>
+        </div>
+        <div class="max-w-3xl mx-auto mb-8 text-center">
+          <p class="text-fg-muted text-base leading-[1.6] m-0">
+            Both prompts should produce something you can put in front of
+            customers. Only one of them made that your job to spell out.
+          </p>
+        </div>
+        <div class="grid gap-px overflow-hidden rounded-2xl border border-border bg-border grid-cols-1 xs:grid-cols-2 shadow-[var(--shadow-sm)] max-w-3xl mx-auto">
+          ${ARRIVES.map(a => html`
+            <div class="${CARD}">
+              <h3 class="font-display font-bold text-lg leading-[1.3] tracking-[-0.02em] mt-0 mb-2">${a.title}</h3>
+              <p class="m-0 text-sm leading-[1.65] text-fg-muted">${a.body}</p>
+            </div>
+          `)}
+        </div>
+      </div>
+    </section>
+
+    <section class="py-16">
+      <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Experiment with any model, freely</h2>
           <p class="text-fg-muted text-base leading-[1.6] m-0 mb-4">
@@ -176,6 +254,15 @@ Counter.register('counter');
             model or a small one at a WebJs project and it fits the source into
             context and gets to work. Switch models between tasks and the output
             stays reliable, because they are all reading the same readable code.
+          </p>
+          <p class="text-fg-muted text-base leading-[1.6] m-0 mb-4">
+            That shows up in the quality of what comes back, not only in whether
+            a model can participate. Routing, the server boundary, and the file
+            layout are settled by convention, and the palette lives in design
+            tokens the root layout sets once, so a smaller model is filling
+            those in rather than inventing them. Taste is still yours to
+            direct, and you still read what an agent hands you. What you stop
+            doing is re-deciding the shape of the app every time you switch.
           </p>
           <p class="text-fg-muted text-base leading-[1.6] m-0">
             Human developers get the same deal. There is no hidden compiler
