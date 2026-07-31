@@ -24,7 +24,7 @@ export function generateMetadata(ctx: { url: string }) {
   const image = `${origin}/public/og-why.png`;
   const title = 'Why WebJs - The Framework Your AI Agent Already Understands';
   const description =
-    'WebJs is a full-stack JavaScript framework that serves the framework source and your app code exactly as written, so any AI model can read the whole stack from node_modules, reason about it, and debug it. No training data required, no single blessed model. Built on the web components, HTML, and JavaScript every model already knows.';
+    'WebJs is a full-stack JavaScript framework that serves the framework source and your app code exactly as written, so any AI model can read the whole stack from node_modules, reason about it, and debug it. No training data required, no single blessed model. Describe an app in plain language and the file conventions land it in the right shape, whatever model you use. Built on the web components, HTML, and JavaScript every model already knows.';
   return {
     title,
     description,
@@ -168,6 +168,52 @@ Counter.register('counter');
 
     <section class="py-16">
       <div class="max-w-6xl mx-auto px-6">
+        <div class="max-w-3xl mx-auto mb-12 text-center">
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Describe what you want in plain language</h2>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">
+            You do not have to know what a route handler or a server action is
+            to ask for one. Say what the app should do, the way you would say it
+            out loud, and the agent still lands on the right structure, because
+            the structure was decided before the prompt was written. Where a
+            page lives, where a form submission is handled, and where database
+            code is allowed to run are all answered by file and folder
+            convention, so the model fills in a shape instead of inventing an
+            architecture from a sentence.
+          </p>
+        </div>
+        <div class="grid grid-cols-1 wide:grid-cols-2 gap-4 items-stretch max-w-3xl mx-auto">
+          <div class="flex flex-col min-w-0">
+            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">What you ask for</p>
+            <figure class=${WIN}>
+              <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>prompt</span></figcaption>
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="A plain-language prompt with no technical terms in it"><code><span class="text-accent">&gt;</span> Build a page where customers can book a
+  table, save the bookings, and let staff
+  see today's list.
+
+<span class="text-fg-subtle"># no framework terms, no file names, no</span>
+<span class="text-fg-subtle"># architecture. just the thing you want.</span></code></pre>
+            </figure>
+          </div>
+          <div class="flex flex-col min-w-0">
+            <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">Where the conventions put it</p>
+            <figure class=${WIN}>
+              <figcaption class=${WINBAR}>${DOTS}<span class=${WINNAME}>terminal</span></figcaption>
+              <pre class="scroll-thin m-0 p-4 overflow-x-auto font-mono text-sm leading-[1.7] [tab-size:2] flex-1" tabindex="0" aria-label="The files a WebJs app grows for that request"><code>app/book/page.ts
+<span class="text-fg-subtle">  the page, server-rendered to real HTML</span>
+app/staff/bookings/page.ts
+<span class="text-fg-subtle">  the list, behind the session check</span>
+modules/bookings/actions/create.server.ts
+<span class="text-fg-subtle">  the write, server-side by extension</span>
+db/schema.server.ts
+<span class="text-fg-subtle">  the table it all reads and writes</span></code></pre>
+            </figure>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="py-16">
+      <div class="max-w-6xl mx-auto px-6">
         <div class="max-w-3xl mx-auto text-center">
           <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Experiment with any model, freely</h2>
           <p class="text-fg-muted text-base leading-[1.6] m-0 mb-4">
@@ -176,6 +222,15 @@ Counter.register('counter');
             model or a small one at a WebJs project and it fits the source into
             context and gets to work. Switch models between tasks and the output
             stays reliable, because they are all reading the same readable code.
+          </p>
+          <p class="text-fg-muted text-base leading-[1.6] m-0 mb-4">
+            That shows up in the quality of what comes back, not just in whether
+            a model can work at all. Large or small, every model is reading the
+            same source and following the same conventions, so the architecture
+            it reaches for, the code it writes, and the design system it applies
+            come out looking like one project rather than three. You still read
+            what an agent hands you. What you stop doing is re-deciding the
+            shape of the app every time you change model.
           </p>
           <p class="text-fg-muted text-base leading-[1.6] m-0">
             Human developers get the same deal. There is no hidden compiler

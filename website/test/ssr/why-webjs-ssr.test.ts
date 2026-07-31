@@ -24,6 +24,17 @@ test('the pitch page SSRs with its headline, terminals, reason cards, and a main
   assert.ok(out.includes('<main id="main"'), 'wraps content in a main landmark');
 });
 
+test('the pitch page makes the plain-language prompt and cross-model quality argument', async () => {
+  // The page used to argue model-agnosticism only from the model side (any
+  // model CAN read the source). These two claims are the reader-side half: a
+  // non-technical prompt still lands on the right structure, and the quality
+  // of the output does not swing with the size of the model.
+  const out = await renderToString(Why());
+  assert.ok(out.includes('Describe what you want in plain language'), 'includes the plain-language section heading');
+  assert.ok(out.includes('architecture from a sentence'), 'says the conventions decide the shape, not the prompt');
+  assert.ok(out.includes('quality of what comes back'), 'ties model-agnosticism to output quality, not just to whether a model works');
+});
+
 test('why metadata is self-consistent and points at the dedicated /why-webjs social card', () => {
   const m = generateMetadata({ url: 'https://webjs.dev/why-webjs' });
   assert.equal(m.openGraph.title, m.title, 'og:title matches the <title>');
