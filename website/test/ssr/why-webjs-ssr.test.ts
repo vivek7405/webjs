@@ -42,7 +42,10 @@ test('the plain-language section pairs a prompt against the files the convention
   // their correspondence, and the accessible name each scrollable block needs.
   const out = await renderToString(Why());
   assert.ok(out.includes('Let customers book a table'), 'the prompt panel carries a request written in ordinary words');
-  assert.ok(!/&gt; Build a page/.test(out), 'the prompt does not name a page, which the file panel would then have to match one for one');
+  // Plain substring, not a regex spanning the chevron: the prompt's > lives in
+  // its own span, so anything asserting the two are adjacent can never match
+  // and would sit here green while the regression it names is fully present.
+  assert.ok(!out.includes('Build a page'), 'the prompt does not name a page, which the file panel would then have to match one for one');
   for (const file of ['app/book/page.ts', 'app/staff/bookings/page.ts', 'modules/bookings/actions/create.server.ts', 'db/schema.server.ts']) {
     assert.ok(out.includes(file), `the file panel answers the prompt with ${file}`);
   }
