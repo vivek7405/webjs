@@ -169,6 +169,29 @@ test('a legal re-render of a bound form still updates and does not re-bind', () 
   assert.equal(form.querySelector('input[name="a"]').getAttribute('value'), 'two');
 });
 
+test('a failed render does not poison the NEXT one', () => {
+  // The queue is module-level state, so a pass that throws BETWEEN queueing a
+  // form and flushing (here a `formaction=${fn}` refusal later in the same
+  // template) would otherwise leave its entry behind for an unrelated later
+  // render to apply. Measured before the fix: the second render below failed
+  // with the FIRST render's form error.
+  const leaky = async () => { const S = 'LEAK_MARKER'; return S; };
+  const h1 = document.createElement('div');
+  assert.throws(
+    () => render(html`<form method="get" action=${stub(ID)}></form><button formaction=${leaky}></button>`, h1),
+    /function was interpolated into/,
+  );
+
+  const h2 = document.createElement('div');
+  render(html`<p>${'unrelated'}</p>`, h2);
+  assert.match(h2.innerHTML, /unrelated/, 'the next render must be unaffected');
+
+  // And a legitimate bound form still works after the failure.
+  const h3 = document.createElement('div');
+  render(html`<form action=${stub(ID)}></form>`, h3);
+  assert.equal(h3.querySelectorAll('input[name="__webjs_action"]').length, 1);
+});
+
 test('a function with no identity is refused, never rendered as an inert form', () => {
   const host = document.createElement('div');
   assert.throws(

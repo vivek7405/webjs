@@ -338,9 +338,8 @@ export function queueFormActionBind(form, fn) {
 /**
  * Apply every queued bind, now that the whole instance's attributes are final.
  *
- * The queue is drained BEFORE the first bind runs, so a throw cannot leave a
- * stale entry behind to be re-applied (and re-thrown) by an unrelated later
- * render.
+ * The queue is drained BEFORE the first bind runs, so a bind that THROWS cannot
+ * leave the rest of its own batch behind.
  *
  * @returns {void}
  */
@@ -348,6 +347,24 @@ export function flushFormActionBinds() {
   if (!_pendingBinds.length) return;
   const pending = _pendingBinds.splice(0, _pendingBinds.length);
   for (const { form, fn } of pending) bindFormActionElement(form, fn);
+}
+
+/**
+ * Drop anything still queued, called from the `finally` of a commit pass.
+ *
+ * Draining at flush time is not enough on its own: a part committed AFTER a
+ * form was queued can throw (a `formaction=${fn}` refusal later in the same
+ * template), so the pass never reaches its flush and the entry survives into
+ * the NEXT render, where it is applied to a form belonging to an abandoned
+ * one. Measured: a template whose form carries `method="get"` and whose next
+ * element throws leaves that form queued, and the following unrelated render
+ * fails with the form's own error. A failed pass must take its pending binds
+ * with it.
+ *
+ * @returns {void}
+ */
+export function discardPendingFormActionBinds() {
+  _pendingBinds.length = 0;
 }
 
 /**

@@ -3,7 +3,8 @@ import { BINDING_PREFIXES, isBindingPrefix } from './binding-prefixes.js';
 import { escapeAttr } from './escape.js';
 import {
   assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp,
-  queueFormActionBind, flushFormActionBinds, assertBoundFormAttrWrite, isBoundFormAction,
+  queueFormActionBind, flushFormActionBinds, discardPendingFormActionBinds,
+  assertBoundFormAttrWrite, isBoundFormAction,
 } from './form-action.js';
 import { isRepeat } from './repeat.js';
 import { isUnsafeHTML, isLive, isKeyed, isGuard, isTemplateContent, isRef, isCache, isUntil, isAsyncAppend, isAsyncReplace, isWatch } from './directives.js';
@@ -518,11 +519,17 @@ function createInstance(tr, container) {
 
   const bound = parts.map((p) => bindPart(p, frag));
   const lastValues = [];
-  for (let i = 0; i < tr.values.length; i++) {
-    applyPart(bound[i], tr.values[i], undefined, tr.values);
-    lastValues.push(tr.values[i]);
+  try {
+    for (let i = 0; i < tr.values.length; i++) {
+      applyPart(bound[i], tr.values[i], undefined, tr.values);
+      lastValues.push(tr.values[i]);
+    }
+    flushFormActionBinds();
+  } finally {
+    // A part committed AFTER a form was queued can throw, so the flush above is
+    // never reached and the entry would survive into the next render.
+    discardPendingFormActionBinds();
   }
-  flushFormActionBinds();
 
   /** @type any */ (container).replaceChildren(startNode, ...frag.childNodes, endNode);
 
@@ -597,24 +604,28 @@ function bindPart(p, root) {
  * @param {unknown[]} values
  */
 function updateInstance(inst, values) {
-  for (let i = 0; i < values.length; i++) {
-    const next = values[i];
-    if (Object.is(next, inst.lastValues[i])) continue;
-    const bp = inst.bound[i];
-    // A hole that belongs to a mixed attribute (`class="a ${x} b ${y}"`) is a
-    // `noop` pointing at the attribute's anchor part; re-apply the anchor so the
-    // whole attribute is rebuilt from every hole's current value, not just the
-    // anchor hole's. Without this, a change confined to a non-anchor hole is
-    // dropped (the attribute goes stale).
-    const anchor = /** @type any */ (bp).mixedAnchor;
-    if (bp.kind === 'noop' && anchor != null) {
-      applyPart(inst.bound[anchor], values[anchor], inst.lastValues[anchor], values);
-    } else {
-      applyPart(bp, next, inst.lastValues[i], values);
+  try {
+    for (let i = 0; i < values.length; i++) {
+      const next = values[i];
+      if (Object.is(next, inst.lastValues[i])) continue;
+      const bp = inst.bound[i];
+      // A hole that belongs to a mixed attribute (`class="a ${x} b ${y}"`) is a
+      // `noop` pointing at the attribute's anchor part; re-apply the anchor so the
+      // whole attribute is rebuilt from every hole's current value, not just the
+      // anchor hole's. Without this, a change confined to a non-anchor hole is
+      // dropped (the attribute goes stale).
+      const anchor = /** @type any */ (bp).mixedAnchor;
+      if (bp.kind === 'noop' && anchor != null) {
+        applyPart(inst.bound[anchor], values[anchor], inst.lastValues[anchor], values);
+      } else {
+        applyPart(bp, next, inst.lastValues[i], values);
+      }
+      inst.lastValues[i] = next;
     }
-    inst.lastValues[i] = next;
+    flushFormActionBinds();
+  } finally {
+    discardPendingFormActionBinds();
   }
-  flushFormActionBinds();
 }
 
 /**
@@ -1151,11 +1162,13 @@ function applyChildInnerRaw(part, value) {
     const endNode = document.createComment(`${MARKER}e`);
     const bound = parts.map((p) => bindPart(p, frag));
     const lastValues = [];
-    for (let i = 0; i < tr.values.length; i++) {
-      applyPart(bound[i], tr.values[i], undefined, tr.values);
-      lastValues.push(tr.values[i]);
-    }
-    flushFormActionBinds();
+    try {
+      for (let i = 0; i < tr.values.length; i++) {
+        applyPart(bound[i], tr.values[i], undefined, tr.values);
+        lastValues.push(tr.values[i]);
+      }
+      flushFormActionBinds();
+    } finally { discardPendingFormActionBinds(); }
     const nodes = [startNode, ...frag.childNodes, endNode];
     marker.parentNode?.insertBefore(nodesToFrag(nodes), marker);
     // Slot parts in this nested template need their one-shot apply just
@@ -1211,11 +1224,13 @@ function buildDetached(tr) {
   const endNode = document.createComment(`${MARKER}e`);
   const bound = parts.map((p) => bindPart(p, frag));
   const lastValues = [];
-  for (let i = 0; i < tr.values.length; i++) {
-    applyPart(bound[i], tr.values[i], undefined, tr.values);
-    lastValues.push(tr.values[i]);
-  }
-  flushFormActionBinds();
+  try {
+    for (let i = 0; i < tr.values.length; i++) {
+      applyPart(bound[i], tr.values[i], undefined, tr.values);
+      lastValues.push(tr.values[i]);
+    }
+    flushFormActionBinds();
+  } finally { discardPendingFormActionBinds(); }
   // Slot parts need their one-shot apply exactly like createInstance and the
   // nested-template path. The fragment is still detached here, so the
   // slot-part's own deferred finalize (a one-microtask retry when the parent
@@ -2053,10 +2068,12 @@ function renderToNodes(value) {
     const { templateEl, parts } = compile(tr);
     const frag = /** @type DocumentFragment */ (templateEl.content.cloneNode(true));
     const bound = parts.map((p) => bindPart(p, frag));
-    for (let i = 0; i < tr.values.length; i++) {
-      applyPart(bound[i], tr.values[i], undefined, tr.values);
-    }
-    flushFormActionBinds();
+    try {
+      for (let i = 0; i < tr.values.length; i++) {
+        applyPart(bound[i], tr.values[i], undefined, tr.values);
+      }
+      flushFormActionBinds();
+    } finally { discardPendingFormActionBinds(); }
     // Slot parts need their one-shot apply here too (same contract as
     // createInstance / nested templates / buildDetached): the caller
     // (consumeAsyncStream) inserts these nodes synchronously in the same
