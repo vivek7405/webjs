@@ -200,7 +200,7 @@ async function renderTemplate(tr, ctx) {
         );
       }
       const formMethod = attrs.get('formmethod');
-      if (formMethod != null && /^get$/i.test(formMethod)) {
+      if (formMethod != null && !/^post$/i.test(formMethod)) {
         throw new Error(
           `[webjs] formaction=\${action} on <${tag}> with formmethod="${formMethod}" `
           + `cannot work: a bound server action is submitted as a POST body.`,
@@ -1892,7 +1892,7 @@ async function streamTemplate(tr, ctx, controller) {
         );
       }
       const formMethod = attrs.get('formmethod');
-      if (formMethod != null && /^get$/i.test(formMethod)) {
+      if (formMethod != null && !/^post$/i.test(formMethod)) {
         throw new Error(
           `[webjs] formaction=\${action} on <${tag}> with formmethod="${formMethod}" `
           + `cannot work: a bound server action is submitted as a POST body.`,

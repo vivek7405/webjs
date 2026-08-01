@@ -371,6 +371,12 @@ test('formaction=${fn} submitter refusals: name attribute, input type=image, unp
     () => renderToString(html`<form action=${submitFeedback}><button formaction=${submitFeedback} formmethod="get">Save</button></form>`, { ssr: true }),
     /formmethod="get"/,
   );
+
+  // 5. Submitter formmethod="PATCH":
+  await assert.rejects(
+    () => renderToString(html`<form action=${submitFeedback}><button formaction=${submitFeedback} formmethod="PATCH">Save</button></form>`, { ssr: true }),
+    /formmethod="PATCH"/,
+  );
 });
 
 test('two action holes are refused whichever position the bound one is in', async () => {
