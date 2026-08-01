@@ -319,3 +319,148 @@ suite('SSR vs client render parity (#184)', () => {
     assert.notEqual(client, ssr, 'a non-deterministic render must produce a detectable SSR/client divergence');
   });
 });
+
+/* ============================================================================
+ * Form-action parity table (#1155)
+ *
+ * The anti-recurrence measure for the form-action guard. Five review rounds
+ * each found the client and SSR disagreeing about the same feature in a new
+ * way, because each was checked against its own expectations rather than
+ * against the other. Here one template drives BOTH renderers and the two
+ * outcomes are compared directly, so a divergence is a failing row rather than
+ * a review finding.
+ *
+ * This lives in the BROWSER suite deliberately. `method` / `enctype` /
+ * `encoding` are reflected IDL attributes on a form, and linkedom (which the
+ * node-side tests run under) implements no reflection at all, so a `.prop` row
+ * asserted there would see the attribute absent and pass for the wrong reason.
+ * ========================================================================== */
+
+import { setFormActionResolver, FORM_ACTION_ID_KEY, FORM_ACTION_FIELD } from '../../../src/form-action.js';
+import { render } from '../../../src/render-client.js';
+
+const ACTION_ID = 'a1b2c3d4e5/submitFeedback';
+
+/** A stand-in for the generated RPC stub, identified on BOTH sides. */
+function boundAction() {
+  const fn = async () => { const S = 'PARITY_SECRET'; return S; };
+  Object.defineProperty(fn, FORM_ACTION_ID_KEY, { value: ACTION_ID });
+  return fn;
+}
+
+/**
+ * A canonical projection of every form in some markup: tag, attributes sorted
+ * by name, and the direct-child elements with their own sorted attributes.
+ *
+ * Sorted because attribute ORDER legitimately differs between the two paths
+ * (SSR appends to a string, the client sets properties on an element), and
+ * order is not something either renderer promises. Everything that decides how
+ * the form submits (its method, enctype, whether an `action` survived, and the
+ * identity field) is captured.
+ */
+function canonicalForms(htmlStr) {
+  const t = document.createElement('template');
+  t.innerHTML = normalize(htmlStr);
+  const attrs = (el) => [...el.attributes]
+    .map((a) => `${a.name}="${a.value}"`).sort().join(' ');
+  return [...t.content.querySelectorAll('form')]
+    .map((f) => `<form ${attrs(f)}>[${[...f.children].map((c) => `${c.localName} ${attrs(c)}`).join(' | ')}]`)
+    .join(' && ');
+}
+
+/** Render one template both ways; return either the canonical form or the throw. */
+async function bothWays(tpl) {
+  let ssr = null;
+  let ssrErr = null;
+  try { ssr = canonicalForms(await renderToString(tpl(), { ssr: true })); }
+  catch (e) { ssrErr = String(e.message); }
+
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  let client = null;
+  let clientErr = null;
+  try { render(tpl(), host); client = canonicalForms(host.innerHTML); }
+  catch (e) { clientErr = String(e.message); }
+  host.remove();
+
+  return { ssr, ssrErr, client, clientErr };
+}
+
+suite('SSR/client parity: form actions (#1155)', () => {
+  setup(() => { setFormActionResolver((fn) => (fn[FORM_ACTION_ID_KEY] ? ACTION_ID : null)); });
+  teardown(() => { setFormActionResolver(() => null); });
+
+  /** Rows both renderers must ACCEPT, ending in the same submitted shape. */
+  const ACCEPTS = {
+    'bare bound form': () => html`<form action=${boundAction()}><input name="a"></form>`,
+    'author method before the hole': () => html`<form method="post" action=${boundAction()}></form>`,
+    'author method after the hole': () => html`<form action=${boundAction()} method="post"></form>`,
+    'author enctype, urlencoded': () => html`<form action=${boundAction()} enctype="application/x-www-form-urlencoded"></form>`,
+    'hole-provided method': () => html`<form action=${boundAction()} method=${'post'}></form>`,
+    'quoted hole-provided method': () => html`<form action=${boundAction()} method="${'post'}"></form>`,
+    'mixed attribute with NON-EMPTY statics': () => html`<form action=${boundAction()} method="pos${'t'}"></form>`,
+    'falsy boolean hole leaves it to the framework': () => html`<form action=${boundAction()} ?method=${false}></form>`,
+    'case-folded ACTION still binds': () => html`<form ACTION=${boundAction()}></form>`,
+    'a plain url action is an ordinary form': () => html`<form action=${'/legacy'}></form>`,
+    'an unbound form keeps its own method': () => html`<form action=${'/search'} method=${'get'}></form>`,
+    'two independent bound forms': () => html`<form action=${boundAction()}></form><form action=${boundAction()}></form>`,
+  };
+
+  for (const [name, tpl] of Object.entries(ACCEPTS)) {
+    test(`accepts identically: ${name}`, async () => {
+      const r = await bothWays(tpl);
+      assert.equal(r.ssrErr, null, `SSR must accept, threw: ${r.ssrErr}`);
+      assert.equal(r.clientErr, null, `client must accept, threw: ${r.clientErr}`);
+      assert.equal(r.client, r.ssr, `client and SSR must agree for: ${name}`);
+      assert.ok(!/PARITY_SECRET/.test(String(r.ssr)), 'no action source in the markup');
+    });
+  }
+
+  /** Rows both renderers must REFUSE, for the same stated reason. */
+  const REFUSES = {
+    'method=get': [() => html`<form method="get" action=${boundAction()}></form>`, /cannot work/],
+    'hole-provided method=get after the hole': [() => html`<form action=${boundAction()} method=${'get'}></form>`, /cannot work/],
+    'quoted hole-provided method=get': [() => html`<form action=${boundAction()} method="${'get'}"></form>`, /cannot work/],
+    'null method hole renders an empty value': [() => html`<form action=${boundAction()} method=${null}></form>`, /cannot work/],
+    'truthy boolean hole renders an empty value': [() => html`<form action=${boundAction()} ?enctype=${true}></form>`, /cannot work/],
+    'unparseable enctype': [() => html`<form action=${boundAction()} enctype="text/plain"></form>`, /cannot work/],
+    'quoted action hole is a stringify': [() => html`<form action="${boundAction()}"></form>`, /interpolated into/],
+    'array-wrapped action': [() => html`<form action=${[boundAction()]}></form>`, /interpolated into/],
+    'action off a form': [() => html`<div action=${boundAction()}></div>`, /interpolated into/],
+    'formaction anywhere': [() => html`<button formaction=${boundAction()}></button>`, /interpolated into/],
+    'a function that is not an action': [() => html`<form action=${async () => {}}></form>`, /is not a server action/],
+    'prop binding on a bound form': [() => html`<form action=${boundAction()} .method=${'get'}></form>`, /also binds \./],
+    'two action holes': [() => html`<form action=${boundAction()} action=${'/legacy'}></form>`, /two action=/],
+  };
+
+  for (const [name, [tpl, pattern]] of Object.entries(REFUSES)) {
+    test(`refuses identically: ${name}`, async () => {
+      const r = await bothWays(tpl);
+      assert.ok(r.ssrErr, `SSR must refuse: ${name}`);
+      assert.ok(r.clientErr, `client must refuse: ${name}`);
+      assert.ok(pattern.test(r.ssrErr), `SSR reason (${r.ssrErr})`);
+      assert.ok(pattern.test(r.clientErr), `client reason (${r.clientErr})`);
+      assert.ok(!/PARITY_SECRET/.test(r.ssrErr + r.clientErr), 'a refusal never quotes the source');
+    });
+  }
+
+  test('the identity field is submitted, which is what all of this is for', () => {
+    // The end state, read the way a browser reads it: `new FormData(form)` is
+    // exactly what a native submission serialises.
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    render(html`<form action=${boundAction()}><input name="email" value="a@b.com"></form>`, host);
+    const fd = new FormData(host.querySelector('form'));
+    assert.equal(fd.get(FORM_ACTION_FIELD), ACTION_ID, 'the identity rides the submission');
+    assert.equal(fd.get('email'), 'a@b.com');
+    host.remove();
+  });
+
+  test('counterfactual: the table can tell the two renderers apart', () => {
+    // A guard that compared nothing would pass every row above. Prove the
+    // canonical projection actually distinguishes two different forms.
+    const a = canonicalForms('<form method="post"><input name="x"></form>');
+    const b = canonicalForms('<form method="get"><input name="x"></form>');
+    assert.notEqual(a, b, 'differing method must be visible to the comparison');
+  });
+});
