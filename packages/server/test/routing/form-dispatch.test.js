@@ -379,6 +379,42 @@ export default ({ actionData }) => html\`<form action=\${saveName}><p class="out
   assert.match(await good.text(), /got:ADA/, "the validator's transform is what the action receives");
 });
 
+test('a THROWN validator is a sanitized 500, reported once', async () => {
+  // Letting it escape reaches the handler's last-resort catch, which reports
+  // the same error to onError a SECOND time and answers a bare 500 with no
+  // digest. The RPC path answers this case itself; the form path must too.
+  const seen = [];
+  const app = await createRequestHandler({
+    appDir: makeApp({
+      'modules/tv/actions/tv.server.ts': `
+'use server';
+export const validate = () => { throw new Error('VALIDATOR_INTERNAL_DETAIL'); };
+export async function saveIt(formData) { return { success: true, redirect: '/never' }; }
+`,
+      'app/tv/page.ts': `
+import { html } from ${CORE};
+import { saveIt } from '../../modules/tv/actions/tv.server.ts';
+export default () => html\`<form action=\${saveIt}></form>\`;
+`,
+    }),
+    dev: false,
+    onError: (e) => seen.push(e),
+  });
+  await app.warmup();
+
+  const quiet = console.error;
+  console.error = () => {};
+  let resp;
+  try { resp = await submit(app, '/tv', {}); } finally { console.error = quiet; }
+
+  assert.equal(resp.status, 500);
+  const body = await resp.text();
+  assert.doesNotMatch(body, /VALIDATOR_INTERNAL_DETAIL/, 'the validator message must not reach the client in prod');
+  assert.match(body, /digest/, 'a correlation digest is offered instead');
+  assert.equal(seen.length, 1, 'reported exactly ONCE, not again by the last-resort catch');
+  assert.match(String(seen[0].message), /VALIDATOR_INTERNAL_DETAIL/, 'and the sink saw the original');
+});
+
 test("the action's declared middleware runs on the form path", async () => {
   const app = await createRequestHandler({
     appDir: makeApp({

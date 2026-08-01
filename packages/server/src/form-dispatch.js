@@ -333,8 +333,13 @@ export async function runFormAction(route, params, url, req, ssrOpts, deps) {
     const v = runValidate(validate, args[0]);
     if (!v.ok) {
       if (v.thrown !== undefined) {
+        // A THROWN validator is answered here rather than rethrown. Letting it
+        // escape reaches the handler's last-resort catch, which reports the
+        // SAME error to `onError` a second time and answers a bare 500 with no
+        // digest, so the one thing that makes a prod error diagnosable is lost.
+        // The RPC path does exactly this (`actionErrorResponse` in actions.js).
         if (typeof onError === 'function') onError(v.thrown);
-        throw v.thrown;
+        return await formActionErrorResponse(v.thrown, ssrOpts.dev);
       }
       // A structured failure envelope is a NORMAL result the page renders, so
       // it takes the 422 re-render path exactly as a failing action would.
