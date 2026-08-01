@@ -173,7 +173,7 @@ export default function NewPost({ actionData }: {
     </p>
 
     <p>
-      One honest limit on "identical by construction": it is a claim about the FORM, and the renderers do not read a submitter's own <code>formmethod</code> / <code>formenctype</code>. So <code>&lt;form action=\${fn}&gt;&lt;button formenctype="text/plain"&gt;</code> submits fine with JS (the router posts <code>FormData</code> and ignores the attribute) and is a bare <code>405</code> without it, with nothing refused at render. Leave those attributes off a bound form until #1207 closes the gap.
+      The renderer validates and refuses unparseable submitter options at render time: a submitter button carrying a <code>name</code> attribute, using <code>&lt;input type="image"&gt;</code>, or setting <code>formmethod="get"</code> or <code>formenctype="text/plain"</code> throws an actionable refusal error so both JS and no-JS execution paths stay identical by construction (#1207).
     </p>
 
     <h3>3. Make components render correctly on the server</h3>

@@ -8,10 +8,8 @@ import { deleteTodo } from './delete-todo.server.ts';
 // THIS action, and the submit button's own `name="intent"` says which mutation
 // to run, which is how one form serves several buttons.
 //
-// Why an intent dispatcher rather than binding each button to its own action:
-// `formaction=${fn}` on a submit button is not supported yet (tracked in
-// #1207). So a form binds ONE action, and a form with several buttons
-// dispatches on the intent here.
+// Alternatively, per-button submitter server actions can be bound directly via
+// `formaction=${action}` on <button> or <input type="submit"> (#1207).
 //
 // With JS the component intercepts the submit and calls the underlying action
 // directly for the optimistic path, so this runs only with JS off.
