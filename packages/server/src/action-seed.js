@@ -133,10 +133,12 @@ export function actionIdentityOf(fn) {
 /**
  * Compute (and memoize) the action file's hash the SAME way the RPC stub /
  * action index do (`hashFile` over the absolute path string), so the seed key
- * the server emits matches the key the client stub looks up, and so a bound
- * form action's identity matches the one the dispatcher resolves. A path mismatch
+ * the server emits matches the key the client stub looks up. A path mismatch
  * (e.g. a symlinked appDir whose realpath differs) only yields a key MISS,
- * which safely degrades to a normal RPC.
+ * which safely degrades to a normal RPC. Note that the FORM path does not reach
+ * here: it resolves an identity only against the action index, because a hash
+ * the index does not know is unresolvable at submit time (see
+ * `resolveActionIdentity`).
  * @param {string} absPath
  * @returns {Promise<string>}
  */
@@ -199,10 +201,20 @@ async function recordSeed(collector, file, fnName, args, value) {
  */
 export function __actionWrap(file, fnName, orig) {
   if (typeof orig !== 'function') return orig;
-  _identity.set(orig, { file, fnName });
+  // FIRST registration wins. A barrel (`export { createTodo } from './x.server.ts'`)
+  // is faceted too, and its body runs AFTER the module it re-exports from, so an
+  // unconditional set would re-file the function under the BARREL. The dispatcher
+  // then loads the barrel to run it and reads `validate` / `middleware` /
+  // `method` / `invalidates` off a namespace that carries none of them, silently
+  // running a form submission with the action's validation and auth middleware
+  // skipped. The defining module always evaluates first, so first-wins names it.
+  const identity = _identity.get(orig) || { file, fnName };
+  _identity.set(orig, identity);
   if (!_seedEnabled) return orig;
   const wrapped = seedProxy(file, fnName, orig);
-  _identity.set(wrapped, { file, fnName });
+  // The wrapper is a fresh object every time, so it carries the identity the
+  // TARGET already had rather than this facade's own.
+  _identity.set(wrapped, identity);
   return wrapped;
 }
 
@@ -270,7 +282,11 @@ export function extractExportNames(src) {
     }
   }
   const hasDefault = /\bexport\s+default\b/.test(src) || names.delete('__default__');
-  const hasStar = /\bexport\s*\*/.test(src);
+  // A real star re-export always has a `from`. Without that anchor the pattern
+  // matches the word "export" at the end of a JSDoc line (`\s*` spans the
+  // newline onto the next line's leading `*`), so prose could change how a
+  // module loads.
+  const hasStar = /\bexport\s*\*\s*(?:as\s+[A-Za-z_$][\w$]*\s*)?from\b/.test(src);
   return { names: [...names], hasDefault, hasStar };
 }
 
@@ -341,9 +357,14 @@ export function buildSeedFacade(origSpec, absPath, src) {
   const head = src.split('\n').slice(0, 5).join('\n');
   if (!USE_SERVER_RE.test(head)) return null;
   const exports = extractExportNames(src);
-  // A `export *` re-export cannot be enumerated; skip faceting (passthrough)
-  // so we never emit a facade that silently drops re-exported bindings.
-  if (exports.hasStar) return null;
+  // `export *` used to bail out to a passthrough here, so a facade could never
+  // drop a re-exported binding it was unable to enumerate. #538 then gave the
+  // facade its own `export * from` catch-all, which covers exactly that, and
+  // the bail-out was left behind. Keeping it is now actively harmful: identity
+  // rides the facade (#1155), so a passthrough means `<form action=${fn}>`
+  // throws "is not a server action" at SSR for a function that works perfectly
+  // over RPC. A star re-export therefore facades like anything else, its
+  // enumerable names wrapped and the rest carried by the catch-all.
   if (exports.names.length === 0 && !exports.hasDefault) return null;
   return buildFacade(origSpec, absPath, exports);
 }

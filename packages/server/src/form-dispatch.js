@@ -167,6 +167,12 @@ async function parseFormBody(req) {
     method: req.method,
     headers,
     body: bytes && bytes.byteLength ? bytes : undefined,
+    // Carry the ORIGINAL abort signal. Without it the rebuild gets a fresh,
+    // never-aborted one, and since this request is what drives
+    // `runWithActionSignal`, `actionSignal()` (#492) inside a form-bound action
+    // would never fire on a client disconnect, while the same action cancels
+    // correctly over RPC.
+    signal: req.signal,
   });
   propagateTrustedRemoteIp(req, rebuilt);
 
@@ -406,10 +412,23 @@ export async function runFormAction(route, params, url, req, ssrOpts, deps) {
 
   // Only a COMPLETED action evicts its `invalidates` tags; a middleware
   // short-circuit (the action never ran) does not.
+  //
+  // The tags are also REPORTED, the way `invokeAction` reports them, so the
+  // browser-side tag coordinator can bypass a stale cached GET. One reach
+  // limit, stated because it looks like an oversight: `fetch` follows the 303
+  // transparently, so JS cannot read the headers of a redirect response. The
+  // header is on the wire and the 422 re-render path carries it to the router;
+  // after a successful PRG the client learns nothing from it. The redirect's
+  // own re-render is server-side and seeds fresh data, so what remains exposed
+  // is only a later client refetch of a separately cached GET key.
+  let invalidated = [];
   if (ranAction) {
-    const inv = resolveTags(actionConfigFn(mod, 'invalidates'), args);
-    if (inv.length) await revalidateTags(inv);
+    invalidated = resolveTags(actionConfigFn(mod, 'invalidates'), args);
+    if (invalidated.length) await revalidateTags(invalidated);
   }
+  const invalidateHeader = invalidated.length
+    ? { 'x-webjs-invalidate': invalidated.join(',') }
+    : null;
 
   // An action MAY return a `Response` directly (e.g. a content-negotiated
   // `streamResponse`, #248). Honor it verbatim, so the action owns the status +
@@ -424,14 +443,24 @@ export async function runFormAction(route, params, url, req, ssrOpts, deps) {
     // page's own path so a poisoned value cannot become an open redirect.
     const ownPath = (url.pathname + url.search) || '/';
     const safe = result ? sameSiteRedirect(result.redirect) : null;
-    return new Response(null, { status: 303, headers: { location: safe || ownPath } });
+    return new Response(null, {
+      status: 303,
+      headers: { location: safe || ownPath, ...invalidateHeader },
+    });
   }
 
   // FAILURE: re-render the SAME page with the action result available on
   // ctx.actionData, status 422. Repopulation is the page author's job (native
   // `value=${actionData.values?.field}`).
   const status = typeof result.status === 'number' && result.status >= 400 ? result.status : 422;
-  return ssrPage(route, params, url, { ...ssrOpts, req, actionData: result, status });
+  const page = await ssrPage(route, params, url, { ...ssrOpts, req, actionData: result, status });
+  // A failure result can still have mutated (a partial write, then a rejected
+  // second step), so the eviction above applies here too and this response, not
+  // being a redirect, is one the router can actually read the header off.
+  if (invalidateHeader && page instanceof Response) {
+    for (const [k, v] of Object.entries(invalidateHeader)) page.headers.set(k, v);
+  }
+  return page;
 }
 
 /**

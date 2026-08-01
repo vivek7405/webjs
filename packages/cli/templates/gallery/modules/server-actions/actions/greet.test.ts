@@ -13,7 +13,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequestHandler, buildRouteTable, matchPage, matchApi, invokeActionForTest } from '@webjsdev/server';
-import { testRequest, loginAndGetCookies } from '@webjsdev/server/testing';
+import { submitForm, loginAndGetCookies } from '@webjsdev/server/testing';
 
 const appDir = process.cwd();
 process.env.AUTH_SECRET ||= 'test-secret-at-least-32-characters-long!!';
@@ -54,10 +54,11 @@ test('an authenticated greet reads the caller off the session via actionContext(
   // migrated (run db:generate + db:migrate) rather than fail misleadingly.
   const email = `greet+${Date.now()}@example.com`;
   const password = 'password123';
-  const signupRes = await testRequest(app.handle, '/features/auth/signup', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ name: 'Ada', email, password }).toString(),
+  // `submitForm` renders the signup page and reuses the identity the server put
+  // in the form's hidden `__webjs_action` field, which is what tells the
+  // dispatcher which action to run; a POST without it is answered 405.
+  const signupRes = await submitForm(app.handle, '/features/auth/signup', {
+    name: 'Ada', email, password,
   });
   if (signupRes.status !== 302) { t.skip('app deps/db not ready; run db:generate + db:migrate'); return; }
   const { cookies } = await loginAndGetCookies(app.handle, { email, password });

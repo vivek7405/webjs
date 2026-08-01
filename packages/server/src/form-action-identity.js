@@ -14,7 +14,7 @@
  * what an action IS.
  */
 
-import { actionIdentityOf, identityHookInstalled, actionFileHash } from './action-seed.js';
+import { actionIdentityOf, identityHookInstalled } from './action-seed.js';
 import { pathToFileURL } from 'node:url';
 
 /**
@@ -38,8 +38,16 @@ let _warnedScan = false;
 export async function resolveActionIdentity(idx, fn) {
   const known = actionIdentityOf(fn);
   if (known) {
-    const hash = idx.fileToHash.get(known.file) || await actionFileHash(known.file);
-    return `${hash}/${known.fnName}`;
+    // Only a hash the INDEX knows. Minting one from the path (which
+    // `actionFileHash` will happily do for any string) produces an identity the
+    // dispatcher cannot resolve, and an unresolvable hash reads as a deploy
+    // skew: every submission would answer 422 "please submit again", forever,
+    // with nothing logged. An action outside the indexed app tree (a linked
+    // workspace package, a path whose realpath differs from the walked one) is
+    // better refused loudly at render, which is what returning null does.
+    const hash = idx.fileToHash.get(known.file);
+    if (hash) return `${hash}/${known.fnName}`;
+    return null;
   }
   return await scanForIdentity(idx, fn);
 }
@@ -48,11 +56,11 @@ export async function resolveActionIdentity(idx, fn) {
  * Cold-path fallback: find the function by loading the indexed action modules
  * and comparing exports.
  *
- * Reached in two situations, and neither is the normal one. A runtime with
- * neither `module.registerHooks` nor `Bun.plugin` never installs the hook at
- * all; and a module imported BEFORE the hook installed is already cached
- * unwrapped, which is mostly a unit-test shape since the server installs the
- * hook at boot ahead of any app module.
+ * Reached in exactly one situation: a runtime with neither
+ * `module.registerHooks` nor `Bun.plugin`, which never installs the hook at all.
+ * A module imported BEFORE the hook installed is also unwrapped, but the gate
+ * below rules it out, and the server installs the hook at boot ahead of any app
+ * module, so that shape only exists in a unit test that imports one by hand.
  *
  * It is gated on the hook being ABSENT rather than merely on a registry miss.
  * The scan imports every `'use server'` module in the app, which is exactly the
@@ -66,7 +74,7 @@ export async function resolveActionIdentity(idx, fn) {
  * @param {Function} fn
  * @returns {Promise<string | null>}
  */
-async function scanForIdentity(idx, fn) {
+export async function scanForIdentity(idx, fn) {
   if (identityHookInstalled()) return null;
   const cached = _scanned.get(fn);
   if (cached) return cached;
@@ -81,7 +89,12 @@ async function scanForIdentity(idx, fn) {
   for (const [hash, file] of idx.hashToFile) {
     let mod;
     try {
-      mod = await import(pathToFileURL(file).toString() + (idx.dev ? `?t=${Date.now()}` : ''));
+      // Deliberately NOT cache-busted, unlike every other dev-time import here.
+      // The match is function-object identity against the instance the page
+      // already holds, and a busted specifier is a fresh module whose exports
+      // are new objects, so `value === fn` could never be true. In dev that
+      // made this fallback import every action module and always return null.
+      mod = await import(pathToFileURL(file).toString());
     } catch {
       continue;
     }

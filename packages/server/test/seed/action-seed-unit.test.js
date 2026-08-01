@@ -59,9 +59,63 @@ test('extractExportNames finds function / const / class / list / default exports
   assert.equal(hasStar, false);
 });
 
-test('extractExportNames flags a star re-export (skips faceting)', () => {
+test('extractExportNames flags a star re-export', () => {
   const { hasStar } = extractExportNames(`export * from './other.js';`);
   assert.equal(hasStar, true);
+  assert.equal(extractExportNames(`export * as ns from './other.js';`).hasStar, true);
+});
+
+test('a star re-export is FACETED, not passed through (#1155)', () => {
+  // It used to bail out to a passthrough, on the reasoning that an
+  // unenumerable re-export must not be silently dropped. #538 then gave the
+  // facade its own `export * from` catch-all, which covers exactly that, and
+  // the bail-out was left behind. Keeping it became a correctness bug once
+  // action IDENTITY started riding the facade: a passthrough means the function
+  // is never registered, so `<form action=${fn}>` throws "is not a server
+  // action" at SSR while the same export works fine over RPC.
+  const src =
+    `'use server';\n` +
+    `export * from './shared.server.js';\n` +
+    `export async function createTodo(fd) { return fd; }\n`;
+  const facade = buildSeedFacade('file:///app/t.server.js', '/app/t.server.js', src);
+  assert.ok(facade, 'a star re-export is faceted like any other module');
+  assert.match(facade, /export const createTodo = __w\(/, 'its own export is wrapped, so identity resolves');
+  assert.match(facade, /export \* from "file:\/\/\/app\/t\.server\.js\?webjs-seed-orig"/,
+    'the star catch-all carries the re-exported bindings');
+});
+
+test('the word "export" in a comment does not change how a module loads', () => {
+  // The old pattern was `/\bexport\s*\*/`, and `\s*` spans newlines, so the word
+  // `export` at the end of a JSDoc line matched the next line's leading `*`.
+  // Reflowing a doc comment could therefore silently turn a working bound form
+  // into a 500 on the page rendering it.
+  const src =
+    `'use server';\n` +
+    `/**\n` +
+    ` * Submit feedback. This module has exactly one export\n` +
+    ` */\n` +
+    `export async function submitFeedback(fd) { return fd; }\n`;
+  assert.equal(extractExportNames(src).hasStar, false, 'prose is not a star re-export');
+  const facade = buildSeedFacade('file:///app/f.server.js', '/app/f.server.js', src);
+  assert.ok(facade, 'the module is still faceted');
+  assert.match(facade, /export const submitFeedback = __w\(/);
+});
+
+test('a re-exported action keeps the identity of its DEFINING module', () => {
+  // A barrel (`export { createTodo } from './create.server.js'`) is faceted too,
+  // and its body evaluates AFTER the module it re-exports from, so an
+  // unconditional registration re-filed the function under the BARREL. The
+  // dispatcher would then load the barrel to run it and read `validate` /
+  // `middleware` / `method` / `invalidates` off a namespace carrying none of
+  // them, running a form submission with the action's validation and auth
+  // middleware silently skipped.
+  const real = async () => 'ok';
+  __actionWrap('/app/modules/todo/actions/create.server.js', 'createTodo', real);
+  __actionWrap('/app/modules/todo/actions/index.server.js', 'createTodo', real);
+  assert.deepEqual(actionIdentityOf(real), {
+    file: '/app/modules/todo/actions/create.server.js',
+    fnName: 'createTodo',
+  });
 });
 
 test('buildSeedFacade emits an export* catch-all so a MISSED export is fail-open (#535)', () => {

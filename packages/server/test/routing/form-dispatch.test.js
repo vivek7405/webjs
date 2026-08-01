@@ -845,3 +845,123 @@ export default async function (req, next) {
   assert.equal(resp.status, 405);
   assert.equal(resp.headers.get('x-saw'), '405');
 });
+
+test('a middleware short-circuit does NOT evict the invalidates tags', async () => {
+  // The counterfactual for the `ranAction` gate. The two existing tests missed
+  // it between them: the middleware one declares no `invalidates` and the
+  // eviction one declares no `middleware`, so changing `if (ranAction)` to an
+  // unconditional `if (true)` left the whole suite green. Without the gate, an
+  // authorization failure an attacker can trigger at will busts every cached
+  // read the action names.
+  const app = await createRequestHandler({
+    appDir: makeApp({
+      'modules/mwinv/actions/mwinv.server.ts': `
+'use server';
+export const middleware = [async (ctx, next) => ({ success: false, error: 'denied' })];
+export const invalidates = () => ['guarded-posts'];
+export async function addPost() { return { success: true }; }
+`,
+      'app/mwinv/page.ts': `
+import { html } from ${CORE};
+import { addPost } from '../../modules/mwinv/actions/mwinv.server.ts';
+export default ({ actionData }) => html\`<form action=\${addPost}><p>\${actionData?.error ?? ''}</p></form>\`;
+`,
+    }),
+    dev: true,
+  });
+  await app.warmup();
+
+  const { cache: serverCache } = await import('../../index.js');
+  let hits = 0;
+  const read = serverCache(async () => { hits += 1; return hits; }, { key: 'guarded-read', tags: ['guarded-posts'] });
+  assert.equal(await read(), 1);
+  assert.equal(await read(), 1, 'the second read is cached');
+
+  const resp = await submit(app, '/mwinv', {});
+  assert.equal(resp.status, 422, 'the middleware short-circuited');
+  assert.equal(await read(), 1, 'the action never ran, so nothing was evicted');
+});
+
+test('the invalidates tags are REPORTED on the response, not only evicted server-side', async () => {
+  // `invokeAction` does both halves for an RPC mutation: it evicts server-side
+  // AND reports `X-Webjs-Invalidate`, which is what makes the browser-side tag
+  // coordinator bypass a stale cached GET. The form path did only the first, so
+  // the same mutation left the browser cache serving pre-mutation data.
+  //
+  // A 422 is the readable case and the one asserted here: `fetch` follows a 303
+  // transparently, so JS can never read a redirect response's headers.
+  const app = await createRequestHandler({
+    appDir: makeApp({
+      'modules/rep/actions/rep.server.ts': `
+'use server';
+export const invalidates = () => ['posts', 'feed'];
+export async function addPost(fd) {
+  return String(fd.get('ok')) === '1' ? { success: true } : { success: false, error: 'nope' };
+}
+`,
+      'app/rep/page.ts': `
+import { html } from ${CORE};
+import { addPost } from '../../modules/rep/actions/rep.server.ts';
+export default ({ actionData }) => html\`<form action=\${addPost}><p>\${actionData?.error ?? ''}</p></form>\`;
+`,
+    }),
+    dev: true,
+  });
+  await app.warmup();
+
+  const fail = await submit(app, '/rep', { ok: '0' });
+  assert.equal(fail.status, 422);
+  assert.equal(fail.headers.get('x-webjs-invalidate'), 'posts,feed',
+    'the failure re-render carries the tags the router can act on');
+
+  const ok = await submit(app, '/rep', { ok: '1' });
+  assert.equal(ok.status, 303);
+  assert.equal(ok.headers.get('x-webjs-invalidate'), 'posts,feed', 'and so does the redirect, on the wire');
+});
+
+test('actionSignal() aborts on the form path when the client disconnects', async () => {
+  // `parseFormBody` rebuilds the Request from the buffered bytes so the action
+  // can re-read the body, and the rebuild is what drives `runWithActionSignal`.
+  // Built without `signal`, it gets a fresh never-aborted one, so `actionSignal()`
+  // (#492) silently never fires on this transport while the same action cancels
+  // correctly over RPC.
+  const app = await createRequestHandler({
+    appDir: makeApp({
+      'modules/sig/actions/sig.server.ts': `
+'use server';
+import { actionSignal } from ${SERVER};
+export async function waitForAbort() {
+  const signal = actionSignal();
+  await new Promise((resolve) => {
+    if (signal.aborted) return resolve();
+    signal.addEventListener('abort', () => resolve(), { once: true });
+  });
+  return { success: true, redirect: '/aborted' };
+}
+`,
+      'app/sig/page.ts': `
+import { html } from ${CORE};
+import { waitForAbort } from '../../modules/sig/actions/sig.server.ts';
+export default () => html\`<form action=\${waitForAbort}></form>\`;
+`,
+    }),
+    dev: true,
+  });
+  await app.warmup();
+
+  const page = await app.handle(new Request('http://x/sig'));
+  const id = identityOf(await page.text());
+  assert.ok(id, 'the page renders a bound form');
+
+  const ac = new AbortController();
+  const init = form({ __webjs_action: id });
+  const pending = app.handle(new Request('http://x/sig', { ...init, signal: ac.signal }));
+  // The action parks until its signal fires; only the forwarded one can.
+  ac.abort();
+  const resp = await Promise.race([
+    pending,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('actionSignal() never fired on the form path')), 3000)),
+  ]);
+  assert.equal(resp.status, 303);
+  assert.equal(resp.headers.get('location'), '/aborted');
+});
