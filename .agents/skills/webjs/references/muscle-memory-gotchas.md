@@ -85,6 +85,8 @@ The bound, refused, and allowed shapes in full. Every "no" row is a binding that
 | `action="${fn}"`, or a mixed `action="/x/${fn}"` | yes | quoting turns a binding hole back into a plain attribute |
 | `formaction=` anywhere | yes | a per-submitter identity would have to ride the submitter's own `name`/`value`, which is how a multi-button form tells its buttons apart. Write one form per action |
 | `.action=` on a native form | yes | the supported binding is the plain attribute, and a `.prop` on a native element drops at SSR, so accepting it would mean a form that submits under JS and does nothing without it |
+| `.method=` / `.enctype=` / `.encoding=` on a BOUND form | yes | the same reason one level over. All three are reflected IDL attributes, so SSR drops the binding and emits `method="post"` while a browser ends at what you assigned. Write them as plain attributes |
+| a second `action=${fn}` on one form | yes | SSR emits the second as a plain url next to the identity field, the client takes the last. Bind exactly one |
 | `.formAction=` on a button or input | yes | same reason, that is where `formAction` reflects |
 | `.action=` on any other native tag | **no** | a plain expando (`<div .action=${fn}>`, `<button .action=${fn}>`), reflecting nothing, so nothing reaches the markup |
 | `.action=` on a custom element | **no** | an author-defined property, not a reflected IDL attribute; a function is a legitimate value. Holds for a PLAIN prop: one declared `reflect: true` writes `String(value)` to the attribute on a path outside these commit sites, so it still emits the source |
@@ -111,6 +113,8 @@ html`<form action=${submitFeedback}><input name="email"></form>`;
 // page `action` export to catch it.
 html`<form method="post"><input name="email"></form>`;
 ```
+
+A hole that resolves to `null` is NOT the same as omitting the attribute. `method=${null}` renders `method=""`, which cannot submit and is refused; `?method=${false}` emits nothing at all, so WebJs supplies `method="post"` and the form works. Both leave no attribute in the DOM, which is exactly why the check reads your template rather than the rendered element.
 
 A string stays a string: `action="/search"` and `action=${'/search'}` are unchanged, which is what a search form (`<form method="get" action="/search">`) and a `route.ts` endpoint both want. Other attributes keep their existing stringify behaviour; only a FUNCTION under `action` / `formaction` is claimed.
 
