@@ -15,6 +15,7 @@
 
 import { html } from '../../../src/html.js';
 import { render } from '../../../src/render-client.js';
+import { FORM_ACTION_ID_KEY } from '../../../src/form-action.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
 
@@ -161,6 +162,46 @@ suite('form-action guard in a real browser', () => {
     assert.equal(form.getAttribute('action'), '/feedback');
     assert.equal(form.method, 'post');
     assert.equal(new FormData(form).get('msg'), 'hi');
+  });
+
+  test('releasing an unbound form keeps a .method the template writes', () => {
+    // Only observable in a real browser: `method` is a reflected IDL attribute,
+    // so `.method=${'post'}` puts `method="post"` on the element. linkedom's
+    // HTMLFormElement has an empty class body and reflects nothing, so the same
+    // assertion node-side would pass with or without the fix.
+    //
+    // The release path removes the attributes the framework supplied, and
+    // decides which those are by asking whether the template supplies anything
+    // for them on this pass. A property binding is not an attribute part, so
+    // that question answered "no" for it and the removal wiped the author's own
+    // value on every re-render, silently downgrading the form to a GET.
+    const host = mount();
+    render(html`<form action=${'/search'} .method=${'post'}></form>`, host);
+    const form = host.querySelector('form');
+    assert.equal(form.getAttribute('method'), 'post', 'the reflected attribute survives');
+    assert.equal(form.method, 'post');
+
+    // And again on a re-render, which is when the stale-bookkeeping version of
+    // this bug used to bite.
+    render(html`<form action=${'/search2'} .method=${'post'}></form>`, host);
+    assert.equal(host.querySelector('form').method, 'post', 'still post after a re-render');
+  });
+
+  test('an encoding= attribute is inert, so a bound form still forces enctype', () => {
+    // `form.encoding` is a legacy IDL ALIAS that reads back `enctype`, which is
+    // why this belongs in a real browser: it proves the CONTENT attribute does
+    // nothing, and therefore that the client is right to ignore it exactly as
+    // SSR does. Folding the attribute spelling into enctype made the same form
+    // upload multipart without JS and urlencoded with it.
+    const host = mount();
+    const bound = async () => {};
+    Object.defineProperty(bound, FORM_ACTION_ID_KEY, { value: 'a1b2c3d4e5/bound' });
+    render(html`<form action=${bound} encoding=${'application/x-www-form-urlencoded'}></form>`, host);
+    const form = host.querySelector('form');
+    assert.equal(form.getAttribute('enctype'), 'multipart/form-data');
+    assert.equal(form.enctype, 'multipart/form-data');
+    // The browser agrees the attribute is inert: the alias reads the enctype.
+    assert.equal(form.encoding, 'multipart/form-data');
   });
 
 });

@@ -81,8 +81,9 @@ function commitInto(node, fn) {
  * call site, so it cannot drift out of step with the live DOM.
  *
  * @typedef {{
- *   idx: number,
+ *   actionIdxs: number[],
  *   duplicateAction: boolean,
+ *   staticAction: boolean,
  *   propAttrs: string[],
  *   staticMethod: string | null,
  *   staticEnctype: string | null,
@@ -552,8 +553,11 @@ function assignPaths(root, parts) {
  * the TEMPLATE, which is why it cannot go stale the way remembering "did the
  * bind supply this attribute" at runtime did.
  *
- * `encoding` folds into `enctype`: it is a legacy IDL alias on a form, so a
- * `.encoding=` write reaches the same content attribute.
+ * `encoding` folds into `enctype` for a PROPERTY binding only: it is a legacy
+ * IDL alias, so `.encoding=` writes the enctype content attribute. As a content
+ * attribute `encoding=` is inert (a browser's `form.encoding` reads back
+ * `enctype`), and SSR ignores it, so folding the attribute spelling too would
+ * make the client honour a value the server never saw.
  *
  * @param {Element} el
  * @param {{ idx: number, kind: string, name: string }[]} onEl parts bound to `el`
@@ -564,12 +568,6 @@ function buildFormActionRecord(el, onEl, parts) {
   const actionParts = onEl.filter((p) => p.kind === 'attr' && p.name.toLowerCase() === 'action');
   if (!actionParts.length) return null;
 
-  /** `encoding` is an IDL alias of `enctype` on a form. */
-  const norm = (n) => {
-    const x = String(n).toLowerCase();
-    return x === 'encoding' ? 'enctype' : x;
-  };
-
   /** @type {FormAttrPart[]} */
   const methodParts = [];
   /** @type {FormAttrPart[]} */
@@ -578,9 +576,12 @@ function buildFormActionRecord(el, onEl, parts) {
   const propAttrs = [];
 
   for (const p of onEl) {
-    const name = norm(p.name);
+    const name = String(p.name).toLowerCase();
+    if (p.kind === 'prop') {
+      if (name === 'method' || name === 'enctype' || name === 'encoding') propAttrs.push(p.name);
+      continue;
+    }
     if (name !== 'method' && name !== 'enctype') continue;
-    if (p.kind === 'prop') { propAttrs.push(p.name); continue; }
     if (p.kind !== 'attr' && p.kind !== 'attr-mixed' && p.kind !== 'bool') continue;
     const d = /** @type any */ (parts[p.idx]);
     /** @type {FormAttrPart} */
@@ -593,8 +594,16 @@ function buildFormActionRecord(el, onEl, parts) {
   }
 
   return {
-    idx: actionParts[0].idx,
+    // EVERY action hole, not just the first. SSR refuses two holes whenever
+    // ANY of them resolves to a bound action, so recording only the first would
+    // let `<form action=${'/legacy'} action=${boundFn}>` slip through the
+    // client's release path while SSR throws on the same template.
+    actionIdxs: actionParts.map((p) => p.idx),
     duplicateAction: actionParts.length > 1,
+    // A static `action="..."` surviving alongside the hole. The compiled
+    // template holds the hole as a sentinel attribute, so anything read back
+    // under the real name here is the author's own second one.
+    staticAction: el.getAttribute('action') != null,
     propAttrs,
     staticMethod: el.getAttribute('method'),
     staticEnctype: el.getAttribute('enctype'),
@@ -821,11 +830,19 @@ function resolveHoleValue(v) {
 function reconcileFormActions(formActions, bound, values) {
   if (!formActions) return;
   for (const rec of formActions) {
-    const part = bound[rec.idx];
+    // With more than one action hole, the BOUND one decides, whichever position
+    // it is written in. Picking `actionIdxs[0]` blindly would send
+    // `<form action=${'/url'} action=${boundFn}>` down the release path and
+    // ship the broken form SSR refuses outright.
+    let idx = rec.actionIdxs[0];
+    for (const i of rec.actionIdxs) {
+      if (isBoundFormAction(resolveHoleValue(values[i]), 'action', 'form')) { idx = i; break; }
+    }
+    const part = bound[idx];
     if (!part || !part.el) continue;
     reconcileFormAction(
       /** @type any */ (part.el),
-      resolveHoleValue(values[rec.idx]),
+      resolveHoleValue(values[idx]),
       effectiveFormAttr(rec.methodParts, rec.staticMethod, values),
       effectiveFormAttr(rec.enctypeParts, rec.staticEnctype, values),
       rec,

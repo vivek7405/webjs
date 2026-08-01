@@ -14,6 +14,10 @@ import './webjs-suspense.js';
 // Ingest SSR action seeds (#472) from an incoming soft-nav document before its
 // components hydrate, so a navigated async component resolves from the seed.
 import { scanSeeds } from './action-seed-client.js';
+// A form-bound action's `invalidates` tags (#1155) ride the submission response
+// the same way an RPC mutation's do, so a cached GET action is not served stale
+// after a no-JS-shaped write went through the router.
+import { markStale, parseTagHeader } from './action-cache-client.js';
 // Slot-runtime constants for re-projecting page-authored slotted content of a
 // reused hydrated light-DOM component across a soft nav (#908).
 import {
@@ -2174,6 +2178,11 @@ async function fetchAndApply(href, frameId, recordHistory, optimisticState, meth
     const resp = await fetch(href, init);
     respStatus = resp.status;
     respOk = resp.ok;
+    // `fetch` follows a 303 transparently and its headers are then unreadable,
+    // so this lands on a non-redirect response: the 422 failure re-render, or
+    // any form response that answers in place.
+    const invalidated = parseTagHeader(resp.headers.get('x-webjs-invalidate'));
+    if (invalidated.length) markStale(invalidated);
     const ctype = resp.headers.get('content-type') || '';
     const isHTML = /^text\/html\b/i.test(ctype);
     const isStream = ctype.toLowerCase().indexOf(STREAM_MIME) === 0;

@@ -455,3 +455,60 @@ test('a function with no identity is refused, never rendered as an inert form', 
     /is not a server action/,
   );
 });
+
+test('a static action="/url" alongside the bound hole is refused', () => {
+  // SSR leaves the static one on the start tag; the client removes it. Either
+  // way the two renderers post to different urls, so both refuse instead.
+  const host = document.createElement('div');
+  const HOISTED = stub(ID);
+  assert.throws(
+    () => render(html`<form action="/legacy" action=${HOISTED}></form>`, host),
+    /plain action="\.\.\." attribute/,
+  );
+});
+
+test('a whitespace-padded method is refused, not trimmed', () => {
+  // Matches SSR: a browser matches `method` against exact keywords with no
+  // whitespace stripping, so `" post "` submits as a GET.
+  const host = document.createElement('div');
+  const HOISTED = stub(ID);
+  assert.throws(
+    () => render(html`<form action=${HOISTED} method=${' post '}></form>`, host),
+    /cannot work/,
+  );
+});
+
+test('an encoding= CONTENT attribute does not stand in for enctype', () => {
+  // The `encoding` fold is for the PROPERTY spelling only. Folding the
+  // attribute too made the client honour a value SSR ignores, so the same form
+  // uploaded multipart without JS and urlencoded with it, and `encoding=
+  // ${'text/plain'}` threw in the browser on markup the server rendered fine.
+  const host = document.createElement('div');
+  const HOISTED = stub(ID);
+  render(html`<form action=${HOISTED} encoding=${'application/x-www-form-urlencoded'}></form>`, host);
+  const form = host.querySelector('form');
+  assert.equal(form.getAttribute('enctype'), 'multipart/form-data', 'the framework enctype is forced');
+  assert.equal(form.getAttribute('encoding'), 'application/x-www-form-urlencoded', 'left alone, inert');
+
+  // The same spelling with an unsubmittable value renders rather than throwing,
+  // because SSR does not see it either.
+  const host2 = document.createElement('div');
+  render(html`<form action=${HOISTED} encoding=${'text/plain'}></form>`, host2);
+  assert.equal(host2.querySelector('form').getAttribute('enctype'), 'multipart/form-data');
+});
+
+test('two action holes are refused with the BOUND one written second', () => {
+  // Recording only the first action hole sent this down the release path and
+  // shipped a form posting to /legacy with no identity, while SSR threw.
+  const host = document.createElement('div');
+  const HOISTED = stub(ID);
+  assert.throws(
+    () => render(html`<form action=${'/legacy'} action=${HOISTED}></form>`, host),
+    /two action=/,
+  );
+});
+// NOTE: the release path's other guard, "an unbound form keeps a `.method` the
+// template writes as a PROPERTY", is asserted in `browser/form-action-guard.test.js`
+// instead. It turns entirely on the write reflecting to the content attribute,
+// and linkedom's HTMLFormElement has an empty class body with no reflection at
+// all, so a `.method` assertion here would pass whether or not the fix is present.

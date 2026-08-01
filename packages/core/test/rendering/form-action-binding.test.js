@@ -281,3 +281,65 @@ test('two bound forms each carry their own field', async () => {
   assert.match(out, /value="bbbbbbbbbb\/other"/);
   assert.equal(out.match(new RegExp(FORM_ACTION_FIELD, 'g')).length, 2);
 });
+
+test('a static action="/url" alongside the bound hole is refused', async () => {
+  // The hole drops its own `action`; a SECOND, static one survives into the
+  // emitted start tag while the client's reconcile removes it. With JS off the
+  // browser would post the identity to the written url, with JS on to the page.
+  // Refused rather than reconciled, because either renderer "winning" is a form
+  // that submits to a different place depending on whether JS ran.
+  withResolver();
+  for (const tpl of [
+    () => html`<form action="/legacy" action=${submitFeedback}></form>`,
+    () => html`<form action=${submitFeedback} action="/legacy"></form>`,
+  ]) {
+    await assert.rejects(() => renderToString(tpl(), { ssr: true }), /plain action="\.\.\." attribute/);
+    await assert.rejects(() => drain(renderToStream(tpl(), { ssr: false })), /plain action="\.\.\." attribute/);
+  }
+});
+
+test('a whitespace-padded method or enctype is refused, not trimmed', async () => {
+  // `method` / `enctype` are enumerated attributes: a browser matches them
+  // against exact keywords with NO whitespace stripping, so `method=" post "`
+  // falls to the invalid-value default and the form submits as a GET with no
+  // body. Trimming before the check would accept it and emit it untouched.
+  withResolver();
+  await assert.rejects(
+    () => renderToString(html`<form action=${submitFeedback} method=${' post '}></form>`, { ssr: true }),
+    /cannot work/,
+  );
+  await assert.rejects(
+    () => renderToString(
+      html`<form action=${submitFeedback} enctype=${' multipart/form-data '}></form>`, { ssr: true }),
+    /cannot work/,
+  );
+  // The unpadded spellings still render, so the guard is about the padding.
+  const ok = await renderToString(
+    html`<form action=${submitFeedback} method=${'POST'} enctype=${'multipart/form-data'}></form>`,
+    { ssr: true });
+  assert.match(ok, new RegExp(`value="${ID}"`));
+});
+
+test('an encoding= CONTENT attribute is ignored, so enctype is still forced', async () => {
+  // `encoding` is a legacy IDL ALIAS: `form.encoding = x` writes the enctype
+  // content attribute, but an `encoding=` attribute in markup is inert (a
+  // browser's `form.encoding` reads back `enctype`). SSR therefore ignores it,
+  // and the client has to ignore it too or the same form would upload multipart
+  // without JS and urlencoded with it.
+  withResolver();
+  const out = await renderToString(
+    html`<form action=${submitFeedback} encoding=${'application/x-www-form-urlencoded'}></form>`,
+    { ssr: true });
+  assert.match(out, /enctype="multipart\/form-data"/, 'the framework enctype is still forced');
+  assert.match(out, /encoding="application\/x-www-form-urlencoded"/, 'the inert attribute is left alone');
+});
+
+test('two action holes are refused whichever position the bound one is in', async () => {
+  // The refusal is by HOLE COUNT once any hole resolves to an action, so a
+  // template that writes the url first and the action second refuses too.
+  withResolver();
+  await assert.rejects(
+    () => renderToString(html`<form action=${'/legacy'} action=${submitFeedback}></form>`, { ssr: true }),
+    /two action=/,
+  );
+});

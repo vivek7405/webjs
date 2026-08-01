@@ -241,7 +241,13 @@ const PARSEABLE_ENCTYPES = new Set(['multipart/form-data', 'application/x-www-fo
  * @param {string | null | undefined} enctype
  */
 function assertSubmittableForm(method, enctype) {
-  if (method != null && !/^post$/i.test(method.trim())) {
+  // Compared UNTRIMMED on purpose. `method` and `enctype` are enumerated
+  // attributes the browser matches against exact keywords with no whitespace
+  // stripping, so `method=" post "` falls to the invalid-value default and the
+  // form submits as a GET. Trimming here would accept the padded value, emit it
+  // untouched, and produce exactly the silently-posts-nowhere form this module
+  // exists to make impossible.
+  if (method != null && !/^post$/i.test(method)) {
     throw new Error(
       `[webjs] <form method="${method}" action=\${action}> cannot work: a bound `
       + `server action is submitted as a POST body, and a "${method}" form sends `
@@ -249,7 +255,7 @@ function assertSubmittableForm(method, enctype) {
       + `remove the bound action.`,
     );
   }
-  if (enctype != null && !PARSEABLE_ENCTYPES.has(enctype.trim().toLowerCase())) {
+  if (enctype != null && !PARSEABLE_ENCTYPES.has(enctype.toLowerCase())) {
     throw new Error(
       `[webjs] <form enctype="${enctype}" action=\${action}> cannot work: a form `
       + `submission is parsed as multipart/form-data or `
@@ -288,6 +294,9 @@ function assertSubmittableForm(method, enctype) {
  */
 export function bindFormActionStartTag(startTag, id) {
   const attrs = parseStartTagAttrs(startTag);
+  // The hole's own `action` is already gone. Anything still here is a SECOND,
+  // static one, which SSR would emit and the client would remove.
+  assertConvergentBoundForm({ staticAction: attrs.has('action') });
   const resolved = resolveBoundFormAttrs(
     attrs.has('method') ? attrs.get('method') : ABSENT,
     attrs.has('enctype') ? attrs.get('enctype') : ABSENT,
@@ -319,11 +328,18 @@ export function bindFormActionStartTag(startTag, id) {
  * plain `action` url ALONGSIDE the identity field, which is incoherent, while
  * the client resolves last-wins.
  *
- * Both are properties of the template, so they are checked only once the value
- * proves the form is really bound. `<form action=${aString} .method=${m}>` is
- * an ordinary form and is left alone.
+ * A STATIC `action="/url"` alongside the bound hole is the third, and it is the
+ * one that fails quietly rather than loudly. SSR only drops the `action` the
+ * HOLE wrote, so the static one survives into the emitted start tag, while the
+ * client's reconcile calls `removeAttribute('action')` and takes it out. With
+ * JS off the browser posts the identity to `/url`; with JS on the router posts
+ * to the page. Same template, two different targets.
  *
- * @param {{ duplicateAction?: boolean, propAttrs?: string[] }} shape
+ * All three are properties of the template, so they are checked only once the
+ * value proves the form is really bound. `<form action=${aString} .method=${m}>`
+ * is an ordinary form and is left alone.
+ *
+ * @param {{ duplicateAction?: boolean, propAttrs?: string[], staticAction?: boolean }} shape
  * @returns {void}
  */
 export function assertConvergentBoundForm(shape) {
@@ -331,6 +347,14 @@ export function assertConvergentBoundForm(shape) {
     throw new Error(
       '[webjs] a <form> carries two action=${...} holes. Only one can win, and '
       + 'the two renderers pick differently, so bind exactly one action.',
+    );
+  }
+  if (shape.staticAction) {
+    throw new Error(
+      '[webjs] a bound <form action=${action}> also carries a plain action="..." '
+      + 'attribute. A bound form posts to the page\'s own url, so the two say '
+      + 'different things: without JS the browser would post to the written url '
+      + 'and with JS it would not. Drop the action attribute, or drop the binding.',
     );
   }
   const prop = shape.propAttrs && shape.propAttrs[0];
@@ -433,7 +457,7 @@ export function reconcileFormAction(form, value, method, enctype, shape) {
     // never stamped). A function that was MEANT as an action still refuses, so
     // a form never silently posts nowhere.
     if (typeof value === 'function') assertIdentifiableAction(null, form.localName);
-    releaseFormAction(form, method, enctype);
+    releaseFormAction(form, method, enctype, shape.propAttrs);
     return;
   }
 
@@ -517,11 +541,19 @@ function ensureIdentityField(form, id) {
  * supplies nothing for it on THIS pass. That is why there is no bookkeeping to
  * go stale.
  *
+ * A `.method` / `.enctype` / `.encoding` PROPERTY binding is the exception, and
+ * it has to be named rather than inferred. Its write reflects to the content
+ * attribute, but it is not an attribute part, so "the template supplies nothing
+ * for it" reads true and the removal below would wipe the author's own value on
+ * every re-render. The property spelling is refused on a BOUND form, so this is
+ * the only path that can meet one.
+ *
  * @param {HTMLFormElement} form
  * @param {string | typeof ABSENT} method
  * @param {string | typeof ABSENT} enctype
+ * @param {string[] | undefined} propAttrs attribute names a property part owns
  */
-function releaseFormAction(form, method, enctype) {
+function releaseFormAction(form, method, enctype, propAttrs) {
   const first = form.firstElementChild;
   if (first && first.localName === 'input' && first.getAttribute('name') === FORM_ACTION_FIELD) {
     first.remove();
@@ -533,8 +565,12 @@ function releaseFormAction(form, method, enctype) {
       }
     }
   }
-  if (method === ABSENT) form.removeAttribute('method');
-  if (enctype === ABSENT) form.removeAttribute('enctype');
+  const owned = (name) => (propAttrs || []).some((p) => {
+    const x = String(p).toLowerCase();
+    return x === name || (name === 'enctype' && x === 'encoding');
+  });
+  if (method === ABSENT && !owned('method')) form.removeAttribute('method');
+  if (enctype === ABSENT && !owned('enctype')) form.removeAttribute('enctype');
 }
 
 /**

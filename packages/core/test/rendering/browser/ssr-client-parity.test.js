@@ -404,6 +404,12 @@ suite('SSR/client parity: form actions (#1155)', () => {
     'a plain url action is an ordinary form': () => html`<form action=${'/legacy'}></form>`,
     'an unbound form keeps its own method': () => html`<form action=${'/search'} method=${'get'}></form>`,
     'two independent bound forms': () => html`<form action=${boundAction()}></form><form action=${boundAction()}></form>`,
+    // `encoding` is a legacy IDL alias of `enctype`, so the PROPERTY spelling
+    // reaches the enctype attribute while the CONTENT attribute is inert. SSR
+    // ignores it; the client folding it in made the same form upload multipart
+    // without JS and urlencoded with it.
+    'inert encoding= attribute': () => html`<form action=${boundAction()} encoding=${'application/x-www-form-urlencoded'}></form>`,
+    'inert encoding= with an unsubmittable value': () => html`<form action=${boundAction()} encoding=${'text/plain'}></form>`,
   };
 
   for (const [name, tpl] of Object.entries(ACCEPTS)) {
@@ -431,6 +437,19 @@ suite('SSR/client parity: form actions (#1155)', () => {
     'a function that is not an action': [() => html`<form action=${async () => {}}></form>`, /is not a server action/],
     'prop binding on a bound form': [() => html`<form action=${boundAction()} .method=${'get'}></form>`, /also binds \./],
     'two action holes': [() => html`<form action=${boundAction()} action=${'/legacy'}></form>`, /two action=/],
+    // Written the OTHER way round: the client used to record only the first
+    // action hole, so this took the release path and shipped a form posting to
+    // /legacy with no identity, while SSR refused the same template.
+    'two action holes, bound one second': [() => html`<form action=${'/legacy'} action=${boundAction()}></form>`, /two action=/],
+    // A static `action` survives SSR (the hole drops only its own) and the
+    // client's reconcile removes it, so the no-JS and JS submissions target
+    // different urls.
+    'static action alongside the hole': [() => html`<form action="/legacy" action=${boundAction()}></form>`, /plain action="\.\.\." attribute/],
+    // Enumerated attributes are matched against exact keywords with no
+    // whitespace stripping, so a padded value falls to the invalid-value
+    // default and submits as a GET with no body.
+    'padded method': [() => html`<form action=${boundAction()} method=${' post '}></form>`, /cannot work/],
+    'padded enctype': [() => html`<form action=${boundAction()} enctype=${' multipart/form-data '}></form>`, /cannot work/],
   };
 
   for (const [name, [tpl, pattern]] of Object.entries(REFUSES)) {
