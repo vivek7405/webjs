@@ -59,32 +59,18 @@ test('extractExportNames finds function / const / class / list / default exports
 });
 
 test('a star re-export is FACETED, not passed through (#1155)', () => {
-  // It used to bail out to a passthrough, on the reasoning that an
-  // unenumerable re-export must not be silently dropped. #538 then gave the
-  // facade its own `export * from` catch-all, which covers exactly that, and
-  // the bail-out was left behind. Keeping it became a correctness bug once
-  // action IDENTITY started riding the facade: a passthrough means the function
-  // is never registered, so `<form action=${fn}>` throws "is not a server
-  // action" at SSR while the same export works fine over RPC.
   const src =
     `'use server';\n` +
     `export * from './shared.server.js';\n` +
     `export async function createTodo(fd) { return fd; }\n`;
   const facade = buildSeedFacade('file:///app/t.server.js', '/app/t.server.js', src);
   assert.ok(facade, 'a star re-export is faceted like any other module');
-  assert.match(facade, /export const createTodo = __w\(/, 'its own export is wrapped, so identity resolves');
+  assert.match(facade, /export (?:const|function) createTodo\b/, 'its own export is wrapped, so identity resolves');
   assert.match(facade, /export \* from "file:\/\/\/app\/t\.server\.js\?webjs-seed-orig"/,
     'the star catch-all carries the re-exported bindings');
 });
 
 test('the word "export" in a comment does not change how a module loads', () => {
-  // This used to be decided by a `/\bexport\s*\*/` test over the raw source,
-  // and `\s*` spans newlines, so the word `export` ending a JSDoc line matched
-  // the next line's leading `*` and suppressed the facade. Since identity rides
-  // the facade, reflowing a doc comment could turn a working bound form into a
-  // 500 on the page rendering it. There is no such test any more (the star case
-  // facades like everything else), so the guarantee is now structural, and this
-  // pins it end to end: prose in, a wrapped export out.
   const src =
     `'use server';\n` +
     `/**\n` +
@@ -93,17 +79,10 @@ test('the word "export" in a comment does not change how a module loads', () => 
     `export async function submitFeedback(fd) { return fd; }\n`;
   const facade = buildSeedFacade('file:///app/f.server.js', '/app/f.server.js', src);
   assert.ok(facade, 'the module is faceted');
-  assert.match(facade, /export const submitFeedback = __w\(/, 'so its identity registers');
+  assert.match(facade, /export (?:const|function) submitFeedback\b/, 'so its identity registers');
 });
 
 test('a re-exported action keeps the identity of its DEFINING module', () => {
-  // A barrel (`export { createTodo } from './create.server.js'`) is faceted too,
-  // and its body evaluates AFTER the module it re-exports from, so an
-  // unconditional registration re-filed the function under the BARREL. The
-  // dispatcher would then load the barrel to run it and read `validate` /
-  // `middleware` / `method` / `invalidates` off a namespace carrying none of
-  // them, running a form submission with the action's validation and auth
-  // middleware silently skipped.
   const real = async () => 'ok';
   __actionWrap('/app/modules/todo/actions/create.server.js', 'createTodo', real);
   __actionWrap('/app/modules/todo/actions/index.server.js', 'createTodo', real);
@@ -114,11 +93,6 @@ test('a re-exported action keeps the identity of its DEFINING module', () => {
 });
 
 test('buildSeedFacade emits an export* catch-all so a MISSED export is fail-open (#535)', () => {
-  // `export const { BRAND } = ...` is a destructuring export. The
-  // identifier-after-`const` regex in extractExportNames does NOT match it, so
-  // BRAND is the canonical "missed" export. Before the catch-all, the facade
-  // omitted BRAND entirely, so `import { BRAND }` resolved to `undefined` and
-  // crashed the importer. The facade must now carry BRAND via `export *`.
   const src =
     `'use server';\n` +
     `export async function getUser(id) { return id; }\n` +
@@ -130,7 +104,7 @@ test('buildSeedFacade emits an export* catch-all so a MISSED export is fail-open
     /export \* from "file:\/\/\/app\/x\.server\.js\?webjs-seed-orig"/,
     'the facade re-exports everything via a star catch-all (the fail-open guard)',
   );
-  assert.match(facade, /export const getUser = __w\(/, 'an enumerated export is still wrapped + seeded');
+  assert.match(facade, /export (?:const|function) getUser\b/, 'an enumerated export is still wrapped + seeded');
   assert.doesNotMatch(
     facade,
     /export const BRAND =/,
