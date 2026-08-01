@@ -14,7 +14,11 @@ const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // we detect that at the RESPONSE level (a 5xx on the dashboard) and SKIP with a
 // clear message rather than report a misleading failure. After the db is set up
 // every assertion runs for real.
-process.env.DATABASE_URL ||= 'file:./dev.db';
+// The SAME path `.env.example` and `drizzle.config.ts` use, so `db:migrate`
+// prepares the database this test connects to. Pointing somewhere else made the
+// skip below permanent: it told you to run `db:migrate`, and running it
+// migrated a different file.
+process.env.DATABASE_URL ||= 'file:./db/dev.db';
 process.env.AUTH_SECRET ||= 'test-secret-at-least-32-characters-long!!';
 
 function makeHandler() {
