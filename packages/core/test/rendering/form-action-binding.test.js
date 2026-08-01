@@ -196,6 +196,57 @@ test('the streaming renderer refuses method="get" too', async () => {
   );
 });
 
+// --- Shapes the two renderers can never agree on -----------------------------
+//
+// SSR drops a `.prop` on a native element while the browser applies it for real,
+// and `method` / `enctype` / `encoding` are reflected IDL attributes on a form.
+// So a bound form carrying one submits differently with JS than without it, and
+// no reconciliation can close that. Refusing is the only convergent answer, and
+// it is the same argument that already refuses `.action` on a form.
+
+test('a bound form that also binds .method / .enctype / .encoding is refused', async () => {
+  withResolver();
+  for (const prop of ['method', 'enctype', 'encoding']) {
+    const tpl = { method: () => html`<form action=${submitFeedback} .method=${'get'}></form>`,
+      enctype: () => html`<form action=${submitFeedback} .enctype=${'text/plain'}></form>`,
+      encoding: () => html`<form action=${submitFeedback} .encoding=${'text/plain'}></form>` }[prop];
+    await assert.rejects(() => renderToString(tpl(), { ssr: true }), /also binds \./, `.${prop} must be refused`);
+    await assert.rejects(() => drain(renderToStream(tpl(), { ssr: false })), /also binds \./, `.${prop}, streaming`);
+  }
+});
+
+test('the same prop on an UNBOUND form is left alone', async () => {
+  // The carve-out. An ordinary form with a url action is not this feature's
+  // business, and refusing it would break working code to prevent nothing.
+  withResolver();
+  const out = await renderToString(html`<form action=${'/search'} .method=${'get'}></form>`, { ssr: true });
+  assert.match(out, /action="\/search"/);
+});
+
+test('two action holes on one form are refused', async () => {
+  // SSR would emit the second as a plain url ALONGSIDE the identity field,
+  // which is incoherent, while the client resolves last-wins. Counted by hole
+  // rather than by value, so it fires whatever the second one resolves to.
+  withResolver();
+  for (const tpl of [
+    () => html`<form action=${submitFeedback} action=${'/legacy'}></form>`,
+    () => html`<form action=${submitFeedback} action=${submitFeedback}></form>`,
+  ]) {
+    await assert.rejects(() => renderToString(tpl(), { ssr: true }), /two action=/);
+    await assert.rejects(() => drain(renderToStream(tpl(), { ssr: false })), /two action=/);
+  }
+});
+
+test('a refused tag does not poison the NEXT form in the same template', async () => {
+  // The per-tag shape state has to reset at every `>`, bound or not, or one
+  // form's prop binding would refuse an innocent later form.
+  withResolver();
+  const out = await renderToString(
+    html`<form action=${'/x'} .method=${'get'}></form><form action=${submitFeedback}></form>`,
+    { ssr: true });
+  assert.match(out, new RegExp(`name="${FORM_ACTION_FIELD}"`), 'the second form still binds');
+});
+
 test('binding is scoped to <form>: the same function elsewhere still refuses', async () => {
   withResolver();
   for (const tpl of [

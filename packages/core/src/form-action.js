@@ -303,6 +303,48 @@ export function bindFormActionStartTag(startTag, id) {
 }
 
 /**
+ * Refuse the shapes a bound form can be written in that the two renderers can
+ * never agree on, so neither ships a form that submits differently with JS than
+ * without it.
+ *
+ * A `.prop` binding on a native element is DROPPED at SSR and applied for real
+ * in the browser, where `method` / `enctype` / the `encoding` alias are
+ * reflected IDL attributes. Measured: SSR of `<form action=${fn} .method=
+ * ${'get'}>` emits `method="post"` while a browser ends at `method="get"`. No
+ * amount of reconciliation closes that, because the client cannot un-know an
+ * assignment it made and the server cannot know one it never saw. This is the
+ * same argument that already refuses `.action` on a form.
+ *
+ * Two `action=${...}` holes on one form is the other: SSR emits the second as a
+ * plain `action` url ALONGSIDE the identity field, which is incoherent, while
+ * the client resolves last-wins.
+ *
+ * Both are properties of the template, so they are checked only once the value
+ * proves the form is really bound. `<form action=${aString} .method=${m}>` is
+ * an ordinary form and is left alone.
+ *
+ * @param {{ duplicateAction?: boolean, propAttrs?: string[] }} shape
+ * @returns {void}
+ */
+export function assertConvergentBoundForm(shape) {
+  if (shape.duplicateAction) {
+    throw new Error(
+      '[webjs] a <form> carries two action=${...} holes. Only one can win, and '
+      + 'the two renderers pick differently, so bind exactly one action.',
+    );
+  }
+  const prop = shape.propAttrs && shape.propAttrs[0];
+  if (prop) {
+    throw new Error(
+      `[webjs] a bound <form action=\${action}> also binds .${prop}=. `
+      + 'A property binding on a native element is dropped at SSR and applied in '
+      + 'the browser, so the form would submit one way with JS and another way '
+      + 'without it. Write it as a plain attribute.',
+    );
+  }
+}
+
+/**
  * The sentinel for "this attribute is not present at all", as distinct from
  * present-and-empty. The difference decides the outcome: an ABSENT `method` is
  * supplied by the framework, while `method=""` is a value the author's template
@@ -395,23 +437,9 @@ export function reconcileFormAction(form, value, method, enctype, shape) {
     return;
   }
 
-  // Two shapes SSR and the client can never agree on, refused rather than
-  // reconciled. They are compile-time facts, so they are checked only once the
-  // value proves the form really is bound.
-  if (shape.duplicateAction) {
-    throw new Error(
-      '[webjs] a <form> carries two action=${...} holes. Only one can win, and '
-      + 'the two renderers pick differently, so bind exactly one action.',
-    );
-  }
-  if (shape.propAttrs.length) {
-    throw new Error(
-      `[webjs] a bound <form action=\${action}> also binds .${shape.propAttrs[0]}=. `
-      + 'A property binding on a native element is dropped at SSR and applied in '
-      + 'the browser, so the form would submit one way with JS and another way '
-      + 'without it. Write it as a plain attribute.',
-    );
-  }
+  // Shapes SSR and the client can never agree on, refused rather than
+  // reconciled, through the same helper SSR calls.
+  assertConvergentBoundForm(shape);
 
   const resolved = resolveBoundFormAttrs(method, enctype);
   form.removeAttribute('action');

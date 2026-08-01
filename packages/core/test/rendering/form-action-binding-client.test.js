@@ -281,11 +281,12 @@ test('a re-render that changes only a child value neither re-binds nor duplicate
 // nested child hole, an array of templates built detached, and the
 // streamed-continuation path.
 //
-// Each nested site has its own `finally { discardPendingFormActionBinds() }`,
-// so removing any one flush DROPS that pass's queue rather than deferring it to
-// an enclosing pass. The streamed one is still the worst to lose, because
-// `consumeAsyncStream` swallows a throw into a `console.error`, so a form that
-// failed to bind there ships silently instead of failing the render.
+// Each site reconciles only the forms of the template it is committing, so
+// removing any one of them drops that template's forms entirely rather than
+// deferring them to an enclosing pass. The streamed one is still the worst to
+// lose, because `consumeAsyncStream` swallows a throw into a `console.error`,
+// so a form that failed to bind there ships silently instead of failing the
+// render.
 
 test('a bound form inside a NESTED child hole is bound', () => {
   const fn = HOISTED();
@@ -340,8 +341,9 @@ test('a bound form in a STREAMED continuation is bound', async () => {
 });
 
 test('bind, release, and re-bind leave no stale forced attributes', () => {
-  // `_forcedAttrs` is written by the bind, so a form that cycles has to end up
-  // with exactly what its LAST bind added, not an accumulation.
+  // Which attributes are the framework's is recomputed from the template every
+  // pass rather than remembered from the bind, so a form that cycles has to end
+  // up with exactly what the template asks for, not an accumulation.
   const a1 = HOISTED();
   const a2 = HOISTED();
   const host = document.createElement('div');

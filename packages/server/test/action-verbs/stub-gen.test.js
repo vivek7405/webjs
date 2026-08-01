@@ -87,7 +87,7 @@ test('every stub can decode a streamed result (#489): imports + __readStream', a
 //
 // The stub's `$$webjsAction` stamp is the ENTIRE client half of form binding:
 // a shipping component re-renders its template on hydration, and
-// `bindFormActionElement` reads the identity synchronously off the function it
+// `reconcileFormAction` reads the identity synchronously off the function it
 // was handed. Every client-side test hand-stamps a fake stub, so without these
 // the real generator could stop stamping and the whole suite would stay green
 // while a hydrated form lost its identity field.
