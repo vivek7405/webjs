@@ -173,7 +173,7 @@ export default function NewPost({ actionData }: {
     </p>
 
     <p>
-      The renderer validates and refuses unparseable submitter options at render time: a submitter button carrying a <code>name</code> attribute, using <code>&lt;input type="image"&gt;</code>, or setting <code>formmethod="get"</code> or <code>formenctype="text/plain"</code> throws an actionable refusal error so both JS and no-JS execution paths stay identical by construction (#1207).
+      The renderer validates submitter options at render time: only submit buttons and <code>&lt;input type="submit"&gt;</code> controls are supported. A submitter carrying <code>name</code>, <code>value</code>, <code>form</code>, or static <code>formaction</code> attributes, using <code>&lt;input type="image"&gt;</code>, or setting <code>formmethod="get"</code> or <code>formenctype="text/plain"</code> throws an actionable refusal error so both JS and no-JS execution paths stay identical by construction (#1207).
     </p>
 
     <h3>3. Make components render correctly on the server</h3>

@@ -52,7 +52,7 @@ import { submitFeedback } from '#modules/feedback/actions/submit-feedback.server
 html`<form action=${submitFeedback}><input name="email"></form>`;
 ```
 
-That is the whole wiring. The renderer omits the `action` attribute (so the form posts to the page's own url), supplies `method="post"` and an enctype, and emits the identity field. Writing `method="get"` on a bound form throws, because a GET form sends no body and the action could never run.
+That is the whole wiring. The renderer omits the `action` attribute (so the form posts to the page's own url), supplies `method="post"` and an enctype, and emits the identity field. Writing `method="get"` on a bound form throws, because a GET form sends no body and the action could never run. A submitter binding is limited to `<button>` submitters and `<input type="submit">` controls inside that bound form.
 
 **Only the bare, unquoted `action=${fn}` on a `<form>` binds.** Every near-miss is a hard render error rather than a silently-inert form, and the reason is a source leak. During SSR a `.server.ts` import is the ACTUAL function (the RPC stub exists only in the browser), and `action=` is an ordinary attribute hole, so stringifying it would write the function's body into the HTML every visitor downloads, including any literal inside it. The renderer throws instead, on the server and on the client, for `action=` and `formaction=` alike.
 
@@ -70,7 +70,7 @@ Do not go looking for the rule that decides when it folds. Export status, read c
 
 So treat everything reachable from the action as exposed. That is the assumption the refusal is built on, it is the only one that holds across runtimes, and it is the only one that stays true when the transpiler changes.
 
-The refusal covers the shape, not one spelling of it. A quoted `action="${fn}"` and the mixed `action="/x/${fn}"` are refused, because quoting turns a binding hole back into a plain attribute; so is a function wrapped in an array (`action=${[fn]}`), since an array stringifies each element through `String()` and leaks identically. `formaction=` is refused everywhere. Attribute names fold case, so `ACTION=${fn}` on a `<form>` BINDS like the lowercase spelling, while `formAction=${fn}` on a button is refused like `formaction=`.
+The refusal covers the shape, not one spelling of it. A quoted `action="${fn}"` and the mixed `action="/x/${fn}"` are refused, because quoting turns a binding hole back into a plain attribute; so is a function wrapped in an array (`action=${[fn]}`), since an array stringifies each element through `String()` and leaks identically. Unsupported `formaction=` shapes are refused, including non-submit controls, duplicate holes, and submitters carrying `name`, `value`, `form`, or static `formaction` attributes. Attribute names fold case, so `ACTION=${fn}` on a `<form>` BINDS like the lowercase spelling, while quoted or otherwise unsupported `formAction=${fn}` shapes are refused.
 
 **Commenting the form out does not disable the hole.** A comment is HTML, the interpolation is JavaScript, and the renderer emits a comment's holes raw, so a hole inside `<!-- ... -->` never reaches the binding branch and is stringified instead: `<!-- <form action=${createTodo}> -->` ships the whole action body with no throw and no log. Commenting out a WORKING binding is therefore not a way to disable it, it is a way to turn it into a leak. Delete the form or move it out of the template. This is the one shape in this section that leaks silently, which is exactly why it is worth knowing.
 
@@ -83,7 +83,7 @@ The bound, refused, and allowed shapes in full. Every "no" row is a binding that
 | `action=${fn}` unquoted, on a `<form>` | **no, it BINDS** | the one supported shape: the identity is resolved and emitted as a hidden field, nothing is stringified |
 | `action=${fn}` on any other tag | yes | `action` submits nothing off a `<form>`, so it is an ordinary attribute and the function would be stringified |
 | `action="${fn}"`, or a mixed `action="/x/${fn}"` | yes | quoting turns a binding hole back into a plain attribute |
-| `formaction=${fn}` unquoted, on a submitter inside a bound form | **no, it BINDS** | per-submitter server action binding (#1207): emits `<button name="__webjs_action" value="<hash>/<fn>">` and server dispatches to last submitter in DOM order |
+| `formaction=${fn}` unquoted, on a submitter inside a bound form | **no, it BINDS** | per-submitter server action binding (#1207): emits the reserved identity on a `<button>` or `<input type="submit">` and server dispatches to last submitter in DOM order. The submitter cannot carry `name`, `value`, `form`, or static `formaction` attributes |
 | `formaction=${fn}` on an UNBOUND form | yes | submitter action requires enclosing form to be bound (`<form action=${formAction}>`) so POST method and multipart encoding are set at form start |
 | `.action=` on a native form | yes | the supported binding is the plain attribute, and a `.prop` on a native element drops at SSR, so accepting it would mean a form that submits under JS and does nothing without it |
 | `.method=` / `.enctype=` / `.encoding=` on a BOUND form | yes | the same reason one level over. All three are reflected IDL attributes, so SSR drops the binding and emits `method="post"` while a browser ends at what you assigned. Write them as plain attributes |
