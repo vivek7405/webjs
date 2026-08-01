@@ -143,7 +143,8 @@ Everything the action declares applies here too, or an action would be protected
 
 - `validate` runs on the submitted `FormData`.
 - the `middleware` chain runs, with the page's route context (`params`, `searchParams`, `url`) added to `ctx`.
-- `invalidates` is evicted when the action actually RAN (a middleware short-circuit does not evict).
+- `invalidates` is evicted when the action actually RAN (a middleware short-circuit does not evict), and the evicted tags are reported on the response so the browser's tag coordinator bypasses a stale cached GET. One reach limit: `fetch` follows the success `303` transparently, so JS cannot read a redirect's headers; the tags are on the wire and the `422` re-render carries them, and the redirect's own render is server-side and seeds fresh data.
+- `invalidates` and `tags` receive the SAME first argument the action does, so on a form boundary they receive the `FormData`. `invalidates: (input) => ['post:' + input.id]` returns `post:undefined` for a submission and evicts nothing. Either read the field (`(fd) => ['post:' + fd.get('id')]`), declare a `validate` that transforms the `FormData` into the typed input first (the transform result is what the config functions then see), or use an argument-independent tag.
 - `method = 'GET'` cannot be bound to a form: a GET action rides its args in the url and is CSRF-exempt, so it cannot answer a form POST. That is a `405` at runtime and the `form-action-not-a-get-action` error in `webjs check`.
 
 The response drives the page: a success is a `303` PRG (to `result.redirect` when it is a same-site local path, else the page's own url), a failure re-renders the SAME page with `status` (default `422`) and the result on `actionData`, a submission carrying no identity is a `405`, and one whose hash no longer resolves is a `422` with a resubmit message (a form held open across a deploy). The submission is Origin-verified like an RPC call, so no token field is needed.

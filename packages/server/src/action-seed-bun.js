@@ -3,7 +3,7 @@
  *
  * Bun has no `module.registerHooks`, so the seed facade is installed via a
  * `Bun.plugin` `onLoad`, the Bun analog of the Node load hook in
- * `action-seed.js`. This module is dynamically imported by `registerSeedHooks`
+ * `action-seed.js`. This module is dynamically imported by `registerActionHooks`
  * ONLY when `serverRuntime()` is `'bun'`, so the `Bun.*` global is never
  * referenced on Node (the same isolation as `listener-bun.js`).
  *
@@ -28,7 +28,7 @@
 
 /**
  * Install the `Bun.plugin` seed `onLoad`. Idempotency is the caller's
- * responsibility (`registerSeedHooks` guards on `_registered`).
+ * responsibility (`registerActionHooks` guards on `_registered`).
  *
  * @param {{
  *   isSeedCandidate: (specifier: string) => boolean,

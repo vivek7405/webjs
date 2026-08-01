@@ -75,6 +75,7 @@ export {
   withCookies,
   withSessionCookie,
   loginAndGetCookies,
+  submitForm,
   actionEndpoint,
   invokeActionForTest,
   rawActionRequest,

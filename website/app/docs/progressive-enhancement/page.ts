@@ -169,7 +169,11 @@ export default function NewPost({ actionData }: {
     </p>
 
     <p>
-      A form that binds nothing gets a <code>405</code>: there is no page <code>action</code> export to catch a bare <code>&lt;form method="post"&gt;</code>. A form with several submit buttons binds one action and dispatches on a button's <code>name</code>, since <code>formaction=\${fn}</code> is refused.
+      A form that binds nothing gets a <code>405</code>: there is no page <code>action</code> export to catch a bare <code>&lt;form method="post"&gt;</code>. A form with several submit buttons binds one action and dispatches on a button's <code>name</code>, since <code>formaction=\${fn}</code> is not supported yet (tracked in issue #1207).
+    </p>
+
+    <p>
+      One honest limit on "identical by construction": it is a claim about the FORM, and the renderers do not read a submitter's own <code>formmethod</code> / <code>formenctype</code>. So <code>&lt;form action=\${fn}&gt;&lt;button formenctype="text/plain"&gt;</code> submits fine with JS (the router posts <code>FormData</code> and ignores the attribute) and is a bare <code>405</code> without it, with nothing refused at render. Leave those attributes off a bound form until #1207 closes the gap.
     </p>
 
     <h3>3. Make components render correctly on the server</h3>

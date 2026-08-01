@@ -674,10 +674,13 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
 }
 
 async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
-  // Reuse a caller-supplied page module when present (the form-action
-  // re-render passes the exact module whose `action` just ran, so the
-  // failure re-render shares that single evaluation instead of re-importing
-  // and re-running the module's top-level side effects).
+  // Reuse a caller-supplied page module when present. The only producer is the
+  // HTML-cache path above, which loads the module to read `export const
+  // revalidate` and threads it back so this does not load it a second time.
+  // (The removed page `action` export used to be a second producer: it ran in
+  // the page module, so the 422 re-render could share that evaluation. A form
+  // action lives in a `.server.*` module instead, so the re-render loads the
+  // page module itself, exactly as a plain render does.)
   const page = pageModule || await loadModule(route.file, dev);
   if (!page.default) throw new Error(`Page ${route.file} must have a default export`);
   let tree = await page.default(ctx);
@@ -2141,13 +2144,12 @@ function streamingHtmlResponse(prefix, bodyHtml, closer, ctx, status, req, url, 
  * serves a single evaluation; in dev a cache-bust query forces a fresh
  * evaluation so source edits take effect (which also re-runs the module's
  * top-level side effects, the reason pages/layouts must keep their top level
- * side-effect-free). Exported so form-dispatch.js loads the page module the same
- * way the SSR re-render does.
+ * side-effect-free).
  *
  * @param {string} file
  * @param {boolean} dev
  */
-export async function loadModule(file, dev) {
+async function loadModule(file, dev) {
   const url = pathToFileURL(file).toString();
   const bust = dev ? `?t=${Date.now()}-${Math.random().toString(36).slice(2)}` : '';
   return import(url + bust);

@@ -31,12 +31,21 @@ import { escapeAttr } from './escape.js';
  * `<form>` all refuse, so there is exactly one way to write this and no
  * silently-broken near-miss.
  *
- * `formaction=${fn}` on a submit button is refused rather than supported. It
- * is legal HTML, and a per-submitter identity could ride the submitter's own
- * `name`/`value` pair, but that pair is also how a multi-button form tells its
- * buttons apart, so supporting it would either clobber an author's own
- * `name=` or need a second parallel wire. Refusing states the boundary; a form
- * per action is the shape to write instead.
+ * `formaction=${fn}` on a submit button is refused because it is not supported
+ * YET, not because it cannot work. It is legal HTML and a per-submitter
+ * identity has a workable channel (the submitter's own `name`/`value` pair,
+ * which a browser submits only for the button that was pressed), so this is a
+ * scoping line rather than a mechanism limit. Tracked in #1207. Refusing beats
+ * ignoring, because an ignored `formaction` is a button that silently runs the
+ * wrong action. A form per action, or one action dispatching on a button's
+ * `name="intent"`, is the shape to write today.
+ *
+ * The refusals here are all FORM-level. A submitter's own `formmethod` /
+ * `formenctype` can still defeat a bound form (`formenctype="text/plain"`
+ * submits fine under JS, because the router posts FormData, and is a bare 405
+ * without it), and neither renderer sees those today. That gap is #1207 as
+ * well, and it is the one place the "no silently-broken near-miss" claim above
+ * does not yet reach.
  *
  * Both SSR state machines and the client renderer import from here so the
  * rules cannot drift between them. Each renderer commits attribute, boolean

@@ -662,6 +662,9 @@
     "startServer": {
       "demoed": true
     },
+    "submitForm": {
+      "demoed": true
+    },
     "storeSession": {
       "demoed": true
     },

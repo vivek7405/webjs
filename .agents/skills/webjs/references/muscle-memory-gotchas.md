@@ -83,10 +83,13 @@ The bound, refused, and allowed shapes in full. Every "no" row is a binding that
 | `action=${fn}` unquoted, on a `<form>` | **no, it BINDS** | the one supported shape: the identity is resolved and emitted as a hidden field, nothing is stringified |
 | `action=${fn}` on any other tag | yes | `action` submits nothing off a `<form>`, so it is an ordinary attribute and the function would be stringified |
 | `action="${fn}"`, or a mixed `action="/x/${fn}"` | yes | quoting turns a binding hole back into a plain attribute |
-| `formaction=` anywhere | yes | a per-submitter identity would have to ride the submitter's own `name`/`value`, which is how a multi-button form tells its buttons apart. Write one form per action |
+| `formaction=` anywhere | yes | not supported YET rather than impossible (tracked in #1207). Today, write one form per action, or bind one action and dispatch on a submit button's `name="intent"` |
 | `.action=` on a native form | yes | the supported binding is the plain attribute, and a `.prop` on a native element drops at SSR, so accepting it would mean a form that submits under JS and does nothing without it |
 | `.method=` / `.enctype=` / `.encoding=` on a BOUND form | yes | the same reason one level over. All three are reflected IDL attributes, so SSR drops the binding and emits `method="post"` while a browser ends at what you assigned. Write them as plain attributes |
-| a second `action=${fn}` on one form | yes | SSR emits the second as a plain url next to the identity field, the client takes the last. Bind exactly one |
+| a second `action=${fn}` on one form | yes | SSR emits the second as a plain url next to the identity field, the client takes the last. Bind exactly one, in either position |
+| a plain `action="/url"` beside the bound hole | yes | the hole drops only its OWN attribute, so SSR keeps the static one while the client removes it: without JS the browser posts to `/url`, with JS to the page |
+| `method=" post "` / `enctype=" multipart/form-data "` | yes | `method` and `enctype` are enumerated attributes matched against exact keywords with no whitespace stripping, so a padded value falls to the invalid-value default and the form submits as a GET with no body. Trimming it for you would emit the padded value anyway |
+| `encoding="..."` as an ATTRIBUTE on a bound form | **no** | inert in HTML (`form.encoding` reads back `enctype`), so both renderers ignore it and still supply `enctype`. Only the `.encoding` PROPERTY aliases enctype, and that spelling IS refused, one row up |
 | `.formAction=` on a button or input | yes | same reason, that is where `formAction` reflects |
 | `.action=` on any other native tag | **no** | a plain expando (`<div .action=${fn}>`, `<button .action=${fn}>`), reflecting nothing, so nothing reaches the markup |
 | `.action=` on a custom element | **no** | an author-defined property, not a reflected IDL attribute; a function is a legitimate value. Holds for a PLAIN prop: one declared `reflect: true` writes `String(value)` to the attribute on a path outside these commit sites, so it still emits the source |
