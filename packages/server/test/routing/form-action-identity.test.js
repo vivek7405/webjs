@@ -119,13 +119,67 @@ test('a barrel re-export resolves when the DEFINING module is outside the index'
     '2222222222/createTodo',
   );
   // Neither indexed: still null, and the server names the real cause.
+  const empty = indexOf([['3333333333', join(dir, 'other.server.js')]]);
   const warned = [];
   const quiet = console.warn;
   console.warn = (m) => warned.push(String(m));
   try {
-    assert.equal(await resolveActionIdentity(indexOf([['3333333333', join(dir, 'other.server.js')]]), fn), null);
+    assert.equal(await resolveActionIdentity(empty, fn), null);
+    // TWICE, because once-per-file is the claim. A single call cannot fail it:
+    // the warn helper only runs once per call anyway, so deleting the guard
+    // would leave a one-call assertion green.
+    assert.equal(await resolveActionIdentity(empty, fn), null);
   } finally { console.warn = quiet; }
-  assert.equal(warned.length, 1, 'exactly one warning, not one per render');
-  assert.match(warned[0], /outside the app directory/);
+  assert.equal(warned.length, 1, 'exactly one warning across two renders, not one per render');
   assert.match(warned[0], /createTodo/);
+  // The message lists the causes rather than asserting one: a symlinked appDir
+  // makes the walked and loaded paths differ for a file that IS inside the app,
+  // and confidently blaming a package that does not exist sends the author to
+  // the wrong place.
+  assert.match(warned[0], /outside the app directory, or/);
+  assert.match(warned[0], /symlink/);
+  // And the remedy has to say NAMED: a star re-export cannot be enumerated, so
+  // the facade never wraps it and the page fails exactly as before.
+  assert.match(warned[0], /NAMED re-export/);
+  assert.match(warned[0], /star re-export cannot be/);
+});
+
+test('the barrel fallback warns that the action config exports are bypassed', async () => {
+  // The fallback keeps the page working, but the dispatcher then reads
+  // `validate` / `middleware` / `method` / `invalidates` off the BARREL, and a
+  // re-export carries only the function. That is the very outcome the
+  // defining-module preference exists to prevent, reached through the other
+  // door, so it cannot be silent. It warns rather than refuses because the RPC
+  // endpoint resolves the same barrel hash the same way: both transports agree,
+  // and refusing would break a page that works.
+  const outside = join(dir, 'pkg', 'cfg.server.js');
+  const barrel = join(dir, 'modules', 'cfg-barrel.server.js');
+  const fn = async () => {};
+  __actionWrap(outside, 'updatePost', fn);
+  __actionWrap(barrel, 'updatePost', fn);
+
+  const warned = [];
+  const quiet = console.warn;
+  console.warn = (m) => warned.push(String(m));
+  let id;
+  try {
+    id = await resolveActionIdentity(indexOf([['4444444444', barrel]]), fn);
+    await resolveActionIdentity(indexOf([['4444444444', barrel]]), fn);
+  } finally { console.warn = quiet; }
+  assert.equal(id, '4444444444/updatePost', 'the form still works');
+  assert.equal(warned.length, 1, 'once per defining module, not once per render');
+  assert.match(warned[0], /validate/);
+  assert.match(warned[0], /does NOT run/);
+
+  // No warning when the defining module IS indexed: nothing is bypassed.
+  const quiet2 = console.warn;
+  const warned2 = [];
+  console.warn = (m) => warned2.push(String(m));
+  try {
+    assert.equal(
+      await resolveActionIdentity(indexOf([['4444444444', barrel], ['5555555555', outside]]), fn),
+      '5555555555/updatePost',
+    );
+  } finally { console.warn = quiet2; }
+  assert.equal(warned2.length, 0, 'the defining module resolved, so there is nothing to warn about');
 });

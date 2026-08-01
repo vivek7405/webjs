@@ -46,7 +46,17 @@ export async function resolveActionIdentity(idx, fn) {
     // the app-tree walk never reaches).
     for (const entry of known) {
       const hash = idx.fileToHash.get(entry.file);
-      if (hash) return `${hash}/${entry.fnName}`;
+      if (!hash) continue;
+      // Falling back past the defining module has a COST worth saying out loud:
+      // the dispatcher loads whatever module the identity names and reads
+      // `validate` / `middleware` / `method` / `invalidates` off THAT namespace,
+      // and a `export { fn } from '...'` re-export carries only `fn`. So a form
+      // bound this way runs with the action's validation and middleware
+      // skipped. It is not a form-only hazard (the RPC endpoint resolves the
+      // same barrel hash the same way, so both transports agree), which is why
+      // this warns rather than refuses: refusing would break a page that works.
+      if (entry !== known[0]) warnConfigExportsBypassed(known[0], entry);
+      return `${hash}/${entry.fnName}`;
     }
     // Registered, but under no name the index knows. Minting a hash from the
     // path (which `actionFileHash` will happily do for any string) would
@@ -66,16 +76,53 @@ export async function resolveActionIdentity(idx, fn) {
 const _warnedUnindexed = new Set();
 
 /**
+ * No name the action index knows.
+ *
+ * The message names the SYMPTOM and lists the causes rather than asserting one.
+ * Two produce this, and they need opposite fixes: the module genuinely lives
+ * outside the app tree, or it lives inside but under a different path than the
+ * one that was walked (an `appDir` reached through a symlink, since the index
+ * stores the walked path while the ESM loader realpaths the module). Asserting
+ * the first would confidently misdiagnose the second, whose author would then
+ * go looking for a package that does not exist.
+ *
+ * The remedy has to say NAMED, too: `export * from` cannot be enumerated, so
+ * the facade never wraps it and nothing registers, which leaves the page
+ * failing in exactly the same way it already was.
+ *
  * @param {{ file: string, fnName: string }} entry
  */
 function warnUnindexedAction(entry) {
   if (_warnedUnindexed.has(entry.file)) return;
   _warnedUnindexed.add(entry.file);
   console.warn(
-    `[webjs] cannot bind ${entry.fnName} to a <form>: it is a 'use server' export, but `
-    + `${entry.file} is outside the app directory the action index walks, so the identity `
-    + 'the browser would submit could never be resolved back. Re-export it from a '
-    + "'use server' module inside the app, or call it from an action that lives there.",
+    `[webjs] cannot bind ${entry.fnName} to a <form>: it is a 'use server' export, but the `
+    + `action index has no entry for ${entry.file}, so the identity the browser submits `
+    + 'could never be resolved back. Either the module is outside the app directory, or '
+    + 'the app directory was reached through a symlink so the walked path and the loaded '
+    + `path differ. Fix the path, or add a NAMED re-export ("export { ${entry.fnName} } `
+    + `from ...") in a 'use server' module inside the app; a star re-export cannot be `
+    + 'enumerated and will not register it.',
+  );
+}
+
+/** Defining modules already warned about for a bypassed-config fallback. */
+const _warnedBypass = new Set();
+
+/**
+ * @param {{ file: string, fnName: string }} defining
+ * @param {{ file: string, fnName: string }} used
+ */
+function warnConfigExportsBypassed(defining, used) {
+  if (_warnedBypass.has(defining.file)) return;
+  _warnedBypass.add(defining.file);
+  console.warn(
+    `[webjs] ${defining.fnName} is bound to a <form>, but ${defining.file} is not in the `
+    + `action index, so the submission is dispatched through ${used.file} instead. Any `
+    + "`validate` / `middleware` / `method` / `invalidates` the action declares beside it "
+    + 'does NOT run, because a re-export carries only the function. (The RPC endpoint '
+    + 'resolves the same way, so this is not specific to forms.) Move the action inside '
+    + 'the app, or re-export its config exports alongside it.',
   );
 }
 

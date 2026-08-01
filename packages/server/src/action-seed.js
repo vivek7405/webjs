@@ -223,13 +223,6 @@ async function recordSeed(collector, file, fnName, args, value) {
  */
 export function __actionWrap(file, fnName, orig) {
   if (typeof orig !== 'function') return orig;
-  // FIRST registration wins. A barrel (`export { createTodo } from './x.server.ts'`)
-  // is faceted too, and its body runs AFTER the module it re-exports from, so an
-  // unconditional set would re-file the function under the BARREL. The dispatcher
-  // then loads the barrel to run it and reads `validate` / `middleware` /
-  // `method` / `invalidates` off a namespace that carries none of them, silently
-  // running a form submission with the action's validation and auth middleware
-  // skipped. The defining module always evaluates first, so first-wins names it.
   // APPEND, defining module first. A barrel is faceted too and its body runs
   // AFTER the module it re-exports from, so the first registration is the
   // defining one: the module that also carries `validate` / `middleware` /
