@@ -286,7 +286,8 @@ export async function runFormAction(route, params, url, req, ssrOpts, deps) {
     formData = new FormData();
   }
 
-  const id = formData.get(FORM_ACTION_FIELD);
+  const actions = formData.getAll(FORM_ACTION_FIELD);
+  const id = actions.length ? actions[actions.length - 1] : null;
   // A form body carrying no identity: a hand-written `<form method="post">`
   // that binds no action. Nothing to run, and the page only renders.
   if (typeof id !== 'string' || !id) return methodNotAllowed();

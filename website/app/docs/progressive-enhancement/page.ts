@@ -169,7 +169,7 @@ export default function NewPost({ actionData }: {
     </p>
 
     <p>
-      A form that binds nothing gets a <code>405</code>: there is no page <code>action</code> export to catch a bare <code>&lt;form method="post"&gt;</code>. A form with several submit buttons binds one action and dispatches on a button's <code>name</code>, since <code>formaction=\${fn}</code> is not supported yet (tracked in issue #1207).
+      A form that binds nothing gets a <code>405</code>: there is no page <code>action</code> export to catch a bare <code>&lt;form method="post"&gt;</code>. Multi-submitter forms can bind per-button actions using <code>formaction=\${action}</code> on submitter buttons inside a bound form, which work with JavaScript disabled via standard DOM submitter precedence.
     </p>
 
     <p>

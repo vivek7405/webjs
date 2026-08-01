@@ -247,11 +247,10 @@ test('a refused tag does not poison the NEXT form in the same template', async (
   assert.match(out, new RegExp(`name="${FORM_ACTION_FIELD}"`), 'the second form still binds');
 });
 
-test('binding is scoped to <form>: the same function elsewhere still refuses', async () => {
+test('binding is scoped to <form> and bound submitters: non-action shapes refuse', async () => {
   withResolver();
   for (const tpl of [
     html`<div action=${submitFeedback}></div>`,
-    html`<button formaction=${submitFeedback}></button>`,
     html`<form action="${submitFeedback}"></form>`,
   ]) {
     let msg = '';
@@ -259,6 +258,19 @@ test('binding is scoped to <form>: the same function elsewhere still refuses', a
     assert.match(msg, /function was interpolated into/, 'refused as a stringify, not bound');
     assert.doesNotMatch(msg, /SECRET/);
   }
+  // Standalone submitter outside a bound form throws the form-binding requirement error:
+  let unboundMsg = '';
+  try { await renderToString(html`<button formaction=${submitFeedback}></button>`, { ssr: true }); } catch (e) { unboundMsg = String(e.message); }
+  assert.match(unboundMsg, /requires the enclosing <form> to also be bound/);
+});
+
+test('formaction=${fn} on submitter inside a bound form emits submitter action identity', async () => {
+  withResolver();
+  const out = await renderToString(
+    html`<form action=${submitFeedback}><button formaction=${submitFeedback}>Save</button></form>`,
+    { ssr: true }
+  );
+  assert.match(out, /<button name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback">Save<\/button>/);
 });
 
 test('a bound form nested among siblings does not disturb them', async () => {
@@ -332,6 +344,33 @@ test('an encoding= CONTENT attribute is ignored, so enctype is still forced', as
     { ssr: true });
   assert.match(out, /enctype="multipart\/form-data"/, 'the framework enctype is still forced');
   assert.match(out, /encoding="application\/x-www-form-urlencoded"/, 'the inert attribute is left alone');
+});
+
+test('formaction=${fn} submitter refusals: name attribute, input type=image, unparseable enctype, and method=get', async () => {
+  withResolver();
+  // 1. Submitter carrying its own name attribute:
+  await assert.rejects(
+    () => renderToString(html`<form action=${submitFeedback}><button name="intent" formaction=${submitFeedback}>Save</button></form>`, { ssr: true }),
+    /already carries a "name" attribute/,
+  );
+
+  // 2. <input type="image">:
+  await assert.rejects(
+    () => renderToString(html`<form action=${submitFeedback}><input type="image" formaction=${submitFeedback}></form>`, { ssr: true }),
+    /is not supported on <input type="image">/,
+  );
+
+  // 3. Submitter formenctype="text/plain":
+  await assert.rejects(
+    () => renderToString(html`<form action=${submitFeedback}><button formaction=${submitFeedback} formenctype="text/plain">Save</button></form>`, { ssr: true }),
+    /formenctype="text\/plain"/,
+  );
+
+  // 4. Submitter formmethod="get":
+  await assert.rejects(
+    () => renderToString(html`<form action=${submitFeedback}><button formaction=${submitFeedback} formmethod="get">Save</button></form>`, { ssr: true }),
+    /formmethod="get"/,
+  );
 });
 
 test('two action holes are refused whichever position the bound one is in', async () => {

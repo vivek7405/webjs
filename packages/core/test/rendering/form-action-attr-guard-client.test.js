@@ -77,7 +77,7 @@ test('client render of camelCase formAction=${fn} throws', () => {
   const host = document.createElement('div');
   assert.throws(
     () => render(html`<button type="submit" formAction=${fakeAction}></button>`, host),
-    /function was interpolated into formaction=/,
+    /is not a server action|requires the enclosing <form>/,
   );
 });
 

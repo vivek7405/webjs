@@ -83,7 +83,8 @@ The bound, refused, and allowed shapes in full. Every "no" row is a binding that
 | `action=${fn}` unquoted, on a `<form>` | **no, it BINDS** | the one supported shape: the identity is resolved and emitted as a hidden field, nothing is stringified |
 | `action=${fn}` on any other tag | yes | `action` submits nothing off a `<form>`, so it is an ordinary attribute and the function would be stringified |
 | `action="${fn}"`, or a mixed `action="/x/${fn}"` | yes | quoting turns a binding hole back into a plain attribute |
-| `formaction=` anywhere | yes | not supported YET rather than impossible (tracked in #1207). Today, write one form per action, or bind one action and dispatch on a submit button's `name="intent"` |
+| `formaction=${fn}` unquoted, on a submitter inside a bound form | **no, it BINDS** | per-submitter server action binding (#1207): emits `<button name="__webjs_action" value="<hash>/<fn>">` and server dispatches to last submitter in DOM order |
+| `formaction=${fn}` on an UNBOUND form | yes | submitter action requires enclosing form to be bound (`<form action=${formAction}>`) so POST method and multipart encoding are set at form start |
 | `.action=` on a native form | yes | the supported binding is the plain attribute, and a `.prop` on a native element drops at SSR, so accepting it would mean a form that submits under JS and does nothing without it |
 | `.method=` / `.enctype=` / `.encoding=` on a BOUND form | yes | the same reason one level over. All three are reflected IDL attributes, so SSR drops the binding and emits `method="post"` while a browser ends at what you assigned. Write them as plain attributes |
 | a second `action=${fn}` on one form | yes | SSR emits the second as a plain url next to the identity field, the client takes the last. Bind exactly one, in either position |

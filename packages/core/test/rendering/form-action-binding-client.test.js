@@ -435,7 +435,7 @@ test('a failed render does not poison the NEXT one', () => {
   const h1 = document.createElement('div');
   assert.throws(
     () => render(html`<form method="get" action=${stub(ID)}></form><button formaction=${leaky}></button>`, h1),
-    /function was interpolated into/,
+    /cannot work|requires the enclosing <form>/,
   );
 
   const h2 = document.createElement('div');

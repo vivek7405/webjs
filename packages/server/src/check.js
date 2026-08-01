@@ -1409,8 +1409,8 @@ export async function checkConventions(appDir) {
           if (tagAt < 0) continue;
           const tag = before.slice(tagAt);
           if (tag.includes('>')) continue;
-          if (!/^<form\b/i.test(tag)) continue;
-          if (!/\saction=$/i.test(tag)) continue;
+          if (!/^<(?:form|button|input)\b/i.test(tag)) continue;
+          if (!/\s(?:action|formaction)=$/i.test(tag)) continue;
           bound.add(m[2]);
         }
         if (!bound.size) continue;
