@@ -507,6 +507,19 @@ test('two action holes are refused with the BOUND one written second', () => {
     /two action=/,
   );
 });
+
+test('submitter non-POST formmethod is refused on the client (get and PATCH)', () => {
+  const host = document.createElement('div');
+  const HOISTED = stub(ID);
+  assert.throws(
+    () => render(html`<form action=${HOISTED}><button formaction=${HOISTED} formmethod="get">Save</button></form>`, host),
+    /formmethod="get"/,
+  );
+  assert.throws(
+    () => render(html`<form action=${HOISTED}><button formaction=${HOISTED} formmethod="PATCH">Save</button></form>`, host),
+    /formmethod="PATCH"/,
+  );
+});
 // NOTE: the release path's other guard, "an unbound form keeps a `.method` the
 // template writes as a PROPERTY", is asserted in `browser/form-action-guard.test.js`
 // instead. It turns entirely on the write reflecting to the content attribute,

@@ -427,6 +427,12 @@ export function reconcileFormAction(form, value, method, enctype, shape) {
 
 /**
  * Write (or leave) one resolved attribute.
+ *
+ * `inject` non-null means the template supplies nothing and the framework owns
+ * this attribute, so it is set. Otherwise the author's own value is already on
+ * the element, put there by whichever commit branch owns that hole, and is left
+ * exactly as written.
+ *
  * @param {Element} form
  * @param {string} name
  * @param {string | typeof ABSENT} authored
@@ -441,6 +447,12 @@ function applyResolvedAttr(form, name, authored, inject) {
 
 /**
  * Ensure the hidden identity field is present, first, and current.
+ *
+ * FIRST is load-bearing: it puts the field outside every child part's marker
+ * range, so a later child update cannot take it out. `firstElementChild` is the
+ * fast path because both this function and SSR put it there. Uses form.ownerDocument
+ * to support detached or iframe document contexts.
+ *
  * @param {HTMLFormElement} form
  * @param {string} id
  */
@@ -459,7 +471,8 @@ function ensureIdentityField(form, id) {
     }
   }
   if (!field) {
-    field = document.createElement('input');
+    const doc = form.ownerDocument || document;
+    field = doc.createElement('input');
     field.type = 'hidden';
     field.name = FORM_ACTION_FIELD;
     form.insertBefore(field, form.firstChild);
@@ -468,8 +481,12 @@ function ensureIdentityField(form, id) {
 }
 
 /**
- * Release a form that was candidate-bound when its value turns out NOT to be an
- * action function.
+ * Drop a binding whose action hole no longer resolves to an action.
+ *
+ * Both halves matter. The identity field has to go, or the form keeps posting
+ * the old action's identity to whatever it now targets. And the attributes the
+ * framework supplied have to go with it.
+ *
  * @param {HTMLFormElement} form
  * @param {string | typeof ABSENT} method
  * @param {string | typeof ABSENT} enctype
@@ -491,7 +508,12 @@ function releaseFormAction(form, method, enctype, propAttrs) {
 }
 
 /**
- * Parse start tag attributes into a map.
+ * Parse the attributes of an emitted start tag into `name -> value`, where a
+ * valueless attribute maps to the empty string.
+ *
+ * A real tokenizer rather than a regex over the whole tag, because the tag is
+ * emitted HTML and an attribute VALUE can contain anything (e.g. `data-note="use method=get"`).
+ *
  * @param {string} startTag
  * @returns {Map<string, string>}
  */
@@ -543,6 +565,11 @@ function reflectsAsFormAction(propName, tag) {
 
 /**
  * Does stringifying this value expose a function's source?
+ *
+ * `Array.prototype.toString` stringifies each element through `String()` too,
+ * so `action=${[serverAction]}` leaks exactly as `action=${serverAction}` does.
+ * Tracks visited arrays because `Array.prototype.join` has a cycle guard.
+ *
  * @param {unknown} val
  * @param {Set<unknown>} [seen]
  * @returns {boolean}

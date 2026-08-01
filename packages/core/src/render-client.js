@@ -663,7 +663,7 @@ function reconcileSubmitterAction(el, value, rec) {
     );
   }
   const formMethod = el.getAttribute('formmethod');
-  if (formMethod != null && /^get$/i.test(formMethod)) {
+  if (formMethod != null && !/^post$/i.test(formMethod)) {
     throw new Error(
       `[webjs] formaction=\${action} on <${el.localName}> with formmethod="${formMethod}" `
       + `cannot work: a bound server action is submitted as a POST body.`,
