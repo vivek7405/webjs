@@ -2845,6 +2845,93 @@ describe('E2E: form actions (no-JS + enhanced)', { skip: !process.env.WEBJS_E2E 
       assert.equal(marker, 'kept', 'the 303 was followed in place by the client router');
     } finally { await p.close(); }
   });
+
+  // -------------------------------------------------------------------------
+  // The HYDRATED half. Everything above runs against `/feedback`, a plain page
+  // that never hydrates, so the client renderer never touches its form and
+  // `reconcileFormAction` never executes. `/feedback/live` puts the same bound
+  // action inside a component that also carries `@submit`, so it ships,
+  // hydrates, and re-renders its whole template in the browser.
+  //
+  // This is the only place the client half runs against a REAL generated RPC
+  // stub. Every other test of it stubs one end: the linkedom tests and the
+  // browser parity table hand-stamp a stand-in function, and the browser router
+  // test hand-writes the hidden input into its template. If anything stopped
+  // the browser-served stub from carrying its identity stamp, the component's
+  // render would throw in the browser while all of those stayed green.
+  // -------------------------------------------------------------------------
+
+  test('JS ENABLED: a hydrated component rebuilds the identity from the real stub', async () => {
+    const p = await paBrowser.newPage();
+    const errors = [];
+    p.on('pageerror', (e) => errors.push(String(e)));
+    try {
+      await p.goto(`${paBase}/feedback/live`, { waitUntil: 'networkidle2', timeout: 15000 });
+      // Proof the component actually hydrated: the SSR'd tag upgraded and its
+      // @submit-driven state is live. Without this the assertions below would
+      // pass on the SSR markup alone and prove nothing about the client.
+      await p.waitForFunction(
+        () => customElements.get('feedback-form') && document.querySelector('feedback-form')?.updateComplete !== undefined,
+        { timeout: 10000 },
+      );
+      await p.evaluate(async () => {
+        const el = document.querySelector('feedback-form');
+        el.value = 'nudge@example.com';
+        await el.updateComplete;
+      });
+
+      const state = await p.evaluate(() => {
+        const form = document.querySelector('feedback-form form');
+        const field = form.querySelector('input[name="__webjs_action"]');
+        return {
+          hasAction: form.hasAttribute('action'),
+          method: form.getAttribute('method'),
+          enctype: form.getAttribute('enctype'),
+          identity: field ? field.getAttribute('value') : null,
+          fieldIsFirst: form.firstElementChild === field,
+          typed: form.querySelector('#live-email')?.value || '',
+        };
+      });
+      assert.equal(errors.length, 0, `no page errors, got: ${errors.join(' | ')}`);
+      assert.equal(state.hasAction, false, 'the client re-render also drops the action attribute');
+      assert.equal(state.method, 'post');
+      assert.equal(state.enctype, 'multipart/form-data');
+      assert.ok(/^[0-9a-f]{10}\/submitFeedback$/.test(state.identity || ''),
+        `the identity came off the real generated stub, got ${state.identity}`);
+      assert.equal(state.fieldIsFirst, true, 'and it is re-inserted first, outside every child part range');
+      assert.equal(state.typed, 'nudge@example.com', 'the re-render that produced all of the above was a real one');
+    } finally { await p.close(); }
+  });
+
+  test('JS ENABLED: the hydrated component submits through the same pipeline', async () => {
+    const p = await paBrowser.newPage();
+    try {
+      await p.goto(`${paBase}/feedback/live`, { waitUntil: 'networkidle2', timeout: 15000 });
+      await p.waitForFunction(() => !!customElements.get('feedback-form'), { timeout: 10000 });
+      await p.type('#live-email', 'real@example.com');
+      await p.click('button[type="submit"]');
+      await p.waitForFunction(() => !!document.getElementById('thanks'), { timeout: 10000 });
+      assert.ok(p.url().endsWith('/feedback/thanks'), `expected /feedback/thanks, got ${p.url()}`);
+    } finally { await p.close(); }
+  });
+
+  test('JS DISABLED: the hydrated component page still submits natively', async () => {
+    // The component ships, but its SSR'd markup is a complete form on its own,
+    // which is the whole progressive-enhancement claim.
+    const p = await paBrowser.newPage();
+    await p.setJavaScriptEnabled(false);
+    try {
+      await p.goto(`${paBase}/feedback/live`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+      await Promise.all([
+        p.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
+        p.evaluate(() => {
+          document.querySelector('#live-email').value = 'real@example.com';
+          document.querySelector('feedback-form form').submit();
+        }),
+      ]);
+      assert.ok(p.url().endsWith('/feedback/thanks'), `expected PRG to /feedback/thanks, got ${p.url()}`);
+    } finally { await p.close(); }
+  });
 });
 
 // ---------------------------------------------------------------------------
