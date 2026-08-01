@@ -2859,29 +2859,35 @@ describe('E2E: form actions (no-JS + enhanced)', { skip: !process.env.WEBJS_E2E 
   // test hand-writes the hidden input into its template. If anything stopped
   // the browser-served stub from carrying its identity stamp, the component's
   // render would throw in the browser while all of those stayed green.
+  //
+  // The row ADDED in the browser is what makes it discriminating. Hydrating the
+  // SSR'd row only patches markup the server already sent, identity field
+  // included, so asserting on that row passes whether or not the client
+  // reconcile ran (measured: disabling reconcileFormActions entirely left such
+  // an assertion green). A client-created row has nothing to inherit.
   // -------------------------------------------------------------------------
 
-  test('JS ENABLED: a hydrated component rebuilds the identity from the real stub', async () => {
+  test('JS ENABLED: a client-CREATED bound form builds its identity from the real stub', async () => {
     const p = await paBrowser.newPage();
     const errors = [];
     p.on('pageerror', (e) => errors.push(String(e)));
     try {
       await p.goto(`${paBase}/feedback/live`, { waitUntil: 'networkidle2', timeout: 15000 });
-      // Proof the component actually hydrated: the SSR'd tag upgraded and its
-      // @submit-driven state is live. Without this the assertions below would
-      // pass on the SSR markup alone and prove nothing about the client.
+      // Proof the component actually hydrated before anything else is read.
       await p.waitForFunction(
         () => customElements.get('feedback-form') && document.querySelector('feedback-form')?.updateComplete !== undefined,
         { timeout: 10000 },
       );
-      await p.evaluate(async () => {
-        const el = document.querySelector('feedback-form');
-        el.value = 'nudge@example.com';
-        await el.updateComplete;
-      });
+      // Add a row: this form has no server-rendered markup at all, so every
+      // attribute below was written by the client renderer.
+      await p.click('#live-add');
+      await p.waitForFunction(
+        () => document.querySelectorAll('feedback-form form').length === 2,
+        { timeout: 10000 },
+      );
 
       const state = await p.evaluate(() => {
-        const form = document.querySelector('feedback-form form');
+        const form = document.querySelectorAll('feedback-form form')[1];
         const field = form.querySelector('input[name="__webjs_action"]');
         return {
           hasAction: form.hasAttribute('action'),
@@ -2889,17 +2895,19 @@ describe('E2E: form actions (no-JS + enhanced)', { skip: !process.env.WEBJS_E2E 
           enctype: form.getAttribute('enctype'),
           identity: field ? field.getAttribute('value') : null,
           fieldIsFirst: form.firstElementChild === field,
-          typed: form.querySelector('#live-email')?.value || '',
+          ssrIdentity: document.querySelectorAll('feedback-form form')[0]
+            .querySelector('input[name="__webjs_action"]')?.getAttribute('value') || null,
         };
       });
       assert.equal(errors.length, 0, `no page errors, got: ${errors.join(' | ')}`);
-      assert.equal(state.hasAction, false, 'the client re-render also drops the action attribute');
+      assert.equal(state.hasAction, false, 'the client-built form has no action attribute either');
       assert.equal(state.method, 'post');
       assert.equal(state.enctype, 'multipart/form-data');
       assert.ok(/^[0-9a-f]{10}\/submitFeedback$/.test(state.identity || ''),
         `the identity came off the real generated stub, got ${state.identity}`);
-      assert.equal(state.fieldIsFirst, true, 'and it is re-inserted first, outside every child part range');
-      assert.equal(state.typed, 'nudge@example.com', 'the re-render that produced all of the above was a real one');
+      assert.equal(state.fieldIsFirst, true, 'and it is inserted first, outside every child part range');
+      assert.equal(state.identity, state.ssrIdentity,
+        'the client resolved the SAME identity the server did, which is the whole parity claim');
     } finally { await p.close(); }
   });
 
