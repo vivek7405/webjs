@@ -3,8 +3,7 @@ import { BINDING_PREFIXES, isBindingPrefix } from './binding-prefixes.js';
 import { escapeAttr } from './escape.js';
 import {
   assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp,
-  queueFormActionBind, flushFormActionBinds, discardPendingFormActionBinds,
-  noteBoundFormAttrWrite, releaseFormAction, isBoundFormAction,
+  reconcileFormAction, isBoundFormAction, ABSENT,
 } from './form-action.js';
 import { isRepeat } from './repeat.js';
 import { isUnsafeHTML, isLive, isKeyed, isGuard, isTemplateContent, isRef, isCache, isUntil, isAsyncAppend, isAsyncReplace, isWatch } from './directives.js';
@@ -68,7 +67,31 @@ function commitInto(node, fn) {
  *     the `repeat()` directive.
  */
 
-/** @type {WeakMap<TemplateStringsArray | string[], { templateEl: HTMLTemplateElement, parts: PartDescriptor[] }>} */
+/**
+ * One `method` / `enctype` hole on a candidate bound form. `statics` / `group`
+ * are carried for a mixed attribute, whose value is the concatenation of its
+ * static pieces and every one of its holes.
+ *
+ * @typedef {{ i: number, kind: string, statics?: string[], group?: number[] }} FormAttrPart
+ */
+
+/**
+ * What one `<form action=${...}>` in a template needs at reconcile time (#1155).
+ * Every field is a property of the TEMPLATE, computed once per template literal
+ * call site, so it cannot drift out of step with the live DOM.
+ *
+ * @typedef {{
+ *   idx: number,
+ *   duplicateAction: boolean,
+ *   propAttrs: string[],
+ *   staticMethod: string | null,
+ *   staticEnctype: string | null,
+ *   methodParts: FormAttrPart[],
+ *   enctypeParts: FormAttrPart[],
+ * }} FormActionRecord
+ */
+
+/** @type {WeakMap<TemplateStringsArray | string[], { templateEl: HTMLTemplateElement, parts: PartDescriptor[], formActions: FormActionRecord[] | null }>} */
 const templateCache = new WeakMap();
 const INSTANCE = Symbol.for('webjs.instance');
 
@@ -404,10 +427,13 @@ function compile(tr) {
   // discovery step adds are picked up in the same path-recording walk.
   discoverSlots(templateEl.content, parts);
 
-  // Walk the parsed fragment and record DOM paths for each part.
-  assignPaths(templateEl.content, parts);
+  // Walk the parsed fragment and record DOM paths for each part. It also
+  // returns the per-template form-action records (#1155), null when the
+  // template contains no bound-form candidate, which is the overwhelmingly
+  // common case and keeps the reconcile out of every other template's path.
+  const formActions = assignPaths(templateEl.content, parts);
 
-  cached = { templateEl, parts };
+  cached = { templateEl, parts, formActions };
   templateCache.set(strings, cached);
   return cached;
 }
@@ -465,6 +491,8 @@ function discoverSlots(root, parts) {
 function assignPaths(root, parts) {
   /** @type {number[]} */
   const path = [];
+  /** @type {FormActionRecord[]} */
+  const formActions = [];
   /** @param {Node} node */
   function visit(node) {
     for (let i = 0; i < node.childNodes.length; i++) {
@@ -483,14 +511,27 @@ function assignPaths(root, parts) {
         const el = /** @type Element */ (child);
         // Sentinel attribute?
         const toRemove = [];
+        /** Every part bound to THIS element, which only this walk can see. */
+        /** @type {{ idx: number, kind: string, name: string }[]} */
+        const onEl = [];
         for (const attr of el.attributes) {
           if (attr.name.startsWith(`data-${MARKER}`)) {
             const idx = Number(attr.name.slice(`data-${MARKER}`.length));
             if (parts[idx] && parts[idx].kind !== 'child') {
               parts[idx].path = path.slice();
+              onEl.push({ idx, kind: parts[idx].kind, name: parts[idx].name || '' });
             }
             toRemove.push(attr.name);
           }
+        }
+        // #1155: record what a bound form needs, while the STATIC attributes and
+        // the element's part indices are both still visible. This is the only
+        // point in compilation with that whole view, and it runs once per
+        // template, so the record is a constant rather than runtime memory that
+        // can drift out of step with the DOM.
+        if (el.localName === 'form') {
+          const rec = buildFormActionRecord(el, onEl, parts);
+          if (rec) formActions.push(rec);
         }
         for (const a of toRemove) el.removeAttribute(a);
         visit(child);
@@ -499,6 +540,67 @@ function assignPaths(root, parts) {
     }
   }
   visit(root);
+  return formActions.length ? formActions : null;
+}
+
+/**
+ * Build the compile-time record for one `<form>` that carries an `action` hole.
+ *
+ * A CANDIDATE, not a decision: `<form action=${maybeString}>` compiles exactly
+ * like a bound one, so whether the form is really bound is a runtime fact the
+ * reconcile decides from the value. Everything recorded here is a property of
+ * the TEMPLATE, which is why it cannot go stale the way remembering "did the
+ * bind supply this attribute" at runtime did.
+ *
+ * `encoding` folds into `enctype`: it is a legacy IDL alias on a form, so a
+ * `.encoding=` write reaches the same content attribute.
+ *
+ * @param {Element} el
+ * @param {{ idx: number, kind: string, name: string }[]} onEl parts bound to `el`
+ * @param {PartDescriptor[]} parts
+ * @returns {FormActionRecord | null}
+ */
+function buildFormActionRecord(el, onEl, parts) {
+  const actionParts = onEl.filter((p) => p.kind === 'attr' && p.name.toLowerCase() === 'action');
+  if (!actionParts.length) return null;
+
+  /** `encoding` is an IDL alias of `enctype` on a form. */
+  const norm = (n) => {
+    const x = String(n).toLowerCase();
+    return x === 'encoding' ? 'enctype' : x;
+  };
+
+  /** @type {FormAttrPart[]} */
+  const methodParts = [];
+  /** @type {FormAttrPart[]} */
+  const enctypeParts = [];
+  /** Prop bindings that cannot converge with SSR; refused when actually bound. */
+  const propAttrs = [];
+
+  for (const p of onEl) {
+    const name = norm(p.name);
+    if (name !== 'method' && name !== 'enctype') continue;
+    if (p.kind === 'prop') { propAttrs.push(p.name); continue; }
+    if (p.kind !== 'attr' && p.kind !== 'attr-mixed' && p.kind !== 'bool') continue;
+    const d = /** @type any */ (parts[p.idx]);
+    /** @type {FormAttrPart} */
+    const entry = { i: p.idx, kind: p.kind };
+    // A mixed attribute's value is `statics[0] + v0 + statics[1] + ...`, so the
+    // pieces have to travel with the record; reading the anchor's value alone
+    // is right only when the statics are empty.
+    if (p.kind === 'attr-mixed') { entry.statics = d.statics || []; entry.group = d.group || []; }
+    (name === 'method' ? methodParts : enctypeParts).push(entry);
+  }
+
+  return {
+    idx: actionParts[0].idx,
+    duplicateAction: actionParts.length > 1,
+    propAttrs,
+    staticMethod: el.getAttribute('method'),
+    staticEnctype: el.getAttribute('enctype'),
+    methodParts,
+    enctypeParts,
+  };
 }
 
 /* ================================================================
@@ -510,7 +612,7 @@ function assignPaths(root, parts) {
  * @param {Element | DocumentFragment | ShadowRoot} container
  */
 function createInstance(tr, container) {
-  const { templateEl, parts } = compile(tr);
+  const { templateEl, parts, formActions } = compile(tr);
   const frag = /** @type DocumentFragment */ (templateEl.content.cloneNode(true));
 
   // Bookend markers bound the instance so we can tear it down cleanly.
@@ -519,17 +621,11 @@ function createInstance(tr, container) {
 
   const bound = parts.map((p) => bindPart(p, frag));
   const lastValues = [];
-  try {
-    for (let i = 0; i < tr.values.length; i++) {
-      applyPart(bound[i], tr.values[i], undefined, tr.values);
-      lastValues.push(tr.values[i]);
-    }
-    flushFormActionBinds();
-  } finally {
-    // A part committed AFTER a form was queued can throw, so the flush above is
-    // never reached and the entry would survive into the next render.
-    discardPendingFormActionBinds();
+  for (let i = 0; i < tr.values.length; i++) {
+    applyPart(bound[i], tr.values[i], undefined, tr.values);
+    lastValues.push(tr.values[i]);
   }
+  reconcileFormActions(formActions, bound, tr.values);
 
   /** @type any */ (container).replaceChildren(startNode, ...frag.childNodes, endNode);
 
@@ -604,28 +700,27 @@ function bindPart(p, root) {
  * @param {unknown[]} values
  */
 function updateInstance(inst, values) {
-  try {
-    for (let i = 0; i < values.length; i++) {
-      const next = values[i];
-      if (Object.is(next, inst.lastValues[i])) continue;
-      const bp = inst.bound[i];
-      // A hole that belongs to a mixed attribute (`class="a ${x} b ${y}"`) is a
-      // `noop` pointing at the attribute's anchor part; re-apply the anchor so the
-      // whole attribute is rebuilt from every hole's current value, not just the
-      // anchor hole's. Without this, a change confined to a non-anchor hole is
-      // dropped (the attribute goes stale).
-      const anchor = /** @type any */ (bp).mixedAnchor;
-      if (bp.kind === 'noop' && anchor != null) {
-        applyPart(inst.bound[anchor], values[anchor], inst.lastValues[anchor], values);
-      } else {
-        applyPart(bp, next, inst.lastValues[i], values);
-      }
-      inst.lastValues[i] = next;
+  for (let i = 0; i < values.length; i++) {
+    const next = values[i];
+    if (Object.is(next, inst.lastValues[i])) continue;
+    const bp = inst.bound[i];
+    // A hole that belongs to a mixed attribute (`class="a ${x} b ${y}"`) is a
+    // `noop` pointing at the attribute's anchor part; re-apply the anchor so the
+    // whole attribute is rebuilt from every hole's current value, not just the
+    // anchor hole's. Without this, a change confined to a non-anchor hole is
+    // dropped (the attribute goes stale).
+    const anchor = /** @type any */ (bp).mixedAnchor;
+    if (bp.kind === 'noop' && anchor != null) {
+      applyPart(inst.bound[anchor], values[anchor], inst.lastValues[anchor], values);
+    } else {
+      applyPart(bp, next, inst.lastValues[i], values);
     }
-    flushFormActionBinds();
-  } finally {
-    discardPendingFormActionBinds();
+    inst.lastValues[i] = next;
   }
+  // Unconditional, and NOT inside the loop above: a form's correctness depends
+  // on holes other than its own, and the `Object.is` skip means the action hole
+  // may not have been re-applied at all this pass.
+  reconcileFormActions(templateCache.get(inst.strings)?.formActions ?? null, inst.bound, values);
 }
 
 /**
@@ -666,6 +761,78 @@ function clearInstance(inst, container) {
  * Part application
  * ================================================================ */
 
+
+/**
+ * Resolve what SSR would have emitted for one attribute of a candidate form.
+ *
+ * The per-kind rules mirror `render-server.js` exactly, which is the whole
+ * point: a boolean hole emits nothing when falsy (`if (val) out += name+'=""'`)
+ * while an attribute hole emits an EMPTY value for null (`String(val ?? '')`).
+ * Those two produce the same DOM and opposite verdicts, so only the template
+ * can tell them apart.
+ *
+ * @param {FormAttrPart[]} attrParts
+ * @param {string | null} staticValue
+ * @param {unknown[]} values
+ * @returns {string | typeof ABSENT}
+ */
+function effectiveFormAttr(attrParts, staticValue, values) {
+  for (const p of attrParts) {
+    if (p.kind === 'bool') return resolveHoleValue(values[p.i]) ? '' : ABSENT;
+    if (p.kind === 'attr') {
+      const v = resolveHoleValue(values[p.i]);
+      return v == null ? '' : String(v);
+    }
+    // A mixed attribute is the concatenation of its static pieces and EVERY one
+    // of its holes, so the anchor's own value is only part of the answer.
+    const statics = p.statics || [];
+    const group = p.group || [];
+    let out = statics[0] || '';
+    for (let j = 0; j < group.length; j++) {
+      out += String(resolveHoleValue(values[group[j]]) ?? '');
+      out += statics[j + 1] || '';
+    }
+    return out;
+  }
+  return staticValue == null ? ABSENT : staticValue;
+}
+
+/**
+ * Unwrap a hole's value the same way `applyPart` does, so the reconcile judges
+ * what was actually committed. `live()` in particular wraps its value, and
+ * reading the wrapper would make a bound action look like a plain object.
+ *
+ * @param {unknown} v
+ * @returns {unknown}
+ */
+function resolveHoleValue(v) {
+  return isLive(v) ? /** @type any */ (v).value : v;
+}
+
+/**
+ * Converge every candidate bound form in this template, after all of its parts
+ * have committed. A no-op for the overwhelming majority of templates, which
+ * carry no `<form action=${...}>` at all and therefore no record.
+ *
+ * @param {FormActionRecord[] | null} formActions
+ * @param {BoundPart[]} bound
+ * @param {unknown[]} values
+ */
+function reconcileFormActions(formActions, bound, values) {
+  if (!formActions) return;
+  for (const rec of formActions) {
+    const part = bound[rec.idx];
+    if (!part || !part.el) continue;
+    reconcileFormAction(
+      /** @type any */ (part.el),
+      resolveHoleValue(values[rec.idx]),
+      effectiveFormAttr(rec.methodParts, rec.staticMethod, values),
+      effectiveFormAttr(rec.enctypeParts, rec.staticEnctype, values),
+      rec,
+    );
+  }
+}
+
 /**
  * @param {BoundPart} part
  * @param {unknown} value
@@ -687,45 +854,23 @@ function applyPart(part, value, _prev, allValues) {
       applyChild(part, value);
       break;
     case 'attr': {
-      // #1155: any write to a bound form's `method` / `enctype` is noted for
-      // the end-of-pass re-check. It sits ahead of the branches below so it
-      // covers the REMOVAL path too: `method=${null}` strips the attribute and
-      // the form falls back to the HTML default GET, which is the same silent
-      // break as writing `"get"` outright.
-      noteBoundFormAttrWrite(part.el, part.name);
-      if (value == null || value === false) {
-        // An `action` hole resolving to null / false un-binds the form just as
-        // a string url does, so the identity goes with it. Without this the
-        // field survives and the form still submits to the old action, while
-        // SSR renders the same template with no identity at all.
-        if (String(part.name).toLowerCase() === 'action') releaseFormAction(part.el);
-        part.el.removeAttribute(part.name);
-      } else if (isBoundFormAction(value, part.name, part.el.localName)) {
+      if (value == null || value === false) part.el.removeAttribute(part.name);
+      else if (isBoundFormAction(value, part.name, part.el.localName)) {
         // #1155: the ONE supported form-action binding, applied to the live
         // form exactly as SSR wrote it. A component that ships re-renders its
         // whole template on hydration, so without this the SSR'd hidden field
         // would be replaced by an `action` attribute holding a stringified
         // function, and the form would post to a garbage url.
         //
-        // QUEUED, not applied here. The binding's own validation reads the
-        // form's `method` and `enctype`, and a hole-provided one written AFTER
-        // the action hole has not been committed yet at this point, so
-        // validating now would read `null` and let `<form action=${fn}
-        // method=${'get'}>` through on the client while SSR (which validates
-        // the whole start tag at its `>`) refuses it. Flushed once the
-        // instance's parts are all applied, so both renderers see the same
-        // final attributes.
-        queueFormActionBind(/** @type any */ (part.el), value);
+        // Nothing happens here. The whole decision (identity, the submit
+        // attributes, the hidden field) is made at the end of the pass by
+        // `reconcileFormAction`, because it depends on holes that have not
+        // committed yet when this one does.
       } else {
         // #1154: refuse to stringify a function into action=/formaction=
         // (mirrors the SSR guard, so a client re-render cannot write a
         // server action's source into the live DOM).
         assertNotFunctionActionAttr(value, part.name, part.el.localName);
-        // #1155: an `action` that resolves to something other than an action
-        // (`action=${flag ? act : '/legacy'}`) releases the binding, so the
-        // stale identity field goes with it and later `method` writes are no
-        // longer judged against a binding that is gone.
-        if (String(part.name).toLowerCase() === 'action') releaseFormAction(part.el);
         part.el.setAttribute(part.name, String(value));
       }
       break;
@@ -742,11 +887,6 @@ function applyPart(part, value, _prev, allValues) {
       // Not covered here, because it is not a commit: a custom element's prop
       // declared `reflect: true` writes String(value) from its own setter.
       assertNotFunctionReflectedActionProp(value, part.name, part.el.localName);
-      // #1155: `method` / `enctype` are REFLECTED IDL attributes on a form, so
-      // `.method=${'get'}` writes the content attribute in a real browser
-      // (linkedom keeps it an expando, which is why this needs saying rather
-      // than testing under linkedom alone). A bound form is re-checked.
-      noteBoundFormAttrWrite(part.el, part.name);
       /** @type any */ (part.el)[part.name] = value;
       break;
     case 'bool':
@@ -754,10 +894,6 @@ function applyPart(part, value, _prev, allValues) {
       // `?action=${fn}` is meaningless in every case, and refusing it keeps
       // this renderer agreeing with both SSR machines.
       assertNotFunctionActionAttr(value, part.name, part.el.localName);
-      // #1155: a boolean write reaches `method` / `enctype` too. `?enctype=${b}`
-      // toggling on writes an EMPTY enctype, which is unparseable and which SSR
-      // refuses, so a bound form has to be re-checked here like any other write.
-      noteBoundFormAttrWrite(part.el, part.name);
       if (value) part.el.setAttribute(part.name, '');
       else part.el.removeAttribute(part.name);
       break;
@@ -771,11 +907,6 @@ function applyPart(part, value, _prev, allValues) {
       applyElement(part, value);
       break;
     case 'attr-mixed': {
-      // #1155: a QUOTED hole compiles to this branch, not `attr`, so a bound
-      // form's `method="${verb}"` lands here and needs the same end-of-pass
-      // re-check. This is the more common spelling, and it was the branch the
-      // first cut of the write-path check missed entirely.
-      noteBoundFormAttrWrite(part.el, part.name);
       // Reconstruct the attribute from static pieces + all dynamic values.
       const mp = /** @type {{ statics: string[], group: number[] }} */ (/** @type any */ (part));
       let val = mp.statics[0];
@@ -1182,19 +1313,17 @@ function applyChildInnerRaw(part, value) {
 
   if (isTemplate(value)) {
     const tr = /** @type any */ (value);
-    const { templateEl, parts } = compile(tr);
+    const { templateEl, parts, formActions } = compile(tr);
     const frag = /** @type DocumentFragment */ (templateEl.content.cloneNode(true));
     const startNode = document.createComment(`${MARKER}s`);
     const endNode = document.createComment(`${MARKER}e`);
     const bound = parts.map((p) => bindPart(p, frag));
     const lastValues = [];
-    try {
-      for (let i = 0; i < tr.values.length; i++) {
-        applyPart(bound[i], tr.values[i], undefined, tr.values);
-        lastValues.push(tr.values[i]);
-      }
-      flushFormActionBinds();
-    } finally { discardPendingFormActionBinds(); }
+    for (let i = 0; i < tr.values.length; i++) {
+      applyPart(bound[i], tr.values[i], undefined, tr.values);
+      lastValues.push(tr.values[i]);
+    }
+    reconcileFormActions(formActions, bound, tr.values);
     const nodes = [startNode, ...frag.childNodes, endNode];
     marker.parentNode?.insertBefore(nodesToFrag(nodes), marker);
     // Slot parts in this nested template need their one-shot apply just
@@ -1244,19 +1373,17 @@ function removeBetween(start, end) {
  * @returns {{ inst: TemplateInstance, frag: DocumentFragment }}
  */
 function buildDetached(tr) {
-  const { templateEl, parts } = compile(tr);
+  const { templateEl, parts, formActions } = compile(tr);
   const frag = /** @type DocumentFragment */ (templateEl.content.cloneNode(true));
   const startNode = document.createComment(`${MARKER}s`);
   const endNode = document.createComment(`${MARKER}e`);
   const bound = parts.map((p) => bindPart(p, frag));
   const lastValues = [];
-  try {
-    for (let i = 0; i < tr.values.length; i++) {
-      applyPart(bound[i], tr.values[i], undefined, tr.values);
-      lastValues.push(tr.values[i]);
-    }
-    flushFormActionBinds();
-  } finally { discardPendingFormActionBinds(); }
+  for (let i = 0; i < tr.values.length; i++) {
+    applyPart(bound[i], tr.values[i], undefined, tr.values);
+    lastValues.push(tr.values[i]);
+  }
+  reconcileFormActions(formActions, bound, tr.values);
   // Slot parts need their one-shot apply exactly like createInstance and the
   // nested-template path. The fragment is still detached here, so the
   // slot-part's own deferred finalize (a one-microtask retry when the parent
@@ -2091,15 +2218,13 @@ function renderToNodes(value) {
   if (value == null || value === false || value === true) return [];
   if (isTemplate(value)) {
     const tr = /** @type any */ (value);
-    const { templateEl, parts } = compile(tr);
+    const { templateEl, parts, formActions } = compile(tr);
     const frag = /** @type DocumentFragment */ (templateEl.content.cloneNode(true));
     const bound = parts.map((p) => bindPart(p, frag));
-    try {
-      for (let i = 0; i < tr.values.length; i++) {
-        applyPart(bound[i], tr.values[i], undefined, tr.values);
-      }
-      flushFormActionBinds();
-    } finally { discardPendingFormActionBinds(); }
+    for (let i = 0; i < tr.values.length; i++) {
+      applyPart(bound[i], tr.values[i], undefined, tr.values);
+    }
+    reconcileFormActions(formActions, bound, tr.values);
     // Slot parts need their one-shot apply here too (same contract as
     // createInstance / nested templates / buildDetached): the caller
     // (consumeAsyncStream) inserts these nodes synchronously in the same

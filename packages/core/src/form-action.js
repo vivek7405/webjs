@@ -288,15 +288,56 @@ function assertSubmittableForm(method, enctype) {
  */
 export function bindFormActionStartTag(startTag, id) {
   const attrs = parseStartTagAttrs(startTag);
-  assertSubmittableForm(attrs.get('method'), attrs.get('enctype'));
+  const resolved = resolveBoundFormAttrs(
+    attrs.has('method') ? attrs.get('method') : ABSENT,
+    attrs.has('enctype') ? attrs.get('enctype') : ABSENT,
+  );
   // The close is `>` or `/>`; a self-closing form is not valid HTML but the
   // scanner can still hand one over, so keep whichever the author wrote.
   const close = startTag.endsWith('/>') ? '/>' : '>';
   const head = startTag.slice(0, startTag.length - close.length);
   let inject = '';
-  if (!attrs.has('method')) inject += ' method="post"';
-  if (!attrs.has('enctype')) inject += ' enctype="multipart/form-data"';
+  if (resolved.method !== null) inject += ` method="${resolved.method}"`;
+  if (resolved.enctype !== null) inject += ` enctype="${resolved.enctype}"`;
   return { tag: head + inject + close, hidden: formActionHiddenField(id) };
+}
+
+/**
+ * The sentinel for "this attribute is not present at all", as distinct from
+ * present-and-empty. The difference decides the outcome: an ABSENT `method` is
+ * supplied by the framework, while `method=""` is a value the author's template
+ * produced and cannot submit, so it is refused.
+ */
+export const ABSENT = Symbol('webjs.attr.absent');
+
+/**
+ * THE decision both renderers make about a bound form, in one place.
+ *
+ * Sharing it is the point. SSR reaches it with the attributes parsed off the
+ * start tag it just emitted; the client reaches it with the values its template
+ * would have emitted, reconstructed per part kind. Because the inputs mean the
+ * same thing and the predicate is literally the same function, a shape the two
+ * renderers could disagree about has to be a difference in how the inputs were
+ * gathered, which is a much smaller surface than two independent guards.
+ *
+ * Returns what to INJECT for each attribute, or null to leave the author's own
+ * value alone. Throws when a value cannot submit at all.
+ *
+ * @param {string | typeof ABSENT | null} method
+ * @param {string | typeof ABSENT | null} enctype
+ * @returns {{ method: string | null, enctype: string | null }}
+ */
+export function resolveBoundFormAttrs(method, enctype) {
+  const hasMethod = method !== ABSENT && method != null;
+  const hasEnctype = enctype !== ABSENT && enctype != null;
+  assertSubmittableForm(
+    hasMethod ? /** @type string */ (method) : null,
+    hasEnctype ? /** @type string */ (enctype) : null,
+  );
+  return {
+    method: hasMethod ? null : 'post',
+    enctype: hasEnctype ? null : 'multipart/form-data',
+  };
 }
 
 /**
@@ -309,227 +350,120 @@ export function formActionHiddenField(id) {
 }
 
 /**
- * Bound-action binds recorded during one commit pass, applied by
- * `flushFormActionBinds` once every part has been committed.
+ * Converge a live `<form>` on what SSR would have emitted for it (#1155).
  *
- * The deferral is not an optimization. The binding validates the form's
- * `method` and `enctype`, and a hole-provided one written AFTER the action
- * hole has not been applied when the action part commits, so validating at
- * commit time reads `null` and lets `<form action=${fn} method=${'get'}>`
- * through on the client while SSR refuses it (SSR validates the whole start
- * tag at its `>`, so it always sees the final attributes). That divergence
- * ships a form which submits its fields in the query string and never runs the
- * action, which is the outcome the guard exists to prevent.
+ * This runs at the END of a commit pass, unconditionally, for every candidate
+ * the template recorded. Both of those matter:
  *
- * @type {{ form: HTMLFormElement, fn: Function }[]}
- */
-const _pendingBinds = [];
-
-/**
- * Record a bound action to apply after the current commit pass.
- * @param {HTMLFormElement} form
- * @param {Function} fn
- * @returns {void}
- */
-export function queueFormActionBind(form, fn) {
-  _pendingBinds.push({ form, fn });
-}
-
-/**
- * Apply every queued bind, now that the whole instance's attributes are final.
+ * END of the pass, because whether a form can submit is a fact about the whole
+ * start tag, and an attribute written after the action hole has not been
+ * committed when that hole commits.
  *
- * The queue is drained BEFORE the first bind runs, so a bind that THROWS cannot
- * leave the rest of its own batch behind.
+ * UNCONDITIONALLY, because `updateInstance` re-applies only the parts whose own
+ * value changed, so anything hanging off the action hole never runs when a
+ * SIBLING hole is what moved.
  *
- * @returns {void}
- */
-export function flushFormActionBinds() {
-  if (_pendingBinds.length) {
-    const pending = _pendingBinds.splice(0, _pendingBinds.length);
-    for (const { form, fn } of pending) bindFormActionElement(form, fn);
-  }
-  if (_pendingRevalidate.length) {
-    const forms = _pendingRevalidate.splice(0, _pendingRevalidate.length);
-    for (const form of forms) {
-      if (!_boundForms.has(form)) continue;   // released during this same pass
-      assertStillSubmittable(form);
-    }
-  }
-}
-
-/**
- * Drop anything still queued, called from the `finally` of a commit pass.
+ * The `method` / `enctype` decision is made from the TEMPLATE (the recorded
+ * statics plus this pass's values, resolved per part kind), never by reading
+ * them back off the DOM. Reading the DOM cannot work: `?method=${false}` and
+ * `method=${null}` both leave no attribute, and SSR resolves them to opposite
+ * answers (it emits nothing for the first and `method=""` for the second). The
+ * template is the only place that distinction survives.
  *
- * Draining at flush time is not enough on its own: a part committed AFTER a
- * form was queued can throw (a `formaction=${fn}` refusal later in the same
- * template), so the pass never reaches its flush and the entry survives into
- * the NEXT render, where it is applied to a form belonging to an abandoned
- * one. Measured: a template whose form carries `method="get"` and whose next
- * element throws leaves that form queued, and the following unrelated render
- * fails with the form's own error. A failed pass must take its pending binds
- * with it.
- *
- * @returns {void}
- */
-export function discardPendingFormActionBinds() {
-  _pendingBinds.length = 0;
-  _pendingRevalidate.length = 0;
-}
-
-/**
- * Forms that carry a bound action, so a LATER attribute change on one can be
- * validated against the binding.
- * @type {WeakSet<Element>}
- */
-const _boundForms = new WeakSet();
-
-/** Bound forms to re-validate at the end of this pass. @type {HTMLFormElement[]} */
-const _pendingRevalidate = [];
-
-/**
- * Attributes the BIND supplied on each form, so releasing one can take back
- * exactly what it added and nothing the author wrote.
- * @type {WeakMap<Element, string[]>}
- */
-const _forcedAttrs = new WeakMap();
-
-/**
- * Is `name` an attribute whose value decides whether a bound form can submit?
- * @param {string} name
- * @returns {boolean}
- */
-function affectsSubmittability(name) {
-  const attr = String(name).toLowerCase();
-  // `encoding` is a legacy IDL alias of `enctype` on HTMLFormElement, so
-  // `.encoding=${'text/plain'}` reaches the same content attribute and has to
-  // be noted alongside it.
-  return attr === 'method' || attr === 'enctype' || attr === 'encoding';
-}
-
-/**
- * Note that a bound form's `method` / `enctype` was written, so the end of the
- * pass re-checks it.
- *
- * Deferred rather than checked at the write, for the same reason that moved the
- * bind itself: a write site sees ONE attribute mid-pass, so validating there
- * judges a half-built tag. Deferring also makes every write path equivalent,
- * which matters because there are three (a value, a REMOVAL, and the separate
- * mixed-attribute branch a QUOTED hole compiles to) and instrumenting them one
- * at a time is how two of the three got missed.
- *
- * @param {Element} el
- * @param {string} name
- * @returns {void}
- */
-export function noteBoundFormAttrWrite(el, name) {
-  if (!_boundForms.has(el) || !affectsSubmittability(name)) return;
-  _pendingRevalidate.push(/** @type any */ (el));
-}
-
-/**
- * Re-check a bound form after a write to its `method` / `enctype`.
- *
- * Stricter than `assertSubmittableForm`, and it has to be: that one treats an
- * ABSENT attribute as "not set yet, the renderer will supply it", which is
- * right before a bind and wrong after one. Binding always leaves both present,
- * so absent HERE means this pass removed it, and a removal is not neutral: a
- * `<form>` with no `method` submits as GET, which is the same silent break as
- * writing `"get"` outright. SSR refuses the same template (a null hole renders
- * `method=""`, which is not `post`), so accepting it would put the two
- * renderers back out of step.
+ * A consequence worth stating, because it looks like a hole and is not: a write
+ * from OUTSIDE the template (a `ref` callback, `firstUpdated`, author code, an
+ * extension) is deliberately not seen here. SSR cannot see such a write either,
+ * so ignoring it is what keeps the two renderers in agreement; catching it
+ * would make the client refuse state the server never had.
  *
  * @param {HTMLFormElement} form
+ * @param {unknown} value        the action hole's resolved value
+ * @param {string | typeof ABSENT} method   what SSR would have emitted
+ * @param {string | typeof ABSENT} enctype  what SSR would have emitted
+ * @param {{ duplicateAction: boolean, propAttrs: string[] }} shape compile-time refusals
  * @returns {void}
  */
-function assertStillSubmittable(form) {
-  const method = form.getAttribute('method');
-  const enctype = form.getAttribute('enctype');
-  if (method == null || enctype == null) {
-    const missing = method == null ? 'method' : 'enctype';
-    const why = method == null
-      ? 'A form with no method submits as GET, which sends no body, so the action would never run.'
-      : 'A form with no enctype submits urlencoded, so a file input sends only the filename.';
+export function reconcileFormAction(form, value, method, enctype, shape) {
+  const id = typeof value === 'function' ? formActionId(value) : null;
+
+  if (!id) {
+    // Not a bound action (a url string, null, or a function the browser stub
+    // never stamped). A function that was MEANT as an action still refuses, so
+    // a form never silently posts nowhere.
+    if (typeof value === 'function') assertIdentifiableAction(null, form.localName);
+    releaseFormAction(form, method, enctype);
+    return;
+  }
+
+  // Two shapes SSR and the client can never agree on, refused rather than
+  // reconciled. They are compile-time facts, so they are checked only once the
+  // value proves the form really is bound.
+  if (shape.duplicateAction) {
     throw new Error(
-      `[webjs] a bound <form action=\${action}> lost its ${missing} attribute `
-      + `during a re-render. ${why} Leave both to WebJs (it supplies `
-      + `method="post" and an enctype) rather than driving them from a hole `
-      + `that can resolve to null.`,
+      '[webjs] a <form> carries two action=${...} holes. Only one can win, and '
+      + 'the two renderers pick differently, so bind exactly one action.',
     );
   }
-  assertSubmittableForm(method, enctype);
+  if (shape.propAttrs.length) {
+    throw new Error(
+      `[webjs] a bound <form action=\${action}> also binds .${shape.propAttrs[0]}=. `
+      + 'A property binding on a native element is dropped at SSR and applied in '
+      + 'the browser, so the form would submit one way with JS and another way '
+      + 'without it. Write it as a plain attribute.',
+    );
+  }
+
+  const resolved = resolveBoundFormAttrs(method, enctype);
+  form.removeAttribute('action');
+  applyResolvedAttr(form, 'method', method, resolved.method);
+  applyResolvedAttr(form, 'enctype', enctype, resolved.enctype);
+  ensureIdentityField(form, id);
 }
 
 /**
- * Release a form that no longer carries a bound action.
+ * Write (or leave) one resolved attribute.
  *
- * Reached when an action hole resolves to something else (`action=${flag ? act
- * : '/legacy'}`). Two things have to go: the membership, or every later
- * `method` write on a now-ordinary form would be judged against a binding that
- * is gone, and the hidden identity field, or the form would post the old
- * action's identity to its new url.
+ * `inject` non-null means the template supplies nothing and the framework owns
+ * this attribute, so it is set. Otherwise the author's own value is already on
+ * the element, put there by whichever commit branch owns that hole, and is left
+ * exactly as written.
  *
- * @param {Element} el
- * @returns {void}
+ * @param {Element} form
+ * @param {string} name
+ * @param {string | typeof ABSENT} authored
+ * @param {string | null} inject
  */
-export function releaseFormAction(el) {
-  if (!_boundForms.has(el)) return;
-  _boundForms.delete(el);
-  for (const child of el.children) {
-    if (child.localName === 'input' && child.getAttribute('name') === FORM_ACTION_FIELD) {
-      child.remove();
-      break;
-    }
-  }
-  // Take back the attributes the BIND added, and only those. Leaving them puts
-  // the two renderers out of step again: SSR of `<form action=${'/legacy'}>`
-  // emits no method at all, so a client that kept `method="post"
-  // enctype="multipart/form-data"` would POST multipart to a url the server
-  // renders as an ordinary GET form.
-  const forced = _forcedAttrs.get(el);
-  if (forced) {
-    for (const name of forced) el.removeAttribute(name);
-    _forcedAttrs.delete(el);
+function applyResolvedAttr(form, name, authored, inject) {
+  if (inject !== null) { form.setAttribute(name, inject); return; }
+  // The author's value is authoritative. It is already committed, except for a
+  // hole whose value is empty, which some branches express by removing the
+  // attribute; put it back so the DOM matches what SSR emitted.
+  if (authored !== ABSENT && form.getAttribute(name) !== authored) {
+    form.setAttribute(name, /** @type string */ (authored));
   }
 }
 
 /**
- * Apply a bound action to a LIVE form element, producing the same three edits
- * SSR makes. Runs when a shipping component re-renders a template holding
- * `<form action=${fn}>`: that render rebuilds the form from the template, so
- * the SSR'd hidden field is gone and has to be put back.
+ * Ensure the hidden identity field is present, first, and current.
  *
- * The identity is read synchronously off the stub, which is what the browser
- * import of a `'use server'` module resolves to. A function with no identity
- * throws for the same reason it does at SSR: a form that looks right and posts
- * nowhere is the one outcome this feature cannot have.
- *
- * The field is inserted as the form's FIRST child, ahead of every child-part
- * marker the template clone already contains, so a later child update cannot
- * take it out again. Idempotent: a re-render finds the existing field and only
- * refreshes its value.
+ * FIRST is load-bearing: it puts the field outside every child part's marker
+ * range, so a later child update cannot take it out. `firstElementChild` is the
+ * fast path because both this function and SSR put it there, and the scan is
+ * only a fallback for a form whose children were moved by hand.
  *
  * @param {HTMLFormElement} form
- * @param {Function} fn
- * @returns {void}
+ * @param {string} id
  */
-export function bindFormActionElement(form, fn) {
-  const id = assertIdentifiableAction(formActionId(fn), form.localName);
-  const method = form.getAttribute('method');
-  assertSubmittableForm(method, form.getAttribute('enctype'));
-  form.removeAttribute('action');
-  const forced = [];
-  if (method == null) { form.setAttribute('method', 'post'); forced.push('method'); }
-  if (!form.hasAttribute('enctype')) {
-    form.setAttribute('enctype', 'multipart/form-data');
-    forced.push('enctype');
-  }
-  if (forced.length) _forcedAttrs.set(form, forced);
-
-  let field = null;
-  for (const el of form.children) {
-    if (el.localName === 'input' && el.getAttribute('name') === FORM_ACTION_FIELD) {
-      field = el;
-      break;
+function ensureIdentityField(form, id) {
+  const first = form.firstElementChild;
+  let field = first && first.localName === 'input'
+    && first.getAttribute('name') === FORM_ACTION_FIELD ? first : null;
+  if (!field) {
+    for (const el of form.children) {
+      if (el.localName === 'input' && el.getAttribute('name') === FORM_ACTION_FIELD) {
+        field = el;
+        break;
+      }
     }
   }
   if (!field) {
@@ -538,10 +472,41 @@ export function bindFormActionElement(form, fn) {
     field.setAttribute('name', FORM_ACTION_FIELD);
     form.insertBefore(field, form.firstChild);
   }
-  field.setAttribute('value', id);
-  // Remember it, so a later `method` / `enctype` write on this same form is
-  // validated against the binding (see `noteBoundFormAttrWrite`).
-  _boundForms.add(form);
+  if (field.getAttribute('value') !== id) field.setAttribute('value', id);
+}
+
+/**
+ * Drop a binding whose action hole no longer resolves to an action.
+ *
+ * Both halves matter. The identity field has to go, or the form keeps posting
+ * the old action's identity to whatever it now targets. And the attributes the
+ * framework supplied have to go with it, or a released form keeps a
+ * `method="post" enctype="multipart/form-data"` that SSR does not emit for the
+ * same template.
+ *
+ * Which attributes were framework-supplied is not remembered from the bind, it
+ * is recomputed: an attribute is the framework's exactly when the template
+ * supplies nothing for it on THIS pass. That is why there is no bookkeeping to
+ * go stale.
+ *
+ * @param {HTMLFormElement} form
+ * @param {string | typeof ABSENT} method
+ * @param {string | typeof ABSENT} enctype
+ */
+function releaseFormAction(form, method, enctype) {
+  const first = form.firstElementChild;
+  if (first && first.localName === 'input' && first.getAttribute('name') === FORM_ACTION_FIELD) {
+    first.remove();
+  } else {
+    for (const el of form.children) {
+      if (el.localName === 'input' && el.getAttribute('name') === FORM_ACTION_FIELD) {
+        el.remove();
+        break;
+      }
+    }
+  }
+  if (method === ABSENT) form.removeAttribute('method');
+  if (enctype === ABSENT) form.removeAttribute('enctype');
 }
 
 /**

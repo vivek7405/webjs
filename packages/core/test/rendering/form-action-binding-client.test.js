@@ -173,11 +173,12 @@ test('a re-render that breaks an already-bound form is refused (QUOTED hole)', (
   assert.throws(() => render(tpl('get'), host), /cannot work/);
 });
 
-test('a re-render that REMOVES method or enctype is refused', () => {
-  // A removal is not neutral: a form with no `method` submits as GET, which
-  // sends no body, so the action never runs. SSR refuses the same template (a
-  // null hole renders `method=""`), so accepting it here would put the two
-  // renderers back out of step.
+test('a hole resolving to null is refused, with SSR\'s own message', () => {
+  // An attribute hole emits an EMPTY value for null (SSR: `String(val ?? '')`),
+  // and an empty method cannot submit. What matters is not just that it throws
+  // but that it throws the SAME thing SSR does: an earlier design invented a
+  // "lost its method attribute" message here, which no server render could ever
+  // produce.
   for (const attr of ['method', 'enctype']) {
     const fn = HOISTED();
     const host = document.createElement('div');
@@ -185,8 +186,23 @@ test('a re-render that REMOVES method or enctype is refused', () => {
       ? (v) => html`<form action=${fn} method=${v}></form>`
       : (v) => html`<form action=${fn} enctype=${v}></form>`;
     render(tpl(attr === 'method' ? 'post' : 'multipart/form-data'), host);
-    assert.throws(() => render(tpl(null), host), /lost its/, `removing ${attr} must be refused`);
+    assert.throws(
+      () => render(tpl(null), host),
+      new RegExp(`<form ${attr}="" action=\\$\\{action\\}> cannot work`),
+      `a null ${attr} hole must be refused the way SSR refuses it`,
+    );
   }
+});
+
+test('a null hole is refused on the FIRST render too, not only a re-render', () => {
+  // The old write-tracking design only noticed this on a re-render, because its
+  // check ran before the form was registered as bound. SSR always threw.
+  const fn = HOISTED();
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(html`<form action=${fn} method=${null}></form>`, host),
+    /cannot work/,
+  );
 });
 
 test('an action hole that resolves to a URL releases the binding', () => {
@@ -393,12 +409,18 @@ test("releasing a binding KEEPS an author's own method", () => {
   assert.equal(form.hasAttribute('enctype'), false, 'while the forced enctype is taken back');
 });
 
-test('a missing enctype is explained as an enctype, not as a method', () => {
+test('a boolean hole that is FALSE leaves the attribute to the framework', () => {
+  // The shape that proves the oracle reads the template rather than the DOM.
+  // `?method=${false}` and `method=${null}` both leave no method attribute, and
+  // SSR resolves them to opposite answers: it emits nothing for the first (so
+  // the framework supplies `post`) and `method=""` for the second (refused).
+  // Nothing observable in the DOM can tell them apart.
   const fn = HOISTED();
   const host = document.createElement('div');
-  const tpl = (e) => html`<form action=${fn} enctype=${e}></form>`;
-  render(tpl('multipart/form-data'), host);
-  assert.throws(() => render(tpl(null), host), /lost its enctype attribute.*file input/s);
+  render(html`<form action=${fn} ?method=${false}></form>`, host);
+  const form = host.querySelector('form');
+  assert.equal(form.getAttribute('method'), 'post', 'a falsy boolean hole is ABSENT, so it is supplied');
+  assert.equal(form.querySelectorAll('input[name="__webjs_action"]').length, 1);
 });
 
 test('a failed render does not poison the NEXT one', () => {
