@@ -150,9 +150,11 @@ test('a barrel re-export resolves when the DEFINING module is outside the index'
 test('the barrel fallback warns that the action config exports are bypassed', async () => {
   // The fallback keeps the page working, but the dispatcher then reads
   // `validate` / `middleware` / `method` / `invalidates` off the BARREL by name,
-  // and a plain `export { fn } from` re-export does not carry them. Whether that
-  // costs anything depends on the action (most declare none), so the warning
-  // states the condition rather than the consequence. It warns rather than
+  // which cuts both ways: the action's own config does not travel with a plain
+  // `export { fn } from`, and config the barrel declares for its own exports
+  // applies to this action instead. Neither is knowable without loading the
+  // module, so the warning states the condition rather than the consequence.
+  // It warns rather than
   // refuses because the RPC endpoint resolves the same barrel hash the same way:
   // both transports agree, and refusing would break a page that works.
   const outside = join(dir, 'pkg', 'cfg.server.js');
@@ -173,20 +175,28 @@ test('the barrel fallback warns that the action config exports are bypassed', as
   assert.equal(warned.length, 1, 'once per defining module, not once per render');
   assert.match(warned[0], /validate/);
   assert.match(warned[0], /does not travel with a plain/);
-  // The consequence is stated CONDITIONALLY. Whether anything is really lost
-  // needs the resolved module's namespace, which this path will not load, and
-  // an action that declares no config at all loses nothing.
+  // The consequence is stated CONDITIONALLY, because neither direction is
+  // knowable without loading the resolved module, which this path will not do.
   assert.doesNotMatch(warned[0], /does NOT run/);
-  assert.match(warned[0], /declares none of them loses nothing/);
-  // The remedy must NOT be "re-export the config into the barrel". Config is
-  // matched by NAME off the dispatched namespace with no link to a particular
-  // function, so a `validate` re-exported into a shared barrel applies to every
-  // action dispatched through it, and `webjs check` cannot see it (its rule
-  // scans for `export const validate`, which a re-export clause never matches).
-  // An earlier wording recommended exactly that.
+  // BOTH directions, which is the part three earlier wordings got wrong by
+  // describing only the first. Config is matched by NAME off the dispatched
+  // module, so an action that declares none of its own does NOT therefore lose
+  // nothing: a `validate` the re-exporting module declares for one of its own
+  // exports applies to this action too, and its submissions start failing with
+  // a message about a different action.
+  assert.match(warned[0], /flows both ways/);
+  assert.match(warned[0], /applies to this action/);
+  assert.doesNotMatch(warned[0], /loses nothing/);
+  // The remedy must NOT be a bare "re-export the config into the barrel":
+  // config is matched by name with no link to a particular function, so in a
+  // barrel carrying several actions it applies to all of them, and `webjs check`
+  // cannot see it (its rule counts `export function` / `export const`, which a
+  // re-export clause never matches). A module holding only this action IS safe,
+  // and is the only option when the action lives in a shared workspace package,
+  // so the remedy has to offer both.
   assert.match(warned[0], /Move the action inside the app directory/);
-  assert.match(warned[0], /Do NOT add the config exports to a shared re-export module/);
-  assert.match(warned[0], /apply to every action dispatched through it/);
+  assert.match(warned[0], /module holding only this one action/);
+  assert.match(warned[0], /carries several actions applies it to all/);
   // The two paths must appear in the right ROLES: swapping the arguments makes
   // the message name the barrel as the action's own module and vice versa,
   // which sends the author to the wrong file.

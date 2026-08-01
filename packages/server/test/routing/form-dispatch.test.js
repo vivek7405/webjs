@@ -970,3 +970,50 @@ export default () => html\`<form action=\${waitForAbort}></form>\`;
   assert.equal(resp.status, 303);
   assert.equal(resp.headers.get('location'), '/aborted');
 });
+
+test("a re-exporting module's own config applies to the action it re-exports", async () => {
+  // The behaviour the fallback warning describes, pinned against the real
+  // dispatcher rather than left as an assertion about message text.
+  //
+  // `actionConfigFn` looks config up BY NAME off the module the identity names,
+  // with no association back to a particular function. So when an action is
+  // dispatched through a re-exporting module, that module's own `validate`
+  // applies to it, even though it was written for one of that module's other
+  // exports. An action declaring no config of its own does NOT therefore get
+  // the plain path: three drafts of the warning claimed it did.
+  //
+  // If config ever becomes per-function, this test fails and the warning text
+  // needs to change with it, which is the point of pinning it here.
+  const outsideDir = mkdtempSync(join(tmpRoot, 'pkg-'));
+  const outside = join(outsideDir, 'update.server.js');
+  writeFileSync(outside,
+    `'use server';\nexport async function updatePost(fd) { return { success: true, redirect: '/updated' }; }\n`);
+
+  const appDir = makeApp({
+    'modules/barrel/actions/barrel.server.ts': `
+'use server';
+export { updatePost } from ${JSON.stringify(pathToFileURL(outside).toString())};
+// Written for searchPosts below, but matched by NAME, so it reaches whatever
+// action this module dispatches.
+export const validate = () => ({ success: false, fieldErrors: { q: 'searchPosts needs a q' } });
+export async function searchPosts(fd) { return { success: true }; }
+`,
+    'app/barrel/page.ts': `
+import { html } from ${CORE};
+import { updatePost } from '../../modules/barrel/actions/barrel.server.ts';
+export default ({ actionData }) => html\`<form action=\${updatePost}><p>\${actionData?.fieldErrors?.q ?? ''}</p></form>\`;
+`,
+  });
+
+  const quiet = console.warn;
+  console.warn = () => {};
+  let app;
+  try {
+    app = await createRequestHandler({ appDir, dev: true });
+    await app.warmup();
+    const resp = await submit(app, '/barrel', {});
+    assert.equal(resp.status, 422, "the barrel's own validate rejected a config-less action");
+    assert.match(await resp.text(), /searchPosts needs a q/,
+      'and it failed with a message written for a DIFFERENT action');
+  } finally { console.warn = quiet; }
+});
