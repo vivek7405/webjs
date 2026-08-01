@@ -232,12 +232,49 @@ export async function loginAndGetCookies(handle, credentials, opts = {}) {
  * @returns {Promise<Response>} the submission response (a `303` on success, a
  *   `422` re-render on a failure result)
  */
+/**
+ * The `<form>...</form>` blocks of a rendered page.
+ *
+ * A bare `/<form[\s\S]*?<\/form>/g` gets two things wrong that a test helper
+ * must not, because both fail SILENTLY: a form inside an HTML comment is
+ * matched (so `opts.index` counts a form that is not on the page), and a
+ * `</form>` sitting inside an ATTRIBUTE VALUE ends the match early (so the
+ * identity field falls outside it and the helper reports an unbound form).
+ * Comments are stripped first, and the scan skips quoted attribute values while
+ * looking for the end of the start tag.
+ *
+ * @param {string} html
+ * @returns {string[]}
+ */
+function findForms(html) {
+  const src = html.replace(/<!--[\s\S]*?-->/g, '');
+  const out = [];
+  const open = /<form\b/gi;
+  let m;
+  while ((m = open.exec(src))) {
+    // Walk the start tag, skipping quoted values so `data-x="<form>"` is inert.
+    let i = m.index + m[0].length;
+    let quote = '';
+    for (; i < src.length; i++) {
+      const c = src[i];
+      if (quote) { if (c === quote) quote = ''; continue; }
+      if (c === '"' || c === "'") { quote = c; continue; }
+      if (c === '>') break;
+    }
+    const close = src.toLowerCase().indexOf('</form>', i);
+    if (close === -1) continue;
+    out.push(src.slice(m.index, close + '</form>'.length));
+    open.lastIndex = close;
+  }
+  return out;
+}
+
 export async function submitForm(handle, path, fields = {}, opts = {}) {
   const getInit = opts.cookies ? withCookies({}, opts.cookies) : {};
   const page = await testRequest(handle, path, getInit);
   const html = await page.text();
 
-  const forms = html.match(/<form\b[\s\S]*?<\/form>/gi) || [];
+  const forms = findForms(html);
   const candidates = opts.match
     ? forms.filter((f) => (opts.match instanceof RegExp ? opts.match.test(f) : f.includes(opts.match)))
     : forms;

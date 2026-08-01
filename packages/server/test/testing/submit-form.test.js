@@ -35,6 +35,7 @@ async function makeApp() {
   await mkdir(join(dir, 'app/signup'), { recursive: true });
   await mkdir(join(dir, 'app/two'), { recursive: true });
   await mkdir(join(dir, 'app/plain'), { recursive: true });
+  await mkdir(join(dir, 'app/tricky'), { recursive: true });
   await mkdir(join(dir, 'modules/acct/actions'), { recursive: true });
 
   await writeFile(join(dir, 'modules/acct/actions/signup.server.ts'),
@@ -68,6 +69,15 @@ import { subscribe } from '../../modules/acct/actions/newsletter.server.ts';
 export default () => html\`
   <form action=\${signup}><input name="email"></form>
   <form action=\${subscribe}><input name="list"></form>
+\`;
+`);
+  // A page whose markup breaks a naive form scan two ways.
+  await writeFile(join(dir, 'app/tricky/page.ts'),
+    `import { html } from ${CORE};
+import { signup } from '../../modules/acct/actions/signup.server.ts';
+export default () => html\`
+  <div>\${'<!-- <form id="ghost"><input name="__webjs_action" value="ghost/nope"></form> -->'}</div>
+  <form data-note="a note ending in </form> text" action=\${signup}><input name="email"></form>
 \`;
 `);
   await writeFile(join(dir, 'app/plain/page.ts'),
@@ -141,4 +151,20 @@ test('an unbound form is reported as unbound, not silently submitted', async () 
 test('a page with no form at all says so', async () => {
   const a = await handler();
   await assert.rejects(() => submitForm(a.handle, '/welcome', {}), /no <form> found/);
+});
+
+test('the form scan ignores a commented-out form and a close tag in an attribute', async () => {
+  // Both fail SILENTLY with a bare /<form[\s\S]*?<\/form>/g, which is why they
+  // are pinned here rather than left to the happy-path cases above. A commented
+  // form shifts `opts.index` onto markup that is not on the page; a `</form>`
+  // inside an attribute value ends the match before the identity field, so the
+  // helper reports a bound form as unbound.
+  const a = await handler();
+  const res = await submitForm(a.handle, '/tricky', { email: 'ada@example.com' });
+  assert.equal(res.status, 303, 'the real form was found and submitted');
+  assert.equal(res.headers.get('location'), '/welcome');
+
+  // index 0 is the REAL first form, not the commented one.
+  const byIndex = await submitForm(a.handle, '/tricky', { email: 'ada@example.com' }, { index: 0 });
+  assert.equal(byIndex.headers.get('location'), '/welcome');
 });
