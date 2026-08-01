@@ -288,28 +288,75 @@ function seedProxy(file, fnName, orig) {
 export function extractExportNames(src) {
   const fnNames = new Set();
   const valNames = new Set();
+
+  // Find local function declarations & function variable assignments
+  const localFns = new Set();
   let m;
+  const reLocalFn = /\b(?:async\s+)?function\s*\*?\s+([A-Za-z_$][\w$]*)/g;
+  while ((m = reLocalFn.exec(src))) localFns.add(m[1]);
+
+  const reLocalFnVar = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function|\([^)]*\)\s*=>|[\w$]+\s*=>)/g;
+  while ((m = reLocalFnVar.exec(src))) localFns.add(m[1]);
+
+  // Find direct function exports
   const reFn = /\bexport\s+(?:async\s+)?function\s*\*?\s+([A-Za-z_$][\w$]*)/g;
   while ((m = reFn.exec(src))) fnNames.add(m[1]);
+
   const reFnVar = /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function|\([^)]*\)\s*=>|[\w$]+\s*=>)/g;
   while ((m = reFnVar.exec(src))) fnNames.add(m[1]);
+
+  // Find local non-function variables and classes
+  const localVals = new Set();
+  const reLocalClass = /\b(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)/g;
+  while ((m = reLocalClass.exec(src))) localVals.add(m[1]);
+
+  const reLocalVarStmt = /\b(?:const|let|var)\s+([^;\n]+)/g;
+  while ((m = reLocalVarStmt.exec(src))) {
+    const stmt = m[1];
+    const idRe = /\b([A-Za-z_$][\w$]*)\s*(?:=|,|;|$)/g;
+    let idM;
+    while ((idM = idRe.exec(stmt))) {
+      const name = idM[1];
+      if (name !== 'const' && name !== 'let' && name !== 'var' && name !== 'async' && name !== 'function') {
+        if (!localFns.has(name)) localVals.add(name);
+      }
+    }
+  }
+
+  // Direct class exports
   const reClass = /\bexport\s+(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)/g;
   while ((m = reClass.exec(src))) valNames.add(m[1]);
+
+  // Direct variable exports (not function assignments)
+  const reVar = /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g;
+  while ((m = reVar.exec(src))) {
+    if (!fnNames.has(m[1])) valNames.add(m[1]);
+  }
+
+  // Export list: export { a, b as bee }
   const reList = /\bexport\s*\{([^}]*)\}/g;
   while ((m = reList.exec(src))) {
     for (const part of m[1].split(',')) {
       const seg = part.trim();
       if (!seg) continue;
       const as = seg.split(/\s+as\s+/);
+      const local = as[0].trim();
       const exported = (as[1] || as[0]).trim();
-      if (/^[A-Za-z_$][\w$]*$/.test(exported) && exported !== 'default') fnNames.add(exported);
-      else if (exported === 'default') fnNames.add('__default__');
+      if (!/^[A-Za-z_$][\w$]*$/.test(exported)) continue;
+
+      if (exported === 'default' || local === 'default') {
+        fnNames.add('__default__');
+      } else if (localVals.has(local) && !localFns.has(local)) {
+        valNames.add(exported);
+      } else {
+        fnNames.add(exported);
+      }
     }
   }
-  const reVar = /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g;
-  while ((m = reVar.exec(src))) {
-    if (!fnNames.has(m[1])) valNames.add(m[1]);
-  }
+
+  // Clean up any overlap if an item ended up in both (fnNames wins if it's a function)
+  for (const fn of fnNames) valNames.delete(fn);
+
   const hasDefault = /\bexport\s+default\b/.test(src) || fnNames.delete('__default__') || valNames.delete('__default__');
   return { fnNames: [...fnNames], valNames: [...valNames], names: [...fnNames, ...valNames], hasDefault };
 }
@@ -332,8 +379,10 @@ function buildFacade(origUrl, absPath, exports) {
   out += `export * from ${origSpec};\n`;
   for (const n of exports.fnNames) {
     const k = JSON.stringify(n);
+    const v = `_fn_${n}`;
+    out += `let ${v};\n`;
     out += `export function ${n}(...args) {\n`;
-    out += `  const fn = __w(${file}, ${k}, __orig[${k}]);\n`;
+    out += `  const fn = ${v} || (${v} = __w(${file}, ${k}, __orig[${k}]));\n`;
     out += `  return typeof fn === 'function' ? fn.apply(this, args) : fn;\n`;
     out += `}\n`;
     out += `__w(${file}, ${k}, ${n});\n`;

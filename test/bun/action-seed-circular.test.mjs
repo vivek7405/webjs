@@ -11,7 +11,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { installBunSeedPlugin } from '../../packages/server/src/action-seed-bun.js';
 import { seedingEnabled, registerActionHooks } from '../../packages/server/src/action-seed.js';
 
 test('circular re-export between use-server modules loads on Bun / Node (#1208)', async () => {

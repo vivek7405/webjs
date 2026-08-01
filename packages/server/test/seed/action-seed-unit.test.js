@@ -46,7 +46,7 @@ test('extractExportNames finds function / const / class / list / default exports
     export { a, b as bee };
     export default function () {}
   `;
-  const { names, hasDefault } = extractExportNames(src);
+  const { fnNames, valNames, names, hasDefault } = extractExportNames(src);
   assert.ok(names.includes('getUser'));
   assert.ok(names.includes('getPosts'));
   assert.ok(names.includes('VERSION'));
@@ -56,6 +56,16 @@ test('extractExportNames finds function / const / class / list / default exports
   assert.ok(names.includes('bee'), 'the EXPORTED name of `b as bee` is `bee`');
   assert.ok(!names.includes('b'), 'the local name is not the exported binding');
   assert.equal(hasDefault, true);
+
+  assert.deepEqual(fnNames.sort(), ['getUser', 'getPosts'].sort());
+  assert.deepEqual(valNames.sort(), ['VERSION', 'counter', 'Thing', 'a', 'bee'].sort());
+});
+
+test('buildSeedFacade memoizes action wrap lookups and generates hoisted function facades', () => {
+  const src = `'use server';\nexport async function submitData(d) { return d; }\n`;
+  const facade = buildSeedFacade('file:///app/s.server.js', '/app/s.server.js', src);
+  assert.match(facade, /let _fn_submitData;/);
+  assert.match(facade, /const fn = _fn_submitData \|\| \(_fn_submitData = __w\(/);
 });
 
 test('a star re-export is FACETED, not passed through (#1155)', () => {
