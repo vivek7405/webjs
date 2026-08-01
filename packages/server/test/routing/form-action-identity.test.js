@@ -136,7 +136,10 @@ test('a barrel re-export resolves when the DEFINING module is outside the index'
   // makes the walked and loaded paths differ for a file that IS inside the app,
   // and confidently blaming a package that does not exist sends the author to
   // the wrong place.
-  assert.match(warned[0], /outside the app directory, or/);
+  // "Common causes", not "Either ... or": a symlinked SUBDIRECTORY inside the
+  // project is a third cause, so presenting two as exhaustive is wrong.
+  assert.match(warned[0], /Common causes:/);
+  assert.doesNotMatch(warned[0], /Either the module is outside/);
   assert.match(warned[0], /symlink/);
   // And the remedy has to say NAMED: a star re-export cannot be enumerated, so
   // the facade never wraps it and the page fails exactly as before.
@@ -146,12 +149,12 @@ test('a barrel re-export resolves when the DEFINING module is outside the index'
 
 test('the barrel fallback warns that the action config exports are bypassed', async () => {
   // The fallback keeps the page working, but the dispatcher then reads
-  // `validate` / `middleware` / `method` / `invalidates` off the BARREL, and a
-  // re-export carries only the function. That is the very outcome the
-  // defining-module preference exists to prevent, reached through the other
-  // door, so it cannot be silent. It warns rather than refuses because the RPC
-  // endpoint resolves the same barrel hash the same way: both transports agree,
-  // and refusing would break a page that works.
+  // `validate` / `middleware` / `method` / `invalidates` off the BARREL by name,
+  // and a plain `export { fn } from` re-export does not carry them. Whether that
+  // costs anything depends on the action (most declare none), so the warning
+  // states the condition rather than the consequence. It warns rather than
+  // refuses because the RPC endpoint resolves the same barrel hash the same way:
+  // both transports agree, and refusing would break a page that works.
   const outside = join(dir, 'pkg', 'cfg.server.js');
   const barrel = join(dir, 'modules', 'cfg-barrel.server.js');
   const fn = async () => {};
@@ -169,12 +172,28 @@ test('the barrel fallback warns that the action config exports are bypassed', as
   assert.equal(id, '4444444444/updatePost', 'the form still works');
   assert.equal(warned.length, 1, 'once per defining module, not once per render');
   assert.match(warned[0], /validate/);
-  assert.match(warned[0], /runs only if the re-export carries it/);
+  assert.match(warned[0], /does not travel with a plain/);
   // The consequence is stated CONDITIONALLY. Whether anything is really lost
-  // needs the resolved module's namespace, which this path will not load, and a
-  // barrel that re-exports the config alongside the function (one of the
-  // remedies offered) loses nothing at all.
+  // needs the resolved module's namespace, which this path will not load, and
+  // an action that declares no config at all loses nothing.
   assert.doesNotMatch(warned[0], /does NOT run/);
+  assert.match(warned[0], /declares none of them loses nothing/);
+  // The remedy must NOT be "re-export the config into the barrel". Config is
+  // matched by NAME off the dispatched namespace with no link to a particular
+  // function, so a `validate` re-exported into a shared barrel applies to every
+  // action dispatched through it, and `webjs check` cannot see it (its rule
+  // scans for `export const validate`, which a re-export clause never matches).
+  // An earlier wording recommended exactly that.
+  assert.match(warned[0], /Move the action inside the app directory/);
+  assert.match(warned[0], /Do NOT add the config exports to a shared re-export module/);
+  assert.match(warned[0], /apply to every action dispatched through it/);
+  // The two paths must appear in the right ROLES: swapping the arguments makes
+  // the message name the barrel as the action's own module and vice versa,
+  // which sends the author to the wrong file.
+  assert.match(warned[0], new RegExp(`its module ${outside.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} is`),
+    'the DEFINING module is named as the action\'s own');
+  assert.match(warned[0], new RegExp(`dispatched through ${barrel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+    'and the INDEXED one as what it dispatches through');
 
   // No warning when the defining module IS indexed. FRESH paths and a fresh
   // function: reusing the ones above would put this behind the once-per-file

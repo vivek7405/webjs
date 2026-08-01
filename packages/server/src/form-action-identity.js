@@ -47,14 +47,16 @@ export async function resolveActionIdentity(idx, fn) {
     for (const entry of known) {
       const hash = idx.fileToHash.get(entry.file);
       if (!hash) continue;
-      // Falling back past the defining module has a COST worth saying out loud:
-      // the dispatcher loads whatever module the identity names and reads
+      // Falling back past the defining module can COST something, so say so.
+      // The dispatcher loads whatever module the identity names and reads
       // `validate` / `middleware` / `method` / `invalidates` off THAT namespace,
-      // and a `export { fn } from '...'` re-export carries only `fn`. So a form
-      // bound this way runs with the action's validation and middleware
-      // skipped. It is not a form-only hazard (the RPC endpoint resolves the
-      // same barrel hash the same way, so both transports agree), which is why
-      // this warns rather than refuses: refusing would break a page that works.
+      // and a `export { fn } from '...'` re-export carries only `fn`, so config
+      // declared beside the action does not travel with it. Whether that
+      // matters depends on the action (most declare none), which is why the
+      // warning states the condition rather than the consequence. It warns
+      // rather than refuses because the RPC endpoint resolves the same barrel
+      // hash the same way: both transports agree, and refusing would break a
+      // page that works while leaving the RPC path open anyway.
       if (entry !== known[0]) warnConfigExportsBypassed(known[0], entry);
       return `${hash}/${entry.fnName}`;
     }
@@ -119,11 +121,19 @@ const _warnedBypass = new Set();
  * refuses to do (it is a render-time resolve, and eager-loading every action
  * module is exactly the cost `scanForIdentity` exists to avoid).
  *
- * So it must not assert "does not run". Two ordinary shapes make that false: an
- * action with no config exports at all, and a barrel that re-exports the config
- * alongside the function. The second is a remedy this line would otherwise
- * recommend, and a diagnostic that stays wrong in the state it tells you to
- * reach is worse than no diagnostic.
+ * So it must not assert "does not run": an action with no config exports at all
+ * loses nothing, and that is most of them.
+ *
+ * It must equally NOT suggest re-exporting the config into the barrel, which an
+ * earlier wording did. Config is read off the dispatched namespace BY NAME
+ * (`actionConfigFn(mod, 'validate')`), with no association back to a particular
+ * function, so a `validate` re-exported into a barrel applies to EVERY action
+ * dispatched through it. A barrel re-exports more than one action by
+ * construction, which is the only reason this warning fires, so that advice
+ * silently attaches one action's validator to its siblings. `webjs check` does
+ * not catch it either: `one-action-per-configured-file` scans for
+ * `export const validate`, and a re-export clause never matches. The remedy has
+ * to be moving the action in, or giving it a barrel of its own.
  *
  * @param {{ file: string, fnName: string }} defining
  * @param {{ file: string, fnName: string }} used
@@ -132,13 +142,15 @@ function warnConfigExportsBypassed(defining, used) {
   if (_warnedBypass.has(defining.file)) return;
   _warnedBypass.add(defining.file);
   console.warn(
-    `[webjs] ${defining.fnName} is bound to a <form>, but ${defining.file} is not in the `
-    + `action index, so the submission is dispatched through ${used.file} instead. Only `
-    + 'what THAT module exports is visible, so a `validate` / `middleware` / `method` / '
-    + '`invalidates` declared beside the action runs only if the re-export carries it too '
-    + `("export { ${defining.fnName}, validate } from ..."). (The RPC endpoint resolves the `
-    + 'same way, so this is not specific to forms.) Nothing is wrong if the action declares '
-    + 'none of them.',
+    `[webjs] ${defining.fnName} is bound to a <form>, but its module ${defining.file} is `
+    + `not in the action index, so the submission is dispatched through ${used.file} `
+    + 'instead. Config is read off THAT module by name, so any `validate` / `middleware` / '
+    + '`method` / `invalidates` declared beside the action does not travel with a plain '
+    + '`export { fn } from` re-export. Move the action inside the app directory. Do NOT '
+    + 'add the config exports to a shared re-export module: they are matched by name with '
+    + 'no link to a particular function, so they would apply to every action dispatched '
+    + 'through it. (The RPC endpoint resolves the same way, so this is not specific to '
+    + 'forms.) An action that declares none of them loses nothing here.',
   );
 }
 
