@@ -113,7 +113,7 @@ export const POST = handlers.POST;
 <form method="POST" action="/api/auth/signout"><button>Log out</button></form>
 ```
 
-For a programmatic sign-in (the auto-login-after-signup pattern), `signIn('credentials', creds, { redirectTo })` returns a `302` `Response` that a page `action` can return directly.
+For a programmatic sign-in (the auto-login-after-signup pattern), `signIn('credentials', creds, { redirectTo })` returns a `302` `Response` that a form-bound action can return directly (the framework honors a returned `Response` verbatim).
 
 Sessions are JWT by default (stateless, scales horizontally). OAuth
 providers handle the full redirect flow. Read the session anywhere on the
@@ -208,7 +208,7 @@ export default async function Admin() {
 }
 ```
 
-Both work from a page or layout render AND from a page `action` (the no-JS
+Both work from a page or layout render AND from a form-bound action (the no-JS
 write path). The boundary files (`app/forbidden.ts`, `app/unauthorized.ts`,
 or nested variants) live alongside the routes they cover and each
 default-export a function returning the boundary markup.

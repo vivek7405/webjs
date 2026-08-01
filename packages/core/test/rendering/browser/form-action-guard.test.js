@@ -15,6 +15,7 @@
 
 import { html } from '../../../src/html.js';
 import { render } from '../../../src/render-client.js';
+import { FORM_ACTION_ID_KEY } from '../../../src/form-action.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
 
@@ -50,14 +51,40 @@ teardown(() => {
 
 suite('form-action guard in a real browser', () => {
 
-  test('action=${fn} throws and writes nothing to the document', () => {
+  test('action=${fn} on an unidentifiable function throws and writes nothing', () => {
+    // #1155 made this shape a BINDING, so it refuses on identity rather than on
+    // stringification. Nothing may reach the document either way, which is the
+    // claim that has to hold whichever refusal fires.
     const host = mount();
     let threw = null;
     try { render(html`<form method="post" action=${secretAction}></form>`, host); }
     catch (e) { threw = e; }
     assert.ok(threw, 'render must throw');
-    assert.ok(/function was interpolated into action=/.test(threw.message), threw.message);
+    assert.ok(/is not a server action/.test(threw.message), threw.message);
     assert.ok(!document.body.innerHTML.includes('BROWSER_LEAK_MARKER'), 'no source in the document');
+  });
+
+  test('a BOUND action produces a real, submittable form (#1155)', () => {
+    // The end state the whole feature is for, asserted in a real browser
+    // through the DOM the browser would actually submit: `new FormData(form)`
+    // is what a native submission serializes, so if the identity field were
+    // outside the form, or the method not a POST, this is where it shows.
+    const host = mount();
+    const stub = async () => {};
+    Object.defineProperty(stub, '$$webjsAction', { value: 'a1b2c3d4e5/subscribe' });
+    render(html`<form action=${stub}><input name="email" value="a@b.com"></form>`, host);
+
+    const form = host.querySelector('form');
+    assert.ok(form, 'the form renders');
+    assert.equal(form.method, 'post', 'method is forced to post');
+    assert.equal(form.enctype, 'multipart/form-data', 'enctype is forced');
+    // The IDL getter resolves an ABSENT action to the document url, which is
+    // exactly the behaviour the omitted attribute is for. Assert the attribute.
+    assert.equal(form.hasAttribute('action'), false, 'no action attribute, so it posts to this page');
+    const fd = new FormData(form);
+    assert.equal(fd.get('__webjs_action'), 'a1b2c3d4e5/subscribe', 'the identity is submitted');
+    assert.equal(fd.get('email'), 'a@b.com', 'alongside the real fields');
+    assert.ok(!document.body.innerHTML.includes('BROWSER_LEAK_MARKER'), 'and no source anywhere');
   });
 
   test('.action=${fn} property binding cannot reflect the source into the attribute', () => {
@@ -114,6 +141,8 @@ suite('form-action guard in a real browser', () => {
     const host = mount();
     const tpl = (a) => html`<form method="post" action=${a}></form>`;
     render(tpl('/submit'), host);
+    // Reaches the identity refusal, not the stringify one, and the point is the
+    // same either way: a refusal must not half-write the attribute.
     const before = host.querySelector('form').getAttribute('action');
     assert.equal(before, '/submit');
 
@@ -133,6 +162,46 @@ suite('form-action guard in a real browser', () => {
     assert.equal(form.getAttribute('action'), '/feedback');
     assert.equal(form.method, 'post');
     assert.equal(new FormData(form).get('msg'), 'hi');
+  });
+
+  test('releasing an unbound form keeps a .method the template writes', () => {
+    // Only observable in a real browser: `method` is a reflected IDL attribute,
+    // so `.method=${'post'}` puts `method="post"` on the element. linkedom's
+    // HTMLFormElement has an empty class body and reflects nothing, so the same
+    // assertion node-side would pass with or without the fix.
+    //
+    // The release path removes the attributes the framework supplied, and
+    // decides which those are by asking whether the template supplies anything
+    // for them on this pass. A property binding is not an attribute part, so
+    // that question answered "no" for it and the removal wiped the author's own
+    // value on every re-render, silently downgrading the form to a GET.
+    const host = mount();
+    render(html`<form action=${'/search'} .method=${'post'}></form>`, host);
+    const form = host.querySelector('form');
+    assert.equal(form.getAttribute('method'), 'post', 'the reflected attribute survives');
+    assert.equal(form.method, 'post');
+
+    // And again on a re-render, which is when the stale-bookkeeping version of
+    // this bug used to bite.
+    render(html`<form action=${'/search2'} .method=${'post'}></form>`, host);
+    assert.equal(host.querySelector('form').method, 'post', 'still post after a re-render');
+  });
+
+  test('an encoding= attribute is inert, so a bound form still forces enctype', () => {
+    // `form.encoding` is a legacy IDL ALIAS that reads back `enctype`, which is
+    // why this belongs in a real browser: it proves the CONTENT attribute does
+    // nothing, and therefore that the client is right to ignore it exactly as
+    // SSR does. Folding the attribute spelling into enctype made the same form
+    // upload multipart without JS and urlencoded with it.
+    const host = mount();
+    const bound = async () => {};
+    Object.defineProperty(bound, FORM_ACTION_ID_KEY, { value: 'a1b2c3d4e5/bound' });
+    render(html`<form action=${bound} encoding=${'application/x-www-form-urlencoded'}></form>`, host);
+    const form = host.querySelector('form');
+    assert.equal(form.getAttribute('enctype'), 'multipart/form-data');
+    assert.equal(form.enctype, 'multipart/form-data');
+    // The browser agrees the attribute is inert: the alias reads the enctype.
+    assert.equal(form.encoding, 'multipart/form-data');
   });
 
 });

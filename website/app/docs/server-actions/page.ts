@@ -422,15 +422,16 @@ TodoApp.register('todo-app');
 //   -d '{"text":"Buy milk"}'
 // => {"id":1,"text":"Buy milk","done":false,"createdAt":"2026-04-15T..."}</pre>
 
-    <h2>Plain HTML forms as an alternative (the page action)</h2>
-    <p>Server actions called via JS RPC are the right tool when you need typed return values back in the component (the createPost example above returns a <code>Post</code> object). For the simpler "submit form, server processes, render the result" flow, the framework's <strong>page action</strong> is the cleaner fit. A <code>page.{js,ts}</code> may export an <code>action</code> alongside its default render function. A non-GET/HEAD submission to that page's own URL runs the action (inside the page's segment middleware), so a plain <code>&lt;form method="POST"&gt;</code> works with JavaScript disabled AND through the client router, same UI either way. You write no <code>route.ts</code> and no hand-rolled <code>new Response(...)</code>.</p>
-    <p>The action receives <code>{ request, params, searchParams, url, formData }</code> (<code>formData</code> is the already-parsed body, <code>request</code> is the raw Request) and returns an <code>ActionResult</code>. The framework interprets the result.</p>
-    <pre>// app/posts/page.ts
-import { html } from '@webjsdev/core';
-import { createPost } from '#modules/posts/actions/create-post.server.ts';
+    <h2>Binding an action to a form</h2>
+    <p>Calling an action over RPC is the right tool when you need a typed return value back in the component (the createPost example above returns a <code>Post</code> object). For the "submit form, server processes, render the result" flow, bind the action straight into the form. The same imported function serves both, and the binding is the whole wiring: no <code>route.ts</code>, no hand-rolled <code>new Response(...)</code>, no per-page adapter.</p>
+    <pre>import { createPost } from '#modules/posts/actions/create-post.server.ts';
 
-// Runs only on the server. Receives the already-parsed formData.
-export async function action({ formData }: { formData: FormData }) {
+html\`&lt;form action=\${createPost}&gt; ... &lt;/form&gt;\`</pre>
+    <p>The renderer omits the <code>action</code> attribute so the form posts to the page's own URL, supplies <code>method="post"</code> and an enctype, and emits one hidden <code>__webjs_action</code> field carrying the action's <code>&lt;hash&gt;/&lt;fn&gt;</code> identity, the same identity the RPC endpoint resolves. Nothing about the action's source reaches the browser. A submission carrying that identity runs the action inside the page's segment middleware, so the form works with JavaScript disabled AND through the client router, same UI either way.</p>
+    <p><strong>A form-bound action always receives the <code>FormData</code></strong>, which is where it differs from the same function called over RPC. <code>validate</code> is the typing seam: it takes the <code>FormData</code>, and its transform-return becomes the action's typed input.</p>
+    <pre>// modules/posts/actions/create-post.server.ts
+'use server';
+export async function createPost(formData: FormData) {
   const title = String(formData.get('title') || '').trim();
   const body = String(formData.get('body') || '').trim();
   const values = { title, body };
@@ -440,9 +441,13 @@ export async function action({ formData }: { formData: FormData }) {
   if (Object.keys(fieldErrors).length) {
     return { success: false, fieldErrors, values, status: 422 };
   }
-  const post = await createPost({ title, body });
-  return { success: true, redirect: \`/posts/\${post.id}\` };
+  const post = await db.insert(posts).values({ title, body }).returning();
+  return { success: true, redirect: \`/posts/\${post[0].id}\` };
 }
+
+// app/posts/page.ts
+import { html } from '@webjsdev/core';
+import { createPost } from '#modules/posts/actions/create-post.server.ts';
 
 export default function NewPost({ actionData }: {
   actionData?: { fieldErrors?: Record&lt;string, string&gt;; values?: Record&lt;string, string&gt; };
@@ -450,7 +455,7 @@ export default function NewPost({ actionData }: {
   const errors = actionData?.fieldErrors || {};
   const values = actionData?.values || {};
   return html\`
-    &lt;form method="POST"&gt;
+    &lt;form action=\${createPost}&gt;
       &lt;input name="title" value=\${values.title || ''} required /&gt;
       \${errors.title ? html\`&lt;p class="error"&gt;\${errors.title}&lt;/p&gt;\` : ''}
       &lt;textarea name="body" required&gt;\${values.body || ''}&lt;/textarea&gt;
@@ -463,7 +468,11 @@ export default function NewPost({ actionData }: {
     <ul>
       <li><strong>Success</strong> (<code>{ success: true, redirect? }</code>, or any non-failure result) is a <code>303 See Other</code> to <code>result.redirect</code> if present, else the page's own path (Post/Redirect/Get, so a reload does not resubmit). <code>result.redirect</code> must be a same-site local path (a single leading <code>/</code>); for a real external redirect throw <code>redirect(absoluteUrl)</code>.</li>
       <li><strong>Failure</strong> (<code>{ success: false }</code>, or a <code>fieldErrors</code>, or an <code>error</code>) re-SSRs the SAME page with <code>status</code> (default <code>422</code>) and the result on <code>ctx.actionData</code>. The page reads <code>actionData.fieldErrors.&lt;name&gt;</code> for messages and <code>actionData.values.&lt;name&gt;</code> to repopulate native <code>&lt;input value=...&gt;</code>, so the user's typed input survives.</li>
+      <li><strong>No identity</strong> (a bare <code>&lt;form method="post"&gt;</code> that binds nothing) is a <code>405</code> with <code>Allow: GET, HEAD</code>. There is no page <code>action</code> export to fall back to.</li>
+      <li><strong>An identity that no longer resolves</strong> is a <code>422</code> re-render carrying a resubmit message and the submitted values. That is a form held open across a deploy; a 404 would discard what was typed and a silent success would report a write that never happened.</li>
     </ul>
+    <p>Everything the action declares applies here too, or an action would be protected over RPC and open over a form: <code>validate</code> runs on the submitted <code>FormData</code>, the <code>middleware</code> chain runs (with the page's <code>params</code> / <code>searchParams</code> / <code>url</code> on <code>ctx</code>), and <code>invalidates</code> is evicted when the action actually ran. The submission is Origin-verified exactly like an RPC call, so a no-JS form needs no CSRF token field. An action declaring <code>method = 'GET'</code> cannot be bound to a form (it rides its arguments in the URL and skips the CSRF check), which is a <code>405</code> at runtime and the <code>form-action-not-a-get-action</code> error in <code>webjs check</code>. A streamed return is refused on this path: a submission is answered with a redirect or a page, and with JS off there is no consumer for frames.</p>
+    <p><code>formaction=\${fn}</code> on a submit button is not supported yet, so it is refused rather than silently ignored. A form with several buttons binds ONE action and dispatches on a button's <code>name</code>. Per-button actions are tracked in issue #1207.</p>
     <p>With JavaScript off this is a native round-trip (the browser submits, follows the 303, or renders the 422). With JavaScript on the client router applies the 422 in place (no reload, typed input preserved) and follows the 303 via fetch. Both ends of the progressive-enhancement spectrum from one piece of code, no form library. See the <a href="/docs/client-router">client router</a> docs for the rendering behavior, and <a href="/docs/progressive-enhancement">progressive enhancement</a> for the full write-path pattern.</p>
   `;
 }

@@ -33,6 +33,7 @@
  */
 
 import { hashFile, RPC_CONTENT_TYPE } from './actions.js';
+import { FORM_ACTION_FIELD } from '@webjsdev/core';
 import { getSerializer } from './serializer.js';
 import { join, sep } from 'node:path';
 
@@ -198,6 +199,118 @@ export async function loginAndGetCookies(handle, credentials, opts = {}) {
     );
   }
   return { cookies, setCookies, response: res };
+}
+
+/**
+ * Submit a page's `<form action=${action}>` the way a browser with JS OFF does
+ * (#1155): render the page, take the identity the server put in its hidden
+ * `__webjs_action` field, and POST it back with the author's fields.
+ *
+ * A bound form carries that field because the identity is what tells the
+ * dispatcher WHICH action to run, so a hand-written POST that omits it is not a
+ * form submission at all and is answered `405`. Reproducing the scrape in every
+ * app test is how that ends up looking like a database problem instead: the
+ * status is wrong, an assertion fails, and a `catch` around it reports a skip.
+ * Hence a helper, so the identity is never the test's business.
+ *
+ * The form is located by INDEX (`opts.index`, default the first on the page),
+ * which is enough for the common one-form page. For a page with several, pass
+ * `opts.match`: a string or RegExp that must appear in the form's markup, so
+ * the test names the form by something an author recognizes (a heading, a field
+ * name, an id) rather than by counting.
+ *
+ * @param {Handle} handle
+ * @param {string} path the page to render AND, by default, to submit back to
+ * @param {Record<string, string> | URLSearchParams | FormData} [fields]
+ * @param {{
+ *   index?: number,
+ *   match?: string | RegExp,
+ *   cookies?: string,
+ *   submitPath?: string,
+ *   headers?: Record<string, string>,
+ * }} [opts]
+ * @returns {Promise<Response>} the submission response (a `303` on success, a
+ *   `422` re-render on a failure result)
+ */
+/**
+ * The `<form>...</form>` blocks of a rendered page.
+ *
+ * A bare `/<form[\s\S]*?<\/form>/g` gets two things wrong that a test helper
+ * must not, because both fail SILENTLY: a form inside an HTML comment is
+ * matched (so `opts.index` counts a form that is not on the page), and a
+ * `</form>` sitting inside an ATTRIBUTE VALUE ends the match early (so the
+ * identity field falls outside it and the helper reports an unbound form).
+ * Comments are stripped first, and the scan skips quoted attribute values while
+ * looking for the end of the start tag.
+ *
+ * @param {string} html
+ * @returns {string[]}
+ */
+function findForms(html) {
+  const src = html.replace(/<!--[\s\S]*?-->/g, '');
+  const out = [];
+  const open = /<form\b/gi;
+  let m;
+  while ((m = open.exec(src))) {
+    // Walk the start tag, skipping quoted values so `data-x="<form>"` is inert.
+    let i = m.index + m[0].length;
+    let quote = '';
+    for (; i < src.length; i++) {
+      const c = src[i];
+      if (quote) { if (c === quote) quote = ''; continue; }
+      if (c === '"' || c === "'") { quote = c; continue; }
+      if (c === '>') break;
+    }
+    const close = src.toLowerCase().indexOf('</form>', i);
+    if (close === -1) continue;
+    out.push(src.slice(m.index, close + '</form>'.length));
+    open.lastIndex = close;
+  }
+  return out;
+}
+
+export async function submitForm(handle, path, fields = {}, opts = {}) {
+  const getInit = opts.cookies ? withCookies({}, opts.cookies) : {};
+  const page = await testRequest(handle, path, getInit);
+  const html = await page.text();
+
+  const forms = findForms(html);
+  const candidates = opts.match
+    ? forms.filter((f) => (opts.match instanceof RegExp ? opts.match.test(f) : f.includes(opts.match)))
+    : forms;
+  const form = candidates[opts.index || 0];
+  if (!form) {
+    throw new Error(
+      `submitForm: no ${opts.match ? 'matching ' : ''}<form> found on ${path} `
+      + `(status ${page.status}, ${forms.length} form(s) on the page).`,
+    );
+  }
+  const id = form.match(/name="__webjs_action"\s+value="([^"]*)"/);
+  if (!id) {
+    throw new Error(
+      `submitForm: the <form> on ${path} carries no __webjs_action field, so it `
+      + 'is not bound to a server action. Write it as `<form action=${myAction}>` '
+      + 'with the action imported from a `use server` module.',
+    );
+  }
+
+  const body = new URLSearchParams();
+  body.set(FORM_ACTION_FIELD, id[1]);
+  const entries = fields instanceof URLSearchParams || fields instanceof FormData
+    ? fields.entries()
+    : Object.entries(fields);
+  for (const [k, v] of entries) body.append(k, String(v));
+
+  const init = {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', ...(opts.headers || {}) },
+    body: body.toString(),
+  };
+  return await testRequest(
+    handle,
+    opts.submitPath || path,
+    opts.cookies ? withCookies(init, opts.cookies) : init,
+  );
 }
 
 /**

@@ -11,7 +11,7 @@
  * Design choices:
  *   - PAGES ONLY. A `route.{js,ts}` handler is an API endpoint, not a
  *     navigable HTML page, so its path is excluded from the navigable `Route`
- *     union. Pages (including page-action pages) are what a valid href points
+ *     union. Pages (including ones hosting a bound form) are what a valid href points
  *     at.
  *   - The route KEY is the literal pattern (`/blog/[slug]`), derived from the
  *     page's directory with route groups `(group)` stripped and `_private`

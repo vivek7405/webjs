@@ -8,28 +8,6 @@ export const metadata = { title: 'Sign up' };
 
 const inputCls = inputClass();
 
-// Page server action: handles the POST from the form below. With JS disabled this
-// is a plain <form> round-trip; with JS the client router swaps the 422 re-render
-// (errors) or follows the 302 (success) in place. A validation failure returns
-// fieldErrors + values so the page re-renders with messages and the user's typed
-// input preserved.
-export async function action({ formData }: { formData: FormData }) {
-  const name = String(formData.get('name') || '').trim();
-  const email = String(formData.get('email') || '').trim();
-  const password = String(formData.get('password') || '');
-  const values = { name, email };
-  const fieldErrors: Record<string, string> = {};
-  if (!name) fieldErrors.name = 'Name is required';
-  if (!email.includes('@')) fieldErrors.email = 'Enter a valid email';
-  if (password.length < 8) fieldErrors.password = 'At least 8 characters';
-  if (Object.keys(fieldErrors).length) return { success: false, fieldErrors, values, status: 422 };
-  const result = await signup({ name, email, password });
-  // On success signup returns signIn's 302 Response (auto-login -> dashboard); a
-  // page action may return a Response, so pass it straight through.
-  if (result instanceof Response) return result;
-  return { success: false, fieldErrors: { email: result.error }, values, status: result.status };
-}
-
 export default function SignupPage({ actionData }: { actionData?: { fieldErrors?: Record<string, string>; values?: Record<string, string> } }) {
   const errors = actionData?.fieldErrors || {};
   const values = actionData?.values || {};
@@ -37,7 +15,10 @@ export default function SignupPage({ actionData }: { actionData?: { fieldErrors?
     <div class="max-w-[420px] mx-auto">
       <h1 class="text-h2 font-bold mb-2">Create an account</h1>
       <p class="text-muted-foreground mb-5">Get started with your new workspace.</p>
-      <form method="POST" class="${cardClass()} grid gap-4 p-5">
+      <!-- The form is bound to the action: no adapter, no fetch handler. With JS
+           disabled this is a plain round-trip; with JS the client router swaps
+           the 422 re-render (errors) or follows the 302 (success) in place. -->
+      <form action=${signup} class="${cardClass()} grid gap-4 p-5">
         <div class="grid gap-1.5">
           <label for="name" class="text-[13px] font-medium text-muted-foreground">Name</label>
           <input id="name" name="name" type="text" value=${values.name || ''} required class=${inputCls} placeholder="Ada Lovelace" />

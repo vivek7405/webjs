@@ -86,45 +86,59 @@ test('nearest forbidden.ts wins over an ancestor one', async () => {
   assert.doesNotMatch(body, /root forbidden/);
 });
 
-test('forbidden() thrown from a page ACTION (no-JS write path) renders the 403 boundary, not a 500', async () => {
+/**
+ * Render the page, read the identity its bound form emitted, and submit it the
+ * way a browser would. Scraping rather than computing keeps this test honest
+ * about the identity the renderer actually produces.
+ */
+async function submitBoundForm(app, path) {
+  const page = await (await app.handle(new Request(`http://x${path}`))).text();
+  const id = /name="__webjs_action" value="([^"]*)"/.exec(page)[1];
+  return app.handle(new Request(`http://x${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', 'sec-fetch-site': 'same-origin', origin: 'http://x' },
+    body: `__webjs_action=${encodeURIComponent(id)}`,
+  }));
+}
+
+test('forbidden() thrown from a form ACTION (no-JS write path) renders the 403 boundary, not a 500', async () => {
   const appDir = makeApp({
     'package.json': pkg,
-    // A page with an `action` export that throws forbidden() on submit.
+    'deny.server.js':
+      `'use server';\n` +
+      `import { forbidden } from ${JSON.stringify(CORE)};\n` +
+      `export async function deny() { forbidden(); }\n`,
     'app/settings/page.js':
-      `import { html, forbidden } from ${JSON.stringify(CORE)};\n` +
-      `export default function S() { return html\`<form method="post"><button>go</button></form>\`; }\n` +
-      `export function action() { forbidden(); }\n`,
+      `import { html } from ${JSON.stringify(CORE)};\n` +
+      `import { deny } from '../../deny.server.js';\n` +
+      `export default function S() { return html\`<form action=\${deny}><button>go</button></form>\`; }\n`,
     'app/settings/forbidden.js':
       `import { html } from ${JSON.stringify(CORE)};\n` +
       `export default function F() { return html\`<main>settings forbidden</main>\`; }\n`,
   });
   const app = await createRequestHandler({ appDir, dev: true });
-  const resp = await app.handle(new Request('http://x/settings', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded', 'sec-fetch-site': 'same-origin', origin: 'http://x' },
-    body: '',
-  }));
-  assert.equal(resp.status, 403, 'page-action forbidden() is a 403, not a generic 500');
+  const resp = await submitBoundForm(app, '/settings');
+  assert.equal(resp.status, 403, 'a form action forbidden() is a 403, not a generic 500');
   assert.match(await resp.text(), /settings forbidden/);
 });
 
-test('unauthorized() thrown from a page ACTION renders the 401 boundary', async () => {
+test('unauthorized() thrown from a form ACTION renders the 401 boundary', async () => {
   const appDir = makeApp({
     'package.json': pkg,
+    'gate.server.js':
+      `'use server';\n` +
+      `import { unauthorized } from ${JSON.stringify(CORE)};\n` +
+      `export async function gate() { unauthorized(); }\n`,
     'app/private/page.js':
-      `import { html, unauthorized } from ${JSON.stringify(CORE)};\n` +
-      `export default function P() { return html\`<form method="post"><button>go</button></form>\`; }\n` +
-      `export function action() { unauthorized(); }\n`,
+      `import { html } from ${JSON.stringify(CORE)};\n` +
+      `import { gate } from '../../gate.server.js';\n` +
+      `export default function P() { return html\`<form action=\${gate}><button>go</button></form>\`; }\n`,
     'app/private/unauthorized.js':
       `import { html } from ${JSON.stringify(CORE)};\n` +
       `export default function U() { return html\`<main>private unauthorized</main>\`; }\n`,
   });
   const app = await createRequestHandler({ appDir, dev: true });
-  const resp = await app.handle(new Request('http://x/private', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded', 'sec-fetch-site': 'same-origin', origin: 'http://x' },
-    body: '',
-  }));
+  const resp = await submitBoundForm(app, '/private');
   assert.equal(resp.status, 401);
   assert.match(await resp.text(), /private unauthorized/);
 });

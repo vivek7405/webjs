@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 import { createRequestHandler } from '@webjsdev/server';
-import { testRequest, loginAndGetCookies, withSessionCookie } from '@webjsdev/server/testing';
+import { testRequest, submitForm, loginAndGetCookies, withSessionCookie } from '@webjsdev/server/testing';
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -14,7 +14,11 @@ const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // we detect that at the RESPONSE level (a 5xx on the dashboard) and SKIP with a
 // clear message rather than report a misleading failure. After the db is set up
 // every assertion runs for real.
-process.env.DATABASE_URL ||= 'file:./dev.db';
+// The SAME path `.env.example` and `drizzle.config.ts` use, so `db:migrate`
+// prepares the database this test connects to. Pointing somewhere else made the
+// skip below permanent: it told you to run `db:migrate`, and running it
+// migrated a different file.
+process.env.DATABASE_URL ||= 'file:./db/dev.db';
 process.env.AUTH_SECRET ||= 'test-secret-at-least-32-characters-long!!';
 
 function makeHandler() {
@@ -47,24 +51,35 @@ test('signup -> login -> dashboard renders for the authenticated user', async (t
   const email = `harness+${Date.now()}@example.com`;
   const password = 'password123';
 
-  // Real signup through the page server action (the no-JS form write-path).
-  let canSignup = true;
+  // Real signup through the bound server action (the no-JS form write-path).
+  // `submitForm` renders the page and reuses the identity the server put in the
+  // form's hidden field, exactly as a browser with JS off submits it; a POST
+  // without that field is not a form submission and is answered 405.
+  // Only the REQUEST is guarded: an unmigrated table makes the action throw, and
+  // that is the one condition worth skipping for. The assertions below stay
+  // outside the try on purpose, so a genuine regression fails loudly instead of
+  // being caught and reported as a database that was never set up.
+  let signupRes: Response | null = null;
   try {
-    const signupRes = await testRequest(app.handle, '/features/auth/signup', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ name: 'Harness', email, password }).toString(),
+    signupRes = await submitForm(app.handle, '/features/auth/signup', {
+      name: 'Harness', email, password,
     });
-    // Success auto-logs-in and 302s to the dashboard (carrying the session
-    // cookie); a 422 means validation failed. Either way the action ran.
-    assert.ok([302, 422].includes(signupRes.status), 'signup action ran');
-    if (signupRes.status === 302) assert.equal(signupRes.headers.get('location'), '/features/auth/dashboard', 'signup lands on the dashboard');
-    if (signupRes.status !== 302) canSignup = false;
   } catch {
-    // No migrated DB table -> the action throws. Skip the DB-backed assertions.
-    canSignup = false;
+    signupRes = null;
   }
-  if (!canSignup) { t.skip('no migrated DB; run db:migrate to enable the full flow'); return; }
+  if (!signupRes || signupRes.status >= 500) {
+    t.skip('no migrated DB; run db:migrate to enable the full flow');
+    return;
+  }
+  // Success auto-logs-in and 302s to the dashboard (carrying the session
+  // cookie); a 422 means validation failed. Either way the action ran.
+  assert.ok([302, 422].includes(signupRes.status), 'signup action ran');
+  if (signupRes.status === 302) {
+    assert.equal(signupRes.headers.get('location'), '/features/auth/dashboard', 'signup lands on the dashboard');
+  } else {
+    t.skip('signup was rejected by validation; run db:migrate to enable the full flow');
+    return;
+  }
 
   // Real login captures the genuine signed session cookie.
   const { cookies } = await loginAndGetCookies(app.handle, { email, password });

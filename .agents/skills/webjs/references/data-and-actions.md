@@ -11,7 +11,7 @@
 - Drizzle rc.3 reads (`db.query.*`) and mutations (`.returning()`)
 - Keeping server-only types off the client (`import type` vs a value import)
 
-Read this when a task touches a server mutation, a data read, input validation, a REST endpoint, or the shape a component consumes. Sibling refs: `routing-and-pages.md` (the page `action` write path, `route.ts` handlers), `auth-and-sessions.md` (protecting an action or endpoint), `optimistic-ui.md` (consuming `ActionResult` on the client), `typescript.md` (erasable syntax, full-stack types).
+Read this when a task touches a server mutation, a data read, input validation, a REST endpoint, or the shape a component consumes. Sibling refs: `routing-and-pages.md` (where a bound form lives on a page, `route.ts` handlers), `auth-and-sessions.md` (protecting an action or endpoint), `optimistic-ui.md` (consuming `ActionResult` on the client), `typescript.md` (erasable syntax, full-stack types).
 
 ## The Architecture (read this first)
 
@@ -100,7 +100,7 @@ A `.returning()` row is the table's own columns only, never `with` relations. Wh
 
 ## Input validation at the boundary
 
-Declare `export const validate` beside the action. It runs SERVER-SIDE before the action body on the RPC boundary, receiving the action's FIRST argument. The framework only CALLS the validator (it ships no validation library) and reads its return: `{ success: true, data? }` runs the action (an optional `data` replaces the input), `{ success: false, fieldErrors }` returns a 422 WITHOUT running the body, and a THROW becomes a sanitized error.
+Declare `export const validate` beside the action. It runs SERVER-SIDE before the action body on every BOUNDARY (the RPC endpoint, a `route()` REST endpoint, and a form submission), receiving the action's FIRST argument. On the form boundary that first argument is the `FormData`, and a `{ success: false, fieldErrors }` return becomes a 422 RE-RENDER of the page with the validator's result on `actionData`, rather than a JSON 422. The framework only CALLS the validator (it ships no validation library) and reads its return: `{ success: true, data? }` runs the action (an optional `data` replaces the input), `{ success: false, fieldErrors }` returns a 422 WITHOUT running the body, and a THROW becomes a sanitized error.
 
 ```ts
 // modules/posts/actions/create-post.server.ts
@@ -125,6 +125,31 @@ export async function createPost(input: CreatePostInput) { /* runs only when val
 ```
 
 A client call resolves with the failure envelope (it does NOT throw), so the component reads `result.fieldErrors`. A zod adapter wraps `safeParse` so its result becomes the envelope; the framework stays zod-free.
+
+## Binding an action to a form
+
+A `<form action=${importedAction}>` is the one way a form submits to a server action, and it is the whole wiring:
+
+```ts
+import { createPost } from '#modules/posts/actions/create-post.server.ts';
+html`<form action=${createPost}><input name="title"></form>`;
+```
+
+The renderer omits the `action` attribute so the form posts to the page's own url, supplies `method="post"` and an enctype, and emits a hidden `__webjs_action` field carrying the action's `<hash>/<fn>` identity, the same identity the RPC endpoint resolves. Nothing about the action's source reaches the browser. With JS off this is an ordinary HTML submission; with JS the client router posts the same body to the same url, so the two paths are identical by construction.
+
+**A form-bound action always receives the `FormData`**, which is where it differs from the same function called over RPC (rich arguments) or server-to-server. `validate` is the typing seam: it takes the `FormData` and its transform-return becomes the action's typed input.
+
+Everything the action declares applies here too, or an action would be protected over RPC and open over a form:
+
+- `validate` runs on the submitted `FormData`.
+- the `middleware` chain runs, with the page's route context (`params`, `searchParams`, `url`) added to `ctx`.
+- `invalidates` is evicted when the action actually RAN (a middleware short-circuit does not evict), and the evicted tags are reported on the response so the browser's tag coordinator bypasses a stale cached GET. One reach limit: `fetch` follows the success `303` transparently, so JS cannot read a redirect's headers; the tags are on the wire and the `422` re-render carries them, and the redirect's own render is server-side and seeds fresh data.
+- `invalidates` and `tags` receive the SAME first argument the action does, so on a form boundary they receive the `FormData`. `invalidates: (input) => ['post:' + input.id]` returns `post:undefined` for a submission and evicts nothing. Either read the field (`(fd) => ['post:' + fd.get('id')]`), declare a `validate` that transforms the `FormData` into the typed input first (the transform result is what the config functions then see), or use an argument-independent tag.
+- `method = 'GET'` cannot be bound to a form: a GET action rides its args in the url and is CSRF-exempt, so it cannot answer a form POST. That is a `405` at runtime and the `form-action-not-a-get-action` error in `webjs check`.
+
+The response drives the page: a success is a `303` PRG (to `result.redirect` when it is a same-site local path, else the page's own url), a failure re-renders the SAME page with `status` (default `422`) and the result on `actionData`, a submission carrying no identity is a `405`, and one whose hash no longer resolves is a `422` with a resubmit message (a form held open across a deploy). The submission is Origin-verified like an RPC call, so no token field is needed.
+
+A streamed return (#489) is refused from a form-bound action: the RPC stub decodes frames, but a submission is answered with a redirect or a page, and with JS off there is no consumer at all. Stream from a programmatic call instead.
 
 ## HTTP-verb config exports
 

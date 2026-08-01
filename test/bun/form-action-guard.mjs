@@ -31,6 +31,7 @@ import assert from 'node:assert/strict';
 
 import { html } from '../../packages/core/src/html.js';
 import { renderToString, renderToStream } from '../../packages/core/src/render-server.js';
+import { setFormActionResolver, FORM_ACTION_FIELD } from '../../packages/core/src/form-action.js';
 
 const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`;
 
@@ -71,7 +72,6 @@ async function drain(stream) {
  * A parity file that enumerates only the quoted shapes cannot see either.
  */
 const refused = {
-  'action=${fn}': () => html`<form action=${leaky}></form>`,
   'action="${fn}"': () => html`<form action="${leaky}"></form>`,
   'mixed action="/x/${fn}"': () => html`<form action="/x/${leaky}"></form>`,
   'formaction=${fn}': () => html`<button type="submit" formaction=${leaky}></button>`,
@@ -86,8 +86,18 @@ const refused = {
   // could be deleted with this whole table still green while `formAction=`
   // leaked. camelCase is React's spelling, so it is the likeliest arrival.
   'camelCase formAction=${fn}': () => html`<button type="submit" formAction=${leaky}></button>`,
-  'upper-case ACTION=${fn}': () => html`<form ACTION=${leaky}></form>`,
   'reflecting prop .formAction=${fn} on a button': () => html`<button .formAction=${leaky}></button>`,
+};
+
+/**
+ * The two shapes #1155 turned into a BINDING rather than a stringify:
+ * `action=${fn}` and its case-folded spelling, on a `<form>`. They still refuse
+ * a function the server cannot identify, so nothing leaks either way, but the
+ * refusal is the identity one and they belong in their own table.
+ */
+const refusedAsUnidentified = {
+  'action=${fn}': () => html`<form action=${leaky}></form>`,
+  'upper-case ACTION=${fn}': () => html`<form ACTION=${leaky}></form>`,
 };
 
 for (const [name, mk] of Object.entries(refused)) {
@@ -111,6 +121,43 @@ for (const [name, mk] of Object.entries(refused)) {
   assert.ok(!streamThrew.message.includes('BUN_PARITY_SECRET'),
     `[${runtime}] streaming refusal must not carry the source (${name})`);
 }
+
+for (const [name, mk] of Object.entries(refusedAsUnidentified)) {
+  for (const [machine, run] of [
+    ['buffered', () => renderToString(mk(), { ssr: true })],
+    ['streaming', () => drain(renderToStream(mk(), { ssr: false }))],
+  ]) {
+    let threw = null;
+    try { await run(); } catch (e) { threw = e; }
+    assert.ok(threw, `[${runtime}] ${machine} SSR must refuse ${name}`);
+    assert.match(threw.message, /is not a server action/, `[${runtime}] ${machine} ${name} message`);
+    assert.ok(!threw.message.includes('BUN_PARITY_SECRET'),
+      `[${runtime}] the refusal message must not carry the source it withholds (${machine} ${name})`);
+  }
+}
+
+/**
+ * A bound action, the one supported shape (#1155). Both machines must emit the
+ * same form: no `action` attribute, a forced `method="post"`, and the hidden
+ * identity field INSIDE the form. This is runtime-sensitive for the same reason
+ * the guard is: it runs inside the SSR state machines, and the two engines see
+ * a transpiled vs an untranspiled module.
+ */
+setFormActionResolver((fn) => (fn === leaky ? 'a1b2c3d4e5/leaky' : null));
+for (const [machine, run] of [
+  ['buffered', () => renderToString(html`<form action=${leaky}><input name="a"></form>`, { ssr: true })],
+  ['streaming', () => drain(renderToStream(html`<form action=${leaky}><input name="a"></form>`, { ssr: false }))],
+]) {
+  const out = await run();
+  assert.ok(!out.includes('BUN_PARITY_SECRET'), `[${runtime}] a bound action must not leak (${machine})`);
+  assert.match(out, new RegExp(`<input type="hidden" name="${FORM_ACTION_FIELD}" value="a1b2c3d4e5/leaky">`),
+    `[${runtime}] the identity field is emitted (${machine})`);
+  assert.doesNotMatch(out, /<form[^>]*\saction=/, `[${runtime}] the form posts to its own url (${machine})`);
+  assert.match(out, /method="post"/, `[${runtime}] method is forced (${machine})`);
+  assert.ok(out.indexOf(FORM_ACTION_FIELD) < out.indexOf('</form>'),
+    `[${runtime}] the identity field must be inside the form (${machine}), or it is never submitted`);
+}
+setFormActionResolver(() => null);
 
 /**
  * The carve-outs, which matter as much as the refusals: a guard that refused
@@ -168,4 +215,4 @@ assert.match(okStream, /action="\/submit"/, `[${runtime}] a string action must s
 const okArray = await renderToString(html`<form action=${['/a', '/b']}></form>`, { ssr: true });
 assert.match(okArray, /action="\/a,\/b"/, `[${runtime}] an array of strings is not a function`);
 
-console.log(`[${runtime}] form-action guard parity OK: ${Object.keys(refused).length} refused shapes, ${Object.keys(allowed).length} carve-outs, 5 passthroughs`);
+console.log(`[${runtime}] form-action parity OK: ${Object.keys(refused).length} refused shapes, ${Object.keys(refusedAsUnidentified).length} unidentified-action refusals, 1 bound action, ${Object.keys(allowed).length} carve-outs, 5 passthroughs`);

@@ -6,7 +6,7 @@
  * The payload is plain HTML, a `<webjs-stream action target>` wrapping one
  * `<template>`. These helpers compose that string for the two delivery paths,
  * a content-negotiated HTTP form response and a `broadcast()` / WS message, so
- * an app never hand-writes the markup. A page `action` or a `route` handler
+ * an app never hand-writes the markup. A form-bound action or a `route` handler
  * branches on `acceptsStream(request)`, returning `streamResponse(...)` when the
  * router asked for a stream and a normal render otherwise (the JS-off degrade).
  *

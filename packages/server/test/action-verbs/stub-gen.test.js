@@ -82,3 +82,68 @@ test('every stub can decode a streamed result (#489): imports + __readStream', a
   assert.match(stub, /f\.type === __F_CHUNK\) yield __p/, 'a CHUNK frame yields a deserialized value');
   assert.match(stub, /f\.type === __F_ERR\) throw/, 'an ERROR frame throws');
 });
+
+// --- Form-action identity on the generated stub (#1155) ----------------------
+//
+// The stub's `$$webjsAction` stamp is the ENTIRE client half of form binding:
+// a shipping component re-renders its template on hydration, and
+// `reconcileFormAction` reads the identity synchronously off the function it
+// was handed. Every client-side test hand-stamps a fake stub, so without these
+// the real generator could stop stamping and the whole suite would stay green
+// while a hydrated form lost its identity field.
+
+test('every exported stub carries its own <hash>/<fn> identity', async () => {
+  const stub = await stubFor('save.server.js',
+    `'use server';\nexport async function save(input){return input;}\nexport async function touch(){return 1;}\n`);
+  assert.match(stub, /Object\.defineProperty\(fn, "\$\$webjsAction"/, 'the stamp uses the shared key');
+  assert.match(stub, /__HASH \+ '\/' \+ name/, 'and builds <hash>/<fn> from the file hash');
+  assert.match(stub, /export const save = __id\(\(\.\.\.args\) => __call\("save", args\), "save"\)/);
+  assert.match(stub, /export const touch = __id\(\(\.\.\.args\) => __call\("touch", args\), "touch"\)/);
+});
+
+test('a default export is stamped too', async () => {
+  const stub = await stubFor('default.server.js',
+    `'use server';\nexport default async function (input){return input;}\n`);
+  assert.match(stub, /export default __id\(\(\.\.\.args\) => __call\('default', args\), 'default'\)/);
+});
+
+test('the stamp is non-enumerable, so a namespace import and a spread are unchanged', async () => {
+  // `defineProperty` is the load-bearing choice over a plain assignment, whose
+  // default IS enumerable: the identity would then show up in
+  // `Object.keys(actions)` and in `{ ...action }`, quietly changing what an app
+  // sees. Asserted by running the emitted stamp rather than by reading the
+  // source, since `defineProperty`'s non-enumerable default is exactly the part
+  // the source does not spell out.
+  const stub = await stubFor('ns.server.js', `'use server';\nexport async function go(){return 1;}\n`);
+  assert.doesNotMatch(stub, /fn\.\$\$webjsAction\s*=/, 'never a bare assignment');
+  // The whole LINE, not up to the first `;`: the helper's body contains its own
+  // statements, so a `[^;]+` capture truncates it into a syntax error.
+  const line = stub.split('\n').find((l) => l.startsWith('const __id = '));
+  assert.ok(line, 'the stub defines the stamp helper');
+  // eslint-disable-next-line no-new-func
+  const __id = new Function('__HASH', `${line}\nreturn __id;`)('abc1234567');
+  const fn = __id(() => {}, 'go');
+  assert.equal(fn.$$webjsAction, 'abc1234567/go', 'the identity reads back');
+  assert.deepEqual(Object.keys(fn), [], 'and is invisible to Object.keys');
+  assert.deepEqual({ ...fn }, {}, 'and to a spread');
+});
+
+test('the stub identity MATCHES the identity the server resolver produces', async () => {
+  // The two halves are computed by different code on different sides, and a
+  // drift between them is a form that submits an identity the dispatcher
+  // cannot resolve. Pin them to the same string.
+  const abs = join(dir, 'match.server.js');
+  writeFileSync(abs, `'use server';\nexport async function pick(){return 1;}\n`);
+  const hash = await hashFile(abs);
+  const idx = { fileToHash: new Map([[abs, hash]]), hashToFile: new Map([[hash, abs]]), dev: false, appDir: dir };
+  const stub = await serveActionStub(idx, abs);
+  assert.match(stub, new RegExp(`const __HASH = ${JSON.stringify(hash)};`));
+
+  const { resolveActionIdentity } = await import('../../src/form-action-identity.js');
+  const { __actionWrap, registerActionHooks } = await import('../../src/action-seed.js');
+  await registerActionHooks({ seed: false });
+  const fn = async () => 1;
+  __actionWrap(abs, 'pick', fn);
+  assert.equal(await resolveActionIdentity(idx, fn), `${hash}/pick`,
+    'the server resolves the same string the stub stamps');
+});

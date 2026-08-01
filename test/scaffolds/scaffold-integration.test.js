@@ -485,14 +485,19 @@ test('scaffoldApp full-stack: the auth card wires createAuth + dashboard + User 
     assert.match(schema, /export const users = table\('users'/, 'users table present');
     assert.match(schema, /passwordHash/, 'users table carries the auth passwordHash column');
 
-    // Signup page is the canonical no-JS form write-path (#244): it exports a
-    // page `action`, posts via `<form method="POST">`, and returns fieldErrors
-    // + values on failure so the re-render keeps the user's input.
+    // Signup is the canonical no-JS form write-path (#1155): the page BINDS the
+    // imported module action with `<form action=${signup}>` (no per-page
+    // adapter), and the action returns fieldErrors + values on failure so the
+    // re-render keeps the user's input.
     const signup = readFileSync(join(appDir, 'app', 'features', 'auth', 'signup', 'page.ts'), 'utf8');
-    assert.match(signup, /export async function action/, 'signup page exports an action');
-    assert.match(signup, /<form method="POST"/, 'signup form posts to the page action');
-    assert.match(signup, /fieldErrors/, 'signup action returns field errors');
+    assert.match(signup, /<form action=\$\{signup\}/, 'signup form binds the imported action');
+    assert.doesNotMatch(signup, /export async function action/,
+      'and does NOT reintroduce a per-page action adapter');
     assert.match(signup, /actionData/, 'signup page reads actionData for re-render');
+    const signupAction = readFileSync(
+      join(appDir, 'modules', 'auth', 'actions', 'signup.server.ts'), 'utf8');
+    assert.match(signupAction, /formData: FormData/, 'the action takes the FormData directly');
+    assert.match(signupAction, /fieldErrors/, 'and returns field errors');
 
     // #904: a signed-in user must be able to log out. The dashboard subtree ships
     // a nested layout carrying a plain POST <form> to the createAuth signout route,

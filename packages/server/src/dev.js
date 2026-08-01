@@ -15,7 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildRouteTable, matchPage, matchApi } from './router.js';
 import { generateRouteTypes } from './route-types.js';
 import { ssrPage, ssrNotFound, setClientRouterEnabled } from './ssr.js';
-import { loadPageAction, runPageAction } from './page-action.js';
+import { runFormAction } from './form-dispatch.js';
 import { handleApi } from './api.js';
 import {
   buildActionIndex,
@@ -26,7 +26,7 @@ import {
   hasUseServerDirective,
   hashFile,
 } from './actions.js';
-import { registerSeedHooks } from './action-seed.js';
+import { registerActionHooks } from './action-seed.js';
 import { readRegenerateRules, maybeRegenerate, isRegenerateOutputPath } from './dev-regenerate.js';
 import { stripTypeScript, ensureStripper } from './ts-strip.js';
 import { defaultLogger } from './logger.js';
@@ -93,7 +93,8 @@ import { setVendorEntries, setCoreInstall, publishBuildId, setAppSourceId, setBa
 import { readBasePath, stripBasePath, withBasePath } from './base-path.js';
 import { propagateTrustedRemoteIp } from './rate-limit.js';
 import { readAllowedOrigins } from './csrf.js';
-import { setAssetUrlProvider } from '@webjsdev/core';
+import { setAssetUrlProvider, setFormActionResolver } from '@webjsdev/core';
+import { resolveActionIdentity } from './form-action-identity.js';
 import { setAssetRoots, clearAssetHashCache, setElisionFingerprint, withAssetHash, assetHashFor, versionModuleImports, resolveAssetUrl } from './asset-hash.js';
 import { urlFromRequest } from './forwarded.js';
 import { compileHeaderRules, applySecurityHeaders, webRequestIsHttps } from './headers.js';
@@ -640,13 +641,17 @@ export async function createRequestHandler(opts) {
   // never touched the disk.
   setAssetUrlProvider((p) => resolveAssetUrl(p, basePath()));
 
-  // SSR action-result seeding (#472). Install the process-global module load
-  // hook NOW, at boot, before any `'use server'` action module is imported (ESM
-  // caches by URL, so a module loaded before the hook would never be faceted).
-  // Read once (not per-rebuild): the hook is global and cannot be cleanly
-  // un-installed, so toggling needs a restart. Disabled -> no hook, no ambient
-  // collector wrap in ssr.js, and module loading stays byte-identical.
-  if (await readSeedEnabled(appDir)) await registerSeedHooks();
+  // The `'use server'` load hook. Install it NOW, at boot, before any action
+  // module is imported (ESM caches by URL, so a module loaded before the hook
+  // would never be wrapped). Read once (not per-rebuild): the hook is global
+  // and cannot be cleanly un-installed, so toggling needs a restart.
+  //
+  // It installs UNCONDITIONALLY, and only seed collection (#472) follows the
+  // `webjs.seed` switch. Action identity (#1155) rides the same hook, and it is
+  // what a bound `<form action=${action}>` resolves through, so gating the hook
+  // on seeding would mean `webjs.seed: false` silently broke every no-JS form.
+  await registerActionHooks({ seed: await readSeedEnabled(appDir) });
+
 
   // When an app commits a vendor pin (.webjs/vendor/importmap.json) it carries a
   // deterministic vendor map that is cheap to read (one file, no analysis, no
@@ -757,7 +762,7 @@ export async function createRequestHandler(opts) {
   // package.json `webjs.maxBodyBytes` / `webjs.maxMultipartBytes` plus the env
   // overrides. The secure defaults (1 MiB JSON/RPC, 10 MiB form) apply when
   // unconfigured. Stamped on every request via `setBodyLimits` so `readBody`
-  // (used inside route handlers) enforces the same cap the RPC and page-action
+  // (used inside route handlers) enforces the same cap the RPC and form-dispatch
   // paths do.
   const bodyLimits = await readBodyLimitsFromApp(appDir);
 
@@ -796,6 +801,15 @@ export async function createRequestHandler(opts) {
     // restart; empty for a plain app, so the serving path is unaffected.
     regenerateRules: dev ? await readRegenerateRules(appDir) : [],
   };
+
+  // Teach the renderers how to turn a real server-action function into the
+  // `<hash>/<fn>` identity a form submits (#1155). The hook path is
+  // process-global and needs no index; `state.actionIndex` is consulted only as
+  // a hash memo, and by the scan fallback for a runtime with no hook. In a
+  // process running several handlers the fallback therefore resolves against
+  // the most recently booted one, which is the same scope the asset-url
+  // provider already has.
+  setFormActionResolver((fn) => (state.actionIndex ? resolveActionIdentity(state.actionIndex, fn) : null));
 
   /**
    * Report a dev error (#264): build a frame and push it to the open tab via
@@ -1181,7 +1195,7 @@ export async function createRequestHandler(opts) {
 
       // Make the resolved body-size limits (issue #237) readable from the
       // request scope, so `readBody` inside a route handler enforces the same
-      // cap the framework's own RPC / page-action body reads do.
+      // cap the framework's own RPC / form-dispatch body reads do.
       setBodyLimits(state.bodyLimits);
 
       let pathname = '/';
@@ -1349,7 +1363,7 @@ export async function createRequestHandler(opts) {
             // to the inbound `x-webjs-remote-ip` header that the copied
             // `req.headers` still carries, which a client can spoof. So strip
             // that header on the rebuild and propagate the framework-trusted IP
-            // across the new object, the same pattern page-action.js uses.
+            // across the new object, the same pattern form-dispatch.js uses.
             const headers = new Headers(req.headers);
             headers.delete('x-webjs-remote-ip');
             const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
@@ -2179,11 +2193,11 @@ async function handleCore(req, ctx) {
   }
 
   // Page route. GET/HEAD render the page. A NON-GET/HEAD method (POST/PUT/…)
-  // is only routed here when the page module exports an `action` (#244); the
-  // action runs inside the page's segment middleware, then either PRG-redirects
-  // (303) on success, re-renders the same page (422) with field errors on
-  // failure, or honors a thrown redirect()/notFound(). Without an `action`
-  // export, a non-GET/HEAD request falls through to the 404 below, unchanged.
+  // is a form submission (#1155): the `__webjs_action` hidden field names the
+  // server action to run, it runs inside the page's segment middleware, and the
+  // result either PRG-redirects (303), re-renders the same page (422) with
+  // field errors, or honors a thrown redirect()/notFound(). A non-GET carrying
+  // no action identity is a 405 on a path that exists but only renders.
   {
     const page = matchPage(state.routeTable, path);
     if (page) {
@@ -2219,11 +2233,17 @@ async function handleCore(req, ctx) {
         const handler = () => ssrPage(page.route, page.params, url, { ...ssrOpts, req });
         return runWithSegmentMiddleware(req, page.route.middlewares, handler, dev);
       }
-      const loaded = await loadPageAction(page.route.file, dev);
-      if (loaded) {
-        const handler = () => runPageAction(page.route, page.params, url, loaded, req, ssrOpts);
-        return runWithSegmentMiddleware(req, page.route.middlewares, handler, dev);
-      }
+      // Every non-GET/HEAD to a page runs the page's segment middleware, and
+      // the dispatcher always answers with a Response (a 405 when there is no
+      // action to run), so a middleware that post-processes `await next()`
+      // never has to handle an absent one.
+      const deps = {
+        actionIndex: state.actionIndex,
+        allowedOrigins,
+        onError: reportError ? (e) => reportError(e, req, 'action') : undefined,
+      };
+      const handler = () => runFormAction(page.route, page.params, url, req, ssrOpts, deps);
+      return runWithSegmentMiddleware(req, page.route.middlewares, handler, dev);
     }
   }
 

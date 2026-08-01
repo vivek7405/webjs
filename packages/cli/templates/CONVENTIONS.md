@@ -28,7 +28,7 @@ is the short version.
   from an `interface`, routing files from `PageProps` / `LayoutProps`. Never
   `any`, and never `unknown` where a real type exists.
 - **Progressive enhancement is the default.** Pages render as HTML, `<a>`
-  navigates, `<form>` + a page action submits, all with JavaScript off; opt into
+  navigates, a `<form action=${importedAction}>` submits, all with JavaScript off; opt into
   interactivity per behaviour inside a component.
 - **Commit per logical unit** as soon as it is complete, and never push to `main`.
 

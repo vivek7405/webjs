@@ -1,7 +1,11 @@
 import { html, isTemplate } from './html.js';
 import { BINDING_PREFIXES } from './binding-prefixes.js';
 import { escapeText, escapeAttr } from './escape.js';
-import { assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp } from './form-action.js';
+import {
+  assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp,
+  assertIdentifiableAction, bindFormActionStartTag, isBoundFormAction, resolveFormActionId,
+  assertConvergentBoundForm,
+} from './form-action.js';
 import { lookup, lookupModuleUrl, allTags } from './registry.js';
 import { stylesToString, isCSS } from './css.js';
 import { isRepeat } from './repeat.js';
@@ -152,6 +156,51 @@ async function renderTemplate(tr, ctx) {
   let commentDashes = 0;
   let currentTag = '';   // lowercased tag name currently being parsed
   let rawTail = '';      // rolling lowercased tail, tracks </script>/</style>
+  let tagStart = -1;     // index in `out` of the `<` opening the current tag
+  /** @type {string | null} */
+  let pendingActionId = null;  // identity of a bound form action, until the tag closes
+  // Shapes on the CURRENT start tag that a bound form may not carry (#1155).
+  // Collected as the tag is scanned and judged at its `>`, because the action
+  // hole may come after them.
+  let pendingActionCount = 0;
+  /** @type {string[]} */
+  let pendingPropAttrs = [];
+
+  // A bound `action=${fn}` is committed at its hole, but the edits it implies
+  // (forcing `method` / `enctype`, and the hidden identity field) are only
+  // possible once the whole start tag is known: an attribute the author wrote
+  // AFTER the action hole still counts, and the hidden field belongs INSIDE
+  // the form, after the `>`. So the hole records the identity and this runs at
+  // the `>`, rewriting the start tag that was just emitted.
+  const closeBoundFormTag = () => {
+    // Reset per tag whether or not this one was bound, so a later form is never
+    // judged on an earlier tag's shapes.
+    const propAttrs = pendingPropAttrs;
+    const duplicateAction = pendingActionCount > 1;
+    pendingPropAttrs = [];
+    pendingActionCount = 0;
+    if (pendingActionId == null) return;
+    assertConvergentBoundForm({ duplicateAction, propAttrs });
+    const bound = bindFormActionStartTag(out.slice(tagStart), pendingActionId);
+    out = out.slice(0, tagStart) + bound.tag + bound.hidden;
+    pendingActionId = null;
+  };
+  // #1155: a `.method` / `.enctype` / `.encoding` prop on a form is dropped
+  // here but applied for real in the browser, where all three are reflected IDL
+  // attributes, so a bound form carrying one submits differently with JS than
+  // without it. Recorded and refused at the `>`, once the tag's action hole is
+  // known.
+  const notePropAttr = (name, tag) => {
+    if (String(tag).toLowerCase() !== 'form') return;
+    let n = String(name).toLowerCase();
+    if (n === 'encoding') n = 'enctype';
+    if (n === 'method' || n === 'enctype') pendingPropAttrs.push(String(name));
+  };
+  const noteActionHole = (name, tag) => {
+    if (String(tag).toLowerCase() === 'form' && String(name).toLowerCase() === 'action') {
+      pendingActionCount += 1;
+    }
+  };
 
   for (let i = 0; i < strings.length; i++) {
     const s = strings[i];
@@ -160,7 +209,7 @@ async function renderTemplate(tr, ctx) {
       switch (state) {
         case 'text':
           out += c;
-          if (c === '<') state = 'tag-open';
+          if (c === '<') { state = 'tag-open'; tagStart = out.length - 1; }
           break;
         case 'tag-open':
           out += c;
@@ -187,6 +236,7 @@ async function renderTemplate(tr, ctx) {
         case 'tag-name':
           out += c;
           if (c === '>') {
+            closeBoundFormTag();
             state = isRawtextTag(currentTag) ? 'rawtext' : 'text';
             if (state === 'rawtext') rawTail = '';
           } else if (/\s/.test(c)) state = 'in-tag';
@@ -195,6 +245,7 @@ async function renderTemplate(tr, ctx) {
         case 'in-tag':
           out += c;
           if (c === '>') {
+            closeBoundFormTag();
             state = isRawtextTag(currentTag) ? 'rawtext' : 'text';
             if (state === 'rawtext') rawTail = '';
           } else if (!/\s/.test(c) && c !== '/') {
@@ -215,18 +266,18 @@ async function renderTemplate(tr, ctx) {
         case 'attr-name':
           if (c === '=') { state = 'after-eq'; out += c; }
           else if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; out += c; }
-          else if (c === '>') { state = 'text'; attrName = ''; out += c; }
+          else if (c === '>') { state = 'text'; attrName = ''; out += c; closeBoundFormTag(); }
           else { attrName += c; out += c; }
           break;
         case 'after-eq':
           if (c === '"' || c === "'") { state = 'attr-quoted'; attrQuote = c; out += c; }
           else if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; out += c; }
-          else if (c === '>') { state = 'text'; attrName = ''; out += c; }
+          else if (c === '>') { state = 'text'; attrName = ''; out += c; closeBoundFormTag(); }
           else { state = 'attr-unquoted'; out += c; }
           break;
         case 'attr-unquoted':
           if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; out += c; }
-          else if (c === '>') { state = 'text'; attrName = ''; out += c; }
+          else if (c === '>') { state = 'text'; attrName = ''; out += c; closeBoundFormTag(); }
           else out += c;
           break;
         case 'attr-quoted':
@@ -301,6 +352,7 @@ async function renderTemplate(tr, ctx) {
             // property is a plain expando that reflects nothing, so refusing
             // it would be a false positive.
             assertNotFunctionReflectedActionProp(val, name, currentTag);
+            notePropAttr(name, currentTag);
             state = 'in-tag';
             attrName = '';
             continue;
@@ -338,7 +390,24 @@ async function renderTemplate(tr, ctx) {
           if (val) out += `${name}=""`;
           state = 'in-tag';
           attrName = '';
+        } else if (isBoundFormAction(val, attrName, currentTag)) {
+          noteActionHole(attrName, currentTag);
+          // #1155: the ONE supported form-action binding. Drop the `action=`
+          // attribute entirely so the form posts to the page's own url (an
+          // omitted attribute, not `action=""`, which the spec calls a
+          // conformance error), and remember the identity so the `>` can force
+          // the submission attributes and emit the hidden field.
+          pendingActionId = assertIdentifiableAction(await resolveFormActionId(val), currentTag);
+          // Trailing whitespace goes with the attribute: every injected
+          // attribute carries its own leading space, so keeping the old one
+          // would double it in the emitted tag.
+          out = out.slice(0, attrStart).replace(/\s+$/, '');
+          state = 'in-tag';
+          attrName = '';
         } else {
+          // A second `action` hole that resolved to a plain url still COUNTS,
+          // so the duplicate refusal fires whatever the values happen to be.
+          noteActionHole(attrName, currentTag);
           // #1154: never stringify a function into action=/formaction= (it
           // would serialize a server action's source into the served HTML).
           assertNotFunctionActionAttr(val, attrName, currentTag);
@@ -1790,6 +1859,48 @@ async function streamTemplate(tr, ctx, controller) {
   let rawTail = '';
   // Buffer used for attribute handling where we may need to backtrack.
   let buf = '';
+  let tagStart = -1;
+  /** @type {string | null} */
+  let pendingActionId = null;
+  // Shapes on the CURRENT start tag that a bound form may not carry (#1155).
+  // Collected as the tag is scanned and judged at its `>`, because the action
+  // hole may come after them.
+  let pendingActionCount = 0;
+  /** @type {string[]} */
+  let pendingPropAttrs = [];
+
+  // See the buffered machine for why this runs at the `>` rather than at the
+  // hole. `tagStart` indexes into `buf`, which is safe because `buf` is only
+  // flushed on a `text`-state hole and a start tag contains none.
+  const closeBoundFormTag = () => {
+    // Reset per tag whether or not this one was bound, so a later form is never
+    // judged on an earlier tag's shapes.
+    const propAttrs = pendingPropAttrs;
+    const duplicateAction = pendingActionCount > 1;
+    pendingPropAttrs = [];
+    pendingActionCount = 0;
+    if (pendingActionId == null) return;
+    assertConvergentBoundForm({ duplicateAction, propAttrs });
+    const bound = bindFormActionStartTag(buf.slice(tagStart), pendingActionId);
+    buf = buf.slice(0, tagStart) + bound.tag + bound.hidden;
+    pendingActionId = null;
+  };
+  // #1155: a `.method` / `.enctype` / `.encoding` prop on a form is dropped
+  // here but applied for real in the browser, where all three are reflected IDL
+  // attributes, so a bound form carrying one submits differently with JS than
+  // without it. Recorded and refused at the `>`, once the tag's action hole is
+  // known.
+  const notePropAttr = (name, tag) => {
+    if (String(tag).toLowerCase() !== 'form') return;
+    let n = String(name).toLowerCase();
+    if (n === 'encoding') n = 'enctype';
+    if (n === 'method' || n === 'enctype') pendingPropAttrs.push(String(name));
+  };
+  const noteActionHole = (name, tag) => {
+    if (String(tag).toLowerCase() === 'form' && String(name).toLowerCase() === 'action') {
+      pendingActionCount += 1;
+    }
+  };
 
   for (let i = 0; i < strings.length; i++) {
     const s = strings[i];
@@ -1798,7 +1909,7 @@ async function streamTemplate(tr, ctx, controller) {
       switch (state) {
         case 'text':
           buf += c;
-          if (c === '<') state = 'tag-open';
+          if (c === '<') { state = 'tag-open'; tagStart = buf.length - 1; }
           break;
         case 'tag-open':
           buf += c;
@@ -1825,6 +1936,7 @@ async function streamTemplate(tr, ctx, controller) {
         case 'tag-name':
           buf += c;
           if (c === '>') {
+            closeBoundFormTag();
             state = isRawtextTag(currentTag) ? 'rawtext' : 'text';
             if (state === 'rawtext') rawTail = '';
           } else if (/\s/.test(c)) state = 'in-tag';
@@ -1833,6 +1945,7 @@ async function streamTemplate(tr, ctx, controller) {
         case 'in-tag':
           buf += c;
           if (c === '>') {
+            closeBoundFormTag();
             state = isRawtextTag(currentTag) ? 'rawtext' : 'text';
             if (state === 'rawtext') rawTail = '';
           } else if (!/\s/.test(c) && c !== '/') {
@@ -1853,18 +1966,18 @@ async function streamTemplate(tr, ctx, controller) {
         case 'attr-name':
           if (c === '=') { state = 'after-eq'; buf += c; }
           else if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; buf += c; }
-          else if (c === '>') { state = 'text'; attrName = ''; buf += c; }
+          else if (c === '>') { state = 'text'; attrName = ''; buf += c; closeBoundFormTag(); }
           else { attrName += c; buf += c; }
           break;
         case 'after-eq':
           if (c === '"' || c === "'") { state = 'attr-quoted'; attrQuote = c; buf += c; }
           else if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; buf += c; }
-          else if (c === '>') { state = 'text'; attrName = ''; buf += c; }
+          else if (c === '>') { state = 'text'; attrName = ''; buf += c; closeBoundFormTag(); }
           else { state = 'attr-unquoted'; buf += c; }
           break;
         case 'attr-unquoted':
           if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; buf += c; }
-          else if (c === '>') { state = 'text'; attrName = ''; buf += c; }
+          else if (c === '>') { state = 'text'; attrName = ''; buf += c; closeBoundFormTag(); }
           else buf += c;
           break;
         case 'attr-quoted':
@@ -1909,6 +2022,7 @@ async function streamTemplate(tr, ctx, controller) {
           // nothing and a function stays legal.
           if (kind === 'prop' && !currentTag.includes('-')) {
             assertNotFunctionReflectedActionProp(val, name, currentTag);
+            notePropAttr(name, currentTag);
           }
           buf = buf.slice(0, attrStart);
           state = 'in-tag';
@@ -1923,7 +2037,17 @@ async function streamTemplate(tr, ctx, controller) {
           if (val) buf += `${name}=""`;
           state = 'in-tag';
           attrName = '';
+        } else if (isBoundFormAction(val, attrName, currentTag)) {
+          noteActionHole(attrName, currentTag);
+          // The SAME binding as the buffered renderer (#1155), in the second
+          // machine, so `renderToStream(v, { ssr: false })` emits an identical
+          // form rather than refusing one the page renderer accepts.
+          pendingActionId = assertIdentifiableAction(await resolveFormActionId(val), currentTag);
+          buf = buf.slice(0, attrStart).replace(/\s+$/, '');
+          state = 'in-tag';
+          attrName = '';
         } else {
+          noteActionHole(attrName, currentTag);
           // The SAME guard as the buffered renderer above. This is a second,
           // independent state machine, so it inherits nothing from that one;
           // a change to the rule has to land in both. Reached only via

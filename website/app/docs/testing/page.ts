@@ -100,7 +100,7 @@ suite('Client renderer', () =&gt; {
 });</pre>
 
     <h2>The handle() Test Harness</h2>
-    <p><code>createRequestHandler({ appDir }).handle(request)</code> drives the FULL request pipeline (middleware, routing, SSR, page actions, server-action RPC, auth + CSRF) and returns a native <code>Response</code>. It is the same entry the framework's own suite uses, so the most realistic way to test an app is to fire a <code>Request</code> through it and assert on the <code>Response</code>, with no spawned process and no network.</p>
+    <p><code>createRequestHandler({ appDir }).handle(request)</code> drives the FULL request pipeline (middleware, routing, SSR, form-bound actions, server-action RPC, auth + CSRF) and returns a native <code>Response</code>. It is the same entry the framework's own suite uses, so the most realistic way to test an app is to fire a <code>Request</code> through it and assert on the <code>Response</code>, with no spawned process and no network.</p>
     <p><code>@webjsdev/server/testing</code> ships thin builders over that <code>handle()</code>. They are not a test framework. Each is a few lines over native <code>Request</code> / <code>Response</code>, and they reuse the REAL cookie / header names and the REAL wire serializer, so a test exercises the production contract, never a parallel fake.</p>
     <pre>import { createRequestHandler } from '@webjsdev/server';
 import { testRequest, invokeActionForTest, loginAndGetCookies, withSessionCookie }

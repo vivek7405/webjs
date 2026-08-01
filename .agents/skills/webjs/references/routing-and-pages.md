@@ -7,7 +7,7 @@
 - `route.ts` HTTP handlers and `middleware.ts`, the route-handler toolkit (`json` / `readBody` / `clientIp` / the no-arg accessors), and calling one from the client with `richFetch`
 - `metadata` and `generateMetadata` (folded in here), including image metadata routes that return a `Response`
 - Control-flow throws: `notFound()`, `redirect()`, `forbidden()`, `unauthorized()`
-- The no-JS page `action` write path
+- The no-JS write path: a `<form>` bound to a `'use server'` action
 - Boundaries: `error.ts`, `loading.ts`, `not-found.ts`, `forbidden.ts`, `unauthorized.ts`, and the two root-only ones
 
 Read this when a task touches the route contract, a URL, a `<head>` tag, a redirect, a 404, or a form POST that a page owns. Sibling refs: `components.md` (anything interactive), `data-and-actions.md` (server actions, queries, validation, the `ActionResult` envelope), `auth-and-sessions.md` (`forbidden()` / `unauthorized()` flows).
@@ -32,7 +32,7 @@ export default function About() {
 
 `params` and `searchParams` are awaitable AND synchronously readable (`params.id` and `await params` both work, Next.js 15/16 parity). Throw `notFound()` or `redirect(url)` to short-circuit. Reach data through a `.server.ts` query; never import the DB driver into a page.
 
-Optional named exports: `metadata` / `generateMetadata` (below), `export const revalidate` (seconds, opts into the HTML response cache, only for a page identical for every visitor), and `export const action` (the write path, below).
+Optional named exports: `metadata` / `generateMetadata` (below) and `export const revalidate` (seconds, opts into the HTML response cache, only for a page identical for every visitor). There is no `action` export; the write path is a form bound to a `'use server'` action (below).
 
 ## Layouts (`app/**/layout.ts`)
 
@@ -115,24 +115,26 @@ Common fields: `title` (string or `{ template, default, absolute }`), `descripti
 
 ## Control-flow throws
 
-From `@webjsdev/core`: throw to short-circuit a page / layout render or a page `action`.
+From `@webjsdev/core`: throw to short-circuit a page / layout render or a form-bound action.
 
 - `notFound()` renders the nearest `not-found.ts` (nearest wins from the throwing chain).
-- `redirect(url[, status])`. The no-status default is convention-picked at the catch site: `302` for a GET page render, `307` (method-preserving) for a page action. Override with `redirect(url, 308)` or `redirect(url, { status })`.
+- `redirect(url[, status])`. The no-status default is convention-picked at the catch site: `302` for a GET page render, `307` (method-preserving) for a form-bound action. Override with `redirect(url, 308)` or `redirect(url, { status })`.
 - `forbidden()` renders the nearest `forbidden.ts` (authenticated user lacking permission); `unauthorized()` renders the nearest `unauthorized.ts` (request not authenticated).
 
 None of these belong in a `route.ts` (return a `Response` there). Inside a `'use server'` RPC action, return an `ActionResult` for an auth failure rather than throwing (`data-and-actions.md`).
 
-## The no-JS write path (a page `action`)
+## The no-JS write path (a form-bound action)
 
-A `page.ts` may export an `action` beside its default render function. A non-GET/HEAD submission to the page's own URL runs it, wrapped in the page's segment middleware. It works with JS off; with JS on the client router applies the response in place.
+A page imports a `'use server'` action and binds it into the form: `<form action=${sendMessage}>`. There is no page `action` export; the binding IS the wiring. The renderer omits the `action` attribute (so the form posts to the page's own url), supplies `method="post"` and an enctype, and emits a hidden `__webjs_action` field carrying the action's `<hash>/<fn>` identity. A non-GET/HEAD submission carrying that identity runs the action, wrapped in the segment middleware of the URL it was submitted to AND the action's own declared `middleware`. It works with JS off; with JS on the client router posts the same body to the same url and applies the response in place.
+
+**Do not treat the page's segment middleware as the action's authorization gate.** An identity names the action, not the page that rendered it, so the same action is reachable by submitting to any page path (and, being a `'use server'` export, at its RPC endpoint too, where no segment middleware runs at all). That is the same reachability every server action has always had, and the removed page `action` export was the one shape where the URL really did scope the handler. Authorize the action itself: an `export const middleware = [requireAdmin]` on the action, or a check in its body, both of which run on either transport.
+
+A form-bound action always receives the `FormData` as its first argument, which is where it differs from the same action called over RPC. `validate` is the typing seam: it receives that `FormData`, and its transform-return becomes the action's typed input.
 
 ```ts
-// app/contact/page.ts
-import { html } from '@webjsdev/core';
-import { sendMessage } from '#modules/contact/actions/send-message.server.ts';
-
-export async function action({ formData }: { formData: FormData }) {
+// modules/contact/actions/send-message.server.ts
+'use server';
+export async function sendMessage(formData: FormData) {
   const email = String(formData.get('email') || '').trim();
   const body = String(formData.get('body') || '').trim();
   const values = { email, body };
@@ -140,9 +142,15 @@ export async function action({ formData }: { formData: FormData }) {
   if (!email.includes('@')) fieldErrors.email = 'Enter a valid email';
   if (body.length < 10) fieldErrors.body = 'Message is too short';
   if (Object.keys(fieldErrors).length) return { success: false, fieldErrors, values, status: 422 };
-  await sendMessage({ email, body });
+  await deliver({ email, body });
   return { success: true, redirect: '/contact/thanks' };
 }
+```
+
+```ts
+// app/contact/page.ts
+import { html } from '@webjsdev/core';
+import { sendMessage } from '#modules/contact/actions/send-message.server.ts';
 
 export default function Contact({ actionData }: {
   actionData?: { fieldErrors?: Record<string, string>; values?: Record<string, string> };
@@ -150,7 +158,7 @@ export default function Contact({ actionData }: {
   const errors = actionData?.fieldErrors || {};
   const values = actionData?.values || {};
   return html`
-    <form method="POST" class="flex flex-col gap-3">
+    <form action=${sendMessage} class="flex flex-col gap-3">
       <input name="email" type="email" value=${values.email || ''} required>
       ${errors.email ? html`<p class="text-sm text-red-600">${errors.email}</p>` : ''}
       <textarea name="body" required>${values.body || ''}</textarea>
@@ -161,7 +169,17 @@ export default function Contact({ actionData }: {
 }
 ```
 
-How the result is read (server side): a success PRG-redirects with `303` (to a same-site `redirect` path if present, else the page's own URL); a failure re-SSRs the SAME page with `status` (default `422`) and the result on `ctx.actionData`. Failure is detected robustly (`success === false`, OR `fieldErrors` present, OR `error` present with `success !== true`), so an error is never swallowed. `result.redirect` must be a same-site local path (a single leading `/`); for a real external redirect, throw `redirect(absoluteUrl)` instead. On a plain GET render `actionData` is `undefined`. Prefer a `<form>` + page action over `fetch` in a `@click` for any write a form can express.
+How the result is read (server side): a success PRG-redirects with `303` (to a same-site `redirect` path if present, else the page's own URL); a failure re-SSRs the SAME page with `status` (default `422`) and the result on `ctx.actionData`. Failure is detected robustly (`success === false`, OR `fieldErrors` present, OR `error` present with `success !== true`), so an error is never swallowed. `result.redirect` must be a same-site local path (a single leading `/`); for a real external redirect, throw `redirect(absoluteUrl)` instead. On a plain GET render `actionData` is `undefined`. Prefer a bound `<form>` over `fetch` in a `@click` for any write a form can express.
+
+Three responses that are not the happy path:
+
+- **A submission carrying no identity is a `405` + `Allow: GET, HEAD`.** A bare `<form method="post">` binds nothing, and the page path exists but only renders, so the method is what is wrong rather than the url.
+- **An identity whose hash no longer resolves re-renders at `422`** with a resubmit message and the submitted values on `actionData`. That is a form held open across a deploy; a 404 would discard what was typed and a silent no-op would show success for a write that never happened.
+- **A bound action declaring `export const method = 'GET'` is a `405`.** A GET action rides its args in the url and is CSRF-exempt, so it cannot answer a form POST. `webjs check`'s `form-action-not-a-get-action` catches it at edit time.
+
+The submission is Origin-verified (the same `Sec-Fetch-Site` / `Origin` check the RPC endpoint applies), so a no-JS form needs no CSRF token field.
+
+Refusals worth knowing: `formaction=${fn}` on a submit button is refused (write one form per action), a bound form may not declare `method="get"`, and a function bound to `action=` that is not a `'use server'` export throws at render rather than producing a form that posts nowhere. See `muscle-memory-gotchas.md` for the full table.
 
 ## Error, loading, and 404 boundaries
 

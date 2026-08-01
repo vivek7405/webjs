@@ -20,6 +20,7 @@ import { ifNoneMatchSatisfied } from './conditional-get.js';
 import { getBodyLimits } from './context.js';
 import { basePath } from './importmap.js';
 import { withBasePath } from './base-path.js';
+import { FORM_ACTION_ID_KEY } from '@webjsdev/core';
 
 /**
  * The JSON / RPC body cap in effect for the current request: the per-request
@@ -417,11 +418,18 @@ function buildStubBody({ hash, method, fnNames, actionUrl }) {
     lines.push(`  return __body(fn, key, __METHOD, sig);`);
     lines.push(`}`);
   }
+  // Each stub carries its own `<hash>/<fn>` identity (#1155), so a client
+  // re-render of `<form action=${action}>` can bind the live form
+  // synchronously. The server resolves the REAL function's identity through the
+  // load-hook registry instead; both produce the same string, which is what
+  // makes the SSR'd form and the re-rendered one submit the same value.
+  // Non-enumerable so `import * as actions` and a spread stay unchanged.
+  lines.push(`const __id = (fn, name) => { try { Object.defineProperty(fn, ${J(FORM_ACTION_ID_KEY)}, { value: __HASH + '/' + name }); } catch {} return fn; };`);
   for (const name of fnNames) {
     lines.push(
       name === 'default'
-        ? `export default (...args) => __call('default', args);`
-        : `export const ${name} = (...args) => __call(${J(name)}, args);`,
+        ? `export default __id((...args) => __call('default', args), 'default');`
+        : `export const ${name} = __id((...args) => __call(${J(name)}, args), ${J(name)});`,
     );
   }
   return lines.join('\n') + '\n';

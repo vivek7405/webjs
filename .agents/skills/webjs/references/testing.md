@@ -48,11 +48,11 @@ test/
 
 ## The `handle()` harness (`@webjsdev/server/testing`)
 
-`createRequestHandler({ appDir }).handle(request)` drives the FULL request pipeline (middleware, routing, SSR, page actions, server-action RPC, auth, CSRF) and returns a native `Response`. It is the same entry the framework's own suite uses, so the most realistic way to test an app is to fire a `Request` through it and assert on the `Response`, with no spawned process and no network. `@webjsdev/server/testing` ships thin builders over that `handle()`, each a few lines over native `Request` / `Response` that reuse the REAL cookie names, header names, and wire serializer. For a browser test that needs to drive the app in a real DOM, `createBrowserTestHandler()` from `@webjsdev/server/testing` exposes the same `handle()` pipeline to the WTR Chromium session.
+`createRequestHandler({ appDir }).handle(request)` drives the FULL request pipeline (middleware, routing, SSR, form-dispatched actions, server-action RPC, auth, CSRF) and returns a native `Response`. It is the same entry the framework's own suite uses, so the most realistic way to test an app is to fire a `Request` through it and assert on the `Response`, with no spawned process and no network. `@webjsdev/server/testing` ships thin builders over that `handle()`, each a few lines over native `Request` / `Response` that reuse the REAL cookie names, header names, and wire serializer. For a browser test that needs to drive the app in a real DOM, `createBrowserTestHandler()` from `@webjsdev/server/testing` exposes the same `handle()` pipeline to the WTR Chromium session.
 
 ```js
 import { createRequestHandler } from '@webjsdev/server';
-import { testRequest, invokeActionForTest, rawActionRequest, loginAndGetCookies, withSessionCookie }
+import { testRequest, submitForm, invokeActionForTest, rawActionRequest, loginAndGetCookies, withSessionCookie }
   from '@webjsdev/server/testing';
 
 const app = await createRequestHandler({ appDir: process.cwd(), dev: true });
@@ -76,6 +76,28 @@ const { cookies } = await loginAndGetCookies(app.handle, { email, password });
 const dash = await testRequest(app.handle, '/dashboard', withSessionCookie({}, cookies));
 assert.equal(dash.status, 200);
 ```
+
+### `submitForm`: the no-JS write path
+
+Use it for any page whose form binds an action (`<form action=${myAction}>`). A bound form carries a hidden `__webjs_action` field holding the action's identity, and that field is what tells the dispatcher which action to run, so a hand-written `POST` that omits it is not a form submission at all and is answered **405**. `submitForm` renders the page, reuses the identity the server put there, and posts it back, which is exactly what a browser with JS off does.
+
+```js
+import { submitForm } from '@webjsdev/server/testing';
+
+// success is a 303 PRG
+const ok = await submitForm(app.handle, '/signup', { name: 'Ada', email: 'ada@example.com', password: 'hunter2' });
+assert.equal(ok.status, 303);
+assert.equal(ok.headers.get('location'), '/dashboard');
+
+// a failure result re-renders the SAME page at 422 with the result on actionData
+const bad = await submitForm(app.handle, '/signup', { email: 'not-an-email' });
+assert.equal(bad.status, 422);
+assert.match(await bad.text(), /Enter a valid email/);
+```
+
+Options: `cookies` (submit as a logged-in user, paired with `loginAndGetCookies`), `match` (a string or RegExp the form's markup must contain, for a page with several forms), `index` (pick by position instead), `submitPath` (render one page, submit to another), and `headers`.
+
+Do not hand-roll the identity scrape. When it is wrong the symptom is a 405, an assertion fails, and a surrounding `catch` reports it as a database that was never migrated, so the test goes quiet rather than red.
 
 ### `invokeActionForTest`: round-trip an action through the REAL endpoint
 

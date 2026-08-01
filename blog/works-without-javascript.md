@@ -27,18 +27,22 @@ WebJs is built to make the correct path the easy one. Server-known data arrives 
 
 Reading without JavaScript is the easy half. The harder half is writing, and this is where a lot of frameworks quietly give up and require a client fetch. WebJs keeps the write path working with a plain form.
 
-A page can export an `action`:
+You bind a server action into the form:
 
 ```ts
-// app/contact/page.ts
-export async function action({ formData }) {
+// modules/leads/actions/save-lead.server.ts
+'use server';
+export async function saveLead(formData: FormData) {
   const email = String(formData.get('email') || '');
   if (!email) return { success: false, fieldErrors: { email: 'required' } };
-  await saveLead(email);
+  await db.insert(leads).values({ email });
   return { success: true, redirect: '/thanks' };
 }
+
+// app/contact/page.ts
+import { saveLead } from '#modules/leads/actions/save-lead.server.ts';
 export default function Contact({ actionData }) {
-  return html`<form method="post">
+  return html`<form action=${saveLead}>
     <input name="email" />
     ${actionData?.fieldErrors?.email ? html`<p>${actionData.fieldErrors.email}</p>` : ''}
     <button>Send</button>
@@ -46,9 +50,11 @@ export default function Contact({ actionData }) {
 }
 ```
 
-With JavaScript off, this is a normal HTML form. It POSTs to its own URL, the `action` runs on the server, and a success returns a `303` redirect (the post-redirect-get pattern, so a refresh does not resubmit) while a failure re-renders the same page at `422` with the result on `actionData`. No JavaScript touched any of it. The validation errors render server-side.
+That binding is the whole wiring. There is no `method`, no `enctype`, and no adapter in the page. What the browser receives is a plain HTML form: the framework drops the `action` attribute so the form posts to its own URL, adds the attributes a submission needs, and writes one hidden field naming the action to run. The action's code never goes anywhere near the browser.
 
-With JavaScript on, the client router intercepts the same submission and applies the response in place: a `303` is followed via fetch without a full reload, a `422` swaps the re-rendered page without losing scroll position. Same form, same server action, same result. The enhancement is that it happens without a page flash, not that it happens at all. You opt a form out of the router with `data-no-router` and it falls back to the native submit, which still works.
+With JavaScript off, that is a normal HTML form. It POSTs to its own URL, the action runs on the server, and a success returns a `303` redirect (the post-redirect-get pattern, so a refresh does not resubmit) while a failure re-renders the same page at `422` with the result on `actionData`. No JavaScript touched any of it. The validation errors render server-side. The submission is origin-checked, so there is no CSRF token to add either.
+
+With JavaScript on, the client router intercepts the same submission and applies the response in place: a `303` is followed via fetch without a full reload, a `422` swaps the re-rendered page without losing scroll position. Same form, same server action, same result, because with JavaScript on the router posts the same body to the same URL rather than taking a second code path. The enhancement is that it happens without a page flash, not that it happens at all. You opt a form out of the router with `data-no-router` and it falls back to the native submit, which still works.
 
 # Why this is worth the discipline
 

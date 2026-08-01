@@ -43,6 +43,25 @@ export declare function withCookies(init: RequestInit | undefined, cookieValue: 
 export declare function withSessionCookie(init: RequestInit | undefined, sessionCookie: string): RequestInit;
 
 /**
+ * Submit a page's `<form action={action}>` the way a browser with JS OFF does:
+ * render the page, reuse the identity the server put in its hidden
+ * `__webjs_action` field, and POST it back with the given fields. A POST that
+ * omits that field is not a form submission and is answered `405`.
+ */
+export declare function submitForm(
+  handle: Handle,
+  path: string,
+  fields?: Record<string, string> | URLSearchParams | FormData,
+  opts?: {
+    index?: number;
+    match?: string | RegExp;
+    cookies?: string;
+    submitPath?: string;
+    headers?: Record<string, string>;
+  },
+): Promise<Response>;
+
+/**
  * Drive the REAL credentials login (`POST /api/auth/signin/credentials` by
  * default) and capture the genuine signed session `Set-Cookie`.
  */

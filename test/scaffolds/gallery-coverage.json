@@ -307,6 +307,15 @@
     },
     "setAssetUrlProvider": {
       "exempt": "internal: server-only asset url provider setup"
+    },
+    "setFormActionResolver": {
+      "exempt": "internal: server-only form-action identity resolver setup"
+    },
+    "FORM_ACTION_FIELD": {
+      "exempt": "internal: the hidden field name the renderers emit and the form dispatcher reads"
+    },
+    "FORM_ACTION_ID_KEY": {
+      "exempt": "internal: the property a generated RPC stub carries its own identity on"
     }
   },
   "serverSpecifier": "@webjsdev/server",
@@ -651,6 +660,9 @@
       "exempt": "internal: embedded-adapter remote-IP plumbing"
     },
     "startServer": {
+      "demoed": true
+    },
+    "submitForm": {
       "demoed": true
     },
     "storeSession": {

@@ -3,7 +3,7 @@
  *
  * webjs's prod server reads request bodies on three paths: the server-action
  * RPC endpoint (actions.js), `route.{js,ts}` handlers via `readBody` (json.js),
- * and the no-JS page-action form path (page-action.js). Without a cap, an
+ * and the no-JS form-submission path (form-dispatch.js). Without a cap, an
  * uncapped body is a memory-exhaustion vector. This module is the SINGLE place
  * that decides the limit and performs a bounded read, so every body-read site
  * enforces it uniformly.
@@ -31,7 +31,7 @@
 export const DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
 
 /**
- * Default form / multipart body cap: 10 MiB. A form submission (the page-action
+ * Default form / multipart body cap: 10 MiB. A form submission (the form-dispatch
  * path) may legitimately carry more than a JSON RPC call (a textarea, a small
  * upload), so it gets a separate, higher, still-bounded limit. Large file
  * uploads are a distinct concern (#247) with their own streaming story.
@@ -40,7 +40,7 @@ export const DEFAULT_MAX_MULTIPART_BYTES = 10 * 1024 * 1024;
 
 /**
  * Thrown by `readBody` (json.js) when a route handler's body exceeds the limit.
- * The RPC and page-action paths return a 413 Response inline, but `readBody`
+ * The RPC and form-dispatch paths return a 413 Response inline, but `readBody`
  * runs INSIDE a user route handler and returns parsed data, so it signals the
  * over-limit case by throwing. The API dispatcher (`handleApi`) catches this and
  * maps it to a 413, so a handler that just does `await readBody(req)` gets the
@@ -266,7 +266,7 @@ export async function readTextBounded(req, limit) {
 }
 
 /**
- * Read a request body as `FormData`, bounded by `limit`. Used by the page-action
+ * Read a request body as `FormData`, bounded by `limit`. Used by the form-dispatch
  * form path. Reconstructs a bounded Request from the already-read bytes and
  * defers to the platform `formData()` parser, so multipart and
  * urlencoded bodies are decoded exactly as before, just size-checked first.

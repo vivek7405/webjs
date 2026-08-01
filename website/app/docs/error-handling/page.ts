@@ -21,7 +21,7 @@ export default function ErrorHandling() {
         For form validation errors there are two valid patterns, neither of which uses error boundaries:
         <ul>
           <li><strong>JS-side</strong>: handle validation in the component's submit handler, keep errors in component state.</li>
-          <li><strong>Server-rendered (Rails / Django / Laravel style)</strong>: export a page <code>action</code> that returns a failure <code>ActionResult</code> (<code>{ success: false, fieldErrors, values, status: 422 }</code>). The framework re-SSRs the SAME page at <code>422 Unprocessable Entity</code> with the result on <code>ctx.actionData</code>, so the page repopulates inputs from <code>actionData.values</code> and shows messages from <code>actionData.fieldErrors</code> (no hand-rolled <code>new Response(...)</code>). The client router applies that response in place regardless of status code, so the user sees the validated form without a full page reload and without losing their typed values. See the <a href="/docs/server-actions">server actions</a> docs for the page-action pattern and the <a href="/docs/client-router">client router</a> docs for the rendering behavior.</li>
+          <li><strong>Server-rendered (Rails / Django / Laravel style)</strong>: bind a <code>'use server'</code> action into the form and return a failure <code>ActionResult</code> (<code>{ success: false, fieldErrors, values, status: 422 }</code>). The framework re-SSRs the SAME page at <code>422 Unprocessable Entity</code> with the result on <code>ctx.actionData</code>, so the page repopulates inputs from <code>actionData.values</code> and shows messages from <code>actionData.fieldErrors</code> (no hand-rolled <code>new Response(...)</code>). The client router applies that response in place regardless of status code, so the user sees the validated form without a full page reload and without losing their typed values. See the <a href="/docs/server-actions">server actions</a> docs for the form-binding pattern and the <a href="/docs/client-router">client router</a> docs for the rendering behavior.</li>
         </ul>
       </li>
     </ul>
@@ -75,7 +75,7 @@ export default async function PostPage({ params }: { params: { slug: string } })
 }</pre>
 
     <h2>forbidden.ts and unauthorized.ts</h2>
-    <p>Throw <code>forbidden()</code> (403) or <code>unauthorized()</code> (401) from a page/layout function or a page <code>action</code>, the same way as <code>notFound()</code>. The nearest <code>forbidden.ts</code> / <code>unauthorized.ts</code> boundary renders (a default page when none exists). Use <code>unauthorized()</code> for a request that is not authenticated, and <code>forbidden()</code> for an authenticated user who lacks permission:</p>
+    <p>Throw <code>forbidden()</code> (403) or <code>unauthorized()</code> (401) from a page/layout function or a form-bound action, the same way as <code>notFound()</code>. The nearest <code>forbidden.ts</code> / <code>unauthorized.ts</code> boundary renders (a default page when none exists). Use <code>unauthorized()</code> for a request that is not authenticated, and <code>forbidden()</code> for an authenticated user who lacks permission:</p>
 
     <pre>import { forbidden, unauthorized } from '@webjsdev/core';
 

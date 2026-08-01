@@ -698,13 +698,14 @@ state. Only the *interactivity itself* (the +/- click, the open/close
 toggle, the tab switch) requires JS.
 
 **Default rules:**
-- **Forms must work as plain HTML POSTs.** Post to the page's own URL
-  (omit `action` entirely) and handle the submission in that page's
-  `action` export. Never `fetch` + a JS click handler for the happy
-  path. Do NOT interpolate a server action into the attribute
-  (`<form action=${createPost}>`): that is the Next binding, it is not
-  how WebJs reaches an action, and it is refused at render time because
-  stringifying the function would write its source into the HTML. The framework upgrades the form to a partial-swap
+- **Forms must work as plain HTML POSTs.** Bind the `'use server'` action
+  into the form (`<form action=${createPost}>`), which is the whole
+  wiring: the renderer omits the attribute so the form posts to the
+  page's own URL, supplies `method="post"` and an enctype, and emits a
+  hidden field carrying the action's identity, so the action's source
+  never reaches the browser. Never `fetch` + a JS click handler for the
+  happy path. A bare `<form method="post">` binds nothing and is a 405.
+  The framework upgrades the form to a partial-swap
   submission automatically when the client router is active, and with
   JS disabled the same form does a full-page POST and works identically
   end-to-end.

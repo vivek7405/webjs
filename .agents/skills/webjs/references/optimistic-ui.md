@@ -75,13 +75,16 @@ TodoList.register('todo-list');
 
 ### Author the optimistic mutation as a degrade-first form
 
-Wrap the mutation in a REAL `<form method="post" action="">` posting to the page's own URL, then intercept it for the optimistic path. One form then serves both: with JS off the browser submits to the page `action` (the no-JS write path, see `routing-and-pages.md`), and with JS on `@submit` calls `e.preventDefault()` and runs the optimistic path. That is the progressive-enhancement contract, not a fetch-only handler.
+Wrap the mutation in a REAL `<form>` bound to the action, then intercept it for the optimistic path. One form serves both: with JS off the browser submits and the server dispatches to that action (the no-JS write path, see `routing-and-pages.md`), and with JS on `@submit` calls `e.preventDefault()` and runs the optimistic path. That is the progressive-enhancement contract, not a fetch-only handler.
+
+The SAME imported function is the form binding and the optimistic path's callee, which is what makes a degrade-first form cheap to write: there is no second wiring to keep in step.
 
 ```ts
+import { createTodo } from '#modules/todo/actions/create-todo.server.ts';
+
 render() {
   return html`
-    <form method="post" action="" @submit=${this.handleSubmit}>
-      <input type="hidden" name="intent" value="create">   <!-- one page action dispatches on intent -->
+    <form action=${createTodo} @submit=${this.handleSubmit}>
       <input name="title" required>
       <button>Add</button>
     </form>
@@ -89,7 +92,9 @@ render() {
 }
 ```
 
-When a page owns SEVERAL mutations (create, toggle, delete), give each form a hidden `intent` field and let the single page `action` dispatch on it. Each interactive control (a toggle button, a delete button) is also its own tiny form so it still works with JS off.
+`method` and the enctype are supplied by the renderer, and the hidden identity field is re-inserted as the form's first child on every client render, so there is nothing to manage by hand.
+
+When a page owns SEVERAL mutations (create, toggle, delete), give each form its OWN binding (`action=${createTodo}` / `action=${toggleTodo}` / `action=${deleteTodo}`). Each interactive control is its own tiny form, which is currently required rather than merely tidy: `formaction=${fn}` on a submit button is not supported yet (tracked in #1207). A form that genuinely needs several buttons binds ONE action and dispatches on a submit button's `name="intent"` inside it.
 
 ## Seed the list from the server for SSR plus optimistic
 
