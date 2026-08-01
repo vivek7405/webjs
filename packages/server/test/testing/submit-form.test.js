@@ -76,7 +76,7 @@ export default () => html\`
     `import { html } from ${CORE};
 import { signup } from '../../modules/acct/actions/signup.server.ts';
 export default () => html\`
-  <div>\${'<!-- <form id="ghost"><input name="__webjs_action" value="ghost/nope"></form> -->'}</div>
+  <!-- <form id="ghost"><input name="__webjs_action" value="ghost/nope"></form> -->
   <form data-note="a note ending in </form> text" action=\${signup}><input name="email"></form>
 \`;
 `);

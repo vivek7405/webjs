@@ -88,7 +88,17 @@ let _registered = false;
  * stamp fail silently. Both the wrapper and the original are registered,
  * because which one a caller holds depends on whether seeding is on.
  *
- * @type {WeakMap<Function, { file: string, fnName: string }>}
+ * EVERY registration is kept, defining module first, because one function can
+ * legitimately be exported from more than one `'use server'` module (a barrel
+ * re-exporting it). The defining module is the right answer whenever it is
+ * available, since it is the one carrying the action's `validate` /
+ * `middleware` / `method` / `invalidates` config exports. But it is not always
+ * REACHABLE: the action index only walks the app tree, so an action defined in
+ * a linked workspace package and re-exported through an in-app barrel has an
+ * indexed name only under the barrel. Keeping both lets the caller prefer the
+ * defining module and fall back rather than fail.
+ *
+ * @type {WeakMap<Function, { file: string, fnName: string }[]>}
  */
 const _identity = new WeakMap();
 
@@ -126,8 +136,20 @@ export function identityHookInstalled() {
  * @returns {{ file: string, fnName: string } | null}
  */
 export function actionIdentityOf(fn) {
-  if (typeof fn !== 'function') return null;
-  return _identity.get(/** @type {Function} */ (fn)) || null;
+  const all = actionIdentitiesOf(fn);
+  return all.length ? all[0] : null;
+}
+
+/**
+ * EVERY `{ file, fnName }` the function was exported as, defining module first.
+ * The form-action resolver needs the whole list, because only some of them may
+ * be in the action index (see the `_identity` note above).
+ * @param {unknown} fn
+ * @returns {{ file: string, fnName: string }[]}
+ */
+export function actionIdentitiesOf(fn) {
+  if (typeof fn !== 'function') return [];
+  return _identity.get(/** @type {Function} */ (fn)) || [];
 }
 
 /**
@@ -208,13 +230,23 @@ export function __actionWrap(file, fnName, orig) {
   // `method` / `invalidates` off a namespace that carries none of them, silently
   // running a form submission with the action's validation and auth middleware
   // skipped. The defining module always evaluates first, so first-wins names it.
-  const identity = _identity.get(orig) || { file, fnName };
-  _identity.set(orig, identity);
+  // APPEND, defining module first. A barrel is faceted too and its body runs
+  // AFTER the module it re-exports from, so the first registration is the
+  // defining one: the module that also carries `validate` / `middleware` /
+  // `method` / `invalidates`. Overwriting re-filed the function under the
+  // BARREL, and the dispatcher then read those config exports off a namespace
+  // carrying none of them, running a submission with the action's validation
+  // and auth middleware silently skipped. Keeping the later ones too matters
+  // just as much: when the defining module is outside the walked app tree, the
+  // barrel is the only name the action index knows.
+  const list = _identity.get(orig) || [];
+  if (!list.some((e) => e.file === file && e.fnName === fnName)) list.push({ file, fnName });
+  _identity.set(orig, list);
   if (!_seedEnabled) return orig;
   const wrapped = seedProxy(file, fnName, orig);
-  // The wrapper is a fresh object every time, so it carries the identity the
-  // TARGET already had rather than this facade's own.
-  _identity.set(wrapped, identity);
+  // The wrapper is a fresh object every time, so it shares the TARGET's list
+  // rather than starting one of its own.
+  _identity.set(wrapped, list);
   return wrapped;
 }
 
@@ -254,11 +286,11 @@ function seedProxy(file, fnName, orig) {
  * Extract the names of every named export from an action module's source, used
  * to generate the facade's `export const NAME = wrap(...)` lines. Conservative:
  * a name it misses simply is not wrapped (no seed for it, RPC fallback). A
- * `export *` re-export cannot be enumerated statically, so its presence makes
- * the caller skip faceting that module entirely (passthrough = no seeding for
- * it), never producing a broken facade.
+ * `export *` re-export cannot be enumerated statically and is not reported
+ * here: the facade re-exports it wholesale through its own `export * from`
+ * catch-all (#538), so nothing about it needs a decision.
  * @param {string} src
- * @returns {{ names: string[], hasDefault: boolean, hasStar: boolean } }
+ * @returns {{ names: string[], hasDefault: boolean } }
  */
 export function extractExportNames(src) {
   const names = new Set();
@@ -282,12 +314,7 @@ export function extractExportNames(src) {
     }
   }
   const hasDefault = /\bexport\s+default\b/.test(src) || names.delete('__default__');
-  // A real star re-export always has a `from`. Without that anchor the pattern
-  // matches the word "export" at the end of a JSDoc line (`\s*` spans the
-  // newline onto the next line's leading `*`), so prose could change how a
-  // module loads.
-  const hasStar = /\bexport\s*\*\s*(?:as\s+[A-Za-z_$][\w$]*\s*)?from\b/.test(src);
-  return { names: [...names], hasDefault, hasStar };
+  return { names: [...names], hasDefault };
 }
 
 /**

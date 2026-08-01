@@ -90,3 +90,42 @@ test('an action outside the index resolves to null rather than minting a hash', 
     'eeeeeeeeee/createWidget',
   );
 });
+
+test('a barrel re-export resolves when the DEFINING module is outside the index', async () => {
+  // The regression the defining-module-first rule can cause on its own. An
+  // action can live outside the walked app tree (a linked workspace package),
+  // re-exported through an in-app `'use server'` barrel. Preferring the
+  // defining module unconditionally files it under a path the index never saw,
+  // so the identity is unresolvable and the page 500s with "is not a server
+  // action" for a function that IS one, and that worked before.
+  //
+  // Both registrations are kept, so the defining module wins when it is
+  // indexed and the barrel carries it when it is not.
+  const outside = join(dir, 'pkg', 'create.server.js');
+  const barrel = join(dir, 'modules', 'index.server.js');
+  const fn = async () => {};
+  __actionWrap(outside, 'createTodo', fn);   // defining module, evaluated first
+  __actionWrap(barrel, 'createTodo', fn);    // the in-app barrel re-exporting it
+
+  // Only the barrel is indexed: it resolves rather than refusing.
+  assert.equal(
+    await resolveActionIdentity(indexOf([['1111111111', barrel]]), fn),
+    '1111111111/createTodo',
+  );
+  // Both indexed: the DEFINING module wins, because it is the one carrying the
+  // action's validate / middleware / method / invalidates config exports.
+  assert.equal(
+    await resolveActionIdentity(indexOf([['1111111111', barrel], ['2222222222', outside]]), fn),
+    '2222222222/createTodo',
+  );
+  // Neither indexed: still null, and the server names the real cause.
+  const warned = [];
+  const quiet = console.warn;
+  console.warn = (m) => warned.push(String(m));
+  try {
+    assert.equal(await resolveActionIdentity(indexOf([['3333333333', join(dir, 'other.server.js')]]), fn), null);
+  } finally { console.warn = quiet; }
+  assert.equal(warned.length, 1, 'exactly one warning, not one per render');
+  assert.match(warned[0], /outside the app directory/);
+  assert.match(warned[0], /createTodo/);
+});

@@ -919,12 +919,17 @@ export default ({ actionData }) => html\`<form action=\${addPost}><p>\${actionDa
   assert.equal(ok.headers.get('x-webjs-invalidate'), 'posts,feed', 'and so does the redirect, on the wire');
 });
 
-test('actionSignal() aborts on the form path when the client disconnects', async () => {
+test('the form path forwards its request signal to actionSignal()', async () => {
   // `parseFormBody` rebuilds the Request from the buffered bytes so the action
   // can re-read the body, and the rebuild is what drives `runWithActionSignal`.
   // Built without `signal`, it gets a fresh never-aborted one, so `actionSignal()`
-  // (#492) silently never fires on this transport while the same action cancels
-  // correctly over RPC.
+  // (#492) could never fire on this transport whatever the listener did.
+  //
+  // Scope, stated because the title could imply more: this drives `handle` with
+  // a Request carrying a live signal, which is what `Bun.serve` supplies. Node's
+  // `toWebRequest` builds its Request with no signal at all, so on Node nothing
+  // aborts on either transport; that is a listener gap ahead of this one, and
+  // this test does not claim to close it.
   const app = await createRequestHandler({
     appDir: makeApp({
       'modules/sig/actions/sig.server.ts': `

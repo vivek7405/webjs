@@ -14,7 +14,7 @@
  * what an action IS.
  */
 
-import { actionIdentityOf, identityHookInstalled } from './action-seed.js';
+import { actionIdentitiesOf, identityHookInstalled } from './action-seed.js';
 import { pathToFileURL } from 'node:url';
 
 /**
@@ -36,20 +36,47 @@ let _warnedScan = false;
  * @returns {Promise<string | null>}
  */
 export async function resolveActionIdentity(idx, fn) {
-  const known = actionIdentityOf(fn);
-  if (known) {
-    // Only a hash the INDEX knows. Minting one from the path (which
-    // `actionFileHash` will happily do for any string) produces an identity the
-    // dispatcher cannot resolve, and an unresolvable hash reads as a deploy
-    // skew: every submission would answer 422 "please submit again", forever,
-    // with nothing logged. An action outside the indexed app tree (a linked
-    // workspace package, a path whose realpath differs from the walked one) is
-    // better refused loudly at render, which is what returning null does.
-    const hash = idx.fileToHash.get(known.file);
-    if (hash) return `${hash}/${known.fnName}`;
+  const known = actionIdentitiesOf(fn);
+  if (known.length) {
+    // The FIRST registration the index knows. Order is defining-module-first,
+    // so a function re-exported through a barrel resolves to the module that
+    // also carries its `validate` / `middleware` / `method` / `invalidates`
+    // config exports; the barrel is used only when the defining module is not
+    // in the index at all (an action from a linked workspace package, which
+    // the app-tree walk never reaches).
+    for (const entry of known) {
+      const hash = idx.fileToHash.get(entry.file);
+      if (hash) return `${hash}/${entry.fnName}`;
+    }
+    // Registered, but under no name the index knows. Minting a hash from the
+    // path (which `actionFileHash` will happily do for any string) would
+    // produce an identity the dispatcher cannot resolve, and an unresolvable
+    // hash reads as a deploy skew: every submission would answer 422 "please
+    // submit again", forever, with nothing logged. Refusing at render is the
+    // better failure, but the renderer's message can only say "not a server
+    // action", which is wrong here and would send the author looking in the
+    // wrong place. So name the real cause once, on the server.
+    warnUnindexedAction(known[0]);
     return null;
   }
   return await scanForIdentity(idx, fn);
+}
+
+/** Files already warned about, so a re-render does not repeat the line. */
+const _warnedUnindexed = new Set();
+
+/**
+ * @param {{ file: string, fnName: string }} entry
+ */
+function warnUnindexedAction(entry) {
+  if (_warnedUnindexed.has(entry.file)) return;
+  _warnedUnindexed.add(entry.file);
+  console.warn(
+    `[webjs] cannot bind ${entry.fnName} to a <form>: it is a 'use server' export, but `
+    + `${entry.file} is outside the app directory the action index walks, so the identity `
+    + 'the browser would submit could never be resolved back. Re-export it from a '
+    + "'use server' module inside the app, or call it from an action that lives there.",
+  );
 }
 
 /**

@@ -46,7 +46,7 @@ test('extractExportNames finds function / const / class / list / default exports
     export { a, b as bee };
     export default function () {}
   `;
-  const { names, hasDefault, hasStar } = extractExportNames(src);
+  const { names, hasDefault } = extractExportNames(src);
   assert.ok(names.includes('getUser'));
   assert.ok(names.includes('getPosts'));
   assert.ok(names.includes('VERSION'));
@@ -56,13 +56,6 @@ test('extractExportNames finds function / const / class / list / default exports
   assert.ok(names.includes('bee'), 'the EXPORTED name of `b as bee` is `bee`');
   assert.ok(!names.includes('b'), 'the local name is not the exported binding');
   assert.equal(hasDefault, true);
-  assert.equal(hasStar, false);
-});
-
-test('extractExportNames flags a star re-export', () => {
-  const { hasStar } = extractExportNames(`export * from './other.js';`);
-  assert.equal(hasStar, true);
-  assert.equal(extractExportNames(`export * as ns from './other.js';`).hasStar, true);
 });
 
 test('a star re-export is FACETED, not passed through (#1155)', () => {
@@ -85,20 +78,22 @@ test('a star re-export is FACETED, not passed through (#1155)', () => {
 });
 
 test('the word "export" in a comment does not change how a module loads', () => {
-  // The old pattern was `/\bexport\s*\*/`, and `\s*` spans newlines, so the word
-  // `export` at the end of a JSDoc line matched the next line's leading `*`.
-  // Reflowing a doc comment could therefore silently turn a working bound form
-  // into a 500 on the page rendering it.
+  // This used to be decided by a `/\bexport\s*\*/` test over the raw source,
+  // and `\s*` spans newlines, so the word `export` ending a JSDoc line matched
+  // the next line's leading `*` and suppressed the facade. Since identity rides
+  // the facade, reflowing a doc comment could turn a working bound form into a
+  // 500 on the page rendering it. There is no such test any more (the star case
+  // facades like everything else), so the guarantee is now structural, and this
+  // pins it end to end: prose in, a wrapped export out.
   const src =
     `'use server';\n` +
     `/**\n` +
     ` * Submit feedback. This module has exactly one export\n` +
     ` */\n` +
     `export async function submitFeedback(fd) { return fd; }\n`;
-  assert.equal(extractExportNames(src).hasStar, false, 'prose is not a star re-export');
   const facade = buildSeedFacade('file:///app/f.server.js', '/app/f.server.js', src);
-  assert.ok(facade, 'the module is still faceted');
-  assert.match(facade, /export const submitFeedback = __w\(/);
+  assert.ok(facade, 'the module is faceted');
+  assert.match(facade, /export const submitFeedback = __w\(/, 'so its identity registers');
 });
 
 test('a re-exported action keeps the identity of its DEFINING module', () => {

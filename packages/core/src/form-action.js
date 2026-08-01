@@ -557,6 +557,15 @@ function ensureIdentityField(form, id) {
  * every re-render. The property spelling is refused on a BOUND form, so this is
  * the only path that can meet one.
  *
+ * Keeping it does leave the client and SSR holding different attributes for an
+ * UNBOUND `<form action=${url} .method=${'post'}>`: SSR drops `.prop` bindings
+ * on native elements, so it emits no `method`, while the browser reflects one.
+ * That is the ordinary native-property rule applying to an ordinary form, not a
+ * form-action divergence, and it is what the same template does with no action
+ * hole at all. Removing the attribute would "fix" the mismatch only by
+ * destroying the author's binding, which is a worse answer than agreeing with
+ * every other native property on the page.
+ *
  * @param {HTMLFormElement} form
  * @param {string | typeof ABSENT} method
  * @param {string | typeof ABSENT} enctype

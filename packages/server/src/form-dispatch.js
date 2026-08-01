@@ -170,8 +170,16 @@ async function parseFormBody(req) {
     // Carry the ORIGINAL abort signal. Without it the rebuild gets a fresh,
     // never-aborted one, and since this request is what drives
     // `runWithActionSignal`, `actionSignal()` (#492) inside a form-bound action
-    // would never fire on a client disconnect, while the same action cancels
-    // correctly over RPC.
+    // could never fire, no matter what the transport underneath did. The RPC
+    // path gets this for free: it consumes the original request rather than
+    // rebuilding it (`readTextBounded` in actions.js).
+    //
+    // How far it actually reaches is a property of the listener, not of this
+    // line. On Bun, `Bun.serve` hands over a request whose signal fires on
+    // disconnect (`listener-bun.js` forwards it), so this makes cancellation
+    // work. On Node, `toWebRequest` (dev.js) builds its Request with no signal
+    // at all, so nothing aborts on EITHER transport there; that is a listener
+    // gap ahead of this one, and closing it here would be a fiction.
     signal: req.signal,
   });
   propagateTrustedRemoteIp(req, rebuilt);
