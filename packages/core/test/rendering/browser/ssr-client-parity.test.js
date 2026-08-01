@@ -410,6 +410,7 @@ suite('SSR/client parity: form actions (#1155)', () => {
     // without JS and urlencoded with it.
     'inert encoding= attribute': () => html`<form action=${boundAction()} encoding=${'application/x-www-form-urlencoded'}></form>`,
     'inert encoding= with an unsubmittable value': () => html`<form action=${boundAction()} encoding=${'text/plain'}></form>`,
+    'submitter formaction inside bound form': () => html`<form action=${boundAction()}><button formaction=${boundAction()}>Save</button></form>`,
   };
 
   for (const [name, tpl] of Object.entries(ACCEPTS)) {
@@ -433,7 +434,7 @@ suite('SSR/client parity: form actions (#1155)', () => {
     'quoted action hole is a stringify': [() => html`<form action="${boundAction()}"></form>`, /interpolated into/],
     'array-wrapped action': [() => html`<form action=${[boundAction()]}></form>`, /interpolated into/],
     'action off a form': [() => html`<div action=${boundAction()}></div>`, /interpolated into/],
-    'formaction anywhere': [() => html`<button formaction=${boundAction()}></button>`, /interpolated into/],
+    'formaction anywhere': [() => html`<button formaction=${boundAction()}></button>`, /requires the enclosing <form>/],
     'a function that is not an action': [() => html`<form action=${async () => {}}></form>`, /is not a server action/],
     'prop binding on a bound form': [() => html`<form action=${boundAction()} .method=${'get'}></form>`, /also binds \./],
     'two action holes': [() => html`<form action=${boundAction()} action=${'/legacy'}></form>`, /two action=/],
