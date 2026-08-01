@@ -283,31 +283,35 @@ function seedProxy(file, fnName, orig) {
  * here: the facade re-exports it wholesale through its own `export * from`
  * catch-all (#538), so nothing about it needs a decision.
  * @param {string} src
- * @returns {{ names: string[], hasDefault: boolean } }
+ * @returns {{ fnNames: string[], valNames: string[], names: string[], hasDefault: boolean }}
  */
 export function extractExportNames(src) {
-  const names = new Set();
+  const fnNames = new Set();
+  const valNames = new Set();
   let m;
   const reFn = /\bexport\s+(?:async\s+)?function\s*\*?\s+([A-Za-z_$][\w$]*)/g;
-  while ((m = reFn.exec(src))) names.add(m[1]);
-  const reVar = /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g;
-  while ((m = reVar.exec(src))) names.add(m[1]);
+  while ((m = reFn.exec(src))) fnNames.add(m[1]);
+  const reFnVar = /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function|\([^)]*\)\s*=>|[\w$]+\s*=>)/g;
+  while ((m = reFnVar.exec(src))) fnNames.add(m[1]);
   const reClass = /\bexport\s+(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)/g;
-  while ((m = reClass.exec(src))) names.add(m[1]);
+  while ((m = reClass.exec(src))) valNames.add(m[1]);
   const reList = /\bexport\s*\{([^}]*)\}/g;
   while ((m = reList.exec(src))) {
     for (const part of m[1].split(',')) {
       const seg = part.trim();
       if (!seg) continue;
-      // `a` or `a as b` (the EXPORTED name is what an importer binds).
       const as = seg.split(/\s+as\s+/);
       const exported = (as[1] || as[0]).trim();
-      if (/^[A-Za-z_$][\w$]*$/.test(exported) && exported !== 'default') names.add(exported);
-      else if (exported === 'default') names.add('__default__');
+      if (/^[A-Za-z_$][\w$]*$/.test(exported) && exported !== 'default') fnNames.add(exported);
+      else if (exported === 'default') fnNames.add('__default__');
     }
   }
-  const hasDefault = /\bexport\s+default\b/.test(src) || names.delete('__default__');
-  return { names: [...names], hasDefault };
+  const reVar = /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g;
+  while ((m = reVar.exec(src))) {
+    if (!fnNames.has(m[1])) valNames.add(m[1]);
+  }
+  const hasDefault = /\bexport\s+default\b/.test(src) || fnNames.delete('__default__') || valNames.delete('__default__');
+  return { fnNames: [...fnNames], valNames: [...valNames], names: [...fnNames, ...valNames], hasDefault };
 }
 
 /**
@@ -316,7 +320,7 @@ export function extractExportNames(src) {
  * unwrapped) and re-exports each function through `__actionWrap`.
  * @param {string} origUrl the real module URL, WITHOUT the seed query
  * @param {string} absPath the real module's absolute file path (the hash basis)
- * @param {{ names: string[], hasDefault: boolean }} exports
+ * @param {{ fnNames: string[], valNames: string[], names: string[], hasDefault: boolean }} exports
  * @returns {string}
  */
 function buildFacade(origUrl, absPath, exports) {
@@ -325,18 +329,16 @@ function buildFacade(origUrl, absPath, exports) {
   const file = JSON.stringify(absPath);
   let out = `import * as __orig from ${origSpec};\n`;
   out += `import { __actionWrap as __w } from ${JSON.stringify(SELF_URL)};\n`;
-  // Fail-open catch-all (#535). Re-export every named binding of the real module.
-  // An explicit `export const NAME = __w(...)` below SHADOWS the matching star
-  // binding (an explicit export wins over a star re-export of the same name, with
-  // no SyntaxError), so an enumerated export is still wrapped and seeded. A named
-  // export the `extractExportNames` regex MISSED (exotic syntax, an unusual
-  // re-export form, a codegen-produced export) is NOT enumerated below, so it
-  // flows through this star unwrapped: it resolves and works over a normal RPC,
-  // just is not seeded, instead of being dropped and crashing the importer with
-  // `undefined`. `export *` does not carry `default`, which the explicit default
-  // line below still handles.
   out += `export * from ${origSpec};\n`;
-  for (const n of exports.names) {
+  for (const n of exports.fnNames) {
+    const k = JSON.stringify(n);
+    out += `export function ${n}(...args) {\n`;
+    out += `  const fn = __w(${file}, ${k}, __orig[${k}]);\n`;
+    out += `  return typeof fn === 'function' ? fn.apply(this, args) : fn;\n`;
+    out += `}\n`;
+    out += `__w(${file}, ${k}, ${n});\n`;
+  }
+  for (const n of exports.valNames) {
     const k = JSON.stringify(n);
     out += `export const ${n} = __w(${file}, ${k}, __orig[${k}]);\n`;
   }

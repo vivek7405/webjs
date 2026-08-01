@@ -72,7 +72,7 @@ test('a star re-export is FACETED, not passed through (#1155)', () => {
     `export async function createTodo(fd) { return fd; }\n`;
   const facade = buildSeedFacade('file:///app/t.server.js', '/app/t.server.js', src);
   assert.ok(facade, 'a star re-export is faceted like any other module');
-  assert.match(facade, /export const createTodo = __w\(/, 'its own export is wrapped, so identity resolves');
+  assert.match(facade, /export (?:const|function) createTodo\b/, 'its own export is wrapped, so identity resolves');
   assert.match(facade, /export \* from "file:\/\/\/app\/t\.server\.js\?webjs-seed-orig"/,
     'the star catch-all carries the re-exported bindings');
 });
@@ -93,7 +93,7 @@ test('the word "export" in a comment does not change how a module loads', () => 
     `export async function submitFeedback(fd) { return fd; }\n`;
   const facade = buildSeedFacade('file:///app/f.server.js', '/app/f.server.js', src);
   assert.ok(facade, 'the module is faceted');
-  assert.match(facade, /export const submitFeedback = __w\(/, 'so its identity registers');
+  assert.match(facade, /export (?:const|function) submitFeedback\b/, 'so its identity registers');
 });
 
 test('a re-exported action keeps the identity of its DEFINING module', () => {
@@ -130,7 +130,7 @@ test('buildSeedFacade emits an export* catch-all so a MISSED export is fail-open
     /export \* from "file:\/\/\/app\/x\.server\.js\?webjs-seed-orig"/,
     'the facade re-exports everything via a star catch-all (the fail-open guard)',
   );
-  assert.match(facade, /export const getUser = __w\(/, 'an enumerated export is still wrapped + seeded');
+  assert.match(facade, /export (?:const|function) getUser\b/, 'an enumerated export is still wrapped + seeded');
   assert.doesNotMatch(
     facade,
     /export const BRAND =/,

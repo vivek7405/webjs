@@ -21,7 +21,7 @@ import { hashFile } from '../../src/actions.js';
 import { stringify } from '@webjsdev/core';
 
 let dir;
-let actionUrl, utilUrl, exoticUrl;
+let actionUrl, utilUrl, exoticUrl, c1Url, c2Url;
 
 before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'webjs-seedhook-'));
@@ -48,6 +48,24 @@ before(async () => {
   actionUrl = pathToFileURL(action).toString();
   utilUrl = pathToFileURL(util).toString();
   exoticUrl = pathToFileURL(exotic).toString();
+
+  // Circular re-export pair (#1208)
+  const c1 = join(dir, 'c1.server.js');
+  const c2 = join(dir, 'c2.server.js');
+  writeFileSync(
+    c1,
+    `'use server';\n` +
+      `export { helper } from './c2.server.js';\n` +
+      `export async function ring(x) { return x + 1; }\n`,
+  );
+  writeFileSync(
+    c2,
+    `'use server';\n` +
+      `export { ring } from './c1.server.js';\n` +
+      `export async function helper(x) { return x * 2; }\n`,
+  );
+  c1Url = pathToFileURL(c1).toString();
+  c2Url = pathToFileURL(c2).toString();
 
   // Install the global hook BEFORE importing the fixtures (ESM caches by URL).
   await registerActionHooks({ seed: true });
@@ -95,3 +113,12 @@ test('an export the facade regex MISSES flows through the export* catch-all, not
   assert.equal(value, 40, 'the enumerated action still runs and is seeded');
   assert.equal(collector.size, 1, 'the enumerated action seeds; the missed (unwrapped) ones do not');
 });
+
+test('circular re-export between two use-server modules loads without throwing (#1208)', async () => {
+  const mod1 = await import(c1Url);
+  assert.equal(typeof mod1.ring, 'function');
+  assert.equal(typeof mod1.helper, 'function');
+  assert.equal(await mod1.ring(5), 6);
+  assert.equal(await mod1.helper(5), 10);
+});
+
