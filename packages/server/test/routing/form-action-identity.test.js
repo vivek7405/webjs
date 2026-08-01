@@ -169,16 +169,31 @@ test('the barrel fallback warns that the action config exports are bypassed', as
   assert.equal(id, '4444444444/updatePost', 'the form still works');
   assert.equal(warned.length, 1, 'once per defining module, not once per render');
   assert.match(warned[0], /validate/);
-  assert.match(warned[0], /does NOT run/);
+  assert.match(warned[0], /runs only if the re-export carries it/);
+  // The consequence is stated CONDITIONALLY. Whether anything is really lost
+  // needs the resolved module's namespace, which this path will not load, and a
+  // barrel that re-exports the config alongside the function (one of the
+  // remedies offered) loses nothing at all.
+  assert.doesNotMatch(warned[0], /does NOT run/);
 
-  // No warning when the defining module IS indexed: nothing is bypassed.
+  // No warning when the defining module IS indexed. FRESH paths and a fresh
+  // function: reusing the ones above would put this behind the once-per-file
+  // guard, and the assertion would hold no matter what the resolution did.
+  // Measured: with the guard reused, deleting the entire `entry !== known[0]`
+  // condition left every test in this file green.
+  const outside2 = join(dir, 'pkg', 'cfg2.server.js');
+  const barrel2 = join(dir, 'modules', 'cfg-barrel2.server.js');
+  const fn2 = async () => {};
+  __actionWrap(outside2, 'deletePost', fn2);
+  __actionWrap(barrel2, 'deletePost', fn2);
+
   const quiet2 = console.warn;
   const warned2 = [];
   console.warn = (m) => warned2.push(String(m));
   try {
     assert.equal(
-      await resolveActionIdentity(indexOf([['4444444444', barrel], ['5555555555', outside]]), fn),
-      '5555555555/updatePost',
+      await resolveActionIdentity(indexOf([['6666666666', barrel2], ['7777777777', outside2]]), fn2),
+      '7777777777/deletePost',
     );
   } finally { console.warn = quiet2; }
   assert.equal(warned2.length, 0, 'the defining module resolved, so there is nothing to warn about');

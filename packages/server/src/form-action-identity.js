@@ -98,9 +98,9 @@ function warnUnindexedAction(entry) {
   console.warn(
     `[webjs] cannot bind ${entry.fnName} to a <form>: it is a 'use server' export, but the `
     + `action index has no entry for ${entry.file}, so the identity the browser submits `
-    + 'could never be resolved back. Either the module is outside the app directory, or '
-    + 'the app directory was reached through a symlink so the walked path and the loaded '
-    + `path differ. Fix the path, or add a NAMED re-export ("export { ${entry.fnName} } `
+    + 'could never be resolved back. Common causes: the module is outside the app '
+    + 'directory, or the app directory was reached through a symlink so the walked path '
+    + `and the loaded path differ. Fix the path, or add a NAMED re-export ("export { ${entry.fnName} } `
     + `from ...") in a 'use server' module inside the app; a star re-export cannot be `
     + 'enumerated and will not register it.',
   );
@@ -110,6 +110,21 @@ function warnUnindexedAction(entry) {
 const _warnedBypass = new Set();
 
 /**
+ * Warn that the dispatched module is not the defining one.
+ *
+ * Deliberately CONDITIONAL about the consequence. What is known here is cheap
+ * and certain: the identity names a re-exporting module, so the dispatcher will
+ * read the action's config exports off that namespace. Whether anything is
+ * actually lost is not knowable without loading the module, which this path
+ * refuses to do (it is a render-time resolve, and eager-loading every action
+ * module is exactly the cost `scanForIdentity` exists to avoid).
+ *
+ * So it must not assert "does not run". Two ordinary shapes make that false: an
+ * action with no config exports at all, and a barrel that re-exports the config
+ * alongside the function. The second is a remedy this line would otherwise
+ * recommend, and a diagnostic that stays wrong in the state it tells you to
+ * reach is worse than no diagnostic.
+ *
  * @param {{ file: string, fnName: string }} defining
  * @param {{ file: string, fnName: string }} used
  */
@@ -118,11 +133,12 @@ function warnConfigExportsBypassed(defining, used) {
   _warnedBypass.add(defining.file);
   console.warn(
     `[webjs] ${defining.fnName} is bound to a <form>, but ${defining.file} is not in the `
-    + `action index, so the submission is dispatched through ${used.file} instead. Any `
-    + "`validate` / `middleware` / `method` / `invalidates` the action declares beside it "
-    + 'does NOT run, because a re-export carries only the function. (The RPC endpoint '
-    + 'resolves the same way, so this is not specific to forms.) Move the action inside '
-    + 'the app, or re-export its config exports alongside it.',
+    + `action index, so the submission is dispatched through ${used.file} instead. Only `
+    + 'what THAT module exports is visible, so a `validate` / `middleware` / `method` / '
+    + '`invalidates` declared beside the action runs only if the re-export carries it too '
+    + `("export { ${defining.fnName}, validate } from ..."). (The RPC endpoint resolves the `
+    + 'same way, so this is not specific to forms.) Nothing is wrong if the action declares '
+    + 'none of them.',
   );
 }
 
