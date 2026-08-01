@@ -379,6 +379,50 @@ test('formaction=${fn} submitter refusals: name attribute, input type=image, unp
   );
 });
 
+test('formaction submitters require an actual submit control', async () => {
+  withResolver();
+  for (const tpl of [
+    html`<form action=${submitFeedback}><input type="text" formaction=${submitFeedback}></form>`,
+    html`<form action=${submitFeedback}><input type="hidden" formaction=${submitFeedback}></form>`,
+    html`<form action=${submitFeedback}><input type="IMAGE" formaction=${submitFeedback}></form>`,
+    html`<form action=${submitFeedback}><button type="button" formaction=${submitFeedback}>Save</button></form>`,
+    html`<form action=${submitFeedback}><button type="reset" formaction=${submitFeedback}>Save</button></form>`,
+  ]) {
+    await assert.rejects(() => renderToString(tpl, { ssr: true }), /submitter control|type="image"/);
+  }
+});
+
+test('formaction submitters refuse conflicting author attributes', async () => {
+  withResolver();
+  for (const tpl of [
+    html`<form action=${submitFeedback}><button value="delete" formaction=${submitFeedback}>Delete</button></form>`,
+    html`<form action=${submitFeedback}><button formaction=${submitFeedback} value="delete">Delete</button></form>`,
+    html`<form action=${submitFeedback}><button formaction="/legacy" formaction=${submitFeedback}>Delete</button></form>`,
+    html`<form action=${submitFeedback}><button formaction=${submitFeedback} formaction="/legacy">Delete</button></form>`,
+    html`<form action=${submitFeedback}><button form="other" formaction=${submitFeedback}>Delete</button></form>`,
+  ]) {
+    await assert.rejects(() => renderToString(tpl, { ssr: true }), /value|formaction|form.*attribute/);
+  }
+});
+
+test('duplicate formaction holes on one submitter are refused', async () => {
+  withResolver();
+  await assert.rejects(
+    () => renderToString(
+      html`<form action=${submitFeedback}><button formaction=${submitFeedback} formaction=${submitFeedback}>Delete</button></form>`,
+      { ssr: true },
+    ),
+    /two formaction=/,
+  );
+});
+
+test('formaction submitters work when rendered by a nested template', async () => {
+  withResolver();
+  const buttons = () => html`<button formaction=${submitFeedback}>Delete</button>`;
+  const out = await renderToString(html`<form action=${submitFeedback}>${buttons()}</form>`, { ssr: true });
+  assert.match(out, /<button name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback">Delete<\/button>/);
+});
+
 test('two action holes are refused whichever position the bound one is in', async () => {
   // The refusal is by HOLE COUNT once any hole resolves to an action, so a
   // template that writes the url first and the action second refuses too.

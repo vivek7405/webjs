@@ -109,6 +109,26 @@ test('renderToStream: basic template produces a readable stream', async () => {
   assert.match(out, /<p>stream<\/p>/);
 });
 
+test('renderToStream: ssr:false preserves progressive text-hole chunks', async () => {
+  const later = new Promise((resolve) => setTimeout(() => resolve('later'), 25));
+  const stream = renderToStream(
+    html`<p>first</p>${Promise.resolve('now')}<p>${later}</p>`,
+    { ssr: false },
+  );
+  const reader = stream.getReader();
+  const first = await reader.read();
+  assert.equal(first.done, false);
+  assert.match(first.value, /first/);
+  assert.doesNotMatch(first.value, /later/);
+  const rest = [];
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) break;
+    rest.push(next.value);
+  }
+  assert.match(rest.join(''), /later/);
+});
+
 test('renderToStream: ssr:true path runs DSD injection and enqueues full HTML', async () => {
   const stream = renderToStream(html`<p>ssr</p>`);
   const out = await streamText(stream);

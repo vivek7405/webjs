@@ -27,7 +27,7 @@ import { escapeAttr } from './escape.js';
  * browser), so a plain `String(val)` commit serializes the action's body,
  * secrets included, to every visitor. The refusal list is deliberately wider
  * than the leak: a quoted `action="${fn}"`, `?action=${fn}`, an array holding
- * a function, `formaction=` anywhere, and `action=` on a tag that is not a
+ * a function, an unsupported `formaction=` shape, and `action=` on a tag that is not a
  * `<form>` all refuse, so there is exactly one way to write this and no
  * silently-broken near-miss.
  *
@@ -155,9 +155,10 @@ export function isBoundFormAction(val, attrName, tag) {
  *
  * @param {string} name
  * @param {string} [tag]
+ * @param {boolean} [allowFrameworkName]
  */
-export function assertSubmitterHasNoName(name, tag) {
-  if (name && name !== FORM_ACTION_FIELD) {
+export function assertSubmitterHasNoName(name, tag, allowFrameworkName = true) {
+  if (name && (name !== FORM_ACTION_FIELD || !allowFrameworkName)) {
     throw new Error(
       `[webjs] formaction=\${action} on <${tag || 'button'}> cannot be used when `
       + `the element already carries a "name" attribute (found name="${name}"). `
@@ -177,6 +178,73 @@ export function assertSubmitterNotImage(tag) {
     `[webjs] formaction=\${action} is not supported on <input type="image"> `
     + `because image submitters submit coordinate pairs (name.x/name.y) `
     + `instead of name=value. Use <button> or <input type="submit"> instead.`,
+  );
+}
+
+/**
+ * Refuse a formaction binding on a control that is not a submitter.
+ *
+ * @param {string} tag
+ * @param {string | null | undefined} type
+ */
+export function assertSubmitterType(tag, type) {
+  const t = String(tag || '').toLowerCase();
+  const value = type == null ? null : String(type).toLowerCase();
+  if (t === 'button' && (value == null || value === '' || value === 'submit')) return;
+  if (t === 'input' && value === 'submit') return;
+  if (t === 'input' && value === 'image') {
+    assertSubmitterNotImage(t);
+  }
+  throw new Error(
+    `[webjs] formaction=\${action} on <${t}> requires a submitter control. `
+    + `Use <button type="submit"> or <input type="submit">.`,
+  );
+}
+
+/**
+ * Refuse an author value because the action identity occupies that channel.
+ * @param {string} tag
+ */
+export function assertSubmitterHasNoValue(tag) {
+  throw new Error(
+    `[webjs] formaction=\${action} on <${tag || 'button'}> cannot be used when `
+    + `the element already carries a "value" attribute. The action identity `
+    + `uses the submitter value channel; remove "value" or use a separate form.`,
+  );
+}
+
+/**
+ * Refuse a static formaction alongside the function binding.
+ * @param {string} tag
+ */
+export function assertSubmitterHasNoStaticFormAction(tag) {
+  throw new Error(
+    `[webjs] a bound formaction=\${action} on <${tag || 'button'}> cannot also `
+    + `carry a plain formaction attribute. Drop the static attribute.`,
+  );
+}
+
+/**
+ * Refuse a submitter whose form owner is selected through the `form` attribute.
+ * @param {string} tag
+ */
+export function assertSubmitterHasNoFormAttribute(tag) {
+  throw new Error(
+    `[webjs] formaction=\${action} on <${tag || 'button'}> cannot be used with `
+    + `a "form" attribute. Keep the submitter inside its bound <form>.`,
+  );
+}
+
+/**
+ * Refuse duplicate formaction holes on one submitter.
+ * @param {boolean} duplicate
+ * @param {string} tag
+ */
+export function assertSingleSubmitterAction(duplicate, tag) {
+  if (!duplicate) return;
+  throw new Error(
+    `[webjs] two formaction=\${action} holes were found on one <${tag || 'button'}>. `
+    + `A submitter can carry only one action binding.`,
   );
 }
 
@@ -518,8 +586,17 @@ function releaseFormAction(form, method, enctype, propAttrs) {
  * @returns {Map<string, string>}
  */
 export function parseStartTagAttrs(startTag) {
-  /** @type {Map<string, string>} */
-  const attrs = new Map();
+  return new Map(parseStartTagAttrEntries(startTag));
+}
+
+/**
+ * Parse emitted start-tag attributes while preserving duplicates.
+ * @param {string} startTag
+ * @returns {[string, string][]}
+ */
+function parseStartTagAttrEntries(startTag) {
+  /** @type {[string, string][]} */
+  const entries = [];
   let i = 1;
   while (i < startTag.length && !/[\s/>]/.test(startTag[i])) i++;
   while (i < startTag.length) {
@@ -529,7 +606,7 @@ export function parseStartTagAttrs(startTag) {
     while (i < startTag.length && !/[\s/>=]/.test(startTag[i])) name += startTag[i++];
     while (i < startTag.length && /\s/.test(startTag[i])) i++;
     if (startTag[i] !== '=') {
-      if (name) attrs.set(name.toLowerCase(), '');
+      if (name) entries.push([name.toLowerCase(), '']);
       continue;
     }
     i++;
@@ -543,9 +620,20 @@ export function parseStartTagAttrs(startTag) {
     } else {
       while (i < startTag.length && !/[\s>]/.test(startTag[i])) value += startTag[i++];
     }
-    if (name) attrs.set(name.toLowerCase(), value);
+    if (name) entries.push([name.toLowerCase(), value]);
   }
-  return attrs;
+  return entries;
+}
+
+/**
+ * Count occurrences of an attribute in an emitted start tag.
+ * @param {string} startTag
+ * @param {string} wanted
+ * @returns {number}
+ */
+export function countStartTagAttr(startTag, wanted) {
+  const name = String(wanted).toLowerCase();
+  return parseStartTagAttrEntries(startTag).filter(([attr]) => attr === name).length;
 }
 
 /**

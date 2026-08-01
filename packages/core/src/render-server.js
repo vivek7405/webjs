@@ -4,8 +4,11 @@ import { escapeText, escapeAttr } from './escape.js';
 import {
   assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp,
   assertIdentifiableAction, bindFormActionStartTag, isBoundFormAction, resolveFormActionId,
-  assertConvergentBoundForm, assertSubmitterHasNoName, assertSubmitterNotImage,
-  assertSubmitterFormIsBound, parseStartTagAttrs, FORM_ACTION_FIELD, PARSEABLE_ENCTYPES,
+  assertConvergentBoundForm, assertSubmitterHasNoName,
+  assertSubmitterFormIsBound, assertSubmitterType, assertSubmitterHasNoValue,
+  assertSubmitterHasNoStaticFormAction, assertSubmitterHasNoFormAttribute,
+  assertSingleSubmitterAction, parseStartTagAttrs, countStartTagAttr,
+  FORM_ACTION_FIELD, PARSEABLE_ENCTYPES,
 } from './form-action.js';
 import { lookup, lookupModuleUrl, allTags } from './registry.js';
 import { stylesToString, isCSS } from './css.js';
@@ -29,7 +32,7 @@ import { cspNonce } from './csp-nonce.js';
  * Suspense still works but we fall back to emitting only the fallback
  * (the promise is dropped: appropriate for static pre-render).
  *
- * @typedef {{ pending: {id: string, promise: Promise<unknown>}[], nextId: number }} SuspenseCtx
+ * @typedef {{ pending: {id: string, promise: Promise<unknown>, insideBoundForm?: boolean}[], nextId: number }} SuspenseCtx
  *
  * @param {unknown} value
  * @param {{ ssr?: boolean, suspenseCtx?: SuspenseCtx }} [opts]
@@ -50,13 +53,14 @@ export async function renderToString(value, opts = { ssr: true }) {
 /**
  * @param {unknown} value
  * @param {SuspenseCtx} [ctx]
+ * @param {boolean} [insideBoundForm]
  * @returns {Promise<string>}
  */
-async function render(value, ctx) {
+async function render(value, ctx, insideBoundForm = false) {
   if (value == null || value === false || value === true) return '';
   if (value && typeof /** @type any */ (value).then === 'function') {
     value = await value;
-    return render(value, ctx);
+    return render(value, ctx, insideBoundForm);
   }
   // unsafeHTML: inject raw HTML string without escaping.
   if (isUnsafeHTML(value)) {
@@ -64,21 +68,21 @@ async function render(value, ctx) {
   }
   // live() on the server just unwraps and renders the inner value.
   if (isLive(value)) {
-    return render(/** @type any */ (value).value, ctx);
+    return render(/** @type any */ (value).value, ctx, insideBoundForm);
   }
   // watch() on the server reads the signal once and inlines the
   // result. Subscription is a client-only concern; the SSR HTML
   // freezes a snapshot of the current value.
   if (isWatch(value)) {
-    return render(/** @type any */ (value).signal.get(), ctx);
+    return render(/** @type any */ (value).signal.get(), ctx, insideBoundForm);
   }
   // keyed() on the server: render the wrapped template; key is client-only.
   if (isKeyed(value)) {
-    return render(/** @type any */ (value).value, ctx);
+    return render(/** @type any */ (value).value, ctx, insideBoundForm);
   }
   // guard() on the server: always invoke the value function (no cache on SSR).
   if (isGuard(value)) {
-    return render(/** @type any */ (value).fn(), ctx);
+    return render(/** @type any */ (value).fn(), ctx, insideBoundForm);
   }
   // templateContent() on the server: emit the template's innerHTML verbatim.
   if (isTemplateContent(value)) {
@@ -91,7 +95,7 @@ async function render(value, ctx) {
   }
   // cache() on the server: pass-through to the inner value.
   if (isCache(value)) {
-    return render(/** @type any */ (value).value, ctx);
+    return render(/** @type any */ (value).value, ctx, insideBoundForm);
   }
   // until() on the server: render the first synchronous candidate, or
   // await the first Promise to settle when all candidates are Promises.
@@ -101,13 +105,13 @@ async function render(value, ctx) {
     const args = /** @type any */ (value).args;
     for (const a of args) {
       if (!a || typeof (/** @type any */ (a).then) !== 'function') {
-        return render(a, ctx);
+        return render(a, ctx, insideBoundForm);
       }
     }
     if (args.length > 0) {
       try {
         const winner = await Promise.race(args.map((p) => Promise.resolve(p).catch(() => undefined)));
-        return render(winner, ctx);
+        return render(winner, ctx, insideBoundForm);
       } catch {
         return '';
       }
@@ -120,34 +124,35 @@ async function render(value, ctx) {
     return '';
   }
   if (Array.isArray(value)) {
-    const parts = await Promise.all(value.map((v) => render(v, ctx)));
+    const parts = await Promise.all(value.map((v) => render(v, ctx, insideBoundForm)));
     return parts.join('');
   }
   if (isRepeat(value)) {
     const r = /** @type any */ (value);
-    const parts = await Promise.all(r.items.map((it, i) => render(r.templateFn(it, i), ctx)));
+    const parts = await Promise.all(r.items.map((it, i) => render(r.templateFn(it, i), ctx, insideBoundForm)));
     return parts.join('');
   }
   if (isSuspense(value)) {
     const s = /** @type any */ (value);
-    const fallback = await render(s.fallback, ctx);
+    const fallback = await render(s.fallback, ctx, insideBoundForm);
     if (ctx) {
       const id = `s${ctx.nextId++}`;
-      ctx.pending.push({ id, promise: Promise.resolve(s.children) });
+      ctx.pending.push({ id, promise: Promise.resolve(s.children), insideBoundForm });
       return `<webjs-boundary id="${id}">${fallback}</webjs-boundary>`;
     }
     return fallback;
   }
-  if (isTemplate(value)) return renderTemplate(/** @type any */ (value), ctx);
+  if (isTemplate(value)) return renderTemplate(/** @type any */ (value), ctx, insideBoundForm);
   return escapeText(String(value));
 }
 
 /**
  * @param {import('./html.js').TemplateResult} tr
  * @param {SuspenseCtx} [ctx]
+ * @param {boolean} [insideBoundFormAtStart]
  * @returns {Promise<string>}
  */
-async function renderTemplate(tr, ctx) {
+async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
   const { strings, values } = tr;
   let out = '';
   let state = 'text';
@@ -165,7 +170,7 @@ async function renderTemplate(tr, ctx) {
   let pendingActionCount = 0;
   /** @type {string[]} */
   let pendingPropAttrs = [];
-  let insideBoundForm = false;
+  let insideBoundForm = insideBoundFormAtStart;
   let isCloseTag = false;
 
   const closeBoundFormTag = () => {
@@ -185,12 +190,14 @@ async function renderTemplate(tr, ctx) {
       pendingSubmitterTag = null;
       const tagStr = out.slice(tagStart);
       const attrs = parseStartTagAttrs(tagStr);
+      assertSingleSubmitterAction(duplicateAction, tag);
+      if (attrs.has('formaction')) assertSubmitterHasNoStaticFormAction(tag);
+      if (countStartTagAttr(tagStr, 'value') > 1) assertSubmitterHasNoValue(tag);
       if (attrs.has('name')) {
-        assertSubmitterHasNoName(attrs.get('name') || '', tag);
+        assertSubmitterHasNoName(attrs.get('name') || '', tag, countStartTagAttr(tagStr, 'name') === 1);
       }
-      if (tag === 'input' && attrs.get('type') === 'image') {
-        assertSubmitterNotImage(tag);
-      }
+      assertSubmitterType(tag, attrs.get('type'));
+      if (attrs.has('form')) assertSubmitterHasNoFormAttribute(tag);
       const formEnctype = attrs.get('formenctype');
       if (formEnctype != null && !PARSEABLE_ENCTYPES.has(formEnctype.toLowerCase())) {
         throw new Error(
@@ -220,7 +227,10 @@ async function renderTemplate(tr, ctx) {
     if (n === 'method' || n === 'enctype') pendingPropAttrs.push(String(name));
   };
   const noteActionHole = (name, tag) => {
-    if (String(tag).toLowerCase() === 'form' && String(name).toLowerCase() === 'action') {
+    const t = String(tag).toLowerCase();
+    const n = String(name).toLowerCase();
+    if ((t === 'form' && n === 'action') ||
+        ((t === 'button' || t === 'input') && n === 'formaction')) {
       pendingActionCount += 1;
     }
   };
@@ -328,7 +338,7 @@ async function renderTemplate(tr, ctx) {
         out += String(val ?? '');
         rawTail = '';
       } else if (state === 'text') {
-        out += await render(val, ctx);
+        out += await render(val, ctx, insideBoundForm);
       } else if (state === 'after-eq') {
         const prefix = attrName[0];
         const name = attrName.slice(1);
@@ -340,7 +350,7 @@ async function renderTemplate(tr, ctx) {
         } else if (kind === 'prop') {
           out = out.slice(0, attrStart);
           if (currentTag === 'webjs-suspense' && name === 'fallback') {
-            const fbHtml = await render(val, ctx);
+            const fbHtml = await render(val, ctx, insideBoundForm);
             out += `data-webjs-fallback="${escapeAttr(fbHtml)}"`;
             state = 'in-tag';
             attrName = '';
@@ -386,11 +396,14 @@ async function renderTemplate(tr, ctx) {
             const tagStr = out.slice(tagStart);
             const attrs = parseStartTagAttrs(tagStr);
             if (attrs.has('name')) {
-              assertSubmitterHasNoName(attrs.get('name') || '', currentTag);
+              const frameworkName = pendingSubmitterTag != null
+                && attrs.get('name') === FORM_ACTION_FIELD;
+              assertSubmitterHasNoName(attrs.get('name') || '', currentTag, frameworkName);
             }
-            if (currentTag === 'input' && attrs.get('type') === 'image') {
-              assertSubmitterNotImage(currentTag);
+            if (attrs.has('value') && pendingSubmitterTag == null) {
+              assertSubmitterHasNoValue(currentTag);
             }
+            if (attrs.has('form')) assertSubmitterHasNoFormAttribute(currentTag);
             const subId = assertIdentifiableAction(await resolveFormActionId(val), currentTag);
             pendingSubmitterTag = currentTag;
             out = out.slice(0, attrStart) + `name="${FORM_ACTION_FIELD}" value="${escapeAttr(subId)}"`;
@@ -1713,7 +1726,7 @@ export function renderToStream(value, opts = { ssr: true }) {
       try {
         if (opts && opts.ssr === false) {
           // No DSD injection: just stream the raw rendered chunks.
-          await streamRender(value, ctx, controller);
+          await streamRender(value, ctx, controller, false);
         } else {
           // Render to string first to run DSD injection (which operates on
           // the full HTML), then enqueue the result. This matches the
@@ -1742,28 +1755,29 @@ export function renderToStream(value, opts = { ssr: true }) {
  * @param {unknown} value
  * @param {SuspenseCtx} [ctx]
  * @param {ReadableStreamDefaultController<string>} controller
+ * @param {boolean} [insideBoundForm]
  */
-async function streamRender(value, ctx, controller) {
+async function streamRender(value, ctx, controller, insideBoundForm = false) {
   if (value == null || value === false || value === true) return;
   if (value && typeof /** @type any */ (value).then === 'function') {
     value = await value;
-    return streamRender(value, ctx, controller);
+    return streamRender(value, ctx, controller, insideBoundForm);
   }
   if (isUnsafeHTML(value)) {
     controller.enqueue(String(/** @type any */ (value).value ?? ''));
     return;
   }
   if (isLive(value)) {
-    return streamRender(/** @type any */ (value).value, ctx, controller);
+    return streamRender(/** @type any */ (value).value, ctx, controller, insideBoundForm);
   }
   if (isWatch(value)) {
-    return streamRender(/** @type any */ (value).signal.get(), ctx, controller);
+    return streamRender(/** @type any */ (value).signal.get(), ctx, controller, insideBoundForm);
   }
   if (isKeyed(value)) {
-    return streamRender(/** @type any */ (value).value, ctx, controller);
+    return streamRender(/** @type any */ (value).value, ctx, controller, insideBoundForm);
   }
   if (isGuard(value)) {
-    return streamRender(/** @type any */ (value).fn(), ctx, controller);
+    return streamRender(/** @type any */ (value).fn(), ctx, controller, insideBoundForm);
   }
   if (isTemplateContent(value)) {
     const tpl = /** @type any */ (value).template;
@@ -1774,19 +1788,19 @@ async function streamRender(value, ctx, controller) {
     return;
   }
   if (isCache(value)) {
-    return streamRender(/** @type any */ (value).value, ctx, controller);
+    return streamRender(/** @type any */ (value).value, ctx, controller, insideBoundForm);
   }
   if (isUntil(value)) {
     const args = /** @type any */ (value).args;
     for (const a of args) {
       if (!a || typeof (/** @type any */ (a).then) !== 'function') {
-        return streamRender(a, ctx, controller);
+        return streamRender(a, ctx, controller, insideBoundForm);
       }
     }
     if (args.length > 0) {
       try {
         const winner = await Promise.race(args.map((p) => Promise.resolve(p).catch(() => undefined)));
-        return streamRender(winner, ctx, controller);
+        return streamRender(winner, ctx, controller, insideBoundForm);
       } catch {
         return;
       }
@@ -1797,13 +1811,13 @@ async function streamRender(value, ctx, controller) {
     return;
   }
   if (Array.isArray(value)) {
-    for (const v of value) await streamRender(v, ctx, controller);
+    for (const v of value) await streamRender(v, ctx, controller, insideBoundForm);
     return;
   }
   if (isRepeat(value)) {
     const r = /** @type any */ (value);
     for (let i = 0; i < r.items.length; i++) {
-      await streamRender(r.templateFn(r.items[i], i), ctx, controller);
+      await streamRender(r.templateFn(r.items[i], i), ctx, controller, insideBoundForm);
     }
     return;
   }
@@ -1812,16 +1826,16 @@ async function streamRender(value, ctx, controller) {
     if (ctx) {
       const id = `s${ctx.nextId++}`;
       controller.enqueue(`<webjs-boundary id="${id}">`);
-      await streamRender(s.fallback, ctx, controller);
+      await streamRender(s.fallback, ctx, controller, insideBoundForm);
       controller.enqueue(`</webjs-boundary>`);
-      ctx.pending.push({ id, promise: Promise.resolve(s.children) });
+      ctx.pending.push({ id, promise: Promise.resolve(s.children), insideBoundForm });
     } else {
-      await streamRender(s.fallback, ctx, controller);
+      await streamRender(s.fallback, ctx, controller, insideBoundForm);
     }
     return;
   }
   if (isTemplate(value)) {
-    await streamTemplate(/** @type any */ (value), ctx, controller);
+    await streamTemplate(/** @type any */ (value), ctx, controller, insideBoundForm);
     return;
   }
   controller.enqueue(escapeText(String(value)));
@@ -1834,8 +1848,9 @@ async function streamRender(value, ctx, controller) {
  * @param {import('./html.js').TemplateResult} tr
  * @param {SuspenseCtx} [ctx]
  * @param {ReadableStreamDefaultController<string>} controller
+ * @param {boolean} [insideBoundFormAtStart]
  */
-async function streamTemplate(tr, ctx, controller) {
+async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = false) {
   const { strings, values } = tr;
   let state = 'text';
   let attrName = '';
@@ -1857,7 +1872,7 @@ async function streamTemplate(tr, ctx, controller) {
   let pendingPropAttrs = [];
   /** @type {string | null} */
   let pendingSubmitterTag = null;
-  let insideBoundForm = false;
+  let insideBoundForm = insideBoundFormAtStart;
   let isCloseTag = false;
 
   const closeBoundFormTag = () => {
@@ -1877,12 +1892,14 @@ async function streamTemplate(tr, ctx, controller) {
       pendingSubmitterTag = null;
       const tagStr = buf.slice(tagStart);
       const attrs = parseStartTagAttrs(tagStr);
+      assertSingleSubmitterAction(duplicateAction, tag);
+      if (attrs.has('formaction')) assertSubmitterHasNoStaticFormAction(tag);
+      if (countStartTagAttr(tagStr, 'value') > 1) assertSubmitterHasNoValue(tag);
       if (attrs.has('name')) {
-        assertSubmitterHasNoName(attrs.get('name') || '', tag);
+        assertSubmitterHasNoName(attrs.get('name') || '', tag, countStartTagAttr(tagStr, 'name') === 1);
       }
-      if (tag === 'input' && attrs.get('type') === 'image') {
-        assertSubmitterNotImage(tag);
-      }
+      assertSubmitterType(tag, attrs.get('type'));
+      if (attrs.has('form')) assertSubmitterHasNoFormAttribute(tag);
       const formEnctype = attrs.get('formenctype');
       if (formEnctype != null && !PARSEABLE_ENCTYPES.has(formEnctype.toLowerCase())) {
         throw new Error(
@@ -1912,7 +1929,10 @@ async function streamTemplate(tr, ctx, controller) {
     if (n === 'method' || n === 'enctype') pendingPropAttrs.push(String(name));
   };
   const noteActionHole = (name, tag) => {
-    if (String(tag).toLowerCase() === 'form' && String(name).toLowerCase() === 'action') {
+    const t = String(tag).toLowerCase();
+    const n = String(name).toLowerCase();
+    if ((t === 'form' && n === 'action') ||
+        ((t === 'button' || t === 'input') && n === 'formaction')) {
       pendingActionCount += 1;
     }
   };
@@ -2020,7 +2040,8 @@ async function streamTemplate(tr, ctx, controller) {
         buf += String(val ?? '');
         rawTail = '';
       } else if (state === 'text') {
-        buf += await render(val, ctx);
+        if (buf) { controller.enqueue(buf); buf = ''; }
+        await streamRender(val, ctx, controller, insideBoundForm);
       } else if (state === 'after-eq') {
         const prefix = attrName[0];
         const name = attrName.slice(1);
@@ -2060,11 +2081,14 @@ async function streamTemplate(tr, ctx, controller) {
             const tagStr = buf.slice(tagStart);
             const attrs = parseStartTagAttrs(tagStr);
             if (attrs.has('name')) {
-              assertSubmitterHasNoName(attrs.get('name') || '', currentTag);
+              const frameworkName = pendingSubmitterTag != null
+                && attrs.get('name') === FORM_ACTION_FIELD;
+              assertSubmitterHasNoName(attrs.get('name') || '', currentTag, frameworkName);
             }
-            if (currentTag === 'input' && attrs.get('type') === 'image') {
-              assertSubmitterNotImage(currentTag);
+            if (attrs.has('value') && pendingSubmitterTag == null) {
+              assertSubmitterHasNoValue(currentTag);
             }
+            if (attrs.has('form')) assertSubmitterHasNoFormAttribute(currentTag);
             const subId = assertIdentifiableAction(await resolveFormActionId(val), currentTag);
             pendingSubmitterTag = currentTag;
             buf = buf.slice(0, attrStart) + `name="${FORM_ACTION_FIELD}" value="${escapeAttr(subId)}"`;
@@ -2111,10 +2135,10 @@ async function streamSuspenseBoundaries(ctx, controller, dev) {
   while (ctx.pending.length) {
     const batch = ctx.pending.splice(0);
     await Promise.all(
-      batch.map(async ({ id, promise }) => {
+      batch.map(async ({ id, promise, insideBoundForm }) => {
         try {
           const resolved = await promise;
-          const html = await render(resolved, ctx);
+          const html = await render(resolved, ctx, insideBoundForm);
           const full = await injectDSD(html, ctx, [], dev);
           controller.enqueue(
             `<template data-webjs-resolve="${id}">${full}</template>` +

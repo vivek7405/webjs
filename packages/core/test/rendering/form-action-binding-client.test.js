@@ -520,6 +520,53 @@ test('submitter non-POST formmethod is refused on the client (get and PATCH)', (
     /formmethod="PATCH"/,
   );
 });
+
+test('submitter controls and conflicting attributes are refused on the client', () => {
+  const action = HOISTED();
+  for (const tpl of [
+    html`<form action=${action}><input type="text" formaction=${action}></form>`,
+    html`<form action=${action}><input type="hidden" formaction=${action}></form>`,
+    html`<form action=${action}><input type="IMAGE" formaction=${action}></form>`,
+    html`<form action=${action}><button type="button" formaction=${action}>Save</button></form>`,
+    html`<form action=${action}><button value="save" formaction=${action}>Save</button></form>`,
+    html`<form action=${action}><button formaction="/legacy" formaction=${action}>Save</button></form>`,
+    html`<form action=${action}><button form="other" formaction=${action}>Save</button></form>`,
+  ]) {
+    assert.throws(() => render(tpl, document.createElement('div')), /submitter|value|formaction|form.*attribute/);
+  }
+});
+
+test('duplicate formaction holes on one submitter are refused on the client', () => {
+  const action = HOISTED();
+  assert.throws(
+    () => render(
+      html`<form action=${action}><button formaction=${action} formaction=${action}>Save</button></form>`,
+      document.createElement('div'),
+    ),
+    /two formaction=/,
+  );
+});
+
+test('a submitter in a nested template sees its enclosing form binding', () => {
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  const host = document.createElement('div');
+  render(html`<form action=${formAction}>${html`<button formaction=${buttonAction}>Save</button>`}</form>`, host);
+  assert.equal(host.querySelector('button').getAttribute('value'), ID);
+  assert.equal(host.querySelector('button').getAttribute('name'), '__webjs_action');
+});
+
+test('releasing a submitter binding removes its stale identity', () => {
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  const host = document.createElement('div');
+  const tpl = (action) => html`<form action=${formAction}><button formaction=${action}>Save</button></form>`;
+  render(tpl(buttonAction), host);
+  render(tpl(null), host);
+  const button = host.querySelector('button');
+  assert.equal(button.hasAttribute('name'), false);
+  assert.equal(button.hasAttribute('value'), false);
+});
 // NOTE: the release path's other guard, "an unbound form keeps a `.method` the
 // template writes as a PROPERTY", is asserted in `browser/form-action-guard.test.js`
 // instead. It turns entirely on the write reflecting to the content attribute,

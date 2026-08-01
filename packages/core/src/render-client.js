@@ -4,8 +4,10 @@ import { escapeAttr } from './escape.js';
 import {
   assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp,
   reconcileFormAction, isBoundFormAction, ABSENT, assertSubmitterHasNoName,
-  assertSubmitterNotImage, assertSubmitterFormIsBound, formActionId,
-  assertIdentifiableAction, FORM_ACTION_FIELD, PARSEABLE_ENCTYPES,
+  assertSubmitterType, assertSubmitterHasNoValue, assertSubmitterHasNoStaticFormAction,
+  assertSubmitterHasNoFormAttribute, assertSingleSubmitterAction,
+  assertSubmitterFormIsBound, formActionId, assertIdentifiableAction,
+  FORM_ACTION_FIELD, PARSEABLE_ENCTYPES,
 } from './form-action.js';
 import { isRepeat } from './repeat.js';
 import { isUnsafeHTML, isLive, isKeyed, isGuard, isTemplateContent, isRef, isCache, isUntil, isAsyncAppend, isAsyncReplace, isWatch } from './directives.js';
@@ -86,6 +88,9 @@ function commitInto(node, fn) {
  *   actionIdxs: number[],
  *   duplicateAction: boolean,
  *   staticAction: boolean,
+ *   authoredName: boolean,
+ *   authoredValue: boolean,
+ *   authoredForm: boolean,
  *   propAttrs: string[],
  *   staticMethod: string | null,
  *   staticEnctype: string | null,
@@ -96,6 +101,10 @@ function commitInto(node, fn) {
 
 /** @type {WeakMap<TemplateStringsArray | string[], { templateEl: HTMLTemplateElement, parts: PartDescriptor[], formActions: FormActionRecord[] | null }>} */
 const templateCache = new WeakMap();
+/** @type {WeakMap<HTMLFormElement, unknown>} */
+const formActionCandidates = new WeakMap();
+/** @type {WeakMap<Element, string>} */
+const submitterActionBindings = new WeakMap();
 const INSTANCE = Symbol.for('webjs.instance');
 
 /**
@@ -567,6 +576,12 @@ function buildFormActionRecord(el, onEl, parts) {
   /** Prop bindings that cannot converge with SSR; refused when actually bound. */
   const propAttrs = [];
   const hasNamePart = onEl.some((p) => p.name.toLowerCase() === 'name');
+  const authoredName = !isForm && el.hasAttribute('name');
+  const authoredForm = !isForm && el.hasAttribute('form');
+  const authoredValue = !isForm && (el.hasAttribute('value') || onEl.some((p) => {
+    const name = p.name.toLowerCase();
+    return name === 'value' && (p.kind === 'attr' || p.kind === 'attr-mixed' || p.kind === 'bool');
+  }));
 
   for (const p of onEl) {
     const name = String(p.name).toLowerCase();
@@ -589,6 +604,9 @@ function buildFormActionRecord(el, onEl, parts) {
     actionIdxs: actionParts.map((p) => p.idx),
     duplicateAction: actionParts.length > 1,
     staticAction: el.getAttribute(targetAttr) != null,
+    authoredName,
+    authoredValue,
+    authoredForm,
     propAttrs,
     hasNamePart,
     staticMethod: el.getAttribute('method'),
@@ -634,6 +652,35 @@ function reconcileFormActions(formActions, bound, values) {
 }
 
 /**
+ * Remove the identity channel previously injected into a submitter.
+ * @param {Element} el
+ */
+function releaseSubmitterAction(el) {
+  const injected = submitterActionBindings.has(el) || el.getAttribute('name') === FORM_ACTION_FIELD;
+  if (!injected) return;
+  if (el.getAttribute('name') === FORM_ACTION_FIELD) el.removeAttribute('name');
+  el.removeAttribute('value');
+  submitterActionBindings.delete(el);
+}
+
+/**
+ * Find an enclosing form even while a nested template is still detached.
+ * `Element.closest()` does not consistently cross a DocumentFragment boundary.
+ * @param {Element} el
+ * @returns {HTMLFormElement | null}
+ */
+function enclosingForm(el) {
+  let node = el.parentNode;
+  while (node) {
+    if (node.nodeType === 1 && /** @type {Element} */ (node).localName === 'form') {
+      return /** @type {HTMLFormElement} */ (node);
+    }
+    node = node.parentNode;
+  }
+  return null;
+}
+
+/**
  * Reconcile a submitter button (`<button formaction=${action}>`).
  * @param {Element} el
  * @param {unknown} value
@@ -643,17 +690,25 @@ function reconcileSubmitterAction(el, value, rec) {
   const id = typeof value === 'function' ? formActionId(value) : null;
   if (!id) {
     if (typeof value === 'function') assertIdentifiableAction(null, el.localName);
+    releaseSubmitterAction(el);
     return;
   }
-  const form = el.closest('form');
-  const isFormBound = !!(form && (form.querySelector(`input[name="${FORM_ACTION_FIELD}"]`) || form.hasAttribute('data-webjs-bound')));
+  assertSingleSubmitterAction(rec.duplicateAction, el.localName);
+  if (rec.staticAction) assertSubmitterHasNoStaticFormAction(el.localName);
+  if (rec.authoredValue) assertSubmitterHasNoValue(el.localName);
+  if (rec.authoredName || rec.authoredForm) {
+    if (rec.authoredName) assertSubmitterHasNoName(el.getAttribute('name') || '', el.localName, false);
+    if (rec.authoredForm) assertSubmitterHasNoFormAttribute(el.localName);
+  }
+  const form = enclosingForm(el);
+  const isFormBound = !!(form && (form.querySelector(`input[name="${FORM_ACTION_FIELD}"]`)
+    || formActionCandidates.has(form) || form.hasAttribute('data-webjs-bound')));
   assertSubmitterFormIsBound(isFormBound, el.localName);
   if (el.hasAttribute('name') || rec.hasNamePart) {
     assertSubmitterHasNoName(el.getAttribute('name') || '', el.localName);
   }
-  if (el.localName === 'input' && el.getAttribute('type') === 'image') {
-    assertSubmitterNotImage(el.localName);
-  }
+  assertSubmitterType(el.localName, el.getAttribute('type'));
+  if (el.hasAttribute('form')) assertSubmitterHasNoFormAttribute(el.localName);
   const formEnctype = el.getAttribute('formenctype');
   if (formEnctype != null && !PARSEABLE_ENCTYPES.has(formEnctype.toLowerCase())) {
     throw new Error(
@@ -672,6 +727,7 @@ function reconcileSubmitterAction(el, value, rec) {
   el.removeAttribute('formaction');
   el.setAttribute('name', FORM_ACTION_FIELD);
   el.setAttribute('value', id);
+  submitterActionBindings.set(el, id);
 };
 
 /* ================================================================
@@ -903,6 +959,11 @@ function applyPart(part, value, _prev, allValues) {
       applyChild(part, value);
       break;
     case 'attr': {
+      if (part.el.localName === 'form' && part.name.toLowerCase() === 'action') {
+        const candidate = resolveHoleValue(value);
+        if (typeof candidate === 'function') formActionCandidates.set(part.el, candidate);
+        else formActionCandidates.delete(part.el);
+      }
       if (value == null || value === false) part.el.removeAttribute(part.name);
       else if (isBoundFormAction(value, part.name, part.el.localName)) {
         // #1155: the ONE supported form-action binding, applied to the live
@@ -1372,9 +1433,14 @@ function applyChildInnerRaw(part, value) {
       applyPart(bound[i], tr.values[i], undefined, tr.values);
       lastValues.push(tr.values[i]);
     }
-    reconcileFormActions(formActions, bound, tr.values);
     const nodes = [startNode, ...frag.childNodes, endNode];
     marker.parentNode?.insertBefore(nodesToFrag(nodes), marker);
+    try {
+      reconcileFormActions(formActions, bound, tr.values);
+    } catch (error) {
+      for (const node of nodes) node.remove();
+      throw error;
+    }
     // Slot parts in this nested template need their one-shot apply just
     // like createInstance does for top-level templates. The slot is now
     // in the live tree (insertBefore above) so its parent walk can

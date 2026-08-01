@@ -42,3 +42,24 @@ test('SSR: formaction=${fn} on submitter with name attribute throws refusal', as
     /already carries a "name" attribute/,
   );
 });
+
+test('SSR: submitter guards stay identical for Bun and Node', async () => {
+  const refused = [
+    ['text input', html`<form action=${saveAction}><input type="text" formaction=${deleteAction}></form>`],
+    ['hidden input', html`<form action=${saveAction}><input type="hidden" formaction=${deleteAction}></form>`],
+    ['image input', html`<form action=${saveAction}><input type="IMAGE" formaction=${deleteAction}></form>`],
+    ['button input', html`<form action=${saveAction}><button type="button" formaction=${deleteAction}>Delete</button></form>`],
+    ['value attribute', html`<form action=${saveAction}><button value="delete" formaction=${deleteAction}>Delete</button></form>`],
+    ['static formaction', html`<form action=${saveAction}><button formaction="/legacy" formaction=${deleteAction}>Delete</button></form>`],
+    ['form attribute', html`<form action=${saveAction}><button form="other" formaction=${deleteAction}>Delete</button></form>`],
+  ];
+  for (const [label, tpl] of refused) {
+    await assert.rejects(() => renderToString(tpl, { ssr: true }), /submitter|value|formaction|form.*attribute/, label);
+  }
+});
+
+test('SSR: nested submitter templates keep the enclosing form binding', async () => {
+  const buttons = () => html`<button formaction=${deleteAction}>Delete</button>`;
+  const out = await renderToString(html`<form action=${saveAction}>${buttons()}</form>`, { ssr: true });
+  assert.match(out, /name="__webjs_action" value="hash\/deleteAction"/);
+});
