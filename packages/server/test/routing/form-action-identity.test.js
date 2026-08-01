@@ -154,9 +154,9 @@ test('the barrel fallback warns that the action config exports are bypassed', as
   // `export { fn } from`, and config the barrel declares for its own exports
   // applies to this action instead. Neither is knowable without loading the
   // module, so the warning states the condition rather than the consequence.
-  // It warns rather than
-  // refuses because the RPC endpoint resolves the same barrel hash the same way:
-  // both transports agree, and refusing would break a page that works.
+  // It warns rather than refuses because the RPC endpoint resolves the same
+  // barrel hash the same way: both transports agree, and refusing would break
+  // a page that works.
   const outside = join(dir, 'pkg', 'cfg.server.js');
   const barrel = join(dir, 'modules', 'cfg-barrel.server.js');
   const fn = async () => {};
@@ -197,6 +197,20 @@ test('the barrel fallback warns that the action config exports are bypassed', as
   assert.match(warned[0], /Move the action inside the app directory/);
   assert.match(warned[0], /module holding only this one action/);
   assert.match(warned[0], /carries several actions applies it to all/);
+  // The dedicated-module remedy carries a CONDITION: among indexed
+  // re-exporters the identity goes to the first one LOADED, and module load is
+  // lazy per route, so a shared barrel that also re-exports the action can
+  // silently win over the dedicated module depending on which page a visitor
+  // hits first. Stated, or the remedy reads as sufficient when it is not.
+  assert.match(warned[0], /NO other in-app module re-exports it/);
+  assert.match(warned[0], /first one loaded wins the identity/);
+  // And the remedy cannot silence the warning (the defining module stays
+  // unindexed, and this check cannot see inside the dispatched module), so the
+  // message says that itself rather than nagging an author who already fixed
+  // it. A diagnostic persisting in the state its own remedy produces, while
+  // still describing that state as broken, is the round-4 defect class.
+  assert.match(warned[0], /keeps printing after the dedicated-module fix/);
+  assert.match(warned[0], /working as intended/);
   // The two paths must appear in the right ROLES: swapping the arguments makes
   // the message name the barrel as the action's own module and vice versa,
   // which sends the author to the wrong file.

@@ -141,13 +141,24 @@ const _warnedBypass = new Set();
  *
  * It follows that re-exporting the config into a SHARED barrel is bad advice
  * (it attaches one action's validator to every sibling), while re-exporting it
- * into a module holding only this action is both safe and the only option when
+ * into a module holding only this action is safe and is the only option when
  * the action lives in a workspace package several apps share, which is exactly
- * the case that produces this warning. The remedy has to offer both.
+ * the case that produces this warning. The remedy has to offer both, and the
+ * second needs its CONDITION stated: among indexed re-exporters the identity
+ * goes to the first one LOADED (registration order, and module load is lazy per
+ * route), so a stray second re-exporter can silently win over the remedy module
+ * depending on which page a visitor hits first.
+ *
+ * The second remedy also cannot silence this line. The defining module stays
+ * outside the index, so the fallback still runs and this check cannot see
+ * inside the dispatched module to know the config now travels with it. Round 4
+ * of this PR's review found a diagnostic that persisted in the state its own
+ * remedy produced while still describing it as broken; the honest fix is the
+ * message saying so itself.
  *
  * `webjs check` catches none of it: `one-action-per-configured-file` counts
  * callables from `export function` / `export const … =>`, so a re-exported
- * action is invisible and the file reads as single-action.
+ * action is invisible to it (a pure barrel reads as zero callables).
  *
  * @param {{ file: string, fnName: string }} defining
  * @param {{ file: string, fnName: string }} used
@@ -161,11 +172,15 @@ function warnConfigExportsBypassed(defining, used) {
     + 'instead. Config is matched by NAME off that module, so it flows both ways: a '
     + '`validate` / `middleware` / `method` / `invalidates` declared beside the action does '
     + 'not travel with a plain `export { fn } from` re-export, and any that module declares '
-    + 'of its own applies to this action. Move the action inside the app directory, or '
-    + 're-export it from a module holding only this one action and put its config there. '
-    + 'Adding config to a re-export module that carries several actions applies it to all '
-    + 'of them, and `webjs check` cannot see that. (The RPC endpoint resolves the same way, '
-    + 'so this is not specific to forms.)',
+    + 'of its own applies to this action. Move the action inside the app directory. Or '
+    + 're-export it from a module holding only this one action, put its config there, and '
+    + 'make sure NO other in-app module re-exports it: among re-exporters the first one '
+    + 'loaded wins the identity, so a shared barrel can silently override the dedicated '
+    + 'module. Adding config to a re-export module that carries several actions applies it '
+    + 'to all of them, and `webjs check` cannot see that. This notice keeps printing after '
+    + 'the dedicated-module fix, because the check cannot see inside the dispatched module; '
+    + 'if that module carries the config, it is working as intended. (The RPC endpoint '
+    + 'resolves the same way, so this is not specific to forms.)',
   );
 }
 
