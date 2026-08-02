@@ -293,14 +293,14 @@ export default function RootLayout({ children }: LayoutProps) {
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme='light']) {
           --heart: oklch(0.74 0.18 6);
-          --fg: oklch(0.98 0 0); --fg-muted: oklch(0.80 0 0); --fg-subtle: oklch(0.68 0 0);
-          --bg: oklch(0 0 0); --bg-elev: oklch(0.12 0 0); --bg-subtle: oklch(0.08 0 0); --bg-sunken: oklch(0 0 0);
-          --border: oklch(0.26 0 0 / 0.9); --border-strong: oklch(0.38 0 0 / 0.95);
+          --fg: oklch(0.96 0.01 60); --fg-muted: oklch(0.78 0.015 60); --fg-subtle: oklch(0.66 0.02 65);
+          --bg: oklch(0.08 0.012 60); --bg-elev: oklch(0.14 0.015 60); --bg-subtle: oklch(0.11 0.014 60); --bg-sunken: oklch(0.06 0.01 60);
+          --border: oklch(0.24 0.015 60 / 0.9); --border-strong: oklch(0.36 0.02 60 / 0.95);
           --accent: oklch(0.78 0.18 58); --accent-hover: oklch(0.83 0.17 58); --accent-fg: oklch(0 0 0); --logo-from: oklch(0.82 0.17 58); --logo-to: oklch(0.64 0.18 44);
           --accent-live: oklch(0.78 0.18 58);
-          --glow-a: transparent;
-          --glow-strength: 0;
-          --cta-surface: transparent;
+          --glow-a: oklch(0.78 0.18 58);
+          --glow-strength: 0.08;
+          --cta-surface: color-mix(in oklch, var(--accent-live) 6%, var(--bg-elev));
           --hover-surface: oklch(1 0 0 / 0.09);
           --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
           --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
@@ -309,14 +309,14 @@ export default function RootLayout({ children }: LayoutProps) {
       :root[data-theme='dark'] {
         color-scheme: dark;
         --heart: oklch(0.74 0.18 6);
-        --fg: oklch(0.98 0 0); --fg-muted: oklch(0.80 0 0); --fg-subtle: oklch(0.68 0 0);
-        --bg: oklch(0 0 0); --bg-elev: oklch(0.12 0 0); --bg-subtle: oklch(0.08 0 0); --bg-sunken: oklch(0 0 0);
-        --border: oklch(0.26 0 0 / 0.9); --border-strong: oklch(0.38 0 0 / 0.95);
+        --fg: oklch(0.96 0.01 60); --fg-muted: oklch(0.78 0.015 60); --fg-subtle: oklch(0.66 0.02 65);
+        --bg: oklch(0.08 0.012 60); --bg-elev: oklch(0.14 0.015 60); --bg-subtle: oklch(0.11 0.014 60); --bg-sunken: oklch(0.06 0.01 60);
+        --border: oklch(0.24 0.015 60 / 0.9); --border-strong: oklch(0.36 0.02 60 / 0.95);
         --accent: oklch(0.78 0.18 58); --accent-hover: oklch(0.83 0.17 58); --accent-fg: oklch(0 0 0); --logo-from: oklch(0.82 0.17 58); --logo-to: oklch(0.64 0.18 44);
         --accent-live: oklch(0.78 0.18 58);
-        --glow-a: transparent;
-        --glow-strength: 0;
-        --cta-surface: transparent;
+        --glow-a: oklch(0.78 0.18 58);
+        --glow-strength: 0.08;
+        --cta-surface: color-mix(in oklch, var(--accent-live) 6%, var(--bg-elev));
         --hover-surface: oklch(1 0 0 / 0.09);
         --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
         --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
@@ -356,18 +356,14 @@ export default function RootLayout({ children }: LayoutProps) {
          selector outranks the border-* utilities that also set
          border-right-color, so cascade order does not matter. */
       .site-top > header { border-right: var(--wj-scrollbar-compensation, 0px) solid transparent; }
-      /* The page backdrop is deliberately UNCHANGED from what webjs.dev
-         serves: one fixed layer, two radials off --glow-a, no animation. A
-         dot-grid texture and a third magenta radial were tried here and
-         reverted. They tinted every page, which is a site-wide change, and the
-         glow that was actually wanted belongs to the closing CTA panel, where
-         it comes from --shadow-glow on the panel itself. */
+      /* Background glow layer with soft radial ambient glow */
       .glow-layer { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
       .glow-layer::before {
         content: ''; position: absolute; inset: 0;
         background:
-          radial-gradient(58% 44% at 50% -4%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 100%), transparent), transparent 72%),
-          radial-gradient(40% 36% at 88% 8%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 60%), transparent), transparent 70%);
+          radial-gradient(60% 48% at 50% -5%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 100%), transparent), transparent 75%),
+          radial-gradient(45% 40% at 85% 10%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 60%), transparent), transparent 70%),
+          radial-gradient(50% 50% at 15% 85%, color-mix(in oklch, var(--glow-a) calc(var(--glow-strength) * 40%), transparent), transparent 70%);
       }
       .scroll-thin { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color var(--t); }
       .scroll-thin:hover { scrollbar-color: color-mix(in oklch, var(--fg-subtle) 70%, transparent) transparent; }
@@ -400,7 +396,7 @@ export default function RootLayout({ children }: LayoutProps) {
     <div class="glow-layer" aria-hidden="true"></div>
 
     <div class="site-top fixed inset-x-0 top-0 z-20">
-    <header class="backdrop-blur-md bg-[color-mix(in_oklch,var(--color-bg)_78%,transparent)] border-b border-border">
+    <header class="backdrop-blur-md bg-[color-mix(in_oklch,var(--color-bg)_50%,transparent)] border-b border-border">
       <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
         <a class="inline-flex items-center no-underline text-fg shrink-0 transition-opacity duration-150 hover:opacity-80" href="/" aria-label="WebJs home">
           ${brandLockup('hdr', { height: 26 })}

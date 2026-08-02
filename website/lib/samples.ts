@@ -10,12 +10,23 @@ class LikeButton extends WebComponent {
 }
 LikeButton.register('like-button');`;
 
+export const TOGGLE_SAMPLE = `import { WebComponent, html, prop } from '@webjsdev/core';
+
+class DarkModeToggle extends WebComponent({ enabled: prop(Boolean) }) {
+  render() {
+    return html\`<button @click=\${() => this.enabled = !this.enabled}>
+      \${this.enabled ? '🌙 Dark' : '☀️ Light'}
+    </button>\`;
+  }
+}
+DarkModeToggle.register('dark-mode-toggle');`;
+
 export const ACTION_SAMPLE = `'use server';
 import { eq } from 'drizzle-orm';
 import { db } from '#db/connection.server.ts';
 import { posts } from '#db/schema.server.ts';
 
-// Import this from a page or client component. WebJs rewrites
+// Import this from a page or component. WebJs rewrites
 // the import into a typed RPC stub (the real call at SSR). No
 // fetch by hand.
 export async function getPost(id) {

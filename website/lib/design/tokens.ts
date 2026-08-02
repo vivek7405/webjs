@@ -22,14 +22,14 @@ export type Swatch = {
 };
 
 export const SWATCHES: Swatch[] = [
-  { token: '--bg', name: 'Canvas', role: 'Page background', dark: 'oklch(0 0 0)', light: 'oklch(0.985 0.008 75)' },
-  { token: '--bg-elev', name: 'Raised', role: 'Cards and panels', dark: 'oklch(0.12 0 0)', light: 'oklch(1 0 0)' },
-  { token: '--bg-subtle', name: 'Subtle', role: 'Hover and inset fills', dark: 'oklch(0.08 0 0)', light: 'oklch(0.96 0.008 75)' },
-  { token: '--bg-sunken', name: 'Sunken', role: 'Code surfaces', dark: 'oklch(0 0 0)', light: 'oklch(0.93 0.01 70)' },
-  { token: '--fg', name: 'Ink', role: 'Headings and body', dark: 'oklch(0.98 0 0)', light: 'oklch(0.20 0.018 60)' },
-  { token: '--fg-muted', name: 'Ink muted', role: 'Supporting prose', dark: 'oklch(0.80 0 0)', light: 'oklch(0.44 0.02 60)' },
-  { token: '--fg-subtle', name: 'Ink subtle', role: 'Captions and metadata', dark: 'oklch(0.68 0 0)', light: 'oklch(0.50 0.02 65)' },
-  { token: '--border', name: 'Line', role: 'Dividers and outlines', dark: 'oklch(0.26 0 0 / 0.9)', light: 'oklch(0.88 0.012 70 / 0.9)' },
+  { token: '--bg', name: 'Canvas', role: 'Page background', dark: 'oklch(0.08 0.012 60)', light: 'oklch(0.985 0.008 75)' },
+  { token: '--bg-elev', name: 'Raised', role: 'Cards and panels', dark: 'oklch(0.14 0.015 60)', light: 'oklch(1 0 0)' },
+  { token: '--bg-subtle', name: 'Subtle', role: 'Hover and inset fills', dark: 'oklch(0.11 0.014 60)', light: 'oklch(0.96 0.008 75)' },
+  { token: '--bg-sunken', name: 'Sunken', role: 'Code surfaces', dark: 'oklch(0.06 0.01 60)', light: 'oklch(0.93 0.01 70)' },
+  { token: '--fg', name: 'Ink', role: 'Headings and body', dark: 'oklch(0.96 0.01 60)', light: 'oklch(0.20 0.018 60)' },
+  { token: '--fg-muted', name: 'Ink muted', role: 'Supporting prose', dark: 'oklch(0.78 0.015 60)', light: 'oklch(0.44 0.02 60)' },
+  { token: '--fg-subtle', name: 'Ink subtle', role: 'Captions and metadata', dark: 'oklch(0.66 0.02 65)', light: 'oklch(0.50 0.02 65)' },
+  { token: '--border', name: 'Line', role: 'Dividers and outlines', dark: 'oklch(0.24 0.015 60 / 0.9)', light: 'oklch(0.88 0.012 70 / 0.9)' },
 ];
 
 /**
