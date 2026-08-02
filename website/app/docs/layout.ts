@@ -36,7 +36,7 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    title: 'Full Stack',
+    title: 'Core Concepts',
     items: [
       { href: '/docs/routing', label: 'Routing' },
       { href: '/docs/components', label: 'Components' },
@@ -53,7 +53,7 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    title: 'Backend',
+    title: 'Data & Backend',
     items: [
       { href: '/docs/server-actions', label: 'Server Actions' },
       { href: '/docs/api-routes', label: 'API Routes' },
