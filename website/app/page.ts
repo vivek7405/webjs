@@ -1,7 +1,7 @@
 import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import '#components/like-button.ts';
-import { COMPONENT_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE, USAGE_SAMPLE } from '#lib/samples.ts';
+import { COMPONENT_SAMPLE, TOGGLE_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE, USAGE_SAMPLE } from '#lib/samples.ts';
 import { DOCS_PATH, DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
 // highlight() runs only at SSR (codeWindow renders its output into the served
 // HTML), but it does ship to the client as a small dead module: the page loads
@@ -246,16 +246,12 @@ export default function LandingPage() {
     </section>
 
     <section class="py-16">
-      <div class="max-w-7xl mx-auto px-6">
+      <div class="max-w-5xl mx-auto px-6">
         <div class="max-w-3xl mx-auto mb-12 text-center">
-          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">The whole stack, in three files</h2>
-          <p class="text-fg-muted text-base leading-[1.6] m-0">A component, a server action, and a page. No build, no boilerplate, all web standards.</p>
+          <h2 class="font-display font-bold text-h2 leading-[1.12] tracking-[-0.03em] my-3 text-balance">Server action & SSR page</h2>
+          <p class="text-fg-muted text-base leading-[1.6] m-0">A server action and a page. No build, no boilerplate, all web standards.</p>
         </div>
-        <div class="grid gap-4 grid-cols-1 max-w-2xl mx-auto wide:grid-cols-3 wide:max-w-none">
-          <div class="flex flex-col min-w-0">
-            <p class="text-sm font-medium leading-[1.4] text-fg-subtle mb-2.5 ml-1">Interactive component</p>
-            ${codeWindow('components/like-button.ts', COMPONENT_SAMPLE)}
-          </div>
+        <div class="grid gap-6 grid-cols-1 md:grid-cols-2">
           <div class="flex flex-col min-w-0">
             <p class="text-sm font-medium leading-[1.4] text-fg-subtle mb-2.5 ml-1">Server action (RPC)</p>
             ${codeWindow('actions/get-post.server.ts', ACTION_SAMPLE)}
@@ -381,8 +377,7 @@ export default function LandingPage() {
         </div>
         <div class="grid gap-4 grid-cols-1 max-w-2xl mx-auto wide:grid-cols-2 wide:max-w-3xl">
           <div class="flex flex-col gap-3 p-6 min-w-0 rounded-2xl border border-border bg-bg-elev">
-            <span class="text-xs font-medium leading-none text-accent">Full-stack</span>
-            <h3 class="font-display font-bold text-lg leading-[1.25] m-0">Pages + API + components</h3>
+            <h3 class="font-display font-bold text-lg leading-[1.25] m-0">Full Stack</h3>
             <p class="m-0 text-sm leading-[1.6] text-fg-muted">SSR pages, web components, server actions, Drizzle, streaming, and a browsable feature gallery. Auth (login, sessions, a protected route) ships as a gallery card. The default.</p>
             <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-subtle font-mono text-xs leading-[1.6] text-fg-muted" role="region" tabindex="0" aria-label="Example files in a full-stack app">app/page.ts
 components/counter.ts
@@ -390,8 +385,7 @@ actions/posts.server.ts</pre>
             <div class="cmd-foot pt-2 mt-auto font-mono text-xs leading-[1.6] text-fg-muted max-w-full min-w-0"><copy-cmd>npm create webjs@latest my-app</copy-cmd></div>
           </div>
           <div class="flex flex-col gap-3 p-6 min-w-0 rounded-2xl border border-border bg-bg-elev">
-            <span class="text-xs font-medium leading-none text-accent">Backend (API)</span>
-            <h3 class="font-display font-bold text-lg leading-[1.25] m-0">Route handlers + Database</h3>
+            <h3 class="font-display font-bold text-lg leading-[1.25] m-0">Backend</h3>
             <p class="m-0 text-sm leading-[1.6] text-fg-muted">A backend-only app, no UI or SSR. File-based route handlers, modules, middleware, rate limiting, WebSockets, a database, and a backend-features gallery.</p>
             <pre class="scroll-thin m-0 px-3.5 py-3 overflow-x-auto rounded-lg border border-border bg-bg-subtle font-mono text-xs leading-[1.6] text-fg-muted" role="region" tabindex="0" aria-label="Example files in an API app">app/api/users/route.ts
 app/api/chat/route.ts

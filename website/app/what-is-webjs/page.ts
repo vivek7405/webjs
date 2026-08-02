@@ -250,7 +250,7 @@ export default function WhatIsWebJs() {
           <div class="max-w-3xl mx-auto mb-12 text-center">
             <h2 class=${H2}>What a WebJs app looks like</h2>
             <p class=${PROSE}>
-              A component, a server function, and a page. These are ordinary files in your project,
+              A component, a server action, and a page. These are ordinary files in your project,
               served as written. There is no compile step between what you see here and what the
               browser receives.
             </p>
@@ -261,7 +261,7 @@ export default function WhatIsWebJs() {
               ${codeWindow('components/like-button.ts', COMPONENT_SAMPLE, 'A WebJs web component with a signal')}
             </div>
             <div class="flex flex-col min-w-0">
-              <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">A server function</p>
+              <p class="font-mono font-semibold text-xs leading-[1.4] tracking-widest uppercase text-fg-subtle mb-2.5 ml-1">A server action</p>
               ${codeWindow('actions/get-post.server.ts', ACTION_SAMPLE, 'A WebJs server action reading from the database')}
             </div>
             <div class="flex flex-col min-w-0">
