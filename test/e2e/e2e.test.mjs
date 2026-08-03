@@ -2038,20 +2038,18 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     //
     // Dropping the pane does not drop the hydration coverage, but be precise
     // about where that coverage actually lives: it is waitForChatLive, which
-    // runs on both sides BEFORE either snapshot and throws if a side is still
-    // in its server-rendered state. The status header is kept in the snapshot,
-    // but it does not add coverage on top of that, because by the time a
-    // snapshot is taken both sides are necessarily connected and chat-box has
-    // no path back, so the header's contribution is the same constant on both
-    // sides.
+    // the mixed-page test runs on both sides before either snapshot and which
+    // throws if a side is still in its server-rendered state. The status header
+    // is kept in the snapshot but adds nothing on top of that, because once
+    // that wait has passed both sides are connected and chat-box has no path
+    // back, so the header contributes the same constant to each. (The other
+    // caller, the static-route test, runs no such wait and needs none: that
+    // route renders no <chat-box> at all, so none of this applies there.)
     const observableMain = (pg) => pg.evaluate(() => {
       const main = document.querySelector('main') || document.body;
       // Work on a clone so the live DOM is untouched and a later snapshot of
       // the same page still sees the real thing.
       const copy = /** @type {HTMLElement} */ (main.cloneNode(true));
-      // The pane is the middle child of chat-box's wrapper (header div, pane
-      // div, form), positional because the markup carries no id or data hook.
-      //
       // The pane is identified by CONTENT, not by position. Position cannot do
       // it: the header and the pane are both plain divs, so neither an index
       // nor a tag sequence can tell them apart, and swapping the two would
@@ -2061,17 +2059,24 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       // distinguishes them. The header is the div carrying the status line; the
       // pane is the other one. Both are asserted, so a markup change fails
       // loudly here rather than silently reverting the exclusion.
-      const STATUS = /Connecting…|Reconnecting…|Live ·/;
+      // Anchored and whole-string: the header renders exactly one status and
+      // nothing else (its dot is an empty span). A substring test would let a
+      // chat MESSAGE containing 'Live ·' look like a header, since message text
+      // is user-supplied and echoed back verbatim by the say broadcast. That
+      // would not mis-select (the real header always matches too, so the guard
+      // below trips on two headers rather than picking wrong) but it would be a
+      // spurious red in the block whose whole point is not producing those.
+      const STATUS = /^(Connecting…|Reconnecting…|Live · \d+ others? online)$/;
       const panes = [];
       for (const box of copy.querySelectorAll('chat-box')) {
         const wrapper = box.firstElementChild;
         if (!wrapper) return { error: '<chat-box> rendered no wrapper element; its markup changed, so this snapshot can no longer identify the live feed to exclude it' };
         const divs = [...wrapper.children].filter((el) => el.tagName.toLowerCase() === 'div');
-        const headers = divs.filter((el) => STATUS.test(el.textContent || ''));
+        const headers = divs.filter((el) => STATUS.test((el.textContent || '').replace(/\s+/g, ' ').trim()));
         const rest = divs.filter((el) => !headers.includes(el));
         if (headers.length !== 1 || rest.length !== 1) {
           const shape = [...wrapper.children].map((el) => el.tagName.toLowerCase()).join(', ');
-          return { error: `expected <chat-box>'s wrapper to hold exactly one status div and one message pane div, found ${headers.length} status and ${rest.length} other div(s) among [${shape}]; its markup changed, so this snapshot can no longer identify the live feed to exclude it` };
+          return { error: `expected <chat-box>'s wrapper to hold exactly one status div and one message pane div, found ${headers.length} status and ${rest.length} other div(s) among [${shape}]. Either its markup changed or a chat message's text matched the status line exactly; either way this snapshot can no longer identify the live feed to exclude it` };
         }
         panes.push(rest[0]);
       }
@@ -2084,9 +2089,10 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
         // like the participant count: the two pages hold sockets to two
         // independent servers, so one can drop between the wait and the
         // snapshot with no counterpart on the other side. 'Connecting…' is
-        // left uncollapsed only so this regex says what it means; it is not
-        // reachable here, since waitForChatLive has already failed the test on
-        // any side still showing it.
+        // left uncollapsed only so this regex says what it means. It is not
+        // reachable from either caller: the mixed-page test has already failed
+        // in waitForChatLive on any side still showing it, and the static route
+        // renders no <chat-box>.
         .replace(/Live · \d+ others? online|Reconnecting…/g, 'CHAT-CONNECTED')
         .replace(/\s+/g, ' ')
         .trim();
