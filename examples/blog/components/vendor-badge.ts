@@ -22,7 +22,12 @@ import dayjs from 'dayjs';
  * from the CDN. The SSR'd text (computed with dayjs server-side) is the
  * complete output.
  */
-const RELEASED_AT = '2026-01-01T00:00:00.000Z';
+// A plain date, not an instant. dayjs formats in LOCAL time, so a UTC instant
+// renders as the PREVIOUS day on any host west of UTC, which made a release
+// badge read differently depending on where it was served from and left the
+// e2e assertion on its year green only on a UTC machine. A date string parses
+// as local midnight, so it formats to the same day everywhere.
+const RELEASED_AT = '2026-01-01';
 
 export class VendorBadge extends WebComponent {
   render() {
