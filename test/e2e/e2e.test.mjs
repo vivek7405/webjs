@@ -1972,6 +1972,22 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       offBaseUrl = `http://localhost:${offPort}`;
       offServerProcess = await startBlog(offPort, { WEBJS_ELIDE: '0' });
       offPage = await browser.newPage();
+
+      // No browser-side warmup here on purpose. An earlier revision navigated
+      // offPage twice before the tests, to pay the cold dev server's on-demand
+      // transform cost off the clock. Two things killed that idea. Its premise
+      // was wrong: module scripts are deferred and DOMContentLoaded waits for
+      // deferred scripts, so goto(domcontentloaded) already absorbs the whole
+      // module graph and there is no residual for a warmup to remove (measured
+      // with a 4s delay injected on the counter module, goto took 4076ms and
+      // the element was upgraded by the time it returned). And it correlated
+      // with CI failures on the pushes that carried it. That attribution did
+      // NOT hold up: the same failure recurs without the warmup, and the cause
+      // is tracked separately as #1228 (the elision-OFF boot intermittently
+      // 404s a module, leaving components inert). What stands is the narrower
+      // point, that driving extra navigations through the page under test buys
+      // nothing measurable and changes browser-side state the assertions then
+      // depend on.
     });
 
     after(async () => {
@@ -1983,22 +1999,119 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     });
 
     // Snapshot the observable content of <main>: visible text and the ordered
-    // tag structure, with framework hydration internals (comment markers, the
-    // live wall-clock) normalised away, since those are not observable output.
+    // tag structure, with the two things that are not a function of elision
+    // held out.
+    //
+    // 1. The wall-clock, which ticks between the two snapshots. Both the
+    //    12-hour and 24-hour renderings are matched, since which one appears
+    //    depends on the runner's default locale.
+    //
+    // 2. Everything INSIDE <chat-box>. The element itself stays in the tag
+    //    list, so a chat-box that failed to render at all is still caught, but
+    //    its contents are dropped wholesale.
+    //
+    //    That is a blunt cut and it is deliberate. chat-box's pane is a live
+    //    websocket feed, and the two pages hold sockets to two DIFFERENT
+    //    servers: the OFF server is created privately in this block, the ON
+    //    server is shared with the whole suite. Every join and leave on either
+    //    appends a line with no counterpart on the other, and a reconnect
+    //    appends another. Those are independent populations, so no amount of
+    //    waiting converges them. Earlier revisions tried to keep the status
+    //    header while excluding just the pane, which needs the pane identified
+    //    by content or position inside markup that carries neither an id nor a
+    //    data hook; that machinery went wrong repeatedly under review and is
+    //    not worth its weight for a widget this block is not testing.
+    //
+    //    The cost is explicit: chat-box's own hydration and its header/form
+    //    structure are no longer covered here. The counter still covers
+    //    hydration on both sides, which is what this block is for.
     const observableMain = (pg) => pg.evaluate(() => {
       const main = document.querySelector('main') || document.body;
-      const text = (main.textContent || '')
+      // Clone so the live DOM is untouched and a later snapshot of the same
+      // page still sees the real thing.
+      const copy = /** @type {HTMLElement} */ (main.cloneNode(true));
+      for (const box of copy.querySelectorAll('chat-box')) box.replaceChildren();
+      const text = (copy.textContent || '')
         .replace(/\d{1,2}:\d{2}:\d{2}\s?[AP]M/gi, 'TIME')
+        .replace(/\d{1,2}:\d{2}:\d{2}/g, 'TIME')
         .replace(/\s+/g, ' ')
         .trim();
-      const tags = [...main.querySelectorAll('*')].map((el) => el.tagName.toLowerCase());
+      const tags = [...copy.querySelectorAll('*')].map((el) => el.tagName.toLowerCase());
       return { text, tags };
     });
 
+
+    /**
+     * Wait until the page has actually hydrated, instead of sleeping and hoping.
+     *
+     * The counter is ONE of the page's interactive components, not all of
+     * them: <chat-box> is inside <main> too, and <theme-toggle> is in the root
+     * layout. So this is a wait for the component the assertions drive, not a
+     * whole-page hydration barrier. chat-box is not waited on because its
+     * contents are excluded from the snapshot entirely (see observableMain).
+     *
+     * The signal is that the ELEMENT INSTANCE has been upgraded, tested with
+     * `instanceof` against the registered constructor. Nothing weaker works
+     * here, because SSR already emits the counter's full inner markup:
+     *
+     *     <my-counter count="3" data-wj-host><!--webjs-hydrate-->
+     *       <button aria-label="Decrement">...<output>3</output>
+     *       <button aria-label="Increment">...
+     *
+     * So the host, the output and both buttons exist before a single line of
+     * JavaScript has run. Waiting on any of them is waiting on the server's
+     * HTML, which is always already true, and a click at that point lands on a
+     * real button with no listener attached and is silently swallowed. Before
+     * upgrade the element is a plain HTMLElement; only after it is an instance
+     * of the registered class, which is the first moment the `@click` binding
+     * exists. `my-counter` is a LIGHT-DOM component, so there is no shadow root
+     * to look inside for a different answer.
+     * @param {import('puppeteer-core').Page} p
+     * @param {string} which  'ON' or 'OFF', named in the failure message
+     */
+    const waitForHydration = async (p, which) => {
+      try {
+        await p.waitForFunction(() => {
+          const C = customElements.get('my-counter');
+          return !!(C && document.querySelector('my-counter') instanceof C);
+        }, { timeout: 15000, polling: 50 });
+      } catch (waitErr) {
+        // Say what failed and what it most likely means. A bare puppeteer
+        // "Waiting failed: 15000ms exceeded" names neither the page nor the
+        // condition, which is the same diagnostic dead end the old off-by-one
+        // counter assertion was. Report what is actually on the page.
+        //
+        // Only a genuine timeout is evidence about hydration. waitForFunction
+        // also rejects for reasons that say nothing about it (a detached frame,
+        // a target crash, a navigation mid-wait), so those are rethrown as
+        // themselves rather than relabelled as a suspected elision defect.
+        if (!/timeout|Waiting failed/i.test(String(waitErr && waitErr.message))) throw waitErr;
+        const state = await p.evaluate(() => {
+          const C = customElements.get('my-counter');
+          return {
+            defined: !!C,
+            host: !!document.querySelector('my-counter'),
+            upgraded: !!(C && document.querySelector('my-counter') instanceof C),
+          };
+        }).catch(() => null);
+        // Never print an unobserved state as a fact. When the probe itself
+        // fails there is nothing to report, and asserting "define DID NOT run"
+        // from a null reading would send the next reader after the wrong bug.
+        const detail = state
+          ? `customElements.define ${state.defined ? 'ran' : 'DID NOT run'}, `
+            + `host ${state.host ? 'present' : 'absent'}, `
+            + `instance ${state.upgraded ? 'upgraded' : 'NOT upgraded'}`
+            + (state.defined ? '' : '. If define never ran, the component module was not served: elision may have wrongly dropped it')
+          : 'the page could not be probed for its state, so nothing is known beyond the timeout';
+        throw new Error(`${which} page never upgraded <my-counter> within 15s (${detail}).`);
+      }
+    };
+
     test('the mixed page renders identically on vs off', async () => {
-      await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      await sleep(2500); // allow hydration on both
+      await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await waitForHydration(page, 'ON');
+      await waitForHydration(offPage, 'OFF');
       const onSnap = await observableMain(page);
       const offSnap = await observableMain(offPage);
       // The display-only badges (build-stamp, vendor-badge, muted-text) are
@@ -2015,15 +2128,48 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       // in both. If elision ever wrongly dropped its module on the ON side,
       // the ON counter would not increment and this assertion fails: the live
       // guard for the dangerous direction.
-      await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      await sleep(2500);
+      await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await waitForHydration(page, 'ON');
+      await waitForHydration(offPage, 'OFF');
 
-      assert.equal(await getCounterValue(page), await getCounterValue(offPage),
+      const onSeed = await getCounterValue(page);
+      assert.equal(onSeed, await getCounterValue(offPage),
         'counter seeds to the same value on vs off');
       await clickCounterButton(page, 'Increment');
       await clickCounterButton(offPage, 'Increment');
-      await sleep(300);
+      // The click sets a reactive property, and that re-render is batched to a
+      // microtask, so the new value is NOT readable synchronously. Wait for it
+      // to land on both sides rather than sleeping a guessed interval.
+      //
+      // A failure here is REPORTED, not swallowed. Discarding it would leave
+      // the run to fall through to the on-vs-off assertion below and fail as
+      // `on=4, off=3`, which is precisely the misleading message this block is
+      // supposed to stop producing: it names a counter mismatch when what
+      // actually happened is that one side never applied its click. This wait
+      // knows which side it was and what the value got stuck on, so it says so.
+      const settled = async (p, which) => {
+        try {
+          await p.waitForFunction(
+            // Every hop optional-chained: a missing <output> must make the
+            // predicate FALSE (so the wait times out and reports which side
+            // stalled), not throw a TypeError that the handler below cannot
+            // recognise as a timeout and rethrows raw, unlabelled.
+            (want) => parseInt(document.querySelector('my-counter')?.querySelector('output')?.textContent?.trim() ?? '', 10) === want,
+            { timeout: 10000, polling: 25 },
+            onSeed + 1,
+          );
+        } catch (err) {
+          if (!/timeout|Waiting failed/i.test(String(err && err.message))) throw err;
+          const got = await getCounterValue(p).catch(() => null);
+          throw new Error(
+            `${which} counter never reached ${onSeed + 1} within 10s of the click (still ${got}). `
+            + 'The click did not take effect on that side.',
+          );
+        }
+      };
+      await settled(page, 'ON');
+      await settled(offPage, 'OFF');
       const onAfter = await getCounterValue(page);
       const offAfter = await getCounterValue(offPage);
       assert.equal(onAfter, offAfter, `counter increments identically on vs off (on=${onAfter}, off=${offAfter})`);
@@ -2031,9 +2177,15 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     });
 
     test('the fully-static route renders identically on vs off', async () => {
-      await page.goto(`${baseUrl}/static-info`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      await offPage.goto(`${offBaseUrl}/static-info`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      await sleep(1500);
+      // This route ships no component of its OWN (its page module is dropped),
+      // but it is not JS-free: the boot re-emits the root layout's
+      // theme-toggle, which loads @webjsdev/core and enables the client router
+      // (see the docstring on examples/blog/app/static-info/page.ts). Nothing
+      // inside <main> depends on that, which is the scope this asserts on, so
+      // there is no component here to poll for and `load` (every subresource
+      // settled) is the real condition the old sleep stood in for.
+      await page.goto(`${baseUrl}/static-info`, { waitUntil: 'load', timeout: 30000 });
+      await offPage.goto(`${offBaseUrl}/static-info`, { waitUntil: 'load', timeout: 30000 });
       const onSnap = await observableMain(page);
       const offSnap = await observableMain(offPage);
       assert.deepEqual(onSnap.tags, offSnap.tags, 'static route tag structure must match on vs off');
@@ -3072,7 +3224,8 @@ describe('E2E: form actions (no-JS + enhanced)', { skip: !process.env.WEBJS_E2E 
 
 /**
  * Get the current counter display value.
- * The counter is a shadow DOM component: <my-counter> → shadowRoot → <output>.
+ * The counter is a LIGHT DOM component, so its <output> is a child of the host
+ * itself and there is no shadow root in the path.
  * @param {import('puppeteer-core').Page} p
  * @returns {Promise<number|null>}
  */
@@ -3093,11 +3246,30 @@ async function getCounterValue(p) {
  * @param {'Increment'|'Decrement'} label
  */
 async function clickCounterButton(p, label) {
-  await p.evaluate((lbl) => {
+  // Refuse to click an element that cannot respond, and say so.
+  //
+  // Checking the BUTTON exists is not that check, which is the trap worth
+  // spelling out: SSR emits the counter's buttons and output, so on a page that
+  // has not hydrated the button is present, `click()` runs, and nothing at all
+  // happens. A helper that only guards `!btn` therefore reports success for the
+  // one failure it was written to catch, and the miss resurfaces an assertion
+  // later as a baffling off-by-one (`on=4, off=3`).
+  //
+  // The element being UPGRADED is the real precondition: before upgrade it is a
+  // plain HTMLElement, after it is an instance of the registered class, and
+  // that is the first moment the `@click` binding exists.
+  const problem = await p.evaluate((lbl) => {
     const counter = document.querySelector('my-counter');
-    const btn = counter?.querySelector(`button[aria-label="${lbl}"]`);
-    btn?.click();
+    if (!counter) return 'no <my-counter> on the page';
+    const C = customElements.get('my-counter');
+    if (!C) return 'my-counter is not registered (its module never ran), so the SSR buttons have no listener';
+    if (!(counter instanceof C)) return 'my-counter is registered but this instance is not upgraded yet, so its buttons have no listener';
+    const btn = counter.querySelector(`button[aria-label="${lbl}"]`);
+    if (!btn) return `<my-counter> has no button[aria-label="${lbl}"] (SSR markup changed?)`;
+    btn.click();
+    return null;
   }, label);
+  if (problem) throw new Error(`clickCounterButton(${label}): ${problem}`);
 }
 
 /**
