@@ -54,6 +54,10 @@ website/
     copy-cmd.ts        click-to-copy command line (light DOM, always-on button)
     doc-search.ts      the docs sidebar search field
     preview-tabs.ts    Preview / Code toggle around a gallery demo
+    docs-drawer.ts     the /docs + /ui sidebar shell and its mobile drawer:
+                       backdrop, toggle, aside, open state, every close path
+    site-nav-menu.ts   the header's mobile menu, wrapping a native <details>
+                       so it still opens with JS off
                        (components/ui/ is intentionally EMPTY here, left free
                        for `webjs ui add` to own, exactly as the scaffold
                        expects, and gitignored so it stays that way. The
@@ -72,8 +76,21 @@ website/
       page-header.ts   hub eyebrow + title + lede
       cta-panel.ts     the closing call to action
       site-footer.ts   the footer, rendered by the root layout on every page
-      docs-shell.ts    the sidebar + drawer + .prose-docs typography, SHARED by
-                       /docs and /ui so the two sections cannot drift apart
+      docs-shell.ts    the shell stylesheet (.prose-docs typography, the sticky
+                       desktop column) plus the function that turns a nav tree
+                       into markup and slots it into <docs-drawer>. SHARED by
+                       /docs and /ui so the two sections cannot drift apart.
+                       The drawer's markup and behaviour are NOT here, they are
+                       components/docs-drawer.ts
+    scroll-lock.ts     refcounted page scroll lock, sharing the UI kit's
+                       globalThis counter so a drawer and a <ui-dialog>
+                       interoperate. Measures and compensates the viewport
+                       widening that hiding the scrollbar causes (#1147)
+    theme.ts           the theme storage key and forced values, read by BOTH
+                       the layout's bootstrap script and theme-toggle.ts
+    escape-target.ts   the one rule deciding whether an Escape press belongs to
+                       the field the reader is editing. Shared, because every
+                       dismissible surface has to answer it identically
     utils/             pure helpers (compute, never render)
       highlight.ts     SSR syntax highlighter for the code samples
       frontmatter.ts   parse changelog/blog markdown frontmatter
@@ -178,6 +195,88 @@ head and defaulted on `:root` for no-JS and first paint.
 There is no announcement banner. One used to sit above the header, and
 `--header-h` is why its removal is not free: re-adding a strip means the
 measurement has to cover it too.
+
+The header's mobile menu is `components/site-nav-menu.ts`, and the fixed
+position is why it carries
+`border-right: var(--wj-scrollbar-compensation, 0px) solid transparent`. A
+scroll lock hides the page scrollbar, which widens the viewport, and a fixed
+element lays out against the initial containing block where no padding can
+reach it. `lib/scroll-lock.ts` publishes that measured width for it to opt into
+(#1144, #1147).
+
+## What stays inline script in the root layout
+
+Only two things, and both are genuinely boot work rather than interactivity:
+
+- the **theme bootstrap**, which must run before first paint or a reader who
+  chose dark sees the light palette flash. It cannot import, so it interpolates
+  the storage key from `lib/theme.ts`.
+- the **`--header-h` measurement**, which backs the fixed-header offset above.
+
+Everything else that used to live there is a component now. The drawer and the
+header menu were once one delegated click listener plus one delegated keydown
+listener reaching across the document with `querySelector` and body attributes,
+with the markup in a different file. If you find yourself adding a third
+delegated listener here, write a component instead.
+
+TWO cross-component contracts run between the drawer and the header menu, and
+both are easy to break by accident.
+
+**The first is priority.** The drawer listens for Escape in the CAPTURE phase
+and calls `preventDefault()`, and the header menu listens in the BUBBLE phase
+and bails on `defaultPrevented`. That is what makes one Escape close only the drawer when
+both are open, without either component importing the other, and it holds
+whatever order the elements registered in.
+
+It holds at the TARGET too. The dispatch algorithm walks the propagation path
+twice, invoking each node once per traversal and honouring the capture flag on
+both, so a capture listener on `document` runs before a bubble listener on
+`document` even for an event dispatched directly at `document` and even when the
+bubble one registered first. Measured in Chromium: registering bubble then
+capture and dispatching on `document` yields `capture, bubble`.
+
+What a test DOES have to get right is `cancelable: true`. `preventDefault()` on a
+non-cancelable event is a silent no-op, so `defaultPrevented` stays false and
+both surfaces close. Dispatching from inside the tree rather than at `document`
+is worth doing for realism, but it is not what makes the priority work.
+
+**The second is deferral, and it does NOT run through `defaultPrevented`.** When
+an Escape belongs to the field the reader is editing (a non-empty, mutable
+`input[type=search]`, the only field Escape natively clears), every open surface
+must decline it, and each one decides that by calling the same
+`escapeBelongsToField` from `lib/escape-target.ts`. Two rules follow from that
+and neither is obvious:
+
+- The drawer must **not** call `preventDefault()` on the deferral path. It is
+  the natural way to tell the menu "this press is taken", and it is wrong,
+  because suppressing the default cancels the native clear the deferral exists
+  to protect. Agreement comes from both surfaces applying the same rule, not
+  from a flag on the event.
+- The rule is intentionally document-wide rather than scoped to the surface that
+  contains the field, because a field inside ONE surface must also stop the
+  OTHER dismissing, and a containment test in the other surface answers false
+  for exactly that case.
+
+Both surfaces also close on `popstate` and `webjs:before-cache`, not only on
+`webjs:navigate`. A back or forward that hits the router's snapshot cache
+applies the swap and returns before `webjs:navigate` is dispatched, so popstate
+is the only timely signal there, and `webjs:before-cache` strips the open state
+before the snapshot is serialized so a forward restore does not bring the
+surface back open.
+
+`webjs:before-cache` carries a timing trap worth knowing. The router dispatches
+it synchronously and reads `documentElement.outerHTML` in the same task, a
+couple of statements later with no await in between, so ONLY a synchronous
+mutation is captured. Setting a reactive property is not enough on its own,
+because the host attribute reflects at once while EVERY template hole is a
+render-time write committed a microtask later and misses the snapshot.
+
+Both surfaces therefore write their child state directly in the handler. The
+menu closes its `<details>` element, which is what shows the panel and drives
+the icon swap. The drawer writes `aria-expanded` on its toggle, which is not
+visual (its CSS selects the reflected host attribute, so a restored page looks
+right) but would otherwise announce an expanded drawer that is closed. If you
+add a hole that encodes dismissible state, it belongs in that handler too.
 
 ## How to update headline / hero copy
 

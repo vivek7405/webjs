@@ -1,7 +1,9 @@
 import { html, cspNonce, asset } from '@webjsdev/core';
 import type { LayoutProps } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
+import '#components/site-nav-menu.ts';
 import { DOCS_START_PATH, UI_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
+import { THEME_STORAGE_KEY, FORCED_THEMES } from '#lib/theme.ts';
 import { siteFooter } from '#lib/ui/site-footer.ts';
 import { brandLockup } from '#lib/design/brand.ts';
 
@@ -125,11 +127,19 @@ export default function RootLayout({ children }: LayoutProps) {
       gtag('config', 'G-3RC87HXJ3P');
     </script>
 
+    <!-- The theme bootstrap stays an INLINE script, and stays here in the head,
+         because it has to run before first paint: a reader who chose dark would
+         otherwise see the light palette flash before a module could load and
+         correct it. An inline script cannot import, so the storage key is
+         interpolated from lib/theme.ts rather than written out a second time.
+         components/theme-toggle.ts reads the same export, which is what stops
+         the two from drifting (renaming the key in one place used to leave the
+         other silently reading nothing). -->
     <script nonce="${nonce}">
       (function(){
         try {
-          var t = localStorage.getItem('webjs_theme');
-          if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+          var t = localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});
+          if (${JSON.stringify(FORCED_THEMES)}.indexOf(t) !== -1) document.documentElement.dataset.theme = t;
         } catch (_) {}
       })();
       // #610: the header uses position fixed (not sticky, which flickers on iOS
@@ -149,85 +159,6 @@ export default function RootLayout({ children }: LayoutProps) {
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', measure);
         else measure();
       })();
-      // The sidebar drawer shared by /docs and /ui (lib/ui/docs-shell.ts) is
-      // driven entirely from here, and both halves of that are deliberate.
-      //
-      // Its open state is an attribute on <body>, which is OUTSIDE every swap
-      // range, so a soft navigation carries it along: it locks scrolling on
-      // whatever page you land on, and re-opens the drawer over the next page
-      // you visit. Clearing it in the ROOT layout is what makes that
-      // impossible, because this listener survives navigation while anything
-      // the sub-layout registered would be swapped away with it.
-      //
-      // The open/close handlers live here too, rather than as inline onclick
-      // attributes in the shell. That keeps the shell module inert at load so
-      // the page/layout modules importing it can be elided, and it puts every
-      // close path through one function, so the toggle's aria-expanded cannot
-      // drift out of step with the attribute (dismissing via the backdrop used
-      // to leave the button advertising an expanded drawer indefinitely).
-      function syncDocsNav() {
-        var open = document.body.hasAttribute('data-docs-nav-open');
-        var btn = document.querySelector('.docs-nav-toggle');
-        if (btn) btn.setAttribute('aria-expanded', String(open));
-        return open;
-      }
-      function closeDocsNav() {
-        document.body.removeAttribute('data-docs-nav-open');
-        syncDocsNav();
-      }
-      window.addEventListener('popstate', closeDocsNav);
-      document.addEventListener('webjs:navigate', closeDocsNav);
-
-      document.addEventListener('click', function (e) {
-        var t = e.target;
-        if (!t || !t.closest) return;
-
-        // Header mobile menu FIRST, and unconditionally, because the drawer
-        // toggle is a click OUTSIDE that menu and every other outside click
-        // dismisses it. Handling it after an early return for the toggle left
-        // both navigation surfaces open at once, which is neither what the
-        // outside-click rule promises nor what a reader expects from a menu
-        // they just clicked away from.
-        var a = t.closest('.mobile-menu a');
-        if (a) {
-          var d = a.closest('details');
-          if (d) d.removeAttribute('open');
-        } else {
-          var open = document.querySelectorAll('.mobile-menu[open]');
-          // A click INSIDE an open menu (its summary) is left alone, so the
-          // details element toggles natively.
-          for (var i = 0; i < open.length; i++) if (!open[i].contains(t)) open[i].removeAttribute('open');
-        }
-
-        // Then the sidebar drawer.
-        if (t.closest('.docs-nav-toggle')) {
-          document.body.toggleAttribute('data-docs-nav-open');
-          syncDocsNav();
-          return;
-        }
-        // Any link, and the backdrop, dismiss it. The backdrop needs no
-        // navigation to be clicked, which is why it cannot rely on the link.
-        if (t.closest('a') || t.closest('.docs-backdrop')) closeDocsNav();
-      });
-      document.addEventListener('keydown', function (e) {
-        if (e.key !== 'Escape') return;
-        // The drawer wins when both it and the header menu are open, and
-        // returns, so focus lands on the control that opened THIS one. Without
-        // the return both closed on one Escape and the header summary took
-        // focus, which is not where the reader was.
-        if (document.body.hasAttribute('data-docs-nav-open')) {
-          closeDocsNav();
-          var btn = document.querySelector('.docs-nav-toggle');
-          if (btn) btn.focus();
-          return;
-        }
-        var open = document.querySelectorAll('.mobile-menu[open]');
-        for (var i = 0; i < open.length; i++) {
-          open[i].removeAttribute('open');
-          var s = open[i].querySelector('summary');
-          if (s) s.focus();
-        }
-      });
     </script>
 
     <link rel="stylesheet" href=${asset('/public/tailwind.css')}>
@@ -378,11 +309,16 @@ export default function RootLayout({ children }: LayoutProps) {
       .scroll-thin::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; transition: background var(--t); }
       .scroll-thin:hover::-webkit-scrollbar-thumb { background: color-mix(in oklch, var(--fg-subtle) 60%, transparent); }
       .scroll-thin::-webkit-scrollbar-thumb:hover { background: var(--fg-muted); }
-      .mobile-menu > summary { list-style: none; }
-      .mobile-menu > summary::-webkit-details-marker { display: none; }
-      .mobile-menu .close-icon { display: none; }
-      .mobile-menu[open] .open-icon { display: none; }
-      .mobile-menu[open] .close-icon { display: inline-block; }
+      /* Tag-prefixed per invariant 7, since site-nav-menu is a light-DOM
+         component. The icon swap keys off the DETAILS element rather than the
+         reflected host attribute on purpose: the host only carries the open attribute once
+         the component has hydrated, while details[open] is set by the browser
+         itself, so the icons stay correct with JavaScript off. */
+      site-nav-menu > details > summary { list-style: none; }
+      site-nav-menu > details > summary::-webkit-details-marker { display: none; }
+      site-nav-menu .close-icon { display: none; }
+      site-nav-menu details[open] .open-icon { display: none; }
+      site-nav-menu details[open] .close-icon { display: inline-block; }
       /* Host sizing for the copy-cmd custom element (utilities cannot
          target the host from inside the component). Everything else in
          copy-cmd is Tailwind. The tag name is written without angle
@@ -415,15 +351,9 @@ export default function RootLayout({ children }: LayoutProps) {
         <div class="flex items-center gap-2.5 shrink-0">
           <theme-toggle></theme-toggle>
 
-          <details class="mobile-menu relative md:hidden">
-            <summary class="cursor-pointer w-9 h-9 inline-flex items-center justify-center rounded-lg text-fg-muted hover:bg-[var(--hover-surface)] hover:text-fg" aria-label="Toggle navigation">
-              <svg class="open-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/></svg>
-              <svg class="close-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-            </summary>
-            <nav class="absolute right-0 top-[calc(100%+10px)] min-w-52 flex flex-col gap-0.5 bg-bg-elev border border-border rounded-xl shadow-[var(--shadow)] p-2 z-50" aria-label="Mobile">
-              ${NAV.map(n => html`<a class=${panelLink} href=${n.href} target=${n.ext ? '_blank' : '_self'} rel=${n.ext ? 'noopener noreferrer' : ''}>${n.label}${n.ext ? NEW_TAB : ''}</a>`)}
-            </nav>
-          </details>
+          <site-nav-menu class="md:hidden" label="Toggle navigation">
+            ${NAV.map(n => html`<a class=${panelLink} href=${n.href} target=${n.ext ? '_blank' : '_self'} rel=${n.ext ? 'noopener noreferrer' : ''}>${n.label}${n.ext ? NEW_TAB : ''}</a>`)}
+          </site-nav-menu>
         </div>
       </div>
     </header>

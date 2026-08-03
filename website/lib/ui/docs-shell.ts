@@ -15,15 +15,14 @@ import type { TemplateResult } from '@webjsdev/core';
  *
  * Both consumers are NON-ROOT layouts (invariant 8), so this writes no
  * document shell. The header, footer, theme toggle, fonts, and design
- * tokens all come from app/layout.ts; the sidebar below is the only
+ * tokens all come from app/layout.ts, and the sidebar is the only
  * section-specific chrome.
  *
- * The mobile drawer rides the same body attribute for every consumer
- * (data-docs-nav-open): the ROOT layout owns the listener that clears it
- * on navigation (it survives client-router swaps precisely because it is
- * outside every swap range), so a second attribute would need a second
- * root-level listener. Only one shell is ever on a page at a time, so
- * sharing the attribute and the #docs-sidebar id is safe.
+ * This file is now only two things: the shell's stylesheet, and the function
+ * that turns a `nav` tree into markup. The drawer itself is
+ * components/docs-drawer.ts, which owns its markup, its open state, and every
+ * listener that can close it. Only one shell is ever on a page at a time, so
+ * the #docs-sidebar id stays safe.
  */
 
 export type ShellNavItem = { href: string; label: string };
@@ -197,9 +196,11 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
       .docs-nav::-webkit-scrollbar-thumb:hover { background: var(--fg-subtle); }
 
       /* Mobile: the sidebar becomes a drawer sliding in from the left,
-         toggled by [data-docs-nav-open] on body. The attribute name is
-         shell-specific so it cannot collide with the shared header's own
-         mobile menu, which is a details element in the root layout.
+         toggled by an open attribute <docs-drawer> reflects. Selecting on
+         the component's own host is what replaced a body attribute: the state
+         now lives with the element that owns it, so it cannot survive a
+         navigation that removes the element, and it cannot collide with the
+         shared header's own mobile menu.
 
          The drawer opens BELOW the shared header rather than over it, and
          that is load-bearing, not a taste call. The root layout wraps
@@ -242,7 +243,7 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
           visibility: hidden;
           transition: transform 220ms cubic-bezier(0.3, 0, 0.3, 1), visibility 0s linear 220ms;
         }
-        body[data-docs-nav-open] .docs-sidebar {
+        docs-drawer[open] .docs-sidebar {
           transform: translateX(0);
           visibility: visible;
           transition: transform 220ms cubic-bezier(0.3, 0, 0.3, 1), visibility 0s;
@@ -256,8 +257,12 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
           transition: opacity 220ms;
           z-index: 30;
         }
-        body[data-docs-nav-open] .docs-backdrop { opacity: 1; pointer-events: auto; }
-        body[data-docs-nav-open] { overflow: hidden; }
+        docs-drawer[open] .docs-backdrop { opacity: 1; pointer-events: auto; }
+        /* No overflow hidden rule here. The page scroll lock is a document
+           level effect that has to MEASURE what hiding the scrollbar did to the
+           viewport, so it lives in lib/scroll-lock.ts and is driven from the
+           component's update cycle. A CSS-only lock cannot measure, which is
+           exactly why the pure-CSS version shifted the fixed header (#1147). */
 
         /* A wide table has to scroll inside its own box here, or it pushes the
            DOCUMENT past the viewport and drags the shared fixed header with
@@ -273,59 +278,37 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
       }
     </style>
 
-    <!-- The drawer's open/close behaviour is NOT wired here. The root layout
-         owns one delegated listener for it (see app/layout.ts), for two
-         reasons. It keeps this module inert at load, so the page/layout
-         modules that import it can be elided instead of shipped to the
-         browser; and it puts every close path in one place, so the toggle
-         button's aria-expanded cannot drift out of step with the body
-         attribute the way it did when each element carried its own handler. -->
-    <div class="docs-backdrop"></div>
+    <!-- Everything structural and interactive now belongs to the drawer
+         component, which owns the backdrop, the grid, the aside, the toggle,
+         and every listener that can close it. What stays here is what this
+         file is actually for, turning the nav DATA into markup, which it
+         hands over through a slot.
 
-    <!-- Same container as the shared header (max-w-7xl mx-auto px-6), so
-         the sidebar's left edge lines up with the wordmark above it and the
-         content column lines up with every other page on the site. A
-         full-bleed docs shell was the other tell that this section was pasted
-         in from somewhere else. -->
-    <div class="max-w-7xl mx-auto px-6 grid grid-cols-[248px_1fr] gap-10 min-h-screen max-wide:grid-cols-1 max-wide:gap-0">
-      <aside
-        id="docs-sidebar"
-        class="docs-sidebar flex flex-col py-10 text-sm max-wide:px-5"
-        aria-label=${label}
-      >
-        ${asideTop ?? ''}
-        <!-- min-h-0 is what lets this shrink inside the flex column; without
-             it the nav takes its content height and the column scrolls
-             instead, taking anything pinned above it along. pr-3 keeps the
-             scrollbar off the links; the left inset comes from the px-2 on
-             the labels and links themselves. -->
-        <nav class="docs-nav flex-1 min-h-0 overflow-y-auto pr-3">
-          ${nav.map((s) => html`
-            ${typeof s.count === 'number'
-              ? html`<div class="flex items-baseline justify-between px-2 mt-6 mb-2 first:mt-0">
-                  <span class="font-mono text-xs font-semibold tracking-widest uppercase text-fg-subtle">${s.title}</span>
-                  <span class="font-mono text-xs text-fg-subtle">${s.count}</span>
-                </div>`
-              : html`<div class="font-mono text-xs font-semibold tracking-widest uppercase text-fg-subtle px-2 mt-6 mb-2 first:mt-0">${s.title}</div>`}
-            ${s.items.map((it) => html`
-              <a class="block py-1.5 px-2 my-px rounded-md text-fg-muted no-underline text-sm transition-colors duration-150 hover:text-fg hover:bg-bg-subtle" href=${it.href}>${it.label}</a>
-            `)}
+         The nav is SLOTTED rather than passed as a .nav property on purpose.
+         A property round-trips through SSR as a serialized data-webjs-prop-*
+         attribute, so the whole tree would ship twice on every docs page, once
+         as the links below and once as JSON. This app already turned action
+         seeding off (package.json "seed": false) over that same duplication. -->
+    <docs-drawer
+      label=${label}
+      menu-label=${menuLabel}
+      content-class=${contentClass}
+    >
+      ${asideTop ? html`<div slot="aside-top">${asideTop}</div>` : ''}
+      <div slot="nav">
+        ${nav.map((s) => html`
+          ${typeof s.count === 'number'
+            ? html`<div class="flex items-baseline justify-between px-2 mt-6 mb-2 first:mt-0">
+                <span class="font-mono text-xs font-semibold tracking-widest uppercase text-fg-subtle">${s.title}</span>
+                <span class="font-mono text-xs text-fg-subtle">${s.count}</span>
+              </div>`
+            : html`<div class="font-mono text-xs font-semibold tracking-widest uppercase text-fg-subtle px-2 mt-6 mb-2 first:mt-0">${s.title}</div>`}
+          ${s.items.map((it) => html`
+            <a class="block py-1.5 px-2 my-px rounded-md text-fg-muted no-underline text-sm transition-colors duration-150 hover:text-fg hover:bg-bg-subtle" href=${it.href}>${it.label}</a>
           `)}
-        </nav>
-      </aside>
-      <main id="main" tabindex="-1" class="min-w-0 max-w-3xl pt-10 pb-16 focus:outline-none">
-        <button
-          class="docs-nav-toggle hidden max-wide:inline-flex items-center gap-2 mb-6 px-3 py-2 rounded-lg border border-border bg-bg-elev text-fg-muted text-sm cursor-pointer transition-colors duration-150 hover:text-fg hover:border-border-strong"
-          aria-controls="docs-sidebar"
-          aria-expanded="false"
-        >
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-          ${menuLabel}
-        </button>
-        ${contentClass
-          ? html`<div class=${contentClass}>${children}</div>`
-          : children}
-      </main>
-    </div>
+        `)}
+      </div>
+      ${children}
+    </docs-drawer>
   `;
 }

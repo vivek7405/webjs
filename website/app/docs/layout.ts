@@ -2,6 +2,7 @@ import { html } from '@webjsdev/core';
 import type { LayoutProps } from '@webjsdev/core';
 import { docsShell } from '#lib/ui/docs-shell.ts';
 import '#components/doc-search.ts';
+import '#components/docs-drawer.ts';
 
 /**
  * Docs sub-layout: the page-tree sidebar plus the content column.

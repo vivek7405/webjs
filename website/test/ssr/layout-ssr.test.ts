@@ -81,11 +81,37 @@ test('no nav or footer link points at the example-blog demo', async () => {
   assert.ok(!out.includes('example-blog'), 'nothing links at the example-blog app');
 });
 
-test('the layout ships an Escape-to-close handler for the mobile menu', async () => {
-  // Native <details> has no Escape dismissal; the inline layout script adds one
-  // (it has no component harness, so guard that it ships in the served HTML).
+test('the header menu is a component, not a delegated listener in the layout', async () => {
+  // Native <details> has no Escape dismissal, no outside-click dismissal, and
+  // no close-on-link. Those used to be a delegated listener inlined here, which
+  // is why the old version of this test grepped the served HTML for "'Escape'":
+  // an inline script has no component harness to test against.
+  //
+  // <site-nav-menu> is that harness now, so the BEHAVIOUR is asserted in
+  // test/components/browser/site-nav-menu.test.js against the real element.
+  // What is left to check from SSR is the wiring, plus the fact that the old
+  // mechanism is really gone rather than merely duplicated.
   const out = await renderToString(RootLayout({ children: html`<main>x</main>` }));
-  assert.ok(out.includes("'Escape'") && out.includes('.mobile-menu[open]'), 'an Escape keydown closes the open mobile menu');
+  assert.ok(/<site-nav-menu[\s>]/.test(out), 'the layout renders the menu component');
+  assert.ok(/<details\s+class="mobile-menu/.test(out), 'the native details still SSRs, so it works with JS off');
+
+  const layoutSrc = readFileSync(fileURLToPath(new URL('../../app/layout.ts', import.meta.url)), 'utf8');
+  for (const gone of ['syncDocsNav', 'closeDocsNav', 'data-docs-nav-open', ".mobile-menu[open]", "addEventListener('click'"]) {
+    assert.ok(!layoutSrc.includes(gone), `the layout no longer carries "${gone}"`);
+  }
+});
+
+test('the layout keeps only boot-critical inline script', async () => {
+  // Two inline scripts are legitimate and must NOT be moved into components.
+  // The theme bootstrap has to run before first paint or a reader who chose
+  // dark sees the light palette flash; the --header-h measurement backs the
+  // fixed-header offset. Everything else that was in here is a component now.
+  const layoutSrc = readFileSync(fileURLToPath(new URL('../../app/layout.ts', import.meta.url)), 'utf8');
+  assert.ok(layoutSrc.includes('THEME_STORAGE_KEY'), 'the theme bootstrap reads the shared key');
+  assert.ok(layoutSrc.includes('--header-h'), 'the header measurement stays inline');
+  // The key is interpolated from lib/theme.ts rather than written out again,
+  // so a rename cannot leave the two readers disagreeing.
+  assert.ok(!/localStorage\.getItem\('webjs_theme'\)/.test(layoutSrc), 'the storage key is not hard-coded a second time');
 });
 
 test('the layout ships no animations (static page, no smooth-scroll)', () => {
