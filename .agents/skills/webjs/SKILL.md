@@ -235,7 +235,8 @@ Success is a 303 (PRG); failure re-renders the page at 422 with the result on `a
 - Quoting an event / property / boolean hole (`@click="${fn}"`).
 - Writing `fetch()` to call your own server instead of importing the action.
 - Writing a bare `<form method="post">` and expecting a page `action` export to catch it. There is no such export; bind the action with `action=${fn}` or the submission is a 405.
-- Reaching for `formaction=${fn}` on a submit button to give one form several actions. It is refused; write one form per action.
+- Putting a submitter's `formaction=${fn}` on anything that is not a submit control, or on a button carrying its own `name` / `value`. The identity IS the button's name/value pair, so both halves are spoken for.
+- Writing `formmethod="get"` or `formenctype="text/plain"` on any button inside a bound form. Neither can carry the action's body, so both are refused even when the button binds nothing.
 - Binding an action whose file declares `export const method = 'GET'`. That is a 405 at runtime and a `webjs check` error.
 - Throwing `redirect()` / `notFound()` inside a `route.ts` handler (uncaught 500). Return a `Response` there.
 - A placeholder first paint that fetches in `connectedCallback`. SSR does not call `connectedCallback`; put first-paint data in the constructor (server-known inputs) or use `async render()`.

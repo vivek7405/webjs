@@ -173,7 +173,7 @@ export default function NewPost({ actionData }: {
     </p>
 
     <p>
-      The renderer validates submitter options at render time: only submit buttons and <code>&lt;input type="submit"&gt;</code> controls are supported. A submitter carrying <code>name</code>, <code>value</code>, <code>form</code>, or static <code>formaction</code> attributes, using <code>&lt;input type="image"&gt;</code>, or setting <code>formmethod="get"</code> or <code>formenctype="text/plain"</code> throws an actionable refusal error so both JS and no-JS execution paths stay identical by construction (#1207).
+      "Identical by construction" is a claim about the whole submission, submitter included. A button's own <code>formmethod</code> / <code>formenctype</code> can defeat the form it sits in, so the renderers read those on EVERY submitter inside a bound form, whether or not that button binds an action of its own: <code>&lt;form action=\${fn}&gt;&lt;button formenctype="text/plain"&gt;</code> would submit fine with JS (the router posts <code>FormData</code> and ignores the attribute) and be a bare <code>405</code> without it, so it is refused at render instead. The same goes for <code>formmethod="get"</code>, which sends no body. Two shapes are deliberately left alone, because neither submits to the bound action: <code>formmethod="dialog"</code> is a native <code>&lt;dialog&gt;</code> dismissal, and a plain <code>formaction="/url"</code> points the submission somewhere else entirely.
     </p>
 
     <h3>3. Make components render correctly on the server</h3>

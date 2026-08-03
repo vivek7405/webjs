@@ -52,7 +52,19 @@ import { submitFeedback } from '#modules/feedback/actions/submit-feedback.server
 html`<form action=${submitFeedback}><input name="email"></form>`;
 ```
 
-That is the whole wiring. The renderer omits the `action` attribute (so the form posts to the page's own url), supplies `method="post"` and an enctype, and emits the identity field. Writing `method="get"` on a bound form throws, because a GET form sends no body and the action could never run. A submitter binding is limited to `<button>` submitters and `<input type="submit">` controls inside that bound form.
+That is the whole wiring. The renderer omits the `action` attribute (so the form posts to the page's own url), supplies `method="post"` and an enctype, and emits the identity field. Writing `method="get"` on a bound form throws, because a GET form sends no body and the action could never run.
+
+**A form whose buttons run different actions binds each one on its submitter**, with the same unquoted spelling one level down:
+
+```js
+html`<form action=${saveDraft}>
+  <input name="title">
+  <button>Save</button>
+  <button formaction=${publishPost}>Publish</button>
+</form>`;
+```
+
+The identity rides the pressed button's own `name`/`value` pair, which a browser submits for that button alone, so this works with JS off exactly as it does with JS on. Both entries reach the server and the LAST wins, which is always the submitter's when one was pressed. The submitter must be a real submit control (`<button>` or `<input type="submit">`) and cannot carry its own `name`, `value`, or `form` attribute, because the identity already occupies that pair.
 
 **Only the bare, unquoted `action=${fn}` on a `<form>` binds.** Every near-miss is a hard render error rather than a silently-inert form, and the reason is a source leak. During SSR a `.server.ts` import is the ACTUAL function (the RPC stub exists only in the browser), and `action=` is an ordinary attribute hole, so stringifying it would write the function's body into the HTML every visitor downloads, including any literal inside it. The renderer throws instead, on the server and on the client, for `action=` and `formaction=` alike.
 
@@ -83,8 +95,14 @@ The bound, refused, and allowed shapes in full. Every "no" row is a binding that
 | `action=${fn}` unquoted, on a `<form>` | **no, it BINDS** | the one supported shape: the identity is resolved and emitted as a hidden field, nothing is stringified |
 | `action=${fn}` on any other tag | yes | `action` submits nothing off a `<form>`, so it is an ordinary attribute and the function would be stringified |
 | `action="${fn}"`, or a mixed `action="/x/${fn}"` | yes | quoting turns a binding hole back into a plain attribute |
-| `formaction=${fn}` unquoted, on a submitter inside a bound form | **no, it BINDS** | per-submitter server action binding (#1207): emits the reserved identity on a `<button>` or `<input type="submit">` and server dispatches to last submitter in DOM order. The submitter cannot carry `name`, `value`, `form`, or static `formaction` attributes |
-| `formaction=${fn}` on an UNBOUND form | yes | submitter action requires enclosing form to be bound (`<form action=${formAction}>`) so POST method and multipart encoding are set at form start |
+| `formaction=${fn}` unquoted, on a submitter inside a bound form | **no, it BINDS** | the second supported shape (#1207). The identity rides the button's own `name`/`value` pair, the one channel a browser submits for the pressed button alone, so no `formaction` url is emitted and the server takes the LAST `__webjs_action` entry |
+| `formaction=${fn}` inside an UNBOUND `<form>` | yes | `method="post"` and the enctype are forced on the FORM's start tag, which SSR has already emitted by the time it reaches the button, so a per-button action cannot retrofit them |
+| `formaction=${fn}` on a submitter carrying its own `name` or `value` | yes | the identity IS that name/value pair, so both halves are already spoken for. Bind one action on the form and dispatch on `name="intent"` if you need the button's own value |
+| `formaction=${fn}` on a non-submit control, or `<input type="image">` | yes | `formaction` is inert on anything that does not submit, and an image submitter sends `name.x` / `name.y` coordinates instead of `name=value`, so the identity would never arrive |
+| `formaction=${fn}` on a submitter with `form="other"` | yes | it re-points the submitter at a form other than the bound one it sits in, so the boundness just checked was about the wrong element |
+| `formmethod="get"` / `formenctype="text/plain"` on ANY submitter inside a bound form | yes | this is the Part B rule, and it applies whether or not that button binds an action of its own: a GET sends no body and `text/plain` is not parseable, so the submission works under JS (the router posts `FormData`) and 405s without it |
+| `formmethod="dialog"` on a submitter that binds nothing | **no** | a native `<dialog>` dismissal, never a submission, so there is no body for the action to miss. It IS refused on a button that also binds an action, which is a straight contradiction |
+| a plain `formaction="/url"` on a submitter inside a bound form | **no** | it retargets the submission away from the page's bound action entirely, so its own `formmethod` is the author's business and Part B leaves it alone |
 | `.action=` on a native form | yes | the supported binding is the plain attribute, and a `.prop` on a native element drops at SSR, so accepting it would mean a form that submits under JS and does nothing without it |
 | `.method=` / `.enctype=` / `.encoding=` on a BOUND form | yes | the same reason one level over. All three are reflected IDL attributes, so SSR drops the binding and emits `method="post"` while a browser ends at what you assigned. Write them as plain attributes |
 | a second `action=${fn}` on one form | yes | SSR emits the second as a plain url next to the identity field, the client takes the last. Bind exactly one, in either position |
