@@ -200,6 +200,58 @@ export default () => html\`<form action=\${save}><p>ok</p></form>\`;
   assert.equal(resp.headers.get('location'), '/save');
 });
 
+test('multi-submitter form dispatch: last __webjs_action entry wins (submitter precedence)', async () => {
+  // The two actions redirect to DIFFERENT targets on purpose. With both
+  // returning the same result, any identity produced a 303 and the assertion
+  // held whether the dispatcher took the first entry or the last, which is the
+  // one line this test exists to pin. Asserting the `location` is what makes
+  // first-wins observable.
+  const appDir = makeApp({
+    'modules/multi/actions/multi.server.ts': `'use server';\nexport async function formAction() { return { success: true, redirect: '/ran-form' }; }\nexport async function buttonAction() { return { success: true, redirect: '/ran-button' }; }\n`,
+    'app/multi/page.ts': `
+      import { html } from ${CORE};
+      import { formAction, buttonAction } from '../../modules/multi/actions/multi.server.ts';
+      export default () => html\`
+        <form action=\${formAction}>
+          <button formaction=\${buttonAction}>Delete</button>
+        </form>
+      \`;
+    `,
+  });
+  const app = await createRequestHandler({ appDir, dev: true });
+  await app.warmup();
+
+  const getResp = await app.handle(new Request('http://x/multi'));
+  const htmlStr = await getResp.text();
+  const ids = Array.from(htmlStr.matchAll(/name="__webjs_action" value="([^"]*)"/g), m => m[1]);
+  assert.equal(ids.length, 2, 'renders both form action and button formaction identities');
+
+  const body = new URLSearchParams();
+  body.append('__webjs_action', ids[0]);
+  body.append('__webjs_action', ids[1]);
+
+  const postResp = await app.handle(new Request('http://x/multi', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  }));
+
+  assert.equal(postResp.status, 303);
+  assert.equal(postResp.headers.get('location'), '/ran-button',
+    'the LAST entry, the submitter, is the action that runs');
+
+  // Counterfactual: the form identity alone still runs the form's action, so
+  // the assertion above is about precedence and not about which id was sent.
+  const formOnly = new URLSearchParams();
+  formOnly.append('__webjs_action', ids[0]);
+  const formResp = await app.handle(new Request('http://x/multi', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: formOnly.toString(),
+  }));
+  assert.equal(formResp.headers.get('location'), '/ran-form');
+});
+
 test('a page that binds no action answers 405 on POST, not 404', async () => {
   // The path exists and renders; the method is what is wrong. Under the page
   // `action` export this was a 404, which said the url did not exist.

@@ -105,7 +105,7 @@ App-internal imports use the `#` root alias (`import { db } from '#db/connection
 9. No backtick characters inside an `html\`...\`` body, even in comments (it closes the literal and 500s).
 10. TypeScript must be erasable (`erasableSyntaxOnly: true`): no `enum`, no value `namespace`, no constructor parameter properties, no legacy decorators.
 11. Reactive properties are declared ONLY through the base-class factory `extends WebComponent({ count: Number })`. Never a `static properties` block, never a class-field initializer (it clobbers the reactive accessor).
-12. A form that writes binds its action: `<form action=${importedAction}>`. A quoted `action="${fn}"`, a `formaction=${fn}`, `action=${fn}` off a `<form>`, a bound form with `method="get"`, and a non-action function all throw. A page has no `action` export, so a bare `<form method="post">` is a 405.
+12. A form that writes binds its action: `<form action=${importedAction}>`, or a per-button `<button formaction=${importedAction}>` inside a bound form. Quoted bindings, non-submit controls, `<input type="submit">` (the identity needs its `value`, which is also its label, so use a `<button>`), submitter `name` / `value` / `form` / static `formaction` attributes, a `.prop` spelling of any of those, `action=${fn}` off a `<form>`, a bound form with `method="get"`, `formmethod="get"` or an unparseable `formenctype` on ANY submitter in a bound form, and a non-action function all throw. A page has no `action` export, so a bare `<form method="post">` is a 405.
 
 ## Export Map
 
@@ -235,7 +235,8 @@ Success is a 303 (PRG); failure re-renders the page at 422 with the result on `a
 - Quoting an event / property / boolean hole (`@click="${fn}"`).
 - Writing `fetch()` to call your own server instead of importing the action.
 - Writing a bare `<form method="post">` and expecting a page `action` export to catch it. There is no such export; bind the action with `action=${fn}` or the submission is a 405.
-- Reaching for `formaction=${fn}` on a submit button to give one form several actions. It is refused; write one form per action.
+- Putting a submitter's `formaction=${fn}` on anything that is not a submit control, or on a button carrying its own `name` / `value`. The identity IS the button's name/value pair, so both halves are spoken for.
+- Writing `formmethod="get"` or `formenctype="text/plain"` on any button inside a bound form. Neither can carry the action's body, so both are refused even when the button binds nothing.
 - Binding an action whose file declares `export const method = 'GET'`. That is a 405 at runtime and a `webjs check` error.
 - Throwing `redirect()` / `notFound()` inside a `route.ts` handler (uncaught 500). Return a `Response` there.
 - A placeholder first paint that fetches in `connectedCallback`. SSR does not call `connectedCallback`; put first-paint data in the constructor (server-known inputs) or use `async render()`.

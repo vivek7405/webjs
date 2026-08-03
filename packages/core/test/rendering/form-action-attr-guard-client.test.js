@@ -74,11 +74,18 @@ test('client render of mixed action="/x/${fn}" throws', () => {
 // four clauses, and a normalization that only the SSR tests covered would leave
 // a client re-render free to write the source into a live DOM.
 test('client render of camelCase formAction=${fn} throws', () => {
+  // Pinned to ONE reason. `fakeAction` carries no identity, so the client enters
+  // the binding path (attribute names fold case, so `formAction` binds like
+  // `formaction`) and refuses at the identity check, which runs before the
+  // enclosing-form question. Accepting either message would let this pass with
+  // the case folding it exists to cover removed, since a `formAction` treated
+  // as a plain attribute refuses for a different reason entirely.
   const host = document.createElement('div');
   assert.throws(
     () => render(html`<button type="submit" formAction=${fakeAction}></button>`, host),
-    /function was interpolated into formaction=/,
+    /is not a server action/,
   );
+  assert.ok(!host.innerHTML.includes('CLIENT_SECRET'), 'no source in the live DOM');
 });
 
 test('client re-render swapping in an upper-case ACTION=${fn} throws, live DOM stays clean', () => {

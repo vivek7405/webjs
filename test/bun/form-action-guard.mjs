@@ -74,19 +74,19 @@ async function drain(stream) {
 const refused = {
   'action="${fn}"': () => html`<form action="${leaky}"></form>`,
   'mixed action="/x/${fn}"': () => html`<form action="/x/${leaky}"></form>`,
-  'formaction=${fn}': () => html`<button type="submit" formaction=${leaky}></button>`,
   'quoted prop .action="${fn}"': () => html`<form .action="${leaky}"></form>`,
   'quoted bool ?action="${fn}"': () => html`<form ?action="${leaky}"></form>`,
   'quoted event @action="${fn}"': () => html`<form @action="${leaky}"></form>`,
   'native prop .action=${fn}': () => html`<form .action=${leaky}></form>`,
   'unquoted bool ?action=${fn}': () => html`<form ?action=${leaky}></form>`,
   'array-wrapped action=${[fn]}': () => html`<form action=${[leaky]}></form>`,
-  // Case folding, on both runtimes: every other row here spells the attribute
-  // lowercase, and with those alone the `.toLowerCase()` in isFormActionAttr
-  // could be deleted with this whole table still green while `formAction=`
-  // leaked. camelCase is React's spelling, so it is the likeliest arrival.
-  'camelCase formAction=${fn}': () => html`<button type="submit" formAction=${leaky}></button>`,
+  'quoted formaction="${fn}"': () => html`<form action=${'/x'}><button formaction="${leaky}"></button></form>`,
   'reflecting prop .formAction=${fn} on a button': () => html`<button .formAction=${leaky}></button>`,
+};
+
+const refusedUnboundSubmitter = {
+  'formaction=${fn}': () => html`<button type="submit" formaction=${leaky}></button>`,
+  'camelCase formAction=${fn}': () => html`<button type="submit" formAction=${leaky}></button>`,
 };
 
 /**
@@ -98,6 +98,7 @@ const refused = {
 const refusedAsUnidentified = {
   'action=${fn}': () => html`<form action=${leaky}></form>`,
   'upper-case ACTION=${fn}': () => html`<form ACTION=${leaky}></form>`,
+  'formaction=${fn} inside bound form': () => html`<form action=${leaky}><button formaction=${leaky}></button></form>`,
 };
 
 for (const [name, mk] of Object.entries(refused)) {
@@ -120,6 +121,18 @@ for (const [name, mk] of Object.entries(refused)) {
     `[${runtime}] streaming must refuse ${name} for the RIGHT reason`);
   assert.ok(!streamThrew.message.includes('BUN_PARITY_SECRET'),
     `[${runtime}] streaming refusal must not carry the source (${name})`);
+}
+
+for (const [name, mk] of Object.entries(refusedUnboundSubmitter)) {
+  let threw = null;
+  try { await renderToString(mk(), { ssr: true }); } catch (e) { threw = e; }
+  assert.ok(threw, `[${runtime}] buffered SSR must refuse ${name}`);
+  assert.match(threw.message, /requires the enclosing <form> to also be bound/, `[${runtime}] ${name} message`);
+
+  let streamThrew = null;
+  try { await drain(renderToStream(mk(), { ssr: false })); } catch (e) { streamThrew = e; }
+  assert.ok(streamThrew, `[${runtime}] streaming SSR must refuse ${name}`);
+  assert.match(streamThrew.message, /requires the enclosing <form> to also be bound/, `[${runtime}] ${name} message`);
 }
 
 for (const [name, mk] of Object.entries(refusedAsUnidentified)) {

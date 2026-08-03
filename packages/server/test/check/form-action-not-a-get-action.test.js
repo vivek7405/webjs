@@ -171,3 +171,82 @@ SearchBox.register('search-box');
   assert.equal(hits(await checkConventions(dir)).length, 1);
   await rm(dir, { recursive: true, force: true });
 });
+
+// ---------------------------------------------------------------------------
+// #1207: the rule follows the binding down to a submitter. A GET-declared
+// action is exactly as unrunnable bound to a `<button formaction=${fn}>` as to
+// the form itself, since both submit the same POST body to the same url.
+//
+// The pairing tests below are the other half: the tag and the attribute have to
+// match as a PAIR. Matching the tag set and the attribute set independently
+// also fired on `<form formaction=${x}>` and `<button action=${x}>`, neither of
+// which is a binding (the renderers refuse both), so the rule would have
+// reported a 405 for markup that never reaches one.
+// ---------------------------------------------------------------------------
+
+test('flags a submitter bound to a GET-declared action (#1207)', async () => {
+  const dir = await makeApp({
+    'modules/read/actions/read.server.ts': GET_ACTION,
+    'modules/save/actions/save.server.ts': POST_ACTION,
+    'app/page.ts': `import { html } from '@webjsdev/core';
+import { readIt } from '../modules/read/actions/read.server.ts';
+import { saveIt } from '../modules/save/actions/save.server.ts';
+export default () => html\`<form action=\${saveIt}><button formaction=\${readIt}>Go</button></form>\`;
+`,
+  });
+  const v = hits(await checkConventions(dir));
+  assert.equal(v.length, 1, 'exactly one violation');
+  assert.match(v[0].file, /page\.ts/);
+  assert.match(v[0].message, /method = 'GET'/);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('does NOT flag a submitter bound to a POST action (counterfactual)', async () => {
+  const dir = await makeApp({
+    'modules/save/actions/save.server.ts': POST_ACTION,
+    'app/page.ts': `import { html } from '@webjsdev/core';
+import { saveIt } from '../modules/save/actions/save.server.ts';
+export default () => html\`<form action=\${saveIt}><button formaction=\${saveIt}>Go</button></form>\`;
+`,
+  });
+  assert.equal(hits(await checkConventions(dir)).length, 0);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('does NOT flag formaction= on a <form>, which binds nothing', async () => {
+  const dir = await makeApp({
+    'modules/read/actions/read.server.ts': GET_ACTION,
+    'app/page.ts': `import { html } from '@webjsdev/core';
+import { readIt } from '../modules/read/actions/read.server.ts';
+export default () => html\`<form formaction=\${readIt}></form>\`;
+`,
+  });
+  assert.equal(hits(await checkConventions(dir)).length, 0, 'a form has no formaction binding');
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('does NOT flag action= on a <button>, which binds nothing', async () => {
+  const dir = await makeApp({
+    'modules/read/actions/read.server.ts': GET_ACTION,
+    'app/page.ts': `import { html } from '@webjsdev/core';
+import { readIt } from '../modules/read/actions/read.server.ts';
+export default () => html\`<form action=\${readIt.name ? '/x' : '/y'}><button action=\${readIt}>Go</button></form>\`;
+`,
+  });
+  assert.equal(hits(await checkConventions(dir)).length, 0, 'a button has no action binding');
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('flags a GET action bound through a second submitter in the same form', async () => {
+  const dir = await makeApp({
+    'modules/read/actions/read.server.ts': GET_ACTION,
+    'modules/save/actions/save.server.ts': POST_ACTION,
+    'app/page.ts': `import { html } from '@webjsdev/core';
+import { readIt } from '../modules/read/actions/read.server.ts';
+import { saveIt } from '../modules/save/actions/save.server.ts';
+export default () => html\`<form action=\${saveIt}><button>Save</button><button formaction=\${readIt}>Read</button></form>\`;
+`,
+  });
+  assert.equal(hits(await checkConventions(dir)).length, 1);
+  await rm(dir, { recursive: true, force: true });
+});

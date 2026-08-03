@@ -410,6 +410,7 @@ suite('SSR/client parity: form actions (#1155)', () => {
     // without JS and urlencoded with it.
     'inert encoding= attribute': () => html`<form action=${boundAction()} encoding=${'application/x-www-form-urlencoded'}></form>`,
     'inert encoding= with an unsubmittable value': () => html`<form action=${boundAction()} encoding=${'text/plain'}></form>`,
+    'submitter formaction inside bound form': () => html`<form action=${boundAction()}><button formaction=${boundAction()}>Save</button></form>`,
   };
 
   for (const [name, tpl] of Object.entries(ACCEPTS)) {
@@ -433,7 +434,30 @@ suite('SSR/client parity: form actions (#1155)', () => {
     'quoted action hole is a stringify': [() => html`<form action="${boundAction()}"></form>`, /interpolated into/],
     'array-wrapped action': [() => html`<form action=${[boundAction()]}></form>`, /interpolated into/],
     'action off a form': [() => html`<div action=${boundAction()}></div>`, /interpolated into/],
-    'formaction anywhere': [() => html`<button formaction=${boundAction()}></button>`, /interpolated into/],
+    // #1207: the submitter's form is RIGHT THERE in the same template, so both
+    // renderers can see it is unbound and both must say so.
+    'submitter inside an unbound form': [
+      () => html`<form method="post"><button formaction=${boundAction()}></button></form>`,
+      /requires the enclosing <form> to also be bound/,
+    ],
+    'submitter that is not a submit control': [
+      () => html`<form action=${boundAction()}><button type="button" formaction=${boundAction()}></button></form>`,
+      /submitter control/,
+    ],
+    'submitter carrying its own name': [
+      () => html`<form action=${boundAction()}><button name="intent" formaction=${boundAction()}></button></form>`,
+      /already carries a "name" attribute/,
+    ],
+    // #1207 Part B: a submitter that binds nothing, whose own formenctype would
+    // still defeat the bound form it sits in.
+    'unparseable submitter enctype': [
+      () => html`<form action=${boundAction()}><button formenctype="text/plain"></button></form>`,
+      /formenctype=/,
+    ],
+    'non-POST submitter method': [
+      () => html`<form action=${boundAction()}><button formmethod="get"></button></form>`,
+      /formmethod=/,
+    ],
     'a function that is not an action': [() => html`<form action=${async () => {}}></form>`, /is not a server action/],
     'prop binding on a bound form': [() => html`<form action=${boundAction()} .method=${'get'}></form>`, /also binds \./],
     'two action holes': [() => html`<form action=${boundAction()} action=${'/legacy'}></form>`, /two action=/],
@@ -460,6 +484,43 @@ suite('SSR/client parity: form actions (#1155)', () => {
       assert.ok(pattern.test(r.ssrErr), `SSR reason (${r.ssrErr})`);
       assert.ok(pattern.test(r.clientErr), `client reason (${r.clientErr})`);
       assert.ok(!/PARITY_SECRET/.test(r.ssrErr + r.clientErr), 'a refusal never quotes the source');
+    });
+  }
+
+  /**
+   * The ONE asymmetry in #1207, stated here rather than left to be discovered.
+   *
+   * "Is my enclosing form bound" is a question SSR always answers and the client
+   * sometimes cannot. SSR reads a linear byte stream, so an open `<form>` either
+   * bound an action or did not. The client reconciles a template whose root may
+   * be a DocumentFragment that is not in the tree yet, and a submitter with no
+   * form ABOVE IT IN ITS OWN TEMPLATE is genuinely ambiguous there: it looks
+   * identical whether it is a stray button or a list row about to be inserted
+   * into a bound form by its parent. Those two are indistinguishable at that
+   * moment, and the list row is the shape the whole feature exists for.
+   *
+   * So the client BINDS when it cannot tell, and SSR refuses. The asymmetry is
+   * safe in that direction and only in that direction: the server renders every
+   * page, so a genuinely form-less submitter is still refused loudly before
+   * anything ships. The reverse (client refuses, SSR accepts) is what would
+   * render a page on the server and crash it on hydration.
+   */
+  const SSR_ONLY_REFUSES = {
+    'submitter with no form at all': [
+      () => html`<button formaction=${boundAction()}></button>`,
+      /requires the enclosing <form> to also be bound/,
+    ],
+  };
+
+  for (const [name, [tpl, pattern]] of Object.entries(SSR_ONLY_REFUSES)) {
+    test(`SSR refuses, client defers: ${name}`, async () => {
+      const r = await bothWays(tpl);
+      assert.ok(r.ssrErr, `SSR must refuse: ${name}`);
+      assert.ok(pattern.test(r.ssrErr), `SSR reason (${r.ssrErr})`);
+      assert.ok(!r.clientErr, `client must NOT refuse what it cannot know: ${name} (${r.clientErr})`);
+      // Deferring the question must not defer the LEAK guard: the client still
+      // binds an identity rather than stringifying the function.
+      assert.ok(!/PARITY_SECRET/.test(String(r.ssrErr) + String(r.client)), 'no source on either path');
     });
   }
 

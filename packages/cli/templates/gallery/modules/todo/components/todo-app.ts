@@ -1,6 +1,6 @@
 // The interactive surface. Demonstrates: the WebComponent factory + reactive
 // prop, the DECLARATIVE optimistic() API (instant update, auto-rollback), and
-// progressive enhancement (each mutation is a <form> posting to the page action,
+// progressive enhancement (each mutation is a <form action=${submitTodo}> bound to a server action,
 // intercepted by JS for the optimistic path). All interactivity lives in a
 // component; a page/layout cannot be interactive in its own markup.
 //

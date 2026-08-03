@@ -23,12 +23,13 @@ before(() => {
   globalThis.HTMLElement = window.HTMLElement;
 });
 
-let html, render, FORM_ACTION_ID_KEY, asyncAppend;
+let html, render, FORM_ACTION_ID_KEY, asyncAppend, repeat;
 before(async () => {
   ({ html } = await import('../../src/html.js'));
   ({ render } = await import('../../src/render-client.js'));
   ({ FORM_ACTION_ID_KEY } = await import('../../src/form-action.js'));
   ({ asyncAppend } = await import('../../src/directives.js'));
+  ({ repeat } = await import('../../src/repeat.js'));
 });
 
 /**
@@ -435,7 +436,7 @@ test('a failed render does not poison the NEXT one', () => {
   const h1 = document.createElement('div');
   assert.throws(
     () => render(html`<form method="get" action=${stub(ID)}></form><button formaction=${leaky}></button>`, h1),
-    /function was interpolated into/,
+    /cannot work|requires the enclosing <form>/,
   );
 
   const h2 = document.createElement('div');
@@ -507,8 +508,360 @@ test('two action holes are refused with the BOUND one written second', () => {
     /two action=/,
   );
 });
+
+test('submitter non-POST formmethod is refused on the client (get and PATCH)', () => {
+  const host = document.createElement('div');
+  const HOISTED = stub(ID);
+  assert.throws(
+    () => render(html`<form action=${HOISTED}><button formaction=${HOISTED} formmethod="get">Save</button></form>`, host),
+    /formmethod="get"/,
+  );
+  assert.throws(
+    () => render(html`<form action=${HOISTED}><button formaction=${HOISTED} formmethod="PATCH">Save</button></form>`, host),
+    /formmethod="PATCH"/,
+  );
+});
+
+test('submitter controls and conflicting attributes are refused on the client', () => {
+  const action = HOISTED();
+  // Paired with the message each guard produces, for the reason spelled out in
+  // the SSR twin of this test: one shared alternation matches every message in
+  // the module and proves only that something threw.
+  for (const [tpl, expected] of [
+    [html`<form action=${action}><input type="text" formaction=${action}></form>`, /requires a submitter control/],
+    [html`<form action=${action}><input type="hidden" formaction=${action}></form>`, /requires a submitter control/],
+    [html`<form action=${action}><input type="IMAGE" formaction=${action}></form>`, /coordinate pairs/],
+    [html`<form action=${action}><input type="submit" formaction=${action}></form>`, /also its visible label/],
+    [html`<form action=${action}><button type="button" formaction=${action}>Save</button></form>`, /requires a submitter control/],
+    [html`<form action=${action}><button value="save" formaction=${action}>Save</button></form>`, /already carries a "value" attribute/],
+    [html`<form action=${action}><button formaction="/legacy" formaction=${action}>Save</button></form>`, /cannot also carry a plain formaction attribute/],
+    [html`<form action=${action}><button form="other" formaction=${action}>Save</button></form>`, /cannot be used with a "form" attribute/],
+  ]) {
+    assert.throws(() => render(tpl, document.createElement('div')), expected);
+  }
+});
+
+test('duplicate formaction holes on one submitter are refused on the client', () => {
+  const action = HOISTED();
+  assert.throws(
+    () => render(
+      html`<form action=${action}><button formaction=${action} formaction=${action}>Save</button></form>`,
+      document.createElement('div'),
+    ),
+    /two formaction=/,
+  );
+});
+
+test('a submitter in a nested template sees its enclosing form binding', () => {
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  const host = document.createElement('div');
+  render(html`<form action=${formAction}>${html`<button formaction=${buttonAction}>Save</button>`}</form>`, host);
+  assert.equal(host.querySelector('button').getAttribute('value'), ID);
+  assert.equal(host.querySelector('button').getAttribute('name'), '__webjs_action');
+});
+
+test('releasing a submitter binding removes its stale identity', () => {
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  const host = document.createElement('div');
+  const tpl = (action) => html`<form action=${formAction}><button formaction=${action}>Save</button></form>`;
+  render(tpl(buttonAction), host);
+  render(tpl(null), host);
+  const button = host.querySelector('button');
+  assert.equal(button.hasAttribute('name'), false);
+  assert.equal(button.hasAttribute('value'), false);
+});
 // NOTE: the release path's other guard, "an unbound form keeps a `.method` the
 // template writes as a PROPERTY", is asserted in `browser/form-action-guard.test.js`
 // instead. It turns entirely on the write reflecting to the content attribute,
 // and linkedom's HTMLFormElement has an empty class body with no reflection at
 // all, so a `.method` assertion here would pass whether or not the fix is present.
+
+// ---------------------------------------------------------------------------
+// #1207: a submitter built by a DETACHED nested template.
+//
+// `repeat()` and a plain array both build each item through `buildDetached`,
+// which reconciles before the nodes are in the tree, so a button there cannot
+// reach the `<form>` that lives in the parent template. That is the single most
+// ordinary shape this feature exists for, a per-row action button in a list,
+// and SSR renders it perfectly. An earlier version asked the enclosing form
+// whether it was bound, got no answer because there was no form to ask, and
+// THREW, so the page rendered on the server and crashed on hydration.
+//
+// The rule these pin: an unresolved form SKIPS the boundness assertion and the
+// binding is applied. SSR is the renderer that sees every page and refuses a
+// genuinely unbound form there, loudly, before anything ships.
+// ---------------------------------------------------------------------------
+
+test('a submitter inside repeat() binds instead of refusing', () => {
+  const formAction = HOISTED();
+  const rowAction = HOISTED();
+  const host = document.createElement('div');
+  render(
+    html`<form action=${formAction}>${repeat([1, 2], (n) => n, (n) => html`<button formaction=${rowAction}>Delete ${n}</button>`)}</form>`,
+    host,
+  );
+  const buttons = host.querySelectorAll('button');
+  assert.equal(buttons.length, 2);
+  for (const button of buttons) {
+    assert.equal(button.getAttribute('name'), '__webjs_action');
+    assert.equal(button.getAttribute('value'), ID);
+    assert.equal(button.hasAttribute('formaction'), false, 'no formaction url is emitted');
+  }
+});
+
+test('a submitter inside a plain array binds instead of refusing', () => {
+  const formAction = HOISTED();
+  const rowAction = HOISTED();
+  const host = document.createElement('div');
+  render(
+    html`<form action=${formAction}>${[html`<button formaction=${rowAction}>Delete</button>`]}</form>`,
+    host,
+  );
+  const button = host.querySelector('button');
+  assert.equal(button.getAttribute('name'), '__webjs_action');
+  assert.equal(button.getAttribute('value'), ID);
+});
+
+test('a detached submitter still refuses what the template alone decides', () => {
+  // Skipping the boundness question does not relax the refusals that are
+  // properties of the TEMPLATE, which are answerable with no form in sight.
+  const formAction = HOISTED();
+  const rowAction = HOISTED();
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(
+      html`<form action=${formAction}>${[html`<button name="intent" formaction=${rowAction}>x</button>`]}</form>`,
+      host,
+    ),
+    /name/,
+  );
+  assert.throws(
+    () => render(
+      html`<form action=${formAction}>${[html`<button type="button" formaction=${rowAction}>x</button>`]}</form>`,
+      host,
+    ),
+    /submitter control/,
+  );
+});
+
+test('a submitter whose enclosing form is resolvable and UNBOUND is still refused', () => {
+  // The skip is narrow: it applies when there is no form to ask, not when the
+  // answer is no. An inline submitter can always reach its form.
+  const rowAction = HOISTED();
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(html`<form method="post"><button formaction=${rowAction}>x</button></form>`, host),
+    /requires the enclosing <form> to also be bound/,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// #1207 Part B on the client, so a component-only page (never SSR'd) gets the
+// same answer the server would have given.
+// ---------------------------------------------------------------------------
+
+test('the client refuses an unparseable submitter enctype inside a bound form', () => {
+  const formAction = HOISTED();
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(html`<form action=${formAction}><button formenctype="text/plain">Save</button></form>`, host),
+    /formenctype=/,
+  );
+  assert.throws(
+    () => render(html`<form action=${formAction}><button formmethod="get">Save</button></form>`, host),
+    /formmethod=/,
+  );
+});
+
+test('the client leaves dialog and retargeted submitters alone', () => {
+  const formAction = HOISTED();
+  const host = document.createElement('div');
+  render(
+    html`<form action=${formAction}><button formmethod="dialog">Close</button><button formmethod="get" formaction="/search">Search</button></form>`,
+    host,
+  );
+  assert.equal(host.querySelectorAll('button')[0].getAttribute('formmethod'), 'dialog');
+  assert.equal(host.querySelectorAll('button')[1].getAttribute('formaction'), '/search');
+});
+
+test('the client identity field carries a value ATTRIBUTE, matching SSR markup', () => {
+  // Written through setAttribute rather than the `value` IDL property. A `.value`
+  // assignment sets the input's value and dirty flag but leaves no content
+  // attribute, so a client-created field would serialize without one while SSR
+  // always writes it in full, and anything reading the markup (a morph, an
+  // outerHTML snapshot) would see two different forms for one template.
+  const host = document.createElement('div');
+  render(html`<form action=${HOISTED()}><input name="email"></form>`, host);
+  const field = host.querySelector('input[name="__webjs_action"]');
+  assert.equal(field.getAttribute('value'), ID);
+  assert.match(host.querySelector('form').innerHTML, /value="a1b2c3d4e5\/submitFeedback"/);
+});
+
+// ---------------------------------------------------------------------------
+// A `.prop` spelling on a submitter, the twin of the form-level `.method` /
+// `.enctype` refusal. Refused on BOTH sides, because SSR drops a native `.prop`
+// while a browser reflects it: `<button .name=${'intent'} formaction=${fn}>`
+// rendered clean on the server and then threw on hydration, where `.name` had
+// written `name="intent"` over the identity. Refusing at the template level
+// means the page never ships and the divergence cannot occur.
+// ---------------------------------------------------------------------------
+
+test('a reflected .prop on a bound submitter is refused on the client', () => {
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  for (const tpl of [
+    html`<form action=${formAction}><button .name=${'intent'} formaction=${buttonAction}>x</button></form>`,
+    html`<form action=${formAction}><button .value=${'v'} formaction=${buttonAction}>x</button></form>`,
+    html`<form action=${formAction}><button .formMethod=${'get'} formaction=${buttonAction}>x</button></form>`,
+    html`<form action=${formAction}><button .formEnctype=${'text/plain'} formaction=${buttonAction}>x</button></form>`,
+  ]) {
+    assert.throws(() => render(tpl, document.createElement('div')), /reflected IDL attribute/);
+  }
+});
+
+test('the client .prop refusal leaves ordinary controls alone', () => {
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  const host = document.createElement('div');
+  render(
+    html`<form action=${formAction}><input .name=${'q'}><button .textContent=${'Go'} formaction=${buttonAction}></button></form>`,
+    host,
+  );
+  assert.equal(host.querySelector('button').getAttribute('name'), '__webjs_action');
+});
+
+test('a .name / .value on a NON-binding submitter is left alone', () => {
+  // A plain `<button .name=${'intent'}>` inside a bound form is the ordinary
+  // one-action-plus-intent-dispatch pattern, not a conflict: that button
+  // carries no identity, so nothing is competing for its name/value pair.
+  // Refusing it would reject valid markup, and SSR refusing while the client
+  // accepted was a divergence in the direction that 500s the server.
+  const formAction = HOISTED();
+  const host = document.createElement('div');
+  render(
+    html`<form action=${formAction}><button .name=${'intent'}>Save</button><button .value=${'v'}>Other</button></form>`,
+    host,
+  );
+  assert.equal(host.querySelectorAll('button').length, 2, 'both plain submitters render');
+});
+
+test('an empty name PART on a bound submitter is refused, matching SSR', () => {
+  // Judged on the part, not on what it resolved to. `name=${null}` leaves no
+  // attribute on the client while SSR emits `name=""` beside the identity, so
+  // reading the live value back returned '' and the client waved through a
+  // template SSR hard-refuses.
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  for (const value of [null, '', undefined]) {
+    assert.throws(
+      () => render(
+        html`<form action=${formAction}><button name=${value} formaction=${buttonAction}>x</button></form>`,
+        document.createElement('div'),
+      ),
+      /already carries a "name" attribute/,
+      `name=\${${String(value)}}`,
+    );
+  }
+});
+
+test('a formaction binding on <input type="submit"> is refused on the client too', () => {
+  // The identity has to occupy `value`, which on this control is its visible
+  // label, so the binding would render a button captioned with the action id.
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  assert.throws(
+    () => render(
+      html`<form action=${formAction}><input type="submit" formaction=${buttonAction}></form>`,
+      document.createElement('div'),
+    ),
+    /also its visible label/,
+  );
+});
+
+test('a name HOLE is judged by what SSR would emit for it, not by its presence', () => {
+  // Counting any part called `name` refused templates SSR renders happily. SSR
+  // emits `name=""` for an attribute hole whatever it resolved to, but emits
+  // NOTHING for a falsy boolean hole and nothing for an `@name` listener, so
+  // those two must bind here exactly as they do on the server. Getting this
+  // wrong is the render-on-the-server, throw-on-hydration direction.
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  for (const tpl of [
+    html`<form action=${formAction}><button ?name=${false} formaction=${buttonAction}>x</button></form>`,
+    html`<form action=${formAction}><button @name=${() => {}} formaction=${buttonAction}>x</button></form>`,
+  ]) {
+    const host = document.createElement('div');
+    render(tpl, host);
+    assert.equal(host.querySelector('button').getAttribute('name'), '__webjs_action',
+      'a hole that emits no name leaves the identity channel free');
+  }
+  // A TRUTHY boolean hole does emit `name=""`, so it collides and must refuse,
+  // which is what SSR does with the resulting duplicate.
+  assert.throws(
+    () => render(
+      html`<form action=${formAction}><button ?name=${true} formaction=${buttonAction}>x</button></form>`,
+      document.createElement('div'),
+    ),
+    /already carries a "name" attribute/,
+  );
+});
+
+test('a value HOLE is judged by what SSR would emit, exactly as a name hole is', () => {
+  // The twin of the `name` test above. Both identity channels ask the same
+  // question through one predicate, so a falsy boolean hole binds on both sides
+  // and a truthy one refuses on both. Keeping them in step matters because the
+  // failure is silent: SSR renders and the client throws on hydration.
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  const host = document.createElement('div');
+  render(
+    html`<form action=${formAction}><button formaction=${buttonAction} ?value=${false}>x</button></form>`,
+    host,
+  );
+  assert.equal(host.querySelector('button').getAttribute('value'), ID,
+    'a falsy boolean hole emits nothing, so the identity channel is free');
+  assert.throws(
+    () => render(
+      html`<form action=${formAction}><button formaction=${buttonAction} ?value=${true}>x</button></form>`,
+      document.createElement('div'),
+    ),
+    /already carries a "value" attribute/,
+  );
+});
+
+test('the enclosing-form verdict does not change between renders', () => {
+  // Whether `enclosingForm` resolves depends on whether the element happened to
+  // be in the tree when it reconciled: not on a first render (the fragment is
+  // detached) and yes on an update. Re-asking made the SAME template with the
+  // SAME values bind at first paint and then throw on an arbitrary later
+  // re-render, which is far worse to diagnose than refusing at first paint.
+  const buttonAction = HOISTED();
+  const outer = document.createElement('form');
+  outer.setAttribute('method', 'post');
+  document.body.appendChild(outer);
+  const host = document.createElement('div');
+  outer.appendChild(host);
+  try {
+    const tpl = (n) => html`<button formaction=${buttonAction}>row ${n}</button>`;
+    render(tpl(1), host);
+    render(tpl(2), host);
+    assert.equal(host.querySelector('button').getAttribute('name'), '__webjs_action',
+      'the verdict is stable across passes');
+  } finally { outer.remove(); }
+});
+
+test('a bound form still binds its submitter on every re-render', () => {
+  // The counterfactual for the stability guard: it must not become a blanket
+  // skip that stops the binding from being re-applied.
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  const host = document.createElement('div');
+  const tpl = (n) => html`<form action=${formAction}><button formaction=${buttonAction}>r${n}</button></form>`;
+  render(tpl(1), host);
+  render(tpl(2), host);
+  const button = host.querySelector('button');
+  assert.equal(button.getAttribute('name'), '__webjs_action');
+  assert.equal(button.getAttribute('value'), ID);
+});

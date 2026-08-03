@@ -3,7 +3,12 @@ import { BINDING_PREFIXES, isBindingPrefix } from './binding-prefixes.js';
 import { escapeAttr } from './escape.js';
 import {
   assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp,
-  reconcileFormAction, isBoundFormAction, ABSENT,
+  reconcileFormAction, isBoundFormAction, ABSENT, assertSubmitterHasNoName,
+  assertSubmitterType, assertSubmitterHasNoValue, assertSubmitterHasNoStaticFormAction,
+  assertSubmitterHasNoFormAttribute, assertSingleSubmitterAction,
+  assertSubmitterFormIsBound, assertSubmitterSubmission, assertBoundFormSubmitters,
+  assertConvergentSubmitter, isSubmitterReflectedProp,
+  formActionId, assertIdentifiableAction, FORM_ACTION_FIELD,
 } from './form-action.js';
 import { isRepeat } from './repeat.js';
 import { isUnsafeHTML, isLive, isKeyed, isGuard, isTemplateContent, isRef, isCache, isUntil, isAsyncAppend, isAsyncReplace, isWatch } from './directives.js';
@@ -84,6 +89,11 @@ function commitInto(node, fn) {
  *   actionIdxs: number[],
  *   duplicateAction: boolean,
  *   staticAction: boolean,
+ *   authoredName: boolean,
+ *   authoredValue: boolean,
+ *   authoredForm: boolean,
+ *   nameParts: {i: number, kind: string}[],
+ *   valueParts: {i: number, kind: string}[],
  *   propAttrs: string[],
  *   staticMethod: string | null,
  *   staticEnctype: string | null,
@@ -94,6 +104,20 @@ function commitInto(node, fn) {
 
 /** @type {WeakMap<TemplateStringsArray | string[], { templateEl: HTMLTemplateElement, parts: PartDescriptor[], formActions: FormActionRecord[] | null }>} */
 const templateCache = new WeakMap();
+/**
+ * Forms whose `action` hole currently holds a function (#1207). Read by a
+ * submitter that reconciles before its form does, so it can tell a form that is
+ * about to be bound from one that never will be. Keyed weakly so a detached
+ * form is collected with its entry.
+ * @type {WeakMap<HTMLFormElement, unknown>}
+ */
+const formActionCandidates = new WeakMap();
+/**
+ * Submitters this renderer stamped with an identity, so a later release removes
+ * only the framework's own `name` / `value` and never an author's.
+ * @type {WeakMap<Element, string>}
+ */
+const submitterActionBindings = new WeakMap();
 const INSTANCE = Symbol.for('webjs.instance');
 
 /**
@@ -525,12 +549,14 @@ function assignPaths(root, parts) {
             toRemove.push(attr.name);
           }
         }
-        // #1155: record what a bound form needs, while the STATIC attributes and
-        // the element's part indices are both still visible. This is the only
-        // point in compilation with that whole view, and it runs once per
-        // template, so the record is a constant rather than runtime memory that
-        // can drift out of step with the DOM.
-        if (el.localName === 'form') {
+        // #1155 / #1207: record what a bound form or submitter needs, while the
+        // STATIC attributes and the element's part indices are both still
+        // visible. This is the only point in compilation with that whole view,
+        // and it runs once per template, so the record is a constant rather
+        // than runtime memory that can drift out of step with the DOM. It is
+        // also the only place a submitter's own `name` is still legible: by
+        // reconcile time the renderer has written the identity over it.
+        if (el.localName === 'form' || el.localName === 'button' || el.localName === 'input') {
           const rec = buildFormActionRecord(el, onEl, parts);
           if (rec) formActions.push(rec);
         }
@@ -545,7 +571,8 @@ function assignPaths(root, parts) {
 }
 
 /**
- * Build the compile-time record for one `<form>` that carries an `action` hole.
+ * Build the compile-time record for one `<form>` carrying an `action` hole, or
+ * one submitter carrying a `formaction` hole.
  *
  * A CANDIDATE, not a decision: `<form action=${maybeString}>` compiles exactly
  * like a bound one, so whether the form is really bound is a runtime fact the
@@ -559,13 +586,22 @@ function assignPaths(root, parts) {
  * `enctype`), and SSR ignores it, so folding the attribute spelling too would
  * make the client honour a value the server never saw.
  *
+ * The submitter fields (`authoredName` / `authoredValue` / `authoredForm`) are
+ * read off the COMPILED template rather than the live element, for the same
+ * reason: by reconcile time the renderer has written its own `name` / `value`
+ * onto a bound submitter, so the live element can no longer say which of them
+ * the author wrote. A hole-provided `name=${n}` leaves no attribute on the
+ * compiled template at all, which is why `nameParts` is tracked separately.
+ *
  * @param {Element} el
  * @param {{ idx: number, kind: string, name: string }[]} onEl parts bound to `el`
  * @param {PartDescriptor[]} parts
  * @returns {FormActionRecord | null}
  */
 function buildFormActionRecord(el, onEl, parts) {
-  const actionParts = onEl.filter((p) => p.kind === 'attr' && p.name.toLowerCase() === 'action');
+  const isForm = el.localName === 'form';
+  const targetAttr = isForm ? 'action' : 'formaction';
+  const actionParts = onEl.filter((p) => p.kind === 'attr' && p.name.toLowerCase() === targetAttr);
   if (!actionParts.length) return null;
 
   /** @type {FormAttrPart[]} */
@@ -574,11 +610,40 @@ function buildFormActionRecord(el, onEl, parts) {
   const enctypeParts = [];
   /** Prop bindings that cannot converge with SSR; refused when actually bound. */
   const propAttrs = [];
+  // `name` holes on a submitter, recorded WITH their kind. Whether one occupies
+  // the identity's channel is not a property of the hole alone: SSR emits
+  // `name=""` for an attribute hole whatever it resolved to, but emits nothing
+  // at all for a FALSY boolean hole and nothing for an `@name` listener. Asking
+  // only "is there a part called name" therefore refused templates SSR renders
+  // happily, which is the render-on-the-server-throw-on-hydration direction.
+  // The kinds travel with the record and `reconcileFormActions` resolves them.
+  const nameParts = isForm ? [] : onEl
+    .filter((p) => p.name.toLowerCase() === 'name'
+      && (p.kind === 'attr' || p.kind === 'attr-mixed' || p.kind === 'bool'))
+    .map((p) => ({ i: p.idx, kind: p.kind }));
+  const authoredName = !isForm && el.hasAttribute('name');
+  const authoredForm = !isForm && el.hasAttribute('form');
+  const authoredValue = !isForm && el.hasAttribute('value');
+  // `value` holes, recorded with their kind for the same reason as `name`: a
+  // FALSY boolean hole emits nothing at SSR, so counting the part's mere
+  // presence refused a template the server renders happily.
+  const valueParts = isForm ? [] : onEl
+    .filter((p) => p.name.toLowerCase() === 'value'
+      && (p.kind === 'attr' || p.kind === 'attr-mixed' || p.kind === 'bool'))
+    .map((p) => ({ i: p.idx, kind: p.kind }));
 
   for (const p of onEl) {
     const name = String(p.name).toLowerCase();
     if (p.kind === 'prop') {
-      if (name === 'method' || name === 'enctype' || name === 'encoding') propAttrs.push(p.name);
+      // On a FORM, the reflected attributes that decide submittability. On a
+      // SUBMITTER, the ones that carry the identity or override the submission
+      // (#1207). Either way a `.prop` is dropped at SSR and written to the
+      // attribute in the browser, so it can never converge.
+      if (isForm) {
+        if (name === 'method' || name === 'enctype' || name === 'encoding') propAttrs.push(p.name);
+      } else if (isSubmitterReflectedProp(name)) {
+        propAttrs.push(p.name);
+      }
       continue;
     }
     if (name !== 'method' && name !== 'enctype') continue;
@@ -594,22 +659,215 @@ function buildFormActionRecord(el, onEl, parts) {
   }
 
   return {
+    isForm,
+    tag: el.localName,
     // EVERY action hole, not just the first. SSR refuses two holes whenever
     // ANY of them resolves to a bound action, so recording only the first would
     // let `<form action=${'/legacy'} action=${boundFn}>` slip through the
     // client's release path while SSR throws on the same template.
     actionIdxs: actionParts.map((p) => p.idx),
     duplicateAction: actionParts.length > 1,
-    // A static `action="..."` surviving alongside the hole. The compiled
-    // template holds the hole as a sentinel attribute, so anything read back
-    // under the real name here is the author's own second one.
-    staticAction: el.getAttribute('action') != null,
+    // A static `action="..."` / `formaction="..."` surviving alongside the hole.
+    // The compiled template holds the hole as a sentinel attribute, so anything
+    // read back under the real name here is the author's own second one.
+    staticAction: el.getAttribute(targetAttr) != null,
+    authoredName,
+    authoredValue,
+    authoredForm,
     propAttrs,
+    nameParts,
+    valueParts,
     staticMethod: el.getAttribute('method'),
     staticEnctype: el.getAttribute('enctype'),
     methodParts,
     enctypeParts,
   };
+}
+
+/**
+ * Converge every candidate bound form and submitter in this template, after all
+ * of its parts have committed. A no-op for the overwhelming majority of
+ * templates, which carry no `<form action=${...}>` at all and therefore no
+ * record.
+ *
+ * FORMS FIRST, submitters second, regardless of the order the records were
+ * collected in. A submitter asks whether its enclosing form is bound, and the
+ * cheapest true answer is the identity field the form's own reconcile just
+ * inserted. Document order gets this right for a form and a button in the SAME
+ * template, but not for a `<form>` whose submitter arrives through a nested
+ * template, so the ordering is made explicit rather than relied upon.
+ *
+ * @param {FormActionRecord[] | null} formActions
+ * @param {BoundPart[]} bound
+ * @param {unknown[]} values
+ */
+function reconcileFormActions(formActions, bound, values) {
+  if (!formActions) return;
+  /** @type {HTMLFormElement[]} */
+  const boundForms = [];
+  for (const pass of [true, false]) {
+    for (const rec of formActions) {
+      if (rec.isForm !== pass) continue;
+      // With more than one action hole, the BOUND one decides, whichever
+      // position it is written in. Picking `actionIdxs[0]` blindly would send
+      // `<form action=${'/url'} action=${boundFn}>` down the release path and
+      // ship the broken form SSR refuses outright.
+      let idx = rec.actionIdxs[0];
+      const targetAttr = rec.isForm ? 'action' : 'formaction';
+      for (const i of rec.actionIdxs) {
+        if (isBoundFormAction(resolveHoleValue(values[i]), targetAttr, rec.tag)) { idx = i; break; }
+      }
+      const part = bound[idx];
+      if (!part || !part.el) continue;
+      const val = resolveHoleValue(values[idx]);
+      if (rec.isForm) {
+        reconcileFormAction(
+          /** @type any */ (part.el),
+          val,
+          effectiveFormAttr(rec.methodParts, rec.staticMethod, values),
+          effectiveFormAttr(rec.enctypeParts, rec.staticEnctype, values),
+          rec,
+        );
+        if (typeof val === 'function' && formActionId(val)) {
+          boundForms.push(/** @type any */ (part.el));
+        }
+      } else {
+        // What SSR would have emitted for this pass. An attribute hole always
+        // emits (even `name=${null}`, as `name=""`); a boolean hole emits only
+        // when truthy. Both identity channels ask the same question, through
+        // one predicate, so they cannot drift apart again.
+        const emits = (parts) => parts.some((np) => (np.kind === 'bool'
+          ? !!resolveHoleValue(values[np.i])
+          : true));
+        reconcileSubmitterAction(
+          /** @type any */ (part.el), val, rec, emits(rec.nameParts), emits(rec.valueParts),
+        );
+      }
+    }
+  }
+  // Part B (#1207), last, because it reads the DOM state every reconcile above
+  // has finished writing. See `assertBoundFormSubmitters`.
+  for (const form of boundForms) assertBoundFormSubmitters(form);
+}
+
+/**
+ * Remove the identity channel previously injected into a submitter.
+ *
+ * Only ours is removed. `submitterActionBindings` remembers the elements this
+ * renderer stamped, and the `name` check covers an SSR'd button meeting its
+ * template for the first time on hydration. A button that never carried a
+ * binding is left alone, so an author's own `name` / `value` survives a
+ * re-render that happens to pass a non-action value.
+ *
+ * @param {Element} el
+ */
+function releaseSubmitterAction(el) {
+  const injected = submitterActionBindings.has(el) || el.getAttribute('name') === FORM_ACTION_FIELD;
+  if (!injected) return;
+  if (el.getAttribute('name') === FORM_ACTION_FIELD) el.removeAttribute('name');
+  el.removeAttribute('value');
+  submitterActionBindings.delete(el);
+}
+
+/**
+ * Find the enclosing `<form>` by walking parents.
+ *
+ * Deliberately a parent walk rather than `closest('form')`: the element may
+ * still be inside a detached DocumentFragment when this runs, and the walk
+ * gives the same answer there for a form and a button in the same template.
+ * Returns null when the fragment's root is reached, which is the honest answer
+ * for a nested template whose form lives in the parent.
+ *
+ * @param {Element} el
+ * @returns {HTMLFormElement | null}
+ */
+function enclosingForm(el) {
+  let node = el.parentNode;
+  while (node) {
+    if (node.nodeType === 1 && /** @type {Element} */ (node).localName === 'form') {
+      return /** @type {HTMLFormElement} */ (node);
+    }
+    node = node.parentNode;
+  }
+  return null;
+}
+
+/**
+ * Converge a live submitter on what SSR emitted for `<button formaction=${fn}>`
+ * (#1207): the `formaction` attribute gone, and the identity in the button's
+ * own `name` / `value` pair.
+ *
+ * The enclosing-form check is BEST EFFORT, and that is a deliberate asymmetry
+ * with SSR rather than a gap. SSR reads a linear byte stream and always knows
+ * whether the open form was bound, so it refuses an unbound one outright. The
+ * client may be reconciling a fragment that is not in the tree yet (a submitter
+ * inside a `repeat()` or an array item is built detached, by design, and its
+ * form lives in the parent template), where the question has no answer. Asking
+ * anyway and throwing on "no" would refuse the single most ordinary shape this
+ * feature exists for, a per-row button in a list, on a page SSR renders
+ * perfectly. So an UNRESOLVED form skips the assertion and the binding is
+ * applied: the server is the renderer that sees every page, and a genuinely
+ * unbound form is still refused there, loudly, before anything ships.
+ *
+ * @param {Element} el
+ * @param {unknown} value
+ * @param {FormActionRecord} rec
+ * @param {boolean} emitsName whether SSR would emit a `name` attribute this pass
+ * @param {boolean} emitsValue whether SSR would emit a `value` attribute this pass
+ */
+function reconcileSubmitterAction(el, value, rec, emitsName, emitsValue) {
+  const id = typeof value === 'function' ? formActionId(value) : null;
+  if (!id) {
+    // A function that was MEANT as an action still refuses, so a button never
+    // silently submits the form's action instead of its own.
+    if (typeof value === 'function') assertIdentifiableAction(null, el.localName);
+    releaseSubmitterAction(el);
+    return;
+  }
+  // Template-shaped refusals first, from the compiled record, because the live
+  // element may already carry this renderer's own `name` / `value`.
+  assertSingleSubmitterAction(rec.duplicateAction, el.localName);
+  assertConvergentSubmitter(rec.propAttrs, el.localName, true);
+  if (rec.staticAction) assertSubmitterHasNoStaticFormAction(el.localName);
+  if (rec.authoredValue || emitsValue) assertSubmitterHasNoValue(el.localName);
+  if (rec.authoredName || emitsName) {
+    // Judged on the PART, not on what it resolved to this pass. `name=${null}`
+    // leaves no attribute here while SSR emits `name=""` beside the identity,
+    // so reading the live value back returned '' and waved through a template
+    // SSR refuses. The template supplying a `name` channel at all is the
+    // conflict, whatever today's value happens to be.
+    assertSubmitterHasNoName(el.getAttribute('name') || FORM_ACTION_FIELD, el.localName, false);
+  }
+  if (rec.authoredForm || el.hasAttribute('form')) assertSubmitterHasNoFormAttribute(el.localName);
+  assertSubmitterType(el.localName, el.getAttribute('type'));
+
+  const form = enclosingForm(el);
+  // Asked ONCE per element. The answer depends on whether this element happened
+  // to be in the tree when it reconciled, which differs between a first render
+  // (fragment still detached, so `enclosingForm` finds nothing and the check is
+  // skipped) and any later update (attached, so it resolves). Re-asking made the
+  // SAME template with the SAME values bind on first paint and then throw on an
+  // arbitrary later re-render, which is far worse to diagnose than a refusal at
+  // first paint. Skipping for an element already stamped can only REMOVE a
+  // throw, never add one, so it cannot refuse anything that used to render.
+  if (form && !submitterActionBindings.has(el)) {
+    // `formActionCandidates` covers the pass where the form's own action hole
+    // has committed but its reconcile has not run yet; the identity field is
+    // the settled answer, including for an SSR'd form on first hydration.
+    const isFormBound = !!(form.querySelector(`input[name="${FORM_ACTION_FIELD}"]`)
+      || formActionCandidates.has(form));
+    assertSubmitterFormIsBound(isFormBound, el.localName);
+  }
+  assertSubmitterSubmission(
+    el.localName,
+    el.getAttribute('formmethod'),
+    el.getAttribute('formenctype'),
+    { bound: true },
+  );
+  el.removeAttribute('formaction');
+  el.setAttribute('name', FORM_ACTION_FIELD);
+  el.setAttribute('value', id);
+  submitterActionBindings.set(el, id);
 }
 
 /* ================================================================
@@ -819,38 +1077,6 @@ function resolveHoleValue(v) {
 }
 
 /**
- * Converge every candidate bound form in this template, after all of its parts
- * have committed. A no-op for the overwhelming majority of templates, which
- * carry no `<form action=${...}>` at all and therefore no record.
- *
- * @param {FormActionRecord[] | null} formActions
- * @param {BoundPart[]} bound
- * @param {unknown[]} values
- */
-function reconcileFormActions(formActions, bound, values) {
-  if (!formActions) return;
-  for (const rec of formActions) {
-    // With more than one action hole, the BOUND one decides, whichever position
-    // it is written in. Picking `actionIdxs[0]` blindly would send
-    // `<form action=${'/url'} action=${boundFn}>` down the release path and
-    // ship the broken form SSR refuses outright.
-    let idx = rec.actionIdxs[0];
-    for (const i of rec.actionIdxs) {
-      if (isBoundFormAction(resolveHoleValue(values[i]), 'action', 'form')) { idx = i; break; }
-    }
-    const part = bound[idx];
-    if (!part || !part.el) continue;
-    reconcileFormAction(
-      /** @type any */ (part.el),
-      resolveHoleValue(values[idx]),
-      effectiveFormAttr(rec.methodParts, rec.staticMethod, values),
-      effectiveFormAttr(rec.enctypeParts, rec.staticEnctype, values),
-      rec,
-    );
-  }
-}
-
-/**
  * @param {BoundPart} part
  * @param {unknown} value
  * @param {unknown} _prev
@@ -871,6 +1097,17 @@ function applyPart(part, value, _prev, allValues) {
       applyChild(part, value);
       break;
     case 'attr': {
+      // #1207: note a form whose action hole holds a function, so a submitter
+      // reconciling BEFORE that form's own reconcile can still tell the form is
+      // going to be bound. Recorded at commit time because that is the only
+      // moment the hole's value is in hand for a form the submitter does not
+      // own. Cleared on a non-function so a form that stops being bound does
+      // not keep vouching for its buttons.
+      if (part.el.localName === 'form' && part.name.toLowerCase() === 'action') {
+        const candidate = resolveHoleValue(value);
+        if (typeof candidate === 'function') formActionCandidates.set(part.el, candidate);
+        else formActionCandidates.delete(part.el);
+      }
       if (value == null || value === false) part.el.removeAttribute(part.name);
       else if (isBoundFormAction(value, part.name, part.el.localName)) {
         // #1155: the ONE supported form-action binding, applied to the live

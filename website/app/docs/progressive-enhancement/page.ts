@@ -169,11 +169,11 @@ export default function NewPost({ actionData }: {
     </p>
 
     <p>
-      A form that binds nothing gets a <code>405</code>: there is no page <code>action</code> export to catch a bare <code>&lt;form method="post"&gt;</code>. A form with several submit buttons binds one action and dispatches on a button's <code>name</code>, since <code>formaction=\${fn}</code> is not supported yet (tracked in issue #1207).
+      A form that binds nothing gets a <code>405</code>: there is no page <code>action</code> export to catch a bare <code>&lt;form method="post"&gt;</code>. Multi-submitter forms can bind per-button actions using <code>formaction=\${action}</code> on submitter buttons inside a bound form, which work with JavaScript disabled via standard DOM submitter precedence.
     </p>
 
     <p>
-      One honest limit on "identical by construction": it is a claim about the FORM, and the renderers do not read a submitter's own <code>formmethod</code> / <code>formenctype</code>. So <code>&lt;form action=\${fn}&gt;&lt;button formenctype="text/plain"&gt;</code> submits fine with JS (the router posts <code>FormData</code> and ignores the attribute) and is a bare <code>405</code> without it, with nothing refused at render. Leave those attributes off a bound form until #1207 closes the gap.
+      "Identical by construction" is a claim about the whole submission, submitter included. A button's own <code>formmethod</code> / <code>formenctype</code> can defeat the form it sits in, so the renderers read those on EVERY submitter inside a bound form, whether or not that button binds an action of its own: <code>&lt;form action=\${fn}&gt;&lt;button formenctype="text/plain"&gt;</code> would submit fine with JS (the router posts <code>FormData</code> and ignores the attribute) and be a bare <code>405</code> without it, so it is refused at render instead. The same goes for <code>formmethod="get"</code>, which sends no body. Two shapes are deliberately left alone, because neither submits to the bound action: <code>formmethod="dialog"</code> is a native <code>&lt;dialog&gt;</code> dismissal, and a plain <code>formaction="/url"</code> points the submission somewhere else entirely.
     </p>
 
     <h3>3. Make components render correctly on the server</h3>

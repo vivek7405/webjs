@@ -109,6 +109,26 @@ test('renderToStream: basic template produces a readable stream', async () => {
   assert.match(out, /<p>stream<\/p>/);
 });
 
+test('renderToStream: ssr:false preserves progressive text-hole chunks', async () => {
+  const later = new Promise((resolve) => setTimeout(() => resolve('later'), 25));
+  const stream = renderToStream(
+    html`<p>first</p>${Promise.resolve('now')}<p>${later}</p>`,
+    { ssr: false },
+  );
+  const reader = stream.getReader();
+  const first = await reader.read();
+  assert.equal(first.done, false);
+  assert.match(first.value, /first/);
+  assert.doesNotMatch(first.value, /later/);
+  const rest = [];
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) break;
+    rest.push(next.value);
+  }
+  assert.match(rest.join(''), /later/);
+});
+
 test('renderToStream: ssr:true path runs DSD injection and enqueues full HTML', async () => {
   const stream = renderToStream(html`<p>ssr</p>`);
   const out = await streamText(stream);
@@ -329,4 +349,85 @@ test('Suspense nested in a template is replaced by its boundary HTML', async () 
     { ssr: true, suspenseCtx: ctx },
   );
   assert.match(out, /<main><webjs-boundary id="s1"><span>loading<\/span><\/webjs-boundary><\/main>/);
+});
+
+/* ---------------- property holes in the streaming machine ---------------- */
+
+test('renderToStream: a .prop hole on a custom element is dropped, attribute text and all', async () => {
+  // The buffered machine slices the authored `.name=` text off `out` BEFORE it
+  // decides what to emit in its place. The streaming machine has to do the same
+  // or the authored text survives and whatever it emits lands glued to it, as
+  // `<webjs-suspense .fallback=data-webjs-fallback="...">`, which parses as an
+  // unquoted `.fallback` value and swallows the rest of the tag.
+  const out = await streamText(renderToStream(
+    html`<webjs-suspense .fallback=${html`<p>loading</p>`}><span>content</span></webjs-suspense>`,
+    { ssr: false },
+  ));
+  assert.ok(!out.includes('.fallback='), 'the authored attribute text is gone');
+  assert.ok(!out.includes('data-webjs-fallback'), 'no fallback attribute: nothing reads one on this path');
+  assert.match(out, /<webjs-suspense\s*><span>content<\/span><\/webjs-suspense>/);
+});
+
+test('renderToStream: a .prop hole on a native element is dropped', async () => {
+  const out = await streamText(renderToStream(
+    html`<input .value=${'typed'}>`,
+    { ssr: false },
+  ));
+  assert.ok(!out.includes('.value='), 'the authored attribute text is gone');
+  assert.ok(!out.includes('typed'), 'a native .prop never reaches the markup');
+});
+
+test('renderToStream: an @event hole is dropped', async () => {
+  const out = await streamText(renderToStream(
+    html`<button @click=${() => {}}>Go</button>`,
+    { ssr: false },
+  ));
+  assert.ok(!out.includes('@click'), 'the authored attribute text is gone');
+  assert.match(out, /<button\s*>Go<\/button>/);
+});
+
+/* ---------------- rawtext entry is per exit branch (#1207 regression) ---------------- */
+
+test('a start tag ending on a BARE attribute keeps its body escaped', async () => {
+  // Five `>` exits close a start tag, and only two of them (`tag-name` and
+  // `in-tag`) ever entered rawtext. The three attribute exits always forced
+  // `text`, so `<script defer>` and `<style media=print>`, whose start tags end
+  // on a bare or unquoted attribute, escape their bodies.
+  //
+  // Consolidating the five into one helper silently switched all five to the
+  // rawtext rule, which turned `<script defer>${userInput}</script>` from
+  // escaped into RAW script. Whether that escaping is right is a separate
+  // question; flipping it as a side effect of a form-action change is not.
+  const evil = '</script><img src=x onerror=alert(1)>';
+  for (const [label, tpl] of [
+    ['bare attribute', html`<script defer>const a = ${evil};</script>`],
+    ['unquoted value', html`<script src=x>const a = ${evil};</script>`],
+    ['style, unquoted', html`<style media=print>a { content: "${evil}" }</style>`],
+  ]) {
+    const out = await renderToString(tpl, { ssr: true });
+    assert.ok(out.includes('&lt;/script&gt;'), `${label}: the body stays escaped`);
+    assert.ok(!out.includes('onerror=alert(1)>'), `${label}: no raw injection`);
+  }
+});
+
+test('a start tag ending on whitespace or a QUOTED value still enters rawtext', async () => {
+  // The counterfactual for the test above: the two exits that always did enter
+  // rawtext must keep doing so, or the guard would be satisfied by a renderer
+  // that simply escaped everything.
+  const raw = 'a < b && c > d';
+  for (const [label, tpl] of [
+    ['no attributes', html`<script>const x = ${raw};</script>`],
+    ['quoted value', html`<script type="module">const x = ${raw};</script>`],
+  ]) {
+    const out = await renderToString(tpl, { ssr: true });
+    assert.ok(out.includes(raw), `${label}: the body is emitted raw`);
+  }
+});
+
+test('the streaming machine matches on both counts', async () => {
+  const evil = '</script><img src=x>';
+  const escaped = await streamText(renderToStream(html`<script defer>a = ${evil};</script>`, { ssr: false }));
+  assert.ok(escaped.includes('&lt;/script&gt;'), 'bare attribute stays escaped');
+  const rawOut = await streamText(renderToStream(html`<script>a = ${'x < y'};</script>`, { ssr: false }));
+  assert.ok(rawOut.includes('x < y'), 'no attributes still raw');
 });

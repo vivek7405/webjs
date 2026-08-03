@@ -204,4 +204,115 @@ suite('form-action guard in a real browser', () => {
     assert.equal(form.encoding, 'multipart/form-data');
   });
 
+
+  // -------------------------------------------------------------------------
+  // #1207: per-submitter actions, in the browser, because the whole mechanism
+  // rests on two real-DOM behaviours linkedom cannot show. `new FormData(form,
+  // submitter)` is what a native submission serializes and is the only place
+  // the pressed button's name/value pair actually appears; and duplicate
+  // `__webjs_action` entries have to arrive in DOM order for last-wins
+  // precedence to mean anything.
+  // -------------------------------------------------------------------------
+
+  function boundStub(id) {
+    const fn = async () => {};
+    Object.defineProperty(fn, FORM_ACTION_ID_KEY, { value: id });
+    return fn;
+  }
+
+  test('a bound submitter overrides the form action, last-wins in DOM order', () => {
+    const host = mount();
+    render(
+      html`<form action=${boundStub('a1b2c3d4e5/save')}>
+        <input name="title" value="hi">
+        <button formaction=${boundStub('a1b2c3d4e5/remove')}>Delete</button>
+      </form>`,
+      host,
+    );
+    const form = host.querySelector('form');
+    const button = host.querySelector('button');
+
+    // No submitter pressed: the form's own identity is what the server sees.
+    assert.equal(new FormData(form).get('__webjs_action'), 'a1b2c3d4e5/save');
+
+    // Pressed: BOTH entries ride the submission, and the dispatcher takes the
+    // LAST. That ordering is a fact about the DOM (the form's hidden field is
+    // its first child, so a submitter's entry always follows it), which is why
+    // it is asserted here rather than assumed.
+    const fd = new FormData(form, button);
+    const all = fd.getAll('__webjs_action');
+    assert.equal(all.length, 2, 'the form field and the submitter both submit');
+    assert.equal(all[0], 'a1b2c3d4e5/save');
+    assert.equal(all[all.length - 1], 'a1b2c3d4e5/remove', 'the pressed button wins');
+    assert.equal(fd.get('title'), 'hi', 'alongside the real fields');
+    assert.equal(button.hasAttribute('formaction'), false, 'no formaction url is emitted');
+  });
+
+  test('an unpressed sibling submitter contributes nothing', () => {
+    // The reason the submitter's own name/value is the right channel: a browser
+    // submits it ONLY for the button that was pressed, unlike a hidden input.
+    const host = mount();
+    render(
+      html`<form action=${boundStub('a1b2c3d4e5/save')}>
+        <button formaction=${boundStub('a1b2c3d4e5/one')}>One</button>
+        <button formaction=${boundStub('a1b2c3d4e5/two')}>Two</button>
+      </form>`,
+      host,
+    );
+    const form = host.querySelector('form');
+    const [first, second] = host.querySelectorAll('button');
+    assert.deepEqual(
+      new FormData(form, second).getAll('__webjs_action'),
+      ['a1b2c3d4e5/save', 'a1b2c3d4e5/two'],
+      'only the pressed button of the two appears',
+    );
+    assert.deepEqual(
+      new FormData(form, first).getAll('__webjs_action'),
+      ['a1b2c3d4e5/save', 'a1b2c3d4e5/one'],
+    );
+  });
+
+  test('a submitter built by a detached nested template still binds', () => {
+    // The shape the feature exists for, a per-row action button in a list.
+    // Array and repeat() items are built DETACHED, so the button cannot reach
+    // the <form> in the parent template while it reconciles. SSR renders this
+    // perfectly, so refusing it on the client would mean a page that renders on
+    // the server and crashes on hydration.
+    const host = mount();
+    const rows = [1, 2].map((n) => html`<button formaction=${boundStub('a1b2c3d4e5/del')}>Delete ${n}</button>`);
+    render(html`<form action=${boundStub('a1b2c3d4e5/save')}>${rows}</form>`, host);
+
+    const form = host.querySelector('form');
+    const buttons = host.querySelectorAll('button');
+    assert.equal(buttons.length, 2);
+    assert.deepEqual(
+      new FormData(form, buttons[1]).getAll('__webjs_action'),
+      ['a1b2c3d4e5/save', 'a1b2c3d4e5/del'],
+      'the detached row button still submits its own action',
+    );
+  });
+
+  test('the identity never carries the action source, on the submitter path either', () => {
+    const host = mount();
+    let threw = null;
+    try {
+      render(html`<form action=${boundStub('a1b2c3d4e5/save')}><button formaction=${secretAction}>x</button></form>`, host);
+    } catch (e) { threw = e; }
+    assert.ok(threw, 'an unidentifiable submitter action must refuse');
+    assert.ok(/is not a server action/.test(threw.message), threw.message);
+    assert.ok(!document.body.innerHTML.includes('BROWSER_LEAK_MARKER'), 'no source in the document');
+  });
+
+  test('formmethod="dialog" survives on a plain submitter inside a bound form', () => {
+    // Part B refuses values that cannot submit, but a dialog dismissal never
+    // submits at all. The browser is where `button.formMethod` reflects, so
+    // this is where "we left it alone" is really observable.
+    const host = mount();
+    render(
+      html`<form action=${boundStub('a1b2c3d4e5/save')}><button formmethod="dialog">Close</button></form>`,
+      host,
+    );
+    assert.equal(host.querySelector('button').formMethod, 'dialog');
+  });
+
 });
