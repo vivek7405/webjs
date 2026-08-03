@@ -54,8 +54,8 @@ const requireFromBlog = createRequire(join(ROOT, 'examples', 'blog', 'package.js
  * `globalThis.dayjs`, which the appended line then re-exports as the default.
  * The alternative, `dayjs/esm/index.js`, is a multi-file ESM build whose
  * relative imports a `data:` URL cannot resolve. `test/repo-health/
- * e2e-vendor-stub.test.mjs` imports the emitted module and formats a date
- * through it, so a dayjs that changed its wrapper fails there rather than
+ * e2e-vendor-stub-module.test.mjs` imports the emitted module and formats a
+ * date through it, so a dayjs that changed its wrapper fails there rather than
  * silently emitting a module that exports nothing.
  *
  * @type {Record<string, (src: string) => string>}
