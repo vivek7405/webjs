@@ -30,15 +30,17 @@ test('the skill prescribes ONE reviewer, never a fleet', () => {
   // The final whole-diff pass is what a clean delta round buys, and it is
   // the reason a clean round is not by itself the end.
   assert.match(skill, /buys the FINAL review: ONE fresh reviewer over the WHOLE diff again/);
-  assert.match(skill, /A clean delta round is not the end of the cycle/);
+  assert.match(skill, /Either way a clean round is not the end of the cycle/);
   // The final review's findings end in a fix plus ONE delta check of that
   // fix, which does not re-open the cycle.
-  assert.match(skill, /ONE delta-scoped reviewer checks those fix commits alone/);
-  assert.match(skill, /the cycle ends on its result, without re-running the final review/);
-  // Two consecutive breaking fix-checks stop the cycle rather than looping.
-  assert.match(skill, /still breaking after two is signal about the change/);
+  assert.match(skill, /Its fixes get ONE delta-scoped check of those fix commits alone/);
+  assert.match(skill, /The cycle ends when that check finds nothing must-fix/);
+  assert.match(skill, /The final review is never re-run and the delta rounds are never re-entered/);
+  // A fix-check that finds something gets ONE more of the same shape, then
+  // the cycle stops unfinished rather than looping.
+  assert.match(skill, /ONE more check of the same shape, and if that one does too, stop and report the PR unfinished/);
   // A clean round 1 skips the delta rounds but still gets the final review.
-  assert.match(skill, /the minimum is two reviews/);
+  assert.match(skill, /every PR gets at least two reviews/);
 });
 
 test('the skill pins every reviewer to Opus, async, and worktree-isolated', () => {
@@ -59,9 +61,14 @@ test('the minor / must-fix call is by surface, not by importance', () => {
   assert.match(skill, /Judge by SURFACE, never by importance/);
   // Doubt resolves toward keeping the cycle open.
   assert.match(skill, /When it could go either way, it is must-fix/);
-  // A must-fix finding buys a round whether it was fixed OR rejected, since
-  // a rejection is the reviewer's own unadjudicated judgment.
-  assert.match(skill, /a REJECTED must-fix finding buys the next round exactly like a fixed one does/);
+  // Only a FIX buys a round. A rejection produces no fix commits, so a
+  // round would re-pose the same question over an unchanged head to a
+  // reviewer that is never told what was already handled, which is how the
+  // pre-final loop lost its bound when the round budget went. The refuter
+  // is what adjudicates a rejection, and it terminates in one spawn.
+  assert.match(skill, /\*\*Only a FIX buys another round\*\*/);
+  assert.match(skill, /A rejection buys one REFUTER instead, a deferral buys nothing/);
+  assert.match(skill, /what a rejection buys instead of a whole round, and it terminates: one spawn per rejection, never a refuter of a refuter/);
 });
 
 test('the removed machinery stays removed, with the reason recorded', () => {
@@ -70,16 +77,16 @@ test('the removed machinery stays removed, with the reason recorded', () => {
   assert.match(skill, /All of it is gone on purpose: termination is structural now/);
   // The fleet workflow itself is gone from the repo.
   assert.ok(!existsSync(resolve(repo, '.claude/workflows/deep-review.js')), 'the deep-review fleet workflow is back');
-  // None of the removed mechanisms may re-enter as live rules. The
-  // do-not-restore paragraph names them once each, so a second mention is
-  // the signal that one came back.
+  // None of the removed mechanisms may re-enter, as a rule or as vocabulary.
+  // The do-not-restore paragraph describes them WITHOUT these words ("two
+  // tiers", "a 5-round budget", "poll a file"), so the expected count is
+  // zero and any occurrence is a re-introduction rather than a mention.
   for (const [label, re] of [
-    ['the substantive/prose tier gate', /substantive/gi],
-    ['the round budget', /round budget/gi],
-    ['the file-polling watchdog', /watchdog/gi],
+    ['the substantive/prose tier vocabulary', /substantive/i],
+    ['the round budget', /round budget|over budget/i],
+    ['the polling watchdog', /watchdog/i],
   ]) {
-    const hits = (skill.match(re) || []).length;
-    assert.ok(hits <= 1, `${label} reappears in the skill (${hits} mentions; only the do-not-restore paragraph may name it)`);
+    assert.ok(!re.test(skill), `${label} is back in the skill`);
   }
 });
 
@@ -93,11 +100,11 @@ test('the cycle keeps the guarantees the trim was not allowed to touch', () => {
   // The blind wait is bounded SHORT and never kills. Whether there is a
   // mid-flight signal at all depends on what the spawn's output file is,
   // which is why the rule probes it rather than assuming.
-  assert.match(skill, /Check in on a SHORT timer, and never auto-kill on it/);
-  assert.match(skill, /about 2 to 3 minutes, not ten/);
+  assert.match(skill, /Check in about every 2 minutes, and NEVER kill on the timer/);
+  assert.match(skill, /What decides is GROWTH, never elapsed time/);
   // The liveness probe is byte growth on the transcript, never its words,
   // and the file may be either a live transcript or a static stub.
-  assert.match(skill, /a growing byte count means it is working/);
+  assert.match(skill, /if the byte count is rising it is working, so leave it alone however long it has run/);
   // The liveness sentence must not claim the harness status is the ONLY
   // signal while the check-in rule reads byte growth as one.
   assert.match(skill, /Only two things are evidence a reviewer is alive/);
@@ -133,8 +140,13 @@ test('the routed review directive states the same cycle as the skill', () => {
   // The judgment rule, including its fail-open direction.
   assert.match(hook, /MINOR or MUST-FIX by SURFACE, never by importance/);
   assert.match(hook, /when it could go either way it is must-fix/);
-  assert.match(hook, /ONE delta check of that fix alone, which ends the cycle/);
-  assert.match(hook, /Never report done off a round that found something must-fix/);
+  assert.match(hook, /ONE delta check of that fix alone/);
+  assert.match(hook, /Never report the PR ready off a round that found something must-fix/);
+  // The directive must resolve the fix-check case the SAME way the skill
+  // does, and must not both end the cycle and forbid reporting it.
+  assert.match(hook, /the cycle ends when that check finds nothing must-fix/);
+  assert.match(hook, /one more of the same shape before you stop and report the PR unfinished/);
+  assert.match(hook, /Only a FIX buys another round/);
   // The code-review skill's own findings are input to the cycle, not a
   // round of it.
   assert.match(hook, /auxiliary input, not as a round of it/);

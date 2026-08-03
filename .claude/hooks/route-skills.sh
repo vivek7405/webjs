@@ -179,15 +179,16 @@ fi
 # for bugs. Reviewing every change before it is marked ready is a standing
 # expectation, and a review is the CYCLE the webjs-start-work skill
 # defines: one reviewer over the whole diff, delta rounds on the fixes, a
-# final whole-diff review, then a minor-or-must-fix call. Keep this
-# directive in lockstep with that skill's shape;
-# test/hooks/review-loop-exit.test.mjs asserts both carry it.
+# final whole-diff review, then a minor-or-must-fix call. This directive and
+# the skill must not resolve a case differently, which they once did for the
+# final fix-check; test/hooks/review-loop-exit.test.mjs asserts the shared
+# wording of the rules that decide when the cycle ends.
 # code-review is a built-in Claude Code skill (no in-repo SKILL.md, so the
 # portability test that guards project skills does not cover it).
 if has '(review|audit) (the |my |this )?(pr|diff|branch|change|changes|code|commit)' \
    || has 'code ?review' \
    || has '(review|look) .{0,20}(over )?for (bug|issue|correctness|regression)'; then
-  add_match "code-review: the request is to review code. Invoke the code-review skill (it reviews the diff for correctness bugs plus reuse and simplification). A review of a PR runs the webjs-start-work review cycle, which is ONE fresh reviewer over the whole diff, never a fleet: round 1 reads the whole diff, each later round is delta-scoped to the previous round's fix commits, and the first round that surfaces nothing must-fix buys a FINAL review over the whole diff again. The code-review skill's findings feed that cycle as auxiliary input, not as a round of it. Every reviewer is spawned with the Agent tool as subagent_type general-purpose, model opus (Opus 5, never fable), run_in_background true, and isolation worktree. Judge each finding MINOR or MUST-FIX by SURFACE, never by importance: must-fix when it touches source, a test's ability to observe the defect it claims to cover, or a factual claim about runtime behavior in docs; minor for wording, naming, comment style, and nits about the review artifacts; when it could go either way it is must-fix. Must-fix findings are fixed, rejected, or deferred and buy another round; minor findings are applied without buying one. After the final review, a must-fix finding is fixed and gets ONE delta check of that fix alone, which ends the cycle. Never report done off a round that found something must-fix."
+  add_match "code-review: the request is to review code. Invoke the code-review skill (it reviews the diff for correctness bugs plus reuse and simplification). A review of a PR runs the webjs-start-work review cycle, which is ONE fresh reviewer over the whole diff, never a fleet: round 1 reads the whole diff, each later round is delta-scoped to the previous round's fix commits, and the first round that surfaces nothing must-fix buys a FINAL review over the whole diff again. The code-review skill's findings feed that cycle as auxiliary input, not as a round of it. Every reviewer is spawned with the Agent tool as subagent_type general-purpose, model opus (Opus 5, never fable), run_in_background true, and isolation worktree. Judge each finding MINOR or MUST-FIX by SURFACE, never by importance: must-fix when it touches source, a test's ability to observe the defect it claims to cover, or a factual claim about runtime behavior in docs; minor for wording, naming, comment style, and nits about the review artifacts; when it could go either way it is must-fix. Only a FIX buys another round, since only a fix changed the branch; a rejection buys one refuter instead, and a deferral and a minor finding buy nothing. After the final review, a must-fix finding is fixed and gets ONE delta check of that fix alone; the cycle ends when that check finds nothing must-fix, and a check that does find something gets one more of the same shape before you stop and report the PR unfinished. Never report the PR ready off a round that found something must-fix."
 fi
 
 # --- verify: prove the change works by running the app ------------------
