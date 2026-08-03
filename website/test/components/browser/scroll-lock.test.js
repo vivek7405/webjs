@@ -173,6 +173,13 @@ function stubMatchMedia(getMatches) {
   return restore;
 }
 
+/**
+ * The drawer only locks BELOW its 900px breakpoint, since above it the sidebar
+ * is an ordinary sticky column and locking the page would be a bug. The runner
+ * window is wider than that and cannot be resized from inside the page, so the
+ * media query is stubbed to report a match. That is the one seam here; the lock
+ * itself is the real module, and the assertions are about real document state.
+ */
 suite('drawer scroll lock wiring', () => {
   let drawer;
   let restoreMatchMedia;
@@ -255,8 +262,11 @@ suite('drawer scroll lock across the breakpoint', () => {
   });
 
   teardown(() => {
-    restoreMatchMedia();
+    // Order matters: the drawer must disconnect while the stub is still
+    // installed, or its unsubscribe lands on a stub that is no longer there and
+    // a leaked media listener would go unnoticed.
     drawer.remove();
+    restoreMatchMedia();
     for (let i = 0; i < 5; i++) unlockScroll();
     document.body.style.overflow = '';
   });
@@ -277,15 +287,43 @@ suite('drawer scroll lock across the breakpoint', () => {
     assert.equal(count(), 0, 'and the shared refcount is back to zero');
   });
 
-  test('a rotate to landscape while open still releases on disconnect', async () => {
+  test('close-then-disconnect after a rotate leaves nothing held', async () => {
+    // The disconnect case that actually discriminates. Disconnecting while
+    // still `open` was already released by the old code, so asserting that
+    // proves nothing. Here the drawer is CLOSED after the rotate, which is
+    // exactly where the old code stranded the lock: its release was skipped on
+    // close, and its disconnect release was keyed on `open` so it did not fire
+    // either.
     drawer.open = true;
     await drawer.updateComplete;
     narrow = false;
-    drawer.remove();           // a client-router swap away from the docs
+    drawer.open = false;
+    await drawer.updateComplete;
+    drawer.remove();
     await new Promise((r) => requestAnimationFrame(() => r()));
 
     assert.ok(!locked(), 'the page is scrollable again');
     assert.equal(count(), 0, 'and the shared refcount is back to zero');
+  });
+
+  test('a wide-viewport open that is never locked does not over-release on disconnect', async () => {
+    // The other half of the hazard. The shared refcount is global, so a
+    // disconnect that unlocks without ever having locked decrements somebody
+    // else's hold. Simulated with a concurrent holder standing in for an open
+    // <ui-dialog>.
+    narrow = false;
+    drawer.open = true;              // wide open: no lock is taken
+    await drawer.updateComplete;
+
+    lockScroll();                    // a dialog opens and takes the page
+    assert.ok(locked(), 'the other holder has the page');
+
+    drawer.remove();                 // the drawer goes away
+    await new Promise((r) => requestAnimationFrame(() => r()));
+
+    assert.ok(locked(), "the other holder's lock survives the drawer's teardown");
+    assert.equal(count(), 1, 'refcount still reflects exactly the one real holder');
+    unlockScroll();
   });
 
   test('rotating to landscape releases the lock with no other interaction', async () => {
@@ -320,7 +358,53 @@ suite('drawer scroll lock across the breakpoint', () => {
     assert.equal(count(), 1, 'exactly one hold, not a double-take');
   });
 
+  test('re-entering the document with open still set re-takes the lock', async () => {
+    // disconnectedCallback releases and clears the held flag, so a re-insert
+    // (a DOM move, or any swap that re-inserts rather than morphs) comes back
+    // rendering open at a narrow viewport. Without a re-sync on connect the
+    // page would be scrollable underneath an open drawer.
+    drawer.open = true;
+    await drawer.updateComplete;
+    assert.ok(locked(), 'locked before the move');
+
+    drawer.remove();
+    await new Promise((r) => requestAnimationFrame(() => r()));
+    assert.ok(!locked(), 'released while detached');
+
+    document.body.appendChild(drawer);
+    await drawer.updateComplete;
+    assert.ok(drawer.open, 'still rendering open');
+    assert.ok(locked(), 'and the lock is re-taken on reconnect');
+    assert.equal(count(), 1, 'exactly once');
+  });
+
+  test('it unsubscribes from the media query on disconnect', async () => {
+    // The keydown leak has its own behavioural test; this is the same hazard on
+    // the query listener, which teardown ordering previously hid.
+    let live = 0;
+    const realMM = window.matchMedia;
+    window.matchMedia = (q) => ({
+      get matches() { return narrow; },
+      media: q,
+      addEventListener() { live++; },
+      removeEventListener() { live--; },
+      addListener() {}, removeListener() {}, dispatchEvent() { return false; },
+    });
+    const probe = document.createElement('docs-drawer');
+    document.body.appendChild(probe);
+    await probe.updateComplete;
+    assert.equal(live, 1, 'connecting subscribes to the query');
+    probe.remove();
+    await new Promise((r) => requestAnimationFrame(() => r()));
+    assert.equal(live, 0, 'disconnecting unsubscribes');
+    window.matchMedia = realMM;
+  });
+
   test('opening above the breakpoint never takes the lock at all', async () => {
+    // A guard on the surrounding behaviour rather than on this fix: the old
+    // implementation early-returned on a non-matching query and passed this
+    // too. Kept because the take is still conditional and a future change that
+    // dropped the condition would make the sidebar lock the page on desktop.
     narrow = false;
     drawer.open = true;
     await drawer.updateComplete;

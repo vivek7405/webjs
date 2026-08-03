@@ -1,5 +1,6 @@
 import { WebComponent, prop, html, createRef, ref } from '@webjsdev/core';
 import { lockScroll, unlockScroll } from '#lib/scroll-lock.ts';
+import { escapeBelongsToField } from '#lib/escape-target.ts';
 
 /**
  * `<docs-drawer>`: the sidebar shell shared by /docs and /ui, and the mobile
@@ -102,20 +103,28 @@ export class DocsDrawer extends WebComponent({
     // dies with it and needs no cleanup. A navigation from /docs/a to /docs/b
     // MORPHS the layout and keeps the element alive, which is the case this
     // listener exists for.
+    //
+    // webjs:navigate alone covers Back and Forward too: the router's popstate
+    // handler routes through performNavigation, which dispatches it
+    // (@webjsdev/core/src/router-client.js). A second popstate listener here
+    // would just fire this twice per back navigation.
     document.addEventListener('webjs:navigate', this._onNavigate);
-    window.addEventListener('popstate', this._onNavigate);
     // Crossing the breakpoint changes whether this drawer should be holding the
     // page scroll, and it fires no property update, so `updated()` alone would
     // never re-evaluate. A phone rotated to landscape with the drawer open is
     // the ordinary way to reach that state, not a corner case.
     this._mql = window.matchMedia(DRAWER_MEDIA);
     this._mql.addEventListener('change', this._onMediaChange);
+    // Re-entering the document with `open` still reflected has to re-take the
+    // lock. disconnectedCallback released it and cleared _holdsLock, so without
+    // this a drawer that is moved or re-inserted comes back rendering open at a
+    // narrow viewport with the page scrollable underneath it.
+    this.syncScrollLock();
   }
 
   disconnectedCallback() {
     document.removeEventListener('keydown', this._onKeydown, true);
     document.removeEventListener('webjs:navigate', this._onNavigate);
-    window.removeEventListener('popstate', this._onNavigate);
     this._mql?.removeEventListener('change', this._onMediaChange);
     this._mql = undefined;
     // Release the page scroll if this element is torn out while holding it (a
@@ -128,14 +137,17 @@ export class DocsDrawer extends WebComponent({
 
   private handleKeydown(e: KeyboardEvent) {
     if (e.key !== 'Escape' || !this.open) return;
-    // Escape has a NATIVE meaning inside a text field, and the docs render
-    // <doc-search> into this drawer's aside-top slot, so the first Escape a
-    // reader presses is often meant for the search box they are typing in.
-    // Consuming it there would clear neither the field nor their expectation:
-    // it would swallow the native clear, shut the drawer, and move focus.
-    // Once the field is empty there is nothing native left to do, so Escape
-    // falls through to closing, which is the second press.
-    if (this.escapeBelongsToField(e.target)) return;
+    // The docs render <doc-search> into this drawer's aside-top slot, and
+    // Escape natively clears a non-empty search box, so the first press is
+    // often meant for the field rather than for the drawer. Consuming it there
+    // would swallow the clear, shut the drawer, and move focus.
+    //
+    // Deliberately WITHOUT preventDefault. Suppressing the default is exactly
+    // what would cancel the native clear this branch exists to protect. The
+    // header menu is kept from dismissing on the same press by applying the
+    // SAME rule from #lib/escape-target.ts rather than by a defaultPrevented
+    // flag, which is why that rule lives in a shared module instead of here.
+    if (escapeBelongsToField(e.target)) return;
     this.close();
     // Tells <site-nav-menu> this Escape is spoken for, so one press does not
     // close both surfaces.
@@ -143,25 +155,6 @@ export class DocsDrawer extends WebComponent({
     // Focus returns to the control that opened this, not to whatever the header
     // menu would have focused.
     this._toggleRef.value?.focus();
-  }
-
-  /**
-   * Whether this Escape press belongs to a text field the reader is editing,
-   * rather than to the drawer.
-   *
-   * Only a NON-EMPTY field claims it: an empty search box has nothing to clear,
-   * so letting it swallow Escape would leave a keyboard user with no way to
-   * dismiss the drawer at all without first moving focus out of it.
-   */
-  private escapeBelongsToField(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLElement) || !this.contains(target)) return false;
-    if (target instanceof HTMLTextAreaElement) return target.value !== '';
-    if (target instanceof HTMLInputElement) {
-      // A checkbox or a button-like input has no text to clear.
-      const textual = /^(text|search|url|tel|email|password|number)$/.test(target.type);
-      return textual && target.value !== '';
-    }
-    return target.isContentEditable && target.textContent !== '';
   }
 
   /**

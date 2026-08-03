@@ -228,6 +228,55 @@ suite('docs drawer', () => {
     assert.ok(!ev.defaultPrevented, 'and the native clear is not suppressed');
   });
 
+  test('Escape inside a TEXT input still closes the drawer', async () => {
+    // The deferral rule is deliberately narrow. Measured in Chromium with real
+    // key presses, Escape clears an input[type=search] and does NOTHING to an
+    // input[type=text] or a textarea. Deferring in a field where Escape is
+    // inert would be a trap: nothing native ever empties the value, so the
+    // guard would keep claiming every press and the drawer would become
+    // permanently undismissable by keyboard while focus stayed there.
+    const field = document.createElement('input');
+    field.type = 'text';
+    field.slot = 'aside-top';
+    field.value = 'still typing';
+    drawer.appendChild(field);
+    await drawer.updateComplete;
+
+    toggle().click();
+    await drawer.updateComplete;
+    field.focus();
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await drawer.updateComplete;
+
+    assert.ok(!drawer.open, 'a text input never claims Escape, so the drawer closes');
+  });
+
+  test('deferring to the search field does not dismiss the header menu either', async () => {
+    // Both surfaces apply the SAME rule from #lib/escape-target.ts. If only the
+    // drawer deferred, the menu's bubble listener would see an unclaimed press
+    // and close, so clearing a search box would cost the reader the header menu.
+    // preventDefault cannot be used to signal this: it would cancel the very
+    // native clear the deferral protects.
+    const field = document.createElement('input');
+    field.type = 'search';
+    field.slot = 'aside-top';
+    field.value = 'routing';
+    drawer.appendChild(field);
+    await drawer.updateComplete;
+
+    toggle().click();
+    await drawer.updateComplete;
+    menu.open = true;
+    await menu.updateComplete;
+
+    field.focus();
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await Promise.all([drawer.updateComplete, menu.updateComplete]);
+
+    assert.ok(drawer.open, 'the drawer stays open');
+    assert.ok(menu.open, 'and so does the header menu');
+  });
+
   test('Escape inside an EMPTY search field still closes the drawer', async () => {
     // Otherwise a keyboard user whose focus is in the search box has no way to
     // dismiss the drawer at all without first tabbing out of it.

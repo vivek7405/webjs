@@ -1,5 +1,6 @@
 import { WebComponent, prop, html, createRef, ref } from '@webjsdev/core';
 import { live } from '@webjsdev/core/directives';
+import { escapeBelongsToField } from '#lib/escape-target.ts';
 
 /**
  * `<site-nav-menu>`: the header's mobile navigation menu.
@@ -66,19 +67,22 @@ export class SiteNavMenu extends WebComponent({
     // know the other exists.
     document.addEventListener('keydown', this._onKeydown);
     // A link click already closes this via handleDocClick, but that is only the
-    // commonest way to navigate. Back / Forward and a programmatic navigate()
+    // commonest way to navigate. A programmatic navigate(), and Back or Forward,
     // produce no click at all, and this element lives in the ROOT layout, so it
     // is the one thing on the page guaranteed to survive every client-router
-    // swap: without these it stays open over whatever page it lands on.
+    // swap: without this it stays open over whatever page it lands on.
+    //
+    // One listener covers all of them. The router's popstate handler routes
+    // through performNavigation, which dispatches webjs:navigate
+    // (@webjsdev/core/src/router-client.js), so subscribing to popstate as well
+    // would only fire this twice per back navigation.
     document.addEventListener('webjs:navigate', this._onNavigate);
-    window.addEventListener('popstate', this._onNavigate);
   }
 
   disconnectedCallback() {
     document.removeEventListener('click', this._onDocClick);
     document.removeEventListener('keydown', this._onKeydown);
     document.removeEventListener('webjs:navigate', this._onNavigate);
-    window.removeEventListener('popstate', this._onNavigate);
     super.disconnectedCallback();
   }
 
@@ -106,6 +110,10 @@ export class SiteNavMenu extends WebComponent({
     if (e.key !== 'Escape' || !this.open) return;
     // Another surface already consumed this Escape (the docs drawer).
     if (e.defaultPrevented) return;
+    // The same deferral rule the drawer applies, from the one shared module.
+    // Both surfaces have to agree: if only one defers to the field, the reader
+    // clears their search box and loses this menu in the same press.
+    if (escapeBelongsToField(e.target)) return;
     this.open = false;
     this._summaryRef.value?.focus();
   }

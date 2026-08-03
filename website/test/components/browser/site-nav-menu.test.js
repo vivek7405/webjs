@@ -138,42 +138,58 @@ suite('site nav menu', () => {
     assert.ok(menu.open, 'the menu ignores an Escape that was already handled');
   });
 
-  test('it subscribes to both navigation signals, and unsubscribes on disconnect', async () => {
-    // A link click closes it via the outside/link path, but Back, Forward, and
-    // a programmatic navigate() produce no click at all. This element lives in
-    // the ROOT layout, so it survives every client-router swap and would
-    // otherwise stay open over the page it lands on.
+  test('it subscribes to the navigation signal with a stable handler, and unsubscribes', async () => {
+    // A link click closes it via the outside/link path, but a programmatic
+    // navigate(), and Back or Forward, produce no click at all. This element
+    // lives in the ROOT layout, so it survives every client-router swap and
+    // would otherwise stay open over the page it lands on.
     //
-    // Asserted as a subscription contract rather than by dispatching a
-    // synthetic PopStateEvent, because synthetic popstate delivery is not
-    // reliable in this runner (a control listener receives it while a listener
-    // registered from module code does not). The handler's BEHAVIOUR is covered
-    // by the webjs:navigate case below, which shares the same function.
+    // ONE signal covers all of them: the router's popstate handler routes
+    // through performNavigation, which dispatches webjs:navigate. Subscribing
+    // to popstate as well would double-fire, so this asserts it does NOT.
+    //
+    // The recorded FUNCTION is compared, not just the event name. Removing a
+    // different function object than the one added is the classic listener
+    // leak, and a name-only assertion passes straight through it.
     const added = [];
     const removed = [];
+    let addedFn;
+    let removedFn;
     const realWinAdd = window.addEventListener.bind(window);
     const realWinRemove = window.removeEventListener.bind(window);
     const realDocAdd = document.addEventListener.bind(document);
     const realDocRemove = document.removeEventListener.bind(document);
     window.addEventListener = (t, f, o) => { added.push('window:' + t); return realWinAdd(t, f, o); };
     window.removeEventListener = (t, f, o) => { removed.push('window:' + t); return realWinRemove(t, f, o); };
-    document.addEventListener = (t, f, o) => { added.push('document:' + t); return realDocAdd(t, f, o); };
-    document.removeEventListener = (t, f, o) => { removed.push('document:' + t); return realDocRemove(t, f, o); };
+    document.addEventListener = (t, f, o) => {
+      added.push('document:' + t);
+      if (t === 'webjs:navigate') addedFn = f;
+      return realDocAdd(t, f, o);
+    };
+    document.removeEventListener = (t, f, o) => {
+      removed.push('document:' + t);
+      if (t === 'webjs:navigate') removedFn = f;
+      return realDocRemove(t, f, o);
+    };
 
-    const probe = document.createElement('site-nav-menu');
-    document.body.appendChild(probe);
-    await probe.updateComplete;
-    probe.remove();
-
-    window.addEventListener = realWinAdd;
-    window.removeEventListener = realWinRemove;
-    document.addEventListener = realDocAdd;
-    document.removeEventListener = realDocRemove;
-
-    for (const sig of ['window:popstate', 'document:webjs:navigate']) {
-      assert.ok(added.includes(sig), `connecting subscribes to ${sig}`);
-      assert.ok(removed.includes(sig), `disconnecting unsubscribes from ${sig}`);
+    try {
+      const probe = document.createElement('site-nav-menu');
+      document.body.appendChild(probe);
+      await probe.updateComplete;
+      probe.remove();
+    } finally {
+      // Restored in a finally: a throw here would otherwise leave window and
+      // document patched for every remaining test in this file.
+      window.addEventListener = realWinAdd;
+      window.removeEventListener = realWinRemove;
+      document.addEventListener = realDocAdd;
+      document.removeEventListener = realDocRemove;
     }
+
+    assert.ok(added.includes('document:webjs:navigate'), 'connecting subscribes to webjs:navigate');
+    assert.ok(removed.includes('document:webjs:navigate'), 'disconnecting unsubscribes from it');
+    assert.ok(addedFn && addedFn === removedFn, 'the SAME function object is removed, so nothing leaks');
+    assert.ok(!added.includes('window:popstate'), 'and popstate is not subscribed twice over for the same signal');
   });
 
   test('a programmatic soft navigation closes it', async () => {
