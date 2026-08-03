@@ -360,6 +360,28 @@ suite('docs drawer', () => {
     assert.ok(!drawer.open, 'the drawer closes on webjs:navigate');
   });
 
+  test('a popstate closes it', async () => {
+    toggle().click();
+    await drawer.updateComplete;
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await drawer.updateComplete;
+    assert.ok(!drawer.open, 'popstate closes the drawer');
+  });
+
+  test('before-cache leaves NO open state in the serialized snapshot', async () => {
+    // Same synchronous-snapshot contract as the header menu. The drawer's
+    // visual state is driven by the reflected host attribute, which the CSS
+    // selects on, so this passes only if that reflection really is synchronous.
+    toggle().click();
+    await drawer.updateComplete;
+    assert.ok(drawer.hasAttribute('open'), 'open before the snapshot');
+
+    document.dispatchEvent(new CustomEvent('webjs:before-cache', { detail: { url: location.href } }));
+    const serialized = drawer.outerHTML;
+
+    assert.ok(!/<docs-drawer[^>]*\sopen/.test(serialized), 'the serialized host is not open');
+  });
+
   test('it stops answering Escape once removed from the document', async () => {
     // The delegated version could not do this: its listeners were registered
     // once by an inline script and lived for the tab. A component that failed

@@ -46,8 +46,29 @@ export class SiteNavMenu extends WebComponent({
   private _onKeydown = (e: KeyboardEvent) => this.handleKeydown(e);
   private _onNavigate = () => { this.open = false; };
 
+  /**
+   * Dismissal for the snapshot path, which has a stricter timing contract than
+   * the others.
+   *
+   * The router dispatches webjs:before-cache and reads
+   * documentElement.outerHTML on the very NEXT statement, so only a synchronous
+   * mutation is captured. Setting the reactive property reflects the host
+   * attribute at once, but the <details ?open> binding is a render-time write
+   * committed a microtask later, and the details element is what actually shows
+   * the panel and drives the icon swap. Property-only would therefore serialize
+   * an open menu and a forward restore would bring it back.
+   */
+  private _onBeforeCache = () => {
+    this.open = false;
+    const details = this._detailsRef.value;
+    if (details) details.open = false;
+  };
+
   /** The summary, for focus restoration after an Escape dismiss. */
   private _summaryRef = createRef<HTMLElement>();
+
+  /** The details, needed for the synchronous close on webjs:before-cache. */
+  private _detailsRef = createRef<HTMLDetailsElement>();
 
   constructor() {
     super();
@@ -74,7 +95,7 @@ export class SiteNavMenu extends WebComponent({
     //
     // popstate is NOT redundant with webjs:navigate, despite appearances.
     // On a back/forward with a snapshot cache HIT, performNavigation calls
-    // applySwap and RETURNS (router-client.js:1235). The webjs:navigate
+    // applySwap (router-client.js:1225) and RETURNS a few lines later. The webjs:navigate
     // dispatch lives at the end of fetchAndApply (router-client.js:2349), which
     // on that path runs only as a fire-and-forget revalidation whose failure is
     // swallowed, which a newer navigation can supersede, and which is skipped
@@ -87,7 +108,7 @@ export class SiteNavMenu extends WebComponent({
     // into the snapshot and a forward restore brings the surface back open.
     document.addEventListener('webjs:navigate', this._onNavigate);
     window.addEventListener('popstate', this._onNavigate);
-    document.addEventListener('webjs:before-cache', this._onNavigate);
+    document.addEventListener('webjs:before-cache', this._onBeforeCache);
   }
 
   disconnectedCallback() {
@@ -95,7 +116,7 @@ export class SiteNavMenu extends WebComponent({
     document.removeEventListener('keydown', this._onKeydown);
     document.removeEventListener('webjs:navigate', this._onNavigate);
     window.removeEventListener('popstate', this._onNavigate);
-    document.removeEventListener('webjs:before-cache', this._onNavigate);
+    document.removeEventListener('webjs:before-cache', this._onBeforeCache);
     super.disconnectedCallback();
   }
 
@@ -140,6 +161,7 @@ export class SiteNavMenu extends WebComponent({
            dead space beside the theme toggle on every desktop page. -->
       <details
         class="mobile-menu relative"
+        ${ref(this._detailsRef)}
         ?open=${live(this.open)}
         @toggle=${(e: Event) => { this.open = (e.target as HTMLDetailsElement).open; }}
       >

@@ -195,6 +195,35 @@ suite('site nav menu', () => {
     assert.ok(!menu.open, 'webjs:navigate closes the menu');
   });
 
+  test('a popstate closes it', async () => {
+    // A cached back/forward applies the swap and returns before webjs:navigate
+    // is dispatched, so popstate is the only timely signal on that path.
+    await clickSummary();
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await menu.updateComplete;
+    assert.ok(!menu.open, 'popstate closes the menu');
+  });
+
+  test('before-cache leaves NO open state in the serialized snapshot', async () => {
+    // The router dispatches webjs:before-cache synchronously and reads
+    // documentElement.outerHTML on the very next statement, so a handler's
+    // mutation only counts if it lands SYNCHRONOUSLY. Setting the reactive
+    // property reflects the host attribute at once, but the <details ?open>
+    // binding is committed on the next render, one microtask later. The details
+    // element is what actually shows the panel and drives the icon swap, so a
+    // handler that only sets the property serializes an OPEN menu and a forward
+    // restore brings it back.
+    await clickSummary();
+    assert.ok(menu.querySelector('details').open, 'open before the snapshot');
+
+    document.dispatchEvent(new CustomEvent('webjs:before-cache', { detail: { url: location.href } }));
+    // Read exactly the way snapshotCurrent does: no await in between.
+    const serialized = menu.outerHTML;
+
+    assert.ok(!/<details[^>]*\sopen/.test(serialized), 'the serialized details is not open');
+    assert.ok(!/<site-nav-menu[^>]*\sopen/.test(serialized), 'and neither is the host');
+  });
+
   test('it stops answering document events once removed', async () => {
     const detached = document.createElement('site-nav-menu');
     document.body.appendChild(detached);

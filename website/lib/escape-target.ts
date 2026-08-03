@@ -34,10 +34,15 @@
  * containing it. One press, one effect, which is the behaviour worth having.
  */
 export function escapeBelongsToField(target: EventTarget | null): boolean {
-  // composedPath()[0] rather than `target` at the call site: an event crossing a
-  // shadow boundary is RETARGETED to the host, so a search field inside any
-  // shadow-DOM component would report the host here and the rule would answer
-  // false. Callers pass the composed target; this stays a pure predicate.
+  // Callers pass the COMPOSED target (see composedTarget below), because an
+  // event crossing an open shadow boundary is retargeted to the host and a
+  // search field inside a shadow component would otherwise answer false here.
+  // This stays a pure predicate over whatever node it is handed.
+  //
+  // readOnly is excluded for the same reason text inputs are: Blink will not
+  // clear it, so deferring there never ends. disabled is belt and braces rather
+  // than a live case, since a disabled input cannot be focused and so never
+  // receives a real key press.
   return target instanceof HTMLInputElement
     && target.type === 'search'
     && !target.readOnly
@@ -50,8 +55,14 @@ export function escapeBelongsToField(target: EventTarget | null): boolean {
  *
  * `event.target` is retargeted at every shadow boundary, so it reports the host
  * rather than the field the reader is actually typing in. `composedPath()[0]`
- * is the real origin, and it falls back to `target` for an event that does not
- * carry a path.
+ * is the real origin, and it falls back to `target` for an event that carries
+ * no path.
+ *
+ * KNOWN LIMIT. This recovers the origin across an OPEN shadow root only. A
+ * `mode: 'closed'` root is omitted from the composed path by design, so a
+ * search field inside one still reports its host and the rule answers false for
+ * it. There is no way around that from outside the closed root, and nothing on
+ * this site uses one, so it is recorded rather than worked around.
  */
 export function composedTarget(event: Event): EventTarget | null {
   const path = typeof event.composedPath === 'function' ? event.composedPath() : [];

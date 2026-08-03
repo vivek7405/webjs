@@ -106,7 +106,7 @@ export class DocsDrawer extends WebComponent({
     //
     // popstate is NOT redundant with webjs:navigate, despite appearances.
     // On a back/forward with a snapshot cache HIT, performNavigation calls
-    // applySwap and RETURNS (router-client.js:1235). The webjs:navigate
+    // applySwap (router-client.js:1225) and RETURNS a few lines later. The webjs:navigate
     // dispatch lives at the end of fetchAndApply (router-client.js:2349), which
     // on that path runs only as a fire-and-forget revalidation whose failure is
     // swallowed, which a newer navigation can supersede, and which is skipped
@@ -164,7 +164,7 @@ export class DocsDrawer extends WebComponent({
     // The rule is document-wide, not scoped to this element, so a non-empty
     // search box ANYWHERE holds the press, not only the <doc-search> in the
     // aside-top slot. That is a widening over the pre-refactor behaviour and it
-    // is deliberate; the reasoning is in the shared module.
+    // is deliberate, and the reasoning is in the shared module.
     if (escapeBelongsToField(composedTarget(e))) return;
     this.close();
     // Tells <site-nav-menu> this Escape is spoken for, so one press does not

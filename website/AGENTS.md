@@ -264,6 +264,15 @@ is the only timely signal there, and `webjs:before-cache` strips the open state
 before the snapshot is serialized so a forward restore does not bring the
 surface back open.
 
+`webjs:before-cache` carries a timing trap worth knowing. The router dispatches
+it synchronously and reads `documentElement.outerHTML` on the very next
+statement, so ONLY a synchronous mutation is captured. Setting a reactive
+property is not enough on its own where the visible state lives on a CHILD
+element: the host attribute reflects at once, but a template binding on that
+child is committed a microtask later and misses the snapshot entirely. The
+drawer is fine because its CSS selects the reflected host attribute, while the
+header menu has to close its `<details>` element directly in the handler.
+
 ## How to update headline / hero copy
 
 `app/page.ts`: the hero block is at the top of the default-exported
