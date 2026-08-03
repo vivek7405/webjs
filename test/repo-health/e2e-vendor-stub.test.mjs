@@ -11,6 +11,8 @@
  * finds no `exports`, no `module`, and no AMD `define`, so it takes its global
  * branch and the appended line re-exports that. If a future dayjs changed its
  * wrapper the map would still look right and the module would export nothing.
+ * Proving that end to end means importing the emitted `data:` URL, which Bun
+ * cannot do, so it lives in `e2e-vendor-stub-module.test.mjs` on its own.
  *
  * The other property is the refusal. The stub answers ONLY what it can serve
  * from this repo and passes everything else through, because answering with a
@@ -54,19 +56,13 @@ test('an install string yields its package name and subpath', () => {
   assert.equal(subpath('dayjs'), '');
 });
 
-test('a known package resolves to a data: URL that really is a working module', async () => {
+test('a known package resolves to a data: URL', async () => {
   const res = await generate(['dayjs@1.11.21']);
   assert.equal(res.status, 200, 'the stub answered rather than passing through');
   const body = await res.json();
-  const target = body.map.imports.dayjs;
-  assert.match(target, /^data:text\/javascript;base64,/);
-
-  // The whole point of the UMD wrap. A map naming a module that exports
-  // nothing would still pass every structural check above and would still
-  // leave the page unhydrated.
-  const mod = await import(target);
-  assert.equal(typeof mod.default, 'function');
-  assert.equal(mod.default(1735689600000).format('MMM D, YYYY'), 'Jan 1, 2025');
+  assert.match(body.map.imports.dayjs, /^data:text\/javascript;base64,/);
+  // That the emitted module actually EXPORTS anything is asserted in
+  // e2e-vendor-stub-module.test.mjs, which is node-only (see the note there).
 });
 
 test('anything the repo cannot serve passes through to the real API', async () => {
