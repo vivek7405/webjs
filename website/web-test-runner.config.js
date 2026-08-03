@@ -43,7 +43,18 @@ export default {
   files: ['test/**/browser/**/*.test.js'],
   nodeResolve: true,
   plugins: [stripTypesPlugin()],
-  browsers: [playwrightLauncher({ product: 'chromium' })],
+  // Playwright launches headless browsers with `--hide-scrollbars`, which makes
+  // every scrollbar zero-width. That hides a whole class of real layout bug:
+  // #1147 (the docs drawer's scroll lock shifting the fixed site header) only
+  // reproduces when the scrollbar takes LAYOUT WIDTH, so under the default flag
+  // the regression test would pass vacuously and prove nothing. The root
+  // web-test-runner.config.js drops the flag for the same reason (#1144).
+  browsers: [
+    playwrightLauncher({
+      product: 'chromium',
+      launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] },
+    }),
+  ],
   testFramework: {
     config: { ui: 'tdd', timeout: 10000 },
   },
