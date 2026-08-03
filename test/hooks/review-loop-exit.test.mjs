@@ -111,6 +111,10 @@ test('the cycle keeps the guarantees the trim was not allowed to touch', () => {
   // mid-flight signal at all depends on what the spawn's output file is,
   // which is why the rule probes it rather than assuming.
   assert.match(skill, /Check in about every 2 minutes, and NEVER kill on the timer/);
+  // A foreground wait defeats the whole reason the reviewer is spawned in
+  // the background, so the check-in itself must not block the turn.
+  assert.match(skill, /The check-in must NEVER block your turn/);
+  assert.match(skill, /Run it as a BACKGROUND command, never a foreground `sleep`/);
   assert.match(skill, /What decides is GROWTH, never elapsed time/);
   // The liveness probe is byte growth on the transcript, never its words,
   // and the file may be either a live transcript or a static stub.
