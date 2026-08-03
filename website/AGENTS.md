@@ -56,8 +56,12 @@ website/
     preview-tabs.ts    Preview / Code toggle around a gallery demo
                        (components/ui/ is intentionally EMPTY here, left free
                        for `webjs ui add` to own, exactly as the scaffold
-                       expects. The gallery's preview copies live in
-                       modules/ui/components/ instead, see below.)
+                       expects, and gitignored so it stays that way. The
+                       gallery's preview copies live in modules/ui/components/
+                       instead, see below. Enforced by
+                       test/ssr/kit-surfaces.test.ts, because eleven copies of
+                       that mirror were once committed here by accident and
+                       sat unimported until someone read the directory.)
   lib/
     design/            the design system, one subsystem in one folder
       recipes.ts       class recipes + the scale (BTN_*, EYEBROW, layout widths)
@@ -163,14 +167,17 @@ is split by editorial intent, which is what decides where a piece goes:
   live content queries, so a new article, comparison, or post needs no
   edit to those files.
 
-## Announcement banner
+## Header
 
-The layout (`app/layout.ts`) renders a top-of-page announcement strip
-just above the sticky header: a small utility-class `<div>` with a "New"
-badge and a link (currently the `UI_PATH` link, "Introducing the AI-first
-component library"). To swap the announcement, edit that `<div>` (its copy
-and the link `href`). The banner shows on every page. Remove the `<div>`
-to hide it.
+`app/layout.ts` renders the site header on every page. It is
+`position: fixed`, NOT sticky: a sticky header flickers on iOS WebKit during
+a client-router navigation (#610), so the height is reserved on the content
+through a `--header-h` offset, measured by the inline script in the layout
+head and defaulted on `:root` for no-JS and first paint.
+
+There is no announcement banner. One used to sit above the header, and
+`--header-h` is why its removal is not free: re-adding a strip means the
+measurement has to cover it too.
 
 ## How to update headline / hero copy
 
@@ -197,6 +204,16 @@ calling an action), re-enable it and delete the assertion in
 
 - Light DOM, Tailwind utilities, `@theme` tokens from the root layout
   (same palette / type scale as the blog and docs).
+- **Each per-theme colour is declared ONCE, as `light-dark(LIGHT, DARK)`**,
+  and the three `color-scheme` declarations in `app/layout.ts` pick the side
+  (the default follows the OS; the toggle's `[data-theme]` forces one). This
+  is the rule the framework teaches its own users, in the skill at
+  `.agents/skills/webjs/references/styling.md`. A token that is NOT a colour
+  (`--glow-strength`, `--cta-mix`, `--shadow-spread`) cannot ride
+  `light-dark()`, so it keeps an explicit override pair: the OS media query
+  plus the attribute rule. Nothing else may. The same rule governs the
+  `.ui-preview` kit palette in `public/input.css`. Both are pinned by
+  `test/ssr/design-tokens.test.ts` and `test/ssr/kit-surfaces.test.ts`.
 - Each section in `page.ts` is a `<section>` wrapper for predictable
   scroll anchors.
 - **Code blocks follow three accessibility rules.** `test/ssr/pre-block-a11y.test.ts`
