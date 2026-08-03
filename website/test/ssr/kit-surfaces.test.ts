@@ -65,6 +65,10 @@ test('.ui-preview keeps no duplicate dark block', () => {
  * this asserts the rule itself.
  */
 test('no colour is declared under a per-theme selector anywhere', () => {
+  // modules/ is deliberately absent: its only subtree is the gitignored
+  // modules/ui/components/ mirror of the @webjsdev/ui registry, which is the
+  // kit's code rather than this site's, and modules/ui/utils holds no CSS.
+  // Add it here the moment a feature module starts writing styles.
   const files = [
     'public/input.css',
     ...['app', 'lib', 'components'].flatMap(function walk(dir: string): string[] {
