@@ -1395,11 +1395,14 @@ export async function checkConventions(appDir) {
         // with no hole in it. That distinction is the whole carve-out: the
         // framework's own website renders this exact shape as a code sample.
         const { redacted, literals } = redactToPlaceholders(content);
-        // A hole binds a form when the literal segment IMMEDIATELY before it
-        // ends inside a `<form ...` start tag at `action=`. Reading the segment
-        // rather than the whole template is what keeps `<div action=${x}>` and
-        // a `formaction=` on a button out: both are refused at render time, and
-        // neither is this rule's failure mode.
+        // A hole binds an action when the literal segment IMMEDIATELY before it
+        // ends inside a start tag at the attribute that tag can really bind:
+        // `action=` on a `<form>` (#1155), or `formaction=` on a `<button>` /
+        // `<input>` submitter (#1207). Reading the segment rather than the whole
+        // template is what keeps `<div action=${x}>` out. The tag and the
+        // attribute are matched as a PAIR, so `<form formaction=${x}>` and
+        // `<button action=${x}>` stay out too: both are refused at render time,
+        // and neither is this rule's failure mode.
         const bound = new Set();
         for (const m of redacted.matchAll(/__STR_(\d+)__\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g)) {
           const before = literals[Number(m[1])] || '';
@@ -1409,8 +1412,9 @@ export async function checkConventions(appDir) {
           if (tagAt < 0) continue;
           const tag = before.slice(tagAt);
           if (tag.includes('>')) continue;
-          if (!/^<(?:form|button|input)\b/i.test(tag)) continue;
-          if (!/\s(?:action|formaction)=$/i.test(tag)) continue;
+          const bindsForm = /^<form\b/i.test(tag) && /\saction=$/i.test(tag);
+          const bindsSubmitter = /^<(?:button|input)\b/i.test(tag) && /\sformaction=$/i.test(tag);
+          if (!bindsForm && !bindsSubmitter) continue;
           bound.add(m[2]);
         }
         if (!bound.size) continue;
