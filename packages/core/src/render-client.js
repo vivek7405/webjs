@@ -92,6 +92,7 @@ function commitInto(node, fn) {
  *   authoredName: boolean,
  *   authoredValue: boolean,
  *   authoredForm: boolean,
+ *   nameParts: {i: number, kind: string}[],
  *   propAttrs: string[],
  *   staticMethod: string | null,
  *   staticEnctype: string | null,
@@ -589,7 +590,7 @@ function assignPaths(root, parts) {
  * reason: by reconcile time the renderer has written its own `name` / `value`
  * onto a bound submitter, so the live element can no longer say which of them
  * the author wrote. A hole-provided `name=${n}` leaves no attribute on the
- * compiled template at all, which is why `hasNamePart` is tracked separately.
+ * compiled template at all, which is why `nameParts` is tracked separately.
  *
  * @param {Element} el
  * @param {{ idx: number, kind: string, name: string }[]} onEl parts bound to `el`
@@ -608,9 +609,17 @@ function buildFormActionRecord(el, onEl, parts) {
   const enctypeParts = [];
   /** Prop bindings that cannot converge with SSR; refused when actually bound. */
   const propAttrs = [];
-  // A `name` hole (`name=${n}`) occupies the same channel as the identity even
-  // though it leaves no attribute on the compiled template, so it counts.
-  const hasNamePart = !isForm && onEl.some((p) => p.name.toLowerCase() === 'name');
+  // `name` holes on a submitter, recorded WITH their kind. Whether one occupies
+  // the identity's channel is not a property of the hole alone: SSR emits
+  // `name=""` for an attribute hole whatever it resolved to, but emits nothing
+  // at all for a FALSY boolean hole and nothing for an `@name` listener. Asking
+  // only "is there a part called name" therefore refused templates SSR renders
+  // happily, which is the render-on-the-server-throw-on-hydration direction.
+  // The kinds travel with the record and `reconcileFormActions` resolves them.
+  const nameParts = isForm ? [] : onEl
+    .filter((p) => p.name.toLowerCase() === 'name'
+      && (p.kind === 'attr' || p.kind === 'attr-mixed' || p.kind === 'bool'))
+    .map((p) => ({ i: p.idx, kind: p.kind }));
   const authoredName = !isForm && el.hasAttribute('name');
   const authoredForm = !isForm && el.hasAttribute('form');
   const authoredValue = !isForm && (el.hasAttribute('value') || onEl.some((p) => {
@@ -661,7 +670,7 @@ function buildFormActionRecord(el, onEl, parts) {
     authoredValue,
     authoredForm,
     propAttrs,
-    hasNamePart,
+    nameParts,
     staticMethod: el.getAttribute('method'),
     staticEnctype: el.getAttribute('enctype'),
     methodParts,
@@ -717,7 +726,13 @@ function reconcileFormActions(formActions, bound, values) {
           boundForms.push(/** @type any */ (part.el));
         }
       } else {
-        reconcileSubmitterAction(/** @type any */ (part.el), val, rec);
+        // What SSR would have emitted for a `name` hole on this pass. An
+        // attribute hole always emits (even `name=${null}`, as `name=""`); a
+        // boolean hole emits only when truthy.
+        const emitsName = rec.nameParts.some((np) => (np.kind === 'bool'
+          ? !!resolveHoleValue(values[np.i])
+          : true));
+        reconcileSubmitterAction(/** @type any */ (part.el), val, rec, emitsName);
       }
     }
   }
@@ -788,8 +803,9 @@ function enclosingForm(el) {
  * @param {Element} el
  * @param {unknown} value
  * @param {FormActionRecord} rec
+ * @param {boolean} emitsName whether SSR would emit a `name` attribute for this pass
  */
-function reconcileSubmitterAction(el, value, rec) {
+function reconcileSubmitterAction(el, value, rec, emitsName) {
   const id = typeof value === 'function' ? formActionId(value) : null;
   if (!id) {
     // A function that was MEANT as an action still refuses, so a button never
@@ -804,7 +820,7 @@ function reconcileSubmitterAction(el, value, rec) {
   assertConvergentSubmitter(rec.propAttrs, el.localName, true);
   if (rec.staticAction) assertSubmitterHasNoStaticFormAction(el.localName);
   if (rec.authoredValue) assertSubmitterHasNoValue(el.localName);
-  if (rec.authoredName || rec.hasNamePart) {
+  if (rec.authoredName || emitsName) {
     // Judged on the PART, not on what it resolved to this pass. `name=${null}`
     // leaves no attribute here while SSR emits `name=""` beside the identity,
     // so reading the live value back returned '' and waved through a template

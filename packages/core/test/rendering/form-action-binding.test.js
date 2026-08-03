@@ -838,3 +838,41 @@ test('an empty author name after the hole is refused, not shipped as a duplicate
     await assert.rejects(() => renderToString(tpl, { ssr: true }), /already carries a "name" attribute/);
   }
 });
+
+test('a .formAction prop is refused on a submitter that binds nothing', async () => {
+  // The narrowing that spares `.name` / `.value` on a non-binding submitter must
+  // NOT spare `.formAction`. SSR drops the prop, so with JS off the button
+  // submits to the page and runs the bound action; a browser reflects it, so
+  // with JS on the button posts elsewhere and the action never runs. That is the
+  // works-one-way-only shape, and it is why the STATIC `formaction="/url"` stays
+  // fine: both renderers see that one and agree.
+  withResolver();
+  const tpl = html`<form action=${submitFeedback}><button .formAction=${'/elsewhere'}>Save</button></form>`;
+  await assert.rejects(() => renderToString(tpl, { ssr: true }), /reflected IDL attribute/);
+  await assert.rejects(() => drain(renderToStream(tpl, { ssr: false })), /reflected IDL attribute/);
+
+  const ok = await renderToString(
+    html`<form action=${submitFeedback}><button formaction="/search" formmethod="get">Go</button></form>`,
+    { ssr: true },
+  );
+  assert.match(ok, /formaction="\/search"/, 'the static retarget is still allowed');
+});
+
+test('a falsy boolean name hole leaves the identity channel free', async () => {
+  // The SSR half of the client test with the same name: `?name=${false}` emits
+  // nothing, so there is no collision and the binding applies.
+  withResolver();
+  const out = await renderToString(
+    html`<form action=${submitFeedback}><button ?name=${false} formaction=${submitFeedback}>x</button></form>`,
+    { ssr: true },
+  );
+  assert.match(out, /<button\s+name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback">x<\/button>/);
+  // Truthy emits `name=""`, which collides with the identity.
+  await assert.rejects(
+    () => renderToString(
+      html`<form action=${submitFeedback}><button ?name=${true} formaction=${submitFeedback}>x</button></form>`,
+      { ssr: true },
+    ),
+    /already carries a "name" attribute/,
+  );
+});

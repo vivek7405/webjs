@@ -403,14 +403,18 @@ export function assertSubmitterFormIsBound(insideBoundForm, tag) {
  * @returns {void}
  */
 export function assertConvergentSubmitter(propAttrs, tag, bound) {
-  // On a submitter that binds nothing, `.name` / `.value` / `.formAction` are
-  // not this module's business: a plain `<button .name=${'intent'}>` inside a
-  // bound form is the ordinary one-action-plus-intent-dispatch pattern, and
-  // refusing it would reject valid markup. Only the two that can defeat the
-  // enclosing binding are judged there, which is exactly Part B's scope.
+  // On a submitter that binds nothing, `.name` / `.value` are not this module's
+  // business: a plain `<button .name=${'intent'}>` inside a bound form is the
+  // ordinary one-action-plus-intent-dispatch pattern, and refusing it would
+  // reject valid markup. The THREE that can still defeat the enclosing binding
+  // are judged there. `formAction` belongs in that set as surely as the other
+  // two: SSR drops the prop so the button submits to the page and runs the
+  // bound action, while a browser reflects it and the button posts somewhere
+  // else entirely. (A STATIC `formaction="/url"` stays fine, because both
+  // renderers see it and agree; only the property spelling diverges.)
   const relevant = (propAttrs || []).filter((n) => (bound
     ? isSubmitterReflectedProp(n)
-    : /^form(method|enctype)$/i.test(String(n))));
+    : /^form(action|method|enctype)$/i.test(String(n))));
   const prop = relevant[0];
   if (!prop) return;
   throw new Error(

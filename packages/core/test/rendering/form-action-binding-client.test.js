@@ -779,3 +779,31 @@ test('a formaction binding on <input type="submit"> is refused on the client too
     /also its visible label/,
   );
 });
+
+test('a name HOLE is judged by what SSR would emit for it, not by its presence', () => {
+  // Counting any part called `name` refused templates SSR renders happily. SSR
+  // emits `name=""` for an attribute hole whatever it resolved to, but emits
+  // NOTHING for a falsy boolean hole and nothing for an `@name` listener, so
+  // those two must bind here exactly as they do on the server. Getting this
+  // wrong is the render-on-the-server, throw-on-hydration direction.
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  for (const tpl of [
+    html`<form action=${formAction}><button ?name=${false} formaction=${buttonAction}>x</button></form>`,
+    html`<form action=${formAction}><button @name=${() => {}} formaction=${buttonAction}>x</button></form>`,
+  ]) {
+    const host = document.createElement('div');
+    render(tpl, host);
+    assert.equal(host.querySelector('button').getAttribute('name'), '__webjs_action',
+      'a hole that emits no name leaves the identity channel free');
+  }
+  // A TRUTHY boolean hole does emit `name=""`, so it collides and must refuse,
+  // which is what SSR does with the resulting duplicate.
+  assert.throws(
+    () => render(
+      html`<form action=${formAction}><button ?name=${true} formaction=${buttonAction}>x</button></form>`,
+      document.createElement('div'),
+    ),
+    /already carries a "name" attribute/,
+  );
+});
