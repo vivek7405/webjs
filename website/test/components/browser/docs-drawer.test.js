@@ -380,6 +380,11 @@ suite('docs drawer', () => {
     const serialized = drawer.outerHTML;
 
     assert.ok(!/<docs-drawer[^>]*\sopen/.test(serialized), 'the serialized host is not open');
+    // The CHILD binding matters too. aria-expanded is a template hole, so it is
+    // committed a microtask later and misses the snapshot exactly the way the
+    // menu's <details open> did. A restored page would announce an expanded
+    // drawer that is visually closed until the component corrects it.
+    assert.ok(!/aria-expanded="true"/.test(serialized), 'and the toggle does not claim to be expanded');
   });
 
   test('it stops answering Escape once removed from the document', async () => {

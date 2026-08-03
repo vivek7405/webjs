@@ -14,8 +14,12 @@ import { escapeBelongsToField, composedTarget } from '#lib/escape-target.ts';
  * of that split: a backdrop dismiss that left `aria-expanded` reading true
  * forever, an Escape that did not close, both nav surfaces open at once.
  *
- * `aria-expanded` is now a hole bound to `this.open`, so it cannot drift from
- * the state. There is no second place holding it and nothing to keep in sync.
+ * `aria-expanded` is a hole bound to `this.open`, so no second place holds it
+ * and the two cannot drift apart in normal operation. The one window where they
+ * do differ is between a synchronous close and the render that commits the
+ * hole, which matters solely because the back/forward snapshot is read inside
+ * exactly that window. `_onBeforeCache` below is the whole reason that window
+ * is worth knowing about.
  *
  * Layout note. The toggle renders inside <main>, not inside the <aside>, and
  * that is load-bearing rather than incidental: under 900px the aside is a
@@ -53,6 +57,24 @@ export class DocsDrawer extends WebComponent({
    */
   private _onKeydown = (e: KeyboardEvent) => this.handleKeydown(e);
   private _onNavigate = () => this.close();
+
+  /**
+   * Dismissal for the snapshot path, which has a stricter timing contract than
+   * the others.
+   *
+   * The router dispatches webjs:before-cache and reads
+   * documentElement.outerHTML in the SAME TASK, a couple of statements later and with no await in between, so
+   * only a synchronous mutation is captured. Closing sets the reflected host
+   * attribute at once, which is what the CSS selects on, but every template
+   * hole is a render-time write committed a microtask later. aria-expanded is
+   * such a hole, so without writing it directly the snapshot would carry a
+   * closed drawer whose toggle still announces itself as expanded, and a
+   * restored page would say so until the component re-rendered.
+   */
+  private _onBeforeCache = () => {
+    this.close();
+    this._toggleRef.value?.setAttribute('aria-expanded', 'false');
+  };
   private _onMediaChange = () => this.syncScrollLock();
 
   /** The drawer-breakpoint query, observed so a rotate re-evaluates the lock. */
@@ -119,7 +141,7 @@ export class DocsDrawer extends WebComponent({
     // into the snapshot and a forward restore brings the surface back open.
     document.addEventListener('webjs:navigate', this._onNavigate);
     window.addEventListener('popstate', this._onNavigate);
-    document.addEventListener('webjs:before-cache', this._onNavigate);
+    document.addEventListener('webjs:before-cache', this._onBeforeCache);
     // Crossing the breakpoint changes whether this drawer should be holding the
     // page scroll, and it fires no property update, so `updated()` alone would
     // never re-evaluate. A phone rotated to landscape with the drawer open is
@@ -137,7 +159,7 @@ export class DocsDrawer extends WebComponent({
     document.removeEventListener('keydown', this._onKeydown, true);
     document.removeEventListener('webjs:navigate', this._onNavigate);
     window.removeEventListener('popstate', this._onNavigate);
-    document.removeEventListener('webjs:before-cache', this._onNavigate);
+    document.removeEventListener('webjs:before-cache', this._onBeforeCache);
     this._mql?.removeEventListener('change', this._onMediaChange);
     this._mql = undefined;
     // Release the page scroll if this element is torn out while holding it (a

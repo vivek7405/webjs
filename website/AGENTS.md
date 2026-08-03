@@ -265,13 +265,18 @@ before the snapshot is serialized so a forward restore does not bring the
 surface back open.
 
 `webjs:before-cache` carries a timing trap worth knowing. The router dispatches
-it synchronously and reads `documentElement.outerHTML` on the very next
-statement, so ONLY a synchronous mutation is captured. Setting a reactive
-property is not enough on its own where the visible state lives on a CHILD
-element: the host attribute reflects at once, but a template binding on that
-child is committed a microtask later and misses the snapshot entirely. The
-drawer is fine because its CSS selects the reflected host attribute, while the
-header menu has to close its `<details>` element directly in the handler.
+it synchronously and reads `documentElement.outerHTML` in the same task, a
+couple of statements later with no await in between, so ONLY a synchronous
+mutation is captured. Setting a reactive property is not enough on its own,
+because the host attribute reflects at once while EVERY template hole is a
+render-time write committed a microtask later and misses the snapshot.
+
+Both surfaces therefore write their child state directly in the handler. The
+menu closes its `<details>` element, which is what shows the panel and drives
+the icon swap. The drawer writes `aria-expanded` on its toggle, which is not
+visual (its CSS selects the reflected host attribute, so a restored page looks
+right) but would otherwise announce an expanded drawer that is closed. If you
+add a hole that encodes dismissible state, it belongs in that handler too.
 
 ## How to update headline / hero copy
 
