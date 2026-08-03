@@ -2940,6 +2940,130 @@ describe('E2E: form actions (no-JS + enhanced)', { skip: !process.env.WEBJS_E2E 
       assert.ok(p.url().endsWith('/feedback/thanks'), `expected PRG to /feedback/thanks, got ${p.url()}`);
     } finally { await p.close(); }
   });
+
+  // -------------------------------------------------------------------------
+  // #1207: PER-BUTTON actions, the headline proof.
+  //
+  // `/feedback/triage` binds `saveDraft` on the form and overrides it with
+  // `formaction=${publishDraft}` on the Publish button. With JavaScript off
+  // nothing intercepts anything: the browser serializes the form's hidden
+  // identity field AND the pressed button's own name/value pair, in that DOM
+  // order, and the dispatcher takes the last. If the submitter's pair were not
+  // emitted, or landed before the hidden field, or the dispatcher still read
+  // only the first entry, the wrong action would run and the redirect would
+  // name it.
+  //
+  // The redirect target carries WHICH action ran precisely so these cannot
+  // pass on "the form submitted successfully": with the submitter binding
+  // removed, pressing Publish still submits fine and still redirects, just to
+  // the other name.
+  // -------------------------------------------------------------------------
+
+  test('JS DISABLED: the submitter carries its own identity, after the form field', async () => {
+    const p = await paBrowser.newPage();
+    await p.setJavaScriptEnabled(false);
+    try {
+      await p.goto(`${paBase}/feedback/triage`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+      const shape = await p.evaluate(() => {
+        const form = document.querySelector('form');
+        const publish = document.getElementById('publish');
+        const save = document.getElementById('save');
+        return {
+          hidden: form.querySelector('input[name="__webjs_action"]')?.value || null,
+          hiddenIsFirst: form.firstElementChild?.getAttribute('name') === '__webjs_action',
+          publishName: publish.getAttribute('name'),
+          publishValue: publish.getAttribute('value'),
+          publishHasFormAction: publish.hasAttribute('formaction'),
+          // The plain button binds nothing, so it must stay untouched.
+          saveName: save.getAttribute('name'),
+          // What the browser would really serialize for each submitter.
+          onPublish: [...new FormData(form, publish).getAll('__webjs_action')],
+          onSave: [...new FormData(form, save).getAll('__webjs_action')],
+        };
+      });
+      assert.ok(/^[0-9a-f]{10}\/saveDraft$/.test(shape.hidden || ''),
+        `form identity must name saveDraft, got ${shape.hidden}`);
+      assert.ok(shape.hiddenIsFirst, 'the form identity is the first child, so a submitter entry follows it');
+      assert.equal(shape.publishName, '__webjs_action', 'the submitter carries the identity name');
+      assert.ok(/^[0-9a-f]{10}\/publishDraft$/.test(shape.publishValue || ''),
+        `the submitter value must name publishDraft, got ${shape.publishValue}`);
+      assert.equal(shape.publishHasFormAction, false, 'no formaction url is emitted, so it posts to this page');
+      assert.equal(shape.saveName, null, 'a button that binds nothing is left alone');
+      assert.deepEqual(shape.onPublish, [shape.hidden, shape.publishValue],
+        'pressing Publish submits both identities, the submitter LAST');
+      assert.deepEqual(shape.onSave, [shape.hidden],
+        'pressing Save submits only the form identity');
+      const src = await p.content();
+      assert.ok(!src.includes('Write something first'),
+        'the action bodies must not ship: their validation message appears only after a submit');
+    } finally { await p.close(); }
+  });
+
+  test('JS DISABLED: pressing the bound submitter runs ITS action, not the form\'s', async () => {
+    const p = await paBrowser.newPage();
+    await p.setJavaScriptEnabled(false);
+    try {
+      await p.goto(`${paBase}/feedback/triage`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+      await p.type('#note', 'ship it');
+      await Promise.all([
+        p.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
+        p.click('#publish'),
+      ]);
+      const ran = await p.evaluate(() => document.getElementById('ran')?.textContent || '');
+      assert.equal(ran, 'publishDraft', `the submitter's action must run, got "${ran}"`);
+    } finally { await p.close(); }
+  });
+
+  test('JS DISABLED: pressing a plain submitter runs the FORM action', async () => {
+    // The other half of the same claim. A browser submits a submitter's pair
+    // only for the button pressed, so with Save pressed there is no second
+    // entry and the form's own identity is what the dispatcher sees.
+    const p = await paBrowser.newPage();
+    await p.setJavaScriptEnabled(false);
+    try {
+      await p.goto(`${paBase}/feedback/triage`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+      await p.type('#note', 'later');
+      await Promise.all([
+        p.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
+        p.click('#save'),
+      ]);
+      const ran = await p.evaluate(() => document.getElementById('ran')?.textContent || '');
+      assert.equal(ran, 'saveDraft', `the form's action must run, got "${ran}"`);
+    } finally { await p.close(); }
+  });
+
+  test('JS DISABLED: a failing submitter action re-renders THIS page at 422', async () => {
+    // The per-button path has to reach the same 422 re-render as the form-level
+    // one, or a validation failure on a submitter action would lose the page.
+    const p = await paBrowser.newPage();
+    await p.setJavaScriptEnabled(false);
+    try {
+      await p.goto(`${paBase}/feedback/triage`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+      await Promise.all([
+        p.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
+        p.click('#publish'),
+      ]);
+      const error = await p.evaluate(() => document.getElementById('note-error')?.textContent || '');
+      assert.ok(error.includes('Write something first'), `expected the field error, got "${error}"`);
+      assert.ok(p.url().endsWith('/feedback/triage'), `expected to stay put, got ${p.url()}`);
+    } finally { await p.close(); }
+  });
+
+  test('JS ENABLED: the same button runs the same action through the client router', async () => {
+    // Identical by construction is the claim, so the enhanced path must reach
+    // the same action. The client router posts the same body to the same url
+    // and follows the 303 via fetch.
+    const p = await paBrowser.newPage();
+    try {
+      await p.goto(`${paBase}/feedback/triage`, { waitUntil: 'networkidle0', timeout: 15000 });
+      await p.type('#note', 'ship it');
+      await p.click('#publish');
+      await p.waitForFunction(() => !!document.getElementById('ran'), { timeout: 10000 });
+      const ran = await p.evaluate(() => document.getElementById('ran')?.textContent || '');
+      assert.equal(ran, 'publishDraft', `the submitter's action must run with JS too, got "${ran}"`);
+    } finally { await p.close(); }
+  });
+
 });
 
 // ---------------------------------------------------------------------------
