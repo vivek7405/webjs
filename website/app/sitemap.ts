@@ -4,6 +4,7 @@ import { listArticles } from '#modules/articles/queries/list-articles.server.ts'
 import { listPosts } from '#modules/blog/queries/list-posts.server.ts';
 import { getDocPages } from '#lib/docs-llms.server.ts';
 import { loadRegistryIndex } from '#modules/ui/queries/registry.server.ts';
+import { siteUrl } from '#lib/env.ts';
 
 /**
  * /sitemap.xml
@@ -21,7 +22,7 @@ import { loadRegistryIndex } from '#modules/ui/queries/registry.server.ts';
  * `SITE_URL` falls back to the production origin; override it per
  * deployment the same way the header/footer links are configured.
  */
-const SITE_URL = ((globalThis as any).process?.env?.SITE_URL || 'https://webjs.dev').replace(/\/$/, '');
+const SITE_URL = siteUrl();
 
 export default async function Sitemap() {
   const [comparisons, articles, posts, docPages, registry] = await Promise.all([

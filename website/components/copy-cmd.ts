@@ -1,4 +1,15 @@
-import { WebComponent, html, signal } from '@webjsdev/core';
+import { WebComponent, html, signal, createRef, ref } from '@webjsdev/core';
+
+/**
+ * gtag is installed by the root layout's Google tag snippet. Declaring it
+ * here gives the call below a real signature instead of a cast through
+ * unknown, and the optional marker keeps a blocked or absent tag safe.
+ */
+declare global {
+  interface Window {
+    gtag?: (command: 'event', name: string, params?: Record<string, string>) => void;
+  }
+}
 
 /**
  * `<copy-cmd>` wraps a shell-command line with a copy-to-clipboard
@@ -38,7 +49,14 @@ export class CopyCmd extends WebComponent {
   // (an aria-live region only announces on a content CHANGE), re-announcing
   // "Copied" even though `copied` is already true.
   private _copies = signal(0);
-  private _resetTimer: number | undefined;
+  private _resetTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * The command line, bound through the ref directive rather than looked up
+   * with querySelector. render() already owns this element, so a ref keeps the
+   * reference flowing out of the template instead of re-finding it by selector
+   * on every copy, and it cannot silently return null if the markup moves.
+   */
+  private _textRef = createRef<HTMLElement>();
 
   disconnectedCallback() {
     if (this._resetTimer) clearTimeout(this._resetTimer);
@@ -46,8 +64,7 @@ export class CopyCmd extends WebComponent {
   }
 
   _copy = async () => {
-    const textEl = this.querySelector('[data-copy-text]');
-    const text = (textEl?.textContent || '').trim();
+    const text = (this._textRef.value?.textContent || '').trim();
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
@@ -59,7 +76,7 @@ export class CopyCmd extends WebComponent {
     this.copied.set(true);
     this._copies.set(this._copies.get() + 1);
     if (this._resetTimer) clearTimeout(this._resetTimer);
-    this._resetTimer = (setTimeout(() => this.copied.set(false), 1500) as unknown as number);
+    this._resetTimer = setTimeout(() => this.copied.set(false), 1500);
     // Record install-intent. A copied command (almost always the
     // `npm create webjs@latest` line) is the cleanest human-adoption
     // signal we have, far more trustworthy than npm download counts.
@@ -67,11 +84,7 @@ export class CopyCmd extends WebComponent {
     // or absent tag is a silent no-op. This sits OUTSIDE the clipboard
     // try so it is not the catch that swallows a write failure, and so an
     // absent-gtag access genuinely depends on the `?.` to stay safe.
-    (window as unknown as { gtag?: (...a: unknown[]) => void }).gtag?.(
-      'event',
-      'copy_command',
-      { command: text },
-    );
+    window.gtag?.('event', 'copy_command', { command: text });
   };
 
   _onKey = (e: KeyboardEvent) => {
@@ -92,6 +105,7 @@ export class CopyCmd extends WebComponent {
         <span
           class="scroll-thin flex-1 min-w-0 overflow-x-auto whitespace-nowrap cursor-copy pr-9 rounded-md outline-none focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
           data-copy-text
+          ${ref(this._textRef)}
           role="button"
           tabindex="0"
           title="Copy command to clipboard"

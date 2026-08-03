@@ -136,7 +136,14 @@ import {
 
 // Registry the frozen holes are evaluated against. Listing every imported
 // helper here also keeps each import "used" after the freeze.
-const HELPERS: Record<string, (...args: any[]) => string> = {
+//
+// The helpers take heterogeneous arguments (none, a size, a variant object),
+// and every call goes through the `new Function` evaluator below rather than a
+// typed call site, so the only contract this map can honestly state is
+// "callable, returns a class string". `never[]` says exactly that: each
+// concrete helper is assignable to it, and it refuses a direct call with
+// invented arguments, which `any[]` would have waved through.
+const HELPERS: Record<string, (...args: never[]) => string> = {
   accordionClass, accordionContentClass, accordionItemClass, accordionTriggerClass,
   alertClass, alertDescriptionClass, alertTitleClass,
   alertDialogContentClass, alertDialogDescriptionClass, alertDialogFooterClass,

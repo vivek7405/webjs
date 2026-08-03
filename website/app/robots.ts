@@ -1,3 +1,4 @@
+import { siteUrl } from '#lib/env.ts';
 /**
  * /robots.txt
  *
@@ -28,7 +29,7 @@
  *
  * `SITE_URL` mirrors app/sitemap.ts so the two agree on the origin.
  */
-const SITE_URL = ((globalThis as any).process?.env?.SITE_URL || 'https://webjs.dev').replace(/\/$/, '');
+const SITE_URL = siteUrl();
 
 // Answer-engine and AI crawlers we explicitly welcome. These are the agents
 // that put a citation in front of a developer who asks an assistant what

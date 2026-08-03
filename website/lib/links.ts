@@ -2,15 +2,14 @@ import { html } from '@webjsdev/core';
 
 /**
  * Shared, browser-safe link config for the site chrome (header + footer),
- * imported by both app/layout.ts and app/page.ts so the cross-app URLs and the
- * new-tab cue are declared once instead of duplicated across the two files.
+ * imported by both app/layout.ts and app/page.ts so the paths and the new-tab
+ * cue are declared once instead of duplicated across the two files.
  *
- * Sibling app URLs are read from env so the same code works across `webjs dev`
- * and any deployment target, guarded against `process` being undefined since
- * these modules also load on the client. Each falls back to its production
- * domain, and `.env` overrides it to the localhost dev port.
+ * Every entry is a literal. There is no env read here any more: the docs and
+ * the component gallery used to be sibling apps needing a configurable URL
+ * each, and both moved in-app (#1098, #1099), so what is left is same-origin
+ * paths and a few fixed external URLs.
  */
-const env = (globalThis as any).process?.env ?? {};
 
 /**
  * The documentation is served by THIS app under /docs, so it is a plain

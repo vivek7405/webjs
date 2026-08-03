@@ -20,6 +20,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join, basename, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { siteUrl } from '#lib/env.ts';
 
 // Resolve the app root from THIS module's location, not process.cwd().
 // This module lives at `website/lib/docs-llms.server.ts`, so the app root
@@ -93,7 +94,7 @@ export function originFor(req?: Request): string {
       /* fall through */
     }
   }
-  return ((globalThis as any).process?.env?.SITE_URL || 'https://webjs.dev').replace(/\/$/, '');
+  return siteUrl();
 }
 
 /**
