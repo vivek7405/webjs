@@ -1973,23 +1973,19 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       offServerProcess = await startBlog(offPort, { WEBJS_ELIDE: '0' });
       offPage = await browser.newPage();
 
-      // WARM the OFF server before anything is timed against it.
-      //
-      // This is the whole reason the block used to flake, and the asymmetry is
-      // easy to miss: the ON server has been serving the rest of this suite for
-      // ~100 tests, so its dev-mode on-demand module transformation was paid
-      // long ago, while the OFF server is brand new here and its very FIRST
-      // request is the assertion. Measured on this machine, that first request
-      // costs 11.5s against 610ms once warm, and OFF is the expensive side
-      // because WEBJS_ELIDE=0 ships 13 modulepreloads to the ON build's 6. So
-      // the OFF page could still be fetching modules when a timed wait expired,
-      // leaving it un-hydrated, which is why OFF was always the failing side.
-      //
-      // Pay that cost here, where nothing is being measured. `waitForHydration`
-      // below then guards the residual, so neither the warmup nor the waits are
-      // load-bearing on their own.
-      await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'load', timeout: 60000 });
-      await offPage.goto(`${offBaseUrl}/about`, { waitUntil: 'load', timeout: 60000 });
+      // No browser-side warmup here on purpose. An earlier revision navigated
+      // offPage twice before the tests, to pay the cold dev server's on-demand
+      // transform cost off the clock. Two things killed that idea. Its premise
+      // was wrong: module scripts are deferred and DOMContentLoaded waits for
+      // deferred scripts, so goto(domcontentloaded) already absorbs the whole
+      // module graph and there is no residual for a warmup to remove (measured
+      // with a 4s delay injected on the counter module, goto took 4076ms and
+      // the element was upgraded by the time it returned). And it correlated
+      // with a deterministic CI failure on all three pushes that carried it,
+      // where the OFF page reported customElements.define never running, while
+      // main without it stayed green. Driving extra navigations through the
+      // page under test buys nothing and changes browser-side state the
+      // assertions then depend on.
     });
 
     after(async () => {
