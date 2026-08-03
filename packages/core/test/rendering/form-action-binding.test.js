@@ -698,6 +698,99 @@ test('an UNBOUND form is refused, which is a different answer from cannot-tell',
   );
 });
 
+test("the 'unbound' state is what refuses inside a COMPONENT's own form", async () => {
+  // The test above cannot observe the 'unbound' transition: a top-level scan
+  // starts at 'none', so that template is refused either way, and deleting the
+  // transition left the whole suite green. 'unbound' differs from 'none' only
+  // under an 'unknown' seed, which is the component pass.
+  //
+  // Without it, a component's own GET-defaulting form would happily bind a
+  // submitter inside it, which is the silently-posts-nowhere shape the guard
+  // exists to prevent. The component's SSR error is isolated, so the proof is
+  // that the component renders EMPTY rather than emitting the identity.
+  withResolver();
+  const { WebComponent } = await import('../../src/component.js');
+  class OwnUnbound extends WebComponent({}) {
+    render() { return html`<form method="post"><button formaction=${submitFeedback}>P</button></form>`; }
+  }
+  OwnUnbound.register('own-unbound-form');
+  const out = await renderToString(
+    html`<form action=${submitFeedback}><own-unbound-form></own-unbound-form></form>`,
+    { ssr: true, dev: false },
+  );
+  assert.equal((out.match(/name="__webjs_action"/g) || []).length, 1,
+    "only the page form's identity is emitted; the component's submitter never bound");
+  assert.ok(!out.includes('<button'), 'the refusal was isolated to the component');
+});
+
+test("a component that CLOSES its own form keeps deferring, rather than downgrading", async () => {
+  // `</form>` used to hard-reset the scope to 'none', which asserted a fact the
+  // component scan cannot know: closing a form of its own teaches it nothing
+  // about the host page. A bound submitter written after it was then refused
+  // and, being isolated, vanished from a 200.
+  withResolver();
+  const { WebComponent } = await import('../../src/component.js');
+  class ClosesOwnForm extends WebComponent({}) {
+    render() {
+      return html`<form action="/search"><input name="q"></form><button formaction=${submitFeedback}>P</button>`;
+    }
+  }
+  ClosesOwnForm.register('closes-own-form');
+  const out = await renderToString(
+    html`<form action=${submitFeedback}><closes-own-form></closes-own-form></form>`,
+    { ssr: true, dev: false },
+  );
+  assert.match(out, /<button name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback">P<\/button>/);
+  assert.ok(!out.includes('data-webjs-error'), 'and the component did not fail to render');
+});
+
+// ---------------------------------------------------------------------------
+// Suspense (#1207). The page pipeline in @webjsdev/server drains `ctx.pending`
+// ITSELF and re-renders each resolved child through `renderToString`, which is
+// a fresh scan with no view of the shell. Without the recorded scope a bound
+// form's boundary content read as form-less, was refused, and the drain's catch
+// turned that into an EMPTY boundary on a page that still returned 200.
+// ---------------------------------------------------------------------------
+
+async function drainSuspense(tpl) {
+  const ctx = { pending: [], nextId: 1, dev: false };
+  const shell = await renderToString(tpl, { ssr: true, suspenseCtx: ctx });
+  const parts = [];
+  for (const p of ctx.pending) {
+    const sub = { pending: [], nextId: ctx.nextId, dev: false };
+    // Mirrors ssr.js's drain, including how it carries the scope forward.
+    parts.push(await renderToString(await p.promise, {
+      ssr: true, suspenseCtx: sub, formScope: p.formScope || 'unknown',
+    }));
+  }
+  return { shell, parts, pending: ctx.pending };
+}
+
+test('a submitter inside a bound form\'s Suspense boundary binds', async () => {
+  withResolver();
+  const { Suspense } = await import('../../src/suspense.js');
+  const { shell, parts, pending } = await drainSuspense(html`<form action=${submitFeedback}>${Suspense({
+    fallback: html`<p>loading</p>`,
+    children: Promise.resolve(html`<button formaction=${submitFeedback}>Publish</button>`),
+  })}</form>`);
+  assert.match(shell, /<webjs-boundary id="s1"><p>loading<\/p><\/webjs-boundary>/);
+  assert.equal(pending[0].formScope, 'bound', 'the shell records the scope');
+  assert.match(parts[0], /<button name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback">Publish<\/button>/,
+    'and the resolved content is rendered with it');
+});
+
+test('a Suspense boundary outside a bound form still refuses a submitter', async () => {
+  // The counterfactual: carrying the scope must not become a blanket amnesty.
+  withResolver();
+  const { Suspense } = await import('../../src/suspense.js');
+  for (const shell of [
+    html`<div>${Suspense({ fallback: html`<p>l</p>`, children: Promise.resolve(html`<button formaction=${submitFeedback}>P</button>`) })}</div>`,
+    html`<form method="post">${Suspense({ fallback: html`<p>l</p>`, children: Promise.resolve(html`<button formaction=${submitFeedback}>P</button>`) })}</form>`,
+  ]) {
+    await assert.rejects(() => drainSuspense(shell), /requires the enclosing <form> to also be bound/);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // A `.prop` spelling on a submitter, the twin of the form-level `.method` /
 // `.enctype` refusal. `name`, `value`, `formAction`, `formMethod` and

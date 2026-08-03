@@ -732,6 +732,40 @@ test('the client .prop refusal leaves ordinary controls alone', () => {
   assert.equal(host.querySelector('button').getAttribute('name'), '__webjs_action');
 });
 
+test('a .name / .value on a NON-binding submitter is left alone', () => {
+  // A plain `<button .name=${'intent'}>` inside a bound form is the ordinary
+  // one-action-plus-intent-dispatch pattern, not a conflict: that button
+  // carries no identity, so nothing is competing for its name/value pair.
+  // Refusing it would reject valid markup, and SSR refusing while the client
+  // accepted was a divergence in the direction that 500s the server.
+  const formAction = HOISTED();
+  const host = document.createElement('div');
+  render(
+    html`<form action=${formAction}><button .name=${'intent'}>Save</button><button .value=${'v'}>Other</button></form>`,
+    host,
+  );
+  assert.equal(host.querySelectorAll('button').length, 2, 'both plain submitters render');
+});
+
+test('an empty name PART on a bound submitter is refused, matching SSR', () => {
+  // Judged on the part, not on what it resolved to. `name=${null}` leaves no
+  // attribute on the client while SSR emits `name=""` beside the identity, so
+  // reading the live value back returned '' and the client waved through a
+  // template SSR hard-refuses.
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  for (const value of [null, '', undefined]) {
+    assert.throws(
+      () => render(
+        html`<form action=${formAction}><button name=${value} formaction=${buttonAction}>x</button></form>`,
+        document.createElement('div'),
+      ),
+      /already carries a "name" attribute/,
+      `name=\${${String(value)}}`,
+    );
+  }
+});
+
 test('a formaction binding on <input type="submit"> is refused on the client too', () => {
   // The identity has to occupy `value`, which on this control is its visible
   // label, so the binding would render a button captioned with the action id.

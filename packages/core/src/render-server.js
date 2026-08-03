@@ -33,8 +33,17 @@ import { cspNonce } from './csp-nonce.js';
  *
  * @typedef {{ pending: {id: string, promise: Promise<unknown>, formScope?: 'none'|'unbound'|'bound'|'unknown'}[], nextId: number }} SuspenseCtx
  *
+ * `formScope` (#1207) is how a caller that resolves a Suspense boundary ITSELF
+ * tells this render what the boundary's surroundings were. The page pipeline in
+ * `@webjsdev/server` drains `ctx.pending` and re-renders each resolved child
+ * through here, which is a fresh scan with no view of the shell it belongs to,
+ * so without the recorded scope a `<button formaction=${fn}>` inside a bound
+ * form's Suspense boundary reads as form-less and is refused. That refusal is
+ * caught and replaced by the empty string in production, so the whole boundary
+ * would silently disappear from a page that still returned 200.
+ *
  * @param {unknown} value
- * @param {{ ssr?: boolean, suspenseCtx?: SuspenseCtx }} [opts]
+ * @param {{ ssr?: boolean, suspenseCtx?: SuspenseCtx, dev?: boolean, formScope?: 'none'|'unbound'|'bound'|'unknown' }} [opts]
  * @returns {Promise<string>}
  */
 export async function renderToString(value, opts = { ssr: true }) {
@@ -45,7 +54,9 @@ export async function renderToString(value, opts = { ssr: true }) {
   // sharing it see the same flag. Undefined stays undefined (NODE_ENV fallback).
   const dev = opts && opts.dev !== undefined ? opts.dev : ctx && ctx.dev;
   if (ctx && ctx.dev === undefined && dev !== undefined) ctx.dev = dev;
-  const html = await render(value, ctx);
+  // A caller that knows the scope passes it. Absent, this is a top-level render
+  // and 'none' is the honest answer: there is conclusively no enclosing form.
+  const html = await render(value, ctx, (opts && opts.formScope) || 'none');
   return opts && opts.ssr === false ? html : await injectDSD(html, ctx, [], dev);
 }
 
@@ -228,8 +239,10 @@ async function renderTemplate(tr, ctx, formScopeAtStart = 'none') {
     } else if (formScope === 'bound' && !isCloseTag && (currentTag === 'button' || currentTag === 'input')) {
       // Part B (#1207): an ordinary submitter inside a bound form, whose own
       // `formmethod` / `formenctype` can defeat the binding without carrying an
-      // action of its own. Neither renderer used to look at those. Skipped under
-      // 'none', where the enclosing form is not this scan's to judge.
+      // action of its own. Neither renderer used to look at those. Gated on
+      // 'bound' because that is the only scope in which the sweep has anything
+      // to protect: under 'unknown' the enclosing form is not this scan's to
+      // judge, and under 'none' / 'unbound' there is no binding to defeat.
       assertSubmitterStartTag(out.slice(tagStart), currentTag, { bound: false, propAttrs: submitterProps });
     }
   };
@@ -277,7 +290,12 @@ async function renderTemplate(tr, ctx, formScopeAtStart = 'none') {
   const handleTagEnd = (allowRawtext) => {
     closeBoundFormTag();
     if (isCloseTag && currentTag === 'form') {
-      formScope = 'none';
+      // Back to the scope this scan STARTED in, not a flat 'none'. Under an
+      // 'unknown' seed (the component pass) the scan never learned whether the
+      // host page has a bound form, and closing a form of its own teaches it
+      // nothing about that, so asserting 'none' here would downgrade a
+      // cannot-tell into a conclusive refusal.
+      formScope = formScopeAtStart === 'unknown' ? 'unknown' : 'none';
     }
     isCloseTag = false;
     state = allowRawtext && isRawtextTag(currentTag) ? 'rawtext' : 'text';
@@ -1842,7 +1860,7 @@ export function renderToStream(value, opts = { ssr: true }) {
       try {
         if (opts && opts.ssr === false) {
           // No DSD injection: just stream the raw rendered chunks.
-          await streamRender(value, ctx, controller, false);
+          await streamRender(value, ctx, controller, 'none');
         } else {
           // Render to string first to run DSD injection (which operates on
           // the full HTML), then enqueue the result. This matches the
@@ -2061,7 +2079,12 @@ async function streamTemplate(tr, ctx, controller, formScopeAtStart = 'none') {
   const handleTagEnd = (allowRawtext) => {
     closeBoundFormTag();
     if (isCloseTag && currentTag === 'form') {
-      formScope = 'none';
+      // Back to the scope this scan STARTED in, not a flat 'none'. Under an
+      // 'unknown' seed (the component pass) the scan never learned whether the
+      // host page has a bound form, and closing a form of its own teaches it
+      // nothing about that, so asserting 'none' here would downgrade a
+      // cannot-tell into a conclusive refusal.
+      formScope = formScopeAtStart === 'unknown' ? 'unknown' : 'none';
     }
     isCloseTag = false;
     state = allowRawtext && isRawtextTag(currentTag) ? 'rawtext' : 'text';

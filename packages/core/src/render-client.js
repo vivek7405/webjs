@@ -801,11 +801,16 @@ function reconcileSubmitterAction(el, value, rec) {
   // Template-shaped refusals first, from the compiled record, because the live
   // element may already carry this renderer's own `name` / `value`.
   assertSingleSubmitterAction(rec.duplicateAction, el.localName);
-  assertConvergentSubmitter(rec.propAttrs, el.localName);
+  assertConvergentSubmitter(rec.propAttrs, el.localName, true);
   if (rec.staticAction) assertSubmitterHasNoStaticFormAction(el.localName);
   if (rec.authoredValue) assertSubmitterHasNoValue(el.localName);
   if (rec.authoredName || rec.hasNamePart) {
-    assertSubmitterHasNoName(el.getAttribute('name') || '', el.localName, false);
+    // Judged on the PART, not on what it resolved to this pass. `name=${null}`
+    // leaves no attribute here while SSR emits `name=""` beside the identity,
+    // so reading the live value back returned '' and waved through a template
+    // SSR refuses. The template supplying a `name` channel at all is the
+    // conflict, whatever today's value happens to be.
+    assertSubmitterHasNoName(el.getAttribute('name') || FORM_ACTION_FIELD, el.localName, false);
   }
   if (rec.authoredForm || el.hasAttribute('form')) assertSubmitterHasNoFormAttribute(el.localName);
   assertSubmitterType(el.localName, el.getAttribute('type'));

@@ -399,17 +399,25 @@ export function assertSubmitterFormIsBound(insideBoundForm, tag) {
  *
  * @param {string[] | undefined} propAttrs attribute names a property part owns
  * @param {string} tag lowercased owner tag
+ * @param {boolean} [bound] whether this submitter carries its own action binding
  * @returns {void}
  */
-export function assertConvergentSubmitter(propAttrs, tag) {
-  const prop = propAttrs && propAttrs[0];
+export function assertConvergentSubmitter(propAttrs, tag, bound) {
+  // On a submitter that binds nothing, `.name` / `.value` / `.formAction` are
+  // not this module's business: a plain `<button .name=${'intent'}>` inside a
+  // bound form is the ordinary one-action-plus-intent-dispatch pattern, and
+  // refusing it would reject valid markup. Only the two that can defeat the
+  // enclosing binding are judged there, which is exactly Part B's scope.
+  const relevant = (propAttrs || []).filter((n) => (bound
+    ? isSubmitterReflectedProp(n)
+    : /^form(method|enctype)$/i.test(String(n))));
+  const prop = relevant[0];
   if (!prop) return;
   throw new Error(
-    `[webjs] a submitter inside a bound <form action=\${action}> binds .${prop}=. `
-    + `On a <${tag || 'button'}> that property is a reflected IDL attribute, so a `
-    + `property binding is dropped at SSR and written to the attribute in the `
-    + `browser: the page would render on the server and throw on hydration. `
-    + `Write it as a plain attribute.`,
+    `[webjs] a <${tag || 'button'}> submitter binds .${prop}=. That property is a `
+    + `reflected IDL attribute on a submitter, so a property binding is dropped `
+    + `at SSR and written to the attribute in the browser: the page would render `
+    + `on the server and throw on hydration. Write it as a plain attribute.`,
   );
 }
 
@@ -922,7 +930,7 @@ export function assertSubmitterStartTag(startTag, tag, shape) {
   // Gated on being a real submitter, because these properties reflect on any
   // control: `<input .name=${'q'}>` is an ordinary field inside the form and
   // has nothing to do with the action.
-  if (bound || isSubmitterType(tag, type)) assertConvergentSubmitter(shape.propAttrs, tag);
+  if (bound || isSubmitterType(tag, type)) assertConvergentSubmitter(shape.propAttrs, tag, bound);
 
   if (bound) {
     assertSingleSubmitterAction(!!shape.duplicateAction, tag);
