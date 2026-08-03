@@ -2036,11 +2036,14 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     //    'Reconnecting…' after the socket opened. 'Connecting…', the
     //    never-connected state, is left alone so it still diverges.
     //
-    // Dropping the pane does not drop the hydration coverage, twice over. The
-    // status header stays in the snapshot, so an un-hydrated side reading
-    // 'Connecting…' against a connected side diverges here and fails. And
-    // waitForChatLive checks the connected state on both sides before the
-    // snapshot is taken at all.
+    // Dropping the pane does not drop the hydration coverage, but be precise
+    // about where that coverage actually lives: it is waitForChatLive, which
+    // runs on both sides BEFORE either snapshot and throws if a side is still
+    // in its server-rendered state. The status header is kept in the snapshot,
+    // but it does not add coverage on top of that, because by the time a
+    // snapshot is taken both sides are necessarily connected and chat-box has
+    // no path back, so the header's contribution is the same constant on both
+    // sides.
     const observableMain = (pg) => pg.evaluate(() => {
       const main = document.querySelector('main') || document.body;
       // Work on a clone so the live DOM is untouched and a later snapshot of
@@ -2049,22 +2052,28 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       // The pane is the middle child of chat-box's wrapper (header div, pane
       // div, form), positional because the markup carries no id or data hook.
       //
-      // The whole SHAPE is asserted, not merely that something was found.
-      // Checking only "did the selector match" is the weaker guard, and it is
-      // green in the likelier failure: insert an element above the header, or
-      // swap header and pane, and a positional selector happily returns the
-      // WRONG element. The count still matches, the header gets emptied, and
-      // the live feed is compared raw again, which is the flake restored
-      // invisibly. Pinning the child tag sequence catches an insertion or a
-      // reorder, not just a deletion.
+      // The pane is identified by CONTENT, not by position. Position cannot do
+      // it: the header and the pane are both plain divs, so neither an index
+      // nor a tag sequence can tell them apart, and swapping the two would
+      // leave any positional guard green while the header got emptied and the
+      // live feed went back into the comparison. That is the flake restored
+      // invisibly, so the identification has to key on something that actually
+      // distinguishes them. The header is the div carrying the status line; the
+      // pane is the other one. Both are asserted, so a markup change fails
+      // loudly here rather than silently reverting the exclusion.
+      const STATUS = /Connecting…|Reconnecting…|Live ·/;
       const panes = [];
       for (const box of copy.querySelectorAll('chat-box')) {
         const wrapper = box.firstElementChild;
-        const shape = wrapper ? [...wrapper.children].map((el) => el.tagName.toLowerCase()) : [];
-        if (!wrapper || shape.join(',') !== 'div,div,form') {
-          return { error: `<chat-box>'s wrapper should hold [div, div, form] (header, message pane, form), found [${shape.join(', ') || 'no wrapper'}]; its markup changed, so this snapshot can no longer identify the live feed to exclude it` };
+        if (!wrapper) return { error: '<chat-box> rendered no wrapper element; its markup changed, so this snapshot can no longer identify the live feed to exclude it' };
+        const divs = [...wrapper.children].filter((el) => el.tagName.toLowerCase() === 'div');
+        const headers = divs.filter((el) => STATUS.test(el.textContent || ''));
+        const rest = divs.filter((el) => !headers.includes(el));
+        if (headers.length !== 1 || rest.length !== 1) {
+          const shape = [...wrapper.children].map((el) => el.tagName.toLowerCase()).join(', ');
+          return { error: `expected <chat-box>'s wrapper to hold exactly one status div and one message pane div, found ${headers.length} status and ${rest.length} other div(s) among [${shape}]; its markup changed, so this snapshot can no longer identify the live feed to exclude it` };
         }
-        panes.push(wrapper.children[1]);
+        panes.push(rest[0]);
       }
       for (const pane of panes) pane.replaceChildren();
       const text = (copy.textContent || '')
@@ -2075,8 +2084,9 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
         // like the participant count: the two pages hold sockets to two
         // independent servers, so one can drop between the wait and the
         // snapshot with no counterpart on the other side. 'Connecting…' is
-        // deliberately NOT collapsed, because that is the never-connected
-        // state and it should still diverge loudly.
+        // left uncollapsed only so this regex says what it means; it is not
+        // reachable here, since waitForChatLive has already failed the test on
+        // any side still showing it.
         .replace(/Live · \d+ others? online|Reconnecting…/g, 'CHAT-CONNECTED')
         .replace(/\s+/g, ' ')
         .trim();
@@ -2205,10 +2215,9 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       await waitForHydration(offPage, 'OFF');
       // chat-box's message pane is held out of the snapshot (a live socket feed
       // over two independent servers), so check its connected state directly on
-      // both sides. This is belt and braces rather than the only guard: the
-      // status header is still compared, so an un-hydrated side would also
-      // diverge there. Checking it here fails at the point of the problem
-      // instead of as a text mismatch further down.
+      // both sides. This IS the guard for chat-box hydration, not a redundant
+      // one: the snapshot below cannot catch an un-hydrated chat-box, because
+      // reaching it at all means this check already passed on both sides.
       await waitForChatLive(page, 'ON');
       await waitForChatLive(offPage, 'OFF');
       const onSnap = await snapshot(page, 'ON');
