@@ -244,40 +244,33 @@ export default function RootLayout({ children }: LayoutProps) {
          CTA, plus live and focus state. It never tints a content panel or a
          heading, which is what keeps those few amber surfaces meaningful
          instead of decorative. */
+      /* Every per-theme COLOUR is declared ONCE, as light-dark(LIGHT, DARK),
+         and the color-scheme declarations below pick the side. This is the
+         rule the framework teaches its own users (the skill's
+         references/styling.md, and the palette webjs create generates), and
+         the site had been the counter-example: the dark half was written
+         twice, once under the OS media query and once under the toggle's
+         attribute, so an edit to either block silently drifted the two paths
+         apart. There is no cascade trick here, just the three color-scheme
+         declarations at the bottom of this block feeding the one function. */
       :root {
-        color-scheme: light dark;
-        --fg:            oklch(0.20 0.018 60);
-        --fg-muted:      oklch(0.44 0.02 60);
-        --fg-subtle:     oklch(0.50 0.02 65);
-        --bg:            oklch(0.985 0.008 75);
-        --bg-elev:       oklch(1 0 0);
-        --bg-subtle:     oklch(0.96 0.008 75);
-        --bg-sunken:     oklch(0.93 0.01 70);
-        --border:        oklch(0.88 0.012 70 / 0.9);
-        --border-strong: oklch(0.78 0.014 70 / 0.95);
-        --accent:        oklch(0.54 0.16 52);
-        --accent-hover:  oklch(0.5 0.16 52);
-        --accent-fg:     oklch(1 0 0);
-        --heart:         oklch(0.64 0.22 6);
-        --accent-live:   oklch(0.63 0.17 50);
-        --glow-a:        oklch(0.63 0.17 44);
-        --accent-tint:   color-mix(in oklch, var(--accent-live) 14%, transparent);
-        --logo-from:     oklch(0.63 0.17 50);
-        --logo-to:       oklch(0.44 0.11 52);
-        --accent-text:    var(--accent);
-        --accent-surface: color-mix(in oklch, var(--accent-live) 12%, transparent);
-        --accent-border:  color-mix(in oklch, var(--accent-live) 28%, transparent);
-        --glow-strength: 0.16;
-        --font-display: 'Inter Tight', 'Inter', system-ui, -apple-system, sans-serif;
-        --font-sans:    'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-        --font-serif:   ui-serif, 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, Cambria, serif;
-        --font-mono:    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-        --shadow-sm: 0 1px 2px oklch(0.5 0.06 55 / 0.08);
-        --shadow:    0 8px 30px oklch(0.5 0.08 55 / 0.10), 0 2px 6px oklch(0.5 0.06 55 / 0.06);
-        /* The closing CTA's fill. Light keeps a faint accent tint, which
-           separates the panel from the page. Dark takes the plain elevated
-           surface: over black the same tint went muddy rather than warm, so
-           the glow alone carries it there. */
+        --fg:            light-dark(oklch(0.20 0.018 60),    oklch(0.96 0.01 60));
+        --fg-muted:      light-dark(oklch(0.44 0.02 60),     oklch(0.78 0.015 60));
+        --fg-subtle:     light-dark(oklch(0.50 0.02 65),     oklch(0.66 0.02 65));
+        --bg:            light-dark(oklch(0.985 0.008 75),   oklch(0.08 0.012 60));
+        --bg-elev:       light-dark(oklch(1 0 0),            oklch(0.14 0.015 60));
+        --bg-subtle:     light-dark(oklch(0.96 0.008 75),    oklch(0.11 0.014 60));
+        --bg-sunken:     light-dark(oklch(0.93 0.01 70),     oklch(0.06 0.01 60));
+        --border:        light-dark(oklch(0.88 0.012 70 / 0.9),  oklch(0.24 0.015 60 / 0.9));
+        --border-strong: light-dark(oklch(0.78 0.014 70 / 0.95), oklch(0.36 0.02 60 / 0.95));
+        --accent:        light-dark(oklch(0.54 0.16 52),     oklch(0.78 0.18 58));
+        --accent-hover:  light-dark(oklch(0.5 0.16 52),      oklch(0.83 0.17 58));
+        --accent-fg:     light-dark(oklch(1 0 0),            oklch(0 0 0));
+        --heart:         light-dark(oklch(0.64 0.22 6),      oklch(0.74 0.18 6));
+        --accent-live:   light-dark(oklch(0.63 0.17 50),     oklch(0.78 0.18 58));
+        --glow-a:        light-dark(oklch(0.63 0.17 44),     oklch(0.78 0.18 58));
+        --logo-from:     light-dark(oklch(0.63 0.17 50),     oklch(0.82 0.17 58));
+        --logo-to:       light-dark(oklch(0.44 0.11 52),     oklch(0.64 0.18 44));
         /* Hover lift for nav links and other bare targets. An ALPHA overlay,
            not a solid colour, for two reasons. It composes over the header's
            translucent blurred background instead of fighting it, and it gives
@@ -285,42 +278,55 @@ export default function RootLayout({ children }: LayoutProps) {
            0.09 lift on a black page, which is real in numbers and invisible to
            the eye, while the same token in light was a 0.025 step that read
            clearly because the eye is adapted to a bright field. */
-        --hover-surface: oklch(0 0 0 / 0.055);
-        --cta-surface: color-mix(in oklch, var(--accent-live) 7%, var(--bg-elev));
-        --shadow-glow: 0 0 0 1px var(--accent-tint), 0 14px 50px color-mix(in oklch, var(--accent-live) 18%, transparent);
+        --hover-surface: light-dark(oklch(0 0 0 / 0.055),    oklch(1 0 0 / 0.09));
+
+        /* Derived tokens. Each one reads a light-dark() token above, so it
+           tracks BOTH themes with no override of its own. */
+        --accent-text:    var(--accent);
+        --accent-tint:    color-mix(in oklch, var(--accent-live) 14%, transparent);
+        --accent-surface: color-mix(in oklch, var(--accent-live) 12%, transparent);
+        --accent-border:  color-mix(in oklch, var(--accent-live) 28%, transparent);
+        --shadow-glow:    0 0 0 1px var(--accent-tint), 0 14px 50px color-mix(in oklch, var(--accent-live) 18%, transparent);
+        /* The closing CTA's fill. Light keeps a faint accent tint, which
+           separates the panel from the page. Dark pulls the tint back toward
+           the plain elevated surface: over black the same amount went muddy
+           rather than warm, so the glow does more of the work there. The two
+           sides differ by the MIX RATIO, which is a number rather than a
+           colour, so the ratio is the token that varies. */
+        --cta-mix:     7%;
+        --cta-surface: color-mix(in oklch, var(--accent-live) var(--cta-mix), var(--bg-elev));
+
+        /* Shadows. --shadow-sm keeps the same geometry in both themes, so its
+           colour is the only per-theme part and rides light-dark() inline.
+           --shadow's SPREAD also changes (a wider, softer cast reads as depth
+           over black, where the light spread disappears), and light-dark() is
+           colour-only, so the spread is its own token in the block below. */
+        --shadow-sm:      0 1px 2px light-dark(oklch(0.5 0.06 55 / 0.08), oklch(0 0 0 / 0.4));
+        --shadow-cast:    light-dark(oklch(0.5 0.08 55 / 0.10), oklch(0 0 0 / 0.5));
+        --shadow-ambient: light-dark(oklch(0.5 0.06 55 / 0.06), oklch(0 0 0 / 0.35));
+        --shadow-spread:  0 8px 30px;
+        --shadow:         var(--shadow-spread) var(--shadow-cast), 0 2px 6px var(--shadow-ambient);
+
+        --glow-strength: 0.16;
+        --font-display: 'Inter Tight', 'Inter', system-ui, -apple-system, sans-serif;
+        --font-sans:    'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        --font-serif:   ui-serif, 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, Cambria, serif;
+        --font-mono:    'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
         --t: 240ms;
+
+        color-scheme: light dark;   /* the default: follow the OS */
       }
+      /* The three tokens above that are NOT colours, so light-dark() cannot
+         carry them. Per the styling reference these keep an explicit pair:
+         the media query for the OS default, the attribute rule for the
+         toggle. Colours must never be added here. */
       @media (prefers-color-scheme: dark) {
-        :root:not([data-theme='light']) {
-          --heart: oklch(0.74 0.18 6);
-          --fg: oklch(0.96 0.01 60); --fg-muted: oklch(0.78 0.015 60); --fg-subtle: oklch(0.66 0.02 65);
-          --bg: oklch(0.08 0.012 60); --bg-elev: oklch(0.14 0.015 60); --bg-subtle: oklch(0.11 0.014 60); --bg-sunken: oklch(0.06 0.01 60);
-          --border: oklch(0.24 0.015 60 / 0.9); --border-strong: oklch(0.36 0.02 60 / 0.95);
-          --accent: oklch(0.78 0.18 58); --accent-hover: oklch(0.83 0.17 58); --accent-fg: oklch(0 0 0); --logo-from: oklch(0.82 0.17 58); --logo-to: oklch(0.64 0.18 44);
-          --accent-live: oklch(0.78 0.18 58);
-          --glow-a: oklch(0.78 0.18 58);
-          --glow-strength: 0.08;
-          --cta-surface: color-mix(in oklch, var(--accent-live) 6%, var(--bg-elev));
-          --hover-surface: oklch(1 0 0 / 0.09);
-          --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
-          --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
-        }
+        :root:not([data-theme='light']) { --glow-strength: 0.08; --cta-mix: 6%; --shadow-spread: 0 10px 40px; }
       }
-      :root[data-theme='dark'] {
-        color-scheme: dark;
-        --heart: oklch(0.74 0.18 6);
-        --fg: oklch(0.96 0.01 60); --fg-muted: oklch(0.78 0.015 60); --fg-subtle: oklch(0.66 0.02 65);
-        --bg: oklch(0.08 0.012 60); --bg-elev: oklch(0.14 0.015 60); --bg-subtle: oklch(0.11 0.014 60); --bg-sunken: oklch(0.06 0.01 60);
-        --border: oklch(0.24 0.015 60 / 0.9); --border-strong: oklch(0.36 0.02 60 / 0.95);
-        --accent: oklch(0.78 0.18 58); --accent-hover: oklch(0.83 0.17 58); --accent-fg: oklch(0 0 0); --logo-from: oklch(0.82 0.17 58); --logo-to: oklch(0.64 0.18 44);
-        --accent-live: oklch(0.78 0.18 58);
-        --glow-a: oklch(0.78 0.18 58);
-        --glow-strength: 0.08;
-        --cta-surface: color-mix(in oklch, var(--accent-live) 6%, var(--bg-elev));
-        --hover-surface: oklch(1 0 0 / 0.09);
-        --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
-        --shadow: 0 10px 40px oklch(0 0 0 / 0.5), 0 2px 6px oklch(0 0 0 / 0.35);
-      }
+      :root[data-theme='dark']  { --glow-strength: 0.08; --cta-mix: 6%; --shadow-spread: 0 10px 40px; }
+      /* The toggle forces a scheme, which is what re-points every
+         light-dark() above. Nothing else needs to change per theme. */
+      :root[data-theme='dark']  { color-scheme: dark; }
       :root[data-theme='light'] { color-scheme: light; }
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
