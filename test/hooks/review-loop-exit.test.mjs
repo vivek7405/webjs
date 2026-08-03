@@ -139,6 +139,12 @@ test('the cycle keeps the guarantees the trim was not allowed to touch', () => {
   assert.match(skill, /After EACH spawn resolves, before acting on findings, check the repo/);
   // Reviewers stay starved of prior review context.
   assert.match(skill, /NEVER prior PR comments or reviews/);
+  // The prompt sets the scope and nothing else. A defect-class checklist
+  // narrows the reviewer to what the author already suspects, which is the
+  // bias a fresh reviewer exists to escape.
+  assert.match(skill, /\*\*Do not tell it what to look for\.\*\*/);
+  assert.match(skill, /no list of defect classes, no "specifically check for X and Y"/);
+  assert.match(skill, /The question for this round is a SCOPE, not a checklist/);
   // The three dispositions and the deferral ledger survive.
   assert.match(skill, /the cycle never files a follow-up issue on its own/);
   assert.match(skill, /final summary review also carries a deferral ledger/);
