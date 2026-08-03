@@ -54,6 +54,10 @@ website/
     copy-cmd.ts        click-to-copy command line (light DOM, always-on button)
     doc-search.ts      the docs sidebar search field
     preview-tabs.ts    Preview / Code toggle around a gallery demo
+    docs-drawer.ts     the /docs + /ui sidebar shell and its mobile drawer:
+                       backdrop, toggle, aside, open state, every close path
+    site-nav-menu.ts   the header's mobile menu, wrapping a native <details>
+                       so it still opens with JS off
                        (components/ui/ is intentionally EMPTY here, left free
                        for `webjs ui add` to own, exactly as the scaffold
                        expects, and gitignored so it stays that way. The
@@ -72,8 +76,18 @@ website/
       page-header.ts   hub eyebrow + title + lede
       cta-panel.ts     the closing call to action
       site-footer.ts   the footer, rendered by the root layout on every page
-      docs-shell.ts    the sidebar + drawer + .prose-docs typography, SHARED by
-                       /docs and /ui so the two sections cannot drift apart
+      docs-shell.ts    the shell stylesheet (.prose-docs typography, the sticky
+                       desktop column) plus the function that turns a nav tree
+                       into markup and slots it into <docs-drawer>. SHARED by
+                       /docs and /ui so the two sections cannot drift apart.
+                       The drawer's markup and behaviour are NOT here, they are
+                       components/docs-drawer.ts
+    scroll-lock.ts     refcounted page scroll lock, sharing the UI kit's
+                       globalThis counter so a drawer and a <ui-dialog>
+                       interoperate. Measures and compensates the viewport
+                       widening that hiding the scrollbar causes (#1147)
+    theme.ts           the theme storage key and forced values, read by BOTH
+                       the layout's bootstrap script and theme-toggle.ts
     utils/             pure helpers (compute, never render)
       highlight.ts     SSR syntax highlighter for the code samples
       frontmatter.ts   parse changelog/blog markdown frontmatter
@@ -178,6 +192,38 @@ head and defaulted on `:root` for no-JS and first paint.
 There is no announcement banner. One used to sit above the header, and
 `--header-h` is why its removal is not free: re-adding a strip means the
 measurement has to cover it too.
+
+The header's mobile menu is `components/site-nav-menu.ts`, and the fixed
+position is why it carries
+`border-right: var(--wj-scrollbar-compensation, 0px) solid transparent`. A
+scroll lock hides the page scrollbar, which widens the viewport, and a fixed
+element lays out against the initial containing block where no padding can
+reach it. `lib/scroll-lock.ts` publishes that measured width for it to opt into
+(#1144, #1147).
+
+## What stays inline script in the root layout
+
+Only two things, and both are genuinely boot work rather than interactivity:
+
+- the **theme bootstrap**, which must run before first paint or a reader who
+  chose dark sees the light palette flash. It cannot import, so it interpolates
+  the storage key from `lib/theme.ts`.
+- the **`--header-h` measurement**, which backs the fixed-header offset above.
+
+Everything else that used to live there is a component now. The drawer and the
+header menu were once one delegated click listener plus one delegated keydown
+listener reaching across the document with `querySelector` and body attributes,
+with the markup in a different file. If you find yourself adding a third
+delegated listener here, write a component instead.
+
+One cross-component contract survived that split and is easy to break by
+accident: **the drawer listens for Escape in the CAPTURE phase and calls
+`preventDefault()`, and the header menu listens in the BUBBLE phase and bails on
+`defaultPrevented`.** That is what makes one Escape close only the drawer when
+both are open, without either component importing the other, and it works
+whatever order the elements registered in. A test that dispatches Escape on
+`document` itself cannot see this, because document is then the TARGET and both
+listeners run in registration order with the capture flag ignored.
 
 ## How to update headline / hero copy
 
