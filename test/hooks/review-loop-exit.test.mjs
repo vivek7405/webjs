@@ -32,7 +32,11 @@ test('the skill prescribes ONE reviewer, never a fleet', () => {
   assert.match(skill, /\*\*A delta chain that keeps producing fixes stops after the FIFTH DELTA ROUND\*\*/);
   // The stop needs a reporting shape of its own: the reporting section
   // covers only the converged path.
-  assert.match(skill, /If a delta chain reaches its fifth round still producing fixes/);
+  assert.match(skill, /If the FIFTH delta round still produces fixes/);
+  // What makes this stop unfinished is unreviewed fixes, not open findings,
+  // which is the opposite of its sibling stop and the thing a report copied
+  // from that sibling gets wrong.
+  assert.match(skill, /but that its FIXES are on the branch unreviewed, so say exactly that/);
   // And the do-not-restore paragraph must admit the cap came back rather
   // than claiming termination is entirely structural.
   assert.match(skill, /The one exception to the removals is the round cap, which came back in a narrower form/);
