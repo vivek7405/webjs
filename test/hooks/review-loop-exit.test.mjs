@@ -35,6 +35,10 @@ test('the skill prescribes ONE reviewer, never a fleet', () => {
   // fix, which does not re-open the cycle.
   assert.match(skill, /Its fixes get ONE delta-scoped check of those fix commits alone/);
   assert.match(skill, /The cycle ends when nothing must-fix is left OPEN/);
+  // The same two words for the same disposition in every rule that names
+  // it, since "refuted or deferred" silently dropped the unrefutable
+  // rejection the refuter-unavailable rule creates.
+  assert.match(skill, /every must-fix finding it raised was rejected or deferred/);
   assert.match(skill, /The final review is never re-run and the delta rounds are never re-entered/);
   // A fix-check that finds something gets ONE more of the same shape, then
   // the cycle stops unfinished rather than looping.
@@ -71,7 +75,12 @@ test('the minor / must-fix call is by surface, not by importance', () => {
   assert.match(skill, /what a rejection buys instead of a whole round, and it terminates: one spawn per rejection, never a refuter of a refuter/);
   // A refuter has two verdicts and the cycle must define both, or a finding
   // whose rejection was contradicted ends with no disposition at all.
-  assert.match(skill, /answers `STANDS` has contradicted your rejection, so the rejection does not hold/);
+  assert.match(skill, /On the post-rejection use only, a refuter that answers `STANDS` has contradicted your rejection/);
+  // The pre-action gate has no rejection to overturn, so STANDS means the
+  // finding is real, and a final-phase fix cannot buy a round that phase
+  // forbids.
+  assert.match(skill, /On the pre-action gate there is no rejection yet/);
+  assert.match(skill, /on the final review it joins that phase's single fix-check instead/);
   // The two uses fail in opposite directions when no refuter can be spawned.
   assert.match(skill, /on the pre-action gate, act on the finding as real/);
   assert.match(skill, /keep the rejection but record it as UNREFUTED/);
@@ -107,22 +116,20 @@ test('the cycle keeps the guarantees the trim was not allowed to touch', () => {
   // A dead or non-reviewing spawn is not a round, and an inline pass is
   // never a substitute for one.
   assert.match(skill, /A dead spawn is not a round/);
-  // The blind wait is bounded SHORT and never kills. Whether there is a
-  // mid-flight signal at all depends on what the spawn's output file is,
-  // which is why the rule probes it rather than assuming.
-  assert.match(skill, /Check in about every 2 minutes, and NEVER kill on the timer/);
-  // A foreground wait defeats the whole reason the reviewer is spawned in
-  // the background, so the check-in itself must not block the turn.
-  assert.match(skill, /The check-in must NEVER block your turn/);
-  assert.match(skill, /Run it as a BACKGROUND command, never a foreground `sleep`/);
-  assert.match(skill, /What decides is GROWTH, never elapsed time/);
-  // The liveness probe is byte growth on the transcript, never its words,
-  // and the file may be either a live transcript or a static stub.
-  assert.match(skill, /if the byte count is rising it is working, so leave it alone however long it has run/);
-  // A stub is flat from the start, so re-spawning on flatness would kill
-  // every healthy stub-backed reviewer and replace it with another one.
-  assert.match(skill, /Flatness is a signal ONLY where the file is a live transcript/);
-  assert.match(skill, /never re-spawn a stub-backed one on flatness/);
+  // Waiting must not block the turn, which is the whole point of spawning
+  // the reviewer in the background, and the optional progress check must
+  // never kill on a timer or on a flat file (elapsed time says nothing: a
+  // reviewer here runs 5 to 10 minutes while working normally, and a file
+  // that never grows may simply be a stub the harness does not write to).
+  assert.match(skill, /\*\*Waiting is not blocking\.\*\*/);
+  assert.match(skill, /never wait on it with a foreground `sleep`/);
+  assert.match(skill, /\*\*A progress check is optional, runs in the BACKGROUND, and never kills\.\*\*/);
+  assert.match(skill, /Elapsed time is not evidence/);
+  assert.match(skill, /never re-spawn on a flat file or on a timer/);
+  // And the do-not-restore paragraph must not claim a replacement mechanism
+  // richer than what is actually there, which is how a polling watchdog
+  // grew back once already.
+  assert.match(skill, /the harness completion notification is the signal, with at most an optional background progress check that never kills anything/);
   // The liveness sentence must not claim the harness status is the ONLY
   // signal while the check-in rule reads byte growth as one.
   assert.match(skill, /Only two things are evidence a reviewer is alive/);
@@ -172,7 +179,7 @@ test('the routed review directive states the same cycle as the skill', () => {
   assert.match(hook, /Never report the PR ready off a round that found something must-fix/);
   // The directive must resolve the fix-check case the SAME way the skill
   // does, and must not both end the cycle and forbid reporting it.
-  assert.match(hook, /the cycle ends when that check finds nothing must-fix/);
+  assert.match(hook, /the cycle ends when nothing must-fix is left open, meaning the check came back with nothing or there was no fix to check because every must-fix finding the final review raised was rejected or deferred/);
   assert.match(hook, /one more check of the same shape, and only if that one also finds something must-fix do you stop and report the PR unfinished/);
   assert.match(hook, /Only a FIX buys another round/);
   // The code-review skill's own findings are input to the cycle, not a
