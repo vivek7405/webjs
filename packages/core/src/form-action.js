@@ -985,6 +985,24 @@ export function assertSubmitterStartTag(startTag, tag, shape) {
  * in a nested template that has not been inserted yet is simply not in the
  * query, and SSR is the renderer that sees every page.
  *
+ * ATTRIBUTE-BASED, which is a second limit worth stating. This reads the live
+ * DOM, so it cannot see a divergence that exists only in the TEMPLATE: a
+ * `.formMethod` / `.formEnctype` / `.formAction` PROPERTY on a submitter that
+ * binds no action of its own is refused by SSR (`assertConvergentSubmitter`
+ * runs there from the parsed start tag) and is invisible here, because the
+ * client builds a record only for a submitter that owns an action hole. Worse
+ * for `.formAction` specifically: a browser reflects it, so the query below
+ * reads a `formaction` attribute and treats the button as deliberately
+ * retargeted, skipping the check.
+ *
+ * Left as is on purpose. It is the server-strict direction, so the page never
+ * ships: SSR renders every page and refuses the shape before a browser sees it.
+ * The only way through is a component that renders ONLY on the client, and
+ * closing it would mean building template records for submitters that bind
+ * nothing, which is a wider change than the hole justifies. The reverse
+ * asymmetry, client refusing what SSR accepts, is the one this module treats as
+ * unacceptable, and none of these are that.
+ *
  * @param {HTMLFormElement} form
  * @returns {void}
  */
