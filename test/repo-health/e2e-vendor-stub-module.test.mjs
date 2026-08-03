@@ -31,5 +31,11 @@ test('the emitted data: URL is a module that really exports a working dayjs', as
   assert.ok(imports, 'the repo can serve dayjs locally');
   const mod = await import(imports.dayjs);
   assert.equal(typeof mod.default, 'function');
-  assert.equal(mod.default(1735689600000).format('MMM D, YYYY'), 'Jan 1, 2025');
+  // Parse a DATE STRING, not an epoch. dayjs parses `'2025-01-01'` as local
+  // midnight and formats back in local time, so the round trip holds in every
+  // zone. An epoch is an instant in UTC, and formatting one lands on the
+  // previous day anywhere west of it, which made this fail for a contributor
+  // in the Americas while CI stayed green on its UTC runners. The utc plugin
+  // would be the other way out, but a `data:` URL cannot resolve it.
+  assert.equal(mod.default('2025-01-01').format('MMM D, YYYY'), 'Jan 1, 2025');
 });

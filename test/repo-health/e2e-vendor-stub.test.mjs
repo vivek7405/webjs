@@ -70,13 +70,30 @@ test('anything the repo cannot serve passes through to the real API', async () =
     ['left-pad@1.3.0'],                 // not in LOCAL_VENDORS
     ['dayjs@1.11.21', 'left-pad@1.3.0'], // one serviceable, one not
     ['dayjs@1.11.21/plugin/utc'],        // a subpath needs its own entry
-    [],                                  // an unparseable body reads as no installs
+    [],                                  // a request naming no installs at all
   ]) {
     const res = await generate(install);
     assert.equal(res.status, 418, `expected pass-through for ${JSON.stringify(install)}`);
   }
   assert.equal(passedThrough.length, 4);
   assert.ok(passedThrough.every((u) => u.includes('api.jspm.io')));
+});
+
+test('a body the stub cannot read passes through rather than being answered', async () => {
+  // The guard that reads `init.body`. A caller that sent no body, a non-string
+  // one, or malformed JSON leaves the stub with nothing to serve, and the one
+  // thing it must not do there is answer with an empty map, which would be an
+  // importmap missing every entry the page needs.
+  const before = passedThrough.length;
+  for (const init of [
+    { method: 'POST' },
+    { method: 'POST', body: new Uint8Array([1, 2, 3]) },
+    { method: 'POST', body: '{ not json' },
+  ]) {
+    const res = await globalThis.fetch('https://api.jspm.io/generate', init);
+    assert.equal(res.status, 418);
+  }
+  assert.equal(passedThrough.length, before + 3);
 });
 
 test('a non-jspm url is never intercepted', async () => {
