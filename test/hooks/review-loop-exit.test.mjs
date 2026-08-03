@@ -24,9 +24,9 @@ test('the skill prescribes ONE reviewer, never a fleet', () => {
   // Round 1 is a single reviewer over the whole diff, with no path-based
   // tier choice deciding its shape.
   assert.match(skill, /Round 1: ONE fresh reviewer over the WHOLE diff/);
-  assert.match(skill, /No scout, no parallel lenses, no jury, no per-diff tier choice/);
+  assert.match(skill, /No fleet, no lenses, no jury, no per-diff tier choice/);
   // Later rounds narrow the QUESTION to the fixes, not the evidence.
-  assert.match(skill, /Every later round is delta-scoped: ONE fresh reviewer whose QUESTION is the previous round's fix commits/);
+  assert.match(skill, /Each later round is delta-scoped: ONE fresh reviewer whose QUESTION is the previous round's fix commits/);
   // The final whole-diff pass is what a clean delta round buys, and it is
   // the reason a clean round is not by itself the end.
   assert.match(skill, /buys the FINAL review: ONE fresh reviewer over the WHOLE diff again/);
@@ -34,15 +34,15 @@ test('the skill prescribes ONE reviewer, never a fleet', () => {
   // The final review's findings end in a fix plus ONE delta check of that
   // fix, which does not re-open the cycle.
   assert.match(skill, /ONE delta-scoped reviewer checks those fix commits alone/);
-  assert.match(skill, /does not re-open the loop and never re-runs the final review/);
+  assert.match(skill, /the cycle ends on its result, without re-running the final review/);
   // Two consecutive breaking fix-checks stop the cycle rather than looping.
-  assert.match(skill, /a change still breaking after two is signal about the change/);
+  assert.match(skill, /still breaking after two is signal about the change/);
   // A clean round 1 skips the delta rounds but still gets the final review.
   assert.match(skill, /the minimum is two reviews/);
 });
 
 test('the skill pins every reviewer to Opus, async, and worktree-isolated', () => {
-  assert.match(skill, /`model: "opus"` \(Opus 5, always, no other model at any point in the cycle\)/);
+  assert.match(skill, /`model: "opus"` \(Opus 5, always, no other model anywhere in the cycle\)/);
   assert.match(skill, /`run_in_background: true`/);
   assert.match(skill, /`isolation: "worktree"`/);
   assert.match(skill, /`subagent_type: "general-purpose"`/);
@@ -51,14 +51,14 @@ test('the skill pins every reviewer to Opus, async, and worktree-isolated', () =
 });
 
 test('the minor / must-fix call is by surface, not by importance', () => {
-  assert.match(skill, /The judgment rule: minor or must-fix/);
+  assert.match(skill, /\*\*Minor or must-fix\.\*\*/);
   // The three must-fix surfaces, including the tautological-test case that
   // an importance test would wrongly eject.
   assert.match(skill, /ability to OBSERVE the defect it claims to cover/);
   assert.match(skill, /factual claim about runtime behavior in docs/);
   assert.match(skill, /Judge by SURFACE, never by importance/);
   // Doubt resolves toward keeping the cycle open.
-  assert.match(skill, /When a finding could go either way, it is must-fix/);
+  assert.match(skill, /When it could go either way, it is must-fix/);
   // A must-fix finding buys a round whether it was fixed OR rejected, since
   // a rejection is the reviewer's own unadjudicated judgment.
   assert.match(skill, /a REJECTED must-fix finding buys the next round exactly like a fixed one does/);
@@ -66,8 +66,8 @@ test('the minor / must-fix call is by surface, not by importance', () => {
 
 test('the removed machinery stays removed, with the reason recorded', () => {
   // The paragraph that tells a future reader the omissions were deliberate.
-  assert.match(skill, /Do not restore what this shape replaced/);
-  assert.match(skill, /The termination those mechanisms bought is now structural/);
+  assert.match(skill, /Do not restore what this replaced/);
+  assert.match(skill, /All of it is gone on purpose: termination is structural now/);
   // The fleet workflow itself is gone from the repo.
   assert.ok(!existsSync(resolve(repo, '.claude/workflows/deep-review.js')), 'the deep-review fleet workflow is back');
   // None of the removed mechanisms may re-enter as live rules. The
@@ -86,25 +86,25 @@ test('the removed machinery stays removed, with the reason recorded', () => {
 test('the cycle keeps the guarantees the trim was not allowed to touch', () => {
   // A fix is never the end: the delta round after a fix is what the whole
   // cycle exists to force.
-  assert.match(skill, /A fix is never the end of the cycle/);
+  assert.match(skill, /A fix is never the end\./);
   // A dead or non-reviewing spawn is not a round, and an inline pass is
   // never a substitute for one.
-  assert.match(skill, /A failed spawn means the round did not happen/);
-  assert.match(skill, /A reviewer that returns without reviewing is also a failed round/);
-  assert.match(skill, /NEVER downgrade to an inline self-review/);
+  assert.match(skill, /A dead spawn is not a round/);
+  assert.match(skill, /A reviewer that returns without reviewing is also not a round/);
+  assert.match(skill, /NEVER substitute an inline self-review/);
   // The literal sentinels the cycle reads a reviewer's answer by.
   assert.match(skill, /say exactly `CLEAN` on its own line and stop/);
   assert.match(skill, /say exactly `BLOCKED` on its own line/);
   // Working-tree safety: isolation, the read-only git prohibition, and the
   // per-spawn repo-health check that catches a leaked worktree.
-  assert.match(skill, /Working-tree safety \(non-negotiable\)/);
+  assert.match(skill, /\*\*Working-tree safety\.\*\*/);
   assert.match(skill, /You are a READ-ONLY reviewer/);
-  assert.match(skill, /After EACH spawn resolves, before acting on findings, run a one-line repo-health check/);
+  assert.match(skill, /After EACH spawn resolves, before acting on findings, check the repo/);
   // Reviewers stay starved of prior review context.
-  assert.match(skill, /NEVER feed them prior PR comments or reviews/);
+  assert.match(skill, /NEVER prior PR comments or reviews/);
   // The three dispositions and the deferral ledger survive.
-  assert.match(skill, /the cycle NEVER files a follow-up issue on its own/);
-  assert.match(skill, /final summary review on the PR also carries a deferral ledger/);
+  assert.match(skill, /the cycle never files a follow-up issue on its own/);
+  assert.match(skill, /final summary review also carries a deferral ledger/);
   assert.match(skill, /END WITH A DIRECT QUESTION/);
 });
 
