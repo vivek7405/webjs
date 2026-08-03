@@ -52,11 +52,12 @@ export class SiteNavMenu extends WebComponent({
    *
    * The router dispatches webjs:before-cache and reads
    * documentElement.outerHTML in the SAME TASK, a couple of statements later
-   * and with no await in between, so only a synchronous mutation is captured. Setting the reactive property reflects the host
-   * attribute at once, but the <details ?open> binding is a render-time write
-   * committed a microtask later, and the details element is what actually shows
-   * the panel and drives the icon swap. Property-only would therefore serialize
-   * an open menu and a forward restore would bring it back.
+   * and with no await in between, so only a synchronous mutation is captured.
+   * Setting the reactive property reflects the host attribute at once, but the
+   * <details ?open> binding is a render-time write committed a microtask later,
+   * and the details element is what actually shows the panel and drives the
+   * icon swap. Property-only would therefore serialize an open menu, and a
+   * forward restore would bring it back.
    */
   private _onBeforeCache = () => {
     this.open = false;

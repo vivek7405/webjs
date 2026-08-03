@@ -63,13 +63,13 @@ export class DocsDrawer extends WebComponent({
    * the others.
    *
    * The router dispatches webjs:before-cache and reads
-   * documentElement.outerHTML in the SAME TASK, a couple of statements later and with no await in between, so
-   * only a synchronous mutation is captured. Closing sets the reflected host
-   * attribute at once, which is what the CSS selects on, but every template
-   * hole is a render-time write committed a microtask later. aria-expanded is
-   * such a hole, so without writing it directly the snapshot would carry a
-   * closed drawer whose toggle still announces itself as expanded, and a
-   * restored page would say so until the component re-rendered.
+   * documentElement.outerHTML in the SAME TASK, a couple of statements later
+   * and with no await in between, so only a synchronous mutation is captured.
+   * Closing sets the reflected host attribute at once, which the CSS selects
+   * on, but every template hole is a render-time write committed a microtask
+   * later. aria-expanded is such a hole, so without writing it directly the
+   * snapshot would carry a closed drawer whose toggle still announces itself
+   * as expanded, and a restored page would say so until the next render.
    */
   private _onBeforeCache = () => {
     this.close();
