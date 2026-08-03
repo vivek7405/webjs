@@ -5,6 +5,7 @@ import { renderDocsIndexSection } from '#lib/docs-llms.server.ts';
 import { loadRegistryIndex } from '#modules/ui/queries/registry.server.ts';
 import { splitByTier } from '#modules/ui/utils/tier.ts';
 import { UI_PATH, GH_URL } from '#lib/links.ts';
+import { siteUrl } from '#lib/env.ts';
 
 /**
  * GET /llms.txt
@@ -30,7 +31,7 @@ import { UI_PATH, GH_URL } from '#lib/links.ts';
  * enumerated inline (every page, with its description) rather than reduced
  * to a single link at another host. This is the one llms.txt for the site.
  */
-const SITE_URL = ((globalThis as any).process?.env?.SITE_URL || 'https://webjs.dev').replace(/\/$/, '');
+const SITE_URL = siteUrl();
 
 /** Render a `## <title>` link section, or nothing when it has no items. */
 function section(title: string, items: string[]): string[] {

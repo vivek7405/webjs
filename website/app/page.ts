@@ -125,17 +125,11 @@ export default function LandingPage() {
         --editor-fg: var(--fg);
         --editor-gutter-fg: var(--fg-subtle);
         --editor-gutter-border: var(--border);
-        --code-tag: oklch(0.55 0.13 250);
-        --code-attr: oklch(0.52 0.16 150);
-        --code-str: oklch(0.55 0.13 145);
+        --code-tag:  light-dark(oklch(0.55 0.13 250), oklch(0.78 0.13 250));
+        --code-attr: light-dark(oklch(0.52 0.16 150), oklch(0.66 0.16 150));
+        --code-str:  light-dark(oklch(0.55 0.13 145), oklch(0.80 0.15 145));
         --code-text: var(--fg);
         --code-punc: var(--fg-muted);
-      }
-      :root[data-theme='dark'] {
-        --code-tag: oklch(0.78 0.13 250); --code-attr: oklch(0.66 0.16 150); --code-str: oklch(0.80 0.15 145);
-      }
-      @media (prefers-color-scheme: dark) {
-        :root:not([data-theme='light']) { --code-tag: oklch(0.78 0.13 250); --code-attr: oklch(0.66 0.16 150); --code-str: oklch(0.80 0.15 145); }
       }
       /* Syntax-highlight token colors (.t-kw / .t-str / ...) are defined
          globally in public/input.css so every surface (this page and the
@@ -288,14 +282,20 @@ export default function LandingPage() {
           <div class="${CARD}">
             <div class="mb-6">
               <h3 class="font-display font-bold text-base leading-[1.3] tracking-[-0.02em] mt-0 mb-2">Light DOM web components</h3>
-              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Web components that render to light DOM, so Tailwind and global CSS just work, no shadow plumbing.</p>
+              <p class="m-0 text-sm leading-[1.6] text-fg-muted">Components render to light DOM by default, so Tailwind and global CSS just work, no shadow plumbing. Scoped styles are one line away when you want them.</p>
             </div>
-            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-3.5 font-mono text-xs leading-[1.5] select-none text-[var(--editor-fg)]">
-              <div class="text-[var(--code-punc)]">&lt;<span class="text-[var(--code-tag)]">like-button</span>&gt;</div>
-              <div class="pl-4 text-[var(--code-punc)]">&lt;<span class="text-[var(--code-tag)]">button</span> <span class="text-[var(--code-attr)]">class</span>=<span class="text-[var(--code-str)]">"px-3 rounded bg-accent"</span>&gt;</div>
-              <div class="pl-8 text-[var(--code-text)]">&hearts; Like</div>
-              <div class="pl-4 text-[var(--code-punc)]">&lt;/<span class="text-[var(--code-tag)]">button</span>&gt;</div>
-              <div class="text-[var(--code-punc)]">&lt;/<span class="text-[var(--code-tag)]">like-button</span>&gt;</div>
+            <!-- Two rows rather than a markup snippet: the point of this card
+                 is which mode is the DEFAULT and how you leave it, and a tag
+                 with Tailwind classes on it shows neither. Same row idiom as
+                 the Built-in essentials card, with the accent border marking
+                 the default and the opt-in stating the real one-line API. -->
+            <div class="bg-[var(--editor-sidebar-bg)] border border-[var(--editor-border)] rounded-xl p-2.5 flex flex-col gap-1.5 font-mono text-xs text-[var(--editor-fg)] select-none">
+              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--accent-border)] rounded">
+                <span>Light DOM</span> <span class="text-[var(--accent-text)] whitespace-nowrap">default</span>
+              </div>
+              <div class="flex justify-between items-center gap-2 px-2 py-1 bg-[var(--editor-bg)] border border-[var(--editor-border)] rounded text-fg-subtle">
+                <span>Shadow DOM</span> <span class="whitespace-nowrap">static shadow = true</span>
+              </div>
             </div>
           </div>
 

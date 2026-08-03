@@ -83,6 +83,31 @@ suite('preview-tabs', () => {
   assert.equal(selected(), 'tab-preview', 'Home selects the first tab');
   });
 
+  test('moves focus onto the newly-selected tab', async () => {
+  // Follow-focus is the other half of the roving tabindex: the group is one
+  // tab stop, so a keyboard user who arrows to a tab must LAND on it, not be
+  // left focused on the one they arrowed away from.
+  //
+  // Asserted separately from the tabindex test because it exercises a
+  // different mechanism. Selection re-renders, and the focus call is deferred
+  // behind updateComplete so it runs after the roving tabindex is committed;
+  // a focus that fired before the commit would target an element still
+  // carrying tabindex="-1". Focus inside a shadow root reports as the HOST at
+  // document level, so the inner element is read off shadowRoot.activeElement.
+  const host = await track();
+  const bar = q(host, '[role="tablist"]');
+  q(host, '#tab-preview').focus();
+  assert.equal(host.shadowRoot.activeElement?.id, 'tab-preview', 'starts focused on Preview');
+
+  bar.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, composed: true }));
+  await host.updateComplete;
+  await tick();
+
+  assert.equal(host.shadowRoot.activeElement?.id, 'tab-code', 'ArrowRight moves focus to Code');
+  assert.equal(host.shadowRoot.activeElement?.getAttribute('tabindex'), '0',
+    'the focused tab is the one carrying the roving tabindex');
+  });
+
   test('shows exactly one panel at a time, and keeps both slots mounted', async () => {
   // Both slots must stay in the tree: the projected demo contains ui-* elements
   // that capture their innerHTML on connect, so a rebuild would be destructive.

@@ -145,76 +145,38 @@
    means the kit's neutral shadcn palette, not this site's warm editorial one.
    The old ui.webjs.dev declared these values on :root, which it could afford
    because nothing else lived on that domain. Here they must not leak, so every
-   raw value is declared on the preview container instead. Mirrors what
-   `webjs ui init` writes into a user's globals.css (packages/ui/packages/
-   registry/themes/index.css), which is the point: what you see is what you get.
+   raw value is declared on the preview container instead.
+
+   The VALUES are the kit's, the same ones `webjs ui init` writes into a user's
+   globals.css (packages/ui/packages/registry/themes/index.css), which is the
+   point: what you see is what you get. The SHAPE differs on two counts, both
+   deliberate. The kit keys its dark half off a `.dark` class, while this site
+   keys the whole page off `[data-theme]` (see the `dark` custom variant at the
+   top of this file), and each colour here is written ONCE via light-dark()
+   rather than as a light block plus a dark block. `color-scheme` inherits, so
+   the container picks up whatever the root resolved and every light-dark()
+   below lands on the matching side with no selector of its own.
    -------------------------------------------------------------------------- */
 .ui-preview {
-  --background:               oklch(1 0 0);
-  --foreground:               oklch(0.145 0 0);
-  --card:                     oklch(1 0 0);
-  --card-foreground:          oklch(0.145 0 0);
-  --popover:                  oklch(1 0 0);
-  --popover-foreground:       oklch(0.145 0 0);
-  --primary:                  oklch(0.205 0 0);
-  --primary-foreground:       oklch(0.985 0 0);
-  --secondary:                oklch(0.97 0 0);
-  --secondary-foreground:     oklch(0.205 0 0);
-  --muted:                    oklch(0.97 0 0);
-  --muted-foreground:         oklch(0.556 0 0);
-  --accent:                   oklch(0.97 0 0);
-  --accent-foreground:        oklch(0.205 0 0);
-  --destructive:              oklch(0.577 0.245 27.325);
-  --destructive-foreground:   oklch(0.97 0.01 17);
-  --border:                   oklch(0.922 0 0);
-  --input:                    oklch(0.922 0 0);
-  --ring:                     oklch(0.708 0 0);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .ui-preview {
-    --background:               oklch(0.145 0 0);
-    --foreground:               oklch(0.985 0 0);
-    --card:                     oklch(0.205 0 0);
-    --card-foreground:          oklch(0.985 0 0);
-    --popover:                  oklch(0.205 0 0);
-    --popover-foreground:       oklch(0.985 0 0);
-    --primary:                  oklch(0.922 0 0);
-    --primary-foreground:       oklch(0.205 0 0);
-    --secondary:                oklch(0.269 0 0);
-    --secondary-foreground:     oklch(0.985 0 0);
-    --muted:                    oklch(0.269 0 0);
-    --muted-foreground:         oklch(0.708 0 0);
-    --accent:                   oklch(0.371 0 0);
-    --accent-foreground:        oklch(0.985 0 0);
-    --destructive:              oklch(0.704 0.191 22.216);
-    --destructive-foreground:   oklch(0.58 0.22 27);
-    --border:                   oklch(1 0 0 / 10%);
-    --input:                    oklch(1 0 0 / 15%);
-    --ring:                     oklch(0.556 0 0);
-  }
-}
-
-:root[data-theme='dark'] .ui-preview {
-  --background:               oklch(0.145 0 0);
-  --foreground:               oklch(0.985 0 0);
-  --card:                     oklch(0.205 0 0);
-  --card-foreground:          oklch(0.985 0 0);
-  --popover:                  oklch(0.205 0 0);
-  --popover-foreground:       oklch(0.985 0 0);
-  --primary:                  oklch(0.922 0 0);
-  --primary-foreground:       oklch(0.205 0 0);
-  --secondary:                oklch(0.269 0 0);
-  --secondary-foreground:     oklch(0.985 0 0);
-  --muted:                    oklch(0.269 0 0);
-  --muted-foreground:         oklch(0.708 0 0);
-  --accent:                   oklch(0.371 0 0);
-  --accent-foreground:        oklch(0.985 0 0);
-  --destructive:              oklch(0.704 0.191 22.216);
-  --destructive-foreground:   oklch(0.58 0.22 27);
-  --border:                   oklch(1 0 0 / 10%);
-  --input:                    oklch(1 0 0 / 15%);
-  --ring:                     oklch(0.556 0 0);
+  --background:               light-dark(oklch(1 0 0),             oklch(0.145 0 0));
+  --foreground:               light-dark(oklch(0.145 0 0),         oklch(0.985 0 0));
+  --card:                     light-dark(oklch(1 0 0),             oklch(0.205 0 0));
+  --card-foreground:          light-dark(oklch(0.145 0 0),         oklch(0.985 0 0));
+  --popover:                  light-dark(oklch(1 0 0),             oklch(0.205 0 0));
+  --popover-foreground:       light-dark(oklch(0.145 0 0),         oklch(0.985 0 0));
+  --primary:                  light-dark(oklch(0.205 0 0),         oklch(0.922 0 0));
+  --primary-foreground:       light-dark(oklch(0.985 0 0),         oklch(0.205 0 0));
+  --secondary:                light-dark(oklch(0.97 0 0),          oklch(0.269 0 0));
+  --secondary-foreground:     light-dark(oklch(0.205 0 0),         oklch(0.985 0 0));
+  --muted:                    light-dark(oklch(0.97 0 0),          oklch(0.269 0 0));
+  --muted-foreground:         light-dark(oklch(0.556 0 0),         oklch(0.708 0 0));
+  --accent:                   light-dark(oklch(0.97 0 0),          oklch(0.371 0 0));
+  --accent-foreground:        light-dark(oklch(0.205 0 0),         oklch(0.985 0 0));
+  --destructive:              light-dark(oklch(0.577 0.245 27.325), oklch(0.704 0.191 22.216));
+  --destructive-foreground:   light-dark(oklch(0.97 0.01 17),      oklch(0.58 0.22 27));
+  --border:                   light-dark(oklch(0.922 0 0),         oklch(1 0 0 / 10%));
+  --input:                    light-dark(oklch(0.922 0 0),         oklch(1 0 0 / 15%));
+  --ring:                     light-dark(oklch(0.708 0 0),         oklch(0.556 0 0));
 }
 
 @layer base {
@@ -247,24 +209,14 @@
  * one tokenizer, so the palette is defined once here, globally, rather than
  * inline per page). Class names: t-com/t-str/t-kw/t-fn/t-type/t-num/t-punc/t-id.
  */
+/* One light-dark() per token, same rule as the palettes above: the dark half
+   used to be written twice, once per theme selector. .t-com / .t-punc / .t-id
+   read palette tokens that already carry their own pair. */
 .t-com { color: var(--fg-subtle); font-style: italic; }
-.t-str { color: oklch(0.52 0.13 150); }
-.t-kw  { color: oklch(0.52 0.16 295); font-weight: 600; }
-.t-fn  { color: oklch(0.52 0.15 250); }
-.t-type{ color: oklch(0.52 0.10 200); }
-.t-num { color: oklch(0.55 0.12 215); }
+.t-str { color: light-dark(oklch(0.52 0.13 150), oklch(0.80 0.14 150)); }
+.t-kw  { color: light-dark(oklch(0.52 0.16 295), oklch(0.76 0.14 295)); font-weight: 600; }
+.t-fn  { color: light-dark(oklch(0.52 0.15 250), oklch(0.75 0.13 250)); }
+.t-type{ color: light-dark(oklch(0.52 0.10 200), oklch(0.80 0.10 200)); }
+.t-num { color: light-dark(oklch(0.55 0.12 215), oklch(0.82 0.12 215)); }
 .t-punc{ color: var(--fg-muted); }
 .t-id  { color: var(--fg); }
-
-:root[data-theme='dark'] .t-str { color: oklch(0.80 0.14 150); }
-:root[data-theme='dark'] .t-kw  { color: oklch(0.76 0.14 295); }
-:root[data-theme='dark'] .t-fn  { color: oklch(0.75 0.13 250); }
-:root[data-theme='dark'] .t-type{ color: oklch(0.80 0.10 200); }
-:root[data-theme='dark'] .t-num { color: oklch(0.82 0.12 215); }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .t-str { color: oklch(0.80 0.14 150); }
-  :root:not([data-theme='light']) .t-kw  { color: oklch(0.76 0.14 295); }
-  :root:not([data-theme='light']) .t-fn  { color: oklch(0.75 0.13 250); }
-  :root:not([data-theme='light']) .t-type{ color: oklch(0.80 0.10 200); }
-  :root:not([data-theme='light']) .t-num { color: oklch(0.82 0.12 215); }
-}

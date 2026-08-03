@@ -10,7 +10,10 @@ export class DocSearch extends WebComponent {
   results = signal<Result[]>([]);
   loading = signal(false);
   open = signal(false);
-  _timer: any = null;
+  // undefined rather than null for the unset state: clearTimeout accepts
+  // undefined (a no-op) but not null, so this is the one that needs no cast
+  // at the call site.
+  _timer: ReturnType<typeof setTimeout> | undefined;
 
   onInput(e: InputEvent) {
     const val = (e.target as HTMLInputElement).value;

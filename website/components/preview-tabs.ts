@@ -1,4 +1,4 @@
-import { WebComponent, html, css, signal } from '@webjsdev/core';
+import { WebComponent, html, css, signal, createRef, ref } from '@webjsdev/core';
 
 /**
  * `<preview-tabs>`: a Preview / Code segmented toggle wrapping a live
@@ -24,6 +24,18 @@ export class PreviewTabs extends WebComponent {
 
   /** Which pane is visible. Instance signal, so each toggle is component-local. */
   mode = signal<'preview' | 'code'>('preview');
+
+  /**
+   * The two tab buttons, bound through the ref directive. Keyboard selection
+   * has to move focus to the newly-selected tab (the roving-tabindex half of
+   * the APG pattern), and a ref is how render() hands that element back, in
+   * place of reaching into the shadow root with a selector built from the
+   * mode string.
+   */
+  private _tabRefs = {
+    preview: createRef<HTMLButtonElement>(),
+    code: createRef<HTMLButtonElement>(),
+  };
 
   static styles = css`
     :host { display: block; }
@@ -79,7 +91,14 @@ export class PreviewTabs extends WebComponent {
     this.mode.set(next);
     // Follow-focus selection, the APG default for a tablist whose panels are
     // already in the DOM (both slots stay mounted here).
-    this.shadowRoot?.querySelector<HTMLElement>(`#tab-${next}`)?.focus();
+    //
+    // Deferred behind updateComplete so focus lands after the roving tabindex
+    // has been committed rather than while the target still reads
+    // tabindex="-1". Ordering only: focusing a tabindex="-1" element
+    // programmatically is legal, so both orders currently pass, and the
+    // browser test cannot tell them apart. Kept because the committed order is
+    // the one the ARIA state actually describes.
+    this.updateComplete.then(() => this._tabRefs[next].value?.focus());
   }
 
   render() {
@@ -92,6 +111,7 @@ export class PreviewTabs extends WebComponent {
         <button
           type="button"
           id="tab-preview"
+          ${ref(this._tabRefs.preview)}
           class="tab"
           role="tab"
           aria-controls="panel-preview"
@@ -103,6 +123,7 @@ export class PreviewTabs extends WebComponent {
         <button
           type="button"
           id="tab-code"
+          ${ref(this._tabRefs.code)}
           class="tab"
           role="tab"
           aria-controls="panel-code"
