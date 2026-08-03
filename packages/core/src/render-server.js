@@ -327,6 +327,7 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
 
     if (i < values.length) {
       let val = values[i];
+      // Resolve promises anywhere in the value graph.
       if (val && typeof /** @type any */ (val).then === 'function') {
         val = await val;
       }
