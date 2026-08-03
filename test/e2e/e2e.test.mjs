@@ -2007,9 +2007,11 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     //    12-hour and 24-hour renderings are matched, since which one appears
     //    depends on the runner's default locale, not on anything under test.
     //
-    // 2. <chat-box>'s INNER content. The element itself is still compared (it
-    //    must be present and in the same position on both sides), but its pane
-    //    is a live socket feed and cannot be made equal across the two servers:
+    // 2. <chat-box>'s MESSAGE PANE, and only that. The element, its status
+    //    header and its form (input, Send button) are all still compared, so a
+    //    structural difference in chat-box's rendering is still caught; what is
+    //    dropped is the list of chat lines, which is a live socket feed and
+    //    cannot be made equal across the two servers:
     //
     //      - The server broadcasts every join and leave to all clients
     //        including the joiner, and the handler appends a line per event, so
@@ -2028,25 +2030,45 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     //    assumed it could: the two sides are genuinely independent populations,
     //    not one lagging the other. So the pane is held out of the comparison.
     //
-    // Holding it out does NOT drop the coverage, because the thing worth
-    // checking about chat-box is that it HYDRATED, not what its feed happened
-    // to say. It connects from connectedCallback, so reaching its connected
-    // state proves its module shipped and the element upgraded, and that is
-    // asserted directly on both sides by waitForChatLive below.
+    //    The participant count in the status header is environmental for the
+    //    same reason and is normalised, while the 'Live ·' around it stays.
+    //
+    // Dropping the pane does not drop the hydration coverage: chat-box connects
+    // from connectedCallback, so reaching its connected state proves its module
+    // shipped and the element upgraded, and waitForChatLive asserts that on
+    // both sides directly.
     const observableMain = (pg) => pg.evaluate(() => {
       const main = document.querySelector('main') || document.body;
       // Work on a clone so the live DOM is untouched and a later snapshot of
       // the same page still sees the real thing.
       const copy = /** @type {HTMLElement} */ (main.cloneNode(true));
-      for (const box of copy.querySelectorAll('chat-box')) box.replaceChildren();
+      // The pane is the middle child of chat-box's wrapper: header div, pane
+      // div, form. Positional because the markup carries no id or data hook.
+      // The count below is asserted so a markup change surfaces as a loud
+      // failure here rather than silently restoring the raw comparison, which
+      // would put the flake back invisibly.
+      const boxes = [...copy.querySelectorAll('chat-box')];
+      const panes = boxes.map((b) => b.querySelector(':scope > div > div:nth-child(2)')).filter(Boolean);
+      if (panes.length !== boxes.length) {
+        return { error: `expected one message pane per <chat-box>, found ${panes.length} for ${boxes.length}; chat-box markup changed and this snapshot no longer excludes its feed` };
+      }
+      for (const pane of panes) pane.replaceChildren();
       const text = (copy.textContent || '')
         .replace(/\d{1,2}:\d{2}:\d{2}\s?[AP]M/gi, 'TIME')
         .replace(/\d{1,2}:\d{2}:\d{2}/g, 'TIME')
+        .replace(/Live · \d+ others? online/g, 'Live · CHAT-COUNT online')
         .replace(/\s+/g, ' ')
         .trim();
       const tags = [...copy.querySelectorAll('*')].map((el) => el.tagName.toLowerCase());
       return { text, tags };
     });
+
+    /** Fail loudly if observableMain could not find what it needs to exclude. */
+    const snapshot = async (pg, which) => {
+      const snap = await observableMain(pg);
+      if (snap.error) throw new Error(`${which} snapshot: ${snap.error}`);
+      return snap;
+    };
 
     /**
      * Wait until the page has actually hydrated, instead of sleeping and hoping.
@@ -2116,23 +2138,25 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     };
 
     /**
-     * Assert that <chat-box> HYDRATED, by waiting for it to leave its
-     * server-rendered state.
+     * Wait for <chat-box> to reach its connected state.
      *
-     * This is a hydration check, not a settle barrier, and the difference
-     * matters. It keys on the status line reaching 'Live ·', which `onOpen`
-     * sets before the join message arrives, so it deliberately does NOT
-     * guarantee the message pane has stopped moving. That guarantee is not
-     * available at all: the pane accumulates a line per join and leave on that
-     * page's own server, a reconnect appends another, and the two servers have
-     * different client populations by construction. The pane is therefore held
-     * out of the snapshot (see observableMain) instead of waited on.
+     * Precisely what this proves, since an overclaim here would be the same
+     * misattribution this block exists to remove: it keys on the status line
+     * reaching 'Live ·', which `onOpen` sets, so passing means BOTH that the
+     * component hydrated AND that its websocket opened against that page's own
+     * server. Hydration is the necessary half (chat-box calls connectWS from
+     * connectedCallback, so the SSR state cannot be left until its module
+     * shipped and the element upgraded), but a red here is not proof of a
+     * hydration failure on its own: a dev server that never completed the WS
+     * upgrade produces the same timeout with hydration perfectly healthy. The
+     * failure message says both.
      *
-     * What this DOES establish is the part worth asserting. chat-box calls
-     * connectWS from connectedCallback, so leaving the SSR state at all proves
-     * its module shipped and the element upgraded. Running it against both
-     * pages keeps the on-vs-off hydration coverage that holding the pane out of
-     * the snapshot would otherwise have lost.
+     * It is NOT a settle barrier. `onOpen` fires before the join message
+     * arrives, so the message pane is still moving when this returns. That
+     * guarantee is not available at all (the pane accumulates a line per join
+     * and leave on that page's own server, a reconnect appends another, and the
+     * two servers have different client populations by construction), which is
+     * why the pane is held out of the snapshot instead of waited on.
      * @param {import('puppeteer-core').Page} p
      * @param {string} which  'ON' or 'OFF', named in the failure message
      */
@@ -2158,14 +2182,14 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await waitForHydration(page, 'ON');
       await waitForHydration(offPage, 'OFF');
-      // chat-box's pane is held out of the snapshot (it is a live socket feed
-      // over two independent servers), so assert its hydration directly on both
-      // sides instead. Without this the held-out pane would mean an un-hydrated
-      // chat-box went unnoticed.
+      // chat-box's message pane is held out of the snapshot (a live socket feed
+      // over two independent servers), so check its connected state directly on
+      // both sides. Without this an un-hydrated chat-box would go unnoticed,
+      // since the excluded pane is where that would otherwise have shown.
       await waitForChatLive(page, 'ON');
       await waitForChatLive(offPage, 'OFF');
-      const onSnap = await observableMain(page);
-      const offSnap = await observableMain(offPage);
+      const onSnap = await snapshot(page, 'ON');
+      const offSnap = await snapshot(offPage, 'OFF');
       // The display-only badges (build-stamp, vendor-badge, muted-text) are
       // elided ON and shipped OFF, yet their rendered output must match: that
       // identity is exactly why they are safe to elide.
@@ -2238,8 +2262,8 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       // settled) is the real condition the old sleep stood in for.
       await page.goto(`${baseUrl}/static-info`, { waitUntil: 'load', timeout: 30000 });
       await offPage.goto(`${offBaseUrl}/static-info`, { waitUntil: 'load', timeout: 30000 });
-      const onSnap = await observableMain(page);
-      const offSnap = await observableMain(offPage);
+      const onSnap = await snapshot(page, 'ON');
+      const offSnap = await snapshot(offPage, 'OFF');
       assert.deepEqual(onSnap.tags, offSnap.tags, 'static route tag structure must match on vs off');
       assert.equal(onSnap.text, offSnap.text, 'static route visible text must match on vs off');
     });
