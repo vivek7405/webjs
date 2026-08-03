@@ -1,156 +1,225 @@
-// Guards the review loop's substantive-gate exit (#1171) across the three
-// files that carry it: the webjs-start-work skill (the normative rules),
-// the deep-review workflow (the tier tag round-1 findings arrive with),
-// and the skill-routing hook (the injected review directive, which once
-// kept the OLD "until a round is clean" absolute after the skill had moved
-// on, steering standalone reviews back into prose relitigation).
+// Guards the pre-merge review cycle across the two files that carry it: the
+// webjs-start-work skill (the normative rules) and the skill-routing hook
+// (the injected review directive, which once kept an OLD exit condition
+// after the skill had moved on, steering standalone reviews back into a
+// shape the skill no longer described).
 //
-// These are static assertions over committed text on purpose: the gate is
-// prose executed by agents, so the counterfactual for "the gate silently
+// These are static assertions over committed text on purpose: the cycle is
+// prose executed by agents, so the counterfactual for "the cycle silently
 // reverted" is the text no longer carrying its load-bearing anchors. Each
 // assertion fails if its hunk is reverted or typo-drifted.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const skill = readFileSync(resolve(here, '../../.claude/skills/webjs-start-work/SKILL.md'), 'utf8');
-const workflow = readFileSync(resolve(here, '../../.claude/workflows/deep-review.js'), 'utf8');
-const hook = readFileSync(resolve(here, '../../.claude/hooks/route-skills.sh'), 'utf8');
+const repo = resolve(here, '../..');
+const skill = readFileSync(resolve(repo, '.claude/skills/webjs-start-work/SKILL.md'), 'utf8');
+const hook = readFileSync(resolve(repo, '.claude/hooks/route-skills.sh'), 'utf8');
 
-test('the skill carries the substantive gate and its two-tier exit', () => {
-  assert.match(skill, /The substantive gate: which findings keep the loop open/);
-  // The normative definition bullet, anchored by a phrase unique to it (the
-  // shared three-surface wording below also appears in the delta prompt
-  // template, so alone it would pass with the definition bullet deleted).
-  assert.match(skill, /A finding is `substantive` when it touches any of three surfaces/);
-  // The three surfaces appear in BOTH the definition and the delta prompt
-  // template, so each shared phrase must occur at least twice.
-  for (const phrase of [/ability to OBSERVE the defect it claims to cover/g, /factual claim about runtime behavior in docs/g]) {
-    assert.ok((skill.match(phrase) || []).length >= 2, `${phrase} must anchor both the definition and the template`);
+test('the skill prescribes ONE reviewer, never a fleet', () => {
+  // Round 1 is a single reviewer over the whole diff, with no path-based
+  // tier choice deciding its shape.
+  assert.match(skill, /Round 1: ONE fresh reviewer over the WHOLE diff/);
+  assert.match(skill, /No fleet, no lenses, no jury, no per-diff tier choice/);
+  // Later rounds narrow the QUESTION to the fixes, not the evidence.
+  assert.match(skill, /Each later round is delta-scoped: ONE fresh reviewer whose QUESTION is the previous round's fix commits/);
+  // Structure alone cannot bound a chain where every fix produces the next
+  // round's finding, which is the case the deleted budget was written for.
+  assert.match(skill, /\*\*A delta chain that keeps producing fixes stops after the FIFTH DELTA ROUND\*\*/);
+  // The stop needs a reporting shape of its own: the reporting section
+  // covers only the converged path.
+  assert.match(skill, /If the FIFTH delta round still produces fixes/);
+  // What makes this stop unfinished is unreviewed fixes, not open findings,
+  // which is the opposite of its sibling stop and the thing a report copied
+  // from that sibling gets wrong.
+  assert.match(skill, /but that its FIXES are on the branch unreviewed, so say exactly that/);
+  // And the do-not-restore paragraph must admit the cap came back rather
+  // than claiming termination is entirely structural.
+  assert.match(skill, /The one exception to the removals is the round cap, which came back in a narrower form/);
+  // The final whole-diff pass is what a clean delta round buys, and it is
+  // the reason a clean round is not by itself the end.
+  assert.match(skill, /buys the FINAL review: ONE fresh reviewer over the WHOLE diff again/);
+  assert.match(skill, /Either way a clean round is not the end of the cycle/);
+  // The final review's findings end in a fix plus ONE delta check of that
+  // fix, which does not re-open the cycle.
+  assert.match(skill, /Its fixes get ONE delta-scoped check of those fix commits alone/);
+  assert.match(skill, /The cycle ends when nothing must-fix is left OPEN/);
+  // The same two words for the same disposition in every rule that names
+  // it, since "refuted or deferred" silently dropped the unrefutable
+  // rejection the refuter-unavailable rule creates.
+  assert.match(skill, /every must-fix finding it raised was rejected or deferred/);
+  assert.match(skill, /The final review is never re-run and the delta rounds are never re-entered/);
+  // A fix-check that finds something gets ONE more of the same shape, then
+  // the cycle stops unfinished rather than looping.
+  assert.match(skill, /ONE more check of the same shape, and if that one does too, stop and report the PR unfinished/);
+  // A clean round 1 skips the delta rounds but still gets the final review.
+  assert.match(skill, /every PR gets at least two reviews/);
+});
+
+test('the skill pins every reviewer to Opus, async, and worktree-isolated', () => {
+  assert.match(skill, /`model: "opus"` \(Opus 5, always, no other model anywhere in the cycle\)/);
+  assert.match(skill, /`run_in_background: true`/);
+  assert.match(skill, /`isolation: "worktree"`/);
+  assert.match(skill, /`subagent_type: "general-purpose"`/);
+  // No reviewer anywhere in the skill is pinned to another model family.
+  assert.ok(!/fable/i.test(skill), 'a reviewer was pinned back to fable');
+});
+
+test('the minor / must-fix call is by surface, not by importance', () => {
+  assert.match(skill, /\*\*Minor or must-fix\.\*\*/);
+  // The three must-fix surfaces, including the tautological-test case that
+  // an importance test would wrongly eject.
+  assert.match(skill, /ability to OBSERVE the defect it claims to cover/);
+  assert.match(skill, /factual claim about runtime behavior in docs/);
+  assert.match(skill, /Judge by SURFACE, never by importance/);
+  // Doubt resolves toward keeping the cycle open.
+  assert.match(skill, /When it could go either way, it is must-fix/);
+  // Only a FIX buys a round. A rejection produces no fix commits, so a
+  // round would re-pose the same question over an unchanged head to a
+  // reviewer that is never told what was already handled, which is how the
+  // pre-final loop lost its bound when the round budget went. The refuter
+  // is what adjudicates a rejection, and it terminates in one spawn.
+  assert.match(skill, /\*\*Only a FIX buys another round\*\*/);
+  assert.match(skill, /A rejection buys one REFUTER instead, a deferral buys nothing/);
+  assert.match(skill, /what a rejection buys instead of a whole round, and it terminates: one spawn per rejection, never a refuter of a refuter/);
+  // A refuter has two verdicts and the cycle must define both, or a finding
+  // whose rejection was contradicted ends with no disposition at all.
+  assert.match(skill, /On the post-rejection use only, a refuter that answers `STANDS` has contradicted your rejection/);
+  // The pre-action gate has no rejection to overturn, so STANDS means the
+  // finding is real, and a final-phase fix cannot buy a round that phase
+  // forbids.
+  assert.match(skill, /On the pre-action gate there is no rejection yet/);
+  assert.match(skill, /on the final review it joins that phase's single fix-check instead/);
+  // The two uses fail in opposite directions when no refuter can be spawned.
+  assert.match(skill, /on the pre-action gate, act on the finding as real/);
+  assert.match(skill, /keep the rejection but record it as UNREFUTED/);
+});
+
+test('the removed machinery stays removed, with the reason recorded', () => {
+  // The paragraph that tells a future reader the omissions were deliberate.
+  assert.match(skill, /Do not restore what this replaced/);
+  assert.match(skill, /Almost all of it is gone on purpose: termination is mostly structural now/);
+  // The fleet workflow itself is gone from the repo.
+  assert.ok(!existsSync(resolve(repo, '.claude/workflows/deep-review.js')), 'the deep-review fleet workflow is back');
+  // None of the removed mechanisms may re-enter, as a rule or as vocabulary.
+  // The do-not-restore paragraph describes them WITHOUT these words ("two
+  // tiers", "a 5-round budget", "poll a file"), so the expected count is
+  // zero and any occurrence is a re-introduction rather than a mention.
+  for (const [label, re] of [
+    ['the substantive/prose tier vocabulary', /substantive[^.]{0,40}(tier|prose)|(tier|prose)[^.]{0,40}substantive/i],
+    ['the round budget', /round budget|over budget/i],
+    ['the polling watchdog', /watchdog/i],
+  ]) {
+    assert.ok(!re.test(skill), `${label} is back in the skill`);
   }
-  // A number in docs stating runtime behavior is surface three, not prose,
-  // in the normative definition AND the delta prompt template.
-  assert.ok((skill.match(/a number in docs that states runtime behavior/g) || []).length >= 2, 'docs-number qualifier must anchor both the definition and the template');
-  // Fail-open direction for untagged findings from a tag-capable reviewer,
-  // and the one tagless-reviewer kind the orchestrator classifies itself.
-  assert.match(skill, /arrives UNTAGGED from a reviewer whose result shape carries the tag is treated as substantive/);
-  assert.match(skill, /structurally cannot tag/);
-  // The exit: the converging round's prose findings apply without a
-  // re-review round, and there is no standalone prose pass to relitigate.
-  assert.match(skill, /apply that round's prose-tier fixes WITHOUT re-review and stop/);
-  assert.match(skill, /converging round's prose-tier findings ARE the sweep/);
-  assert.ok(!/prose[- ]pass/i.test(skill), 'the standalone prose pass must not resurface in the skill (either spelling)');
-  // The failure taxonomy names the light-tier reviewer instead of the
-  // removed prose-pass reviewer.
-  assert.match(skill, /a light-tier broad reviewer, or a delta spawn/);
-  // A prose fix that touches a substantive surface still gets its one
-  // delta-scoped check (the gate's exception survives the pass removal).
-  assert.match(skill, /gets one delta-scoped check of THAT FIX ALONE/);
-  // The re-tag license is asymmetric and downgrades are auditable.
-  assert.match(skill, /DOWNGRADE to prose is treated like a rejection/);
-  assert.match(skill, /recorded on the finding's thread/);
-  // Round 1 is tiered by the diff's PATHS (never by judged importance), a
-  // mixed diff escalates, and the minimum is one round, so a clean round 1
-  // converges without a forced extra pass.
-  assert.match(skill, /Round 1's shape is decided by the SURFACES in the PR's diff, a path check/);
-  assert.match(skill, /one shipped-source path is enough/);
-  assert.match(skill, /The minimum is ONE round/);
-  assert.match(skill, /pulls shipped source into a light-tier PR re-runs round 1 at the DEEP tier/);
-  // An untagged list is still a valid round (round counting stays sane).
-  assert.match(skill, /untagged findings treated as substantive per the gate/);
-  // The round budget bounds the loop: 5 substantive rounds, OVER BUDGET is
-  // a non-converged exit with its own report, and the failure taxonomy
-  // carries it.
-  assert.match(skill, /5 substantive rounds, raised only by the user's instruction/);
-  assert.match(skill, /ends it as OVER BUDGET/);
-  assert.match(skill, /An OVER-BUDGET loop reports the rounds run/);
-  assert.match(skill, /round budget \(default 5 substantive rounds, user-raisable per task\) is spent/);
-  // Mid-loop fixes carry proof: the red\/green toggle inside the loop-speed
-  // bullet, the non-discriminating-test re-run, and claim decay.
-  assert.match(skill, /make an older test non-discriminating without failing it/);
-  assert.match(skill, /A counterfactual CLAIM decays/);
-  assert.match(skill, /true of a commit, not a branch/);
-  // The loop never files follow-up issues on its own; deferral is recorded
-  // on the PR and filing is the user's call from the report. Deferral can
-  // never swallow a finding on the PR's own changed code.
-  assert.match(skill, /the loop NEVER files a follow-up issue on its own/);
-  assert.match(skill, /awaiting your call on filing/);
-  assert.match(skill, /NEVER out of scope, whatever its size/);
-  // The final summary review on the PR carries the deferral ledger, and
-  // the chat report expands the same ledger instead of a bare name list.
-  assert.match(skill, /FINAL summary review on the PR also carries a deferral ledger/);
-  assert.match(skill, /expand each deferral right there, mirroring the PR ledger/);
-  // The chat report must END by directly asking whether to file follow-ups.
+});
+
+test('the cycle keeps the guarantees the trim was not allowed to touch', () => {
+  // A fix is never the end: the delta round after a fix is what the whole
+  // cycle exists to force.
+  assert.match(skill, /A fix changes the branch, so the changed branch needs its own round/);
+  // The pre-fix wording said "Fixing (or rejecting) a must-fix finding
+  // changes the branch", which both restates the reversed rule and is not
+  // true of a rejection. It must not survive anywhere in the file.
+  assert.ok(!/Fixing \(or rejecting\)/.test(skill), 'the reversed rejection-buys-a-round rule is back');
+  // A dead or non-reviewing spawn is not a round, and an inline pass is
+  // never a substitute for one.
+  assert.match(skill, /A dead spawn is not a round/);
+  // Waiting must not block the turn, which is the whole point of spawning
+  // the reviewer in the background, and the optional progress check must
+  // never kill on a timer or on a flat file (elapsed time says nothing: a
+  // reviewer here runs 5 to 10 minutes while working normally, and a file
+  // that never grows may simply be a stub the harness does not write to).
+  assert.match(skill, /\*\*Waiting is not blocking\.\*\*/);
+  assert.match(skill, /never wait on it with a foreground `sleep`/);
+  assert.match(skill, /\*\*A progress check is optional, runs in the BACKGROUND, and never kills\.\*\*/);
+  assert.match(skill, /elapsed time never proves a stall/);
+  assert.match(skill, /never wire one to a flat file or a timer/);
+  // There is no automatic trigger beyond a dead status, so giving up is a
+  // deliberate call, and that call is the one place elapsed time legitimately
+  // counts. It is scoped to the state with nothing to read, it requires
+  // having actually probed, and it stops the reviewer rather than leaving a
+  // second one in flight.
+  assert.match(skill, /Giving up applies ONLY where there is no growth to see/);
+  assert.match(skill, /that judgement is the one place elapsed time legitimately counts/);
+  // The give-up clause must not reach the one state that HAS a positive
+  // signal, or it contradicts "leave it alone however long it has run".
+  assert.match(skill, /A transcript that is still growing is never abandoned, whatever the clock says/);
+  // An abandoned reviewer was produced and may still return, so it is not a
+  // failed spawn, and its late findings are read rather than discarded.
+  // "No growth to see" must mean you looked, or never probing re-authorizes
+  // abandoning a reviewer that is in fact working.
+  assert.match(skill, /means you PROBED and saw none, never that you did not look/);
+  // Giving up stops the reviewer, so no second one is ever left in flight to
+  // return late findings the cycle has no phase or review object to absorb.
+  assert.match(skill, /Giving up means STOPPING it \(`TaskStop`\) and re-spawning/);
+  assert.ok(!/Take whichever returns first as the round/.test(skill), 'the two-reviewers-in-flight case is back');
+  // Step 1 must not ban polling outright while the bullet below sanctions a
+  // background size probe of the same spawn.
+  assert.ok(!/Do not poll it and do not re-read its message/.test(skill), 'step 1 bans the probe the progress check sanctions');
+  assert.match(skill, /Do not badger it for results/);
+  // And the do-not-restore paragraph must not claim a replacement mechanism
+  // richer than what is actually there, which is how a polling watchdog
+  // grew back once already.
+  assert.match(skill, /the harness completion notification is the signal, with at most an optional background progress check that never kills anything/);
+  // The liveness sentence must not claim the harness status is the ONLY
+  // signal while the progress check reads byte growth as one.
+  assert.match(skill, /Only two things are evidence a reviewer is alive/);
+  assert.match(skill, /Never read the transcript.s contents/);
+  assert.match(skill, /A reviewer that returns without reviewing is also not a round/);
+  assert.match(skill, /NEVER substitute an inline self-review/);
+  // The literal sentinels the cycle reads a reviewer's answer by.
+  assert.match(skill, /say exactly `CLEAN` on its own line and stop/);
+  assert.match(skill, /say exactly `BLOCKED` on its own line/);
+  // The template must not keep offering the no-fix-commit delta round that
+  // cycle step 3 replaced with the final review, since following it re-opens
+  // the unbounded path.
+  assert.ok(!/delta round following a round with no fix commits/.test(skill), 'the removed no-fix delta round is back in the prompt template');
+  // Working-tree safety: isolation, the read-only git prohibition, and the
+  // per-spawn repo-health check that catches a leaked worktree.
+  assert.match(skill, /\*\*Working-tree safety\.\*\*/);
+  assert.match(skill, /You are a READ-ONLY reviewer/);
+  assert.match(skill, /After EACH spawn resolves, before acting on findings, check the repo/);
+  // Reviewers stay starved of prior review context.
+  assert.match(skill, /NEVER prior PR comments or reviews/);
+  // The prompt sets the scope and nothing else. A defect-class checklist
+  // narrows the reviewer to what the author already suspects, which is the
+  // bias a fresh reviewer exists to escape.
+  assert.match(skill, /\*\*Do not tell it what to look for\.\*\*/);
+  assert.match(skill, /no list of defect classes, no "specifically check for X and Y"/);
+  assert.match(skill, /The question for this round is a SCOPE, not a checklist/);
+  // The three dispositions and the deferral ledger survive.
+  assert.match(skill, /the cycle never files a follow-up issue on its own/);
+  assert.match(skill, /final summary review also carries a deferral ledger/);
   assert.match(skill, /END WITH A DIRECT QUESTION/);
-  assert.match(skill, /silence is never consent/);
 });
 
-test('deep-review findings carry a required tier with the gate wording', () => {
-  assert.match(workflow, /required: \['file', 'line', 'title', 'detail', 'severity', 'tier'\]/);
-  assert.match(workflow, /tier: \{ type: 'string', enum: \['substantive', 'prose'\]/);
-  // The finder prompt states the same three-surface definition, including
-  // the docs-number qualifier.
-  assert.match(workflow, /Tag each finding's tier/);
-  assert.match(workflow, /ability to OBSERVE the defect it claims to cover/);
-  assert.match(workflow, /a number in docs that states runtime behavior/);
-  // The tier is orthogonal to severity, stated so dedup changes stay honest.
-  assert.match(workflow, /surface classification, not a severity judgment/);
-  // The trimmed defaults hold: 16 agents, at most three dynamic lenses,
-  // and whenToUse scopes round 1 to shipped-source diffs.
-  assert.match(workflow, /\? Number\(args\.maxAgents\) : 16/);
-  assert.match(workflow, /maxItems: 3/);
-  assert.match(workflow, /ZERO to three ADDITIONAL review lenses/);
-  assert.match(workflow, /whose diff touches shipped source/);
-  // Tier outranks severity everywhere findings compete: the same-line
-  // dedup collision, the tier-first sort that drives the CAP slice and
-  // the jury-budget walk, and a missing tier fails OPEN (substantive).
-  assert.match(workflow, /subst\(f\) && !subst\(prev\)/);
-  assert.match(workflow, /const subst = \(f\) => f\.tier !== 'prose'/);
-  assert.match(workflow, /Number\(subst\(b\)\) - Number\(subst\(a\)\)/);
-  // The CAP tail is returned in unverified, never silently dropped, and
-  // its remedy is stated correctly in both the workflow log and (third
-  // assertion, against the SKILL file) the skill's round-1 bullet: the
-  // cap is fixed, maxAgents cannot recover it.
-  assert.match(workflow, /\.\.\.unverified, \.\.\.capDropped/);
-  assert.match(workflow, /the cap is fixed, so re-run after fixes/);
-  assert.match(skill, /cannot recover a capped finding/);
-  // A dead jury slot fails open to CONFIRMED instead of vanishing.
-  assert.match(workflow, /verified\[i\] \|\| \{ \.\.\.f, confirmed: true, jury: 0/);
-});
-
-test('deep-review.js stays valid in the async workflow context', () => {
-  // Workflow scripts run as an async function body (top-level return and
-  // await are legal there but not in a plain module, so `node --check`
-  // cannot cover this file).
-  const body = workflow.replace(/^export /m, '');
-  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  assert.doesNotThrow(() => new AsyncFunction('args', 'agent', 'parallel', 'pipeline', 'phase', 'log', 'budget', 'workflow', body));
-});
-
-test('the routed review directive states the substantive exit, not the old absolute', () => {
-  // The old exit steered standalone reviews into never-terminating prose
-  // relitigation; it must not resurface in the injected directive.
-  assert.ok(!hook.includes('until a round is clean'), 'route-skills.sh reverted to the pre-#1171 exit');
-  assert.match(hook, /nothing SUBSTANTIVE/);
-  assert.ok(!/prose[- ]pass/i.test(hook), 'route-skills.sh reverted to the standalone prose pass (directive or comment)');
-  assert.match(hook, /prose-tier findings are applied without re-review/);
-  assert.match(hook, /found something substantive/);
-  // The tagless-reviewer clause stays in lockstep with the skill's gate:
-  // orchestrator-classified, doubt to substantive, prose recorded.
-  assert.match(hook, /recorded like a downgrade/);
-  // The directive and the skill prescribe the SAME tiered round-1 reviewer,
-  // with code-review findings as auxiliary input.
-  assert.match(hook, /round 1 is the deep-review workflow when the diff touches shipped source/);
-  assert.match(hook, /one broad fresh reviewer otherwise/);
-  assert.match(hook, /auxiliary input/);
-  // Self-classification is scoped to the code-review skill's own findings;
-  // untagged findings from tag-capable reviewers stay substantive.
-  assert.match(hook, /from the code-review skill itself/);
-  assert.match(hook, /any tag-capable reviewer is simply treated as substantive/);
-  // The directive states the round budget the skill mandates.
-  assert.match(hook, /budget of 5 substantive rounds bounds the whole loop/);
+test('the routed review directive states the same cycle as the skill', () => {
+  // The directive must not describe a fleet or a tiered round 1.
+  assert.ok(!/deep-review/.test(hook), 'route-skills.sh still routes round 1 to the deep-review fleet');
+  assert.ok(!/round budget|OVER BUDGET/i.test(hook), 'route-skills.sh reverted to the round budget');
+  // The shape, in lockstep with the skill.
+  assert.match(hook, /ONE fresh reviewer over the whole diff, never a fleet/);
+  assert.match(hook, /each later round is delta-scoped/);
+  assert.match(hook, /the first round that produces no fixes, whether it found nothing must-fix or everything it found was rejected or deferred, buys a FINAL review over the whole diff again/);
+  assert.match(hook, /model opus \(Opus 5, never fable\)/);
+  assert.match(hook, /isolation worktree/);
+  // The judgment rule, including its fail-open direction.
+  assert.match(hook, /MINOR or MUST-FIX by SURFACE, never by importance/);
+  assert.match(hook, /when it could go either way it is must-fix/);
+  assert.match(hook, /ONE delta check of that fix alone/);
+  assert.match(hook, /Never report the PR ready off a round that found something must-fix/);
+  // The directive must resolve the fix-check case the SAME way the skill
+  // does, and must not both end the cycle and forbid reporting it.
+  assert.match(hook, /the cycle ends when nothing must-fix is left open, meaning the check came back with nothing or there was no fix to check because every must-fix finding the final review raised was rejected or deferred/);
+  assert.match(hook, /a check that does find something must-fix gets that fixed and one more check of the same shape, and only if that one also finds something must-fix do you stop and report the PR unfinished/);
+  assert.match(hook, /Only a FIX buys another round/);
+  assert.match(hook, /a delta chain that keeps producing fixes stops after the fifth delta round, unfinished, rather than continuing/);
+  // The code-review skill's own findings are input to the cycle, not a
+  // round of it.
+  assert.match(hook, /auxiliary input, not as a round of it/);
 });
