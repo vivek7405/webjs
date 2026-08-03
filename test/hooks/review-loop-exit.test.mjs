@@ -27,6 +27,12 @@ test('the skill prescribes ONE reviewer, never a fleet', () => {
   assert.match(skill, /No fleet, no lenses, no jury, no per-diff tier choice/);
   // Later rounds narrow the QUESTION to the fixes, not the evidence.
   assert.match(skill, /Each later round is delta-scoped: ONE fresh reviewer whose QUESTION is the previous round's fix commits/);
+  // Structure alone cannot bound a chain where every fix produces the next
+  // round's finding, which is the case the deleted budget was written for.
+  assert.match(skill, /\*\*A delta chain that keeps producing fixes stops after the FIFTH\*\*/);
+  // And the do-not-restore paragraph must admit the cap came back rather
+  // than claiming termination is entirely structural.
+  assert.match(skill, /The exception is the round cap, which came back in a narrower form/);
   // The final whole-diff pass is what a clean delta round buys, and it is
   // the reason a clean round is not by itself the end.
   assert.match(skill, /buys the FINAL review: ONE fresh reviewer over the WHOLE diff again/);
@@ -89,7 +95,7 @@ test('the minor / must-fix call is by surface, not by importance', () => {
 test('the removed machinery stays removed, with the reason recorded', () => {
   // The paragraph that tells a future reader the omissions were deliberate.
   assert.match(skill, /Do not restore what this replaced/);
-  assert.match(skill, /All of it is gone on purpose: termination is structural now/);
+  assert.match(skill, /Almost all of it is gone on purpose: termination is mostly structural now/);
   // The fleet workflow itself is gone from the repo.
   assert.ok(!existsSync(resolve(repo, '.claude/workflows/deep-review.js')), 'the deep-review fleet workflow is back');
   // None of the removed mechanisms may re-enter, as a rule or as vocabulary.
@@ -97,7 +103,7 @@ test('the removed machinery stays removed, with the reason recorded', () => {
   // tiers", "a 5-round budget", "poll a file"), so the expected count is
   // zero and any occurrence is a re-introduction rather than a mention.
   for (const [label, re] of [
-    ['the substantive/prose tier vocabulary', /substantive/i],
+    ['the substantive/prose tier vocabulary', /substantive[^.]{0,40}(tier|prose)|(tier|prose)[^.]{0,40}substantive/i],
     ['the round budget', /round budget|over budget/i],
     ['the polling watchdog', /watchdog/i],
   ]) {
@@ -203,7 +209,7 @@ test('the routed review directive states the same cycle as the skill', () => {
   // The directive must resolve the fix-check case the SAME way the skill
   // does, and must not both end the cycle and forbid reporting it.
   assert.match(hook, /the cycle ends when nothing must-fix is left open, meaning the check came back with nothing or there was no fix to check because every must-fix finding the final review raised was rejected or deferred/);
-  assert.match(hook, /one more check of the same shape, and only if that one also finds something must-fix do you stop and report the PR unfinished/);
+  assert.match(hook, /a check that does find something must-fix gets that fixed and one more check of the same shape, and only if that one also finds something must-fix do you stop and report the PR unfinished/);
   assert.match(hook, /Only a FIX buys another round/);
   // The code-review skill's own findings are input to the cycle, not a
   // round of it.
