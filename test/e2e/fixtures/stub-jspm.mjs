@@ -80,6 +80,49 @@ export function packageName(install) {
   return at === -1 ? install : install.slice(0, at);
 }
 
+/**
+ * The part of an install AFTER the package name and version, if any, e.g.
+ * `/plugin/utc` for `dayjs@1.11.21/plugin/utc`. A subpath needs its own
+ * importmap key pointing at its own file, which this fixture does not build,
+ * so a subpath install counts as unserviceable rather than being answered with
+ * the bare package's entry.
+ * @param {string} install
+ * @returns {string}
+ */
+export function subpath(install) {
+  const at = install.indexOf('@', install.startsWith('@') ? 1 : 0);
+  if (at === -1) return '';
+  const afterVersion = install.slice(at);
+  const slash = afterVersion.indexOf('/');
+  return slash === -1 ? '' : afterVersion.slice(slash);
+}
+
+/**
+ * Build the importmap this fixture would answer a `/generate` call with, or
+ * null when any install is one it cannot serve from this repo.
+ * @param {string[]} installs
+ * @returns {Record<string, string> | null}
+ */
+export function localImportsFor(installs) {
+  // An empty list means the body did not parse as expected. Answering it with
+  // an empty map would be the exact silent failure this fixture removes (an
+  // absent entry is an unresolved-bare-specifier error that kills the whole
+  // page graph), so treat it as unserviceable.
+  if (!installs.length) return null;
+  /** @type {Record<string, string>} */
+  const imports = {};
+  for (const install of installs) {
+    if (subpath(install)) return null;
+    const name = packageName(install);
+    const local = localModuleUrl(name);
+    // Anything this repo cannot serve goes to the real API, so a vendor added
+    // to the blog later resolves honestly rather than silently vanishing.
+    if (!local) return null;
+    imports[name] = local;
+  }
+  return imports;
+}
+
 const realFetch = globalThis.fetch;
 
 globalThis.fetch = async function stubbedFetch(input, init) {
@@ -92,21 +135,11 @@ globalThis.fetch = async function stubbedFetch(input, init) {
   let installs = [];
   try {
     const body = init && typeof init.body === 'string' ? JSON.parse(init.body) : null;
-    if (body && Array.isArray(body.install)) installs = body.install;
-  } catch { /* fall through to the real API below */ }
+    if (body && Array.isArray(body.install)) installs = body.install.filter((i) => typeof i === 'string');
+  } catch { /* an unparseable body is unserviceable, handled below */ }
 
-  /** @type {Record<string, string>} */
-  const imports = {};
-  for (const install of installs) {
-    const name = packageName(install);
-    const local = localModuleUrl(name);
-    if (local) imports[name] = local;
-  }
-  // Any install this repo cannot serve locally goes to the real API, so an
-  // unlisted vendor resolves honestly rather than vanishing from the map (an
-  // absent entry is an unresolved-bare-specifier error that kills the whole
-  // page graph, which is the exact failure this fixture exists to remove).
-  if (Object.keys(imports).length !== installs.length) return realFetch(input, init);
+  const imports = localImportsFor(installs);
+  if (!imports) return realFetch(input, init);
 
   return new Response(JSON.stringify({ map: { imports } }), {
     status: 200,
