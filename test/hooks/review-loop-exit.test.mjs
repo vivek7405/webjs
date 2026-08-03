@@ -34,7 +34,7 @@ test('the skill prescribes ONE reviewer, never a fleet', () => {
   // The final review's findings end in a fix plus ONE delta check of that
   // fix, which does not re-open the cycle.
   assert.match(skill, /Its fixes get ONE delta-scoped check of those fix commits alone/);
-  assert.match(skill, /The cycle ends when that check finds nothing must-fix/);
+  assert.match(skill, /The cycle ends when nothing must-fix is left OPEN/);
   assert.match(skill, /The final review is never re-run and the delta rounds are never re-entered/);
   // A fix-check that finds something gets ONE more of the same shape, then
   // the cycle stops unfinished rather than looping.
@@ -69,6 +69,12 @@ test('the minor / must-fix call is by surface, not by importance', () => {
   assert.match(skill, /\*\*Only a FIX buys another round\*\*/);
   assert.match(skill, /A rejection buys one REFUTER instead, a deferral buys nothing/);
   assert.match(skill, /what a rejection buys instead of a whole round, and it terminates: one spawn per rejection, never a refuter of a refuter/);
+  // A refuter has two verdicts and the cycle must define both, or a finding
+  // whose rejection was contradicted ends with no disposition at all.
+  assert.match(skill, /answers `STANDS` has contradicted your rejection, so the rejection does not hold/);
+  // The two uses fail in opposite directions when no refuter can be spawned.
+  assert.match(skill, /on the pre-action gate, act on the finding as real/);
+  assert.match(skill, /keep the rejection but record it as UNREFUTED/);
 });
 
 test('the removed machinery stays removed, with the reason recorded', () => {
@@ -93,7 +99,11 @@ test('the removed machinery stays removed, with the reason recorded', () => {
 test('the cycle keeps the guarantees the trim was not allowed to touch', () => {
   // A fix is never the end: the delta round after a fix is what the whole
   // cycle exists to force.
-  assert.match(skill, /A fix is never the end\./);
+  assert.match(skill, /A fix changes the branch, so the changed branch needs its own round/);
+  // The pre-fix wording said "Fixing (or rejecting) a must-fix finding
+  // changes the branch", which both restates the reversed rule and is not
+  // true of a rejection. It must not survive anywhere in the file.
+  assert.ok(!/Fixing \(or rejecting\)/.test(skill), 'the reversed rejection-buys-a-round rule is back');
   // A dead or non-reviewing spawn is not a round, and an inline pass is
   // never a substitute for one.
   assert.match(skill, /A dead spawn is not a round/);
@@ -105,6 +115,10 @@ test('the cycle keeps the guarantees the trim was not allowed to touch', () => {
   // The liveness probe is byte growth on the transcript, never its words,
   // and the file may be either a live transcript or a static stub.
   assert.match(skill, /if the byte count is rising it is working, so leave it alone however long it has run/);
+  // A stub is flat from the start, so re-spawning on flatness would kill
+  // every healthy stub-backed reviewer and replace it with another one.
+  assert.match(skill, /Flatness is a signal ONLY where the file is a live transcript/);
+  assert.match(skill, /never re-spawn a stub-backed one on flatness/);
   // The liveness sentence must not claim the harness status is the ONLY
   // signal while the check-in rule reads byte growth as one.
   assert.match(skill, /Only two things are evidence a reviewer is alive/);
@@ -114,6 +128,10 @@ test('the cycle keeps the guarantees the trim was not allowed to touch', () => {
   // The literal sentinels the cycle reads a reviewer's answer by.
   assert.match(skill, /say exactly `CLEAN` on its own line and stop/);
   assert.match(skill, /say exactly `BLOCKED` on its own line/);
+  // The template must not keep offering the no-fix-commit delta round that
+  // cycle step 3 replaced with the final review, since following it re-opens
+  // the unbounded path.
+  assert.ok(!/delta round following a round with no fix commits/.test(skill), 'the removed no-fix delta round is back in the prompt template');
   // Working-tree safety: isolation, the read-only git prohibition, and the
   // per-spawn repo-health check that catches a leaked worktree.
   assert.match(skill, /\*\*Working-tree safety\.\*\*/);
@@ -134,7 +152,7 @@ test('the routed review directive states the same cycle as the skill', () => {
   // The shape, in lockstep with the skill.
   assert.match(hook, /ONE fresh reviewer over the whole diff, never a fleet/);
   assert.match(hook, /each later round is delta-scoped/);
-  assert.match(hook, /buys a FINAL review over the whole diff again/);
+  assert.match(hook, /the first round that produces no fixes, whether it found nothing must-fix or everything it found was rejected or deferred, buys a FINAL review over the whole diff again/);
   assert.match(hook, /model opus \(Opus 5, never fable\)/);
   assert.match(hook, /isolation worktree/);
   // The judgment rule, including its fail-open direction.
@@ -145,7 +163,7 @@ test('the routed review directive states the same cycle as the skill', () => {
   // The directive must resolve the fix-check case the SAME way the skill
   // does, and must not both end the cycle and forbid reporting it.
   assert.match(hook, /the cycle ends when that check finds nothing must-fix/);
-  assert.match(hook, /one more of the same shape before you stop and report the PR unfinished/);
+  assert.match(hook, /one more check of the same shape, and only if that one also finds something must-fix do you stop and report the PR unfinished/);
   assert.match(hook, /Only a FIX buys another round/);
   // The code-review skill's own findings are input to the cycle, not a
   // round of it.
