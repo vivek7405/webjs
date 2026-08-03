@@ -63,3 +63,35 @@ test('SSR: nested submitter templates keep the enclosing form binding', async ()
   const out = await renderToString(html`<form action=${saveAction}>${buttons()}</form>`, { ssr: true });
   assert.match(out, /name="__webjs_action" value="hash\/deleteAction"/);
 });
+
+// #1207 Part B, cross-runtime. The renderers are byte-identical on Node and
+// Bun, so the refusals have to be too: a submitter guard that fires on one
+// runtime and not the other would ship a page that works in dev and 405s in
+// production, which is the same works-one-way-only failure Part B exists to
+// close.
+test('SSR: Part B refuses an unparseable submitter enctype on both runtimes', async () => {
+  const refused = [
+    ['plain formenctype', html`<form action=${saveAction}><button formenctype="text/plain">Save</button></form>`],
+    ['plain formmethod', html`<form action=${saveAction}><button formmethod="get">Save</button></form>`],
+    ['padded formmethod', html`<form action=${saveAction}><button formmethod=" post ">Save</button></form>`],
+    ['submit input', html`<form action=${saveAction}><input type="submit" formenctype="text/plain"></form>`],
+    ['nested template', html`<form action=${saveAction}>${html`<button formmethod="get">Save</button>`}</form>`],
+    ['bound plus dialog', html`<form action=${saveAction}><button formmethod="dialog" formaction=${deleteAction}>x</button></form>`],
+  ];
+  for (const [label, tpl] of refused) {
+    await assert.rejects(() => renderToString(tpl, { ssr: true }), /formenctype=|formmethod=|dialog/, label);
+  }
+});
+
+test('SSR: Part B carve-outs render on both runtimes', async () => {
+  const allowed = [
+    ['dialog dismissal', html`<form action=${saveAction}><button formmethod="dialog">Close</button></form>`, /formmethod="dialog"/],
+    ['retargeted submitter', html`<form action=${saveAction}><button formmethod="get" formaction="/search">Go</button></form>`, /formaction="\/search"/],
+    ['non-submitter control', html`<form action=${saveAction}><input type="text" name="q" formenctype="text/plain"></form>`, /name="q"/],
+    ['outside a bound form', html`<form method="post"><button formenctype="text/plain">Save</button></form>`, /formenctype="text\/plain"/],
+    ['parseable enctype', html`<form action=${saveAction}><button formenctype="multipart/form-data">Save</button></form>`, /formenctype="multipart\/form-data"/],
+  ];
+  for (const [label, tpl, re] of allowed) {
+    assert.match(await renderToString(tpl, { ssr: true }), re, label);
+  }
+});

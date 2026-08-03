@@ -350,3 +350,38 @@ test('Suspense nested in a template is replaced by its boundary HTML', async () 
   );
   assert.match(out, /<main><webjs-boundary id="s1"><span>loading<\/span><\/webjs-boundary><\/main>/);
 });
+
+/* ---------------- property holes in the streaming machine ---------------- */
+
+test('renderToStream: a .prop hole on a custom element is dropped, attribute text and all', async () => {
+  // The buffered machine slices the authored `.name=` text off `out` BEFORE it
+  // decides what to emit in its place. The streaming machine has to do the same
+  // or the authored text survives and whatever it emits lands glued to it, as
+  // `<webjs-suspense .fallback=data-webjs-fallback="...">`, which parses as an
+  // unquoted `.fallback` value and swallows the rest of the tag.
+  const out = await streamText(renderToStream(
+    html`<webjs-suspense .fallback=${html`<p>loading</p>`}><span>content</span></webjs-suspense>`,
+    { ssr: false },
+  ));
+  assert.ok(!out.includes('.fallback='), 'the authored attribute text is gone');
+  assert.ok(!out.includes('data-webjs-fallback'), 'no fallback attribute: nothing reads one on this path');
+  assert.match(out, /<webjs-suspense\s*><span>content<\/span><\/webjs-suspense>/);
+});
+
+test('renderToStream: a .prop hole on a native element is dropped', async () => {
+  const out = await streamText(renderToStream(
+    html`<input .value=${'typed'}>`,
+    { ssr: false },
+  ));
+  assert.ok(!out.includes('.value='), 'the authored attribute text is gone');
+  assert.ok(!out.includes('typed'), 'a native .prop never reaches the markup');
+});
+
+test('renderToStream: an @event hole is dropped', async () => {
+  const out = await streamText(renderToStream(
+    html`<button @click=${() => {}}>Go</button>`,
+    { ssr: false },
+  ));
+  assert.ok(!out.includes('@click'), 'the authored attribute text is gone');
+  assert.match(out, /<button\s*>Go<\/button>/);
+});

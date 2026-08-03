@@ -4,11 +4,10 @@ import { escapeText, escapeAttr } from './escape.js';
 import {
   assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp,
   assertIdentifiableAction, bindFormActionStartTag, isBoundFormAction, resolveFormActionId,
-  assertConvergentBoundForm, assertSubmitterHasNoName,
-  assertSubmitterFormIsBound, assertSubmitterType, assertSubmitterHasNoValue,
-  assertSubmitterHasNoStaticFormAction, assertSubmitterHasNoFormAttribute,
-  assertSingleSubmitterAction, parseStartTagAttrs, countStartTagAttr,
-  FORM_ACTION_FIELD, PARSEABLE_ENCTYPES,
+  assertConvergentBoundForm, assertSubmitterHasNoName, assertSubmitterHasNoValue,
+  assertSubmitterFormIsBound, assertSubmitterHasNoFormAttribute,
+  assertSingleSubmitterAction, assertSubmitterStartTag, parseStartTagAttrs,
+  FORM_ACTION_FIELD,
 } from './form-action.js';
 import { lookup, lookupModuleUrl, allTags } from './registry.js';
 import { stylesToString, isCSS } from './css.js';
@@ -162,22 +161,40 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
   let commentDashes = 0;
   let currentTag = '';   // lowercased tag name currently being parsed
   let rawTail = '';      // rolling lowercased tail, tracks </script>/</style>
+  let tagStart = -1;     // index in `out` of the `<` opening the current tag
   /** @type {string | null} */
-  let pendingActionId = null;
+  let pendingActionId = null;  // identity of a bound form action, until the tag closes
   /** @type {string | null} */
-  let pendingSubmitterTag = null;
-  let tagStart = 0;
+  let pendingSubmitterTag = null;  // tag of a bound submitter, until it closes
+  // Shapes on the CURRENT start tag that a bound form may not carry (#1155).
+  // Collected as the tag is scanned and judged at its `>`, because the action
+  // hole may come after them.
   let pendingActionCount = 0;
   /** @type {string[]} */
   let pendingPropAttrs = [];
+  // Whether the tag stream is currently inside a form that BOUND an action
+  // (#1207). A submitter needs this and cannot compute it for itself: the
+  // form's `method` / `enctype` were forced on a start tag already emitted.
+  // Seeded from the caller so a nested template rendered into a bound form's
+  // children inherits it, since each template is its own scan.
   let insideBoundForm = insideBoundFormAtStart;
   let isCloseTag = false;
 
+  // A bound `action=${fn}` is committed at its hole, but the edits it implies
+  // (forcing `method` / `enctype`, and the hidden identity field) are only
+  // possible once the whole start tag is known: an attribute the author wrote
+  // AFTER the action hole still counts, and the hidden field belongs INSIDE
+  // the form, after the `>`. So the hole records the identity and this runs at
+  // the `>`, rewriting the start tag that was just emitted.
   const closeBoundFormTag = () => {
+    // Reset per tag whether or not this one was bound, so a later form is never
+    // judged on an earlier tag's shapes.
     const propAttrs = pendingPropAttrs;
     const duplicateAction = pendingActionCount > 1;
+    const submitterTag = pendingSubmitterTag;
     pendingPropAttrs = [];
     pendingActionCount = 0;
+    pendingSubmitterTag = null;
     if (pendingActionId != null) {
       assertConvergentBoundForm({ duplicateAction, propAttrs });
       const bound = bindFormActionStartTag(out.slice(tagStart), pendingActionId);
@@ -185,34 +202,13 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
       pendingActionId = null;
       insideBoundForm = true;
     }
-    if (pendingSubmitterTag != null) {
-      const tag = pendingSubmitterTag;
-      pendingSubmitterTag = null;
-      const tagStr = out.slice(tagStart);
-      const attrs = parseStartTagAttrs(tagStr);
-      assertSingleSubmitterAction(duplicateAction, tag);
-      if (attrs.has('formaction')) assertSubmitterHasNoStaticFormAction(tag);
-      if (countStartTagAttr(tagStr, 'value') > 1) assertSubmitterHasNoValue(tag);
-      if (attrs.has('name')) {
-        assertSubmitterHasNoName(attrs.get('name') || '', tag, countStartTagAttr(tagStr, 'name') === 1);
-      }
-      assertSubmitterType(tag, attrs.get('type'));
-      if (attrs.has('form')) assertSubmitterHasNoFormAttribute(tag);
-      const formEnctype = attrs.get('formenctype');
-      if (formEnctype != null && !PARSEABLE_ENCTYPES.has(formEnctype.toLowerCase())) {
-        throw new Error(
-          `[webjs] formaction=\${action} on <${tag}> with formenctype="${formEnctype}" `
-          + `cannot work: form submission is parsed as multipart/form-data or `
-          + `application/x-www-form-urlencoded.`,
-        );
-      }
-      const formMethod = attrs.get('formmethod');
-      if (formMethod != null && !/^post$/i.test(formMethod)) {
-        throw new Error(
-          `[webjs] formaction=\${action} on <${tag}> with formmethod="${formMethod}" `
-          + `cannot work: a bound server action is submitted as a POST body.`,
-        );
-      }
+    if (submitterTag != null) {
+      assertSubmitterStartTag(out.slice(tagStart), submitterTag, { bound: true, duplicateAction });
+    } else if (insideBoundForm && !isCloseTag && (currentTag === 'button' || currentTag === 'input')) {
+      // Part B (#1207): an ordinary submitter inside a bound form, whose own
+      // `formmethod` / `formenctype` can defeat the binding without carrying an
+      // action of its own. Neither renderer used to look at those.
+      assertSubmitterStartTag(out.slice(tagStart), currentTag, { bound: false });
     }
   };
   // #1155: a `.method` / `.enctype` / `.encoding` prop on a form is dropped
@@ -235,6 +231,9 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
     }
   };
 
+  // Every `>` in a tag state funnels through here, so the bound-form bookkeeping
+  // and the rawtext switch stay in one place rather than at five call sites.
+  // `</form>` closes the bound-form scope: a submitter after it is outside.
   const handleTagEnd = () => {
     closeBoundFormTag();
     if (isCloseTag && currentTag === 'form') {
@@ -332,9 +331,14 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
         val = await val;
       }
       if (state === 'comment') {
+        // Holes inside <!-- comments --> are emitted raw (no escaping; comments
+        // are inert and not rendered by browsers).
         out += String(val ?? '');
         commentDashes = 0;
       } else if (state === 'rawtext') {
+        // Inside <script> / <style>: emit the value as-is (no HTML escaping).
+        // Author is responsible for not closing the tag with user-controlled
+        // data: the usual caveat for CSS/JS interpolation.
         out += String(val ?? '');
         rawTail = '';
       } else if (state === 'text') {
@@ -344,11 +348,28 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
         const name = attrName.slice(1);
         const kind = BINDING_PREFIXES[prefix];
         if (kind === 'event') {
+          // Event listener. Client-only behaviour, drop at SSR.
           out = out.slice(0, attrStart);
           state = 'in-tag';
           attrName = '';
         } else if (kind === 'prop') {
+          // Property binding. Only meaningful on custom elements (which
+          // have a hyphen in the tag name and a WebComponent subclass
+          // that knows how to apply + strip data-webjs-prop-* on
+          // hydration). For native elements (`<input .value=${v}>`)
+          // the attribute would be dead weight (nothing consumes it),
+          // so we drop it the same way the old behaviour did. The
+          // client renderer still applies the property when the
+          // template runs in the browser, which is the only place a
+          // page-level `.prop` on a native element could have set the
+          // property to begin with.
           out = out.slice(0, attrStart);
+          // `<webjs-suspense .fallback=${html`...`}>` (#471). A TemplateResult
+          // is not serializer-safe (the normal data-webjs-prop-* path would
+          // drop it) and a normal custom-element prop applies only at
+          // hydration, too late for the streaming placeholder. So render the
+          // fallback to HTML now and carry it as data-webjs-fallback, which the
+          // injectDSD streaming pre-pass reads as the boundary placeholder.
           if (currentTag === 'webjs-suspense' && name === 'fallback') {
             const fbHtml = await render(val, ctx, insideBoundForm);
             out += `data-webjs-fallback="${escapeAttr(fbHtml)}"`;
@@ -357,12 +378,26 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
             continue;
           }
           if (!currentTag.includes('-')) {
+            // A native element's `.prop` is dropped at SSR, so this path never
+            // leaked here. It still refuses a function where the property is a
+            // REFLECTED IDL attribute (`.action` on a form, `.formAction` on a
+            // button or input), so the rule does not depend on which renderer
+            // sees it first: the client sets that property for real and the
+            // reflection writes the source into the DOM. A page that renders
+            // clean on the server and throws on hydration is a worse failure
+            // than one that refuses at the earliest point. Elsewhere the
+            // property is a plain expando that reflects nothing, so refusing
+            // it would be a false positive.
             assertNotFunctionReflectedActionProp(val, name, currentTag);
             notePropAttr(name, currentTag);
             state = 'in-tag';
             attrName = '';
             continue;
           }
+          // `undefined` has no meaningful HTML representation. Drop
+          // silently so the consumer falls back to its constructor
+          // default. `null` is preserved because it's a real value
+          // distinct from "not set".
           if (val === undefined) {
             state = 'in-tag';
             attrName = '';
@@ -372,6 +407,9 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
             const encoded = await stringify(val);
             out += `data-webjs-prop-${kebabCase(name)}="${escapeAttr(encoded)}"`;
           } catch (e) {
+            // Unserializable value (function, class instance with
+            // private state, DOM node, etc.). Drop with a warning so
+            // SSR does not crash. Same constraint as Next.js RSC.
             console.warn(
               `[webjs] property binding .${name} has an unserializable `
               + `value during SSR. Dropping. The browser will see the `
@@ -381,6 +419,9 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
           state = 'in-tag';
           attrName = '';
         } else if (kind === 'bool') {
+          // Never leaked (a boolean binding stringifies nothing), but
+          // `?action=${fn}` is meaningless in every case and refusing it keeps
+          // the rule true for every sigil rather than only the quoted ones.
           assertNotFunctionActionAttr(val, name, currentTag);
           out = out.slice(0, attrStart);
           if (val) out += `${name}=""`;
@@ -389,20 +430,37 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
         } else if (isBoundFormAction(val, attrName, currentTag)) {
           noteActionHole(attrName, currentTag);
           if (currentTag === 'form') {
+            // #1155: the form-level binding. Drop the `action=` attribute
+            // entirely so the form posts to the page's own url (an omitted
+            // attribute, not `action=""`, which the spec calls a conformance
+            // error), and remember the identity so the `>` can force the
+            // submission attributes and emit the hidden field.
             pendingActionId = assertIdentifiableAction(await resolveFormActionId(val), currentTag);
+            // Trailing whitespace goes with the attribute: every injected
+            // attribute carries its own leading space, so keeping the old one
+            // would double it in the emitted tag.
             out = out.slice(0, attrStart).replace(/\s+$/, '');
-          } else if (currentTag === 'button' || currentTag === 'input') {
+          } else {
+            // #1207: the submitter binding. The identity replaces the
+            // `formaction=` hole IN PLACE with the button's own name/value
+            // pair, the one channel a browser submits for the pressed button
+            // alone. No `formaction` url is emitted, so the submission still
+            // targets the page and the form-level identity is simply overridden
+            // by this later entry.
+            //
+            // Refused here rather than at the `>` only where the answer cannot
+            // change later: boundness of the ENCLOSING form is already decided
+            // (its start tag is emitted), and an attribute written BEFORE the
+            // hole is already in `out`. Everything else waits for the close,
+            // where `assertSubmitterStartTag` sees the whole tag.
+            // A second binding hole on this same tag, refused here so the
+            // author gets the duplicate message rather than a confusing
+            // complaint about the `name` the FIRST hole just injected.
+            assertSingleSubmitterAction(pendingSubmitterTag != null, currentTag);
             assertSubmitterFormIsBound(insideBoundForm, currentTag);
-            const tagStr = out.slice(tagStart);
-            const attrs = parseStartTagAttrs(tagStr);
-            if (attrs.has('name')) {
-              const frameworkName = pendingSubmitterTag != null
-                && attrs.get('name') === FORM_ACTION_FIELD;
-              assertSubmitterHasNoName(attrs.get('name') || '', currentTag, frameworkName);
-            }
-            if (attrs.has('value') && pendingSubmitterTag == null) {
-              assertSubmitterHasNoValue(currentTag);
-            }
+            const attrs = parseStartTagAttrs(out.slice(tagStart));
+            if (attrs.has('name')) assertSubmitterHasNoName(attrs.get('name') || '', currentTag, false);
+            if (attrs.has('value')) assertSubmitterHasNoValue(currentTag);
             if (attrs.has('form')) assertSubmitterHasNoFormAttribute(currentTag);
             const subId = assertIdentifiableAction(await resolveFormActionId(val), currentTag);
             pendingSubmitterTag = currentTag;
@@ -411,13 +469,19 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
           state = 'in-tag';
           attrName = '';
         } else {
+          // A second `action` hole that resolved to a plain url still COUNTS,
+          // so the duplicate refusal fires whatever the values happen to be.
           noteActionHole(attrName, currentTag);
+          // #1154: never stringify a function into action=/formaction= (it
+          // would serialize a server action's source into the served HTML).
           assertNotFunctionActionAttr(val, attrName, currentTag);
           out += `"${escapeAttr(String(val ?? ''))}"`;
           state = 'in-tag';
           attrName = '';
         }
       } else if (state === 'attr-quoted' || state === 'attr-unquoted') {
+        // Same guard for a hole inside a quoted/unquoted value, the
+        // `action="${fn}"` and mixed `action="/x/${fn}"` shapes (#1154).
         assertNotFunctionActionAttr(val, attrName, currentTag);
         out += escapeAttr(String(val ?? ''));
       }
@@ -1871,15 +1935,24 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
   /** @type {string[]} */
   let pendingPropAttrs = [];
   /** @type {string | null} */
-  let pendingSubmitterTag = null;
+  let pendingSubmitterTag = null;  // tag of a bound submitter, until it closes
+  // See the buffered machine: seeded from the caller so a nested template
+  // rendered into a bound form's children knows it is inside one.
   let insideBoundForm = insideBoundFormAtStart;
   let isCloseTag = false;
 
+  // See the buffered machine for why this runs at the `>` rather than at the
+  // hole. `tagStart` indexes into `buf`, which is safe because `buf` is only
+  // flushed on a `text`-state hole and a start tag contains none.
   const closeBoundFormTag = () => {
+    // Reset per tag whether or not this one was bound, so a later form is never
+    // judged on an earlier tag's shapes.
     const propAttrs = pendingPropAttrs;
     const duplicateAction = pendingActionCount > 1;
+    const submitterTag = pendingSubmitterTag;
     pendingPropAttrs = [];
     pendingActionCount = 0;
+    pendingSubmitterTag = null;
     if (pendingActionId != null) {
       assertConvergentBoundForm({ duplicateAction, propAttrs });
       const bound = bindFormActionStartTag(buf.slice(tagStart), pendingActionId);
@@ -1887,34 +1960,12 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
       pendingActionId = null;
       insideBoundForm = true;
     }
-    if (pendingSubmitterTag != null) {
-      const tag = pendingSubmitterTag;
-      pendingSubmitterTag = null;
-      const tagStr = buf.slice(tagStart);
-      const attrs = parseStartTagAttrs(tagStr);
-      assertSingleSubmitterAction(duplicateAction, tag);
-      if (attrs.has('formaction')) assertSubmitterHasNoStaticFormAction(tag);
-      if (countStartTagAttr(tagStr, 'value') > 1) assertSubmitterHasNoValue(tag);
-      if (attrs.has('name')) {
-        assertSubmitterHasNoName(attrs.get('name') || '', tag, countStartTagAttr(tagStr, 'name') === 1);
-      }
-      assertSubmitterType(tag, attrs.get('type'));
-      if (attrs.has('form')) assertSubmitterHasNoFormAttribute(tag);
-      const formEnctype = attrs.get('formenctype');
-      if (formEnctype != null && !PARSEABLE_ENCTYPES.has(formEnctype.toLowerCase())) {
-        throw new Error(
-          `[webjs] formaction=\${action} on <${tag}> with formenctype="${formEnctype}" `
-          + `cannot work: form submission is parsed as multipart/form-data or `
-          + `application/x-www-form-urlencoded.`,
-        );
-      }
-      const formMethod = attrs.get('formmethod');
-      if (formMethod != null && !/^post$/i.test(formMethod)) {
-        throw new Error(
-          `[webjs] formaction=\${action} on <${tag}> with formmethod="${formMethod}" `
-          + `cannot work: a bound server action is submitted as a POST body.`,
-        );
-      }
+    if (submitterTag != null) {
+      assertSubmitterStartTag(buf.slice(tagStart), submitterTag, { bound: true, duplicateAction });
+    } else if (insideBoundForm && !isCloseTag && (currentTag === 'button' || currentTag === 'input')) {
+      // Part B (#1207), the SAME sweep as the buffered machine, through the
+      // same helper, so this second state machine cannot drift from it.
+      assertSubmitterStartTag(buf.slice(tagStart), currentTag, { bound: false });
     }
   };
   // #1155: a `.method` / `.enctype` / `.encoding` prop on a form is dropped
@@ -2028,6 +2079,9 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
       }
     }
 
+    // Flush the buffer before processing the value hole: but only when
+    // we're in text state (in attribute states we may need the buffer for
+    // backtracking).
     if (i < values.length) {
       let val = values[i];
       if (val && typeof /** @type any */ (val).then === 'function') {
@@ -2040,25 +2094,32 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
         buf += String(val ?? '');
         rawTail = '';
       } else if (state === 'text') {
+        // Flush the buffered static content before streaming the value.
         if (buf) { controller.enqueue(buf); buf = ''; }
         await streamRender(val, ctx, controller, insideBoundForm);
       } else if (state === 'after-eq') {
         const prefix = attrName[0];
         const name = attrName.slice(1);
         const kind = BINDING_PREFIXES[prefix];
-        if (kind === 'event') {
-          buf = buf.slice(0, attrStart);
-          state = 'in-tag';
-          attrName = '';
-        } else if (kind === 'prop') {
-          if (currentTag === 'webjs-suspense' && name === 'fallback') {
-            const fbHtml = await render(val, ctx);
-            buf += `data-webjs-fallback="${escapeAttr(fbHtml)}"`;
-            state = 'in-tag';
-            attrName = '';
-            continue;
-          }
-          if (!currentTag.includes('-')) {
+        if (kind === 'event' || kind === 'prop') {
+          // Guard `prop` ONLY, matching the buffered machine. An `@action`
+          // event binding is dropped here and never stringified, and a
+          // function is the LEGITIMATE value for one (`<my-el @action=${fn}>`
+          // listens for an `action` event), so refusing it would be a false
+          // positive. `.action` differs where the property REFLECTS: on a form
+          // (and `.formAction` on a button or input) the client assignment
+          // writes the source into the DOM, so refusing at SSR keeps a page
+          // from rendering clean on the server and throwing on hydration.
+          // Elsewhere, including a custom element, the property reflects
+          // nothing and a function stays legal.
+          //
+          // Unlike the buffered machine this drops EVERY prop, including
+          // `<webjs-suspense .fallback>`: there is no injectDSD pre-pass on
+          // this path (it is reached only through `renderToStream(v, { ssr:
+          // false })`), so there is no consumer for a `data-webjs-fallback`
+          // and emitting one would put an attribute in the markup that nothing
+          // reads.
+          if (kind === 'prop' && !currentTag.includes('-')) {
             assertNotFunctionReflectedActionProp(val, name, currentTag);
             notePropAttr(name, currentTag);
           }
@@ -2066,6 +2127,10 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
           state = 'in-tag';
           attrName = '';
         } else if (kind === 'bool') {
+          // A boolean binding stringifies nothing, so this never leaked, but
+          // `?action=${fn}` is meaningless in every case (a truthy function
+          // emits a bare `action=""`), and refusing it keeps the rule the docs
+          // state true for every sigil rather than true only when quoted.
           assertNotFunctionActionAttr(val, name, currentTag);
           buf = buf.slice(0, attrStart);
           if (val) buf += `${name}=""`;
@@ -2073,21 +2138,18 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
           attrName = '';
         } else if (isBoundFormAction(val, attrName, currentTag)) {
           noteActionHole(attrName, currentTag);
+          // The SAME bindings as the buffered renderer (#1155, #1207), in the
+          // second machine, so `renderToStream(v, { ssr: false })` emits an
+          // identical form rather than refusing one the page renderer accepts.
           if (currentTag === 'form') {
             pendingActionId = assertIdentifiableAction(await resolveFormActionId(val), currentTag);
             buf = buf.slice(0, attrStart).replace(/\s+$/, '');
-          } else if (currentTag === 'button' || currentTag === 'input') {
+          } else {
+            assertSingleSubmitterAction(pendingSubmitterTag != null, currentTag);
             assertSubmitterFormIsBound(insideBoundForm, currentTag);
-            const tagStr = buf.slice(tagStart);
-            const attrs = parseStartTagAttrs(tagStr);
-            if (attrs.has('name')) {
-              const frameworkName = pendingSubmitterTag != null
-                && attrs.get('name') === FORM_ACTION_FIELD;
-              assertSubmitterHasNoName(attrs.get('name') || '', currentTag, frameworkName);
-            }
-            if (attrs.has('value') && pendingSubmitterTag == null) {
-              assertSubmitterHasNoValue(currentTag);
-            }
+            const attrs = parseStartTagAttrs(buf.slice(tagStart));
+            if (attrs.has('name')) assertSubmitterHasNoName(attrs.get('name') || '', currentTag, false);
+            if (attrs.has('value')) assertSubmitterHasNoValue(currentTag);
             if (attrs.has('form')) assertSubmitterHasNoFormAttribute(currentTag);
             const subId = assertIdentifiableAction(await resolveFormActionId(val), currentTag);
             pendingSubmitterTag = currentTag;
@@ -2097,6 +2159,11 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
           attrName = '';
         } else {
           noteActionHole(attrName, currentTag);
+          // The SAME guard as the buffered renderer above. This is a second,
+          // independent state machine, so it inherits nothing from that one;
+          // a change to the rule has to land in both. Reached only via
+          // `renderToStream(v, { ssr: false })`, which no page render uses, so
+          // this covers the public API surface rather than a page leak.
           assertNotFunctionActionAttr(val, attrName, currentTag);
           buf += `"${escapeAttr(String(val ?? ''))}"`;
           state = 'in-tag';

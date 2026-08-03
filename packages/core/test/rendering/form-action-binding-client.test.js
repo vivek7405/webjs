@@ -23,12 +23,13 @@ before(() => {
   globalThis.HTMLElement = window.HTMLElement;
 });
 
-let html, render, FORM_ACTION_ID_KEY, asyncAppend;
+let html, render, FORM_ACTION_ID_KEY, asyncAppend, repeat;
 before(async () => {
   ({ html } = await import('../../src/html.js'));
   ({ render } = await import('../../src/render-client.js'));
   ({ FORM_ACTION_ID_KEY } = await import('../../src/form-action.js'));
   ({ asyncAppend } = await import('../../src/directives.js'));
+  ({ repeat } = await import('../../src/repeat.js'));
 });
 
 /**
@@ -572,3 +573,124 @@ test('releasing a submitter binding removes its stale identity', () => {
 // instead. It turns entirely on the write reflecting to the content attribute,
 // and linkedom's HTMLFormElement has an empty class body with no reflection at
 // all, so a `.method` assertion here would pass whether or not the fix is present.
+
+// ---------------------------------------------------------------------------
+// #1207: a submitter built by a DETACHED nested template.
+//
+// `repeat()` and a plain array both build each item through `buildDetached`,
+// which reconciles before the nodes are in the tree, so a button there cannot
+// reach the `<form>` that lives in the parent template. That is the single most
+// ordinary shape this feature exists for, a per-row action button in a list,
+// and SSR renders it perfectly. An earlier version asked the enclosing form
+// whether it was bound, got no answer because there was no form to ask, and
+// THREW, so the page rendered on the server and crashed on hydration.
+//
+// The rule these pin: an unresolved form SKIPS the boundness assertion and the
+// binding is applied. SSR is the renderer that sees every page and refuses a
+// genuinely unbound form there, loudly, before anything ships.
+// ---------------------------------------------------------------------------
+
+test('a submitter inside repeat() binds instead of refusing', () => {
+  const formAction = HOISTED();
+  const rowAction = HOISTED();
+  const host = document.createElement('div');
+  render(
+    html`<form action=${formAction}>${repeat([1, 2], (n) => n, (n) => html`<button formaction=${rowAction}>Delete ${n}</button>`)}</form>`,
+    host,
+  );
+  const buttons = host.querySelectorAll('button');
+  assert.equal(buttons.length, 2);
+  for (const button of buttons) {
+    assert.equal(button.getAttribute('name'), '__webjs_action');
+    assert.equal(button.getAttribute('value'), ID);
+    assert.equal(button.hasAttribute('formaction'), false, 'no formaction url is emitted');
+  }
+});
+
+test('a submitter inside a plain array binds instead of refusing', () => {
+  const formAction = HOISTED();
+  const rowAction = HOISTED();
+  const host = document.createElement('div');
+  render(
+    html`<form action=${formAction}>${[html`<button formaction=${rowAction}>Delete</button>`]}</form>`,
+    host,
+  );
+  const button = host.querySelector('button');
+  assert.equal(button.getAttribute('name'), '__webjs_action');
+  assert.equal(button.getAttribute('value'), ID);
+});
+
+test('a detached submitter still refuses what the template alone decides', () => {
+  // Skipping the boundness question does not relax the refusals that are
+  // properties of the TEMPLATE, which are answerable with no form in sight.
+  const formAction = HOISTED();
+  const rowAction = HOISTED();
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(
+      html`<form action=${formAction}>${[html`<button name="intent" formaction=${rowAction}>x</button>`]}</form>`,
+      host,
+    ),
+    /name/,
+  );
+  assert.throws(
+    () => render(
+      html`<form action=${formAction}>${[html`<button type="button" formaction=${rowAction}>x</button>`]}</form>`,
+      host,
+    ),
+    /submitter control/,
+  );
+});
+
+test('a submitter whose enclosing form is resolvable and UNBOUND is still refused', () => {
+  // The skip is narrow: it applies when there is no form to ask, not when the
+  // answer is no. An inline submitter can always reach its form.
+  const rowAction = HOISTED();
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(html`<form method="post"><button formaction=${rowAction}>x</button></form>`, host),
+    /requires the enclosing <form> to also be bound/,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// #1207 Part B on the client, so a component-only page (never SSR'd) gets the
+// same answer the server would have given.
+// ---------------------------------------------------------------------------
+
+test('the client refuses an unparseable submitter enctype inside a bound form', () => {
+  const formAction = HOISTED();
+  const host = document.createElement('div');
+  assert.throws(
+    () => render(html`<form action=${formAction}><button formenctype="text/plain">Save</button></form>`, host),
+    /formenctype=/,
+  );
+  assert.throws(
+    () => render(html`<form action=${formAction}><button formmethod="get">Save</button></form>`, host),
+    /formmethod=/,
+  );
+});
+
+test('the client leaves dialog and retargeted submitters alone', () => {
+  const formAction = HOISTED();
+  const host = document.createElement('div');
+  render(
+    html`<form action=${formAction}><button formmethod="dialog">Close</button><button formmethod="get" formaction="/search">Search</button></form>`,
+    host,
+  );
+  assert.equal(host.querySelectorAll('button')[0].getAttribute('formmethod'), 'dialog');
+  assert.equal(host.querySelectorAll('button')[1].getAttribute('formaction'), '/search');
+});
+
+test('the client identity field carries a value ATTRIBUTE, matching SSR markup', () => {
+  // Written through setAttribute rather than the `value` IDL property. A `.value`
+  // assignment sets the input's value and dirty flag but leaves no content
+  // attribute, so a client-created field would serialize without one while SSR
+  // always writes it in full, and anything reading the markup (a morph, an
+  // outerHTML snapshot) would see two different forms for one template.
+  const host = document.createElement('div');
+  render(html`<form action=${HOISTED()}><input name="email"></form>`, host);
+  const field = host.querySelector('input[name="__webjs_action"]');
+  assert.equal(field.getAttribute('value'), ID);
+  assert.match(host.querySelector('form').innerHTML, /value="a1b2c3d4e5\/submitFeedback"/);
+});

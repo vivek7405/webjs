@@ -110,6 +110,10 @@ for (const [name, mk] of Object.entries(refused)) {
   assert.ok(!threw.message.includes('BUN_PARITY_SECRET'),
     `[${runtime}] the refusal message must not carry the source it withholds (${name})`);
 
+  // Streaming renderer, the second, independent state machine. Matches the
+  // message too: asserting only that SOMETHING threw would be satisfied by any
+  // unrelated error, which is how a machine that refuses for the wrong reason
+  // slips through a parity check.
   let streamThrew = null;
   try { await drain(renderToStream(mk(), { ssr: false })); } catch (e) { streamThrew = e; }
   assert.ok(streamThrew, `[${runtime}] streaming SSR must refuse ${name}`);

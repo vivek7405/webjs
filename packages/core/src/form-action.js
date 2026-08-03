@@ -27,27 +27,45 @@ import { escapeAttr } from './escape.js';
  * browser), so a plain `String(val)` commit serializes the action's body,
  * secrets included, to every visitor. The refusal list is deliberately wider
  * than the leak: a quoted `action="${fn}"`, `?action=${fn}`, an array holding
- * a function, an unsupported `formaction=` shape, and `action=` on a tag that is not a
- * `<form>` all refuse, so there is exactly one way to write this and no
- * silently-broken near-miss.
+ * a function, an unsupported `formaction=` shape, and `action=` on a tag that
+ * is not a `<form>` all refuse, so there is exactly one way to write each
+ * binding and no silently-broken near-miss.
  *
- * `formaction=${fn}` on a submit button is supported when the enclosing `<form>`
- * is also bound to a server action (`<form action=${formAction}>`), and the
- * submitter does not carry its own `name` attribute. Without JS, the browser
- * submits the pressed button's `name="__webjs_action"` value in the `FormData`.
- * Server `form-dispatch.js` reads `formData.getAll("__webjs_action")` and takes
- * the last entry, giving the pressed submitter precedence over the form's default
- * action.
+ * `formaction=${fn}` on a SUBMITTER is the second supported shape (#1207), for
+ * a form whose buttons run different actions. The identity rides the channel a
+ * browser gives only to the button that was pressed: its own `name`/`value`
+ * pair. So the renderers emit `<button name="__webjs_action" value="<id>">` and
+ * no `formaction` url at all, exactly as a bound `action=${fn}` emits no
+ * `action`. The form-level hidden field is the form's FIRST child and SSR emits
+ * it right after the start tag, so a submitter's entry necessarily follows it
+ * in DOM order; the dispatcher reads `getAll(FORM_ACTION_FIELD)` and takes the
+ * LAST, which is the submitter's whenever one was pressed. Nothing new is
+ * needed on the JS path either: `new FormData(form, submitter)` already
+ * includes the pressed button's pair.
  *
- * Refused shapes on a submitter:
- *   - A submitter carrying its own `name` attribute (static `name="..."` or
- *     dynamic `name=${n}`), because a button cannot hold both its own name and
- *     the `__webjs_action` identity.
- *   - A `formaction=${fn}` submitter inside an unbound `<form>`, because POST
- *     method and multipart encoding must be set on the form start tag.
- *   - `<input type="image">`, because image submitters submit coordinate pairs
- *     (`name.x`/`name.y`) instead of `name=value`.
- *   - Submitter `formenctype="text/plain"` or `formmethod="get"` inside a bound form.
+ * Refused shapes on a submitter, each because the identity would not arrive:
+ *   - Its own `name` (static `name="..."` or a `name=${n}` hole) or its own
+ *     `value`, because the identity occupies both halves of that one pair.
+ *   - An enclosing `<form>` that is not itself bound, because `method="post"`
+ *     and the enctype are forced on the FORM's start tag, which SSR has already
+ *     emitted by the time it reaches the button.
+ *   - `<input type="image">`, which submits `name.x` / `name.y` coordinates
+ *     instead of `name=value`, so the identity would never arrive.
+ *   - A control that is not a submitter at all, where `formaction` is inert.
+ *   - A `form="other"` attribute, which moves the submitter's form owner out
+ *     from under the boundness the renderers just checked.
+ *
+ * Part B of #1207, and the reason it is not scoped to a bound submitter: a
+ * submitter's `formmethod` / `formenctype` can defeat a bound form whether or
+ * not that button binds its own action, and neither renderer used to see them.
+ * `<form action=${fn}><button formenctype="text/plain">` submits fine under JS
+ * (the router posts FormData, ignoring `formenctype`) and is a bare 405 without
+ * it, which is precisely the works-one-way-only near-miss refused everywhere
+ * else here. So `assertSubmitterSubmission` runs for EVERY submitter inside a
+ * bound form. Two carve-outs keep it from over-refusing: `formmethod="dialog"`
+ * is a native `<dialog>` dismissal that never submits, and a submitter with its
+ * own static `formaction="/url"` retargets away from the bound action entirely,
+ * so a GET there is the author's business.
  *
  * Both SSR state machines and the client renderer import from here so the
  * rules cannot drift between them. Each renderer commits attribute, boolean
@@ -132,9 +150,20 @@ export async function resolveFormActionId(fn) {
 }
 
 /**
- * Is this hole a supported form-action binding:
- *   - unquoted `action=${fn}` on a `<form>`
- *   - unquoted `formaction=${fn}` on a `<button>` or `<input>` submitter
+ * Is this hole one of the two supported form-action bindings: an unquoted
+ * `action=${fn}` on a `<form>`, or an unquoted `formaction=${fn}` on a
+ * `<button>` / `<input>`?
+ *
+ * Unquoted matters in both cases, because quoting turns a binding hole back
+ * into a plain attribute the renderer stringifies, and there is no way to bind
+ * half an action into a url. The TAG matters because those are the only
+ * elements whose `action` / `formaction` submits anything; anywhere else the
+ * attribute is inert and binding a function to it means the author expected
+ * something that will never happen.
+ *
+ * Whether the `<button>` is really a SUBMITTER, and whether its form is bound,
+ * are checked separately: they depend on attributes that may be written after
+ * this hole, so they are judged once the whole start tag is known.
  *
  * @param {unknown} val the hole's resolved value
  * @param {string} attrName the AUTHORED attribute name (no sigil, unquoted branch)
@@ -151,38 +180,47 @@ export function isBoundFormAction(val, attrName, tag) {
 }
 
 /**
- * Refuse a submitter carrying its own `name` attribute alongside `formaction=${fn}`.
+ * Refuse a submitter carrying its own `name` alongside `formaction=${fn}`.
+ *
+ * The identity needs BOTH halves of the submitter's one `name`/`value` pair, so
+ * an author `name` has nowhere to go. `allowFrameworkName` is what lets this
+ * run twice over the same element without tripping on the framework's own
+ * write: the renderers emit `name="__webjs_action"` themselves, and the client
+ * re-reconciles an element it already stamped on a previous pass, so a `name`
+ * that IS the identity field is ours and not the author's. It is passed false
+ * only where the caller has already established the author wrote one too (SSR
+ * sees two `name` attributes on the emitted tag; the client recorded a `name`
+ * part or a static `name` on the compiled template).
  *
  * @param {string} name
  * @param {string} [tag]
- * @param {boolean} [allowFrameworkName]
+ * @param {boolean} [allowFrameworkName] treat `name="__webjs_action"` as the framework's own
  */
 export function assertSubmitterHasNoName(name, tag, allowFrameworkName = true) {
-  if (name && (name !== FORM_ACTION_FIELD || !allowFrameworkName)) {
-    throw new Error(
-      `[webjs] formaction=\${action} on <${tag || 'button'}> cannot be used when `
-      + `the element already carries a "name" attribute (found name="${name}"). `
-      + `Move the action to the enclosing <form action=\${action}> or remove the `
-      + `submitter's "name" attribute.`,
-    );
-  }
-}
-
-/**
- * Refuse `<input type="image">` with `formaction=${fn}`.
- *
- * @param {string} [tag]
- */
-export function assertSubmitterNotImage(tag) {
+  if (!name) return;
+  if (name === FORM_ACTION_FIELD && allowFrameworkName) return;
+  const found = name === FORM_ACTION_FIELD
+    ? 'a second "name" attribute'
+    : `name="${name}"`;
   throw new Error(
-    `[webjs] formaction=\${action} is not supported on <input type="image"> `
-    + `because image submitters submit coordinate pairs (name.x/name.y) `
-    + `instead of name=value. Use <button> or <input type="submit"> instead.`,
+    `[webjs] formaction=\${action} on <${tag || 'button'}> cannot be used when `
+    + `the element already carries a "name" attribute (found ${found}). The `
+    + `action identity is submitted as the button's own name/value pair, so `
+    + `there is no room for a second one. Move the action to the enclosing `
+    + `<form action=\${action}> or drop the submitter's "name".`,
   );
 }
 
 /**
  * Refuse a formaction binding on a control that is not a submitter.
+ *
+ * `<input type="image">` gets its own message rather than the generic one: it
+ * IS a submitter, so "use a submitter" would be unhelpful advice. It submits
+ * `name.x` / `name.y` coordinate pairs instead of `name=value`, so the identity
+ * would never arrive and the form would look bound while posting nothing.
+ *
+ * A `<button>` with no `type` is a submitter (submit is the HTML default),
+ * which is why an absent type passes here.
  *
  * @param {string} tag
  * @param {string | null | undefined} type
@@ -190,53 +228,98 @@ export function assertSubmitterNotImage(tag) {
 export function assertSubmitterType(tag, type) {
   const t = String(tag || '').toLowerCase();
   const value = type == null ? null : String(type).toLowerCase();
-  if (t === 'button' && (value == null || value === '' || value === 'submit')) return;
-  if (t === 'input' && value === 'submit') return;
-  if (t === 'input' && value === 'image') {
-    assertSubmitterNotImage(t);
+  if (isSubmitterType(t, value)) {
+    if (t === 'input' && value === 'image') {
+      throw new Error(
+        `[webjs] formaction=\${action} is not supported on <input type="image"> `
+        + `because image submitters submit coordinate pairs (name.x/name.y) `
+        + `instead of name=value, so the action identity would never arrive. `
+        + `Use <button> or <input type="submit"> instead.`,
+      );
+    }
+    return;
   }
   throw new Error(
-    `[webjs] formaction=\${action} on <${t}> requires a submitter control. `
-    + `Use <button type="submit"> or <input type="submit">.`,
+    `[webjs] formaction=\${action} on <${t}>${value ? ` type="${value}"` : ''} `
+    + `requires a submitter control, and formaction is inert on anything else. `
+    + `Use <button> or <input type="submit">.`,
   );
 }
 
 /**
- * Refuse an author value because the action identity occupies that channel.
+ * Is this tag/type pair a control that SUBMITS its form?
+ *
+ * Shared by the binding guard and the Part B sweep, which need the same answer
+ * for opposite reasons: the first refuses `formaction=${fn}` on a non-submitter,
+ * the second only inspects `formmethod` / `formenctype` on a real submitter,
+ * where those attributes are not inert.
+ *
+ * @param {string} tag lowercased
+ * @param {string | null | undefined} type lowercased, or null when absent
+ * @returns {boolean}
+ */
+export function isSubmitterType(tag, type) {
+  const value = type == null ? null : String(type).toLowerCase();
+  if (tag === 'button') return value == null || value === '' || value === 'submit';
+  if (tag === 'input') return value === 'submit' || value === 'image';
+  return false;
+}
+
+/**
+ * Refuse an author `value` on a bound submitter, for the same reason as `name`:
+ * the identity is a name/value PAIR, so both halves are spoken for.
  * @param {string} tag
  */
 export function assertSubmitterHasNoValue(tag) {
   throw new Error(
     `[webjs] formaction=\${action} on <${tag || 'button'}> cannot be used when `
-    + `the element already carries a "value" attribute. The action identity `
-    + `uses the submitter value channel; remove "value" or use a separate form.`,
+    + `the element already carries a "value" attribute. The action identity is `
+    + `submitted as the button's own name/value pair, so both halves are taken. `
+    + `Drop the "value", or dispatch on it from one form-level action instead.`,
   );
 }
 
 /**
- * Refuse a static formaction alongside the function binding.
+ * Refuse a static `formaction="/url"` alongside the bound hole.
+ *
+ * The same failure as a static `action="/url"` on a bound form, one level down:
+ * SSR only rewrites the attribute the HOLE wrote, so the static one survives
+ * into the emitted tag, while the client's reconcile removes it. With JS off
+ * the browser posts the identity to `/url`; with JS on the router posts to the
+ * page. Same template, two different targets.
+ *
  * @param {string} tag
  */
 export function assertSubmitterHasNoStaticFormAction(tag) {
   throw new Error(
     `[webjs] a bound formaction=\${action} on <${tag || 'button'}> cannot also `
-    + `carry a plain formaction attribute. Drop the static attribute.`,
+    + `carry a plain formaction attribute: the two name different targets and `
+    + `the renderers resolve them differently. Drop the static attribute.`,
   );
 }
 
 /**
- * Refuse a submitter whose form owner is selected through the `form` attribute.
+ * Refuse a submitter whose form owner is chosen through the `form` attribute.
+ *
+ * Boundness was just established for the ENCLOSING form. A `form="other"`
+ * re-points the submitter at a different one, which may not be bound at all, so
+ * the check that passed would have been about the wrong element.
+ *
  * @param {string} tag
  */
 export function assertSubmitterHasNoFormAttribute(tag) {
   throw new Error(
     `[webjs] formaction=\${action} on <${tag || 'button'}> cannot be used with `
-    + `a "form" attribute. Keep the submitter inside its bound <form>.`,
+    + `a "form" attribute, which re-points the submitter at a form other than `
+    + `the bound one it sits in. Keep the submitter inside its bound <form>.`,
   );
 }
 
 /**
- * Refuse duplicate formaction holes on one submitter.
+ * Refuse two `formaction=${...}` holes on one submitter, the per-button twin of
+ * the duplicate-`action` refusal: SSR would emit the second alongside the
+ * identity it already wrote, while the client resolves last-wins.
+ *
  * @param {boolean} duplicate
  * @param {string} tag
  */
@@ -244,12 +327,25 @@ export function assertSingleSubmitterAction(duplicate, tag) {
   if (!duplicate) return;
   throw new Error(
     `[webjs] two formaction=\${action} holes were found on one <${tag || 'button'}>. `
-    + `A submitter can carry only one action binding.`,
+    + `Only one can win, and the two renderers pick differently, so bind exactly `
+    + `one action per submitter.`,
   );
 }
 
 /**
- * Refuse a `formaction=${fn}` submitter whose enclosing form is not bound.
+ * Refuse a `formaction=${fn}` submitter whose enclosing form is not itself
+ * bound.
+ *
+ * `method="post"` and the enctype are forced on the FORM's start tag, which SSR
+ * has already emitted by the time it reaches the button, so a per-button action
+ * cannot retrofit them. An unbound form defaults to GET, which sends no body,
+ * so the identity would ride the query string and the action would never run.
+ *
+ * SSR is authoritative here because it renders every page and reads a linear
+ * byte stream, so it always knows whether the open form was bound. The client's
+ * answer is BEST EFFORT (a button in a nested template cannot always reach its
+ * form while the fragment is detached), so the client skips this rather than
+ * refusing what the server accepted.
  *
  * @param {boolean} insideBoundForm
  * @param {string} [tag]
@@ -259,9 +355,78 @@ export function assertSubmitterFormIsBound(insideBoundForm, tag) {
   throw new Error(
     `[webjs] formaction=\${action} on <${tag || 'button'}> requires the enclosing `
     + `<form> to also be bound to a server action (e.g. <form action=\${formAction}>). `
-    + `The enclosing <form> must carry an action binding so POST method and `
-    + `multipart encoding are set at form start.`,
+    + `The enclosing <form> must carry an action binding so method="post" and the `
+    + `enctype are set at form start, which is too late to add from the button.`,
   );
+}
+
+/**
+ * Part B of #1207: refuse a submitter whose own `formmethod` / `formenctype`
+ * would defeat the bound form it sits in.
+ *
+ * Runs for EVERY submitter inside a bound form, not only one that binds its own
+ * action, because that is where the gap was: `<form action=${fn}><button
+ * formenctype="text/plain">` submits fine under JS (the router posts FormData
+ * and ignores `formenctype`) and is a bare 405 without it, since the server
+ * parses a submission as multipart or urlencoded only. Refusing the VALUES that
+ * cannot work, never the attributes themselves, so `formenctype` naming either
+ * parseable encoding stays fully supported.
+ *
+ * Two carve-outs, both cases where the submitter is not submitting to the bound
+ * action at all:
+ *   - `formmethod="dialog"` is a native `<dialog>` dismissal, never a
+ *     submission, so there is no body for the action to miss. Refused only when
+ *     the same button also BINDS an action, which is a straight contradiction.
+ *   - A static `formaction="/url"` retargets the submission away from the
+ *     page's bound action entirely, so a GET there is an ordinary form the
+ *     author is entitled to write.
+ *
+ * @param {string} tag lowercased owner tag, for the message
+ * @param {string | null | undefined} formMethod the submitter's `formmethod`, or null
+ * @param {string | null | undefined} formEnctype the submitter's `formenctype`, or null
+ * @param {{ bound?: boolean, retargeted?: boolean }} [opts]
+ */
+export function assertSubmitterSubmission(tag, formMethod, formEnctype, opts) {
+  const bound = !!(opts && opts.bound);
+  const retargeted = !!(opts && opts.retargeted);
+  const method = formMethod == null ? null : String(formMethod);
+  const enctype = formEnctype == null ? null : String(formEnctype);
+  const isDialog = method != null && /^dialog$/i.test(method);
+
+  if (isDialog) {
+    if (!bound) return;
+    throw new Error(
+      `[webjs] formaction=\${action} on <${tag}> cannot be combined with `
+      + `formmethod="dialog", which dismisses a <dialog> instead of submitting, `
+      + `so the bound action would never run. Drop one of the two.`,
+    );
+  }
+  if (retargeted) return;
+
+  // Compared UNTRIMMED, exactly as `assertSubmittableForm` compares a form's
+  // own `method`. These are enumerated attributes a browser matches against
+  // exact keywords with no whitespace stripping, so `formmethod=" post "` falls
+  // to the invalid-value default and the button submits as a GET. Trimming here
+  // would accept the padded value, emit it untouched, and produce exactly the
+  // silently-posts-nowhere submitter this refusal exists to make impossible.
+  if (method != null && !/^post$/i.test(method)) {
+    throw new Error(
+      `[webjs] <${tag} formmethod="${method}"> inside a bound <form action=\${action}> `
+      + `cannot work: a bound server action is submitted as a POST body, and a `
+      + `"${method}" submission sends none, so the action would never run. Drop the `
+      + `formmethod attribute, or point the button elsewhere with a plain `
+      + `formaction="/url".`,
+    );
+  }
+  if (enctype != null && !PARSEABLE_ENCTYPES.has(enctype.toLowerCase())) {
+    throw new Error(
+      `[webjs] <${tag} formenctype="${enctype}"> inside a bound <form action=\${action}> `
+      + `cannot work: a form submission is parsed as multipart/form-data or `
+      + `application/x-www-form-urlencoded, and a "${enctype}" body is neither, so `
+      + `the submission would run under JS and 405 without it. Drop the formenctype `
+      + `attribute (WebJs emits multipart/form-data on the form).`,
+    );
+  }
 }
 
 /**
@@ -337,27 +502,40 @@ export function assertNotFunctionReflectedActionProp(val, propName, tag) {
  */
 export function assertIdentifiableAction(id, tag) {
   if (id) return id;
+  const attr = tag === 'button' || tag === 'input' ? 'formaction=' : 'action=';
   throw new Error(
-    `[webjs] the function in ${tag === 'button' || tag === 'input' ? 'formaction=' : 'action='} `
-    + `on <${tag || 'form'}> is not a server action. `
+    `[webjs] the function in ${attr} on <${tag || 'form'}> is not a server action. `
     + `Only a function imported from a 'use server' *.server.{js,ts} module can be `
-    + `bound, because the identity the browser submits has to resolve `
-    + `back to something the server can run. Move the handler into a server `
-    + `action and import it, or pass a url string.`,
+    + `bound to a form or a submitter, because the identity the browser submits `
+    + `has to resolve back to something the server can run. Move the handler into `
+    + `a server action and import it, or pass a url string.`,
   );
 }
 
 /**
- * The enctypes a form submission can actually be parsed from.
+ * The enctypes a form submission can actually be parsed from. `text/plain` is
+ * legal HTML and useless here: the server parses a submission as multipart or
+ * urlencoded, so a `text/plain` bound form runs under JS (the router sends
+ * FormData) and is a bare 405 without it. That is precisely the
+ * works-one-way-only near-miss this module refuses everywhere else, so it is
+ * refused here too rather than silently corrected.
  */
 export const PARSEABLE_ENCTYPES = new Set(['multipart/form-data', 'application/x-www-form-urlencoded']);
 
 /**
- * The shared refusal for a bound form whose own attributes contradict the binding.
+ * The shared refusal for a bound form whose own attributes contradict the
+ * binding. Kept in one place because SSR reads the emitted start tag and the
+ * client reads the live element, and the two must refuse identically.
  * @param {string | null | undefined} method
  * @param {string | null | undefined} enctype
  */
 export function assertSubmittableForm(method, enctype) {
+  // Compared UNTRIMMED on purpose. `method` and `enctype` are enumerated
+  // attributes the browser matches against exact keywords with no whitespace
+  // stripping, so `method=" post "` falls to the invalid-value default and the
+  // form submits as a GET. Trimming here would accept the padded value, emit it
+  // untouched, and produce exactly the silently-posts-nowhere form this module
+  // exists to make impossible.
   if (method != null && !/^post$/i.test(method)) {
     throw new Error(
       `[webjs] <form method="${method}" action=\${action}> cannot work: a bound `
@@ -381,17 +559,39 @@ export function assertSubmittableForm(method, enctype) {
  * Rewrite a form's START TAG for a bound action and produce the hidden field
  * that must follow it.
  *
+ * `startTag` is the already-committed `<form ...>` text, holes included, so
+ * this reads the attributes the browser will actually see rather than the ones
+ * the template literal spelled out. That matters for a hole-provided
+ * `method=${m}`, which no scan of the source template could resolve.
+ *
+ * Three edits, none of them optional:
+ *   - `action` is gone already (the caller drops it at the hole), so the form
+ *     posts to the page's own url. Omitted rather than emitted as `action=""`,
+ *     which the HTML spec treats as a conformance error.
+ *   - `method="post"` when absent. A GET form puts its fields in the query
+ *     string and sends no body, so a bound action would never run.
+ *   - `enctype="multipart/form-data"` when absent, so a file input works on
+ *     the no-JS path. Text-only fields round-trip identically either way.
+ *
+ * An explicit `method="get"` throws rather than being silently upgraded: the
+ * author wrote two things that cannot both be true, and quietly picking one
+ * hides the mistake.
+ *
  * @param {string} startTag the emitted start tag, ending in `>`
  * @param {string} id the action identity
  * @returns {{ tag: string, hidden: string }}
  */
 export function bindFormActionStartTag(startTag, id) {
   const attrs = parseStartTagAttrs(startTag);
+  // The hole's own `action` is already gone. Anything still here is a SECOND,
+  // static one, which SSR would emit and the client would remove.
   assertConvergentBoundForm({ staticAction: attrs.has('action') });
   const resolved = resolveBoundFormAttrs(
     attrs.has('method') ? attrs.get('method') : ABSENT,
     attrs.has('enctype') ? attrs.get('enctype') : ABSENT,
   );
+  // The close is `>` or `/>`; a self-closing form is not valid HTML but the
+  // scanner can still hand one over, so keep whichever the author wrote.
   const close = startTag.endsWith('/>') ? '/>' : '>';
   const head = startTag.slice(0, startTag.length - close.length);
   let inject = '';
@@ -402,9 +602,34 @@ export function bindFormActionStartTag(startTag, id) {
 
 /**
  * Refuse the shapes a bound form can be written in that the two renderers can
- * never agree on.
+ * never agree on, so neither ships a form that submits differently with JS than
+ * without it.
+ *
+ * A `.prop` binding on a native element is DROPPED at SSR and applied for real
+ * in the browser, where `method` / `enctype` / the `encoding` alias are
+ * reflected IDL attributes. Measured: SSR of `<form action=${fn} .method=
+ * ${'get'}>` emits `method="post"` while a browser ends at `method="get"`. No
+ * amount of reconciliation closes that, because the client cannot un-know an
+ * assignment it made and the server cannot know one it never saw. This is the
+ * same argument that already refuses `.action` on a form.
+ *
+ * Two `action=${...}` holes on one form is the other: SSR emits the second as a
+ * plain `action` url ALONGSIDE the identity field, which is incoherent, while
+ * the client resolves last-wins.
+ *
+ * A STATIC `action="/url"` alongside the bound hole is the third, and it is the
+ * one that fails quietly rather than loudly. SSR only drops the `action` the
+ * HOLE wrote, so the static one survives into the emitted start tag, while the
+ * client's reconcile calls `removeAttribute('action')` and takes it out. With
+ * JS off the browser posts the identity to `/url`; with JS on the router posts
+ * to the page. Same template, two different targets.
+ *
+ * All three are properties of the template, so they are checked only once the
+ * value proves the form is really bound. `<form action=${aString} .method=${m}>`
+ * is an ordinary form and is left alone.
  *
  * @param {{ staticAction?: boolean, duplicateAction?: boolean, propAttrs?: string[] }} shape
+ * @returns {void}
  */
 export function assertConvergentBoundForm(shape) {
   if (shape.duplicateAction) {
@@ -434,12 +659,26 @@ export function assertConvergentBoundForm(shape) {
 }
 
 /**
- * The sentinel for "this attribute is not present at all".
+ * The sentinel for "this attribute is not present at all", as distinct from
+ * present-and-empty. The difference decides the outcome: an ABSENT `method` is
+ * supplied by the framework, while `method=""` is a value the author's template
+ * produced and cannot submit, so it is refused.
  */
 export const ABSENT = Symbol('webjs.attr.absent');
 
 /**
- * Resolve what to inject for method/enctype.
+ * THE decision both renderers make about a bound form, in one place.
+ *
+ * Sharing it is the point. SSR reaches it with the attributes parsed off the
+ * start tag it just emitted; the client reaches it with the values its template
+ * would have emitted, reconstructed per part kind. Because the inputs mean the
+ * same thing and the predicate is literally the same function, a shape the two
+ * renderers could disagree about has to be a difference in how the inputs were
+ * gathered, which is a much smaller surface than two independent guards.
+ *
+ * Returns what to INJECT for each attribute, or null to leave the author's own
+ * value alone. Throws when a value cannot submit at all.
+ *
  * @param {string | typeof ABSENT | null} method
  * @param {string | typeof ABSENT | null} enctype
  * @returns {{ method: string | null, enctype: string | null }}
@@ -468,22 +707,52 @@ export function formActionHiddenField(id) {
 
 /**
  * Converge a live `<form>` on what SSR would have emitted for it (#1155).
+ *
+ * This runs at the END of a commit pass, unconditionally, for every candidate
+ * the template recorded. Both of those matter:
+ *
+ * END of the pass, because whether a form can submit is a fact about the whole
+ * start tag, and an attribute written after the action hole has not been
+ * committed when that hole commits.
+ *
+ * UNCONDITIONALLY, because `updateInstance` re-applies only the parts whose own
+ * value changed, so anything hanging off the action hole never runs when a
+ * SIBLING hole is what moved.
+ *
+ * The `method` / `enctype` decision is made from the TEMPLATE (the recorded
+ * statics plus this pass's values, resolved per part kind), never by reading
+ * them back off the DOM. Reading the DOM cannot work: `?method=${false}` and
+ * `method=${null}` both leave no attribute, and SSR resolves them to opposite
+ * answers (it emits nothing for the first and `method=""` for the second). The
+ * template is the only place that distinction survives.
+ *
+ * A consequence worth stating, because it looks like a hole and is not: a write
+ * from OUTSIDE the template (a `ref` callback, `firstUpdated`, author code, an
+ * extension) is deliberately not seen here. SSR cannot see such a write either,
+ * so ignoring it is what keeps the two renderers in agreement; catching it
+ * would make the client refuse state the server never had.
+ *
  * @param {HTMLFormElement} form
- * @param {unknown} value
- * @param {string | typeof ABSENT} method
- * @param {string | typeof ABSENT} enctype
- * @param {{ duplicateAction: boolean, propAttrs: string[] }} shape
+ * @param {unknown} value        the action hole's resolved value
+ * @param {string | typeof ABSENT} method   what SSR would have emitted
+ * @param {string | typeof ABSENT} enctype  what SSR would have emitted
+ * @param {{ duplicateAction: boolean, propAttrs: string[] }} shape compile-time refusals
  * @returns {void}
  */
 export function reconcileFormAction(form, value, method, enctype, shape) {
   const id = typeof value === 'function' ? formActionId(value) : null;
 
   if (!id) {
+    // Not a bound action (a url string, null, or a function the browser stub
+    // never stamped). A function that was MEANT as an action still refuses, so
+    // a form never silently posts nowhere.
     if (typeof value === 'function') assertIdentifiableAction(null, form.localName);
     releaseFormAction(form, method, enctype, shape.propAttrs);
     return;
   }
 
+  // Shapes SSR and the client can never agree on, refused rather than
+  // reconciled, through the same helper SSR calls.
   assertConvergentBoundForm(shape);
 
   const resolved = resolveBoundFormAttrs(method, enctype);
@@ -508,6 +777,9 @@ export function reconcileFormAction(form, value, method, enctype, shape) {
  */
 function applyResolvedAttr(form, name, authored, inject) {
   if (inject !== null) { form.setAttribute(name, inject); return; }
+  // The author's value is authoritative. It is already committed, except for a
+  // hole whose value is empty, which some branches express by removing the
+  // attribute; put it back so the DOM matches what SSR emitted.
   if (authored !== ABSENT && form.getAttribute(name) !== authored) {
     form.setAttribute(name, /** @type string */ (authored));
   }
@@ -518,8 +790,15 @@ function applyResolvedAttr(form, name, authored, inject) {
  *
  * FIRST is load-bearing: it puts the field outside every child part's marker
  * range, so a later child update cannot take it out. `firstElementChild` is the
- * fast path because both this function and SSR put it there. Uses form.ownerDocument
- * to support detached or iframe document contexts.
+ * fast path because both this function and SSR put it there, and the scan is
+ * only a fallback for a form whose children were moved by hand.
+ *
+ * Written through `setAttribute`, not the `value` IDL property, so the live DOM
+ * matches SSR's markup byte for byte. Assigning `.value` sets the input's value
+ * and its dirty flag but leaves no `value` CONTENT attribute, so a
+ * client-created field would serialize without one, and any consumer reading
+ * the markup (a morph, an `outerHTML` snapshot, a test) would see a field SSR
+ * always writes in full.
  *
  * @param {HTMLFormElement} form
  * @param {string} id
@@ -527,25 +806,110 @@ function applyResolvedAttr(form, name, authored, inject) {
 function ensureIdentityField(form, id) {
   const first = form.firstElementChild;
   let field = first && first.localName === 'input'
-    && first.getAttribute('name') === FORM_ACTION_FIELD
-    ? /** @type {HTMLInputElement} */ (first)
-    : null;
+    && first.getAttribute('name') === FORM_ACTION_FIELD ? first : null;
   if (!field) {
-    for (const child of form.children) {
-      if (child.localName === 'input' && child.getAttribute('name') === FORM_ACTION_FIELD) {
-        field = /** @type {HTMLInputElement} */ (child);
+    for (const el of form.children) {
+      if (el.localName === 'input' && el.getAttribute('name') === FORM_ACTION_FIELD) {
+        field = el;
         break;
       }
     }
   }
   if (!field) {
-    const doc = form.ownerDocument || document;
-    field = doc.createElement('input');
-    field.type = 'hidden';
-    field.name = FORM_ACTION_FIELD;
+    field = form.ownerDocument.createElement('input');
+    field.setAttribute('type', 'hidden');
+    field.setAttribute('name', FORM_ACTION_FIELD);
     form.insertBefore(field, form.firstChild);
   }
-  field.value = id;
+  if (field.getAttribute('value') !== id) field.setAttribute('value', id);
+}
+
+/**
+ * SSR: judge one submitter's emitted START TAG, at its `>`.
+ *
+ * Called from BOTH state machines so the rules cannot drift between them, which
+ * is the failure #1154 already had once (a guard shipped in `renderTemplate`
+ * and not in `streamTemplate`). Judged at the `>` rather than at the hole
+ * because every input is an attribute the author may have written AFTER the
+ * binding.
+ *
+ * Two callers, distinguished by `bound`:
+ *   - `bound: true`, the tag carried a `formaction=${fn}` hole, so the full
+ *     refusal set applies.
+ *   - `bound: false`, an ordinary submitter inside a bound form, which is the
+ *     Part B sweep and only looks at `formmethod` / `formenctype`.
+ *
+ * `name` and `value` are judged by COUNT, not by value, because the renderer
+ * has already injected its own pair by this point and a browser resolves a
+ * duplicate attribute by keeping the first.
+ *
+ * @param {string} startTag the emitted start tag, ending in `>`
+ * @param {string} tag lowercased owner tag
+ * @param {{ bound: boolean, duplicateAction?: boolean }} shape
+ * @returns {void}
+ */
+export function assertSubmitterStartTag(startTag, tag, shape) {
+  const bound = !!shape.bound;
+  const attrs = parseStartTagAttrs(startTag);
+  const type = attrs.has('type') ? attrs.get('type') : null;
+
+  if (bound) {
+    assertSingleSubmitterAction(!!shape.duplicateAction, tag);
+    if (attrs.has('formaction')) assertSubmitterHasNoStaticFormAction(tag);
+    if (countStartTagAttr(startTag, 'value') > 1) assertSubmitterHasNoValue(tag);
+    if (countStartTagAttr(startTag, 'name') > 1) {
+      assertSubmitterHasNoName(attrs.get('name') || '', tag, false);
+    }
+    assertSubmitterType(tag, type);
+    if (attrs.has('form')) assertSubmitterHasNoFormAttribute(tag);
+  } else if (!isSubmitterType(tag, type)) {
+    // `formmethod` / `formenctype` are inert on anything that does not submit,
+    // so a `<input type="text" formenctype="text/plain">` is not a near-miss.
+    return;
+  }
+
+  const formMethod = attrs.has('formmethod') ? attrs.get('formmethod') : null;
+  const formEnctype = attrs.has('formenctype') ? attrs.get('formenctype') : null;
+  if (formMethod == null && formEnctype == null) return;
+  assertSubmitterSubmission(tag, formMethod, formEnctype, {
+    bound,
+    retargeted: !bound && attrs.has('formaction'),
+  });
+}
+
+/**
+ * Part B of #1207 on the CLIENT: sweep a bound form's submitters for a
+ * `formmethod` / `formenctype` that would defeat the binding.
+ *
+ * SSR reaches the same rule a byte at a time as it emits each start tag inside
+ * an open bound form. The client has no such stream, so it sweeps the form once
+ * the binding is settled. Scoped to a bound form, which is rare on a page, so
+ * the query cost is paid only where the rule applies.
+ *
+ * Runs AFTER every submitter in the pass has reconciled, which is what makes
+ * `bound` and `retargeted` readable off the DOM: a bound submitter has had its
+ * `formaction` removed and carries `name="__webjs_action"`, so a surviving
+ * `formaction` attribute is the author's own static one.
+ *
+ * BEST EFFORT in the same sense as the enclosing-form check: a submitter living
+ * in a nested template that has not been inserted yet is simply not in the
+ * query, and SSR is the renderer that sees every page.
+ *
+ * @param {HTMLFormElement} form
+ * @returns {void}
+ */
+export function assertBoundFormSubmitters(form) {
+  for (const el of form.querySelectorAll('button, input')) {
+    const tag = el.localName;
+    if (!isSubmitterType(tag, el.getAttribute('type'))) continue;
+    const formMethod = el.getAttribute('formmethod');
+    const formEnctype = el.getAttribute('formenctype');
+    if (formMethod == null && formEnctype == null) continue;
+    assertSubmitterSubmission(tag, formMethod, formEnctype, {
+      bound: el.getAttribute('name') === FORM_ACTION_FIELD,
+      retargeted: el.hasAttribute('formaction'),
+    });
+  }
 }
 
 /**
@@ -553,18 +917,46 @@ function ensureIdentityField(form, id) {
  *
  * Both halves matter. The identity field has to go, or the form keeps posting
  * the old action's identity to whatever it now targets. And the attributes the
- * framework supplied have to go with it.
+ * framework supplied have to go with it, or a released form keeps a
+ * `method="post" enctype="multipart/form-data"` that SSR does not emit for the
+ * same template.
+ *
+ * Which attributes were framework-supplied is not remembered from the bind, it
+ * is recomputed: an attribute is the framework's exactly when the template
+ * supplies nothing for it on THIS pass. That is why there is no bookkeeping to
+ * go stale.
+ *
+ * A `.method` / `.enctype` / `.encoding` PROPERTY binding is the exception, and
+ * it has to be named rather than inferred. Its write reflects to the content
+ * attribute, but it is not an attribute part, so "the template supplies nothing
+ * for it" reads true and the removal below would wipe the author's own value on
+ * every re-render. The property spelling is refused on a BOUND form, so this is
+ * the only path that can meet one.
+ *
+ * Keeping it does leave the client and SSR holding different attributes for an
+ * UNBOUND `<form action=${url} .method=${'post'}>`: SSR drops `.prop` bindings
+ * on native elements, so it emits no `method`, while the browser reflects one.
+ * That is the ordinary native-property rule applying to an ordinary form, not a
+ * form-action divergence, and it is what the same template does with no action
+ * hole at all. Removing the attribute would "fix" the mismatch only by
+ * destroying the author's binding, which is a worse answer than agreeing with
+ * every other native property on the page.
  *
  * @param {HTMLFormElement} form
  * @param {string | typeof ABSENT} method
  * @param {string | typeof ABSENT} enctype
- * @param {string[]} [propAttrs]
+ * @param {string[] | undefined} propAttrs attribute names a property part owns
  */
 function releaseFormAction(form, method, enctype, propAttrs) {
-  for (const child of Array.from(form.children)) {
-    if (child.localName === 'input' && child.getAttribute('name') === FORM_ACTION_FIELD) {
-      child.remove();
-      break;
+  const first = form.firstElementChild;
+  if (first && first.localName === 'input' && first.getAttribute('name') === FORM_ACTION_FIELD) {
+    first.remove();
+  } else {
+    for (const el of form.children) {
+      if (el.localName === 'input' && el.getAttribute('name') === FORM_ACTION_FIELD) {
+        el.remove();
+        break;
+      }
     }
   }
   const owned = (name) => (propAttrs || []).some((p) => {
@@ -580,7 +972,16 @@ function releaseFormAction(form, method, enctype, propAttrs) {
  * valueless attribute maps to the empty string.
  *
  * A real tokenizer rather than a regex over the whole tag, because the tag is
- * emitted HTML and an attribute VALUE can contain anything (e.g. `data-note="use method=get"`).
+ * emitted HTML and an attribute VALUE can contain anything: `<form
+ * data-note="use method=get here" action=${fn}>` has to report no `method`
+ * attribute, and a regex looking for `method=` reports one. Getting that wrong
+ * means silently skipping the forced `method="post"` and shipping a form that
+ * submits nothing.
+ *
+ * LAST occurrence wins, matching how a Map collapses duplicate keys. That is
+ * deliberately NOT how a browser resolves a duplicate attribute (it keeps the
+ * FIRST and drops the rest), so any rule that turns on duplication asks
+ * `countStartTagAttr` rather than reading a value back from here.
  *
  * @param {string} startTag
  * @returns {Map<string, string>}
@@ -590,13 +991,19 @@ export function parseStartTagAttrs(startTag) {
 }
 
 /**
- * Parse emitted start-tag attributes while preserving duplicates.
+ * Parse emitted start-tag attributes into ordered entries, duplicates kept.
+ *
+ * The renderers inject `name` and `value` onto a bound submitter themselves, so
+ * telling "the author wrote one too" from "this is ours" is a question about
+ * how MANY there are, which a Map cannot answer.
+ *
  * @param {string} startTag
  * @returns {[string, string][]}
  */
 function parseStartTagAttrEntries(startTag) {
   /** @type {[string, string][]} */
   const entries = [];
+  // Skip `<` and the tag name.
   let i = 1;
   while (i < startTag.length && !/[\s/>]/.test(startTag[i])) i++;
   while (i < startTag.length) {
@@ -609,14 +1016,14 @@ function parseStartTagAttrEntries(startTag) {
       if (name) entries.push([name.toLowerCase(), '']);
       continue;
     }
-    i++;
+    i++; // the `=`
     while (i < startTag.length && /\s/.test(startTag[i])) i++;
     let value = '';
     const q = startTag[i];
     if (q === '"' || q === "'") {
       i++;
       while (i < startTag.length && startTag[i] !== q) value += startTag[i++];
-      i++;
+      i++; // closing quote
     } else {
       while (i < startTag.length && !/[\s>]/.test(startTag[i])) value += startTag[i++];
     }
@@ -627,6 +1034,12 @@ function parseStartTagAttrEntries(startTag) {
 
 /**
  * Count occurrences of an attribute in an emitted start tag.
+ *
+ * A browser resolves duplicate attributes by keeping the FIRST and dropping the
+ * rest, so on a bound submitter the count is what separates "the author also
+ * wrote one" from "this is the identity we injected". Reading the value back
+ * cannot answer it, because the parse collapses duplicates.
+ *
  * @param {string} startTag
  * @param {string} wanted
  * @returns {number}
@@ -654,9 +1067,22 @@ function reflectsAsFormAction(propName, tag) {
 /**
  * Does stringifying this value expose a function's source?
  *
- * `Array.prototype.toString` stringifies each element through `String()` too,
- * so `action=${[serverAction]}` leaks exactly as `action=${serverAction}` does.
- * Tracks visited arrays because `Array.prototype.join` has a cycle guard.
+ * The commit sites do `String(val)`, and `Array.prototype.toString` stringifies
+ * each element through `String()` too, so `action=${[serverAction]}` leaks
+ * exactly as `action=${serverAction}` does. Recursive because nested arrays
+ * join the same way.
+ *
+ * Tracks visited arrays because `Array.prototype.join` has a cycle guard and
+ * this has to match it. A self-referential array stringifies to `''` rather
+ * than recursing forever, so a naive walk would turn a render that used to
+ * succeed into a stack overflow. Refusing to leak must not become a new way
+ * to crash.
+ *
+ * Deliberately NOT a check on the stringified result: sniffing the output for
+ * something function-shaped would misfire on a legitimate URL, and the value's
+ * shape is the thing actually being claimed. An object with a hand-written
+ * `toString` that returns a function's source is out of scope; that is
+ * deliberate exfiltration, not the accident this guards.
  *
  * @param {unknown} val
  * @param {Set<unknown>} [seen]
@@ -673,6 +1099,14 @@ function carriesFunction(val, seen) {
 
 /**
  * Is this the name of a form-action attribute?
+ *
+ * Strips a leading binding sigil before comparing. The SSR state machines
+ * accumulate the AUTHORED name, and only the unquoted `after-eq` branch splits
+ * the prefix off, so a quoted hole arrives here as `.action` / `?action` /
+ * `@action` with the sigil still attached. Comparing the raw name let every one
+ * of those through, which is the same leak wearing a different hat: the
+ * renderer treats a quoted binding hole as a plain attribute and stringifies it.
+ *
  * @param {string} attrName
  * @returns {boolean}
  */
@@ -683,7 +1117,10 @@ function isFormActionAttr(attrName) {
 }
 
 /**
- * The refusal message.
+ * The refusal message. Deliberately never echoes the function's source, which
+ * is the very thing being withheld. It names the supported shapes, because
+ * every refused shape here is a near-miss of one of them and the author's next
+ * question is what to write instead.
  * @param {string} attrName
  * @param {string} [tag]
  */
