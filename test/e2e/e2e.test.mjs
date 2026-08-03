@@ -2017,36 +2017,51 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
      * Wait until the page has actually hydrated, instead of sleeping and hoping.
      *
      * The counter is the readiness signal because it is the one thing on this
-     * page that is interactive in BOTH builds, so it is the last thing to come
-     * up and it must come up on either side. `whenDefined` alone is not enough:
-     * the custom element can be registered a tick before the instance is
-     * upgraded and its buttons rendered, and it is the buttons the assertions
-     * need. `my-counter` is a LIGHT-DOM component, so its children sit on the
-     * element itself and there is no shadow root to look inside.
+     * page that is interactive in BOTH builds, so it must come up on either side.
+     *
+     * The signal is that the ELEMENT INSTANCE has been upgraded, tested with
+     * `instanceof` against the registered constructor. Nothing weaker works
+     * here, because SSR already emits the counter's full inner markup:
+     *
+     *     <my-counter count="3" data-wj-host><!--webjs-hydrate-->
+     *       <button aria-label="Decrement">...<output>3</output>
+     *       <button aria-label="Increment">...
+     *
+     * So the host, the output and both buttons exist before a single line of
+     * JavaScript has run. Waiting on any of them is waiting on the server's
+     * HTML, which is always already true, and a click at that point lands on a
+     * real button with no listener attached and is silently swallowed. Before
+     * upgrade the element is a plain HTMLElement; only after it is an instance
+     * of the registered class, which is the first moment the `@click` binding
+     * exists. `my-counter` is a LIGHT-DOM component, so there is no shadow root
+     * to look inside for a different answer.
      * @param {import('puppeteer-core').Page} p
+     * @param {string} which  'ON' or 'OFF', named in the failure message
      */
     const waitForHydration = async (p, which) => {
       try {
         await p.waitForFunction(() => {
-          if (!customElements.get('my-counter')) return false;
-          const c = document.querySelector('my-counter');
-          return !!(c && c.querySelector('output') && c.querySelector('button[aria-label="Increment"]'));
+          const C = customElements.get('my-counter');
+          return !!(C && document.querySelector('my-counter') instanceof C);
         }, { timeout: 15000, polling: 50 });
       } catch {
         // Say what failed and what it most likely means. A bare puppeteer
         // "Waiting failed: 15000ms exceeded" names neither the page nor the
         // condition, which is the same diagnostic dead end the old off-by-one
         // counter assertion was. Report what is actually on the page.
-        const state = await p.evaluate(() => ({
-          defined: !!customElements.get('my-counter'),
-          host: !!document.querySelector('my-counter'),
-          button: !!document.querySelector('my-counter')?.querySelector('button[aria-label="Increment"]'),
-        })).catch(() => null);
+        const state = await p.evaluate(() => {
+          const C = customElements.get('my-counter');
+          return {
+            defined: !!C,
+            host: !!document.querySelector('my-counter'),
+            upgraded: !!(C && document.querySelector('my-counter') instanceof C),
+          };
+        }).catch(() => null);
         throw new Error(
-          `${which} page never hydrated <my-counter> within 15s `
+          `${which} page never upgraded <my-counter> within 15s `
           + `(customElements.define ${state?.defined ? 'ran' : 'DID NOT run'}, `
           + `host ${state?.host ? 'present' : 'absent'}, `
-          + `increment button ${state?.button ? 'present' : 'absent'}). `
+          + `instance ${state?.upgraded ? 'upgraded' : 'NOT upgraded'}). `
           + 'If define never ran, the component module was not served: elision may have wrongly dropped it.',
         );
       }
