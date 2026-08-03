@@ -29,10 +29,13 @@ test('the skill prescribes ONE reviewer, never a fleet', () => {
   assert.match(skill, /Each later round is delta-scoped: ONE fresh reviewer whose QUESTION is the previous round's fix commits/);
   // Structure alone cannot bound a chain where every fix produces the next
   // round's finding, which is the case the deleted budget was written for.
-  assert.match(skill, /\*\*A delta chain that keeps producing fixes stops after the FIFTH\*\*/);
+  assert.match(skill, /\*\*A delta chain that keeps producing fixes stops after the FIFTH DELTA ROUND\*\*/);
+  // The stop needs a reporting shape of its own: the reporting section
+  // covers only the converged path.
+  assert.match(skill, /If a delta chain reaches its fifth round still producing fixes/);
   // And the do-not-restore paragraph must admit the cap came back rather
   // than claiming termination is entirely structural.
-  assert.match(skill, /The exception is the round cap, which came back in a narrower form/);
+  assert.match(skill, /The one exception to the removals is the round cap, which came back in a narrower form/);
   // The final whole-diff pass is what a clean delta round buys, and it is
   // the reason a clean round is not by itself the end.
   assert.match(skill, /buys the FINAL review: ONE fresh reviewer over the WHOLE diff again/);
@@ -211,6 +214,7 @@ test('the routed review directive states the same cycle as the skill', () => {
   assert.match(hook, /the cycle ends when nothing must-fix is left open, meaning the check came back with nothing or there was no fix to check because every must-fix finding the final review raised was rejected or deferred/);
   assert.match(hook, /a check that does find something must-fix gets that fixed and one more check of the same shape, and only if that one also finds something must-fix do you stop and report the PR unfinished/);
   assert.match(hook, /Only a FIX buys another round/);
+  assert.match(hook, /a delta chain that keeps producing fixes stops after the fifth delta round, unfinished, rather than continuing/);
   // The code-review skill's own findings are input to the cycle, not a
   // round of it.
   assert.match(hook, /auxiliary input, not as a round of it/);
