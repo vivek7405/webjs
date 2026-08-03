@@ -90,10 +90,15 @@ test('the cycle keeps the guarantees the trim was not allowed to touch', () => {
   // A dead or non-reviewing spawn is not a round, and an inline pass is
   // never a substitute for one.
   assert.match(skill, /A dead spawn is not a round/);
-  // The blind wait is bounded SHORT and never kills, since an isolated
-  // reviewer has no mid-flight liveness signal to poll in the first place.
-  assert.match(skill, /Check in on a short timer, and never auto-kill on it/);
-  assert.match(skill, /about 2 to 3 minutes/);
+  // The blind wait is bounded SHORT and never kills. Whether there is a
+  // mid-flight signal at all depends on what the spawn's output file is,
+  // which is why the rule probes it rather than assuming.
+  assert.match(skill, /Check in on a SHORT timer, and never auto-kill on it/);
+  assert.match(skill, /about 2 to 3 minutes, not ten/);
+  // The liveness probe is byte growth on the transcript, never its words,
+  // and the file may be either a live transcript or a static stub.
+  assert.match(skill, /a growing byte count means it is working/);
+  assert.match(skill, /Never read the transcript.s contents/);
   assert.match(skill, /A reviewer that returns without reviewing is also not a round/);
   assert.match(skill, /NEVER substitute an inline self-review/);
   // The literal sentinels the cycle reads a reviewer's answer by.
