@@ -1999,25 +1999,32 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     });
 
     // Snapshot the observable content of <main>: visible text and the ordered
-    // tag structure, with content that is not a function of elision normalised
-    // away, since a difference there says nothing about the property under test.
+    // tag structure. Only the wall-clock and the chat participant COUNT are
+    // normalised away, and the distinction matters, so it is worth stating.
     //
-    // Two such sources. The live wall-clock, which ticks between the two
-    // snapshots. And <chat-box>, which sits inside <main> and whose status line
-    // is driven by a WEBSOCKET handshake rather than by hydration: it reads
-    // 'Connecting…' until the socket opens, then 'Live · N others online', and
-    // 'Reconnecting…' after a drop. The two pages talk to two independent
-    // servers, so their sockets open independently and the count is a function
-    // of who is connected, not of what shipped. Comparing that raw makes the
-    // assertion a race on the handshake in one direction and a masked
-    // divergence in the other, and no readiness wait fixes it because the two
-    // sides are genuinely independent. Normalise it for the same reason the
-    // clock is normalised.
+    // <chat-box> sits inside <main> and it is NOT independent of what this
+    // block tests. It calls connectWS from connectedCallback, so leaving its
+    // SSR 'Connecting…' state requires its module to have shipped and the
+    // element to have upgraded. Its rendered state is therefore a real signal
+    // that chat-box hydrated on both sides, and erasing it would throw away
+    // coverage in the exact test that exists to compare hydration.
+    //
+    // What is genuinely not a function of elision is the participant count:
+    // each page talks to its own server, so `Live · N others online` counts
+    // whoever happens to be connected to THAT server. The digits are
+    // normalised; the 'Live' that proves hydration is kept.
+    //
+    // The socket handshake is handled by waiting (waitForChatLive below), not
+    // by normalising. Waiting is what makes both sides comparable: the open
+    // also broadcasts a join to every client including the joiner, which adds
+    // a 'someone joined' line and its own element, changing BOTH the text and
+    // the tags. A regex over the status line alone would have left that race
+    // untouched in the tags half.
     const observableMain = (pg) => pg.evaluate(() => {
       const main = document.querySelector('main') || document.body;
       const text = (main.textContent || '')
         .replace(/\d{1,2}:\d{2}:\d{2}\s?[AP]M/gi, 'TIME')
-        .replace(/Live · \d+ others? online|Connecting…|Reconnecting…/g, 'CHAT-STATUS')
+        .replace(/Live · \d+ others? online/g, 'Live · CHAT-COUNT online')
         .replace(/\s+/g, ' ')
         .trim();
       const tags = [...main.querySelectorAll('*')].map((el) => el.tagName.toLowerCase());
@@ -2027,13 +2034,12 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     /**
      * Wait until the page has actually hydrated, instead of sleeping and hoping.
      *
-     * The counter is the readiness signal because it is the component the
-     * assertions below actually drive. It is not the only interactive element
-     * on the page (<chat-box> is here too, and <theme-toggle> is in the root
-     * layout), so this is a wait for the thing under test, not a whole-page
-     * hydration barrier. Content that is not a function of elision, including
-     * chat-box's socket-driven status line, is normalised out of the snapshot
-     * above rather than waited on.
+     * The counter is ONE of the page's interactive components, not all of
+     * them: <chat-box> is inside <main> too, and <theme-toggle> is in the root
+     * layout. So this alone is not a whole-page hydration barrier, and the
+     * snapshot test pairs it with waitForChatLive below to cover the other
+     * component whose rendering lands inside <main>. Callers that only drive
+     * the counter need this one on its own.
      *
      * The signal is that the ELEMENT INSTANCE has been upgraded, tested with
      * `instanceof` against the registered constructor. Nothing weaker works
@@ -2092,11 +2098,51 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       }
     };
 
+    /**
+     * Wait until <chat-box> has settled into its connected state.
+     *
+     * The socket open is what makes the two pages comparable, and it changes
+     * more than the status line: the server broadcasts the join to every
+     * client INCLUDING the joiner, so the message pane flips from its empty
+     * placeholder to a 'someone joined' entry, adding an element. Both the text
+     * and the tag structure move. Snapshotting before that has landed on both
+     * sides compares one settled page against one unsettled page.
+     *
+     * This is a wait rather than a normalisation on purpose: chat-box connects
+     * from connectedCallback, so reaching this state proves it hydrated, which
+     * is a signal this block exists to check. Only the participant count is
+     * normalised out of the snapshot, since that counts whoever is connected to
+     * that page's own server.
+     * @param {import('puppeteer-core').Page} p
+     * @param {string} which  'ON' or 'OFF', named in the failure message
+     */
+    const waitForChatLive = async (p, which) => {
+      try {
+        await p.waitForFunction(
+          () => /Live ·/.test(document.querySelector('chat-box')?.textContent || ''),
+          { timeout: 15000, polling: 50 },
+        );
+      } catch (err) {
+        if (!/timeout|Waiting failed/i.test(String(err && err.message))) throw err;
+        const seen = await p.evaluate(() => document.querySelector('chat-box')?.textContent?.trim().slice(0, 80) ?? '(no <chat-box> on the page)').catch(() => null);
+        throw new Error(
+          `${which} page's <chat-box> never reached its connected state within 15s `
+          + `(showing ${seen === null ? 'an unprobeable page' : JSON.stringify(seen)}). `
+          + 'It connects from connectedCallback, so this is either a hydration failure or a websocket that never opened.',
+        );
+      }
+    };
+
     test('the mixed page renders identically on vs off', async () => {
       await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await waitForHydration(page, 'ON');
       await waitForHydration(offPage, 'OFF');
+      // <chat-box> renders inside <main>, so its connected state has to land on
+      // BOTH sides before the snapshot, or this compares a settled page against
+      // an unsettled one.
+      await waitForChatLive(page, 'ON');
+      await waitForChatLive(offPage, 'OFF');
       const onSnap = await observableMain(page);
       const offSnap = await observableMain(offPage);
       // The display-only badges (build-stamp, vendor-badge, muted-text) are
@@ -2136,7 +2182,11 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       const settled = async (p, which) => {
         try {
           await p.waitForFunction(
-            (want) => parseInt(document.querySelector('my-counter')?.querySelector('output')?.textContent.trim(), 10) === want,
+            // Every hop optional-chained: a missing <output> must make the
+            // predicate FALSE (so the wait times out and reports which side
+            // stalled), not throw a TypeError that the handler below cannot
+            // recognise as a timeout and rethrows raw, unlabelled.
+            (want) => parseInt(document.querySelector('my-counter')?.querySelector('output')?.textContent?.trim() ?? '', 10) === want,
             { timeout: 10000, polling: 25 },
             onSeed + 1,
           );
@@ -3205,7 +3255,8 @@ describe('E2E: form actions (no-JS + enhanced)', { skip: !process.env.WEBJS_E2E 
 
 /**
  * Get the current counter display value.
- * The counter is a shadow DOM component: <my-counter> → shadowRoot → <output>.
+ * The counter is a LIGHT DOM component, so its <output> is a child of the host
+ * itself and there is no shadow root in the path.
  * @param {import('puppeteer-core').Page} p
  * @returns {Promise<number|null>}
  */
