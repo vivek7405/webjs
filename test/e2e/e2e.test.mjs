@@ -2030,33 +2030,54 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     //    assumed it could: the two sides are genuinely independent populations,
     //    not one lagging the other. So the pane is held out of the comparison.
     //
-    //    The participant count in the status header is environmental for the
-    //    same reason and is normalised, while the 'Live ·' around it stays.
+    //    The status header is kept, but its two CONNECTED renderings are
+    //    collapsed to one token: the participant count is environmental (it
+    //    counts whoever is on that page's own server) and so is a drop to
+    //    'Reconnecting…' after the socket opened. 'Connecting…', the
+    //    never-connected state, is left alone so it still diverges.
     //
-    // Dropping the pane does not drop the hydration coverage: chat-box connects
-    // from connectedCallback, so reaching its connected state proves its module
-    // shipped and the element upgraded, and waitForChatLive asserts that on
-    // both sides directly.
+    // Dropping the pane does not drop the hydration coverage, twice over. The
+    // status header stays in the snapshot, so an un-hydrated side reading
+    // 'Connecting…' against a connected side diverges here and fails. And
+    // waitForChatLive checks the connected state on both sides before the
+    // snapshot is taken at all.
     const observableMain = (pg) => pg.evaluate(() => {
       const main = document.querySelector('main') || document.body;
       // Work on a clone so the live DOM is untouched and a later snapshot of
       // the same page still sees the real thing.
       const copy = /** @type {HTMLElement} */ (main.cloneNode(true));
-      // The pane is the middle child of chat-box's wrapper: header div, pane
-      // div, form. Positional because the markup carries no id or data hook.
-      // The count below is asserted so a markup change surfaces as a loud
-      // failure here rather than silently restoring the raw comparison, which
-      // would put the flake back invisibly.
-      const boxes = [...copy.querySelectorAll('chat-box')];
-      const panes = boxes.map((b) => b.querySelector(':scope > div > div:nth-child(2)')).filter(Boolean);
-      if (panes.length !== boxes.length) {
-        return { error: `expected one message pane per <chat-box>, found ${panes.length} for ${boxes.length}; chat-box markup changed and this snapshot no longer excludes its feed` };
+      // The pane is the middle child of chat-box's wrapper (header div, pane
+      // div, form), positional because the markup carries no id or data hook.
+      //
+      // The whole SHAPE is asserted, not merely that something was found.
+      // Checking only "did the selector match" is the weaker guard, and it is
+      // green in the likelier failure: insert an element above the header, or
+      // swap header and pane, and a positional selector happily returns the
+      // WRONG element. The count still matches, the header gets emptied, and
+      // the live feed is compared raw again, which is the flake restored
+      // invisibly. Pinning the child tag sequence catches an insertion or a
+      // reorder, not just a deletion.
+      const panes = [];
+      for (const box of copy.querySelectorAll('chat-box')) {
+        const wrapper = box.firstElementChild;
+        const shape = wrapper ? [...wrapper.children].map((el) => el.tagName.toLowerCase()) : [];
+        if (!wrapper || shape.join(',') !== 'div,div,form') {
+          return { error: `<chat-box>'s wrapper should hold [div, div, form] (header, message pane, form), found [${shape.join(', ') || 'no wrapper'}]; its markup changed, so this snapshot can no longer identify the live feed to exclude it` };
+        }
+        panes.push(wrapper.children[1]);
       }
       for (const pane of panes) pane.replaceChildren();
       const text = (copy.textContent || '')
         .replace(/\d{1,2}:\d{2}:\d{2}\s?[AP]M/gi, 'TIME')
         .replace(/\d{1,2}:\d{2}:\d{2}/g, 'TIME')
-        .replace(/Live · \d+ others? online/g, 'Live · CHAT-COUNT online')
+        // Both CONNECTED states collapse to one token. 'Reconnecting…' is a
+        // socket that dropped after opening, which is environmental exactly
+        // like the participant count: the two pages hold sockets to two
+        // independent servers, so one can drop between the wait and the
+        // snapshot with no counterpart on the other side. 'Connecting…' is
+        // deliberately NOT collapsed, because that is the never-connected
+        // state and it should still diverge loudly.
+        .replace(/Live · \d+ others? online|Reconnecting…/g, 'CHAT-CONNECTED')
         .replace(/\s+/g, ' ')
         .trim();
       const tags = [...copy.querySelectorAll('*')].map((el) => el.tagName.toLowerCase());
@@ -2184,8 +2205,10 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       await waitForHydration(offPage, 'OFF');
       // chat-box's message pane is held out of the snapshot (a live socket feed
       // over two independent servers), so check its connected state directly on
-      // both sides. Without this an un-hydrated chat-box would go unnoticed,
-      // since the excluded pane is where that would otherwise have shown.
+      // both sides. This is belt and braces rather than the only guard: the
+      // status header is still compared, so an un-hydrated side would also
+      // diverge there. Checking it here fails at the point of the problem
+      // instead of as a text mismatch further down.
       await waitForChatLive(page, 'ON');
       await waitForChatLive(offPage, 'OFF');
       const onSnap = await snapshot(page, 'ON');
