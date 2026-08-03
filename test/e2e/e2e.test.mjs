@@ -1999,123 +1999,56 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     });
 
     // Snapshot the observable content of <main>: visible text and the ordered
-    // tag structure, with the two sources that are not a function of elision
-    // held out. Getting this boundary right took several passes, so the reasons
-    // are written down rather than left to be rediscovered.
+    // tag structure, with the two things that are not a function of elision
+    // held out.
     //
     // 1. The wall-clock, which ticks between the two snapshots. Both the
     //    12-hour and 24-hour renderings are matched, since which one appears
-    //    depends on the runner's default locale, not on anything under test.
+    //    depends on the runner's default locale.
     //
-    // 2. <chat-box>'s MESSAGE PANE, and only that. The element, its status
-    //    header and its form (input, Send button) are all still compared, so a
-    //    structural difference in chat-box's rendering is still caught; what is
-    //    dropped is the list of chat lines, which is a live socket feed and
-    //    cannot be made equal across the two servers:
+    // 2. Everything INSIDE <chat-box>. The element itself stays in the tag
+    //    list, so a chat-box that failed to render at all is still caught, but
+    //    its contents are dropped wholesale.
     //
-    //      - The server broadcasts every join and leave to all clients
-    //        including the joiner, and the handler appends a line per event, so
-    //        the pane accumulates entries and each adds elements to the tag
-    //        list. The count of those events is a property of the SERVER's
-    //        client population.
-    //      - Those populations are not comparable by construction. The OFF
-    //        server is created fresh and privately in this block's before();
-    //        the ON server is shared with the whole suite and outlives it, so
-    //        anyone else connecting to or leaving it during the window adds a
-    //        line on the ON side with no OFF counterpart.
-    //      - A reconnect re-opens the socket and appends a SECOND join line, so
-    //        even a single page's pane is not a function of its own history.
+    //    That is a blunt cut and it is deliberate. chat-box's pane is a live
+    //    websocket feed, and the two pages hold sockets to two DIFFERENT
+    //    servers: the OFF server is created privately in this block, the ON
+    //    server is shared with the whole suite. Every join and leave on either
+    //    appends a line with no counterpart on the other, and a reconnect
+    //    appends another. Those are independent populations, so no amount of
+    //    waiting converges them. Earlier revisions tried to keep the status
+    //    header while excluding just the pane, which needs the pane identified
+    //    by content or position inside markup that carries neither an id nor a
+    //    data hook; that machinery went wrong repeatedly under review and is
+    //    not worth its weight for a widget this block is not testing.
     //
-    //    Waiting cannot fix any of that, which an earlier revision of this test
-    //    assumed it could: the two sides are genuinely independent populations,
-    //    not one lagging the other. So the pane is held out of the comparison.
-    //
-    //    The status header is kept, but its two CONNECTED renderings are
-    //    collapsed to one token: the participant count is environmental (it
-    //    counts whoever is on that page's own server) and so is a drop to
-    //    'Reconnecting…' after the socket opened. 'Connecting…', the
-    //    never-connected state, is left alone so it still diverges.
-    //
-    // Dropping the pane does not drop the hydration coverage, but be precise
-    // about where that coverage actually lives: it is waitForChatLive, which
-    // the mixed-page test runs on both sides before either snapshot and which
-    // throws if a side is still in its server-rendered state. The status header
-    // is kept in the snapshot but adds nothing on top of that, because once
-    // that wait has passed both sides are connected and chat-box has no path
-    // back, so the header contributes the same constant to each. (The other
-    // caller, the static-route test, runs no such wait and needs none: that
-    // route renders no <chat-box> at all, so none of this applies there.)
+    //    The cost is explicit: chat-box's own hydration and its header/form
+    //    structure are no longer covered here. The counter still covers
+    //    hydration on both sides, which is what this block is for.
     const observableMain = (pg) => pg.evaluate(() => {
       const main = document.querySelector('main') || document.body;
-      // Work on a clone so the live DOM is untouched and a later snapshot of
-      // the same page still sees the real thing.
+      // Clone so the live DOM is untouched and a later snapshot of the same
+      // page still sees the real thing.
       const copy = /** @type {HTMLElement} */ (main.cloneNode(true));
-      // The pane is identified by CONTENT, not by position. Position cannot do
-      // it: the header and the pane are both plain divs, so neither an index
-      // nor a tag sequence can tell them apart, and swapping the two would
-      // leave any positional guard green while the header got emptied and the
-      // live feed went back into the comparison. That is the flake restored
-      // invisibly, so the identification has to key on something that actually
-      // distinguishes them. The header is the div carrying the status line; the
-      // pane is the other one. Both are asserted, so a markup change fails
-      // loudly here rather than silently reverting the exclusion.
-      // Anchored and whole-string: the header renders exactly one status and
-      // nothing else (its dot is an empty span). A substring test would let a
-      // chat MESSAGE containing 'Live ·' look like a header, since message text
-      // is user-supplied and echoed back verbatim by the say broadcast. That
-      // would not mis-select (the real header always matches too, so the guard
-      // below trips on two headers rather than picking wrong) but it would be a
-      // spurious red in the block whose whole point is not producing those.
-      const STATUS = /^(Connecting…|Reconnecting…|Live · \d+ others? online)$/;
-      const panes = [];
-      for (const box of copy.querySelectorAll('chat-box')) {
-        const wrapper = box.firstElementChild;
-        if (!wrapper) return { error: '<chat-box> rendered no wrapper element; its markup changed, so this snapshot can no longer identify the live feed to exclude it' };
-        const divs = [...wrapper.children].filter((el) => el.tagName.toLowerCase() === 'div');
-        const headers = divs.filter((el) => STATUS.test((el.textContent || '').replace(/\s+/g, ' ').trim()));
-        const rest = divs.filter((el) => !headers.includes(el));
-        if (headers.length !== 1 || rest.length !== 1) {
-          const shape = [...wrapper.children].map((el) => el.tagName.toLowerCase()).join(', ');
-          return { error: `expected <chat-box>'s wrapper to hold exactly one status div and one message pane div, found ${headers.length} status and ${rest.length} other div(s) among [${shape}]. Either its markup changed or a chat message's text matched the status line exactly; either way this snapshot can no longer identify the live feed to exclude it` };
-        }
-        panes.push(rest[0]);
-      }
-      for (const pane of panes) pane.replaceChildren();
+      for (const box of copy.querySelectorAll('chat-box')) box.replaceChildren();
       const text = (copy.textContent || '')
         .replace(/\d{1,2}:\d{2}:\d{2}\s?[AP]M/gi, 'TIME')
         .replace(/\d{1,2}:\d{2}:\d{2}/g, 'TIME')
-        // Both CONNECTED states collapse to one token. 'Reconnecting…' is a
-        // socket that dropped after opening, which is environmental exactly
-        // like the participant count: the two pages hold sockets to two
-        // independent servers, so one can drop between the wait and the
-        // snapshot with no counterpart on the other side. 'Connecting…' is
-        // left uncollapsed only so this regex says what it means. It is not
-        // reachable from either caller: the mixed-page test has already failed
-        // in waitForChatLive on any side still showing it, and the static route
-        // renders no <chat-box>.
-        .replace(/Live · \d+ others? online|Reconnecting…/g, 'CHAT-CONNECTED')
         .replace(/\s+/g, ' ')
         .trim();
       const tags = [...copy.querySelectorAll('*')].map((el) => el.tagName.toLowerCase());
       return { text, tags };
     });
 
-    /** Fail loudly if observableMain could not find what it needs to exclude. */
-    const snapshot = async (pg, which) => {
-      const snap = await observableMain(pg);
-      if (snap.error) throw new Error(`${which} snapshot: ${snap.error}`);
-      return snap;
-    };
 
     /**
      * Wait until the page has actually hydrated, instead of sleeping and hoping.
      *
      * The counter is ONE of the page's interactive components, not all of
      * them: <chat-box> is inside <main> too, and <theme-toggle> is in the root
-     * layout. So this alone is not a whole-page hydration barrier, and the
-     * snapshot test pairs it with waitForChatLive below to cover the other
-     * component whose rendering lands inside <main>. Callers that only drive
-     * the counter need this one on its own.
+     * layout. So this is a wait for the component the assertions drive, not a
+     * whole-page hydration barrier. chat-box is not waited on because its
+     * contents are excluded from the snapshot entirely (see observableMain).
      *
      * The signal is that the ELEMENT INSTANCE has been upgraded, tested with
      * `instanceof` against the registered constructor. Nothing weaker works
@@ -2174,60 +2107,13 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       }
     };
 
-    /**
-     * Wait for <chat-box> to reach its connected state.
-     *
-     * Precisely what this proves, since an overclaim here would be the same
-     * misattribution this block exists to remove: it keys on the status line
-     * reaching 'Live ·', which `onOpen` sets, so passing means BOTH that the
-     * component hydrated AND that its websocket opened against that page's own
-     * server. Hydration is the necessary half (chat-box calls connectWS from
-     * connectedCallback, so the SSR state cannot be left until its module
-     * shipped and the element upgraded), but a red here is not proof of a
-     * hydration failure on its own: a dev server that never completed the WS
-     * upgrade produces the same timeout with hydration perfectly healthy. The
-     * failure message says both.
-     *
-     * It is NOT a settle barrier. `onOpen` fires before the join message
-     * arrives, so the message pane is still moving when this returns. That
-     * guarantee is not available at all (the pane accumulates a line per join
-     * and leave on that page's own server, a reconnect appends another, and the
-     * two servers have different client populations by construction), which is
-     * why the pane is held out of the snapshot instead of waited on.
-     * @param {import('puppeteer-core').Page} p
-     * @param {string} which  'ON' or 'OFF', named in the failure message
-     */
-    const waitForChatLive = async (p, which) => {
-      try {
-        await p.waitForFunction(
-          () => /Live ·/.test(document.querySelector('chat-box')?.textContent || ''),
-          { timeout: 15000, polling: 50 },
-        );
-      } catch (err) {
-        if (!/timeout|Waiting failed/i.test(String(err && err.message))) throw err;
-        const seen = await p.evaluate(() => document.querySelector('chat-box')?.textContent?.trim().slice(0, 80) ?? '(no <chat-box> on the page)').catch(() => null);
-        throw new Error(
-          `${which} page's <chat-box> never reached its connected state within 15s `
-          + `(showing ${seen === null ? 'an unprobeable page' : JSON.stringify(seen)}). `
-          + 'It connects from connectedCallback, so this is either a hydration failure or a websocket that never opened.',
-        );
-      }
-    };
-
     test('the mixed page renders identically on vs off', async () => {
       await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await waitForHydration(page, 'ON');
       await waitForHydration(offPage, 'OFF');
-      // chat-box's message pane is held out of the snapshot (a live socket feed
-      // over two independent servers), so check its connected state directly on
-      // both sides. This IS the guard for chat-box hydration, not a redundant
-      // one: the snapshot below cannot catch an un-hydrated chat-box, because
-      // reaching it at all means this check already passed on both sides.
-      await waitForChatLive(page, 'ON');
-      await waitForChatLive(offPage, 'OFF');
-      const onSnap = await snapshot(page, 'ON');
-      const offSnap = await snapshot(offPage, 'OFF');
+      const onSnap = await observableMain(page);
+      const offSnap = await observableMain(offPage);
       // The display-only badges (build-stamp, vendor-badge, muted-text) are
       // elided ON and shipped OFF, yet their rendered output must match: that
       // identity is exactly why they are safe to elide.
@@ -2300,8 +2186,8 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       // settled) is the real condition the old sleep stood in for.
       await page.goto(`${baseUrl}/static-info`, { waitUntil: 'load', timeout: 30000 });
       await offPage.goto(`${offBaseUrl}/static-info`, { waitUntil: 'load', timeout: 30000 });
-      const onSnap = await snapshot(page, 'ON');
-      const offSnap = await snapshot(offPage, 'OFF');
+      const onSnap = await observableMain(page);
+      const offSnap = await observableMain(offPage);
       assert.deepEqual(onSnap.tags, offSnap.tags, 'static route tag structure must match on vs off');
       assert.equal(onSnap.text, offSnap.text, 'static route visible text must match on vs off');
     });
