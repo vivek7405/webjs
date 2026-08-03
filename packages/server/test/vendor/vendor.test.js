@@ -599,43 +599,169 @@ test('jspmGenerate #446: multi-install set resolves in ONE generate call (unifie
   });
 });
 
-test('jspmGenerate #446: conflicting graph resolves to ONE consistent set (real CDN)', { skip: !NETWORK_OK }, async () => {
-  // The exact repro from the issue. @codemirror/view is requested pinned at
-  // 6.39.0; @codemirror/lint@6.9.6 transitively needs a newer view (^6.42).
-  // Per-package-in-isolation produced TWO different view URLs (6.39 direct,
-  // 6.43 via lint) merged last-write-wins, so a served entry imported a
-  // symbol another served entry lacked. The unified call must yield ONE
-  // coherent graph: a single view URL, and the transitive @codemirror/state
-  // that lint needs must be present so the browser has no unresolved bare
-  // specifier.
-  const installs = ['@codemirror/view@6.39.0', '@codemirror/lint@6.9.6'];
-  clearVendorCache();
-  const map = await jspmGenerate(installs);
-  assert.ok(map['@codemirror/view'], 'view resolves');
-  assert.ok(map['@codemirror/lint'], 'lint resolves');
-  assert.ok(map['@codemirror/state'], 'the transitive @codemirror/state lint pulls in is present');
+test('jspmGenerate #446: a conflicting graph cannot skew a version (deterministic mock)', async () => {
+  // The consequence half of the #446 fix, and the one that actually caught the
+  // shipped bug. The test above proves the CALL is unified; this proves what
+  // that buys, that no served entry can end up on a different version than the
+  // graph agreed on.
+  //
+  // The repro from the issue: @codemirror/view is requested pinned at 6.39.0
+  // while @codemirror/lint needs a newer view (^6.42). Resolving each install
+  // in isolation produced TWO different view URLs (6.39 direct, 6.43 via lint)
+  // merged last-write-wins, so a served entry imported a symbol another served
+  // entry lacked.
+  //
+  // The mock answers a UNIFIED call (both installs together) with the coherent
+  // graph, and a per-package call with the skewed view that install alone
+  // implies. That asymmetry is what makes this discriminating: revert
+  // jspmGenerate to the old per-package loop and lint's isolated call hands
+  // back view@6.43.0, which wins last-write and reds the final assertion.
+  //
+  // Deliberately a mock rather than the live CDN. The live version of this
+  // test pinned @codemirror/lint@6.9.6, and when that version stopped
+  // resolving on jspm.io it failed on every run and blocked main for everyone
+  // (#1218). The version range is the problem: only lint 6.9.6 and 6.9.7 carry
+  // the `^6.42.0` view range that creates the conflict at all, and NEITHER
+  // resolves on jspm.io today, so there is no live fixture left that expresses
+  // this shape. The same class of live-CDN rot already forced the ordering
+  // test onto a mock in #312. A regression guard for shipped behaviour must
+  // not depend on a third party continuing to host one exact version.
+  const COHERENT = {
+    '@codemirror/view': 'https://ga.jspm.io/npm:@codemirror/view@6.39.0/dist/index.js',
+    '@codemirror/lint': 'https://ga.jspm.io/npm:@codemirror/lint@6.9.6/dist/index.js',
+    '@codemirror/state': 'https://ga.jspm.io/npm:@codemirror/state@6.6.0/dist/index.js',
+  };
+  // What lint ALONE would drag in: a newer view than the pinned one.
+  const SKEWED_VIEW = 'https://ga.jspm.io/npm:@codemirror/view@6.43.0/dist/index.js';
 
-  // Ground truth: a single unified generate call over the same set. This is
-  // the one mutually-consistent graph jspm computes. The fix makes
-  // jspmGenerate produce EXACTLY this.
-  const gtResp = await fetch('https://api.jspm.io/generate', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      install: installs, flattenScope: true,
-      env: ['browser', 'production', 'module'], provider: 'jspm.io',
-    }),
+  const mock = async (_url, opts) => {
+    const { install } = JSON.parse(opts.body);
+    const imports = install.length > 1
+      ? { ...COHERENT }
+      : install[0].startsWith('@codemirror/lint')
+        ? { '@codemirror/lint': COHERENT['@codemirror/lint'], '@codemirror/view': SKEWED_VIEW, '@codemirror/state': COHERENT['@codemirror/state'] }
+        : { '@codemirror/view': COHERENT['@codemirror/view'] };
+    return { ok: true, status: 200, json: async () => ({ map: { imports } }) };
+  };
+
+  await withMockedFetch(mock, async () => {
+    clearVendorCache();
+    const map = await jspmGenerate(['@codemirror/view@6.39.0', '@codemirror/lint@6.9.6']);
+    assert.ok(map['@codemirror/view'], 'view resolves');
+    assert.ok(map['@codemirror/lint'], 'lint resolves');
+    assert.ok(map['@codemirror/state'], 'the transitive @codemirror/state lint pulls in is present');
+    // The discriminating invariant: the served view entry is the version the
+    // WHOLE graph agreed on (6.39.0, the requested one), NOT lint's transitive
+    // 6.43.x that the old per-package merge let win last-write. A skew here is
+    // the missing-export crash from the issue.
+    assert.equal(map['@codemirror/view'], COHERENT['@codemirror/view'],
+      'view stays at the version the unified graph chose, no transitive skew');
   });
-  const groundTruth = (await gtResp.json()).map.imports;
-  assert.deepEqual(map, groundTruth,
-    'jspmGenerate must equal the single unified graph, not a per-package merge');
+});
 
-  // The discriminating invariant: the served @codemirror/view entry is the
-  // version the WHOLE graph agreed on (6.39.0, the requested one), NOT
-  // lint\'s transitive 6.43.x that the old per-package merge let win
-  // last-write. A skew here is the missing-export crash from the issue.
-  assert.match(map['@codemirror/view'], /@codemirror\/view@6\.39\.0\//,
-    'view stays at the version the unified graph chose, no transitive skew');
+test('jspmGenerate #446: matches jspm\'s own unified graph (real CDN)', { skip: !NETWORK_OK }, async (t) => {
+  // The integration half: our merged output must equal what jspm itself
+  // computes for the same install set. The mock above cannot prove this,
+  // because a mock only ever returns what this file already believes.
+  //
+  // The fixture is chosen so the comparison can actually FAIL two distinct
+  // ways, since a parity assertion over a set with nothing to disagree about
+  // is decoration:
+  //
+  //   1. Per-package skew. Resolved alone, @codemirror/lint drags in
+  //      view@6.41.x; in the unified graph the pinned view@6.39.0 wins. So a
+  //      revert of jspmGenerate to the pre-#446 per-package loop makes lint's
+  //      isolated call supply the newer view, which wins last-write and diverges
+  //      from the ground truth here. Two packages with no shared transitive
+  //      (say picocolors + clsx) cannot catch that: their unified graph is
+  //      byte-identical to the union of their single-install graphs.
+  //   2. A dropped flattenScope. This pair hoists five transitives to top level
+  //      (@codemirror/state, crelt, style-mod, w3c-keyname,
+  //      @marijn/find-cluster-break). vendor.js sends flattenScope: true so the
+  //      browser gets no unresolved bare specifier, and this ground truth sends
+  //      it too, so removing it from vendor.js drops those entries from our
+  //      imports and reds the deepEqual. Nothing else in the suite covers that
+  //      flag: every mock here answers only on `install`, so a mocked assertion
+  //      on a transitive key reads a value the mock itself fabricated.
+  //
+  // lint is pinned at 6.9.5 rather than a version whose view range EXCLUDES
+  // 6.39.0 (only 6.9.6 and 6.9.7 do that, and neither resolves on jspm.io, see
+  // the mock test above). The incompatible-range case is the mock's job; this
+  // one only needs a shared transitive whose resolution differs per strategy.
+  const installs = ['@codemirror/view@6.39.0', '@codemirror/lint@6.9.5'];
+
+  const skip = (reason) => {
+    // Loud on purpose. A silent skip is how a real regression hides, so name
+    // the fixture and the reason.
+    console.warn(`[vendor.test] SKIP unified-graph parity: ${installs.join(' + ')} (${String(reason).split('\n')[0]})`);
+    t.skip('jspm.io was not in a state that can answer this comparison');
+  };
+
+  // Half one, the ground truth. Every failure mode routes to the skip, not
+  // just an `error` in a well-formed JSON body: a DNS failure or reset throws
+  // out of fetch, a proxy's HTML 502 throws out of .json(), and a hang is cut
+  // by the timeout. Without that timeout a wedged api.jspm.io would hold the
+  // unit job open until the CI job limit, since node --test applies no
+  // per-test deadline of its own. The shipped code guards its own call the
+  // same way (JSPM_GENERATE_TIMEOUT_MS in packages/server/src/vendor.js).
+  let gt;
+  let why = '';
+  try {
+    const gtResp = await fetch('https://api.jspm.io/generate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        install: installs, flattenScope: true,
+        env: ['browser', 'production', 'module'], provider: 'jspm.io',
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    gt = await gtResp.json();
+    if (!gtResp.ok) why = `HTTP ${gtResp.status}`;
+    else if (gt.error) why = String(gt.error);
+    else if (!gt.map?.imports) why = 'response carried no map.imports';
+  } catch (err) {
+    why = `${err.name}: ${err.message}`;
+  }
+  if (why) { skip(why); return; }
+
+  // Half two, our own call, watched at the TRANSPORT rather than judged by its
+  // return value. jspmGenerate fail-opens, so its output cannot tell the two
+  // failure kinds apart: a transient on the unified call returns a NON-empty
+  // merge of per-install fragments (skewed to view@6.41.x for this fixture),
+  // and an unresolvable set returns {}. Reading the map alone therefore either
+  // reds on an upstream blip or skips on a real bug, depending on which shape
+  // you test for. Both are wrong.
+  //
+  // So record what the network actually did. A throw, a 5xx, or a 429 is
+  // upstream having a bad moment, and skips. A 4xx does NOT skip: the ground
+  // truth just succeeded for this same fixture moments ago, so upstream is
+  // demonstrably healthy, and a 4xx now means OUR request is malformed, which
+  // is precisely the regression this test exists to catch.
+  const realFetch = globalThis.fetch;
+  /** @type {string[]} */
+  const transient = [];
+  globalThis.fetch = async (url, opts) => {
+    try {
+      const r = await realFetch(url, opts);
+      if (r.status >= 500 || r.status === 429) transient.push(`HTTP ${r.status}`);
+      return r;
+    } catch (err) {
+      transient.push(`${err.name}: ${err.message}`);
+      throw err;
+    }
+  };
+  let map;
+  try {
+    clearVendorCache();
+    map = await jspmGenerate(installs);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  if (transient.length) { skip(`jspm.io flaked on our own call (${transient[0]})`); return; }
+
+  assert.deepEqual(map, gt.map.imports,
+    'jspmGenerate must equal the single unified graph, not a per-package merge');
 });
 
 test('jspmGenerate #446 fallback: an unresolvable install does not collapse the map', async () => {
