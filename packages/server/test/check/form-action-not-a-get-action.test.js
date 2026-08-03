@@ -237,14 +237,14 @@ export default () => html\`<form action=\${readIt.name ? '/x' : '/y'}><button ac
   await rm(dir, { recursive: true, force: true });
 });
 
-test('flags a GET action bound to an <input type="submit"> submitter', async () => {
+test('flags a GET action bound through a second submitter in the same form', async () => {
   const dir = await makeApp({
     'modules/read/actions/read.server.ts': GET_ACTION,
     'modules/save/actions/save.server.ts': POST_ACTION,
     'app/page.ts': `import { html } from '@webjsdev/core';
 import { readIt } from '../modules/read/actions/read.server.ts';
 import { saveIt } from '../modules/save/actions/save.server.ts';
-export default () => html\`<form action=\${saveIt}><input type="submit" formaction=\${readIt}></form>\`;
+export default () => html\`<form action=\${saveIt}><button>Save</button><button formaction=\${readIt}>Read</button></form>\`;
 `,
   });
   assert.equal(hits(await checkConventions(dir)).length, 1);

@@ -234,7 +234,25 @@ export function assertSubmitterType(tag, type) {
         `[webjs] formaction=\${action} is not supported on <input type="image"> `
         + `because image submitters submit coordinate pairs (name.x/name.y) `
         + `instead of name=value, so the action identity would never arrive. `
-        + `Use <button> or <input type="submit"> instead.`,
+        + `Use a <button> instead.`,
+      );
+    }
+    if (t === 'input') {
+      // `<input type="submit">` IS a submitter and Part B still judges its
+      // `formmethod` / `formenctype`, but it cannot carry a BINDING. The
+      // identity has to occupy the submitter's `value`, and on this control
+      // `value` is also the visible caption, so binding an action renders a
+      // button captioned `a1b2c3d4e5/publishDraft`. The only fix, an author
+      // `value="Publish"`, is the very channel the identity needs, so the two
+      // requirements cannot both be met. A `<button>` has no such conflict: its
+      // label is its children.
+      throw new Error(
+        `[webjs] formaction=\${action} is not supported on <input type="submit"> `
+        + `because the action identity has to occupy the submitter's "value", `
+        + `which on this control is also its visible label, so the button would `
+        + `render captioned with the action's id and could not be given a real `
+        + `one. Use <button formaction=\${action}>Publish</button>, whose label `
+        + `is its children.`,
       );
     }
     return;
@@ -242,7 +260,7 @@ export function assertSubmitterType(tag, type) {
   throw new Error(
     `[webjs] formaction=\${action} on <${t}>${value ? ` type="${value}"` : ''} `
     + `requires a submitter control, and formaction is inert on anything else. `
-    + `Use <button> or <input type="submit">.`,
+    + `Use <button formaction=\${action}>.`,
   );
 }
 
@@ -358,6 +376,54 @@ export function assertSubmitterFormIsBound(insideBoundForm, tag) {
     + `The enclosing <form> must carry an action binding so method="post" and the `
     + `enctype are set at form start, which is too late to add from the button.`,
   );
+}
+
+/**
+ * The submitter twin of `assertConvergentBoundForm`: refuse a `.prop` spelling
+ * on a submitter that the two renderers can never agree on.
+ *
+ * Same argument, one level down. A `.prop` on a native element is DROPPED at
+ * SSR and applied for real in the browser, and on a `<button>` / `<input>` all
+ * of `name`, `value`, `formAction`, `formMethod` and `formEnctype` are
+ * REFLECTED IDL attributes, so the browser write lands in the content
+ * attribute. Measured: `<button .name=${'intent'} formaction=${fn}>` renders
+ * clean at SSR (the prop is dropped, so the identity's `name` survives) and
+ * then throws on hydration, where `.name` has written `name="intent"` over it.
+ * That is the render-on-the-server, crash-on-hydration direction, which is the
+ * one failure this module treats as unacceptable.
+ *
+ * `formMethod` / `formEnctype` are refused on ANY submitter inside a bound
+ * form, not only a bound one, for the same reason Part B is: the browser write
+ * reflects, so the attribute the server never saw is the one that decides
+ * whether the submission can carry the action's body.
+ *
+ * @param {string[] | undefined} propAttrs attribute names a property part owns
+ * @param {string} tag lowercased owner tag
+ * @returns {void}
+ */
+export function assertConvergentSubmitter(propAttrs, tag) {
+  const prop = propAttrs && propAttrs[0];
+  if (!prop) return;
+  throw new Error(
+    `[webjs] a submitter inside a bound <form action=\${action}> binds .${prop}=. `
+    + `On a <${tag || 'button'}> that property is a reflected IDL attribute, so a `
+    + `property binding is dropped at SSR and written to the attribute in the `
+    + `browser: the page would render on the server and throw on hydration. `
+    + `Write it as a plain attribute.`,
+  );
+}
+
+/**
+ * Is this property name one whose write reflects into a submitter attribute the
+ * form-action rules care about?
+ *
+ * @param {string} name any case, sigil already stripped
+ * @returns {boolean}
+ */
+export function isSubmitterReflectedProp(name) {
+  const n = String(name).toLowerCase();
+  return n === 'name' || n === 'value' || n === 'formaction'
+    || n === 'formmethod' || n === 'formenctype';
 }
 
 /**
@@ -845,7 +911,7 @@ function ensureIdentityField(form, id) {
  *
  * @param {string} startTag the emitted start tag, ending in `>`
  * @param {string} tag lowercased owner tag
- * @param {{ bound: boolean, duplicateAction?: boolean }} shape
+ * @param {{ bound: boolean, duplicateAction?: boolean, propAttrs?: string[] }} shape
  * @returns {void}
  */
 export function assertSubmitterStartTag(startTag, tag, shape) {
@@ -853,12 +919,24 @@ export function assertSubmitterStartTag(startTag, tag, shape) {
   const attrs = parseStartTagAttrs(startTag);
   const type = attrs.has('type') ? attrs.get('type') : null;
 
+  // Gated on being a real submitter, because these properties reflect on any
+  // control: `<input .name=${'q'}>` is an ordinary field inside the form and
+  // has nothing to do with the action.
+  if (bound || isSubmitterType(tag, type)) assertConvergentSubmitter(shape.propAttrs, tag);
+
   if (bound) {
     assertSingleSubmitterAction(!!shape.duplicateAction, tag);
     if (attrs.has('formaction')) assertSubmitterHasNoStaticFormAction(tag);
     if (countStartTagAttr(startTag, 'value') > 1) assertSubmitterHasNoValue(tag);
     if (countStartTagAttr(startTag, 'name') > 1) {
-      assertSubmitterHasNoName(attrs.get('name') || '', tag, false);
+      // The renderer injected exactly one `name`, so a second is the author's.
+      // Falling back to FORM_ACTION_FIELD matters for an EMPTY author name
+      // (`name=${null}` emits `name=""`): the parse keeps the last duplicate, so
+      // reading the value back would find `''` and the guard would wave through
+      // a tag carrying two `name` attributes. A browser resolves that by keeping
+      // the FIRST, so whichever came first would silently win, and SSR would
+      // ship markup the client never produces.
+      assertSubmitterHasNoName(attrs.get('name') || FORM_ACTION_FIELD, tag, false);
     }
     assertSubmitterType(tag, type);
     if (attrs.has('form')) assertSubmitterHasNoFormAttribute(tag);

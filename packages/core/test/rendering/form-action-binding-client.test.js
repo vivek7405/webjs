@@ -524,16 +524,20 @@ test('submitter non-POST formmethod is refused on the client (get and PATCH)', (
 
 test('submitter controls and conflicting attributes are refused on the client', () => {
   const action = HOISTED();
-  for (const tpl of [
-    html`<form action=${action}><input type="text" formaction=${action}></form>`,
-    html`<form action=${action}><input type="hidden" formaction=${action}></form>`,
-    html`<form action=${action}><input type="IMAGE" formaction=${action}></form>`,
-    html`<form action=${action}><button type="button" formaction=${action}>Save</button></form>`,
-    html`<form action=${action}><button value="save" formaction=${action}>Save</button></form>`,
-    html`<form action=${action}><button formaction="/legacy" formaction=${action}>Save</button></form>`,
-    html`<form action=${action}><button form="other" formaction=${action}>Save</button></form>`,
+  // Paired with the message each guard produces, for the reason spelled out in
+  // the SSR twin of this test: one shared alternation matches every message in
+  // the module and proves only that something threw.
+  for (const [tpl, expected] of [
+    [html`<form action=${action}><input type="text" formaction=${action}></form>`, /requires a submitter control/],
+    [html`<form action=${action}><input type="hidden" formaction=${action}></form>`, /requires a submitter control/],
+    [html`<form action=${action}><input type="IMAGE" formaction=${action}></form>`, /coordinate pairs/],
+    [html`<form action=${action}><input type="submit" formaction=${action}></form>`, /also its visible label/],
+    [html`<form action=${action}><button type="button" formaction=${action}>Save</button></form>`, /requires a submitter control/],
+    [html`<form action=${action}><button value="save" formaction=${action}>Save</button></form>`, /already carries a "value" attribute/],
+    [html`<form action=${action}><button formaction="/legacy" formaction=${action}>Save</button></form>`, /cannot also carry a plain formaction attribute/],
+    [html`<form action=${action}><button form="other" formaction=${action}>Save</button></form>`, /cannot be used with a "form" attribute/],
   ]) {
-    assert.throws(() => render(tpl, document.createElement('div')), /submitter|value|formaction|form.*attribute/);
+    assert.throws(() => render(tpl, document.createElement('div')), expected);
   }
 });
 
@@ -693,4 +697,51 @@ test('the client identity field carries a value ATTRIBUTE, matching SSR markup',
   const field = host.querySelector('input[name="__webjs_action"]');
   assert.equal(field.getAttribute('value'), ID);
   assert.match(host.querySelector('form').innerHTML, /value="a1b2c3d4e5\/submitFeedback"/);
+});
+
+// ---------------------------------------------------------------------------
+// A `.prop` spelling on a submitter, the twin of the form-level `.method` /
+// `.enctype` refusal. Refused on BOTH sides, because SSR drops a native `.prop`
+// while a browser reflects it: `<button .name=${'intent'} formaction=${fn}>`
+// rendered clean on the server and then threw on hydration, where `.name` had
+// written `name="intent"` over the identity. Refusing at the template level
+// means the page never ships and the divergence cannot occur.
+// ---------------------------------------------------------------------------
+
+test('a reflected .prop on a bound submitter is refused on the client', () => {
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  for (const tpl of [
+    html`<form action=${formAction}><button .name=${'intent'} formaction=${buttonAction}>x</button></form>`,
+    html`<form action=${formAction}><button .value=${'v'} formaction=${buttonAction}>x</button></form>`,
+    html`<form action=${formAction}><button .formMethod=${'get'} formaction=${buttonAction}>x</button></form>`,
+    html`<form action=${formAction}><button .formEnctype=${'text/plain'} formaction=${buttonAction}>x</button></form>`,
+  ]) {
+    assert.throws(() => render(tpl, document.createElement('div')), /reflected IDL attribute/);
+  }
+});
+
+test('the client .prop refusal leaves ordinary controls alone', () => {
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  const host = document.createElement('div');
+  render(
+    html`<form action=${formAction}><input .name=${'q'}><button .textContent=${'Go'} formaction=${buttonAction}></button></form>`,
+    host,
+  );
+  assert.equal(host.querySelector('button').getAttribute('name'), '__webjs_action');
+});
+
+test('a formaction binding on <input type="submit"> is refused on the client too', () => {
+  // The identity has to occupy `value`, which on this control is its visible
+  // label, so the binding would render a button captioned with the action id.
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  assert.throws(
+    () => render(
+      html`<form action=${formAction}><input type="submit" formaction=${buttonAction}></form>`,
+      document.createElement('div'),
+    ),
+    /also its visible label/,
+  );
 });

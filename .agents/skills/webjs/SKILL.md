@@ -105,7 +105,7 @@ App-internal imports use the `#` root alias (`import { db } from '#db/connection
 9. No backtick characters inside an `html\`...\`` body, even in comments (it closes the literal and 500s).
 10. TypeScript must be erasable (`erasableSyntaxOnly: true`): no `enum`, no value `namespace`, no constructor parameter properties, no legacy decorators.
 11. Reactive properties are declared ONLY through the base-class factory `extends WebComponent({ count: Number })`. Never a `static properties` block, never a class-field initializer (it clobbers the reactive accessor).
-12. A form that writes binds its action: `<form action=${importedAction}>`, or a submitter `<button formaction=${importedAction}>` / `<input type="submit" formaction=${importedAction}>` inside a bound form. Quoted bindings, non-submit controls, submitter `name` / `value` / `form` / static `formaction` attributes, `action=${fn}` off a `<form>`, a bound form with `method="get"`, and a non-action function all throw. A page has no `action` export, so a bare `<form method="post">` is a 405.
+12. A form that writes binds its action: `<form action=${importedAction}>`, or a per-button `<button formaction=${importedAction}>` inside a bound form. Quoted bindings, non-submit controls, `<input type="submit">` (the identity needs its `value`, which is also its label, so use a `<button>`), submitter `name` / `value` / `form` / static `formaction` attributes, a `.prop` spelling of any of those, `action=${fn}` off a `<form>`, a bound form with `method="get"`, `formmethod="get"` or an unparseable `formenctype` on ANY submitter in a bound form, and a non-action function all throw. A page has no `action` export, so a bare `<form method="post">` is a 405.
 
 ## Export Map
 

@@ -201,8 +201,13 @@ export default () => html\`<form action=\${save}><p>ok</p></form>\`;
 });
 
 test('multi-submitter form dispatch: last __webjs_action entry wins (submitter precedence)', async () => {
+  // The two actions redirect to DIFFERENT targets on purpose. With both
+  // returning the same result, any identity produced a 303 and the assertion
+  // held whether the dispatcher took the first entry or the last, which is the
+  // one line this test exists to pin. Asserting the `location` is what makes
+  // first-wins observable.
   const appDir = makeApp({
-    'modules/multi/actions/multi.server.ts': `'use server';\nexport async function formAction() { return { success: true }; }\nexport async function buttonAction() { return { success: true }; }\n`,
+    'modules/multi/actions/multi.server.ts': `'use server';\nexport async function formAction() { return { success: true, redirect: '/ran-form' }; }\nexport async function buttonAction() { return { success: true, redirect: '/ran-button' }; }\n`,
     'app/multi/page.ts': `
       import { html } from ${CORE};
       import { formAction, buttonAction } from '../../modules/multi/actions/multi.server.ts';
@@ -232,6 +237,19 @@ test('multi-submitter form dispatch: last __webjs_action entry wins (submitter p
   }));
 
   assert.equal(postResp.status, 303);
+  assert.equal(postResp.headers.get('location'), '/ran-button',
+    'the LAST entry, the submitter, is the action that runs');
+
+  // Counterfactual: the form identity alone still runs the form's action, so
+  // the assertion above is about precedence and not about which id was sent.
+  const formOnly = new URLSearchParams();
+  formOnly.append('__webjs_action', ids[0]);
+  const formResp = await app.handle(new Request('http://x/multi', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: formOnly.toString(),
+  }));
+  assert.equal(formResp.headers.get('location'), '/ran-form');
 });
 
 test('a page that binds no action answers 405 on POST, not 404', async () => {

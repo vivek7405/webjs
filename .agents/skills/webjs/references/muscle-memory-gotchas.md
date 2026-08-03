@@ -64,7 +64,7 @@ html`<form action=${saveDraft}>
 </form>`;
 ```
 
-The identity rides the pressed button's own `name`/`value` pair, which a browser submits for that button alone, so this works with JS off exactly as it does with JS on. Both entries reach the server and the LAST wins, which is always the submitter's when one was pressed. The submitter must be a real submit control (`<button>` or `<input type="submit">`) and cannot carry its own `name`, `value`, or `form` attribute, because the identity already occupies that pair.
+The identity rides the pressed button's own `name`/`value` pair, which a browser submits for that button alone, so this works with JS off exactly as it does with JS on. Both entries reach the server and the LAST wins, which is always the submitter's when one was pressed. The submitter must be a `<button>` and cannot carry its own `name`, `value`, or `form` attribute, because the identity already occupies that pair. `<input type="submit">` is refused for the binding: the identity has to occupy its `value`, which on that control is also the visible caption, so the button would render captioned with the action id and could never be labelled. A `<button>` has no such conflict, since its label is its children.
 
 **Only the bare, unquoted `action=${fn}` on a `<form>` binds.** Every near-miss is a hard render error rather than a silently-inert form, and the reason is a source leak. During SSR a `.server.ts` import is the ACTUAL function (the RPC stub exists only in the browser), and `action=` is an ordinary attribute hole, so stringifying it would write the function's body into the HTML every visitor downloads, including any literal inside it. The renderer throws instead, on the server and on the client, for `action=` and `formaction=` alike.
 

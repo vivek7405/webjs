@@ -385,3 +385,49 @@ test('renderToStream: an @event hole is dropped', async () => {
   assert.ok(!out.includes('@click'), 'the authored attribute text is gone');
   assert.match(out, /<button\s*>Go<\/button>/);
 });
+
+/* ---------------- rawtext entry is per exit branch (#1207 regression) ---------------- */
+
+test('a start tag ending on a BARE attribute keeps its body escaped', async () => {
+  // Five `>` exits close a start tag, and only two of them (`tag-name` and
+  // `in-tag`) ever entered rawtext. The three attribute exits always forced
+  // `text`, so `<script defer>` and `<style media=print>`, whose start tags end
+  // on a bare or unquoted attribute, escape their bodies.
+  //
+  // Consolidating the five into one helper silently switched all five to the
+  // rawtext rule, which turned `<script defer>${userInput}</script>` from
+  // escaped into RAW script. Whether that escaping is right is a separate
+  // question; flipping it as a side effect of a form-action change is not.
+  const evil = '</script><img src=x onerror=alert(1)>';
+  for (const [label, tpl] of [
+    ['bare attribute', html`<script defer>const a = ${evil};</script>`],
+    ['unquoted value', html`<script src=x>const a = ${evil};</script>`],
+    ['style, unquoted', html`<style media=print>a { content: "${evil}" }</style>`],
+  ]) {
+    const out = await renderToString(tpl, { ssr: true });
+    assert.ok(out.includes('&lt;/script&gt;'), `${label}: the body stays escaped`);
+    assert.ok(!out.includes('onerror=alert(1)>'), `${label}: no raw injection`);
+  }
+});
+
+test('a start tag ending on whitespace or a QUOTED value still enters rawtext', async () => {
+  // The counterfactual for the test above: the two exits that always did enter
+  // rawtext must keep doing so, or the guard would be satisfied by a renderer
+  // that simply escaped everything.
+  const raw = 'a < b && c > d';
+  for (const [label, tpl] of [
+    ['no attributes', html`<script>const x = ${raw};</script>`],
+    ['quoted value', html`<script type="module">const x = ${raw};</script>`],
+  ]) {
+    const out = await renderToString(tpl, { ssr: true });
+    assert.ok(out.includes(raw), `${label}: the body is emitted raw`);
+  }
+});
+
+test('the streaming machine matches on both counts', async () => {
+  const evil = '</script><img src=x>';
+  const escaped = await streamText(renderToStream(html`<script defer>a = ${evil};</script>`, { ssr: false }));
+  assert.ok(escaped.includes('&lt;/script&gt;'), 'bare attribute stays escaped');
+  const rawOut = await streamText(renderToStream(html`<script>a = ${'x < y'};</script>`, { ssr: false }));
+  assert.ok(rawOut.includes('x < y'), 'no attributes still raw');
+});

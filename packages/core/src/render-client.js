@@ -7,6 +7,7 @@ import {
   assertSubmitterType, assertSubmitterHasNoValue, assertSubmitterHasNoStaticFormAction,
   assertSubmitterHasNoFormAttribute, assertSingleSubmitterAction,
   assertSubmitterFormIsBound, assertSubmitterSubmission, assertBoundFormSubmitters,
+  assertConvergentSubmitter, isSubmitterReflectedProp,
   formActionId, assertIdentifiableAction, FORM_ACTION_FIELD,
 } from './form-action.js';
 import { isRepeat } from './repeat.js';
@@ -620,7 +621,15 @@ function buildFormActionRecord(el, onEl, parts) {
   for (const p of onEl) {
     const name = String(p.name).toLowerCase();
     if (p.kind === 'prop') {
-      if (name === 'method' || name === 'enctype' || name === 'encoding') propAttrs.push(p.name);
+      // On a FORM, the reflected attributes that decide submittability. On a
+      // SUBMITTER, the ones that carry the identity or override the submission
+      // (#1207). Either way a `.prop` is dropped at SSR and written to the
+      // attribute in the browser, so it can never converge.
+      if (isForm) {
+        if (name === 'method' || name === 'enctype' || name === 'encoding') propAttrs.push(p.name);
+      } else if (isSubmitterReflectedProp(name)) {
+        propAttrs.push(p.name);
+      }
       continue;
     }
     if (name !== 'method' && name !== 'enctype') continue;
@@ -792,6 +801,7 @@ function reconcileSubmitterAction(el, value, rec) {
   // Template-shaped refusals first, from the compiled record, because the live
   // element may already carry this renderer's own `name` / `value`.
   assertSingleSubmitterAction(rec.duplicateAction, el.localName);
+  assertConvergentSubmitter(rec.propAttrs, el.localName);
   if (rec.staticAction) assertSubmitterHasNoStaticFormAction(el.localName);
   if (rec.authoredValue) assertSubmitterHasNoValue(el.localName);
   if (rec.authoredName || rec.hasNamePart) {

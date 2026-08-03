@@ -45,16 +45,19 @@ test('SSR: formaction=${fn} on submitter with name attribute throws refusal', as
 
 test('SSR: submitter guards stay identical for Bun and Node', async () => {
   const refused = [
-    ['text input', html`<form action=${saveAction}><input type="text" formaction=${deleteAction}></form>`],
-    ['hidden input', html`<form action=${saveAction}><input type="hidden" formaction=${deleteAction}></form>`],
-    ['image input', html`<form action=${saveAction}><input type="IMAGE" formaction=${deleteAction}></form>`],
-    ['button input', html`<form action=${saveAction}><button type="button" formaction=${deleteAction}>Delete</button></form>`],
-    ['value attribute', html`<form action=${saveAction}><button value="delete" formaction=${deleteAction}>Delete</button></form>`],
-    ['static formaction', html`<form action=${saveAction}><button formaction="/legacy" formaction=${deleteAction}>Delete</button></form>`],
-    ['form attribute', html`<form action=${saveAction}><button form="other" formaction=${deleteAction}>Delete</button></form>`],
+    ['text input', html`<form action=${saveAction}><input type="text" formaction=${deleteAction}></form>`, /requires a submitter control/],
+    ['hidden input', html`<form action=${saveAction}><input type="hidden" formaction=${deleteAction}></form>`, /requires a submitter control/],
+    ['image input', html`<form action=${saveAction}><input type="IMAGE" formaction=${deleteAction}></form>`, /coordinate pairs/],
+    ['submit input', html`<form action=${saveAction}><input type="submit" formaction=${deleteAction}></form>`, /also its visible label/],
+    ['button input', html`<form action=${saveAction}><button type="button" formaction=${deleteAction}>Delete</button></form>`, /requires a submitter control/],
+    ['value attribute', html`<form action=${saveAction}><button value="delete" formaction=${deleteAction}>Delete</button></form>`, /already carries a "value" attribute/],
+    ['static formaction', html`<form action=${saveAction}><button formaction="/legacy" formaction=${deleteAction}>Delete</button></form>`, /cannot also carry a plain formaction attribute/],
+    ['form attribute', html`<form action=${saveAction}><button form="other" formaction=${deleteAction}>Delete</button></form>`, /cannot be used with a "form" attribute/],
   ];
-  for (const [label, tpl] of refused) {
-    await assert.rejects(() => renderToString(tpl, { ssr: true }), /submitter|value|formaction|form.*attribute/, label);
+  // Each row asserts its OWN message: a shared alternation matches every
+  // message in the module and would only prove that something threw.
+  for (const [label, tpl, expected] of refused) {
+    await assert.rejects(() => renderToString(tpl, { ssr: true }), expected, label);
   }
 });
 

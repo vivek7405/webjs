@@ -7,7 +7,7 @@ import {
   assertConvergentBoundForm, assertSubmitterHasNoName, assertSubmitterHasNoValue,
   assertSubmitterFormIsBound, assertSubmitterHasNoFormAttribute,
   assertSingleSubmitterAction, assertSubmitterStartTag, parseStartTagAttrs,
-  FORM_ACTION_FIELD,
+  isSubmitterReflectedProp, FORM_ACTION_FIELD,
 } from './form-action.js';
 import { lookup, lookupModuleUrl, allTags } from './registry.js';
 import { stylesToString, isCSS } from './css.js';
@@ -31,7 +31,7 @@ import { cspNonce } from './csp-nonce.js';
  * Suspense still works but we fall back to emitting only the fallback
  * (the promise is dropped: appropriate for static pre-render).
  *
- * @typedef {{ pending: {id: string, promise: Promise<unknown>, insideBoundForm?: boolean}[], nextId: number }} SuspenseCtx
+ * @typedef {{ pending: {id: string, promise: Promise<unknown>, formScope?: 'none'|'unbound'|'bound'|'unknown'}[], nextId: number }} SuspenseCtx
  *
  * @param {unknown} value
  * @param {{ ssr?: boolean, suspenseCtx?: SuspenseCtx }} [opts]
@@ -52,14 +52,14 @@ export async function renderToString(value, opts = { ssr: true }) {
 /**
  * @param {unknown} value
  * @param {SuspenseCtx} [ctx]
- * @param {boolean} [insideBoundForm]
+ * @param {'none'|'unbound'|'bound'|'unknown'} [formScope] enclosing form scope, as seen from THIS scan
  * @returns {Promise<string>}
  */
-async function render(value, ctx, insideBoundForm = false) {
+async function render(value, ctx, formScope = 'none') {
   if (value == null || value === false || value === true) return '';
   if (value && typeof /** @type any */ (value).then === 'function') {
     value = await value;
-    return render(value, ctx, insideBoundForm);
+    return render(value, ctx, formScope);
   }
   // unsafeHTML: inject raw HTML string without escaping.
   if (isUnsafeHTML(value)) {
@@ -67,21 +67,21 @@ async function render(value, ctx, insideBoundForm = false) {
   }
   // live() on the server just unwraps and renders the inner value.
   if (isLive(value)) {
-    return render(/** @type any */ (value).value, ctx, insideBoundForm);
+    return render(/** @type any */ (value).value, ctx, formScope);
   }
   // watch() on the server reads the signal once and inlines the
   // result. Subscription is a client-only concern; the SSR HTML
   // freezes a snapshot of the current value.
   if (isWatch(value)) {
-    return render(/** @type any */ (value).signal.get(), ctx, insideBoundForm);
+    return render(/** @type any */ (value).signal.get(), ctx, formScope);
   }
   // keyed() on the server: render the wrapped template; key is client-only.
   if (isKeyed(value)) {
-    return render(/** @type any */ (value).value, ctx, insideBoundForm);
+    return render(/** @type any */ (value).value, ctx, formScope);
   }
   // guard() on the server: always invoke the value function (no cache on SSR).
   if (isGuard(value)) {
-    return render(/** @type any */ (value).fn(), ctx, insideBoundForm);
+    return render(/** @type any */ (value).fn(), ctx, formScope);
   }
   // templateContent() on the server: emit the template's innerHTML verbatim.
   if (isTemplateContent(value)) {
@@ -94,7 +94,7 @@ async function render(value, ctx, insideBoundForm = false) {
   }
   // cache() on the server: pass-through to the inner value.
   if (isCache(value)) {
-    return render(/** @type any */ (value).value, ctx, insideBoundForm);
+    return render(/** @type any */ (value).value, ctx, formScope);
   }
   // until() on the server: render the first synchronous candidate, or
   // await the first Promise to settle when all candidates are Promises.
@@ -104,13 +104,13 @@ async function render(value, ctx, insideBoundForm = false) {
     const args = /** @type any */ (value).args;
     for (const a of args) {
       if (!a || typeof (/** @type any */ (a).then) !== 'function') {
-        return render(a, ctx, insideBoundForm);
+        return render(a, ctx, formScope);
       }
     }
     if (args.length > 0) {
       try {
         const winner = await Promise.race(args.map((p) => Promise.resolve(p).catch(() => undefined)));
-        return render(winner, ctx, insideBoundForm);
+        return render(winner, ctx, formScope);
       } catch {
         return '';
       }
@@ -123,35 +123,35 @@ async function render(value, ctx, insideBoundForm = false) {
     return '';
   }
   if (Array.isArray(value)) {
-    const parts = await Promise.all(value.map((v) => render(v, ctx, insideBoundForm)));
+    const parts = await Promise.all(value.map((v) => render(v, ctx, formScope)));
     return parts.join('');
   }
   if (isRepeat(value)) {
     const r = /** @type any */ (value);
-    const parts = await Promise.all(r.items.map((it, i) => render(r.templateFn(it, i), ctx, insideBoundForm)));
+    const parts = await Promise.all(r.items.map((it, i) => render(r.templateFn(it, i), ctx, formScope)));
     return parts.join('');
   }
   if (isSuspense(value)) {
     const s = /** @type any */ (value);
-    const fallback = await render(s.fallback, ctx, insideBoundForm);
+    const fallback = await render(s.fallback, ctx, formScope);
     if (ctx) {
       const id = `s${ctx.nextId++}`;
-      ctx.pending.push({ id, promise: Promise.resolve(s.children), insideBoundForm });
+      ctx.pending.push({ id, promise: Promise.resolve(s.children), formScope });
       return `<webjs-boundary id="${id}">${fallback}</webjs-boundary>`;
     }
     return fallback;
   }
-  if (isTemplate(value)) return renderTemplate(/** @type any */ (value), ctx, insideBoundForm);
+  if (isTemplate(value)) return renderTemplate(/** @type any */ (value), ctx, formScope);
   return escapeText(String(value));
 }
 
 /**
  * @param {import('./html.js').TemplateResult} tr
  * @param {SuspenseCtx} [ctx]
- * @param {boolean} [insideBoundFormAtStart]
+ * @param {'none'|'unbound'|'bound'|'unknown'} [formScopeAtStart]
  * @returns {Promise<string>}
  */
-async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
+async function renderTemplate(tr, ctx, formScopeAtStart = 'none') {
   const { strings, values } = tr;
   let out = '';
   let state = 'text';
@@ -172,12 +172,28 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
   let pendingActionCount = 0;
   /** @type {string[]} */
   let pendingPropAttrs = [];
+  /** @type {string[]} */
+  let pendingSubmitterProps = [];
   // Whether the tag stream is currently inside a form that BOUND an action
-  // (#1207). A submitter needs this and cannot compute it for itself: the
-  // form's `method` / `enctype` were forced on a start tag already emitted.
-  // Seeded from the caller so a nested template rendered into a bound form's
-  // children inherits it, since each template is its own scan.
-  let insideBoundForm = insideBoundFormAtStart;
+  // (#1207), as THIS scan can see it. Three states, and the third is the point:
+  //   'bound'   an enclosing <form> opened here and bound an action
+  //   'unbound' an enclosing <form> opened here and bound nothing
+  //   'none'    there is conclusively no enclosing <form>
+  //   'unknown' there may be one, but this scan cannot see it
+  //
+  // The last two look alike and must not be merged, which is what a boolean did.
+  // A component's template is rendered by a SEPARATE pass (`injectDSD` calls
+  // `render` on it), so a `<button formaction=${fn}>` inside a component inside
+  // a bound form read as "no form", was refused, and in production vanished
+  // from a page that still returned 200. That pass now says 'unknown' and the
+  // boundness question is skipped, exactly as the client skips it when it
+  // cannot reach the form, so both renderers are best effort in the same place
+  // and for the same reason. A top-level scan that simply contains no form
+  // stays 'none' and is still refused, because there the answer IS known.
+  //
+  // Seeded from the caller so a nested template rendered into a form's children
+  // inherits the scope, since each template is its own scan.
+  let formScope = formScopeAtStart;
   let isCloseTag = false;
 
   // A bound `action=${fn}` is committed at its hole, but the edits it implies
@@ -190,9 +206,11 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
     // Reset per tag whether or not this one was bound, so a later form is never
     // judged on an earlier tag's shapes.
     const propAttrs = pendingPropAttrs;
+    const submitterProps = pendingSubmitterProps;
     const duplicateAction = pendingActionCount > 1;
     const submitterTag = pendingSubmitterTag;
     pendingPropAttrs = [];
+    pendingSubmitterProps = [];
     pendingActionCount = 0;
     pendingSubmitterTag = null;
     if (pendingActionId != null) {
@@ -200,15 +218,19 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
       const bound = bindFormActionStartTag(out.slice(tagStart), pendingActionId);
       out = out.slice(0, tagStart) + bound.tag + bound.hidden;
       pendingActionId = null;
-      insideBoundForm = true;
+      formScope = 'bound';
     }
+    // A form that opened and bound NOTHING still opens a scope: a submitter
+    // inside it must be refused, which is a different answer from 'none'.
+    if (!isCloseTag && currentTag === 'form' && formScope !== 'bound') formScope = 'unbound';
     if (submitterTag != null) {
-      assertSubmitterStartTag(out.slice(tagStart), submitterTag, { bound: true, duplicateAction });
-    } else if (insideBoundForm && !isCloseTag && (currentTag === 'button' || currentTag === 'input')) {
+      assertSubmitterStartTag(out.slice(tagStart), submitterTag, { bound: true, duplicateAction, propAttrs: submitterProps });
+    } else if (formScope === 'bound' && !isCloseTag && (currentTag === 'button' || currentTag === 'input')) {
       // Part B (#1207): an ordinary submitter inside a bound form, whose own
       // `formmethod` / `formenctype` can defeat the binding without carrying an
-      // action of its own. Neither renderer used to look at those.
-      assertSubmitterStartTag(out.slice(tagStart), currentTag, { bound: false });
+      // action of its own. Neither renderer used to look at those. Skipped under
+      // 'none', where the enclosing form is not this scan's to judge.
+      assertSubmitterStartTag(out.slice(tagStart), currentTag, { bound: false, propAttrs: submitterProps });
     }
   };
   // #1155: a `.method` / `.enctype` / `.encoding` prop on a form is dropped
@@ -217,7 +239,15 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
   // without it. Recorded and refused at the `>`, once the tag's action hole is
   // known.
   const notePropAttr = (name, tag) => {
-    if (String(tag).toLowerCase() !== 'form') return;
+    const t = String(tag).toLowerCase();
+    if (t === 'button' || t === 'input') {
+      // #1207: the submitter twin. `name` / `value` / `formAction` / `formMethod`
+      // / `formEnctype` all reflect on a submitter, so a `.prop` spelling is
+      // dropped here and written to the attribute in the browser.
+      if (isSubmitterReflectedProp(name)) pendingSubmitterProps.push(String(name));
+      return;
+    }
+    if (t !== 'form') return;
     let n = String(name).toLowerCase();
     if (n === 'encoding') n = 'enctype';
     if (n === 'method' || n === 'enctype') pendingPropAttrs.push(String(name));
@@ -232,15 +262,25 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
   };
 
   // Every `>` in a tag state funnels through here, so the bound-form bookkeeping
-  // and the rawtext switch stay in one place rather than at five call sites.
-  // `</form>` closes the bound-form scope: a submitter after it is outside.
-  const handleTagEnd = () => {
+  // stays in one place rather than at five call sites. `</form>` closes the form
+  // scope: a submitter after it is outside.
+  //
+  // `allowRawtext` is NOT a preference. Only two of those five call sites ever
+  // entered rawtext: the `tag-name` and `in-tag` exits. The three attribute
+  // exits (`attr-name`, `after-eq`, `attr-unquoted`) always forced `text`, so
+  // `<script defer>` and `<style media=print>`, whose start tags end on a bare
+  // or unquoted attribute, escaped their bodies. Switching them to rawtext here
+  // would silently turn `<script defer>${userInput}</script>` from escaped into
+  // raw script, which is an XSS mitigation this change has no business
+  // touching. Whether that escaping is the RIGHT behaviour is a separate
+  // question from #1207; this preserves it exactly.
+  const handleTagEnd = (allowRawtext) => {
     closeBoundFormTag();
     if (isCloseTag && currentTag === 'form') {
-      insideBoundForm = false;
+      formScope = 'none';
     }
     isCloseTag = false;
-    state = isRawtextTag(currentTag) ? 'rawtext' : 'text';
+    state = allowRawtext && isRawtextTag(currentTag) ? 'rawtext' : 'text';
     if (state === 'rawtext') rawTail = '';
   };
 
@@ -278,14 +318,14 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
         case 'tag-name':
           out += c;
           if (c === '>') {
-            handleTagEnd();
+            handleTagEnd(true);
           } else if (/\s/.test(c)) state = 'in-tag';
           else currentTag += c.toLowerCase();
           break;
         case 'in-tag':
           out += c;
           if (c === '>') {
-            handleTagEnd();
+            handleTagEnd(true);
           } else if (!/\s/.test(c) && c !== '/') {
             state = 'attr-name';
             attrName = c;
@@ -304,18 +344,18 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
         case 'attr-name':
           if (c === '=') { state = 'after-eq'; out += c; }
           else if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; out += c; }
-          else if (c === '>') { state = 'text'; attrName = ''; out += c; handleTagEnd(); }
+          else if (c === '>') { state = 'text'; attrName = ''; out += c; handleTagEnd(false); }
           else { attrName += c; out += c; }
           break;
         case 'after-eq':
           if (c === '"' || c === "'") { state = 'attr-quoted'; attrQuote = c; out += c; }
           else if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; out += c; }
-          else if (c === '>') { state = 'text'; attrName = ''; out += c; handleTagEnd(); }
+          else if (c === '>') { state = 'text'; attrName = ''; out += c; handleTagEnd(false); }
           else { state = 'attr-unquoted'; out += c; }
           break;
         case 'attr-unquoted':
           if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; out += c; }
-          else if (c === '>') { state = 'text'; attrName = ''; out += c; handleTagEnd(); }
+          else if (c === '>') { state = 'text'; attrName = ''; out += c; handleTagEnd(false); }
           else out += c;
           break;
         case 'attr-quoted':
@@ -343,7 +383,7 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
         out += String(val ?? '');
         rawTail = '';
       } else if (state === 'text') {
-        out += await render(val, ctx, insideBoundForm);
+        out += await render(val, ctx, formScope);
       } else if (state === 'after-eq') {
         const prefix = attrName[0];
         const name = attrName.slice(1);
@@ -372,7 +412,7 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
           // fallback to HTML now and carry it as data-webjs-fallback, which the
           // injectDSD streaming pre-pass reads as the boundary placeholder.
           if (currentTag === 'webjs-suspense' && name === 'fallback') {
-            const fbHtml = await render(val, ctx, insideBoundForm);
+            const fbHtml = await render(val, ctx, formScope);
             out += `data-webjs-fallback="${escapeAttr(fbHtml)}"`;
             state = 'in-tag';
             attrName = '';
@@ -458,7 +498,11 @@ async function renderTemplate(tr, ctx, insideBoundFormAtStart = false) {
             // author gets the duplicate message rather than a confusing
             // complaint about the `name` the FIRST hole just injected.
             assertSingleSubmitterAction(pendingSubmitterTag != null, currentTag);
-            assertSubmitterFormIsBound(insideBoundForm, currentTag);
+            // Only 'unknown' defers: a component renders its own template in a
+            // separate pass that cannot see the enclosing form, so the question
+            // is not this scan's to answer. 'none' and 'unbound' are known
+            // answers and are still refused.
+            if (formScope !== 'unknown') assertSubmitterFormIsBound(formScope === 'bound', currentTag);
             const attrs = parseStartTagAttrs(out.slice(tagStart));
             if (attrs.has('name')) assertSubmitterHasNoName(attrs.get('name') || '', currentTag, false);
             if (attrs.has('value')) assertSubmitterHasNoValue(currentTag);
@@ -998,7 +1042,14 @@ async function injectDSD(html, ctx, ancestors = [], dev) {
       // Render the template to HTML. injectDSD recurses on the result so
       // nested custom elements (e.g. <theme-toggle> inside <blog-shell>)
       // get their own DSD pass.
-      const rawInner = await render(tpl, ctx);
+      // 'unknown' for the form scope (#1207): this is a SEPARATE render pass
+      // over one component's own template, driven by walking the already-emitted
+      // HTML, so it has no idea whether the host tag sits inside a bound
+      // `<form>`. Passing the default 'none' claimed there was no form at all,
+      // which refused a perfectly good `<button formaction=${fn}>` in a
+      // component inside a bound form and, because component SSR errors are
+      // isolated, made the button vanish from a page that still returned 200.
+      const rawInner = await render(tpl, ctx, 'unknown');
 
       if (isShadow) {
         // Shadow DOM: native <slot> stays as-is in the DSD template. The
@@ -1820,29 +1871,29 @@ export function renderToStream(value, opts = { ssr: true }) {
  * @param {unknown} value
  * @param {SuspenseCtx} [ctx]
  * @param {ReadableStreamDefaultController<string>} controller
- * @param {boolean} [insideBoundForm]
+ * @param {'none'|'unbound'|'bound'|'unknown'} [formScope] enclosing form scope, as seen from THIS scan
  */
-async function streamRender(value, ctx, controller, insideBoundForm = false) {
+async function streamRender(value, ctx, controller, formScope = 'none') {
   if (value == null || value === false || value === true) return;
   if (value && typeof /** @type any */ (value).then === 'function') {
     value = await value;
-    return streamRender(value, ctx, controller, insideBoundForm);
+    return streamRender(value, ctx, controller, formScope);
   }
   if (isUnsafeHTML(value)) {
     controller.enqueue(String(/** @type any */ (value).value ?? ''));
     return;
   }
   if (isLive(value)) {
-    return streamRender(/** @type any */ (value).value, ctx, controller, insideBoundForm);
+    return streamRender(/** @type any */ (value).value, ctx, controller, formScope);
   }
   if (isWatch(value)) {
-    return streamRender(/** @type any */ (value).signal.get(), ctx, controller, insideBoundForm);
+    return streamRender(/** @type any */ (value).signal.get(), ctx, controller, formScope);
   }
   if (isKeyed(value)) {
-    return streamRender(/** @type any */ (value).value, ctx, controller, insideBoundForm);
+    return streamRender(/** @type any */ (value).value, ctx, controller, formScope);
   }
   if (isGuard(value)) {
-    return streamRender(/** @type any */ (value).fn(), ctx, controller, insideBoundForm);
+    return streamRender(/** @type any */ (value).fn(), ctx, controller, formScope);
   }
   if (isTemplateContent(value)) {
     const tpl = /** @type any */ (value).template;
@@ -1853,19 +1904,19 @@ async function streamRender(value, ctx, controller, insideBoundForm = false) {
     return;
   }
   if (isCache(value)) {
-    return streamRender(/** @type any */ (value).value, ctx, controller, insideBoundForm);
+    return streamRender(/** @type any */ (value).value, ctx, controller, formScope);
   }
   if (isUntil(value)) {
     const args = /** @type any */ (value).args;
     for (const a of args) {
       if (!a || typeof (/** @type any */ (a).then) !== 'function') {
-        return streamRender(a, ctx, controller, insideBoundForm);
+        return streamRender(a, ctx, controller, formScope);
       }
     }
     if (args.length > 0) {
       try {
         const winner = await Promise.race(args.map((p) => Promise.resolve(p).catch(() => undefined)));
-        return streamRender(winner, ctx, controller, insideBoundForm);
+        return streamRender(winner, ctx, controller, formScope);
       } catch {
         return;
       }
@@ -1876,13 +1927,13 @@ async function streamRender(value, ctx, controller, insideBoundForm = false) {
     return;
   }
   if (Array.isArray(value)) {
-    for (const v of value) await streamRender(v, ctx, controller, insideBoundForm);
+    for (const v of value) await streamRender(v, ctx, controller, formScope);
     return;
   }
   if (isRepeat(value)) {
     const r = /** @type any */ (value);
     for (let i = 0; i < r.items.length; i++) {
-      await streamRender(r.templateFn(r.items[i], i), ctx, controller, insideBoundForm);
+      await streamRender(r.templateFn(r.items[i], i), ctx, controller, formScope);
     }
     return;
   }
@@ -1891,16 +1942,16 @@ async function streamRender(value, ctx, controller, insideBoundForm = false) {
     if (ctx) {
       const id = `s${ctx.nextId++}`;
       controller.enqueue(`<webjs-boundary id="${id}">`);
-      await streamRender(s.fallback, ctx, controller, insideBoundForm);
+      await streamRender(s.fallback, ctx, controller, formScope);
       controller.enqueue(`</webjs-boundary>`);
-      ctx.pending.push({ id, promise: Promise.resolve(s.children), insideBoundForm });
+      ctx.pending.push({ id, promise: Promise.resolve(s.children), formScope });
     } else {
-      await streamRender(s.fallback, ctx, controller, insideBoundForm);
+      await streamRender(s.fallback, ctx, controller, formScope);
     }
     return;
   }
   if (isTemplate(value)) {
-    await streamTemplate(/** @type any */ (value), ctx, controller, insideBoundForm);
+    await streamTemplate(/** @type any */ (value), ctx, controller, formScope);
     return;
   }
   controller.enqueue(escapeText(String(value)));
@@ -1913,9 +1964,9 @@ async function streamRender(value, ctx, controller, insideBoundForm = false) {
  * @param {import('./html.js').TemplateResult} tr
  * @param {SuspenseCtx} [ctx]
  * @param {ReadableStreamDefaultController<string>} controller
- * @param {boolean} [insideBoundFormAtStart]
+ * @param {'none'|'unbound'|'bound'|'unknown'} [formScopeAtStart]
  */
-async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = false) {
+async function streamTemplate(tr, ctx, controller, formScopeAtStart = 'none') {
   const { strings, values } = tr;
   let state = 'text';
   let attrName = '';
@@ -1935,11 +1986,13 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
   let pendingActionCount = 0;
   /** @type {string[]} */
   let pendingPropAttrs = [];
+  /** @type {string[]} */
+  let pendingSubmitterProps = [];
   /** @type {string | null} */
   let pendingSubmitterTag = null;  // tag of a bound submitter, until it closes
   // See the buffered machine: seeded from the caller so a nested template
   // rendered into a bound form's children knows it is inside one.
-  let insideBoundForm = insideBoundFormAtStart;
+  let formScope = formScopeAtStart;
   let isCloseTag = false;
 
   // See the buffered machine for why this runs at the `>` rather than at the
@@ -1949,9 +2002,11 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
     // Reset per tag whether or not this one was bound, so a later form is never
     // judged on an earlier tag's shapes.
     const propAttrs = pendingPropAttrs;
+    const submitterProps = pendingSubmitterProps;
     const duplicateAction = pendingActionCount > 1;
     const submitterTag = pendingSubmitterTag;
     pendingPropAttrs = [];
+    pendingSubmitterProps = [];
     pendingActionCount = 0;
     pendingSubmitterTag = null;
     if (pendingActionId != null) {
@@ -1959,14 +2014,17 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
       const bound = bindFormActionStartTag(buf.slice(tagStart), pendingActionId);
       buf = buf.slice(0, tagStart) + bound.tag + bound.hidden;
       pendingActionId = null;
-      insideBoundForm = true;
+      formScope = 'bound';
     }
+    // A form that opened and bound NOTHING still opens a scope: a submitter
+    // inside it must be refused, which is a different answer from 'none'.
+    if (!isCloseTag && currentTag === 'form' && formScope !== 'bound') formScope = 'unbound';
     if (submitterTag != null) {
-      assertSubmitterStartTag(buf.slice(tagStart), submitterTag, { bound: true, duplicateAction });
-    } else if (insideBoundForm && !isCloseTag && (currentTag === 'button' || currentTag === 'input')) {
+      assertSubmitterStartTag(buf.slice(tagStart), submitterTag, { bound: true, duplicateAction, propAttrs: submitterProps });
+    } else if (formScope === 'bound' && !isCloseTag && (currentTag === 'button' || currentTag === 'input')) {
       // Part B (#1207), the SAME sweep as the buffered machine, through the
       // same helper, so this second state machine cannot drift from it.
-      assertSubmitterStartTag(buf.slice(tagStart), currentTag, { bound: false });
+      assertSubmitterStartTag(buf.slice(tagStart), currentTag, { bound: false, propAttrs: submitterProps });
     }
   };
   // #1155: a `.method` / `.enctype` / `.encoding` prop on a form is dropped
@@ -1975,7 +2033,15 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
   // without it. Recorded and refused at the `>`, once the tag's action hole is
   // known.
   const notePropAttr = (name, tag) => {
-    if (String(tag).toLowerCase() !== 'form') return;
+    const t = String(tag).toLowerCase();
+    if (t === 'button' || t === 'input') {
+      // #1207: the submitter twin. `name` / `value` / `formAction` / `formMethod`
+      // / `formEnctype` all reflect on a submitter, so a `.prop` spelling is
+      // dropped here and written to the attribute in the browser.
+      if (isSubmitterReflectedProp(name)) pendingSubmitterProps.push(String(name));
+      return;
+    }
+    if (t !== 'form') return;
     let n = String(name).toLowerCase();
     if (n === 'encoding') n = 'enctype';
     if (n === 'method' || n === 'enctype') pendingPropAttrs.push(String(name));
@@ -1989,13 +2055,16 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
     }
   };
 
-  const handleTagEnd = () => {
+  // Same contract as the buffered machine, `allowRawtext` included: only the
+  // `tag-name` and `in-tag` exits ever entered rawtext here either, so a start
+  // tag ending on a bare or unquoted attribute must keep escaping its body.
+  const handleTagEnd = (allowRawtext) => {
     closeBoundFormTag();
     if (isCloseTag && currentTag === 'form') {
-      insideBoundForm = false;
+      formScope = 'none';
     }
     isCloseTag = false;
-    state = isRawtextTag(currentTag) ? 'rawtext' : 'text';
+    state = allowRawtext && isRawtextTag(currentTag) ? 'rawtext' : 'text';
     if (state === 'rawtext') rawTail = '';
   };
 
@@ -2033,14 +2102,14 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
         case 'tag-name':
           buf += c;
           if (c === '>') {
-            handleTagEnd();
+            handleTagEnd(true);
           } else if (/\s/.test(c)) state = 'in-tag';
           else currentTag += c.toLowerCase();
           break;
         case 'in-tag':
           buf += c;
           if (c === '>') {
-            handleTagEnd();
+            handleTagEnd(true);
           } else if (!/\s/.test(c) && c !== '/') {
             state = 'attr-name';
             attrName = c;
@@ -2059,18 +2128,18 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
         case 'attr-name':
           if (c === '=') { state = 'after-eq'; buf += c; }
           else if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; buf += c; }
-          else if (c === '>') { state = 'text'; attrName = ''; buf += c; handleTagEnd(); }
+          else if (c === '>') { state = 'text'; attrName = ''; buf += c; handleTagEnd(false); }
           else { attrName += c; buf += c; }
           break;
         case 'after-eq':
           if (c === '"' || c === "'") { state = 'attr-quoted'; attrQuote = c; buf += c; }
           else if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; buf += c; }
-          else if (c === '>') { state = 'text'; attrName = ''; buf += c; handleTagEnd(); }
+          else if (c === '>') { state = 'text'; attrName = ''; buf += c; handleTagEnd(false); }
           else { state = 'attr-unquoted'; buf += c; }
           break;
         case 'attr-unquoted':
           if (/\s/.test(c)) { state = 'in-tag'; attrName = ''; buf += c; }
-          else if (c === '>') { state = 'text'; attrName = ''; buf += c; handleTagEnd(); }
+          else if (c === '>') { state = 'text'; attrName = ''; buf += c; handleTagEnd(false); }
           else buf += c;
           break;
         case 'attr-quoted':
@@ -2097,7 +2166,7 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
       } else if (state === 'text') {
         // Flush the buffered static content before streaming the value.
         if (buf) { controller.enqueue(buf); buf = ''; }
-        await streamRender(val, ctx, controller, insideBoundForm);
+        await streamRender(val, ctx, controller, formScope);
       } else if (state === 'after-eq') {
         const prefix = attrName[0];
         const name = attrName.slice(1);
@@ -2147,7 +2216,11 @@ async function streamTemplate(tr, ctx, controller, insideBoundFormAtStart = fals
             buf = buf.slice(0, attrStart).replace(/\s+$/, '');
           } else {
             assertSingleSubmitterAction(pendingSubmitterTag != null, currentTag);
-            assertSubmitterFormIsBound(insideBoundForm, currentTag);
+            // Only 'unknown' defers: a component renders its own template in a
+            // separate pass that cannot see the enclosing form, so the question
+            // is not this scan's to answer. 'none' and 'unbound' are known
+            // answers and are still refused.
+            if (formScope !== 'unknown') assertSubmitterFormIsBound(formScope === 'bound', currentTag);
             const attrs = parseStartTagAttrs(buf.slice(tagStart));
             if (attrs.has('name')) assertSubmitterHasNoName(attrs.get('name') || '', currentTag, false);
             if (attrs.has('value')) assertSubmitterHasNoValue(currentTag);
@@ -2203,10 +2276,10 @@ async function streamSuspenseBoundaries(ctx, controller, dev) {
   while (ctx.pending.length) {
     const batch = ctx.pending.splice(0);
     await Promise.all(
-      batch.map(async ({ id, promise, insideBoundForm }) => {
+      batch.map(async ({ id, promise, formScope }) => {
         try {
           const resolved = await promise;
-          const html = await render(resolved, ctx, insideBoundForm);
+          const html = await render(resolved, ctx, formScope);
           const full = await injectDSD(html, ctx, [], dev);
           controller.enqueue(
             `<template data-webjs-resolve="${id}">${full}</template>` +

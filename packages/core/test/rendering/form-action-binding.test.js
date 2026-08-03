@@ -379,6 +379,35 @@ test('formaction=${fn} submitter refusals: name attribute, input type=image, unp
   );
 });
 
+test('a formaction binding on <input type="submit"> is refused for its label', async () => {
+  // `<input type="submit">` IS a submitter, so Part B still judges it, but the
+  // identity has to occupy `value`, which on this control is also the visible
+  // caption. Binding would render a button captioned with the action id, and
+  // the only fix (`value="Publish"`) is the channel the identity needs.
+  withResolver();
+  await assert.rejects(
+    () => renderToString(
+      html`<form action=${submitFeedback}><input type="submit" formaction=${submitFeedback}></form>`,
+      { ssr: true },
+    ),
+    /also its visible label/,
+  );
+  // Part B still reaches it, so the control is not simply ignored.
+  await assert.rejects(
+    () => renderToString(
+      html`<form action=${submitFeedback}><input type="submit" formmethod="get"></form>`,
+      { ssr: true },
+    ),
+    /formmethod=/,
+  );
+  // And a plain labelled one renders untouched.
+  const ok = await renderToString(
+    html`<form action=${submitFeedback}><input type="submit" value="Save"></form>`,
+    { ssr: true },
+  );
+  assert.match(ok, /<input type="submit" value="Save">/);
+});
+
 test('formaction submitters require an actual submit control', async () => {
   withResolver();
   for (const tpl of [
@@ -393,15 +422,25 @@ test('formaction submitters require an actual submit control', async () => {
 });
 
 test('formaction submitters refuse conflicting author attributes', async () => {
+  // Each row asserts the message its OWN guard produces. A shared alternation
+  // like /value|formaction|form.*attribute/ matches every message in this
+  // module (they all contain the literal `formaction=${action}`), so it
+  // degenerates to "an Error was thrown" and a wrong-guard-fired regression
+  // would sail through.
   withResolver();
-  for (const tpl of [
-    html`<form action=${submitFeedback}><button value="delete" formaction=${submitFeedback}>Delete</button></form>`,
-    html`<form action=${submitFeedback}><button formaction=${submitFeedback} value="delete">Delete</button></form>`,
-    html`<form action=${submitFeedback}><button formaction="/legacy" formaction=${submitFeedback}>Delete</button></form>`,
-    html`<form action=${submitFeedback}><button formaction=${submitFeedback} formaction="/legacy">Delete</button></form>`,
-    html`<form action=${submitFeedback}><button form="other" formaction=${submitFeedback}>Delete</button></form>`,
+  for (const [tpl, expected] of [
+    [html`<form action=${submitFeedback}><button value="delete" formaction=${submitFeedback}>Delete</button></form>`,
+      /already carries a "value" attribute/],
+    [html`<form action=${submitFeedback}><button formaction=${submitFeedback} value="delete">Delete</button></form>`,
+      /already carries a "value" attribute/],
+    [html`<form action=${submitFeedback}><button formaction="/legacy" formaction=${submitFeedback}>Delete</button></form>`,
+      /cannot also carry a plain formaction attribute/],
+    [html`<form action=${submitFeedback}><button formaction=${submitFeedback} formaction="/legacy">Delete</button></form>`,
+      /cannot also carry a plain formaction attribute/],
+    [html`<form action=${submitFeedback}><button form="other" formaction=${submitFeedback}>Delete</button></form>`,
+      /cannot be used with a "form" attribute/],
   ]) {
-    await assert.rejects(() => renderToString(tpl, { ssr: true }), /value|formaction|form.*attribute/);
+    await assert.rejects(() => renderToString(tpl, { ssr: true }), expected);
   }
 });
 
@@ -599,4 +638,110 @@ test('the streaming machine applies Part B identically', async () => {
     { ssr: false },
   ));
   assert.match(ok, /formmethod="dialog"/);
+});
+
+// ---------------------------------------------------------------------------
+// Boundness is BEST EFFORT in SSR too, which an earlier version got wrong.
+//
+// A COMPONENT renders its own template in a separate pass (`injectDSD` walks the
+// already-emitted HTML and renders each component), so that pass has no view of
+// the host page and cannot see the enclosing `<form>`. Treating that as "no
+// form" refused a perfectly good per-row button, and because component SSR
+// errors are ISOLATED, production returned 200 with the button silently gone.
+//
+// So the scan distinguishes cannot-tell from conclusively-none, and only the
+// latter refuses.
+// ---------------------------------------------------------------------------
+
+test('a submitter rendered by a component inside a bound form binds', async () => {
+  withResolver();
+  const { WebComponent } = await import('../../src/component.js');
+  class RowActions extends WebComponent({}) {
+    render() { return html`<button formaction=${submitFeedback}>Delete</button>`; }
+  }
+  RowActions.register('row-actions-bind');
+  const out = await renderToString(
+    html`<form action=${submitFeedback}><row-actions-bind></row-actions-bind></form>`,
+    { ssr: true, dev: false },
+  );
+  assert.match(out, /<button name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback">Delete<\/button>/,
+    'the component-rendered button carries the identity');
+  assert.ok(!out.includes('data-webjs-error'), 'and the component did not fail to render');
+});
+
+test('a conclusively form-less submitter is still refused', async () => {
+  // The skip is narrow. Where the scan really can see there is no form, the
+  // answer is known and the refusal stands.
+  withResolver();
+  await assert.rejects(
+    () => renderToString(html`<button formaction=${submitFeedback}>x</button>`, { ssr: true }),
+    /requires the enclosing <form> to also be bound/,
+  );
+  await assert.rejects(
+    () => renderToString(
+      html`<form action=${submitFeedback}><button>a</button></form><button formaction=${submitFeedback}>x</button>`,
+      { ssr: true },
+    ),
+    /requires the enclosing <form> to also be bound/,
+    'and the scope really does close at </form>',
+  );
+});
+
+test('an UNBOUND form is refused, which is a different answer from cannot-tell', async () => {
+  withResolver();
+  await assert.rejects(
+    () => renderToString(
+      html`<form method="post"><button formaction=${submitFeedback}>x</button></form>`,
+      { ssr: true },
+    ),
+    /requires the enclosing <form> to also be bound/,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// A `.prop` spelling on a submitter, the twin of the form-level `.method` /
+// `.enctype` refusal. `name`, `value`, `formAction`, `formMethod` and
+// `formEnctype` are all REFLECTED IDL attributes on a submitter, so a property
+// binding is dropped at SSR and written to the attribute in the browser: the
+// page renders on the server and throws on hydration.
+// ---------------------------------------------------------------------------
+
+test('a reflected .prop on a submitter is refused, in both machines', async () => {
+  withResolver();
+  const refused = [
+    html`<form action=${submitFeedback}><button .name=${'intent'} formaction=${submitFeedback}>x</button></form>`,
+    html`<form action=${submitFeedback}><button .value=${'v'} formaction=${submitFeedback}>x</button></form>`,
+    html`<form action=${submitFeedback}><button .formMethod=${'get'}>x</button></form>`,
+    html`<form action=${submitFeedback}><button .formEnctype=${'text/plain'}>x</button></form>`,
+  ];
+  for (const tpl of refused) {
+    await assert.rejects(() => renderToString(tpl, { ssr: true }), /reflected IDL attribute/);
+    await assert.rejects(() => drain(renderToStream(tpl, { ssr: false })), /reflected IDL attribute/);
+  }
+});
+
+test('the submitter .prop refusal does not fire on ordinary controls', async () => {
+  // These properties reflect on ANY control, so an ungated check refused
+  // `<input .name=${'q'}>`, an ordinary field that has nothing to do with the
+  // action.
+  withResolver();
+  const ok = await renderToString(
+    html`<form action=${submitFeedback}><input .name=${'q'}><button type="button" .name=${'x'}>y</button><button .textContent=${'Go'} formaction=${submitFeedback}></button></form>`,
+    { ssr: true },
+  );
+  assert.match(ok, /name="__webjs_action"/, 'the real binding still applies');
+});
+
+test('an empty author name after the hole is refused, not shipped as a duplicate', async () => {
+  // `name=${null}` emits `name=""`. The parse keeps the LAST duplicate, so
+  // reading the value back found `''` and waved through a tag carrying TWO
+  // `name` attributes. A browser keeps the FIRST, so whichever came first would
+  // silently win, and SSR would ship markup the client never produces.
+  withResolver();
+  for (const tpl of [
+    html`<form action=${submitFeedback}><button formaction=${submitFeedback} name=${null}>x</button></form>`,
+    html`<form action=${submitFeedback}><button name=${null} formaction=${submitFeedback}>x</button></form>`,
+  ]) {
+    await assert.rejects(() => renderToString(tpl, { ssr: true }), /already carries a "name" attribute/);
+  }
 });
