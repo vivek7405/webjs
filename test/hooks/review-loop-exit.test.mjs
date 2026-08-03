@@ -126,10 +126,11 @@ test('the cycle keeps the guarantees the trim was not allowed to touch', () => {
   assert.match(skill, /\*\*A progress check is optional, runs in the BACKGROUND, and never kills\.\*\*/);
   assert.match(skill, /elapsed time never proves a stall/);
   assert.match(skill, /never wire one to a flat file or a timer/);
-  // There is no automatic trigger beyond a dead status, so giving up on a
-  // merely slow reviewer has to be a deliberate call, and that call is the
-  // one place elapsed time legitimately counts. Without this the rule bans
-  // its own only remaining basis for ever stopping.
+  // There is no automatic trigger beyond a dead status, so giving up is a
+  // deliberate call, and that call is the one place elapsed time legitimately
+  // counts. It is scoped to the state with nothing to read, it requires
+  // having actually probed, and it stops the reviewer rather than leaving a
+  // second one in flight.
   assert.match(skill, /Giving up applies ONLY where there is no growth to see/);
   assert.match(skill, /that judgement is the one place elapsed time legitimately counts/);
   // The give-up clause must not reach the one state that HAS a positive
@@ -137,9 +138,13 @@ test('the cycle keeps the guarantees the trim was not allowed to touch', () => {
   assert.match(skill, /A transcript that is still growing is never abandoned, whatever the clock says/);
   // An abandoned reviewer was produced and may still return, so it is not a
   // failed spawn, and its late findings are read rather than discarded.
-  assert.match(skill, /\*\*A reviewer you gave up on is not a failed spawn\.\*\*/);
-  assert.match(skill, /READ it and dedupe against what you already handled rather than discarding it/);
-  assert.ok(!/a reviewer you deliberately gave up waiting for/.test(skill), 'an abandoned reviewer is back in the cannot-be-produced list');
+  // "No growth to see" must mean you looked, or never probing re-authorizes
+  // abandoning a reviewer that is in fact working.
+  assert.match(skill, /means you PROBED and saw none, never that you did not look/);
+  // Giving up stops the reviewer, so no second one is ever left in flight to
+  // return late findings the cycle has no phase or review object to absorb.
+  assert.match(skill, /Giving up means STOPPING it \(`TaskStop`\) and re-spawning/);
+  assert.ok(!/Take whichever returns first as the round/.test(skill), 'the two-reviewers-in-flight case is back');
   // Step 1 must not ban polling outright while the bullet below sanctions a
   // background size probe of the same spawn.
   assert.ok(!/Do not poll it and do not re-read its message/.test(skill), 'step 1 bans the probe the progress check sanctions');
