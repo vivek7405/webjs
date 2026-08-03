@@ -125,17 +125,11 @@ export default function LandingPage() {
         --editor-fg: var(--fg);
         --editor-gutter-fg: var(--fg-subtle);
         --editor-gutter-border: var(--border);
-        --code-tag: oklch(0.55 0.13 250);
-        --code-attr: oklch(0.52 0.16 150);
-        --code-str: oklch(0.55 0.13 145);
+        --code-tag:  light-dark(oklch(0.55 0.13 250), oklch(0.78 0.13 250));
+        --code-attr: light-dark(oklch(0.52 0.16 150), oklch(0.66 0.16 150));
+        --code-str:  light-dark(oklch(0.55 0.13 145), oklch(0.80 0.15 145));
         --code-text: var(--fg);
         --code-punc: var(--fg-muted);
-      }
-      :root[data-theme='dark'] {
-        --code-tag: oklch(0.78 0.13 250); --code-attr: oklch(0.66 0.16 150); --code-str: oklch(0.80 0.15 145);
-      }
-      @media (prefers-color-scheme: dark) {
-        :root:not([data-theme='light']) { --code-tag: oklch(0.78 0.13 250); --code-attr: oklch(0.66 0.16 150); --code-str: oklch(0.80 0.15 145); }
       }
       /* Syntax-highlight token colors (.t-kw / .t-str / ...) are defined
          globally in public/input.css so every surface (this page and the

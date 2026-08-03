@@ -55,3 +55,60 @@ test('.ui-preview keeps no duplicate dark block', () => {
     '.ui-preview resolves its theme through inherited color-scheme, not a per-theme selector',
   );
 });
+
+/**
+ * The general rule, swept across every stylesheet and every page/layout that
+ * writes CSS. The two palettes above are the ones that were duplicated worst,
+ * but they were not the only ones: the syntax-highlight classes in input.css
+ * and the home page's code-sample tokens each carried the same pair of
+ * verbatim dark blocks. A per-file assertion would have kept missing them, so
+ * this asserts the rule itself.
+ */
+test('no colour is declared under a per-theme selector anywhere', () => {
+  const files = [
+    'public/input.css',
+    ...['app', 'lib', 'components'].flatMap(function walk(dir: string): string[] {
+      const abs = resolve(ROOT, dir);
+      if (!existsSync(abs)) return [];
+      return readdirSync(abs, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(`${dir}/${e.name}`) : e.name.endsWith('.ts') ? [`${dir}/${e.name}`] : [],
+      );
+    }),
+  ];
+
+  // Only these three NON-colour tokens may sit under a theme selector. Every
+  // colour belongs in a light-dark() pair instead.
+  const ALLOWED = new Set(['--glow-strength', '--cta-mix', '--shadow-spread']);
+  const offenders: string[] = [];
+
+  for (const rel of files) {
+    // Comments are stripped so prose naming a selector is not read as a rule,
+    // and `pre` blocks in the docs pages are left alone: those are code
+    // SAMPLES teaching the reader, not this site's own styling.
+    const src = readFileSync(resolve(ROOT, rel), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/<pre[\s\S]*?<\/pre>/g, '');
+    // Terminate on the first closing brace, NOT on one at the start of a line:
+    // a single-line rule (`:root[data-theme='dark'] .t-str { color: ... }`) is
+    // the exact shape the highlight classes used, and anchoring to a newline
+    // walked straight past it.
+    const re = /(?:@media\s*\(prefers-color-scheme:\s*dark\)|\[data-theme=['"]dark['"]\])([\s\S]{0,900}?)\}/g;
+    for (const m of src.matchAll(re)) {
+      for (const d of m[1].matchAll(/(--[a-z-]+):\s*([^;]+);/g)) {
+        if (ALLOWED.has(d[1])) continue;
+        offenders.push(`${rel}: ${d[1]}`);
+      }
+      // A bare colour on a class inside a theme block (the .t-* highlight
+      // shape) has no custom property to catch, so look for it directly.
+      for (const d of m[1].matchAll(/\bcolor:\s*(oklch|#|rgb|hsl)/g)) {
+        offenders.push(`${rel}: a bare ${d[1]} colour`);
+      }
+    }
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    'these belong in a light-dark(LIGHT, DARK) pair, not under a per-theme selector',
+  );
+});
