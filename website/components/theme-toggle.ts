@@ -1,13 +1,14 @@
 import { WebComponent, html, signal } from '@webjsdev/core';
+import { THEME_STORAGE_KEY, readTheme, type Theme } from '#lib/theme.ts';
 
 /**
  * `<theme-toggle>`: three-state theme switcher: system → light → dark → system.
  *
- * State is mirrored to localStorage (`webjs_theme`) and reflected as
- * `<html data-theme>`. The initial theme is set by the synchronous bootstrap
- * script in layout.js so there's no FOUC on page load.
+ * State is mirrored to localStorage and reflected as `<html data-theme>`. The
+ * key and the attribute values come from lib/theme.ts, which the root layout's
+ * bootstrap script also reads, so the two cannot drift. The initial theme is
+ * set by that bootstrap so there's no FOUC on page load.
  */
-type Theme = 'system' | 'light' | 'dark';
 
 export class ThemeToggle extends WebComponent {
   theme = signal<Theme>('system');
@@ -15,8 +16,8 @@ export class ThemeToggle extends WebComponent {
   connectedCallback() {
     super.connectedCallback();
     let saved: string | null = null;
-    try { saved = localStorage.getItem('webjs_theme'); } catch {}
-    this.theme.set(saved === 'light' || saved === 'dark' ? saved : 'system');
+    try { saved = localStorage.getItem(THEME_STORAGE_KEY); } catch {}
+    this.theme.set(readTheme(saved));
   }
 
   cycle() {
@@ -26,8 +27,8 @@ export class ThemeToggle extends WebComponent {
       : t === 'light' ? 'dark' : 'system';
     this.theme.set(next);
     try {
-      if (next === 'system') localStorage.removeItem('webjs_theme');
-      else localStorage.setItem('webjs_theme', next);
+      if (next === 'system') localStorage.removeItem(THEME_STORAGE_KEY);
+      else localStorage.setItem(THEME_STORAGE_KEY, next);
     } catch {}
     if (next === 'system') delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = next;

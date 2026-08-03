@@ -2,6 +2,7 @@ import { html, cspNonce, asset } from '@webjsdev/core';
 import type { LayoutProps } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
 import { DOCS_START_PATH, UI_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
+import { THEME_STORAGE_KEY, FORCED_THEMES } from '#lib/theme.ts';
 import { siteFooter } from '#lib/ui/site-footer.ts';
 import { brandLockup } from '#lib/design/brand.ts';
 
@@ -125,11 +126,19 @@ export default function RootLayout({ children }: LayoutProps) {
       gtag('config', 'G-3RC87HXJ3P');
     </script>
 
+    <!-- The theme bootstrap stays an INLINE script, and stays here in the head,
+         because it has to run before first paint: a reader who chose dark would
+         otherwise see the light palette flash before a module could load and
+         correct it. An inline script cannot import, so the storage key is
+         interpolated from lib/theme.ts rather than written out a second time.
+         components/theme-toggle.ts reads the same export, which is what stops
+         the two from drifting (renaming the key in one place used to leave the
+         other silently reading nothing). -->
     <script nonce="${nonce}">
       (function(){
         try {
-          var t = localStorage.getItem('webjs_theme');
-          if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+          var t = localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});
+          if (${JSON.stringify(FORCED_THEMES)}.indexOf(t) !== -1) document.documentElement.dataset.theme = t;
         } catch (_) {}
       })();
       // #610: the header uses position fixed (not sticky, which flickers on iOS
