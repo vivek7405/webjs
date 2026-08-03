@@ -338,6 +338,7 @@ Each round must:
 
    **Liveness.** The harness status is the ONLY liveness signal; a subagent's own prose is never evidence it is alive (one signed off with "I'm partway through the careful pass" while its status read `killed`).
    - **A dead spawn is not a round.** Declined, errored, killed, or empty means nothing ran. It does not count toward the cycle and does not advance it.
+   - **Check in on a short timer, and never auto-kill on it.** A worktree-isolated reviewer writes a static stub, not a growing transcript, so there is NO mid-flight liveness signal and any timer is a blind wait rather than a stall detector. Set it SHORT (about 2 to 3 minutes) so a hung reviewer costs minutes rather than tens of minutes, and make it a wake-up rather than a cap: killing on it would throw away a healthy reviewer still reading a large diff and buy a full restart. Give a silent one a second short window, then treat it as hung and re-spawn. The completion notification arrives independently, so a reviewer that finishes first makes the timer moot.
    - **A reviewer that returns without reviewing is also not a round.** Anything that is not a finding list or the literal `CLEAN` is a non-review, including "I could not fetch the diff", a refusal, or an answer to another question. The absence of findings is not a clean round.
    - **Re-spawn rather than asking.** Spawn it again, varying the approach after a few identical failures. Never stop mid-cycle to report a failed spawn or hand back a half-finished cycle.
    - **NEVER substitute an inline self-review.** Reviewing your own work re-derives the assumptions that produced the bug; that downgrade already shipped three real bugs through a PR two inline passes had called clean. Only a reviewer that cannot be produced at all stops the cycle, reported once at the end and kept out of the PR (a spawn that could not run is session tooling, not a fact about the change).
@@ -362,9 +363,9 @@ Each round must:
 
 **A standalone "review the PR" request IS this cycle, not a one-shot.** Re-enter at round 1 over the whole diff however many times the PR has been reviewed before, since the ask itself says the existing trail is not trusted. It also overrides the trivial-change skip below: when the user asks for a review, they get one. Then fix, reject, or defer, run the delta rounds, run the final review, and only then report back.
 
-### When to skip the loop
+### When to skip the cycle
 
-Skip only for PRs that change a single line of trivially-correct content (a doc typo, a renamed local variable, a one-token config bump). Anything that touches logic, public surface, the build, the importmap, security-relevant code, or multiple files goes through the loop without exception. A bias toward running the loop is correct; a bias toward skipping it is the exact failure mode this rule exists to prevent.
+Skip only for PRs that change a single line of trivially-correct content (a doc typo, a renamed local variable, a one-token config bump). Anything that touches logic, public surface, the build, the importmap, security-relevant code, or multiple files goes through the cycle without exception. A bias toward running it is correct; a bias toward skipping it is the exact failure mode this rule exists to prevent.
 
 ### Reporting after the cycle
 
