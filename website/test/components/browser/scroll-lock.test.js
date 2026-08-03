@@ -19,6 +19,7 @@
  */
 
 import { lockScroll, unlockScroll } from '#lib/scroll-lock.ts';
+import '#components/docs-drawer.ts';
 
 const assert = {
   ok: (v, msg) => { if (!v) throw new Error(msg || `Expected truthy, got ${v}`); },
@@ -122,5 +123,70 @@ suite('page scroll lock', () => {
     const style = document.documentElement.getAttribute('style') || '';
     unlockScroll();
     assert.equal(document.documentElement.getAttribute('style') || '', style, '<html> untouched');
+  });
+});
+
+/**
+ * The drawer only locks BELOW its 900px breakpoint, since above it the sidebar
+ * is an ordinary sticky column and locking the page would be a bug. The runner
+ * window is wider than that and cannot be resized from inside the page, so the
+ * media query is stubbed to report a match. That is the one seam here; the lock
+ * itself is the real module, and the assertions are about real document state.
+ */
+suite('drawer scroll lock wiring', () => {
+  let drawer;
+  let realMatchMedia;
+
+  setup(async () => {
+    realMatchMedia = window.matchMedia;
+    window.matchMedia = (q) => ({ ...realMatchMedia.call(window, q), matches: true, media: q });
+
+    drawer = document.createElement('docs-drawer');
+    drawer.setAttribute('label', 'Documentation');
+    drawer.setAttribute('menu-label', 'Documentation menu');
+    document.body.appendChild(drawer);
+    await drawer.updateComplete;
+  });
+
+  teardown(() => {
+    window.matchMedia = realMatchMedia;
+    drawer.remove();
+    for (let i = 0; i < 5; i++) unlockScroll();
+  });
+
+  const locked = () => getComputedStyle(document.body).overflow === 'hidden';
+
+  test('opening locks the page and closing releases it', async () => {
+    assert.ok(!locked(), 'not locked to begin with');
+    drawer.open = true;
+    await drawer.updateComplete;
+    assert.ok(locked(), 'opening the drawer locks page scroll');
+    drawer.open = false;
+    await drawer.updateComplete;
+    assert.ok(!locked(), 'closing releases it');
+  });
+
+  test('being removed while open releases the lock', async () => {
+    // A client-router navigation away from the docs tears the element out. If
+    // disconnectedCallback did not release, the refcount would never return to
+    // zero and the whole site would be left unscrollable with nothing on the
+    // page able to fix it.
+    drawer.open = true;
+    await drawer.updateComplete;
+    assert.ok(locked(), 'locked while open');
+    drawer.remove();
+    assert.ok(!locked(), 'removing the open drawer releases the page');
+  });
+
+  test('an update that does not change open does not touch the lock', async () => {
+    // updated() fires for any changed property, so a label change must not
+    // re-enter the lock and push the refcount up with no matching release.
+    drawer.open = true;
+    await drawer.updateComplete;
+    drawer.label = 'Renamed';
+    await drawer.updateComplete;
+    drawer.open = false;
+    await drawer.updateComplete;
+    assert.ok(!locked(), 'one open and one close balance out regardless of other updates');
   });
 });
