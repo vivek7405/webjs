@@ -124,14 +124,24 @@ test('the cycle keeps the guarantees the trim was not allowed to touch', () => {
   assert.match(skill, /\*\*Waiting is not blocking\.\*\*/);
   assert.match(skill, /never wait on it with a foreground `sleep`/);
   assert.match(skill, /\*\*A progress check is optional, runs in the BACKGROUND, and never kills\.\*\*/);
-  assert.match(skill, /Elapsed time is not evidence/);
-  assert.match(skill, /never re-spawn on a flat file or on a timer/);
+  assert.match(skill, /elapsed time never proves a stall/);
+  assert.match(skill, /never wire one to a flat file or a timer/);
+  // There is no automatic trigger beyond a dead status, so giving up on a
+  // merely slow reviewer has to be a deliberate call, and that call is the
+  // one place elapsed time legitimately counts. Without this the rule bans
+  // its own only remaining basis for ever stopping.
+  assert.match(skill, /Giving up on a reviewer that is merely slow is a DELIBERATE call/);
+  assert.match(skill, /that judgement is the one place elapsed time legitimately counts/);
+  // Step 1 must not ban polling outright while the bullet below sanctions a
+  // background size probe of the same spawn.
+  assert.ok(!/Do not poll it and do not re-read its message/.test(skill), 'step 1 bans the probe the progress check sanctions');
+  assert.match(skill, /Do not badger it for results/);
   // And the do-not-restore paragraph must not claim a replacement mechanism
   // richer than what is actually there, which is how a polling watchdog
   // grew back once already.
   assert.match(skill, /the harness completion notification is the signal, with at most an optional background progress check that never kills anything/);
   // The liveness sentence must not claim the harness status is the ONLY
-  // signal while the check-in rule reads byte growth as one.
+  // signal while the progress check reads byte growth as one.
   assert.match(skill, /Only two things are evidence a reviewer is alive/);
   assert.match(skill, /Never read the transcript.s contents/);
   assert.match(skill, /A reviewer that returns without reviewing is also not a round/);
