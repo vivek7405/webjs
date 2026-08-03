@@ -4,7 +4,7 @@ import dayjs from 'dayjs';
 /**
  * `<vendor-badge>` is a purely presentational web component whose ONLY
  * non-core dependency is the `dayjs` vendor package. It formats a fixed
- * epoch with dayjs at render time and prints a short rubric. No events,
+ * date with dayjs at render time and prints a short rubric. No events,
  * no reactive properties, no lifecycle hooks, no signals, no slot, so
  * the framework classifies it as display-only.
  *
