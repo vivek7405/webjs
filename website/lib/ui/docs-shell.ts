@@ -196,7 +196,7 @@ export function docsShell({ nav, label, menuLabel, asideTop, contentClass, child
       .docs-nav::-webkit-scrollbar-thumb:hover { background: var(--fg-subtle); }
 
       /* Mobile: the sidebar becomes a drawer sliding in from the left,
-         toggled by the an open attribute <docs-drawer> reflects. Selecting on
+         toggled by an open attribute <docs-drawer> reflects. Selecting on
          the component's own host is what replaced a body attribute: the state
          now lives with the element that owns it, so it cannot survive a
          navigation that removes the element, and it cannot collide with the

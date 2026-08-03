@@ -52,6 +52,10 @@ export class DocsDrawer extends WebComponent({
    */
   private _onKeydown = (e: KeyboardEvent) => this.handleKeydown(e);
   private _onNavigate = () => this.close();
+  private _onMediaChange = () => this.syncScrollLock();
+
+  /** The drawer-breakpoint query, observed so a rotate re-evaluates the lock. */
+  private _mql: MediaQueryList | undefined;
 
   /**
    * The toggle button, bound through the ref directive rather than looked up
@@ -61,6 +65,19 @@ export class DocsDrawer extends WebComponent({
    * reasoning as the command line in components/copy-cmd.ts.
    */
   private _toggleRef = createRef<HTMLButtonElement>();
+
+  /**
+   * Whether THIS element currently holds a scroll lock.
+   *
+   * The lock is only TAKEN at the drawer breakpoint, but it must be RELEASED
+   * on the strength of having taken it, never on a re-reading of the viewport.
+   * Gating the release on the media query too is a permanent leak: open the
+   * drawer below 900px, rotate or resize past it, then close by any path, and
+   * the release is skipped while the page stays `overflow: hidden` for good.
+   * The refcount is shared with the UI kit's overlays, so a stranded count
+   * pins their locks open as well.
+   */
+  private _holdsLock = false;
 
   constructor() {
     super();
@@ -87,21 +104,38 @@ export class DocsDrawer extends WebComponent({
     // listener exists for.
     document.addEventListener('webjs:navigate', this._onNavigate);
     window.addEventListener('popstate', this._onNavigate);
+    // Crossing the breakpoint changes whether this drawer should be holding the
+    // page scroll, and it fires no property update, so `updated()` alone would
+    // never re-evaluate. A phone rotated to landscape with the drawer open is
+    // the ordinary way to reach that state, not a corner case.
+    this._mql = window.matchMedia(DRAWER_MEDIA);
+    this._mql.addEventListener('change', this._onMediaChange);
   }
 
   disconnectedCallback() {
     document.removeEventListener('keydown', this._onKeydown, true);
     document.removeEventListener('webjs:navigate', this._onNavigate);
     window.removeEventListener('popstate', this._onNavigate);
-    // Release the page scroll if this element is torn out while open (a
-    // client-router swap away from the docs). Without this the lock's refcount
-    // never returns to zero and the whole site is left unscrollable.
-    if (this.open) unlockScroll();
+    this._mql?.removeEventListener('change', this._onMediaChange);
+    this._mql = undefined;
+    // Release the page scroll if this element is torn out while holding it (a
+    // client-router swap away from the docs). Keyed on _holdsLock rather than
+    // on `open`, so a drawer that closed after the viewport widened past the
+    // breakpoint is still released here rather than leaking.
+    if (this._holdsLock) { unlockScroll(); this._holdsLock = false; }
     super.disconnectedCallback();
   }
 
   private handleKeydown(e: KeyboardEvent) {
     if (e.key !== 'Escape' || !this.open) return;
+    // Escape has a NATIVE meaning inside a text field, and the docs render
+    // <doc-search> into this drawer's aside-top slot, so the first Escape a
+    // reader presses is often meant for the search box they are typing in.
+    // Consuming it there would clear neither the field nor their expectation:
+    // it would swallow the native clear, shut the drawer, and move focus.
+    // Once the field is empty there is nothing native left to do, so Escape
+    // falls through to closing, which is the second press.
+    if (this.escapeBelongsToField(e.target)) return;
     this.close();
     // Tells <site-nav-menu> this Escape is spoken for, so one press does not
     // close both surfaces.
@@ -109,6 +143,25 @@ export class DocsDrawer extends WebComponent({
     // Focus returns to the control that opened this, not to whatever the header
     // menu would have focused.
     this._toggleRef.value?.focus();
+  }
+
+  /**
+   * Whether this Escape press belongs to a text field the reader is editing,
+   * rather than to the drawer.
+   *
+   * Only a NON-EMPTY field claims it: an empty search box has nothing to clear,
+   * so letting it swallow Escape would leave a keyboard user with no way to
+   * dismiss the drawer at all without first moving focus out of it.
+   */
+  private escapeBelongsToField(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement) || !this.contains(target)) return false;
+    if (target instanceof HTMLTextAreaElement) return target.value !== '';
+    if (target instanceof HTMLInputElement) {
+      // A checkbox or a button-like input has no text to clear.
+      const textual = /^(text|search|url|tel|email|password|number)$/.test(target.type);
+      return textual && target.value !== '';
+    }
+    return target.isContentEditable && target.textContent !== '';
   }
 
   /**
@@ -130,15 +183,25 @@ export class DocsDrawer extends WebComponent({
 
   /**
    * The scroll lock is a DOCUMENT-level effect, so it cannot be expressed as a
-   * class in this template and is driven from the update cycle instead. It is
-   * only meaningful at the drawer breakpoint: on a wide viewport the sidebar is
-   * an ordinary sticky column and locking the page would be a bug.
+   * class in this template and is driven from the update cycle instead.
+   *
+   * Taking the lock is gated on the drawer breakpoint, because on a wide
+   * viewport the sidebar is an ordinary sticky column and locking the page
+   * would be a bug. RELEASING it is gated on `_holdsLock` instead, never on the
+   * media query, so a viewport that crosses the breakpoint while the drawer is
+   * open cannot strand the lock.
    */
   updated(changed: Map<string, unknown>) {
     if (!changed.has('open')) return;
-    if (!window.matchMedia(DRAWER_MEDIA).matches) return;
-    if (this.open) lockScroll();
+    this.syncScrollLock();
+  }
+
+  private syncScrollLock() {
+    const wantLock = this.open && window.matchMedia(DRAWER_MEDIA).matches;
+    if (wantLock === this._holdsLock) return;
+    if (wantLock) lockScroll();
     else unlockScroll();
+    this._holdsLock = wantLock;
   }
 
   render() {

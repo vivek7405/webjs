@@ -16,6 +16,17 @@
  * These only mean anything where the scrollbar has width, so
  * web-test-runner.config.js drops Playwright's `--hide-scrollbars`. Without
  * that the assertions pass vacuously.
+ *
+ * KNOWN COVERAGE GAP, stated rather than implied. The lock has two mechanisms.
+ * Mechanism 1 reserves the scrollbar gutter, and mechanism 2 is the fallback for
+ * engines that ignore `scrollbar-gutter` (WebKit today), which measures the
+ * residual, pads the root, and publishes `--wj-scrollbar-compensation`. This
+ * runner is Chromium only, where mechanism 1 works, so the measured residual is
+ * always zero and mechanism 2 NEVER EXECUTES here. That is by design (the two
+ * cannot double-compensate), which also means no test in this file can reach the
+ * fallback, and deleting it would leave the suite green while the #1147 header
+ * shift returned on the one engine the fallback exists for. Covering it needs a
+ * WebKit runner, as the framework's root web-test-runner.config.js has.
  */
 
 import { lockScroll, unlockScroll } from '#lib/scroll-lock.ts';
@@ -133,13 +144,41 @@ suite('page scroll lock', () => {
  * media query is stubbed to report a match. That is the one seam here; the lock
  * itself is the real module, and the assertions are about real document state.
  */
+/**
+ * A `matchMedia` stub whose match state the test controls.
+ *
+ * Built by hand rather than by spreading a real MediaQueryList: `matches`,
+ * `media`, and the listener methods are all prototype members, not own
+ * enumerable properties, so `{ ...window.matchMedia(q) }` copies literally
+ * nothing and yields `{}`. The listener methods are stubbed too, so a component
+ * that starts observing the query does not throw against this.
+ */
+function stubMatchMedia(getMatches) {
+  const real = window.matchMedia;
+  const listeners = new Set();
+  window.matchMedia = (q) => ({
+    get matches() { return getMatches(); },
+    media: q,
+    onchange: null,
+    addEventListener(type, fn) { if (type === 'change') listeners.add(fn); },
+    removeEventListener(type, fn) { if (type === 'change') listeners.delete(fn); },
+    addListener(fn) { listeners.add(fn); },
+    removeListener(fn) { listeners.delete(fn); },
+    dispatchEvent() { return false; },
+  });
+  const restore = () => { window.matchMedia = real; listeners.clear(); };
+  // Drives a viewport change the way the browser would, so a component that
+  // OBSERVES the query is exercised rather than merely polled.
+  restore.fireChange = () => { for (const fn of [...listeners]) fn({ matches: getMatches() }); };
+  return restore;
+}
+
 suite('drawer scroll lock wiring', () => {
   let drawer;
-  let realMatchMedia;
+  let restoreMatchMedia;
 
   setup(async () => {
-    realMatchMedia = window.matchMedia;
-    window.matchMedia = (q) => ({ ...realMatchMedia.call(window, q), matches: true, media: q });
+    restoreMatchMedia = stubMatchMedia(() => true);
 
     drawer = document.createElement('docs-drawer');
     drawer.setAttribute('label', 'Documentation');
@@ -149,7 +188,7 @@ suite('drawer scroll lock wiring', () => {
   });
 
   teardown(() => {
-    window.matchMedia = realMatchMedia;
+    restoreMatchMedia();
     drawer.remove();
     for (let i = 0; i < 5; i++) unlockScroll();
   });
@@ -188,5 +227,104 @@ suite('drawer scroll lock wiring', () => {
     drawer.open = false;
     await drawer.updateComplete;
     assert.ok(!locked(), 'one open and one close balance out regardless of other updates');
+  });
+});
+
+/**
+ * The viewport crossing the drawer breakpoint WHILE the drawer is open.
+ *
+ * Gating the release on the media query the way the take is gated strands the
+ * lock forever: `body { overflow: hidden }` never comes off and the refcount,
+ * which is shared with the UI kit's overlays, never returns to zero, so their
+ * locks are pinned too. Nothing else in this file can see that, because the
+ * other suites hold the query at a constant match state.
+ */
+suite('drawer scroll lock across the breakpoint', () => {
+  let drawer;
+  let narrow;
+  let restoreMatchMedia;
+
+  setup(async () => {
+    narrow = true;
+    restoreMatchMedia = stubMatchMedia(() => narrow);
+    drawer = document.createElement('docs-drawer');
+    drawer.setAttribute('label', 'Documentation');
+    drawer.setAttribute('menu-label', 'Documentation menu');
+    document.body.appendChild(drawer);
+    await drawer.updateComplete;
+  });
+
+  teardown(() => {
+    restoreMatchMedia();
+    drawer.remove();
+    for (let i = 0; i < 5; i++) unlockScroll();
+    document.body.style.overflow = '';
+  });
+
+  const locked = () => getComputedStyle(document.body).overflow === 'hidden';
+  const count = () => (globalThis.__webjsScrollLock || {}).count;
+
+  test('a rotate to landscape while open still releases on close', async () => {
+    drawer.open = true;
+    await drawer.updateComplete;
+    assert.ok(locked(), 'locked while open at a narrow viewport');
+
+    narrow = false;            // the device rotates, or the window is widened
+    drawer.open = false;       // any close path: link, Escape, backdrop, nav
+    await drawer.updateComplete;
+
+    assert.ok(!locked(), 'the page is scrollable again');
+    assert.equal(count(), 0, 'and the shared refcount is back to zero');
+  });
+
+  test('a rotate to landscape while open still releases on disconnect', async () => {
+    drawer.open = true;
+    await drawer.updateComplete;
+    narrow = false;
+    drawer.remove();           // a client-router swap away from the docs
+    await new Promise((r) => requestAnimationFrame(() => r()));
+
+    assert.ok(!locked(), 'the page is scrollable again');
+    assert.equal(count(), 0, 'and the shared refcount is back to zero');
+  });
+
+  test('rotating to landscape releases the lock with no other interaction', async () => {
+    // The decisive case. A rotate changes no property, so `updated()` never
+    // fires and only an observer on the query can notice. The drawer is not
+    // dismissed by a resize, so it stays open as an ordinary sticky column, and
+    // holding the page locked in that state is the same bug from the other side.
+    drawer.open = true;
+    await drawer.updateComplete;
+    assert.ok(locked(), 'locked at a narrow viewport');
+
+    narrow = false;
+    restoreMatchMedia.fireChange();   // the browser reporting the rotate
+    await drawer.updateComplete;
+
+    assert.ok(!locked(), 'a wide viewport does not hold the page locked');
+    assert.equal(count(), 0, 'refcount released');
+  });
+
+  test('rotating back to portrait retakes the lock', async () => {
+    drawer.open = true;
+    await drawer.updateComplete;
+    narrow = false;
+    restoreMatchMedia.fireChange();
+    await drawer.updateComplete;
+    assert.ok(!locked(), 'released while wide');
+
+    narrow = true;
+    restoreMatchMedia.fireChange();
+    await drawer.updateComplete;
+    assert.ok(locked(), 'an open drawer back at a narrow viewport locks again');
+    assert.equal(count(), 1, 'exactly one hold, not a double-take');
+  });
+
+  test('opening above the breakpoint never takes the lock at all', async () => {
+    narrow = false;
+    drawer.open = true;
+    await drawer.updateComplete;
+    assert.ok(!locked(), 'a wide-viewport open is an ordinary sidebar, not a modal');
+    assert.equal(count(), 0, 'nothing taken, so nothing to strand');
   });
 });

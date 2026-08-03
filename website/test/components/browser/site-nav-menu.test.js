@@ -51,12 +51,13 @@ suite('site nav menu', () => {
    * Dispatch Escape the way a real key press arrives: from an element INSIDE
    * the document, cancelable.
    *
-   * Both details matter. Dispatching on `document` itself makes document the
-   * TARGET, and at the target phase listeners run in registration order with
-   * the capture flag ignored, which silently collapses the capture-beats-bubble
-   * priority the two components rely on. And `preventDefault()` on a
-   * non-cancelable event is a no-op, so the drawer could not signal that it had
-   * consumed the press and both surfaces would close.
+   * `cancelable: true` is the load-bearing half. `preventDefault()` on a
+   * non-cancelable event is a silent no-op, so `defaultPrevented` stays false,
+   * the drawer cannot signal that it consumed the press, and both surfaces
+   * close. Dispatching from inside the tree rather than at `document` is for
+   * realism only: the capture-beats-bubble priority holds at the target too,
+   * because the dispatch algorithm honours the capture flag on both traversals
+   * of the propagation path.
    */
   const esc = () => document.body.dispatchEvent(
     new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
@@ -135,6 +136,51 @@ suite('site nav menu', () => {
     await menu.updateComplete;
 
     assert.ok(menu.open, 'the menu ignores an Escape that was already handled');
+  });
+
+  test('it subscribes to both navigation signals, and unsubscribes on disconnect', async () => {
+    // A link click closes it via the outside/link path, but Back, Forward, and
+    // a programmatic navigate() produce no click at all. This element lives in
+    // the ROOT layout, so it survives every client-router swap and would
+    // otherwise stay open over the page it lands on.
+    //
+    // Asserted as a subscription contract rather than by dispatching a
+    // synthetic PopStateEvent, because synthetic popstate delivery is not
+    // reliable in this runner (a control listener receives it while a listener
+    // registered from module code does not). The handler's BEHAVIOUR is covered
+    // by the webjs:navigate case below, which shares the same function.
+    const added = [];
+    const removed = [];
+    const realWinAdd = window.addEventListener.bind(window);
+    const realWinRemove = window.removeEventListener.bind(window);
+    const realDocAdd = document.addEventListener.bind(document);
+    const realDocRemove = document.removeEventListener.bind(document);
+    window.addEventListener = (t, f, o) => { added.push('window:' + t); return realWinAdd(t, f, o); };
+    window.removeEventListener = (t, f, o) => { removed.push('window:' + t); return realWinRemove(t, f, o); };
+    document.addEventListener = (t, f, o) => { added.push('document:' + t); return realDocAdd(t, f, o); };
+    document.removeEventListener = (t, f, o) => { removed.push('document:' + t); return realDocRemove(t, f, o); };
+
+    const probe = document.createElement('site-nav-menu');
+    document.body.appendChild(probe);
+    await probe.updateComplete;
+    probe.remove();
+
+    window.addEventListener = realWinAdd;
+    window.removeEventListener = realWinRemove;
+    document.addEventListener = realDocAdd;
+    document.removeEventListener = realDocRemove;
+
+    for (const sig of ['window:popstate', 'document:webjs:navigate']) {
+      assert.ok(added.includes(sig), `connecting subscribes to ${sig}`);
+      assert.ok(removed.includes(sig), `disconnecting unsubscribes from ${sig}`);
+    }
+  });
+
+  test('a programmatic soft navigation closes it', async () => {
+    await clickSummary();
+    document.dispatchEvent(new CustomEvent('webjs:navigate'));
+    await menu.updateComplete;
+    assert.ok(!menu.open, 'webjs:navigate closes the menu');
   });
 
   test('it stops answering document events once removed', async () => {

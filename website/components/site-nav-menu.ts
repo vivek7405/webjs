@@ -43,6 +43,7 @@ export class SiteNavMenu extends WebComponent({
 }) {
   private _onDocClick = (e: MouseEvent) => this.handleDocClick(e);
   private _onKeydown = (e: KeyboardEvent) => this.handleKeydown(e);
+  private _onNavigate = () => { this.open = false; };
 
   /** The summary, for focus restoration after an Escape dismiss. */
   private _summaryRef = createRef<HTMLElement>();
@@ -64,11 +65,20 @@ export class SiteNavMenu extends WebComponent({
     // keep one Escape from closing both surfaces, and neither component has to
     // know the other exists.
     document.addEventListener('keydown', this._onKeydown);
+    // A link click already closes this via handleDocClick, but that is only the
+    // commonest way to navigate. Back / Forward and a programmatic navigate()
+    // produce no click at all, and this element lives in the ROOT layout, so it
+    // is the one thing on the page guaranteed to survive every client-router
+    // swap: without these it stays open over whatever page it lands on.
+    document.addEventListener('webjs:navigate', this._onNavigate);
+    window.addEventListener('popstate', this._onNavigate);
   }
 
   disconnectedCallback() {
     document.removeEventListener('click', this._onDocClick);
     document.removeEventListener('keydown', this._onKeydown);
+    document.removeEventListener('webjs:navigate', this._onNavigate);
+    window.removeEventListener('popstate', this._onNavigate);
     super.disconnectedCallback();
   }
 

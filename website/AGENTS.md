@@ -220,10 +220,20 @@ One cross-component contract survived that split and is easy to break by
 accident: **the drawer listens for Escape in the CAPTURE phase and calls
 `preventDefault()`, and the header menu listens in the BUBBLE phase and bails on
 `defaultPrevented`.** That is what makes one Escape close only the drawer when
-both are open, without either component importing the other, and it works
-whatever order the elements registered in. A test that dispatches Escape on
-`document` itself cannot see this, because document is then the TARGET and both
-listeners run in registration order with the capture flag ignored.
+both are open, without either component importing the other, and it holds
+whatever order the elements registered in.
+
+It holds at the TARGET too. The dispatch algorithm walks the propagation path
+twice, invoking each node once per traversal and honouring the capture flag on
+both, so a capture listener on `document` runs before a bubble listener on
+`document` even for an event dispatched directly at `document` and even when the
+bubble one registered first. Measured in Chromium: registering bubble then
+capture and dispatching on `document` yields `capture, bubble`.
+
+What a test DOES have to get right is `cancelable: true`. `preventDefault()` on a
+non-cancelable event is a silent no-op, so `defaultPrevented` stays false and
+both surfaces close. Dispatching from inside the tree rather than at `document`
+is worth doing for realism, but it is not what makes the priority work.
 
 ## How to update headline / hero copy
 

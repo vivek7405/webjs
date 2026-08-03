@@ -88,12 +88,13 @@ suite('docs drawer', () => {
    * Dispatch Escape the way a real key press arrives: from an element INSIDE
    * the document, cancelable.
    *
-   * Both details matter. Dispatching on `document` itself makes document the
-   * TARGET, and at the target phase listeners run in registration order with
-   * the capture flag ignored, which silently collapses the capture-beats-bubble
-   * priority the two components rely on. And `preventDefault()` on a
-   * non-cancelable event is a no-op, so the drawer could not signal that it had
-   * consumed the press and both surfaces would close.
+   * `cancelable: true` is the load-bearing half. `preventDefault()` on a
+   * non-cancelable event is a silent no-op, so `defaultPrevented` stays false,
+   * the drawer cannot signal that it consumed the press, and both surfaces
+   * close. Dispatching from inside the tree rather than at `document` is for
+   * realism only: the capture-beats-bubble priority holds at the target too,
+   * because the dispatch algorithm honours the capture flag on both traversals
+   * of the propagation path.
    */
   const esc = () => document.body.dispatchEvent(
     new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
@@ -200,6 +201,50 @@ suite('docs drawer', () => {
     esc();
     await menu.updateComplete;
     assert.ok(!menu.open, 'the header menu still responds to Escape');
+  });
+
+  test('Escape inside a non-empty search field is left to the field', async () => {
+    // /docs renders <doc-search> into the aside-top slot, so a reader typing in
+    // it and pressing Escape means "clear the box", which is what the browser
+    // does natively. Consuming that press swallowed the clear, shut the drawer,
+    // and moved focus, none of which was asked for. The delegated listener this
+    // replaced never called preventDefault, so consuming it was a regression.
+    const field = document.createElement('input');
+    field.type = 'search';
+    field.slot = 'aside-top';
+    field.value = 'routing';
+    drawer.appendChild(field);
+    await drawer.updateComplete;
+
+    toggle().click();
+    await drawer.updateComplete;
+    field.focus();
+
+    const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    field.dispatchEvent(ev);
+    await drawer.updateComplete;
+
+    assert.ok(drawer.open, 'the drawer stays open so the field can handle its own Escape');
+    assert.ok(!ev.defaultPrevented, 'and the native clear is not suppressed');
+  });
+
+  test('Escape inside an EMPTY search field still closes the drawer', async () => {
+    // Otherwise a keyboard user whose focus is in the search box has no way to
+    // dismiss the drawer at all without first tabbing out of it.
+    const field = document.createElement('input');
+    field.type = 'search';
+    field.slot = 'aside-top';
+    field.value = '';
+    drawer.appendChild(field);
+    await drawer.updateComplete;
+
+    toggle().click();
+    await drawer.updateComplete;
+    field.focus();
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await drawer.updateComplete;
+
+    assert.ok(!drawer.open, 'an empty field has nothing to clear, so Escape closes');
   });
 
   test('a soft navigation closes it', async () => {
