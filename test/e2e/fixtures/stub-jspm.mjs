@@ -33,37 +33,48 @@
  * what was tested.
  */
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+// Resolve from the app under test, not from a hardcoded path, so it does not
+// matter whether npm hoisted the package to the workspace root or kept it in
+// `examples/blog/node_modules`. Getting that wrong would not fail loudly: an
+// unreadable file makes the stub pass through, quietly restoring the network
+// dependency this fixture exists to remove.
+const requireFromBlog = createRequire(join(ROOT, 'examples', 'blog', 'package.json'));
 
 /**
- * Bare specifier to the file in this repo's `node_modules` that supplies it.
+ * Bare specifier to the wrapper that turns its installed entry file into an ES
+ * module. The entry itself is whatever the package's own `main` names.
  *
- * `dayjs.min.js` is UMD. Evaluated as a module it finds no `exports`, no
- * `module`, and no AMD `define`, so it takes its global branch and assigns
+ * dayjs ships UMD. Evaluated as a module it finds no `exports`, no `module`,
+ * and no AMD `define`, so it takes its global branch and assigns
  * `globalThis.dayjs`, which the appended line then re-exports as the default.
  * The alternative, `dayjs/esm/index.js`, is a multi-file ESM build whose
- * relative imports a `data:` URL cannot resolve.
+ * relative imports a `data:` URL cannot resolve. `test/repo-health/
+ * e2e-vendor-stub.test.mjs` imports the emitted module and formats a date
+ * through it, so a dayjs that changed its wrapper fails there rather than
+ * silently emitting a module that exports nothing.
  *
- * @type {Record<string, { file: string, wrap: (src: string) => string }>}
+ * @type {Record<string, (src: string) => string>}
  */
 const LOCAL_VENDORS = {
-  dayjs: {
-    file: join(ROOT, 'node_modules', 'dayjs', 'dayjs.min.js'),
-    wrap: (src) => `${src}\nexport default globalThis.dayjs;\n`,
-  },
+  dayjs: (src) => `${src}\nexport default globalThis.dayjs;\n`,
 };
 
 /** @param {string} name @returns {string | null} */
 function localModuleUrl(name) {
-  const entry = LOCAL_VENDORS[name];
-  if (!entry) return null;
+  if (!Object.hasOwn(LOCAL_VENDORS, name)) return null;
   let src;
-  try { src = readFileSync(entry.file, 'utf8'); }
-  catch { return null; }
-  const body = entry.wrap(src);
+  try {
+    const pkgPath = requireFromBlog.resolve(`${name}/package.json`);
+    const main = JSON.parse(readFileSync(pkgPath, 'utf8')).main;
+    if (typeof main !== 'string' || !main) return null;
+    src = readFileSync(join(dirname(pkgPath), main), 'utf8');
+  } catch { return null; }
+  const body = LOCAL_VENDORS[name](src);
   return `data:text/javascript;base64,${Buffer.from(body, 'utf8').toString('base64')}`;
 }
 
