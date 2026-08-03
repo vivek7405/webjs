@@ -1972,6 +1972,24 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       offBaseUrl = `http://localhost:${offPort}`;
       offServerProcess = await startBlog(offPort, { WEBJS_ELIDE: '0' });
       offPage = await browser.newPage();
+
+      // WARM the OFF server before anything is timed against it.
+      //
+      // This is the whole reason the block used to flake, and the asymmetry is
+      // easy to miss: the ON server has been serving the rest of this suite for
+      // ~100 tests, so its dev-mode on-demand module transformation was paid
+      // long ago, while the OFF server is brand new here and its very FIRST
+      // request is the assertion. Measured on this machine, that first request
+      // costs 11.5s against 610ms once warm, and OFF is the expensive side
+      // because WEBJS_ELIDE=0 ships 13 modulepreloads to the ON build's 6. So
+      // the OFF page could still be fetching modules when a timed wait expired,
+      // leaving it un-hydrated, which is why OFF was always the failing side.
+      //
+      // Pay that cost here, where nothing is being measured. `waitForHydration`
+      // below then guards the residual, so neither the warmup nor the waits are
+      // load-bearing on their own.
+      await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'load', timeout: 60000 });
+      await offPage.goto(`${offBaseUrl}/about`, { waitUntil: 'load', timeout: 60000 });
     });
 
     after(async () => {
@@ -1995,10 +2013,29 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       return { text, tags };
     });
 
+    /**
+     * Wait until the page has actually hydrated, instead of sleeping and hoping.
+     *
+     * The counter is the readiness signal because it is the one thing on this
+     * page that is interactive in BOTH builds, so it is the last thing to come
+     * up and it must come up on either side. `whenDefined` alone is not enough:
+     * the custom element can be registered a tick before the instance is
+     * upgraded and its buttons rendered, and it is the buttons the assertions
+     * need. `my-counter` is a LIGHT-DOM component, so its children sit on the
+     * element itself and there is no shadow root to look inside.
+     * @param {import('puppeteer-core').Page} p
+     */
+    const waitForHydration = (p) => p.waitForFunction(() => {
+      if (!customElements.get('my-counter')) return false;
+      const c = document.querySelector('my-counter');
+      return !!(c && c.querySelector('output') && c.querySelector('button[aria-label="Increment"]'));
+    }, { timeout: 30000, polling: 50 });
+
     test('the mixed page renders identically on vs off', async () => {
-      await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      await sleep(2500); // allow hydration on both
+      await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await waitForHydration(page);
+      await waitForHydration(offPage);
       const onSnap = await observableMain(page);
       const offSnap = await observableMain(offPage);
       // The display-only badges (build-stamp, vendor-badge, muted-text) are
@@ -2015,15 +2052,26 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       // in both. If elision ever wrongly dropped its module on the ON side,
       // the ON counter would not increment and this assertion fails: the live
       // guard for the dangerous direction.
-      await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      await sleep(2500);
+      await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await waitForHydration(page);
+      await waitForHydration(offPage);
 
-      assert.equal(await getCounterValue(page), await getCounterValue(offPage),
+      const onSeed = await getCounterValue(page);
+      assert.equal(onSeed, await getCounterValue(offPage),
         'counter seeds to the same value on vs off');
       await clickCounterButton(page, 'Increment');
       await clickCounterButton(offPage, 'Increment');
-      await sleep(300);
+      // The click sets a reactive property, and that re-render is batched to a
+      // microtask, so the new value is NOT readable synchronously. Wait for it
+      // to land on both sides rather than sleeping a guessed interval.
+      const settled = (p) => p.waitForFunction(
+        (want) => parseInt(document.querySelector('my-counter')?.querySelector('output')?.textContent.trim(), 10) === want,
+        { timeout: 10000, polling: 25 },
+        onSeed + 1,
+      ).catch(() => {});
+      await settled(page);
+      await settled(offPage);
       const onAfter = await getCounterValue(page);
       const offAfter = await getCounterValue(offPage);
       assert.equal(onAfter, offAfter, `counter increments identically on vs off (on=${onAfter}, off=${offAfter})`);
@@ -2031,9 +2079,11 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     });
 
     test('the fully-static route renders identically on vs off', async () => {
-      await page.goto(`${baseUrl}/static-info`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      await offPage.goto(`${offBaseUrl}/static-info`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      await sleep(1500);
+      // This route is fully static, so there is no component to hydrate and
+      // nothing to poll for. `load` (every subresource settled) is the real
+      // condition the old sleep was standing in for.
+      await page.goto(`${baseUrl}/static-info`, { waitUntil: 'load', timeout: 30000 });
+      await offPage.goto(`${offBaseUrl}/static-info`, { waitUntil: 'load', timeout: 30000 });
       const onSnap = await observableMain(page);
       const offSnap = await observableMain(offPage);
       assert.deepEqual(onSnap.tags, offSnap.tags, 'static route tag structure must match on vs off');
@@ -3093,11 +3143,20 @@ async function getCounterValue(p) {
  * @param {'Increment'|'Decrement'} label
  */
 async function clickCounterButton(p, label) {
-  await p.evaluate((lbl) => {
+  // Throw rather than optional-chain into a no-op. A `btn?.click()` on a
+  // not-yet-hydrated page silently does nothing, the counter stays on its seed,
+  // and the failure surfaces one assertion later as a baffling off-by-one
+  // (`on=4, off=3`) instead of naming its own cause. That cost a real
+  // investigation, so make the miss say what it is.
+  const clicked = await p.evaluate((lbl) => {
     const counter = document.querySelector('my-counter');
-    const btn = counter?.querySelector(`button[aria-label="${lbl}"]`);
-    btn?.click();
+    if (!counter) return 'no <my-counter> on the page';
+    const btn = counter.querySelector(`button[aria-label="${lbl}"]`);
+    if (!btn) return `<my-counter> has no button[aria-label="${lbl}"] yet (not hydrated?)`;
+    btn.click();
+    return null;
   }, label);
+  if (clicked) throw new Error(`clickCounterButton(${label}): ${clicked}`);
 }
 
 /**
