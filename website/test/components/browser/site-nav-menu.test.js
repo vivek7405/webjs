@@ -208,11 +208,11 @@ suite('site nav menu', () => {
     // The router dispatches webjs:before-cache synchronously and reads
     // documentElement.outerHTML in the SAME TASK, a couple of statements later
     // and with no await in between, so a handler's mutation only counts if it
-    // lands SYNCHRONOUSLY. Setting the reactive
-    // property reflects the host attribute at once, but the <details ?open>
-    // binding is committed on the next render, one microtask later. The details
-    // element is what actually shows the panel and drives the icon swap, so a
-    // handler that only sets the property serializes an OPEN menu and a forward
+    // lands SYNCHRONOUSLY. Setting the reactive property reflects the host
+    // attribute at once, but the <details ?open> binding is committed on the
+    // next render, one microtask later. The details element is what actually
+    // shows the panel and drives the icon swap, so a handler that only sets
+    // the property serializes an OPEN menu and a forward
     // restore brings it back.
     await clickSummary();
     assert.ok(menu.querySelector('details').open, 'open before the snapshot');

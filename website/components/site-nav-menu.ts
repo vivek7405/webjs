@@ -50,9 +50,9 @@ export class SiteNavMenu extends WebComponent({
    * Dismissal for the snapshot path, which has a stricter timing contract than
    * the others.
    *
-   * The router dispatches webjs:before-cache and reads
-   * documentElement.outerHTML in the SAME TASK, a couple of statements later
-   * and with no await in between, so only a synchronous mutation is captured.
+   * The router dispatches webjs:before-cache and reads documentElement's
+   * outerHTML in the SAME TASK, a couple of statements later and with no await
+   * in between, so only a synchronous mutation is captured.
    * Setting the reactive property reflects the host attribute at once, but the
    * <details ?open> binding is a render-time write committed a microtask later,
    * and the details element is what actually shows the panel and drives the
@@ -96,9 +96,10 @@ export class SiteNavMenu extends WebComponent({
     //
     // popstate is NOT redundant with webjs:navigate, despite appearances.
     // On a back/forward with a snapshot cache HIT, performNavigation calls
-    // applySwap (router-client.js:1225) and RETURNS a few lines later. The webjs:navigate
-    // dispatch lives at the end of fetchAndApply (router-client.js:2349), which
-    // on that path runs only as a fire-and-forget revalidation whose failure is
+    // applySwap (router-client.js:1225) and RETURNS a few lines later. The
+    // webjs:navigate dispatch lives at the end of fetchAndApply
+    // (router-client.js:2349), which on that path runs only as a
+    // fire-and-forget revalidation whose failure is
     // swallowed, which a newer navigation can supersede, and which is skipped
     // on a discard disposition. So the cached back is exactly the case where
     // webjs:navigate may arrive late or never. Both handlers are idempotent, so
