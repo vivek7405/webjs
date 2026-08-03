@@ -98,6 +98,9 @@ test('the cycle keeps the guarantees the trim was not allowed to touch', () => {
   // The liveness probe is byte growth on the transcript, never its words,
   // and the file may be either a live transcript or a static stub.
   assert.match(skill, /a growing byte count means it is working/);
+  // The liveness sentence must not claim the harness status is the ONLY
+  // signal while the check-in rule reads byte growth as one.
+  assert.match(skill, /Only two things are evidence a reviewer is alive/);
   assert.match(skill, /Never read the transcript.s contents/);
   assert.match(skill, /A reviewer that returns without reviewing is also not a round/);
   assert.match(skill, /NEVER substitute an inline self-review/);
