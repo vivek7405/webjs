@@ -2025,17 +2025,38 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
      * element itself and there is no shadow root to look inside.
      * @param {import('puppeteer-core').Page} p
      */
-    const waitForHydration = (p) => p.waitForFunction(() => {
-      if (!customElements.get('my-counter')) return false;
-      const c = document.querySelector('my-counter');
-      return !!(c && c.querySelector('output') && c.querySelector('button[aria-label="Increment"]'));
-    }, { timeout: 30000, polling: 50 });
+    const waitForHydration = async (p, which) => {
+      try {
+        await p.waitForFunction(() => {
+          if (!customElements.get('my-counter')) return false;
+          const c = document.querySelector('my-counter');
+          return !!(c && c.querySelector('output') && c.querySelector('button[aria-label="Increment"]'));
+        }, { timeout: 15000, polling: 50 });
+      } catch {
+        // Say what failed and what it most likely means. A bare puppeteer
+        // "Waiting failed: 15000ms exceeded" names neither the page nor the
+        // condition, which is the same diagnostic dead end the old off-by-one
+        // counter assertion was. Report what is actually on the page.
+        const state = await p.evaluate(() => ({
+          defined: !!customElements.get('my-counter'),
+          host: !!document.querySelector('my-counter'),
+          button: !!document.querySelector('my-counter')?.querySelector('button[aria-label="Increment"]'),
+        })).catch(() => null);
+        throw new Error(
+          `${which} page never hydrated <my-counter> within 15s `
+          + `(customElements.define ${state?.defined ? 'ran' : 'DID NOT run'}, `
+          + `host ${state?.host ? 'present' : 'absent'}, `
+          + `increment button ${state?.button ? 'present' : 'absent'}). `
+          + 'If define never ran, the component module was not served: elision may have wrongly dropped it.',
+        );
+      }
+    };
 
     test('the mixed page renders identically on vs off', async () => {
       await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await waitForHydration(page);
-      await waitForHydration(offPage);
+      await waitForHydration(page, 'ON');
+      await waitForHydration(offPage, 'OFF');
       const onSnap = await observableMain(page);
       const offSnap = await observableMain(offPage);
       // The display-only badges (build-stamp, vendor-badge, muted-text) are
@@ -2054,8 +2075,8 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       // guard for the dangerous direction.
       await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await waitForHydration(page);
-      await waitForHydration(offPage);
+      await waitForHydration(page, 'ON');
+      await waitForHydration(offPage, 'OFF');
 
       const onSeed = await getCounterValue(page);
       assert.equal(onSeed, await getCounterValue(offPage),
