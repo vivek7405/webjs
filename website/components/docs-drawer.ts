@@ -1,6 +1,6 @@
 import { WebComponent, prop, html, createRef, ref } from '@webjsdev/core';
 import { lockScroll, unlockScroll } from '#lib/scroll-lock.ts';
-import { escapeBelongsToField } from '#lib/escape-target.ts';
+import { escapeBelongsToField, composedTarget } from '#lib/escape-target.ts';
 
 /**
  * `<docs-drawer>`: the sidebar shell shared by /docs and /ui, and the mobile
@@ -104,11 +104,22 @@ export class DocsDrawer extends WebComponent({
     // MORPHS the layout and keeps the element alive, which is the case this
     // listener exists for.
     //
-    // webjs:navigate alone covers Back and Forward too: the router's popstate
-    // handler routes through performNavigation, which dispatches it
-    // (@webjsdev/core/src/router-client.js). A second popstate listener here
-    // would just fire this twice per back navigation.
+    // popstate is NOT redundant with webjs:navigate, despite appearances.
+    // On a back/forward with a snapshot cache HIT, performNavigation calls
+    // applySwap and RETURNS (router-client.js:1235). The webjs:navigate
+    // dispatch lives at the end of fetchAndApply (router-client.js:2349), which
+    // on that path runs only as a fire-and-forget revalidation whose failure is
+    // swallowed, which a newer navigation can supersede, and which is skipped
+    // on a discard disposition. So the cached back is exactly the case where
+    // webjs:navigate may arrive late or never. Both handlers are idempotent, so
+    // the occasional double fire costs nothing.
+    //
+    // webjs:before-cache is the framework's hook for stripping transient state
+    // BEFORE the snapshot is serialized. Without it the open attribute is baked
+    // into the snapshot and a forward restore brings the surface back open.
     document.addEventListener('webjs:navigate', this._onNavigate);
+    window.addEventListener('popstate', this._onNavigate);
+    document.addEventListener('webjs:before-cache', this._onNavigate);
     // Crossing the breakpoint changes whether this drawer should be holding the
     // page scroll, and it fires no property update, so `updated()` alone would
     // never re-evaluate. A phone rotated to landscape with the drawer open is
@@ -125,6 +136,8 @@ export class DocsDrawer extends WebComponent({
   disconnectedCallback() {
     document.removeEventListener('keydown', this._onKeydown, true);
     document.removeEventListener('webjs:navigate', this._onNavigate);
+    window.removeEventListener('popstate', this._onNavigate);
+    document.removeEventListener('webjs:before-cache', this._onNavigate);
     this._mql?.removeEventListener('change', this._onMediaChange);
     this._mql = undefined;
     // Release the page scroll if this element is torn out while holding it (a
@@ -147,7 +160,12 @@ export class DocsDrawer extends WebComponent({
     // header menu is kept from dismissing on the same press by applying the
     // SAME rule from #lib/escape-target.ts rather than by a defaultPrevented
     // flag, which is why that rule lives in a shared module instead of here.
-    if (escapeBelongsToField(e.target)) return;
+    //
+    // The rule is document-wide, not scoped to this element, so a non-empty
+    // search box ANYWHERE holds the press, not only the <doc-search> in the
+    // aside-top slot. That is a widening over the pre-refactor behaviour and it
+    // is deliberate; the reasoning is in the shared module.
+    if (escapeBelongsToField(composedTarget(e))) return;
     this.close();
     // Tells <site-nav-menu> this Escape is spoken for, so one press does not
     // close both surfaces.

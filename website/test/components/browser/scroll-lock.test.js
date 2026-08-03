@@ -138,13 +138,6 @@ suite('page scroll lock', () => {
 });
 
 /**
- * The drawer only locks BELOW its 900px breakpoint, since above it the sidebar
- * is an ordinary sticky column and locking the page would be a bug. The runner
- * window is wider than that and cannot be resized from inside the page, so the
- * media query is stubbed to report a match. That is the one seam here; the lock
- * itself is the real module, and the assertions are about real document state.
- */
-/**
  * A `matchMedia` stub whose match state the test controls.
  *
  * Built by hand rather than by spreading a real MediaQueryList: `matches`,
@@ -307,6 +300,10 @@ suite('drawer scroll lock across the breakpoint', () => {
   });
 
   test('a wide-viewport open that is never locked does not over-release on disconnect', async () => {
+    // A STANDING GUARD on the _holdsLock release condition rather than coverage
+    // of any one commit: it passes against every version that keys the release
+    // on holding the lock. Kept because the shared refcount is global and the
+    // failure it describes is silent.
     // The other half of the hazard. The shared refcount is global, so a
     // disconnect that unlocks without ever having locked decrements somebody
     // else's hold. Simulated with a concurrent holder standing in for an open
@@ -390,14 +387,21 @@ suite('drawer scroll lock across the breakpoint', () => {
       removeEventListener() { live--; },
       addListener() {}, removeListener() {}, dispatchEvent() { return false; },
     });
-    const probe = document.createElement('docs-drawer');
-    document.body.appendChild(probe);
-    await probe.updateComplete;
-    assert.equal(live, 1, 'connecting subscribes to the query');
-    probe.remove();
+    let probe;
+    try {
+      probe = document.createElement('docs-drawer');
+      document.body.appendChild(probe);
+      await probe.updateComplete;
+      assert.equal(live, 1, 'connecting subscribes to the query');
+    } finally {
+      // In a finally, or a failed assertion above leaves the probe in the
+      // document holding a capture keydown listener for the rest of the file,
+      // and window.matchMedia patched underneath every later test.
+      probe?.remove();
+      window.matchMedia = realMM;
+    }
     await new Promise((r) => requestAnimationFrame(() => r()));
     assert.equal(live, 0, 'disconnecting unsubscribes');
-    window.matchMedia = realMM;
   });
 
   test('opening above the breakpoint never takes the lock at all', async () => {

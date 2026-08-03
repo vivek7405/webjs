@@ -1,6 +1,6 @@
 import { WebComponent, prop, html, createRef, ref } from '@webjsdev/core';
 import { live } from '@webjsdev/core/directives';
-import { escapeBelongsToField } from '#lib/escape-target.ts';
+import { escapeBelongsToField, composedTarget } from '#lib/escape-target.ts';
 
 /**
  * `<site-nav-menu>`: the header's mobile navigation menu.
@@ -72,17 +72,30 @@ export class SiteNavMenu extends WebComponent({
     // is the one thing on the page guaranteed to survive every client-router
     // swap: without this it stays open over whatever page it lands on.
     //
-    // One listener covers all of them. The router's popstate handler routes
-    // through performNavigation, which dispatches webjs:navigate
-    // (@webjsdev/core/src/router-client.js), so subscribing to popstate as well
-    // would only fire this twice per back navigation.
+    // popstate is NOT redundant with webjs:navigate, despite appearances.
+    // On a back/forward with a snapshot cache HIT, performNavigation calls
+    // applySwap and RETURNS (router-client.js:1235). The webjs:navigate
+    // dispatch lives at the end of fetchAndApply (router-client.js:2349), which
+    // on that path runs only as a fire-and-forget revalidation whose failure is
+    // swallowed, which a newer navigation can supersede, and which is skipped
+    // on a discard disposition. So the cached back is exactly the case where
+    // webjs:navigate may arrive late or never. Both handlers are idempotent, so
+    // the occasional double fire costs nothing.
+    //
+    // webjs:before-cache is the framework's hook for stripping transient state
+    // BEFORE the snapshot is serialized. Without it the open attribute is baked
+    // into the snapshot and a forward restore brings the surface back open.
     document.addEventListener('webjs:navigate', this._onNavigate);
+    window.addEventListener('popstate', this._onNavigate);
+    document.addEventListener('webjs:before-cache', this._onNavigate);
   }
 
   disconnectedCallback() {
     document.removeEventListener('click', this._onDocClick);
     document.removeEventListener('keydown', this._onKeydown);
     document.removeEventListener('webjs:navigate', this._onNavigate);
+    window.removeEventListener('popstate', this._onNavigate);
+    document.removeEventListener('webjs:before-cache', this._onNavigate);
     super.disconnectedCallback();
   }
 
@@ -113,7 +126,7 @@ export class SiteNavMenu extends WebComponent({
     // The same deferral rule the drawer applies, from the one shared module.
     // Both surfaces have to agree: if only one defers to the field, the reader
     // clears their search box and loses this menu in the same press.
-    if (escapeBelongsToField(e.target)) return;
+    if (escapeBelongsToField(composedTarget(e))) return;
     this.open = false;
     this._summaryRef.value?.focus();
   }

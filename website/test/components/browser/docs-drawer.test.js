@@ -277,6 +277,59 @@ suite('docs drawer', () => {
     assert.ok(menu.open, 'and so does the header menu');
   });
 
+  test('a search field inside a SHADOW component still claims Escape', async () => {
+    // event.target is retargeted at every shadow boundary, so a field inside a
+    // shadow-DOM component reports the HOST. Reading it directly would answer
+    // "not a field", and the drawer would close AND preventDefault, cancelling
+    // the native clear. composedPath()[0] is the real origin.
+    if (!customElements.get('shadow-search-probe')) {
+      customElements.define('shadow-search-probe', class extends HTMLElement {
+        connectedCallback() {
+          if (this.shadowRoot) return;
+          const root = this.attachShadow({ mode: 'open' });
+          root.innerHTML = '<input type="search" value="routing">';
+        }
+      });
+    }
+    const wrapper = document.createElement('shadow-search-probe');
+    wrapper.slot = 'aside-top';
+    drawer.appendChild(wrapper);
+    await drawer.updateComplete;
+
+    toggle().click();
+    await drawer.updateComplete;
+
+    const inner = wrapper.shadowRoot.querySelector('input');
+    inner.focus();
+    const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, composed: true });
+    inner.dispatchEvent(ev);
+    await drawer.updateComplete;
+
+    assert.ok(drawer.open, 'the drawer defers to the shadowed search field');
+    assert.ok(!ev.defaultPrevented, 'and does not cancel its native clear');
+  });
+
+  test('a READONLY search field does not claim Escape', async () => {
+    // Blink refuses to clear a readonly field, so nothing native ever empties
+    // it. Deferring there is the same undismissable trap as deferring in a text
+    // input, just one step further in.
+    const field = document.createElement('input');
+    field.type = 'search';
+    field.readOnly = true;
+    field.slot = 'aside-top';
+    field.value = 'frozen';
+    drawer.appendChild(field);
+    await drawer.updateComplete;
+
+    toggle().click();
+    await drawer.updateComplete;
+    field.focus();
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await drawer.updateComplete;
+
+    assert.ok(!drawer.open, 'a readonly field cannot be cleared, so Escape closes the drawer');
+  });
+
   test('Escape inside an EMPTY search field still closes the drawer', async () => {
     // Otherwise a keyboard user whose focus is in the search box has no way to
     // dismiss the drawer at all without first tabbing out of it.

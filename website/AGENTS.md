@@ -88,6 +88,9 @@ website/
                        widening that hiding the scrollbar causes (#1147)
     theme.ts           the theme storage key and forced values, read by BOTH
                        the layout's bootstrap script and theme-toggle.ts
+    escape-target.ts   the one rule deciding whether an Escape press belongs to
+                       the field the reader is editing. Shared, because every
+                       dismissible surface has to answer it identically
     utils/             pure helpers (compute, never render)
       highlight.ts     SSR syntax highlighter for the code samples
       frontmatter.ts   parse changelog/blog markdown frontmatter
@@ -216,10 +219,12 @@ listener reaching across the document with `querySelector` and body attributes,
 with the markup in a different file. If you find yourself adding a third
 delegated listener here, write a component instead.
 
-One cross-component contract survived that split and is easy to break by
-accident: **the drawer listens for Escape in the CAPTURE phase and calls
-`preventDefault()`, and the header menu listens in the BUBBLE phase and bails on
-`defaultPrevented`.** That is what makes one Escape close only the drawer when
+TWO cross-component contracts run between the drawer and the header menu, and
+both are easy to break by accident.
+
+**The first is priority.** The drawer listens for Escape in the CAPTURE phase
+and calls `preventDefault()`, and the header menu listens in the BUBBLE phase
+and bails on `defaultPrevented`. That is what makes one Escape close only the drawer when
 both are open, without either component importing the other, and it holds
 whatever order the elements registered in.
 
@@ -234,6 +239,30 @@ What a test DOES have to get right is `cancelable: true`. `preventDefault()` on 
 non-cancelable event is a silent no-op, so `defaultPrevented` stays false and
 both surfaces close. Dispatching from inside the tree rather than at `document`
 is worth doing for realism, but it is not what makes the priority work.
+
+**The second is deferral, and it does NOT run through `defaultPrevented`.** When
+an Escape belongs to the field the reader is editing (a non-empty, mutable
+`input[type=search]`, the only field Escape natively clears), every open surface
+must decline it, and each one decides that by calling the same
+`escapeBelongsToField` from `lib/escape-target.ts`. Two rules follow from that
+and neither is obvious:
+
+- The drawer must **not** call `preventDefault()` on the deferral path. It is
+  the natural way to tell the menu "this press is taken", and it is wrong,
+  because suppressing the default cancels the native clear the deferral exists
+  to protect. Agreement comes from both surfaces applying the same rule, not
+  from a flag on the event.
+- The rule is intentionally document-wide rather than scoped to the surface that
+  contains the field, because a field inside ONE surface must also stop the
+  OTHER dismissing, and a containment test in the other surface answers false
+  for exactly that case.
+
+Both surfaces also close on `popstate` and `webjs:before-cache`, not only on
+`webjs:navigate`. A back or forward that hits the router's snapshot cache
+applies the swap and returns before `webjs:navigate` is dispatched, so popstate
+is the only timely signal there, and `webjs:before-cache` strips the open state
+before the snapshot is serialized so a forward restore does not bring the
+surface back open.
 
 ## How to update headline / hero copy
 
