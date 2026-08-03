@@ -2045,34 +2045,14 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
         // "Waiting failed: 15000ms exceeded" names neither the page nor the
         // condition, which is the same diagnostic dead end the old off-by-one
         // counter assertion was. Report what is actually on the page.
-        const state = await p.evaluate(async () => {
+        const state = await p.evaluate(() => {
           const C = customElements.get('my-counter');
-          // Ask the page what actually happened to the module: whether the
-          // browser ever fetched it, and what the server says if we ask again.
-          // Guessing at this from outside has been unproductive.
-          const res = performance.getEntriesByType('resource')
-            .filter((e) => /counter\.ts/.test(e.name))
-            .map((e) => `${e.name.replace(/^https?:\/\/[^/]+/, '')} dur=${Math.round(e.duration)}ms size=${e.transferSize}`);
-          let refetch = 'not attempted';
-          try {
-            const r = await fetch('/components/counter.ts', { cache: 'no-store' });
-            const body = await r.text();
-            refetch = `HTTP ${r.status}, ${body.length} bytes, defines=${/customElements|register\(/.test(body)}`;
-          } catch (e) { refetch = `threw ${e.name}: ${e.message}`; }
-          const boot = [...document.querySelectorAll('script[type="module"]')]
-            .map((s) => (s.src ? `src=${s.src.replace(/^https?:\/\/[^/]+/, '')}` : `inline(${s.textContent.length}b) mentionsCounter=${/counter/.test(s.textContent)}`));
           return {
             defined: !!C,
             host: !!document.querySelector('my-counter'),
             upgraded: !!(C && document.querySelector('my-counter') instanceof C),
-            resourceEntries: res.length ? res : ['(the browser never fetched counter.ts)'],
-            refetch,
-            bootScripts: boot,
-            definedTags: customElements.get ? ['my-counter', 'build-stamp', 'vendor-badge', 'muted-text'].filter((t) => customElements.get(t)) : [],
           };
-        }).catch((e) => ({ evalFailed: String(e && e.message) }));
-        // eslint-disable-next-line no-console
-        console.error(`[e2e diag] ${which} hydration timeout state:`, JSON.stringify(state, null, 2));
+        }).catch(() => null);
         throw new Error(
           `${which} page never upgraded <my-counter> within 15s `
           + `(customElements.define ${state?.defined ? 'ran' : 'DID NOT run'}, `
