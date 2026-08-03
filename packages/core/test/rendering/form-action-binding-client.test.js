@@ -807,3 +807,61 @@ test('a name HOLE is judged by what SSR would emit for it, not by its presence',
     /already carries a "name" attribute/,
   );
 });
+
+test('a value HOLE is judged by what SSR would emit, exactly as a name hole is', () => {
+  // The twin of the `name` test above. Both identity channels ask the same
+  // question through one predicate, so a falsy boolean hole binds on both sides
+  // and a truthy one refuses on both. Keeping them in step matters because the
+  // failure is silent: SSR renders and the client throws on hydration.
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  const host = document.createElement('div');
+  render(
+    html`<form action=${formAction}><button formaction=${buttonAction} ?value=${false}>x</button></form>`,
+    host,
+  );
+  assert.equal(host.querySelector('button').getAttribute('value'), ID,
+    'a falsy boolean hole emits nothing, so the identity channel is free');
+  assert.throws(
+    () => render(
+      html`<form action=${formAction}><button formaction=${buttonAction} ?value=${true}>x</button></form>`,
+      document.createElement('div'),
+    ),
+    /already carries a "value" attribute/,
+  );
+});
+
+test('the enclosing-form verdict does not change between renders', () => {
+  // Whether `enclosingForm` resolves depends on whether the element happened to
+  // be in the tree when it reconciled: not on a first render (the fragment is
+  // detached) and yes on an update. Re-asking made the SAME template with the
+  // SAME values bind at first paint and then throw on an arbitrary later
+  // re-render, which is far worse to diagnose than refusing at first paint.
+  const buttonAction = HOISTED();
+  const outer = document.createElement('form');
+  outer.setAttribute('method', 'post');
+  document.body.appendChild(outer);
+  const host = document.createElement('div');
+  outer.appendChild(host);
+  try {
+    const tpl = (n) => html`<button formaction=${buttonAction}>row ${n}</button>`;
+    render(tpl(1), host);
+    render(tpl(2), host);
+    assert.equal(host.querySelector('button').getAttribute('name'), '__webjs_action',
+      'the verdict is stable across passes');
+  } finally { outer.remove(); }
+});
+
+test('a bound form still binds its submitter on every re-render', () => {
+  // The counterfactual for the stability guard: it must not become a blanket
+  // skip that stops the binding from being re-applied.
+  const formAction = HOISTED();
+  const buttonAction = HOISTED();
+  const host = document.createElement('div');
+  const tpl = (n) => html`<form action=${formAction}><button formaction=${buttonAction}>r${n}</button></form>`;
+  render(tpl(1), host);
+  render(tpl(2), host);
+  const button = host.querySelector('button');
+  assert.equal(button.getAttribute('name'), '__webjs_action');
+  assert.equal(button.getAttribute('value'), ID);
+});

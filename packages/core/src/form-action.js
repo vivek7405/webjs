@@ -48,7 +48,8 @@ import { escapeAttr } from './escape.js';
  *     `value`, because the identity occupies both halves of that one pair.
  *   - An enclosing `<form>` that is not itself bound, because `method="post"`
  *     and the enctype are forced on the FORM's start tag, which SSR has already
- *     emitted by the time it reaches the button.
+ *     emitted by the time it reaches the button. Refused only where the
+ *     renderer can SEE that form: see `assertSubmitterFormIsBound`.
  *   - `<input type="image">`, which submits `name.x` / `name.y` coordinates
  *     instead of `name=value`, so the identity would never arrive.
  *   - A control that is not a submitter at all, where `formaction` is inert.
@@ -359,11 +360,15 @@ export function assertSingleSubmitterAction(duplicate, tag) {
  * cannot retrofit them. An unbound form defaults to GET, which sends no body,
  * so the identity would ride the query string and the action would never run.
  *
- * SSR is authoritative here because it renders every page and reads a linear
- * byte stream, so it always knows whether the open form was bound. The client's
- * answer is BEST EFFORT (a button in a nested template cannot always reach its
- * form while the fragment is detached), so the client skips this rather than
- * refusing what the server accepted.
+ * BEST EFFORT in BOTH renderers, which is the honest statement and replaces an
+ * earlier claim here that SSR always knows. It does not: a component renders its
+ * own template in a separate pass seeded `'unknown'`, with no view of the host
+ * page, and buttons usually live in components. The client is best effort for
+ * its own reason (a submitter in a nested template cannot always reach its form
+ * while the fragment is detached). Each renderer refuses only where its answer
+ * is genuinely known, and binds where it is not, because refusing on
+ * cannot-tell rejects ordinary shapes and, at SSR, silently drops an isolated
+ * component from a page that still returns 200.
  *
  * @param {boolean} insideBoundForm
  * @param {string} [tag]

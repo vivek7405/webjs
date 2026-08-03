@@ -93,6 +93,7 @@ function commitInto(node, fn) {
  *   authoredValue: boolean,
  *   authoredForm: boolean,
  *   nameParts: {i: number, kind: string}[],
+ *   valueParts: {i: number, kind: string}[],
  *   propAttrs: string[],
  *   staticMethod: string | null,
  *   staticEnctype: string | null,
@@ -622,10 +623,14 @@ function buildFormActionRecord(el, onEl, parts) {
     .map((p) => ({ i: p.idx, kind: p.kind }));
   const authoredName = !isForm && el.hasAttribute('name');
   const authoredForm = !isForm && el.hasAttribute('form');
-  const authoredValue = !isForm && (el.hasAttribute('value') || onEl.some((p) => {
-    const name = p.name.toLowerCase();
-    return name === 'value' && (p.kind === 'attr' || p.kind === 'attr-mixed' || p.kind === 'bool');
-  }));
+  const authoredValue = !isForm && el.hasAttribute('value');
+  // `value` holes, recorded with their kind for the same reason as `name`: a
+  // FALSY boolean hole emits nothing at SSR, so counting the part's mere
+  // presence refused a template the server renders happily.
+  const valueParts = isForm ? [] : onEl
+    .filter((p) => p.name.toLowerCase() === 'value'
+      && (p.kind === 'attr' || p.kind === 'attr-mixed' || p.kind === 'bool'))
+    .map((p) => ({ i: p.idx, kind: p.kind }));
 
   for (const p of onEl) {
     const name = String(p.name).toLowerCase();
@@ -671,6 +676,7 @@ function buildFormActionRecord(el, onEl, parts) {
     authoredForm,
     propAttrs,
     nameParts,
+    valueParts,
     staticMethod: el.getAttribute('method'),
     staticEnctype: el.getAttribute('enctype'),
     methodParts,
@@ -726,13 +732,16 @@ function reconcileFormActions(formActions, bound, values) {
           boundForms.push(/** @type any */ (part.el));
         }
       } else {
-        // What SSR would have emitted for a `name` hole on this pass. An
-        // attribute hole always emits (even `name=${null}`, as `name=""`); a
-        // boolean hole emits only when truthy.
-        const emitsName = rec.nameParts.some((np) => (np.kind === 'bool'
+        // What SSR would have emitted for this pass. An attribute hole always
+        // emits (even `name=${null}`, as `name=""`); a boolean hole emits only
+        // when truthy. Both identity channels ask the same question, through
+        // one predicate, so they cannot drift apart again.
+        const emits = (parts) => parts.some((np) => (np.kind === 'bool'
           ? !!resolveHoleValue(values[np.i])
           : true));
-        reconcileSubmitterAction(/** @type any */ (part.el), val, rec, emitsName);
+        reconcileSubmitterAction(
+          /** @type any */ (part.el), val, rec, emits(rec.nameParts), emits(rec.valueParts),
+        );
       }
     }
   }
@@ -803,9 +812,10 @@ function enclosingForm(el) {
  * @param {Element} el
  * @param {unknown} value
  * @param {FormActionRecord} rec
- * @param {boolean} emitsName whether SSR would emit a `name` attribute for this pass
+ * @param {boolean} emitsName whether SSR would emit a `name` attribute this pass
+ * @param {boolean} emitsValue whether SSR would emit a `value` attribute this pass
  */
-function reconcileSubmitterAction(el, value, rec, emitsName) {
+function reconcileSubmitterAction(el, value, rec, emitsName, emitsValue) {
   const id = typeof value === 'function' ? formActionId(value) : null;
   if (!id) {
     // A function that was MEANT as an action still refuses, so a button never
@@ -819,7 +829,7 @@ function reconcileSubmitterAction(el, value, rec, emitsName) {
   assertSingleSubmitterAction(rec.duplicateAction, el.localName);
   assertConvergentSubmitter(rec.propAttrs, el.localName, true);
   if (rec.staticAction) assertSubmitterHasNoStaticFormAction(el.localName);
-  if (rec.authoredValue) assertSubmitterHasNoValue(el.localName);
+  if (rec.authoredValue || emitsValue) assertSubmitterHasNoValue(el.localName);
   if (rec.authoredName || emitsName) {
     // Judged on the PART, not on what it resolved to this pass. `name=${null}`
     // leaves no attribute here while SSR emits `name=""` beside the identity,
@@ -832,7 +842,15 @@ function reconcileSubmitterAction(el, value, rec, emitsName) {
   assertSubmitterType(el.localName, el.getAttribute('type'));
 
   const form = enclosingForm(el);
-  if (form) {
+  // Asked ONCE per element. The answer depends on whether this element happened
+  // to be in the tree when it reconciled, which differs between a first render
+  // (fragment still detached, so `enclosingForm` finds nothing and the check is
+  // skipped) and any later update (attached, so it resolves). Re-asking made the
+  // SAME template with the SAME values bind on first paint and then throw on an
+  // arbitrary later re-render, which is far worse to diagnose than a refusal at
+  // first paint. Skipping for an element already stamped can only REMOVE a
+  // throw, never add one, so it cannot refuse anything that used to render.
+  if (form && !submitterActionBindings.has(el)) {
     // `formActionCandidates` covers the pass where the form's own action hole
     // has committed but its reconcile has not run yet; the identity field is
     // the settled answer, including for an SSR'd form on first hydration.
