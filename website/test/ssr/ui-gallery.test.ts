@@ -254,29 +254,27 @@ test('the gallery appears in the sitemap, one URL per component', async () => {
   assert.ok(!xml.includes('/ui/theme-zinc'), 'non-component registry items stay out');
 });
 
-test('the drawer contract the browser tests model still matches the real listener', () => {
-  // test/components/browser/docs-drawer.test.js transcribes the root layout's
-  // delegated listener, because that listener is an inline script rather than
-  // an importable module. A transcription can drift from its original, so this
-  // pins the branches the transcription depends on. If one moves, fix the
-  // browser test rather than deleting this.
+test('the drawer is a component, so nothing has to grep the layout for it', () => {
+  // This test used to pin the branches of an inline delegated listener in
+  // app/layout.ts, because test/components/browser/docs-drawer.test.js could
+  // not import that listener and TRANSCRIBED it instead. Two tests, and the
+  // browser one exercised a copy rather than shipping code.
+  //
+  // components/docs-drawer.ts is importable, so the browser test drives the
+  // real element and this file has no transcription left to guard. What
+  // survives is the one thing SSR can still check: the mechanism is gone from
+  // the layout rather than living in two places at once.
   const layout = readFileSync(resolve(WEBSITE_ROOT, 'app/layout.ts'), 'utf8');
-  const script = layout.slice(layout.indexOf('function syncDocsNav'), layout.indexOf('</script>', layout.indexOf('function syncDocsNav')));
-  assert.ok(script, 'the drawer script is present in the root layout');
-  for (const [what, needle] of [
-    ['syncs aria-expanded from the body attribute', "querySelector('.docs-nav-toggle')"],
-    ['toggles on the button', "t.closest('.docs-nav-toggle')"],
-    ['closes on a link or the backdrop', "t.closest('.docs-backdrop')"],
-    ['handles Escape', "e.key !== 'Escape'"],
-    ['closes the header menu before the drawer branch returns', "t.closest('.mobile-menu a')"],
-  ] as const) {
-    assert.ok(script.includes(needle), `the listener still ${what}`);
+  for (const gone of ['syncDocsNav', 'docs-nav-toggle', 'docs-backdrop', 'data-docs-nav-open']) {
+    assert.ok(!layout.includes(gone), `the root layout no longer mentions "${gone}"`);
   }
-  // Ordering is the part that actually broke: the header-menu housekeeping has
-  // to run BEFORE the drawer branch, because that branch returns.
+  const browserTest = readFileSync(
+    resolve(WEBSITE_ROOT, 'test/components/browser/docs-drawer.test.js'),
+    'utf8',
+  );
   assert.ok(
-    script.indexOf("t.closest('.mobile-menu a')") < script.indexOf("t.closest('.docs-nav-toggle')"),
-    'the header menu is handled before the drawer branch returns',
+    browserTest.includes("import '#components/docs-drawer.ts'"),
+    'the browser test imports the real component instead of transcribing it',
   );
 });
 
