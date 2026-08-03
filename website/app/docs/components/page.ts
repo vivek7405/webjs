@@ -97,7 +97,7 @@ interface Student { name: string; gpa: number; }
 class UserCard extends WebComponent({
   count:   prop(Number, { reflect: true }),       // reflect to the attribute
   label:   prop(String, { attribute: 'aria-label' }), // renamed attribute
-  open:    prop({ state: true }),                  // internal, no attribute
+  open:    prop({ state: true }),                  // internal, no attribute (lit parity; prefer a signal)
   student: prop&lt;Student&gt;(Object),                  // narrowed object type
   tags:    prop&lt;string[]&gt;(Array),                  // array-typed: pass Array, not Object
   size:    prop&lt;'sm' | 'lg'&gt;(String),              // narrowed enum type
