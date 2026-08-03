@@ -1999,35 +1999,52 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     });
 
     // Snapshot the observable content of <main>: visible text and the ordered
-    // tag structure. Only the wall-clock and the chat participant COUNT are
-    // normalised away, and the distinction matters, so it is worth stating.
+    // tag structure, with the two sources that are not a function of elision
+    // held out. Getting this boundary right took several passes, so the reasons
+    // are written down rather than left to be rediscovered.
     //
-    // <chat-box> sits inside <main> and it is NOT independent of what this
-    // block tests. It calls connectWS from connectedCallback, so leaving its
-    // SSR 'Connecting…' state requires its module to have shipped and the
-    // element to have upgraded. Its rendered state is therefore a real signal
-    // that chat-box hydrated on both sides, and erasing it would throw away
-    // coverage in the exact test that exists to compare hydration.
+    // 1. The wall-clock, which ticks between the two snapshots. Both the
+    //    12-hour and 24-hour renderings are matched, since which one appears
+    //    depends on the runner's default locale, not on anything under test.
     //
-    // What is genuinely not a function of elision is the participant count:
-    // each page talks to its own server, so `Live · N others online` counts
-    // whoever happens to be connected to THAT server. The digits are
-    // normalised; the 'Live' that proves hydration is kept.
+    // 2. <chat-box>'s INNER content. The element itself is still compared (it
+    //    must be present and in the same position on both sides), but its pane
+    //    is a live socket feed and cannot be made equal across the two servers:
     //
-    // The socket handshake is handled by waiting (waitForChatLive below), not
-    // by normalising. Waiting is what makes both sides comparable: the open
-    // also broadcasts a join to every client including the joiner, which adds
-    // a 'someone joined' line and its own element, changing BOTH the text and
-    // the tags. A regex over the status line alone would have left that race
-    // untouched in the tags half.
+    //      - The server broadcasts every join and leave to all clients
+    //        including the joiner, and the handler appends a line per event, so
+    //        the pane accumulates entries and each adds elements to the tag
+    //        list. The count of those events is a property of the SERVER's
+    //        client population.
+    //      - Those populations are not comparable by construction. The OFF
+    //        server is created fresh and privately in this block's before();
+    //        the ON server is shared with the whole suite and outlives it, so
+    //        anyone else connecting to or leaving it during the window adds a
+    //        line on the ON side with no OFF counterpart.
+    //      - A reconnect re-opens the socket and appends a SECOND join line, so
+    //        even a single page's pane is not a function of its own history.
+    //
+    //    Waiting cannot fix any of that, which an earlier revision of this test
+    //    assumed it could: the two sides are genuinely independent populations,
+    //    not one lagging the other. So the pane is held out of the comparison.
+    //
+    // Holding it out does NOT drop the coverage, because the thing worth
+    // checking about chat-box is that it HYDRATED, not what its feed happened
+    // to say. It connects from connectedCallback, so reaching its connected
+    // state proves its module shipped and the element upgraded, and that is
+    // asserted directly on both sides by waitForChatLive below.
     const observableMain = (pg) => pg.evaluate(() => {
       const main = document.querySelector('main') || document.body;
-      const text = (main.textContent || '')
+      // Work on a clone so the live DOM is untouched and a later snapshot of
+      // the same page still sees the real thing.
+      const copy = /** @type {HTMLElement} */ (main.cloneNode(true));
+      for (const box of copy.querySelectorAll('chat-box')) box.replaceChildren();
+      const text = (copy.textContent || '')
         .replace(/\d{1,2}:\d{2}:\d{2}\s?[AP]M/gi, 'TIME')
-        .replace(/Live · \d+ others? online/g, 'Live · CHAT-COUNT online')
+        .replace(/\d{1,2}:\d{2}:\d{2}/g, 'TIME')
         .replace(/\s+/g, ' ')
         .trim();
-      const tags = [...main.querySelectorAll('*')].map((el) => el.tagName.toLowerCase());
+      const tags = [...copy.querySelectorAll('*')].map((el) => el.tagName.toLowerCase());
       return { text, tags };
     });
 
@@ -2099,20 +2116,23 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     };
 
     /**
-     * Wait until <chat-box> has settled into its connected state.
+     * Assert that <chat-box> HYDRATED, by waiting for it to leave its
+     * server-rendered state.
      *
-     * The socket open is what makes the two pages comparable, and it changes
-     * more than the status line: the server broadcasts the join to every
-     * client INCLUDING the joiner, so the message pane flips from its empty
-     * placeholder to a 'someone joined' entry, adding an element. Both the text
-     * and the tag structure move. Snapshotting before that has landed on both
-     * sides compares one settled page against one unsettled page.
+     * This is a hydration check, not a settle barrier, and the difference
+     * matters. It keys on the status line reaching 'Live ·', which `onOpen`
+     * sets before the join message arrives, so it deliberately does NOT
+     * guarantee the message pane has stopped moving. That guarantee is not
+     * available at all: the pane accumulates a line per join and leave on that
+     * page's own server, a reconnect appends another, and the two servers have
+     * different client populations by construction. The pane is therefore held
+     * out of the snapshot (see observableMain) instead of waited on.
      *
-     * This is a wait rather than a normalisation on purpose: chat-box connects
-     * from connectedCallback, so reaching this state proves it hydrated, which
-     * is a signal this block exists to check. Only the participant count is
-     * normalised out of the snapshot, since that counts whoever is connected to
-     * that page's own server.
+     * What this DOES establish is the part worth asserting. chat-box calls
+     * connectWS from connectedCallback, so leaving the SSR state at all proves
+     * its module shipped and the element upgraded. Running it against both
+     * pages keeps the on-vs-off hydration coverage that holding the pane out of
+     * the snapshot would otherwise have lost.
      * @param {import('puppeteer-core').Page} p
      * @param {string} which  'ON' or 'OFF', named in the failure message
      */
@@ -2138,9 +2158,10 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await waitForHydration(page, 'ON');
       await waitForHydration(offPage, 'OFF');
-      // <chat-box> renders inside <main>, so its connected state has to land on
-      // BOTH sides before the snapshot, or this compares a settled page against
-      // an unsettled one.
+      // chat-box's pane is held out of the snapshot (it is a live socket feed
+      // over two independent servers), so assert its hydration directly on both
+      // sides instead. Without this the held-out pane would mean an un-hydrated
+      // chat-box went unnoticed.
       await waitForChatLive(page, 'ON');
       await waitForChatLive(offPage, 'OFF');
       const onSnap = await observableMain(page);
