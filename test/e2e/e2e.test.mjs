@@ -1981,11 +1981,13 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       // module graph and there is no residual for a warmup to remove (measured
       // with a 4s delay injected on the counter module, goto took 4076ms and
       // the element was upgraded by the time it returned). And it correlated
-      // with a deterministic CI failure on all three pushes that carried it,
-      // where the OFF page reported customElements.define never running, while
-      // main without it stayed green. Driving extra navigations through the
-      // page under test buys nothing and changes browser-side state the
-      // assertions then depend on.
+      // with CI failures on the pushes that carried it. That attribution did
+      // NOT hold up: the same failure recurs without the warmup, and the cause
+      // is tracked separately as #1228 (the elision-OFF boot intermittently
+      // 404s a module, leaving components inert). What stands is the narrower
+      // point, that driving extra navigations through the page under test buys
+      // nothing measurable and changes browser-side state the assertions then
+      // depend on.
     });
 
     after(async () => {
@@ -1997,12 +1999,25 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     });
 
     // Snapshot the observable content of <main>: visible text and the ordered
-    // tag structure, with framework hydration internals (comment markers, the
-    // live wall-clock) normalised away, since those are not observable output.
+    // tag structure, with content that is not a function of elision normalised
+    // away, since a difference there says nothing about the property under test.
+    //
+    // Two such sources. The live wall-clock, which ticks between the two
+    // snapshots. And <chat-box>, which sits inside <main> and whose status line
+    // is driven by a WEBSOCKET handshake rather than by hydration: it reads
+    // 'Connecting…' until the socket opens, then 'Live · N others online', and
+    // 'Reconnecting…' after a drop. The two pages talk to two independent
+    // servers, so their sockets open independently and the count is a function
+    // of who is connected, not of what shipped. Comparing that raw makes the
+    // assertion a race on the handshake in one direction and a masked
+    // divergence in the other, and no readiness wait fixes it because the two
+    // sides are genuinely independent. Normalise it for the same reason the
+    // clock is normalised.
     const observableMain = (pg) => pg.evaluate(() => {
       const main = document.querySelector('main') || document.body;
       const text = (main.textContent || '')
         .replace(/\d{1,2}:\d{2}:\d{2}\s?[AP]M/gi, 'TIME')
+        .replace(/Live · \d+ others? online|Connecting…|Reconnecting…/g, 'CHAT-STATUS')
         .replace(/\s+/g, ' ')
         .trim();
       const tags = [...main.querySelectorAll('*')].map((el) => el.tagName.toLowerCase());
@@ -2012,8 +2027,13 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     /**
      * Wait until the page has actually hydrated, instead of sleeping and hoping.
      *
-     * The counter is the readiness signal because it is the one thing on this
-     * page that is interactive in BOTH builds, so it must come up on either side.
+     * The counter is the readiness signal because it is the component the
+     * assertions below actually drive. It is not the only interactive element
+     * on the page (<chat-box> is here too, and <theme-toggle> is in the root
+     * layout), so this is a wait for the thing under test, not a whole-page
+     * hydration barrier. Content that is not a function of elision, including
+     * chat-box's socket-driven status line, is normalised out of the snapshot
+     * above rather than waited on.
      *
      * The signal is that the ELEMENT INSTANCE has been upgraded, tested with
      * `instanceof` against the registered constructor. Nothing weaker works
@@ -2040,11 +2060,17 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
           const C = customElements.get('my-counter');
           return !!(C && document.querySelector('my-counter') instanceof C);
         }, { timeout: 15000, polling: 50 });
-      } catch {
+      } catch (waitErr) {
         // Say what failed and what it most likely means. A bare puppeteer
         // "Waiting failed: 15000ms exceeded" names neither the page nor the
         // condition, which is the same diagnostic dead end the old off-by-one
         // counter assertion was. Report what is actually on the page.
+        //
+        // Only a genuine timeout is evidence about hydration. waitForFunction
+        // also rejects for reasons that say nothing about it (a detached frame,
+        // a target crash, a navigation mid-wait), so those are rethrown as
+        // themselves rather than relabelled as a suspected elision defect.
+        if (!/timeout|Waiting failed/i.test(String(waitErr && waitErr.message))) throw waitErr;
         const state = await p.evaluate(() => {
           const C = customElements.get('my-counter');
           return {
@@ -2053,13 +2079,16 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
             upgraded: !!(C && document.querySelector('my-counter') instanceof C),
           };
         }).catch(() => null);
-        throw new Error(
-          `${which} page never upgraded <my-counter> within 15s `
-          + `(customElements.define ${state?.defined ? 'ran' : 'DID NOT run'}, `
-          + `host ${state?.host ? 'present' : 'absent'}, `
-          + `instance ${state?.upgraded ? 'upgraded' : 'NOT upgraded'}). `
-          + 'If define never ran, the component module was not served: elision may have wrongly dropped it.',
-        );
+        // Never print an unobserved state as a fact. When the probe itself
+        // fails there is nothing to report, and asserting "define DID NOT run"
+        // from a null reading would send the next reader after the wrong bug.
+        const detail = state
+          ? `customElements.define ${state.defined ? 'ran' : 'DID NOT run'}, `
+            + `host ${state.host ? 'present' : 'absent'}, `
+            + `instance ${state.upgraded ? 'upgraded' : 'NOT upgraded'}`
+            + (state.defined ? '' : '. If define never ran, the component module was not served: elision may have wrongly dropped it')
+          : 'the page could not be probed for its state, so nothing is known beyond the timeout';
+        throw new Error(`${which} page never upgraded <my-counter> within 15s (${detail}).`);
       }
     };
 
@@ -2097,13 +2126,31 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       // The click sets a reactive property, and that re-render is batched to a
       // microtask, so the new value is NOT readable synchronously. Wait for it
       // to land on both sides rather than sleeping a guessed interval.
-      const settled = (p) => p.waitForFunction(
-        (want) => parseInt(document.querySelector('my-counter')?.querySelector('output')?.textContent.trim(), 10) === want,
-        { timeout: 10000, polling: 25 },
-        onSeed + 1,
-      ).catch(() => {});
-      await settled(page);
-      await settled(offPage);
+      //
+      // A failure here is REPORTED, not swallowed. Discarding it would leave
+      // the run to fall through to the on-vs-off assertion below and fail as
+      // `on=4, off=3`, which is precisely the misleading message this block is
+      // supposed to stop producing: it names a counter mismatch when what
+      // actually happened is that one side never applied its click. This wait
+      // knows which side it was and what the value got stuck on, so it says so.
+      const settled = async (p, which) => {
+        try {
+          await p.waitForFunction(
+            (want) => parseInt(document.querySelector('my-counter')?.querySelector('output')?.textContent.trim(), 10) === want,
+            { timeout: 10000, polling: 25 },
+            onSeed + 1,
+          );
+        } catch (err) {
+          if (!/timeout|Waiting failed/i.test(String(err && err.message))) throw err;
+          const got = await getCounterValue(p).catch(() => null);
+          throw new Error(
+            `${which} counter never reached ${onSeed + 1} within 10s of the click (still ${got}). `
+            + 'The click did not take effect on that side.',
+          );
+        }
+      };
+      await settled(page, 'ON');
+      await settled(offPage, 'OFF');
       const onAfter = await getCounterValue(page);
       const offAfter = await getCounterValue(offPage);
       assert.equal(onAfter, offAfter, `counter increments identically on vs off (on=${onAfter}, off=${offAfter})`);
@@ -2111,9 +2158,13 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     });
 
     test('the fully-static route renders identically on vs off', async () => {
-      // This route is fully static, so there is no component to hydrate and
-      // nothing to poll for. `load` (every subresource settled) is the real
-      // condition the old sleep was standing in for.
+      // This route ships no component of its OWN (its page module is dropped),
+      // but it is not JS-free: the boot re-emits the root layout's
+      // theme-toggle, which loads @webjsdev/core and enables the client router
+      // (see the docstring on examples/blog/app/static-info/page.ts). Nothing
+      // inside <main> depends on that, which is the scope this asserts on, so
+      // there is no component here to poll for and `load` (every subresource
+      // settled) is the real condition the old sleep stood in for.
       await page.goto(`${baseUrl}/static-info`, { waitUntil: 'load', timeout: 30000 });
       await offPage.goto(`${offBaseUrl}/static-info`, { waitUntil: 'load', timeout: 30000 });
       const onSnap = await observableMain(page);
@@ -3175,20 +3226,30 @@ async function getCounterValue(p) {
  * @param {'Increment'|'Decrement'} label
  */
 async function clickCounterButton(p, label) {
-  // Throw rather than optional-chain into a no-op. A `btn?.click()` on a
-  // not-yet-hydrated page silently does nothing, the counter stays on its seed,
-  // and the failure surfaces one assertion later as a baffling off-by-one
-  // (`on=4, off=3`) instead of naming its own cause. That cost a real
-  // investigation, so make the miss say what it is.
-  const clicked = await p.evaluate((lbl) => {
+  // Refuse to click an element that cannot respond, and say so.
+  //
+  // Checking the BUTTON exists is not that check, which is the trap worth
+  // spelling out: SSR emits the counter's buttons and output, so on a page that
+  // has not hydrated the button is present, `click()` runs, and nothing at all
+  // happens. A helper that only guards `!btn` therefore reports success for the
+  // one failure it was written to catch, and the miss resurfaces an assertion
+  // later as a baffling off-by-one (`on=4, off=3`).
+  //
+  // The element being UPGRADED is the real precondition: before upgrade it is a
+  // plain HTMLElement, after it is an instance of the registered class, and
+  // that is the first moment the `@click` binding exists.
+  const problem = await p.evaluate((lbl) => {
     const counter = document.querySelector('my-counter');
     if (!counter) return 'no <my-counter> on the page';
+    const C = customElements.get('my-counter');
+    if (!C) return 'my-counter is not registered (its module never ran), so the SSR buttons have no listener';
+    if (!(counter instanceof C)) return 'my-counter is registered but this instance is not upgraded yet, so its buttons have no listener';
     const btn = counter.querySelector(`button[aria-label="${lbl}"]`);
-    if (!btn) return `<my-counter> has no button[aria-label="${lbl}"] yet (not hydrated?)`;
+    if (!btn) return `<my-counter> has no button[aria-label="${lbl}"] (SSR markup changed?)`;
     btn.click();
     return null;
   }, label);
-  if (clicked) throw new Error(`clickCounterButton(${label}): ${clicked}`);
+  if (problem) throw new Error(`clickCounterButton(${label}): ${problem}`);
 }
 
 /**
