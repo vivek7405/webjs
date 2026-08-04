@@ -13,8 +13,11 @@ const BASE_COLORS = ['neutral', 'stone', 'zinc', 'mauve', 'olive', 'mist', 'taup
  * The stylesheet `init` defaults to. It is `styles/globals.css`, NOT
  * `app/globals.css`, because in WebJs `app/` is routing-only, so a
  * non-routing stylesheet lives outside it.
+ *
+ * Exported so `webjs create` can be checked against it rather than against a
+ * hand-copied literal (`test/scaffolds/scaffold-ui-integration.test.js`).
  */
-const DEFAULT_TAILWIND_CSS = 'styles/globals.css';
+export const DEFAULT_TAILWIND_CSS = 'styles/globals.css';
 
 /**
  * The alias map `init` writes into `components.json`. These are the paths a
@@ -27,8 +30,13 @@ const DEFAULT_TAILWIND_CSS = 'styles/globals.css';
  * the helper into the `lib/utils/` DIRECTORY is what lets the client-only
  * `onBeforeCache()` helper sit beside it at `lib/utils/dom.ts` (#819), which
  * is where `add` rewrites the registry's `'../lib/dom.ts'` import to point.
+ *
+ * Exported for the same drift check as {@link DEFAULT_TAILWIND_CSS}. The two
+ * generators used to disagree here (init said `lib/utils`, the scaffold said
+ * `lib/utils/cn`) with only a comment claiming they matched, so the agreement
+ * is asserted now rather than described.
  */
-const DEFAULT_ALIASES = {
+export const DEFAULT_ALIASES = {
   components: 'components',
   utils: 'lib/utils/cn',
   ui: 'components/ui',
