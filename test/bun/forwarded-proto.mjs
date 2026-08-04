@@ -24,12 +24,15 @@
  * Run from the repo root so the bare `@webjsdev/server` specifier resolves.
  *
  * The failure is reported by an explicit `process.exit(1)` rather than by letting
- * the assertion propagate, because `startServer` installs an `uncaughtException`
- * handler that begins a graceful shutdown and exits 0. On Bun a top-level
- * assertion failure routes through that handler, so a broken proof would exit 0
- * and CI's `bun test/bun/<file>.mjs` step would go GREEN on a real regression
- * (verified: node exits 1, Bun exits 0). Filed separately as #1092 for the other
- * proof scripts, which all share this shape.
+ * the assertion propagate. That is now BELT AND BRACES rather than load-bearing:
+ * it was written when `startServer`'s `uncaughtException` handler began a
+ * graceful shutdown that exited 0 unconditionally, so a top-level assertion
+ * failure was swallowed and CI's `bun test/bun/<file>.mjs` step went GREEN on a
+ * real regression. #1092 fixed that at the source (a fatal shutdown now exits 1),
+ * and the note here that only Bun was affected was wrong: node routes a
+ * module-body throw to the same handler and was exiting 0 too. The explicit exit
+ * is kept because this script catches its own failure in a `finally`, so it has
+ * to report the verdict itself either way.
  */
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';

@@ -406,13 +406,17 @@ export function installProcessHandlers(logger, onFatal) {
  * connections (node `server.close`, Bun `server.stop(true)`). Closes the SSE hub,
  * then drains, then exits; hard-exits after 10s if the drain hangs.
  *
- * The exit code reports WHY the process is going down, not whether the drain
- * itself worked. An operator signal (SIGINT / SIGTERM) is a requested stop, so a
- * clean drain exits 0. A FATAL shutdown (the `uncaughtException` handler calling
- * `onFatal`) exits 1 even when the drain is clean, because the process is dying
- * from an error and a supervisor reads only the code (systemd `Restart=on-failure`,
- * Docker, Railway, and a CI step running a `test/bun/*.mjs` proof script, whose
- * failed top-level assertion arrives here as an uncaught exception, #1092).
+ * Exit code, in full. A drain that FAILS is always a failure, so a rejected
+ * `closeServer()` and a drain still hanging at the 10s deadline both exit 1
+ * whatever started them. When the drain SUCCEEDS the code reports why the
+ * process is going down: an operator signal (SIGINT / SIGTERM) is a requested
+ * stop and exits 0, while a FATAL shutdown (the `uncaughtException` handler
+ * calling `onFatal`) exits 1 even though the drain was clean, because the
+ * process is dying from an error and a supervisor reads only the code (systemd
+ * `Restart=on-failure`, Docker, Railway, and a CI step running a
+ * `test/bun/*.mjs` proof script, whose failed top-level assertion arrives here
+ * as an uncaught exception, #1092). So 0 means one thing only: an operator
+ * asked for the stop AND it drained cleanly.
  * @param {{ closeServer: () => Promise<unknown>, hub: SseHub, logger: import('./logger.js').Logger }} opts
  * @returns {(signal: string, opts?: { fatal?: boolean }) => void}
  */

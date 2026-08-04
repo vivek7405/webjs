@@ -118,9 +118,17 @@ try {
     `a failed assertion in a booted proof script must exit non-zero on ${runtime} (got ${failed.code})`,
   );
 
-  // 2. The same script with its assertion satisfied. Without this arm, a fix
-  // that made EVERY script exit non-zero would pass arm 1 and break all of CI.
-  const passing = w('passing.mjs', child(`assert.equal(1, 1);\nawait close();\nprocess.exit(0);`));
+  // 2. The same script with its assertion satisfied, exiting the way a real
+  // proof script does: close the server and let the runtime report the code.
+  // Note what this arm does and does NOT cover. `close` is the plain thunk
+  // `startServer` returns, NOT the `makeShutdown` handler, so this does not
+  // exercise the shutdown path at all; arm 3 is what covers `makeShutdown`'s
+  // zero path. What it catches is a fix to arm 1 that failed scripts
+  // COLLATERALLY (a stray non-zero `process.exitCode`, a close that starts
+  // reporting failure), which is the regression that would red all of CI while
+  // arm 1 stayed green. It is deliberately left without an explicit
+  // `process.exit(0)`, which would pin the code and make the arm vacuous.
+  const passing = w('passing.mjs', child(`assert.equal(1, 1);\nawait close();`));
   const passed = await run(passing);
   assert.equal(
     passed.code, 0,
