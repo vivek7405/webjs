@@ -125,6 +125,62 @@ test('every doc page on disk is reachable from the sidebar', async () => {
   );
 });
 
+test('no two doc pages declare the same metadata title', async () => {
+  // Two pages sharing a title compete for the same query on the domain the
+  // #1098 migration exists to consolidate authority onto, and a reader
+  // arriving from search cannot tell which one answers their question. That
+  // is exactly what /docs/auth and /docs/authentication did: both declared
+  // 'Authentication | WebJs', both rendered <h1>Authentication</h1>, and
+  // their opening paragraphs contradicted each other about whether WebJs
+  // ships auth at all. The sitemap and llms.txt enumerate topics from disk,
+  // so both were submitted to search engines as identically-titled entries.
+  const byTitle = new Map<string, string[]>();
+
+  for (const d of await readdir(DOCS_ROOT, { withFileTypes: true })) {
+    if (!d.isDirectory() || d.name.startsWith('.') || d.name.startsWith('_') || d.name.startsWith('[')) continue;
+    const dir = resolve(DOCS_ROOT, d.name);
+    const files = await readdir(dir).catch(() => [] as string[]);
+    const page = files.find((f) => f === 'page.ts' || f === 'page.js');
+    if (!page) continue;
+    const src = await readFile(resolve(dir, page), 'utf8');
+    // `export const metadata = { title: '...' }`, the shape every docs page uses.
+    const m = src.match(/export\s+const\s+metadata\s*=\s*\{[^}]*?title:\s*['"`]([^'"`]+)['"`]/s);
+    if (!m) continue;
+    const list = byTitle.get(m[1]) ?? [];
+    list.push(d.name);
+    byTitle.set(m[1], list);
+  }
+
+  const collisions = [...byTitle.entries()]
+    .filter(([, dirs]) => dirs.length > 1)
+    .map(([title, dirs]) => `${title} <- ${dirs.sort().join(', ')}`);
+
+  assert.deepEqual(
+    collisions,
+    [],
+    `these doc pages share a metadata title, so they compete for the same query:\n  ${collisions.join('\n  ')}`,
+  );
+});
+
+test('a doc page h1 matches its sidebar label', async () => {
+  // The pair above also disagreed with their own nav entries ('Auth
+  // (Providers)' and 'Authentication' over two <h1>Authentication</h1>s), so
+  // neither entry matched the heading a reader landed on. Scoped to the two
+  // pages the mismatch was found on rather than all of them, because the rest
+  // of the docs use a deliberately shorter nav label than their heading.
+  const layout = await readFile(resolve(DOCS_ROOT, 'layout.ts'), 'utf8');
+  const labelFor = (href: string) => {
+    const m = layout.match(new RegExp(`href:\\s*'${href}',\\s*label:\\s*'([^']+)'`));
+    return m?.[1];
+  };
+
+  for (const slug of ['auth', 'authentication']) {
+    const src = await readFile(resolve(DOCS_ROOT, slug, 'page.ts'), 'utf8');
+    const h1 = src.match(/<h1>([^<]+)<\/h1>/)?.[1];
+    assert.equal(h1, labelFor(`/docs/${slug}`), `/docs/${slug}: <h1> and sidebar label must agree`);
+  }
+});
+
 test('the llms.txt index follows the sidebar order', async () => {
   // The order used to be a hand-copied list that had already drifted from the
   // sidebar, so the AI-facing index put Runtime and Security in an

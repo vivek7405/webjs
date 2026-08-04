@@ -1,11 +1,12 @@
 import { html } from '@webjsdev/core';
 
-export const metadata = { title: 'Authentication | WebJs' };
+export const metadata = { title: 'Auth Providers (createAuth) | WebJs' };
 
 export default function Auth() {
   return html`
-    <h1>Authentication</h1>
-    <p>WebJs provides NextAuth-style authentication with OAuth providers, credentials login, and JWT sessions. No external auth library needed.</p>
+    <h1>Auth providers (createAuth)</h1>
+    <p>WebJs ships <code>createAuth()</code>, a NextAuth-style auth surface with OAuth providers, credentials login, and JWT sessions. Reach for this page when you want providers and sessions handled for you, and no external auth library in the dependency tree.</p>
+    <p>It is not the only route. If you want to own the session format, the password hashing, and the route-protection rules yourself, build on the framework primitives instead, which is what <a href="/docs/authentication">Build your own authentication</a> covers and what the blog example does. Pick <code>createAuth()</code> for OAuth and a batteries-included setup, pick the primitives when you want full control of the session.</p>
 
     <h2>Setup</h2>
     <pre>// lib/auth.server.ts: create once
