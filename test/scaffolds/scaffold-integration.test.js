@@ -615,8 +615,10 @@ test('scaffoldApp: template placeholder substitution in copied files', async () 
   const cwd = await tempCwd();
   const restore = muteConsole();
   try {
-    await scaffoldApp('PlaceholderTest', cwd, { template: 'full-stack' });
-    const appDir = join(cwd, 'PlaceholderTest');
+    // A valid npm-shaped name (#1066 validates the name at the boundary), still
+    // distinctive enough that a missed substitution would be obvious.
+    await scaffoldApp('placeholder-test', cwd, { template: 'full-stack' });
+    const appDir = join(cwd, 'placeholder-test');
 
     // Walk a few template-copied files and verify {{APP_NAME}} was replaced.
     const filesToCheck = ['AGENTS.md', 'CONVENTIONS.md', 'CLAUDE.md'];

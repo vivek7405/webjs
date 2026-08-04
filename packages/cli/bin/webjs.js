@@ -8,6 +8,7 @@ import { dbGenerateTtyHint } from '../lib/db-hints.js';
 import { checkNodeInline, nodeInlineMessage } from '../lib/node-preflight.js';
 import { loadAppEnv, resolvePort } from '../lib/port.js';
 import { planDevSupervisor } from '../lib/dev-supervisor.js';
+import { checkAppName, appNameErrorMessage } from '../lib/app-name.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const [cmd, ...rest] = process.argv.slice(2);
@@ -876,6 +877,16 @@ SQLite for persistence (already wired up). Never store app data in JSON
 files.
 
 Full docs: https://webjs.dev/docs`);
+        process.exit(1);
+      }
+      // The name lands in the generated package.json `name` field AND is
+      // interpolated into generated source (#1066), so a quote / backtick /
+      // `${` in it emits a file that fails to parse on the first `webjs dev`.
+      // Validate before anything is written, so a bad name leaves no directory
+      // behind. `scaffoldApp` re-checks for programmatic callers.
+      const nameCheck = checkAppName(name);
+      if (!nameCheck.ok) {
+        console.error(appNameErrorMessage(name, nameCheck.reason));
         process.exit(1);
       }
       const noInstall = rest.includes('--no-install');

@@ -75,6 +75,25 @@ lib/
                          `exports`, so it resolves the `.` main entry, walks to
                          the package root, and reads the `bin` field. Tests:
                          `test/resolve-bin/`.
+  app-name.js            PURE app-name validator for `webjs create <name>` (#1066).
+                         `checkAppName(name)` returns `{ ok }` or `{ ok: false,
+                         reason }`, `appNameErrorMessage()` renders the CLI's
+                         multi-line guidance, `assertValidAppName()` throws the
+                         single-line form. The rule is npm package-name
+                         compatibility, because the name is BOTH the generated
+                         package.json `name` AND a value interpolated into
+                         generated source as a template literal (app/page.ts
+                         `metadata.title`, the api root route handler, the
+                         `{{APP_NAME}}` substitution), so a quote / backtick /
+                         `${` emitted a file that failed to parse on the fresh
+                         app's first boot. Validating once at the boundary beats
+                         escaping at each interpolation site, since that list
+                         grows every time the scaffold emits a new file. Shared
+                         by `bin/webjs.js`, `scaffoldApp()`, and the
+                         `create-webjs` wrapper (`npm create webjs` /
+                         `bun create webjs`), so all three state one rule.
+                         Tests: `test/app-name/` + `test/scaffolds/
+                         scaffold-template-validation.test.js`.
   create.js              `webjs create <name>` scaffold logic. Copies
                          `templates/` into the new app, writes
                          package.json + tsconfig + Drizzle db layer,
