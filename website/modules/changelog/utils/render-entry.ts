@@ -28,17 +28,47 @@ function inline(s: string): string {
   return out;
 }
 
+/**
+ * One block of an entry's body: a paragraph of soft-wrapped lines, or a
+ * nested bullet list whose items are themselves soft-wrapped lines.
+ */
+type Block =
+  | { kind: 'p'; lines: string[] }
+  | { kind: 'ul'; items: string[][] };
+
 /** Render the body of one changelog entry: h1 / h2 / bulleted lists / paragraphs. */
 export function renderEntryBody(md: string): string {
   const lines = md.split('\n');
   const out: string[] = [];
   let inList = false;
-  let curItem: string[] = [];
+  // An entry item is a sequence of blocks, not a flat run of lines. A blank
+  // line inside an item is a paragraph BREAK within it (CommonMark reads a
+  // 2-space-indented paragraph after a blank as list-item continuation), so
+  // it closes the open block rather than the item. Closing the item there is
+  // what used to turn one multi-paragraph entry into a stack of sibling
+  // bullets: 3 entries rendered as 23 peer list items.
+  let itemOpen = false;
+  let blocks: Block[] = [];
+  let openBlock: Block | null = null;
+
+  function pushBlock(b: Block) { blocks.push(b); openBlock = b; }
+
+  function renderBlocks(bs: Block[]): string {
+    // The overwhelmingly common entry is a single line with no body. Emit it
+    // bare so its markup is unchanged by the multi-paragraph support.
+    if (bs.length === 1 && bs[0].kind === 'p') return inline(bs[0].lines.join(' '));
+    return bs.map((b) => b.kind === 'p'
+      ? `<p class="my-2 first:mt-0 last:mb-0">${inline(b.lines.join(' '))}</p>`
+      : `<ul class="list-disc pl-5 space-y-1 my-2 last:mb-0">${b.items.map((it) => `<li>${inline(it.join(' '))}</li>`).join('')}</ul>`
+    ).join('');
+  }
 
   function flushItem() {
-    if (curItem.length) {
-      out.push(`<li class="text-fg-muted text-[14px] leading-relaxed">${inline(curItem.join(' '))}</li>`);
-      curItem = [];
+    if (itemOpen) {
+      out.push(`<li class="text-fg-muted text-[14px] leading-relaxed">${renderBlocks(blocks)}</li>`);
+      itemOpen = false;
+      blocks = [];
+      openBlock = null;
     }
   }
   function endList() {
@@ -47,6 +77,12 @@ export function renderEntryBody(md: string): string {
   }
   function startList() {
     if (!inList) { out.push('<ul class="list-disc pl-5 space-y-2 my-3">'); inList = true; }
+  }
+  function openItem(first: string) {
+    itemOpen = true;
+    blocks = [];
+    openBlock = null;
+    pushBlock({ kind: 'p', lines: [first] });
   }
 
   for (const raw of lines) {
@@ -58,13 +94,27 @@ export function renderEntryBody(md: string): string {
       endList();
       out.push(`<h4 class="font-mono text-[11px] uppercase tracking-[0.15em] font-semibold text-fg-subtle mt-4 mb-1.5">${inline(line.slice(3).trim())}</h4>`);
     } else if (/^- /.test(line)) {
+      // A top-level entry, recognised by its column-0 marker. Checking this
+      // BEFORE the indented-continuation branch is what stops an open item
+      // swallowing the entry that follows it.
       flushItem();
       startList();
-      curItem.push(line.slice(2).trim());
-    } else if (inList && /^ {2,}\S/.test(line)) {
-      curItem.push(line.trim());
+      openItem(line.slice(2).trim());
+    } else if (itemOpen && /^ {2,}[-*] /.test(line)) {
+      const text = line.trim().slice(2).trim();
+      if (openBlock && openBlock.kind === 'ul') openBlock.items.push([text]);
+      else pushBlock({ kind: 'ul', items: [[text]] });
+    } else if (itemOpen && /^ {2,}\S/.test(line)) {
+      const text = line.trim();
+      // A lazy continuation of the sub-item when a nested list is open, a
+      // soft-wrapped line when a paragraph is, and a fresh paragraph when a
+      // blank line closed whatever came before.
+      if (openBlock && openBlock.kind === 'ul') openBlock.items[openBlock.items.length - 1].push(text);
+      else if (openBlock && openBlock.kind === 'p') openBlock.lines.push(text);
+      else pushBlock({ kind: 'p', lines: [text] });
     } else if (line.trim() === '') {
-      flushItem();
+      if (itemOpen) openBlock = null;
+      else flushItem();
     } else {
       endList();
       out.push(`<p class="text-fg-muted text-[14px] leading-relaxed my-3">${inline(line.trim())}</p>`);
