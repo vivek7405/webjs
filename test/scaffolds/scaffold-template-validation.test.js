@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { stripTypeScriptTypes } from 'node:module';
 
 import { scaffoldApp } from '../../packages/cli/lib/create.js';
 
@@ -108,6 +109,11 @@ test('a valid kebab name still scaffolds, and its title survives verbatim', asyn
     // name; this is what the guard has to leave untouched.
     const page = await readFile(join(cwd, 'my-app', 'app', 'page.ts'), 'utf8');
     assert.match(page, /title: 'My App'/);
+    // And the emitted page must survive the TypeScript stripper, which is the
+    // exact step a name-borne syntax error fails. Reverting the guard and
+    // scaffolding `bad'name` emits `title: 'Bad'Name',` here, and this call is
+    // what throws `Expected ',', got 'ident'` (the fresh app's first-boot 500).
+    assert.doesNotThrow(() => stripTypeScriptTypes(page, { mode: 'strip' }));
   } finally {
     console.log = restoreLog;
     await rm(cwd, { recursive: true, force: true });
