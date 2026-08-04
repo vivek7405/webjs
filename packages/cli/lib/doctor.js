@@ -73,6 +73,7 @@ export const DOCTOR_CODES = {
   'git-hook': 'GIT_HOOK',
   'Page/layout elision (carrier hygiene)': 'ELISION_CARRIERS',
   'Static build outputs (dev.regenerate freshness)': 'STATIC_ASSET_FRESHNESS',
+  'Asset urls (unmarked stylesheet links)': 'UNMARKED_ASSET_LINKS',
 };
 
 /**
@@ -967,6 +968,128 @@ async function checkStaticAssetFreshness(appDir) {
   };
 }
 
+// Directories the page/layout walk never descends into (deps, VCS, framework
+// and build caches). Mirrors FRESHNESS_IGNORE; kept separate so either walk can
+// change its exclusions without silently moving the other.
+const ROUTE_WALK_IGNORE = new Set(['node_modules', '.git', '.webjs', 'dist', '.next', 'coverage']);
+
+/** A page or layout module: the render-on-the-server-only files where `asset()` belongs. @type {RegExp} */
+const ROUTE_MODULE_RE = /^(?:page|layout)\.(?:js|ts|mjs|mts)$/;
+
+/**
+ * A `<link rel="stylesheet">` whose `href` is a STATIC, quoted, root-absolute
+ * `/public/…` literal, i.e. one nobody wrapped in `asset()`.
+ *
+ * Deliberately narrow, so a flag is never a guess:
+ *   - `rel` must be `stylesheet` (see the icon note on the check itself).
+ *   - the href must be QUOTED. A hole (`href=${asset('/public/app.css')}`, or
+ *     any other expression) is left alone, because its value is not decidable
+ *     here and the marked form is exactly the shape that uses one.
+ *   - the path must be under `/public/`, the only prefix `asset()` fingerprints.
+ *     A root remap (`/favicon.ico`, `/sw.js`) is returned unchanged by
+ *     `resolveAssetUrl`, so advising on one would advise a non-fix.
+ *
+ * `rel` is matched on either side of `href`, since attribute order is free.
+ * @type {RegExp}
+ */
+const UNMARKED_STYLESHEET_RE =
+  /<link\b(?=[^>]*\brel\s*=\s*["']?stylesheet\b)[^>]*\bhref\s*=\s*["'](\/public\/[^"']*)["'][^>]*>/gi;
+
+/**
+ * Collect every `app/**` page + layout module path, depth-first.
+ * Best-effort: an unreadable directory contributes nothing rather than throwing.
+ * @param {string} dir
+ * @param {string[]} [out]
+ * @returns {string[]}
+ */
+function collectRouteModules(dir, out = []) {
+  let entries;
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  for (const e of entries) {
+    if (e.name.startsWith('.') || ROUTE_WALK_IGNORE.has(e.name)) continue;
+    if (e.isSymbolicLink()) continue; // never follow: can cycle or escape into deps
+    const abs = join(dir, e.name);
+    if (e.isDirectory()) collectRouteModules(abs, out);
+    else if (ROUTE_MODULE_RE.test(e.name)) out.push(abs);
+  }
+  return out;
+}
+
+/**
+ * ADVISORY (#1095): a page or layout hand-writes a `<link rel="stylesheet"
+ * href="/public/…">` without `asset()`, so the url is un-versioned and a deploy
+ * cannot bust a CDN's copy of it.
+ *
+ * The failure this names was caught in production on webjs.dev: the edge served
+ * a `public/tailwind.css` built BEFORE the deploy (`cf-cache-status: HIT`,
+ * `max-age=14400`) against post-deploy HTML, so the new page rendered with its
+ * content edge to edge and its grid collapsed, because the cached css was
+ * missing the arbitrary-value utilities that page introduced. It is invisible
+ * while a deploy only restyles existing classes and maximally visible the moment
+ * one adds a page using new utilities.
+ *
+ * Why this is an ADVISORY over the author's SOURCE rather than a rewrite of the
+ * framework's OUTPUT. The first attempt at the automatic form (#1196) matched
+ * urls in the assembled HTML, and two deep-review rounds found six major
+ * defects, five of them one bug: at that layer framework output and author data
+ * are indistinguishable, so the matcher kept editing things it did not own. That
+ * is why `asset()` (#1194) is opt-in, and it is what Rails (a
+ * `stylesheet_link_tag` helper over a digest manifest) and Remix (a hashed url
+ * from the build graph, surfaced through `links()`) both do: take the
+ * fingerprint from an authoritative source at the point the url is PRODUCED, and
+ * never rewrite a rendered document. The gap `asset()` leaves is purely
+ * ergonomic. In Rails the helper is the only idiomatic way to write the tag, so
+ * forgetting it is nearly impossible; in WebJs the `<link>` is hand-written HTML,
+ * so it is easy to omit. This check closes exactly that gap, at authoring time,
+ * where the author's meaning is unambiguous and nothing is rewritten.
+ *
+ * Scoped to `rel="stylesheet"` on purpose. An icon is a legitimate deliberate
+ * NON-mark (the website leaves its favicons bare so the SEO repo-health tests
+ * can parse the hrefs literally), and a `rel="preload"` must NOT be marked at
+ * all, since its versioned hint could never match the unversioned request a CSS
+ * `url()` actually makes. Flagging either would nag about a correct choice.
+ *
+ * WARN only: an un-versioned stylesheet still SERVES correctly, it just caches
+ * badly, and an app fronted by no CDN may not care.
+ * @param {string} appDir
+ * @returns {Promise<DoctorResult>}
+ */
+async function checkUnmarkedAssetLinks(appDir) {
+  const name = 'Asset urls (unmarked stylesheet links)';
+  const routeDir = join(appDir, 'app');
+  if (!existsSync(routeDir)) {
+    return { name, status: 'pass', message: 'no app/ directory to analyse' };
+  }
+  const findings = [];
+  for (const file of collectRouteModules(routeDir)) {
+    let src;
+    try { src = await readFile(file, 'utf8'); } catch { continue; }
+    if (!src.includes('<link')) continue; // cheap bail before any regex work
+    UNMARKED_STYLESHEET_RE.lastIndex = 0;
+    for (const m of src.matchAll(UNMARKED_STYLESHEET_RE)) {
+      // 1-indexed line of the match, for a jump-to reference.
+      const line = src.slice(0, m.index).split('\n').length;
+      findings.push({ file, line, href: m[1] });
+    }
+  }
+  if (findings.length === 0) {
+    return { name, status: 'pass', message: 'every page/layout stylesheet link is content-hashed (or has none)' };
+  }
+  const rel = (f) => relative(appDir, f) || f;
+  return {
+    name,
+    status: 'warn',
+    message:
+      `${findings.length} stylesheet link(s) are served at an un-versioned url, so a deploy cannot bust a cached copy:\n` +
+      findings.map((f) => `    ${rel(f.file)}:${f.line} href="${f.href}"`).join('\n'),
+    fix:
+      "Wrap the path in asset(): `import { asset } from '@webjsdev/core'` then "
+      + '`<link rel="stylesheet" href=${asset(\'/public/app.css\')}>`. It appends a content hash in prod '
+      + '(the framework then serves that url immutable for a year) and is a no-op in dev and in the browser. '
+      + 'Call it inside the render function, not at module scope.',
+  };
+}
+
 /**
  * Probe whether `@webjsdev/core` resolves from `appDir`. Node resolution is
  * directory-relative, so this must probe FROM the app (not the CLI's own
@@ -1058,6 +1181,7 @@ export async function runDoctorChecks(appDir, opts = {}) {
     Promise.resolve(checkGitHook(appDir)),
     checkElisionCarriers(appDir),
     checkStaticAssetFreshness(appDir),
+    checkUnmarkedAssetLinks(appDir),
   ]);
   // Attach the stable machine code to every result (#975). Centralized here so
   // each check function stays free of the code-contract concern.

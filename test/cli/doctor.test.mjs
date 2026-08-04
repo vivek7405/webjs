@@ -870,3 +870,81 @@ test('freshness advisory WARNs (never fails) when a source is newer than the out
   assert.match(r.message, /public\/tailwind\.css/);
   assert.equal(results.filter((x) => x.status === 'fail').length, 0, 'advisory only, never a hard fail');
 });
+
+// ---------------------------------------------------------------------------
+// Unmarked stylesheet links (#1095). An advisory over the author's SOURCE: a
+// page/layout that hand-writes `<link rel="stylesheet" href="/public/…">`
+// without `asset()` serves it at an un-versioned url, so a CDN keeps the
+// pre-deploy bytes for the whole TTL. Scoped tightly on purpose, so the
+// negative cases below are the real contract: a cross-origin sheet, an icon,
+// and a `rel=preload` are all legitimate NON-marks and must never be flagged.
+// ---------------------------------------------------------------------------
+
+const ASSET_LINK_CHECK = 'Asset urls (unmarked stylesheet links)';
+
+test('asset-link advisory WARNs on a page/layout stylesheet link missing asset()', async () => {
+  const dir = tmpDir();
+  write(dir, 'app/layout.ts', [
+    "import { html } from '@webjsdev/core';",
+    'export default function Layout({ children }) {',
+    '  return html`<link rel="stylesheet" href="/public/tailwind.css">${children}`;',
+    '}',
+  ].join('\n'));
+  const results = await runDoctorChecks(dir, baseOpts());
+  const r = byName(results, ASSET_LINK_CHECK);
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /app\/layout\.ts:3/, 'names the file and line');
+  assert.match(r.message, /\/public\/tailwind\.css/);
+  assert.match(r.fix, /asset\(/, 'the fix names the helper');
+  assert.equal(results.filter((x) => x.status === 'fail').length, 0, 'advisory only, never a hard fail');
+});
+
+test('asset-link advisory PASSES when the href is wrapped in asset()', async () => {
+  const dir = tmpDir();
+  write(dir, 'app/layout.ts', [
+    "import { html, asset } from '@webjsdev/core';",
+    'export default function Layout({ children }) {',
+    "  return html`<link rel=\"stylesheet\" href=${asset('/public/tailwind.css')}>${children}`;",
+    '}',
+  ].join('\n'));
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'pass');
+});
+
+test('asset-link advisory leaves a cross-origin stylesheet, an icon, and a preload alone', async () => {
+  const dir = tmpDir();
+  write(dir, 'app/layout.ts', [
+    "import { html } from '@webjsdev/core';",
+    'export default function Layout({ children }) {',
+    '  return html`',
+    '    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=X">',
+    '    <link rel="icon" href="/public/favicon.svg" type="image/svg+xml">',
+    '    <link rel="preload" href="/public/font.woff2" as="font" crossorigin>',
+    '    ${children}`;',
+    '}',
+  ].join('\n'));
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(
+    r.status,
+    'pass',
+    'a CDN sheet keeps its exact url, an icon is a valid deliberate non-mark, and a preload MUST stay unversioned to match the CSS url() request',
+  );
+});
+
+test('asset-link advisory PASSES when there is no app/ directory', async () => {
+  const dir = tmpDir();
+  write(dir, 'package.json', '{"name":"x"}');
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'pass');
+});
+
+test('asset-link advisory reports every occurrence across pages and layouts', async () => {
+  const dir = tmpDir();
+  write(dir, 'app/layout.ts', 'export default () => `<link rel="stylesheet" href="/public/a.css">`;');
+  write(dir, 'app/blog/page.ts', 'export default () => `<link rel="stylesheet" href="/public/b.css">`;');
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /a\.css/);
+  assert.match(r.message, /b\.css/);
+  assert.match(r.message, /^2 stylesheet link/);
+});
