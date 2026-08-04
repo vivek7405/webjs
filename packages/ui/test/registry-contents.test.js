@@ -310,3 +310,41 @@ test('accordion : supports single/multiple + collapsible', { skip }, () => {
   assert.match(src, /'multiple'|"multiple"/);
   assert.match(src, /collapsible/);
 });
+
+// #1080: checkbox / radio draw their checked indicator from an injected
+// stylesheet that keys on a `data-slot` attribute, and neither class helper
+// carries a fallback fill for the checked state (radioClass has no
+// checked:bg-* at all). So an @example that omits the attribute teaches a
+// copy-paste whose checked state is conveyed by colour alone, the WCAG 1.4.1
+// trap both examples used to ship. Assert the pairing at the source, since the
+// examples are what `webjsui view` and the MCP `ui` tool hand to an agent.
+test('checkbox / radio examples pair the class helper with its data-slot', { skip }, async () => {
+  const { extractExample } = await import('../src/registry/example.js');
+  for (const [name, type, slot] of [
+    ['checkbox', 'checkbox', 'checkbox'],
+    ['radio-group', 'radio', 'radio'],
+  ]) {
+    const ex = extractExample(readSource(name));
+    const inputs = ex.match(new RegExp(`<input[^>]*type="${type}"[^>]*>`, 'g')) ?? [];
+    assert.ok(inputs.length > 0, `${name}: @example has no ${type} input to check`);
+    for (const tag of inputs) {
+      assert.ok(
+        tag.includes(`data-slot="${slot}"`),
+        `${name}: @example input omits data-slot="${slot}", so its checked state would render by colour alone: ${tag}`,
+      );
+    }
+  }
+});
+
+// #1080: the radio example's role="radiogroup" container had no accessible
+// name, so a screen reader announced "radio group" with no idea what was being
+// chosen. Either aria-labelledby or a fieldset/legend satisfies this.
+test('radio-group example names its group', { skip }, async () => {
+  const { extractExample } = await import('../src/registry/example.js');
+  const ex = extractExample(readSource('radio-group'));
+  const named =
+    /role="radiogroup"[^>]*aria-label(?:ledby)?=/.test(ex) ||
+    /aria-label(?:ledby)?=[^>]*role="radiogroup"/.test(ex) ||
+    /<legend/.test(ex);
+  assert.ok(named, 'radio-group @example leaves its radiogroup unnamed');
+});

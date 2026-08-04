@@ -259,6 +259,84 @@ suite('ui-toggle-group a11y', () => {
     assert.equal(document.activeElement, items[2], 'focus on last item');
     root.remove();
   });
+
+  // Finding 11: the item declared only value + pressed, so a group item could
+  // not be disabled at all and _items() would not have skipped one. Since the
+  // group is a SINGLE tab stop, focus landing on a disabled item could not be
+  // tabbed past, so skipping it is what keeps the group usable.
+  async function mountDisabled() {
+    const root = await mount(html`
+      <ui-toggle-group type="single" value="a">
+        <ui-toggle-group-item value="a">a</ui-toggle-group-item>
+        <ui-toggle-group-item value="b" disabled>b</ui-toggle-group-item>
+        <ui-toggle-group-item value="c">c</ui-toggle-group-item>
+      </ui-toggle-group>
+    `);
+    return { root, items: [...root.querySelectorAll('ui-toggle-group-item')] };
+  }
+
+  test('a disabled item reports aria-disabled', async () => {
+    const { root, items } = await mountDisabled();
+    assert.equal(items[1].getAttribute('aria-disabled'), 'true', 'disabled item');
+    assert.equal(items[0].getAttribute('aria-disabled'), 'false', 'enabled items are not');
+    root.remove();
+  });
+
+  test('ArrowRight skips over a disabled item', async () => {
+    const { root, items } = await mountDisabled();
+    items[0].focus();
+    items[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await tick();
+    assert.equal(document.activeElement, items[2], 'jumped past the disabled item');
+    root.remove();
+  });
+
+  test('a disabled item never holds the tab stop', async () => {
+    const { root, items } = await mountDisabled();
+    assert.equal(items[1].tabIndex, -1, 'disabled item is out of the tab order');
+    const tabbable = items.filter((i) => i.tabIndex === 0);
+    assert.equal(tabbable.length, 1, 'exactly one tab stop');
+    assert.ok(!tabbable[0].disabled, 'and it is an enabled item');
+    root.remove();
+  });
+
+  test('a disabled item refuses click and Enter', async () => {
+    const { root, items } = await mountDisabled();
+    const group = root.querySelector('ui-toggle-group');
+    items[1].click();
+    await tick();
+    assert.equal(group.getAttribute('value'), 'a', 'click did not select it');
+    items[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await tick();
+    assert.equal(group.getAttribute('value'), 'a', 'Enter did not select it either');
+    root.remove();
+  });
+
+  // Disabling the item that currently holds the tab stop must hand the stop to
+  // an enabled sibling, or the group becomes unreachable by keyboard.
+  test('disabling the tabbable item moves the tab stop to an enabled one', async () => {
+    const { root, items } = await mountDisabled();
+    const held = items.find((i) => i.tabIndex === 0);
+    held.disabled = true;
+    await tick();
+    await tick();
+    const tabbable = items.filter((i) => i.tabIndex === 0);
+    assert.equal(tabbable.length, 1, 'still exactly one tab stop');
+    assert.ok(!tabbable[0].disabled, 'and it moved to an enabled item');
+    root.remove();
+  });
+
+  test('an all-disabled group leaves no item in the tab order', async () => {
+    const root = await mount(html`
+      <ui-toggle-group type="single">
+        <ui-toggle-group-item value="a" disabled>a</ui-toggle-group-item>
+        <ui-toggle-group-item value="b" disabled>b</ui-toggle-group-item>
+      </ui-toggle-group>
+    `);
+    const items = [...root.querySelectorAll('ui-toggle-group-item')];
+    assert.equal(items.filter((i) => i.tabIndex === 0).length, 0, 'no dead-end tab stop');
+    root.remove();
+  });
 });
 
 suite('ui-toggle a11y', () => {

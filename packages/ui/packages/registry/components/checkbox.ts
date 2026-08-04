@@ -12,10 +12,42 @@
  * Design tokens used: --input, --primary, --primary-foreground, --background,
  * --ring, --destructive.
  *
+ * A11y (required for accessible output):
+ *   `data-slot="checkbox"` is REQUIRED, not decoration. The injected stylesheet
+ *   keys the checkmark on it, so without it a checked box renders as a filled
+ *   square with no tick: the checked and unchecked states then differ by colour
+ *   alone, which is exactly what WCAG 1.4.1 rules out. Every example here
+ *   carries it; keep it when you copy one.
+ *   Associate a label with the input, either `<label for>` pointing at the
+ *   input's `id` (as below) or by nesting the input inside the `<label>`. A
+ *   checkbox with no label has no accessible name.
+ *   Group related checkboxes in a `<fieldset>` with a `<legend>` naming the
+ *   group, so the set is announced as one thing rather than N loose controls.
+ *   Set `aria-invalid="true"` on a failed checkbox (the class styles it) and
+ *   point `aria-describedby` at the element holding the error text.
+ *   The indeterminate state is a PROPERTY, not an attribute
+ *   (`el.indeterminate = true`), and it needs `aria-checked="mixed"` to be
+ *   announced as mixed rather than simply unchecked.
+ *
  * @example
  * ```html
- * <input type="checkbox" name="terms" id="terms" class=${checkboxClass()}>
- * <label class=${labelClass()} for="terms">I accept the terms</label>
+ * <div class="flex items-center gap-2">
+ *   <input type="checkbox" data-slot="checkbox" name="terms" id="terms" class=${checkboxClass()}>
+ *   <label class=${labelClass()} for="terms">I accept the terms</label>
+ * </div>
+ *
+ * <!-- A group of related checkboxes is named by its legend. -->
+ * <fieldset class=${stackClass({ gap: 3 })}>
+ *   <legend class=${fieldLabelClass()}>Email preferences</legend>
+ *   <div class="flex items-center gap-2">
+ *     <input type="checkbox" data-slot="checkbox" name="digest" id="pref-digest" class=${checkboxClass()}>
+ *     <label class=${labelClass()} for="pref-digest">Weekly digest</label>
+ *   </div>
+ *   <div class="flex items-center gap-2">
+ *     <input type="checkbox" data-slot="checkbox" name="security" id="pref-security" class=${checkboxClass()}>
+ *     <label class=${labelClass()} for="pref-security">Security alerts</label>
+ *   </div>
+ * </fieldset>
  * ```
  */
 import { cn } from '../lib/utils.ts';
@@ -93,7 +125,14 @@ export function installCheckboxStyles(): void {
 
 if (typeof document !== 'undefined') installCheckboxStyles();
 
-/** Tailwind classes for a styled native `<input type="checkbox">`. Add `data-slot="checkbox"` for the checkmark style to apply. */
+/**
+ * Tailwind classes for a styled native `<input type="checkbox">`.
+ *
+ * PAIR THIS WITH `data-slot="checkbox"` ON THE SAME INPUT. The injected
+ * stylesheet keys the checkmark and the indeterminate dash on that attribute,
+ * so the class alone gives you a box that fills with colour when checked but
+ * never draws a tick, leaving the two states distinguishable by colour only.
+ */
 export function checkboxClass(): string {
   return cn(CHECKBOX_CLASS);
 }

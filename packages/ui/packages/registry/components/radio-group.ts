@@ -11,16 +11,37 @@
  *
  * Design tokens used: --input, --primary, --ring, --destructive.
  *
+ * A11y (required for accessible output):
+ *   `data-slot="radio"` is REQUIRED, not decoration. The injected stylesheet
+ *   keys the indicator dot on it, and `radioClass()` carries no checked
+ *   background fill, so without the attribute a SELECTED radio differs from an
+ *   unselected one by border colour alone. That is both easy to miss and a
+ *   WCAG 1.4.1 problem (state by colour only). Every example here carries it.
+ *   NAME THE GROUP. A bare `<div role="radiogroup">` has no accessible name, so
+ *   a screen reader announces "radio group" with no idea what is being chosen.
+ *   Point `aria-labelledby` at the visible group label, as below, or use a
+ *   `<fieldset>` + `<legend>` instead of the `role="radiogroup"` div.
+ *   Give every input the SAME `name`, which is what makes the browser treat
+ *   them as one set: it supplies single-selection, Arrow-key navigation, and a
+ *   single tab stop for free. Different names produce N independent radios that
+ *   can all be selected at once.
+ *   Label each input with `<label for>` pointing at its `id`, and mark the
+ *   group `aria-invalid="true"` plus an `aria-describedby` error element when
+ *   the selection fails validation.
+ *
  * @example
  * ```html
- * <div role="radiogroup" class=${radioGroupClass()}>
- *   <div class="flex items-center gap-2">
- *     <input type="radio" name="plan" value="basic" id="plan-basic" class=${radioClass()}>
- *     <label class=${labelClass()} for="plan-basic">Basic</label>
- *   </div>
- *   <div class="flex items-center gap-2">
- *     <input type="radio" name="plan" value="pro" id="plan-pro" class=${radioClass()}>
- *     <label class=${labelClass()} for="plan-pro">Pro</label>
+ * <div class=${fieldClass()}>
+ *   <span class=${fieldLabelClass()} id="plan-label">Billing plan</span>
+ *   <div role="radiogroup" aria-labelledby="plan-label" class=${radioGroupClass()}>
+ *     <div class="flex items-center gap-2">
+ *       <input type="radio" data-slot="radio" name="plan" value="basic" id="plan-basic" class=${radioClass()}>
+ *       <label class=${labelClass()} for="plan-basic">Basic</label>
+ *     </div>
+ *     <div class="flex items-center gap-2">
+ *       <input type="radio" data-slot="radio" name="plan" value="pro" id="plan-pro" class=${radioClass()}>
+ *       <label class=${labelClass()} for="plan-pro">Pro</label>
+ *     </div>
  *   </div>
  * </div>
  * ```
@@ -109,7 +130,14 @@ export function radioGroupClass(opts: { orientation?: RadioGroupOrientation } = 
     : 'grid gap-3';
 }
 
-/** Tailwind classes for a styled `<input type="radio">`. Add `data-slot="radio"` for the indicator dot. */
+/**
+ * Tailwind classes for a styled `<input type="radio">`.
+ *
+ * PAIR THIS WITH `data-slot="radio"` ON THE SAME INPUT. The injected stylesheet
+ * keys the indicator dot on that attribute, and this class deliberately carries
+ * no checked background fill, so the class alone leaves a selected radio
+ * differing from an unselected one by border colour and nothing else.
+ */
 export function radioClass(): string {
   return cn(RADIO_CLASS);
 }
