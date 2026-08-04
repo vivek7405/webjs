@@ -12,13 +12,25 @@
  * breaks OG / og:image tags, OAuth callback URLs, and any user code
  * that builds absolute URLs.
  *
- * Threat model: in webjs's typical deployment topology, the
- * container's HTTP port is only reachable through the trusted edge
- * proxy. There's no path for an attacker to inject these headers
- * without going through that proxy. For self-hosted bare-VM deploys
- * where the container is somehow directly exposed, set
- * `WEBJS_NO_TRUST_PROXY=1` to fall back to the raw `Host` header and
- * `http://` default.
+ * Threat model: the two headers have DIFFERENT trust properties, so do
+ * not reason about them as one.
+ *
+ * `X-Forwarded-Proto` is written by the proxy that terminates TLS. In
+ * WebJs's typical deployment topology the container's HTTP port is only
+ * reachable through that trusted edge, so a client cannot choose the
+ * value this code reads.
+ *
+ * `X-Forwarded-Host` is NOT covered by that argument. Cloudflare and
+ * Railway FORWARD a client-supplied `X-Forwarded-Host` rather than
+ * overwriting it, so going through the trusted proxy is exactly how a
+ * hostile value arrives. Treat a forged forwarded host as reachable in
+ * the NORMAL topology, not just on a directly-exposed container. The
+ * open work on what that reaches is #1097 (HTML cache poisoning) and
+ * #1104 (centralizing the proxy-trust decision).
+ *
+ * For self-hosted bare-VM deploys where the container is directly
+ * exposed, set `WEBJS_NO_TRUST_PROXY=1` to fall back to the raw `Host`
+ * header and `http://` default.
  *
  * Header semantics:
  * - `X-Forwarded-Host` / `X-Forwarded-Proto` can be a comma-separated
