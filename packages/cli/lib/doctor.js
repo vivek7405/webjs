@@ -6,7 +6,8 @@
  * Node 24+ strip-types floor, the `erasableSyntaxOnly` TS flag, importmap pin
  * freshness, env drift vs `.env.example`, `@webjsdev/*` version coherence,
  * whether the framework even resolves from the app dir (the fresh-git-worktree
- * trap, #954), and the git pre-commit hook activation. `webjs doctor` verifies
+ * trap, #954), whether a page/layout stylesheet link is content-hashed (#1095),
+ * and the git pre-commit hook activation. `webjs doctor` verifies
  * each one up front and prints pass/warn/fail with an actionable fix line.
  *
  * This module is PURE: `runDoctorChecks(appDir, opts?)` reads files (and, for
