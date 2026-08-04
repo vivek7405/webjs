@@ -108,6 +108,51 @@ test('a single-line entry still renders as bare text in its item', () => {
   assert.ok(!html.includes('<p class="my-2'), 'no paragraph wrapper for a body-less entry');
 });
 
+test('blank-separated indented bullets stay ONE nested list', () => {
+  // The dominant generated shape, and the one the tight-list fixture above
+  // cannot exercise: the generator writes each commit subject as its own
+  // `  * ` line separated by a whitespace-only line. CommonMark reads that
+  // as one LOOSE list. Emitting a single-item list per bullet would give
+  // each its own margin and visually split the list apart.
+  const md = bodyOf(`${CHANGELOG_DIR}cli/0.10.11.md`);
+  const html = renderEntryBody(md);
+
+  const first = entryItems(html)[0];
+  const nested = first.match(/<ul class="list-disc pl-5 space-y-1[^"]*">[\s\S]*?<\/ul>/g) || [];
+  assert.equal(nested.length, 1, 'two blank-separated bullets form one list, not two');
+  assert.equal((nested[0].match(/<li>/g) || []).length, 2);
+});
+
+test('a paragraph between indented bullets does start a new nested list', () => {
+  // The counterfactual for the rule above. Resuming the trailing list is
+  // correct across a blank line only; real prose in between separates them.
+  const html = renderEntryBody([
+    '- **entry**',
+    '  - first list',
+    '',
+    '  Prose that interrupts.',
+    '',
+    '  - second list',
+  ].join('\n'));
+
+  const nested = html.match(/<ul class="list-disc pl-5 space-y-1[^"]*">[\s\S]*?<\/ul>/g) || [];
+  assert.equal(nested.length, 2);
+  assert.equal(countEntryItems(html), 1);
+});
+
+test('no changelog file renders a fragmented nested list', () => {
+  // Whole-corpus form of the two tests above. Adjacent nested lists inside
+  // one entry are always a list that got split, since nothing can sit
+  // between them without separating them legitimately.
+  for (const [label, md] of everyEntryFile()) {
+    const html = renderEntryBody(md);
+    assert.ok(
+      !/<\/ul><ul class="list-disc pl-5 space-y-1/.test(html),
+      `${label}: a nested list was split into adjacent single lists`,
+    );
+  }
+});
+
 test('a generated entry keeps its commit-body content', () => {
   const md = bodyOf(`${CHANGELOG_DIR}server/0.8.56.md`);
   const html = renderEntryBody(md);

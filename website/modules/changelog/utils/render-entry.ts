@@ -102,7 +102,15 @@ export function renderEntryBody(md: string): string {
       openItem(line.slice(2).trim());
     } else if (itemOpen && /^ {2,}[-*] /.test(line)) {
       const text = line.trim().slice(2).trim();
-      if (openBlock && openBlock.kind === 'ul') openBlock.items.push([text]);
+      // Resume the TRAILING nested list rather than the open one. A blank
+      // line between indented bullets is a LOOSE list in CommonMark, still
+      // one list, and the generator writes exactly that shape (one `*`
+      // commit subject per blank-separated line). Keying off the open block
+      // would emit a separate single-item list per bullet, each with its own
+      // margin, splitting one list into several. A paragraph in between is a
+      // different matter, and genuinely does start a new list.
+      const last = blocks[blocks.length - 1];
+      if (last && last.kind === 'ul') { last.items.push([text]); openBlock = last; }
       else pushBlock({ kind: 'ul', items: [[text]] });
     } else if (itemOpen && /^ {2,}\S/.test(line)) {
       const text = line.trim();
