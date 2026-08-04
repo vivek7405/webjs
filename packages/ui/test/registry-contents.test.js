@@ -364,3 +364,17 @@ test('every component JSDoc carries an A11y block', { skip }, () => {
     `these components have no "A11y" JSDoc block, so a caller has no statement of what ARIA they owe: ${missing.join(', ')}`,
   );
 });
+
+// #1080: the A11y block only helps if it REACHES the agent. `webjsui view` and
+// the MCP `ui` tool serve extractDocHeader(), which cuts at the first @tag, so a
+// block written below @example would be silently dropped from the one surface an
+// agent reads before writing UI. Assert placement, not just presence.
+test('the A11y block reaches the agent-facing doc header', { skip }, async () => {
+  const { extractDocHeader } = await import('../src/registry/extract.js');
+  const dropped = V1_COMPONENTS.filter((name) => !/^A11y/m.test(extractDocHeader(readSource(name))));
+  assert.deepEqual(
+    dropped,
+    [],
+    `these components' A11y blocks sit below an @tag, so extractDocHeader drops them and an agent never sees the obligations: ${dropped.join(', ')}`,
+  );
+});
