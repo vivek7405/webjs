@@ -377,11 +377,15 @@ class TodoList extends WebComponent({
 }) {
   private optimisticTodos = optimistic(this, {
     source: () => this.todos,
-    update: (state, title: string) => [
+    // KEEP THIS REDUCER PURE. `.value` re-folds every queued update on EVERY
+    // read, so a `crypto.randomUUID()` here would mint a NEW id per render and
+    // a keyed list would tear the pending row down on each update. Mint the
+    // temp id in the handler and carry it in the payload.
+    update: (state, add: { tempId: string; title: string }) => [
       ...state,
-      // No cast needed: `Todo['id']` is a string (a uuid primary key). Against
-      // an auto-increment integer id, model the temp row instead of casting.
-      { id: crypto.randomUUID(), title, completed: false, createdAt: new Date(), pending: true },
+      // `createdAt` is rebuilt per read too, tolerable only because nothing
+      // keys on it. Put it in the payload as well if anything does.
+      { id: add.tempId, title: add.title, completed: false, createdAt: new Date(), pending: true },
     ],
   });
 
@@ -391,8 +395,12 @@ class TodoList extends WebComponent({
     if (!title) return;
     (e.target as HTMLFormElement).reset();
 
+    // Minted ONCE here, not in the reducer. No cast needed: `Todo['id']` is a
+    // string (a uuid primary key). Against an auto-increment integer id, model
+    // the temp row instead of casting.
+    const tempId = crypto.randomUUID();
     const promise = createTodo({ title });
-    this.optimisticTodos.add(title, promise);
+    this.optimisticTodos.add({ tempId, title }, promise);
 
     const result = await promise;
     if (result.success && result.data) {
@@ -413,7 +421,9 @@ class TodoList extends WebComponent({
 TodoList.register('todo-list');
 ```
 
-`.add(payload, promise)` auto-releases when the promise settles (resolve or reject). No try-catch, no manual rollback, no temp-ID bookkeeping.
+`.add(payload, promise)` auto-releases when the promise settles (resolve or reject). No try-catch, no manual rollback, no reconciling a temp id against the real one.
+
+**Keep `update` pure.** `.value` re-folds the whole queue on every read, so the reducer runs again on each render rather than once per `.add()`, and anything it mints is minted per render. Mint a temp id in the handler and pass it in the payload, as above. A `crypto.randomUUID()` inside the reducer hands the pending row a fresh id every read, which breaks `repeat()` keying and anything else treating that id as stable.
 
 ### Simple flips: imperative API
 

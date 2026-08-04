@@ -182,3 +182,67 @@ test('declarative optimistic: handles thenables lacking finally method', async (
   assert.equal(opt.value, 'a', 'auto-released using fallback then()');
 });
 
+
+// The reducer runs on EVERY `.value` read, not once per `.add()`, so a reducer
+// that MINTS a value hands the pending row a different one on each render. The
+// canonical docs snippets used to do exactly that (`crypto.randomUUID()` inside
+// `update`), which silently breaks a keyed list: `repeat(todos, t => t.id, ...)`
+// sees a brand-new key every update and rebuilds the row, losing focus, any
+// in-progress transition, and DOM state. These pin the contract the docs now
+// teach: derive the row from the payload, mint the temp id in the handler.
+test('declarative optimistic: .value is stable across repeated reads for one queued update', () => {
+  const host = new MockHost();
+  const todos = [{ id: 'real-1', title: 'existing' }];
+  const opt = optimistic(host, {
+    source: () => todos,
+    // PURE: everything comes off the payload.
+    update: (state, add) => [...state, { id: add.tempId, title: add.title, pending: true }],
+  });
+
+  opt.add({ tempId: 'tmp-abc', title: 'new' });
+
+  const first = opt.value;
+  const second = opt.value;
+  const third = opt.value;
+
+  assert.equal(first.at(-1).id, 'tmp-abc');
+  assert.equal(second.at(-1).id, first.at(-1).id, 'a second read must not change the pending id');
+  assert.equal(third.at(-1).id, first.at(-1).id, 'a third read must not change the pending id');
+  // The confirmed rows are untouched by the overlay on every read.
+  assert.equal(second[0].id, 'real-1');
+});
+
+test('declarative optimistic: a minting reducer is what instability looks like', () => {
+  const host = new MockHost();
+  let n = 0;
+  const opt = optimistic(host, {
+    source: () => [],
+    // IMPURE, the shape the docs must never teach: a fresh id per read.
+    update: (state, title) => [...state, { id: `minted-${++n}`, title }],
+  });
+
+  opt.add('new');
+
+  assert.notEqual(
+    opt.value.at(-1).id,
+    opt.value.at(-1).id,
+    'a minting reducer yields a different id on each read, which is the bug the pure shape avoids',
+  );
+});
+
+test('declarative optimistic: two concurrent adds get distinct ids from their payloads', () => {
+  const host = new MockHost();
+  const opt = optimistic(host, {
+    source: () => [],
+    update: (state, add) => [...state, { id: add.tempId, title: add.title }],
+  });
+
+  // The old `{ id: 'tmp' }` snippet collided here: both pending rows shared one
+  // id, defeating the "multiple .add() calls stack independently" guarantee.
+  opt.add({ tempId: 'tmp-1', title: 'first' });
+  opt.add({ tempId: 'tmp-2', title: 'second' });
+
+  const ids = opt.value.map(t => t.id);
+  assert.deepEqual(ids, ['tmp-1', 'tmp-2']);
+  assert.equal(new Set(ids).size, 2, 'concurrent pending rows must not share an id');
+});

@@ -17,6 +17,8 @@ Read this when a mutation should feel instant, when the client can predict the r
 
 `optimistic(host, { source, update })` returns an `OptimisticState<State, Action>` with a `.value` getter and an `.add(payload, promise?)` method. The `source` reads the authoritative state (usually a reactive prop). The `update` reducer transforms that state with each payload. Calling `.add()` pushes an update and schedules a re-render, so `.value` reflects the optimistic state on the next paint.
 
+**The reducer must be pure.** `.value` re-folds the whole queue on every read, so `update` runs again on each render rather than once per `.add()`. Anything it MINTS is therefore minted per render. Mint a temp id in the handler and pass it in the payload. A `crypto.randomUUID()` inside the reducer gives the pending row a different id on every read, which breaks a keyed list and anything else treating that id as stable.
+
 ```ts
 import { WebComponent, prop, optimistic, html } from '@webjsdev/core';
 import { createTodo } from '#modules/todos/actions/create-todo.server.ts';
@@ -26,15 +28,18 @@ class TodoList extends WebComponent({
 }) {
   private optimisticTodos = optimistic(this, {
     source: () => this.todos,
-    update: (state, title: string) => [
+    // KEEP THIS REDUCER PURE. `.value` re-folds every queued update on EVERY
+    // read, not once per `.add()`, so anything minted in here is minted again
+    // on each render. A `crypto.randomUUID()` here would hand the pending row
+    // a NEW id per render, and a keyed list (`repeat(todos, t => t.id, ...)`)
+    // would tear the row down and rebuild it every update, losing focus, any
+    // in-progress transition, and DOM state. Mint the temp id in the handler
+    // and carry it in the payload, so it is stable for the life of the row.
+    update: (state, add: { tempId: string; title: string }) => [
       ...state,
-      // A client-only placeholder id for the pending row. The real id arrives
-      // from the server on reconcile, when this row is dropped. No cast is
-      // needed because `Todo['id']` is a string here (the schema uses a uuid
-      // primary key). Against an auto-increment integer id there is no honest
-      // client-side value, so model the temp row instead (an optional id, or a
-      // `tempId` the reducer keys on) rather than casting one in.
-      { id: crypto.randomUUID(), title, completed: false, createdAt: new Date(), pending: true },
+      // `createdAt` is rebuilt per read too. That is tolerable only because
+      // nothing keys on it; put it in the payload as well if anything does.
+      { id: add.tempId, title: add.title, completed: false, createdAt: new Date(), pending: true },
     ],
   });
 
@@ -44,8 +49,13 @@ class TodoList extends WebComponent({
     if (!title) return;
     (e.target as HTMLFormElement).reset();
 
+    // Minted ONCE here, not in the reducer. `Todo['id']` is a string (a uuid
+    // primary key), so no cast is needed. Against an auto-increment integer
+    // id there is no honest client-side value, so model the temp row instead
+    // (an optional id, or a `tempId` the row keys on) rather than casting.
+    const tempId = crypto.randomUUID();
     const promise = createTodo({ title });
-    this.optimisticTodos.add(title, promise);
+    this.optimisticTodos.add({ tempId, title }, promise);
 
     const result = await promise;
     if (result.success && result.data) {
