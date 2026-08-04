@@ -2148,12 +2148,22 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
           ? `customElements.define ${state.defined ? 'ran' : 'DID NOT run'}, `
             + `host ${state.host ? 'present' : 'absent'}, `
             + `instance ${state.upgraded ? 'upgraded' : 'NOT upgraded'}`
+            // What can produce a missing define depends on WHICH page this is,
+            // so do not offer the OFF page a cause that cannot happen there.
+            // The OFF server runs with WEBJS_ELIDE=0, which empties the
+            // elidable sets wholesale, so elision drops nothing and the only
+            // remaining cause is the page's module graph never evaluating.
+            // Offering elision there as a coequal possibility would re-suggest
+            // the exact misreading #1228 was.
             + (state.defined
               ? ''
-              : '. Two causes produce that, and this probe cannot tell them apart. Either a member of the page\'s module '
-                + 'graph failed to load, which aborts the WHOLE graph, so the component\'s own module never runs even though '
-                + 'it fetched fine; or elision wrongly dropped the component, in which case its module was never in the graph '
-                + 'at all. Off-origin or failed resources on the page: '
+              : `. The graph did not evaluate: a member of it failed to load, or one threw at module scope. Either aborts `
+                + 'the WHOLE graph, so the component\'s own module never runs even though it fetched fine.'
+                + (which === 'OFF'
+                  ? ' Elision is not a candidate here, since this server runs with WEBJS_ELIDE=0 and drops nothing.'
+                  : ' The other possibility on this page is elision wrongly dropping the component, in which case its module'
+                    + ' was never in the graph at all.')
+                + ' Off-origin or failed resources on the page: '
                 + (state.suspects.length ? state.suspects.join(', ') : 'none'))
           : 'the page could not be probed for its state, so nothing is known beyond the timeout';
         throw new Error(`${which} page never upgraded <my-counter> within 15s (${detail}).`);

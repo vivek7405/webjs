@@ -113,7 +113,8 @@ export function splitInstall(install) {
 export function packageName(install) { return splitInstall(install).name; }
 
 /**
- * The part of an install after its package name, e.g. `/plugin/utc`. A subpath
+ * The part of an install after its package name AND version, if any, so
+ * `/plugin/utc` for both `dayjs/plugin/utc` and `dayjs@1.11.21/plugin/utc`. A subpath
  * needs its own importmap key pointing at its own file, which this fixture does
  * not build, so a subpath install counts as unserviceable rather than being
  * answered with the bare package's entry.
