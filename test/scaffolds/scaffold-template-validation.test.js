@@ -5,9 +5,13 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { stripTypeScriptTypes } from 'node:module';
 
 import { scaffoldApp } from '../../packages/cli/lib/create.js';
+// The framework's own stripper seam, not `node:module` directly: it picks the
+// built-in on Node and amaro on Bun, so this file runs under the Bun matrix,
+// and it is the exact code path a real `webjs dev` boot takes on the emitted
+// file.
+import { stripTypeScript } from '../../packages/server/src/ts-strip.js';
 
 async function tempCwd() {
   return mkdtemp(join(tmpdir(), 'webjs-scaffold-'));
@@ -113,7 +117,7 @@ test('a valid kebab name still scaffolds, and its title survives verbatim', asyn
     // exact step a name-borne syntax error fails. Reverting the guard and
     // scaffolding `bad'name` emits `title: 'Bad'Name',` here, and this call is
     // what throws `Expected ',', got 'ident'` (the fresh app's first-boot 500).
-    assert.doesNotThrow(() => stripTypeScriptTypes(page, { mode: 'strip' }));
+    await assert.doesNotReject(() => stripTypeScript(page));
   } finally {
     console.log = restoreLog;
     await rm(cwd, { recursive: true, force: true });
