@@ -1,0 +1,190 @@
+/**
+ * The reflect-a-function guard, in a REAL browser (#1169).
+ *
+ * The node-side coverage in `../reflect-function-guard.test.js` renders through
+ * the SSR walker, where reflection writes into a server attribute shim backed by
+ * a Map and the walker reads it back out into the emitted tag. That proves the
+ * SSR half. It cannot prove the CLIENT half, which is the other place the leak
+ * lived: `_reflectAttribute` also runs from the property setter and from
+ * `_activate`, against a live element in a real document, and that path only
+ * exists in a browser.
+ *
+ * The distinction matters because the two halves reach the guard by different
+ * routes. SSR calls it once from `performServerUpdate`; the client calls it on
+ * connect and again on every subsequent assignment, through a setter wrapped in
+ * a re-entrancy guard that `setAttribute` / `removeAttribute` re-enters via
+ * `attributeChangedCallback`. A guard that returned early in the wrong place
+ * would leave that flag stuck and silently kill all later reflection, which is
+ * a failure only a live DOM can show.
+ */
+
+import { html } from '../../../src/html.js';
+import { WebComponent, prop } from '../../../src/component.js';
+
+import { assert } from '../../../../../test/browser-assert.js';
+
+// The sentinel lives inside the function body, so it appears anywhere only if
+// the function was stringified. A closure constant is the shape a leaked server
+// action would expose.
+async function secretAction() {
+  const CONNECTION = 'postgres://user:BROWSER_REFLECT_MARKER@host/db';
+  return CONNECTION;
+}
+
+class ReflectProbe extends WebComponent({
+  label: prop(String, { reflect: true }),
+  tokenValue: prop(String, { reflect: true, attribute: 'data-token' }),
+}) {
+  render() {
+    return html`<span>probe</span>`;
+  }
+}
+ReflectProbe.register('reflect-fn-probe');
+
+class ConverterProbe extends WebComponent({
+  label: prop(String, {
+    reflect: true,
+    converter: { toAttribute: (v) => `custom:${typeof v}` },
+  }),
+}) {
+  render() {
+    return html`<span>probe</span>`;
+  }
+}
+ConverterProbe.register('reflect-fn-converter-probe');
+
+const mounted = [];
+/**
+ * A probe attached to the live document. Reflection runs from `_activate`,
+ * which only fires on a connected element, so an unattached one would never
+ * reach the code under test.
+ *
+ * Each probe is removed after its test. Without that, `document.body`
+ * accumulates every earlier test's markup and the document-wide leak
+ * assertions stop describing the test they sit in.
+ */
+function mount(tag) {
+  const el = document.createElement(tag);
+  document.body.appendChild(el);
+  mounted.push(el);
+  return el;
+}
+
+/** Swallow the dev warning the guard emits, and hand back what it said. */
+const warnings = [];
+let originalWarn;
+setup(() => {
+  warnings.length = 0;
+  originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+});
+
+teardown(() => {
+  console.warn = originalWarn;
+  while (mounted.length) mounted.pop().remove();
+});
+
+suite('reflect:true never stringifies a function, in a real browser', () => {
+
+  test('assigning a function to a reflected prop writes no attribute', async () => {
+    const el = mount('reflect-fn-probe');
+    await el.updateComplete;
+
+    el.label = secretAction;
+    await el.updateComplete;
+
+    assert.equal(el.getAttribute('label'), null, 'the attribute must be absent, not stringified');
+    assert.ok(
+      !document.body.innerHTML.includes('BROWSER_REFLECT_MARKER'),
+      'no source anywhere in the document'
+    );
+    // The property itself is untouched: the guard governs what reaches the
+    // ATTRIBUTE, not what the component may hold.
+    assert.equal(el.label, secretAction, 'the property still holds the function');
+  });
+
+  test('a function REMOVES an attribute a previous string value had set', async () => {
+    // The live-DOM case with the most room to go wrong. Reflection here is not
+    // a fresh write into an empty shim, it has to clear what is already there,
+    // and a guard that merely declined to write would leave the stale string
+    // in place while the property says otherwise.
+    const el = mount('reflect-fn-probe');
+    el.label = 'a-real-label';
+    await el.updateComplete;
+    assert.equal(el.getAttribute('label'), 'a-real-label', 'reflection must work here, else this test proves nothing');
+
+    el.label = secretAction;
+    await el.updateComplete;
+
+    assert.equal(el.getAttribute('label'), null, 'the stale value must be cleared, not left behind');
+    assert.ok(!document.body.innerHTML.includes('BROWSER_REFLECT_MARKER'), 'no source in the document');
+  });
+
+  test('reflection still works after a function was dropped, so the re-entrancy flag is not stuck', async () => {
+    // `removeAttribute` re-enters the setter through
+    // `attributeChangedCallback`, which is what `__reflectingAttribute`
+    // guards. If the guard's early exit left that flag set, EVERY later
+    // reflection on this element would be silently skipped, and the only
+    // symptom would be an attribute that stops updating.
+    const el = mount('reflect-fn-probe');
+    el.label = secretAction;
+    await el.updateComplete;
+    assert.equal(el.getAttribute('label'), null);
+
+    el.label = 'back-to-normal';
+    await el.updateComplete;
+    assert.equal(el.getAttribute('label'), 'back-to-normal', 'reflection must survive the dropped write');
+
+    el.label = 'changed-again';
+    await el.updateComplete;
+    assert.equal(el.getAttribute('label'), 'changed-again', 'and keep working after that');
+  });
+
+  test('a renamed attribute drops the same way', async () => {
+    const el = mount('reflect-fn-probe');
+    el.tokenValue = secretAction;
+    await el.updateComplete;
+
+    assert.equal(el.getAttribute('data-token'), null, 'the custom attribute name is dropped too');
+    assert.ok(!document.body.innerHTML.includes('BROWSER_REFLECT_MARKER'), 'no source in the document');
+  });
+
+  test('the drop warns, naming the property, the tag, and the attribute, without printing the value', async () => {
+    const el = mount('reflect-fn-probe');
+    await el.updateComplete;
+    warnings.length = 0;
+
+    el.tokenValue = secretAction;
+    await el.updateComplete;
+
+    assert.equal(warnings.length, 1, `expected one warning, got ${warnings.length}: ${warnings.join(' | ')}`);
+    const [message] = warnings;
+    assert.ok(message.includes('tokenValue'), message);
+    assert.ok(message.includes('reflect-fn-probe'), message);
+    assert.ok(message.includes('data-token'), message);
+    assert.ok(
+      !message.includes('BROWSER_REFLECT_MARKER'),
+      `the warning leaked the source it refused to write: ${message}`
+    );
+  });
+
+  test('a normal string value still reflects, so the guard did not break reflection', async () => {
+    const el = mount('reflect-fn-probe');
+    el.label = 'plain-string';
+    el.tokenValue = 'plain-token';
+    await el.updateComplete;
+
+    assert.equal(el.getAttribute('label'), 'plain-string');
+    assert.equal(el.getAttribute('data-token'), 'plain-token');
+    assert.equal(warnings.length, 0, `an ordinary value must not warn: ${warnings.join(' | ')}`);
+  });
+
+  test('a custom converter.toAttribute still receives the function and decides for itself', async () => {
+    const el = mount('reflect-fn-converter-probe');
+    el.label = secretAction;
+    await el.updateComplete;
+
+    assert.equal(el.getAttribute('label'), 'custom:function', 'the author override runs first and wins');
+    assert.ok(!document.body.innerHTML.includes('BROWSER_REFLECT_MARKER'), 'and it did not stringify the source');
+  });
+});
