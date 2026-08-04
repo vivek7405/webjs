@@ -15,10 +15,13 @@
  * Threat model: the two headers have DIFFERENT trust properties, so do
  * not reason about them as one.
  *
- * `X-Forwarded-Proto` is written by the proxy that terminates TLS. In
- * WebJs's typical deployment topology the container's HTTP port is only
- * reachable through that trusted edge, so a client cannot choose the
- * value this code reads.
+ * `X-Forwarded-Proto` is written by the proxy that terminates TLS, which
+ * OVERWRITES whatever the client sent. In WebJs's typical deployment
+ * topology the container's HTTP port is only reachable through that
+ * trusted edge, so the value this code reads is the edge's, not the
+ * client's. The guarantee is the overwrite, not the topology: an edge
+ * that APPENDS instead would put the client's entry first in the chain,
+ * and the comma rule below takes the first entry.
  *
  * `X-Forwarded-Host` is NOT covered by that argument. Cloudflare and
  * Railway FORWARD a client-supplied `X-Forwarded-Host` rather than
