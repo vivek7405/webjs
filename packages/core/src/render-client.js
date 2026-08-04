@@ -1438,10 +1438,17 @@ function applyChildInnerRaw(part, value) {
         : Object.is(prevDeps, nextDeps);
       if (equal) return;
     }
-    /** @type any */ (part).__guardDeps = Array.isArray(nextDeps)
-      ? nextDeps.slice()
-      : nextDeps;
+    // Snapshot the deps BEFORE running `fn` (so a fn that mutates the array
+    // it was handed cannot rewrite what we record), but RECORD them only
+    // after the commit succeeds. Recording first meant a throw part-way
+    // through the commit left the region torn down with the NEW deps already
+    // stored, so every later render with the same deps hit the `equal`
+    // short-circuit above and skipped the region forever. Renders are always
+    // microtask-scheduled (`_scheduleUpdate`), so `fn()` cannot re-enter this
+    // part synchronously and see the stale deps.
+    const depsSnapshot = Array.isArray(nextDeps) ? nextDeps.slice() : nextDeps;
     applyChildInner(part, v.fn());
+    /** @type any */ (part).__guardDeps = depsSnapshot;
     return;
   }
 
@@ -1509,7 +1516,13 @@ function applyChildInnerRaw(part, value) {
   // Repeat directive: keyed reconciliation. Keep previous state when both
   // old and new are repeats; otherwise tear down and rebuild.
   if (isRepeat(value)) {
-    if (part.child && /** @type any */ (part.child).kind === 'repeat') {
+    // A POISONED state (a previous reconcile threw part-way through, see
+    // `reconcileRepeat`) falls through to the teardown-and-rebuild path
+    // below: its map still tracks every node in the region, so tearing down
+    // clears the DOM completely and the fresh render is correct by
+    // construction. Reconciling against it instead is what duplicated rows.
+    if (part.child && /** @type any */ (part.child).kind === 'repeat'
+        && !(/** @type any */ (part.child).poisoned)) {
       reconcileRepeat(part, value);
       return;
     }
@@ -1730,36 +1743,58 @@ function reconcileRepeat(part, value) {
 
   const newMap = new Map();
 
-  // Walk the new list and position each item's nodes immediately before the marker.
-  for (let i = 0; i < items.length; i++) {
-    const key = keyFn(items[i], i);
-    const tr = templateFn(items[i], i);
-    if (!isTemplate(tr)) continue;
-    const existing = state.map.get(key);
-    if (existing && existing.strings === /** @type any */ (tr).strings) {
-      updateInstance(existing, /** @type any */ (tr).values);
-      // Move nodes before marker preserving element identity.
-      moveRange(existing.startNode, existing.endNode, parent, marker);
-      newMap.set(key, existing);
-      state.map.delete(key);
-    } else {
-      if (existing) {
-        disposeInstance(existing);
-        removeBetween(existing.startNode, existing.endNode);
+  try {
+    // Walk the new list and position each item's nodes immediately before the marker.
+    for (let i = 0; i < items.length; i++) {
+      const key = keyFn(items[i], i);
+      const tr = templateFn(items[i], i);
+      if (!isTemplate(tr)) continue;
+      const existing = state.map.get(key);
+      if (existing && existing.strings === /** @type any */ (tr).strings) {
+        updateInstance(existing, /** @type any */ (tr).values);
+        // Move nodes before marker preserving element identity.
+        moveRange(existing.startNode, existing.endNode, parent, marker);
+        newMap.set(key, existing);
         state.map.delete(key);
+      } else {
+        if (existing) {
+          disposeInstance(existing);
+          removeBetween(existing.startNode, existing.endNode);
+          state.map.delete(key);
+        }
+        const { inst, frag } = buildDetached(/** @type any */ (tr));
+        parent.insertBefore(frag, marker);
+        newMap.set(key, inst);
       }
-      const { inst, frag } = buildDetached(/** @type any */ (tr));
-      parent.insertBefore(frag, marker);
-      newMap.set(key, inst);
     }
-  }
 
-  // Remove any keys that remain in the old map.
-  for (const inst of state.map.values()) {
-    disposeInstance(inst);
-    removeBetween(inst.startNode, inst.endNode);
+    // Remove any keys that remain in the old map.
+    for (const inst of state.map.values()) {
+      disposeInstance(inst);
+      removeBetween(inst.startNode, inst.endNode);
+    }
+    state.map = newMap;
+  } catch (err) {
+    // The walk moves DOM and drains `state.map` incrementally while the
+    // replacement map is accumulated locally, so a throw part-way through
+    // leaves NEITHER map describing what is on screen: the already-processed
+    // keys sit only in `newMap`, which is about to be discarded, while their
+    // nodes stay in the document tracked by nothing. The next (perfectly
+    // valid) render then rebuilds those keys from scratch and the orphaned
+    // originals are never removed, so the list shows duplicated rows forever
+    // with nothing logged after the first throw.
+    //
+    // Re-unite every instance still in the document under `state.map` (the
+    // two maps are disjoint: a key lands in `newMap` only after being deleted
+    // from `state.map`) so nothing is orphaned, then POISON the state. A
+    // poisoned repeat is torn down and rebuilt wholesale on the next render
+    // rather than reconciled against a map that no longer describes the DOM;
+    // the framework degrades to a clean rebuild instead of guessing how to
+    // unwind the partial moves.
+    for (const [k, inst] of newMap) state.map.set(k, inst);
+    state.poisoned = true;
+    throw err;
   }
-  state.map = newMap;
 }
 
 /** @param {{ kind: 'repeat', map: Map<any, TemplateInstance> }} state */
@@ -2239,8 +2274,19 @@ function applyUntil(part, args) {
       (resolved) => {
         if (state.aborted) return;
         if (i >= state.highestResolved) return;
+        // Commit FIRST, record the new priority only once it succeeded.
+        // Advancing `highestResolved` up front meant a commit throw left the
+        // region torn down while the state claimed index `i` had won, so
+        // every later resolution at a lower priority was refused and the
+        // region stayed empty. Committing first also keeps the throw inside
+        // the try, where it can reach the component boundary.
+        try {
+          applyChildInner(part, resolved);
+        } catch (err) {
+          reportOutOfBandCommitError(part, err);
+          return;
+        }
         state.highestResolved = i;
-        applyChildInner(part, resolved);
       },
       () => {
         // Swallow rejection. A rejected Promise is treated as "no value";
@@ -2248,6 +2294,54 @@ function applyUntil(part, args) {
       },
     );
   }
+}
+
+/**
+ * Route a throw from an OUT-OF-BAND commit to the owning component's
+ * render-error boundary.
+ *
+ * `watch`'s notify microtask and `until`'s Promise resolution commit from
+ * outside `component.js`'s update cycle, so none of the boundaries that wrap
+ * every other render path are on the stack. Left alone, a commit throw there
+ * escapes as a window-level `error` / unhandled rejection instead of the
+ * per-component `renderError()` the sync and async render paths both route
+ * to, which breaks per-component error isolation for exactly these two
+ * directives.
+ *
+ * Walks up from the part's marker (crossing shadow boundaries via the
+ * ShadowRoot's `.host`) to the nearest element exposing the boundary.
+ *
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {unknown} error
+ */
+function reportOutOfBandCommitError(part, error) {
+  let err;
+  try {
+    err = error instanceof Error ? error : new Error(String(error));
+  } catch {
+    // The thrown value's own `toString` threw. That is the exact class of
+    // value that makes a commit throw in the first place, so it is reachable
+    // here; do not let stringifying it mask the original failure.
+    err = new Error('render error (unstringifiable thrown value)');
+  }
+  let n = /** @type {Node | null} */ (part.marker);
+  for (let depth = 0; n && depth < 128; depth++) {
+    if (typeof (/** @type any */ (n)._handleRenderError) === 'function') {
+      /** @type any */ (n)._handleRenderError(err);
+      return;
+    }
+    const parent = n.parentNode;
+    // A real ShadowRoot is a DocumentFragment (nodeType 11) exposing its
+    // owner as `.host`; that owner is the component whose boundary owns this
+    // commit. The nodeType check matters because <a>/<area> expose an
+    // unrelated URL-derived `.host` (see `isInShadowRootEl`).
+    n = parent && parent.nodeType === 11 && /** @type any */ (parent).host
+      ? /** @type any */ (parent).host
+      : parent;
+  }
+  // No component boundary above this part (a bare `render()` into a plain
+  // container). Nothing owns the error, so surface it rather than swallow it.
+  throw err;
 }
 
 /**
@@ -2302,8 +2396,15 @@ function applyWatch(part, sig) {
     queueMicrotask(() => {
       if (partAny.__watchSub !== watcher) return; // disposed mid-flight
       let v;
-      watcher.observe(() => { v = sig.get(); });
-      applyChildInner(part, v);
+      // Nothing above this microtask catches: it runs outside the host's
+      // update cycle, so a commit throw here would surface at the window
+      // instead of the component's renderError(). Route it explicitly.
+      try {
+        watcher.observe(() => { v = sig.get(); });
+        applyChildInner(part, v);
+      } catch (err) {
+        reportOutOfBandCommitError(part, err);
+      }
     });
   });
   partAny.__watchSub = watcher;
