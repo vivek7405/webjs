@@ -126,16 +126,25 @@ function safeString(v) {
  * the leak this guard exists to prevent, and a server log is not always a
  * private place.
  *
- * Silent in production, matching the client router's dev-warning idiom. There
- * is nothing an end user can do about it, and the guard has already removed
- * the attribute either way.
+ * UNCONDITIONAL, matching the `.prop=${fn}` unserializable-value drop in
+ * `render-server.js`, which is the sibling path this guard mirrors. Two
+ * reasons not to gate it on a dev flag. It fires only on a genuine mistake (a
+ * function is never a meaningful attribute value), so there is no volume to
+ * suppress, and reflection runs per assignment rather than per frame.
+ *
+ * More decisively, a `NODE_ENV` gate does not survive the dist build.
+ * `scripts/build-framework-dist.js` runs esbuild with `platform: 'browser'`
+ * and `minify: true`, which substitutes `process.env.NODE_ENV` with
+ * `"production"` and folds the check to a constant. The SSR half of the
+ * warning would then be unreachable in every published build, which is how
+ * every installed app runs, and SSR is the half that matters most, since that
+ * is where the leaked source reached visitors.
  *
  * @param {{ constructor: unknown, tagName?: string }} host
  * @param {string} propName
  * @param {string} attrName
  */
 function warnFunctionReflection(host, propName, attrName) {
-  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production') return;
   if (typeof console === 'undefined' || !console.warn) return;
   const tag = tagOf(/** @type any */ (host.constructor)) || host.tagName?.toLowerCase() || 'unknown';
   console.warn(

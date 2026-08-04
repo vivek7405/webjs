@@ -111,7 +111,7 @@ The bound, refused, and allowed shapes in full. Every "no" row is a binding that
 | `encoding="..."` as an ATTRIBUTE on a bound form | **no** | inert in HTML (`form.encoding` reads back `enctype`), so both renderers ignore it and still supply `enctype`. Only the `.encoding` PROPERTY aliases enctype, and that spelling IS refused, one row up |
 | `.formAction=` on a button or input | yes | same reason, that is where `formAction` reflects |
 | `.action=` on any other native tag | **no** | a plain expando (`<div .action=${fn}>`, `<button .action=${fn}>`), reflecting nothing, so nothing reaches the markup |
-| `.action=` on a custom element | **no** | an author-defined property, not a reflected IDL attribute, so a function is a legitimate value. One declared `reflect: true` reflects on a path outside these commit sites, which used to write `String(value)` and emit the source; it now removes the attribute and warns in dev instead |
+| `.action=` on a custom element | **no** | an author-defined property, not a reflected IDL attribute, so a function is a legitimate value. One declared `reflect: true` reflects on a path outside these commit sites, which used to write `String(value)` and emit the source; it now removes the attribute and warns instead |
 | `?action=` | yes | never leaked, but it is meaningless, so it is refused rather than silently emitting a bare `action=""` |
 | `@action=` unquoted | **no** | an event listener, and a function is exactly what one takes |
 | `@action="${fn}"` quoted | yes | quoting makes it an ordinary attribute again, so it leaks |
