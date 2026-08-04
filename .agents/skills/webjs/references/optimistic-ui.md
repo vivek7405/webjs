@@ -78,7 +78,7 @@ class TodoList extends WebComponent({
 TodoList.register('todo-list');
 ```
 
-**Auto-release is the whole point.** Pass the action's promise as the second argument to `.add(payload, promise)`, and the update auto-releases the moment that promise settles (resolve OR reject). It uses `.finally()`, with a `.then()` fallback for thenables that lack `.finally`. No try-catch, no manual rollback, no temp-ID bookkeeping. On success you reconcile the authoritative row from `result.data` (as above); on failure the optimistic entry simply drops when the promise rejects.
+**Auto-release is the whole point.** Pass the action's promise as the second argument to `.add(payload, promise)`, and the update auto-releases the moment that promise settles (resolve OR reject). It uses `.finally()`, with a `.then()` fallback for thenables that lack `.finally`. No try-catch, no manual rollback, no reconciling a temp id against the real one. The handler mints a temp id for the pending row, but nothing tracks it afterwards: the overlay drops whole when the promise settles, and the authoritative row arrives from `result.data`. On failure the optimistic entry simply drops when the promise rejects.
 
 - Multiple `.add()` calls stack independently. Each carries its own release by ID, so overlapping in-flight mutations do not clobber one another.
 - When `update` is omitted, the payload REPLACES the state directly (`Action = State`), matching the simple `useOptimistic(setState)` pattern.
