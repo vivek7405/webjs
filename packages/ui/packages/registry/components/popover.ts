@@ -25,25 +25,61 @@
  *
  * Design tokens used: --popover, --popover-foreground, --border.
  *
+ * A11y (required for accessible output):
+ *   This is the Tier-1 component with the most for you to supply, because
+ *   `popoverContentClass()` returns only classes: the panel it styles is a bare
+ *   `<div popover>` with NO role and NO accessible name unless you add them.
+ *   GIVE THE PANEL `role="dialog"`, then NAME it with `aria-labelledby`
+ *   pointing at the `popoverTitleClass()` heading's `id`. Both halves matter: a
+ *   role with no name announces as a bare "dialog", and a name with no role is
+ *   never announced as a grouped thing at all. This is what shadcn's
+ *   `PopoverContent` does for you in React, and here it is yours.
+ *   Point `aria-describedby` at the `popoverDescriptionClass()` paragraph when
+ *   there is one, so the supporting line is announced with the panel.
+ *   TELL THE TRIGGER what it does: `aria-expanded` tracking the open state, and
+ *   `aria-haspopup="dialog"`. The browser does not derive either from
+ *   `popovertarget`, so without them the button announces as a plain button that
+ *   gives no hint a panel will appear. Keep `aria-expanded` in sync from the
+ *   panel's `toggle` event, which is the native signal for this.
+ *   Use `popover` (auto), not `popover="manual"`, unless you have a reason.
+ *   The auto mode is where the platform gives you light-dismiss, Escape-to-close,
+ *   and FOCUS RESTORATION back to the invoker; manual mode gives up all three
+ *   and makes them your problem.
+ *   Make the title a REAL heading element (`<h2>` / `<h3>`) at the right level
+ *   for its place in the page, not a styled `<div>`, so it appears in the
+ *   heading outline a screen reader user navigates by.
+ *
  * @example
  * ```html
  * <!-- Single invoker, implicit anchor, zero inline style. -->
- * <button popovertarget="filter" class=${buttonClass({ variant: 'outline' })}>Filter</button>
- * <div id="filter" popover
+ * <button popovertarget="filter" aria-expanded="false" aria-haspopup="dialog"
+ *         class=${buttonClass({ variant: 'outline' })}>Filter</button>
+ * <div id="filter" popover role="dialog" aria-labelledby="filter-title"
+ *      aria-describedby="filter-desc"
  *      class=${popoverContentClass({ side: 'bottom', align: 'start', sideOffset: 4 })}>
  *   <div class=${popoverHeaderClass()}>
- *     <h3 class=${popoverTitleClass()}>Filter posts</h3>
- *     <p class=${popoverDescriptionClass()}>By tag and status.</p>
+ *     <h3 class=${popoverTitleClass()} id="filter-title">Filter posts</h3>
+ *     <p class=${popoverDescriptionClass()} id="filter-desc">By tag and status.</p>
  *   </div>
  * </div>
  *
+ * <!-- Keep the trigger's aria-expanded in sync from the native toggle event. -->
+ * <script type="module">
+ *   const panel = document.getElementById('filter');
+ *   const trigger = document.querySelector('[popovertarget="filter"]');
+ *   panel.addEventListener('toggle', (e) => {
+ *     trigger.setAttribute('aria-expanded', String(e.newState === 'open'));
+ *   });
+ * </script>
+ *
  * <!-- Explicit anchor, for multiple invokers or anchoring to a different element. -->
  * <span style="anchor-name: --picker">@vivek</span>
- * <button popovertarget="profile">Show</button>
- * <div id="profile" popover style="position-anchor: --picker"
+ * <button popovertarget="profile" aria-expanded="false" aria-haspopup="dialog">Show</button>
+ * <div id="profile" popover role="dialog" aria-labelledby="profile-title"
+ *      style="position-anchor: --picker"
  *      class=${popoverContentClass({ side: 'bottom' })}>
  *   <div class=${popoverHeaderClass()}>
- *     <h3 class=${popoverTitleClass()}>Vivek Khandelwal</h3>
+ *     <h3 class=${popoverTitleClass()} id="profile-title">Vivek Khandelwal</h3>
  *     <p class=${popoverDescriptionClass()}>@vivek</p>
  *   </div>
  * </div>

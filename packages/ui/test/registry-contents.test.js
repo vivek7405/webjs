@@ -348,3 +348,19 @@ test('radio-group example names its group', { skip }, async () => {
     /<legend/.test(ex);
   assert.ok(named, 'radio-group @example leaves its radiogroup unnamed');
 });
+
+// #1080: packages/ui/AGENTS.md claims "Every Tier-1 component's JSDoc carries
+// an `A11y (required for accessible output)` block". That claim was false for
+// ten components, which is how the guidance half of the kit's accessibility
+// contract rotted unnoticed: a Tier-1 helper returns only classes, so the JSDoc
+// is the ONLY place the caller learns what ARIA they owe. This test is what
+// keeps the claim true, for Tier-2 as well, where the block states what the
+// element already owns so an author does not double-wire it.
+test('every component JSDoc carries an A11y block', { skip }, () => {
+  const missing = V1_COMPONENTS.filter((name) => !/^ \* A11y/m.test(readSource(name)));
+  assert.deepEqual(
+    missing,
+    [],
+    `these components have no "A11y" JSDoc block, so a caller has no statement of what ARIA they owe: ${missing.join(', ')}`,
+  );
+});

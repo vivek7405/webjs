@@ -24,6 +24,24 @@
  *
  * Design tokens used: --border, --ring, --foreground.
  *
+ * A11y (mostly handled by the native primitives):
+ *   Build it on `<details>` + `<summary>`, which is where nearly all of this
+ *   comes from: the browser supplies the button semantics, the expanded state,
+ *   Enter / Space activation, and focus, with no ARIA to hand-write. Do not
+ *   reimplement it with a `<div>` and `aria-expanded`.
+ *   Put the trigger classes on the `<summary>` ITSELF, not on a `<button>` or
+ *   `<div>` nested inside it. A nested interactive element inside a `<summary>`
+ *   is the #1078-class bug: the focusable thing and the labelled thing come
+ *   apart, and the summary's own name goes empty.
+ *   The chevron is decorative, so keep it `aria-hidden="true"`.
+ *   `name` on `<details>` is what gives exclusive-open behaviour natively, so
+ *   prefer it over JS that closes siblings.
+ *   Use a real heading inside the `<summary>` when the section title belongs in
+ *   the document outline, and pick its level from the surrounding page.
+ *   Never rely on the collapsed state to HIDE something that must stay
+ *   available: collapsed content is not reachable by find-in-page on every
+ *   engine, so nothing essential should live only there.
+ *
  * @example
  * ```html
  * <div class=${accordionClass()}>

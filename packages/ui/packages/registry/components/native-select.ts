@@ -21,15 +21,36 @@
  * Design tokens used: --input, --background, --primary, --primary-foreground,
  * --muted-foreground, --ring, --destructive.
  *
+ * A11y (required for accessible output):
+ *   LABEL IT. A `<label class=${labelClass()} for="<the select's id">` linked by
+ *   the `for` / `id` pair is the whole requirement. A `<select>` with no label
+ *   announces only its current value, so the user hears "Basic" with no idea it
+ *   is the billing plan.
+ *   The chevron is DECORATIVE and must stay `aria-hidden="true"`. It duplicates
+ *   information the select's own role already conveys, and it sits outside the
+ *   control, so without the attribute it is announced as a stray graphic.
+ *   There is no placeholder option in a `<select>`. If you need one, use a
+ *   `<option value="" disabled selected>` prompt, and keep `required` on the
+ *   select so an empty submit is caught natively.
+ *   Group long option lists with `<optgroup label="...">`; the label is
+ *   announced, so it is real structure rather than only a visual break.
+ *   Being native is the accessibility win here: the platform picker, the
+ *   keyboard behaviour, and the mobile UX come for free. Do not rebuild it as a
+ *   div-based listbox to gain styling.
+ *
  * @example
  * ```html
- * <div class=${nativeSelectWrapperClass()}>
- *   <select class=${nativeSelectClass()} name="plan">
- *     <option>Basic</option>
- *     <option>Pro</option>
- *   </select>
- *   <!-- chevron icon, decorative -->
- *   <svg class="${nativeSelectIconClass()}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+ * <div class=${fieldClass()}>
+ *   <label class=${labelClass()} for="plan">Billing plan</label>
+ *   <div class=${nativeSelectWrapperClass()}>
+ *     <select class=${nativeSelectClass()} name="plan" id="plan" required>
+ *       <option value="" disabled selected>Choose a plan</option>
+ *       <option value="basic">Basic</option>
+ *       <option value="pro">Pro</option>
+ *     </select>
+ *     <!-- chevron icon, decorative -->
+ *     <svg class="${nativeSelectIconClass()}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+ *   </div>
  * </div>
  * ```
  */

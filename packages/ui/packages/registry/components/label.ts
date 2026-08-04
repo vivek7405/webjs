@@ -12,10 +12,31 @@
  *
  * Design tokens used: none (typography only).
  *
+ * A11y (required for accessible output):
+ *   Put this on a REAL `<label>`, and link it to its control, either with `for`
+ *   pointing at the control's `id` (below) or by nesting the control inside the
+ *   `<label>`. That link is the entire point of the element: it supplies the
+ *   control's accessible name and makes clicking the text focus the control.
+ *   The same classes on a `<span>` or `<div>` look identical and name nothing.
+ *   One label, one control. `for` takes a single id, so a label cannot name a
+ *   group; use `<fieldset>` + `<legend>`, or a heading referenced by
+ *   `aria-labelledby`, for that.
+ *   Do not use a label as a heading for a non-control region. A label with no
+ *   control is inert; if it is really a section title, use a heading element.
+ *   The dimmed disabled look is presentational only (it keys on a parent's
+ *   `data-disabled` or a `peer-disabled:` sibling). Actually disable the
+ *   CONTROL: styling the label alone leaves a control that still takes input.
+ *
  * @example
  * ```html
  * <label class=${labelClass()} for="email">Email</label>
  * <input class=${inputClass()} id="email" name="email" type="email">
+ *
+ * <!-- Nesting works too, and needs no id / for pair. -->
+ * <label class=${labelClass()}>
+ *   <input type="checkbox" data-slot="checkbox" class=${checkboxClass()}>
+ *   Email me a receipt
+ * </label>
  * ```
  */
 
