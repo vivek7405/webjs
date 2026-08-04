@@ -1240,6 +1240,57 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
   });
 
 
+  test('a top-level script in a swapped range re-executes on a soft nav (#1102)', async () => {
+    // The headline behaviour, in a real browser. /script-swap's layout emits
+    // two inline scripts as SIBLINGS of its children, so both are top-level
+    // nodes of the range the router replaces when you navigate in from
+    // outside. Start somewhere that does not render that layout, so the two
+    // window counters are untouched and the ONLY thing that can set them is
+    // this navigation.
+    await page.goto(`${baseUrl}/static-info`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await sleep(1500);
+
+    await page.evaluate(() => {
+      const a = document.createElement('a');
+      a.href = '/script-swap';
+      a.id = 'e2e-1102-link';
+      a.textContent = 'script swap (e2e)';
+      (document.querySelector('main') || document.body).appendChild(a);
+      // A full page load discards this; a router swap keeps it. Without the
+      // sentinel a hard navigation would run the scripts through the PARSER
+      // and satisfy the counters for entirely the wrong reason.
+      window.__e2e1102Sentinel = 'alive';
+    });
+
+    await page.click('#e2e-1102-link');
+    await waitForCond(
+      async () => (await page.evaluate(() => location.pathname)) === '/script-swap',
+      10000,
+      () => 'expected the injected link to navigate to /script-swap',
+    );
+    await sleep(500);
+
+    const state = await page.evaluate(() => ({
+      sentinel: window.__e2e1102Sentinel,
+      before: window.__wjScriptBefore,
+      after: window.__wjScriptAfter,
+      beforeText: (document.getElementById('script-swap-before') || {}).textContent,
+      afterText: (document.getElementById('script-swap-after') || {}).textContent,
+      body: !!document.getElementById('script-swap-body'),
+    }));
+
+    assert.equal(state.sentinel, 'alive',
+      'this must be a soft navigation; a full page load proves nothing about reactivation');
+    assert.equal(state.body, true, 'the fixture route actually rendered');
+    assert.equal(state.before, 1,
+      'the top-level script BEFORE the children ran, which is the bug: it never used to');
+    assert.equal(state.after, 1,
+      'and the one AFTER the children ran too, so replacing the first did not truncate the range walk');
+    assert.equal(state.beforeText, '1', 'the before-script DOM write landed');
+    assert.equal(state.afterText, '1', 'the after-script DOM write landed');
+  });
+
+
   test('theme toggle still works after navigations that test counter', async () => {
     // Verify that upgradeCustomElements doesn't break other components
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
