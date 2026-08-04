@@ -968,4 +968,87 @@ suite('ui-sonner a11y', () => {
     assert.ok(alert, 'error toast carries role=alert');
     root.remove();
   });
+
+  // Finding 7: render() emitted no close button, so a toast could only leave via
+  // its auto-dismiss timer or a programmatic toast.dismiss(id). Counterfactual
+  // for the close button: without it there is no [data-slot="sonner-close"] to
+  // find and nothing a user can click.
+  test('every toast ships a labelled close button that dismisses it', async () => {
+    const root = await mount(html`<ui-sonner></ui-sonner>`);
+    const sonner = root.querySelector('ui-sonner');
+    sonner.addToast('Saved', {});
+    await tick();
+    const close = root.querySelector('[data-slot="sonner-close"]');
+    assert.ok(close, 'a close button is rendered');
+    assert.equal(close.getAttribute('aria-label'), 'Close notification', 'and it is labelled');
+    assert.equal(close.tagName, 'BUTTON', 'and it is a real button');
+    close.click();
+    await tick();
+    assert.equal(root.querySelector('[data-slot="sonner-toast"]'), null, 'clicking dismissed it');
+    root.remove();
+  });
+
+  // The worst case the finding calls out: toast.loading() defaults to
+  // duration 0, so before the close button it could not be dismissed from the
+  // UI at all.
+  test('a never-auto-dismissing loading toast can still be dismissed by hand', async () => {
+    const root = await mount(html`<ui-sonner></ui-sonner>`);
+    const sonner = root.querySelector('ui-sonner');
+    sonner.addToast('Saving', {}, 'loading');
+    await tick();
+    const toastEl = root.querySelector('[data-slot="sonner-toast"]');
+    assert.equal(toastEl.getAttribute('data-type'), 'loading', 'a loading toast');
+    root.querySelector('[data-slot="sonner-close"]').click();
+    await tick();
+    assert.equal(root.querySelector('[data-slot="sonner-toast"]'), null, 'dismissed by hand');
+    root.remove();
+  });
+
+  // The `cancel` option was documented in the JSDoc but absent from
+  // ToastOptions and never rendered. Counterfactual: no cancel button exists
+  // and onClick is never called.
+  test('the documented cancel option renders and runs its onClick', async () => {
+    const root = await mount(html`<ui-sonner></ui-sonner>`);
+    const sonner = root.querySelector('ui-sonner');
+    let cancelled = 0;
+    sonner.addToast('Post deleted', { cancel: { label: 'Dismiss', onClick: () => cancelled++ } });
+    await tick();
+    const cancel = root.querySelector('[data-slot="sonner-cancel"]');
+    assert.ok(cancel, 'cancel button rendered');
+    assert.equal(cancel.textContent.trim(), 'Dismiss', 'carries the given label');
+    cancel.click();
+    await tick();
+    assert.equal(cancelled, 1, 'onClick ran');
+    assert.equal(root.querySelector('[data-slot="sonner-toast"]'), null, 'and it dismissed');
+    root.remove();
+  });
+
+  test('action and cancel can coexist on one toast', async () => {
+    const root = await mount(html`<ui-sonner></ui-sonner>`);
+    const sonner = root.querySelector('ui-sonner');
+    sonner.addToast('Post deleted', {
+      action: { label: 'Undo', onClick: () => {} },
+      cancel: { label: 'Dismiss', onClick: () => {} },
+    });
+    await tick();
+    assert.ok(root.querySelector('[data-slot="sonner-action"]'), 'action rendered');
+    assert.ok(root.querySelector('[data-slot="sonner-cancel"]'), 'cancel rendered');
+    assert.ok(root.querySelector('[data-slot="sonner-close"]'), 'close still rendered');
+    root.remove();
+  });
+
+  // Decorative icons must not be walked for a name, or a screen reader can
+  // announce stray graphic nodes alongside the message.
+  test('toast icons are aria-hidden', async () => {
+    const root = await mount(html`<ui-sonner></ui-sonner>`);
+    root.querySelector('ui-sonner').addToast('Saved', {}, 'success');
+    await tick();
+    const svgs = [...root.querySelectorAll('[data-slot="sonner-toast"] svg')];
+    assert.ok(svgs.length > 0, 'there are icons to check');
+    assert.ok(
+      svgs.every((s) => s.getAttribute('aria-hidden') === 'true'),
+      'every toast icon is aria-hidden',
+    );
+    root.remove();
+  });
 });
