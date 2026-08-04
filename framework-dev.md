@@ -99,6 +99,18 @@ The scaffold gate is one of a FAMILY of tier-2 coverage gates that keep the fram
 
 ---
 
+### The e2e's elision-off server resolves vendors from the repo (#1228)
+
+`test/e2e/e2e.test.mjs`'s `differential elision (#181)` block runs the blog twice and asserts the two builds render identically. The two builds do not have the same network footprint, and that asymmetry is created by elision itself. Elision ON drops `components/vendor-badge.ts`, the blog's only vendor consumer, so `scanBareImports` finds nothing, `api.jspm.io` is never called, `dayjs` never enters the importmap, and the browser never contacts a third party. Elision OFF ships that component, so the same page acquires two live jspm dependencies: a blocking `api.jspm.io/generate` POST on the server's cold first request, and a `https://ga.jspm.io/...` module fetch inside `app/page.ts`'s graph in the browser.
+
+An ES module graph instantiates as a unit, so a failure at either point means `app/page.ts` never evaluates and nothing it imports registers, including components whose own modules fetched fine. The visible symptom is `customElements.define` never running, which reads as an elision defect and is not one. That is what redded this block on and off from 2026-08-02.
+
+So the OFF server boots with `test/e2e/fixtures/stub-jspm.mjs` preloaded, which answers the `api.jspm.io/generate` call from this repo's `node_modules` and points `dayjs` at a `data:` URL carrying those bytes. Stubbing the API call closes both holes at once, because the URL the browser fetches is whatever that map says. The ON server is left alone, since it resolves nothing.
+
+Two things to keep in mind when touching this. The stub serves only the packages listed in its `LOCAL_VENDORS` map and passes everything else through to the real API, so **a vendor added to the blog later needs an entry there.** That failure is not silent: one unserviceable install makes the stub refuse the whole batch, the real API answers, and the block's first test fails naming the CDN url it got instead of a `data:` one. The same test is what catches the wiring itself going away, so do not delete it to make a new vendor pass. And the preload flag is runtime-specific (`--import` on Node, `--preload` on Bun, neither honouring the other, and Bun ignoring `NODE_OPTIONS`), which is why it is passed as argv through `preloadArgs` rather than an env var; the `E2E (blog served on Bun)` CI job is what a Node-only spelling would silently skip.
+
+---
+
 ### Changelog: per-package, per-version, auto-generated
 
 WebJs ships per-package per-version changelogs under `changelog/<pkg>/<version>.md`. The model: **a version bump is the trigger**. When any commit on `main` changes the `version` field in `packages/<pkg>/package.json`, the scripts/backfill-changelog.js generator emits a new `changelog/<pkg>/<version>.md` summarising every conventional-commit (`feat:` / `fix:` / `breaking:` / `perf:`) that landed in that package since the prior bump. The website renders the union of all packages' files at `/changelog`.

@@ -74,16 +74,33 @@ function blogRuntimeExec() {
 // on either runtime, and these tests now run on both.
 
 /**
+ * Runtime flags that load `file` into the SERVER process before it boots, in
+ * whichever runtime `blogRuntimeExec` picked. Node spells this `--import`, Bun
+ * spells it `--preload`, and neither honours the other's flag, so a fixture
+ * wired through only one of them would silently do nothing on the Bun e2e job.
+ * Passed as argv rather than NODE_OPTIONS for the same reason (Bun ignores it).
+ * @param {string} file  absolute path to an ES module
+ * @returns {string[]}
+ */
+function preloadArgs(file) {
+  return (process.env.WEBJS_E2E_RUNTIME || '').toLowerCase() === 'bun'
+    ? ['--preload', file]
+    : ['--import', file];
+}
+
+/**
  * Start the blog example dev server and wait until it's ready.
  * @param {number} port
+ * @param {Record<string, string>} [extraEnv]
+ * @param {string[]} [runtimeArgs]  flags for the RUNTIME, before the CLI path
  * @returns {Promise<import('node:child_process').ChildProcess>}
  */
-function startBlog(port, extraEnv = {}) {
+function startBlog(port, extraEnv = {}, runtimeArgs = []) {
   const cliPath = resolve(ROOT, 'packages', 'cli', 'bin', 'webjs.js');
   return new Promise((res, reject) => {
     const child = spawn(
       blogRuntimeExec(),
-      [cliPath, 'dev', '--port', String(port)],
+      [...runtimeArgs, cliPath, 'dev', '--port', String(port)],
       {
         cwd: BLOG_DIR,
         env: { ...process.env, __WEBJS_DEV_CHILD: '1', ...extraEnv },
@@ -1970,7 +1987,23 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     before(async () => {
       const offPort = await freePort();
       offBaseUrl = `http://localhost:${offPort}`;
-      offServerProcess = await startBlog(offPort, { WEBJS_ELIDE: '0' });
+      // The OFF server resolves its vendors from this repo, not the public
+      // internet (#1228). Elision ON drops `components/vendor-badge.ts`, the
+      // blog's only vendor consumer, so the ON server never calls jspm and the
+      // ON page never fetches from a CDN. OFF ships that component, which puts
+      // a blocking `api.jspm.io/generate` POST on the server's cold first
+      // request AND a `https://ga.jspm.io/...` module fetch inside
+      // `app/page.ts`'s graph. A module graph instantiates as a unit, so either
+      // one failing means `app/page.ts` never evaluates and NOTHING it imports
+      // registers, including the counter these tests drive. That is what redded
+      // this block on and off from 2026-08-02, reported as an elision defect
+      // when it was CDN reachability. Stubbing the API call closes both holes,
+      // since the URL the browser fetches is whatever that map says.
+      offServerProcess = await startBlog(
+        offPort,
+        { WEBJS_ELIDE: '0' },
+        preloadArgs(resolve(ROOT, 'test', 'e2e', 'fixtures', 'stub-jspm.mjs')),
+      );
       offPage = await browser.newPage();
 
       // No browser-side warmup here on purpose. An earlier revision navigated
@@ -1982,12 +2015,11 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       // with a 4s delay injected on the counter module, goto took 4076ms and
       // the element was upgraded by the time it returned). And it correlated
       // with CI failures on the pushes that carried it. That attribution did
-      // NOT hold up: the same failure recurs without the warmup, and the cause
-      // is tracked separately as #1228 (the elision-OFF boot intermittently
-      // 404s a module, leaving components inert). What stands is the narrower
-      // point, that driving extra navigations through the page under test buys
-      // nothing measurable and changes browser-side state the assertions then
-      // depend on.
+      // NOT hold up: the same failure recurred without the warmup, and the
+      // cause turned out to be the vendor fetch above (#1228), not the warmup.
+      // What stands is the narrower point, that driving extra navigations
+      // through the page under test buys nothing measurable and changes
+      // browser-side state the assertions then depend on.
     });
 
     after(async () => {
@@ -2088,10 +2120,25 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
         if (!/timeout|Waiting failed/i.test(String(waitErr && waitErr.message))) throw waitErr;
         const state = await p.evaluate(() => {
           const C = customElements.get('my-counter');
+          // A module graph instantiates as a unit, so when define never runs
+          // the usual reason is that ONE member of the graph did not load and
+          // took every other member down with it, including modules that
+          // fetched fine. Name the candidates instead of leaving the next
+          // reader to guess: anything the page fetched from another origin
+          // (#1228 was exactly this, a vendor module from a CDN), and anything
+          // that came back an error. `responseStatus` is 0 for an opaque or
+          // failed cross-origin fetch, so it is reported only when readable.
+          const suspects = performance.getEntriesByType('resource')
+            .filter((e) => {
+              const crossOrigin = !e.name.startsWith(location.origin) && /^https?:/.test(e.name);
+              return crossOrigin || (typeof e.responseStatus === 'number' && e.responseStatus >= 400);
+            })
+            .map((e) => `${typeof e.responseStatus === 'number' && e.responseStatus ? e.responseStatus : 'status unknown'} ${e.name}`);
           return {
             defined: !!C,
             host: !!document.querySelector('my-counter'),
             upgraded: !!(C && document.querySelector('my-counter') instanceof C),
+            suspects,
           };
         }).catch(() => null);
         // Never print an unobserved state as a fact. When the probe itself
@@ -2101,11 +2148,62 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
           ? `customElements.define ${state.defined ? 'ran' : 'DID NOT run'}, `
             + `host ${state.host ? 'present' : 'absent'}, `
             + `instance ${state.upgraded ? 'upgraded' : 'NOT upgraded'}`
-            + (state.defined ? '' : '. If define never ran, the component module was not served: elision may have wrongly dropped it')
+            // What can produce a missing define depends on WHICH page this is,
+            // so do not offer the OFF page a cause that cannot happen there.
+            // The OFF server runs with WEBJS_ELIDE=0, which empties the
+            // elidable sets wholesale, so elision drops nothing and the only
+            // remaining cause is the page's module graph never evaluating.
+            // Offering elision there as a coequal possibility would re-suggest
+            // the exact misreading #1228 was.
+            + (state.defined
+              ? ''
+              : `. The graph did not evaluate: a member of it failed to load, or one threw at module scope. Either aborts `
+                + 'the WHOLE graph, so the component\'s own module never runs even though it fetched fine.'
+                + (which === 'OFF'
+                  ? ' Elision is not a candidate here, since this server runs with WEBJS_ELIDE=0 and drops nothing.'
+                  : ' The other possibility on this page is elision wrongly dropping the component, in which case its module'
+                    + ' was never in the graph at all.')
+                + ' Off-origin or failed resources on the page: '
+                + (state.suspects.length ? state.suspects.join(', ') : 'none'))
           : 'the page could not be probed for its state, so nothing is known beyond the timeout';
         throw new Error(`${which} page never upgraded <my-counter> within 15s (${detail}).`);
       }
     };
+
+    // The guard on the wiring in this block's before(). Everything below
+    // assumes the OFF server resolved its vendors from this repo rather than
+    // over the internet, and nothing else checks that: the fixture's own unit
+    // tests exercise it in isolation and never touch `preloadArgs`,
+    // `startBlog`, or a running server. So without this, deleting the
+    // `preloadArgs(...)` argument, renaming Bun's `--preload`, or moving the
+    // fixture leaves every test green while quietly restoring the live-CDN
+    // dependency, and this block goes back to being intermittently red months
+    // later, which is the failure #1228 was.
+    //
+    // The importmap is the right thing to read because it is where the two
+    // paths diverge: the stub answers the server's resolve, so a `data:` target
+    // can only have come from it, and an `https://` one can only mean the real
+    // API answered. The ON-side test for #170 reads the map the same way.
+    test('the OFF server resolved its vendor from the repo, not from a CDN', async () => {
+      await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      const dayjsTarget = await offPage.evaluate(() => {
+        const s = document.querySelector('script[type="importmap"]');
+        if (!s) return null;
+        const map = JSON.parse(s.textContent);
+        const key = Object.keys(map.imports || {}).find((k) => /^dayjs$/i.test(k));
+        return key ? map.imports[key] : null;
+      });
+      // Absent is a failure too, not a pass: the OFF build ships vendor-badge,
+      // so an importmap with no dayjs entry is the unresolved-bare-specifier
+      // case that kills the whole page graph.
+      assert.ok(dayjsTarget, 'the OFF page must carry an importmap entry for dayjs');
+      assert.match(
+        dayjsTarget,
+        /^data:/,
+        `the OFF server must resolve dayjs locally via the stub, got ${dayjsTarget}. `
+        + 'The stub is loaded by the preloadArgs() argument in this block\'s before().',
+      );
+    });
 
     test('the mixed page renders identically on vs off', async () => {
       await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
