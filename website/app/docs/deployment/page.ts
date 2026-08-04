@@ -104,6 +104,7 @@ npm run start -- --port 8080</pre>
       <li>Exits cleanly after drain completes, or force-exits after a 10-second timeout.</li>
     </ol>
     <p>Unhandled promise rejections are logged but do not crash the process. Uncaught exceptions trigger an orderly shutdown (state may be corrupted, so continuing is unsafe).</p>
+    <p><strong>The exit code reports why the process went down, not whether the drain worked.</strong> A signal-driven stop exits <code>0</code>, because an operator asked for it. A shutdown started by an uncaught exception exits <code>1</code> even when the drain is perfectly clean, because the process is dying from an error. Your supervisor reads only that code, so this is what makes <code>Restart=on-failure</code> (systemd), a Docker restart policy, and a Railway or Kubernetes crash-loop detector actually fire on a crashed server instead of recording a successful exit and leaving the instance down.</p>
 
     <h3>Health and readiness probes</h3>
     <p>WebJs answers two built-in probe endpoints, and the distinction matters under runtime-first boot:</p>

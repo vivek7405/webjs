@@ -1853,7 +1853,7 @@ function startNodeListener(ctx) {
   // Catch-all process handlers: log, but don't tear the process down on a
   // single mishandled promise. Uncaught exceptions are different: state may be
   // corrupted, so log + start an orderly shutdown rather than continuing.
-  installProcessHandlers(logger, () => shutdown('uncaughtException'));
+  installProcessHandlers(logger, () => shutdown('uncaughtException', { fatal: true }));
 
   return {
     server,

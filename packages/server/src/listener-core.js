@@ -383,7 +383,7 @@ export class SseHub {
  * Install once-only process error handlers. Idempotent across multiple
  * `startServer` calls in the same process. Runtime-neutral (plain `process.on`).
  * @param {import('./logger.js').Logger} logger
- * @param {() => void} onFatal
+ * @param {() => void} onFatal Starts the FATAL shutdown, which exits non-zero.
  */
 export function installProcessHandlers(logger, onFatal) {
   if (/** @type any */ (globalThis).__webjsProcHandlers) return;
@@ -405,14 +405,23 @@ export function installProcessHandlers(logger, onFatal) {
  * `closeServer()` thunk that resolves once the server has stopped accepting
  * connections (node `server.close`, Bun `server.stop(true)`). Closes the SSE hub,
  * then drains, then exits; hard-exits after 10s if the drain hangs.
+ *
+ * The exit code reports WHY the process is going down, not whether the drain
+ * itself worked. An operator signal (SIGINT / SIGTERM) is a requested stop, so a
+ * clean drain exits 0. A FATAL shutdown (the `uncaughtException` handler calling
+ * `onFatal`) exits 1 even when the drain is clean, because the process is dying
+ * from an error and a supervisor reads only the code (systemd `Restart=on-failure`,
+ * Docker, Railway, and a CI step running a `test/bun/*.mjs` proof script, whose
+ * failed top-level assertion arrives here as an uncaught exception, #1092).
  * @param {{ closeServer: () => Promise<unknown>, hub: SseHub, logger: import('./logger.js').Logger }} opts
- * @returns {(signal: string) => void}
+ * @returns {(signal: string, opts?: { fatal?: boolean }) => void}
  */
 export function makeShutdown({ closeServer, hub, logger }) {
   let shuttingDown = false;
-  return (signal) => {
+  return (signal, { fatal = false } = {}) => {
     if (shuttingDown) return;
     shuttingDown = true;
+    const code = fatal ? 1 : 0;
     logger.info(`received ${signal}, shutting down`);
     try { hub.closeAll(); } catch {}
     const hard = setTimeout(() => {
@@ -423,7 +432,7 @@ export function makeShutdown({ closeServer, hub, logger }) {
     Promise.resolve()
       .then(closeServer)
       .then(
-        () => { logger.info('bye'); process.exit(0); },
+        () => { logger.info('bye'); process.exit(code); },
         (err) => { logger.error('server close error', { err: String(err) }); process.exit(1); },
       );
   };
