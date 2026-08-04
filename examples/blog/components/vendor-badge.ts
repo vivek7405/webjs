@@ -8,11 +8,11 @@ import dayjs from 'dayjs';
  * no reactive properties, no lifecycle hooks, no signals, no slot, so
  * the framework classifies it as display-only.
  *
- * Note the binding import of `dayjs` rather than a reactive `static
- * properties` attribute. A non-state reactive property is an
- * interactivity signal that would force the component to ship; a binding
- * import is not, so the component stays elidable while still using the
- * package server-side.
+ * Note the binding import of `dayjs` rather than a reactive property
+ * declared through the `WebComponent({ ... })` factory. A non-state
+ * reactive property is an interactivity signal that would force the
+ * component to ship; a binding import is not, so the component stays
+ * elidable while still using the package server-side.
  *
  * It exists to e2e-pin a specific elision claim. A vendor package used
  * ONLY by a display-only component is never fetched by the browser, and

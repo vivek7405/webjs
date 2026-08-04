@@ -2150,14 +2150,50 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
             + `instance ${state.upgraded ? 'upgraded' : 'NOT upgraded'}`
             + (state.defined
               ? ''
-              : '. define never ran, so the page\'s module graph did not evaluate. Either a member of it failed to load '
-                + '(one failure aborts the whole graph, so a module that fetched fine still never runs), or elision wrongly '
-                + 'dropped the component. Off-origin or failed resources on the page: '
+              : '. Two causes produce that, and this probe cannot tell them apart. Either a member of the page\'s module '
+                + 'graph failed to load, which aborts the WHOLE graph, so the component\'s own module never runs even though '
+                + 'it fetched fine; or elision wrongly dropped the component, in which case its module was never in the graph '
+                + 'at all. Off-origin or failed resources on the page: '
                 + (state.suspects.length ? state.suspects.join(', ') : 'none'))
           : 'the page could not be probed for its state, so nothing is known beyond the timeout';
         throw new Error(`${which} page never upgraded <my-counter> within 15s (${detail}).`);
       }
     };
+
+    // The guard on the wiring in this block's before(). Everything below
+    // assumes the OFF server resolved its vendors from this repo rather than
+    // over the internet, and nothing else checks that: the fixture's own unit
+    // tests exercise it in isolation and never touch `preloadArgs`,
+    // `startBlog`, or a running server. So without this, deleting the
+    // `preloadArgs(...)` argument, renaming Bun's `--preload`, or moving the
+    // fixture leaves every test green while quietly restoring the live-CDN
+    // dependency, and this block goes back to being intermittently red months
+    // later, which is the failure #1228 was.
+    //
+    // The importmap is the right thing to read because it is where the two
+    // paths diverge: the stub answers the server's resolve, so a `data:` target
+    // can only have come from it, and an `https://` one can only mean the real
+    // API answered. The ON-side test for #170 reads the map the same way.
+    test('the OFF server resolved its vendor from the repo, not from a CDN', async () => {
+      await offPage.goto(`${offBaseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      const dayjsTarget = await offPage.evaluate(() => {
+        const s = document.querySelector('script[type="importmap"]');
+        if (!s) return null;
+        const map = JSON.parse(s.textContent);
+        const key = Object.keys(map.imports || {}).find((k) => /^dayjs$/i.test(k));
+        return key ? map.imports[key] : null;
+      });
+      // Absent is a failure too, not a pass: the OFF build ships vendor-badge,
+      // so an importmap with no dayjs entry is the unresolved-bare-specifier
+      // case that kills the whole page graph.
+      assert.ok(dayjsTarget, 'the OFF page must carry an importmap entry for dayjs');
+      assert.match(
+        dayjsTarget,
+        /^data:/,
+        `the OFF server must resolve dayjs locally via the stub, got ${dayjsTarget}. `
+        + 'The stub is loaded by the preloadArgs() argument in this block\'s before().',
+      );
+    });
 
     test('the mixed page renders identically on vs off', async () => {
       await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });

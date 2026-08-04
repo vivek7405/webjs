@@ -79,34 +79,48 @@ function localModuleUrl(name) {
 }
 
 /**
- * An install string is `name`, `name@range`, or either plus a subpath
- * (`dayjs@1.11.21/plugin/utc`). The subpath always rides AFTER the version, so
- * cutting at the version separator yields the bare package name on its own. A
- * scoped name's leading `@` is not that separator, hence the offset start.
+ * Split an install string into its package name and its subpath.
+ *
+ * The four shapes, all of which jspm accepts: `dayjs`, `dayjs@1.11.21`,
+ * `dayjs/plugin/utc`, `dayjs@1.11.21/plugin/utc`, each also in scoped form
+ * (`@scope/pkg...`). So the version is OPTIONAL and the subpath does not always
+ * ride behind one, which rules out cutting at the version separator alone: on
+ * `dayjs/plugin/utc` there is no `@` to cut at, and taking the whole string as
+ * the name would report no subpath for an install that plainly has one.
+ *
+ * Cut on the first `/` that is not part of a scope instead, then strip any
+ * version off the name. A scoped name's leading `@` is not a version separator
+ * and its first `/` is not a subpath, hence the offsets.
+ *
  * @param {string} install
- * @returns {string}
+ * @returns {{ name: string, subpath: string }}
  */
-export function packageName(install) {
-  const at = install.indexOf('@', install.startsWith('@') ? 1 : 0);
-  return at === -1 ? install : install.slice(0, at);
+export function splitInstall(install) {
+  const scoped = install.startsWith('@');
+  // For a scoped install the subpath starts at the SECOND slash, since the
+  // first one separates the scope from the package.
+  const scopeSlash = scoped ? install.indexOf('/') : -1;
+  const slash = install.indexOf('/', scoped ? scopeSlash + 1 : 0);
+  const head = slash === -1 ? install : install.slice(0, slash);
+  const at = head.indexOf('@', scoped ? 1 : 0);
+  return {
+    name: at === -1 ? head : head.slice(0, at),
+    subpath: slash === -1 ? '' : install.slice(slash),
+  };
 }
 
+/** @param {string} install @returns {string} */
+export function packageName(install) { return splitInstall(install).name; }
+
 /**
- * The part of an install AFTER the package name and version, if any, e.g.
- * `/plugin/utc` for `dayjs@1.11.21/plugin/utc`. A subpath needs its own
- * importmap key pointing at its own file, which this fixture does not build,
- * so a subpath install counts as unserviceable rather than being answered with
- * the bare package's entry.
+ * The part of an install after its package name, e.g. `/plugin/utc`. A subpath
+ * needs its own importmap key pointing at its own file, which this fixture does
+ * not build, so a subpath install counts as unserviceable rather than being
+ * answered with the bare package's entry.
  * @param {string} install
  * @returns {string}
  */
-export function subpath(install) {
-  const at = install.indexOf('@', install.startsWith('@') ? 1 : 0);
-  if (at === -1) return '';
-  const afterVersion = install.slice(at);
-  const slash = afterVersion.indexOf('/');
-  return slash === -1 ? '' : afterVersion.slice(slash);
-}
+export function subpath(install) { return splitInstall(install).subpath; }
 
 /**
  * Build the importmap this fixture would answer a `/generate` call with, or

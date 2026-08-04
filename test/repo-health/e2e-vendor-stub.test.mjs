@@ -46,14 +46,23 @@ const generate = (install) => globalThis.fetch('https://api.jspm.io/generate', {
 });
 
 test('an install string yields its package name and subpath', () => {
-  assert.equal(packageName('dayjs'), 'dayjs');
-  assert.equal(packageName('dayjs@1.11.21'), 'dayjs');
-  assert.equal(packageName('dayjs@1.11.21/plugin/utc'), 'dayjs');
-  assert.equal(packageName('@scope/pkg@1.0.0/sub'), '@scope/pkg');
-  assert.equal(packageName('@scope/pkg'), '@scope/pkg');
-  assert.equal(subpath('dayjs@1.11.21'), '');
-  assert.equal(subpath('dayjs@1.11.21/plugin/utc'), '/plugin/utc');
-  assert.equal(subpath('dayjs'), '');
+  // All four shapes jspm accepts, each in bare and scoped form. The version is
+  // OPTIONAL, so the unversioned-with-subpath rows are the ones that catch a
+  // parser that assumes a subpath always rides behind a version.
+  const cases = [
+    ['dayjs', 'dayjs', ''],
+    ['dayjs@1.11.21', 'dayjs', ''],
+    ['dayjs/plugin/utc', 'dayjs', '/plugin/utc'],
+    ['dayjs@1.11.21/plugin/utc', 'dayjs', '/plugin/utc'],
+    ['@scope/pkg', '@scope/pkg', ''],
+    ['@scope/pkg@1.0.0', '@scope/pkg', ''],
+    ['@scope/pkg/sub', '@scope/pkg', '/sub'],
+    ['@scope/pkg@1.0.0/sub', '@scope/pkg', '/sub'],
+  ];
+  for (const [install, name, sub] of cases) {
+    assert.equal(packageName(install), name, `name of ${install}`);
+    assert.equal(subpath(install), sub, `subpath of ${install}`);
+  }
 });
 
 test('a known package resolves to a data: URL', async () => {
@@ -70,12 +79,13 @@ test('anything the repo cannot serve passes through to the real API', async () =
     ['left-pad@1.3.0'],                 // not in LOCAL_VENDORS
     ['dayjs@1.11.21', 'left-pad@1.3.0'], // one serviceable, one not
     ['dayjs@1.11.21/plugin/utc'],        // a subpath needs its own entry
+    ['dayjs/plugin/utc'],                // and so does one with no version
     [],                                  // a request naming no installs at all
   ]) {
     const res = await generate(install);
     assert.equal(res.status, 418, `expected pass-through for ${JSON.stringify(install)}`);
   }
-  assert.equal(passedThrough.length, 4);
+  assert.equal(passedThrough.length, 5);
   assert.ok(passedThrough.every((u) => u.includes('api.jspm.io')));
 });
 
