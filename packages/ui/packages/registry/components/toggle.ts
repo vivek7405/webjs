@@ -21,6 +21,22 @@
  *
  * Keyboard: native button. Enter / Space activates (via the inner <button>).
  *
+ * A11y (required for accessible output):
+ *   `<ui-toggle>` renders a native `<button>` inside itself, and that button is
+ *   the focusable control whose accessible name a screen reader announces. An
+ *   `aria-label` on the host would not reach it (a name on a generic-role
+ *   element does not contribute to a descendant's name), so the element
+ *   FORWARDS the host's `aria-label` / `aria-labelledby` onto the inner button.
+ *   Put the name on the host, as the icon-only example below does, and the
+ *   element wires the rest. An icon-only toggle needs one; a text toggle takes
+ *   its name from the slotted text and needs nothing.
+ *   The name is read at render time, so set it as an attribute on the host
+ *   (`aria-label="Toggle bold"` or `el.setAttribute('aria-label', ...)`), not
+ *   as a property.
+ *   Using the Tier-1 `toggleClass()` helper on your own `<button>` instead? Then
+ *   the name is entirely yours: give an icon-only button an `aria-label`, and
+ *   carry the pressed state on `aria-pressed` + `data-state` as the example does.
+ *
  * Design tokens used: --muted, --muted-foreground, --accent, --accent-foreground,
  * --input, --background, --ring, --destructive.
  *
@@ -93,12 +109,32 @@ export class UiToggle extends WebComponent({
     this.disabled = false;
   }
 
+  // Read a host attribute defensively. render() runs server-side too, where
+  // webjs shims the attribute methods; the typeof guard stays for any other
+  // renderer that does not.
+  _hostAttr(name: string): string | null {
+    if (typeof this.getAttribute !== 'function') return null;
+    return this.getAttribute(name);
+  }
+
   render() {
+    // The focusable control is the inner <button>, so its accessible name is
+    // what a screen reader announces. `aria-label` on the host cannot supply
+    // that (the host has a generic role, and a name there does not contribute
+    // to a descendant's name), and the documented icon-only shape slots an
+    // aria-hidden SVG, which contributes nothing either. Forward the host's
+    // name source onto the button so the documented shape ships named.
+    // A null hole omits the attribute in both renderers, so an unlabelled
+    // toggle still takes its name from slotted text.
+    const label = this._hostAttr('aria-label');
+    const labelledBy = this._hostAttr('aria-labelledby');
     return html`<button
       type="button"
       data-slot="toggle"
       class=${toggleClass({ variant: this.variant, size: this.size })}
       aria-pressed=${String(this.pressed)}
+      aria-label=${label}
+      aria-labelledby=${labelledBy}
       data-state=${this.pressed ? 'on' : 'off'}
       ?disabled=${this.disabled}
       @click=${this._onClick}

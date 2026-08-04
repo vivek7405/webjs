@@ -255,6 +255,48 @@ suite('ui-toggle-group a11y', () => {
   });
 });
 
+suite('ui-toggle a11y', () => {
+  suiteSetup(async () => { await import(`${COMPONENTS_DIR}/toggle.ts`); });
+
+  // The focusable control is the inner <button>, so the name has to be ON it.
+  // Counterfactual for the forwarding fix: before it, render() emitted no
+  // aria-label, so the documented icon-only shape (an aria-hidden SVG child)
+  // left the button with an empty accessible name and these assertions failed.
+  test('host aria-label reaches the focusable inner button', async () => {
+    const root = await mount(html`
+      <ui-toggle aria-label="Toggle bold">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M0 0h1v1H0z" /></svg>
+      </ui-toggle>
+    `);
+    const btn = root.querySelector('ui-toggle button[data-slot="toggle"]');
+    assert.equal(btn.getAttribute('aria-label'), 'Toggle bold', 'name is on the button');
+    root.remove();
+  });
+
+  test('host aria-labelledby reaches the inner button', async () => {
+    const root = await mount(html`
+      <span id="toggle-bold-label">Bold</span>
+      <ui-toggle aria-labelledby="toggle-bold-label">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M0 0h1v1H0z" /></svg>
+      </ui-toggle>
+    `);
+    const btn = root.querySelector('ui-toggle button[data-slot="toggle"]');
+    assert.equal(btn.getAttribute('aria-labelledby'), 'toggle-bold-label');
+    root.remove();
+  });
+
+  // An unlabelled text toggle takes its name from the slotted text, so the
+  // forwarding must OMIT the attribute rather than emit an empty one (an
+  // aria-label="" would override the text and leave the button unnamed).
+  test('an unlabelled toggle emits no empty aria-label', async () => {
+    const root = await mount(html`<ui-toggle>Bold</ui-toggle>`);
+    const btn = root.querySelector('ui-toggle button[data-slot="toggle"]');
+    assert.equal(btn.hasAttribute('aria-label'), false, 'no aria-label attribute');
+    assert.equal(btn.hasAttribute('aria-labelledby'), false, 'no aria-labelledby attribute');
+    root.remove();
+  });
+});
+
 suite('ui-dropdown-menu a11y', () => {
   suiteSetup(async () => { await import(`${COMPONENTS_DIR}/dropdown-menu.ts`); });
 
