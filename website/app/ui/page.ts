@@ -98,7 +98,7 @@ import { buttonClass } from '#modules/ui/components/button.ts';
 webjs ui add button card dialog input label</pre>
       <p>
         <code>init</code> writes <code>components.json</code>, copies the <code>cn()</code> helper
-        into <code>lib/utils.ts</code>, and installs the theme tokens.
+        into <code>lib/utils/cn.ts</code>, and installs the theme tokens.
         <code>add</code> resolves a component's transitive dependencies and copies the source into
         <code>components/ui/</code>, which is yours to edit from that point on.
       </p>
@@ -107,7 +107,7 @@ webjs ui add button card dialog input label</pre>
       <table>
         <thead><tr><th scope="col">Command</th><th scope="col">What it does</th></tr></thead>
         <tbody>
-          <tr><td><code>init</code></td><td>Writes <code>components.json</code>, copies <code>lib/utils.ts</code>, installs the theme tokens. Exits non-zero if the tokens cannot be written, because an unstyled install with a clean exit code is worse than a failure.</td></tr>
+          <tr><td><code>init</code></td><td>Writes <code>components.json</code>, copies <code>lib/utils/cn.ts</code>, installs the theme tokens. Exits non-zero if the tokens cannot be written, because an unstyled install with a clean exit code is worse than a failure.</td></tr>
           <tr><td><code>add &lt;names...&gt;</code></td><td>Resolves transitive dependencies, copies the source in, installs npm dependencies, and self-heals missing theme tokens.</td></tr>
           <tr><td><code>list [filter]</code></td><td>Lists everything in the registry.</td></tr>
           <tr><td><code>view &lt;name&gt;</code></td><td>Prints a component's helpers, its paste-ready example, and its full source.</td></tr>

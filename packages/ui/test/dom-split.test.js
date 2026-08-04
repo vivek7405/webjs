@@ -155,15 +155,20 @@ test('add: sonner (dom-only import) still gets ../lib/dom.ts rewritten', async (
   }
 });
 
-test('init: writes lib/dom.ts alongside lib/utils.ts', async () => {
+// The two helpers must land as SIBLINGS, because that adjacency is what
+// `add`'s import rewriting assumes when it resolves '../lib/dom.ts' (it takes
+// the dirname of the resolved utils path). #1129 moved the pair from
+// lib/utils.ts + lib/dom.ts into lib/utils/, matching what `webjs create`
+// scaffolds; the adjacency, not the directory, is the invariant.
+test('init: writes dom.ts alongside the cn helper', async () => {
   stubFetch();
   const d = mkdtempSync(join(tmpdir(), 'webjsui-domsplit-init-'));
   writeFileSync(join(d, 'package.json'), JSON.stringify({ dependencies: { '@webjsdev/server': '*' } }));
   try {
     await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/domsplit-init'], { from: 'user' });
-    assert.ok(existsSync(join(d, 'lib', 'utils.ts')), 'lib/utils.ts must be written');
-    assert.ok(existsSync(join(d, 'lib', 'dom.ts')), 'lib/dom.ts must be written');
-    assert.match(readFileSync(join(d, 'lib', 'dom.ts'), 'utf8'), /onBeforeCache/);
+    assert.ok(existsSync(join(d, 'lib', 'utils', 'cn.ts')), 'lib/utils/cn.ts must be written');
+    assert.ok(existsSync(join(d, 'lib', 'utils', 'dom.ts')), 'lib/utils/dom.ts must be written');
+    assert.match(readFileSync(join(d, 'lib', 'utils', 'dom.ts'), 'utf8'), /onBeforeCache/);
   } finally {
     globalThis.fetch = origFetch;
     rmSync(d, { recursive: true });

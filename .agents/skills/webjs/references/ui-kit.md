@@ -40,7 +40,7 @@ So the loop is: `add` the component, then query `ui <name>` (MCP) or
 
 ## Setup and resolution
 
-- `npx webjsdev ui init` writes `components.json`, `lib/utils.ts`, and the CSS design
+- `npx webjsdev ui init` writes `components.json`, `lib/utils/cn.ts`, and the CSS design
   tokens the helpers render against (`--background`, `--foreground`,
   `--destructive`, ...). It HARD-FAILS if the tokens cannot be written, so a
   clean exit means the kit is styled. `add` self-heals the tokens if they go

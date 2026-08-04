@@ -85,7 +85,7 @@ packages/ui/
   src/
     index.js                      CLI entry (Commander program + dispatch)
     commands/
-      init.js                     init, writes components.json, theme CSS, lib/utils.ts
+      init.js                     init, writes components.json, theme CSS, lib/utils/cn.ts (defaults are fixed constants)
       add.js                      add, resolve registry items + write into project + install deps
       list.js                     list, show all registry items
       view.js                     view, print a component's source
@@ -101,13 +101,12 @@ packages/ui/
       resolver.js                 walk registryDependencies transitively
     utils/
       get-config.js               read components.json
-      detect-project.js           webjs / next / vite / astro / plain detection
       theme.js                    ensureTheme(): install the design tokens (init hard-fails, add self-heals)
       logger.js                   kleur-based logger
   test/
     schema.test.js                schema validation
     resolver.test.js              transitive deps + npm dedupe
-    detect-project.test.js        project-type detection + defaults
+    init-command.test.js          the components.json init writes + its fixed defaults
     get-config.test.js            config read/write/round-trip
 
   packages/registry/              the registry (internal, not published)
@@ -231,12 +230,12 @@ Browser tests for the Tier-2 guarantees live in
 
 | Command | What it does |
 |---|---|
-| `webjsui init` | Initialize a project, writes `components.json`, copies `lib/utils.ts`, installs the theme tokens. HARD-FAILS (non-zero exit) when the tokens cannot be written (an unstyled install with a clean exit code was the old trap). |
+| `webjsui init` | Initialize a project, writes `components.json`, copies the `cn()` helper to `lib/utils/cn.ts` (plus `lib/utils/dom.ts` beside it), installs the theme tokens. Its defaults are fixed constants, not derived from the host project (#1129). HARD-FAILS (non-zero exit) when the tokens cannot be written (an unstyled install with a clean exit code was the old trap). |
 | `webjsui add <names...>` | Resolve transitive deps, copy component sources, install npm deps. Self-heals missing theme tokens. For a Tier-1 helper it strips the worked `@example` and leaves a pointer (see Registry resolution). |
 | `webjsui list [filter]` | List components in the registry |
 | `webjsui view <name>` | Print a component's source to stdout (the human / offline path to the full example) |
 | `webjsui diff [name]` | Show diffs between local and registry (against the LIVE upstream) |
-| `webjsui info` | Print project type + config + registry URL |
+| `webjsui info` | Print cwd + config + registry URL |
 | `webjsui build [file]` | Compile a custom registry (for registry authors) |
 
 ### Registry resolution: LOCAL-FIRST (#983)
@@ -324,6 +323,19 @@ when the caller passes an explicit custom `--registry <url>`.
    no `ElementInternals`, no `setFormValue` proxying. Submission,
    autofill, browser autocomplete, native validation all work.
 
+7. **The kit targets WebJs apps, and only WebJs apps (#1129).** There is no
+   host-project detection and no per-framework branching anywhere in the
+   package. `init` writes one fixed set of defaults (`styles/globals.css`, and
+   the alias map whose `utils` entry is `lib/utils/cn`), which are the same
+   values `webjs create` scaffolds, so `init` on a bare app and a scaffolded
+   app land on the same layout. The output is plain Tailwind classes and
+   standard custom elements, so it will render in a non-WebJs host, but that
+   is not a supported, tested, or advertised path: point `--css` somewhere
+   else and hand-edit `components.json` at your own risk. Do NOT reintroduce a
+   `detectProject()` in any form. A switch that picks paths per framework buys
+   about thirty lines of defaults in exchange for a cross-framework promise
+   the rest of the package does not keep.
+
 ## Component tag convention (Tier 2)
 
 Single `ui-` prefix; sub-components hyphenated. Matches shadcn's React tag
@@ -366,12 +378,12 @@ Change one helper to retune the entire app, every form field that uses
 ## Tests
 
 ```sh
-npm test --workspace=@webjsdev/ui    # schema + resolver + project-detect + config
+npm test --workspace=@webjsdev/ui    # schema + resolver + init defaults + config
 ```
 
 Tests live in **`packages/ui/test/`** as flat files for the CLI
 helpers (`schema.test.js`, `resolver.test.js`,
-`detect-project.test.js`, etc.) plus `test/registry-contents.test.js`
+`init-command.test.js`, etc.) plus `test/registry-contents.test.js`
 which smoke-validates the component sources (reads
 `components/*.ts` and verifies Tier-1/Tier-2 shape + hallmark
 class strings).

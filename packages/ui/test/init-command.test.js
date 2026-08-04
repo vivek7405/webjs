@@ -34,12 +34,18 @@ function stubFetch() {
 
 function tmp() {
   const d = mkdtempSync(join(tmpdir(), 'webjsui-init-'));
-  // Make it look like a webjs project so defaults pick the right paths.
-  writeFileSync(join(d, 'package.json'), JSON.stringify({ dependencies: { '@webjsdev/server': '*' } }));
+  writeFileSync(join(d, 'package.json'), JSON.stringify({ dependencies: {} }));
   return d;
 }
 
-test('init: writes components.json with project-detected defaults', async () => {
+// #1129: the defaults used to be computed by a `defaultsForProject()` switch on
+// a detected project type. They are plain constants now, so this test is what
+// stands between a stray edit and a silently different components.json. It
+// pins EVERY field, not a sample: a wrong `utils` alias is the failure mode
+// that matters (get-config.js appends '.ts', so `lib/utils/cn` is what
+// resolves to lib/utils/cn.ts), and it is invisible until `add` writes an
+// import that does not resolve.
+test('init: writes components.json with the WebJs defaults', async () => {
   stubFetch();
   const d = tmp();
   try {
@@ -47,22 +53,52 @@ test('init: writes components.json with project-detected defaults', async () => 
     const cfg = JSON.parse(readFileSync(join(d, 'components.json'), 'utf8'));
     assert.equal(cfg.style, 'default');
     assert.equal(cfg.tailwind.baseColor, 'neutral');
-    assert.equal(cfg.tailwind.css, 'styles/globals.css'); // webjs default (app/ is routing-only)
-    assert.equal(cfg.aliases.ui, 'components/ui');
+    assert.equal(cfg.tailwind.cssVariables, true);
+    // styles/globals.css, NOT app/globals.css: app/ is routing-only in WebJs.
+    assert.equal(cfg.tailwind.css, 'styles/globals.css');
+    assert.deepEqual(cfg.aliases, {
+      components: 'components',
+      utils: 'lib/utils/cn',
+      ui: 'components/ui',
+      lib: 'lib',
+    });
+    assert.equal(cfg.iconLibrary, 'lucide');
   } finally {
     globalThis.fetch = origFetch;
     rmSync(d, { recursive: true });
   }
 });
 
-test('init: writes lib/utils.ts from registry', async () => {
+// The emitted config is only half the contract. These assert the FILES land
+// where the aliases say they do, which is what `add`'s import rewriting reads:
+// the cn() helper at the `utils` alias + '.ts', and the client-only DOM helper
+// as its sibling (#819).
+test('init: writes the cn helper and its DOM sibling under lib/utils/', async () => {
   stubFetch();
   const d = tmp();
   try {
     await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
-    assert.ok(existsSync(join(d, 'lib', 'utils.ts')));
-    const utils = readFileSync(join(d, 'lib', 'utils.ts'), 'utf8');
-    assert.match(utils, /cn/);
+    assert.ok(existsSync(join(d, 'lib', 'utils', 'cn.ts')), 'cn.ts at the utils alias');
+    assert.match(readFileSync(join(d, 'lib', 'utils', 'cn.ts'), 'utf8'), /cn/);
+    assert.ok(existsSync(join(d, 'lib', 'utils', 'dom.ts')), 'dom.ts beside it');
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+// The whole point of scoping the kit to WebJs is that there is ONE default set.
+// A Next-shaped project used to get app/globals.css and @/ aliases; it now gets
+// the same config as anything else, and `--css` remains the escape hatch.
+test('init: does not vary its defaults by what the host project looks like', async () => {
+  stubFetch();
+  const d = mkdtempSync(join(tmpdir(), 'webjsui-init-next-'));
+  writeFileSync(join(d, 'package.json'), JSON.stringify({ dependencies: { next: '15.0.0' } }));
+  try {
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+    const cfg = JSON.parse(readFileSync(join(d, 'components.json'), 'utf8'));
+    assert.equal(cfg.tailwind.css, 'styles/globals.css');
+    assert.equal(cfg.aliases.utils, 'lib/utils/cn');
   } finally {
     globalThis.fetch = origFetch;
     rmSync(d, { recursive: true });

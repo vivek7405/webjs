@@ -1,13 +1,12 @@
 /**
  * Branch-coverage tests: push the package over ~95%.
- * Covers the harder-to-reach branches in init/add/detect-project/list.
+ * Covers the harder-to-reach branches in init/add/list.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { detectProject, defaultsForProject } from '../src/utils/detect-project.js';
 import { init } from '../src/commands/init.js';
 import { add } from '../src/commands/add.js';
 import { list } from '../src/commands/list.js';
@@ -21,47 +20,6 @@ function tmp(deps) {
   writeFileSync(join(d, 'package.json'), JSON.stringify({ dependencies: deps || {} }));
   return d;
 }
-
-test('detectProject: astro', () => {
-  const d = tmp({ astro: '4.0.0' });
-  try { assert.equal(detectProject(d).type, 'astro'); }
-  finally { rmSync(d, { recursive: true }); }
-});
-
-test('defaultsForProject: vite uses src/', () => {
-  const d = tmp({ vite: '5.0.0' });
-  try {
-    const def = defaultsForProject(d);
-    assert.equal(def.tailwindCss, 'src/index.css');
-    assert.equal(def.aliases.ui, 'src/components/ui');
-  } finally { rmSync(d, { recursive: true }); }
-});
-
-test('defaultsForProject: astro uses src/styles/', () => {
-  const d = tmp({ astro: '4.0.0' });
-  try {
-    const def = defaultsForProject(d);
-    assert.equal(def.tailwindCss, 'src/styles/globals.css');
-    assert.equal(def.aliases.ui, 'src/components/ui');
-  } finally { rmSync(d, { recursive: true }); }
-});
-
-test('defaultsForProject: plain projects use styles/', () => {
-  const d = tmp({});
-  try {
-    const def = defaultsForProject(d);
-    assert.equal(def.tailwindCss, 'styles/globals.css');
-  } finally { rmSync(d, { recursive: true }); }
-});
-
-test('detectProject: webjs via app/layout.ts (no @webjsdev dep)', () => {
-  const d = tmp({});
-  try {
-    mkdirSync(join(d, 'app'), { recursive: true });
-    writeFileSync(join(d, 'app', 'layout.ts'), '');
-    assert.equal(detectProject(d).type, 'webjs');
-  } finally { rmSync(d, { recursive: true }); }
-});
 
 test('init: warns gracefully when lib-utils fetch fails but the theme succeeds', async () => {
   // lib-utils / lib-dom 404 (soft warn), but the theme resolves: the theme is
