@@ -102,29 +102,54 @@ import { buttonClass } from './button.ts';
 // data-slot="dialog-title" (falling back to the first heading); the
 // description is data-slot="dialog-description" (falling back to the first
 // paragraph). Author-set aria-labelledby / aria-describedby always win.
+// The description is independent of the NAME, so it is wired on every path,
+// including the two authored-name early returns below. An author who names the
+// dialog still gets their description node described.
+function wireDialogDescription(host: Element, panel: Element): void {
+  const authored = host.getAttribute('aria-describedby');
+  if (authored) {
+    panel.setAttribute('aria-describedby', authored);
+    return;
+  }
+  const desc =
+    host.querySelector('[data-slot="dialog-description"]') ?? host.querySelector('p');
+  if (desc && !panel.hasAttribute('aria-describedby')) {
+    panel.setAttribute('aria-describedby', ensureId(desc as HTMLElement, 'ui-dialog-desc'));
+  }
+}
+
 export function wireDialogLabels(host: Element, panelSelector: string): void {
   const panel = host.querySelector(panelSelector);
   if (!panel) return;
   // A name the author put on <ui-dialog-content> is where they naturally write
   // it, but role="dialog" lives on the inner panel, so forward it there.
-  const authoredLabel = host.getAttribute('aria-label');
-  if (authoredLabel && !panel.hasAttribute('aria-label')) {
-    panel.setAttribute('aria-label', authoredLabel);
-  }
+  //
+  // This RETURNS once an authored name is forwarded, rather than falling
+  // through to the title wiring below. Falling through would set
+  // aria-labelledby from the title alongside the forwarded aria-label, and
+  // aria-labelledby beats aria-label per accname, so the title would silently
+  // win over the name the author asked for.
   const authoredLabelledBy = host.getAttribute('aria-labelledby');
-  if (authoredLabelledBy && !panel.hasAttribute('aria-labelledby')) {
+  if (authoredLabelledBy) {
     panel.setAttribute('aria-labelledby', authoredLabelledBy);
+    wireDialogDescription(host, panel);
+    return;
+  }
+  const authoredLabel = host.getAttribute('aria-label');
+  if (authoredLabel) {
+    panel.setAttribute('aria-label', authoredLabel);
+    // An authored name replaces the title as the NAME, so any stale
+    // aria-labelledby from an earlier open must go, or it would win over it.
+    panel.removeAttribute('aria-labelledby');
+    wireDialogDescription(host, panel);
+    return;
   }
   const title =
     host.querySelector('[data-slot="dialog-title"]') ?? host.querySelector('h1, h2, h3');
-  const desc =
-    host.querySelector('[data-slot="dialog-description"]') ?? host.querySelector('p');
   if (title && !panel.hasAttribute('aria-labelledby')) {
     panel.setAttribute('aria-labelledby', ensureId(title as HTMLElement, 'ui-dialog-title'));
   }
-  if (desc && !panel.hasAttribute('aria-describedby')) {
-    panel.setAttribute('aria-describedby', ensureId(desc as HTMLElement, 'ui-dialog-desc'));
-  }
+  wireDialogDescription(host, panel);
   // APG: a modal MUST have an accessible name. Everything above supplies one
   // only when the author gave the dialog a title node or named it directly, so
   // a title-less dialog shipped unnamed and was announced as a bare "dialog".

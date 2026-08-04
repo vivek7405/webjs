@@ -496,16 +496,39 @@ suite('ui-dropdown-menu a11y', () => {
     root.remove();
   });
 
-  // The guard: an outside click that deliberately focused another control must
-  // NOT have focus yanked back to the trigger. Counterfactual for the guard
-  // itself, which an unconditional restore would fail.
-  test('outside click closes without stealing focus back', async () => {
+  // An outside click is still a close of a popover="manual" panel, so it owes the
+  // same focus care as Escape. TWO branches, and both need covering: the first
+  // version of this test only exercised the second, so it passed identically with
+  // an unconditional restore and proved nothing about the guard.
+  //
+  // Branch 1: the click landed on nothing focusable, so focus would be lost to
+  // <body> when the panel hides. Counterfactual: with the bare hide() this path
+  // used to do, activeElement ends up <body> instead of the trigger.
+  test('outside click on nothing focusable hands focus back to the trigger', async () => {
+    const { root, menuEl, btn, items } = await mountMenu();
+    menuEl.show();
+    await tick();
+    assert.equal(document.activeElement, items[0], 'focus starts inside the menu');
+    // pointerdown is where focus-inside is sampled, before the browser moves it.
+    document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    document.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await tick();
+    assert.equal(menuEl.open, false, 'menu closed');
+    assert.notEqual(document.activeElement, document.body, 'focus was not dropped to <body>');
+    assert.equal(document.activeElement, btn, 'focus went back to the trigger');
+    root.remove();
+  });
+
+  // Branch 2: the click put focus on another control, so that control keeps it.
+  // This is what makes the restore conditional rather than unconditional.
+  test('outside click onto another control leaves focus there', async () => {
     const { root, menuEl, btn } = await mountMenu();
     menuEl.show();
     await tick();
     const other = root.querySelector('#after-menu');
+    other.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     other.focus();
-    document.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    other.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await tick();
     assert.equal(menuEl.open, false, 'menu closed');
     assert.equal(document.activeElement, other, 'focus stayed on the clicked control');
@@ -798,6 +821,68 @@ suite('ui-dialog a11y', () => {
     root.remove();
   });
 
+  // The case the first pass at this missed: an authored name AND a title node.
+  // The forwarding set aria-label, then the title wiring set aria-labelledby
+  // alongside it, and aria-labelledby beats aria-label per accname, so the title
+  // silently won over the name the author asked for. Counterfactual: restore the
+  // fall-through and aria-labelledby comes back, outranking the author's name.
+  //
+  // Cleanup is in a `finally` on purpose. A modal <dialog> left open makes the
+  // rest of the document inert, so a dialog assertion that throws before its
+  // hide() turns one real failure into a cascade of unrelated focus failures in
+  // every later suite. That cascade actually happened while verifying this test.
+  test('an authored name beats a title node, and leaves nothing to outrank it', async () => {
+    const root = await mount(html`
+      <ui-dialog>
+        <ui-dialog-content aria-label="Edit profile">
+          <h2 data-slot="dialog-title">Some other title</h2>
+          <p data-slot="dialog-description">Make changes.</p>
+        </ui-dialog-content>
+      </ui-dialog>
+    `);
+    const dlg = root.querySelector('ui-dialog');
+    try {
+      dlg.show();
+      await tick();
+      await tick();
+      const panel = root.querySelector('[data-slot="dialog-content"]');
+      const desc = root.querySelector('[data-slot="dialog-description"]');
+      assert.equal(panel.getAttribute('aria-label'), 'Edit profile', 'author name applied');
+      assert.equal(
+        panel.hasAttribute('aria-labelledby'),
+        false,
+        'no aria-labelledby, which would outrank the author name',
+      );
+      // The description is independent of the name and must still be wired.
+      assert.equal(panel.getAttribute('aria-describedby'), desc.id, 'description still wired');
+    } finally {
+      dlg.hide();
+      root.remove();
+    }
+  });
+
+  test('an authored aria-labelledby beats a title node too', async () => {
+    const root = await mount(html`
+      <span id="dlg-own-label">My own label</span>
+      <ui-dialog>
+        <ui-dialog-content aria-labelledby="dlg-own-label">
+          <h2 data-slot="dialog-title">Some other title</h2>
+        </ui-dialog-content>
+      </ui-dialog>
+    `);
+    const dlg = root.querySelector('ui-dialog');
+    try {
+      dlg.show();
+      await tick();
+      await tick();
+      const panel = root.querySelector('[data-slot="dialog-content"]');
+      assert.equal(panel.getAttribute('aria-labelledby'), 'dlg-own-label', 'author reference wins');
+    } finally {
+      dlg.hide();
+      root.remove();
+    }
+  });
+
   test('an authored aria-label on the content host reaches the panel and wins', async () => {
     const root = await mount(html`
       <ui-dialog>
@@ -861,6 +946,37 @@ suite('ui-alert-dialog a11y', () => {
     assert.equal(panel.getAttribute('aria-label'), 'Alert dialog', 'generic name as the floor');
     root.querySelector('ui-alert-dialog').hide();
     root.remove();
+  });
+
+  // Same precedence bug as dialog: the forwarding set aria-label and the title
+  // wiring then added an aria-labelledby that outranks it per accname.
+  test('an authored name beats a title node on the alert dialog too', async () => {
+    const root = await mount(html`
+      <ui-alert-dialog>
+        <ui-alert-dialog-content aria-label="Confirm deletion">
+          <h2 data-slot="alert-dialog-title">Some other title</h2>
+          <p data-slot="alert-dialog-description">This cannot be undone.</p>
+        </ui-alert-dialog-content>
+      </ui-alert-dialog>
+    `);
+    const dlg = root.querySelector('ui-alert-dialog');
+    try {
+      dlg.show();
+      await tick();
+      await tick();
+      const panel = root.querySelector('[data-slot="alert-dialog-content"]');
+      const desc = root.querySelector('[data-slot="alert-dialog-description"]');
+      assert.equal(panel.getAttribute('aria-label'), 'Confirm deletion');
+      assert.equal(
+        panel.hasAttribute('aria-labelledby'),
+        false,
+        'nothing outranks the author name',
+      );
+      assert.equal(panel.getAttribute('aria-describedby'), desc.id, 'description still wired');
+    } finally {
+      dlg.hide();
+      root.remove();
+    }
   });
 
   test('an authored aria-label on the alert content host reaches the panel', async () => {

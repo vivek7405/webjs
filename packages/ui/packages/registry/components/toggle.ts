@@ -124,18 +124,51 @@ export class UiToggle extends WebComponent({
     // to a descendant's name), and the documented icon-only shape slots an
     // aria-hidden SVG, which contributes nothing either. Forward the host's
     // name source onto the button so the documented shape ships named.
-    // A null hole omits the attribute in both renderers, so an unlabelled
-    // toggle still takes its name from slotted text.
-    const label = this._hostAttr('aria-label');
+    //
+    // The name is BRANCHED into three templates rather than carried in one
+    // hole, because a null hole does NOT omit an attribute on the server: the
+    // server renderer stringifies the value, so `aria-label=${null}` ships
+    // `aria-label=""` while the client renderer removes it. On an unlabelled
+    // toggle that would put an empty name on the very control whose name is
+    // supposed to come from its slotted text, and disagree with the hydrated
+    // DOM on the exact attribute this forwarding exists to get right.
     const labelledBy = this._hostAttr('aria-labelledby');
+    const label = this._hostAttr('aria-label');
+    const cls = toggleClass({ variant: this.variant, size: this.size });
+    const pressed = String(this.pressed);
+    const state = this.pressed ? 'on' : 'off';
+    // aria-labelledby beats aria-label per accname, so it is checked first and
+    // only ONE of the two is ever emitted.
+    if (labelledBy) {
+      return html`<button
+        type="button"
+        data-slot="toggle"
+        class=${cls}
+        aria-pressed=${pressed}
+        aria-labelledby=${labelledBy}
+        data-state=${state}
+        ?disabled=${this.disabled}
+        @click=${this._onClick}
+      ><slot></slot></button>`;
+    }
+    if (label) {
+      return html`<button
+        type="button"
+        data-slot="toggle"
+        class=${cls}
+        aria-pressed=${pressed}
+        aria-label=${label}
+        data-state=${state}
+        ?disabled=${this.disabled}
+        @click=${this._onClick}
+      ><slot></slot></button>`;
+    }
     return html`<button
       type="button"
       data-slot="toggle"
-      class=${toggleClass({ variant: this.variant, size: this.size })}
-      aria-pressed=${String(this.pressed)}
-      aria-label=${label}
-      aria-labelledby=${labelledBy}
-      data-state=${this.pressed ? 'on' : 'off'}
+      class=${cls}
+      aria-pressed=${pressed}
+      data-state=${state}
       ?disabled=${this.disabled}
       @click=${this._onClick}
     ><slot></slot></button>`;

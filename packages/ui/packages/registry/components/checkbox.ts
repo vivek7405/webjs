@@ -26,8 +26,11 @@
  *   Set `aria-invalid="true"` on a failed checkbox (the class styles it) and
  *   point `aria-describedby` at the element holding the error text.
  *   The indeterminate state is a PROPERTY, not an attribute
- *   (`el.indeterminate = true`), and it needs `aria-checked="mixed"` to be
- *   announced as mixed rather than simply unchecked.
+ *   (`el.indeterminate = true`). Do NOT add `aria-checked="mixed"` alongside it:
+ *   the browser already maps a native checkbox's `indeterminate` to a mixed
+ *   checked state, and hand-writing the ARIA duplicates a state the host
+ *   language owns, which is discouraged precisely because the two can then
+ *   disagree. Set the property and leave the ARIA alone.
  *
  * @example
  * ```html

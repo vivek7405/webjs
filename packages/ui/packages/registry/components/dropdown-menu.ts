@@ -63,9 +63,12 @@
  * A11y (owned by the element, nothing to supply):
  *   The trigger gets `aria-haspopup` / `aria-expanded` / `aria-controls`, the
  *   panel is a `role="menu"` labelled back by the trigger, and a disabled item
- *   reflects `aria-disabled`. Escape and item activation return focus to the
- *   trigger (an outside click does not, so a click that focused another
- *   control keeps it). A `type="checkbox"` / `type="radio"` item carries
+ *   reflects `aria-disabled`. EVERY close path leaves focus somewhere sensible
+ *   rather than dropping it to `<body>`: Escape, Tab, and item activation
+ *   return focus to the trigger, and so does an outside click that did not put
+ *   focus anywhere itself. An outside click ON another control leaves focus on
+ *   that control, since the user chose it.
+ *   A `type="checkbox"` / `type="radio"` item carries
  *   `role="menuitemcheckbox"` / `role="menuitemradio"` plus `aria-checked`.
  *   What you DO supply: a name for a radio set, as `aria-label` on the
  *   enclosing `<ui-dropdown-menu-group>` (APG asks a menuitemradio set to sit
@@ -193,6 +196,7 @@ export class UiDropdownMenu extends WebComponent({
   _typeBufferTimer: number | undefined;
 
   _docClickHandler = (e: MouseEvent): void => this._onDocClick(e);
+  _docPointerDownHandler = (e: Event): void => this._onDocPointerDown(e);
   _keyHandler = (e: KeyboardEvent): void => this._onKeyDown(e);
   _resizeHandler = (): void => this._reposition();
 
@@ -213,14 +217,13 @@ export class UiDropdownMenu extends WebComponent({
   show(): void { this.open = true; }
   hide(): void { this.open = false; }
 
-  // APG Menu Button requires Escape and item activation to close the menu AND
-  // return focus to the trigger. Without this, focus is sitting on an item
-  // inside a popover="manual" panel, so hiding the panel drops focus to
-  // <body> and a keyboard user loses their place on the page entirely.
+  // APG Menu Button requires Escape, Tab, item activation, AND an outside-click
+  // dismiss to close the menu without stranding focus. Without this, focus is
+  // sitting on an item inside a popover="manual" panel, so hiding the panel
+  // drops focus to <body> and a keyboard user loses their place entirely.
   //
-  // The restore is GUARDED on focus still being inside the menu, because
-  // outside-click shares the close path: a click that deliberately focused
-  // another control must not have focus yanked back to the trigger.
+  // The restore is GUARDED, because an outside click that deliberately moved
+  // focus to another control must not have focus yanked back to the trigger.
   //
   // Focus moves BEFORE the panel hides. Hiding a popover whose descendant
   // holds focus makes the engine run its own focus fixup, and moving out
@@ -336,6 +339,7 @@ export class UiDropdownMenu extends WebComponent({
 
   _setup(): void {
     this._reposition();
+    document.addEventListener('pointerdown', this._docPointerDownHandler, true);
     document.addEventListener('click', this._docClickHandler);
     document.addEventListener('keydown', this._keyHandler);
     window.addEventListener('resize', this._resizeHandler);
@@ -349,8 +353,10 @@ export class UiDropdownMenu extends WebComponent({
   }
 
   _teardown(): void {
+    document.removeEventListener('pointerdown', this._docPointerDownHandler, true);
     document.removeEventListener('click', this._docClickHandler);
     document.removeEventListener('keydown', this._keyHandler);
+    this._focusWasInsideAtPointerDown = false;
     window.removeEventListener('resize', this._resizeHandler);
     window.removeEventListener('scroll', this._resizeHandler, true);
     this.querySelectorAll<UiDropdownMenuSub>('ui-dropdown-menu-sub[open]').forEach(
@@ -358,9 +364,32 @@ export class UiDropdownMenu extends WebComponent({
     );
   }
 
+  // Sampled on POINTERDOWN, before the browser moves focus for the click. By
+  // the time the click handler runs, a click on a non-focusable area has often
+  // already blurred the focused menu item to <body>, so a check made there
+  // cannot tell "clicked away from everything" (focus should go back to the
+  // trigger) from "clicked another control" (leave focus where the user put it).
+  _focusWasInsideAtPointerDown = false;
+
+  _onDocPointerDown(e: Event): void {
+    if (!this.open) return;
+    if (e.composedPath().some((n) => n === this)) return;
+    this._focusWasInsideAtPointerDown = this._focusIsInside();
+  }
+
   _onDocClick(e: MouseEvent): void {
     if (!this.open) return;
     if (e.composedPath().some((n) => n === this)) return;
+    // An outside click dismisses the menu, and it is still a close of a
+    // popover="manual" panel, so it owes the same focus care as Escape: leaving
+    // focus on an item that is about to become display:none drops it to <body>.
+    // Restore only when the click did not land focus somewhere itself.
+    const active = typeof document !== 'undefined' ? document.activeElement : null;
+    const clickTookFocus = !!active && active !== document.body && !this.contains(active);
+    if (this._focusWasInsideAtPointerDown && !clickTookFocus) {
+      this._triggerControl()?.focus();
+    }
+    this._focusWasInsideAtPointerDown = false;
     this.hide();
   }
 
@@ -540,41 +569,53 @@ export class UiDropdownMenuItem extends WebComponent({
     const disabled = typeof this.hasAttribute === 'function' && this.hasAttribute('data-disabled');
     const checkbox = this.type === 'checkbox';
     const radio = this.type === 'radio';
-    const toggleable = checkbox || radio;
     // The role is what tells a screen reader this is a checkable control at
     // all, and aria-checked is what carries the state. Neither belongs on a
-    // plain item: aria-checked on role="menuitem" is not allowed and reads as
-    // a broken state rather than no state, so it is omitted via a null hole.
-    const role = checkbox ? 'menuitemcheckbox' : radio ? 'menuitemradio' : 'menuitem';
-    const slot = toggleable ? `dropdown-menu-${this.type}-item` : 'dropdown-menu-item';
-    const cls = checkbox
-      ? dropdownMenuCheckboxItemClass()
-      : radio
-        ? dropdownMenuRadioItemClass()
-        : dropdownMenuItemClass();
+    // plain item, where aria-checked is not an allowed attribute.
+    //
+    // Hence TWO templates rather than one with conditional holes: a null hole
+    // does NOT omit an attribute on the server (the server renderer
+    // stringifies the value), so a single template would ship every plain item
+    // as `role="menuitem" aria-checked="" data-state=""`, carrying the exact
+    // disallowed attribute this branch exists to keep off it, and disagreeing
+    // with the hydrated DOM where the client renderer removes it. The two
+    // shapes differ by the indicator anyway.
+    if (checkbox || radio) {
+      return html`<div
+        data-slot=${`dropdown-menu-${this.type}-item`}
+        role=${checkbox ? 'menuitemcheckbox' : 'menuitemradio'}
+        tabindex="-1"
+        data-variant=${this.variant}
+        ?data-inset=${this.inset}
+        ?data-disabled=${disabled}
+        aria-disabled=${disabled ? 'true' : 'false'}
+        aria-checked=${String(this.checked)}
+        data-state=${this.checked ? 'checked' : 'unchecked'}
+        ?data-highlighted=${this.#highlighted.get()}
+        class=${checkbox ? dropdownMenuCheckboxItemClass() : dropdownMenuRadioItemClass()}
+        @click=${this._onClick}
+        @pointerenter=${this._onPointerEnter}
+        @focus=${this._onFocus}
+        @blur=${this._onBlur}
+      ><span
+        class="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center"
+      >${this.checked ? unsafeHTML(radio ? RADIO_DOT_SVG : CHECK_SVG) : ''}</span><slot></slot></div>`;
+    }
     return html`<div
-      data-slot=${slot}
-      role=${role}
+      data-slot="dropdown-menu-item"
+      role="menuitem"
       tabindex="-1"
       data-variant=${this.variant}
       ?data-inset=${this.inset}
       ?data-disabled=${disabled}
       aria-disabled=${disabled ? 'true' : 'false'}
-      aria-checked=${toggleable ? String(this.checked) : null}
-      data-state=${toggleable ? (this.checked ? 'checked' : 'unchecked') : null}
       ?data-highlighted=${this.#highlighted.get()}
-      class=${cls}
+      class=${dropdownMenuItemClass()}
       @click=${this._onClick}
       @pointerenter=${this._onPointerEnter}
       @focus=${this._onFocus}
       @blur=${this._onBlur}
-    >${
-      toggleable
-        ? html`<span
-            class="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center"
-          >${this.checked ? unsafeHTML(radio ? RADIO_DOT_SVG : CHECK_SVG) : ''}</span>`
-        : ''
-    }<slot></slot></div>`;
+    ><slot></slot></div>`;
   }
 
   _onClick = (e: Event): void => {
@@ -707,13 +748,32 @@ export class UiDropdownMenuGroup extends WebComponent {
     // The group carries the name of the set ("Sort by", "Panel position"), and
     // the name has to be on the element that holds role="group" to be exposed.
     // Forward it off the host so an author writes it where the tag is.
+    //
+    // Branched, not held in a null hole: a null hole does NOT omit an attribute
+    // on the server, so an unnamed group would ship
+    // `role="group" aria-label="" aria-labelledby=""`, an empty IDREF list and
+    // an empty name on an element that simply has no name.
     const attr = (n: string): string | null =>
       typeof this.getAttribute === 'function' ? this.getAttribute(n) : null;
+    const labelledBy = attr('aria-labelledby');
+    const label = attr('aria-label');
+    if (labelledBy) {
+      return html`<div
+        data-slot="dropdown-menu-group"
+        role="group"
+        aria-labelledby=${labelledBy}
+      ><slot></slot></div>`;
+    }
+    if (label) {
+      return html`<div
+        data-slot="dropdown-menu-group"
+        role="group"
+        aria-label=${label}
+      ><slot></slot></div>`;
+    }
     return html`<div
       data-slot="dropdown-menu-group"
       role="group"
-      aria-label=${attr('aria-label')}
-      aria-labelledby=${attr('aria-labelledby')}
     ><slot></slot></div>`;
   }
 }
