@@ -41,7 +41,12 @@
  *
  * Events:
  *   `ui-open-change` on <ui-dropdown-menu>: `{ detail: { open } }` after a transition.
- *   `ui-item-select` bubbled by an item: `{ detail: { value, item } }` on activation.
+ *   `ui-item-select` bubbled by an item on activation, CANCELABLE:
+ *     `{ detail: { value, item, type, checked } }`. `checked` is the state the
+ *     item has settled on, so a checkbox / radio listener reads it directly.
+ *     Calling `preventDefault()` keeps the menu OPEN (the parity shape for
+ *     shadcn's `onSelect={e => e.preventDefault()}`), which is what a
+ *     multi-select checkbox menu wants.
  *
  * Programmatic API on <ui-dropdown-menu>: `.show()` · `.hide()` · `.toggle()`.
  *
@@ -51,8 +56,20 @@
  *   ArrowLeft             inside a submenu: close it, refocus the sub-trigger
  *   Home / End            first / last item
  *   Enter / Space         activate focused item
- *   Escape                close menu (or close current submenu first)
+ *   Escape                close the menu that holds focus (a submenu first,
+ *                         refocusing its sub-trigger) and refocus the trigger
  *   Tab                   close menu and proceed with normal tab order
+ *
+ * A11y (owned by the element, nothing to supply):
+ *   The trigger gets `aria-haspopup` / `aria-expanded` / `aria-controls`, the
+ *   panel is a `role="menu"` labelled back by the trigger, and a disabled item
+ *   reflects `aria-disabled`. Escape and item activation return focus to the
+ *   trigger (an outside click does not, so a click that focused another
+ *   control keeps it). A `type="checkbox"` / `type="radio"` item carries
+ *   `role="menuitemcheckbox"` / `role="menuitemradio"` plus `aria-checked`.
+ *   What you DO supply: a name for a radio set, as `aria-label` on the
+ *   enclosing `<ui-dropdown-menu-group>` (APG asks a menuitemradio set to sit
+ *   in a labelled group; the group forwards the name onto its `role="group"`).
  *
  * Design tokens used: --popover, --popover-foreground, --accent,
  * --accent-foreground, --destructive, --muted-foreground, --border.
@@ -75,6 +92,38 @@
  *     </ui-dropdown-menu-sub>
  *     <ui-dropdown-menu-separator></ui-dropdown-menu-separator>
  *     <ui-dropdown-menu-item variant="destructive">Sign out</ui-dropdown-menu-item>
+ *   </ui-dropdown-menu-content>
+ * </ui-dropdown-menu>
+ *
+ * <!-- Checkbox items. Read the new state off the event's detail.checked. -->
+ * <ui-dropdown-menu @ui-item-select=${onSelect}>
+ *   <ui-dropdown-menu-trigger>
+ *     <button class=${buttonClass({ variant: 'outline' })}>View</button>
+ *   </ui-dropdown-menu-trigger>
+ *   <ui-dropdown-menu-content>
+ *     <ui-dropdown-menu-item type="checkbox" value="status" checked>
+ *       Status bar
+ *     </ui-dropdown-menu-item>
+ *     <ui-dropdown-menu-item type="checkbox" value="activity">
+ *       Activity bar
+ *     </ui-dropdown-menu-item>
+ *   </ui-dropdown-menu-content>
+ * </ui-dropdown-menu>
+ *
+ * <!-- A multi-select menu cancels the event so the menu stays open:
+ *      const onSelect = (e) => { e.preventDefault(); save(e.detail); };  -->
+ *
+ * <!-- Radio items: one checked per group. Name the set on the group. -->
+ * <ui-dropdown-menu>
+ *   <ui-dropdown-menu-trigger>
+ *     <button class=${buttonClass({ variant: 'outline' })}>Panel</button>
+ *   </ui-dropdown-menu-trigger>
+ *   <ui-dropdown-menu-content>
+ *     <ui-dropdown-menu-group aria-label="Panel position">
+ *       <ui-dropdown-menu-item type="radio" value="top" checked>Top</ui-dropdown-menu-item>
+ *       <ui-dropdown-menu-item type="radio" value="bottom">Bottom</ui-dropdown-menu-item>
+ *       <ui-dropdown-menu-item type="radio" value="right">Right</ui-dropdown-menu-item>
+ *     </ui-dropdown-menu-group>
  *   </ui-dropdown-menu-content>
  * </ui-dropdown-menu>
  * ```
@@ -117,7 +166,21 @@ export const dropdownMenuSubContentClass = (): string =>
 const CHEVRON_RIGHT_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ml-auto size-4" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg>';
 
+// Checked-state indicators for a checkbox / radio item. Decorative: the state
+// they draw is announced from aria-checked, so both are aria-hidden.
+const CHECK_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+
+const RADIO_DOT_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="size-2" aria-hidden="true"><circle cx="12" cy="12" r="12"></circle></svg>';
+
 const SUB_CLOSE_DELAY = 200;
+
+// Every role a focusable menu item can carry. A checkbox / radio item is NOT
+// role="menuitem", so a bare [role="menuitem"] query silently skips it and the
+// item drops out of arrow nav, typeahead, and the focus-first-item-on-open.
+const MENU_ITEM = ':is([role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"])';
+const ENABLED_MENU_ITEM = `${MENU_ITEM}:not([data-disabled])`;
 
 // --------------------------------------------------------------------------
 // <ui-dropdown-menu>
@@ -149,6 +212,31 @@ export class UiDropdownMenu extends WebComponent({
   toggle(): void { this.open = !this.open; }
   show(): void { this.open = true; }
   hide(): void { this.open = false; }
+
+  // APG Menu Button requires Escape and item activation to close the menu AND
+  // return focus to the trigger. Without this, focus is sitting on an item
+  // inside a popover="manual" panel, so hiding the panel drops focus to
+  // <body> and a keyboard user loses their place on the page entirely.
+  //
+  // The restore is GUARDED on focus still being inside the menu, because
+  // outside-click shares the close path: a click that deliberately focused
+  // another control must not have focus yanked back to the trigger.
+  //
+  // Focus moves BEFORE the panel hides. Hiding a popover whose descendant
+  // holds focus makes the engine run its own focus fixup, and moving out
+  // first means the trigger is the final focus rather than a target the
+  // fixup then overrides.
+  _closeAndRestoreFocus(): void {
+    if (this._focusIsInside()) this._triggerControl()?.focus();
+    this.hide();
+  }
+
+  _focusIsInside(): boolean {
+    if (typeof document === 'undefined') return false;
+    const active = document.activeElement;
+    if (!active || active === document.body) return false;
+    return this.contains(active);
+  }
 
   render() {
     return html`<div data-slot="dropdown-menu" data-state=${this.open ? 'open' : 'closed'}>
@@ -254,7 +342,7 @@ export class UiDropdownMenu extends WebComponent({
     window.addEventListener('scroll', this._resizeHandler, true);
     queueMicrotask(() => {
       const first = this.querySelector<HTMLElement>(
-        'ui-dropdown-menu-item:not([data-disabled]) [role="menuitem"]',
+        `ui-dropdown-menu-item:not([data-disabled]) ${MENU_ITEM}`,
       );
       first?.focus();
     });
@@ -278,20 +366,49 @@ export class UiDropdownMenu extends WebComponent({
 
   _onKeyDown(e: KeyboardEvent): void {
     if (!this.open) return;
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      this.hide();
-      return;
-    }
 
     // Active context = nearest content / sub-content panel owning focus.
     // Scoping arrow nav avoids walking into siblings of a different submenu.
+    // Computed before Escape / Tab because both need to know which panel holds
+    // focus, and neither may bail when focus is outside the menu entirely.
     const active = document.activeElement as HTMLElement | null;
     const context = active?.closest('[role="menu"]') as HTMLElement | null;
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      // APG: Escape closes the menu that CONTAINS focus and returns focus to
+      // whatever opened it. Inside a submenu panel that is the submenu and its
+      // sub-trigger, so the root menu stays open (the JSDoc's "close current
+      // submenu first"). Focus on the sub-trigger itself is focus in the ROOT
+      // panel, so that case closes the whole menu, which is why this reads the
+      // panel rather than walking up to any open <ui-dropdown-menu-sub>.
+      const subContent = context?.closest('ui-dropdown-menu-sub-content');
+      const sub = subContent?.closest('ui-dropdown-menu-sub') as UiDropdownMenuSub | null;
+      if (sub) {
+        sub.querySelector<HTMLElement>(`ui-dropdown-menu-sub-trigger ${MENU_ITEM}`)?.focus();
+        sub.hide();
+        return;
+      }
+      this._closeAndRestoreFocus();
+      return;
+    }
+
+    if (e.key === 'Tab') {
+      // JSDoc contract: Tab closes the menu and proceeds with the normal tab
+      // order, so the default is deliberately NOT prevented. Focus is restored
+      // to the trigger first because the items are tabindex="-1" inside a
+      // top-layer panel that is about to be display:none, so tabbing onward
+      // from there has no sensible next element. Moving to the trigger (which
+      // IS in the tab sequence) means the browser's own Tab then advances to
+      // the element after it, which is what APG asks for.
+      this._closeAndRestoreFocus();
+      return;
+    }
+
     if (!context) return;
 
     const items = Array.from(
-      context.querySelectorAll<HTMLElement>('[role="menuitem"]:not([data-disabled])'),
+      context.querySelectorAll<HTMLElement>(ENABLED_MENU_ITEM),
     ).filter((it) => it.closest('[role="menu"]') === context);
     if (items.length === 0) return;
     const idx = active ? items.indexOf(active) : -1;
@@ -314,15 +431,10 @@ export class UiDropdownMenu extends WebComponent({
       if (subTrigger) {
         e.preventDefault();
         const sub = subTrigger.closest('ui-dropdown-menu-sub') as UiDropdownMenuSub | null;
-        if (sub) {
-          sub.show();
-          queueMicrotask(() => {
-            const firstSubItem = sub.querySelector<HTMLElement>(
-              'ui-dropdown-menu-sub-content [role="menuitem"]:not([data-disabled])',
-            );
-            firstSubItem?.focus();
-          });
-        }
+        // The sub owns the open-then-focus sequencing: its panel is
+        // popover="manual" and only becomes visible a microtask later, so
+        // focusing from here races the reveal and loses (see the method).
+        sub?.openAndFocusFirstItem();
       }
     } else if (e.key === 'ArrowLeft') {
       // Inside a sub-content: close the submenu and refocus its trigger.
@@ -330,10 +442,10 @@ export class UiDropdownMenu extends WebComponent({
         e.preventDefault();
         const sub = context.closest('ui-dropdown-menu-sub') as UiDropdownMenuSub | null;
         const trigger = sub?.querySelector<HTMLElement>(
-          'ui-dropdown-menu-sub-trigger [role="menuitem"]',
+          `ui-dropdown-menu-sub-trigger ${MENU_ITEM}`,
         );
-        sub?.hide();
         trigger?.focus();
+        sub?.hide();
       }
     } else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
       this._typeahead(e, items);
@@ -397,6 +509,13 @@ UiDropdownMenuContent.register('ui-dropdown-menu-content');
 export class UiDropdownMenuItem extends WebComponent({
   variant: prop<'default' | 'destructive'>(String, { reflect: true }),
   inset: Boolean,
+  // `type` is read from the authored attribute and never written back: an
+  // unreflected default keeps a plain item's markup free of a type="" that
+  // means nothing. `checked` reflects so the state is readable and settable
+  // as an attribute, the same contract <ui-toggle>'s `pressed` has.
+  type: prop<'' | 'checkbox' | 'radio'>(String),
+  checked: prop(Boolean, { reflect: true }),
+  value: prop(String, { reflect: true }),
 }) {
   // Keyboard / pointer highlight state for the own-rendered menuitem. A
   // local signal bound with ?data-highlighted keeps the highlight in the
@@ -408,6 +527,9 @@ export class UiDropdownMenuItem extends WebComponent({
     super();
     this.variant = 'default';
     this.inset = false;
+    this.type = '';
+    this.checked = false;
+    this.value = '';
   }
 
   render() {
@@ -416,28 +538,97 @@ export class UiDropdownMenuItem extends WebComponent({
     // inner menuitem as both data-disabled (CSS) and aria-disabled, so the
     // state also reaches assistive tech.
     const disabled = typeof this.hasAttribute === 'function' && this.hasAttribute('data-disabled');
+    const checkbox = this.type === 'checkbox';
+    const radio = this.type === 'radio';
+    const toggleable = checkbox || radio;
+    // The role is what tells a screen reader this is a checkable control at
+    // all, and aria-checked is what carries the state. Neither belongs on a
+    // plain item: aria-checked on role="menuitem" is not allowed and reads as
+    // a broken state rather than no state, so it is omitted via a null hole.
+    const role = checkbox ? 'menuitemcheckbox' : radio ? 'menuitemradio' : 'menuitem';
+    const slot = toggleable ? `dropdown-menu-${this.type}-item` : 'dropdown-menu-item';
+    const cls = checkbox
+      ? dropdownMenuCheckboxItemClass()
+      : radio
+        ? dropdownMenuRadioItemClass()
+        : dropdownMenuItemClass();
     return html`<div
-      data-slot="dropdown-menu-item"
-      role="menuitem"
+      data-slot=${slot}
+      role=${role}
       tabindex="-1"
       data-variant=${this.variant}
       ?data-inset=${this.inset}
       ?data-disabled=${disabled}
       aria-disabled=${disabled ? 'true' : 'false'}
+      aria-checked=${toggleable ? String(this.checked) : null}
+      data-state=${toggleable ? (this.checked ? 'checked' : 'unchecked') : null}
       ?data-highlighted=${this.#highlighted.get()}
-      class=${dropdownMenuItemClass()}
+      class=${cls}
       @click=${this._onClick}
       @pointerenter=${this._onPointerEnter}
       @focus=${this._onFocus}
       @blur=${this._onBlur}
-    ><slot></slot></div>`;
+    >${
+      toggleable
+        ? html`<span
+            class="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center"
+          >${this.checked ? unsafeHTML(radio ? RADIO_DOT_SVG : CHECK_SVG) : ''}</span>`
+        : ''
+    }<slot></slot></div>`;
   }
 
   _onClick = (e: Event): void => {
     const el = e.currentTarget as HTMLElement;
     if (el.hasAttribute('data-disabled')) return;
-    (this.closest('ui-dropdown-menu') as UiDropdownMenu | null)?.hide();
+    this._select();
   };
+
+  // Activation: flip checkbox / radio state, announce the selection, then
+  // close. The event is cancelable, so a listener calling preventDefault()
+  // keeps the menu open, which is the parity shape for Radix's
+  // onSelect(e => e.preventDefault()) that a multi-select menu relies on.
+  _select(): void {
+    if (this.type === 'checkbox') this.checked = !this.checked;
+    else if (this.type === 'radio') this._selectRadio();
+    const proceed = this.dispatchEvent(
+      new CustomEvent('ui-item-select', {
+        detail: { value: this.value, item: this, type: this.type, checked: this.checked },
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    if (!proceed) return;
+    (this.closest('ui-dropdown-menu') as UiDropdownMenu | null)?._closeAndRestoreFocus();
+  }
+
+  // The radio set is the nearest <ui-dropdown-menu-group>, which is the APG
+  // grouping element for menuitemradio, falling back to the panel so an
+  // ungrouped set still behaves like one set rather than N independent items.
+  _radioScope(): Element | null {
+    if (typeof this.closest !== 'function') return null;
+    return (
+      this.closest('ui-dropdown-menu-group') ??
+      this.closest('ui-dropdown-menu-sub-content') ??
+      this.closest('ui-dropdown-menu-content')
+    );
+  }
+
+  _selectRadio(): void {
+    const scope = this._radioScope();
+    if (!scope) {
+      this.checked = true;
+      return;
+    }
+    // Filter on the PROPERTY, not a [type="radio"] attribute selector: `type`
+    // is unreflected, so an item configured through the property alone would
+    // be invisible to an attribute query and survive as a second checked item.
+    // The scope re-check keeps a nested group's items out of this set.
+    Array.from(scope.querySelectorAll<UiDropdownMenuItem>('ui-dropdown-menu-item'))
+      .filter((it) => it.type === 'radio' && it._radioScope() === scope)
+      .forEach((it) => {
+        it.checked = it === this;
+      });
+  }
 
   _onPointerEnter = (e: Event): void => {
     const el = e.currentTarget as HTMLElement;
@@ -509,10 +700,20 @@ UiDropdownMenuShortcut.register('ui-dropdown-menu-shortcut');
 // --------------------------------------------------------------------------
 
 export class UiDropdownMenuGroup extends WebComponent {
+  // role="group", NOT role="radiogroup". radiogroup is the grouping role for
+  // role="radio"; the grouping role ARIA specifies for menuitemradio is plain
+  // group, so a radio set inside this element is already correctly grouped.
   render() {
+    // The group carries the name of the set ("Sort by", "Panel position"), and
+    // the name has to be on the element that holds role="group" to be exposed.
+    // Forward it off the host so an author writes it where the tag is.
+    const attr = (n: string): string | null =>
+      typeof this.getAttribute === 'function' ? this.getAttribute(n) : null;
     return html`<div
       data-slot="dropdown-menu-group"
       role="group"
+      aria-label=${attr('aria-label')}
+      aria-labelledby=${attr('aria-labelledby')}
     ><slot></slot></div>`;
   }
 }
@@ -540,6 +741,35 @@ export class UiDropdownMenuSub extends WebComponent({
   show(): void { this._cancelClose(); this.open = true; }
   hide(): void { this._cancelClose(); this.open = false; }
   toggle(): void { if (this.open) this.hide(); else this.show(); }
+
+  // ArrowRight on a sub-trigger must open the submenu AND move focus to its
+  // first item (APG, and what this component's JSDoc promises). The focus
+  // cannot simply be queued next to show(): the panel is popover="manual" and
+  // only becomes visible in _afterRender one microtask later, and focus() on a
+  // still-display:none element is silently a no-op that nothing retries. So
+  // record the intent and consume it once the panel is genuinely up.
+  _focusFirstOnOpen = false;
+
+  openAndFocusFirstItem(): void {
+    this._focusFirstOnOpen = true;
+    this.show();
+    // Hover already opened it, so there is no open-change to ride on and
+    // _afterRender will not run. The panel is up, so consume the intent now.
+    if (this._panelIsOpen()) this._consumeFocusFirst();
+  }
+
+  _panelIsOpen(): boolean {
+    const panel = this.querySelector<HTMLElement>('ui-dropdown-menu-sub-content [popover]');
+    return !!panel && typeof panel.matches === 'function' && panel.matches(':popover-open');
+  }
+
+  _consumeFocusFirst(): void {
+    if (!this._focusFirstOnOpen) return;
+    this._focusFirstOnOpen = false;
+    this.querySelector<HTMLElement>(
+      `ui-dropdown-menu-sub-content ${ENABLED_MENU_ITEM}`,
+    )?.focus();
+  }
 
   render() {
     return html`<div
@@ -569,7 +799,14 @@ export class UiDropdownMenuSub extends WebComponent({
         else if (!this.open && p.matches(':popover-open')) p.hidePopover();
       }
     }
-    if (this.open) this._position();
+    if (this.open) {
+      this._position();
+      this._consumeFocusFirst();
+    } else {
+      // Closed before the intent was consumed (a hover-close raced the key).
+      // Dropping it keeps a later hover-open from stealing focus into the panel.
+      this._focusFirstOnOpen = false;
+    }
   }
 
   _cancelCloseHandler = (): void => this._cancelClose();

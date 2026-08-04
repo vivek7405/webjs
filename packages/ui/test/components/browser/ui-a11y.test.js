@@ -366,6 +366,304 @@ suite('ui-dropdown-menu a11y', () => {
     assert.equal(menuEl.open, false, 'Escape closes the menu');
     root.remove();
   });
+
+  // APG Menu Button: closing returns focus to the trigger. Counterfactual for
+  // the restore fix: every close path used to call hide() bare, so focus was
+  // left on an item inside a panel that had just gone display:none and landed
+  // on <body>. Each `activeElement === btn` assertion below fails without it.
+  async function mountMenu() {
+    const root = await mount(html`
+      <button id="before-menu">before</button>
+      <ui-dropdown-menu>
+        <ui-dropdown-menu-trigger><button>Options</button></ui-dropdown-menu-trigger>
+        <ui-dropdown-menu-content>
+          <ui-dropdown-menu-item>Profile</ui-dropdown-menu-item>
+          <ui-dropdown-menu-item>Billing</ui-dropdown-menu-item>
+        </ui-dropdown-menu-content>
+      </ui-dropdown-menu>
+      <button id="after-menu">after</button>
+    `);
+    const menuEl = root.querySelector('ui-dropdown-menu');
+    const btn = root.querySelector('ui-dropdown-menu-trigger button');
+    const items = [...root.querySelectorAll('ui-dropdown-menu-item [role="menuitem"]')];
+    return { root, menuEl, btn, items };
+  }
+
+  test('Escape closes and returns focus to the trigger', async () => {
+    const { root, menuEl, btn, items } = await mountMenu();
+    menuEl.show();
+    await tick();
+    assert.equal(document.activeElement, items[0], 'first item focused on open');
+    items[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await tick();
+    assert.equal(menuEl.open, false, 'menu closed');
+    assert.equal(document.activeElement, btn, 'focus back on the trigger');
+    root.remove();
+  });
+
+  test('item activation closes and returns focus to the trigger', async () => {
+    const { root, menuEl, btn, items } = await mountMenu();
+    menuEl.show();
+    await tick();
+    items[1].click();
+    await tick();
+    assert.equal(menuEl.open, false, 'menu closed');
+    assert.equal(document.activeElement, btn, 'focus back on the trigger');
+    root.remove();
+  });
+
+  // The guard: an outside click that deliberately focused another control must
+  // NOT have focus yanked back to the trigger. Counterfactual for the guard
+  // itself, which an unconditional restore would fail.
+  test('outside click closes without stealing focus back', async () => {
+    const { root, menuEl, btn } = await mountMenu();
+    menuEl.show();
+    await tick();
+    const other = root.querySelector('#after-menu');
+    other.focus();
+    document.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await tick();
+    assert.equal(menuEl.open, false, 'menu closed');
+    assert.equal(document.activeElement, other, 'focus stayed on the clicked control');
+    assert.notEqual(document.activeElement, btn, 'trigger did not steal focus');
+    root.remove();
+  });
+
+  // Finding 3: the JSDoc promised Tab closes the menu, and nothing implemented
+  // it, so the menu stayed open while focus tabbed away. Tab must NOT be
+  // prevented (the browser's own Tab continues the sequence from the trigger).
+  test('Tab closes the menu and does not prevent the default tab move', async () => {
+    const { root, menuEl, btn, items } = await mountMenu();
+    menuEl.show();
+    await tick();
+    const ev = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    items[0].dispatchEvent(ev);
+    await tick();
+    assert.equal(menuEl.open, false, 'Tab closed the menu');
+    assert.equal(ev.defaultPrevented, false, 'default tab move left alone');
+    assert.equal(document.activeElement, btn, 'focus handed to the trigger to tab on from');
+    root.remove();
+  });
+
+  async function mountSubmenu() {
+    const root = await mount(html`
+      <ui-dropdown-menu>
+        <ui-dropdown-menu-trigger><button>Options</button></ui-dropdown-menu-trigger>
+        <ui-dropdown-menu-content>
+          <ui-dropdown-menu-item>Profile</ui-dropdown-menu-item>
+          <ui-dropdown-menu-sub>
+            <ui-dropdown-menu-sub-trigger>Invite</ui-dropdown-menu-sub-trigger>
+            <ui-dropdown-menu-sub-content>
+              <ui-dropdown-menu-item>Email</ui-dropdown-menu-item>
+            </ui-dropdown-menu-sub-content>
+          </ui-dropdown-menu-sub>
+        </ui-dropdown-menu-content>
+      </ui-dropdown-menu>
+    `);
+    const menuEl = root.querySelector('ui-dropdown-menu');
+    const sub = root.querySelector('ui-dropdown-menu-sub');
+    const subTrigger = root.querySelector('ui-dropdown-menu-sub-trigger [role="menuitem"]');
+    menuEl.show();
+    await tick();
+    subTrigger.focus();
+    subTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await tick();
+    const subItem = root.querySelector('ui-dropdown-menu-sub-content [role="menuitem"]');
+    return { root, menuEl, sub, subTrigger, subItem };
+  }
+
+  // ArrowRight must open the submenu AND land focus on its first item. The
+  // focus used to be queued in a microtask next to show(), which ran BEFORE
+  // the popover="manual" panel was revealed, so focus() hit a display:none
+  // element and was silently dropped with no retry. Counterfactual: focus
+  // stayed on the sub-trigger, which is what this asserts against.
+  test('ArrowRight opens the submenu and moves focus into it', async () => {
+    const { root, sub, subTrigger, subItem } = await mountSubmenu();
+    assert.equal(sub.open, true, 'submenu open');
+    assert.notEqual(document.activeElement, subTrigger, 'focus left the sub-trigger');
+    assert.equal(document.activeElement, subItem, 'focus is on the first submenu item');
+    root.remove();
+  });
+
+  // Escape inside a SUBMENU closes only that submenu and refocuses its
+  // sub-trigger, per APG (close the menu that CONTAINS focus). The root menu
+  // stays open. Before the fix Escape tore the whole menu down at once.
+  test('Escape inside a submenu closes only the submenu', async () => {
+    const { root, menuEl, sub, subTrigger, subItem } = await mountSubmenu();
+    subItem.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await tick();
+    assert.equal(sub.open, false, 'submenu closed');
+    assert.equal(menuEl.open, true, 'root menu still open');
+    assert.equal(document.activeElement, subTrigger, 'focus back on the sub-trigger');
+    root.remove();
+  });
+
+  // Escape on the sub-trigger itself is focus in the ROOT panel, so it closes
+  // the whole menu rather than the submenu the trigger owns.
+  test('Escape on the sub-trigger closes the whole menu', async () => {
+    const { root, menuEl, subTrigger } = await mountSubmenu();
+    subTrigger.focus();
+    subTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await tick();
+    assert.equal(menuEl.open, false, 'root menu closed');
+    root.remove();
+  });
+});
+
+suite('ui-dropdown-menu checkbox + radio items', () => {
+  suiteSetup(async () => { await import(`${COMPONENTS_DIR}/dropdown-menu.ts`); });
+
+  // Finding 4: the JSDoc documented type="checkbox" / type="radio" and the
+  // class helpers existed, but the item hardcoded role="menuitem" with no
+  // aria-checked, so a screen reader could perceive neither the control type
+  // nor the state. Every role / aria-checked assertion here is that
+  // counterfactual.
+  test('checkbox item exposes menuitemcheckbox + aria-checked and toggles', async () => {
+    const root = await mount(html`
+      <ui-dropdown-menu>
+        <ui-dropdown-menu-trigger><button>View</button></ui-dropdown-menu-trigger>
+        <ui-dropdown-menu-content>
+          <ui-dropdown-menu-item type="checkbox" value="status" checked>Status</ui-dropdown-menu-item>
+          <ui-dropdown-menu-item type="checkbox" value="activity">Activity</ui-dropdown-menu-item>
+        </ui-dropdown-menu-content>
+      </ui-dropdown-menu>
+    `);
+    const hosts = [...root.querySelectorAll('ui-dropdown-menu-item')];
+    const inner = hosts.map((h) => h.querySelector('[role="menuitemcheckbox"]'));
+    assert.ok(inner[0] && inner[1], 'both items carry role=menuitemcheckbox');
+    assert.equal(inner[0].getAttribute('aria-checked'), 'true', 'checked item is aria-checked');
+    assert.equal(inner[1].getAttribute('aria-checked'), 'false', 'unchecked item is not');
+    // Activation flips only the item activated.
+    inner[1].click();
+    await tick();
+    assert.equal(hosts[1].checked, true, 'second item became checked');
+    assert.equal(
+      hosts[1].querySelector('[role="menuitemcheckbox"]').getAttribute('aria-checked'),
+      'true',
+      'aria-checked followed the flip',
+    );
+    assert.equal(hosts[0].checked, true, 'checkbox items are independent');
+    root.remove();
+  });
+
+  test('radio items expose menuitemradio and keep exactly one checked', async () => {
+    const root = await mount(html`
+      <ui-dropdown-menu>
+        <ui-dropdown-menu-trigger><button>Panel</button></ui-dropdown-menu-trigger>
+        <ui-dropdown-menu-content>
+          <ui-dropdown-menu-group aria-label="Panel position">
+            <ui-dropdown-menu-item type="radio" value="top" checked>Top</ui-dropdown-menu-item>
+            <ui-dropdown-menu-item type="radio" value="bottom">Bottom</ui-dropdown-menu-item>
+            <ui-dropdown-menu-item type="radio" value="right">Right</ui-dropdown-menu-item>
+          </ui-dropdown-menu-group>
+        </ui-dropdown-menu-content>
+      </ui-dropdown-menu>
+    `);
+    const hosts = [...root.querySelectorAll('ui-dropdown-menu-item')];
+    const roleOf = (h) => h.querySelector('[role="menuitemradio"]');
+    assert.ok(hosts.every(roleOf), 'every item carries role=menuitemradio');
+    assert.equal(roleOf(hosts[0]).getAttribute('aria-checked'), 'true');
+    roleOf(hosts[2]).click();
+    await tick();
+    assert.deepEqual(
+      hosts.map((h) => h.checked),
+      [false, false, true],
+      'selecting one unchecks its set',
+    );
+    assert.equal(roleOf(hosts[0]).getAttribute('aria-checked'), 'false');
+    assert.equal(roleOf(hosts[2]).getAttribute('aria-checked'), 'true');
+    root.remove();
+  });
+
+  // The APG grouping element for menuitemradio is role="group" (radiogroup is
+  // for role="radio"), and the set needs a name on it.
+  test('group forwards its name onto the role=group element', async () => {
+    const root = await mount(html`
+      <ui-dropdown-menu>
+        <ui-dropdown-menu-trigger><button>Panel</button></ui-dropdown-menu-trigger>
+        <ui-dropdown-menu-content>
+          <ui-dropdown-menu-group aria-label="Panel position">
+            <ui-dropdown-menu-item type="radio" value="top">Top</ui-dropdown-menu-item>
+          </ui-dropdown-menu-group>
+        </ui-dropdown-menu-content>
+      </ui-dropdown-menu>
+    `);
+    const group = root.querySelector('[data-slot="dropdown-menu-group"]');
+    assert.equal(group.getAttribute('role'), 'group');
+    assert.equal(group.getAttribute('aria-label'), 'Panel position');
+    root.remove();
+  });
+
+  // A plain item must NOT carry aria-checked: on role="menuitem" it is not
+  // allowed, and it reads as a broken state rather than no state.
+  test('a plain item carries no aria-checked', async () => {
+    const root = await mount(html`
+      <ui-dropdown-menu>
+        <ui-dropdown-menu-trigger><button>Options</button></ui-dropdown-menu-trigger>
+        <ui-dropdown-menu-content>
+          <ui-dropdown-menu-item>Profile</ui-dropdown-menu-item>
+        </ui-dropdown-menu-content>
+      </ui-dropdown-menu>
+    `);
+    const inner = root.querySelector('ui-dropdown-menu-item [role="menuitem"]');
+    assert.equal(inner.hasAttribute('aria-checked'), false, 'no aria-checked');
+    assert.equal(inner.hasAttribute('data-state'), false, 'no checked data-state');
+    root.remove();
+  });
+
+  // Checkbox / radio items are focusable menu items, so they must be in arrow
+  // nav and the open-focus. Counterfactual for broadening the [role=menuitem]
+  // selectors: with the bare query they were skipped entirely.
+  test('checkbox items join the open-focus and arrow navigation', async () => {
+    const root = await mount(html`
+      <ui-dropdown-menu>
+        <ui-dropdown-menu-trigger><button>View</button></ui-dropdown-menu-trigger>
+        <ui-dropdown-menu-content>
+          <ui-dropdown-menu-item type="checkbox" value="a">A</ui-dropdown-menu-item>
+          <ui-dropdown-menu-item type="checkbox" value="b">B</ui-dropdown-menu-item>
+        </ui-dropdown-menu-content>
+      </ui-dropdown-menu>
+    `);
+    const menuEl = root.querySelector('ui-dropdown-menu');
+    const inner = [...root.querySelectorAll('[role="menuitemcheckbox"]')];
+    menuEl.show();
+    await tick();
+    assert.equal(document.activeElement, inner[0], 'first checkbox item focused on open');
+    inner[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await tick();
+    assert.equal(document.activeElement, inner[1], 'ArrowDown reached the second');
+    root.remove();
+  });
+
+  // Cancelling ui-item-select keeps the menu open, the shadcn
+  // onSelect(e => e.preventDefault()) parity shape a multi-select menu needs.
+  test('cancelling ui-item-select keeps the menu open but still toggles', async () => {
+    const root = await mount(html`
+      <ui-dropdown-menu>
+        <ui-dropdown-menu-trigger><button>View</button></ui-dropdown-menu-trigger>
+        <ui-dropdown-menu-content>
+          <ui-dropdown-menu-item type="checkbox" value="a">A</ui-dropdown-menu-item>
+        </ui-dropdown-menu-content>
+      </ui-dropdown-menu>
+    `);
+    const menuEl = root.querySelector('ui-dropdown-menu');
+    const host = root.querySelector('ui-dropdown-menu-item');
+    const seen = [];
+    menuEl.addEventListener('ui-item-select', (e) => {
+      seen.push(e.detail);
+      e.preventDefault();
+    });
+    menuEl.show();
+    await tick();
+    host.querySelector('[role="menuitemcheckbox"]').click();
+    await tick();
+    assert.equal(seen.length, 1, 'event fired');
+    assert.equal(seen[0].value, 'a', 'detail carries the value');
+    assert.equal(seen[0].checked, true, 'detail carries the settled state');
+    assert.equal(host.checked, true, 'the toggle still happened');
+    assert.equal(menuEl.open, true, 'menu stayed open');
+    root.remove();
+  });
 });
 
 suite('ui-dialog a11y', () => {
