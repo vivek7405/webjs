@@ -119,6 +119,35 @@ function safeString(v) {
 }
 
 /**
+ * Warn that a function value was dropped rather than reflected (#1169).
+ *
+ * A silently missing attribute is its own confusion, so say what went and why.
+ * The message deliberately does NOT include the value: printing the source is
+ * the leak this guard exists to prevent, and a server log is not always a
+ * private place.
+ *
+ * Silent in production, matching the client router's dev-warning idiom. There
+ * is nothing an end user can do about it, and the guard has already removed
+ * the attribute either way.
+ *
+ * @param {{ constructor: unknown, tagName?: string }} host
+ * @param {string} propName
+ * @param {string} attrName
+ */
+function warnFunctionReflection(host, propName, attrName) {
+  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production') return;
+  if (typeof console === 'undefined' || !console.warn) return;
+  const tag = tagOf(/** @type any */ (host.constructor)) || host.tagName?.toLowerCase() || 'unknown';
+  console.warn(
+    `[webjs] reflect:true property "${propName}" on <${tag}> holds a function, `
+    + `which has no HTML attribute representation. Removing "${attrName}" instead `
+    + `of stringifying it (a stringified function writes its source into the page, `
+    + `so a server action's body would ship to the browser). Pass a string, or `
+    + `drop reflect on this property.`
+  );
+}
+
+/**
  * A minimal base for HTML Custom Elements that mirrors Lit's ergonomics
  * while staying JSDoc-only and no-build.
  *
@@ -685,6 +714,20 @@ class WebComponentBase extends Base {
         const serialized = decl.converter.toAttribute(value, decl.type);
         if (serialized == null) this.removeAttribute(attrName);
         else this.setAttribute(attrName, serialized);
+      } else if (typeof value === 'function') {
+        // #1169: a function has no meaningful HTML attribute value, and the
+        // built-in serializations below produce something both useless and
+        // dangerous. `String(fn)` is the function's SOURCE, so a reflected
+        // `'use server'` action would ship its whole body, closure secrets
+        // included, to every visitor; `JSON.stringify(fn)` is `undefined`,
+        // which `setAttribute` writes as the literal string "undefined".
+        // Treat it like `null` and remove the attribute, matching what the
+        // `.prop=${fn}` SSR binding already does for an unserializable value.
+        // Placed AFTER the converter branch on purpose: a custom
+        // `toAttribute` is author-controlled, so its author has taken
+        // responsibility for serializing whatever they are handed.
+        this.removeAttribute(attrName);
+        warnFunctionReflection(this, propName, attrName);
       } else if (decl.type === Boolean) {
         if (value) this.setAttribute(attrName, '');
         else this.removeAttribute(attrName);
