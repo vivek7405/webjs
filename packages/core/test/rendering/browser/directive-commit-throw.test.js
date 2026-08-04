@@ -13,6 +13,9 @@
 import { html } from '../../../src/html.js';
 import { render } from '../../../src/render-client.js';
 import { repeat } from '../../../src/repeat.js';
+import { watch } from '../../../src/directives.js';
+import { signal } from '../../../src/signal.js';
+import { WebComponent } from '../../../src/component.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
 
@@ -95,6 +98,49 @@ suite('directive commit throws (browser)', () => {
     assert.strictEqual(after[1], before[0]);
     assert.strictEqual(after[2], before[1]);
   });
+
+  // The `watch` notify microtask commits outside the update cycle, so the
+  // renderer has to WALK to the owning component to find its boundary. These
+  // two cover both walks against a REAL component: light DOM, where the host
+  // is a plain ancestor, and shadow DOM, where the walk has to cross the
+  // ShadowRoot via its `.host`. A synthetic container with a boundary stamped
+  // on it cannot exercise either.
+  const watchBoundaryTest = (label, shadow, tag) => {
+    test(label, async () => {
+      const sig = signal(html`<p>ok</p>`);
+      const seen = [];
+      class WatchHost extends WebComponent({}) {
+        static shadow = shadow;
+        renderError(err) { seen.push(err); return html`<p>err</p>`; }
+        render() { return html`<div>${watch(sig)}</div>`; }
+      }
+      WatchHost.register(tag);
+
+      const el = document.createElement(tag);
+      document.body.appendChild(el);
+      await el.updateComplete;
+      const root = shadow ? el.shadowRoot : el;
+      assert.equal(root.querySelector('p').textContent, 'ok');
+
+      sig.set(html`<section title=${poison}>bad</section>`);
+      await new Promise((r) => setTimeout(r, 20));
+
+      assert.equal(seen.length, 1, 'the throw must reach this component');
+      assert.equal(seen[0].message, 'boom');
+      el.remove();
+    });
+  };
+
+  watchBoundaryTest(
+    'a watch throw in a LIGHT-DOM component reaches its renderError',
+    false,
+    'commit-throw-light-watcher',
+  );
+  watchBoundaryTest(
+    'a watch throw in a SHADOW-DOM component reaches its renderError',
+    true,
+    'commit-throw-shadow-watcher',
+  );
 
   test('removing rows after recovery leaves nothing behind', () => {
     render(rows(good), container);
