@@ -142,6 +142,32 @@ suite('directive commit throws (browser)', () => {
     'commit-throw-shadow-watcher',
   );
 
+  test('recovery repositions the SAME row elements rather than rebuilding them', () => {
+    render(rows(good), container);
+    const before = [...container.querySelectorAll('li')];
+
+    assert.throws(() => {
+      render(rows([
+        { id: 1, label: 'one' },
+        { id: 2, label: 'two', title: poison },
+        { id: 3, label: 'three' },
+      ]), container);
+    }, /boom/);
+
+    render(rows(good), container);
+    const after = [...container.querySelectorAll('li')];
+
+    // The recovery is a plain reconcile against a repaired key map, NOT a
+    // teardown-and-rebuild of the region. The distinction is invisible in the
+    // markup and very visible to the user: rebuilding detaches every row,
+    // which is what keyed reconciliation exists to avoid (it cancels an
+    // in-progress native drag, drops focus, and resets scroll). A rebuild
+    // would keep 0 of these 3 identities.
+    assert.strictEqual(after[0], before[0]);
+    assert.strictEqual(after[1], before[1]);
+    assert.strictEqual(after[2], before[2]);
+  });
+
   test('removing rows after recovery leaves nothing behind', () => {
     render(rows(good), container);
     assert.throws(() => {

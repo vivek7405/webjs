@@ -174,6 +174,52 @@ test('watch: a commit throw reaches the component boundary, not the window', asy
   assert.equal(container.querySelector('p')?.textContent, 'healed');
 });
 
+// --- boundary ownership (both out-of-band directives) ---
+
+/**
+ * The part below belongs to the OUTER template but sits inside a nested
+ * custom element, which is the ordinary shape `html`<child-el>${...}</child-el>``
+ * produces. `_handleRenderError` lives on WebComponent's prototype, so every
+ * upgraded element on the way up carries one and a structural parent walk
+ * meets the CHILD first. Routing there is not just a wrong log line: a
+ * light-DOM component's renderError() commits into the component itself, so
+ * it would replace the very children holding this part's markers and every
+ * later update through the part would be a silent no-op.
+ */
+function ownershipTest(label, installDirective) {
+  test(label, async () => {
+    const ownerSeen = [];
+    const childSeen = [];
+    const owner = document.createElement('owner-el');
+    owner._handleRenderError = (err) => { ownerSeen.push(err); };
+
+    const fire = installDirective(owner);
+
+    // The child upgrades and gains the boundary from its prototype.
+    owner.querySelector('child-el')._handleRenderError = (err) => { childSeen.push(err); };
+
+    fire();
+    await tick();
+
+    assert.equal(ownerSeen.length, 1, 'the OWNING template must get the error');
+    assert.match(ownerSeen[0].message, /boom/);
+    assert.equal(childSeen.length, 0, 'the nested element does not own this part');
+  });
+}
+
+ownershipTest('watch: routes to the template that owns the part, not the element it sits in', (owner) => {
+  const sig = signal(html`<p>ok</p>`);
+  render(html`<child-el>${watch(sig)}</child-el>`, owner);
+  return () => sig.set(html`<section title=${poison}>bad</section>`);
+});
+
+ownershipTest('until: routes to the template that owns the part, not the element it sits in', (owner) => {
+  let resolveIt;
+  const pending = new Promise((r) => { resolveIt = r; });
+  render(html`<child-el>${until(pending, html`<p>fallback</p>`)}</child-el>`, owner);
+  return () => resolveIt(html`<section title=${poison}>bad</section>`);
+});
+
 // --- until() ---
 
 test('until: a commit throw reaches the boundary and does not wedge the priority', async () => {

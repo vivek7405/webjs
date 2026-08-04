@@ -156,6 +156,30 @@ const INSTANCE = Symbol.for('webjs.instance');
  * @param {unknown} value
  * @param {Element | DocumentFragment | ShadowRoot} container
  */
+/**
+ * The container the in-progress `render()` is committing into, or null
+ * outside one. Every part created or applied during that render belongs to
+ * THIS container's component, which is what an out-of-band commit needs to
+ * know to reach the right error boundary. A structural parent walk cannot
+ * work it out: `html`<child-el>${watch(sig)}</child-el>`` puts the part in the
+ * PARENT's template but inside the child's tag, so the walk meets the child
+ * first. Same reason `SLOT_OWNER` exists.
+ * @type {any}
+ */
+let currentRenderRoot = null;
+
+/**
+ * The element carrying the error boundary for a render root. A ShadowRoot has
+ * no boundary of its own; its `.host` is the component.
+ * @param {any} root
+ * @returns {any}
+ */
+function boundaryOwnerOf(root) {
+  if (!root) return null;
+  if (root.nodeType === 11 && root.host) return root.host;
+  return root;
+}
+
 export function render(value, container) {
   const host = /** @type any */ (container);
   // Open the renderer-write window for the whole commit: every host-receiver
@@ -165,6 +189,8 @@ export function render(value, container) {
   // between a renderer commit and an author write.
   const prevRendering = host[RENDERING];
   host[RENDERING] = true;
+  const prevRenderRoot = currentRenderRoot;
+  currentRenderRoot = container;
   try {
     const prev = host[INSTANCE];
 
@@ -212,6 +238,7 @@ export function render(value, container) {
     }
     container.appendChild(document.createTextNode(String(value)));
   } finally {
+    currentRenderRoot = prevRenderRoot;
     host[RENDERING] = prevRendering;
     // Outermost window closing: drain this commit's childList records off the
     // slot backstop (drainRendererBackstop processes them with a renderer-output
@@ -1516,13 +1543,7 @@ function applyChildInnerRaw(part, value) {
   // Repeat directive: keyed reconciliation. Keep previous state when both
   // old and new are repeats; otherwise tear down and rebuild.
   if (isRepeat(value)) {
-    // A POISONED state (a previous reconcile threw part-way through, see
-    // `reconcileRepeat`) falls through to the teardown-and-rebuild path
-    // below: its map still tracks every node in the region, so tearing down
-    // clears the DOM completely and the fresh render is correct by
-    // construction. Reconciling against it instead is what duplicated rows.
-    if (part.child && /** @type any */ (part.child).kind === 'repeat'
-        && !(/** @type any */ (part.child).poisoned)) {
+    if (part.child && /** @type any */ (part.child).kind === 'repeat') {
       reconcileRepeat(part, value);
       return;
     }
@@ -1786,13 +1807,22 @@ function reconcileRepeat(part, value) {
     //
     // Re-unite every instance still in the document under `state.map` (the
     // two maps are disjoint: a key lands in `newMap` only after being deleted
-    // from `state.map`) so nothing is orphaned, then POISON the state. A
-    // poisoned repeat is torn down and rebuilt wholesale on the next render
-    // rather than reconciled against a map that no longer describes the DOM;
-    // the framework degrades to a clean rebuild instead of guessing how to
-    // unwind the partial moves.
+    // from `state.map`), so the map describes the DOM again and nothing is
+    // orphaned. That is the whole repair. The next render is then an ORDINARY
+    // reconcile against a truthful map, which repositions every row and
+    // re-applies whatever the throw skipped.
+    //
+    // Deliberately NOT a teardown-and-rebuild of the region. Rebuilding is
+    // the obvious defensive move and it is measurably worse: it discards node
+    // identity for every row, which is the exact cost keyed reconciliation
+    // exists to avoid (see the plain-array note below, a rebuild cancels an
+    // in-progress native drag). It is also unnecessary. This map is restored
+    // to the truth rather than left describing a DOM that moved, so there is
+    // nothing left to guess and no partial DOM move to unwind: a
+    // half-updated instance re-applies on the next render by itself, because
+    // `updateInstance` advances `lastValues` per hole, so the hole that threw
+    // still compares unequal and is retried.
     for (const [k, inst] of newMap) state.map.set(k, inst);
-    state.poisoned = true;
     throw err;
   }
 }
@@ -2208,6 +2238,9 @@ function applyUntil(part, args) {
   // a fresh TemplateResult on every call but the strings array is
   // interned per call site, so the conceptual value is unchanged.
   const partAny = /** @type any */ (part);
+  // Same as applyWatch: the promise handlers below commit with no render on
+  // the stack, so the owning component is recorded here while it is knowable.
+  if (currentRenderRoot) partAny.__commitOwner = boundaryOwnerOf(currentRenderRoot);
   const prevState = partAny.__untilState;
   const prevArgs = partAny.__untilArgs;
   const argEq = (a, b) => {
@@ -2324,23 +2357,23 @@ function reportOutOfBandCommitError(part, error) {
     // here; do not let stringifying it mask the original failure.
     err = new Error('render error (unstringifiable thrown value)');
   }
-  let n = /** @type {Node | null} */ (part.marker);
-  for (let depth = 0; n && depth < 128; depth++) {
-    if (typeof (/** @type any */ (n)._handleRenderError) === 'function') {
-      /** @type any */ (n)._handleRenderError(err);
-      return;
-    }
-    const parent = n.parentNode;
-    // A real ShadowRoot is a DocumentFragment (nodeType 11) exposing its
-    // owner as `.host`; that owner is the component whose boundary owns this
-    // commit. The nodeType check matters because <a>/<area> expose an
-    // unrelated URL-derived `.host` (see `isInShadowRootEl`).
-    n = parent && parent.nodeType === 11 && /** @type any */ (parent).host
-      ? /** @type any */ (parent).host
-      : parent;
+  // The owner stamped when the directive was installed, which is the
+  // component whose TEMPLATE holds this part. Never walk the parent chain
+  // for this: `_handleRenderError` lives on WebComponent's prototype, so
+  // every upgraded element on the way up carries one, and the FIRST one a
+  // structural walk meets is the innermost element the part happens to sit
+  // inside, not the template that owns it. Routing there is not merely the
+  // wrong log line: a light-DOM component's renderError() commits into the
+  // component itself, which would replace the very children holding this
+  // part's markers and silently kill every later update through it.
+  const owner = /** @type any */ (part).__commitOwner;
+  if (owner && typeof owner._handleRenderError === 'function') {
+    owner._handleRenderError(err);
+    return;
   }
-  // No component boundary above this part (a bare `render()` into a plain
-  // container). Nothing owns the error, so surface it rather than swallow it.
+  // No component boundary owns this part (a bare `render()` into a plain
+  // container). Nothing can contain the error, so surface it rather than
+  // swallow it.
   throw err;
 }
 
@@ -2375,6 +2408,11 @@ function teardownUntil(state) {
  */
 function applyWatch(part, sig) {
   const partAny = /** @type any */ (part);
+  // Record the owning component while we are still inside its render(), the
+  // only moment it is knowable. The notify microtask below commits with no
+  // render on the stack and no way to derive it. Keep a prior stamp if this
+  // somehow runs outside a render, rather than clearing a good owner.
+  if (currentRenderRoot) partAny.__commitOwner = boundaryOwnerOf(currentRenderRoot);
   // Same signal as last render: refresh dep tracking via observe (the
   // spec-aligned Watcher fires once per arm, so re-observing re-arms).
   if (partAny.__watchSig === sig && partAny.__watchSub) {
