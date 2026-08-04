@@ -3151,12 +3151,7 @@ function replaceBoundaryRange(target, source) {
   for (const n of incomingSlice) {
     liveParent.insertBefore(n, target.end);
   }
-  for (let n = target.start.nextSibling; n && n !== target.end; n = n.nextSibling) {
-    if (n.nodeType === 1) {
-      reactivateScripts(/** @type {Element} */ (n));
-      upgradeCustomElements(/** @type {Element} */ (n));
-    }
-  }
+  activateSwappedRange(target);
 }
 
 /**
@@ -3209,13 +3204,13 @@ function swapMarkerRange(target, source, _doc) {
   // Run the keyed diff.
   reconcileSiblings(liveParent, target.start, target.end, liveSlice, incomingSlice);
 
-  // Upgrade + activate scripts in the just-swapped range.
-  for (let n = target.start.nextSibling; n && n !== target.end; n = n.nextSibling) {
-    if (n.nodeType === 1) {
-      reactivateScripts(/** @type {Element} */ (n));
-      upgradeCustomElements(/** @type {Element} */ (n));
-    }
-  }
+  // Upgrade + activate scripts in the just-swapped range. A top-level script
+  // here is usually one the keyed reconciler REUSED (`keyOf` reads
+  // `data-key || id`), so it re-executes on every soft nav that morphs this
+  // boundary. That is deliberate: a descendant script inside a reused
+  // container has always re-run through this same pass, and a script's
+  // position in the range is not a reason to treat it differently (#1102).
+  activateSwappedRange(target);
 }
 
 /**
@@ -4369,10 +4364,54 @@ async function streamBoundariesProgressively(reader, dec, initialBuf, isCurrent)
   }
 }
 
-/** @param {Element} container */
+/**
+ * Re-execute every `<script>` in `container`, INCLUDING `container` itself when
+ * it is one (#1102). A script parsed by `DOMParser` carries the spec's
+ * "already started" flag, so the node grafted into the live document is inert
+ * and only a fresh clone runs. `querySelectorAll` never matches the element it
+ * is called on, so a container-is-a-script was silently skipped: the two swap
+ * tiers hand this function each TOP-LEVEL node of the swapped range in turn, so
+ * a script emitted as a sibling of the content (a layout's progressive-
+ * enhancement script, the shape that surfaced this) never ran after a soft nav.
+ *
+ * Replacing the container DETACHES it, which is why both callers snapshot the
+ * range before iterating rather than walking live `nextSibling` links. The
+ * returned node is the one now in the document, so a caller can keep working on
+ * it (the upgrade pass) without touching the detached original.
+ *
+ * @param {Element} container
+ * @returns {Element} `container`, or its live replacement when it was a script.
+ */
 function reactivateScripts(container) {
+  if (container.tagName === 'SCRIPT') {
+    const fresh = cloneScriptWithCorrectNonce(/** @type {HTMLScriptElement} */ (container));
+    // A no-op when the node has no parent (the reconciler dropped it), so a
+    // snapshot entry that is no longer live cannot resurrect itself.
+    container.replaceWith(fresh);
+    return fresh;
+  }
   for (const old of container.querySelectorAll('script')) {
     old.replaceWith(cloneScriptWithCorrectNonce(/** @type {HTMLScriptElement} */ (old)));
+  }
+  return container;
+}
+
+/**
+ * Reactivate scripts + upgrade custom elements across a just-swapped boundary
+ * range. The range is SNAPSHOT first: `reactivateScripts` replaces a top-level
+ * script node, which detaches it and cuts a live `nextSibling` walk, silently
+ * skipping every node after it (#1102).
+ *
+ * @param {{ start: Comment, end: Comment }} range
+ */
+function activateSwappedRange(range) {
+  /** @type {Element[]} */
+  const swapped = [];
+  for (let n = range.start.nextSibling; n && n !== range.end; n = n.nextSibling) {
+    if (n.nodeType === 1) swapped.push(/** @type {Element} */ (n));
+  }
+  for (const el of swapped) {
+    upgradeCustomElements(reactivateScripts(el));
   }
 }
 
@@ -4384,6 +4423,7 @@ export {
   addNewHeadElements as _addNewHeadElements,
   mergeHead as _mergeHead,
   reactivateScripts as _reactivateScripts,
+  activateSwappedRange as _activateSwappedRange,
   findAnchorInPath as _findAnchorInPath,
   activeFrameId as _activeFrameId,
   resolveTargetFrameId as _resolveTargetFrameId,
