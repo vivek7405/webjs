@@ -44,9 +44,15 @@ It is CSRF-exempt. A safe read does not change state, so it does not need the Or
 
 It carries `Cache-Control` from the `cache` export and a weak ETag derived from the response. On the next call with a matching `If-None-Match`, the server answers `304 Not Modified` with no body. The browser reuses what it has. A repeated read costs a conditional request and an empty response, not a full round trip.
 
-It reads the SSR seed first. If the same action ran during server render, its result was serialized into the page, so the component's first client call resolves from the seed with no network at all.
-
 There is a safety rule attached to the cache export. Setting `public: true` shares the response across users, keyed only by URL and args, so it is only ever correct for data that is identical for every visitor. A per-user or session read must stay `private`. That is the same rule a page's `export const revalidate` carries, and it is the one place a careless setting leaks one user's data to another, so the framework makes you write it explicitly.
+
+# One thing the verb does not buy
+
+People credit SSR seeding to the GET declaration, and it is not a GET feature. Seeding sits at the action boundary, not the transport. WebJs wraps every exported function of a `'use server'` module the same way, so an action invoked during a server render has its result written into the page and the component's first client call resolves from that seed with no network, whether it declared `method = 'GET'` or left the default POST. A write-shaped action you happen to call during a render is seeded too.
+
+Two limits are worth knowing, and neither is about the verb. A streamed result is never seeded, because there is no single settled value to serialize. And a seed is consume-once and fails open, so a miss costs one ordinary RPC call and never wrong data. The whole mechanism, and the double-fetch bug it removes, is in [No double fetch](/blog/ssr-action-seeding-no-refetch).
+
+The distinction matters when you are deciding what to declare. If the reason you are reaching for `method = 'GET'` is that hydration should not refetch, you already have that on a plain POST action. Declare a GET when you want the response cacheable and ETagged by HTTP. Do not declare one to buy a seed you were getting anyway, because that reasoning ends with a `cache` export on a read that should never have been shared.
 
 # What a mutation does instead
 
