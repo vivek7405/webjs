@@ -69,9 +69,9 @@ class TodoList extends WebComponent({ todos: prop(Array) }) {
     this.optTodos = optimistic(this, {
       source: () => this.todos,
       // Pure: the row is derived from the payload, nothing is minted here.
-      // `.value` re-folds the queue on EVERY read, so a minted id would differ
-      // per render, and a hardcoded 'tmp' would collide across two concurrent
-      // adds. The temp id is minted once in the handler and passed in.
+      // The .value getter re-folds the queue on EVERY read, so a minted id
+      // would differ per render, and a hardcoded 'tmp' would collide across
+      // two concurrent adds. The temp id is minted once in the handler.
       update: (state, add) => [...state, { id: add.tempId, title: add.title, pending: true }],
     });
   }
