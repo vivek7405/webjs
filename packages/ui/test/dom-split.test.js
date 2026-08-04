@@ -174,3 +174,37 @@ test('init: writes dom.ts alongside the cn helper', async () => {
     rmSync(d, { recursive: true });
   }
 });
+
+// The gap a reviewer caught on #1129: every test above drives ONE command, so
+// nothing noticed that `init` and `add` disagreed about where the shared
+// helpers live. `add` resolved them from the registry manifest's pinned
+// `lib/utils.ts` / `lib/dom.ts` targets while rewriting component imports to
+// the CONFIGURED utils alias, so the second command wrote a duplicate pair
+// that nothing imported. Drive the real sequence and assert the whole tree.
+test('init then add: no orphaned helper copy at the manifest path', async () => {
+  stubFetch();
+  const d = mkdtempSync(join(tmpdir(), 'webjsui-domsplit-seq-'));
+  writeFileSync(join(d, 'package.json'), JSON.stringify({ dependencies: {} }));
+  try {
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/domsplit-seq'], { from: 'user' });
+    await add.parseAsync(
+      ['dialog', '--yes', '--no-deps', '--cwd', d, '--registry', 'http://test/domsplit-seq'],
+      { from: 'user' },
+    );
+
+    // The helpers live where the `utils` alias points, in exactly one place.
+    assert.ok(existsSync(join(d, 'lib', 'utils', 'cn.ts')), 'cn.ts at the utils alias');
+    assert.ok(existsSync(join(d, 'lib', 'utils', 'dom.ts')), 'dom.ts beside it');
+    assert.equal(existsSync(join(d, 'lib', 'utils.ts')), false, 'no orphan at the manifest utils target');
+    assert.equal(existsSync(join(d, 'lib', 'dom.ts')), false, 'no orphan at the manifest dom target');
+
+    // ...and the component resolves to that one place, so every file the
+    // install wrote is reachable.
+    const body = readFileSync(join(d, 'components', 'ui', 'dialog.ts'), 'utf8');
+    assert.match(body, /from '\.\.\/\.\.\/lib\/utils\/cn\.ts'/);
+    assert.match(body, /from '\.\.\/\.\.\/lib\/utils\/dom\.ts'/);
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});

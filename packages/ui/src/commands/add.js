@@ -168,6 +168,17 @@ function replaceImportSpecifier(content, spec, destAbs, target) {
 }
 
 function resolveTarget(cwd, config, item, file) {
+  // The two shared helpers are pinned to `lib/utils.ts` / `lib/dom.ts` by the
+  // registry manifest, but where they actually BELONG is wherever the project's
+  // `utils` alias points, because that is the path `rewriteUtilsImport` writes
+  // into every component's import. Honour the alias for them, ahead of the
+  // manifest target, or `add` writes a second copy at the pinned path that
+  // nothing imports while the components resolve to the aliased one.
+  // The dom helper is the utils file's SIBLING, the same relationship the
+  // rewrite assumes, so the two cannot disagree.
+  const helper = helperTarget(config, item);
+  if (helper) return helper;
+
   // explicit `target` wins
   if (file.target) return join(cwd, file.target);
 
@@ -186,6 +197,26 @@ function resolveTarget(cwd, config, item, file) {
     default:
       return join(cwd, fileName);
   }
+}
+
+/**
+ * Absolute target for the `lib-utils` / `lib-dom` registry items, derived from
+ * the project's configured `utils` alias, or null for anything else.
+ *
+ * Kept as the single place that answers "where do the shared helpers live",
+ * so `add`'s WRITE and {@link rewriteUtilsImport}'s REWRITE read the same
+ * answer. `init` writes the same two paths (see `init.js` `writeLibUtils`).
+ *
+ * @param {{ resolvedPaths?: { utils?: string } }} config parsed components.json
+ * @param {{ name?: string }} [item] the registry item
+ * @returns {string | null}
+ */
+function helperTarget(config, item) {
+  const utilsAbs = config?.resolvedPaths?.utils;
+  if (!utilsAbs || !item) return null;
+  if (item.name === 'lib-utils') return utilsAbs;
+  if (item.name === 'lib-dom') return join(dirname(utilsAbs), 'dom.ts');
+  return null;
 }
 
 function relative(cwd, p) {
