@@ -28,7 +28,7 @@ import { getStore } from './cache.js';
 import { STREAM_MARKER } from './conditional-get.js';
 import { createHash } from 'node:crypto';
 import { publishedBuildId } from './importmap.js';
-import { dynamicAccessed } from './context.js';
+import { dynamicAccessed, getRequest } from './context.js';
 
 /** Namespace prefix for every cached-HTML key, so a flush can target it. */
 const KEY_PREFIX = 'webjs:html:';
@@ -109,11 +109,63 @@ export function readRevalidate(pageModule) {
 }
 
 /**
- * The cache key for a request: the FULL URL (path + search string), since
- * `searchParams` change page output. Normalized to path + sorted query so
- * `?a=1&b=2` and `?b=2&a=1` share an entry. Two more discriminators are
- * folded into the namespace:
+ * Origins this process has cached HTML under, in first-seen order. Only
+ * `revalidatePath` reads it, to answer "which origins could a bare path have
+ * been cached under" (see its own doc for why a bare path is ambiguous once
+ * the origin is part of the key).
  *
+ * Bounded, and the bound KEEPS THE EARLIEST entries rather than evicting to
+ * make room. A hostile `X-Forwarded-Host` mints a distinct origin (#1097), so
+ * an unbounded registry is an attacker-grown set and a most-recent-wins one
+ * would let a flood push the deploy's real origin out of eviction range. The
+ * real origin is whatever the first cached render used, so first-seen-wins is
+ * the safe bias: flooding can only fail to ADD, never displace.
+ *
+ * @type {Set<string>}
+ */
+const _knownOrigins = new Set();
+const ORIGIN_REGISTRY_CAP = 16;
+
+/** @param {URL} url */
+function rememberOrigin(url) {
+  const origin = originKey(url);
+  if (!origin || _knownOrigins.has(origin)) return;
+  if (_knownOrigins.size >= ORIGIN_REGISTRY_CAP) return;
+  _knownOrigins.add(origin);
+}
+
+/**
+ * The origin component of a cache key. `url.origin` is already the normalized
+ * lowercase `scheme://host[:port]` form for an http(s) URL; a non-special
+ * scheme serializes to the literal string `null`, which is a fine constant key
+ * component (such a URL never reaches a cacheable page render anyway).
+ *
+ * @param {URL} url
+ * @returns {string}
+ */
+function originKey(url) {
+  return url.origin;
+}
+
+/**
+ * The cache key for a request: the ORIGIN plus the full path + search string,
+ * since both `ctx.url.origin` and `searchParams` change page output.
+ * Normalized to path + sorted query so `?a=1&b=2` and `?b=2&a=1` share an
+ * entry. Four discriminators are folded into the namespace:
+ *
+ *  - the origin (#1097). This cache is SHARED across visitors, and `ctx.url`
+ *    is built from `X-Forwarded-Host` / `X-Forwarded-Proto`, which neither
+ *    Cloudflare nor Railway strips from a client request. Without the origin
+ *    in the key, one request carrying `X-Forwarded-Host: evil.example` baked
+ *    an attacker-chosen origin into the shared body, and every later visitor
+ *    to that path was served it until the entry expired: a poisoned
+ *    `og:image`, canonical link, OAuth callback URL, or absolute asset URL.
+ *    With the origin in the key, a clean request resolves its origin from the
+ *    proxy-set `Host` and reads its OWN entry, so the hostile body is
+ *    unreachable from any origin an attacker does not already control. A
+ *    single-host deploy has exactly one origin and so exactly one key per URL,
+ *    unchanged hit rate; a genuine multi-host deploy gets correctly separated
+ *    entries instead of cross-serving one host's HTML to another;
  *  - the in-process generation, so `revalidateAll()` (a generation bump)
  *    makes every prior key unreachable in one step;
  *  - the published build id (the importmap fingerprint), so a NEW DEPLOY
@@ -143,7 +195,7 @@ export function htmlCacheKey(url) {
   // the importmap-only build id misses. Empty (dev / no fingerprint) collapses
   // to the prior key shape, so an unconfigured app is byte-identical.
   const appfp = _appSourceFp ? `${_appSourceFp}:` : '';
-  return `${KEY_PREFIX}${build}:${appfp}${_generation}:${url.pathname}${search}`;
+  return `${KEY_PREFIX}${build}:${appfp}${_generation}:${originKey(url)}:${url.pathname}${search}`;
 }
 
 /**
@@ -156,6 +208,10 @@ export function htmlCacheKey(url) {
  */
 export async function readHtmlCache(url) {
   try {
+    // Register on the LOOKUP too, not only the write: an instance that only
+    // ever served cache HITS for an origin (a second replica behind a load
+    // balancer) must still be able to evict that origin's entries.
+    rememberOrigin(url);
     const raw = await getStore().get(htmlCacheKey(url));
     if (!raw) return null;
     const rec = JSON.parse(raw);
@@ -176,6 +232,7 @@ export async function readHtmlCache(url) {
  */
 export async function writeHtmlCache(url, rec, revalidateSeconds) {
   try {
+    rememberOrigin(url);
     await getStore().set(htmlCacheKey(url), JSON.stringify(rec), revalidateSeconds * 1000);
   } catch {
     /* a store write failure must never crash the response */
@@ -221,23 +278,69 @@ export function isCacheableResponse(res, guards = {}) {
  * ONLY the no-query entry; pass the exact `path?query` to target a
  * specific query variant, or call `revalidateAll()` to clear everything.
  *
- * @param {string} path  e.g. '/blog' or '/blog?page=2'
+ * ORIGIN RESOLUTION (#1097). Cache keys carry the request's origin, so a bare
+ * path does not name one entry, it names one per origin the path was cached
+ * under. This resolves them in order:
+ *
+ *  1. An ABSOLUTE url (`https://app.example/blog`) names its origin exactly.
+ *     This is the precise form, and the one to reach for from a background
+ *     job or a worker that serves no HTTP traffic of its own.
+ *  2. Otherwise the CURRENT request's origin, when one is ambient. A mutation
+ *     runs inside the request of the user who triggered it, and that user is
+ *     on the same origin as the pages being evicted, so this is exact for the
+ *     ordinary "server action writes, then evicts" flow.
+ *  3. Plus every origin this process has cached under, so a path cached before
+ *     the current request is still reached.
+ *
+ * The residual gap is a process that has served no traffic for the origin AND
+ * has no ambient request: its registry is empty and there is nothing to
+ * resolve, so a bare path evicts nothing. Pass the absolute url there. Like
+ * `revalidateAll`, this is per-process best-effort; the TTL is the floor.
+ *
+ * @param {string} path  e.g. '/blog', '/blog?page=2', or 'https://app.example/blog'
  * @returns {Promise<void>}
  */
 export async function revalidatePath(path) {
   if (typeof path !== 'string' || !path) return;
-  // Build the same normalized key readHtmlCache / writeHtmlCache produce.
-  let url;
-  try {
-    url = new URL(path, 'http://internal.invalid');
-  } catch {
-    return;
+  /** @type {URL[]} */
+  const targets = [];
+  if (/^https?:\/\//i.test(path)) {
+    try { targets.push(new URL(path)); } catch { return; }
+  } else {
+    for (const origin of revalidateOrigins()) {
+      // Build the same normalized key readHtmlCache / writeHtmlCache produce.
+      try { targets.push(new URL(path, origin)); } catch { /* skip a bad pairing */ }
+    }
   }
+  await Promise.all(
+    targets.map(async (url) => {
+      try {
+        await getStore().delete(htmlCacheKey(url));
+      } catch {
+        /* a store delete failure is non-fatal: the TTL still expires the entry */
+      }
+    }),
+  );
+}
+
+/**
+ * The origins a bare-path `revalidatePath` should evict under: the ambient
+ * request's origin first (exact for the server-action flow), then every origin
+ * this process has cached under. Deduped, and never throws, since an eviction
+ * helper must not take down the mutation that called it.
+ *
+ * @returns {string[]}
+ */
+function revalidateOrigins() {
+  const out = new Set();
   try {
-    await getStore().delete(htmlCacheKey(url));
+    const req = getRequest();
+    if (req) out.add(new URL(req.url).origin);
   } catch {
-    /* a store delete failure is non-fatal: the TTL still expires the entry */
+    /* no ambient request, or a url that does not parse: fall through */
   }
+  for (const origin of _knownOrigins) out.add(origin);
+  return [...out];
 }
 
 /**

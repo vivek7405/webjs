@@ -209,7 +209,7 @@ for await (const chunk of await streamTokens(8)) {
     <p>Every <em>mutating</em> server action RPC call (POST / PUT / PATCH / DELETE) is protected against Cross-Site Request Forgery by a cross-origin check, the model Remix 3 and Go 1.25 use. A GET action is CSRF-exempt (as noted above), since it is a read and does not mutate state. The check works as follows:</p>
     <ol>
       <li>The server reads <code>Sec-Fetch-Site</code>, a fetch-metadata header the browser sets on every request and page JavaScript cannot forge. <code>same-origin</code> and <code>none</code> (a direct navigation) pass.</li>
-      <li>When <code>Sec-Fetch-Site</code> is absent (an older browser), it falls back to comparing the <code>Origin</code> host against the request host (honoring <code>x-forwarded-host</code> behind a proxy).</li>
+      <li>When <code>Sec-Fetch-Site</code> is absent (an older browser), it falls back to comparing the <code>Origin</code> host against the request host (honoring <code>x-forwarded-host</code> behind a proxy, unless <code>WEBJS_NO_TRUST_PROXY=1</code>).</li>
       <li>A cross-site request is rejected with a 403, unless its origin is listed in <code>webjs.allowedOrigins</code> (for reverse-proxy or multi-domain setups).</li>
     </ol>
     <p>This works because a browser stamps a forged cross-site request with the attacker's origin (or <code>Sec-Fetch-Site: cross-site</code>), which fails the host match. There is no token, no cookie, and no server-side session store. A useful consequence: SSR responses carry no <code>Set-Cookie</code>, so a page that opts into a public <code>Cache-Control</code> is CDN-edge-cacheable.</p>
