@@ -41,7 +41,9 @@ const ALLOWED_CHAR = /[a-z0-9._-]/;
 
 /**
  * Render a character for an error message. A control character has no visible
- * form, so name it by code point instead of printing it.
+ * form, so name it by code point instead of printing it. The quote delimiter is
+ * picked to avoid the character itself, so a rejected apostrophe does not print
+ * as the unreadable `'''`.
  * @param {string} ch
  * @returns {string}
  */
@@ -50,7 +52,9 @@ function describeChar(ch) {
   if (code < 0x20 || code === 0x7f) {
     return `the control character U+${code.toString(16).toUpperCase().padStart(4, '0')}`;
   }
-  return `'${ch}'`;
+  if (ch === ' ') return 'a space';
+  const q = ch === "'" ? '"' : "'";
+  return `${q}${ch}${q}`;
 }
 
 /**
@@ -106,13 +110,17 @@ export function checkAppName(name) {
  */
 export function appNameErrorMessage(name, reason) {
   const shown = typeof name === 'string' ? name : String(name);
-  return `Error: invalid app name '${shown}'.
+  return `Error: invalid app name "${shown}".
 
 ${reason[0].toUpperCase()}${reason.slice(1)}.
 
-The name becomes the app's directory, its npm package name, and a value the
-scaffold writes into generated source, so it is restricted to what npm accepts:
-${APP_NAME_SHAPE}.
+The name becomes the app's directory, its npm package name, AND a value the
+scaffold writes into generated source, so it has to be a name npm accepts:
+
+  lowercase letters and digits
+  the separators "-", "." and "_"
+  starting with a letter or a digit
+  at most ${APP_NAME_MAX_LENGTH} characters
 
 Example: webjs create my-app`;
 }

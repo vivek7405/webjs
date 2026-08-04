@@ -108,8 +108,21 @@ test('assertValidAppName throws a single-line message carrying the rule', () => 
 test('appNameErrorMessage names the input, the problem, and the shape', () => {
   const result = checkAppName('bad`name');
   const msg = appNameErrorMessage('bad`name', result.reason);
-  assert.match(msg, /invalid app name 'bad`name'/);
+  assert.match(msg, /invalid app name "bad`name"/);
   assert.match(msg, /`/);
-  assert.ok(msg.includes(APP_NAME_SHAPE));
+  assert.match(msg, /lowercase letters and digits/);
+  assert.match(msg, new RegExp(String(APP_NAME_MAX_LENGTH)));
   assert.match(msg, /webjs create my-app/);
+  // No line runs past a narrow terminal, since this is the first thing a user
+  // sees after a typo.
+  for (const line of msg.split('\n')) {
+    assert.ok(line.length <= 80, `message line too long: ${line}`);
+  }
+});
+
+test('an offending quote is not printed as an unreadable triple quote', () => {
+  // `'` wrapped in `'` renders as `'''`, which reads as nothing at all.
+  assert.match(checkAppName("bad'name").reason, /"'" is not allowed/);
+  assert.match(checkAppName('bad"name').reason, /'"' is not allowed/);
+  assert.match(checkAppName('bad name').reason, /a space is not allowed/);
 });
