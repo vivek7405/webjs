@@ -37,6 +37,17 @@
  * Keyboard: Escape closes (native `cancel` event); Tab cycles trapped
  * within the dialog (native focus trap).
  *
+ * A11y (owned by the element, but SUPPLY A TITLE):
+ *   On open the element names and describes the panel from the
+ *   `data-slot="dialog-title"` / `dialog-description` nodes, falling back to
+ *   the first heading / paragraph. An `aria-label` or `aria-labelledby` you put
+ *   on `<ui-dialog-content>` is forwarded onto the panel and wins over both.
+ *   A modal MUST have an accessible name, so with no title node and no name of
+ *   your own the panel falls back to a generic `aria-label="Dialog"`. That is a
+ *   floor to make an unnamed modal impossible, NOT a substitute: give the
+ *   dialog a real title, since "Dialog" tells a screen reader user nothing
+ *   about what they have been interrupted with.
+ *
  * Design tokens used: --background, --border, --muted-foreground.
  *
  * Scroll lock (#1144): opening the dialog locks body scroll, which hides the
@@ -94,6 +105,16 @@ import { buttonClass } from './button.ts';
 export function wireDialogLabels(host: Element, panelSelector: string): void {
   const panel = host.querySelector(panelSelector);
   if (!panel) return;
+  // A name the author put on <ui-dialog-content> is where they naturally write
+  // it, but role="dialog" lives on the inner panel, so forward it there.
+  const authoredLabel = host.getAttribute('aria-label');
+  if (authoredLabel && !panel.hasAttribute('aria-label')) {
+    panel.setAttribute('aria-label', authoredLabel);
+  }
+  const authoredLabelledBy = host.getAttribute('aria-labelledby');
+  if (authoredLabelledBy && !panel.hasAttribute('aria-labelledby')) {
+    panel.setAttribute('aria-labelledby', authoredLabelledBy);
+  }
   const title =
     host.querySelector('[data-slot="dialog-title"]') ?? host.querySelector('h1, h2, h3');
   const desc =
@@ -103,6 +124,14 @@ export function wireDialogLabels(host: Element, panelSelector: string): void {
   }
   if (desc && !panel.hasAttribute('aria-describedby')) {
     panel.setAttribute('aria-describedby', ensureId(desc as HTMLElement, 'ui-dialog-desc'));
+  }
+  // APG: a modal MUST have an accessible name. Everything above supplies one
+  // only when the author gave the dialog a title node or named it directly, so
+  // a title-less dialog shipped unnamed and was announced as a bare "dialog".
+  // This generic name is a floor, not a substitute for a real title: it makes
+  // an unnamed modal impossible, and a supplied title always wins over it.
+  if (!panel.hasAttribute('aria-labelledby') && !panel.hasAttribute('aria-label')) {
+    panel.setAttribute('aria-label', 'Dialog');
   }
 }
 

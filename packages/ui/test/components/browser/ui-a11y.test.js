@@ -695,6 +695,44 @@ suite('ui-dialog a11y', () => {
     assert.ok(title.id, 'title got an id');
     assert.equal(panel.getAttribute('aria-labelledby'), title.id);
     assert.equal(panel.getAttribute('aria-describedby'), desc.id);
+    assert.equal(panel.hasAttribute('aria-label'), false, 'no competing generic name');
+    root.querySelector('ui-dialog').hide();
+    root.remove();
+  });
+
+  // Finding 8: the wiring named the panel only when a title node existed, so a
+  // title-less dialog shipped with no accessible name at all, which is an APG
+  // failure for a modal. Counterfactual: without the fallback the panel has
+  // neither aria-labelledby nor aria-label.
+  test('a title-less dialog still gets an accessible name', async () => {
+    const root = await mount(html`
+      <ui-dialog>
+        <ui-dialog-content><div>Bare content, no title node.</div></ui-dialog-content>
+      </ui-dialog>
+    `);
+    root.querySelector('ui-dialog').show();
+    await tick();
+    await tick();
+    const panel = root.querySelector('[data-slot="dialog-content"]');
+    assert.equal(panel.hasAttribute('aria-labelledby'), false, 'nothing to point at');
+    assert.equal(panel.getAttribute('aria-label'), 'Dialog', 'generic name as the floor');
+    root.querySelector('ui-dialog').hide();
+    root.remove();
+  });
+
+  test('an authored aria-label on the content host reaches the panel and wins', async () => {
+    const root = await mount(html`
+      <ui-dialog>
+        <ui-dialog-content aria-label="Edit profile">
+          <div>Bare content, no title node.</div>
+        </ui-dialog-content>
+      </ui-dialog>
+    `);
+    root.querySelector('ui-dialog').show();
+    await tick();
+    await tick();
+    const panel = root.querySelector('[data-slot="dialog-content"]');
+    assert.equal(panel.getAttribute('aria-label'), 'Edit profile', 'author name forwarded');
     root.querySelector('ui-dialog').hide();
     root.remove();
   });
@@ -723,6 +761,43 @@ suite('ui-alert-dialog a11y', () => {
     assert.ok(title.id);
     assert.equal(panel.getAttribute('aria-labelledby'), title.id);
     assert.equal(panel.getAttribute('aria-describedby'), desc.id);
+    assert.equal(panel.hasAttribute('aria-label'), false, 'no competing generic name');
+    root.querySelector('ui-alert-dialog').hide();
+    root.remove();
+  });
+
+  // Same finding-8 gap, and worse here: this dialog blocks Escape and demands
+  // an explicit choice, so an unnamed one traps the user in something they
+  // cannot identify.
+  test('a title-less alert dialog still gets an accessible name', async () => {
+    const root = await mount(html`
+      <ui-alert-dialog>
+        <ui-alert-dialog-content><div>Bare content, no title node.</div></ui-alert-dialog-content>
+      </ui-alert-dialog>
+    `);
+    root.querySelector('ui-alert-dialog').show();
+    await tick();
+    await tick();
+    const panel = root.querySelector('[data-slot="alert-dialog-content"]');
+    assert.equal(panel.hasAttribute('aria-labelledby'), false, 'nothing to point at');
+    assert.equal(panel.getAttribute('aria-label'), 'Alert dialog', 'generic name as the floor');
+    root.querySelector('ui-alert-dialog').hide();
+    root.remove();
+  });
+
+  test('an authored aria-label on the alert content host reaches the panel', async () => {
+    const root = await mount(html`
+      <ui-alert-dialog>
+        <ui-alert-dialog-content aria-label="Confirm deletion">
+          <div>Bare content, no title node.</div>
+        </ui-alert-dialog-content>
+      </ui-alert-dialog>
+    `);
+    root.querySelector('ui-alert-dialog').show();
+    await tick();
+    await tick();
+    const panel = root.querySelector('[data-slot="alert-dialog-content"]');
+    assert.equal(panel.getAttribute('aria-label'), 'Confirm deletion', 'author name forwarded');
     root.querySelector('ui-alert-dialog').hide();
     root.remove();
   });
