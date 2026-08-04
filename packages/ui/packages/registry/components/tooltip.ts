@@ -189,6 +189,10 @@ export class UiTooltip extends WebComponent({
 
   hide(): void {
     clearTimeout(this._showTimer);
+    // Clear the PENDING hide before scheduling the next one: overwriting the
+    // handle alone orphans the old timer, which then fires on its own and
+    // closes a tip a later show() had already reopened.
+    clearTimeout(this._hideTimer);
     this._hideTimer = window.setTimeout(() => {
       this.open = false;
       lastTooltipHideAt = Date.now();

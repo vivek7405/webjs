@@ -30,6 +30,12 @@ async function mount(tpl) {
   return root;
 }
 
+/** Escape at the document, where the overlay components listen for it. */
+const escape = () =>
+  document.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+  );
+
 suite('ui-tabs a11y', () => {
   suiteSetup(async () => { await import(`${COMPONENTS_DIR}/tabs.ts`); });
 
@@ -753,11 +759,6 @@ suite('ui-tooltip a11y', () => {
     return { root, tip: root.querySelector('ui-tooltip'), btn: root.querySelector('button') };
   }
 
-  const escape = () =>
-    document.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
-    );
-
   test('Escape dismisses a showing tip and leaves focus on the trigger', async () => {
     const { root, tip, btn } = await mountTooltip();
     btn.focus();
@@ -813,7 +814,7 @@ suite('ui-hover-card a11y', () => {
   test('trigger gets haspopup + controls and aria-expanded tracks open', async () => {
     const root = await mount(html`
       <ui-hover-card>
-        <ui-hover-card-trigger><a href="/u">@vivek</a></ui-hover-card-trigger>
+        <ui-hover-card-trigger><a href="#hc-u">@vivek</a></ui-hover-card-trigger>
         <ui-hover-card-content>Card body</ui-hover-card-content>
       </ui-hover-card>
     `);
@@ -825,6 +826,130 @@ suite('ui-hover-card a11y', () => {
     root.querySelector('ui-hover-card').open = true;
     await tick();
     assert.equal(link.getAttribute('aria-expanded'), 'true');
+    root.remove();
+  });
+
+  // Finding 6a: the content rendered role="dialog" and nothing ever named it.
+  // role="dialog" REQUIRES a name, so an unnamed one is an ARIA defect. Each
+  // assertion below is the counterfactual for one rung of the fallback chain.
+  test('unnamed card falls back to the trigger for its dialog name', async () => {
+    const root = await mount(html`
+      <ui-hover-card>
+        <ui-hover-card-trigger><a href="#hc-u">@vivek</a></ui-hover-card-trigger>
+        <ui-hover-card-content>Just prose, no title node.</ui-hover-card-content>
+      </ui-hover-card>
+    `);
+    const link = root.querySelector('ui-hover-card-trigger a');
+    const content = root.querySelector('ui-hover-card-content [role="dialog"]');
+    assert.ok(link.id, 'trigger got an id to point at');
+    assert.equal(content.getAttribute('aria-labelledby'), link.id, 'named by the trigger');
+    root.remove();
+  });
+
+  test('a title node inside the card names it in preference to the trigger', async () => {
+    const root = await mount(html`
+      <ui-hover-card>
+        <ui-hover-card-trigger><a href="#hc-u">@vivek</a></ui-hover-card-trigger>
+        <ui-hover-card-content>
+          <div data-slot="hover-card-title">Vivek Khandelwal</div>
+        </ui-hover-card-content>
+      </ui-hover-card>
+    `);
+    const title = root.querySelector('[data-slot="hover-card-title"]');
+    const content = root.querySelector('ui-hover-card-content [role="dialog"]');
+    assert.ok(title.id, 'title got an id');
+    assert.equal(content.getAttribute('aria-labelledby'), title.id, 'named by the title');
+    root.remove();
+  });
+
+  test('an authored aria-label on the content host wins outright', async () => {
+    const root = await mount(html`
+      <ui-hover-card>
+        <ui-hover-card-trigger><a href="#hc-u">@vivek</a></ui-hover-card-trigger>
+        <ui-hover-card-content aria-label="Profile summary">
+          <div data-slot="hover-card-title">Vivek Khandelwal</div>
+        </ui-hover-card-content>
+      </ui-hover-card>
+    `);
+    const content = root.querySelector('ui-hover-card-content [role="dialog"]');
+    assert.equal(content.getAttribute('aria-label'), 'Profile summary');
+    assert.equal(content.hasAttribute('aria-labelledby'), false, 'no competing name source');
+    root.remove();
+  });
+
+  // Finding 6b + 6c. The card holds a link; the trigger closes the card on its
+  // own focusout, so before the content's focusin/focusout linger the close was
+  // already scheduled by the time focus could land inside, and the in-card link
+  // was unreachable by keyboard. Escape then has to hand focus back, since
+  // hiding a popover that holds focus drops it to <body>.
+  async function mountHoverCard() {
+    const root = await mount(html`
+      <ui-hover-card open-delay="0" close-delay="20">
+        <ui-hover-card-trigger><a href="#hc-u" id="hc-trigger">@vivek</a></ui-hover-card-trigger>
+        <ui-hover-card-content>
+          <a href="#hc-u-posts" id="hc-inner">Read the posts</a>
+        </ui-hover-card-content>
+      </ui-hover-card>
+    `);
+    return {
+      root,
+      card: root.querySelector('ui-hover-card'),
+      trigger: root.querySelector('#hc-trigger'),
+      inner: root.querySelector('#hc-inner'),
+    };
+  }
+
+  test('focus moving into the card keeps it open past the close delay', async () => {
+    const { root, card, trigger, inner } = await mountHoverCard();
+    card.open = true;
+    await tick();
+    trigger.focus();
+    await tick();
+    // Tab from the trigger into the card, using real focus moves: the trigger's
+    // focusout schedules the close, and the content's focusin must cancel it.
+    inner.focus();
+    // Wait out the close-delay window: an uncancelled close would land here.
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(card.open, true, 'card stayed open for the focused content');
+    assert.equal(document.activeElement, inner, 'focus is on the in-card link');
+    root.remove();
+  });
+
+  test('Escape dismisses the card and returns focus to the trigger', async () => {
+    const { root, card, trigger, inner } = await mountHoverCard();
+    card.open = true;
+    await tick();
+    inner.focus();
+    assert.equal(document.activeElement, inner, 'focus starts inside the card');
+    escape();
+    await tick();
+    assert.equal(card.open, false, 'Escape dismissed the card');
+    assert.equal(document.activeElement, trigger, 'focus handed back to the trigger');
+    root.remove();
+  });
+
+  test('Escape with focus outside the card closes it without moving focus', async () => {
+    const { root, card } = await mountHoverCard();
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    card.open = true;
+    await tick();
+    outside.focus();
+    escape();
+    await tick();
+    assert.equal(card.open, false, 'card closed');
+    assert.equal(document.activeElement, outside, 'focus left alone');
+    outside.remove();
+    root.remove();
+  });
+
+  test('a closed hover card does not consume Escape', async () => {
+    const { root, card } = await mountHoverCard();
+    assert.equal(card.open, false, 'starts closed');
+    const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    document.dispatchEvent(ev);
+    await tick();
+    assert.equal(ev.defaultPrevented, false, 'Escape left for someone else');
     root.remove();
   });
 });
