@@ -738,6 +738,73 @@ suite('ui-tooltip a11y', () => {
     assert.equal(btn.getAttribute('aria-describedby'), content.id);
     root.remove();
   });
+
+  // Finding 5: the file had no keydown handler at all, so a showing tip could
+  // only be dismissed by moving the pointer or blurring. APG requires Escape,
+  // because a tip can cover the content underneath it. Counterfactual: without
+  // the handler `tip.open` stays true and defaultPrevented stays false.
+  async function mountTooltip() {
+    const root = await mount(html`
+      <ui-tooltip delay-duration="0">
+        <ui-tooltip-trigger><button aria-label="Help">?</button></ui-tooltip-trigger>
+        <ui-tooltip-content>Helpful tip</ui-tooltip-content>
+      </ui-tooltip>
+    `);
+    return { root, tip: root.querySelector('ui-tooltip'), btn: root.querySelector('button') };
+  }
+
+  const escape = () =>
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+
+  test('Escape dismisses a showing tip and leaves focus on the trigger', async () => {
+    const { root, tip, btn } = await mountTooltip();
+    btn.focus();
+    tip.open = true;
+    await tick();
+    assert.equal(tip.open, true, 'tip is showing');
+    escape();
+    await tick();
+    assert.equal(tip.open, false, 'Escape dismissed the tip');
+    assert.equal(document.activeElement, btn, 'focus stayed on the trigger');
+    root.remove();
+  });
+
+  test('Escape dismisses immediately, not on the hover-out grace timer', async () => {
+    const { root, tip } = await mountTooltip();
+    tip.open = true;
+    await tick();
+    escape();
+    // No awaiting a timer: the dismissal is synchronous on the keydown.
+    assert.equal(tip.open, false, 'closed on the key, not 100ms later');
+    root.remove();
+  });
+
+  // A closed tooltip must not swallow Escape from whatever else wants it (a
+  // dialog it sits inside, for one). The listener is only bound while open.
+  test('a closed tooltip does not consume Escape', async () => {
+    const { root, tip } = await mountTooltip();
+    assert.equal(tip.open, false, 'starts closed');
+    const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    document.dispatchEvent(ev);
+    await tick();
+    assert.equal(ev.defaultPrevented, false, 'Escape left for someone else');
+    root.remove();
+  });
+
+  test('a dismissed tooltip stops listening for Escape', async () => {
+    const { root, tip } = await mountTooltip();
+    tip.open = true;
+    await tick();
+    escape();
+    await tick();
+    const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    document.dispatchEvent(ev);
+    await tick();
+    assert.equal(ev.defaultPrevented, false, 'no leftover listener consuming Escape');
+    root.remove();
+  });
 });
 
 suite('ui-hover-card a11y', () => {
