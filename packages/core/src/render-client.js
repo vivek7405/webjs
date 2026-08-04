@@ -1139,7 +1139,9 @@ function applyPart(part, value, _prev, allValues) {
       // legitimate in both. The helper owns that distinction.
       //
       // Not covered here, because it is not a commit: a custom element's prop
-      // declared `reflect: true` writes String(value) from its own setter.
+      // declared `reflect: true` reflects from its own setter. That path used
+      // to write String(value) and leak the source; #1169 made it remove the
+      // attribute instead, so it is guarded at the setter rather than here.
       assertNotFunctionReflectedActionProp(value, part.name, part.el.localName);
       /** @type any */ (part.el)[part.name] = value;
       break;

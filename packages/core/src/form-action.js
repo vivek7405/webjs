@@ -551,9 +551,11 @@ export function assertNotFunctionActionAttr(val, attrName, tag) {
  *
  * A custom element is excluded for the same reason rather than a different
  * one: it has no IDL reflection, so its `.action` is an author-defined
- * property and a function is a legitimate value. Note the separate path that
- * DOES write the source there, a prop declared `reflect: true`, which runs in
- * the setter and never reaches any commit site.
+ * property and a function is a legitimate value. There is a separate path
+ * that reflects on a custom element, a prop declared `reflect: true`, which
+ * runs in the setter and never reaches any commit site. It used to write the
+ * source and is why this carve-out was once narrower than it looked; #1169
+ * closed it at the setter, where a function now removes the attribute.
  *
  * `<form .action=${fn}>` is refused rather than treated as the supported
  * binding: the supported one is the plain `action=${fn}` attribute, and a

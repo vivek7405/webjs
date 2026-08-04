@@ -48,7 +48,7 @@ The bare form is shorthand: `count: Number` means `prop(Number)`. Use `prop()` t
 | Option | Default | Meaning |
 |---|---|---|
 | `type` | `String` | Constructor feeding the default attribute converter |
-| `reflect` | `false` | Property changes write back to the HTML attribute |
+| `reflect` | `false` | Property changes write back to the HTML attribute (a function value removes it instead, see below) |
 | `state` | `false` | Internal-only. No attribute, not observed |
 | `attribute` | derived from name | The HTML attribute name the property rides |
 | `default` | none | Declarative initial value (a function runs per instance for a fresh object / array) |
