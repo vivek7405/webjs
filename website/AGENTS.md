@@ -319,12 +319,17 @@ calling an action), re-enable it and delete the assertion in
   `test/ssr/design-tokens.test.ts` and `test/ssr/kit-surfaces.test.ts`.
 - Each section in `page.ts` is a `<section>` wrapper for predictable
   scroll anchors.
-- **Code samples are `<code-block>`, not `<pre>`.** `components/code-block.ts`
-  renders the `<pre>` and colours the code, and it is what every sample under
-  `/docs` and `/ui` uses. Write `<code-block>your code</code-block>` and pass
-  nothing else; `label` (which also adds `role="region"`) and `pre-class` exist
-  for the rare block that needs them. Authoring a bare `<pre>` there loses both
-  the highlighting and the focus stop, silently.
+- **A code sample under `/docs` or `/ui` is a `<code-block>`, never a bare
+  `<pre>`.** `components/code-block.ts` renders the `<pre>` and colours the
+  code. Write `<code-block>your code</code-block>` and pass nothing else;
+  `label` (which also adds `role="region"`) and `pre-class` exist for the rare
+  block that needs them. A bare `<pre>` there loses both the highlighting and
+  the focus stop, silently, which is how the site ended up with 480 of them.
+  A marketing page holds its samples as JS strings instead, so it writes its
+  own `<pre>` around `highlight(SAMPLE)` and colours them at SSR, and it is
+  then responsible for the accessibility rules below on its own. Pick by where
+  the sample lives: inline template text is a `<code-block>`, a string is a
+  `highlight()` call.
 - **Code blocks follow three accessibility rules**, and the element is how the
   first two are satisfied without anyone remembering them. A named block takes
   `role="region"`, because ARIA prohibits an author-supplied name on the
