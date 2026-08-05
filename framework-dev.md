@@ -107,7 +107,27 @@ An ES module graph instantiates as a unit, so a failure at either point means `a
 
 So the OFF server boots with `test/e2e/fixtures/stub-jspm.mjs` preloaded, which answers the `api.jspm.io/generate` call from this repo's `node_modules` and points `dayjs` at a `data:` URL carrying those bytes. Stubbing the API call closes both holes at once, because the URL the browser fetches is whatever that map says. The ON server is left alone, since it resolves nothing.
 
-Two things to keep in mind when touching this. The stub serves only the packages listed in its `LOCAL_VENDORS` map and passes everything else through to the real API, so **a vendor added to the blog later needs an entry there.** That failure is not silent: one unserviceable install makes the stub refuse the whole batch, the real API answers, and the block's first test fails naming the CDN url it got instead of a `data:` one. The same test is what catches the wiring itself going away, so do not delete it to make a new vendor pass. And the preload flag is runtime-specific (`--import` on Node, `--preload` on Bun, neither honouring the other, and Bun ignoring `NODE_OPTIONS`), which is why it is passed as argv through `preloadArgs` rather than an env var; the `E2E (blog served on Bun)` CI job is what a Node-only spelling would silently skip.
+Two things to keep in mind when touching this. The stub serves only the packages listed in its `LOCAL_VENDORS` map and passes everything else through to the real API, so **a vendor added to the blog later needs an entry there.** That failure is not silent: one unserviceable install makes the stub refuse the whole batch, the real API answers, and the block's first test fails naming the CDN url it got instead of a `data:` one. The same test is what catches the wiring itself going away, so do not delete it to make a new vendor pass. And the preload flag is passed as argv through `preloadArgs` rather than an env var, because Bun ignores `NODE_OPTIONS` outright (measured: `NODE_OPTIONS=--import ... bun -e 0` loads nothing). The two flags are not symmetric, so do not reason from the Node side: `node --preload` is a hard `bad option` error, while `bun --import` currently works as an alias. Selecting per runtime anyway is what keeps this from depending on Bun continuing to accept a Node spelling.
+
+---
+
+### Live third-party calls live only in `*.live.test.*` files (#1150)
+
+No required check may depend on a third party being up. The required `Unit + integration` job used to resolve vendors against the live jspm CDN, so a jspm outage redded pull requests that had nothing to do with vendoring; PR #1149, a five-file documentation change, is the one that finally made the case (it failed on the `#448` gitignore-healing test and passed on a re-run of the identical commit).
+
+The rule is carried by the FILENAME, so the test runners can enforce it rather than leaving it to discipline. `scripts/run-node-tests.js` and `scripts/run-bun-tests.js` both drop any `*.live.test.*` file unless `WEBJS_REQUIRE_NETWORK=1` is set. Everything else resolves against `test/fixtures/jspm-double.mjs`, an offline double that models jspm rather than merely answering it (a 5xx or 429 is transient and retries per package, a 4xx probes per install, and an unresolvable install fails the WHOLE batch, which is the premise `jspmGenerate`'s fallback ladder is built on).
+
+This replaced a `WEBJS_SKIP_NETWORK_TESTS` gate that could not work: it was opt-OUT, so CI, which never set it, always ran live; it was convention rather than something the runner could check; and two `registry.npmjs.org` callers were never covered by it at all. Leaving the one live parity test gated in place would not have been enough either, since after #1219 it still reds on a 4xx, and a WAF 403 or a moved route is exactly the shape #1149 hit.
+
+Four things to keep in mind when touching this.
+
+**A new vendor test uses the double, not the network.** `withJspmDouble(opts, body)` installs it, clears the vendor caches on both sides, and fails the test on any request the double was not asked to serve. Refusals are RECORDED rather than thrown on purpose: every fetch caller in `packages/server/src/vendor.js` catches, so a throw would be indistinguishable from the CDN being down and would quietly weaken whatever test hit it. `test/repo-health/live-cdn-callers.test.mjs` reds if a live host reaches a `fetch(` outside an allowlisted file.
+
+**The nightly is what stops a permanent skip from hiding.** `.github/workflows/vendor-cdn.yml` runs the live files with `WEBJS_REQUIRE_NETWORK=1`, which both selects them AND promotes their upstream-trouble skip into a failure. Without that second half a permanently skipping test is indistinguishable from a passing one. A failure opens or comments on one fixed-title tracking issue, since GitHub notifies only the workflow file's last committer about a failed scheduled run.
+
+**Do not add a `pull_request` trigger to that workflow.** A live check on a PR is a live check whatever job it sits in; making it non-required would just produce a red somebody is told to ignore, which is how a real failure gets ignored too.
+
+**`.github/workflows/ci.yml` is deliberately not involved.** Eleven jobs share its `on:` block, so the filter belongs in the runners, where it also covers a local `npm test`.
 
 ---
 
