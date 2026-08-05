@@ -358,6 +358,15 @@ jobs:
         env:
           WEBJS_E2E: '1'
         run: node --test test/e2e/browser-harness.test.mjs
+      # Dev error overlay URL scope (#1047): spawns `webjs dev` against a fixture
+      # app and drives a real browser, because both halves of the bug are only
+      # observable there. Hovering a link to a throwing page fires a real
+      # prefetch GET (no navigation at all), and the overlay's survival across a
+      # client-router swap is a DOM fact, not a server one.
+      - name: Run dev-overlay-nav e2e (#1047)
+        env:
+          WEBJS_E2E: '1'
+        run: node --test test/e2e/dev-overlay-nav.test.mjs
       # Touch-emulation e2e for interactive Tier-2 ui components (#745/#747):
       # boots the site serving the gallery and taps hover-card / dropdown-submenu / sonner
       # under a Chromium iPhone context (faithful touch events, no real device).

@@ -1,0 +1,1 @@
+{ "name": "dev-overlay-fixture-app", "private": true, "type": "module", "imports": { "#*": "./*" } }
