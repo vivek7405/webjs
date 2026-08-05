@@ -1110,10 +1110,26 @@ test('reactivateScripts: a non-script container still walks its descendants (#11
   assert.equal(document.getElementById('inner').getAttribute('nonce'), 'page-nonce');
 });
 
+test('reactivateScripts: leaves a data-webjs-permanent script alone (#1102)', () => {
+  // That attribute's whole contract is node identity across a swap: the tiers
+  // regraft the live node into the incoming slice and the differ returns early
+  // on it. Cloning one here would destroy exactly what the author asked to
+  // keep, and re-run a script that opted out of re-running.
+  document.head.innerHTML = '<meta name="csp-nonce" content="page-nonce">';
+  document.body.innerHTML =
+    '<script id="perm" data-webjs-permanent nonce="page-nonce">window.p = 1;</script>';
+  const original = document.getElementById('perm');
+  const returned = _reactivateScripts(original);
+  assert.strictEqual(document.getElementById('perm'), original,
+    'a permanent script keeps its node identity');
+  assert.strictEqual(returned, original, 'and is handed back as-is');
+});
+
 test('reactivateScripts: a detached script inserts nothing (#1102)', () => {
-  // The callers iterate a SNAPSHOT of the range, so an entry the reconciler
-  // already removed can reach this. `replaceWith` on a parentless node is a
-  // spec no-op, which is what keeps that harmless.
+  // Reactivation executes a script synchronously, so an EARLIER script in the
+  // range can remove a later one before the walk reaches it, leaving a stale
+  // snapshot entry. `replaceWith` on a parentless node is a spec no-op, which
+  // is what keeps that harmless.
   document.head.innerHTML = '';
   document.body.innerHTML = '';
   const orphan = document.createElement('script');

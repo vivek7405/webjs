@@ -4375,18 +4375,28 @@ async function streamBoundariesProgressively(reader, dec, initialBuf, isCurrent)
  * enhancement script, the shape that surfaced this) never ran after a soft nav.
  *
  * Replacing the container DETACHES it, which is why both callers snapshot the
- * range before iterating rather than walking live `nextSibling` links. The
- * returned node is the one now in the document, so a caller can keep working on
- * it (the upgrade pass) without touching the detached original.
+ * range before iterating rather than walking live `nextSibling` links.
+ *
+ * A `data-webjs-permanent` container is EXEMPT. That attribute's whole contract
+ * is node identity across a swap (`regraftPermanentInSlice` moves the live node
+ * into the incoming slice and `diffElementInPlace` returns early on it), so
+ * cloning one would destroy exactly what the author asked to keep. Before this
+ * function handled container-is-a-script at all, a top-level permanent script
+ * survived by accident; the carve-out keeps it working on purpose.
  *
  * @param {Element} container
- * @returns {Element} `container`, or its live replacement when it was a script.
+ * @returns {Element} `container`, or its replacement when it was a script that
+ *   was re-emitted. The replacement sits wherever `container` was; when
+ *   `container` was already detached, `replaceWith` is a spec no-op and the
+ *   returned clone is detached too, so callers must not assume it is connected.
  */
 function reactivateScripts(container) {
-  if (container.tagName === 'SCRIPT') {
+  if (container.tagName === 'SCRIPT' && !container.hasAttribute('data-webjs-permanent')) {
     const fresh = cloneScriptWithCorrectNonce(/** @type {HTMLScriptElement} */ (container));
-    // A no-op when the node has no parent (the reconciler dropped it), so a
-    // snapshot entry that is no longer live cannot resurrect itself.
+    // A no-op when the node has no parent. That happens when an EARLIER
+    // script's reactivation ran code that removed this node from the range
+    // (reactivation executes synchronously), so a stale snapshot entry cannot
+    // resurrect itself into the document.
     container.replaceWith(fresh);
     return fresh;
   }
@@ -4402,6 +4412,17 @@ function reactivateScripts(container) {
  * script node, which detaches it and cuts a live `nextSibling` walk, silently
  * skipping every node after it (#1102).
  *
+ * The snapshot is taken AFTER the tier has finished writing the range (the
+ * replace tier's insert loop, the morph tier's `reconcileSiblings`), so every
+ * entry is attached when it is recorded. It can still go stale DURING the walk,
+ * because reactivating a script executes it synchronously and that code may
+ * mutate the range. Two consequences, both deliberate. A node an earlier script
+ * REMOVED is skipped, since `replaceWith` on a parentless node is a spec no-op.
+ * A node an earlier script INSERTED is not visited, unlike the live walk this
+ * replaced; that costs only an explicit `customElements.upgrade`, which a real
+ * browser performs anyway when a defined element is connected, and a script
+ * that restructures the very range being activated is not a supported shape.
+ *
  * @param {{ start: Comment, end: Comment }} range
  */
 function activateSwappedRange(range) {
@@ -4411,7 +4432,10 @@ function activateSwappedRange(range) {
     if (n.nodeType === 1) swapped.push(/** @type {Element} */ (n));
   }
   for (const el of swapped) {
-    upgradeCustomElements(reactivateScripts(el));
+    const live = reactivateScripts(el);
+    // A detached node has nothing to upgrade: constructing custom elements
+    // off-document would fire their lifecycle for a tree no one can see.
+    if (live.isConnected !== false) upgradeCustomElements(live);
   }
 }
 
