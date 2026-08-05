@@ -48,21 +48,18 @@ What this gets us is that an agent in autonomous mode (running with permission t
 
 # The convention validator
 
-`webjs check` runs a set of lint rules over the project:
+`webjs check` runs a set of lint rules over the project. A few real ones:
 
-- `tests-exist`: every server action / query has a corresponding test
-- `no-server-imports-in-components`: components do not import `node:*` or a DB driver (`pg`)
+- `no-server-import-in-browser-module`: a module that genuinely ships to the browser does not import a server-only file, whose client stub throws at load
 - `use-server-needs-extension`: a `'use server'` directive requires a `.server.{js,ts}` filename
 - `no-static-properties`: reactive properties are declared via the `extends WebComponent({ … })` factory, not a hand-written `static properties`
 - `erasable-typescript-only`: `tsconfig.json` has `erasableSyntaxOnly: true`
 - `shell-in-non-root-layout`: non-root layouts and pages don't write `<!doctype>` / `<html>` / `<head>` / `<body>`
-- `no-json-data-files`: app data lives in the database, not in JSON files
 - `no-server-env-in-components`: `process.env.X` in components only reads `WEBJS_PUBLIC_*` or `NODE_ENV`
-- `light-dom-css-prefix`: light-DOM components with custom CSS prefix every selector with the tag name
 
-Each rule lives in `packages/server/src/check.js`. New rules are about 20 lines apiece. The agent runs `webjs check` before committing, sees violations as concrete messages, and fixes them.
+Each rule lives in `packages/server/src/check.js`. The agent runs `webjs check` before committing, sees violations as concrete messages, and fixes them.
 
-The lint is intentionally narrow. We have ~10 rules, not 100. The rules cover invariants that crash in production. The framework does not lint style preferences.
+The lint is intentionally narrow. Every rule covers an invariant that crashes in production, and the framework does not lint style preferences. `webjs check --rules` prints the current set, which is the only place worth reading it from, because a list copied into a blog post goes stale the next time a rule lands.
 
 # Hooks beyond pre-commit
 

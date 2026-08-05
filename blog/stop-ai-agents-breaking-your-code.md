@@ -84,7 +84,7 @@ The rules are the concrete failure modes an agent trips over. A few real ones:
 - `no-static-properties`, reactive properties are declared through the `WebComponent({ ... })` factory, not a hand-written `static properties` block that would throw at runtime.
 - `erasable-typescript-only`, the tsconfig must keep types strippable, because WebJs has no bundler to fall back on.
 - `shell-in-non-root-layout`, only the root layout may write `<!doctype>` / `<html>` / `<head>` / `<body>`.
-- `light-dom-css-prefix`, a light-DOM component with custom CSS prefixes every selector with its tag name.
+- `no-browser-globals-in-render`, a component's constructor and `render()` stay off browser globals, because both run on the server too and a `window` read there crashes the SSR pass.
 
 An agent runs `webjs check`, reads concrete violation messages, and fixes them before the code is anywhere near a review. The narrowness is deliberate. It is a short list of "this will break", not a hundred style opinions, so a green check actually means something.
 

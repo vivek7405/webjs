@@ -73,13 +73,13 @@ Forms that already call `event.preventDefault()` in their `@submit` handler are 
 
 # What the router does not do
 
-Three explicit non-goals, called out in the source.
+One explicit non-goal, plus two that used to be on this list and have since been built.
 
-No prefetching. The router does not warm `<a>` targets on hover or viewport entry. The platform is getting better at this (Speculation Rules API, Chrome's per-link prefetch hints), and we did not want to ship a heuristic we would have to tune. Apps that need it can layer it on.
+No view-transitions API by default. View Transitions are great when supported, but the spec is still evolving, so the default off-state matches what works in every browser. An app that wants them opts in with a `<meta name="view-transition">` tag in the root layout, which is the whole configuration.
 
-No view-transitions API by default. View Transitions are great when supported (Chromium-only as of writing), but the spec is still evolving. The default off-state matches what works in every browser.
+Prefetching was the first of the two. The router warms link targets on its own now, and it picks the strategy from the device rather than applying one everywhere: hover intent where there is a real pointer, and dwell-gated viewport entry on touch, where hover does not exist to hook. I wrote up how that choice gets made in [Device-adaptive link prefetch](/blog/device-adaptive-link-prefetch).
 
-No nested-route data deduplication. Each navigation re-fetches the page from scratch. We do not try to keep "data we already have" and only refetch the diff. The HTTP cache and the framework's `cache()` query memoization handle this at a different layer.
+Per-navigation full refetch was the second. The `X-Webjs-Have` mechanism described above is exactly the deduplication this section used to disclaim, so a navigation that shares a layout chain with the current page pays for the divergent fragment and nothing more.
 
 
 # What happens on a rapid click

@@ -52,14 +52,16 @@ The work landed as PR #9 (merge `3c29d99`, branch `feat/replace-esbuild-with-str
 The cache shape is straightforward:
 
 ```ts
-const TS_CACHE = new Map();
 const TS_CACHE_MAX = 500;
+// state.tsCache, one Map per request handler
 // Entry: { mtimeMs, code, map: string | null }
 ```
 
-Capped at 500 entries to prevent unbounded memory growth in long-running production servers. Keyed by absolute path, invalidated when the file's mtime changes. First request through is on the order of a hundred microseconds per file. Subsequent requests are Map lookups.
+Capped at 500 entries to prevent unbounded memory growth in long-running production servers. Keyed by absolute path, invalidated when the file's mtime changes. First request through is on the order of a hundred microseconds per file. Subsequent requests are Map lookups. The Map hangs off the request handler rather than the module, because the cached bytes bake in that handler's elision verdict, so two handlers for the same app with different elision settings must not share one.
 
-For the rare case where a file uses non-erasable syntax, the server falls back to `esbuild.transform`. The fallback path is triggered specifically when the primary path throws `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`. esbuild emits an inline sourcemap so DevTools can still resolve source positions for the regenerated JS. Mostly fires for third-party `.ts` files; user code is enforced erasable by `webjs check`'s `erasable-typescript-only` rule.
+There is no fallback for a file that uses non-erasable syntax. Stripping throws, the server returns a clean 500 naming the file, and that is the entire error path. Nothing regenerates the code through a bundler, which is what keeps the guarantee worth having: the file on disk is the file that runs, with no second code path where that stops being true. Two `webjs check` rules catch the problem at edit time instead, `erasable-typescript-only` on the tsconfig flag and `no-non-erasable-typescript` on the source itself.
+
+What does vary is the backend doing the stripping. On Node it is the built-in `module.stripTypeScriptTypes`. On Bun, which has no such built-in, it is `amaro`, and since Node's built-in is itself a thin wrapper over `amaro`'s `strip-only` mode, both runtimes produce byte-identical output with the same position preservation.
 
 
 # What this enabled downstream
