@@ -5,7 +5,7 @@ import { splitByTier } from '#modules/ui/utils/tier.ts';
 // Same "<Page> | <Section>" shape the documentation uses, so a tab or a search
 // result reads consistently across /docs and /ui.
 export const metadata = {
-  title: 'WebJs UI | AI-first components for WebJs',
+  title: 'WebJs UI | AI-first components for Tailwind v4',
 };
 
 /**
@@ -36,9 +36,11 @@ export default async function UiIntro() {
         so an agent trained on shadcn maps its knowledge across directly.
       </p>
       <p>
-        It is built for WebJs apps and styled with Tailwind v4. Tier-1 helpers are plain functions
-        returning class strings, and Tier-2 elements extend <code>WebComponent</code> from
-        <code>@webjsdev/core</code>, so the kit assumes the runtime a WebJs app already has.
+        It comes from WebJs, but it is not limited to a WebJs app. Tier-1 helpers are plain
+        functions returning class strings, so they drop into any project with Tailwind v4
+        configured, Next, Astro, Vite, SvelteKit, Lit, or plain HTML. Tier-2 elements extend
+        <code>WebComponent</code> from <code>@webjsdev/core</code>, a small base class the
+        <code>webjsui add</code> command installs for you, and a WebJs app simply already has it.
       </p>
 
       <h2>Two tiers, one mental model</h2>

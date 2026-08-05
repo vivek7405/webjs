@@ -48,15 +48,24 @@ test('vendored package.json main resolves to the bundled entry', () => {
   assert.ok(existsSync(join(DIR, '../vendor/node_modules/@webjsdev/intellisense', pkg.main)), 'main entry exists');
 });
 
-test('vendored package.json is byte-identical to the source manifest', () => {
-  // The script copies the whole manifest verbatim, but this only ever
-  // checked `name` and `main`, so an edit to any other field left a stale
-  // copy that shipped to the standalone webjs.nvim repo. That happened with
-  // the description (#1100), which drifted back to text the source had
-  // already fixed. Byte-compare it the way the src tree is compared.
+test('vendored package.json matches the source manifest apart from its version', () => {
+  // The script copies the whole manifest, but this only ever checked `name`
+  // and `main`, so an edit to any other field left a stale copy that ships to
+  // the standalone webjs.nvim repo. That happened with the description
+  // (#1100), which drifted back to text the source had already fixed.
+  //
+  // `version` is excluded, and that carve-out is load-bearing rather than
+  // lazy. Nothing in the release path re-vendors (no workflow or script
+  // invokes vendor-intellisense.mjs), so a release that bumps intellisense
+  // leaves the copy behind by design: #978 bumped it to 0.5.4 and the vendored
+  // copy did not catch up until #1117, roughly 140 commits later. Comparing
+  // the version too would red CI on every release commit, for a field the
+  // bundled copy never reads. Everything else is compared, which is where the
+  // drift that actually matters lives.
+  const stripVersion = (s) => s.replace(/^[ \t]*"version":[^\n]*\n/m, '');
   assert.equal(
-    readFileSync(join(DIR, '../vendor/node_modules/@webjsdev/intellisense/package.json'), 'utf8'),
-    readFileSync(join(SRC, '..', 'package.json'), 'utf8'),
+    stripVersion(readFileSync(join(DIR, '../vendor/node_modules/@webjsdev/intellisense/package.json'), 'utf8')),
+    stripVersion(readFileSync(join(SRC, '..', 'package.json'), 'utf8')),
     'vendored package.json drifted; re-run node packages/editors/nvim/scripts/vendor-intellisense.mjs',
   );
 });
