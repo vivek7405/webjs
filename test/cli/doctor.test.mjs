@@ -865,6 +865,35 @@ test('a gated warning fails the exit; the same warning ungated does not', () => 
   assert.match(gated.stderr, /webjs\.doctor\.gate/);
 });
 
+// The two hard toolchain checks fail the exit with NO gate entry, because
+// either would 500 the app at runtime. Easy to state the gate as "only what
+// you mark error is fatal", which is false and would have an agent misdiagnose
+// a red CI as impossible, so pin it.
+test('a hard toolchain check fails the exit with no gate entry naming it', () => {
+  const dir = tmpDir();
+  write(dir, 'package.json', JSON.stringify({
+    name: 'x',
+    webjs: { doctor: { gate: { UNMARKED_ASSET_LINKS: 'error' } } },
+  }));
+  write(dir, 'tsconfig.json', JSON.stringify({ compilerOptions: { strict: true } }));
+
+  const r = runCliArgs(dir, ['--json']);
+  assert.equal(r.status, 1, 'TSCONFIG_ERASABLE fails the exit though the gate never mentions it');
+  const out = JSON.parse(r.stdout);
+  const tsconfig = out.results.find((x) => x.code === 'TSCONFIG_ERASABLE');
+  assert.equal(tsconfig.status, 'fail');
+  assert.equal(tsconfig.severity, 'error', 'a fail defaults to error, gate entry or not');
+  assert.equal(out.summary.fail, 1);
+
+  // And it is silenceable like anything else, which is the uniform-`off` rule.
+  write(dir, 'package.json', JSON.stringify({
+    name: 'x',
+    webjs: { doctor: { gate: { TSCONFIG_ERASABLE: 'off' } } },
+  }));
+  const silenced = runCliArgs(dir, []);
+  assert.equal(silenced.status, 0, 'off silences a hard check too');
+});
+
 test('a gated `off` silences a warning even under --strict', () => {
   // A tmp fixture also warns on the environment-shaped checks (it has no
   // node_modules), so silence those too and `--strict` has nothing left to fail

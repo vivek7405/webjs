@@ -499,7 +499,9 @@ export async function scaffoldApp(name, cwd, opts = {}) {
       // error because an un-versioned /public url is a real deploy-staleness
       // bug (it shipped a visible regression on webjs.dev) and the generated
       // layout already writes asset(), so a fresh app is green on day one.
-      // Everything else keeps its default warn. Add a code with "off" to
+      // Two checks are fatal with no entry here at all, NODE_VERSION and
+      // TSCONFIG_ERASABLE, because either would 500 the app at runtime;
+      // everything else keeps its default warn. Add a code with "off" to
       // silence it, or "error" to make it fatal too.
       doctor: { gate: { UNMARKED_ASSET_LINKS: 'error' } },
     },

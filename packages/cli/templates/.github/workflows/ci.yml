@@ -39,8 +39,10 @@ jobs:
       # "webjs": { "doctor": { "gate": { "<CODE>": "off" | "warn" | "error" } } },
       # so this step and a local `npm run doctor` always agree. The scaffold
       # starts with UNMARKED_ASSET_LINKS at error (an un-versioned /public url
-      # is a real deploy-staleness bug); everything else stays a warn and
-      # cannot fail this job. Widen or narrow the gate in package.json, not
+      # is a real deploy-staleness bug). Two checks fail with no gate entry at
+      # all, NODE_VERSION and TSCONFIG_ERASABLE, because either would 500 the
+      # app at runtime; everything else stays a warn and cannot fail this job.
+      # Widen or narrow the gate in package.json, not
       # here. Deliberately not --strict: the git-hook, env-drift, vendor-pin,
       # and framework-resolve checks are environment-shaped and would fail a
       # perfectly healthy runner.
