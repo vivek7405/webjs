@@ -112,7 +112,7 @@ The bound, refused, and allowed shapes in full. Every "no" row is a binding that
 | `.formAction=` on a button or input | yes | same reason, that is where `formAction` reflects |
 | `.action=` on any other native tag | **no** | a plain expando (`<div .action=${fn}>`, `<button .action=${fn}>`), reflecting nothing, so nothing reaches the markup |
 | `.action=` on a custom element | **no** | an author-defined property, not a reflected IDL attribute, so a function is a legitimate value. One declared `reflect: true` reflects on a path outside these commit sites, which used to write `String(value)` and emit the source. It now removes the attribute and warns instead, for a bare function and for an array carrying one, unless the prop supplies its own `converter.toAttribute`, which runs first and stays the author's call |
-| `?action=` | yes | never leaked, but it is meaningless, so it is refused rather than silently emitting a bare `action=""` |
+| `?action=` | yes | a function never leaked through a boolean hole, but the binding is meaningless, so it is refused rather than emitting the bare `action=""` that ANY truthy value produces there. Two separate facts worth carrying: `action=""` is a conformance error (the spec wants a valid non-empty URL whenever the attribute is present), and deleting the attribute is still not the WebJs fix, since a page has no `action` export and an unbound `method="post"` form is a 405 (a bare GET form just re-renders). Bind it: `<form action=${fn}>` |
 | `@action=` unquoted | **no** | an event listener, and a function is exactly what one takes |
 | `@action="${fn}"` quoted | yes | quoting makes it an ordinary attribute again, so it leaks |
 

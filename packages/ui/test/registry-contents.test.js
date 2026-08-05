@@ -310,3 +310,71 @@ test('accordion : supports single/multiple + collapsible', { skip }, () => {
   assert.match(src, /'multiple'|"multiple"/);
   assert.match(src, /collapsible/);
 });
+
+// #1080: checkbox / radio draw their checked indicator from an injected
+// stylesheet that keys on a `data-slot` attribute, and neither class helper
+// carries a fallback fill for the checked state (radioClass has no
+// checked:bg-* at all). So an @example that omits the attribute teaches a
+// copy-paste whose checked state is conveyed by colour alone, the WCAG 1.4.1
+// trap both examples used to ship. Assert the pairing at the source, since the
+// examples are what `webjsui view` and the MCP `ui` tool hand to an agent.
+test('checkbox / radio examples pair the class helper with its data-slot', { skip }, async () => {
+  const { extractExample } = await import('../src/registry/example.js');
+  for (const [name, type, slot] of [
+    ['checkbox', 'checkbox', 'checkbox'],
+    ['radio-group', 'radio', 'radio'],
+  ]) {
+    const ex = extractExample(readSource(name));
+    const inputs = ex.match(new RegExp(`<input[^>]*type="${type}"[^>]*>`, 'g')) ?? [];
+    assert.ok(inputs.length > 0, `${name}: @example has no ${type} input to check`);
+    for (const tag of inputs) {
+      assert.ok(
+        tag.includes(`data-slot="${slot}"`),
+        `${name}: @example input omits data-slot="${slot}", so its checked state would render by colour alone: ${tag}`,
+      );
+    }
+  }
+});
+
+// #1080: the radio example's role="radiogroup" container had no accessible
+// name, so a screen reader announced "radio group" with no idea what was being
+// chosen. Either aria-labelledby or a fieldset/legend satisfies this.
+test('radio-group example names its group', { skip }, async () => {
+  const { extractExample } = await import('../src/registry/example.js');
+  const ex = extractExample(readSource('radio-group'));
+  const named =
+    /role="radiogroup"[^>]*aria-label(?:ledby)?=/.test(ex) ||
+    /aria-label(?:ledby)?=[^>]*role="radiogroup"/.test(ex) ||
+    /<legend/.test(ex);
+  assert.ok(named, 'radio-group @example leaves its radiogroup unnamed');
+});
+
+// #1080: packages/ui/AGENTS.md claims "Every Tier-1 component's JSDoc carries
+// an `A11y (required for accessible output)` block". That claim was false for
+// ten components, which is how the guidance half of the kit's accessibility
+// contract rotted unnoticed: a Tier-1 helper returns only classes, so the JSDoc
+// is the ONLY place the caller learns what ARIA they owe. This test is what
+// keeps the claim true, for Tier-2 as well, where the block states what the
+// element already owns so an author does not double-wire it.
+test('every component JSDoc carries an A11y block', { skip }, () => {
+  const missing = V1_COMPONENTS.filter((name) => !/^ \* A11y/m.test(readSource(name)));
+  assert.deepEqual(
+    missing,
+    [],
+    `these components have no "A11y" JSDoc block, so a caller has no statement of what ARIA they owe: ${missing.join(', ')}`,
+  );
+});
+
+// #1080: the A11y block only helps if it REACHES the agent. `webjsui view` and
+// the MCP `ui` tool serve extractDocHeader(), which cuts at the first @tag, so a
+// block written below @example would be silently dropped from the one surface an
+// agent reads before writing UI. Assert placement, not just presence.
+test('the A11y block reaches the agent-facing doc header', { skip }, async () => {
+  const { extractDocHeader } = await import('../src/registry/extract.js');
+  const dropped = V1_COMPONENTS.filter((name) => !/^A11y/m.test(extractDocHeader(readSource(name))));
+  assert.deepEqual(
+    dropped,
+    [],
+    `these components' A11y blocks sit below an @tag, so extractDocHeader drops them and an agent never sees the obligations: ${dropped.join(', ')}`,
+  );
+});

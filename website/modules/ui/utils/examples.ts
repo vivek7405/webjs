@@ -321,7 +321,8 @@ const EXAMPLES: Record<string, string> = {
   `,
 
   radio_group: `
-    <div role="radiogroup" class="\${radioGroupClass()}">
+    <span class="\${labelClass()}" id="ex-plan-label">Billing plan</span>
+    <div role="radiogroup" aria-labelledby="ex-plan-label" class="\${radioGroupClass()}">
       <div class="flex items-center gap-2">
         <input type="radio" name="plan" value="basic" id="plan-basic" class="\${radioClass()}" data-slot="radio" checked>
         <label class="\${labelClass()}" for="plan-basic">Basic</label>
@@ -334,8 +335,9 @@ const EXAMPLES: Record<string, string> = {
   `,
 
   'native-select': `
+    <label class="\${labelClass()}" for="ex-native-plan">Billing plan</label>
     <div class="\${nativeSelectWrapperClass()}">
-      <select class="\${nativeSelectClass()}" name="plan">
+      <select class="\${nativeSelectClass()}" name="plan" id="ex-native-plan">
         <option>Basic</option>
         <option>Pro</option>
         <option>Enterprise</option>
@@ -387,7 +389,7 @@ const EXAMPLES: Record<string, string> = {
   `,
 
   kbd: `
-    <div class="\${kbdGroupClass()}">
+    <div class="\${kbdGroupClass()}" role="img" aria-label="Command Shift P">
       <kbd class="\${kbdClass()}">⌘</kbd>
       <kbd class="\${kbdClass()}">Shift</kbd>
       <kbd class="\${kbdClass()}">P</kbd>
@@ -510,15 +512,15 @@ const EXAMPLES: Record<string, string> = {
   `,
 
   popover: `
-    <button popovertarget="ex-popover" class="\${buttonClass({ variant: 'outline' })}">Open popover</button>
-    <div popover id="ex-popover" class="\${popoverContentClass({ side: 'bottom', align: 'start', sideOffset: 4 })}">
+    <button popovertarget="ex-popover" aria-haspopup="dialog" aria-expanded="false" class="\${buttonClass({ variant: 'outline' })}">Open popover</button>
+    <div popover id="ex-popover" role="dialog" aria-labelledby="ex-popover-title" aria-describedby="ex-popover-desc" class="\${popoverContentClass({ side: 'bottom', align: 'start', sideOffset: 4 })}">
       <div class="\${popoverHeaderClass()}">
-        <h3 class="\${popoverTitleClass()}">Filter</h3>
-        <p class="\${popoverDescriptionClass()}">Tag and status.</p>
+        <h3 class="\${popoverTitleClass()}" id="ex-popover-title">Filter</h3>
+        <p class="\${popoverDescriptionClass()}" id="ex-popover-desc">Tag and status.</p>
       </div>
       <div class="\${stackClass({ gap: 'sm' })} mt-3">
-        <label class="\${labelClass()}">Status</label>
-        <select class="\${nativeSelectClass()}"><option>Open</option><option>Closed</option></select>
+        <label class="\${labelClass()}" for="ex-popover-status">Status</label>
+        <select class="\${nativeSelectClass()}" id="ex-popover-status"><option>Open</option><option>Closed</option></select>
       </div>
     </div>
   `,
@@ -738,7 +740,8 @@ const VARIANT_EXAMPLES: Record<string, Record<string, string>> = {
   },
   'radio-group': {
     vertical: `
-      <div role="radiogroup" class="\${radioGroupClass({ orientation: 'vertical' })}">
+      <span class="\${labelClass()}" id="ex-plan-v-label">Billing plan</span>
+      <div role="radiogroup" aria-labelledby="ex-plan-v-label" class="\${radioGroupClass({ orientation: 'vertical' })}">
         <div class="flex items-center gap-2">
           <input type="radio" name="plan-v" id="plan-v-basic" data-slot="radio" class="\${radioClass()}" checked>
           <label class="\${labelClass()}" for="plan-v-basic">Basic</label>
@@ -754,7 +757,8 @@ const VARIANT_EXAMPLES: Record<string, Record<string, string>> = {
       </div>
     `,
     horizontal: `
-      <div role="radiogroup" class="\${radioGroupClass({ orientation: 'horizontal' })}">
+      <span class="\${labelClass()}" id="ex-plan-h-label">Billing plan</span>
+      <div role="radiogroup" aria-labelledby="ex-plan-h-label" class="\${radioGroupClass({ orientation: 'horizontal' })}">
         <div class="flex items-center gap-2">
           <input type="radio" name="plan-h" id="plan-h-basic" data-slot="radio" class="\${radioClass()}" checked>
           <label class="\${labelClass()}" for="plan-h-basic">Basic</label>

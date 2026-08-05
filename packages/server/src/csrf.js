@@ -19,7 +19,10 @@
  *   2. When `Sec-Fetch-Site` is absent (an older browser), fall back to
  *      comparing the `Origin` host to the request host; an absent `Origin`
  *      can't be checked so it passes (a handcrafted / non-browser request
- *      can't carry a victim's SameSite cookies cross-site anyway).
+ *      can't carry a victim's SameSite cookies cross-site anyway). That
+ *      request host comes from `requestHost` below, which resolves
+ *      `x-forwarded-host` through the shared `trustProxy()` seam in
+ *      `forwarded.js` (#1104), so this file holds no trust posture of its own.
  *
  * Scope:
  *   - Internal RPC only. A `route.ts` REST endpoint (hand-written or via the
@@ -27,6 +30,8 @@
  *     consumers and must carry its own auth.
  *   - Session / auth cookies stay `SameSite=Lax` as defense-in-depth.
  */
+
+import { trustProxy } from './forwarded.js';
 
 /**
  * Parse cookies off a standard Request. Retained as a general cookie reader
@@ -56,23 +61,37 @@ function hostOf(value) {
 }
 
 /**
- * The host the request was addressed to. Honors `x-forwarded-host` first
- * (set by a reverse proxy / CDN like the Cloudflare-in-front-of-Railway
- * setup), then the `Host` header, then the request URL.
+ * The host the request was addressed to: `x-forwarded-host` when a proxy is
+ * trusted to speak for the client (the Cloudflare-in-front-of-Railway setup),
+ * then the `Host` header, then the request URL.
  *
- * Trust note: a proxy of the kind above FORWARDS a client-supplied
- * `x-forwarded-host` rather than overwriting it, so this value can be
- * attacker-chosen. See the threat model in `forwarded.js` for what that
- * does reach. This is NOT a CSRF weakness, because a CSRF attack is
- * browser-driven and a browser cannot set `x-forwarded-host` (or `Origin`);
- * only a direct non-browser client can, and such a client carries no victim
- * SameSite cookies to abuse. The primary `Sec-Fetch-Site` path does not use
- * this at all.
+ * Trust note, preserved from before this read went through `trustProxy()`
+ * (#1104), because it is correct and non-obvious: reading `x-forwarded-host`
+ * here was never a CSRF weakness. A CSRF attack is browser-driven and a
+ * browser cannot set `x-forwarded-host` (or `Origin`); only a direct
+ * non-browser client can, and such a client carries no victim SameSite
+ * cookies to abuse. The primary `Sec-Fetch-Site` path does not reach this
+ * function at all, only the legacy no-`Sec-Fetch-Site` fallback in
+ * `verifyOrigin` does. The value CAN still be attacker-chosen, since a proxy
+ * of the kind above forwards a client-supplied one rather than overwriting
+ * it; see the threat model in `forwarded.js` for what that does reach.
+ *
+ * What changed is the POSTURE, not a hole: the read now honors
+ * `WEBJS_NO_TRUST_PROXY=1` like every other forwarded-header read, so an
+ * operator who sets the flag because their container is directly reachable
+ * gets one answer from the whole package instead of two. Behind a proxy
+ * WITHOUT the flag nothing changes. With the flag set on a genuinely proxied
+ * deploy (a misconfiguration) the fallback compares `Origin` against the raw
+ * `Host`, so a legitimate cross-host request can now be rejected. That is the
+ * flag's intended meaning.
+ *
  * @param {Request} req
  */
 export function requestHost(req) {
-  const xfh = req.headers.get('x-forwarded-host');
-  if (xfh) return xfh.split(',')[0].trim().toLowerCase();
+  if (trustProxy()) {
+    const xfh = req.headers.get('x-forwarded-host');
+    if (xfh) return xfh.split(',')[0].trim().toLowerCase();
+  }
   const host = req.headers.get('host');
   if (host) return host.toLowerCase();
   return hostOf(req.url);

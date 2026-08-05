@@ -30,6 +30,20 @@
  *
  * Programmatic API on <ui-tooltip>: `.show()` · `.hide()`.
  *
+ * Keyboard:
+ *   Escape   dismiss a showing tip, leaving focus on the trigger
+ *
+ * A11y (owned by the element, nothing to supply):
+ *   The focusable trigger references the tip via `aria-describedby`, so a
+ *   screen reader appends the tip to the trigger's own name, and the tip opens
+ *   on focus as well as hover. Escape dismisses a showing tip without moving
+ *   focus (APG requires the escape hatch, since a tip can cover the content
+ *   underneath it). A CLOSED tooltip never consumes Escape, so it cannot
+ *   swallow the key from a dialog it happens to sit inside.
+ *   What you DO supply: an accessible name on the trigger control itself. The
+ *   tip is a DESCRIPTION, not a name, so an icon-only trigger still needs its
+ *   own `aria-label` as the example below shows.
+ *
  * Design tokens used: --foreground, --background.
  *
  * @example
@@ -75,6 +89,8 @@ export class UiTooltip extends WebComponent({
   _showTimer: number | undefined;
   _hideTimer: number | undefined;
 
+  _keyHandler = (e: KeyboardEvent): void => this._onKeyDown(e);
+
   constructor() {
     super();
     this.open = false;
@@ -98,8 +114,41 @@ export class UiTooltip extends WebComponent({
   }
 
   disconnectedCallback(): void {
+    this._unbindEscape();
     this._disposeBeforeCache?.();
     super.disconnectedCallback?.();
+  }
+
+  // APG Tooltip requires an Escape escape-hatch: a tip can cover the content
+  // underneath it, and a keyboard user who cannot dismiss it is stuck. Focus
+  // is deliberately untouched, since the tip is not focusable and the trigger
+  // should keep focus (moving it would lose the user's place).
+  //
+  // The listener is bound only WHILE OPEN, which is how a closed tooltip is
+  // kept from consuming Escape that a dialog (or anything else) wants.
+  _onKeyDown(e: KeyboardEvent): void {
+    if (e.key !== 'Escape' || !this.open) return;
+    e.preventDefault();
+    this._dismiss();
+  }
+
+  // Immediate, unlike hide()'s 100ms hover-out grace: a dismissal is a
+  // deliberate act, so it should not sit around waiting to be cancelled.
+  _dismiss(): void {
+    clearTimeout(this._showTimer);
+    clearTimeout(this._hideTimer);
+    this.open = false;
+    lastTooltipHideAt = Date.now();
+  }
+
+  _bindEscape(): void {
+    if (typeof document === 'undefined') return;
+    document.addEventListener('keydown', this._keyHandler);
+  }
+
+  _unbindEscape(): void {
+    if (typeof document === 'undefined') return;
+    document.removeEventListener('keydown', this._keyHandler);
   }
 
   // APG tooltip wiring: the focusable trigger references the tip via
@@ -140,6 +189,10 @@ export class UiTooltip extends WebComponent({
 
   hide(): void {
     clearTimeout(this._showTimer);
+    // Clear the PENDING hide before scheduling the next one: overwriting the
+    // handle alone orphans the old timer, which then fires on its own and
+    // closes a tip a later show() had already reopened.
+    clearTimeout(this._hideTimer);
     this._hideTimer = window.setTimeout(() => {
       this.open = false;
       lastTooltipHideAt = Date.now();
@@ -157,6 +210,10 @@ export class UiTooltip extends WebComponent({
     if (!changedProperties.has('open')) return;
     // Skip the constructor's initial open=false set.
     if (changedProperties.get('open') === undefined) return;
+    // Bind synchronously rather than inside _syncContent, which bails early on
+    // engines with no Popover API: Escape has to work regardless of that.
+    if (this.open) this._bindEscape();
+    else this._unbindEscape();
     // Defer one microtask so the content child's [popover] inner element
     // has committed; we drive its showPopover() / hidePopover() from here.
     queueMicrotask(() => this._syncContent());

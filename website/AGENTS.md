@@ -184,6 +184,15 @@ is split by editorial intent, which is what decides where a piece goes:
   the home page (jsonLd-only `export const metadata`, so it does not split
   the layout-sourced title). Article schemas carry an `image`. Keep the
   schema honest: it must match the visible page content.
+- **Entity nodes carry an `@id` and share one `sameAs`.** Several nodes name
+  the project with the same `name` and `url`, so each declares an `@id`
+  (`#website`, `#organization`, `#software`) or a crawler cannot tell one
+  entity described several ways from several entities. The
+  `SoftwareApplication` on `/what-is-webjs` reuses `#software` deliberately,
+  so its richer description merges into the home node. Every node that
+  identifies the project reads the shared `SAME_AS` export from
+  `lib/links.ts` rather than listing properties inline, and
+  `test/docs/site-entity-graph.test.mjs` fails if a new one does neither.
 - **`/robots.txt`, `/sitemap.xml`, `/llms.txt`** are generated from the
   live content queries, so a new article, comparison, or post needs no
   edit to those files.

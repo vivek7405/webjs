@@ -141,3 +141,53 @@ for (const { tag, file } of TAGS) {
     );
   });
 }
+
+// --- webjs.create name validation stays in step with the CLI (#1066) -------
+//
+// The input box duplicates the CLI's app-name rule, because the extension
+// bundle cannot require `@webjsdev/cli` at runtime. Duplication drifts: this
+// box kept a lowercase-only regex after the CLI dropped that clause, and had
+// been refusing `my.app` / `my_app` for far longer than that. So cross-check
+// the two implementations over a table instead of asserting the regex text,
+// which would just re-encode the copy.
+//
+// Drift in EITHER direction is a bug. Stricter blocks a name `webjs create`
+// would accept. Looser is worse than it looks: an accepted name is shelled
+// straight out to the CLI, so it fails later in the terminal, which is exactly
+// what a prompt-time validator exists to prevent.
+test('webjs.create input validation matches the CLI app-name rule exactly', async () => {
+  const { createRequire } = await import('node:module');
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+
+  const extPath = fileURLToPath(new URL('../src/extension.js', import.meta.url));
+  // `vscode` is host-provided and unavailable here, so stub it out. Only the
+  // pure validator is under test; nothing in it touches the host.
+  const src = readFileSync(extPath, 'utf8').replace(
+    /const vscode = require\('vscode'\);/,
+    'const vscode = {};',
+  );
+  const mod = { exports: {} };
+  const req = createRequire(extPath);
+  new Function('module', 'exports', 'require', src)(mod, mod.exports, req);
+  const { validateAppName } = mod.exports;
+  assert.equal(typeof validateAppName, 'function', 'extension exports validateAppName');
+
+  const { checkAppName } = await import('../../../cli/lib/app-name.js');
+
+  const NAMES = [
+    'my-app', 'MyApp', 'TaskFlow', 'my.app', 'my_app', 'a', '9', 'My_App.v2',
+    '-app', '.app', '_app', '-', 'bad name', "bad'name", 'bad`name', 'bad$' + '{x}',
+    'node_modules', 'NODE_MODULES', 'favicon.ico', 'Favicon.ICO',
+    'a'.repeat(214), 'a'.repeat(215), '',
+  ];
+  for (const name of NAMES) {
+    const cliOk = checkAppName(name).ok;
+    const extOk = validateAppName(name) === null;
+    assert.equal(
+      extOk,
+      cliOk,
+      `${JSON.stringify(name)}: extension says ${extOk ? 'valid' : 'invalid'}, CLI says ${cliOk ? 'valid' : 'invalid'}`,
+    );
+  }
+});

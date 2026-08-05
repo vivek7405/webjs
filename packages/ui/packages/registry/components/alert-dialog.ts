@@ -44,6 +44,18 @@
  * Keyboard: Escape is blocked (alert dialogs require explicit choice);
  * Tab cycles trapped within the dialog (native focus trap).
  *
+ * A11y (owned by the element, but SUPPLY A TITLE):
+ *   On open the element names and describes the panel from the
+ *   `data-slot="alert-dialog-title"` / `alert-dialog-description` nodes,
+ *   falling back to the first heading / paragraph. An `aria-label` or
+ *   `aria-labelledby` you put on `<ui-alert-dialog-content>` is forwarded onto
+ *   the panel and wins over both.
+ *   A modal MUST have an accessible name, so with no title node and no name of
+ *   your own the panel falls back to a generic `aria-label="Alert dialog"`.
+ *   Treat that as a bug in your markup rather than a feature: this dialog
+ *   interrupts the user to demand an explicit choice and blocks Escape, so
+ *   naming it "Alert dialog" tells them nothing about what they are deciding.
+ *
  * Design tokens used: --background, --border, --muted-foreground.
  *
  * Scroll lock (#1144): opening the dialog locks body scroll, which hides the
@@ -397,18 +409,57 @@ export class UiAlertDialogContent extends WebComponent({
   // description is data-slot="alert-dialog-description" (falling back to the
   // first paragraph). Author-set ARIA always wins. Inlined rather than shared
   // with dialog.ts so `webjs ui add alert-dialog` stays self-contained.
+  // The description is independent of the NAME, so it is wired on every path,
+  // including the two authored-name early returns.
+  _wireDescription(panel: Element): void {
+    const authored = this.getAttribute('aria-describedby');
+    if (authored) {
+      panel.setAttribute('aria-describedby', authored);
+      return;
+    }
+    const desc =
+      this.querySelector('[data-slot="alert-dialog-description"]') ?? this.querySelector('p');
+    if (desc && !panel.hasAttribute('aria-describedby')) {
+      panel.setAttribute('aria-describedby', ensureId(desc as HTMLElement, 'ui-alert-desc'));
+    }
+  }
+
   _wireLabels(): void {
     const panel = this.querySelector('[data-slot="alert-dialog-content"]');
     if (!panel) return;
+    // A name the author put on <ui-alert-dialog-content> is where they
+    // naturally write it, but role="alertdialog" lives on the inner panel.
+    //
+    // Each authored-name branch RETURNS rather than falling through to the
+    // title wiring. Falling through would set aria-labelledby from the title
+    // alongside the forwarded aria-label, and aria-labelledby beats aria-label
+    // per accname, so the title would silently win over the author's name.
+    const authoredLabelledBy = this.getAttribute('aria-labelledby');
+    if (authoredLabelledBy) {
+      panel.setAttribute('aria-labelledby', authoredLabelledBy);
+      this._wireDescription(panel);
+      return;
+    }
+    const authoredLabel = this.getAttribute('aria-label');
+    if (authoredLabel) {
+      panel.setAttribute('aria-label', authoredLabel);
+      // An authored name replaces the title as the NAME, so a stale
+      // aria-labelledby from an earlier open must go or it would win over it.
+      panel.removeAttribute('aria-labelledby');
+      this._wireDescription(panel);
+      return;
+    }
     const title =
       this.querySelector('[data-slot="alert-dialog-title"]') ?? this.querySelector('h1, h2, h3');
-    const desc =
-      this.querySelector('[data-slot="alert-dialog-description"]') ?? this.querySelector('p');
     if (title && !panel.hasAttribute('aria-labelledby')) {
       panel.setAttribute('aria-labelledby', ensureId(title as HTMLElement, 'ui-alert-title'));
     }
-    if (desc && !panel.hasAttribute('aria-describedby')) {
-      panel.setAttribute('aria-describedby', ensureId(desc as HTMLElement, 'ui-alert-desc'));
+    this._wireDescription(panel);
+    // APG: a modal MUST have an accessible name, and this one interrupts the
+    // user to demand a decision, so an unnamed one is worse here than
+    // anywhere. A floor, not a substitute for a real title; a title wins.
+    if (!panel.hasAttribute('aria-labelledby') && !panel.hasAttribute('aria-label')) {
+      panel.setAttribute('aria-label', 'Alert dialog');
     }
   }
 

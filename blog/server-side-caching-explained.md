@@ -93,7 +93,7 @@ Evict it early on a write with `revalidatePath('/blog')` from a server action. T
 
 # The safety rule you must not skip
 
-Read this part twice. `export const revalidate` is you asserting "this page is the same for every visitor for N seconds." The HTML cache is keyed by the full URL only, with no per-user keying. So a page that reads `cookies()`, a session, or any per-user data MUST NOT set `revalidate`. If it does, the first visitor's rendered HTML can be served to the next visitor. A wrongly-cached per-user page is a data leak, plain and simple.
+Read this part twice. `export const revalidate` is you asserting "this page is the same for every visitor for N seconds." The HTML cache is keyed by the request origin plus the full URL, with no per-user keying. So a page that reads `cookies()`, a session, or any per-user data MUST NOT set `revalidate`. If it does, the first visitor's rendered HTML can be served to the next visitor. A wrongly-cached per-user page is a data leak, plain and simple.
 
 WebJs backs this with a framework defense. When your render reads per-user state through a framework helper (`cookies()`, `headers()`, `getSession()`, or `auth()`), the framework auto-marks the request dynamic and refuses to cache it even if you set `revalidate`, warning you once. So a dashboard page that does `const session = await auth()` fails safe. The loud caveat: this only catches reads THROUGH those helpers. If you read an auth cookie raw instead of via `cookies()`, the page can still be cached wrongly. The rule holds regardless. Read per-user state through the helpers, or never set `revalidate` on a per-user page.
 

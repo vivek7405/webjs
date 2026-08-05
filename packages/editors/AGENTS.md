@@ -29,15 +29,20 @@ both consumers:
 
 - **nvim** keeps a COMMITTED verbatim copy at
   `nvim/vendor/node_modules/@webjsdev/intellisense/`. It is GENERATED, never
-  hand-edited. After ANY `intellisense/src/` change you MUST re-vendor before
-  pushing:
+  hand-edited. After ANY `intellisense/src/` change, OR any edit to
+  `intellisense/package.json` INCLUDING a release version bump, you MUST
+  re-vendor before pushing:
   ```sh
   node packages/editors/nvim/scripts/vendor-intellisense.mjs
   git add -f packages/editors/nvim/vendor   # the copy is under a gitignored node_modules/
   ```
   The drift guard `nvim/test/vendor-sync.test.mjs` FAILS the "Unit + integration"
-  CI job ("vendored intellisense src is byte-identical ...") whenever the copy
-  and `src/` diverge (whether you forgot to re-vendor, or hand-edited the copy).
+  CI job whenever the copy and the source diverge (whether you forgot to
+  re-vendor, or hand-edited the copy). It compares `src/` byte for byte
+  ("vendored intellisense src is byte-identical ...") AND the manifest in
+  full, `version` included, so a release that bumps intellisense must re-vendor
+  on the release branch. #1117 had to fix that drift by hand after the copy
+  spent 53 commits misreporting the version the plugin ships.
   Confirm: `node --test packages/editors/nvim/test/vendor-sync.test.mjs`.
 - **vscode** rebuilds its bundle from `intellisense/` with esbuild at vsix
   package time (`vscode/scripts/build.mjs`, run by `package.mjs`), so it picks
@@ -68,9 +73,12 @@ copy, above).
 ## Publishing (on a release)
 
 - **`@webjsdev/intellisense`**: a normal monorepo npm package. Bump
-  `intellisense/package.json`, let the changelog flow run, publish to npm via
-  the standard release. A bump is a real publish because the scaffold pins it in
-  app `node_modules` + `tsconfig`.
+  `intellisense/package.json`, RE-VENDOR (`node
+  packages/editors/nvim/scripts/vendor-intellisense.mjs` then `git add -f
+  packages/editors/nvim/vendor`, since webjs.nvim ships a committed copy of that
+  manifest and the drift guard compares it in full, version included), let the
+  changelog flow run, then publish to npm via the standard release. A bump is a
+  real publish because the scaffold pins it in app `node_modules` + `tsconfig`.
 - **`webjs` (VS Code)**: bump `vscode/package.json`, then
   `npm run publish:vsce` (VS Marketplace) and `npm run publish:ovsx` (Open VSX),
   both of which package a fresh self-contained bundle. NOT npm. Full steps +

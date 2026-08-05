@@ -22,12 +22,24 @@
  *   `duration`:    ms, default 4000 (loading toasts default to 0, no auto-dismiss).
  *   `action`:      { label, onClick } | undefined. Renders an action button.
  *   `cancel`:      { label, onClick } | undefined. Renders a cancel button.
+ *                  Both buttons dismiss the toast after running their onClick.
  *
  * Events: none dispatched (consumers act on the id returned by `toast()`).
  *
  * Programmatic API on <ui-sonner>: `.addToast(message, opts, type)` for
  * per-instance dispatch (bypasses the singleton router that `toast()`
  * uses); typically only needed when mounting multiple viewports.
+ *
+ * A11y (owned by the element, nothing to supply):
+ *   The viewport is a persistent `aria-live="polite"` region labelled
+ *   "Notifications", so a toast is announced as it is inserted; an `error`
+ *   toast carries `role="alert"` so it is announced assertively. Every toast
+ *   also ships a labelled close button, so a toast can always be dismissed by
+ *   hand rather than only by its timer or a programmatic `toast.dismiss(id)`.
+ *   That matters most for a toast that never auto-dismisses, which
+ *   `toast.loading()` is by default (`duration: 0`) and which was otherwise
+ *   impossible to get rid of from the UI. Each toast's icon is decorative and
+ *   aria-hidden; the meaning is in the text and the role.
  *
  * Design tokens used: --popover, --popover-foreground, --border, --radius.
  *
@@ -44,6 +56,12 @@
  *   toast.error('Failed to save', { description: 'Try again' });
  *   toast.promise(savePost(), { loading: 'Saving', success: 'Saved', error: 'Failed' });
  *   toast.dismiss(id);
+ *
+ *   // action and cancel buttons; each dismisses the toast after its onClick.
+ *   toast('Post deleted', {
+ *     action: { label: 'Undo', onClick: () => restorePost() },
+ *     cancel: { label: 'Dismiss', onClick: () => {} },
+ *   });
  * </script>
  * ```
  */
@@ -57,6 +75,7 @@ interface ToastOptions {
   description?: string;
   duration?: number;
   action?: { label: string; onClick: () => void };
+  cancel?: { label: string; onClick: () => void };
 }
 
 interface ToastItem extends ToastOptions {
@@ -99,6 +118,7 @@ function makeToast(message: string, opts: ToastOptions = {}, type: ToastType = '
     description: opts.description,
     duration: opts.duration ?? (type === 'loading' ? 0 : 4000),
     action: opts.action,
+    cancel: opts.cancel,
   });
 }
 
@@ -207,6 +227,7 @@ export class UiSonner extends WebComponent({
       description: opts.description,
       duration: opts.duration ?? (type === 'loading' ? 0 : 4000),
       action: opts.action,
+      cancel: opts.cancel,
     });
     return id;
   }
@@ -242,6 +263,7 @@ export class UiSonner extends WebComponent({
         this.items.get(),
         (item) => item.id,
         (item) => html`<div
+          data-slot="sonner-toast"
           class=${TOAST_ITEM_BASE}
           data-type=${item.type}
           role=${item.type === 'error' ? 'alert' : 'status'}
@@ -253,9 +275,21 @@ export class UiSonner extends WebComponent({
               ? html`<div class="mt-1 text-xs text-muted-foreground">${item.description}</div>`
               : ''}
           </div>
+          ${item.cancel
+            ? html`<button
+                type="button"
+                data-slot="sonner-cancel"
+                class="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-accent"
+                @click=${() => {
+                  item.cancel!.onClick();
+                  this._remove(item.id);
+                }}
+              >${item.cancel.label}</button>`
+            : ''}
           ${item.action
             ? html`<button
                 type="button"
+                data-slot="sonner-action"
                 class="rounded-md px-2 py-1 text-xs font-medium hover:bg-accent"
                 @click=${() => {
                   item.action!.onClick();
@@ -263,6 +297,13 @@ export class UiSonner extends WebComponent({
                 }}
               >${item.action.label}</button>`
             : ''}
+          <button
+            type="button"
+            data-slot="sonner-close"
+            aria-label="Close notification"
+            class="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            @click=${() => this._remove(item.id)}
+          >${unsafeHTML(CLOSE_SVG)}</button>
         </div>`,
       )}
     </div>`;
@@ -270,15 +311,22 @@ export class UiSonner extends WebComponent({
 }
 UiSonner.register('ui-sonner');
 
+// The close affordance's own glyph. Decorative: the button's accessible name
+// comes from its aria-label, so the icon must not be walked for a name.
+const CLOSE_SVG =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+// Type glyphs, all decorative: the toast's text carries the meaning, and the
+// type is conveyed by role="alert" vs role="status", not by the picture.
 const ICONS: Record<ToastType, string> = {
   default: '',
   success:
-    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>',
+    '<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>',
   error:
-    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
-  info: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+    '<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  info: '<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
   warning:
-    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    '<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
   loading:
-    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>',
+    '<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" class="animate-spin"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>',
 };

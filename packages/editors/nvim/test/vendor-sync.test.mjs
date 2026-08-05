@@ -3,8 +3,9 @@
  *
  * webjs.nvim bundles a verbatim copy of the standalone intellisense (it has no
  * install-time build step) and points tsserver at it. That copy MUST stay in
- * sync with `packages/editors/intellisense/src`; this test fails if it drifts, telling you
- * to re-run `node packages/editors/nvim/scripts/vendor-intellisense.mjs` then
+ * sync with `packages/editors/intellisense`, both its `src/` tree and its
+ * manifest in full. This test fails if either drifts, telling you to re-run
+ * `node packages/editors/nvim/scripts/vendor-intellisense.mjs` then
  * `git add -f packages/editors/nvim/vendor`.
  */
 import { test } from 'node:test';
@@ -46,4 +47,27 @@ test('vendored package.json main resolves to the bundled entry', () => {
   );
   assert.equal(pkg.name, '@webjsdev/intellisense');
   assert.ok(existsSync(join(DIR, '../vendor/node_modules/@webjsdev/intellisense', pkg.main)), 'main entry exists');
+});
+
+test('vendored package.json is byte-identical to the source manifest', () => {
+  // The script copies the whole manifest, but this only ever checked `name`
+  // and `main`, so an edit to any other field left a stale copy that ships to
+  // the standalone webjs.nvim repo. It has bitten twice, and the VERSION is
+  // the field both times:
+  //
+  //   #978 bumped intellisense to 0.5.4 and the copy stayed at 0.5.1 for
+  //   53 commits, so the published plugin misreported the
+  //   language-service version it shipped until #1117 re-vendored by hand.
+  //   That commit named this exact missing assertion as the reason.
+  //
+  // So the version is compared too, deliberately. It means a release that
+  // bumps intellisense reds CI until the copy is re-vendored on the release
+  // branch, which is the point: that is the forcing function whose absence
+  // #1117 had to clean up manually. The package has been bumped five times in
+  // its life, so the cost is five re-vendors, not one per commit.
+  assert.equal(
+    readFileSync(join(DIR, '../vendor/node_modules/@webjsdev/intellisense/package.json'), 'utf8'),
+    readFileSync(join(SRC, '..', 'package.json'), 'utf8'),
+    'vendored package.json drifted; re-run node packages/editors/nvim/scripts/vendor-intellisense.mjs',
+  );
 });

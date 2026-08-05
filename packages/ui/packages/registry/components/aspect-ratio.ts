@@ -8,6 +8,18 @@
  *
  * Design tokens used: none (layout only).
  *
+ * A11y (required for accessible output):
+ *   Layout only, so it adds no semantics and takes none away. What matters is
+ *   the CONTENT you put inside it: an `<img>` still needs an `alt` (empty
+ *   `alt=""` when it is purely decorative), an `<iframe>` still needs a `title`,
+ *   and a `<video>` still needs its captions.
+ *   Reserving the ratio IS the accessibility win: the box keeps its space before
+ *   the media loads, so the page does not shift under someone who is already
+ *   reading or aiming at a target (WCAG 2.4.x-adjacent).
+ *   Do not clip meaningful content to make a ratio fit. If a crop would hide
+ *   part of an image that carries information, put that information in the
+ *   surrounding text too.
+ *
  * @example
  * ```html
  * <div style="aspect-ratio: 16/9;" class="${aspectRatioClass()}">

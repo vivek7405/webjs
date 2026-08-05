@@ -8,6 +8,7 @@ import { dbGenerateTtyHint } from '../lib/db-hints.js';
 import { checkNodeInline, nodeInlineMessage } from '../lib/node-preflight.js';
 import { loadAppEnv, resolvePort } from '../lib/port.js';
 import { planDevSupervisor } from '../lib/dev-supervisor.js';
+import { checkAppName, appNameErrorMessage } from '../lib/app-name.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const [cmd, ...rest] = process.argv.slice(2);
@@ -61,6 +62,7 @@ const USAGE = `webjs commands:
   webjs types                                     Generate .webjs/routes.d.ts (typed Route union + per-route params)
   webjs typecheck [tsc args...]                   Type-check the app with the project's tsc --noEmit (non-zero on errors)
   webjs create <name> [--template full-stack|api] [--db sqlite|postgres] [--runtime node|bun] [--no-install]  Scaffold a new webjs app
+                                                  <name> must be a valid package name (letters, digits, - . _, starts with a letter or digit)
                                                   (only 2 templates exist. default: full-stack, Drizzle, --db sqlite, --runtime node)
                                                   --runtime bun emits a Bun-flavored app (bun.lock, bun Dockerfile/CI, bun docs);
                                                   also auto-detected when run via "bun create webjs".
@@ -163,6 +165,12 @@ const HELP = {
     usage: 'webjs create <name> [--template full-stack|api] [--db sqlite|postgres] [--runtime node|bun] [--no-install]',
     summary: 'Scaffold a new app. Defaults: full-stack template, Drizzle + SQLite, Node runtime.',
     options: [
+      // Kept to one terminal line like every other row: printHelp does not
+      // wrap, so a long description renders as one 300-column line.
+      {
+        flag: '<name>',
+        description: 'Package name: letters, digits, - . _ , starts with a letter or digit.',
+      },
       { flag: '--template <t>', description: 'full-stack (default) or api (backend-only, no UI).' },
       { flag: '--db <d>', description: 'sqlite (default) or postgres.' },
       { flag: '--runtime <r>', description: 'node (default) or bun.' },
@@ -850,6 +858,11 @@ async function main() {
       const name = rest[0];
       if (!name || name.startsWith('-')) {
         console.error('Usage: webjs create <app-name> [--template full-stack|api]');
+        // This branch fires for a MISSING name or one starting with `-`, so the
+        // rule it prints has to lead with the first-character requirement. An
+        // earlier wording listed the separators as allowed characters, which
+        // reads as permission to the one user who just typed a leading hyphen.
+        console.error('<app-name> must start with a letter or a digit, then letters, digits, "-", "." or "_".');
         process.exit(1);
       }
       const template = flag(rest, '--template', 'full-stack');
@@ -876,6 +889,16 @@ SQLite for persistence (already wired up). Never store app data in JSON
 files.
 
 Full docs: https://webjs.dev/docs`);
+        process.exit(1);
+      }
+      // The name lands in the generated package.json `name` field AND is
+      // interpolated into generated source (#1066), so a quote / backtick /
+      // `${` in it emits a file that fails to parse on the first `webjs dev`.
+      // Validate before anything is written, so a bad name leaves no directory
+      // behind. `scaffoldApp` re-checks for programmatic callers.
+      const nameCheck = checkAppName(name);
+      if (!nameCheck.ok) {
+        console.error(appNameErrorMessage(name, nameCheck.reason));
         process.exit(1);
       }
       const noInstall = rest.includes('--no-install');

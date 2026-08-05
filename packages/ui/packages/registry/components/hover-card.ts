@@ -26,6 +26,28 @@
  *
  * Programmatic API on <ui-hover-card>: `.show()` · `.hide()`.
  *
+ * Keyboard:
+ *   Tab      from the trigger into the card, whose content stays open while it
+ *            holds focus, so links and buttons inside it are reachable
+ *   Escape   dismiss the card, returning focus to the trigger when the card
+ *            held it
+ *
+ * A11y (owned by the element, mostly nothing to supply):
+ *   The trigger opens on focus as well as hover and carries `aria-haspopup` /
+ *   `aria-expanded` / `aria-controls`. The panel is a `role="dialog"`, which
+ *   REQUIRES an accessible name, so the element always gives it one, from the
+ *   first of: an `aria-label` / `aria-labelledby` you put on
+ *   `<ui-hover-card-content>`, a `[data-slot="hover-card-title"]` or heading
+ *   inside the card, or the trigger itself (the card is about whatever the
+ *   trigger names). Escape dismisses it and hands focus back when the card had
+ *   it, and the content keeps itself open while focus is inside.
+ *   What you DO supply: a name for the trigger control if it is icon-only, and
+ *   ideally a title node in the card so its name describes the card rather
+ *   than falling back to the trigger's text.
+ *   Touch: the hover and focus linger paths are gated to pointer devices, so on
+ *   a no-hover device the card is tap-toggled and dismissed by an outside tap
+ *   (#745). Do not remove that gate to "fix" keyboard behaviour.
+ *
  * Design tokens used: --popover, --popover-foreground, --border.
  *
  * @example
@@ -38,8 +60,9 @@
  *     <div class="flex gap-3">
  *       <img class="size-10 rounded-full" src="/avatars/vivek.jpg" alt="Vivek Khandelwal">
  *       <div>
- *         <div class="text-sm font-semibold">Vivek Khandelwal</div>
+ *         <div class="text-sm font-semibold" data-slot="hover-card-title">Vivek Khandelwal</div>
  *         <p class="text-sm text-muted-foreground">Builds the platform, not against it.</p>
+ *         <a class="text-sm underline" href="/user/vivek/posts">Read the posts</a>
  *       </div>
  *     </div>
  *   </ui-hover-card-content>
@@ -72,6 +95,8 @@ export class UiHoverCard extends WebComponent({
   _showTimer: number | undefined;
   _hideTimer: number | undefined;
 
+  _keyHandler = (e: KeyboardEvent): void => this._onKeyDown(e);
+
   constructor() {
     super();
     this.open = false;
@@ -95,8 +120,47 @@ export class UiHoverCard extends WebComponent({
   }
 
   disconnectedCallback(): void {
+    this._unbindEscape();
     this._disposeBeforeCache?.();
     super.disconnectedCallback?.();
+  }
+
+  // A hover card can hold interactive content and cover what is under it, so a
+  // keyboard user needs a way out that is not "tab through the whole card".
+  // Bound only WHILE OPEN so a closed card cannot swallow Escape.
+  _onKeyDown(e: KeyboardEvent): void {
+    if (e.key !== 'Escape' || !this.open) return;
+    e.preventDefault();
+    this._dismiss();
+  }
+
+  // Immediate, unlike hide()'s close-delay linger, since a dismissal is
+  // deliberate. Focus moves out BEFORE the panel hides: the content is
+  // popover="manual", so hiding it while a descendant holds focus drops focus
+  // to <body> and the user loses their place on the page.
+  _suppressReopen = false;
+
+  _dismiss(): void {
+    clearTimeout(this._showTimer);
+    clearTimeout(this._hideTimer);
+    this._closeReleasingFocus();
+  }
+
+  _focusIsInContent(): boolean {
+    if (typeof document === 'undefined') return false;
+    const content = this.querySelector('ui-hover-card-content');
+    const active = document.activeElement;
+    return !!content && !!active && content.contains(active);
+  }
+
+  _bindEscape(): void {
+    if (typeof document === 'undefined') return;
+    document.addEventListener('keydown', this._keyHandler);
+  }
+
+  _unbindEscape(): void {
+    if (typeof document === 'undefined') return;
+    document.removeEventListener('keydown', this._keyHandler);
   }
 
   // The trigger also opens on focus (see the @focusin handler), so it is
@@ -117,20 +181,103 @@ export class UiHoverCard extends WebComponent({
     control.setAttribute('aria-haspopup', 'dialog');
     control.setAttribute('aria-expanded', String(this.open));
     const content = this.querySelector<HTMLElement>('ui-hover-card-content [role="dialog"]');
-    if (content) control.setAttribute('aria-controls', ensureId(content, 'ui-hovercard'));
+    if (!content) return;
+    control.setAttribute('aria-controls', ensureId(content, 'ui-hovercard'));
+    this._nameContent(content, control);
+  }
+
+  // role="dialog" REQUIRES an accessible name. Without one a screen reader
+  // announces a bare "dialog" with no hint of what it holds, which is an ARIA
+  // defect rather than a missing nicety. Three sources, most specific first:
+  //   1. what the author put on <ui-hover-card-content>, which always wins
+  //   2. a title node inside the card (the dialog.ts idiom)
+  //   3. the trigger, since the card is ABOUT whatever the trigger names
+  //      ("@vivek" names that user's card). Same fallback the dropdown menu
+  //      already uses to label its panel back to its trigger.
+  // Source 3 is what makes the name unconditional: there is no shape of this
+  // component that can end up with an unnamed dialog role.
+  _nameContent(content: HTMLElement, control: HTMLElement): void {
+    const host = this.querySelector('ui-hover-card-content');
+    // aria-labelledby is checked FIRST because it beats aria-label per accname,
+    // matching dialog / alert-dialog / toggle. Checking aria-label first would
+    // name this panel by the attribute that loses everywhere else, so an author
+    // writing both would get a different name here than in a dialog.
+    const authoredLabelledBy = host?.getAttribute('aria-labelledby');
+    if (authoredLabelledBy) {
+      content.setAttribute('aria-labelledby', authoredLabelledBy);
+      return;
+    }
+    const authoredLabel = host?.getAttribute('aria-label');
+    if (authoredLabel) {
+      content.setAttribute('aria-label', authoredLabel);
+      // This method re-runs on every open change, and the fallback below writes
+      // aria-labelledby unconditionally. So a card named from its title on an
+      // earlier pass still carries that reference, and it would outrank the
+      // author's aria-label. Drop it, as dialog / alert-dialog do.
+      content.removeAttribute('aria-labelledby');
+      return;
+    }
+    // Already named by an earlier pass (this runs again on every open change).
+    if (content.hasAttribute('aria-label') || content.hasAttribute('aria-labelledby')) return;
+    const title = content.querySelector<HTMLElement>(
+      '[data-slot="hover-card-title"], h1, h2, h3, h4, h5, h6',
+    );
+    content.setAttribute(
+      'aria-labelledby',
+      title
+        ? ensureId(title, 'ui-hovercard-title')
+        : ensureId(control, 'ui-hovercard-trigger'),
+    );
   }
 
   // Back-compat getter.
   get isOpen(): boolean { return this.open; }
 
   show(): void {
+    // A keyboard dismissal has to stick: _dismiss() moves focus to the trigger,
+    // and that focusin lands right back here, which would reopen the card and
+    // make Escape look broken. The guard is released once the transfer flushes.
+    if (this._suppressReopen) return;
     clearTimeout(this._hideTimer);
     this._showTimer = window.setTimeout(() => { this.open = true; }, this.openDelay);
   }
 
   hide(): void {
     clearTimeout(this._showTimer);
-    this._hideTimer = window.setTimeout(() => { this.open = false; }, this.closeDelay);
+    // Clear the PENDING hide before scheduling the next one. Overwriting the
+    // handle alone orphans the old timer, which then fires on its own and
+    // closes the card after a later show() thought it had cancelled the close.
+    // Reachable whenever two leave paths fire without a show() between them,
+    // and the focus linger below doubles how many of those paths exist.
+    clearTimeout(this._hideTimer);
+    this._hideTimer = window.setTimeout(() => {
+      // The card KEEPS ITSELF OPEN while focus is inside it. That is what makes
+      // in-card content Tab-reachable and what both doc surfaces promise, and a
+      // mouseleave can schedule this close while a keyboard user still holds
+      // focus on an in-card link. Closing then would pull the card out from
+      // under them, so leave it open: the content's own focusout schedules the
+      // close once focus has actually left, and that pass takes this branch.
+      if (this._focusIsInContent()) return;
+      this.open = false;
+    }, this.closeDelay);
+  }
+
+  // Every close of this popover="manual" panel owes the same focus care, not
+  // just Escape. The focus linger added here makes in-card content Tab-
+  // reachable, so a user CAN be holding focus on a link inside the card when a
+  // mouseleave-scheduled close fires; hiding the panel then drops focus to
+  // <body>. Guarded, so a close while focus is elsewhere leaves it alone.
+  //
+  // The reopen suppression is what makes this terminate. Moving focus to the
+  // trigger fires the trigger's own focusin, which calls show() and would
+  // reopen the card the close just closed. It is released on the next
+  // macrotask, once that synchronous focus transfer has been refused, so a
+  // genuinely new hover or a fresh Tab back in still opens the card.
+  _closeReleasingFocus(): void {
+    this._suppressReopen = true;
+    if (this._focusIsInContent()) this._control()?.focus();
+    this.open = false;
+    setTimeout(() => { this._suppressReopen = false; }, 0);
   }
 
   // Touch open: there is no hover delay and no mouseleave to close it, so open
@@ -145,7 +292,8 @@ export class UiHoverCard extends WebComponent({
       // Close on an outside tap; also self-remove if the card was already
       // closed by other means (a re-tap toggle), so the listener never lingers.
       if (!this.open || !this.contains(ev.target as Node)) {
-        this.open = false;
+        // Same focus care as every other close path: the card may hold focus.
+        this._closeReleasingFocus();
         document.removeEventListener('pointerdown', onOutside, true);
       }
     };
@@ -162,6 +310,10 @@ export class UiHoverCard extends WebComponent({
   updated(changedProperties: Map<string, unknown>): void {
     if (!changedProperties.has('open')) return;
     if (changedProperties.get('open') === undefined) return;
+    // Bind synchronously rather than in the microtask below, which bails on
+    // engines with no Popover API: Escape has to work regardless of that.
+    if (this.open) this._bindEscape();
+    else this._unbindEscape();
     // Wait one microtask for <ui-hover-card-content>'s inner [popover]
     // element to commit; we drive its showPopover() / hidePopover() and
     // refresh the trigger's aria-expanded.
@@ -260,6 +412,10 @@ UiHoverCardTrigger.register('ui-hover-card-trigger');
 // The mouseenter/mouseleave handlers keep the card open while the cursor
 // is over the content itself (so it does not close during a brief
 // mouseleave on the trigger if the user is moving toward the card).
+// focusin/focusout mirror that linger for the KEYBOARD: the trigger closes
+// the card on its own focusout, so without these, Tabbing from the trigger
+// toward the card scheduled the close before focus could land inside, and
+// the interactive content the JSDoc example shows was unreachable.
 // --------------------------------------------------------------------------
 
 export class UiHoverCardContent extends WebComponent {
@@ -271,6 +427,8 @@ export class UiHoverCardContent extends WebComponent {
       class=${hoverCardContentClass()}
       @mouseenter=${this._onEnter}
       @mouseleave=${this._onLeave}
+      @focusin=${this._onEnter}
+      @focusout=${this._onLeave}
     ><slot></slot></div>`;
   }
 

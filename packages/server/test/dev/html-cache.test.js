@@ -34,17 +34,21 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { createRequestHandler } from '../../src/dev.js';
-import { setStore, memoryStore } from '../../src/cache.js';
+import { setStore, memoryStore, getStore } from '../../src/cache.js';
 import {
   readRevalidate,
   htmlCacheKey,
   isCacheableResponse,
   revalidatePath,
   revalidateAll,
+  writeHtmlCache,
   setAppSourceFingerprint,
 } from '../../src/html-cache.js';
 import { STREAM_MARKER } from '../../src/conditional-get.js';
-import { setVendorEntries, publishBuildId, publishedBuildId } from '../../src/importmap.js';
+import { setVendorEntries, publishBuildId, publishedBuildId, setBasePath } from '../../src/importmap.js';
+import { applyForwarded } from '../../src/forwarded.js';
+import { actionEndpoint } from '../../src/testing.js';
+import { withRequest } from '../../src/context.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const HTML_URL = pathToFileURL(
@@ -59,6 +63,11 @@ const CONTEXT_URL = pathToFileURL(
 // (whose readSession path marks the request dynamic, the #241 auth-path fix).
 const AUTH_URL = pathToFileURL(
   resolve(__dirname, '../../src/auth.js')
+).toString();
+// File URL of the html-cache module, so an action fixture can import the REAL
+// `revalidatePath` rather than a stand-in.
+const HTML_CACHE_URL = pathToFileURL(
+  resolve(__dirname, '../../src/html-cache.js')
 ).toString();
 
 let tmpRoot;
@@ -142,6 +151,34 @@ function authReadingPage(counterKey, { revalidate } = {}) {
   );
 }
 
+// A page that bakes `ctx.url.origin` into its output, the way a real page
+// builds an og:image / canonical / OAuth callback URL. This is the shape the
+// #1097 poisoning was observable through: the origin comes from the forwarded
+// headers, so a hostile one ends up in a body the cache then SHARES.
+function originPage({ revalidate } = {}) {
+  return (
+    `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+    (revalidate != null ? `export const revalidate = ${revalidate};\n` : '') +
+    `export default function P({ url }) {\n` +
+    `  const origin = new URL(url).origin;\n` +
+    `  return html\`<h1>og \${origin}/public/og.png</h1>\`;\n` +
+    `}\n`
+  );
+}
+
+// Build the Request a LISTENER SHELL hands `handle()`, i.e. with the
+// forwarded-header URL correction already applied. `createRequestHandler` is
+// deliberately not the seam that reads those headers (an embedded host owns
+// its own adapter), so a test that fires a bare Request at `handle()` would
+// never reproduce the attack. This mirrors `listener-bun.js`'s
+// `forwardedRequest`, minus the remote-IP plumbing that is not under test.
+function shellRequest(url, headers = {}) {
+  const req = new Request(url, { headers });
+  const parsed = new URL(req.url);
+  const fwd = applyForwarded(parsed, req.headers);
+  return fwd === parsed ? req : new Request(fwd, { headers: req.headers });
+}
+
 // Reset the shared default store between tests so cache state does not leak.
 function freshStore() {
   setStore(memoryStore());
@@ -184,6 +221,67 @@ test('a page WITHOUT revalidate is never cached (re-renders each time)', async (
   assert.ok(second.includes('render #2'), 'second request re-runs the page (no caching without revalidate)');
 });
 
+/* ---------------- host poisoning (#1097) ---------------- */
+
+test('a hostile X-Forwarded-Host cannot poison the cached HTML a clean visitor is served', async () => {
+  freshStore();
+  const appDir = makeApp({ 'app/page.js': originPage({ revalidate: 60 }) });
+  const app = await createRequestHandler({ appDir, dev: true });
+
+  // The attack: one request carrying a client-supplied forwarded host. Neither
+  // Cloudflare nor Railway strips it, so it arrives THROUGH the proxy.
+  const attack = await app.handle(
+    shellRequest('http://real.example/', {
+      'x-forwarded-host': 'evil.example',
+      'x-forwarded-proto': 'https',
+    }),
+  );
+  assert.match(
+    await attack.text(),
+    /https:\/\/evil\.example\/public\/og\.png/,
+    'the attacker still gets their own chosen origin back: that response is theirs, and is not what this fix is about',
+  );
+
+  // The victim: a later request carrying no forwarded headers at all.
+  const clean = await (await app.handle(shellRequest('http://real.example/'))).text();
+  assert.doesNotMatch(clean, /evil\.example/, 'the poisoned body is never served to a clean request');
+  assert.match(clean, /http:\/\/real\.example\/public\/og\.png/, 'the clean request gets its own origin');
+});
+
+test('a single-host deploy still serves the cached body (the fix does not disable caching)', async () => {
+  freshStore();
+  const appDir = makeApp({ 'app/page.js': counterPage('single-host', { revalidate: 60 }) });
+  const app = await createRequestHandler({ appDir, dev: true });
+
+  await app.handle(shellRequest('http://real.example/'));
+  const second = await (await app.handle(shellRequest('http://real.example/'))).text();
+  assert.ok(second.includes('render #1'), 'the second request is a cache HIT: one origin, one key, unchanged hit rate');
+});
+
+test('WEBJS_NO_TRUST_PROXY=1 keeps the forwarded host out of the origin entirely', async () => {
+  freshStore();
+  const prev = process.env.WEBJS_NO_TRUST_PROXY;
+  process.env.WEBJS_NO_TRUST_PROXY = '1';
+  try {
+    const appDir = makeApp({ 'app/page.js': originPage({ revalidate: 60 }) });
+    const app = await createRequestHandler({ appDir, dev: true });
+
+    const attack = await (
+      await app.handle(
+        shellRequest('http://real.example/', {
+          'x-forwarded-host': 'evil.example',
+          'x-forwarded-proto': 'https',
+        }),
+      )
+    ).text();
+    assert.doesNotMatch(attack, /evil\.example/, 'the escape hatch still disables forwarded-header trust');
+    assert.match(attack, /http:\/\/real\.example\/public\/og\.png/);
+  } finally {
+    if (prev === undefined) delete process.env.WEBJS_NO_TRUST_PROXY;
+    else process.env.WEBJS_NO_TRUST_PROXY = prev;
+  }
+});
+
 /* ---------------- on-demand revalidation ---------------- */
 
 test('revalidatePath evicts the cached HTML so the next request re-renders', async () => {
@@ -195,10 +293,160 @@ test('revalidatePath evicts the cached HTML so the next request re-renders', asy
   const cached = await (await app.handle(new Request('http://x/'))).text();
   assert.ok(cached.includes('render #1'), 'served from cache (#1)');
 
-  await revalidatePath('/');
+  // Bare-path eviction resolves the origin from the ambient request, which is
+  // how a server action reaches it: the mutation runs inside the request of the
+  // user who triggered it. Wrapped here to model that, since a naked call from
+  // a test has no request to resolve against (#1097).
+  await withRequest(new Request('http://x/'), () => revalidatePath('/'));
 
   const afterEvict = await (await app.handle(new Request('http://x/'))).text();
   assert.ok(afterEvict.includes('render #2'), 'after revalidatePath the page re-renders (#2)');
+});
+
+test('revalidatePath still evicts once the key carries an origin (#1097)', async () => {
+  freshStore();
+  const appDir = makeApp({ 'app/page.js': counterPage('evict-origin', { revalidate: 60 }) });
+  const app = await createRequestHandler({ appDir, dev: true });
+
+  await app.handle(shellRequest('http://real.example/'));
+  assert.ok(
+    (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #1'),
+    'cached under the real origin',
+  );
+
+  // A bare path no longer names one key; it resolves against the ambient
+  // request, the shape a server action always has.
+  await withRequest(new Request('http://real.example/'), () => revalidatePath('/'));
+  assert.ok(
+    (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #2'),
+    'a bare path resolves the ambient origin and evicts',
+  );
+
+  // And the absolute form targets an origin exactly, which is the shape a
+  // background job with no ambient request must use.
+  assert.ok(
+    (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #2'),
+    're-cached under the real origin',
+  );
+  await revalidatePath('http://real.example/');
+  assert.ok(
+    (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #3'),
+    'an absolute url evicts that origin exactly',
+  );
+});
+
+test('a bare path with no ambient request evicts nothing and says so (#1097)', async () => {
+  freshStore();
+  // A path unique to this file. The warn-once set is module-global and nothing
+  // resets it, so reusing '/' would make the "warned exactly once" assertion
+  // depend on whether an earlier test in this file had already warned for it.
+  const appDir = makeApp({ 'app/no-ambient/page.js': counterPage('no-ambient', { revalidate: 60 }) });
+  const app = await createRequestHandler({ appDir, dev: true });
+
+  await app.handle(shellRequest('http://real.example/no-ambient'));
+  assert.ok(
+    (await (await app.handle(shellRequest('http://real.example/no-ambient'))).text()).includes('render #1'),
+    'cached',
+  );
+
+  // No ambient request (a cron job / queue worker). There is deliberately no
+  // process-local origin registry to fall back on, because it would be
+  // attacker-writable through X-Forwarded-Host, so this is a diagnosed no-op
+  // rather than a silent one.
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (m) => warnings.push(String(m));
+  try {
+    await revalidatePath('/no-ambient');
+    await revalidatePath('/no-ambient');
+  } finally {
+    console.warn = realWarn;
+  }
+  assert.equal(warnings.length, 1, 'it warns once per path, not once per call');
+  assert.match(warnings[0], /evicted nothing/, 'the warning says the eviction did not happen');
+  assert.match(warnings[0], /absolute url/, 'and names the fix');
+  assert.ok(
+    (await (await app.handle(shellRequest('http://real.example/no-ambient'))).text()).includes('render #1'),
+    'still cached, as the warning said',
+  );
+
+  // The absolute form is the documented remedy, and it works from here.
+  await revalidatePath('http://real.example/no-ambient');
+  assert.ok(
+    (await (await app.handle(shellRequest('http://real.example/no-ambient'))).text()).includes('render #2'),
+    'the absolute url evicts without any ambient request',
+  );
+});
+
+test('a REAL action dispatch supplies the origin, so an existing bare revalidatePath keeps working (#1097)', async () => {
+  freshStore();
+  // The PR's central compatibility claim: every existing `revalidatePath('/x')`
+  // inside a server action still works, because the action runs inside the
+  // triggering request and the framework's ALS scope covers that execution.
+  // Asserting it through `withRequest` only proves the helper, since the test
+  // builds the scope itself. This drives the REAL RPC endpoint instead, so the
+  // scope has to come from the request pipeline. If action dispatch ever stopped
+  // running inside `withRequest`, this fails and the other tests would not.
+  const appDir = makeApp({
+    'app/page.js': counterPage('via-action', { revalidate: 60 }),
+    'evict.server.js':
+      `'use server';\n` +
+      `import { revalidatePath } from ${JSON.stringify(HTML_CACHE_URL)};\n` +
+      `export async function evict() {\n` +
+      `  await revalidatePath('/');\n` +
+      `  return { success: true };\n` +
+      `}\n`,
+  });
+  const app = await createRequestHandler({ appDir, dev: true });
+
+  await app.handle(shellRequest('http://real.example/'));
+  assert.ok(
+    (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #1'),
+    'cached under the request origin',
+  );
+
+  const endpoint = await actionEndpoint(appDir, 'evict.server.js', 'evict');
+  const res = await app.handle(new Request('http://real.example' + endpoint, {
+    method: 'POST',
+    headers: { 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' },
+    body: '[]',
+  }));
+  assert.equal(res.status, 200, 'the action ran');
+
+  assert.ok(
+    (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #2'),
+    'the bare path evicted: the action dispatch supplied the origin',
+  );
+});
+
+test('revalidatePath strips the base path off an absolute url (#256 + #1097)', async () => {
+  freshStore();
+  // Cache entries key on the APP-ROOT-RELATIVE path: the write strips the base
+  // path (dev.js) so a mounted app still hits its own cache. A caller with no
+  // ambient request is told to pass an absolute url, and the absolute url is
+  // the PUBLIC one, which carries the mount prefix. Without stripping it here
+  // that caller computes a key nothing was ever stored under, so the one form
+  // available to them would be the one that does not work.
+  await setBasePath('/app');
+  try {
+    const key = htmlCacheKey(new URL('http://real.example/blog'));
+    assert.notEqual(
+      htmlCacheKey(new URL('http://real.example/app/blog')),
+      key,
+      'the premise: the public /app/blog url keys DIFFERENTLY from the stored /blog entry, which is why the strip has to happen',
+    );
+    // Store under the app-root-relative path, the way the write does.
+    await writeHtmlCache(new URL('http://real.example/blog'), {
+      body: '<h1>x</h1>', contentType: 'text/html', cacheControl: 'no-store', status: 200,
+    }, 60);
+    assert.ok(await getStore().get(key), 'stored under the stripped path');
+
+    // The public absolute url a background job would naturally pass.
+    await revalidatePath('http://real.example/app/blog');
+    assert.equal(await getStore().get(key), null, 'the public url evicts the stripped-path entry');
+  } finally {
+    await setBasePath('');
+  }
 });
 
 test('revalidateAll evicts every cached HTML entry', async () => {
@@ -335,6 +583,30 @@ test('htmlCacheKey normalizes query order and namespaces the key', () => {
     htmlCacheKey(new URL('http://x/p')),
     htmlCacheKey(new URL('http://x/p?a=1')),
     'a query variant is a distinct key'
+  );
+});
+
+test('htmlCacheKey separates entries by origin (#1097)', () => {
+  const real = htmlCacheKey(new URL('http://real.example/p'));
+  assert.notEqual(
+    real,
+    htmlCacheKey(new URL('http://evil.example/p')),
+    'a different host is a different key, so one host cannot serve another its body'
+  );
+  assert.notEqual(
+    real,
+    htmlCacheKey(new URL('https://real.example/p')),
+    'the scheme is part of the origin, so http and https do not share an entry'
+  );
+  assert.notEqual(
+    real,
+    htmlCacheKey(new URL('http://real.example:8080/p')),
+    'the port is part of the origin'
+  );
+  assert.equal(
+    real,
+    htmlCacheKey(new URL('http://real.example/p')),
+    'the same origin is the same key, so a single-host deploy keeps one entry per URL'
   );
 });
 

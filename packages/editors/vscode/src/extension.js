@@ -13,6 +13,32 @@
 
 const vscode = require('vscode');
 
+/**
+ * The CLI's app-name rule (`packages/cli/lib/app-name.js`, #1066), duplicated
+ * here because the extension bundle cannot require `@webjsdev/cli` at runtime.
+ * `test/extension.test.mjs` cross-checks this against the real `checkAppName`
+ * over a name table, so the duplication cannot drift silently. It already did
+ * once: this box kept a lowercase-only regex after the CLI dropped that clause,
+ * and refused `my.app` / `my_app` for far longer.
+ *
+ * Being LOOSER than the CLI is a bug too, not a safe direction: a name this box
+ * accepts is shelled straight out to `webjs create`, so anything it lets
+ * through only fails later, in the terminal, which is what a prompt-time
+ * validator exists to prevent.
+ * @param {string} v
+ * @returns {string | null} an error message, or null when the name is valid
+ */
+function validateAppName(v) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(v)) {
+    return 'letters, digits, and - . _ , starting with a letter or a digit';
+  }
+  if (v.length > 214) return 'at most 214 characters';
+  if (['node_modules', 'favicon.ico'].includes(v.toLowerCase())) {
+    return `"${v}" is reserved by npm`;
+  }
+  return null;
+}
+
 /** Open or reuse a terminal and run a command in the workspace root. */
 function runInTerminal(name, command) {
   const cwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
@@ -33,7 +59,7 @@ function activate(context) {
       const name = await vscode.window.showInputBox({
         prompt: 'New webjs app name',
         placeHolder: 'my-app',
-        validateInput: (v) => (/^[a-z0-9][a-z0-9-]*$/.test(v) ? null : 'lowercase letters, digits, and dashes'),
+        validateInput: validateAppName,
       });
       if (!name) return;
       runInTerminal('webjs create', `npx @webjsdev/cli create ${name}`);
@@ -46,4 +72,4 @@ function activate(context) {
 
 function deactivate() {}
 
-module.exports = { activate, deactivate };
+module.exports = { activate, deactivate, validateAppName };

@@ -17,6 +17,21 @@
  *
  * Design tokens used: --border, --ring, --foreground.
  *
+ * A11y (mostly handled by the native primitives):
+ *   Build it on `<details>` + `<summary>`. The browser gives you the button
+ *   semantics, the expanded state, Enter / Space activation, and focus for free,
+ *   with no ARIA to hand-write. Do not rebuild it from a `<div>` plus
+ *   `aria-expanded`.
+ *   Put the trigger classes on the `<summary>` ITSELF, never on a `<button>` or
+ *   `<div>` nested inside it: nesting an interactive element in a `<summary>`
+ *   splits the focusable element from the labelled one and empties the summary's
+ *   accessible name.
+ *   Give the `<summary>` real text. A summary whose only content is an icon has
+ *   no accessible name, so an icon-only trigger needs an `aria-label` and an
+ *   `aria-hidden="true"` icon.
+ *   Do not put anything essential ONLY inside collapsed content: it is not
+ *   reachable by find-in-page on every engine.
+ *
  * @example
  * ```html
  * <details class=${collapsibleClass()}>
