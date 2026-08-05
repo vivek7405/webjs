@@ -76,13 +76,18 @@ async function runLegacyOptimistic(signal, value, action) {
  *   class TodoList extends WebComponent({ todos: prop(Array) }) {
  *     optimisticTodos = optimistic(this, {
  *       source: () => this.todos,
- *       update: (state, title) => [...state, { id: 'tmp', title, pending: true }]
+ *       // PURE: the row is derived from the payload, nothing is minted here.
+ *       // `.value` re-folds the queue on every read (see Behaviour 1), so a
+ *       // minted id would differ per render and a hardcoded 'tmp' would
+ *       // collide across two concurrent adds.
+ *       update: (state, add) => [...state, { id: add.tempId, title: add.title, pending: true }]
  *     });
  *
  *     async handleSubmit(e) {
  *       const title = e.target.querySelector('input').value;
+ *       const tempId = crypto.randomUUID();
  *       const promise = createTodo({ title });
- *       this.optimisticTodos.add(title, promise);
+ *       this.optimisticTodos.add({ tempId, title }, promise);
  *       const result = await promise;
  *       if (result.success) this.todos = [...this.todos, result.data];
  *     }

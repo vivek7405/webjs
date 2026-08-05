@@ -18,8 +18,10 @@ export default function ClientRouter() {
       <li>On a click or form submit, the router STRICTLY scans both the live DOM and the incoming HTML into segment maps (a close must match its innermost open; any truncated, mispaired, or duplicated boundary poisons the scan) and picks a <strong>two-tier swap</strong> with Next.js parity: a boundary whose route-key CHANGED is wholesale REPLACED at the PARENT of the shallowest change (a layout's boundary wraps only its children, so anchoring at the parent remounts the changed layout's own markup too, exactly like Next re-rendering a layout with new params), while an all-keys-equal nav (a searchParams-only change) MORPHS the deepest shared boundary in place so hydrated component state survives. A poisoned scan or no shared boundary degrades to a normal full page load, never a guessed swap, so a malformed response cannot corrupt the live DOM. Because the boundaries are comments, the parse that turns a response into a document has to preserve them: <code>Document.parseHTMLUnsafe</code> strips every comment in some browser versions, so the router probes it once and parses with <code>DOMParser</code> instead when it is lossy.</li>
       <li>The diff inside the swap region is keyed by <code>data-key</code> or <code>id</code>. Matched elements are reused with in-place attribute updates. <strong>Live attributes</strong> (<code>value</code>, <code>checked</code>, <code>selected</code>, <code>indeterminate</code>, <code>disabled</code>, <code>open</code>, <code>popover</code>) are never overwritten, so user input and disclosure state survive the swap.</li>
       <li>The <code>&lt;head&gt;</code> is add-only merged (preserves runtime-injected styles like Tailwind's), <code>&lt;script&gt;</code> tags re-execute, custom elements upgrade, URL updates via <code>pushState</code>.</li>
+      <li><strong>Every</strong> <code>&lt;script&gt;</code> the swap brings in re-executes, whether it sits inside the swapped content or is a top-level node of the swapped range itself (a layout emitting its enhancement script as a sibling of <code>\${children}</code>). A parsed script node carries the HTML spec's "already started" flag, so the router replaces it with a fresh clone; that is what makes it run. The clone carries the page-load CSP nonce, not the nonce the response was rendered with.</li>
       <li>A <code>webjs:navigate</code> event fires on <code>document</code> with the final URL.</li>
     </ol>
+    <p><strong>Write swapped scripts to be re-runnable.</strong> A script inside a swapped range runs again on every navigation that swaps that range, and giving it an <code>id</code> does not change that. The keyed differ reuses the live element, and the router still re-emits it. So a script that installs a listener or a <code>MutationObserver</code> should either be idempotent or guard on a flag it sets the first time. The alternative, running once and then never again, is the worse default: it is exactly what a progressive-enhancement script (a syntax highlighter, a chart initializer) must not do after a soft nav. Put anything that genuinely must run once in the root layout, whose markup is never swapped. <code>data-webjs-permanent</code> does not help here: it preserves node identity for stateful elements like a playing <code>&lt;audio&gt;</code>, and a script carrying it is re-emitted like any other.</p>
     <p><strong>Wire-byte optimization</strong>: the router sends an <code>X-Webjs-Have</code> request header listing <code>segment:route-key</code> entries for the boundaries it already has (the key lets the server re-render a dynamic layout the client holds for different params instead of skipping it). The server walks the target page's layout chain innermost-to-outermost, short-circuits at the first match, and returns only the divergent fragment wrapped in that layout's boundary pair. Outer layouts are never re-serialized for same-shell navigations, and a reduced response is served <code>private</code> so no shared cache can store it and serve it to a full-page navigation. It also carries <code>Vary: X-Webjs-Have</code> for caches that honour that header, but the guarantee does not depend on it: Cloudflare honours only <code>Accept-Encoding</code>. On a page that opted into caching via <code>metadata.cacheControl</code>, the fragment still carries an <code>ETag</code>, so the router's revalidating fetches stay cheap; on a default <code>no-store</code> page there is nothing to validate either way.</p>
 
     <h2>Progressive streaming on navigation</h2>
@@ -68,19 +70,24 @@ class TodoList extends WebComponent({ todos: prop(Array) }) {
     this.todos = [];
     this.optTodos = optimistic(this, {
       source: () => this.todos,
-      update: (state, title) => [...state, { id: 'tmp', title, pending: true }],
+      // Pure: the row is derived from the payload, nothing is minted here.
+      // The .value getter re-folds the queue on EVERY read, so a minted id
+      // would differ per render, and a hardcoded 'tmp' would collide across
+      // two concurrent adds. The temp id is minted once in the handler.
+      update: (state, add) => [...state, { id: add.tempId, title: add.title, pending: true }],
     });
   }
   async handleSubmit(e) {
     const title = e.target.querySelector('input').value;
+    const tempId = crypto.randomUUID();
     const promise = createTodo({ title });
-    this.optTodos.add(title, promise);  // auto-releases on settle
+    this.optTodos.add({ tempId, title }, promise);  // auto-releases on settle
     const result = await promise;
     if (result.success) this.todos = [...this.todos, result.data];
   }
   render() {
     return html\`&lt;ul&gt;\${this.optTodos.value.map(t =>
-      html\`&lt;li class=\${t.pending ? 'opacity-50' : ''}&gt;\${t.title}&lt;/li&gt;\`)\}\`;
+      html\`&lt;li class=\${t.pending ? 'opacity-50' : ''}&gt;\${t.title}&lt;/li&gt;\`)\}&lt;/ul&gt;\`;
   }
 }</pre>
     <p><strong>Imperative:</strong> <code>optimistic(signal, value, action)</code> sets the signal to <code>value</code> immediately, runs <code>action()</code>, and rolls back on a thrown error or <code>{ success: false }</code> envelope.</p>

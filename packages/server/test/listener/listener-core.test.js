@@ -21,6 +21,7 @@ import {
   compressBufferSync,
   readBufferedOrStream,
   MAX_SYNC_COMPRESS_BYTES,
+  makeShutdown,
 } from '../../src/listener-core.js';
 import { setBasePath } from '../../src/importmap.js';
 import { Readable } from 'node:stream';
@@ -347,4 +348,94 @@ test('loadWsModule imports a route module (shared by both WS shells)', async () 
   }
   // Silence the unused import in environments that tree-shake.
   void fileURLToPath;
+});
+
+/* ---------------- makeShutdown exit code (#1092) ---------------- */
+
+/**
+ * Drive one shutdown with `process.exit` stubbed, and resolve the code it
+ * asked for. The real `process.exit` cannot run here (it would take the test
+ * runner down), so the stub records the code and returns. Returning rather than
+ * throwing a stop-the-handler sentinel is deliberate: `process.exit(code)` is
+ * the last statement on both settle paths, so there is nothing after it to
+ * suppress, and a throw from inside the promise chain surfaces as an
+ * unhandledRejection once the test has already ended.
+ *
+ * @param {(signal: string, opts?: { fatal?: boolean }) => void} shutdown
+ * @param {[string, { fatal?: boolean }?]} args
+ * @returns {Promise<number | undefined>}
+ */
+function exitCodeOf(shutdown, args) {
+  const orig = process.exit;
+  return new Promise((res) => {
+    // @ts-ignore stubbed for the duration of one shutdown
+    process.exit = (code) => { process.exit = orig; res(code); };
+    shutdown(...args);
+    // The exit happens after `closeServer` resolves, so nothing is synchronous
+    // here; the promise settles from the stub above.
+  });
+}
+
+const quietLogger = { info() {}, warn() {}, error() {}, debug() {} };
+const okHub = { closeAll() {} };
+
+test('makeShutdown exits 0 for an operator signal', async () => {
+  const shutdown = makeShutdown({
+    closeServer: () => Promise.resolve(), hub: /** @type any */ (okHub), logger: quietLogger,
+  });
+  assert.equal(await exitCodeOf(shutdown, ['SIGTERM']), 0);
+});
+
+test('makeShutdown exits 1 for a FATAL shutdown even on a clean drain (#1092)', async () => {
+  // The drain SUCCEEDS here on purpose. The old code read only the drain and
+  // exited 0, which swallowed every crash: a supervisor reading the code saw a
+  // successful stop, and a `test/bun/*.mjs` proof script's failed assertion
+  // (which reaches this path via the uncaughtException handler) went green.
+  const shutdown = makeShutdown({
+    closeServer: () => Promise.resolve(), hub: /** @type any */ (okHub), logger: quietLogger,
+  });
+  assert.equal(await exitCodeOf(shutdown, ['uncaughtException', { fatal: true }]), 1);
+});
+
+test('makeShutdown exits 1 when a FATAL arrives mid-drain (#1092)', async () => {
+  // A SIGTERM drain is up to 10s wide and in-flight requests are still running
+  // in it, so an uncaught exception landing there is ordinary. The re-entrancy
+  // guard drops that second call, so a code captured at entry would stay 0 and
+  // a crashed process would tell systemd / Docker / Railway it stopped cleanly.
+  let release;
+  const shutdown = makeShutdown({
+    closeServer: () => new Promise((r) => { release = r; }),
+    hub: /** @type any */ (okHub),
+    logger: quietLogger,
+  });
+  const exited = exitCodeOf(shutdown, ['SIGTERM']);
+  // `closeServer` is invoked from a microtask, so yield until it has actually
+  // run and handed back its resolver before crashing into the open drain.
+  while (!release) await null;
+  shutdown('uncaughtException', { fatal: true }); // crash before the drain settles
+  release();
+  assert.equal(await exited, 1);
+});
+
+test('makeShutdown does not let a later signal downgrade a fatal verdict', async () => {
+  let release;
+  const shutdown = makeShutdown({
+    closeServer: () => new Promise((r) => { release = r; }),
+    hub: /** @type any */ (okHub),
+    logger: quietLogger,
+  });
+  const exited = exitCodeOf(shutdown, ['uncaughtException', { fatal: true }]);
+  while (!release) await null;
+  shutdown('SIGTERM'); // must not launder the crash into a success
+  release();
+  assert.equal(await exited, 1);
+});
+
+test('makeShutdown exits 1 when the drain itself fails', async () => {
+  const shutdown = makeShutdown({
+    closeServer: () => Promise.reject(new Error('close failed')),
+    hub: /** @type any */ (okHub),
+    logger: quietLogger,
+  });
+  assert.equal(await exitCodeOf(shutdown, ['SIGTERM']), 1);
 });

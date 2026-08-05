@@ -1,5 +1,6 @@
 import { render as clientRender } from './render-client.js';
 import { setActiveActionSignal } from './action-abort-client.js';
+import { carriesFunction } from './form-action.js';
 import { isCSS, adoptStyles } from './css.js';
 import { register, tagOf } from './registry.js';
 import { parse as deserializeProp } from './serialize.js';
@@ -116,6 +117,44 @@ function safeString(v) {
   } catch {
     return Object.prototype.toString.call(v);
   }
+}
+
+/**
+ * Warn that a function value was dropped rather than reflected (#1169).
+ *
+ * A silently missing attribute is its own confusion, so say what went and why.
+ * The message deliberately does NOT include the value: printing the source is
+ * the leak this guard exists to prevent, and a server log is not always a
+ * private place.
+ *
+ * UNCONDITIONAL, matching the `.prop=${fn}` unserializable-value drop in
+ * `render-server.js`, which is the sibling path this guard mirrors. Two
+ * reasons not to gate it on a dev flag. It fires only on a genuine mistake (a
+ * function is never a meaningful attribute value), so there is no volume to
+ * suppress, and reflection runs per assignment rather than per frame.
+ *
+ * More decisively, a `NODE_ENV` gate does not survive the dist build.
+ * `scripts/build-framework-dist.js` runs esbuild with `platform: 'browser'`
+ * and `minify: true`, which substitutes `process.env.NODE_ENV` with
+ * `"production"` and folds the check to a constant. The SSR half of the
+ * warning would then be unreachable in every published build, which is how
+ * every installed app runs, and SSR is the half that matters most, since that
+ * is where the leaked source reached visitors.
+ *
+ * @param {{ constructor: unknown, tagName?: string }} host
+ * @param {string} propName
+ * @param {string} attrName
+ */
+function warnFunctionReflection(host, propName, attrName) {
+  if (typeof console === 'undefined' || !console.warn) return;
+  const tag = tagOf(/** @type any */ (host.constructor)) || host.tagName?.toLowerCase() || 'unknown';
+  console.warn(
+    `[webjs] reflect:true property "${propName}" on <${tag}> holds a function `
+    + `(or an array carrying one), which has no HTML attribute representation. `
+    + `Removing "${attrName}" instead of stringifying it (a stringified function `
+    + `writes its source into the page, so a server action's body would ship to `
+    + `the browser). Pass a string, or drop reflect on this property.`
+  );
 }
 
 /**
@@ -685,13 +724,43 @@ class WebComponentBase extends Base {
         const serialized = decl.converter.toAttribute(value, decl.type);
         if (serialized == null) this.removeAttribute(attrName);
         else this.setAttribute(attrName, serialized);
+      } else if (typeof value === 'function') {
+        // #1169: the value IS a function, and no branch below has a
+        // meaningful serialization for one. `String(fn)` is the function's
+        // SOURCE, so a reflected `'use server'` action would ship its whole
+        // body, closure secrets included, to every visitor, and
+        // `JSON.stringify(fn)` is `undefined`, which `setAttribute` writes as
+        // the literal string "undefined". Treat it like `null` and remove the
+        // attribute, matching what the `.prop=${fn}` SSR binding already does
+        // for an unserializable value.
+        //
+        // Placed AFTER the converter branch on purpose: a custom
+        // `toAttribute` is author-controlled, so its author has taken
+        // responsibility for serializing whatever they are handed.
+        this.removeAttribute(attrName);
+        warnFunctionReflection(this, propName, attrName);
       } else if (decl.type === Boolean) {
         if (value) this.setAttribute(attrName, '');
         else this.removeAttribute(attrName);
       } else if (value == null) {
         this.removeAttribute(attrName);
       } else if (decl.type === Object || decl.type === Array) {
+        // A JSON-typed prop CARRYING a function is safe and stays whole:
+        // `JSON.stringify` drops a function to `null` in an array and omits
+        // the key in an object, so `[1, 2, fn]` serializes to `[1,2,null]`
+        // with no source and no data loss. Refusing here would discard the
+        // `1` and the `2` on a path that never leaked.
         this.setAttribute(attrName, JSON.stringify(value));
+      } else if (carriesFunction(value)) {
+        // The string fall-through is the one place a CARRIED function still
+        // leaks. `String([fn])` is `Array.prototype.join`, which runs
+        // `String()` on every element, so `[serverAction]` writes the same
+        // source `serverAction` does. Hence the recursive predicate the
+        // form-action guard already uses, rather than a bare `typeof`, but
+        // scoped to this branch rather than applied above, where JSON
+        // handles the same shape losslessly.
+        this.removeAttribute(attrName);
+        warnFunctionReflection(this, propName, attrName);
       } else {
         this.setAttribute(attrName, String(value));
       }

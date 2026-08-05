@@ -47,6 +47,11 @@ app/                         thin route adapters
   (marketing)/about/page.ts  /about (route group, parens not in URL)
   ui-demo/page.ts            /ui-demo (showcases the @webjsdev/ui kit)
   seeded/page.ts             /seeded (SSR action seeding demo, #472)
+  script-swap/
+    layout.ts                a layout emitting inline scripts as SIBLINGS of its
+                             children, so both are TOP-LEVEL nodes of the
+                             swapped range (client-router fixture, #1102)
+    page.ts                  /script-swap
   api/
     hello/route.ts           GET /api/hello
     posts/route.ts           GET/POST /api/posts
@@ -140,6 +145,19 @@ probes in `test/e2e/e2e.test.mjs` can assert that no dead JS ships.
   The observation forces the badge to ship, so the probe asserts its module
   IS downloaded (the cross-module-registration fix, #169). The unobserved
   `build-stamp` is the negative control.
+
+### Client-router script reactivation (#1102)
+`app/script-swap/` exists ONLY as an e2e fixture. Its layout emits two inline
+scripts as SIBLINGS of `${children}`, one on each side, so both are TOP-LEVEL
+nodes of the range the router replaces on a navigation into the route from
+outside. That is the shape a `querySelectorAll('script')` walk skips, since it
+never matches the element it is called on. Each script bumps a window counter
+and writes it into a readout the layout renders, so the e2e can assert from
+either side. Two scripts rather than one because the fix has two halves: the
+before-script witnesses that a top-level script re-executes at all, the
+after-script that replacing it did not truncate the range walk (reactivating a
+script detaches it, which would cut a live `nextSibling` walk). Do not "tidy"
+either script into the children or delete one: each is load-bearing.
 
 ### SSR action seeding (#472)
 `/seeded` renders `<seeded-user>` (`components/seeded-user.ts`), a SHIPPING

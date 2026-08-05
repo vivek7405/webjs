@@ -74,6 +74,16 @@ async function writeRegistryFile(cwd, config, item, file, opts) {
   const target = resolveTarget(cwd, config, item, file);
   ensureDir(dirname(target));
 
+  // The shared helpers are yours to edit, and since #1129 they live at the
+  // `utils` alias, which is the file `webjs create` generates and the one the
+  // docs tell you to retune. `--yes` means "do not ask me about overwrites",
+  // which is the normal non-interactive invocation, so honouring it here would
+  // replace edited source on every `add`. Only an explicit `--overwrite` may.
+  if (existsSync(target) && !opts.overwrite && helperTarget(config, item, file)) {
+    logger.info(`${relative(cwd, target)} already exists: keeping it.`);
+    return;
+  }
+
   if (existsSync(target) && !opts.overwrite && !opts.yes) {
     const r = await prompts({
       type: 'confirm',
@@ -168,6 +178,17 @@ function replaceImportSpecifier(content, spec, destAbs, target) {
 }
 
 function resolveTarget(cwd, config, item, file) {
+  // The two shared helpers are pinned to `lib/utils.ts` / `lib/dom.ts` by the
+  // registry manifest, but where they actually BELONG is wherever the project's
+  // `utils` alias points, because that is the path `rewriteUtilsImport` writes
+  // into every component's import. Honour the alias for them, ahead of the
+  // manifest target, or `add` writes a second copy at the pinned path that
+  // nothing imports while the components resolve to the aliased one.
+  // The dom helper is the utils file's SIBLING, the same relationship the
+  // rewrite assumes, so the two cannot disagree.
+  const helper = helperTarget(config, item, file);
+  if (helper) return helper;
+
   // explicit `target` wins
   if (file.target) return join(cwd, file.target);
 
@@ -186,6 +207,35 @@ function resolveTarget(cwd, config, item, file) {
     default:
       return join(cwd, fileName);
   }
+}
+
+/**
+ * Absolute target for the `lib-utils` / `lib-dom` registry items, derived from
+ * the project's configured `utils` alias, or null for anything else.
+ *
+ * Kept as the single place that answers "where do the shared helpers live",
+ * so `add`'s WRITE and {@link rewriteUtilsImport}'s REWRITE read the same
+ * answer. `init` writes the same two paths (see `init.js` `writeLibUtils`).
+ *
+ * @param {{ resolvedPaths?: { utils?: string } }} config parsed components.json
+ * @param {{ name?: string }} [item] the registry item
+ * @param {{ path?: string }} [file] the file within that item
+ * @returns {string | null}
+ */
+function helperTarget(config, item, file) {
+  const utilsAbs = config?.resolvedPaths?.utils;
+  if (!utilsAbs || !item) return null;
+  // Matched per FILE, not per item. `rewriteUtilsImport` always retargets
+  // component imports to `resolvedPaths.utils`, so the ONE file those imports
+  // resolve to has to be written there or it is an orphan. Any other file a
+  // custom registry ships under the same item is not that file, so it keeps
+  // its manifest target: routing them all here would collapse them onto one
+  // path and lose every file but the last.
+  if (!file) return null;
+  const name = basename(file.path || '');
+  if (item.name === 'lib-utils' && name === 'utils.ts') return utilsAbs;
+  if (item.name === 'lib-dom' && name === 'dom.ts') return join(dirname(utilsAbs), 'dom.ts');
+  return null;
 }
 
 function relative(cwd, p) {

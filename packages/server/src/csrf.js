@@ -60,8 +60,10 @@ function hostOf(value) {
  * (set by a reverse proxy / CDN like the Cloudflare-in-front-of-Railway
  * setup), then the `Host` header, then the request URL.
  *
- * Trust note: `x-forwarded-host` is only meaningful behind a proxy that
- * overwrites it. This is NOT a CSRF weakness, because a CSRF attack is
+ * Trust note: a proxy of the kind above FORWARDS a client-supplied
+ * `x-forwarded-host` rather than overwriting it, so this value can be
+ * attacker-chosen. See the threat model in `forwarded.js` for what that
+ * does reach. This is NOT a CSRF weakness, because a CSRF attack is
  * browser-driven and a browser cannot set `x-forwarded-host` (or `Origin`);
  * only a direct non-browser client can, and such a client carries no victim
  * SameSite cookies to abuse. The primary `Sec-Fetch-Site` path does not use
