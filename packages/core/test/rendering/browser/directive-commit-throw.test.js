@@ -16,7 +16,7 @@
 import { html } from '../../../src/html.js';
 import { render } from '../../../src/render-client.js';
 import { repeat } from '../../../src/repeat.js';
-import { watch, ref } from '../../../src/directives.js';
+import { watch, ref, asyncReplace } from '../../../src/directives.js';
 import { signal } from '../../../src/signal.js';
 import { WebComponent } from '../../../src/component.js';
 
@@ -316,6 +316,64 @@ suite('directive commit throws (browser)', () => {
     render(view([]), container);
     assert.equal(container.querySelector('div').children.length, 0);
   });
+
+  // A chunk commits from an async loop with no render on the stack, so a
+  // directive installed BY that commit has no owner unless the stream part
+  // was stamped when it was installed. SHADOW is the case the unit tests
+  // cannot reach: only there does the render root differ from the
+  // boundary-carrying element, so only there does `boundaryOwnerOf` have to
+  // resolve a ShadowRoot through its `.host`.
+  const streamBoundaryTest = (label, shadow, tag) => {
+    test(label, async () => {
+      const inner = signal(html`<p>ok</p>`);
+      const seen = [];
+      const escaped = [];
+      const onError = (e) => { escaped.push(e); };
+
+      class StreamHost extends WebComponent({}) {
+        static shadow = shadow;
+        renderError(err) { seen.push(err); return html`<p>err</p>`; }
+        render() {
+          async function* gen() { yield html`<span>${watch(inner)}</span>`; }
+          return html`<div>${asyncReplace(gen())}</div>`;
+        }
+      }
+      StreamHost.register(tag);
+
+      const el = document.createElement(tag);
+      document.body.appendChild(el);
+      await el.updateComplete;
+      await new Promise((r) => setTimeout(r, 20));
+      const root = shadow ? el.shadowRoot : el;
+      assert.equal(root.querySelector('p').textContent, 'ok');
+
+      // Asserting the boundary was called cannot distinguish routed from
+      // routed AND also escaped, and escaping is the failure being fixed.
+      window.addEventListener('error', onError);
+      try {
+        inner.set(html`<section title=${poison}>bad</section>`);
+        await new Promise((r) => setTimeout(r, 30));
+      } finally {
+        window.removeEventListener('error', onError);
+      }
+
+      assert.equal(seen.length, 1, 'the nested directive must reach THIS component');
+      assert.equal(seen[0].message, 'boom');
+      assert.equal(escaped.length, 0, 'nothing may reach the window');
+      el.remove();
+    });
+  };
+
+  streamBoundaryTest(
+    'a watch nested in an async chunk reaches a LIGHT-DOM component renderError',
+    false,
+    'stream-throw-light-host',
+  );
+  streamBoundaryTest(
+    'a watch nested in an async chunk reaches a SHADOW-DOM component renderError',
+    true,
+    'stream-throw-shadow-host',
+  );
 
   test('removing rows after recovery leaves nothing behind', () => {
     render(rows(good), container);
