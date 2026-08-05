@@ -54,3 +54,53 @@ test('a fenced sample keeps the interpolation holes and indentation the prose pi
   assert.ok(layout.includes('${children}'), 'the interpolation hole survives inside the fence');
   assert.match(layout, /\n {2,}\S/, 'indentation survives inside the fence');
 });
+
+test('a sample that reaches the corpus reaches it whole', () => {
+  // The loss this catches is per-character: an extractor step that quietly
+  // deletes something. A `<code>` strip running AFTER entity decoding used to
+  // delete the tags out of a sample TEACHING `&lt;code&gt;`, leaving the block
+  // present and its lesson gone, which is the shape that survives review.
+  //
+  // Anchored on the sample's first line so it asks only "did this arrive
+  // intact", not "did it arrive". Whether a block reaches the corpus at all is
+  // a different question, answered by the fence test above, and one page
+  // (/docs/metadata-routes) already fails it on main for an unrelated reason:
+  // the template-isolation heuristic truncates the page.
+  return Promise.all([]).then(async () => {
+    const pages = await getDocPages();
+    const mangled: string[] = [];
+    let compared = 0;
+    for (const page of pages) {
+      const src = await readFile(new URL(`../../app${page.path}/page.ts`, import.meta.url), 'utf8');
+      for (const m of src.matchAll(/<code-block(?=[\s>])[^>]*>([\s\S]*?)<\/code-block>/g)) {
+        // A sample carrying a template hole has no source text to compare:
+        // what it says is only known at render time.
+        if (m[1].includes('${')) continue;
+        const authored = decodeEntities(m[1]).replace(/\n+$/, '');
+        const firstLine = authored.split('\n')[0];
+        if (!firstLine.trim() || !page.markdown.includes(firstLine)) continue;
+        compared++;
+        if (!page.markdown.includes(authored)) {
+          mangled.push(`${page.path}: ${JSON.stringify(authored.slice(0, 70))}`);
+        }
+      }
+    }
+    assert.ok(compared > 300, `only ${compared} samples compared, so this proves little`);
+    assert.deepEqual(mangled.slice(0, 5), [], `${mangled.length} samples arrived in the corpus with characters missing`);
+  });
+});
+
+/** Mirrors the extractor's own entity decoding, which is module-private. */
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#123;/g, '{')
+    .replace(/&#125;/g, '}')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&hellip;/g, '...')
+    .replace(/&mdash;/g, '--')
+    .replace(/&nbsp;/g, ' ');
+}

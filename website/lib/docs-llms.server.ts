@@ -178,10 +178,16 @@ function bodyToMarkdown(raw: string): string {
   // (app/api/search/route.ts) picks its headings with a plain
   // `line.startsWith('#')` and does no fence tracking, so a line-leading
   // "# " shell comment inside a sample is scored as a heading either way.
+  //
+  // Nothing strips a <code> wrapper out of the captured text any more. That
+  // strip existed for the `<pre><code>` shape docs pages used to author, and
+  // <code-block> supplies the wrapper itself, so it matched nothing. What it
+  // still did was run AFTER decodeEntities, so a sample TEACHING `&lt;code&gt;`
+  // had the decoded tags deleted out of it, silently, in the one pipeline
+  // whose silent losses this function exists to avoid.
   const codeBlocks: string[] = [];
   body = body.replace(/<(?:pre|code-block)(?=[\s>])[^>]*>([\s\S]*?)<\/(?:pre|code-block)>/g, (_m, code) => {
-    const text = decodeEntities(String(code)).replace(/<\/?code[^>]*>/g, '').replace(/\n+$/, '');
-    codeBlocks.push(text);
+    codeBlocks.push(decodeEntities(String(code)).replace(/\n+$/, ''));
     return `\uE000CODE${codeBlocks.length - 1}\uE000`;
   });
 
