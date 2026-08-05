@@ -101,7 +101,6 @@ export function renderEntryBody(md: string): string {
       startList();
       itemOpen = true;
       paras = [];
-      open = null;
       open = startPara(line.slice(2).trim());
     } else if (itemOpen && /^ {2,}[-*] /.test(line)) {
       // Its own paragraph, marker dropped. Depth is not read, so a deeper

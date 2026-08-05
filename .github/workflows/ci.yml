@@ -455,9 +455,12 @@ jobs:
       # Nothing in the pipeline typechecked the website before, so a type
       # break landed on main and every branch cut from it inherited a red
       # tsc (#1260). It runs before the tests so a type break names itself
-      # rather than surfacing as a test failure. Scoped to website/ on
-      # purpose: examples/blog and packages/ui/packages/website do not
-      # typecheck clean today, and wiring them in is its own fix.
+      # rather than surfacing as a test failure. Two deliberate limits: it
+      # covers the website's tsconfig include (app, components, lib, modules)
+      # and NOT test/, whose 23 .ts files carry 30 pre-existing errors; and it
+      # gates website/ only, since examples/blog and
+      # packages/ui/packages/website do not typecheck clean today either.
+      # Widening either is its own fix.
       - name: website typecheck
         run: npm run typecheck --workspace=@webjsdev/website
       - name: website tests (node + browser)

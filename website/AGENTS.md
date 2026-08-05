@@ -369,12 +369,20 @@ cd website && npm run dev       # http://localhost:5001
 cd website && npm run typecheck # tsc --noEmit, the same gate CI runs
 ```
 
-`npm run typecheck` mirrors the kit sources in before it runs `tsc`, because
-without that gitignored mirror `tsc` reports a wall of unrelated `TS2882`
-side-effect-import errors that bury any real one. The CI `apps` job runs the
-same script, so a type break in `website/` reds the build instead of riding
-onto `main` unnoticed (#1260). It gates `website/` only: `examples/blog` and
-`packages/ui/packages/website` do not typecheck clean today.
+`npm run typecheck` mirrors the kit sources in before it runs `webjs typecheck`,
+because without that gitignored mirror `tsc` reports a wall of unrelated
+`TS2882` side-effect-import errors that bury any real one. The CI `apps` job
+runs the same script, so a type break reds the build instead of riding onto
+`main` unnoticed (#1260).
+
+What it covers is exactly the tsconfig `include`: `app/`, `components/`,
+`lib/`, and `modules/`. **`test/` is deliberately outside it.** The 23
+TypeScript files under `test/` carry 30 pre-existing type errors (a `never`
+argument in the sitemap test, `LayoutProps` calls missing `params` /
+`searchParams` / `url`), so including them would red the gate on day one.
+Fixing those is its own task. Across apps the gate covers `website/` only, for
+the same reason: `examples/blog` and `packages/ui/packages/website` do not
+typecheck clean today either.
 
 `npm run dev` and `webjs dev` behave identically (#550): `webjs.dev.before`
 mirrors the kit sources in and compiles `public/tailwind.css`, and
