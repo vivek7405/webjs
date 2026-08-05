@@ -185,6 +185,15 @@ function bodyToMarkdown(raw: string): string {
   // still did was run AFTER decodeEntities, so a sample TEACHING `&lt;code&gt;`
   // had the decoded tags deleted out of it, silently, in the one pipeline
   // whose silent losses this function exists to avoid.
+  //
+  // A related loss is still live and is NOT fixed here: oneLine() below
+  // decodes `&lt;` to a bare `<` while rewriting a <p>, and the generic tag
+  // strip further down then matches from that stray `<` to the next `>` and
+  // swallows what lies between, including these sentinels. On
+  // /docs/metadata-routes that costs 5 of its 9 samples and the paragraphs
+  // among them. The repair reorders this pipeline for every page, so it is
+  // tracked on its own rather than folded in here; the exemption is named in
+  // test/ssr/docs-llms.test.ts so no OTHER page can develop it unnoticed.
   const codeBlocks: string[] = [];
   body = body.replace(/<(?:pre|code-block)(?=[\s>])[^>]*>([\s\S]*?)<\/(?:pre|code-block)>/g, (_m, code) => {
     codeBlocks.push(decodeEntities(String(code)).replace(/\n+$/, ''));
