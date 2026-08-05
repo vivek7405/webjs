@@ -156,16 +156,35 @@ test('a changed bullet marker starts a new nested list', () => {
   assert.equal(countEntryItems(html), 1);
 });
 
+test("a nested bullet's own continuation paragraph stays inside it", () => {
+  // Indented past the bullet's marker, so CommonMark keeps it in the bullet.
+  // Hoisting it to parent level would also split the list around it, which
+  // is the fragmentation the resume rule exists to prevent, one level down.
+  const html = renderEntryBody([
+    '- **entry**',
+    '',
+    '  - bullet a',
+    '',
+    '    A continuation paragraph of bullet a, indented four spaces.',
+    '',
+    '  - bullet b',
+  ].join('\n'));
+
+  const nested = html.match(/<ul class="list-disc pl-5 space-y-1[^"]*">[\s\S]*?<\/ul>/g) || [];
+  assert.equal(nested.length, 1, 'a and b stay in one list');
+  assert.equal((nested[0].match(/<li>/g) || []).length, 2);
+  assert.match(nested[0], /bullet a A continuation paragraph/);
+});
+
 test('no changelog file renders a fragmented nested list', () => {
-  // Whole-corpus form of the two tests above. Adjacent nested lists inside
-  // one entry are always a list that got split, since nothing can sit
-  // between them without separating them legitimately.
+  // Whole-corpus form of the tests above, stated as the real invariant: an
+  // entry holds at most one nested list. Matching only ADJACENT lists missed
+  // a split whose halves were separated by a hoisted paragraph.
   for (const [label, md] of everyEntryFile()) {
-    const html = renderEntryBody(md);
-    assert.ok(
-      !/<\/ul><ul class="list-disc pl-5 space-y-1/.test(html),
-      `${label}: a nested list was split into adjacent single lists`,
-    );
+    for (const item of entryItems(renderEntryBody(md))) {
+      const lists = (item.match(/<ul class="list-disc pl-5 space-y-1/g) || []).length;
+      assert.ok(lists <= 1, `${label}: an entry rendered ${lists} nested lists, so one list was split`);
+    }
   }
 });
 
@@ -198,8 +217,14 @@ test('no entry body text is dropped on the way to HTML', () => {
   // their inner words), so a missing word means a missing line.
   for (const [label, md] of everyEntryFile()) {
     const rendered = renderEntryBody(md);
+    // Search the VISIBLE text plus the link targets, never the raw markup.
+    // The emitted class names carry words of their own (`leading-relaxed`,
+    // `font-semibold`, `noopener`), and matching against those would exempt
+    // any source word that happens to collide with one.
+    const hrefs = [...rendered.matchAll(/href="([^"]*)"/g)].map((m) => m[1]).join(' ');
+    const visible = `${rendered.replace(/<[^>]+>/g, ' ')} ${hrefs}`;
     for (const word of new Set(md.match(/[A-Za-z]{7,}/g) || [])) {
-      assert.ok(rendered.includes(word), `${label}: "${word}" did not survive rendering`);
+      assert.ok(visible.includes(word), `${label}: "${word}" did not survive rendering`);
     }
   }
 });
