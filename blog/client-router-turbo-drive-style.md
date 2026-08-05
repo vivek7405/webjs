@@ -75,13 +75,13 @@ Forms that already call `event.preventDefault()` in their `@submit` handler are 
 
 # What the router does not do
 
-One explicit non-goal, plus two that used to be on this list and have since been built.
+Two explicit non-goals, plus one that used to be on this list and has since been built.
 
 No view-transitions API by default. View Transitions are great when supported, but the spec is still evolving, so the default off-state matches what works in every browser. An app that wants them opts in with `<meta name="view-transition" content="same-origin">` in the root layout. The `content` value is load-bearing rather than decorative, since the router reads it and enables nothing unless it says `same-origin`.
 
-Prefetching was the first of the two. The router warms link targets on its own now, and it picks the strategy from the device rather than applying one everywhere: hover intent where there is a real pointer, and dwell-gated viewport entry on touch, where hover does not exist to hook. I wrote up how that choice gets made in [Device-adaptive link prefetch](/blog/device-adaptive-link-prefetch).
+No nested-route data deduplication. `X-Webjs-Have` trims the HTML a navigation pays for, but that is markup, not data. The router does not keep "data we already have" and refetch only the diff. The HTTP cache and the framework's `cache()` query memoization handle that at a different layer.
 
-Per-navigation full refetch was the second. The `X-Webjs-Have` mechanism described above is exactly the deduplication this section used to disclaim, so a navigation whose shared layouts match on segment AND route key pays for the divergent fragment and nothing more. Shared chrome held for different params does not count as shared, which is the point of keying the entries.
+Prefetching was the one that changed. The router warms link targets on its own now, and it picks the strategy from the device rather than applying one everywhere: hover intent where there is a real pointer, and dwell-gated viewport entry on touch, where hover does not exist to hook. I wrote up how that choice gets made in [Device-adaptive link prefetch](/blog/device-adaptive-link-prefetch).
 
 
 # What happens on a rapid click
@@ -102,7 +102,7 @@ Hotwire's Turbo Drive is the closest precedent. Same DOM-swap philosophy, same s
 
 # Why I shipped this in core
 
-`@webjsdev/core` is small. Adding a 1400-line file to it (`router-client.js`) is meaningful weight. I added it anyway because the white flash is what makes pages feel slow. If you measure with Lighthouse, metrics look fine without a client router. But the perceived speed is noticeably worse. Users say "it feels weird" not "it took 100ms longer." The fix is the router.
+`@webjsdev/core` is small. Adding `router-client.js` to it is meaningful weight, and it has only grown since. I added it anyway because the white flash is what makes pages feel slow. If you measure with Lighthouse, metrics look fine without a client router. But the perceived speed is noticeably worse. Users say "it feels weird" not "it took 100ms longer." The fix is the router.
 
 The other reason it lives in core: the boundary-detection trick (HTML comments at `${children}` interpolation points) is too tightly coupled to the SSR renderer to make sense in a separate package. The renderer emits the markers. The router reads them. Splitting them across packages would require synchronizing two version trees.
 

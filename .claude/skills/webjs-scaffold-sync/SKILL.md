@@ -210,8 +210,9 @@ Run the mandatory generate + boot + check verifications in PARALLEL when more th
    test, the counterfactual).
 6. Respect the prose-punctuation invariant (#11) in every comment and doc, and
    keep each demo densely commented (a header stating the webjs concept + the
-   why, inline comments on the non-obvious idiom, a `webjs-scaffold-placeholder`
-   marker). The scaffold teaches by its comments; a thin demo is a bug.
+   why, inline comments on the non-obvious idiom, and a line naming what to
+   delete when the demo is pruned). The scaffold teaches by its comments, and a
+   thin demo is a bug.
 
 ## Audit-mode procedure (sweep the scaffold for drift)
 

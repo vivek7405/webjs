@@ -334,6 +334,28 @@ test('the api template ships the backend-features showcase, not the UI gallery',
   }
 });
 
+/*
+ * The full-stack gallery is asserted marker-free above, but nothing covered the
+ * api showcase, which is how it kept shipping `webjs-scaffold-placeholder` (and
+ * a comment claiming `webjs check` fails on it) for every generated api app long
+ * after that rule was retired. The token names a check rule that does not exist,
+ * so a developer grepping for it finds nothing to satisfy.
+ */
+test('no api showcase route carries a scaffold-placeholder marker (gate retired)', async () => {
+  const cwd = await tempCwd();
+  try {
+    await scaffoldApp('demo', cwd, { template: 'api' });
+    const appDir = join(cwd, 'demo');
+    for (const name of ['validate', 'rate-limit', 'stream', 'files', 'ws']) {
+      const src = await readFile(join(appDir, 'app', 'api', 'features', name, 'route.ts'), 'utf8');
+      assert.doesNotMatch(src, /webjs-scaffold-placeholder/, `app/api/features/${name} has no marker`);
+      assert.doesNotMatch(src, /webjs check fails/, `app/api/features/${name} claims no retired gate`);
+    }
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
 test('the api gallery:clear sheds the showcase to a health + users base', async () => {
   const cwd = await tempCwd();
   try {

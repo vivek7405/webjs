@@ -50,8 +50,9 @@ const CONTROL_CHARS = /[\x00-\x1f\x7f-\x9f]/;
  * with webjs's own output, which is: nonce-signed inline `<script>` tags
  * (the boot script, the public-env shim, the importmap), nonce-signed
  * `<link rel="modulepreload">`, ES modules fetched same-origin and from
- * the configured vendor CDN, and app-authored style that carries no
- * nonce (so inline styles must be allowed; see the `style-src` note).
+ * the configured vendor CDN, and inline style, both WebJs's own head rule
+ * and the app's, which this policy nonces for scripts only (so inline
+ * styles must be allowed outright; see the `style-src` note).
  *
  * `script-src` uses `'strict-dynamic'` so a nonce-loaded module can pull
  * in its own dependencies (the importmap-driven per-file ESM graph)
@@ -67,14 +68,23 @@ const CONTROL_CHARS = /[\x00-\x1f\x7f-\x9f]/;
 const DEFAULT_DIRECTIVES = {
   'default-src': "'self'",
   'script-src': "'nonce-__NONCE__' 'strict-dynamic' 'self' https:",
-  // WebJs signs its OWN head <style> (the @layer webjs-host rule) with
-  // the nonce, so what forces this allowance is style the APP writes,
-  // and four kinds of it carry no nonce: an inline <style> in a page or
-  // layout, a light-DOM component's <style>, a shadow component's
-  // `static styles` serialized into its declarative shadow root, and
-  // every style="..." attribute. The attribute case can never be
-  // covered at all, since a nonce applies to elements and not to
-  // attributes. No styling library is involved in any of them.
+  // NOTE this directive carries no nonce source, unlike `script-src`, so a
+  // nonce attribute on a <style> is INERT here and every inline style is
+  // admitted by 'unsafe-inline' alone. That includes WebJs's own head rule
+  // (the @layer webjs-host block), which SSR does stamp with the nonce but
+  // which this policy never checks it against. Dropping 'unsafe-inline'
+  // would block that rule too, not only app style.
+  //
+  // What keeps the allowance necessary is inline style with no realistic
+  // nonce path, and it arrives in four shapes. A page or layout may write
+  // an inline <style>, which an author could nonce by hand but does not by
+  // default. A light-DOM component's <style> and a shadow component's
+  // `static styles`, serialized into its declarative shadow root, are both
+  // emitted by the core renderer with no nonce and no way to supply one.
+  // And every style="..." attribute is unfixable in principle, since a
+  // nonce applies to elements and never to attributes. No styling library
+  // is involved in any of them.
+  //
   // Style elements are not a script-injection vector, so this does not
   // weaken the script protection.
   'style-src': "'self' 'unsafe-inline'",
