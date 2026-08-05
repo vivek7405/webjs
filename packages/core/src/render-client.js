@@ -1078,12 +1078,19 @@ function clearInstance(inst, container) {
   for (const p of inst.bound) {
     if (p.kind === 'event') p.el.removeEventListener(p.name, p.dispatcher);
     if (p.kind === 'element') {
+      // Guarded for the same reason as the sibling in `disposeInstance`, and
+      // the stakes are higher here: this is the container-level teardown
+      // `render()` runs before a template swap, so a throw skips the rest of
+      // this loop AND the `replaceChildren()` below, leaving the old DOM in
+      // place with `host[INSTANCE]` never reassigned. Since `lastTarget` is
+      // cleared only after the write, every later swap of that container
+      // then throws at the same part, permanently.
       const prev = /** @type any */ (p).lastTarget;
       if (prev) {
         if (typeof prev === 'function') {
           try { prev(undefined); } catch { /* swallow */ }
         } else if (typeof prev === 'object') {
-          prev.value = undefined;
+          try { prev.value = undefined; } catch { /* swallow */ }
         }
         /** @type any */ (p).lastTarget = undefined;
         /** @type any */ (p).__lastEl = undefined;
@@ -1756,12 +1763,33 @@ function disposeInstance(inst) {
       // Unbind any active ref so the user observes the element being
       // removed (callback receives undefined / Ref.value cleared).
       // Mirrors lit-html's cleanup-on-disconnect for element parts.
+      //
+      // BOTH branches swallow, and lit is not the reason: lit's ref directive
+      // guards neither, so a throw there propagates. The reason is that a
+      // teardown has to be TOTAL. `lastTarget` is cleared only AFTER these
+      // writes, so a throw leaves the part still pointing at the ref and
+      // every later teardown of the same instance throws at the same line
+      // forever. It also aborts the rest of this loop, so the remaining
+      // parts keep their listeners and their refs bound. A teardown has no
+      // retry either (a commit has the COMMIT_FAILED sentinel and a next
+      // render; this does not), so there is nothing a propagated error could
+      // usefully repair.
+      //
+      // The object branch is the one this adds. The callback branch was
+      // already guarded here AND on the commit path (`applyElement` wraps
+      // every `nextTarget(...)` / `prevTarget(undefined)` call), so a
+      // throwing ref CALLBACK has always been swallowed everywhere. What was
+      // inconsistent is the object ref, guarded on neither. This makes the
+      // two agree on TEARDOWN, which is where the totality argument bites.
+      // It does NOT touch the commit path, so `applyElement`'s object-ref
+      // writes still propagate to the component boundary, which has a route
+      // for the error and a next render to repair it.
       const prev = /** @type any */ (p).lastTarget;
       if (prev) {
         if (typeof prev === 'function') {
           try { prev(undefined); } catch { /* swallow */ }
         } else if (typeof prev === 'object') {
-          prev.value = undefined;
+          try { prev.value = undefined; } catch { /* swallow */ }
         }
         /** @type any */ (p).lastTarget = undefined;
         /** @type any */ (p).__lastEl = undefined;
@@ -1828,9 +1856,15 @@ function reconcileRepeat(part, value) {
         state.map.delete(key);
       } else {
         if (existing) {
+          // Unmapped BEFORE the row is touched, for the reason spelled out
+          // in the leftover loop below: a key kept across a refused removal
+          // points at a half-removed row, and reusing that row later walks
+          // the removal off the end of the region. Same ordering, same
+          // trade, and the two have to agree or the invariant the catch
+          // relies on holds on one branch and not the other.
+          state.map.delete(key);
           disposeInstance(existing);
           removeBetween(existing.startNode, existing.endNode);
-          state.map.delete(key);
         }
         const { inst, frag } = buildDetached(/** @type any */ (tr));
         parent.insertBefore(frag, marker);
@@ -1838,10 +1872,20 @@ function reconcileRepeat(part, value) {
       }
     }
 
-    // Remove any keys that remain in the old map.
-    for (const inst of state.map.values()) {
-      disposeInstance(inst);
-      removeBetween(inst.startNode, inst.endNode);
+    // Remove any keys that remain in the old map. The key leaves the map
+    // BEFORE its row is touched and the removal is in a `finally`, so at any
+    // throw point `state.map` holds exactly the leftovers this pass has not
+    // reached, and a row whose dispose threw still leaves the document.
+    // Iterating a snapshot keeps the delete obviously safe rather than
+    // relying on the reader knowing that deleting during a Map iteration is
+    // legal.
+    for (const [k, inst] of [...state.map]) {
+      state.map.delete(k);
+      try {
+        disposeInstance(inst);
+      } finally {
+        removeBetween(inst.startNode, inst.endNode);
+      }
     }
     state.map = newMap;
   } catch (err) {
@@ -1860,6 +1904,33 @@ function reconcileRepeat(part, value) {
     // orphaned. That is the whole repair. The next render is then an ORDINARY
     // reconcile against a truthful map, which repositions every row and
     // re-applies whatever the throw skipped.
+    //
+    // That claim covers the REMOVAL loop as well as the walk, and only
+    // because the loop was written to earn it. It drops each key before
+    // touching that row and removes the nodes in a `finally`, so a throw
+    // mid-removal cannot merge `newMap` over a `state.map` still holding
+    // disposed, detached rows. That was the failure: the row the app DELETED
+    // stayed on screen, the survivors reordered, and a later render that
+    // re-added that key reinserted the detached instance. The invariant, at
+    // any throw point on either branch: every instance this pass has not
+    // destructively touched is described by exactly one of the two maps,
+    // `newMap` for the processed new keys and `state.map` for the leftovers
+    // not reached yet, which is what makes the merge below correct. The
+    // exception is the row named in the residual just below, whose removal
+    // refused part-way; that one is in neither map, by choice.
+    //
+    // The residual is a throw from `removeBetween` ITSELF, which only calls
+    // `removeChild` on nodes the renderer owns, so it takes a throwing DOM to
+    // reach. That row is already unmapped, so its remaining nodes stay in the
+    // document tracked by nothing and a later re-add of that key builds a
+    // second row beside them. Unmapping AFTER the removal instead would keep
+    // that key, and it is measurably worse rather than better: the row is
+    // half removed, its start marker gone and its end marker still in place,
+    // so the re-add hits the reuse branch and `moveRange` re-attaches the
+    // lone start marker AFTER the end marker. The next removal of that key
+    // then walks forward from a start that never reaches its end, taking the
+    // repeat part's own marker and every following sibling with it, and the
+    // region is dead for good. One untracked row beats a destroyed list.
     //
     // Deliberately NOT a teardown-and-rebuild of the region. Rebuilding is
     // the obvious defensive move and it is measurably worse: it discards node
@@ -1884,9 +1955,16 @@ function reconcileRepeat(part, value) {
 
 /** @param {{ kind: 'repeat', map: Map<any, TemplateInstance> }} state */
 function teardownRepeat(state) {
-  for (const inst of state.map.values()) {
-    disposeInstance(inst);
-    removeBetween(inst.startNode, inst.endNode);
+  // Same delete-as-you-go shape as the leftover loop in `reconcileRepeat`,
+  // for the same reason: a throw part-way must not leave already-removed
+  // instances in the map. The trailing `clear()` stays as a no-op safety net.
+  for (const [k, inst] of [...state.map]) {
+    state.map.delete(k);
+    try {
+      disposeInstance(inst);
+    } finally {
+      removeBetween(inst.startNode, inst.endNode);
+    }
   }
   state.map.clear();
 }

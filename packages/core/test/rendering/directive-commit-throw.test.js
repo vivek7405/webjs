@@ -27,17 +27,29 @@ before(() => {
   globalThis.HTMLElement = window.HTMLElement;
 });
 
-let html, render, guard, until, watch, repeat, signal;
+let html, render, guard, until, watch, ref, repeat, signal;
 before(async () => {
   ({ html } = await import('../../src/html.js'));
   ({ render } = await import('../../src/render-client.js'));
-  ({ guard, until, watch } = await import('../../src/directives.js'));
+  ({ guard, until, watch, ref } = await import('../../src/directives.js'));
   ({ repeat } = await import('../../src/repeat.js'));
   ({ signal } = await import('../../src/signal.js'));
 });
 
 /** A value that throws when a commit stringifies it. */
 const poison = { toString() { throw new Error('boom'); } };
+
+/**
+ * A ref whose object write throws on UNBIND. Every other poison in this file
+ * throws from a COMMIT, and none of them can reach the teardown paths below:
+ * a commit stringifies its value on the way into the DOM, while these throws
+ * come from tearing a row back out, which is a different code path with a
+ * different repair. Only an object ref (or a callback ref) is called during
+ * teardown at all, so it is the only way in.
+ */
+function throwingRef(message) {
+  return { set value(v) { if (v === undefined) throw new Error(message); }, get value() { return null; } };
+}
 
 /** Text content of the rendered rows, ignoring marker comments. */
 function rowTexts(container) {
@@ -165,6 +177,132 @@ test('repeat: a throw in a nested-template row recovers', () => {
 
   render(rows(good), container);
   assert.deepEqual([...container.querySelectorAll('b')].map((b) => b.textContent), ['one', 'two']);
+});
+
+// --- teardown throws (repeat's leftover-removal loop, and clearInstance) ---
+
+test('repeat: dropping a row whose ref unbind throws still removes that row', () => {
+  const container = document.createElement('div');
+  const rows = (items) => html`<ul>${repeat(
+    items,
+    (it) => it.id,
+    (it) => html`<li><span ${it.id === 9 ? ref(throwingRef('ref-boom')) : ref({})}>${it.n}</span></li>`,
+  )}</ul>`;
+
+  render(rows([{ id: 1, n: 'a' }, { id: 9, n: 'doomed' }]), container);
+  assert.deepEqual(rowTexts(container), ['a', 'doomed']);
+  const beforeA = container.querySelector('li');
+
+  // The app asked for a one-row list. It used to get a two-row list led by
+  // the row it deleted, because the unbind threw out of the removal loop.
+  render(rows([{ id: 1, n: 'a' }]), container);
+  assert.deepEqual(rowTexts(container), ['a']);
+
+  // And the survivor is the same element, not a rebuild.
+  assert.equal(container.querySelector('li'), beforeA);
+
+  // Still reconciling normally afterwards, rather than wedged.
+  render(rows([{ id: 1, n: 'A' }]), container);
+  assert.deepEqual(rowTexts(container), ['A']);
+});
+
+test('repeat: re-adding a key dropped through a throwing unbind builds a fresh row', () => {
+  const container = document.createElement('div');
+  const rows = (items) => html`<ul>${repeat(
+    items,
+    (it) => it.id,
+    (it) => html`<li><span ${it.id === 9 ? ref(throwingRef('ref-boom')) : ref({})}>${it.n}</span></li>`,
+  )}</ul>`;
+
+  render(rows([{ id: 1, n: 'a' }, { id: 9, n: 'doomed' }]), container);
+  const doomed = [...container.querySelectorAll('li')][1];
+
+  render(rows([{ id: 1, n: 'a' }]), container);
+  render(rows([{ id: 1, n: 'a' }, { id: 9, n: 'again' }]), container);
+
+  assert.deepEqual(rowTexts(container), ['a', 'again']);
+  // A disposed, detached instance must never come back: it is unmapped, so
+  // the key misses and builds fresh.
+  const readded = [...container.querySelectorAll('li')][1];
+  assert.notEqual(readded, doomed);
+});
+
+test('repeat: a throw INSIDE the removal loop leaves no leftover still mapped', () => {
+  // Drives the throw from the loop's OTHER step, so this covers the loop's
+  // shape independently of the ref guard above (which makes the dispose step
+  // unable to throw at all). Nothing here reaches into module internals: it
+  // patches the rows' parent so one DOM removal refuses.
+  const container = document.createElement('div');
+  const rows = (items) => html`<ul>${repeat(
+    items,
+    (it) => it.id,
+    (it) => html`<li>${it.n}</li>`,
+  )}</ul>`;
+
+  render(rows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }, { id: 3, n: 'three' }]), container);
+  const [, liTwo, liThree] = [...container.querySelectorAll('li')];
+
+  const ul = container.querySelector('ul');
+  const origRemove = ul.removeChild.bind(ul);
+  ul.removeChild = (node) => {
+    if (node === liThree) throw new Error('rm-boom');
+    return origRemove(node);
+  };
+
+  // Drop keys 2 and 3. Key 2 is processed cleanly; key 3's DOM removal
+  // refuses part-way.
+  assert.throws(() => { render(rows([{ id: 1, n: 'one' }]), container); }, /rm-boom/);
+  ul.removeChild = origRemove;
+
+  // `liThree` is the named residual: `removeBetween` itself refused, so those
+  // nodes stayed, and the key was already dropped, so nothing tracks them.
+  assert.equal(liThree.parentNode, ul);
+
+  // Re-add BOTH dropped keys in ONE render, with no render in between. That
+  // ordering is load-bearing rather than incidental: any render that treats
+  // key 3 as a leftover again unmaps it under EITHER unmap ordering (its
+  // start marker is gone, so `removeBetween` early-returns and the delete
+  // runs), which collapses the difference this test exists to catch. Re-added
+  // immediately, key 3 is already unmapped, so it MISSES and builds a fresh
+  // row beside the remnant. Unmapping after the removal instead would keep
+  // that key pointing at a half-removed row, the re-add would take the reuse
+  // branch, and `moveRange` would re-attach the lone start marker AFTER its
+  // own end marker.
+  render(rows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }, { id: 3, n: 'three' }]), container);
+  const at = (text) => [...container.querySelectorAll('li')].filter((li) => li.textContent === text);
+
+  assert.equal(at('one').length, 1);
+  assert.equal(at('two').length, 1, 'exactly one row for the re-added key');
+  assert.notEqual(at('two')[0], liTwo, 'a disposed instance must not be resurrected');
+  assert.equal(at('three').length, 2, 'a fresh row for the re-added key, beside the remnant');
+
+  // And the region is still alive. Under the other ordering the removal below
+  // walks off the end of the mis-ordered range and takes the repeat part's
+  // own marker with it, after which no render ever lands again.
+  render(rows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }, { id: 4, n: 'four' }]), container);
+  assert.deepEqual(
+    [...container.querySelectorAll('li')].map((li) => li.textContent).filter((t) => t !== 'three'),
+    ['one', 'two', 'four'],
+    'the region still reconciles rather than being dead',
+  );
+});
+
+test('clearInstance: a throwing ref unbind does not wedge template swaps', () => {
+  const container = document.createElement('div');
+  render(html`<p ${ref(throwingRef('clear-boom'))}>A</p>`, container);
+  assert.equal(container.querySelector('p')?.textContent, 'A');
+
+  // A template-SHAPE swap runs the container-level teardown. The throw used
+  // to skip the replaceChildren() at the end of it, so the old DOM stayed and
+  // the instance was never replaced. `lastTarget` is cleared only after the
+  // throwing write, so it was permanent: every later swap threw at the same
+  // part, which is why this asserts TWO swaps.
+  render(html`<b>B</b>`, container);
+  assert.equal(container.querySelector('b')?.textContent, 'B');
+  assert.equal(container.querySelector('p'), null);
+
+  render(html`<i>C</i>`, container);
+  assert.equal(container.querySelector('i')?.textContent, 'C');
 });
 
 test('a plain template child hole recovers too (not just repeat)', () => {

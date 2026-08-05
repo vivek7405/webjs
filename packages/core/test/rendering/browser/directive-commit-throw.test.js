@@ -16,7 +16,7 @@
 import { html } from '../../../src/html.js';
 import { render } from '../../../src/render-client.js';
 import { repeat } from '../../../src/repeat.js';
-import { watch } from '../../../src/directives.js';
+import { watch, ref } from '../../../src/directives.js';
 import { signal } from '../../../src/signal.js';
 import { WebComponent } from '../../../src/component.js';
 
@@ -213,6 +213,77 @@ suite('directive commit throws (browser)', () => {
     const after = [...container.querySelectorAll('li')];
     assert.strictEqual(after[0], before[0]);
     assert.strictEqual(after[2], before[2]);
+  });
+
+  test('a throwing ref unbind removes the row, and re-adding it builds a new element', () => {
+    // The identity facts linkedom cannot prove: the survivor is MOVED rather
+    // than rebuilt, and the resurrected key is a genuinely new element rather
+    // than the disposed instance handed back.
+    const boom = { set value(v) { if (v === undefined) throw new Error('ref-boom'); }, get value() { return null; } };
+    const refRows = (items) => html`<ul>${repeat(
+      items,
+      (it) => it.id,
+      (it) => html`<li><span ${it.id === 9 ? ref(boom) : ref({})}>${it.n}</span></li>`,
+    )}</ul>`;
+
+    render(refRows([{ id: 1, n: 'a' }, { id: 9, n: 'doomed' }]), container);
+    const before = [...container.querySelectorAll('li')];
+
+    render(refRows([{ id: 1, n: 'a' }]), container);
+    assert.deepEqual([...container.querySelectorAll('li')].map((li) => li.textContent), ['a']);
+    assert.strictEqual(container.querySelector('li'), before[0]);
+
+    render(refRows([{ id: 1, n: 'a' }, { id: 9, n: 'again' }]), container);
+    const after = [...container.querySelectorAll('li')];
+    assert.deepEqual(after.map((li) => li.textContent), ['a', 'again']);
+    assert.strictEqual(after[0], before[0]);
+    assert.ok(after[1] !== before[1], 'the disposed instance must not be resurrected');
+  });
+
+  test('a refused DOM removal keeps that row keyed, and does not duplicate it', () => {
+    // The ref-unbind case above cannot reach the removal loop's own shape,
+    // because the guard makes that step unable to throw at all. This drives
+    // the throw from the DOM removal instead, in a real browser, where node
+    // identity is the thing that separates "reused the row already there"
+    // from "built a second one beside it".
+    const idRows = (items) => html`<ul>${repeat(
+      items,
+      (it) => it.id,
+      (it) => html`<li>${it.n}</li>`,
+    )}</ul>`;
+
+    render(idRows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }, { id: 3, n: 'three' }]), container);
+    const [liOne, liTwo, liThree] = [...container.querySelectorAll('li')];
+
+    const ul = container.querySelector('ul');
+    const origRemove = ul.removeChild.bind(ul);
+    ul.removeChild = (node) => {
+      if (node === liThree) throw new Error('rm-boom');
+      return origRemove(node);
+    };
+    throwsMatching(() => { render(idRows([{ id: 1, n: 'one' }]), container); }, /rm-boom/);
+    ul.removeChild = origRemove;
+
+    render(idRows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }]), container);
+    const after = [...container.querySelectorAll('li')];
+
+    // Key 1 never left the map, so it is the same element. Key 2 left the map
+    // together with its row, so it MISSES and rebuilds rather than having a
+    // disposed instance handed back.
+    assert.strictEqual(after.filter((li) => li === liOne).length, 1);
+    assert.ok(!after.includes(liTwo), 'a removed row must not be resurrected');
+    assert.strictEqual(after.filter((li) => li.textContent === 'two').length, 1);
+
+    // `liThree` is the named residual: the DOM removal itself refused, so
+    // those nodes stayed, and its key was already dropped, so nothing tracks
+    // them. What the trade buys is that the region still RECONCILES, which is
+    // the assertion that matters and the one only a real browser settles.
+    assert.strictEqual(liThree.parentNode, ul);
+    render(idRows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }, { id: 4, n: 'four' }]), container);
+    assert.deepEqual(
+      [...container.querySelectorAll('li')].map((li) => li.textContent).filter((t) => t !== 'three'),
+      ['one', 'two', 'four'],
+    );
   });
 
   test('removing rows after recovery leaves nothing behind', () => {
