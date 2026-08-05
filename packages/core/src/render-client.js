@@ -1865,12 +1865,18 @@ function reconcileRepeat(part, value) {
     // the obvious defensive move and it is measurably worse: it discards node
     // identity for every row, which is the exact cost keyed reconciliation
     // exists to avoid (see the plain-array note below, a rebuild cancels an
-    // in-progress native drag). It is also unnecessary. This map is restored
-    // to the truth rather than left describing a DOM that moved, so there is
-    // nothing left to guess and no partial DOM move to unwind: a
-    // half-updated instance re-applies on the next render by itself, because
-    // `updateInstance` advances `lastValues` per hole, so the hole that threw
-    // still compares unequal and is retried.
+    // in-progress native drag). It is also unnecessary, because this map is
+    // restored to the truth rather than left describing a DOM that moved, so
+    // there is nothing to guess and no partial DOM move to unwind.
+    //
+    // That is only half of it, and the other half does NOT live here: the row
+    // whose own commit threw is repaired by the COMMIT_FAILED sentinel in
+    // `updateInstance`, not by anything below. Without it the failed hole
+    // compares EQUAL on the next render (its `lastValues` entry never
+    // advanced past the throw, so it still holds the value that render
+    // supplies) and is skipped forever, which for a child position means the
+    // row stays permanently blank. Do not remove the sentinel on the theory
+    // that a half-updated instance heals itself; it does not.
     for (const [k, inst] of newMap) state.map.set(k, inst);
     throw err;
   }
