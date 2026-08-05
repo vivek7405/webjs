@@ -1158,3 +1158,32 @@ test('asset-link advisory does not treat a // inside an attribute value as a com
     assert.match(r.message, /a\.css/, label);
   }
 });
+
+test('asset-link advisory survives nested html`` templates in ${} holes', async () => {
+  // The framework's most common idiom. A quote-tracking lexer cannot model it
+  // with one quote char: the inner backtick reads as closing the outer template
+  // and inverts string/code polarity for the rest of the file.
+  const sameLine = tmpDir();
+  write(sameLine, 'app/layout.ts', [
+    'export default ({ nav }) => html`',
+    '  <nav>${nav.map(n => html`<a href=//${n.host}>x</a>`)}</nav><link rel="stylesheet" href="/public/app.css">`;',
+  ].join('\n'));
+  assert.equal(
+    byName(await runDoctorChecks(sameLine, baseOpts()), ASSET_LINK_CHECK).status,
+    'warn',
+    'a // inside a nested template must not blank a live tag later on the line',
+  );
+
+  const apostrophe = tmpDir();
+  write(apostrophe, 'app/layout.ts', [
+    'export default ({ rows }) => html`',
+    "  <table>${rows.map(r => html`<td>it's ${r}</td>`)}</table>",
+    '  // <link rel="stylesheet" href="/public/dead.css">',
+    '`;',
+  ].join('\n'));
+  assert.equal(
+    byName(await runDoctorChecks(apostrophe, baseOpts()), ASSET_LINK_CHECK).status,
+    'pass',
+    'an unbalanced apostrophe must not desynchronize the scan and resurrect dead markup',
+  );
+});

@@ -1139,63 +1139,44 @@ async function readAppBasePath(appDir) {
 }
 
 /**
- * Blank commented-out regions to spaces so dead markup is never read as live,
- * LENGTH-PRESERVING (newlines kept) so reported line numbers still point at the
- * real source.
+ * Whether the `<link>` tag at `idx` is commented out.
  *
- * A quote-aware WALK rather than a regex, because the two comment families live
- * in opposite contexts and a flat regex cannot tell them apart. The `<link>`
- * tags sit inside a template literal, so an HTML comment must be blanked INSIDE
- * a string, while a JS `//` or block comment is only a comment OUTSIDE one. A
- * plain `(?<!:)//` matcher gets that second half wrong in the way that matters
- * most here: it fires on a protocol-relative `href="//cdn/x.css"` and blanks the
- * rest of the line, so a layout mixing a CDN sheet with a local one, the exact
- * shape this check targets, goes silently inert.
+ * Deliberately STATELESS and local, after two attempts at lexing the file both
+ * shipped bugs. A flat `//` regex blanked the rest of any line holding a
+ * protocol-relative url. Replacing it with a quote-tracking walk then broke on
+ * the framework's most common idiom, a nested ``html`...`  `` inside a `${}`
+ * hole: one `quote` char cannot model nesting, so the inner backtick read as
+ * closing the outer template and inverted string/code polarity for everything
+ * after it. An unbalanced apostrophe in nested template TEXT (`it's`) then
+ * desynchronized the rest of the file.
  *
- * Backtick, single and double quotes all count as string context, so a `//`
- * inside a `${}` hole is not treated as a comment. That fails toward scanning
- * rather than toward blanking, which costs nothing but a redundant look.
+ * The check does not actually need to lex JavaScript. It needs one answer: is
+ * this tag commented out. Two local tests give it with no cross-line state, so
+ * there is nothing to desynchronize:
+ *
+ *   - An HTML comment is unambiguous (`<!--` is not valid JS and cannot nest),
+ *     so scan backwards: the tag is inside one when the nearest preceding
+ *     `<!--` is closer than the nearest preceding `-->`.
+ *   - A JS comment is judged from the tag's OWN line prefix. A commented-out
+ *     tag has its marker leading the line (`//`, `/*`, or a `*` continuation),
+ *     which is how commenting one out is actually written and formatted. A
+ *     `//` sitting inside an href later in the line cannot match, because the
+ *     line does not START with it.
+ *
+ * The residual gap is a tag commented out mid-line after real code, which stays
+ * reported. That is rare, and it fails toward reporting rather than toward the
+ * silent inertness both lexers produced.
  *
  * @param {string} src
- * @returns {string}
+ * @param {number} idx  index of the tag's `<`
+ * @returns {boolean}
  */
-function blankComments(src) {
-  const blank = (t) => t.replace(/[^\n]/g, ' ');
-  let out = '';
-  let i = 0;
-  /** @type {string} */
-  let quote = '';
-  while (i < src.length) {
-    // An HTML comment is blanked in ANY context: it lives in the template.
-    if (src.startsWith('<!--', i)) {
-      const end = src.indexOf('-->', i + 4);
-      const stop = end === -1 ? src.length : end + 3;
-      out += blank(src.slice(i, stop));
-      i = stop;
-      continue;
-    }
-    const ch = src[i];
-    if (quote) {
-      if (ch === '\\') { out += src.slice(i, i + 2); i += 2; continue; }
-      if (ch === quote) quote = '';
-      out += ch; i++; continue;
-    }
-    if (ch === '"' || ch === "'" || ch === '`') { quote = ch; out += ch; i++; continue; }
-    if (ch === '/' && src[i + 1] === '/') {
-      const nl = src.indexOf('\n', i);
-      const stop = nl === -1 ? src.length : nl;
-      out += blank(src.slice(i, stop));
-      i = stop; continue;
-    }
-    if (ch === '/' && src[i + 1] === '*') {
-      const end = src.indexOf('*/', i + 2);
-      const stop = end === -1 ? src.length : end + 2;
-      out += blank(src.slice(i, stop));
-      i = stop; continue;
-    }
-    out += ch; i++;
-  }
-  return out;
+function isCommentedOut(src, idx) {
+  const before = src.slice(0, idx);
+  if (before.lastIndexOf('<!--') > before.lastIndexOf('-->')) return true;
+  const lineStart = before.lastIndexOf('\n') + 1;
+  const prefix = before.slice(lineStart).trim();
+  return prefix.startsWith('//') || prefix.startsWith('/*') || prefix.startsWith('*');
 }
 
 /**
@@ -1278,13 +1259,13 @@ async function checkUnmarkedAssetLinks(appDir) {
     // scanned, or the scanner's own case-insensitivity is unreachable exactly
     // where it is needed.
     if (!/<link/i.test(src)) continue;
-    // A commented-out tag emits nothing, so advising on it is advice about
-    // dead markup.
-    const scan = blankComments(src);
     LINK_TAG_RE.lastIndex = 0;
-    for (const m of scan.matchAll(LINK_TAG_RE)) {
+    for (const m of src.matchAll(LINK_TAG_RE)) {
       const href = unmarkedStylesheetHref(m[0], basePath);
       if (!href) continue;
+      // A commented-out tag emits nothing, so advising on it is advice about
+      // dead markup.
+      if (isCommentedOut(src, /** @type {number} */ (m.index))) continue;
       // 1-indexed line of the match, for a jump-to reference.
       const line = src.slice(0, m.index).split('\n').length;
       findings.push({ file, line, href });
