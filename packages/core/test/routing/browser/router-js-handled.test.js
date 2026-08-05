@@ -143,10 +143,18 @@ suite('Client router: JS-handled links/forms are not hijacked (#150, #153)', () 
       const settled = awaitNavigation();
       container.querySelector('a').click();
       await settled;
-      // Assert the degradation channel FIRST. `fetched` alone cannot tell a
+      // Assert the degradation channel FIRST: `fetched` alone cannot tell a
       // committed soft swap from a degradation that fetched and then reloaded,
-      // and when a reload does follow, this cause slug is the only thing that
-      // reaches the log before the session dies.
+      // so without this the degraded outcome PASSES.
+      //
+      // This message only reaches the log for a degradation whose `willReload`
+      // is false. A reloading one assigns `location.href` in the same task as
+      // the dispatch, nothing can cancel a programmatic assignment, and
+      // web-test-runner discards the page's buffered console output once the
+      // navigation interrupts the session, so neither this assertion nor a
+      // synchronous `console.error` from the listener survives (both were
+      // measured). Preventing the reload is the only real answer, which is why
+      // teardown below waits for a settle instead of a bare macrotask.
       assert.equal(fallbacks.length, 0,
         `router must SOFT-navigate a plain link, but it degraded (cause: ${causeOf(fallbacks)})`);
       assert.ok(fetched.some((u) => u.includes('/plain-link-target')),
