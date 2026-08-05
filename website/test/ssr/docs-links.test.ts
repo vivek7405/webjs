@@ -174,22 +174,22 @@ test('no two doc pages declare the same metadata title', async () => {
 });
 
 test('a doc page h1 matches its sidebar label', async () => {
-  // One of the pair also disagreed with its own nav entry, and only one.
-  // Both rendered <h1>Authentication</h1>. /docs/authentication was labelled
+  // Only one of the pair ever disagreed with its own nav entry. Both
+  // rendered <h1>Authentication</h1>. /docs/authentication was labelled
   // 'Authentication', so it agreed with itself. /docs/auth was labelled
   // 'Auth (Providers)' and rendered a heading byte-identical to its SIBLING's
-  // label, so a reader who clicked one nav entry landed on a heading that
-  // named the other page. That is what this pin is for.
+  // label, so clicking one nav entry landed the reader on a heading naming
+  // the other page. Both slugs are pinned rather than just /docs/auth because
+  // the collision was between one page's h1 and the OTHER's label, so pinning
+  // half of it would leave the other half free to drift back into it.
   //
-  // Scoped to these two slugs rather than every page, and NOT because the
-  // rest diverge. 38 of the 43 doc entries are already byte-equal. It is
-  // scoped because 4 diverge deliberately (Introduction over a 'Getting
-  // Started' h1, 'Runtime (Node & Bun)' over 'Runtime', 'Task (Async Data)'
-  // over 'Task Controller', 'Editor Setup (Neovim, VS Code)' over 'Editor
-  // Setup for VS Code & Neovim'), a 5th (conventions) reads the same but
-  // escapes its ampersand in the h1 so it is not byte-equal, and the other
-  // 41 have never been audited against this pin. Widening the test would red
-  // on all five, every one of which is correct as it stands.
+  // Scoped to these two rather than every page, and NOT because the rest
+  // diverge. Most doc entries already read the same in both places. It is
+  // scoped because five of the 41 unpinned pages would fail a byte-equal
+  // check: getting-started, runtime, task and editor-setup deliberately use
+  // a label that differs from their heading, and conventions reads the same
+  // but escapes its ampersand in the h1, so it compares unequal. All five
+  // are correct as they stand, so widening this test reds on working pages.
   const layout = await readFile(resolve(DOCS_ROOT, 'layout.ts'), 'utf8');
   const labelFor = (href: string) => {
     const m = layout.match(new RegExp(`href:\\s*'${href}',\\s*label:\\s*'([^']+)'`));

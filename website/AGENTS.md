@@ -39,40 +39,20 @@ website/
                        it here from docs.webjs.dev). layout.ts holds the nav
                        tree + docs-scoped metadata; the shell itself is shared,
                        see lib/ui/docs-shell.ts. Nav labels and section titles
-                       are Title Case, the convention the Next.js and Rails
-                       docs follow, rather than Tailwind's sentence case. A
-                       code identifier keeps its own casing inside a label
-                       (createAuth, @webjsdev/ui), which is what every
-                       comparable docs site does. That rule covers the whole
-                       sidebar and is enforced by the test "every docs
-                       sidebar label and section title is Title Case" in
-                       test/ssr/docs-links.test.ts.
-                       Casing is the only thing pinned sidebar-wide. A nav
-                       label usually reads exactly as the page's own h1, and
-                       38 of the 43 doc entries match it byte for byte, but
-                       that is the norm, not a rule. Five diverge, four of
-                       them deliberately: a label may be SHORTER than the
-                       heading (Introduction against a "Getting Started"
-                       h1), LONGER (Runtime (Node & Bun) against "Runtime",
-                       Task (Async Data) against "Task Controller"), or
-                       reworded (Editor Setup (Neovim, VS Code) against
-                       "Editor Setup for VS Code & Neovim"). The fifth,
-                       conventions, READS the same but is not byte-equal,
-                       because its h1 escapes the ampersand as an HTML
-                       entity where the label carries the raw character.
-                       Do not "fix" any of the five.
-                       Only the two auth slugs are PINNED byte-equal, by the
-                       test "a doc page h1 matches its sidebar label". The
-                       pin exists because /docs/auth once rendered an h1
-                       naming its SIBLING's label rather than its own, so a
-                       reader following the nav landed on a heading that
-                       belonged to the other page (#1103). It is scoped to
-                       those two because the other 41 have never been
-                       audited against byte-equality and 5 would fail it
-                       today. Do NOT generalise it to other pages.
-                       The /ui sidebar is exempt from all of the above. Its
-                       labels are component names from the live registry, so
-                       they are identifiers by construction.
+                       are Title Case (the Next.js and Rails convention, not
+                       Tailwind's sentence case), and a code identifier keeps
+                       its own casing inside a label (createAuth,
+                       @webjsdev/ui). Casing is the only thing pinned
+                       sidebar-wide: a nav label NEED NOT match the page's
+                       own h1, several deliberately do not, and those are
+                       correct as they stand. The one exception is the
+                       /docs/auth and /docs/authentication pair, held
+                       byte-equal after their headings once collided (#1103).
+                       Do NOT generalise that pin to other pages. The /ui
+                       sidebar is exempt from all of the above, since its
+                       labels are component names from the live registry.
+                       Both rules are enforced in test/ssr/docs-links.test.ts,
+                       which carries the specifics and the current counts.
     ui/                /ui, the @webjsdev/ui component gallery (#1099 moved it
                        here from ui.webjs.dev). page.ts is the introduction,
                        [name]/page.ts one page per component, layout.ts the
