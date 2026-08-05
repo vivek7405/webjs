@@ -377,11 +377,15 @@ class TodoList extends WebComponent({
 }) {
   private optimisticTodos = optimistic(this, {
     source: () => this.todos,
-    update: (state, title: string) => [
+    // KEEP THIS REDUCER PURE. `.value` re-folds every queued update on EVERY
+    // read, so a `crypto.randomUUID()` here would mint a NEW id per render and
+    // a keyed list would tear the pending row down on each update. Mint the
+    // temp id in the handler and carry it in the payload.
+    update: (state, add: { tempId: string; title: string }) => [
       ...state,
-      // No cast needed: `Todo['id']` is a string (a uuid primary key). Against
-      // an auto-increment integer id, model the temp row instead of casting.
-      { id: crypto.randomUUID(), title, completed: false, createdAt: new Date(), pending: true },
+      // `createdAt` is rebuilt per read too, tolerable only because nothing
+      // keys on it. Put it in the payload as well if anything does.
+      { id: add.tempId, title: add.title, completed: false, createdAt: new Date(), pending: true },
     ],
   });
 
@@ -391,8 +395,12 @@ class TodoList extends WebComponent({
     if (!title) return;
     (e.target as HTMLFormElement).reset();
 
+    // Minted ONCE here, not in the reducer. No cast needed: `Todo['id']` is a
+    // string (a uuid primary key). Against an auto-increment integer id, model
+    // the temp row instead of casting.
+    const tempId = crypto.randomUUID();
     const promise = createTodo({ title });
-    this.optimisticTodos.add(title, promise);
+    this.optimisticTodos.add({ tempId, title }, promise);
 
     const result = await promise;
     if (result.success && result.data) {
@@ -413,7 +421,9 @@ class TodoList extends WebComponent({
 TodoList.register('todo-list');
 ```
 
-`.add(payload, promise)` auto-releases when the promise settles (resolve or reject). No try-catch, no manual rollback, no temp-ID bookkeeping.
+`.add(payload, promise)` auto-releases when the promise settles (resolve or reject). No try-catch, no manual rollback, no reconciling a temp id against the real one.
+
+**Keep `update` pure.** `.value` re-folds the whole queue on every read, so the reducer runs again on each render rather than once per `.add()`, and anything it mints is minted per render. Mint a temp id in the handler and pass it in the payload, as above. A `crypto.randomUUID()` inside the reducer hands the pending row a fresh id every read, which breaks `repeat()` keying and anything else treating that id as stable.
 
 ### Simple flips: imperative API
 
@@ -483,7 +493,7 @@ webjs test   [--server] [--browser] [--watch]
 webjs check  [--rules] [--json]    # correctness validator (report-only, no autofix); --json for an agent loop
 webjs routes [--json] [--table] [--no-headers]   # print the route table (path / owner file / methods, #975). Default tree; --json is byte-identical to the MCP list_routes tool; --no-headers drops the --table header for piping
 webjs mcp                          # read-only MCP: routes, actions (RPC hashes), components, check, ui kit
-webjs doctor [--json] [--strict]   # project-health checklist (incl. a framework-resolve check that warns when @webjsdev/core can't be resolved from the app dir, the fresh-worktree-without-node_modules trap #954; a page/layout elision advisory); non-zero exit on a hard fail. --json emits `{ results, summary }` (results is the DoctorResult[], each carrying a stable code); --strict also fails the exit on warnings (#975)
+webjs doctor [--json] [--strict]   # project-health checklist (incl. a framework-resolve check that warns when @webjsdev/core can't be resolved from the app dir, the fresh-worktree-without-node_modules trap #954; a page/layout elision advisory; a warning when a route module writes a `<link rel="stylesheet">` without `asset()`, #1095); non-zero exit on a hard fail. --json emits `{ results, summary }` (results is the DoctorResult[], each carrying a stable code); --strict also fails the exit on warnings (#975)
 webjs types                        # generate .webjs/routes.d.ts (typed Route union + per-route params, #258)
 webjs version                      # print the installed @webjsdev/cli version (also: webjs --version / -v, #975)
 webjs help   [command]             # full usage banner, or per-command usage + Options + Examples (e.g. webjs help routes, #975). Flag forms: webjs --help / -h (banner), webjs <command> --help / -h (that command). typecheck/db/ui --help forward to their wrapped tool; an unknown topic exits 1

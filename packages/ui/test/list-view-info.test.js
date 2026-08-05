@@ -74,20 +74,25 @@ test('view: prints component source', async () => {
   } finally { globalThis.fetch = origFetch; }
 });
 
-test('info: reports project type + missing config', async () => {
+test('info: reports missing config, and no longer prints a project type', async () => {
   const d = mkdtempSync(join(tmpdir(), 'webjsui-info-'));
   writeFileSync(join(d, 'package.json'), JSON.stringify({ dependencies: { '@webjsdev/server': '*' } }));
   try {
     const output = await captureLog(() =>
       info.parseAsync(['--cwd', d], { from: 'user' }),
     );
-    assert.match(output, /webjs/);
     assert.match(output, /components\.json/);
+    // #1129: the project-type line is gone along with the detection it read.
+    assert.doesNotMatch(output, /Project/);
   } finally { rmSync(d, { recursive: true }); }
 });
 
-test('info: reports config when present', async () => {
+test('info: reports config when present, read from the file not inferred', async () => {
   const d = mkdtempSync(join(tmpdir(), 'webjsui-info-cfg-'));
+  // A Next-shaped dependency set with a components.json that carries its own
+  // paths. Nothing about the host project is inspected any more, so the values
+  // reported are exactly the ones on disk. This is why #1129 needed no
+  // migration: an already-initialised project keeps reading its own file.
   writeFileSync(join(d, 'package.json'), JSON.stringify({ dependencies: { next: '14.0.0' } }));
   writeFileSync(join(d, 'components.json'), JSON.stringify({
     style: 'default',
@@ -98,7 +103,9 @@ test('info: reports config when present', async () => {
     const output = await captureLog(() =>
       info.parseAsync(['--cwd', d], { from: 'user' }),
     );
-    assert.match(output, /next/);
     assert.match(output, /zinc/);
+    assert.match(output, /app\/globals\.css/);
+    assert.match(output, /lib\/utils/);
+    assert.doesNotMatch(output, /next/);
   } finally { rmSync(d, { recursive: true }); }
 });

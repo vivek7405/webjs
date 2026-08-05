@@ -26,7 +26,7 @@ import { parseHTML } from 'linkedom';
 
 let _collect, _plan, _keyOf, _diffEl, _reconcile,
   _addNewHead, _merge, _isNonHtmlPath, navigate,
-  _reactivateScripts, _findAnchorInPath, _activeFrameId, _resolveTargetFrameId, _onPopState,
+  _reactivateScripts, _activateSwappedRange, _findAnchorInPath, _activeFrameId, _resolveTargetFrameId, _onPopState,
   _applySwap, _prefetchCache,
   _snapshotCache, _LIVE_ATTRS, _blurOutgoingFocus,
   _onSubmit, _getSubmitMethod, _getSubmitAction, _buildSubmitFormData,
@@ -84,6 +84,7 @@ before(async () => {
     _mergeHead: _merge,
     _isNonHtmlPath,
     _reactivateScripts,
+    _activateSwappedRange,
     _findAnchorInPath,
     _activeFrameId,
     _resolveTargetFrameId,
@@ -1069,6 +1070,210 @@ test('reactivateScripts: applies meta csp-nonce to re-emitted body scripts', () 
   assert.ok(s, 'script reactivated');
   assert.equal(s.getAttribute('nonce'), 'body-nonce',
     'reactivated body scripts must carry the meta nonce, not the source nonce');
+});
+
+/* ====================================================================
+ * #1102: a TOP-LEVEL script in a swapped range is reactivated too.
+ *
+ * `querySelectorAll` never matches the element it is called on, so a
+ * container that IS a script used to fall straight through. The two swap
+ * tiers hand this function each top-level node of the swapped range in turn,
+ * so a layout emitting its progressive-enhancement script as a SIBLING of the
+ * content never re-ran it after a soft nav.
+ * ==================================================================== */
+
+test('reactivateScripts: re-emits the container itself when it IS a script (#1102)', () => {
+  document.head.innerHTML = '<meta name="csp-nonce" content="page-nonce">';
+  document.body.innerHTML = '<script id="top" nonce="stale-source-nonce">window.x = 1;</script>';
+  const original = document.getElementById('top');
+  const returned = _reactivateScripts(original);
+  const live = document.getElementById('top');
+  assert.notStrictEqual(live, original,
+    'the parsed node carries the already-started flag, so only a fresh clone runs');
+  assert.strictEqual(returned, live,
+    'the live replacement is returned so the caller keeps working on the attached node');
+  assert.equal(live.textContent, 'window.x = 1;', 'the body is re-emitted verbatim');
+  assert.equal(live.getAttribute('nonce'), 'page-nonce',
+    'and it carries the page-load nonce like any other reactivated script');
+});
+
+test('reactivateScripts: a non-script container still walks its descendants (#1102)', () => {
+  // The container-is-a-script branch returns early, so this pins that the
+  // ordinary descendant path is untouched by it.
+  document.head.innerHTML = '<meta name="csp-nonce" content="page-nonce">';
+  document.body.innerHTML = '<div id="wrap"><p>t</p><script id="inner">window.y = 1;</script></div>';
+  const wrap = document.getElementById('wrap');
+  const before = document.getElementById('inner');
+  const returned = _reactivateScripts(wrap);
+  assert.strictEqual(returned, wrap, 'a non-script container is handed back unchanged');
+  assert.notStrictEqual(document.getElementById('inner'), before, 'the descendant script is re-emitted');
+  assert.equal(document.getElementById('inner').getAttribute('nonce'), 'page-nonce');
+});
+
+test('reactivateScripts: data-webjs-permanent does NOT exempt a script (#1102)', () => {
+  // A counterfactual against a fix that looks obviously right and is not.
+  // Exempting a permanent script reads like the natural opt-out, but the
+  // regraft that would preserve it has a both-exist guard, so on the swap that
+  // first mounts a route there is no live node and the inert parsed copy is
+  // what lands. Exempting it there yields a script that runs on a cold load and
+  // never on a soft navigation, which is the bug this issue is about. A
+  // permanent script is also re-emitted by the descendant walk today, so an
+  // exemption would make the answer depend on nesting depth.
+  document.head.innerHTML = '<meta name="csp-nonce" content="page-nonce">';
+  document.body.innerHTML =
+    '<script id="perm" data-webjs-permanent nonce="stale">window.p = 1;</script>';
+  const original = document.getElementById('perm');
+  _reactivateScripts(original);
+  assert.notStrictEqual(document.getElementById('perm'), original,
+    'a permanent script is re-emitted like any other, so it still runs on arrival');
+  assert.equal(document.getElementById('perm').getAttribute('nonce'), 'page-nonce');
+});
+
+test('reactivateScripts: a permanent DESCENDANT script is re-emitted too (#1102)', () => {
+  // The consistency the exemption would have broken: nesting depth must not
+  // change whether a script re-runs.
+  document.head.innerHTML = '<meta name="csp-nonce" content="page-nonce">';
+  document.body.innerHTML =
+    '<div id="w"><script id="pd" data-webjs-permanent nonce="stale">window.q = 1;</script></div>';
+  const before = document.getElementById('pd');
+  _reactivateScripts(document.getElementById('w'));
+  assert.notStrictEqual(document.getElementById('pd'), before,
+    'the descendant path re-emits it, exactly as the container path now does');
+});
+
+test('reactivateScripts: a detached script inserts nothing (#1102)', () => {
+  // Reactivation executes a script synchronously, so an EARLIER script in the
+  // range can remove a later one before the walk reaches it, leaving a stale
+  // snapshot entry. `replaceWith` on a parentless node is a spec no-op, which
+  // is what keeps that harmless.
+  document.head.innerHTML = '';
+  document.body.innerHTML = '';
+  const orphan = document.createElement('script');
+  orphan.textContent = 'window.z = 1;';
+  const returned = _reactivateScripts(orphan);
+  assert.notStrictEqual(returned, orphan, 'still cloned');
+  assert.equal(returned.parentNode, null, 'but nothing is grafted into the document');
+  assert.equal(document.body.querySelector('script'), null, 'the body is untouched');
+});
+
+test('activateSwappedRange: a top-level script does not truncate the walk (#1102)', () => {
+  // The real trap. Reactivating a top-level script DETACHES it, so a live
+  // `nextSibling` walk ends there and every later node in the range is
+  // silently skipped: no script reactivation, no custom-element upgrade.
+  document.head.innerHTML = '<meta name="csp-nonce" content="page-nonce">';
+  document.body.innerHTML =
+    '<!--wj:children:/:/-->' +
+      '<script id="first" nonce="stale">window.a = 1;</script>' +
+      '<p id="mid">between</p>' +
+      '<script id="last" nonce="stale">window.b = 1;</script>' +
+    '<!--/wj:children:/-->';
+  try {
+    const start = document.body.firstChild;
+    const end = document.body.lastChild;
+    const firstBefore = document.getElementById('first');
+    const lastBefore = document.getElementById('last');
+
+    _activateSwappedRange({ start, end });
+
+    assert.notStrictEqual(document.getElementById('first'), firstBefore, 'the first script is re-emitted');
+    assert.notStrictEqual(document.getElementById('last'), lastBefore,
+      'and so is the one AFTER it, which a live-sibling walk would never reach');
+    assert.equal(document.getElementById('first').getAttribute('nonce'), 'page-nonce');
+    assert.equal(document.getElementById('last').getAttribute('nonce'), 'page-nonce');
+    assert.equal(
+      [...document.body.children].map((el) => el.id).join(','),
+      'first,mid,last',
+      'and the range keeps its order, with no duplicated or dropped nodes',
+    );
+  } finally {
+    // Leaving boundary comments in the body poisons the boundary scan for
+    // every later case in this file.
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+  }
+});
+
+/**
+ * Run one applySwap case against an isolated live body / head / location.
+ * `beforeSwap` runs once the live body is mounted, so a case can capture node
+ * identity to compare against afterwards.
+ */
+function swapCase(liveBody, incomingBody, assertAfter, beforeSwap) {
+  const savedBody = globalThis.document.body.innerHTML;
+  const savedHead = globalThis.document.head.innerHTML;
+  const savedLocation = globalThis.location;
+  try {
+    globalThis.document.head.innerHTML = '<meta name="csp-nonce" content="page-nonce">';
+    let assigned = null;
+    globalThis.location = /** @type any */ ({
+      get href() { return 'http://x/current'; },
+      set href(v) { assigned = v; },
+    });
+    globalThis.sessionStorage.clear();
+    globalThis.document.body.innerHTML = liveBody;
+    if (beforeSwap) beforeSwap();
+    const incoming = new globalThis.DOMParser().parseFromString(
+      `<!doctype html><html><head><meta name="csp-nonce" content="request-2"></head><body>${incomingBody}</body></html>`,
+      'text/html');
+    _applySwap(incoming, null, false, 'http://x/next');
+    assert.equal(assigned, null, 'this case must soft-swap, not degrade to a full load');
+    assertAfter();
+  } finally {
+    globalThis.location = savedLocation;
+    globalThis.document.head.innerHTML = savedHead;
+    globalThis.document.body.innerHTML = savedBody;
+  }
+}
+
+test('applySwap (replace tier): a top-level script runs and the rest of the range still processes (#1102)', () => {
+  // The docs-layout shape that surfaced this: an enhancement script emitted as
+  // a SIBLING of the content, so it is a top-level node of the swapped range
+  // rather than a descendant of one. `#late` sits after it and proves the walk
+  // was not truncated when reactivating `#hl` detached it.
+  const live =
+    '<!--wj:children:/:/-->' +
+      '<script id="hl" nonce="page-nonce">window.hl = 1;</script>' +
+      '<!--wj:children:/docs:/docs/a-->' +
+        '<p id="content">a</p>' +
+        '<script id="late" nonce="page-nonce">window.late = 1;</script>' +
+      '<!--/wj:children:/docs-->' +
+    '<!--/wj:children:/-->';
+  const incoming = live
+    .replace('/docs:/docs/a', '/docs:/docs/b')
+    .replace('<p id="content">a</p>', '<p id="content">b</p>')
+    .replaceAll('nonce="page-nonce"', 'nonce="request-2"');
+
+  swapCase(live, incoming, () => {
+    assert.equal(document.getElementById('content').textContent, 'b', 'the range swapped');
+    assert.equal(document.getElementById('hl').getAttribute('nonce'), 'page-nonce',
+      'the top-level script was re-emitted (a merely imported node keeps the response nonce)');
+    assert.equal(document.getElementById('late').getAttribute('nonce'), 'page-nonce',
+      'and so was the script AFTER it, which a live-sibling walk would never reach');
+  });
+});
+
+test('applySwap (morph tier): a keyed top-level script re-runs on every soft nav (#1102)', () => {
+  // A decision, not a side effect. `keyOf` reads `data-key || id`, so the
+  // differ REUSES this node, and the router still re-emits it. That matches
+  // what a descendant script inside a reused container has always done, and it
+  // is what a progressive-enhancement script needs: running once and never
+  // again is the failure being fixed here.
+  const live =
+    '<!--wj:children:/:/-->' +
+      '<script id="hl" nonce="page-nonce">window.hl = 1;</script>' +
+      '<p id="content">a</p>' +
+    '<!--/wj:children:/-->';
+  const incoming = live
+    .replace('<p id="content">a</p>', '<p id="content">b</p>')
+    .replace('nonce="page-nonce"', 'nonce="request-2"');
+
+  let before;
+  swapCase(live, incoming, () => {
+    assert.equal(document.getElementById('content').textContent, 'b', 'the range morphed');
+    assert.notStrictEqual(document.getElementById('hl'), before,
+      'the reused keyed script is replaced by a fresh clone, so it executes again');
+    assert.equal(document.getElementById('hl').getAttribute('nonce'), 'page-nonce');
+  }, () => { before = document.getElementById('hl'); });
 });
 
 /* ====================================================================

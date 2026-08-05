@@ -26,12 +26,12 @@ export default function Styling() {
 }
 
 // app/layout.ts excerpt
-import { html } from '@webjsdev/core';
+import { html, asset } from '@webjsdev/core';
 import type { LayoutProps } from '@webjsdev/core';
 
 export default function RootLayout({ children }: LayoutProps) {
   return html\`
-    &lt;link rel="stylesheet" href="/public/tailwind.css"&gt;
+    &lt;link rel="stylesheet" href=\${asset('/public/tailwind.css')}&gt;
     &lt;style&gt;
       /* Token VALUES: plain CSS custom properties, so they resolve with JS off. */
       :root {

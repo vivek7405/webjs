@@ -2203,8 +2203,15 @@ async function streamTemplate(tr, ctx, controller, formScopeAtStart = 'none') {
           // (and `.formAction` on a button or input) the client assignment
           // writes the source into the DOM, so refusing at SSR keeps a page
           // from rendering clean on the server and throwing on hydration.
-          // Elsewhere, including a custom element, the property reflects
-          // nothing and a function stays legal.
+          // Elsewhere the property reflects nothing and a function stays
+          // legal, which is why the check below is gated on a hyphen-free
+          // tag. A custom element is excluded for a different reason than
+          // "it does not reflect": a prop declared `reflect: true` DOES
+          // reflect there, and used to write the source from its own setter.
+          // #1169 guards that at the setter (a function removes the
+          // attribute; an array carrying one does too, except under an
+          // Object/Array type, where JSON drops it losslessly), so it
+          // needs no commit-site check here.
           //
           // Unlike the buffered machine this drops EVERY prop, including
           // `<webjs-suspense .fallback>`: there is no injectDSD pre-pass on

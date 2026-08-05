@@ -166,8 +166,11 @@ async function writeUiBootstrap(appDir) {
   );
   await writeFile(join(appDir, 'lib', 'utils', 'dom.ts'), domContent);
 
-  // 2) components.json: the same shape `webjsui init` writes for webjs
-  // projects (see packages/ui/src/utils/detect-project.js). The utils alias
+  // 2) components.json: byte for byte what `webjsui init` writes (see the
+  // DEFAULT_ALIASES / DEFAULT_TAILWIND_CSS constants in
+  // packages/ui/src/commands/init.js, which #1129 made the single source of
+  // these values). Keep the two in step: an app that scaffolds and one that
+  // runs `webjs ui init` must end up with the same config. The utils alias
   // is lib/utils/cn so get-config.js's `+ '.ts'` resolves to lib/utils/cn.ts.
   // The theme CSS lives at styles/globals.css, NOT app/globals.css: app/ is
   // routing-only, so a non-routing stylesheet does not belong there.
