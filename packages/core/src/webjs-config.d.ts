@@ -139,8 +139,10 @@ export interface WebjsStartTasks {
 /**
  * A severity a `webjs.doctor.gate` entry may declare, mirroring ESLint's
  * three-level scale. `error` fails the `webjs doctor` exit, `warn` reports
- * without failing, and `off` silences the check entirely (including under
- * `--strict`).
+ * without failing, and `off` silences the check: its finding is not printed and
+ * it cannot fail the exit, including under `--strict`. A silenced check still
+ * appears on the checklist as `[off]` and in the summary's silenced count, and
+ * `--json` still carries its whole result.
  */
 export type WebjsDoctorSeverity = 'off' | 'warn' | 'error';
 

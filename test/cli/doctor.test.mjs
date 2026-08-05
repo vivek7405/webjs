@@ -808,6 +808,21 @@ test('a gated `off` silences a warning even under --strict', () => {
   assert.match(strict.stdout, /0 warning\(s\)/);
   assert.match(strict.stdout, /\d+ silenced/);
 
+  // `off` silences the FINDING too, not just its contribution to the exit.
+  // An app that turned a code off asked not to hear about it, so printing the
+  // message and a Fix line every run would be the noise it just silenced
+  // (ESLint's `off` drops the message as well). The [off] line and the
+  // silenced count keep it from being invisible.
+  const offBlock = strict.stdout.split('\n\n').find((b) => b.includes('UNMARKED_ASSET_LINKS'));
+  assert.ok(offBlock, 'the silenced check is still listed on the checklist');
+  assert.doesNotMatch(offBlock, /Fix:/, 'a silenced check prints no Fix line');
+  assert.doesNotMatch(offBlock, /un-versioned url/, 'a silenced check prints no finding');
+  // A NON-silenced finding still prints both, so the assertion above is about
+  // `off` and not about the renderer having stopped printing findings at all.
+  const warned = runCliArgs(assetLinkFixture(env), []);
+  assert.match(warned.stdout, /un-versioned url/);
+  assert.match(warned.stdout, /Fix: Wrap the path in asset\(\)/);
+
   // The counterfactual: leave the asset-link warn ungated and --strict fails on
   // it, so `off` is what silenced it and not the other two entries.
   const stillWarns = runCliArgs(assetLinkFixture(env), ['--strict']);

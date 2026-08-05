@@ -223,7 +223,7 @@ An over-limit body responds `413` without buffering the whole payload.
 } }
 ```
 
-Three levels, the same scale ESLint uses: `error` fails the exit, `warn` reports without failing, `off` silences the check. A code with no entry keeps its default (`error` for a hard toolchain failure, `warn` otherwise), so an app that declares nothing behaves exactly as before. Read the codes off `webjs doctor --json`, where every result carries its `code` and its effective `severity`.
+Three levels, the same scale ESLint uses: `error` fails the exit, `warn` reports without failing, `off` silences the check, meaning its finding is not printed and it cannot fail the exit (it still appears on the checklist as `[off]` and in the summary's silenced count, so a silenced check is never invisible, and `--json` still carries the whole result). A code with no entry keeps its default (`error` for a hard toolchain failure, `warn` otherwise), so an app that declares nothing behaves exactly as before. Read the codes off `webjs doctor --json`, where every result carries its `code` and its effective `severity`.
 
 Two guarantees worth knowing. A result that could not check (a network or toolchain outage) is capped at `warn` and can never be escalated, so a jspm or npm outage cannot red your CI. And an unknown code or severity exits 1 naming the offender rather than being ignored, so a typo cannot silently un-gate the build. Wire it up with one workflow step, `npm run doctor`, and change what is fatal in `package.json` rather than in the workflow.
 

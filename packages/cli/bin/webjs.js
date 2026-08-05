@@ -775,8 +775,16 @@ async function main() {
         const dflt = r.status === 'fail' ? 'error' : 'warn';
         const gated = r.status !== 'pass' && r.severity !== dflt ? `, gated: ${r.severity}` : '';
         console.log(`  ${marker[r.severity]} ${r.name} (${r.code}${gated})`);
-        console.log(`    ${r.message}`);
-        if (r.fix && r.status !== 'pass') console.log(`    Fix: ${r.fix}`);
+        // A silenced check reports NOTHING beyond its name: an app that gated a
+        // code `off` asked not to hear about it, and printing the finding plus
+        // a Fix line every run is exactly the noise it turned off (ESLint's
+        // `off` drops the message too). The checklist still lists it as [off]
+        // and the summary still counts it, so a silenced check is never
+        // invisible, and `--json` keeps the whole result for tooling.
+        if (r.severity !== 'off') {
+          console.log(`    ${r.message}`);
+          if (r.fix && r.status !== 'pass') console.log(`    Fix: ${r.fix}`);
+        }
         console.log();
       }
       console.log(`  ${pass} passed, ${warn} warning(s), ${fail} failed${off > 0 ? `, ${off} silenced` : ''}.`);
