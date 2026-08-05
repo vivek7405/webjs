@@ -151,6 +151,68 @@ describe('reflect:true never stringifies a function (#1169)', () => {
     assert.ok(!out.includes('undefined'), `wrote a literal "undefined": ${out}`);
   });
 
+  test('an ARRAY carrying a function leaks the same way, so the guard cannot be a bare typeof', async () => {
+    // `String([fn])` is `Array.prototype.join`, which runs `String()` on each
+    // element, so `[serverAction]` writes the same source `serverAction` does.
+    // A `typeof value === 'function'` guard misses this entirely and the value
+    // falls through to the `String(value)` branch. The form-action guard
+    // already carries the recursive predicate for exactly this reason, so the
+    // reflect path reuses it rather than re-deriving a weaker one.
+    class Wrapped extends WebComponent({
+      typed: prop(String, { reflect: true }),
+      untyped: prop({ reflect: true }),
+      nested: prop(String, { reflect: true }),
+    }) {
+      constructor() {
+        super();
+        this.typed = [secretAction];
+        this.untyped = [secretAction];
+        this.nested = [['x', [secretAction]]];
+      }
+      render() {
+        return html`<span>x</span>`;
+      }
+    }
+    Wrapped.register('reflect-fn-wrapped');
+
+    const { out } = await renderCapturingWarnings(html`<reflect-fn-wrapped></reflect-fn-wrapped>`);
+
+    assert.ok(
+      !out.includes('REFLECT_LEAK_MARKER'),
+      `an array-carried function reached the SSR output: ${out}`
+    );
+    for (const attr of ['typed=', 'untyped=', 'nested=']) {
+      assert.ok(!out.includes(attr), `${attr} survived: ${out}`);
+    }
+  });
+
+  test('a self-referential array does not hang the guard', async () => {
+    // `Array.prototype.join` has a cycle guard, so a self-referential array
+    // stringifies rather than recursing forever. The predicate has to match
+    // that: refusing to leak must not become a new way to blow the stack on a
+    // render that used to succeed.
+    const cyclic = ['a'];
+    cyclic.push(cyclic);
+
+    class Cyclic extends WebComponent({
+      items: prop(String, { reflect: true }),
+    }) {
+      constructor() {
+        super();
+        this.items = cyclic;
+      }
+      render() {
+        return html`<span>x</span>`;
+      }
+    }
+    Cyclic.register('reflect-fn-cyclic');
+
+    // Reaching this line at all is most of the assertion: a runaway walk would
+    // throw a RangeError out of the render instead.
+    const { out } = await renderCapturingWarnings(html`<reflect-fn-cyclic></reflect-fn-cyclic>`);
+    assert.ok(out.includes('reflect-fn-cyclic'), out);
+  });
+
   test('a normal string value still reflects byte-identically', async () => {
     class Plain extends WebComponent({
       action: prop(String, { reflect: true }),

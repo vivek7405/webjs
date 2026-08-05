@@ -1,5 +1,6 @@
 import { render as clientRender } from './render-client.js';
 import { setActiveActionSignal } from './action-abort-client.js';
+import { carriesFunction } from './form-action.js';
 import { isCSS, adoptStyles } from './css.js';
 import { register, tagOf } from './registry.js';
 import { parse as deserializeProp } from './serialize.js';
@@ -148,11 +149,11 @@ function warnFunctionReflection(host, propName, attrName) {
   if (typeof console === 'undefined' || !console.warn) return;
   const tag = tagOf(/** @type any */ (host.constructor)) || host.tagName?.toLowerCase() || 'unknown';
   console.warn(
-    `[webjs] reflect:true property "${propName}" on <${tag}> holds a function, `
-    + `which has no HTML attribute representation. Removing "${attrName}" instead `
-    + `of stringifying it (a stringified function writes its source into the page, `
-    + `so a server action's body would ship to the browser). Pass a string, or `
-    + `drop reflect on this property.`
+    `[webjs] reflect:true property "${propName}" on <${tag}> holds a function `
+    + `(or an array carrying one), which has no HTML attribute representation. `
+    + `Removing "${attrName}" instead of stringifying it (a stringified function `
+    + `writes its source into the page, so a server action's body would ship to `
+    + `the browser). Pass a string, or drop reflect on this property.`
   );
 }
 
@@ -723,13 +724,19 @@ class WebComponentBase extends Base {
         const serialized = decl.converter.toAttribute(value, decl.type);
         if (serialized == null) this.removeAttribute(attrName);
         else this.setAttribute(attrName, serialized);
-      } else if (typeof value === 'function') {
+      } else if (carriesFunction(value)) {
         // #1169: a function has no meaningful HTML attribute value, and the
         // built-in serializations below produce something both useless and
         // dangerous. `String(fn)` is the function's SOURCE, so a reflected
         // `'use server'` action would ship its whole body, closure secrets
         // included, to every visitor; `JSON.stringify(fn)` is `undefined`,
         // which `setAttribute` writes as the literal string "undefined".
+        //
+        // The test is `carriesFunction`, the same recursive predicate the
+        // form-action guard uses, NOT a bare `typeof`. `String([fn])` joins
+        // through `String()` on each element, so `[serverAction]` leaks
+        // exactly as `serverAction` does, and a bare typeof check would let
+        // the array form straight through to the fall-through below.
         // Treat it like `null` and remove the attribute, matching what the
         // `.prop=${fn}` SSR binding already does for an unserializable value.
         // Placed AFTER the converter branch on purpose: a custom

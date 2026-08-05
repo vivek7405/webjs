@@ -563,7 +563,7 @@ export function assertNotFunctionActionAttr(val, attrName, tag) {
  * author who supplies one still owns what gets written, a stringified
  * function included. That is deliberate (supplying a converter is taking
  * responsibility for the serialization), but it means the guarantee here
- * covers the converter-less case, which is every prop that has not opted out.
+ * covers the converter-less case.
  *
  * `<form .action=${fn}>` is refused rather than treated as the supported
  * binding: the supported one is the plain `action=${fn}` attribute, and a
@@ -1211,7 +1211,7 @@ function reflectsAsFormAction(propName, tag) {
  * @param {Set<unknown>} [seen]
  * @returns {boolean}
  */
-function carriesFunction(val, seen) {
+export function carriesFunction(val, seen) {
   if (typeof val === 'function') return true;
   if (!Array.isArray(val)) return false;
   const visited = seen || new Set();
