@@ -247,6 +247,17 @@ runs, and `onClick` returns on that flag, so every guarded router test
 would pass while testing nothing. Full rule in
 [`references/testing.md`](../../.agents/skills/webjs/references/testing.md).
 
+The guard also covers the SECOND channel, the router's own hard navigation on
+a degradation. `preventDefault` cannot cancel a script assignment, and
+`location.href` is non-configurable on all three engines so its setter cannot
+be redefined, so `router-client.js` routes every hard navigation through one
+`hardNavigate` indirection with a `setHardNavigate(fn)` seam. The guard
+installs an override that records the attempt into `hardNavigations` instead of
+performing it, so a degradation fails one test with its `cause` slug rather
+than aborting the whole session. `setHardNavigate` is TEST-ONLY and is
+deliberately not re-exported from `index.js` / `index-browser.js`; tests reach
+it through the same direct `src/router-client.js` import they already use.
+
 Cross-package tests that exercise core through the SSR pipeline
 or scaffolds live at the repo root in `test/ssr/`,
 `test/scaffolds/`, etc. See [`references/testing.md`](../../.agents/skills/webjs/references/testing.md).

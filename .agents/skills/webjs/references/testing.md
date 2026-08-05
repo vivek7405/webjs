@@ -36,7 +36,7 @@ Cancel a form on its `submit` event, not on the submit control's `click`. The fo
 
 Resolve the anchor from `e.composedPath()`, not `e.target.closest('a[href]')`. The listener is on `window`, so a click inside a shadow root (a `static shadow = true` component) arrives retargeted to the host, and `closest()` walks only light-tree ancestors and never finds the link, which fails open exactly where the router itself handles the case. A pure-fragment `href="#x"` link needs no guard at all, since it never navigates the page away.
 
-One thing this cannot cover: the router assigns `location.href` when it degrades a soft navigation, and `preventDefault` does not cancel a script assignment. Listen for `webjs:navigation-fallback` on `document` and assert none fired; its `cause` is the diagnosis.
+There is a SECOND channel a click guard cannot reach: the router assigns `location.href` when it degrades a soft navigation, and `preventDefault` does not cancel a script assignment. Do not try to intercept `location.href` itself, which is non-configurable on Chromium, Firefox, and WebKit alike, so its setter cannot be redefined on any of them. Listen for `webjs:navigation-fallback` on `document` and assert none fired; its `cause` is the diagnosis.
 
 It is a few lines, so write it in your suite's setup and detach it in teardown:
 

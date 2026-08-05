@@ -231,7 +231,7 @@ const onSubmit = (e) =&gt; e.preventDefault();   // forms cancel on submit, not 
 window.addEventListener('click', onClick);    // window BUBBLE phase, never capture
 window.addEventListener('submit', onSubmit);</code-block>
     <p>Register on <code>window</code> in the <strong>bubble</strong> phase. That is the last step of the propagation path, so it runs after the router's own listeners, and <code>preventDefault()</code> still cancels the default action. Never use the capture phase: it sets <code>defaultPrevented</code> before the router sees the event, and the router bows out on that flag, so every such test would pass while testing nothing. A pure-fragment <code>href="#x"</code> link needs no guard, since it never navigates the page away.</p>
-    <p>One case this cannot cover: the router assigns <code>location.href</code> when it degrades a soft navigation, and <code>preventDefault</code> does not cancel a script assignment. Listen for <code>webjs:navigation-fallback</code> on <code>document</code> and assert none fired; its <code>cause</code> names the reason.</p>
+    <p>There is a second channel a click guard cannot reach: the router assigns <code>location.href</code> when it degrades a soft navigation, and <code>preventDefault</code> does not cancel a script assignment. Do not try to intercept <code>location.href</code> itself, which is non-configurable on Chromium, Firefox, and WebKit alike, so its setter cannot be redefined on any of them. Listen for <code>webjs:navigation-fallback</code> on <code>document</code> and assert none fired; its <code>cause</code> names the reason.</p>
 
     <h2>Convention Validation</h2>
     <p><code>webjs check</code> validates your app for correctness issues:</p>
