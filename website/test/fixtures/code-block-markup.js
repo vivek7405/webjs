@@ -12,7 +12,23 @@
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /**
- * The exact bytes `renderToString` emits for a `<code-block>`.
+ * The code strings the browser suite mounts. They live here so the SSR drift
+ * guard pins the SAME inputs rather than easier ones: the suite's samples
+ * carry apostrophes, double quotes, and newlines, and a guard that compares
+ * only `const x = 1;` would never notice the renderer changing how it treats
+ * any of those in projected text.
+ */
+export const BROWSER_SAMPLES = {
+  multiline: "const greeting = 'hi';\n// a comment\nexport function run() {}",
+  angleBrackets: 'const el = <my-tag attr="1">;',
+};
+
+/**
+ * The bytes `renderToString` emits for a `<code-block>`, for the shapes the
+ * browser suite mounts: plain children, `label`, and `pre-class`, all as
+ * STATIC attributes. It is not a general reimplementation of the renderer. An
+ * attribute bound through a template hole escapes differently (core
+ * double-escapes an `&` there), so do not reach for this to model one.
  *
  * The markers matter more than they look. `@webjsdev/core` selects its
  * light-DOM adoption branch on the `webjs-hydrate` marker comment, and its

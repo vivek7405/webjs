@@ -17,7 +17,7 @@ import { html } from '@webjsdev/core';
 import { renderToString } from '@webjsdev/core/server';
 import '#components/code-block.ts';
 import Routing from '#app/docs/routing/page.ts';
-import { ssrMarkup } from '#test/fixtures/code-block-markup.js';
+import { ssrMarkup, BROWSER_SAMPLES } from '#test/fixtures/code-block-markup.js';
 
 /** The text inside the block's `<pre>`, tags removed, entities decoded. */
 function preText(rendered: string) {
@@ -90,11 +90,17 @@ test('a real docs page serves its samples as readable text', async () => {
  * does.
  */
 test('the browser suite mounts what the server actually emits', async () => {
+  // The exact strings the browser suite mounts, not easier ones. Its samples
+  // carry apostrophes, double quotes, and newlines, and those are precisely
+  // the character classes a comparison against `const x = 1;` would never
+  // reach: the renderer could change how it treats any of them in projected
+  // text and this guard would stay green while the fixture went stale.
   const cases = [
-    { code: "const x = 1;", attrs: '' },
-    { code: 'x', attrs: ' label="root layout"' },
-    { code: 'x', attrs: ' pre-class="max-h-120 overflow-y-auto"' },
-    { code: 'html`<my-tag>&</my-tag>`', attrs: '' },
+    { code: BROWSER_SAMPLES.multiline, attrs: '' },
+    { code: BROWSER_SAMPLES.angleBrackets, attrs: '' },
+    { code: BROWSER_SAMPLES.multiline, attrs: ' label="root layout"' },
+    { code: BROWSER_SAMPLES.multiline, attrs: ' pre-class="max-h-120 overflow-y-auto"' },
+    { code: 'a & b', attrs: '' },
   ];
   for (const { code, attrs } of cases) {
     const label = attrs.match(/label="([^"]*)"/)?.[1];

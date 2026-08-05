@@ -14,7 +14,7 @@
  * cannot double the content.
  */
 import '#components/code-block.ts';
-import { ssrMarkup, authoredMarkup } from '#test/fixtures/code-block-markup.js';
+import { ssrMarkup, authoredMarkup, BROWSER_SAMPLES } from '#test/fixtures/code-block-markup.js';
 
 const assert = {
   ok: (v, msg) => { if (!v) throw new Error(msg || `Expected truthy, got ${v}`); },
@@ -23,7 +23,10 @@ const assert = {
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
-const SAMPLE = "const greeting = 'hi';\n// a comment\nexport function run() {}";
+// Shared with the SSR drift guard, which asserts the fixture matches real
+// server output for these exact strings. Defining them here instead would let
+// the two drift apart, which is the whole failure the guard exists to catch.
+const SAMPLE = BROWSER_SAMPLES.multiline;
 
 async function mount(markup) {
   const holder = document.createElement('div');
@@ -128,7 +131,7 @@ suite('code-block', () => {
   });
 
   test('escapes rather than parses angle brackets in a sample', async () => {
-    const code = 'const el = <my-tag attr="1">;';
+    const code = BROWSER_SAMPLES.angleBrackets;
     const { host } = await track(ssrMarkup(code));
     assert.equal(preOf(host).textContent, code, 'the sample reads back verbatim');
     assert.equal(host.querySelector('my-tag'), null, 'no element was created from the sample text');
