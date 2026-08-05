@@ -1704,9 +1704,9 @@ function nodesToFrag(nodes) {
 /**
  * Remove a template instance's whole range, its bookend markers INCLUDED.
  *
- * Every caller discards the instance right after (the map entry or slot that
- * held it is dropped, and any replacement gets fresh markers from
- * `buildDetached`), so this is a REMOVE and never lit's clear-and-reuse. A
+ * Every caller discards the instance right after: the map entry or slot that
+ * held it is dropped, and a replacement, where there is one, is built with
+ * markers of its own. So this is a REMOVE, never lit's clear-and-reuse. A
  * caller that wants to keep the bookends and render into them again needs its
  * OWN function, because the two want opposite answers for the end marker.
  *

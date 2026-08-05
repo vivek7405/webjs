@@ -13,9 +13,10 @@
  * comment nodes directly, and assert BOTH halves of the accounting: the pair
  * count is balanced (`s === e`), and it is back to the baseline the first
  * render established. Each also asserts the rendered output, so none of them
- * can pass by rendering nothing at all. One case per distinct caller, since
- * they reach `removeBetween` through different paths and a repair on one
- * branch says nothing about the others.
+ * can pass by rendering nothing at all. They cover every `removeBetween`
+ * caller, since each reaches it through a different path and a repair on one
+ * branch says nothing about the others (the two array cases share a caller,
+ * one shrinking the list and one emptying it).
  *
  * The LAST case is not one of those and does not count markers at all. It
  * pins the guard, which is a separate decision from the leak, and it is green
@@ -229,15 +230,18 @@ test('a marker moved under a foreign parent is refused, not reached into', () =>
   // that has been moved somewhere else is not this region's to remove, and
   // removing it would rip a node out of a tree the renderer does not own.
   //
-  // Two things this case is NOT claiming. The walk still runs off the end of
-  // the child list when the range is desynced like this, taking following
-  // siblings with it. That overrun is a property of the walk both before and
-  // after this fix, described on `reconcileRepeat`'s catch as the reason a
-  // half-removed row is never re-reached, and it is out of scope here: the
-  // guard's job starts after the walk, not during it. And linkedom does not
-  // necessarily throw for a `removeChild` of a foreign node, so the survival
-  // assertion, not an absence of throw, is the arm that holds in every
-  // environment.
+  // What this case is NOT claiming: that the walk copes with a desynced
+  // range. It does not. It still runs off the end of the child list here,
+  // taking following siblings with it, before this fix and after it.
+  // `reconcileRepeat`'s catch describes that same overrun, as the reason it
+  // rejects an alternative that would leave a start marker stranded past its
+  // end. Out of scope either way, because the guard's job starts after the
+  // walk, not during it.
+  //
+  // Both assertions below discriminate. linkedom throws for a `removeChild`
+  // of a node under a different parent, exactly as a browser does, so an
+  // unguarded `parent.removeChild(end)` reds the first arm, and an
+  // unconditional `end.remove()` reds the second by stealing the comment.
   const el = document.createElement('div');
   const view = (n) => html`<ul>${rows(n).map((it) => html`<li>${it.t}</li>`)}</ul>`;
   render(view(2), el);
