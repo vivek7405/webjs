@@ -974,8 +974,18 @@ async function checkStaticAssetFreshness(appDir) {
 // change its exclusions without silently moving the other.
 const ROUTE_WALK_IGNORE = new Set(['node_modules', '.git', '.webjs', 'dist', '.next', 'coverage']);
 
-/** A page or layout module: the render-on-the-server-only files where `asset()` belongs. @type {RegExp} */
-const ROUTE_MODULE_RE = /^(?:page|layout)\.(?:js|ts|mjs|mts)$/;
+/**
+ * A route module that renders markup on the server, which is where `asset()`
+ * belongs. Page and layout are the common case, but the BOUNDARY modules matter
+ * too and are easy to miss: `error` / `not-found` / `forbidden` / `unauthorized`
+ * / `loading` are always shipped and never elided, and `global-error` renders
+ * its OWN `<!doctype><html><head>` and is returned verbatim with no framework
+ * head splice, which makes it the likeliest place outside the root layout for
+ * an author to hand-write a stylesheet link.
+ * @type {RegExp}
+ */
+const ROUTE_MODULE_RE =
+  /^(?:page|layout|error|not-found|global-error|global-not-found|forbidden|unauthorized|loading)\.(?:js|ts|mjs|mts)$/;
 
 /**
  * One whole `<link …>` tag. QUOTE-AWARE (`(?:[^>"']|"[^"]*"|'[^']*')*`), the
@@ -1059,36 +1069,80 @@ function unmarkedStylesheetHref(tag, basePath = '') {
   const href = attrs.get('href');
   if (!href || !href.quoted || !href.value) return null;
   const url = href.value;
-  // Mirror `resolveAssetUrl`'s own refusals, so every flagged href is one
-  // `asset()` can actually fingerprint.
-  if (url.includes('?') || url.includes('..')) return null;
+  if (url[0] !== '/' || url[1] === '/') return null;
+  // Mirror `resolveAssetUrl`'s refusals IN ITS ORDER, so every flagged href is
+  // one `asset()` can actually fingerprint. It strips the base path, cuts at
+  // `?` / `#`, DECODES, and only then tests `..` and the `public/` prefix.
+  // Testing the raw value instead disagrees at both ends: `/public/%2e%2e/x`
+  // would be flagged although `asset()` refuses it (an unclearable warning,
+  // the very thing this check must never raise), and `/%70ublic/app.css` would
+  // be skipped although `asset()` fingerprints it.
   let probe = url;
   if (basePath && probe.startsWith(basePath + '/')) probe = probe.slice(basePath.length);
-  return probe.startsWith('/public/') ? url : null;
+  const cuts = [probe.indexOf('?'), probe.indexOf('#')].filter((i) => i !== -1);
+  let decoded = probe.slice(0, cuts.length ? Math.min(...cuts) : probe.length);
+  try { decoded = decodeURIComponent(decoded); } catch { /* keep raw */ }
+  if (decoded.includes('..') || !decoded.startsWith('/public/')) return null;
+  // A query is refused outright (an author query may carry meaning we do not
+  // own, so `resolveAssetUrl` returns the url untouched); a `#fragment` is not,
+  // since it is split off and preserved.
+  const beforeFragment = url.indexOf('#') === -1 ? url : url.slice(0, url.indexOf('#'));
+  if (beforeFragment.includes('?')) return null;
+  return url;
 }
 
 /**
  * The app's `webjs.basePath`, normalized to `''` (root mount) or `/segment…`.
- * Deliberately a local read of the one key rather than an import of the
- * server's `readBasePath`: doctor must stay usable when the framework does not
- * resolve from the app dir at all (the #954 fresh-worktree case this same
- * command exists to diagnose).
+ *
+ * A faithful port of `normalizeBasePath` (`packages/server/src/base-path.js`),
+ * which is the source of truth: it trims, PREPENDS the leading slash (so the
+ * documented `"myapp"`, `"/myapp"` and `"/myapp/"` all normalize alike), and
+ * fails safe to `''` on a value that is not a plain same-origin prefix. Reading
+ * only `startsWith('/')` would leave this check inert for an app configured
+ * `"myapp"`, which is exactly the silently-inert case it exists to close.
+ *
+ * Ported rather than imported because that helper is not on `@webjsdev/server`'s
+ * public surface, and because doctor must stay usable when the framework does
+ * not resolve from the app dir at all (the #954 fresh-worktree case this same
+ * command exists to diagnose). `test/cli/doctor.test.mjs` pins the forms.
  * @param {string} appDir
  * @returns {Promise<string>}
  */
 async function readAppBasePath(appDir) {
+  let raw;
   try {
     const pkg = JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8'));
-    const raw = pkg?.webjs?.basePath;
-    if (typeof raw !== 'string' || !raw.startsWith('/')) return '';
-    return raw.replace(/\/+$/, '');
+    raw = pkg?.webjs?.basePath;
   } catch {
     return '';
   }
+  if (typeof raw !== 'string') return '';
+  let v = raw.trim();
+  if (v === '' || v === '/') return '';
+  // Not a plain same-origin path prefix: fail safe to no base path.
+  if (v.includes('..') || v.includes('://') || v.includes('\\') || /\s/.test(v)) return '';
+  // A network-path reference (`//host`) is rejected BEFORE leading slashes are
+  // collapsed, since collapsing would turn an origin escape into `/host`.
+  if (v.startsWith('//')) return '';
+  v = ('/' + v.replace(/^\/+/, '')).replace(/\/+$/, '');
+  return v === '' || v === '/' ? '' : v;
 }
 
-/** An HTML comment, so a commented-out tag is not read as live markup. @type {RegExp} */
-const HTML_COMMENT_RE = /<!--[\s\S]*?-->/g;
+/**
+ * Commented-out regions, so dead markup is never read as live. Covers the three
+ * forms a route module can carry: an HTML comment inside a template, and the JS
+ * block and line comments around it. The JS LINE form is the one that actually
+ * bites, since commenting out a tag in a `.ts` page is done with `//`, and a
+ * warning the author can only clear by deleting a comment is exactly the
+ * un-clearable advice this check must never give.
+ *
+ * The `//` matcher requires the slashes NOT be preceded by `:`, so a `https://`
+ * or protocol-relative url inside an href is not mistaken for a comment. Any
+ * residual mismatch blanks too much rather than too little, which costs a
+ * detection instead of inventing one.
+ * @type {RegExp}
+ */
+const COMMENT_RE = /<!--[\s\S]*?-->|\/\*[\s\S]*?\*\/|(?<!:)\/\/[^\n]*/g;
 
 /**
  * Collect every `app/**` page + layout module path, depth-first.
@@ -1103,6 +1157,10 @@ function collectRouteModules(dir, out = []) {
   for (const e of entries) {
     if (e.name.startsWith('.') || ROUTE_WALK_IGNORE.has(e.name)) continue;
     if (e.isSymbolicLink()) continue; // never follow: can cycle or escape into deps
+    // `_`-prefixed folders are PRIVATE: `router.js` drops any route whose
+    // directory has such a segment, so markup under one is never routed and
+    // never rendered. Advising on it would be advice about dead code.
+    if (e.isDirectory() && e.name.startsWith('_')) continue;
     const abs = join(dir, e.name);
     if (e.isDirectory()) collectRouteModules(abs, out);
     else if (ROUTE_MODULE_RE.test(e.name)) out.push(abs);
@@ -1165,10 +1223,11 @@ async function checkUnmarkedAssetLinks(appDir) {
     // scanned, or the scanner's own case-insensitivity is unreachable exactly
     // where it is needed.
     if (!/<link/i.test(src)) continue;
-    // Blank HTML comments to spaces (LENGTH-PRESERVING, so the reported line
-    // numbers still point at the real source). A commented-out tag emits
-    // nothing, so advising on it is advice about dead markup.
-    const scan = src.replace(HTML_COMMENT_RE, (c) => ' '.repeat(c.length));
+    // Blank commented-out regions to spaces, LENGTH-PRESERVING (a newline is
+    // kept as itself) so the reported line numbers still point at the real
+    // source. A commented-out tag emits nothing, so advising on it is advice
+    // about dead markup.
+    const scan = src.replace(COMMENT_RE, (c) => c.replace(/[^\n]/g, ' '));
     LINK_TAG_RE.lastIndex = 0;
     for (const m of scan.matchAll(LINK_TAG_RE)) {
       const href = unmarkedStylesheetHref(m[0], basePath);

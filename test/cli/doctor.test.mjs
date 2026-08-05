@@ -1027,3 +1027,105 @@ test('asset-link advisory ignores a commented-out tag but keeps line numbers acc
   assert.doesNotMatch(r.message, /old\.css/, 'a commented-out tag emits nothing');
   assert.match(r.message, /app\/layout\.ts:3 href="\/public\/live\.css"/, 'blanking comments must not shift line numbers');
 });
+
+test('asset-link advisory normalizes webjs.basePath the way the framework does', async () => {
+  // normalizeBasePath (packages/server/src/base-path.js) trims and PREPENDS the
+  // slash, so these three forms are one base path. A check that only accepted a
+  // leading-slash value stayed silently inert for the first of them.
+  for (const form of ['myapp', '/myapp', '/myapp/']) {
+    const dir = tmpDir();
+    write(dir, 'package.json', JSON.stringify({ name: 'x', webjs: { basePath: form } }));
+    write(dir, 'app/layout.ts', 'export default () => `<link rel="stylesheet" href="/myapp/public/app.css">`;');
+    const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+    assert.equal(r.status, 'warn', `basePath ${JSON.stringify(form)} should normalize to /myapp`);
+  }
+});
+
+test('asset-link advisory fails safe on a basePath that is not a plain path prefix', async () => {
+  // normalizeBasePath rejects these to '' rather than stripping them, so the
+  // check must fall back to requiring a literal /public/ rather than trusting
+  // an origin-escaping prefix.
+  for (const bad of ['//evil.example', 'https://evil.example', '../up', 'has space']) {
+    const dir = tmpDir();
+    write(dir, 'package.json', JSON.stringify({ name: 'x', webjs: { basePath: bad } }));
+    write(dir, 'app/layout.ts', 'export default () => `<link rel="stylesheet" href="/public/app.css">`;');
+    const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+    assert.equal(r.status, 'warn', `basePath ${JSON.stringify(bad)} must fail safe to no base path`);
+  }
+});
+
+test('asset-link advisory decodes the href before judging it, as resolveAssetUrl does', async () => {
+  const encodedTraversal = tmpDir();
+  // Decodes to /public/../db/app.db, which resolveAssetUrl refuses, so warning
+  // here would be a warning asset() can never clear.
+  write(encodedTraversal, 'app/layout.ts', 'export default () => `<link rel="stylesheet" href="/public/%2e%2e/db/app.db">`;');
+  assert.equal(byName(await runDoctorChecks(encodedTraversal, baseOpts()), ASSET_LINK_CHECK).status, 'pass');
+
+  const encodedPublic = tmpDir();
+  // Decodes to /public/app.css, which resolveAssetUrl DOES fingerprint, so
+  // skipping it would be a silent miss.
+  write(encodedPublic, 'app/layout.ts', 'export default () => `<link rel="stylesheet" href="/%70ublic/app.css">`;');
+  assert.equal(byName(await runDoctorChecks(encodedPublic, baseOpts()), ASSET_LINK_CHECK).status, 'warn');
+});
+
+test('asset-link advisory flags an href carrying only a #fragment', async () => {
+  // resolveAssetUrl splits the fragment and still fingerprints, so this one IS
+  // fixable and must be reported (unlike a query, which it refuses).
+  const dir = tmpDir();
+  write(dir, 'app/layout.ts', 'export default () => `<link rel="stylesheet" href="/public/app.css#a">`;');
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'warn');
+});
+
+test('asset-link advisory skips _private folders the router never routes', async () => {
+  const dir = tmpDir();
+  write(dir, 'app/_scratch/page.ts', 'export default () => `<link rel="stylesheet" href="/public/dead.css">`;');
+  write(dir, 'app/real/page.ts', 'export default () => `<link rel="stylesheet" href="/public/live.css">`;');
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'warn');
+  assert.doesNotMatch(r.message, /dead\.css/, 'a _private route is never rendered');
+  assert.match(r.message, /live\.css/);
+});
+
+test('asset-link advisory ignores a tag commented out with JS comments', async () => {
+  const dir = tmpDir();
+  // Commenting a tag out in a .ts page is done with `//` or a block comment, not
+  // an HTML comment. A warning the author can only clear by deleting a comment
+  // is the un-clearable advice this check must never give.
+  write(dir, 'app/layout.ts', [
+    'export default () => {',
+    '  // <link rel="stylesheet" href="/public/line.css">',
+    '  /* <link rel="stylesheet" href="/public/block.css"> */',
+    '  return `<link rel="stylesheet" href="/public/live.css">`;',
+    '};',
+  ].join('\n'));
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'warn');
+  assert.doesNotMatch(r.message, /line\.css|block\.css/, 'a commented-out tag emits nothing');
+  assert.match(r.message, /app\/layout\.ts:4 href="\/public\/live\.css"/, 'line numbers must survive blanking');
+});
+
+test('asset-link advisory does not mistake a https:// url for a comment', async () => {
+  const dir = tmpDir();
+  write(dir, 'app/layout.ts', [
+    'export default () => `',
+    '  <link rel="stylesheet" href="https://cdn.example/x.css">',
+    '  <link rel="stylesheet" href="/public/after.css">`;',
+  ].join('\n'));
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /after\.css/, 'the // in a url must not blank the rest of the line');
+});
+
+test('asset-link advisory covers the boundary modules, not just page and layout', async () => {
+  const dir = tmpDir();
+  // global-error renders its OWN doctype/html/head and is returned verbatim with
+  // no framework head splice, so it is the likeliest place outside the root
+  // layout to hand-write a stylesheet link. error/not-found always ship too.
+  write(dir, 'app/global-error.ts', 'export default () => `<html><head><link rel="stylesheet" href="/public/ge.css"></head></html>`;');
+  write(dir, 'app/not-found.ts', 'export default () => `<link rel="stylesheet" href="/public/nf.css">`;');
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /ge\.css/);
+  assert.match(r.message, /nf\.css/);
+});
