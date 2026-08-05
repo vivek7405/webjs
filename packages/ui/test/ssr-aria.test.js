@@ -112,4 +112,15 @@ test('ui-toggle-group-item: disabled state reaches the first paint', { skip }, a
   // aria-disabled is set from render(), which is the only hook SSR runs, so the
   // disabled state must be in the served HTML rather than appearing on hydrate.
   assert.match(out, /aria-disabled="true"/, 'the disabled item is marked before JS loads');
+  // ...and the ROLE has to be there too. `aria-pressed` / `aria-disabled` are
+  // not global ARIA attributes, so without role="button" the first paint carries
+  // attributes that are not allowed on a generic-role element: the same defect
+  // class as aria-checked on role="menuitem". The role used to be set only in
+  // connectedCallback, which SSR never calls.
+  const items = out.match(/<ui-toggle-group-item[^>]*>/g) ?? [];
+  assert.ok(items.length >= 2, 'both items rendered');
+  for (const tag of items) {
+    assert.match(tag, /role="button"/, `served item has no role, so its ARIA is stray: ${tag}`);
+    assert.match(tag, /data-slot="toggle-group-item"/, `served item has no data-slot: ${tag}`);
+  }
 });

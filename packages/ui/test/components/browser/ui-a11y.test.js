@@ -742,6 +742,106 @@ suite('ui-dropdown-menu checkbox + radio items', () => {
     root.remove();
   });
 
+  // A menu item is a <div role="menuitem">, which gets NO native activation, so
+  // Enter / Space are synthesized. Before this, the keyboard could focus a
+  // checkable item and then do nothing with it: activation is its only state
+  // transition. Every other test in this suite uses .click(), which is exactly
+  // why CI could not see it. Counterfactual: without the branch, `checked` stays
+  // false and Space does not even preventDefault, so the page scrolls.
+  async function mountCheckable() {
+    const root = await mount(html`
+      <ui-dropdown-menu>
+        <ui-dropdown-menu-trigger><button>View</button></ui-dropdown-menu-trigger>
+        <ui-dropdown-menu-content>
+          <ui-dropdown-menu-item type="checkbox" value="a">A</ui-dropdown-menu-item>
+        </ui-dropdown-menu-content>
+      </ui-dropdown-menu>
+    `);
+    const menuEl = root.querySelector('ui-dropdown-menu');
+    const host = root.querySelector('ui-dropdown-menu-item');
+    menuEl.show();
+    await tick();
+    return { root, menuEl, host, inner: host.querySelector('[role="menuitemcheckbox"]') };
+  }
+
+  test('Enter activates a checkable item from the keyboard', async () => {
+    const { root, host, inner } = await mountCheckable();
+    assert.equal(document.activeElement, inner, 'the item has keyboard focus');
+    assert.equal(host.checked, false, 'starts unchecked');
+    inner.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await tick();
+    assert.equal(host.checked, true, 'Enter toggled it');
+    root.remove();
+  });
+
+  test('Space activates a checkable item and does not scroll the page', async () => {
+    const { root, host, inner } = await mountCheckable();
+    const ev = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+    inner.dispatchEvent(ev);
+    await tick();
+    assert.equal(host.checked, true, 'Space toggled it');
+    assert.equal(ev.defaultPrevented, true, 'and the page scroll was suppressed');
+    root.remove();
+  });
+
+  test('Enter on a plain item activates it and closes the menu', async () => {
+    const root = await mount(html`
+      <ui-dropdown-menu>
+        <ui-dropdown-menu-trigger><button>Options</button></ui-dropdown-menu-trigger>
+        <ui-dropdown-menu-content>
+          <ui-dropdown-menu-item>Profile</ui-dropdown-menu-item>
+        </ui-dropdown-menu-content>
+      </ui-dropdown-menu>
+    `);
+    const menuEl = root.querySelector('ui-dropdown-menu');
+    const btn = root.querySelector('ui-dropdown-menu-trigger button');
+    const item = root.querySelector('ui-dropdown-menu-item [role="menuitem"]');
+    menuEl.show();
+    await tick();
+    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await tick();
+    assert.equal(menuEl.open, false, 'activation closed the menu');
+    assert.equal(document.activeElement, btn, 'and focus returned to the trigger');
+    root.remove();
+  });
+
+  // A submenu is a role="menu" too, and APG asks for it to be named by the
+  // menuitem that opens it. Only the ROOT panel was wired, so every submenu
+  // shipped unnamed while the A11y block claimed the panel is always labelled.
+  // Enter on a sub-trigger also had no branch, same as every other item.
+  test('Enter opens a submenu, and the submenu panel is named by its trigger', async () => {
+    const root = await mount(html`
+      <ui-dropdown-menu>
+        <ui-dropdown-menu-trigger><button>Options</button></ui-dropdown-menu-trigger>
+        <ui-dropdown-menu-content>
+          <ui-dropdown-menu-sub>
+            <ui-dropdown-menu-sub-trigger>Invite</ui-dropdown-menu-sub-trigger>
+            <ui-dropdown-menu-sub-content>
+              <ui-dropdown-menu-item>Email</ui-dropdown-menu-item>
+            </ui-dropdown-menu-sub-content>
+          </ui-dropdown-menu-sub>
+        </ui-dropdown-menu-content>
+      </ui-dropdown-menu>
+    `);
+    const menuEl = root.querySelector('ui-dropdown-menu');
+    const sub = root.querySelector('ui-dropdown-menu-sub');
+    const subTrigger = root.querySelector('ui-dropdown-menu-sub-trigger [role="menuitem"]');
+    const panel = root.querySelector('ui-dropdown-menu-sub-content [role="menu"]');
+    menuEl.show();
+    await tick();
+    // Naming is wired independently of open state.
+    assert.ok(subTrigger.id, 'the sub-trigger got an id to point at');
+    assert.equal(panel.getAttribute('aria-labelledby'), subTrigger.id, 'submenu is named');
+    assert.equal(subTrigger.getAttribute('aria-controls'), panel.id, 'and points back at it');
+    subTrigger.focus();
+    subTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await tick();
+    assert.equal(sub.open, true, 'Enter opened the submenu');
+    const subItem = root.querySelector('ui-dropdown-menu-sub-content [role="menuitem"]');
+    assert.equal(document.activeElement, subItem, 'and focus moved into it');
+    root.remove();
+  });
+
   // Cancelling ui-item-select keeps the menu open, the shadcn
   // onSelect(e => e.preventDefault()) parity shape a multi-select menu needs.
   test('cancelling ui-item-select keeps the menu open but still toggles', async () => {
@@ -1128,6 +1228,81 @@ suite('ui-hover-card a11y', () => {
     const content = root.querySelector('ui-hover-card-content [role="dialog"]');
     assert.ok(title.id, 'title got an id');
     assert.equal(content.getAttribute('aria-labelledby'), title.id, 'named by the title');
+    root.remove();
+  });
+
+  // Two bugs in one shape, both matching what dialog / alert-dialog were fixed
+  // for. (a) precedence: this checked aria-label FIRST, the opposite of every
+  // other component, so an author writing both got a different name here than in
+  // a dialog. (b) staleness: _nameContent re-runs on every open change and its
+  // fallback writes aria-labelledby unconditionally, so a card first named from
+  // its title kept that reference, and it outranks a later authored aria-label.
+  test('a later authored aria-label wins over the name from an earlier pass', async () => {
+    const root = await mount(html`
+      <ui-hover-card>
+        <ui-hover-card-trigger><a href="#hc-u">@vivek</a></ui-hover-card-trigger>
+        <ui-hover-card-content>
+          <div data-slot="hover-card-title">Vivek Khandelwal</div>
+        </ui-hover-card-content>
+      </ui-hover-card>
+    `);
+    const card = root.querySelector('ui-hover-card');
+    const contentHost = root.querySelector('ui-hover-card-content');
+    const content = root.querySelector('ui-hover-card-content [role="dialog"]');
+    // First pass names it from the title node.
+    assert.ok(content.getAttribute('aria-labelledby'), 'named from the title initially');
+    // Now the author supplies a name and the card re-opens, re-running the wiring.
+    contentHost.setAttribute('aria-label', 'Profile summary');
+    card.open = true;
+    await tick();
+    assert.equal(content.getAttribute('aria-label'), 'Profile summary', 'author name applied');
+    assert.equal(
+      content.hasAttribute('aria-labelledby'),
+      false,
+      'the stale title reference is gone, so it cannot outrank the author name',
+    );
+    card.open = false;
+    root.remove();
+  });
+
+  test('aria-labelledby on the content host beats aria-label, as elsewhere', async () => {
+    const root = await mount(html`
+      <span id="hc-own-label">My own label</span>
+      <ui-hover-card>
+        <ui-hover-card-trigger><a href="#hc-u">@vivek</a></ui-hover-card-trigger>
+        <ui-hover-card-content aria-label="Ignored" aria-labelledby="hc-own-label">
+          Body
+        </ui-hover-card-content>
+      </ui-hover-card>
+    `);
+    const content = root.querySelector('ui-hover-card-content [role="dialog"]');
+    assert.equal(content.getAttribute('aria-labelledby'), 'hc-own-label', 'labelledby wins');
+    assert.equal(content.hasAttribute('aria-label'), false, 'and aria-label is not also set');
+    root.remove();
+  });
+
+  // The delayed hover-close is a close of a popover="manual" panel too, and the
+  // focus linger this branch added means it can fire while an in-card link holds
+  // focus. Before the fix it did a bare `open = false` and dropped focus to body.
+  test('the delayed close hands focus back when the card holds it', async () => {
+    const root = await mount(html`
+      <ui-hover-card open-delay="0" close-delay="10">
+        <ui-hover-card-trigger><a href="#hc-u" id="hc-t2">@vivek</a></ui-hover-card-trigger>
+        <ui-hover-card-content><a href="#hc-p2" id="hc-i2">Read the posts</a></ui-hover-card-content>
+      </ui-hover-card>
+    `);
+    const card = root.querySelector('ui-hover-card');
+    const trigger = root.querySelector('#hc-t2');
+    const inner = root.querySelector('#hc-i2');
+    card.open = true;
+    await tick();
+    inner.focus();
+    assert.equal(document.activeElement, inner, 'focus is inside the card');
+    card.hide();
+    await new Promise((r) => setTimeout(r, 60));
+    assert.equal(card.open, false, 'the delayed close fired');
+    assert.notEqual(document.activeElement, document.body, 'focus was not dropped to <body>');
+    assert.equal(document.activeElement, trigger, 'it went back to the trigger');
     root.remove();
   });
 

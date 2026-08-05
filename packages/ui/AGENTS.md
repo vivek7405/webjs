@@ -206,7 +206,10 @@ roving tabindex plus Arrow / Home / End and skips `disabled` items; toggle
 forwards the host's `aria-label` onto the inner button it renders;
 dropdown-menu declares `aria-orientation`, reflects `aria-disabled` on a
 `data-disabled` item, gives the trigger `aria-haspopup` / `aria-expanded` /
-`aria-controls`, returns focus to that trigger on Escape and on activation, and
+`aria-controls`, returns focus to that trigger on EVERY close path (Escape, Tab, activation, and
+an outside click that did not itself put focus somewhere), synthesizes Enter /
+Space activation because a `div[role=menuitem]` gets none natively, names each
+submenu panel from its sub-trigger, and
 exposes `menuitemcheckbox` / `menuitemradio` + `aria-checked` for a
 `type="checkbox"` / `type="radio"` item; dialog and alert-dialog name
 themselves from their title and description on open, falling back to a generic
@@ -230,16 +233,30 @@ FOCUSABLE node, not on the host, is what catches a regression.
 
 **A popover panel needs its focus restored before it hides.** Every overlay here
 renders `popover="manual"`, so hiding the panel while a descendant holds focus
-drops focus to `<body>`. Move focus out FIRST, then hide. Guard the restore on
-focus still being inside the overlay, so an outside click that deliberately
-focused another control does not have focus yanked back.
+drops focus to `<body>`. Move focus out FIRST, then hide, and do it on EVERY
+close path, not just the keyboard one (a delayed hover-close and an outside tap
+can both fire while the panel holds focus).
+
+Guard the restore on focus still being inside the overlay, so a close that
+deliberately moved focus elsewhere does not have it yanked back. For a
+POINTER-driven dismiss that guard cannot be evaluated at click time: clicking a
+non-focusable area has usually already blurred the panel's focused descendant to
+`<body>` by then, so a check there cannot tell "clicked away from everything"
+(restore) from "clicked another control" (leave it). Sample focus-inside on
+`pointerdown` instead, before the browser moves focus, and read it at click time
+(`dropdown-menu.ts` `_onDocPointerDown`).
 
 **Tier-1 class helpers push their ARIA to YOU.** A helper returns only Tailwind
 classes, so the semantic element, role, and ARIA are the caller's job. Every
-Tier-1 component's JSDoc carries an `A11y (required for accessible output)`
-block stating exactly what to supply, and
-`test/registry-contents.test.js` enforces that (the claim used to be aspirational
-and was false for ten components). The recurring obligations:
+component's JSDoc carries an `A11y` block stating exactly what to supply, and
+`test/registry-contents.test.js` enforces that a block is PRESENT on every
+component and sits above `@example` so the agent-facing projection does not drop
+it (the claim used to be aspirational and was false for ten components). Most are
+headed `A11y (required for accessible output)`; a component whose native
+primitive already carries the pattern says so instead (accordion and collapsible
+use `A11y (mostly handled by the native primitives)`), and a Tier-2 element's
+block states what it OWNS rather than what you supply. The recurring
+obligations:
 
 - `button`: an icon-only button needs `aria-label`; an overlay trigger needs `aria-haspopup` + `aria-expanded`.
 - `alert`: choose `role="alert"` (urgent) or `role="status"` (polite).
@@ -410,11 +427,24 @@ helpers (`schema.test.js`, `resolver.test.js`,
 `detect-project.test.js`, etc.) plus `test/registry-contents.test.js`
 which smoke-validates the component sources (reads
 `components/*.ts` and verifies Tier-1/Tier-2 shape + hallmark
-class strings).
+class strings, that every component carries an `A11y` JSDoc block above
+`@example`, and that the checkbox / radio examples keep the `data-slot`
+their stylesheets key on).
+
+**`test/ssr-aria.test.js` is the SSR layer, and it is not optional for an ARIA
+change.** It renders Tier-2 components through `renderToString` and asserts the
+ARIA in the SERVED markup. It exists because the browser suite runs only the
+CLIENT renderer, which removes a nullish attribute hole while the server
+stringifies it to `attr=""`. So a component that "omits" ARIA via a null hole
+passes every browser assertion while serving the empty attribute, and SSR then
+disagrees with the hydrated DOM. Three real defects shipped that way before this
+layer existed. Any conditional ARIA needs an assertion here, not just in the
+browser suite.
 
 Real-browser tests for the kit live under
 `packages/ui/test/components/browser/`
-(`ui-overlay.test.js`, `ui-stateful.test.js`) and run via the
+(`ui-overlay.test.js`, `ui-stateful.test.js`, `ui-a11y.test.js` for the Tier-2
+ARIA + keyboard guarantees) and run via the
 top-level `npm run test:browser`. See
 [`references/testing.md`](../../.agents/skills/webjs/references/testing.md) for
 the overall layout.

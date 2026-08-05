@@ -143,14 +143,7 @@ export class UiHoverCard extends WebComponent({
   _dismiss(): void {
     clearTimeout(this._showTimer);
     clearTimeout(this._hideTimer);
-    this._suppressReopen = true;
-    if (this._focusIsInContent()) this._control()?.focus();
-    this.open = false;
-    // focus() above fires focusin on the trigger SYNCHRONOUSLY, so the reopen
-    // attempt has already been refused by the time this runs. Releasing here
-    // rather than latching means a genuinely new hover or a fresh Tab back in
-    // still opens the card, which is the intent Escape did not cancel.
-    setTimeout(() => { this._suppressReopen = false; }, 0);
+    this._closeReleasingFocus();
   }
 
   _focusIsInContent(): boolean {
@@ -205,14 +198,23 @@ export class UiHoverCard extends WebComponent({
   // component that can end up with an unnamed dialog role.
   _nameContent(content: HTMLElement, control: HTMLElement): void {
     const host = this.querySelector('ui-hover-card-content');
-    const authoredLabel = host?.getAttribute('aria-label');
-    if (authoredLabel) {
-      content.setAttribute('aria-label', authoredLabel);
-      return;
-    }
+    // aria-labelledby is checked FIRST because it beats aria-label per accname,
+    // matching dialog / alert-dialog / toggle. Checking aria-label first would
+    // name this panel by the attribute that loses everywhere else, so an author
+    // writing both would get a different name here than in a dialog.
     const authoredLabelledBy = host?.getAttribute('aria-labelledby');
     if (authoredLabelledBy) {
       content.setAttribute('aria-labelledby', authoredLabelledBy);
+      return;
+    }
+    const authoredLabel = host?.getAttribute('aria-label');
+    if (authoredLabel) {
+      content.setAttribute('aria-label', authoredLabel);
+      // This method re-runs on every open change, and the fallback below writes
+      // aria-labelledby unconditionally. So a card named from its title on an
+      // earlier pass still carries that reference, and it would outrank the
+      // author's aria-label. Drop it, as dialog / alert-dialog do.
+      content.removeAttribute('aria-labelledby');
       return;
     }
     // Already named by an earlier pass (this runs again on every open change).
@@ -248,7 +250,25 @@ export class UiHoverCard extends WebComponent({
     // Reachable whenever two leave paths fire without a show() between them,
     // and the focus linger below doubles how many of those paths exist.
     clearTimeout(this._hideTimer);
-    this._hideTimer = window.setTimeout(() => { this.open = false; }, this.closeDelay);
+    this._hideTimer = window.setTimeout(() => this._closeReleasingFocus(), this.closeDelay);
+  }
+
+  // Every close of this popover="manual" panel owes the same focus care, not
+  // just Escape. The focus linger added here makes in-card content Tab-
+  // reachable, so a user CAN be holding focus on a link inside the card when a
+  // mouseleave-scheduled close fires; hiding the panel then drops focus to
+  // <body>. Guarded, so a close while focus is elsewhere leaves it alone.
+  //
+  // The reopen suppression is what makes this terminate. Moving focus to the
+  // trigger fires the trigger's own focusin, which calls show() and would
+  // reopen the card the close just closed. It is released on the next
+  // macrotask, once that synchronous focus transfer has been refused, so a
+  // genuinely new hover or a fresh Tab back in still opens the card.
+  _closeReleasingFocus(): void {
+    this._suppressReopen = true;
+    if (this._focusIsInContent()) this._control()?.focus();
+    this.open = false;
+    setTimeout(() => { this._suppressReopen = false; }, 0);
   }
 
   // Touch open: there is no hover delay and no mouseleave to close it, so open
@@ -263,7 +283,8 @@ export class UiHoverCard extends WebComponent({
       // Close on an outside tap; also self-remove if the card was already
       // closed by other means (a re-tap toggle), so the listener never lingers.
       if (!this.open || !this.contains(ev.target as Node)) {
-        this.open = false;
+        // Same focus care as every other close path: the card may hold focus.
+        this._closeReleasingFocus();
         document.removeEventListener('pointerdown', onOutside, true);
       }
     };

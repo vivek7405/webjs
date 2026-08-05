@@ -30,9 +30,16 @@
  *   Put the name on the host, as the icon-only example below does, and the
  *   element wires the rest. An icon-only toggle needs one; a text toggle takes
  *   its name from the slotted text and needs nothing.
- *   The name is read at render time, so set it as an attribute on the host
- *   (`aria-label="Toggle bold"` or `el.setAttribute('aria-label', ...)`), not
- *   as a property.
+ *   Set the name as an ATTRIBUTE on the host in your markup
+ *   (`aria-label="Toggle bold"`), not as a property.
+ *   LIMITATION, and it is a real one: `aria-label` / `aria-labelledby` are not
+ *   reactive properties of this element, so they are not observed attributes.
+ *   The name is read during render(), which means markup present at first paint
+ *   works, but a LATER `el.setAttribute('aria-label', ...)` does not re-render
+ *   and so does not reach the inner button until something else happens to
+ *   trigger a render. If your name is computed after mount, set it alongside a
+ *   reactive prop change, or set it on the inner button yourself
+ *   (`el.querySelector('button').setAttribute('aria-label', name)`).
  *   Using the Tier-1 `toggleClass()` helper on your own `<button>` instead? Then
  *   the name is entirely yours: give an icon-only button an `aria-label`, and
  *   carry the pressed state on `aria-pressed` + `data-state` as the example does.

@@ -73,6 +73,9 @@
  *   What you DO supply: a name for a radio set, as `aria-label` on the
  *   enclosing `<ui-dropdown-menu-group>` (APG asks a menuitemradio set to sit
  *   in a labelled group; the group forwards the name onto its `role="group"`).
+ *   Put it in the MARKUP. The group declares no reactive props, so it renders
+ *   once and its `aria-label` / `aria-labelledby` are not observed attributes: a
+ *   name set on the host after mount is never picked up.
  *
  * Design tokens used: --popover, --popover-foreground, --accent,
  * --accent-foreground, --destructive, --muted-foreground, --border.
@@ -307,6 +310,32 @@ export class UiDropdownMenu extends WebComponent({
     if (!menu.hasAttribute('aria-label') && !menu.hasAttribute('aria-labelledby')) {
       menu.setAttribute('aria-labelledby', ensureId(control, 'ui-menu-trigger'));
     }
+    this._wireSubmenuAria();
+  }
+
+  // A SUBMENU is a role="menu" too, and APG asks for it to be labelled by the
+  // menuitem that opens it, with that menuitem pointing back via aria-controls.
+  // Only the root panel was wired, so every submenu shipped as an unnamed menu.
+  _wireSubmenuAria(): void {
+    this.querySelectorAll<HTMLElement>('ui-dropdown-menu-sub').forEach((sub) => {
+      // NOT `:scope >`: the sub renders its own wrapper div with a <slot>, so the
+      // trigger and content are grandchildren, not direct children. Match on the
+      // nearest enclosing sub instead, which also keeps a NESTED submenu's nodes
+      // from being wired to its outer sub.
+      const owns = (el: Element | null): boolean =>
+        !!el && el.closest('ui-dropdown-menu-sub') === sub;
+      const trigger = Array.from(
+        sub.querySelectorAll<HTMLElement>(`ui-dropdown-menu-sub-trigger ${MENU_ITEM}`),
+      ).find((el) => owns(el.closest('ui-dropdown-menu-sub-trigger')));
+      const panel = Array.from(
+        sub.querySelectorAll<HTMLElement>('ui-dropdown-menu-sub-content [role="menu"]'),
+      ).find((el) => owns(el.closest('ui-dropdown-menu-sub-content')));
+      if (!trigger || !panel) return;
+      trigger.setAttribute('aria-controls', ensureId(panel, 'ui-submenu'));
+      if (!panel.hasAttribute('aria-label') && !panel.hasAttribute('aria-labelledby')) {
+        panel.setAttribute('aria-labelledby', ensureId(trigger, 'ui-submenu-trigger'));
+      }
+    });
   }
 
   _content(): HTMLElement | null {
@@ -476,6 +505,27 @@ export class UiDropdownMenu extends WebComponent({
         trigger?.focus();
         sub?.hide();
       }
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      // A menu item is a <div role="menuitem">, and a div gets NO native
+      // activation, so Enter / Space have to be synthesized here. Without this
+      // the keyboard cannot activate any item at all, and a checkable item,
+      // whose ONLY state transition is activation, cannot be toggled.
+      //
+      // Space MUST be prevented either way: it is a single character, so it
+      // otherwise falls through to typeahead, matches nothing, and scrolls the
+      // page underneath the open menu.
+      e.preventDefault();
+      const subTrigger = active?.closest('ui-dropdown-menu-sub-trigger');
+      if (subTrigger) {
+        // Same as ArrowRight on a sub-trigger: open it and move focus in.
+        if (!subTrigger.hasAttribute('data-disabled')) {
+          const sub = subTrigger.closest('ui-dropdown-menu-sub') as UiDropdownMenuSub | null;
+          sub?.openAndFocusFirstItem();
+        }
+        return;
+      }
+      const item = active?.closest('ui-dropdown-menu-item') as UiDropdownMenuItem | null;
+      if (item && !item.hasAttribute('data-disabled')) item._select();
     } else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
       this._typeahead(e, items);
     }
