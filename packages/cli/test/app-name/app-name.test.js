@@ -18,7 +18,7 @@ import {
   APP_NAME_SHAPE,
 } from '../../lib/app-name.js';
 
-test('accepts the names npm accepts', () => {
+test('accepts every name the rule allows', () => {
   for (const name of [
     'my-app',
     'myapp',

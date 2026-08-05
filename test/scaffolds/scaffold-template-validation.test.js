@@ -124,6 +124,28 @@ test('a valid kebab name still scaffolds, and its title survives verbatim', asyn
   }
 });
 
+test('an uppercase name scaffolds a working app end to end', async () => {
+  // The rule deliberately allows uppercase, and the claim that goes with it is
+  // that a capital letter is safe as the DIRECTORY, in the package.json
+  // manifest, and in the emitted source. The pure validator cannot show any of
+  // that, so assert it where it actually lands.
+  const cwd = await tempCwd();
+  const restoreLog = console.log;
+  console.log = () => {};
+  try {
+    await scaffoldApp('MyApp', cwd, { template: 'full-stack', install: false });
+    const pkg = JSON.parse(await readFile(join(cwd, 'MyApp', 'package.json'), 'utf8'));
+    assert.equal(pkg.name, 'MyApp');
+    assert.equal(pkg.private, true, 'the manifest is private, which is why uppercase is fine');
+    const page = await readFile(join(cwd, 'MyApp', 'app', 'page.ts'), 'utf8');
+    assert.match(page, /title: 'MyApp'/);
+    await assert.doesNotReject(() => stripTypeScript(page));
+  } finally {
+    console.log = restoreLog;
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
 test('the CLI rejects a bad app name non-zero, before writing anything', async () => {
   const cwd = await tempCwd();
   try {

@@ -263,8 +263,8 @@ export async function scaffoldApp(name, cwd, opts = {}) {
   // fails to parse. Throwing here happens before any directory is created.
   assertValidAppName(name);
   const template = opts.template || 'full-stack';
-  // A human-friendly display title for the example home page. The npm `name`
-  // stays the raw slug (lowercase, hyphenated), but showing a hyphenated slug as
+  // A human-friendly display title for the example home page. The package
+  // `name` stays the raw slug as typed, but showing a hyphenated slug as
   // a hero title looks unpolished, so title-case it for display ("my-app" ->
   // "My App"). Replace this with your real brand anyway.
   const displayName = name.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());

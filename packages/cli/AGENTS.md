@@ -79,8 +79,10 @@ lib/
                          `checkAppName(name)` returns `{ ok }` or `{ ok: false,
                          reason }`, `appNameErrorMessage()` renders the CLI's
                          multi-line guidance, `assertValidAppName()` throws the
-                         single-line form. The rule is npm package-name
-                         compatibility, because the name is BOTH the generated
+                         single-line form. The rule is npm's package-name
+                         rules minus the lowercase-only clause (uppercase breaks
+                         nothing and the scaffold manifest is private), because
+                         the name is BOTH the generated
                          package.json `name` AND a value interpolated into
                          generated source as a template literal (app/page.ts
                          `metadata.title`, the api root route handler, the

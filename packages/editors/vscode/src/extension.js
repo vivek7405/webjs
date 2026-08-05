@@ -33,7 +33,14 @@ function activate(context) {
       const name = await vscode.window.showInputBox({
         prompt: 'New webjs app name',
         placeHolder: 'my-app',
-        validateInput: (v) => (/^[a-z0-9][a-z0-9-]*$/.test(v) ? null : 'lowercase letters, digits, and dashes'),
+        // Mirrors the CLI's own rule (`packages/cli/lib/app-name.js`, #1066).
+        // This box REFUSES at the prompt, so anything stricter than the CLI
+        // blocks a name `webjs create` would happily take. It accepted only
+        // lowercase and dashes, which rejected `MyApp`, `my.app` and `my_app`.
+        validateInput: (v) =>
+          /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(v)
+            ? null
+            : 'letters, digits, and - . _ , starting with a letter or a digit',
       });
       if (!name) return;
       runInTerminal('webjs create', `npx @webjsdev/cli create ${name}`);

@@ -13,10 +13,12 @@
  *
  * Rather than escape at each interpolation site (an open-ended list that grows
  * every time the scaffold emits a new file), the name is validated ONCE at the
- * boundary, before any file is written. The rule is npm package-name
- * compatibility, which is strictly narrower than every interpolation site needs
- * and matches what `npm init` and `create-next-app` enforce, so a name that
- * passes is safe everywhere the scaffold puts it.
+ * boundary, before any file is written. The rule is npm's package-name rules
+ * MINUS the lowercase-only clause (see `ALLOWED_CHAR`), which is still strictly
+ * narrower than every interpolation site needs, so a name that passes is safe
+ * everywhere the scaffold puts it. `npm init` and `create-next-app` do refuse
+ * uppercase; this deliberately does not, because the scaffold's manifest is
+ * private and a capital letter breaks nothing.
  *
  * This module is pure and imports nothing, so both the CLI entry
  * (`bin/webjs.js`) and the programmatic entry (`scaffoldApp` in `lib/create.js`)
@@ -176,8 +178,8 @@ export function appNameErrorMessage(name, reason) {
 
 ${reason[0].toUpperCase()}${reason.slice(1)}.
 
-The name becomes the app's directory, its npm package name, AND a value the
-scaffold writes into generated source, so it has to be a name npm accepts:
+The name becomes the app's directory, its package.json name, AND a value the
+scaffold writes into generated source, so it is restricted to:
 
   letters and digits
   the separators "-", "." and "_"
