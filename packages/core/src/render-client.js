@@ -2776,14 +2776,21 @@ function applyAsyncReplace(part, dir) {
  * while the iterator was suspended.
  *
  * Each pass carries TWO try spans, and which failure lands in which is the
- * load-bearing part. The author's iterable failing is logged to the console
- * and ends the stream, on the long-standing reasoning that an author's
- * iterable should handle its own errors. A chunk COMMIT failing is a render
+ * load-bearing part. SPAN A is the author's own code, the iterable AND the
+ * `mapper` it was given, and a throw from either is logged to the console and
+ * ends the stream, on the long-standing reasoning that an author's iterable
+ * should handle its own errors. SPAN B is the chunk COMMIT, which is a render
  * failure of the component whose template holds the binding, so it routes to
- * that component's `renderError()` and stops the stream. lit is no authority
+ * that component's `renderError()` and stops the stream.
+ *
+ * Scope note: only a throw from the COMMIT can stop the stream from here. A
+ * directive nested INSIDE a committed chunk (a `watch` whose signal changes
+ * later) throws from its own handler, outside this loop entirely, so it
+ * reaches the boundary but this loop knows nothing about it and keeps
+ * pulling. That is the same for any directive nested anywhere else. lit is no authority
  * either way here (it has no per-component boundary, and both failures become
- * unhandled rejections at the window), so this follows webjs's own
- * per-component error isolation instead.
+ * unhandled rejections at the window), so this follows the
+ * per-component error isolation WebJs has instead.
  *
  * @param {AsyncStreamState} state
  * @param {Extract<BoundPart, {kind:'child'}>} part
@@ -2855,10 +2862,16 @@ async function consumeAsyncStream(state, part, dir) {
       // reset, not for this.
       state.aborted = true;
       try { state.iterator.return?.()?.catch?.(() => {}); } catch { /* best effort */ }
-      // Rethrows when the part has no owner (a bare `render()` into a plain
-      // container). That surfaces as an unhandled rejection, which is exactly
-      // what `watch` and `until` do in the same situation, their handlers
-      // being in a microtask too.
+      // Rethrows when nothing can receive the error, which for a bare
+      // `render()` into a plain container is an owner that carries no
+      // `_handleRenderError` (the stamp records the container itself, so the
+      // owner is present, just not a component). Surfacing beats swallowing
+      // there, and it matches `watch` and `until`, which rethrow from their
+      // own out-of-band handlers for the same reason. The exact shape differs
+      // by site rather than being one thing: this rejects the loop's
+      // promise, `until` rejects from its `.then`, and `watch` throws inside
+      // a `queueMicrotask`, which is an uncaught error rather than a
+      // rejection.
       reportOutOfBandCommitError(part, err);
       return;
     }
