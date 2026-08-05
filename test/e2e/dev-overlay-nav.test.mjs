@@ -93,6 +93,16 @@ function startDev(dir, port) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** Poll `fn` until it is true or the deadline passes. Never waits forever. */
+async function waitFor(fn, timeoutMs = 5000, stepMs = 50) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (fn()) return true;
+    if (Date.now() > deadline) return false;
+    await sleep(stepMs);
+  }
+}
+
 /**
  * Land on a page with the client router live. The router auto-enables when
  * `@webjsdev/core` loads, which is what the layout's component pulls in, so
@@ -205,26 +215,36 @@ describe('E2E: dev error overlay URL scope (#1047)', {
   });
 
   test('merely PREFETCHING a link to a throwing page raises no overlay', async () => {
-    await gotoReady(page, `${base}/good`);
-    assert.equal(await page.$(OVERLAY), null);
+    // The listener goes on BEFORE the navigation, for two reasons. The prefetch
+    // strategy is device-adaptive, and on the `viewport` branch (no hover
+    // pointer) the already-visible /crash link can be prefetched during load,
+    // before a listener attached afterwards would exist. And counting into an
+    // array rather than awaiting a bare promise means a miss FAILS on a
+    // deadline instead of hanging: `node --test` has no default per-test
+    // timeout, so an unbounded await would stall CI until its own ceiling.
+    const prefetches = [];
+    const onReq = (req) => {
+      if (req.headers()['x-webjs-prefetch'] === '1' && req.url().endsWith('/crash')) {
+        prefetches.push(req.url());
+      }
+    };
+    page.on('request', onReq);
+    try {
+      await gotoReady(page, `${base}/good`);
+      assert.equal(await page.$(OVERLAY), null);
 
-    const prefetched = new Promise((res) => {
-      page.on('request', function onReq(req) {
-        if (req.headers()['x-webjs-prefetch'] === '1' && req.url().endsWith('/crash')) {
-          page.off('request', onReq);
-          res(true);
-        }
-      });
-    });
+      // A real pointer hover over the anchor, which is what fires the intent
+      // prefetch. This is the half of #1047 that needs no navigation at all.
+      await page.hover('#to-crash');
+      assert.equal(
+        await waitFor(() => prefetches.length > 0), true,
+        'the throwing page really was prefetched (nothing to assert about otherwise)',
+      );
 
-    // A real pointer hover over the anchor, which is what fires the intent
-    // prefetch. This is the half of #1047 that needs no navigation at all.
-    await page.hover('#to-crash');
-    assert.equal(await prefetched, true, 'the hover really did prefetch the throwing page');
-
-    // Give the SSE frame ample time to arrive and (wrongly) paint.
-    await sleep(1000);
-    assert.equal(await page.$(OVERLAY), null, 'hovering a link to a broken page does not break this one');
-    assert.match(page.url(), /\/good$/, 'and the user never left the page they were on');
+      // Give the SSE frame ample time to arrive and (wrongly) paint.
+      await sleep(1000);
+      assert.equal(await page.$(OVERLAY), null, 'hovering a link to a broken page does not break this one');
+      assert.match(page.url(), /\/good$/, 'and the user never left the page they were on');
+    } finally { page.off('request', onReq); }
   });
 });

@@ -114,9 +114,13 @@ try {
   assert.equal(frame.url, '/crash', `the replayed frame must name its url on ${runtime}`);
   assert.match(frame.message, /this page threw during render/);
 
-  // A successful render of the SAME url supersedes it, so a tab connecting
-  // later is not shown an error the page has recovered from. The home page is
-  // a DIFFERENT url, so it must leave the retained frame standing first.
+  // A good render of a DIFFERENT url must leave the retained frame standing,
+  // because the user may still be looking at the page that broke. (The other
+  // half of that rule, a good render of the SAME url superseding it, needs a
+  // page that recovers, which this fixture's unconditional throw cannot do;
+  // it is covered on the Node path by dev-error-overlay.test.js. Nothing about
+  // the clear is listener-shell specific, so what matters cross-runtime is
+  // that the retained frame is replayed and carries its url, asserted above.)
   await fetch(`${BASE}/`);
   const afterUnrelated = await replayedFrames();
   assert.match(

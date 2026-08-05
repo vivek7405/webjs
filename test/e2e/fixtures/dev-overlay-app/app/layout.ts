@@ -1,7 +1,7 @@
-import { html } from '@webjsdev/core';
+import { html, type LayoutProps } from '@webjsdev/core';
 import '#components/counter.ts';
 
-export default function RootLayout({ children }: { children: unknown }) {
+export default function RootLayout({ children }: LayoutProps) {
   return html`
     <main>
       <counter-el></counter-el>
