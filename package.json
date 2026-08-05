@@ -21,6 +21,7 @@
     "prepare": "node scripts/git-worktree-safe.mjs 2>/dev/null || true",
     "fix:git": "node scripts/git-worktree-safe.mjs",
     "check:git": "node scripts/git-worktree-safe.mjs --check",
+    "worktree:link": "node scripts/link-worktree-deps.mjs",
     "dev": "node scripts/dev-all.js",
     "pretest": "node website/scripts/copy-registry.mjs",
     "test": "node scripts/run-node-tests.js",
