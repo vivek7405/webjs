@@ -4419,9 +4419,16 @@ function reactivateScripts(container) {
  * mutate the range. Two consequences, both deliberate. A node an earlier script
  * REMOVED is skipped, since `replaceWith` on a parentless node is a spec no-op.
  * A node an earlier script INSERTED is not visited, unlike the live walk this
- * replaced; that costs only an explicit `customElements.upgrade`, which a real
- * browser performs anyway when a defined element is connected, and a script
- * that restructures the very range being activated is not a supported shape.
+ * replaced. That costs nothing reachable: such a node is connected by
+ * definition, so the browser upgrades it on insertion, and `ensureUpgradeObserver`
+ * catches it on the microtask regardless. Do NOT "restore" the live walk to
+ * recover it. A correct live walk has to advance off the REPLACEMENT (advancing
+ * off the detached original is bug #1102 itself), and in that form a script
+ * appending a sibling script loops forever, each clone appending the next; it
+ * would also re-run a script that already executed when its own creator
+ * inserted it. The snapshot is additionally safer under a MOVE, since a live
+ * walk would follow a node out of the range and start re-executing unrelated
+ * scripts in the rest of the body.
  *
  * @param {{ start: Comment, end: Comment }} range
  */
