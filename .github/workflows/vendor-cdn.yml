@@ -1,0 +1,96 @@
+name: Vendor CDN contract (nightly)
+
+# Runs the only tests that talk to the real jspm CDN (#1150).
+#
+# Why they are not in CI: the required `Unit + integration` job used to resolve
+# vendors live, so a jspm outage redded pull requests that had nothing to do
+# with vendoring. PR #1149, a five-file documentation change, was blocked that
+# way and passed on a re-run of the identical commit. Both test runners now
+# skip `*.live.test.*` unless WEBJS_REQUIRE_NETWORK is set.
+#
+# Why they still exist somewhere: deleting the live coverage was never the
+# goal. The vendor resolver's whole job is to talk to jspm, and the offline
+# double can only ever return what this repo already believes about the API.
+# Two things it cannot vouch for are checked here for real: that our merged
+# output equals jspm's own unified graph (#446), and that jspm still fails a
+# WHOLE batch permanently when one install is unresolvable, which is the
+# premise the entire per-package fallback ladder in vendor.js rests on.
+#
+# Why nightly rather than on a pull request: a live check on a PR is a live
+# check, whatever job it sits in. Moving it to a non-required job on the
+# `pull_request` trigger would still queue on every PR and still go red on an
+# outage; it would just be a red somebody is told to ignore, which is how a
+# real failure gets ignored too.
+#
+# WEBJS_REQUIRE_NETWORK does double duty. It selects the live files, and it
+# turns their upstream-trouble SKIP into a FAILURE. Without that second half a
+# permanently skipping test is indistinguishable from a passing one, which is
+# the exact way live coverage rots into decoration.
+#
+# There is deliberately no `pull_request` trigger, so this can never become a
+# required check and can never block a merge.
+
+on:
+  schedule:
+    # 04:20 UTC daily. Off the hour on purpose: GitHub queues scheduled jobs
+    # from every repository at :00, so an on-the-hour cron is the one most
+    # likely to be delayed or dropped.
+    - cron: '20 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Needed by the failure step below, which is what stops this from being a
+  # job nobody watches. GitHub notifies only the workflow file's last
+  # committer about a failed scheduled run.
+  issues: write
+
+concurrency:
+  group: vendor-cdn
+  cancel-in-progress: false
+
+jobs:
+  live:
+    name: Live jspm contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Run the live CDN tests
+        env:
+          WEBJS_REQUIRE_NETWORK: '1'
+        run: |
+          node --test \
+            packages/server/test/vendor/jspm-cdn.live.test.js \
+            test/vendor-cli/vendor-pin.live.test.mjs
+
+      - name: Report a failure on the tracking issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE='Nightly live jspm contract check is failing'
+          # One issue, reopened and commented rather than duplicated, so a week
+          # of failures is one thread instead of seven issues.
+          NUM=$(gh issue list --state all --search "$TITLE in:title" \
+                  --json number,title \
+                  --jq "[.[] | select(.title == \"$TITLE\")] | first | .number // empty")
+          BODY="The nightly live jspm contract check failed: $RUN_URL
+
+          Either jspm changed something the resolver depends on, or the fixture
+          the parity test pins has stopped resolving. Neither blocks a merge:
+          nothing here runs in a required check. See the header of
+          \`packages/server/test/vendor/jspm-cdn.live.test.js\` for what the two
+          tests assert and why they are live."
+          if [ -n "$NUM" ]; then
+            gh issue reopen "$NUM" || true
+            gh issue comment "$NUM" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --label bug --assignee vivek7405 --body "$BODY"
+          fi
