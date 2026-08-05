@@ -141,13 +141,17 @@ function truncate(s: string, max: number): string {
 }
 
 /**
+ * Exported for its own unit test. It is a pure string-to-string function, and
+ * exporting it is what lets a test drive the extractor on a fixture instead of
+ * planting scaffolding in a real docs page that readers would see.
+ *
  * Convert a doc page's `html\`...\`` body to lightweight, readable
  * markdown. Reuses the search route's stripping approach but preserves
  * structure: headings become `##`/`###`, list items become `-`, and
  * `<code-block>` samples are fenced, rather than collapsing everything to
  * one blob. Perfection is not required; a clean-ish rendering is.
  */
-function bodyToMarkdown(raw: string): string {
+export function bodyToMarkdown(raw: string): string {
   // Isolate the html template body (between the first `html\`` and its
   // matching closing backtick). Doc pages are a single top-level
   // template, so a simple slice from the first `html\`` to the final

@@ -20,7 +20,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { getDocPage, getDocPages } from '#lib/docs-llms.server.ts';
+import { bodyToMarkdown, getDocPage, getDocPages } from '#lib/docs-llms.server.ts';
 
 const fenceCount = (md: string) => (md.match(/^```/gm) ?? []).length / 2;
 
@@ -138,3 +138,39 @@ function decodeEntities(s: string): string {
     .replace(/&mdash;/g, '--')
     .replace(/&nbsp;/g, ' ');
 }
+
+/*
+ * The extractor driven directly on fixtures.
+ *
+ * The corpus walks above are forward guards: they compare what the repo's real
+ * pages produce, so they can only fail once someone writes the content that
+ * trips a bug. These are the counterfactual half. They pin the exact losses
+ * this file was written about against fixed inputs, so reverting the source
+ * fix reds a test without any docs page having to carry a sample that exists
+ * only for the test.
+ */
+test('a sample teaching escaped markup keeps it', () => {
+  // The `<code>` strip used to run AFTER entity decoding, so it deleted the
+  // decoded tags out of a sample whose whole point was showing them.
+  const md = bodyToMarkdown('html`<code-block>use &lt;code&gt;x&lt;/code&gt; inline</code-block>`');
+  assert.match(md, /```\nuse <code>x<\/code> inline\n```/);
+});
+
+test('a sample is fenced whether it is authored as code-block or pre', () => {
+  for (const tag of ['code-block', 'pre']) {
+    const md = bodyToMarkdown(`html\`<${tag}>const x = 1;</${tag}>\``);
+    assert.match(md, /```\nconst x = 1;\n```/, `${tag} was not fenced`);
+  }
+});
+
+test('an unfenced sample would lose its holes and indentation, which is why fencing matters', () => {
+  // Drives the claim the fence test rests on: this is what the prose pipeline
+  // does to code it does not recognise as a sample.
+  const md = bodyToMarkdown('html`<p>text ${children} here</p>`');
+  assert.equal(md.includes('${children}'), false, 'a hole outside a fence is stripped');
+});
+
+test('a tag that merely starts with pre is not treated as a sample', () => {
+  const md = bodyToMarkdown('html`<preview-tabs><p>not code</p></preview-tabs>`');
+  assert.equal(md.includes('```'), false, 'preview-tabs is not a code block');
+});
