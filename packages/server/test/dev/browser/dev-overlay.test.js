@@ -10,7 +10,12 @@
  * The security property is the most important assertion: the overlay is built
  * with textContent only, so a hostile error message can never inject markup.
  */
-import { renderDevOverlay, dismissDevOverlay } from '../../../src/dev-overlay.js';
+import {
+  renderDevOverlay,
+  dismissDevOverlay,
+  syncDevOverlayToLocation,
+  installDevOverlayNavSync,
+} from '../../../src/dev-overlay.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
 
@@ -78,6 +83,155 @@ suite('dev error overlay renderer (#264)', () => {
     const overlay = document.querySelector('[data-webjs-error-overlay]');
     overlay.querySelector('button').click();
     assert.equal(document.querySelector('[data-webjs-error-overlay]'), null, 'clicking Dismiss removes it');
+    teardown();
+  });
+});
+
+/**
+ * The URL scope gate (#1047). A render frame carries the url that produced it,
+ * and the overlay renders only on that page. The whole point is browser
+ * behaviour (what is in the DOM after a client-router navigation, and what a
+ * mere link prefetch does NOT put there), so it belongs here rather than in a
+ * node unit test.
+ */
+suite('dev error overlay URL scope (#1047)', () => {
+  const HERE = '/good';
+  const CRASH = '/crash';
+
+  function teardown() {
+    dismissDevOverlay();
+    document.querySelectorAll('[data-webjs-error-overlay]').forEach((e) => e.remove());
+  }
+
+  const overlay = () => document.querySelector('[data-webjs-error-overlay]');
+
+  test('a render frame for ANOTHER page renders nothing (the prefetch case)', () => {
+    // Hovering a link to a throwing page fires a real GET, which reports a
+    // frame to every open tab. The tab is looking at /good, so: no overlay.
+    renderDevOverlay({ kind: 'render', message: 'demo: this page threw', url: CRASH }, HERE);
+    assert.equal(overlay(), null, 'another page\'s render error stays off this page');
+    teardown();
+  });
+
+  test('a render frame for THIS page renders normally', () => {
+    renderDevOverlay({ kind: 'render', message: 'demo: this page threw', url: CRASH }, CRASH);
+    assert.ok(overlay(), 'the page that actually threw still shows its overlay');
+    assert.ok(overlay().textContent.includes('demo: this page threw'));
+    teardown();
+  });
+
+  test('a frame with no url always renders (rebuild / ts-strip are not URL-scoped)', () => {
+    // These describe a still-broken build, not one page, so scoping them would
+    // hide a real state. Only the next successful rebuild clears them.
+    renderDevOverlay({ kind: 'rebuild', message: 'rebuild failed' }, HERE);
+    assert.ok(overlay(), 'a rebuild frame renders wherever you are');
+    teardown();
+    renderDevOverlay({ kind: 'ts-strip', message: 'enum is not erasable' }, HERE);
+    assert.ok(overlay(), 'a ts-strip frame renders wherever you are');
+    teardown();
+  });
+
+  test('a refused render frame does not wipe a live rebuild overlay', () => {
+    // renderDevOverlay used to dismiss first and build second, so a foreign
+    // frame would have taken down an unrelated, still-current overlay.
+    renderDevOverlay({ kind: 'rebuild', message: 'rebuild failed' }, HERE);
+    renderDevOverlay({ kind: 'render', message: 'someone else threw', url: CRASH }, HERE);
+    assert.ok(overlay(), 'the rebuild overlay survives');
+    assert.ok(overlay().textContent.includes('rebuild failed'), 'and it is still the rebuild one');
+    teardown();
+  });
+
+  test('a frame that arrives BEFORE the URL advances renders once it does', () => {
+    // The real ordering on a click through to a throwing page: the SSE frame is
+    // pushed during the render, so it lands while location is still the old
+    // page. Refuse-and-drop would lose the overlay on the page that threw.
+    renderDevOverlay({ kind: 'render', message: 'demo: this page threw', url: CRASH }, HERE);
+    assert.equal(overlay(), null, 'held, not shown, while still on the old page');
+    syncDevOverlayToLocation(CRASH);
+    assert.ok(overlay(), 'and shown once the navigation lands on it');
+    assert.ok(overlay().textContent.includes('demo: this page threw'));
+    teardown();
+  });
+
+  test('navigating away takes a live overlay down; a rebuild overlay stays', () => {
+    renderDevOverlay({ kind: 'render', message: 'demo: this page threw', url: CRASH }, CRASH);
+    syncDevOverlayToLocation(HERE);
+    assert.equal(overlay(), null, 'the stale overlay is gone after the swap');
+
+    renderDevOverlay({ kind: 'rebuild', message: 'rebuild failed' }, HERE);
+    syncDevOverlayToLocation(CRASH);
+    assert.ok(overlay(), 'a rebuild overlay is not URL-scoped, so navigation leaves it alone');
+    teardown();
+  });
+
+  test('a held frame is consumed by the first navigation, so it cannot resurface later', () => {
+    renderDevOverlay({ kind: 'render', message: 'demo: this page threw', url: CRASH }, HERE);
+    syncDevOverlayToLocation('/somewhere-else');
+    assert.equal(overlay(), null, 'dropped by a navigation that is not its page');
+    syncDevOverlayToLocation(CRASH);
+    assert.equal(overlay(), null, 'and it does not come back on a later visit');
+    teardown();
+  });
+
+  test('a manual dismiss is not resurrected by a later navigation', () => {
+    renderDevOverlay({ kind: 'render', message: 'demo: this page threw', url: CRASH }, CRASH);
+    overlay().querySelector('button').click();
+    syncDevOverlayToLocation(CRASH);
+    assert.equal(overlay(), null, 'once you dismiss it, it stays dismissed');
+    teardown();
+  });
+
+  test('the gate is percent-encoding tolerant, so a dynamic segment still matches', () => {
+    // A mismatch fails closed (no overlay), so an encoding difference between
+    // the server-stamped url and location.pathname would hide a real error.
+    renderDevOverlay({ kind: 'render', message: 'boom', url: '/blog/hello%20world' }, '/blog/hello world');
+    assert.ok(overlay(), 'encoded and decoded forms of the same path match');
+    teardown();
+  });
+
+  test('installDevOverlayNavSync wires webjs:navigate, popstate, and webjs:before-cache', () => {
+    let path = HERE;
+    const uninstall = installDevOverlayNavSync({
+      document, window, getPath: () => path,
+    });
+    try {
+      // webjs:navigate, the applied-navigation signal: the held frame goes up.
+      renderDevOverlay({ kind: 'render', message: 'demo: this page threw', url: CRASH }, HERE);
+      assert.equal(overlay(), null, 'held while still on the old page');
+      path = CRASH;
+      document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: CRASH } }));
+      assert.ok(overlay(), 'webjs:navigate renders it on the page it belongs to');
+
+      // webjs:before-cache: the router is about to serialize the page into its
+      // back/forward snapshot, so the overlay must be out of the DOM first, or
+      // it is baked into the cached HTML as a dead card.
+      document.dispatchEvent(new CustomEvent('webjs:before-cache', { detail: { url: CRASH } }));
+      assert.equal(overlay(), null, 'the overlay is off the page before it is snapshotted');
+
+      // popstate, because a snapshot-cache restore returns before the router
+      // dispatches webjs:navigate.
+      path = HERE;
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      assert.equal(overlay(), null, 'and the frame is dropped by the navigation away');
+
+      // A frame nav leaves the path alone, so a live overlay stays put.
+      renderDevOverlay({ kind: 'render', message: 'still broken', url: HERE }, HERE);
+      document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: HERE } }));
+      assert.ok(overlay(), 'a navigation that does not change the path keeps the overlay');
+    } finally {
+      uninstall();
+      teardown();
+    }
+  });
+
+  test('the uninstall thunk really unwires the listeners', () => {
+    let path = CRASH;
+    const uninstall = installDevOverlayNavSync({ document, window, getPath: () => path });
+    renderDevOverlay({ kind: 'render', message: 'boom', url: CRASH }, CRASH);
+    uninstall();
+    path = HERE;
+    document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: HERE } }));
+    assert.ok(overlay(), 'no sync runs after uninstall');
     teardown();
   });
 });

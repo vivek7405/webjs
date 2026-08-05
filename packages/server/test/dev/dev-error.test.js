@@ -77,3 +77,15 @@ test('buildDevErrorFrame for a ts-strip mines the message for the file position 
   assert.match(frame.codeFrame, /enum Color/);
   assert.equal(frame.hint, 'use erasable equivalents');
 });
+
+test('buildDevErrorFrame carries an explicit url onto the frame, and null without one (#1047)', () => {
+  const stamped = buildDevErrorFrame(new Error('boom'), { kind: 'render', url: '/blog/hello?page=2' });
+  assert.equal(stamped.url, '/blog/hello?page=2', 'the request url rides the frame so the overlay can scope it');
+  // A ts-strip / rebuild frame passes no url and must stay unscoped: the
+  // browser gate renders a url-less frame unconditionally.
+  const unstamped = buildDevErrorFrame(new Error('boom'), { kind: 'ts-strip' });
+  assert.equal(unstamped.url, null, 'no url passed means an unscoped frame');
+  // An empty string is not a url, and must not become one the gate compares
+  // against (every real path starts with `/`).
+  assert.equal(buildDevErrorFrame(new Error('boom'), { url: '' }).url, null);
+});

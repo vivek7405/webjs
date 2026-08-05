@@ -817,8 +817,12 @@ export async function createRequestHandler(opts) {
    * response or crash the server (a frame-build failure is swallowed). No file
    * path or source is ever built in prod (the early return), so nothing leaks.
    *
+   * `info.url` stamps a `render` frame with the URL that produced it (#1047), so
+   * the browser overlay can refuse a frame for a page the tab is not viewing.
+   * A `ts-strip` / `rebuild` frame passes none and stays unscoped.
+   *
    * @param {unknown} error
-   * @param {{ kind?: 'render'|'ts-strip'|'rebuild', file?: string, line?: number, column?: number, hint?: string }} [info]
+   * @param {{ kind?: 'render'|'ts-strip'|'rebuild', file?: string, line?: number, column?: number, hint?: string, url?: string }} [info]
    */
   function reportDevError(error, info = {}) {
     if (!dev) return;
@@ -2201,6 +2205,22 @@ async function handleCore(req, ctx) {
   {
     const page = matchPage(state.routeTable, path);
     if (page) {
+      // The URL this render is FOR, in the form the browser sees it (#1047), so
+      // the overlay's scope gate can compare it against `location.pathname +
+      // location.search`. Two details are load-bearing: the RAW `url.pathname`
+      // (not the decoded `path`) is used, because `location.pathname` is
+      // percent-encoded too; and the base path is put back, because the ingress
+      // strip already removed it from `url` while the browser's location still
+      // carries it, so without this the gate would suppress every overlay on a
+      // sub-path deploy.
+      const devErrorUrl = withBasePath(url.pathname, basePath()) + url.search;
+      // A speculative link prefetch must never raise an overlay (#1047): the
+      // user is only hovering a link to a page that throws, and the page they
+      // are actually looking at is fine. Dropping the hook also keeps the throw
+      // out of `state.lastDevError`, so the SSE replay cannot hand it to a
+      // freshly-connected tab either. The APM `onError` sink below still fires,
+      // because the render really did throw.
+      const isPrefetch = req.headers.get('x-webjs-prefetch') === '1';
       const ssrOpts = {
         dev, appDir, moduleGraph: state.moduleGraph,
         serverFiles: state.actionIndex.fileToHash,
@@ -2227,10 +2247,30 @@ async function handleCore(req, ctx) {
         // Dev error overlay (#264): a render crash pushes a frame to the open
         // tab. Dev-only (reportDevError early-returns in prod), so no source
         // leaks. Distinct from onError (the APM sink), which always fires.
-        onDevError: dev ? (e) => reportDevError(e, { kind: 'render' }) : undefined,
+        onDevError: dev && !isPrefetch
+          ? (e) => reportDevError(e, { kind: 'render', url: devErrorUrl })
+          : undefined,
       };
       if (method === 'GET' || method === 'HEAD') {
-        const handler = () => ssrPage(page.route, page.params, url, { ...ssrOpts, req });
+        // A successful render of URL U supersedes a RETAINED render error for
+        // that same URL (#1047), so a reconnecting tab is not handed a frame the
+        // page has since recovered from. Keyed on BOTH frame identity and url:
+        // identity so a frame this very render just reported is never wiped, url
+        // so a good render of an unrelated page cannot erase an error that is
+        // still current for the page the user is looking at (the #893 gap the
+        // retention exists to close). Dev-only, and skipped for a prefetch,
+        // which is not the user's view of anything.
+        const handler = dev && !isPrefetch
+          ? async () => {
+            const before = state.lastDevError;
+            const resp = await ssrPage(page.route, page.params, url, { ...ssrOpts, req });
+            if (
+              before && state.lastDevError === before
+              && before.kind === 'render' && before.url === devErrorUrl
+            ) state.lastDevError = null;
+            return resp;
+          }
+          : () => ssrPage(page.route, page.params, url, { ...ssrOpts, req });
         return runWithSegmentMiddleware(req, page.route.middlewares, handler, dev);
       }
       // Every non-GET/HEAD to a page runs the page's segment middleware, and
@@ -2865,6 +2905,11 @@ function __webjsApplyError(data) {
   let f; try { f = JSON.parse(data); } catch (_) { return; }
   renderDevOverlay(f);
 }
+// Keep the overlay tracking the page actually on screen (#1047): a render frame
+// is scoped to the URL that produced it, so navigating away takes it down, and a
+// frame that arrived before the URL advanced goes up once it does. The gate
+// itself lives inside renderDevOverlay, so __webjsApplyError needs no change.
+installDevOverlayNavSync();
 // Never reload INTO a server that is still restarting (Node's node --watch
 // briefly kills the process on an edit), which would paint a style-less,
 // half-rendered page (#893). Probe the lightweight /__webjs/version endpoint
