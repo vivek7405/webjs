@@ -15,7 +15,7 @@ import { spawn } from 'node:child_process';
 import { readdirSync, statSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -89,6 +89,16 @@ const coverageArgs = process.env.WEBJS_COVERAGE
     ]
   : [];
 
-const args = ['--test', ...coverageArgs, ...files];
+// Deny outbound calls to jspm.io / registry.npmjs.org for the whole run, so
+// this REQUIRED job cannot be redded by a third-party outage (#1150). Off when
+// the caller explicitly asked for the network, which is the same switch that
+// selects the *.live.test.* files above. Passed as argv rather than
+// NODE_OPTIONS because Bun ignores that variable and the sibling bun runner
+// uses the same fixture.
+const denyArgs = wantsNetwork
+  ? []
+  : ['--import', pathToFileURL(resolve(ROOT, 'test', 'fixtures', 'deny-live-hosts.mjs')).href];
+
+const args = ['--test', ...denyArgs, ...coverageArgs, ...files];
 const child = spawn(process.execPath, args, { stdio: 'inherit' });
 child.on('exit', (code) => process.exit(code ?? 1));

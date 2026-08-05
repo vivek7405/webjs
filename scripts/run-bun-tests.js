@@ -99,6 +99,12 @@ const excludeSegs = [`${SEP}browser${SEP}`, `${SEP}e2e${SEP}`, `${SEP}examples${
 // nightly `vendor-cdn` workflow is what asks.
 const LIVE_MARKER = '.live.test.';
 const wantsNetwork = Boolean(process.env.WEBJS_REQUIRE_NETWORK);
+// Same third-party deny the node runner installs, so a jspm outage cannot red
+// this job either (#1150). Bun ignores NODE_OPTIONS, hence the explicit flag.
+const denyArgs = wantsNetwork
+  ? []
+  : ['--preload', resolve(ROOT, 'test', 'fixtures', 'deny-live-hosts.mjs')];
+
 const filter = (process.env.WEBJS_BUN_TESTS || '').split(',').map((s) => s.trim()).filter(Boolean);
 // Repo-relative path, always forward-slashed so DENYLIST matching is OS-stable.
 const rel = (f) => f.slice(ROOT.length + 1).split(sep).join('/');
@@ -131,7 +137,7 @@ for (const f of files) {
     console.log(`SKIP(node-only) ${rel(f)}`);
     continue;
   }
-  const r = spawnSync(BUN, ['test', f], {
+  const r = spawnSync(BUN, [...denyArgs, 'test', f], {
     cwd: ROOT, encoding: 'utf8', timeout: PER_FILE_TIMEOUT_MS,
     env: { ...process.env, FORCE_COLOR: '0' },
   });
