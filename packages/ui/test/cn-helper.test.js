@@ -170,8 +170,15 @@ test('cn: an arbitrary value type hint names the property, so it picks the group
   assert.equal(cn('shadow-[color:red]', 'shadow-[color:blue]'), 'shadow-[color:blue]');
   assert.equal(cn('p-[length:4px]', 'p-[length:8px]'), 'p-[length:8px]');
   assert.equal(cn('hover:shadow-[color:red]', 'shadow-[color:blue]'), 'hover:shadow-[color:red] shadow-[color:blue]');
-  // A per-side border hint still routes through the border value parser.
+  // A per-side border hint still routes through the border value parser, for
+  // EVERY side the parser enumerates. The logical inline sides are the ones a
+  // hand-written side list forgets, and then the hinted and plain spellings of
+  // one utility land in different groups.
   assert.equal(cn('border-t-[color:var(--c)]', 'border-t-primary'), 'border-t-primary');
+  assert.equal(cn('border-s-primary', 'border-s-[color:red]'), 'border-s-[color:red]');
+  assert.equal(cn('border-e-primary', 'border-e-[color:red]'), 'border-e-[color:red]');
+  assert.equal(cn('border-s-2', 'border-s-[length:4px]'), 'border-s-[length:4px]');
+  assert.equal(cn('border-s-[length:4px]', 'border-4'), 'border-4');
   // A bracketed value with no hint keeps the prefix's default property.
   assert.equal(cn('bg-[#fff]', 'bg-primary'), 'bg-primary');
   assert.equal(cn('bg-[var(--x)]', 'bg-primary'), 'bg-primary');

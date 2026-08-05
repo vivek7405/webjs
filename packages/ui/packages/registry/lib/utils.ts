@@ -117,6 +117,23 @@ const GROUPS: Array<[RegExp, string]> = [
  * shorthand, never by `border-x-*`: which physical side they land on depends on
  * the writing direction, so an axis override there would be a guess.
  */
+function borderGroups(): Array<[RegExp, string]> {
+  const width = '(\\d+(\\.\\d+)?|\\[(length:|\\d|\\.)[^\\]]*\\])';
+  const out: Array<[RegExp, string]> = [];
+  // Sides before the bare form: `border-t-primary` must match the `t` colour
+  // group, not be swallowed by the side-less `^border-` colour pattern.
+  const sides = ['x', 'y', 't', 'r', 'b', 'l', 's', 'e', ''];
+  for (const side of sides) {
+    const seg = side ? `-${side}` : '';
+    out.push([new RegExp(`^border${seg}(-${width})?$`), `border-w${seg}`]);
+  }
+  for (const side of sides) {
+    const seg = side ? `-${side}` : '';
+    out.push([new RegExp(`^border${seg}-`), `border-color${seg}`]);
+  }
+  return out;
+}
+
 /**
  * An arbitrary value may carry a Tailwind TYPE HINT: `bg-[image:var(--g)]`,
  * `text-[length:14px]`, `shadow-[color:red]`. The hint exists precisely because
@@ -163,26 +180,11 @@ function hintedGroup(bare: string): string | null | undefined {
   if (key in HINTED_GROUPS) return HINTED_GROUPS[key] || null;
   // A border width or colour hint is read by `borderGroups()`'s value parser,
   // which already classifies `border-[length:2px]` as a width and everything
-  // else after `border-` as a colour.
-  if (/^border(-[xytrbl])?$/.test(prefix) && (hint === 'length' || hint === 'color')) return null;
+  // else after `border-` as a colour. The side list MUST match the one
+  // `borderGroups()` enumerates, logical inline sides included, or the hinted
+  // and plain spellings of one utility land in different groups.
+  if (/^border(-[xytrbles])?$/.test(prefix) && (hint === 'length' || hint === 'color')) return null;
   return `hint:${key}`;
-}
-
-function borderGroups(): Array<[RegExp, string]> {
-  const width = '(\\d+(\\.\\d+)?|\\[(length:|\\d|\\.)[^\\]]*\\])';
-  const out: Array<[RegExp, string]> = [];
-  // Sides before the bare form: `border-t-primary` must match the `t` colour
-  // group, not be swallowed by the side-less `^border-` colour pattern.
-  const sides = ['x', 'y', 't', 'r', 'b', 'l', 's', 'e', ''];
-  for (const side of sides) {
-    const seg = side ? `-${side}` : '';
-    out.push([new RegExp(`^border${seg}(-${width})?$`), `border-w${seg}`]);
-  }
-  for (const side of sides) {
-    const seg = side ? `-${side}` : '';
-    out.push([new RegExp(`^border${seg}-`), `border-color${seg}`]);
-  }
-  return out;
 }
 
 // Directional shorthand conflicts (the tailwind-merge model). A shorthand

@@ -445,7 +445,12 @@ names mechanically:
   `examples/blog/lib/utils/cn.ts` is a hand-synced duplicate with no mechanical
   link, so any change here lands in both. The repo-root
   `test/ui/cn-copies-in-sync.test.mjs` (not this package's `test/`) merges a
-  token battery through both copies and fails on drift.
+  token battery through both copies and fails on drift. Those TWO are the whole
+  inventory of hand-synced sources; every other `cn.ts` on disk is GENERATED
+  from this file and must not be hand-edited (`website/lib/utils/cn.ts` via
+  `website/scripts/copy-registry.mjs`, gitignored; a scaffolded app's copy at
+  `webjs ui init` time). A stale generated copy is not drift, it is a generator
+  that has not been re-run.
 - A variant prefix is split on the last colon OUTSIDE square brackets, because
   an arbitrary value carries colons of its own (`border-[length:2px]`,
   `bg-[url(https://x/y.png)]`). Splitting on the last colon anywhere hands the
