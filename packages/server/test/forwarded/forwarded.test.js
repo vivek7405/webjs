@@ -12,7 +12,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { urlFromRequest, applyForwarded } from '../../src/forwarded.js';
+import { urlFromRequest, applyForwarded, trustProxy } from '../../src/forwarded.js';
 
 function makeReq(url, headers = {}) {
   return { url, headers };
@@ -316,4 +316,26 @@ test('proto-only forwarding agrees on the host fallback (the Railway shape)', ()
   const bun = applyForwarded(new URL('http://webjs.dev:80/a'), webHeaders(headers));
   assert.equal(bun.href, node.href, 'the two shells agree on the host fallback');
   assert.equal(node.href, 'https://webjs.dev:80/a');
+});
+
+/* ---------------- the shared trust seam (#1104) ---------------- */
+
+test('trustProxy is the one place the posture is decided, read at call time', () => {
+  const prev = process.env.WEBJS_NO_TRUST_PROXY;
+  try {
+    delete process.env.WEBJS_NO_TRUST_PROXY;
+    assert.equal(trustProxy(), true, 'a proxy is trusted by default (the deployment topology webjs targets)');
+
+    process.env.WEBJS_NO_TRUST_PROXY = '1';
+    assert.equal(trustProxy(), false, 'the opt-out is honored, and honored on THIS call, not a boot-time snapshot');
+
+    // Only the literal '1' opts out, matching how the flag was always read.
+    for (const v of ['0', 'true', 'yes', '']) {
+      process.env.WEBJS_NO_TRUST_PROXY = v;
+      assert.equal(trustProxy(), true, `WEBJS_NO_TRUST_PROXY=${JSON.stringify(v)} is not the opt-out`);
+    }
+  } finally {
+    if (prev === undefined) delete process.env.WEBJS_NO_TRUST_PROXY;
+    else process.env.WEBJS_NO_TRUST_PROXY = prev;
+  }
 });

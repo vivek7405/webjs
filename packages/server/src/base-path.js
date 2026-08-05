@@ -11,7 +11,10 @@
  * hydrates. `createRequestHandler` explicitly targets embedding, where a
  * sub-path mount is the norm.
  *
- * The model is strip-at-ingress + prefix-on-emit, two seams only:
+ * The model is strip-at-ingress + prefix-on-emit. Two seams carry it, plus two
+ * further `stripBasePath` consumers on the CACHE path (`dev.js`'s HTML-cache
+ * write and `html-cache.js`'s `revalidatePath`), which key on the
+ * app-root-relative path so a mounted app hits its own cache:
  *
  *   1. STRIP AT INGRESS. At the very start of request handling, when the
  *      request pathname starts with the basePath, strip it so all

@@ -27,8 +27,9 @@
 import { getStore } from './cache.js';
 import { STREAM_MARKER } from './conditional-get.js';
 import { createHash } from 'node:crypto';
-import { publishedBuildId } from './importmap.js';
-import { dynamicAccessed } from './context.js';
+import { publishedBuildId, basePath } from './importmap.js';
+import { stripBasePath } from './base-path.js';
+import { dynamicAccessed, getRequest } from './context.js';
 
 /** Namespace prefix for every cached-HTML key, so a flush can target it. */
 const KEY_PREFIX = 'webjs:html:';
@@ -109,11 +110,37 @@ export function readRevalidate(pageModule) {
 }
 
 /**
- * The cache key for a request: the FULL URL (path + search string), since
- * `searchParams` change page output. Normalized to path + sorted query so
- * `?a=1&b=2` and `?b=2&a=1` share an entry. Two more discriminators are
- * folded into the namespace:
+ * The origin component of a cache key. `url.origin` is already the normalized
+ * lowercase `scheme://host[:port]` form for an http(s) URL; a non-special
+ * scheme serializes to the literal string `null`, which is a fine constant key
+ * component (such a URL never reaches a cacheable page render anyway).
  *
+ * @param {URL} url
+ * @returns {string}
+ */
+function originKey(url) {
+  return url.origin;
+}
+
+/**
+ * The cache key for a request: the ORIGIN plus the full path + search string,
+ * since both `ctx.url.origin` and `searchParams` change page output.
+ * Normalized to path + sorted query so `?a=1&b=2` and `?b=2&a=1` share an
+ * entry. Four discriminators are folded into the namespace:
+ *
+ *  - the origin (#1097). This cache is SHARED across visitors, and `ctx.url`
+ *    is built from `X-Forwarded-Host` / `X-Forwarded-Proto`, which neither
+ *    Cloudflare nor Railway strips from a client request. Without the origin
+ *    in the key, one request carrying `X-Forwarded-Host: evil.example` baked
+ *    an attacker-chosen origin into the shared body, and every later visitor
+ *    to that path was served it until the entry expired: a poisoned
+ *    `og:image`, canonical link, OAuth callback URL, or absolute asset URL.
+ *    With the origin in the key, a clean request resolves its origin from the
+ *    proxy-set `Host` and reads its OWN entry, so the hostile body is
+ *    unreachable from any origin an attacker does not already control. A
+ *    single-host deploy has exactly one origin and so exactly one key per URL,
+ *    unchanged hit rate; a genuine multi-host deploy gets correctly separated
+ *    entries instead of cross-serving one host's HTML to another;
  *  - the in-process generation, so `revalidateAll()` (a generation bump)
  *    makes every prior key unreachable in one step;
  *  - the published build id (the importmap fingerprint), so a NEW DEPLOY
@@ -143,7 +170,7 @@ export function htmlCacheKey(url) {
   // the importmap-only build id misses. Empty (dev / no fingerprint) collapses
   // to the prior key shape, so an unconfigured app is byte-identical.
   const appfp = _appSourceFp ? `${_appSourceFp}:` : '';
-  return `${KEY_PREFIX}${build}:${appfp}${_generation}:${url.pathname}${search}`;
+  return `${KEY_PREFIX}${build}:${appfp}${_generation}:${originKey(url)}:${url.pathname}${search}`;
 }
 
 /**
@@ -221,23 +248,100 @@ export function isCacheableResponse(res, guards = {}) {
  * ONLY the no-query entry; pass the exact `path?query` to target a
  * specific query variant, or call `revalidateAll()` to clear everything.
  *
- * @param {string} path  e.g. '/blog' or '/blog?page=2'
+ * ORIGIN RESOLUTION (#1097). Cache keys carry the request's origin, so a bare
+ * path does not name one entry, it names one per origin the path was cached
+ * under. Two forms resolve it:
+ *
+ *  1. The CURRENT request's origin, when one is ambient. A mutation runs inside
+ *     the request of the user who triggered it, and that user is on the same
+ *     origin as the pages being evicted, so a bare path is exact for the
+ *     ordinary "server action writes, then evicts" flow, which is every
+ *     in-repo example and everything the docs show.
+ *  2. An ABSOLUTE url (`https://app.example/blog`) names its origin outright.
+ *     This is the form for a caller with NO ambient request: a cron job, a
+ *     queue worker, an `instrumentation.js` timer. Under `webjs.basePath` pass
+ *     the PUBLIC url and the mount prefix is stripped for you, so it keys the
+ *     same entry the write stored.
+ *
+ * A bare path with no ambient request cannot be resolved and WARNS ONCE naming
+ * the path, rather than silently evicting nothing.
+ *
+ * There is deliberately no process-local registry of "origins seen so far"
+ * standing in for case 2. The origin comes from `X-Forwarded-Host`, which is
+ * client-supplied and forwarded rather than stripped (the whole premise of
+ * #1097), so such a registry is attacker-writable: a flood of hostile hosts
+ * against a cold process either fills a bounded registry before the real origin
+ * is ever seen, or grows an unbounded one. Either way eviction silently stops
+ * working, which is worse than the explicit contract above.
+ *
+ * @param {string} path  e.g. '/blog', '/blog?page=2', or 'https://app.example/blog'
  * @returns {Promise<void>}
  */
 export async function revalidatePath(path) {
   if (typeof path !== 'string' || !path) return;
-  // Build the same normalized key readHtmlCache / writeHtmlCache produce.
   let url;
-  try {
-    url = new URL(path, 'http://internal.invalid');
-  } catch {
-    return;
+  if (/^https?:\/\//i.test(path)) {
+    try { url = new URL(path); } catch { return; }
+    // An absolute url is the PUBLIC one, so under `webjs.basePath` it carries
+    // the mount prefix. Cache entries key on the app-root-relative path (the
+    // write strips it in dev.js for exactly this reason), so strip it here too
+    // or the caller who was told to use this form, the one with no ambient
+    // request, computes a key nothing was ever stored under. A path that is
+    // not under the base path is left alone, matching the write's behaviour.
+    const base = basePath();
+    if (base) {
+      const stripped = stripBasePath(url.pathname, base);
+      if (stripped !== null) url.pathname = stripped;
+    }
+  } else {
+    const origin = ambientOrigin();
+    if (!origin) {
+      warnUnresolvedOriginOnce(path);
+      return;
+    }
+    // Build the same normalized key readHtmlCache / writeHtmlCache produce.
+    try { url = new URL(path, origin); } catch { return; }
   }
   try {
     await getStore().delete(htmlCacheKey(url));
   } catch {
     /* a store delete failure is non-fatal: the TTL still expires the entry */
   }
+}
+
+/**
+ * The current request's origin, or '' when there is no ambient request. Never
+ * throws: an eviction helper must not take down the mutation that called it.
+ *
+ * @returns {string}
+ */
+function ambientOrigin() {
+  try {
+    const req = getRequest();
+    return req ? new URL(req.url).origin : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Paths already warned about an unresolvable bare-path eviction, so the warning
+ * fires once per offending path rather than once per invocation.
+ * @type {Set<string>}
+ */
+const _warnedUnresolvedPaths = new Set();
+
+/** @param {string} path */
+function warnUnresolvedOriginOnce(path) {
+  if (_warnedUnresolvedPaths.has(path)) return;
+  _warnedUnresolvedPaths.add(path);
+  console.warn(
+    `[webjs] revalidatePath(${JSON.stringify(path)}) evicted nothing: HTML cache ` +
+    `keys carry the request origin, and this call has no ambient request to take ` +
+    `one from (a cron job, a queue worker, a boot-time timer). Pass an absolute ` +
+    `url instead, e.g. revalidatePath('https://your-host${path.startsWith('/') ? path : '/' + path}'), ` +
+    `or call it from a server action, where the triggering request supplies the origin.`
+  );
 }
 
 /**

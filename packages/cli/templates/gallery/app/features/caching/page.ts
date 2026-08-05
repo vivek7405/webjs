@@ -1,9 +1,9 @@
 // Caching: `export const revalidate = N` opts the page into the server HTML
-// response cache, keyed by URL for N seconds. The rendered timestamp below only
-// changes once per window: reload inside 10s and it is identical, reload after
-// and it refreshes. SAFETY: only cache a page that is identical for every
-// visitor (no cookies(), no session, no per-user data), since the key is the URL
-// alone. For per-query reads use cache() + tags with revalidateTag; for a
+// response cache, keyed by the request origin plus the URL for N seconds. The
+// rendered timestamp below only changes once per window: reload inside 10s and
+// it is identical, reload after and it refreshes. SAFETY: only cache a page that
+// is identical for every visitor (no cookies(), no session, no per-user data),
+// since the key carries no per-user component. For per-query reads use cache() + tags with revalidateTag; for a
 // public/ asset use asset(), demonstrated at the bottom of this page.
 import { html, asset } from '@webjsdev/core';
 import type { Metadata } from '@webjsdev/core';
@@ -23,7 +23,7 @@ export default function CachingExample() {
     ${pageHeading('Caching')}
     ${lede(html`
       This page sets <code>export const revalidate = 10</code>, so its
-      server-rendered HTML is cached per URL for ten seconds.
+      server-rendered HTML is cached per origin and URL for ten seconds.
     `)}
     <p class="mb-4">
       Rendered at
