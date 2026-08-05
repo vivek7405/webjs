@@ -12,9 +12,12 @@ node_modules
 /*.jpeg
 
 # build / caches
-dist/
-build/
-out/
+# No trailing slash on purpose: `dist/` matches a DIRECTORY only, so a symlink
+# named `dist` (the shape used to borrow a built dist into a fresh worktree)
+# walked straight past it and got committed once. Match the name either way.
+dist
+build
+out
 .cache/
 # `.webjs/vendor/` is the EXCEPTION: holds the committed importmap
 # manifest + optional downloaded bundles for `webjs vendor pin`. See
@@ -86,3 +89,8 @@ packages/mcp/resources/
 # Generated at prepack from the canonical .agents/skills/webjs/ (see
 # scripts/sync-scaffold-skill.mjs). Never commit this bundle.
 packages/cli/templates/.agents/skills/webjs/
+
+# A machine-local symlink into ~/.local/share (an omarchy skill). Kept on disk
+# so the local setup keeps resolving it, untracked so it does not dangle in
+# every other clone. See test/repo-health/no-committed-symlinks.test.mjs.
+.agents/skills/omarchy
