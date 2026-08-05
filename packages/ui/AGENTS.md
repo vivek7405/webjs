@@ -230,8 +230,8 @@ Browser tests for the Tier-2 guarantees live in
 
 | Command | What it does |
 |---|---|
-| `webjsui init` | Initialize a project, writes `components.json`, copies the `cn()` helper to `lib/utils/cn.ts` (plus `lib/utils/dom.ts` beside it), installs the theme tokens. Its defaults are fixed constants, not derived from the host project (#1129). NON-DESTRUCTIVE on a re-run: an existing `components.json` keeps its aliases and an existing helper file is left alone, since both are yours to edit; `--overwrite` opts into replacing them. HARD-FAILS (non-zero exit) when the tokens cannot be written (an unstyled install with a clean exit code was the old trap). |
-| `webjsui add <names...>` | Resolve transitive deps, copy component sources, install npm deps. Self-heals missing theme tokens. For a Tier-1 helper it strips the worked `@example` and leaves a pointer (see Registry resolution). |
+| `webjsui init` | Initialize a project, writes `components.json`, copies the `cn()` helper to `lib/utils/cn.ts` (plus `lib/utils/dom.ts` beside it), installs the theme tokens. Its defaults are fixed constants, not derived from the host project (#1129). NON-DESTRUCTIVE on a re-run: an existing `components.json` keeps its settings (aliases, `tailwind.css`, base color, and any unknown keys) and an existing helper file is left alone, since both are yours; a config that cannot be parsed at all is a hard error rather than a silent replacement. `--overwrite` opts into replacing them. HARD-FAILS (non-zero exit) when the tokens cannot be written (an unstyled install with a clean exit code was the old trap). |
+| `webjsui add <names...>` | Resolve transitive deps, copy component sources, install npm deps. Self-heals missing theme tokens. Leaves an existing `cn()` / dom helper alone (see the placement section); `--overwrite` replaces it. For a Tier-1 helper it strips the worked `@example` and leaves a pointer (see Registry resolution). |
 | `webjsui list [filter]` | List components in the registry |
 | `webjsui view <name>` | Print a component's source to stdout (the human / offline path to the full example) |
 | `webjsui diff [name]` | Show diffs between local and registry (against the LIVE upstream) |
@@ -252,9 +252,15 @@ The DOM helper is always the utils file's SIBLING (`lib/utils/dom.ts` next to
 Honouring the manifest `target` instead is what produced the #1129 orphan bug:
 `add` wrote `lib/utils.ts` while every component resolved to `lib/utils/cn.ts`,
 so each install left a dead copy behind. The manifest `target` still governs
-every OTHER registry item, and a multi-file item is left to it as well, so a
-custom registry authored against the shadcn wire format (invariant 3) keeps
-working.
+every OTHER registry item. It is deliberately NOT honoured for these two, in
+any registry, including a custom one authored against the shadcn wire format
+(invariant 3): the rewrite always points component imports at the alias, so a
+write that went anywhere else would recreate the orphan. The two answers have
+to agree, and the alias is the one that has consumers.
+
+Both files are also treated as user-owned once they exist. `init` and `add`
+leave them alone (`add`'s `--yes` suppresses prompts but does not license
+replacing them); only an explicit `--overwrite` replaces one.
 
 ### Registry resolution: LOCAL-FIRST (#983)
 

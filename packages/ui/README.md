@@ -86,9 +86,10 @@ npx webjsui add button card dialog
 
 Both paths write the same `components.json`. `init` takes no reading of the
 host project: the defaults below are fixed, and `--css <path>` overrides the
-stylesheet it appends the tokens to. Re-running it is safe, since an existing
-config keeps its aliases and an existing helper file is left as you edited it
-(pass `--overwrite` to replace them).
+stylesheet it appends the tokens to. Re-running it preserves what an existing
+project already declared (its aliases, stylesheet path, and base color) and
+leaves an existing helper file as you edited it, so it is safe as a repair
+step. Pass `--overwrite` to reset those instead.
 
 ## What `init` writes
 
@@ -116,7 +117,7 @@ always compares against the live upstream.
 
 | Command | Effect |
 |---|---|
-| `webjsui init` | Initialize a project (writes `components.json`, `lib/utils/cn.ts`, the theme tokens). Exits non-zero if the tokens cannot be written. |
+| `webjsui init` | Initialize a project (writes `components.json`, `lib/utils/cn.ts`, the theme tokens). Preserves an existing project's settings and helper files; `-o, --overwrite` resets them. Exits non-zero if the tokens cannot be written. |
 | `webjsui add <names...>` | Add components (copies helpers + a pointer for Tier-1, self-heals theme tokens) |
 | `webjsui list` | List all available components |
 | `webjsui view <name>` | Print a component's projected view (helpers + paste-ready example) and full source |

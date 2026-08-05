@@ -1,8 +1,8 @@
 import { Command } from 'commander';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import prompts from 'prompts';
-import { getConfig, writeConfig, CONFIG_FILE } from '../utils/get-config.js';
+import { writeConfig, CONFIG_FILE } from '../utils/get-config.js';
 import { logger } from '../utils/logger.js';
 import { getRegistryItem, DEFAULT_REGISTRY_URL } from '../registry/fetcher.js';
 import { ensureTheme } from '../utils/theme.js';
@@ -55,28 +55,46 @@ export const init = new Command()
   .action(async (opts) => {
     const cwd = opts.cwd;
 
-    // Re-running `init` on a project that already has one must not RELOCATE
-    // its helpers. The alias map decides where cn() lives and what every
-    // already-added component imports, so adopting the current defaults over
-    // an older project's map would strand those imports on files `add` no
-    // longer writes. Keep whatever the project declared; `--overwrite` opts
-    // into the move. A malformed config is treated as absent, since failing
-    // to parse it is not a reason to refuse to initialise.
+    // Re-running `init` on a project that already has one must not RELOCATE it.
+    // The alias map decides where cn() lives and what every already-added
+    // component imports, and `tailwind.css` decides which stylesheet the app
+    // actually builds, so adopting the current defaults over an existing
+    // project's values would strand those imports and append the tokens to a
+    // file nothing compiles. Keep what the project declared; `--overwrite`
+    // opts into replacing it.
+    //
+    // Read the RAW json rather than going through `getConfig`: its schema is
+    // `.strict()`, so a config carrying any unknown key (a shadcn-shaped one
+    // with `rsc` / `tsx`, or a hand-added field) throws, and treating that as
+    // "no config" is exactly what would relocate a real project and then
+    // overwrite the file. Only a file we cannot parse AT ALL is a refusal,
+    // because silently replacing unreadable config is the same data loss.
+    const cfgPath = join(cwd, CONFIG_FILE);
+    /** @type {any} */
     let existing = null;
-    try {
-      existing = getConfig(cwd);
-    } catch {
-      existing = null;
+    if (existsSync(cfgPath)) {
+      try {
+        existing = JSON.parse(readFileSync(cfgPath, 'utf8'));
+      } catch {
+        if (!opts.overwrite) {
+          logger.error(`${CONFIG_FILE} exists but is not valid JSON, so its settings cannot be preserved.`);
+          logger.info('Fix or delete it, or re-run with --overwrite to replace it.');
+          process.exit(1);
+        }
+      }
     }
-    const aliases = existing && !opts.overwrite ? existing.aliases : DEFAULT_ALIASES;
-    if (existing && !opts.overwrite) {
-      logger.info(`${CONFIG_FILE} already exists: keeping its aliases (use --overwrite to reset them).`);
+    const keep = existing && !opts.overwrite;
+    if (keep) {
+      logger.info(`${CONFIG_FILE} already exists: keeping its settings (use --overwrite to reset them).`);
     }
+    const aliases = (keep && existing.aliases) || DEFAULT_ALIASES;
+    const initialCss = (keep && existing.tailwind && existing.tailwind.css) || DEFAULT_TAILWIND_CSS;
+    const initialBaseColor = (keep && existing.tailwind && existing.tailwind.baseColor) || 'neutral';
 
     /** @type {{ baseColor: string, css: string }} */
     let answers = {
-      baseColor: opts.baseColor || 'neutral',
-      css: opts.css || DEFAULT_TAILWIND_CSS,
+      baseColor: opts.baseColor || initialBaseColor,
+      css: opts.css || initialCss,
     };
 
     if (!opts.yes) {
@@ -93,7 +111,7 @@ export const init = new Command()
             type: opts.css ? null : 'text',
             name: 'css',
             message: 'Tailwind CSS file path?',
-            initial: DEFAULT_TAILWIND_CSS,
+            initial: initialCss,
           },
         ],
         { onCancel: () => process.exit(1) },
@@ -102,15 +120,19 @@ export const init = new Command()
     }
 
     const config = {
+      ...(keep ? existing : null),
       $schema: 'https://ui.webjs.dev/schema.json',
-      style: 'default',
+      style: (keep && existing.style) || 'default',
       tailwind: {
+        ...(keep && existing.tailwind ? existing.tailwind : null),
         css: answers.css,
         baseColor: answers.baseColor,
-        cssVariables: true,
+        cssVariables: keep && existing.tailwind && existing.tailwind.cssVariables !== undefined
+          ? existing.tailwind.cssVariables
+          : true,
       },
       aliases,
-      iconLibrary: 'lucide',
+      iconLibrary: (keep && existing.iconLibrary) || 'lucide',
     };
 
     writeConfig(cwd, config);
@@ -145,9 +167,10 @@ export const init = new Command()
  * init targeted `lib/utils.ts`, a path nothing else owned, but the moment it
  * writes where the scaffold and the user's edits live it becomes silent data
  * loss, and re-running init is the documented fix for an unstyled install. So
- * an existing file is kept unless `--overwrite` says otherwise. This mirrors
- * `add`, which prompts before replacing a file, and the theme, which is
- * idempotent.
+ * an existing file is kept unless `--overwrite` says otherwise. `add` keeps
+ * the same two files on the same terms (its `--yes` skips prompts but does not
+ * license replacing them), and the theme is idempotent, so every path into a
+ * project leaves an edited helper alone.
  */
 async function writeLibUtils(cwd, utilsAlias, registryUrl, overwrite) {
   // The `utils` alias omits the extension ("lib/utils/cn"), matching how

@@ -74,6 +74,16 @@ async function writeRegistryFile(cwd, config, item, file, opts) {
   const target = resolveTarget(cwd, config, item, file);
   ensureDir(dirname(target));
 
+  // The shared helpers are yours to edit, and since #1129 they live at the
+  // `utils` alias, which is the file `webjs create` generates and the one the
+  // docs tell you to retune. `--yes` means "do not ask me about overwrites",
+  // which is the normal non-interactive invocation, so honouring it here would
+  // replace edited source on every `add`. Only an explicit `--overwrite` may.
+  if (existsSync(target) && !opts.overwrite && helperTarget(config, item)) {
+    logger.info(`${relative(cwd, target)} already exists: keeping it.`);
+    return;
+  }
+
   if (existsSync(target) && !opts.overwrite && !opts.yes) {
     const r = await prompts({
       type: 'confirm',
@@ -214,11 +224,10 @@ function resolveTarget(cwd, config, item, file) {
 function helperTarget(config, item) {
   const utilsAbs = config?.resolvedPaths?.utils;
   if (!utilsAbs || !item) return null;
-  // Only the canonical single-file helpers. A custom registry (`--registry`)
-  // may legitimately ship its own `lib-utils` under the shadcn-compatible wire
-  // format (invariant 3), where `target` is part of the contract, and a
-  // multi-file item would otherwise collapse every file onto this one path.
-  if ((item.files || []).length > 1) return null;
+  // No multi-file escape hatch here on purpose. `rewriteUtilsImport` ALWAYS
+  // retargets component imports to `resolvedPaths.utils`, so routing the write
+  // anywhere else, for any registry, recreates the orphan-copy bug this exists
+  // to prevent. The write and the rewrite have to answer alike or not at all.
   if (item.name === 'lib-utils') return utilsAbs;
   if (item.name === 'lib-dom') return join(dirname(utilsAbs), 'dom.ts');
   return null;

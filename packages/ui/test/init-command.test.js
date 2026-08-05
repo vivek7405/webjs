@@ -287,3 +287,75 @@ test('init: re-run keeps an older project on its own aliases', async () => {
     rmSync(d, { recursive: true });
   }
 });
+
+// The first pass at the re-run guard only preserved `aliases`, so a project
+// whose stylesheet is not the default (examples/blog builds public/input.css)
+// still got repointed, and the theme appended to a file it never compiles.
+test('init: re-run preserves a non-default stylesheet and base color', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    writeFileSync(join(d, 'components.json'), JSON.stringify({
+      $schema: 'https://ui.webjs.dev/schema.json',
+      style: 'default',
+      tailwind: { css: 'public/input.css', baseColor: 'zinc', cssVariables: true },
+      aliases: { components: 'components', utils: 'lib/utils/cn', ui: 'components/ui', lib: 'lib' },
+    }));
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+    const cfg = JSON.parse(readFileSync(join(d, 'components.json'), 'utf8'));
+    assert.equal(cfg.tailwind.css, 'public/input.css', 'stylesheet path is preserved');
+    assert.equal(cfg.tailwind.baseColor, 'zinc', 'base color is preserved');
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+// The config schema is .strict(), so a shadcn-shaped config with extra keys
+// throws on parse. Treating that as "no config" would relocate the aliases and
+// then overwrite the file, which is the data loss the guard exists to stop.
+test('init: keeps settings from a config carrying unknown keys', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    writeFileSync(join(d, 'components.json'), JSON.stringify({
+      $schema: 'https://ui.webjs.dev/schema.json',
+      style: 'default',
+      rsc: true,
+      tsx: true,
+      tailwind: { css: 'src/app.css', baseColor: 'stone', cssVariables: true },
+      aliases: { components: 'components', utils: 'src/lib/cn', ui: 'components/ui', lib: 'lib' },
+    }));
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+    const cfg = JSON.parse(readFileSync(join(d, 'components.json'), 'utf8'));
+    assert.equal(cfg.aliases.utils, 'src/lib/cn', 'aliases survive a strict-schema miss');
+    assert.equal(cfg.tailwind.css, 'src/app.css');
+    assert.equal(cfg.rsc, true, 'unknown keys are carried through, not dropped');
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+test('init: refuses to replace a components.json it cannot parse', async () => {
+  stubFetch();
+  const d = tmp();
+  const origExit = process.exit;
+  const origErr = console.error;
+  let code = null;
+  process.exit = (c) => { code = c; throw new Error('__exit__'); };
+  console.error = () => {};
+  try {
+    writeFileSync(join(d, 'components.json'), '{ this is not json');
+    await init
+      .parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' })
+      .catch((e) => { if (e.message !== '__exit__') throw e; });
+    assert.equal(code, 1, 'exits non-zero rather than clobbering');
+    assert.equal(readFileSync(join(d, 'components.json'), 'utf8'), '{ this is not json', 'file untouched');
+  } finally {
+    process.exit = origExit;
+    console.error = origErr;
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});

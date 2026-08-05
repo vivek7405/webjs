@@ -397,3 +397,36 @@ test('add: rewrites a registry component\'s ../lib/utils.ts import to the user\'
     rmSync(d, { recursive: true });
   }
 });
+
+// `--yes` means "do not prompt me", not "replace my edited source". Since
+// #1129 the helper sits at the `utils` alias, the file webjs create generates
+// and the docs tell you to retune, so add must leave it alone there.
+test('add: --yes does not replace an existing cn helper', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(join(d, 'lib'), { recursive: true });
+    writeFileSync(join(d, 'lib', 'utils.ts'), 'export const MINE = 1;\n');
+    await add.parseAsync(['card', '--yes', '--no-deps', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+    assert.match(readFileSync(join(d, 'lib', 'utils.ts'), 'utf8'), /MINE/, 'edited helper survives --yes');
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+test('add: --overwrite does replace it', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(join(d, 'lib'), { recursive: true });
+    writeFileSync(join(d, 'lib', 'utils.ts'), 'export const MINE = 1;\n');
+    await add.parseAsync(['card', '--yes', '--overwrite', '--no-deps', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+    assert.doesNotMatch(readFileSync(join(d, 'lib', 'utils.ts'), 'utf8'), /MINE/);
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});

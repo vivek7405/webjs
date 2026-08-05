@@ -43,7 +43,10 @@ So the loop is: `add` the component, then query `ui <name>` (MCP) or
 - `npx webjsdev ui init` writes `components.json`, `lib/utils/cn.ts`, and the CSS design
   tokens the helpers render against (`--background`, `--foreground`,
   `--destructive`, ...). It HARD-FAILS if the tokens cannot be written, so a
-  clean exit means the kit is styled. `add` self-heals the tokens if they go
+  clean exit means the kit is styled. Re-running it is safe on an existing
+  project: it keeps the aliases, stylesheet path, and base color already in
+  `components.json` and leaves an edited `cn.ts` / `dom.ts` alone, so it only
+  fills in what is missing (`--overwrite` resets them instead). `add` self-heals the tokens if they go
   missing.
 - Resolution is LOCAL-FIRST: `init` / `add` / `list` / `view` read the registry
   that ships inside the installed `@webjsdev/ui`, with no network. This pins you
