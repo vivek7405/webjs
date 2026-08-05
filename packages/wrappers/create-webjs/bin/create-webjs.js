@@ -19,6 +19,7 @@
  * resolve to this same package and bin.
  */
 import { scaffoldApp } from '@webjsdev/cli/lib/create.js';
+import { checkAppName, appNameErrorMessage } from '@webjsdev/cli/lib/app-name.js';
 
 const TEMPLATES = ['full-stack', 'api'];
 
@@ -33,6 +34,11 @@ function flagValue(name) {
 const usage = `Usage:
   npm create webjs@latest <app-name> [-- --template full-stack|api] [-- --no-install]
   npx create-webjs@latest <app-name> [--template full-stack|api] [--no-install]
+
+The <app-name> must be a valid package name: letters, digits, and
+the separators "-", "." and "_", starting with a letter or a digit, at most 214
+characters. It becomes the directory, the package.json name, AND a value written
+into generated source, so anything else is rejected before any file is written.
 
 Templates:
   full-stack (default)  pages + components + API + Drizzle/SQLite + gallery
@@ -66,6 +72,16 @@ const name = positional[0];
 if (!name) {
   console.error('Error: <app-name> is required.\n');
   console.error(usage);
+  process.exit(1);
+}
+
+// Same guard as `webjs create` (#1066): the name is written into the generated
+// package.json and interpolated into generated source, so it has to be a valid
+// npm package name before any file is written. `scaffoldApp` re-checks, but
+// catching it here prints the guidance instead of an unhandled rejection.
+const nameCheck = checkAppName(name);
+if (!nameCheck.ok) {
+  console.error(appNameErrorMessage(name, nameCheck.reason));
   process.exit(1);
 }
 
