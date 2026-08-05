@@ -19,6 +19,7 @@ import { render } from '../../../src/render-client.js';
 import { enableClientRouter } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
+import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 /**
@@ -88,10 +89,16 @@ function awaitNavigation(timeoutMs = 2000) {
 }
 
 suite('Client router: JS-handled links/forms are not hijacked (#150, #153)', () => {
-  let container, origFetch, fetched, bOpen, bClose, fallbacks, navigated, onFallback, onNavigate;
+  let container, origFetch, fetched, bOpen, bClose, fallbacks, navigated, navGuard, onNavigate;
 
   function setup() {
     enableClientRouter(); // idempotent; ensures the document listeners are attached
+    // The shared guard (#1135) blocks the browser's default anchor activation
+    // so an interception gap fails THIS test instead of navigating the runner
+    // page and aborting the whole session. It also collects the degradation
+    // events these tests assert on, so there is no second listener here.
+    navGuard = installNavGuard();
+    fallbacks = navGuard.fallbacks;
     container = document.createElement('div');
     // Bracket the container with a live keyed boundary pair (#1015) and return
     // a boundary-carrying body, so an intercepted nav swaps softly instead of
@@ -101,14 +108,10 @@ suite('Client router: JS-handled links/forms are not hijacked (#150, #153)', () 
     document.body.appendChild(bOpen);
     document.body.appendChild(container);
     document.body.appendChild(bClose);
-    // Record both router diagnostics (#1114) for the life of the test. A
-    // degradation carries a stable `cause` slug, which is the entire diagnosis
-    // when one of these tests reds, so it has to reach the assertion message.
-    fallbacks = [];
+    // The commit signal (#1114). Its degradation counterpart comes from the
+    // guard above.
     navigated = [];
-    onFallback = (e) => fallbacks.push(e.detail);
     onNavigate = (e) => navigated.push(e.detail && e.detail.url);
-    document.addEventListener('webjs:navigation-fallback', onFallback);
     document.addEventListener('webjs:navigate', onNavigate);
     fetched = [];
     origFetch = window.fetch;
@@ -120,7 +123,7 @@ suite('Client router: JS-handled links/forms are not hijacked (#150, #153)', () 
     };
   }
   function teardown() {
-    document.removeEventListener('webjs:navigation-fallback', onFallback);
+    navGuard.remove();
     document.removeEventListener('webjs:navigate', onNavigate);
     window.fetch = origFetch;
     container.remove();

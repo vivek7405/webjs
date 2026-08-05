@@ -28,6 +28,10 @@
 import { enableClientRouter } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
+import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
+
+/** Shared across the suites below; installed per test in setup(). */
+let navGuard;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 /** Wait for the router's async navigation pipeline to settle. */
@@ -42,6 +46,7 @@ suite('Client router: in-place navigation-error recovery (#249)', () => {
   let container, origFetch;
 
   function setup() {
+    navGuard = installNavGuard();
     enableClientRouter(); // idempotent; ensures the document listeners are attached
     container = document.createElement('div');
     // Outer chrome that lives OUTSIDE the children slot. Its survival is
@@ -57,6 +62,7 @@ suite('Client router: in-place navigation-error recovery (#249)', () => {
     origFetch = window.fetch;
   }
   function teardown() {
+    navGuard.remove();
     window.fetch = origFetch;
     container.remove();
   }

@@ -26,6 +26,10 @@
 import { enableClientRouter } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
+import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
+
+/** Shared across the suites below; installed per test in setup(). */
+let navGuard;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 async function settle() { await tick(); await tick(); await tick(); await tick(); }
 
@@ -52,6 +56,7 @@ suite('Client router: View Transitions on partial swaps (#250)', () => {
   let container, origFetch, origSVT, calls;
 
   function setup() {
+    navGuard = installNavGuard();
     enableClientRouter();
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -61,6 +66,7 @@ suite('Client router: View Transitions on partial swaps (#250)', () => {
     calls = [];
   }
   function teardown() {
+    navGuard.remove();
     window.fetch = origFetch;
     restoreSVT();
     setViewTransitionMeta(false);
@@ -197,6 +203,7 @@ suite('Client router: data-webjs-permanent persistence (#250)', () => {
   let container, sibling, origFetch;
 
   function setup() {
+    navGuard = installNavGuard();
     enableClientRouter();
     container = document.createElement('div');
     sibling = document.createElement('div');
@@ -207,6 +214,7 @@ suite('Client router: data-webjs-permanent persistence (#250)', () => {
     origFetch = window.fetch;
   }
   function teardown() {
+    navGuard.remove();
     window.fetch = origFetch;
     container.remove();
     const s = document.getElementById('perm-sibling');

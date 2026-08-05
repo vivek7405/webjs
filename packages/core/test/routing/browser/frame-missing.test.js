@@ -25,6 +25,10 @@
 import { enableClientRouter } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
+import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
+
+/** Shared across the suites below; installed per test in setup(). */
+let navGuard;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 /** Wait for the router's async navigation pipeline to settle. */
@@ -38,6 +42,7 @@ suite('Client router: <webjs-frame> frame-missing contract (#251)', () => {
   let container, origFetch, origWarn, warnings;
 
   function setup() {
+    navGuard = installNavGuard();
     enableClientRouter(); // idempotent; ensures the document listeners are attached
     container = document.createElement('div');
     // Sibling content that lives OUTSIDE the frame. If the document is
@@ -65,6 +70,7 @@ suite('Client router: <webjs-frame> frame-missing contract (#251)', () => {
     console.warn = (...a) => { warnings.push(a.join(' ')); };
   }
   function teardown() {
+    navGuard.remove();
     window.fetch = origFetch;
     console.warn = origWarn;
     container.remove();

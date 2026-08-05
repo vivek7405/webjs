@@ -21,6 +21,10 @@ import {
 } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
+import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
+
+/** Shared across the suites below; installed per test in setup(). */
+let navGuard;
 const tick = () => new Promise((r) => setTimeout(r, 25));
 /** Poll `location.search` until it equals `want` (a real popstate/pushState is
  *  async), returning the final value so the assertion message is useful. */
@@ -44,6 +48,7 @@ suite('Client router: query-string preservation (#639)', () => {
   let origFetch, calls, before, container;
 
   function setup(responder) {
+    navGuard = installNavGuard();
     enableClientRouter(); // idempotent
     _resetPrefetch();
     document.body.innerHTML = '<!--wj:children:/:/-->before<!--/wj:children:/-->';
@@ -58,6 +63,7 @@ suite('Client router: query-string preservation (#639)', () => {
     };
   }
   function teardown() {
+    navGuard.remove();
     window.fetch = origFetch;
     // Restore history so a later test starts on the original URL.
     try { history.replaceState(null, '', before); } catch { /* ignore */ }
