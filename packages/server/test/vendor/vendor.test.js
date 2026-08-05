@@ -2317,6 +2317,43 @@ test('resolveVendorImports live: in-process cache avoids re-fetching an already-
   }
 });
 
+test('pinAll: a bundle hash that hangs is abandoned, not waited on forever', async () => {
+  // fetchIntegrity was the one outbound call in vendor.js with no AbortSignal,
+  // while jspmCall, fetchNpmJson, and fetchLiveIntegrity all carry one. pinAll
+  // runs it once per resolved URL and there is no ambient deadline on a CLI
+  // run, so a CDN that accepts the connection and then stalls held the pin
+  // open indefinitely (#1150).
+  //
+  // Assert the SIGNAL rather than the wall clock: a real 10s wait would make
+  // this test the slow thing it is complaining about, and a shortened timeout
+  // would need production code to grow a test-only knob.
+  const dir = await makeTempAppWithSource({ 'app/page.ts': `import pico from 'picocolors';` });
+  try {
+    /** @type {Array<AbortSignal | undefined>} */
+    const signals = [];
+    await withMockedFetch(async (url, opts) => {
+      const s = String(url);
+      if (s.includes('api.jspm.io')) {
+        return jspmResponse({ picocolors: 'https://ga.jspm.io/npm:picocolors@1.1.1/index.js' });
+      }
+      signals.push(opts && opts.signal);
+      // Abort exactly the way a timeout would, so the catch path is exercised.
+      const err = new Error('The operation was aborted');
+      err.name = 'AbortError';
+      throw err;
+    }, async () => {
+      const result = await pinAll(dir);
+      // Fail-open is unchanged: an unhashable bundle still pins, without SRI.
+      assert.ok(!result.failed, 'a failed hash must not fail the whole pin');
+    });
+    assert.equal(signals.length, 1, 'the bundle GET fired exactly once');
+    assert.ok(signals[0] instanceof AbortSignal,
+      'the bundle hash fetch must carry an AbortSignal so a stalled CDN cannot hang the pin');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('resolveVendorImports: PINNED path is unchanged (live-hash path not taken)', async () => {
   // Counterfactual that the pin path did not regress: a pin file with its own
   // integrity returns verbatim, and NO bundle fetch fires for it.

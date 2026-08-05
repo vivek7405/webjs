@@ -338,6 +338,11 @@ let lastLiveResolveFailed = false;
 
 const JSPM_GENERATE_ENDPOINT = 'https://api.jspm.io/generate';
 const JSPM_GENERATE_TIMEOUT_MS = 10_000;
+// Bounds a single bundle GET, whether it is being hashed for a pin
+// (`fetchIntegrity`) or during the warmup live-integrity pass
+// (`fetchLiveIntegrity`). Declared here with the other outbound timeouts
+// rather than beside one of its two callers.
+const INTEGRITY_FETCH_TIMEOUT_MS = 10_000;
 
 /**
  * Provider names accepted by `webjs vendor pin --from <provider>`.
@@ -679,6 +684,12 @@ export async function vendorImportMapEntries(bareImports, appDir) {
 export function clearVendorCache() {
   jspmCache.clear();
   liveIntegrityCache.clear();
+  // Deliberately does NOT touch `lastLiveResolveFailed`, which looks like an
+  // omission and is not. `resolveVendorImports` is the flag's only reader and
+  // it resets the flag on entry, while the pinned short-circuit above that
+  // returns `ok: true` outright, so a value left behind by an earlier
+  // `pinAll` or `vendorImportMapEntries` can never be observed. Clearing it
+  // here would be a change nothing could write a failing test for (#1150).
 }
 
 /**
@@ -1105,12 +1116,21 @@ async function downloadBundle(url, appDir, filename) {
  * so the importmap can carry SRI hashes even when bundles aren't
  * locally vendored.
  *
+ * Bounded by the same timeout every other outbound call here carries.
+ * `pinAll` runs this once per resolved URL, so a CDN that accepts the
+ * connection and then stalls would otherwise hang the pin forever with
+ * nothing to interrupt it: there is no ambient deadline on a CLI run,
+ * and `node --test` imposes none either, so this was the one call in
+ * the file that could hold a process open indefinitely (#1150).
+ *
  * @param {string} url
  * @returns {Promise<string | null>}  the integrity string, or null on failure
  */
 async function fetchIntegrity(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), INTEGRITY_FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) {
       console.error(`[webjs] hash ${url} returned ${response.status}`);
       return null;
@@ -1121,8 +1141,13 @@ async function fetchIntegrity(url) {
     const buf = new Uint8Array(await response.arrayBuffer());
     return await sha384Integrity(buf);
   } catch (e) {
-    console.error(`[webjs] hash ${url} failed: ${e && e.message}`);
+    const why = e && e.name === 'AbortError'
+      ? `timed out after ${INTEGRITY_FETCH_TIMEOUT_MS}ms`
+      : e && e.message;
+    console.error(`[webjs] hash ${url} failed: ${why}`);
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -2169,7 +2194,6 @@ export async function checkImportmapCoherence(imports, opts) {
  */
 const liveIntegrityCache = new Map();
 
-const INTEGRITY_FETCH_TIMEOUT_MS = 10_000;
 // Cap concurrent bundle fetches so a large dep set does not open dozens of
 // sockets at once during warmup. Matches the bounded posture of the rest of
 // vendor.js (the jspm resolve is per-package but the network is the shared
