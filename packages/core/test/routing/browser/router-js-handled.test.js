@@ -21,8 +21,45 @@ import { enableClientRouter } from '../../../src/router-client.js';
 import { assert } from '../../../../../test/browser-assert.js';
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
+/**
+ * Resolve once the router has SETTLED the navigation a click asked for, rather
+ * than after an arbitrary macrotask. Two outcomes end a navigation and the
+ * router announces both on `document`: `webjs:navigate` when a soft swap
+ * committed, `webjs:navigation-fallback` when it degraded to a full load. The
+ * promise is created BEFORE the click, because a degradation can be dispatched
+ * synchronously from inside the click handler and a listener attached after the
+ * click would miss it.
+ *
+ * The bounded timeout covers the third outcome, a click the router never
+ * intercepted at all, which announces nothing. That case must still return so
+ * the test fails on its own assertion instead of hanging to the runner's 10s
+ * per-test limit (`web-test-runner.config.js`).
+ *
+ * @param {number} [timeoutMs]
+ * @returns {Promise<void>}
+ */
+function awaitNavigation(timeoutMs = 2000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      document.removeEventListener('webjs:navigate', settle);
+      document.removeEventListener('webjs:navigation-fallback', settle);
+      // Hand back a macrotask later so the router's own post-dispatch work
+      // unwinds before the caller asserts and dismantles the fixture.
+      setTimeout(resolve, 0);
+    };
+    timer = setTimeout(settle, timeoutMs);
+    document.addEventListener('webjs:navigate', settle);
+    document.addEventListener('webjs:navigation-fallback', settle);
+  });
+}
+
 suite('Client router: JS-handled links/forms are not hijacked (#150, #153)', () => {
-  let container, origFetch, fetched, bOpen, bClose;
+  let container, origFetch, fetched, bOpen, bClose, fallbacks, navigated, onFallback, onNavigate;
 
   function setup() {
     enableClientRouter(); // idempotent; ensures the document listeners are attached
@@ -35,6 +72,15 @@ suite('Client router: JS-handled links/forms are not hijacked (#150, #153)', () 
     document.body.appendChild(bOpen);
     document.body.appendChild(container);
     document.body.appendChild(bClose);
+    // Record both router diagnostics (#1114) for the life of the test. A
+    // degradation carries a stable `cause` slug, which is the entire diagnosis
+    // when one of these tests reds, so it has to reach the assertion message.
+    fallbacks = [];
+    navigated = [];
+    onFallback = (e) => fallbacks.push(e.detail);
+    onNavigate = (e) => navigated.push(e.detail && e.detail.url);
+    document.addEventListener('webjs:navigation-fallback', onFallback);
+    document.addEventListener('webjs:navigate', onNavigate);
     fetched = [];
     origFetch = window.fetch;
     window.fetch = (url) => {
@@ -44,7 +90,17 @@ suite('Client router: JS-handled links/forms are not hijacked (#150, #153)', () 
       }));
     };
   }
-  function teardown() { window.fetch = origFetch; container.remove(); bOpen.remove(); bClose.remove(); }
+  function teardown() {
+    document.removeEventListener('webjs:navigation-fallback', onFallback);
+    document.removeEventListener('webjs:navigate', onNavigate);
+    window.fetch = origFetch;
+    container.remove();
+    bOpen.remove();
+    bClose.remove();
+  }
+
+  /** Render the first fallback's cause for an assertion message. */
+  const causeOf = (list) => (list.length ? String(list[0].cause) : 'none');
 
   test('a @click=preventDefault link is NOT navigated by the router', async () => {
     setup();
@@ -52,10 +108,14 @@ suite('Client router: JS-handled links/forms are not hijacked (#150, #153)', () 
       let ran = false;
       render(html`<a href="/js-handled-link" @click=${(e) => { e.preventDefault(); ran = true; }}>go</a>`, container);
       container.querySelector('a').click();
+      // No settle event to await: the assertion is that the router did NOT act,
+      // so a macrotask is the only signal there is.
       await tick();
       assert.ok(ran, 'the component @click handler ran');
       assert.equal(fetched.filter((u) => u.includes('/js-handled-link')).length, 0,
         'router must NOT navigate a preventDefaulted link');
+      assert.equal(fallbacks.length, 0,
+        `router must not have degraded a navigation here (cause: ${causeOf(fallbacks)})`);
     } finally { teardown(); }
   });
 
@@ -65,9 +125,12 @@ suite('Client router: JS-handled links/forms are not hijacked (#150, #153)', () 
       let ran = false;
       render(html`<form @submit=${(e) => { e.preventDefault(); ran = true; }}><button type="submit">go</button></form>`, container);
       container.querySelector('button').click();
+      // Same as the link case: nothing settles, because nothing should navigate.
       await tick();
       assert.ok(ran, 'the component @submit handler ran');
       assert.equal(fetched.length, 0, 'router must NOT submit a preventDefaulted form');
+      assert.equal(fallbacks.length, 0,
+        `router must not have degraded a navigation here (cause: ${causeOf(fallbacks)})`);
     } finally { teardown(); }
   });
 
@@ -75,10 +138,21 @@ suite('Client router: JS-handled links/forms are not hijacked (#150, #153)', () 
     setup();
     try {
       render(html`<a href="/plain-link-target">go</a>`, container);
+      // Arm the settle listener BEFORE the click: a degradation can fire
+      // synchronously from inside the router's click handler.
+      const settled = awaitNavigation();
       container.querySelector('a').click();
-      await tick();
+      await settled;
+      // Assert the degradation channel FIRST. `fetched` alone cannot tell a
+      // committed soft swap from a degradation that fetched and then reloaded,
+      // and when a reload does follow, this cause slug is the only thing that
+      // reaches the log before the session dies.
+      assert.equal(fallbacks.length, 0,
+        `router must SOFT-navigate a plain link, but it degraded (cause: ${causeOf(fallbacks)})`);
       assert.ok(fetched.some((u) => u.includes('/plain-link-target')),
         'router must SPA-navigate a plain link (the fix must not break progressive enhancement)');
+      assert.ok(navigated.some((u) => u && String(u).includes('/plain-link-target')),
+        'the soft swap must COMMIT (webjs:navigate), not merely start');
     } finally { teardown(); }
   });
 });
