@@ -8,7 +8,7 @@ Env vars, caching, rate limiting, broadcast, file storage, and the `package.json
 - **Caching primitives.** `cache()` with tag invalidation, HTTP `Cache-Control`, the server HTML response cache (`export const revalidate`), content-hash asset URLs, conditional GET (ETag).
 - **Rate limiting** (`rateLimit()` middleware) and **broadcast** (`broadcast()` over WebSockets).
 - **File storage.** `FileStore` / `diskStore`, safe keys, signed URLs.
-- **The `"webjs"` config block.** Security headers, CSP, redirects, trailing-slash, basePath, allowed origins, client-router opt-out, ingress caps, dev/start task orchestration.
+- **The `"webjs"` config block.** Security headers, CSP, redirects, trailing-slash, basePath, allowed origins, client-router opt-out, ingress caps, dev/start task orchestration, the doctor severity gate.
 - **Observability.** Access log, `requestId()`, the `onError` hook, `instrumentation.ts`, the build-info endpoint.
 
 Read this when wiring caching or rate limiting, storing uploads, hardening headers, or configuring redirects and observability. **Auth and sessions are a separate reference (`auth-and-sessions.md`).** Server actions, `revalidateTag` from a mutation, and the `ActionResult` envelope live in `data-and-actions.md`.
