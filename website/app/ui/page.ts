@@ -37,10 +37,10 @@ export default async function UiIntro() {
       </p>
       <p>
         It comes from WebJs, but it is not limited to a WebJs app. Tier-1 helpers are plain
-        functions returning class strings, so they drop into any project with Tailwind v4
-        configured, Next, Astro, Vite, SvelteKit, Lit, or plain HTML. Tier-2 elements extend
-        <code>WebComponent</code> from <code>@webjsdev/core</code>, a small base class the
-        <code>webjsui add</code> command installs for you, and a WebJs app simply already has it.
+        functions returning class strings, so they need nothing beyond Tailwind v4. Tier-2
+        elements extend <code>WebComponent</code> from <code>@webjsdev/core</code>, a small base
+        class the <code>add</code> command installs for you, and a WebJs app simply already has
+        it. See <a href="#install">Install</a> for the path outside WebJs.
       </p>
 
       <h2>Two tiers, one mental model</h2>
@@ -88,7 +88,7 @@ import { buttonClass } from '#modules/ui/components/button.ts';
         behaviour natively.
       </p>
 
-      <h2>Install</h2>
+      <h2 id="install">Install</h2>
       <p>
         In a WebJs app there is nothing to install. <code>@webjsdev/ui</code> is a hard dependency
         of <code>@webjsdev/cli</code>, so a global WebJs install already carries it. A scaffolded
@@ -103,6 +103,19 @@ webjs ui add button card dialog input label</pre>
         into <code>lib/utils/cn.ts</code>, and installs the theme tokens.
         <code>add</code> resolves a component's transitive dependencies and copies the source into
         <code>components/ui/</code>, which is yours to edit from that point on.
+      </p>
+      <p>
+        Outside WebJs, the same registry is reachable through the standalone CLI that
+        <code>webjs ui</code> wraps, so no part of the framework has to be installed:
+      </p>
+      <pre>npx webjsui init
+npx webjsui add button card dialog</pre>
+      <p>
+        One caveat there. Components are copied as TypeScript and import the <code>cn()</code>
+        helper with an explicit <code>.ts</code> extension, which a WebJs app resolves natively
+        but TypeScript accepts only with <code>allowImportingTsExtensions</code> enabled. The
+        CLI does not set that flag for you, so either add it to your <code>tsconfig.json</code>
+        or drop the extension in the copied files.
       </p>
 
       <h2>Commands</h2>
