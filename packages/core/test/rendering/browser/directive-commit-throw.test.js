@@ -240,6 +240,51 @@ suite('directive commit throws (browser)', () => {
     assert.ok(after[1] !== before[1], 'the disposed instance must not be resurrected');
   });
 
+  test('a refused DOM removal keeps that row keyed, and does not duplicate it', () => {
+    // The ref-unbind case above cannot reach the removal loop's own shape,
+    // because the guard makes that step unable to throw at all. This drives
+    // the throw from the DOM removal instead, in a real browser, where node
+    // identity is the thing that separates "reused the row already there"
+    // from "built a second one beside it".
+    const idRows = (items) => html`<ul>${repeat(
+      items,
+      (it) => it.id,
+      (it) => html`<li>${it.n}</li>`,
+    )}</ul>`;
+
+    render(idRows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }, { id: 3, n: 'three' }]), container);
+    const [liOne, liTwo, liThree] = [...container.querySelectorAll('li')];
+
+    const ul = container.querySelector('ul');
+    const origRemove = ul.removeChild.bind(ul);
+    ul.removeChild = (node) => {
+      if (node === liThree) throw new Error('rm-boom');
+      return origRemove(node);
+    };
+    throwsMatching(() => { render(idRows([{ id: 1, n: 'one' }]), container); }, /rm-boom/);
+    ul.removeChild = origRemove;
+
+    render(idRows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }, { id: 3, n: 'three' }]), container);
+    const after = [...container.querySelectorAll('li')];
+
+    // Every key renders exactly once. Key 1 never left, so it is the same
+    // element. Key 2 left the map together with its row, so it MISSES and
+    // rebuilds. Key 3 never left either, because its row never left the
+    // document, so it HITS and reuses the row already there instead of
+    // building a second one beside it, which is the whole point.
+    assert.equal(after.length, 3);
+    assert.strictEqual(after.filter((li) => li === liOne).length, 1);
+    assert.strictEqual(after.filter((li) => li === liThree).length, 1);
+    assert.ok(!after.includes(liTwo), 'a removed row must not be resurrected');
+    assert.deepEqual([...after].map((li) => li.textContent).sort(), ['one', 'three', 'two']);
+
+    // Its ORDER is the residual, and it is asserted rather than glossed: the
+    // refused removal already took the row's start marker, so the reconciler
+    // can no longer move that range and the row keeps whatever slot it had.
+    // One refusing DOM removal costs that row its position.
+    assert.strictEqual(after[0], liThree);
+  });
+
   test('removing rows after recovery leaves nothing behind', () => {
     render(rows(good), container);
     throwsMatching(() => {

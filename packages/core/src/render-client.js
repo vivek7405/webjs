@@ -1773,12 +1773,17 @@ function disposeInstance(inst) {
       // parts keep their listeners and their refs bound. A teardown has no
       // retry either (a commit has the COMMIT_FAILED sentinel and a next
       // render; this does not), so there is nothing a propagated error could
-      // usefully repair. An object ref whose setter throws and a callback
-      // ref that throws are the same act by the author, and they get the
-      // same contract. This is a deliberate divergence from lit, recorded in
-      // the docs. The COMMIT path is different and stays unguarded (see
-      // `applyElement`): a commit throw has a route (the component boundary)
-      // and a repair, so swallowing there would hide a real author error.
+      // usefully repair.
+      //
+      // The object branch is the one this adds. The callback branch was
+      // already guarded here AND on the commit path (`applyElement` wraps
+      // every `nextTarget(...)` / `prevTarget(undefined)` call), so a
+      // throwing ref CALLBACK has always been swallowed everywhere. What was
+      // inconsistent is the object ref, guarded on neither. This makes the
+      // two agree on TEARDOWN, which is where the totality argument bites.
+      // It does NOT touch the commit path, so `applyElement`'s object-ref
+      // writes still propagate to the component boundary, which has a route
+      // for the error and a next render to repair it.
       const prev = /** @type any */ (p).lastTarget;
       if (prev) {
         if (typeof prev === 'function') {
@@ -1861,18 +1866,23 @@ function reconcileRepeat(part, value) {
       }
     }
 
-    // Remove any keys that remain in the old map. The key leaves the map
-    // BEFORE its row is touched and the removal is in a `finally`, so at any
-    // throw point `state.map` holds exactly the leftovers still in the
-    // document, and a row whose dispose threw still leaves it. Iterating a
-    // snapshot keeps the delete obviously safe rather than relying on the
-    // reader knowing that deleting during a Map iteration is legal.
+    // Remove any keys that remain in the old map. Both the removal and the
+    // unmapping sit in a `finally`, in that order, so at any throw point
+    // `state.map` holds exactly the rows still in the document: a dispose
+    // throw still removes the row AND drops its key, while a removal that
+    // itself refuses keeps the key, because the row it failed to remove is
+    // still there. Unmapping FIRST would trade one broken invariant for its
+    // mirror image, leaving that row in the document described by neither
+    // map, which is the untracked-orphan class this whole repair is about.
+    // Iterating a snapshot keeps the delete obviously safe rather than
+    // relying on the reader knowing that deleting during a Map iteration is
+    // legal.
     for (const [k, inst] of [...state.map]) {
-      state.map.delete(k);
       try {
         disposeInstance(inst);
       } finally {
         removeBetween(inst.startNode, inst.endNode);
+        state.map.delete(k);
       }
     }
     state.map = newMap;
@@ -1894,19 +1904,29 @@ function reconcileRepeat(part, value) {
     // re-applies whatever the throw skipped.
     //
     // That claim covers the REMOVAL loop as well as the walk, and only
-    // because the loop was written to earn it. It deletes each key before
-    // touching its row and removes the nodes in a `finally`, so a leftover is
-    // either fully gone from both the map and the document or still in both,
-    // never removed-but-still-mapped. Without that, a throw mid-removal would
-    // merge `newMap` over a `state.map` still holding disposed, detached
-    // rows: the row the app DELETED stays on screen, the survivors reorder,
-    // and a later render that re-adds that key reinserts the detached
-    // instance. The invariant, at any throw point on either branch: every
-    // instance still in the document is described by exactly one of the two
-    // maps, `newMap` for the processed new keys and `state.map` for the
-    // leftovers not reached yet, which is what makes the merge below correct.
-    // One residual: a throw from `removeBetween` itself, which only calls
-    // `removeChild` on nodes the renderer owns.
+    // because the loop was written to earn it. Each leftover is removed and
+    // unmapped together in a `finally`, so it is either gone from both the
+    // map and the document or still in both, never one without the other.
+    // Without that, a throw mid-removal would merge `newMap` over a
+    // `state.map` still holding disposed, detached rows: the row the app
+    // DELETED stays on screen, the survivors reorder, and a later render that
+    // re-adds that key reinserts the detached instance. The invariant, at any
+    // throw point on either branch: every instance still in the document is
+    // described by exactly one of the two maps, `newMap` for the processed
+    // new keys and `state.map` for the leftovers not fully removed, which is
+    // what makes the merge below correct.
+    //
+    // The residual, scoped honestly: if `removeBetween` itself refuses part
+    // way (it only calls `removeChild` on nodes the renderer owns, so it
+    // takes a throwing DOM), that row keeps its key and its remaining nodes,
+    // so the invariant above still holds AT THE THROW and a re-add reuses the
+    // row rather than duplicating it. What that row loses is its POSITION,
+    // since the removal already took its start marker and `moveRange` has no
+    // range left to move. And the guarantee is not permanent: those nodes can
+    // never be removed afterwards either, because `removeBetween` returns
+    // early once the start marker is gone, so the next pass that treats the
+    // key as a leftover unmaps it and the remnant is left untracked. One
+    // refusing DOM removal costs one row, deferred rather than prevented.
     //
     // Deliberately NOT a teardown-and-rebuild of the region. Rebuilding is
     // the obvious defensive move and it is measurably worse: it discards node
@@ -1935,11 +1955,11 @@ function teardownRepeat(state) {
   // for the same reason: a throw part-way must not leave already-removed
   // instances in the map. The trailing `clear()` stays as a no-op safety net.
   for (const [k, inst] of [...state.map]) {
-    state.map.delete(k);
     try {
       disposeInstance(inst);
     } finally {
       removeBetween(inst.startNode, inst.endNode);
+      state.map.delete(k);
     }
   }
   state.map.clear();
