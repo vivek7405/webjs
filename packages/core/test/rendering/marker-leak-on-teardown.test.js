@@ -228,11 +228,13 @@ test('a marker moved under a foreign parent is refused, not reached into', () =>
   //
   // Two things this case is NOT claiming. The walk still runs off the end of
   // the child list when the range is desynced like this, taking following
-  // siblings with it; that is the pre-existing residual documented on
-  // `reconcileArray`'s catch and it is out of scope here. And linkedom does
-  // not necessarily throw for a `removeChild` of a foreign node, so the
-  // survival assertion, not an absence of throw, is the arm that holds in
-  // every environment.
+  // siblings with it. That overrun is a property of the walk both before and
+  // after this fix, described on `reconcileRepeat`'s catch as the reason a
+  // half-removed row is never re-reached, and it is out of scope here: the
+  // guard's job starts after the walk, not during it. And linkedom does not
+  // necessarily throw for a `removeChild` of a foreign node, so the survival
+  // assertion, not an absence of throw, is the arm that holds in every
+  // environment.
   const el = document.createElement('div');
   const view = (n) => html`<ul>${rows(n).map((it) => html`<li>${it.t}</li>`)}</ul>`;
   render(view(2), el);

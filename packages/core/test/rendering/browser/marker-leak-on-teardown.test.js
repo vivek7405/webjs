@@ -5,12 +5,9 @@
  * reach live here. A component drives its re-renders through the update
  * pipeline rather than a bare `render()` call, so the leak has to be shown on
  * that path too. And linkedom never runs `disconnectedCallback`, while a real
- * browser runs it SYNCHRONOUSLY from inside `removeChild`, which means author
- * code executes in the middle of the removal walk. That re-entrancy is the
- * whole reason the walk terminates on the end marker itself rather than on a
- * stop sentinel captured before the walk starts: a sentinel is an arbitrary
- * sibling this region does not own, and a `disconnectedCallback` that moved it
- * would send the walk off the end of the child list.
+ * browser runs it SYNCHRONOUSLY from inside `removeChild`, so author code
+ * executes part-way through the removal walk, on a range the walk is still
+ * stepping through. Nothing in the unit suite exercises that at all.
  */
 import { html } from '../../../src/html.js';
 import { MARKER } from '../../../src/html.js';
@@ -88,9 +85,15 @@ suite('teardown takes its own end marker', () => {
   test('a disconnectedCallback running mid-walk does not derail the removal', async () => {
     // This reds on the reverted fix like the case above (it counts bookends
     // too), but that is not what it is for. It exists to prove the removal
-    // stays on its rails while synchronous author code runs INSIDE the walk,
-    // which is the property linkedom cannot express and the reason the walk
-    // terminates on the end marker rather than on a stop sentinel.
+    // finishes, and the region stays renderable, while a `disconnectedCallback`
+    // runs synchronously in the middle of the walk, which is the property
+    // linkedom cannot express at all.
+    //
+    // The callback here writes OUTSIDE the range being torn down, which is what
+    // ordinary author code does. It deliberately does not move a node the walk
+    // is about to step onto: a range mutated underneath the walk overruns, that
+    // is true before and after this fix, and this case is not the place to
+    // claim otherwise.
     const seen = [];
     // A fixed tag, because a tag NAME is not a hole position in an `html`
     // template; only attribute and child positions are.

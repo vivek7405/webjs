@@ -1716,21 +1716,18 @@ function nodesToFrag(nodes) {
  * never fire and every teardown left one `wjm-e` comment in the document,
  * unbounded for the life of the region.
  *
- * The terminator stays `end` ITSELF rather than an `end.nextSibling` stop
- * sentinel captured up front. `removeChild` runs a custom element's
- * `disconnectedCallback` synchronously, so author code runs part-way through
- * the walk. A sentinel is whatever node happened to follow the range, which
- * this region does not own and has no claim on: move or detach it mid-walk
- * and the walk never meets its terminator, runs off the end of the child
- * list, and takes the part's own marker with it. Terminating on `end` bounds
- * the walk by the range the instance itself defines. That is a smaller claim
- * than `end` being immovable, which it is not (the guard below is there
- * precisely because it can be moved), and it is the claim the walk needs.
- *
  * The `end.parentNode === parent` comparison is a refusal, not a formality. A
  * marker moved under a different parent is not this region's to remove, and
  * `parent.removeChild(end)` on it throws NotFoundError from inside a teardown
  * that has to stay total.
+ *
+ * The walk assumes the range is INTACT: it steps `nextSibling` from `start`
+ * and stops on `end`, so a range whose end no longer follows its start runs
+ * off the child list and takes the part's own marker with it. That is not
+ * something this function defends against, before or after the parent capture,
+ * and the consequence is spelled out where it bites, on `reconcileRepeat`'s
+ * catch below. The guard is the narrower promise: whatever the walk did, a
+ * marker that is somewhere else is left alone.
  *
  * @param {Node} start @param {Node} end
  */
