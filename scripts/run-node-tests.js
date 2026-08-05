@@ -57,10 +57,18 @@ for (const pkg of readdirSync(packagesDir, { withFileTypes: true })) {
 const SEP = sep;
 const browserSeg = `${SEP}browser${SEP}`;
 const e2eSeg = `${SEP}e2e${SEP}`;
+// Live third-party calls live only in `*.live.test.*` files, and those are
+// opt-in (#1150). This job is REQUIRED, so a jspm or npm-registry outage must
+// not be able to red it; a documentation-only PR was blocked that way on
+// #1149. The nightly `vendor-cdn` workflow sets WEBJS_REQUIRE_NETWORK to run
+// them for real, where a skip is promoted to a failure.
+const LIVE_MARKER = '.live.test.';
+const wantsNetwork = Boolean(process.env.WEBJS_REQUIRE_NETWORK);
 
 const files = all
   .filter((f) => !f.includes(browserSeg))
-  .filter((f) => !f.includes(e2eSeg));
+  .filter((f) => !f.includes(e2eSeg))
+  .filter((f) => wantsNetwork || !f.includes(LIVE_MARKER));
 
 if (!files.length) {
   console.log('[run-node-tests] no test files matched.');

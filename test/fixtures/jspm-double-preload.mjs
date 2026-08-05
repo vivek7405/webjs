@@ -7,8 +7,8 @@
  * gap: the test passes it as `--import` (Node) or `--preload` (Bun) ahead of
  * the CLI path, and it patches `globalThis.fetch` before any application code
  * runs. It is loaded as a runtime flag rather than through `NODE_OPTIONS`
- * because Bun ignores `NODE_OPTIONS` and neither runtime honours the other's
- * flag, the lesson `test/e2e/e2e.test.mjs` already carries for #1229's stub.
+ * because Bun ignores that variable outright, the lesson
+ * `test/e2e/e2e.test.mjs` already carries for #1229's stub.
  *
  * Two signals go to stderr, and both are load-bearing.
  *

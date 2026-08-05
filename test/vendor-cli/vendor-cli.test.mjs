@@ -33,10 +33,16 @@ statSync(PRELOAD);
 /**
  * The flag that loads the preload into the child, chosen by runtime.
  *
- * Node and Bun each ignore the other's spelling, and Bun ignores NODE_OPTIONS
- * entirely, so this cannot be one hardcoded flag or an env var. The parent
+ * It cannot be NODE_OPTIONS, because Bun ignores that variable outright
+ * (measured: `NODE_OPTIONS=--import ... bun -e 0` loads nothing). The parent
  * runtime IS the child runtime here, because the spawn below uses
- * `process.execPath`, which under `bun test` is the bun binary. Node wants a
+ * `process.execPath`, which under `bun test` is the bun binary.
+ *
+ * The flags are not symmetric. `node --preload` is a hard `bad option` error,
+ * while `bun --import` currently works as an alias, so a bare `--import` would
+ * in fact run on both today. Selecting per runtime anyway is the same choice
+ * `test/e2e/e2e.test.mjs` made for #1229's stub, and it means this file does
+ * not silently depend on Bun continuing to accept a Node spelling. Node wants a
  * URL rather than a path, since the spawn sets `cwd` to the temp app directory
  * and a relative `--import` would resolve against that instead of the repo.
  */

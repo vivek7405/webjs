@@ -4,7 +4,7 @@
  *
  * Runs the runtime-sensitive `node:test` files (under `test/`, `packages/core/test/`,
  * and `packages/server/test/`, excluding `browser/`, the `e2e/` gate, and the
- * network-bound `vendor/` suite) under Bun, file by file via `bun test <file>`.
+ * live-CDN `*.live.test.*` files) under Bun, file by file via `bun test <file>`.
  *
  * SOUNDNESS: the runner does NOT classify failures into skips (a self-classifying
  * runner can silently hide a real bug behind a "skip", which defeats the purpose).
@@ -80,12 +80,25 @@ walk(join(ROOT, 'packages', 'core', 'test'), all);
 walk(join(ROOT, 'packages', 'server', 'test'), all);
 
 const SEP = sep;
-// Exclude browser (needs wtr), e2e (gated), the network-bound vendor suite, and
-// the example-app smoke/probe tests (test/examples/**), which boot a real app
-// that needs a migrated Drizzle DB + jspm vendor resolution the matrix job does
-// not provision (the dedicated e2e / in-repo-app CI jobs do; on Bun a real app
-// boot is covered deterministically by the test/bun/*.mjs scripts).
-const excludeSegs = [`${SEP}browser${SEP}`, `${SEP}e2e${SEP}`, `${SEP}vendor${SEP}`, `${SEP}examples${SEP}`];
+// Exclude browser (needs wtr), e2e (gated), and the example-app smoke/probe
+// tests (test/examples/**), which boot a real app that needs a migrated Drizzle
+// DB + jspm vendor resolution the matrix job does not provision (the dedicated
+// e2e / in-repo-app CI jobs do; on Bun a real app boot is covered
+// deterministically by the test/bun/*.mjs scripts).
+//
+// `packages/server/test/vendor/` used to be excluded here as network-bound.
+// That stopped being true in #1150: the suite resolves through an offline
+// double now, and it is worth running on Bun precisely BECAUSE that double is a
+// `globalThis.fetch` swap, which is the kind of thing the two runtimes are most
+// likely to disagree about.
+const excludeSegs = [`${SEP}browser${SEP}`, `${SEP}e2e${SEP}`, `${SEP}examples${SEP}`];
+
+// Live third-party calls live only in `*.live.test.*` files, and those are
+// opt-in (#1150). A jspm outage must never be able to red a required check, so
+// the matrix skips them unless a caller explicitly asks for the network. The
+// nightly `vendor-cdn` workflow is what asks.
+const LIVE_MARKER = '.live.test.';
+const wantsNetwork = Boolean(process.env.WEBJS_REQUIRE_NETWORK);
 const filter = (process.env.WEBJS_BUN_TESTS || '').split(',').map((s) => s.trim()).filter(Boolean);
 // Repo-relative path, always forward-slashed so DENYLIST matching is OS-stable.
 const rel = (f) => f.slice(ROOT.length + 1).split(sep).join('/');
@@ -95,6 +108,7 @@ const denyOf = (f) => DENYLIST.find((d) => (d.match.endsWith('/') ? rel(f).start
 
 const files = all
   .filter((f) => !excludeSegs.some((s) => f.includes(s)))
+  .filter((f) => wantsNetwork || !f.includes(LIVE_MARKER))
   .filter((f) => filter.length === 0 || filter.some((q) => f.includes(q)))
   .sort();
 
