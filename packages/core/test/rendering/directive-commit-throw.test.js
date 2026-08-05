@@ -323,10 +323,14 @@ function regionHTML(container) {
   return container.querySelector('div').innerHTML.replace(/<!--[^>]*-->/g, '');
 }
 
-// The shape-changed branch is the destructive one: it inserts the replacement
-// and removes the old slot BEFORE the walk can finish. A same-shape update
-// touches only values, so it cannot reach this at all, which is why every
-// case below changes an item's template SHAPE in the render that throws.
+// The REPLACE branch is the destructive one: it inserts the replacement and
+// removes the old slot BEFORE the walk can finish. An in-place update touches
+// only values and cannot reach it. Three different things route there, and
+// the cases below cover more than one, because narrowing this to "the
+// template shape changed" would leave the others untested: the item's
+// template shape changed, its slot KIND changed (text, template, empty), or
+// the array GREW past the old length, where there is no old slot to compare
+// against at all.
 
 test('array: a mid-walk throw does not strand a row on the next valid render', () => {
   const container = document.createElement('div');
@@ -350,6 +354,22 @@ test('array: a mid-walk throw does not strand a row on the next valid render', (
   // Not merely delayed by one render.
   render(view([{ kind: 'b', v: '1' }, { kind: 'a', v: '2' }]), container);
   assert.equal(regionHTML(container), '<b>1</b><p>2</p>');
+});
+
+test('array: a GROWN array reaches the same branch, with no shape change at all', () => {
+  // Every item here is the same template shape, so nothing about this render
+  // is a "shape change". The new tail index simply has no old slot to reuse,
+  // which routes it to the same build-insert-remove branch.
+  const container = document.createElement('div');
+  const view = (items) => html`<div>${items.map((v) => html`<p>${v}</p>`)}</div>`;
+
+  render(view(['1']), container);
+  assert.throws(() => { render(view(['1', '2', poison]), container); }, /boom/);
+
+  render(view(['1', '2', '3']), container);
+  assert.equal(regionHTML(container), '<p>1</p><p>2</p><p>3</p>');
+  render(view([]), container);
+  assert.equal(regionHTML(container), '');
 });
 
 test('array: an EMPTY render after a throw leaves nothing behind', () => {
