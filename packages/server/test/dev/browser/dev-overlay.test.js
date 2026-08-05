@@ -15,6 +15,7 @@ import {
   dismissDevOverlay,
   syncDevOverlayToLocation,
   installDevOverlayNavSync,
+  markDevOverlayNavStart,
 } from '../../../src/dev-overlay.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
@@ -142,14 +143,41 @@ suite('dev error overlay URL scope (#1047)', () => {
   });
 
   test('a frame that arrives BEFORE the URL advances renders once it does', () => {
-    // The real ordering on a click through to a throwing page: the SSE frame is
-    // pushed during the render, so it lands while location is still the old
-    // page. Refuse-and-drop would lose the overlay on the page that threw.
+    // The real ordering on a click through to a throwing page: the navigation
+    // starts, the SSE frame is pushed during the render, so it lands while
+    // location is still the old page. Refuse-and-drop would lose the overlay on
+    // the page that threw.
+    markDevOverlayNavStart();
     renderDevOverlay({ kind: 'render', message: 'demo: this page threw', url: CRASH }, HERE);
     assert.equal(overlay(), null, 'held, not shown, while still on the old page');
     syncDevOverlayToLocation(CRASH);
     assert.ok(overlay(), 'and shown once the navigation lands on it');
     assert.ok(overlay().textContent.includes('demo: this page threw'));
+    teardown();
+  });
+
+  test('a frame held from an IDLE render never paints on a later visit', () => {
+    // Hovering a link prefetches the throwing page, so a frame for it lands
+    // while the tab sits on /good with no navigation in flight. If that page
+    // later renders fine, visiting it must be clean: rendering the held frame
+    // there would put a "Server render error" over a page that just rendered
+    // perfectly, which is the bug this whole gate exists to stop.
+    renderDevOverlay({ kind: 'render', message: 'stale from a prefetch', url: CRASH }, HERE);
+    assert.equal(overlay(), null, 'held while idle');
+    markDevOverlayNavStart();          // the user now clicks through to it
+    syncDevOverlayToLocation(CRASH);   // ...and it renders fine this time
+    assert.equal(overlay(), null, 'the idle-time frame is not this navigation\'s');
+    teardown();
+  });
+
+  test('a frame held during a navigation still renders even after a later one', () => {
+    // The counterpart: the seq must not be so strict that it drops a frame that
+    // genuinely belongs to the navigation now finishing.
+    markDevOverlayNavStart();
+    markDevOverlayNavStart();
+    renderDevOverlay({ kind: 'render', message: 'this nav threw', url: CRASH }, HERE);
+    syncDevOverlayToLocation(CRASH);
+    assert.ok(overlay(), 'the in-flight navigation\'s own frame still renders');
     teardown();
   });
 
@@ -195,29 +223,48 @@ suite('dev error overlay URL scope (#1047)', () => {
       document, window, getPath: () => path,
     });
     try {
-      // webjs:navigate, the applied-navigation signal: the held frame goes up.
+      // The real click-through sequence the router produces, in order:
+      // before-cache (it snapshots the page it is leaving, at the TOP of the
+      // navigation), then the frame lands mid-render, then navigate.
+      document.dispatchEvent(new CustomEvent('webjs:before-cache', { detail: { url: HERE } }));
       renderDevOverlay({ kind: 'render', message: 'demo: this page threw', url: CRASH }, HERE);
       assert.equal(overlay(), null, 'held while still on the old page');
       path = CRASH;
       document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: CRASH } }));
       assert.ok(overlay(), 'webjs:navigate renders it on the page it belongs to');
 
-      // webjs:before-cache: the router is about to serialize the page into its
-      // back/forward snapshot, so the overlay must be out of the DOM first, or
-      // it is baked into the cached HTML as a dead card.
+      // Navigating on: before-cache must NOT tear the overlay down by itself
+      // (it fires on every navigation, including ones that go nowhere), and
+      // webjs:navigate takes it down because the page changed.
       document.dispatchEvent(new CustomEvent('webjs:before-cache', { detail: { url: CRASH } }));
-      assert.equal(overlay(), null, 'the overlay is off the page before it is snapshotted');
+      assert.ok(overlay(), 'before-cache alone does not remove anything');
+      path = HERE;
+      document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: HERE } }));
+      assert.equal(overlay(), null, 'the overlay follows the page off screen');
 
       // popstate, because a snapshot-cache restore returns before the router
       // dispatches webjs:navigate.
-      path = HERE;
+      renderDevOverlay({ kind: 'render', message: 'still broken', url: HERE }, HERE);
+      path = CRASH;
       window.dispatchEvent(new PopStateEvent('popstate'));
-      assert.equal(overlay(), null, 'and the frame is dropped by the navigation away');
+      assert.equal(overlay(), null, 'popstate alone is enough to take a stale overlay down');
 
       // A frame nav leaves the path alone, so a live overlay stays put.
-      renderDevOverlay({ kind: 'render', message: 'still broken', url: HERE }, HERE);
-      document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: HERE } }));
+      renderDevOverlay({ kind: 'render', message: 'still broken', url: CRASH }, CRASH);
+      document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: CRASH } }));
       assert.ok(overlay(), 'a navigation that does not change the path keeps the overlay');
+
+      // The regression this ordering exists to catch: before-cache fires on
+      // EVERY navigation, so stripping the overlay there would tear a rebuild
+      // or ts-strip overlay off the page the instant you clicked any link,
+      // while the build was still broken and nothing would put it back.
+      teardown();
+      renderDevOverlay({ kind: 'rebuild', message: 'rebuild failed' }, CRASH);
+      document.dispatchEvent(new CustomEvent('webjs:before-cache', { detail: { url: CRASH } }));
+      path = HERE;
+      document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: HERE } }));
+      assert.ok(overlay(), 'a rebuild overlay survives a client-router navigation');
+      assert.ok(overlay().textContent.includes('rebuild failed'), 'and it is still the rebuild one');
     } finally {
       uninstall();
       teardown();

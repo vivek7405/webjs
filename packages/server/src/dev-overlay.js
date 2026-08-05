@@ -21,9 +21,19 @@
  * DURING the render, before the navigation response is even sent, so it reaches
  * the browser while `location` is still the old page. So there are two slots: a
  * RENDERED frame and a PENDING one the gate refused. A refused frame is held,
- * and the nav sync re-evaluates it once the URL advances. It is consumed by the
- * first navigation after it arrives (it matches, so it renders, or it does not,
- * so it is dropped), which bounds retention without a timer.
+ * and the nav sync re-evaluates it once the URL advances.
+ *
+ * A held frame is only ever rendered for the navigation it actually belongs to,
+ * which is what `__wjNavSeq` is for. A frame that arrives while a navigation is
+ * IN FLIGHT is that navigation's; one that arrived while the tab sat idle (a
+ * link prefetch, another tab's render) is not, and must never paint on a later
+ * visit to that url, because by then the page may well render fine. Both look
+ * identical once held, so the seq records which navigation was in flight when
+ * the frame landed, and the sync renders it only if that is still the one
+ * finishing. `webjs:before-cache` is the nav-START signal (the router snapshots
+ * the page it is leaving before it fetches); a navigation that does not emit one
+ * leaves the seq unchanged, which fails toward SHOWING the frame, the same way
+ * the rest of the gate fails open.
  */
 
 /** The single live overlay element, or null. */
@@ -32,6 +42,10 @@ let __wjOverlay = null;
 let __wjFrame = null;
 /** The most recent frame the scope gate refused, awaiting a URL that matches. */
 let __wjPending = null;
+/** The navigation that was in flight when `__wjPending` arrived. */
+let __wjPendingSeq = -1;
+/** Bumped at the start of each client-router navigation. */
+let __wjNavSeq = 0;
 
 /** The path the gate compares a frame's url against. */
 function __wjCurrentPath() {
@@ -67,6 +81,7 @@ function __wjRemoveOverlay() {
 export function dismissDevOverlay() {
   __wjRemoveOverlay();
   __wjPending = null;
+  __wjPendingSeq = -1;
 }
 
 /** Append a styled text row to `parent`. */
@@ -95,7 +110,11 @@ function __wjRow(parent, css, text) {
 export function renderDevOverlay(f, currentPath) {
   if (!f) { dismissDevOverlay(); return; }
   const here = currentPath === undefined ? __wjCurrentPath() : currentPath;
-  if (__wjScoped(f) && !__wjSamePath(f.url, here)) { __wjPending = f; return; }
+  if (__wjScoped(f) && !__wjSamePath(f.url, here)) {
+    __wjPending = f;
+    __wjPendingSeq = __wjNavSeq;
+    return;
+  }
   __wjRemoveOverlay();
   const o = document.createElement('div');
   o.setAttribute('data-webjs-error-overlay', '');
@@ -152,11 +171,26 @@ export function syncDevOverlayToLocation(currentPath) {
   // unscoped overlay (rebuild / ts-strip) is untouched: it describes the build,
   // not one URL, and only the next successful rebuild clears it.
   if (__wjScoped(__wjFrame) && !__wjSamePath(__wjFrame.url, here)) __wjRemoveOverlay();
-  // The pending frame is consumed by this navigation either way: it renders if
-  // this is the page it belongs to, and is dropped if it is not.
+  // The pending frame is consumed by this navigation either way. It renders
+  // only if this is BOTH the page it names and the navigation it belongs to;
+  // a frame held from an idle-time render (a link prefetch, another tab) is
+  // dropped, because by the time you actually visit that url the page may
+  // render perfectly well and an overlay over it would be the very bug this
+  // whole gate exists to stop.
   const p = __wjPending;
+  const seq = __wjPendingSeq;
   __wjPending = null;
-  if (p && __wjSamePath(p.url, here)) renderDevOverlay(p, here);
+  __wjPendingSeq = -1;
+  if (p && seq === __wjNavSeq && __wjSamePath(p.url, here)) renderDevOverlay(p, here);
+}
+
+/**
+ * Mark the start of a client-router navigation (#1047), so a frame arriving
+ * from here on is known to belong to it. Exported for the browser test; the
+ * shipping wiring is `installDevOverlayNavSync`.
+ */
+export function markDevOverlayNavStart() {
+  __wjNavSeq++;
 }
 
 /**
@@ -169,12 +203,15 @@ export function syncDevOverlayToLocation(currentPath) {
  *   after `history.pushState` so `location` is already current.
  * - `popstate` on `window`, because a back/forward restore served from the
  *   router's snapshot cache returns before it dispatches `webjs:navigate`.
- * - `webjs:before-cache` on `document`, the router's own contract for stripping
- *   transient UI before it serializes the page into that snapshot cache. Without
- *   it the overlay is baked into the cached HTML and restored later as a dead
- *   card whose Dismiss button has no listener. The frame moves to the pending
- *   slot, so the `webjs:navigate` that follows puts it straight back if the URL
- *   did not actually change.
+ * - `webjs:before-cache` on `document`, used ONLY as the nav-START marker: the
+ *   router dispatches it from `snapshotCurrent`, which runs at the top of every
+ *   navigation and form submission, before the fetch. It touches no DOM here.
+ *   That matters twice over. It is the only signal that separates a frame
+ *   belonging to the navigation in flight from one held since the tab was idle.
+ *   And stripping the overlay on it, which the event's own contract invites,
+ *   would be wrong: it fires on EVERY navigation, so it would tear down a
+ *   `rebuild` / `ts-strip` overlay the moment you clicked any link, while the
+ *   build was still broken and nothing would put it back.
  *
  * @param {{ document?: any, window?: any, getPath?: () => string }} [opts] injection seam for the browser test
  * @returns {() => void} an uninstall thunk
@@ -185,10 +222,7 @@ export function installDevOverlayNavSync(opts) {
   const win = o.window || (typeof window !== 'undefined' ? window : null);
   const getPath = o.getPath || __wjCurrentPath;
   const onNav = () => syncDevOverlayToLocation(getPath());
-  const onBeforeCache = () => {
-    if (__wjFrame) __wjPending = __wjFrame;
-    __wjRemoveOverlay();
-  };
+  const onBeforeCache = () => markDevOverlayNavStart();
   if (doc) {
     doc.addEventListener('webjs:navigate', onNav);
     doc.addEventListener('webjs:before-cache', onBeforeCache);

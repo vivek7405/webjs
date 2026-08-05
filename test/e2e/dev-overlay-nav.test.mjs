@@ -177,12 +177,8 @@ describe('E2E: dev error overlay URL scope (#1047)', {
   test('a back/forward restore does not resurrect the overlay', async () => {
     // Continues from /good, with /flaky one step back in history. Heal the page
     // first, so returning to it must be clean by every route: a fresh render
-    // succeeds, and a restore from the router's snapshot cache carries no
-    // overlay. This asserts the OUTCOME across back/forward; the mechanism that
-    // keeps a live overlay out of that snapshot (the `webjs:before-cache`
-    // handler, without which the router's `outerHTML` capture would bake in a
-    // dead card whose Dismiss button has no listener) is proven directly in
-    // packages/server/test/dev/browser/dev-overlay.test.js.
+    // succeeds, and a restore from the router's snapshot cache shows no
+    // overlay either.
     await page.evaluate(() => fetch('/heal'));
     await page.goBack({ waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => location.pathname === '/flaky', { timeout: 5000 });
