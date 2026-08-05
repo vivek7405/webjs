@@ -8,7 +8,10 @@
  *
  * The throw comes from a value whose `toString` throws, which is what any
  * attribute commit does to its value, so nothing here depends on the
- * form-action guard.
+ * form-action guard. Where the poison sits matters: an attribute commit
+ * stringifies before touching the DOM, so a throw there changes nothing,
+ * while a CHILD commit tears the old content down first and a throw leaves
+ * the region empty. Both kinds appear below.
  */
 import { html } from '../../../src/html.js';
 import { render } from '../../../src/render-client.js';
@@ -21,6 +24,20 @@ import { assert } from '../../../../../test/browser-assert.js';
 
 /** A value that throws when a commit stringifies it. */
 const poison = { toString() { throw new Error('boom'); } };
+
+/**
+ * Assert `fn` throws, and that the thrown message matches. The shared
+ * `assert.throws` takes a failure MESSAGE as its second argument rather than a
+ * matcher, and is async, so passing a regex there would accept ANY throw (a
+ * renderer TypeError included) and would not be awaited. These tests depend on
+ * the throw being the poison one, so they check it directly.
+ */
+function throwsMatching(fn, re) {
+  let caught;
+  try { fn(); } catch (err) { caught = err; }
+  assert.ok(caught, 'expected a throw');
+  assert.ok(re.test(caught.message), `expected ${re} to match ${caught.message}`);
+}
 
 suite('directive commit throws (browser)', () => {
   let container;
@@ -52,7 +69,7 @@ suite('directive commit throws (browser)', () => {
     render(rows(good), container);
     assert.deepEqual(labels(), ['one', 'two', 'three']);
 
-    assert.throws(() => {
+    throwsMatching(() => {
       render(rows([
         { id: 1, label: 'one' },
         { id: 2, label: 'two', title: poison },
@@ -76,7 +93,7 @@ suite('directive commit throws (browser)', () => {
 
   test('every row after recovery is tracked, so a reorder moves it', () => {
     render(rows(good), container);
-    assert.throws(() => {
+    throwsMatching(() => {
       render(rows([
         { id: 1, label: 'one' },
         { id: 2, label: 'two', title: poison },
@@ -99,12 +116,13 @@ suite('directive commit throws (browser)', () => {
     assert.strictEqual(after[2], before[1]);
   });
 
-  // The `watch` notify microtask commits outside the update cycle, so the
-  // renderer has to WALK to the owning component to find its boundary. These
-  // two cover both walks against a REAL component: light DOM, where the host
-  // is a plain ancestor, and shadow DOM, where the walk has to cross the
-  // ShadowRoot via its `.host`. A synthetic container with a boundary stamped
-  // on it cannot exercise either.
+  // The `watch` notify microtask commits outside the update cycle, so it
+  // routes through the owner stamped at install time. The SHADOW case is the
+  // one the unit tests cannot reach: only there does the render root differ
+  // from the boundary-carrying element, so only there does `boundaryOwnerOf`
+  // have to resolve a ShadowRoot through its `.host`. The light case is kept
+  // alongside it as the contrast, against a real component rather than a
+  // container with a boundary stamped on it.
   const watchBoundaryTest = (label, shadow, tag) => {
     test(label, async () => {
       const sig = signal(html`<p>ok</p>`);
@@ -146,7 +164,7 @@ suite('directive commit throws (browser)', () => {
     render(rows(good), container);
     const before = [...container.querySelectorAll('li')];
 
-    assert.throws(() => {
+    throwsMatching(() => {
       render(rows([
         { id: 1, label: 'one' },
         { id: 2, label: 'two', title: poison },
@@ -168,9 +186,38 @@ suite('directive commit throws (browser)', () => {
     assert.strictEqual(after[2], before[2]);
   });
 
+  test('a throw in a CHILD hole recovers, and keeps node identity', () => {
+    const childRows = (items) => html`<ul>${repeat(
+      items,
+      (it) => it.id,
+      (it) => html`<li>${it.n}</li>`,
+    )}</ul>`;
+    const ok = [{ id: 1, n: 'one' }, { id: 2, n: 'two' }, { id: 3, n: 'three' }];
+
+    render(childRows(ok), container);
+    const before = [...container.querySelectorAll('li')];
+
+    throwsMatching(() => {
+      render(childRows([{ id: 1, n: 'one' }, { id: 2, n: poison }, { id: 3, n: 'three' }]), container);
+    }, /boom/);
+
+    // A child commit empties the region before it throws, and the failed
+    // hole's `lastValues` entry is left un-advanced holding exactly the value
+    // this render supplies. Without the commit-failed sentinel the hole is
+    // skipped forever and row two stays permanently blank.
+    render(childRows(ok), container);
+    assert.deepEqual(labels(), ['one', 'two', 'three']);
+    render(childRows(ok), container);
+    assert.deepEqual(labels(), ['one', 'two', 'three']);
+
+    const after = [...container.querySelectorAll('li')];
+    assert.strictEqual(after[0], before[0]);
+    assert.strictEqual(after[2], before[2]);
+  });
+
   test('removing rows after recovery leaves nothing behind', () => {
     render(rows(good), container);
-    assert.throws(() => {
+    throwsMatching(() => {
       render(rows([
         { id: 1, label: 'one' },
         { id: 2, label: 'two', title: poison },

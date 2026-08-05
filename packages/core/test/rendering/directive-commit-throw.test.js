@@ -113,6 +113,71 @@ test('repeat: keeps reconciling normally after recovering from a throw', () => {
   assert.deepEqual(rowTexts(container), ['TWO']);
 });
 
+// A CHILD-position hole is the dangerous kind, and an attribute hole cannot
+// stand in for it. An attribute commit stringifies before it touches the DOM,
+// so a throw there changes nothing; a child commit tears the old content down
+// FIRST, so a throw leaves the region empty. Both then leave `lastValues` for
+// that hole un-advanced, holding the pre-throw value, which is exactly what
+// the recovering render supplies, so without the sentinel the `Object.is`
+// skip would skip the hole forever and the emptied region never comes back.
+
+test('repeat: a throw in a CHILD hole recovers, and keeps node identity', () => {
+  const container = document.createElement('div');
+  const rows = (items) => html`<ul>${repeat(
+    items,
+    (it) => it.id,
+    (it) => html`<li>${it.n}</li>`,
+  )}</ul>`;
+  const good = [{ id: 1, n: 'one' }, { id: 2, n: 'two' }, { id: 3, n: 'three' }];
+
+  render(rows(good), container);
+  const before = [...container.querySelectorAll('li')];
+
+  assert.throws(() => {
+    render(rows([{ id: 1, n: 'one' }, { id: 2, n: poison }, { id: 3, n: 'three' }]), container);
+  }, /boom/);
+
+  render(rows(good), container);
+  assert.deepEqual(rowTexts(container), ['one', 'two', 'three']);
+  render(rows(good), container);
+  assert.deepEqual(rowTexts(container), ['one', 'two', 'three']);
+
+  // Recovering must not cost the rows their identity: this is a reconcile
+  // against a repaired map, not a rebuild of the region.
+  const after = [...container.querySelectorAll('li')];
+  assert.equal(after[0], before[0]);
+  assert.equal(after[2], before[2]);
+});
+
+test('repeat: a throw in a nested-template row recovers', () => {
+  const container = document.createElement('div');
+  const rows = (items) => html`<ul>${repeat(
+    items,
+    (it) => it.id,
+    (it) => html`<li>${html`<b>${it.n}</b>`}</li>`,
+  )}</ul>`;
+  const good = [{ id: 1, n: 'one' }, { id: 2, n: 'two' }];
+
+  render(rows(good), container);
+  assert.throws(() => {
+    render(rows([{ id: 1, n: 'one' }, { id: 2, n: poison }]), container);
+  }, /boom/);
+
+  render(rows(good), container);
+  assert.deepEqual([...container.querySelectorAll('b')].map((b) => b.textContent), ['one', 'two']);
+});
+
+test('a plain template child hole recovers too (not just repeat)', () => {
+  const container = document.createElement('div');
+  const view = (x) => html`<div><span>${x}</span></div>`;
+
+  render(view('ok'), container);
+  assert.throws(() => { render(view(poison), container); }, /boom/);
+
+  render(view('ok'), container);
+  assert.equal(container.querySelector('span').textContent, 'ok');
+});
+
 // --- guard() ---
 
 test('guard: a throw during the commit does not blank the region forever', () => {
@@ -218,6 +283,29 @@ ownershipTest('until: routes to the template that owns the part, not the element
   const pending = new Promise((r) => { resolveIt = r; });
   render(html`<child-el>${until(pending, html`<p>fallback</p>`)}</child-el>`, owner);
   return () => resolveIt(html`<section title=${poison}>bad</section>`);
+});
+
+test('a directive installed BY an out-of-band commit still reaches the boundary', async () => {
+  const seen = [];
+  const owner = document.createElement('owner-el');
+  owner._handleRenderError = (err) => { seen.push(err); };
+
+  const outer = signal(html`<p>a</p>`);
+  const inner = signal(html`<p>b</p>`);
+  render(html`<div>${watch(outer)}</div>`, owner);
+
+  // This commit runs in the notify microtask, with no render on the stack,
+  // and the template it commits installs ANOTHER watch. That nested one has
+  // to inherit the same owner, or its own throw has nothing to route to and
+  // escapes to the window.
+  outer.set(html`<span>${watch(inner)}</span>`);
+  await tick();
+
+  inner.set(html`<section title=${poison}>bad</section>`);
+  await tick();
+
+  assert.equal(seen.length, 1, 'the nested directive must inherit the owner');
+  assert.match(seen[0].message, /boom/);
 });
 
 // --- until() ---

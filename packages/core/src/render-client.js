@@ -151,12 +151,6 @@ const INSTANCE = Symbol.for('webjs.instance');
  */
 
 /**
- * Render a value into a container, reusing DOM where possible.
- *
- * @param {unknown} value
- * @param {Element | DocumentFragment | ShadowRoot} container
- */
-/**
  * The container the in-progress `render()` is committing into, or null
  * outside one. Every part created or applied during that render belongs to
  * THIS container's component, which is what an out-of-band commit needs to
@@ -180,6 +174,36 @@ function boundaryOwnerOf(root) {
   return root;
 }
 
+/**
+ * Run an OUT-OF-BAND commit (a `watch` notify microtask, an `until`
+ * resolution) with the part's owner installed as the current render root.
+ *
+ * Without this the commit runs with no owner in scope, so any `watch` /
+ * `until` nested INSIDE the template it commits is installed unstamped and
+ * its own later throw escapes to the window. A directive nested in that
+ * template belongs to the same component as the part committing it, which is
+ * exactly the owner already recorded here.
+ *
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {() => void} fn
+ */
+function commitOutOfBand(part, fn) {
+  const owner = /** @type any */ (part).__commitOwner;
+  const prev = currentRenderRoot;
+  if (owner) currentRenderRoot = owner;
+  try {
+    fn();
+  } finally {
+    currentRenderRoot = prev;
+  }
+}
+
+/**
+ * Render a value into a container, reusing DOM where possible.
+ *
+ * @param {unknown} value
+ * @param {Element | DocumentFragment | ShadowRoot} container
+ */
 export function render(value, container) {
   const host = /** @type any */ (container);
   // Open the renderer-write window for the whole commit: every host-receiver
@@ -990,6 +1014,13 @@ function bindPart(p, root) {
 }
 
 /**
+ * Sentinel parked in `lastValues` for a hole whose commit threw, so the next
+ * render cannot mistake the un-advanced entry for "already applied". Never
+ * equal (by `Object.is`) to anything an author can pass through a template.
+ */
+const COMMIT_FAILED = Symbol('webjs.commitFailed');
+
+/**
  * @param {TemplateInstance} inst
  * @param {unknown[]} values
  */
@@ -1004,10 +1035,28 @@ function updateInstance(inst, values) {
     // anchor hole's. Without this, a change confined to a non-anchor hole is
     // dropped (the attribute goes stale).
     const anchor = /** @type any */ (bp).mixedAnchor;
-    if (bp.kind === 'noop' && anchor != null) {
-      applyPart(inst.bound[anchor], values[anchor], inst.lastValues[anchor], values);
-    } else {
-      applyPart(bp, next, inst.lastValues[i], values);
+    try {
+      if (bp.kind === 'noop' && anchor != null) {
+        applyPart(inst.bound[anchor], values[anchor], inst.lastValues[anchor], values);
+      } else {
+        applyPart(bp, next, inst.lastValues[i], values);
+      }
+    } catch (err) {
+      // A commit that throws leaves `lastValues` for THIS hole un-advanced,
+      // still holding the value from before the throw. That is almost always
+      // the value the recovering render supplies, so the `Object.is` skip at
+      // the top of this loop would skip the hole FOREVER. Harmless for an
+      // attribute (its commit stringifies before touching the DOM, so nothing
+      // changed), and permanently destructive for a child position, whose
+      // commit tears the old content down BEFORE the step that throws: the
+      // region is left empty and never re-rendered.
+      //
+      // Poison the entry with a sentinel no author value can ever be, so the
+      // next render always re-applies this hole. The value is deliberately
+      // NOT advanced to `next` either, since `next` was never committed.
+      inst.lastValues[i] = COMMIT_FAILED;
+      if (bp.kind === 'noop' && anchor != null) inst.lastValues[anchor] = COMMIT_FAILED;
+      throw err;
     }
     inst.lastValues[i] = next;
   }
@@ -2314,7 +2363,7 @@ function applyUntil(part, args) {
         // region stayed empty. Committing first also keeps the throw inside
         // the try, where it can reach the component boundary.
         try {
-          applyChildInner(part, resolved);
+          commitOutOfBand(part, () => applyChildInner(part, resolved));
         } catch (err) {
           reportOutOfBandCommitError(part, err);
           return;
@@ -2341,8 +2390,8 @@ function applyUntil(part, args) {
  * to, which breaks per-component error isolation for exactly these two
  * directives.
  *
- * Walks up from the part's marker (crossing shadow boundaries via the
- * ShadowRoot's `.host`) to the nearest element exposing the boundary.
+ * Reads the owner stamped on the part when the directive was installed. See
+ * the note in the body for why this is not a walk up the parent chain.
  *
  * @param {Extract<BoundPart, {kind:'child'}>} part
  * @param {unknown} error
@@ -2439,7 +2488,7 @@ function applyWatch(part, sig) {
       // instead of the component's renderError(). Route it explicitly.
       try {
         watcher.observe(() => { v = sig.get(); });
-        applyChildInner(part, v);
+        commitOutOfBand(part, () => applyChildInner(part, v));
       } catch (err) {
         reportOutOfBandCommitError(part, err);
       }
