@@ -271,8 +271,12 @@ test('every docs sidebar label and section title is Title Case', async () => {
   // directory, so nothing in this file would have caught a sentence-cased
   // relabel of it. The quote character is captured and back-referenced instead
   // of hard-coded, which reads both styles and lets a label carry the other
-  // quote inside it.
-  const quoted = (key) => new RegExp(`\\b${key}:\\s*(['"])(.*?)\\1`, 'g');
+  // quote inside it. It stays `+` rather than `*` so an EMPTY value does not
+  // match: an empty label is a nav row with no visible text, and leaving it
+  // unmatched is what makes the count cross-check fire on it. Matching it as
+  // an empty string would keep the counts equal and then skip it at the
+  // has-a-letter test below, which is silent.
+  const quoted = (key) => new RegExp(`\\b${key}:\\s*(['"])(.+?)\\1`, 'g');
   const labels = [...nav.matchAll(quoted('label'))].map((m) => m[2]);
   const titles = [...nav.matchAll(quoted('title'))].map((m) => m[2]);
   const hrefs = [...nav.matchAll(quoted('href'))].map((m) => m[2]);
