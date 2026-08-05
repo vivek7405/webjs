@@ -18,8 +18,25 @@
  *   committed. Tests that import the built bundle cannot resolve it in a fresh
  *   worktree.
  *
- * Both sets are discovered from the primary checkout rather than hardcoded,
- * because the list changes whenever a package gains a nested tree.
+ * The `node_modules` set is discovered from the primary checkout rather than
+ * hardcoded, because it changes whenever a package gains a nested tree. The
+ * `packages/core/dist` entry is an explicit one-off, since it is the only built
+ * output the suite imports.
+ *
+ * ## What this does NOT give you
+ *
+ * The worktree runs the PRIMARY checkout's framework source through every bare
+ * `@webjsdev/*` specifier. `<primary>/node_modules/@webjsdev/core` is a relative
+ * symlink into `<primary>/packages/core`, so resolving through the linked root
+ * lands in the primary, not here. Relative imports (`../../../src/x.js`) and the
+ * browser suite, which web-test-runner serves from this worktree, do use the
+ * worktree's own files.
+ *
+ * So this makes the suite RUNNABLE, not self-testing. If you are editing
+ * `packages/core/src` or `packages/server/src` and need a bare-specifier
+ * consumer to exercise YOUR copy, run a real `npm install` in the worktree, or
+ * point the individual `@webjsdev/<pkg>` entries at this worktree instead. CI
+ * always builds from the branch, so it is unaffected either way.
  *
  * Safety rules, all of which exist because the naive version of this script
  * broke a worktree while it was being written:
@@ -95,9 +112,9 @@ function link(src, dst, label) {
 
 /** @returns {string} absolute path of the primary checkout */
 function defaultPrimary() {
-  // The common dir of a linked worktree is `<primary>/.git/worktrees/<name>`,
-  // so the primary checkout is three levels up from it. In the primary itself
-  // the common dir is just `<primary>/.git`.
+  // `--git-common-dir` is `<primary>/.git` from ANY worktree, linked or not
+  // (the per-worktree `.git/worktrees/<name>` path is what `--git-dir` gives),
+  // so the primary checkout is its parent.
   const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
     encoding: 'utf8',
   }).trim();

@@ -126,6 +126,17 @@ describe('link-worktree-deps (#1287)', () => {
     } finally { rmSync(primary, { recursive: true, force: true }); rmSync(wt, { recursive: true, force: true }); }
   });
 
+  test('defaultPrimary() resolves the real primary from this checkout', () => {
+    // Every other test passes `primary` as argv[2], so without this the
+    // git-derived default branch never executes at all.
+    const out = execFileSync(process.execPath, [SCRIPT], {
+      cwd: process.cwd(), encoding: 'utf8',
+    });
+    // Run from the repo itself, so it must recognise the primary and no-op
+    // rather than linking anything.
+    assert.match(out, /this IS the primary checkout|linking from \//);
+  });
+
   test('refuses to link a checkout to itself', () => {
     const primary = makePrimary();
     try {
