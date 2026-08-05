@@ -23,26 +23,17 @@ import { render } from '../../../src/render-client.js';
 import { enableClientRouter } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
+import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
 const tick = () => new Promise((r) => setTimeout(r, 20));
 
 suite('Client router: bound form submissions (#1155)', () => {
-  // LAST-RESORT navigation backstop for a loaded runner: if the router under
-  // pressure fails a boundary scan and degrades to a full page load, the
-  // native form submission would navigate the WTR page away and kill the
-  // whole file ("Tests were interrupted..."). A BUBBLE-phase listener at the
-  // window level fires after the router's document-level handling had its
-  // chance (a capture listener here would fire FIRST and break every
-  // router-handled submission): when the event is still not
-  // default-prevented by the time it bubbles out to the window, cancel it so
-  // the ASSERTIONS fail visibly instead of the page dying. Never interferes
-  // with router-handled submissions (those are already default-prevented).
-  window.addEventListener(
-    'submit',
-    (e) => {
-      if (!e.defaultPrevented) e.preventDefault();
-    },
-    false,
-  );
+  // The navigation backstop this suite used to declare inline now lives in the
+  // shared guard (#1135), which is the same window-bubble listener with the
+  // same reasoning. It is installed per suite, not globally, so any NEW suite
+  // that clicks a real link or submits a real form has to opt in. See
+  // `test/browser-nav-guard.js` for why the phase is window bubble and never
+  // capture.
+  let navGuard;
 
   let container, origFetch, calls;
   // When a test redefines window.location.href (to detect a full-page reload),
@@ -52,6 +43,7 @@ suite('Client router: bound form submissions (#1155)', () => {
 
   let bOpen, bClose;
   function setup(responder) {
+    navGuard = installNavGuard();
     enableClientRouter(); // idempotent
     container = document.createElement('div');
     // Bracket the container with a live keyed boundary pair (#1015): the swap
@@ -71,6 +63,7 @@ suite('Client router: bound form submissions (#1155)', () => {
     };
   }
   function teardown() {
+    navGuard.remove();
     window.fetch = origFetch;
     if (restoreHref) { try { restoreHref(); } catch { /* ignore */ } restoreHref = null; }
     container.remove();

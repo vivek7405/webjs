@@ -55,6 +55,13 @@ suite('docs drawer', () => {
     // anchors. Left alone they navigate the runner page and abort the suite,
     // so navigation is cancelled in the CAPTURE phase: the default action never
     // happens, while the listeners under test still see the event.
+    //
+    // Deliberately NOT the shared `test/browser-nav-guard.js` (#1135), whose
+    // whole point is the opposite phase. Capture sets `defaultPrevented` before
+    // the router's document-level listener runs, so the router bows out, and
+    // that is exactly what this suite wants: it tests the drawer, not
+    // navigation, and a live router here would issue real page fetches. Do not
+    // "unify" this onto the shared helper.
     blockNav = (e) => { if (e.target.closest?.('a')) e.preventDefault(); };
     document.addEventListener('click', blockNav, true);
 

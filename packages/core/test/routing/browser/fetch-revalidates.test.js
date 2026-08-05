@@ -16,6 +16,10 @@
 import { enableClientRouter, disableClientRouter } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
+import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
+
+/** Shared across the suites below; installed per test in setup(). */
+let navGuard;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 async function settle() { for (let i = 0; i < 4; i++) await tick(); }
 
@@ -23,6 +27,7 @@ suite('Client router: fetches revalidate instead of trusting the HTTP cache (#11
   let container, origFetch, calls;
 
   function setup() {
+    navGuard = installNavGuard();
     enableClientRouter();
     container = document.createElement('div');
     container.innerHTML =
@@ -45,6 +50,7 @@ suite('Client router: fetches revalidate instead of trusting the HTTP cache (#11
     };
   }
   function teardown() {
+    navGuard.remove();
     window.fetch = origFetch;
     container.remove();
     disableClientRouter();

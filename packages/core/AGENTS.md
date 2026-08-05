@@ -236,6 +236,17 @@ organised by feature: `signals/`, `rendering/`, `directives/`,
 `browser/` subfolder when there are real-browser tests for it (run on
 Chromium, Firefox, and WebKit via web-test-runner).
 
+A browser test that clicks a real `<a href>` or submits a real `<form>`
+MUST install the shared guard from `test/browser-nav-guard.js`
+(`installNavGuard()`, returning `{ fallbacks, remove }`). web-test-runner
+aborts the whole session when the page navigates, so an escaped click
+takes down every browser file rather than failing one test. The guard
+listens on `window` in the BUBBLE phase, which is load-bearing: capture
+would set `defaultPrevented` before the router's document-level listener
+runs, and `onClick` returns on that flag, so every guarded router test
+would pass while testing nothing. Full rule in
+[`references/testing.md`](../../.agents/skills/webjs/references/testing.md).
+
 Cross-package tests that exercise core through the SSR pipeline
 or scaffolds live at the repo root in `test/ssr/`,
 `test/scaffolds/`, etc. See [`references/testing.md`](../../.agents/skills/webjs/references/testing.md).

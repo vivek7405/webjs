@@ -19,16 +19,22 @@ import { enableClientRouter } from '../../../src/router-client.js';
 import { connectWS } from '../../../src/websocket-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
+import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
+
+/** Shared across the suites below; installed per test in setup(). */
+let navGuard;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 async function settle() { for (let i = 0; i < 4; i++) await tick(); }
 
 suite('<webjs-stream> applier (#248)', () => {
   let host;
   function setup() {
+    navGuard = installNavGuard();
     host = document.createElement('div');
     document.body.appendChild(host);
   }
   function teardown() {
+    navGuard.remove();
     host.remove();
     // Clean up any stray stream elements a failing case left behind.
     document.querySelectorAll('webjs-stream').forEach((e) => e.remove());
@@ -153,6 +159,7 @@ suite('<webjs-stream> applier (#248)', () => {
 suite('Client router: content-negotiated stream-action form response (#248)', () => {
   let host, origFetch, calls;
   function setup() {
+    navGuard = installNavGuard();
     enableClientRouter(); // idempotent
     host = document.createElement('div');
     document.body.appendChild(host);
@@ -160,6 +167,7 @@ suite('Client router: content-negotiated stream-action form response (#248)', ()
     calls = [];
   }
   function teardown() {
+    navGuard.remove();
     window.fetch = origFetch;
     host.remove();
     document.querySelectorAll('webjs-stream').forEach((e) => e.remove());
@@ -192,6 +200,7 @@ suite('Client router: content-negotiated stream-action form response (#248)', ()
 suite('Live channel: connectWS message applied by the same applier (#248)', () => {
   let host, OrigWS, sockets;
   function setup() {
+    navGuard = installNavGuard();
     host = document.createElement('div');
     document.body.appendChild(host);
     OrigWS = window.WebSocket;
@@ -207,6 +216,7 @@ suite('Live channel: connectWS message applied by the same applier (#248)', () =
     window.WebSocket = FakeWS;
   }
   function teardown() {
+    navGuard.remove();
     window.WebSocket = OrigWS;
     host.remove();
     document.querySelectorAll('webjs-stream').forEach((e) => e.remove());
