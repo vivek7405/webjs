@@ -3,9 +3,10 @@
  *
  * webjs.nvim bundles a verbatim copy of the standalone intellisense (it has no
  * install-time build step) and points tsserver at it. That copy MUST stay in
- * sync with `packages/editors/intellisense/src`; this test fails if it drifts, telling you
- * to re-run `node packages/editors/nvim/scripts/vendor-intellisense.mjs` then
- * `git add -f packages/editors/nvim/vendor`.
+ * sync with `packages/editors/intellisense`, both its `src/` tree and its
+ * manifest apart from the `version`. This test fails if either drifts, telling
+ * you to re-run `node packages/editors/nvim/scripts/vendor-intellisense.mjs`
+ * then `git add -f packages/editors/nvim/vendor`.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

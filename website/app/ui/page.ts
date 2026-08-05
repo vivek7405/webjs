@@ -106,9 +106,13 @@ webjs ui add button card dialog input label</pre>
       </p>
       <p>
         Outside WebJs, the same registry is reachable through the standalone CLI that
-        <code>webjs ui</code> wraps, so no part of the framework has to be installed:
+        <code>webjs ui</code> wraps. It does not need <code>@webjsdev/cli</code>, so two installs
+        are the whole setup, the CLI itself and the runtime base class that Tier-2 elements
+        extend:
       </p>
-      <pre>npx webjsui init
+      <pre>npm install -D @webjsdev/ui
+npm install @webjsdev/core
+npx webjsui init
 npx webjsui add button card dialog</pre>
       <p>
         One caveat there. Components are copied as TypeScript and import the <code>cn()</code>

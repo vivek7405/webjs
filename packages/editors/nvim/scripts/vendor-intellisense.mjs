@@ -20,9 +20,9 @@
  * repo's root .gitignore excludes. The files are committed anyway via
  * `git add -f` (once tracked, git keeps staging their changes regardless of
  * .gitignore). The standalone webjs.nvim repo (a subtree split of
- * packages/editors/nvim) ships them as ordinary files. Re-run this whenever
- * `packages/editors/intellisense/src` changes, then `git add -f packages/editors/nvim/vendor`.
- * `test/vendor-sync.test.mjs` fails if the committed copy drifts from source.
+ * packages/editors/nvim) ships them as ordinary files. After re-running this,
+ * `git add -f packages/editors/nvim/vendor`. `test/vendor-sync.test.mjs` fails
+ * if the committed copy drifts from source.
  */
 import { cpSync, mkdirSync, rmSync, copyFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
