@@ -446,16 +446,15 @@ names mechanically:
   link, so any change here lands in both. The repo-root
   `test/ui/cn-copies-in-sync.test.mjs` (not this package's `test/`) merges a
   token battery through both copies and fails on drift. Those TWO are the whole
-  inventory of hand-synced sources; every other `cn.ts` on disk is GENERATED
-  from this file and must not be hand-edited (`website/lib/utils/cn.ts` via
-  `website/scripts/copy-registry.mjs`, gitignored; a scaffolded app's copy
-  written by `webjs create` through `writeUiBootstrap()` in
-  `packages/cli/lib/create.js`, which reads this file off disk). A stale
-  generated copy is not drift, it is a generator that has not been re-run.
-  `webjs ui init` is NOT one of them: that is the non-scaffold flow
-  (`packages/ui/src/commands/init.js`) and it fetches `lib-utils` over HTTP from
-  the PUBLISHED registry, so a fix here reaches it only once `@webjsdev/ui`
-  ships.
+  inventory of hand-synced sources. Every OTHER `cn.ts` on disk is a copy of
+  this one, produced by some generator (`website/lib/utils/cn.ts` via
+  `website/scripts/copy-registry.mjs`; an app's copy via `webjs create`,
+  `webjsui init`, or `webjsui add`, which pulls `lib-utils` as a transitive
+  registry dependency). Never hand-edit one: a stale copy is a generator that
+  has not been re-run, not drift, so there is nothing for the sync test to
+  cover. Which sources a given generator reads, and when it goes to the
+  network, is the registry-resolution question, answered by the LOCAL-FIRST
+  section above, so do not restate it here.
 - A variant prefix is split on the last colon OUTSIDE square brackets, because
   an arbitrary value carries colons of its own (`border-[length:2px]`,
   `bg-[url(https://x/y.png)]`). Splitting on the last colon anywhere hands the
