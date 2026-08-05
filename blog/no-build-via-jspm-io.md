@@ -92,7 +92,7 @@ If jspm.io's CDN is compromised and starts serving different bytes, the browser 
 
 # CSP nonce, end to end
 
-While I was already in the request pipeline, I followed Turbo Drive's CSP-nonce pattern and threaded a per-request nonce through every SSR path. Server emits `<meta name="csp-nonce" content="...">` once at SSR time. Every inline script (boot module, importmap, env shim, Suspense resolution) carries `nonce="..."`. Every modulepreload link carries the same nonce. The client router reads the meta tag on each navigation and stamps the per-page nonce onto every dynamically-inserted script and link, so head-merge during partial swaps does not get blocked by strict CSP.
+While I was already in the request pipeline, I followed Turbo Drive's CSP-nonce pattern and threaded a per-request nonce through every SSR path. Server emits `<meta name="csp-nonce" content="...">` once at SSR time. Every inline script (boot module, importmap, env shim, Suspense resolution) carries `nonce="..."`. Every modulepreload link carries the same nonce. The client router reads that meta tag and stamps the original document's nonce onto every dynamically-inserted script and link, so head-merge during partial swaps does not get blocked by strict CSP.
 
 `script-src 'nonce-...'` is now sufficient policy for a WebJs app, with no `'unsafe-inline'` or `'unsafe-eval'` anywhere. Run a strict CSP and the app still works.
 
