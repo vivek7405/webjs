@@ -244,7 +244,7 @@ test('every docs sidebar label and section title is Title Case', async () => {
   // spelling is correct, not a slip". Matched against the
   // word with wrapping punctuation stripped, so it survives a rename to
   // 'Auth Providers (createAuth API)'.
-  const IDENTIFIERS = new Set(['createAuth', '@webjsdev/ui']);
+  const FIXED_CASING = new Set(['createAuth', '@webjsdev/ui']);
 
   const layout = await readFile(resolve(DOCS_ROOT, 'layout.ts'), 'utf8');
   // Slice to the NAV_SECTIONS literal. Outside it sit the docs-scoped metadata
@@ -257,22 +257,25 @@ test('every docs sidebar label and section title is Title Case', async () => {
   const nav = layout.slice(start, end);
   assert.ok(!nav.includes('generateMetadata'), 'the NAV_SECTIONS slice ran past the end of the literal');
 
-  // `label:` is read on its own rather than anchored to a preceding `href:`.
-  // The anchored form yields NOTHING for an entry written
-  // `{ label: '...', href: '...' }`, so a key reorder drops that entry from
-  // the check. The floor below is too coarse to catch it on its own, since it
-  // only fires once four entries are missing, so the href count is the
-  // cross-check: every nav item has one of each.
+  // Two ways an entry can slip out of this check unnoticed, both closed here.
   //
-  // That is not total, and the gap is worth knowing. An entry written with
-  // DOUBLE quotes on both keys is invisible to both regexes at once, so the
-  // counts stay equal and this test passes over it. That shape is caught a few
-  // tests up instead, by 'every doc page on disk is reachable from the
-  // sidebar', which reads single-quoted hrefs and so reports the page as
-  // orphaned. Verified: double-quoting one entry reds that test, not this one.
-  const labels = [...nav.matchAll(/\blabel:\s*'([^']+)'/g)].map((m) => m[1]);
-  const titles = [...nav.matchAll(/\btitle:\s*'([^']+)'/g)].map((m) => m[1]);
-  const hrefs = [...nav.matchAll(/\bhref:\s*'([^']+)'/g)].map((m) => m[1]);
+  // Anchoring `label:` to a preceding `href:` yields NOTHING for an entry
+  // written `{ label: '...', href: '...' }`, so a key reorder would drop it.
+  // Each key is therefore read on its own, and the href count is the
+  // cross-check, since every nav item has one of each.
+  //
+  // Matching only single quotes would miss a double-quoted entry, and when
+  // BOTH its keys are double-quoted the counts stay equal, so the cross-check
+  // would not notice either. The sibling orphan test covers that for a
+  // `/docs/*` entry, but NOT for the one `/ui` cross-link, which is not a doc
+  // directory, so nothing in this file would have caught a sentence-cased
+  // relabel of it. The quote character is captured and back-referenced instead
+  // of hard-coded, which reads both styles and lets a label carry the other
+  // quote inside it.
+  const quoted = (key) => new RegExp(`\\b${key}:\\s*(['"])(.*?)\\1`, 'g');
+  const labels = [...nav.matchAll(quoted('label'))].map((m) => m[2]);
+  const titles = [...nav.matchAll(quoted('title'))].map((m) => m[2]);
+  const hrefs = [...nav.matchAll(quoted('href'))].map((m) => m[2]);
 
   assert.equal(
     labels.length,
@@ -290,7 +293,7 @@ test('every docs sidebar label and section title is Title Case', async () => {
       // 'Runtime (Node & Bun)', 'Editor Setup (Neovim, VS Code)', 'cache()'
       const word = token.replace(/^\(+|[)(,.]+$/g, '');
       if (!/[A-Za-z]/.test(word)) return; // the bare & in 'Streaming & Suspense'
-      if (IDENTIFIERS.has(word)) return;
+      if (FIXED_CASING.has(word)) return;
       if (i > 0 && MINOR_WORDS.has(word.toLowerCase())) return;
       if (!/^[A-Z]/.test(word)) offenders.push(`${value}  ->  '${word}'`);
     });
@@ -304,7 +307,7 @@ test('every docs sidebar label and section title is Title Case', async () => {
       '\n\nThe docs sidebar is Title Case throughout, section titles included. Pick the fix that matches the word:\n' +
       '  1. ORDINARY WORD: recase it in app/docs/layout.ts. This is the fix nearly every\n' +
       '     hit wants, and it is what the last two drifts needed.\n' +
-      '  2. A WORD WHOSE CASING IS NOT PROSE: add it to IDENTIFIERS at the top of\n' +
+      '  2. A WORD WHOSE CASING IS NOT PROSE: add it to FIXED_CASING at the top of\n' +
       '     this test, spelled EXACTLY as this message printed it above. Wrapping\n' +
       "     brackets and trailing punctuation are stripped before the lookup, so a\n" +
       "     'cache()' in a label is listed as 'cache'. Two kinds belong there: a code\n" +
