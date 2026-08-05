@@ -6,7 +6,7 @@
  * Node 24+ strip-types floor, the `erasableSyntaxOnly` TS flag, importmap pin
  * freshness, env drift vs `.env.example`, `@webjsdev/*` version coherence,
  * whether the framework even resolves from the app dir (the fresh-git-worktree
- * trap, #954), whether a page/layout stylesheet link is content-hashed (#1095),
+ * trap, #954), whether a route-module stylesheet link is content-hashed (#1095),
  * and the git pre-commit hook activation. `webjs doctor` verifies
  * each one up front and prints pass/warn/fail with an actionable fix line.
  *
@@ -1139,32 +1139,28 @@ async function readAppBasePath(appDir) {
 }
 
 /**
- * Whether the `<link>` tag at `idx` is commented out.
+ * Whether the `<link>` tag at `idx` is commented out, so dead markup is never
+ * reported as a live finding.
  *
- * Deliberately STATELESS and local, after two attempts at lexing the file both
- * shipped bugs. A flat `//` regex blanked the rest of any line holding a
- * protocol-relative url. Replacing it with a quote-tracking walk then broke on
- * the framework's most common idiom, a nested ``html`...`  `` inside a `${}`
- * hole: one `quote` char cannot model nesting, so the inner backtick read as
- * closing the outer template and inverted string/code polarity for everything
- * after it. An unbalanced apostrophe in nested template TEXT (`it's`) then
- * desynchronized the rest of the file.
+ * A DELIMITED comment is decided by an unclosed opener behind the tag. Neither
+ * `<!--` nor `/*` nests, so "nearest opener beats nearest closer" is exact, and
+ * it covers a multi-line block whose interior lines carry no marker of their
+ * own (what an editor's toggle-block-comment writes). A `//` has no closer, so
+ * it is decided from the tag's own line: a `//` inside an href later in the
+ * line cannot match, because the line does not START with it.
  *
- * The check does not actually need to lex JavaScript. It needs one answer: is
- * this tag commented out. Two local tests give it with no cross-line state, so
- * there is nothing to desynchronize:
+ * Do NOT replace this with a lexer. Two attempts did, and both shipped bugs a
+ * stateless test cannot have: a line-blanking regex killed any line holding a
+ * protocol-relative url, and a quote-tracking walk inverted string/code
+ * polarity on a nested ``html`...` `` inside a `${}` hole (one quote char
+ * cannot model nesting), so an unbalanced apostrophe in template text
+ * desynchronized the rest of the file. This check does not need to lex
+ * JavaScript. If it ever genuinely does, export `redactStringsAndTemplates`
+ * from `@webjsdev/server` (`src/js-scan.js`, fuzz-tested differentially against
+ * a real TypeScript parse) rather than growing a third one here.
  *
- *   - An HTML comment is unambiguous (`<!--` is not valid JS and cannot nest),
- *     so scan backwards: the tag is inside one when the nearest preceding
- *     `<!--` is closer than the nearest preceding `-->`.
- *   - A JS comment is judged from the tag's OWN line prefix. A commented-out
- *     tag has its marker leading the line (`//`, `/*`, or a `*` continuation),
- *     which is how commenting one out is actually written and formatted. A
- *     `//` sitting inside an href later in the line cannot match, because the
- *     line does not START with it.
- *
- * The residual gap is a tag commented out mid-line after real code, which stays
- * reported. That is rare, and it fails toward reporting rather than toward the
+ * Residual gap: a tag behind a `//` that trails real code on the same line
+ * stays reported. Rare, and it fails toward reporting rather than toward the
  * silent inertness both lexers produced.
  *
  * @param {string} src
@@ -1173,15 +1169,8 @@ async function readAppBasePath(appDir) {
  */
 function isCommentedOut(src, idx) {
   const before = src.slice(0, idx);
-  // Unclosed block openers, the same backward test for both comment families.
-  // Neither `<!--` nor `/*` nests, so "the nearest opener is closer than the
-  // nearest closer" is exact, and it needs no state, which is what the two
-  // deleted lexers got wrong. This is what covers a MULTI-LINE block whose
-  // interior lines carry no marker of their own, the shape an editor's
-  // toggle-block-comment produces.
   if (before.lastIndexOf('<!--') > before.lastIndexOf('-->')) return true;
   if (before.lastIndexOf('/*') > before.lastIndexOf('*/')) return true;
-  // A `//` line comment has no closer, so it is judged from the tag's own line.
   const lineStart = before.lastIndexOf('\n') + 1;
   return before.slice(lineStart).trimStart().startsWith('//');
 }
