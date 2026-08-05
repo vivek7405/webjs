@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "webjs dev --port ${PORT:-5001}",
     "start": "webjs start",
+    "typecheck": "node scripts/copy-registry.mjs && tsc --noEmit",
     "pretest": "node scripts/copy-registry.mjs",
     "test": "webjs test",
     "pretest:browser": "node scripts/copy-registry.mjs",

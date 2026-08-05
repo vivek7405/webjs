@@ -366,7 +366,15 @@ calling an action), re-enable it and delete the assertion in
 
 ```sh
 cd website && npm run dev       # http://localhost:5001
+cd website && npm run typecheck # tsc --noEmit, the same gate CI runs
 ```
+
+`npm run typecheck` mirrors the kit sources in before it runs `tsc`, because
+without that gitignored mirror `tsc` reports a wall of unrelated `TS2882`
+side-effect-import errors that bury any real one. The CI `apps` job runs the
+same script, so a type break in `website/` reds the build instead of riding
+onto `main` unnoticed (#1260). It gates `website/` only: `examples/blog` and
+`packages/ui/packages/website` do not typecheck clean today.
 
 `npm run dev` and `webjs dev` behave identically (#550): `webjs.dev.before`
 mirrors the kit sources in and compiles `public/tailwind.css`, and
