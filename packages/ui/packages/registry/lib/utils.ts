@@ -62,16 +62,69 @@ const GROUPS: Array<[RegExp, string]> = [
   [/^text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)$/, 'text-size'],
   // Text color: anything else starting with text- that isn't alignment / wrap / overflow.
   [/^text-(?!align-|left$|right$|center$|justify$|start$|end$|wrap$|nowrap$|balance$|pretty$|clip$|ellipsis$|xs$|sm$|base$|lg$|xl$|\d?xl$)/, 'text-color'],
-  [/^border(-[trblxy])?-?\d/, 'border-w'],
+  // Border sub-properties that are neither a width nor a colour. These come
+  // FIRST so the width / colour classifier below never sees them.
+  [/^border-(collapse|separate)$/, 'border-collapse'],
+  [/^border-spacing(-[xy])?-/, 'border-spacing'],
+  [/^border-(solid|dashed|dotted|double|hidden|none)$/, 'border-style'],
+  ...borderGroups(),
   [/^rounded(-[a-z]+)?$/, 'rounded'],
   [/^rounded-/, 'rounded'],
   [/^opacity-/, 'opacity'],
   [/^font-(thin|light|normal|medium|semibold|bold|black|extralight|extrabold)$/, 'font-weight'],
   [/^shadow(-|$)/, 'shadow'],
   [/^z-/, 'z'],
-  [/^flex(-|$)/, 'flex'],
-  [/^grid(-|$)/, 'grid'],
+  // A bare `flex` / `grid` is a DISPLAY value, not a member of the groups
+  // below, so it must never dedupe against them: an element can be both a flex
+  // container and a flex child (`class="flex flex-1"`), and collapsing the two
+  // silently drops `display:flex`. Each sub-utility gets the group of the real
+  // CSS property it sets, and a bare `flex` / `grid` matches none of them.
+  [/^flex-(row|row-reverse|col|col-reverse)$/, 'flex-direction'],
+  [/^flex-(wrap|wrap-reverse|nowrap)$/, 'flex-wrap'],
+  [/^flex-(\d+|auto|initial|none|\[[^\]]*\])$/, 'flex'],
+  [/^grid-cols-/, 'grid-cols'],
+  [/^grid-rows-/, 'grid-rows'],
+  [/^grid-flow-/, 'grid-flow'],
 ];
+
+/**
+ * Border WIDTH and border COLOUR share the `border-` prefix but are different
+ * CSS properties, so they need different groups: `cn('border-2',
+ * 'border-primary')` must keep BOTH, while `cn('border-border',
+ * 'border-accent')` must keep only the later colour (today the winner is
+ * decided by compiled stylesheet order, which silently loses whenever the
+ * override sorts alphabetically earlier).
+ *
+ * Classification, after an optional side / axis segment: a bare or numeric
+ * value is a width (`border`, `border-2`, `border-t-4`), an arbitrary value
+ * that opens with a digit, a dot, or `length:` is a width (`border-[3px]`,
+ * `border-[length:var(--w)]`), and everything else is a colour
+ * (`border-primary`, `border-red-500/50`, `border-[#fff]`). An ambiguous
+ * `border-[var(--x)]` falls to colour, which is the far more common intent.
+ *
+ * Each side is its own group so a per-side utility only overrides its own side,
+ * and the shorthand / axis subsumption is declared in CONFLICTS below, exactly
+ * like padding and margin. The logical inline sides (`border-s-*`,
+ * `border-e-*`) get their own groups but are subsumed only by the all-sides
+ * shorthand, never by `border-x-*`: which physical side they land on depends on
+ * the writing direction, so an axis override there would be a guess.
+ */
+function borderGroups(): Array<[RegExp, string]> {
+  const width = '(\\d+(\\.\\d+)?|\\[(length:|\\d|\\.)[^\\]]*\\])';
+  const out: Array<[RegExp, string]> = [];
+  // Sides before the bare form: `border-t-primary` must match the `t` colour
+  // group, not be swallowed by the side-less `^border-` colour pattern.
+  const sides = ['x', 'y', 't', 'r', 'b', 'l', 's', 'e', ''];
+  for (const side of sides) {
+    const seg = side ? `-${side}` : '';
+    out.push([new RegExp(`^border${seg}(-${width})?$`), `border-w${seg}`]);
+  }
+  for (const side of sides) {
+    const seg = side ? `-${side}` : '';
+    out.push([new RegExp(`^border${seg}-`), `border-color${seg}`]);
+  }
+  return out;
+}
 
 // Directional shorthand conflicts (the tailwind-merge model). A shorthand
 // utility invalidates the axis / side utilities it SUBSUMES, because Tailwind's
@@ -88,6 +141,12 @@ const CONFLICTS: Record<string, string[]> = {
   mx: ['ml', 'mr'],
   my: ['mt', 'mb'],
   size: ['w', 'h'],
+  'border-w': ['border-w-x', 'border-w-y', 'border-w-t', 'border-w-r', 'border-w-b', 'border-w-l', 'border-w-s', 'border-w-e'],
+  'border-w-x': ['border-w-l', 'border-w-r'],
+  'border-w-y': ['border-w-t', 'border-w-b'],
+  'border-color': ['border-color-x', 'border-color-y', 'border-color-t', 'border-color-r', 'border-color-b', 'border-color-l', 'border-color-s', 'border-color-e'],
+  'border-color-x': ['border-color-l', 'border-color-r'],
+  'border-color-y': ['border-color-t', 'border-color-b'],
 };
 
 function dedupeUtilities(input: string): string {
