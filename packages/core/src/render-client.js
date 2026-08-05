@@ -2679,6 +2679,15 @@ function teardownWatch(partAny) {
  * @param {{ iterable: AsyncIterable<unknown>, mapper?: (v: unknown, i: number) => unknown }} dir
  */
 function applyAsyncAppend(part, dir) {
+  const partAny = /** @type any */ (part);
+  // Record the owning component while we are still inside its render(), the
+  // only moment it is knowable, exactly as `applyWatch` / `applyUntil` do.
+  // Chunks commit from an async loop with no render on the stack, so without
+  // this both the chunk's own commit throw and any directive nested inside a
+  // chunk have no owner to route to. Stamped ABOVE the short-circuit so a
+  // re-render that returns early still refreshes the owner, and guarded so a
+  // re-install outside a render keeps a previously good one.
+  if (currentRenderRoot) partAny.__commitOwner = boundaryOwnerOf(currentRenderRoot);
   // Same-iterable short-circuit: if the prior render's iterable identity
   // matches, the existing iterator is still consuming it. Re-subscribing
   // would start a fresh iterator that misses already-yielded values.
@@ -2717,6 +2726,9 @@ function applyAsyncAppend(part, dir) {
  * @param {{ iterable: AsyncIterable<unknown>, mapper?: (v: unknown, i: number) => unknown }} dir
  */
 function applyAsyncReplace(part, dir) {
+  const partAny = /** @type any */ (part);
+  // Owner stamp: see comment in applyAsyncAppend. Above the short-circuit.
+  if (currentRenderRoot) partAny.__commitOwner = boundaryOwnerOf(currentRenderRoot);
   // Same-iterable short-circuit: see comment in applyAsyncAppend.
   const currentChild = /** @type any */ (part.child);
   if (currentChild && currentChild.kind === 'async-stream'
@@ -2763,6 +2775,23 @@ function applyAsyncReplace(part, dir) {
  * after every `next()` resolve to short-circuit if abortion happened
  * while the iterator was suspended.
  *
+ * Each pass carries TWO try spans, and which failure lands in which is the
+ * load-bearing part. SPAN A is the author's own code, the iterable AND the
+ * `mapper` it was given, and a throw from either is logged to the console and
+ * ends the stream, on the long-standing reasoning that an author's iterable
+ * should handle its own errors. SPAN B is the chunk COMMIT, which is a render
+ * failure of the component whose template holds the binding, so it routes to
+ * that component's `renderError()` and stops the stream.
+ *
+ * Scope note: only a throw from the COMMIT can stop the stream from here. A
+ * directive nested INSIDE a committed chunk (a `watch` whose signal changes
+ * later) throws from its own handler, outside this loop entirely, so it
+ * reaches the boundary but this loop knows nothing about it and keeps
+ * pulling. That is the same for any directive nested anywhere else. lit is no authority
+ * either way here (it has no per-component boundary, and both failures become
+ * unhandled rejections at the window), so this follows the
+ * per-component error isolation WebJs has instead.
+ *
  * @param {AsyncStreamState} state
  * @param {Extract<BoundPart, {kind:'child'}>} part
  * @param {{ iterable: AsyncIterable<unknown>, mapper?: (v: unknown, i: number) => unknown }} dir
@@ -2770,39 +2799,84 @@ function applyAsyncReplace(part, dir) {
 async function consumeAsyncStream(state, part, dir) {
   const marker = part.marker;
   let i = 0;
-  try {
-    while (!state.aborted) {
-      const result = await state.iterator.next();
+  while (!state.aborted) {
+    /** @type {IteratorResult<unknown>} */
+    let result;
+    /** @type {unknown} */
+    let mapped;
+    // SPAN A, the author's iterable. A throw here is the author's generator
+    // failing, not a render, so it keeps the long-standing console.error and
+    // ends the stream. It is a separate span from the commit below on purpose
+    // rather than a flag the one catch inspects, because the distinction is
+    // the whole point: `reportOutOfBandCommitError` RETHROWS for a part with
+    // no owner, and a single enclosing try would hand that rethrow straight
+    // back to this swallow, which is the escape this split exists to stop.
+    try {
+      result = await state.iterator.next();
       if (state.aborted) break;
       if (result.done) break;
-      const mapped = dir.mapper ? dir.mapper(result.value, i) : result.value;
-      const newNodes = renderToNodes(mapped);
-
-      // This chunk commit runs in an async loop OUTSIDE any render() window,
-      // so open the renderer-write window explicitly: without it, committing a
-      // stream chunk into a light slot host would hit the patched insertBefore /
-      // removeChild and fold the renderer's own output into `authored`.
-      commitInto(marker.parentNode, () => {
-        if (state.mode === 'replace') {
-          for (const n of state.nodes) {
-            if (n.parentNode) n.parentNode.removeChild(n);
-          }
-          state.nodes = [];
-        }
-
-        const frag = document.createDocumentFragment();
-        for (const n of newNodes) frag.appendChild(n);
-        marker.parentNode?.insertBefore(frag, marker);
-        state.nodes.push(...newNodes);
-      });
-
-      i++;
+      mapped = dir.mapper ? dir.mapper(result.value, i) : result.value;
+    } catch (err) {
+      // Note this ENDS the stream, and always has: the catch used to sit
+      // outside the loop, so there has never been a resume path here.
+      if (typeof console !== 'undefined') console.error('[webjs] asyncStream error:', err);
+      return;
     }
-  } catch (err) {
-    // Swallow iteration errors. A leaked iterator throwing should not
-    // crash the host's render cycle. Authors who care about errors
-    // should handle them in their iterable / generator.
-    if (typeof console !== 'undefined') console.error('[webjs] asyncStream error:', err);
+
+    // SPAN B, the chunk commit. This is a render of the component whose
+    // TEMPLATE holds the binding, so a throw is that component's render
+    // failure and routes to its `renderError()`, the same as `watch` and
+    // `until` already do from their own out-of-band commits. `renderToNodes`
+    // is INSIDE the wrap because that is where a nested directive is
+    // installed and reads `currentRenderRoot`; without it, a `watch()` inside
+    // a chunk is stamped with no owner and its later throw escapes.
+    // `commitInto` is a different concern (the renderer-write window for a
+    // light slot host), so the two nest rather than replace each other.
+    try {
+      commitOutOfBand(part, () => {
+        const newNodes = renderToNodes(mapped);
+
+        // This chunk commit runs in an async loop OUTSIDE any render() window,
+        // so open the renderer-write window explicitly: without it, committing a
+        // stream chunk into a light slot host would hit the patched insertBefore /
+        // removeChild and fold the renderer's own output into `authored`.
+        commitInto(marker.parentNode, () => {
+          if (state.mode === 'replace') {
+            for (const n of state.nodes) {
+              if (n.parentNode) n.parentNode.removeChild(n);
+            }
+            state.nodes = [];
+          }
+
+          const frag = document.createDocumentFragment();
+          for (const n of newNodes) frag.appendChild(n);
+          marker.parentNode?.insertBefore(frag, marker);
+          state.nodes.push(...newNodes);
+        });
+      });
+    } catch (err) {
+      // Stop the stream. The boundary is about to render an error state, and
+      // appending later chunks into a region it may have replaced is not a
+      // recovery. The rendered nodes are left alone: blanking the region is a
+      // separate decision, and `teardownAsyncStream` is for the part being
+      // reset, not for this.
+      state.aborted = true;
+      try { state.iterator.return?.()?.catch?.(() => {}); } catch { /* best effort */ }
+      // Rethrows when nothing can receive the error, which for a bare
+      // `render()` into a plain container is an owner that carries no
+      // `_handleRenderError` (the stamp records the container itself, so the
+      // owner is present, just not a component). Surfacing beats swallowing
+      // there, and it matches `watch` and `until`, which rethrow from their
+      // own out-of-band handlers for the same reason. The exact shape differs
+      // by site rather than being one thing: this rejects the loop's
+      // promise, `until` rejects from its `.then`, and `watch` throws inside
+      // a `queueMicrotask`, which is an uncaught error rather than a
+      // rejection.
+      reportOutOfBandCommitError(part, err);
+      return;
+    }
+
+    i++;
   }
 }
 
