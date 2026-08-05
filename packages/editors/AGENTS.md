@@ -39,9 +39,10 @@ both consumers:
   The drift guard `nvim/test/vendor-sync.test.mjs` FAILS the "Unit + integration"
   CI job whenever the copy and the source diverge (whether you forgot to
   re-vendor, or hand-edited the copy). It compares `src/` byte for byte
-  ("vendored intellisense src is byte-identical ...") AND the manifest apart
-  from its `version`, which is excluded because no release step re-vendors, so
-  a version bump legitimately leaves the copy behind.
+  ("vendored intellisense src is byte-identical ...") AND the manifest in
+  full, `version` included, so a release that bumps intellisense must re-vendor
+  on the release branch. #1117 had to fix that drift by hand after the copy
+  spent 140 commits misreporting the version the plugin ships.
   Confirm: `node --test packages/editors/nvim/test/vendor-sync.test.mjs`.
 - **vscode** rebuilds its bundle from `intellisense/` with esbuild at vsix
   package time (`vscode/scripts/build.mjs`, run by `package.mjs`), so it picks

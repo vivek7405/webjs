@@ -34,9 +34,9 @@ git add -f packages/editors/nvim/vendor   # the copy lives under a gitignored no
   `packages/editors/nvim/test/vendor-sync.test.mjs` FAILS CI ("vendored
   intellisense src is byte-identical ...") whenever `src/` and the vendored copy
   diverge, and separately whenever the vendored `package.json` diverges in any
-  field but `version`. That field is excluded because no release step
-  re-vendors, so a bump legitimately leaves the copy behind (#978 bumped this
-  package and the copy did not catch up until #1117). Forgetting the re-vendor
+  field at all, `version` included. That last one is deliberate: #978 bumped
+  this package and the copy did not catch up until #1117, so the published
+  plugin misreported the language-service version it ships. Forgetting the re-vendor
   is the single most common way an intellisense edit reds CI.
 - **The `webjs` VS Code extension** bundles this package via esbuild at vsix
   package time, so it picks up `src/` changes automatically (no committed copy,

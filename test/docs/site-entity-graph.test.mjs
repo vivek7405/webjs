@@ -11,10 +11,10 @@
  * The claim belongs on every node that identifies the PROJECT: the
  * `Organization` and the `SoftwareApplication` on the home page, and the
  * `SoftwareApplication` on /what-is-webjs, which is the page that does the
- * disambiguating. The two SoftwareApplication nodes share a name and a url
- * with no `@id` between them, so they describe one entity and cannot make
- * different claims. The `WebSite` node is left out because it describes this
- * site as a document collection rather than the project.
+ * disambiguating. The two SoftwareApplication nodes carry the SAME `@id`, so
+ * they are one entity described twice and cannot make different claims. The
+ * `WebSite` node is left out because it describes this site as a document
+ * collection rather than the project.
  *
  * They must all state the SAME graph, which is the whole reason the list
  * lives in one exported constant. This asserts the rendered output, not the
