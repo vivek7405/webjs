@@ -131,6 +131,56 @@ suite('Record self-heal + overlay coherence (review round 16)', () => {
     }
   });
 
+  test('a list churning inside the slot leaves no bookends behind and does not perturb the record', async () => {
+    // A teardown removes the row's own boundary markers, and inside a slot that
+    // removal is seen by the backstop as one extra `removedNodes` entry per
+    // row. Those comments were never in the authored record (they sit between
+    // the host instance's own bookends, so `instanceOwns` claims them for the
+    // renderer), so churning the list must leave the record and the assignment
+    // exactly where they started. The marker count is asserted directly,
+    // because the leak is invisible to `querySelectorAll`.
+    ensureFixedShell();
+    const parentTag = tagName('heal-churn');
+    const rows = (n) => Array.from({ length: n }, (_, i) => `i${i}`);
+    class P extends WebComponent({ items: Array }) {
+      constructor() { super(); this.items = rows(4); }
+      render() {
+        return html`<heal-shell-fixed>${this.items.map(
+          (i) => html`<p class="item">${i}</p>`,
+        )}</heal-shell-fixed>`;
+      }
+    }
+    P.register(parentTag);
+    const parent = document.createElement(parentTag);
+    document.body.appendChild(parent);
+    await tick();
+    try {
+      const shell = parent.querySelector(fixedShell);
+      const slot = shell.querySelector('slot[data-webjs-light]');
+      const endMarkers = (root) =>
+        [...root.childNodes].filter((n) => n.nodeType === 8 && n.data === 'wjm-e').length;
+
+      assert.equal(slot.querySelectorAll('.item').length, 4, 'four items projected');
+      const baseMarkers = endMarkers(slot);
+      const baseAssigned = slot.assignedNodes().length;
+
+      for (let i = 0; i < 5; i++) {
+        parent.items = rows(1);
+        await parent.updateComplete;
+        await tick();
+        parent.items = rows(4);
+        await parent.updateComplete;
+        await tick();
+      }
+
+      assert.equal(endMarkers(slot), baseMarkers, 'end markers under the slot drifted');
+      assert.equal(slot.querySelectorAll('.item').length, 4, 'all four items are projected again');
+      assert.equal(slot.assignedNodes().length, baseAssigned, 'the assigned set drifted');
+    } finally {
+      parent.remove();
+    }
+  });
+
   test('a library write into the assigned container survives the next apply', async () => {
     const tag = tagName('lib-write');
     const host = await mount(tag, () => html`<div><slot></slot></div>`);
