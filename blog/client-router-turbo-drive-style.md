@@ -75,7 +75,7 @@ Forms that already call `event.preventDefault()` in their `@submit` handler are 
 
 One explicit non-goal, plus two that used to be on this list and have since been built.
 
-No view-transitions API by default. View Transitions are great when supported, but the spec is still evolving, so the default off-state matches what works in every browser. An app that wants them opts in with a `<meta name="view-transition">` tag in the root layout, which is the whole configuration.
+No view-transitions API by default. View Transitions are great when supported, but the spec is still evolving, so the default off-state matches what works in every browser. An app that wants them opts in with `<meta name="view-transition" content="same-origin">` in the root layout. The `content` value is load-bearing rather than decorative, since the router reads it and enables nothing unless it says `same-origin`.
 
 Prefetching was the first of the two. The router warms link targets on its own now, and it picks the strategy from the device rather than applying one everywhere: hover intent where there is a real pointer, and dwell-gated viewport entry on touch, where hover does not exist to hook. I wrote up how that choice gets made in [Device-adaptive link prefetch](/blog/device-adaptive-link-prefetch).
 

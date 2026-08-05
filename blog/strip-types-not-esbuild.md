@@ -23,15 +23,18 @@ Worse, the assistant would sometimes read the generated JS instead of the source
 
 # What Node 24 changed
 
-Node 24 ships `module.stripTypeScriptTypes`. The dev server imports it directly:
+Node 24 ships `module.stripTypeScriptTypes`. The stripper reaches it through a namespace import rather than a named one:
 
 ```js
-import { createRequire, stripTypeScriptTypes } from 'node:module';
+import * as nodeModule from 'node:module';
+// nodeModule.stripTypeScriptTypes, or undefined on a runtime without it
 ```
+
+That detail is not stylistic. A named import of a builtin export that does not exist is a link-time SyntaxError, which fires before any module body runs and would take down the import of the server package itself on a runtime that ships no stripper. A namespace import links everywhere and leaves the branch to run time.
 
 It is a position-preserving type eraser. Take a `.ts` file, strip the types, and the output has every line at the same line number and every column at the same column. Where there used to be `let foo: number = 1`, there is now `let foo         = 1`. The whitespace shows up where the type annotation used to be. The semantics are identical to what the user wrote.
 
-The runtime backing is the `amaro` package, vendored into Node 24. If a future Node version stops shipping it, the framework needs to install `amaro` directly. The code path that handles this is gated on a feature-detection check at server start.
+The runtime backing is the `amaro` package, vendored into Node 24. WebJs also depends on `amaro` directly, as an optional dependency, which is what covers a runtime that ships no stripper of its own. Which of the two runs is decided by a feature-detection check at server start.
 
 What it gets you:
 
@@ -59,7 +62,7 @@ const TS_CACHE_MAX = 500;
 
 Capped at 500 entries to prevent unbounded memory growth in long-running production servers. Keyed by absolute path, invalidated when the file's mtime changes. First request through is on the order of a hundred microseconds per file. Subsequent requests are Map lookups. The Map hangs off the request handler rather than the module, because the cached bytes bake in that handler's elision verdict, so two handlers for the same app with different elision settings must not share one.
 
-There is no fallback for a file that uses non-erasable syntax. Stripping throws, the server returns a clean 500 naming the file, and that is the entire error path. Nothing regenerates the code through a bundler, which is what keeps the guarantee worth having: the file on disk is the file that runs, with no second code path where that stops being true. Two `webjs check` rules catch the problem at edit time instead, `erasable-typescript-only` on the tsconfig flag and `no-non-erasable-typescript` on the source itself.
+There is no fallback for a file that uses non-erasable syntax. Stripping throws and the server returns a clean 500, and that is the entire error path. In dev the response names the offending construct and points at the rule; in production it stays terse on purpose, so no path leaks to a visitor, and the detail goes to the server log instead. Nothing regenerates the code through a bundler, which is what keeps the guarantee worth having: the file on disk is the file that runs, with no second code path where that stops being true. Two `webjs check` rules catch the problem at edit time instead, `erasable-typescript-only` on the tsconfig flag and `no-non-erasable-typescript` on the source itself.
 
 What does vary is the backend doing the stripping. On Node it is the built-in `module.stripTypeScriptTypes`. On Bun, which has no such built-in, it is `amaro`, and since Node's built-in is itself a thin wrapper over `amaro`'s `strip-only` mode, both runtimes produce byte-identical output with the same position preservation.
 
