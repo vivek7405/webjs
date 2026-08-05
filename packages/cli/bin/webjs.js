@@ -165,10 +165,11 @@ const HELP = {
     usage: 'webjs create <name> [--template full-stack|api] [--db sqlite|postgres] [--runtime node|bun] [--no-install]',
     summary: 'Scaffold a new app. Defaults: full-stack template, Drizzle + SQLite, Node runtime.',
     options: [
+      // Kept to one terminal line like every other row: printHelp does not
+      // wrap, so a long description renders as one 300-column line.
       {
         flag: '<name>',
-        description:
-          'Must be a valid npm package name: lowercase letters, digits, and the separators "-", "." and "_", starting with a letter or a digit, at most 214 characters. It becomes the directory, the package.json name, AND a value written into generated source, so anything else is rejected before any file is written (#1066).',
+        description: 'npm package name: lowercase, digits, - . _ , starts with a letter or digit.',
       },
       { flag: '--template <t>', description: 'full-stack (default) or api (backend-only, no UI).' },
       { flag: '--db <d>', description: 'sqlite (default) or postgres.' },
@@ -857,7 +858,11 @@ async function main() {
       const name = rest[0];
       if (!name || name.startsWith('-')) {
         console.error('Usage: webjs create <app-name> [--template full-stack|api]');
-        console.error('<app-name> must be a valid npm package name (lowercase letters, digits, - . _).');
+        // This branch fires for a MISSING name or one starting with `-`, so the
+        // rule it prints has to lead with the first-character requirement. An
+        // earlier wording listed the separators as allowed characters, which
+        // read as "a leading - is fine" to the one user who just typed one.
+        console.error('<app-name> must start with a lowercase letter or a digit, then lowercase letters, digits, "-", "." or "_".');
         process.exit(1);
       }
       const template = flag(rest, '--template', 'full-stack');

@@ -113,11 +113,41 @@ test('the single-line contract holds for the one input that can break it', () =>
   // A newline-bearing name is REJECTED by checkAppName, so it is exactly the
   // input that reaches the thrown message. Interpolating it raw made the Error
   // multi-line, contradicting the contract this function documents.
-  for (const name of ['bad\nname', 'bad\r\nname', 'a\u2028b']) {
+  for (const name of ['bad\nname', 'bad\r\nname', 'a\u2028b', 'a\u2029b']) {
     assert.throws(() => assertValidAppName(name), (err) => {
-      assert.equal(err.message.split('\n').length, 1, `multi-line for ${JSON.stringify(name)}`);
+      // `split('\n')` does NOT see U+2028 / U+2029, which are JS
+      // LineTerminators too, so testing that way makes those two cases no-ops.
+      // Assert on every line terminator, and on the escaped form landing.
+      assert.ok(
+        !/[\n\r\u2028\u2029]/.test(err.message),
+        `line terminator survived for ${JSON.stringify(name)}: ${JSON.stringify(err.message)}`,
+      );
+      assert.match(err.message, /<U\+[0-9A-F]{4}>/);
       return true;
     });
+  }
+});
+
+test('C1 controls are escaped too, not just C0', () => {
+  // An 8-bit terminal reads U+0080 to U+009F as control functions, so they are
+  // no safer to echo than the C0 range.
+  for (const name of ['bad\u0080name', 'bad\u009bname']) {
+    const rendered = appNameErrorMessage(name, checkAppName(name).reason);
+    assert.ok(!/[\u0080-\u009f]/.test(rendered), `raw C1 survived: ${JSON.stringify(rendered)}`);
+    assert.match(rendered, /<U\+00[89][0-9A-F]>/);
+  }
+});
+
+test('the reserved names the code refuses are named in the guidance', () => {
+  // Both satisfy every other stated condition, so a reader who only had the
+  // shape would conclude they are legal.
+  for (const name of ['node_modules', 'favicon.ico']) {
+    const r = checkAppName(name);
+    assert.equal(r.ok, false);
+    const msg = appNameErrorMessage(name, r.reason);
+    assert.match(msg, /node_modules/);
+    assert.match(msg, /favicon\.ico/);
+    assert.match(msg, /reserve/);
   }
 });
 
@@ -146,8 +176,17 @@ test('a maximally long name cannot blow out the message width', () => {
   for (const line of msg.split('\n')) {
     assert.ok(line.length <= 80, `message line too long (${line.length}): ${line}`);
   }
-  const thrown = (() => { try { assertValidAppName(long); } catch (e) { return e.message; } })();
-  assert.ok(thrown.length < 300, `thrown message too long (${thrown.length})`);
+  // The invariant is that the message does NOT grow with the input, which a
+  // fixed character budget only tests by coincidence (it broke the moment the
+  // shape sentence gained a clause). A 215-char and a 5000-char name must
+  // render the same length, because the name is capped either way.
+  const huge = 'a'.repeat(5000);
+  const msgOf = (n) => { try { assertValidAppName(n); return ''; } catch (e) { return e.message; } };
+  assert.equal(
+    msgOf(huge).length - String(huge.length).length,
+    msgOf(long).length - String(long.length).length,
+    'the thrown message length must not scale with the name length',
+  );
 });
 
 test('rejects a leading separator, matching the shape the message states', () => {

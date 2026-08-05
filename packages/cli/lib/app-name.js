@@ -28,7 +28,7 @@ export const APP_NAME_MAX_LENGTH = 214;
 
 /** One-line description of the allowed shape, reused by both error surfaces. */
 export const APP_NAME_SHAPE =
-  'lowercase letters, digits, and the separators "-", "." and "_", starting with a letter or a digit, at most 214 characters';
+  'lowercase letters, digits, and the separators "-", "." and "_", starting with a letter or a digit, at most 214 characters, and not a name npm reserves';
 
 /**
  * npm rejects these outright, whatever else the name looks like.
@@ -65,11 +65,24 @@ function describeName(name) {
   let out = '';
   for (const ch of raw) {
     const code = ch.codePointAt(0) ?? 0;
-    out += code < 0x20 || code === 0x7f
+    out += isUnprintable(code)
       ? `<U+${code.toString(16).toUpperCase().padStart(4, '0')}>`
       : ch;
   }
   return out.length > DISPLAY_MAX_LENGTH ? `${out.slice(0, DISPLAY_MAX_LENGTH)}...` : out;
+}
+
+/**
+ * Whether a code point has no safe visible form in an error message. C0 and
+ * DEL are the obvious set. Two additions matter here: the C1 range, which is
+ * where an 8-bit terminal reads control functions, and U+2028 / U+2029, which
+ * are JS LineTerminators, so they break the single-line contract exactly the
+ * way `\n` does while sailing past any `split('\n')` that claims to check it.
+ * @param {number} code
+ * @returns {boolean}
+ */
+function isUnprintable(code) {
+  return code < 0x20 || (code >= 0x7f && code <= 0x9f) || code === 0x2028 || code === 0x2029;
 }
 
 /**
@@ -82,7 +95,7 @@ function describeName(name) {
  */
 function describeChar(ch) {
   const code = ch.codePointAt(0) ?? 0;
-  if (code < 0x20 || code === 0x7f) {
+  if (isUnprintable(code)) {
     return `the control character U+${code.toString(16).toUpperCase().padStart(4, '0')}`;
   }
   if (ch === ' ') return 'a space';
@@ -164,6 +177,7 @@ scaffold writes into generated source, so it has to be a name npm accepts:
   the separators "-", "." and "_"
   starting with a letter or a digit
   at most ${APP_NAME_MAX_LENGTH} characters
+  not ${RESERVED_NAMES.map((n) => `"${n}"`).join(' or ')} (npm reserves both)
 
 Example: webjs create my-app`;
 }
