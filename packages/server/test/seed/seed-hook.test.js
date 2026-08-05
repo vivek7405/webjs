@@ -21,7 +21,7 @@ import { hashFile } from '../../src/actions.js';
 import { stringify } from '@webjsdev/core';
 
 let dir;
-let actionUrl, utilUrl, exoticUrl, c1Url, c2Url;
+let actionUrl, utilUrl, exoticUrl, c1Url, c2Url, eagerUrl, eager2Url, collideUrl, constsUrl;
 
 before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'webjs-seedhook-'));
@@ -66,6 +66,53 @@ before(async () => {
   );
   c1Url = pathToFileURL(c1).toString();
   c2Url = pathToFileURL(c2).toString();
+
+  // A circular pair where one module CALLS the other during its own module-body
+  // evaluation, i.e. while the callee's facade body has not run yet. Only the
+  // hoisted binding exists at that moment, so anything the exported function
+  // reads from facade module scope must be hoisted too.
+  const e1 = join(dir, 'e1.server.js');
+  const e2 = join(dir, 'e2.server.js');
+  writeFileSync(
+    e1,
+    `'use server';\n` +
+      `export { helper } from './e2.server.js';\n` +
+      `export async function ring(x) { return x + 1; }\n`,
+  );
+  writeFileSync(
+    e2,
+    `'use server';\n` +
+      `import { ring } from './e1.server.js';\n` +
+      `export const EAGER = ring(1);\n` +
+      `export async function helper(x) { return x * 2; }\n`,
+  );
+  eagerUrl = pathToFileURL(e1).toString();
+  eager2Url = pathToFileURL(e2).toString();
+
+  // A module exporting a name that collides with the facade's memo-variable
+  // naming scheme. A collision is a duplicate declaration in generated source,
+  // which is a SyntaxError the load hook cannot catch.
+  const collide = join(dir, 'collide.server.js');
+  writeFileSync(
+    collide,
+    `'use server';\n` +
+      `export async function ping() { return 1; }\n` +
+      `export async function _fn_ping() { return 2; }\n`,
+  );
+  collideUrl = pathToFileURL(collide).toString();
+
+  // A `'use server'` module whose non-function exports leave via an export LIST
+  // rather than an inline `export const`.
+  const consts = join(dir, 'consts.server.js');
+  writeFileSync(
+    consts,
+    `'use server';\n` +
+      `const VERSION = '2.0';\n` +
+      `const LIMITS = { max: 10 };\n` +
+      `async function fetchThing(id) { return id; }\n` +
+      `export { VERSION, LIMITS, fetchThing };\n`,
+  );
+  constsUrl = pathToFileURL(consts).toString();
 
   // Install the global hook BEFORE importing the fixtures (ESM caches by URL).
   await registerActionHooks({ seed: true });
@@ -120,5 +167,43 @@ test('circular re-export between two use-server modules loads without throwing (
   assert.equal(typeof mod1.helper, 'function');
   assert.equal(await mod1.ring(5), 6);
   assert.equal(await mod1.helper(5), 10);
+});
+
+test('a circular action CALLED during module evaluation loads without throwing (#1208)', async () => {
+  // The stricter half of #1208. The test above imports the cycle and calls
+  // afterwards, by which point every facade body has run, so it passes even if
+  // the facade keeps per-function state in a `let`. Here `e2` calls back into
+  // `e1.ring()` while `e1`'s facade body is still suspended on its own import,
+  // so ONLY the hoisted function declaration exists. Any facade module-scope
+  // binding the function body reads must therefore be hoisted as well: a `let`
+  // memo throws `Cannot access '_fn_ring' before initialization` here and turns
+  // the whole module load into a ReferenceError, which is precisely the failure
+  // #1208 was filed for.
+  const mod = await import(eagerUrl);
+  assert.equal(await mod.ring(5), 6, 'the action still works after the cycle settles');
+  // `EAGER` holds whatever the module-body call to `ring(1)` produced, so it is
+  // the proof the call actually went through the facade rather than throwing.
+  const mod2 = await import(eager2Url);
+  assert.equal(await mod2.EAGER, 2, 'the load-time call resolved through the facade');
+});
+
+test('an export colliding with the memo naming scheme still loads (fail-open, no SyntaxError)', async () => {
+  const mod = await import(collideUrl);
+  assert.equal(await mod.ping(), 1);
+  assert.equal(await mod._fn_ping(), 2);
+});
+
+test('a list-exported const stays a value, and a list-exported function stays callable', async () => {
+  // The classification bug this pins: a non-function exported via `export { ... }`
+  // used to land in the function bucket, so the facade emitted
+  // `export function VERSION(...)` and importers received a callable instead of
+  // the string. The sibling function in the same list must keep working.
+  const mod = await import(constsUrl);
+  assert.equal(mod.VERSION, '2.0', 'a list-exported string is a string, not a function');
+  assert.deepEqual(mod.LIMITS, { max: 10 }, 'a list-exported object is the object');
+  assert.equal(typeof mod.fetchThing, 'function');
+  const { value, collector } = await collectSeeds(async () => mod.fetchThing(7));
+  assert.equal(value, 7);
+  assert.equal(collector.size, 1, 'the list-exported action is still faceted and seeds');
 });
 
