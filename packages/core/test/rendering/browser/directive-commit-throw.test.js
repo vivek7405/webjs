@@ -16,7 +16,7 @@
 import { html } from '../../../src/html.js';
 import { render } from '../../../src/render-client.js';
 import { repeat } from '../../../src/repeat.js';
-import { watch } from '../../../src/directives.js';
+import { watch, ref } from '../../../src/directives.js';
 import { signal } from '../../../src/signal.js';
 import { WebComponent } from '../../../src/component.js';
 
@@ -213,6 +213,31 @@ suite('directive commit throws (browser)', () => {
     const after = [...container.querySelectorAll('li')];
     assert.strictEqual(after[0], before[0]);
     assert.strictEqual(after[2], before[2]);
+  });
+
+  test('a throwing ref unbind removes the row, and re-adding it builds a new element', () => {
+    // The identity facts linkedom cannot prove: the survivor is MOVED rather
+    // than rebuilt, and the resurrected key is a genuinely new element rather
+    // than the disposed instance handed back.
+    const boom = { set value(v) { if (v === undefined) throw new Error('ref-boom'); }, get value() { return null; } };
+    const refRows = (items) => html`<ul>${repeat(
+      items,
+      (it) => it.id,
+      (it) => html`<li><span ${it.id === 9 ? ref(boom) : ref({})}>${it.n}</span></li>`,
+    )}</ul>`;
+
+    render(refRows([{ id: 1, n: 'a' }, { id: 9, n: 'doomed' }]), container);
+    const before = [...container.querySelectorAll('li')];
+
+    render(refRows([{ id: 1, n: 'a' }]), container);
+    assert.deepEqual([...container.querySelectorAll('li')].map((li) => li.textContent), ['a']);
+    assert.strictEqual(container.querySelector('li'), before[0]);
+
+    render(refRows([{ id: 1, n: 'a' }, { id: 9, n: 'again' }]), container);
+    const after = [...container.querySelectorAll('li')];
+    assert.deepEqual(after.map((li) => li.textContent), ['a', 'again']);
+    assert.strictEqual(after[0], before[0]);
+    assert.ok(after[1] !== before[1], 'the disposed instance must not be resurrected');
   });
 
   test('removing rows after recovery leaves nothing behind', () => {
