@@ -792,14 +792,21 @@ test('a gated warning fails the exit; the same warning ungated does not', () => 
 });
 
 test('a gated `off` silences a warning even under --strict', () => {
-  // A tmp fixture also warns on the two environment-shaped checks (it has no
+  // A tmp fixture also warns on the environment-shaped checks (it has no
   // node_modules), so silence those too and `--strict` has nothing left to fail
   // on. That is exactly the CI shape this feature exists for.
   const env = { FRAMEWORK_RESOLVE: 'off', WEBJS_VERSIONS: 'off' };
   const strict = runCliArgs(assetLinkFixture({ ...env, UNMARKED_ASSET_LINKS: 'off' }), ['--strict']);
   assert.equal(strict.status, 0, `every warn silenced, so --strict passes\n${strict.stdout}\n${strict.stderr}`);
   assert.match(strict.stdout, /\[off\] .*\(UNMARKED_ASSET_LINKS, gated: off\)/);
-  assert.match(strict.stdout, /3 silenced/);
+  // Assert the OUTCOME (nothing left to warn about, and the summary says some
+  // were silenced), not an exact silenced count. How many of the
+  // environment-shaped checks warn in the first place is runtime-dependent:
+  // FRAMEWORK_RESOLVE passes under Bun from a tmp dir and warns under Node, so
+  // a hard-coded count reds the Bun matrix on a change that has nothing to do
+  // with it.
+  assert.match(strict.stdout, /0 warning\(s\)/);
+  assert.match(strict.stdout, /\d+ silenced/);
 
   // The counterfactual: leave the asset-link warn ungated and --strict fails on
   // it, so `off` is what silenced it and not the other two entries.
