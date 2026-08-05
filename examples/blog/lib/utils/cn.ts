@@ -74,11 +74,15 @@ const GROUPS: Array<[RegExp, string]> = [
   [/^font-(thin|light|normal|medium|semibold|bold|black|extralight|extrabold)$/, 'font-weight'],
   [/^shadow(-|$)/, 'shadow'],
   [/^z-/, 'z'],
-  // A bare `flex` / `grid` is a DISPLAY value, not a member of the groups
-  // below, so it must never dedupe against them: an element can be both a flex
-  // container and a flex child (`class="flex flex-1"`), and collapsing the two
-  // silently drops `display:flex`. Each sub-utility gets the group of the real
-  // CSS property it sets, and a bare `flex` / `grid` matches none of them.
+  // A bare `flex` / `grid` is a DISPLAY value, not a member of the flex / grid
+  // sub-property groups below, so it must never dedupe against them: an element
+  // can be both a flex container and a flex child (`class="flex flex-1"`), and
+  // collapsing the two silently drops `display:flex`. It still belongs to a
+  // group of its own, alongside every other display keyword, so a repeated one
+  // collapses and `cn('hidden', open && 'flex')` resolves to one display.
+  [/^(inline-block|inline-flex|inline-grid|inline-table|inline|block|flex|grid|flow-root|contents|hidden|list-item|table-caption|table-cell|table-column-group|table-column|table-footer-group|table-header-group|table-row-group|table-row|table)$/, 'display'],
+  // Each sub-utility below gets the group of the real CSS property it sets, so
+  // none of them collapses against the display value or against each other.
   [/^flex-(row|row-reverse|col|col-reverse)$/, 'flex-direction'],
   [/^flex-(wrap|wrap-reverse|nowrap)$/, 'flex-wrap'],
   [/^flex-(\d+|auto|initial|none|\[[^\]]*\])$/, 'flex'],
@@ -175,8 +179,21 @@ function dedupeUtilities(input: string): string {
 }
 
 function variantPrefix(token: string): string {
-  // capture leading variants like `hover:`, `dark:`, `md:`: overrides only conflict within the same variant set
-  const i = token.lastIndexOf(':');
+  // Capture leading variants like `hover:`, `dark:`, `md:`: overrides only
+  // conflict within the same variant set. The split is the last colon OUTSIDE
+  // square brackets, because an arbitrary value can contain one of its own
+  // (`border-[length:2px]`, `bg-[url(https://x/y.png)]`, `text-[color:var(--c)]`).
+  // Splitting on the last colon anywhere hands the group matcher a fragment
+  // like `2px]`, which matches nothing, so the utility silently stops
+  // deduping against its own property.
+  let depth = 0;
+  let i = -1;
+  for (let n = 0; n < token.length; n += 1) {
+    const c = token[n];
+    if (c === '[') depth += 1;
+    else if (c === ']') depth -= 1;
+    else if (c === ':' && depth === 0) i = n;
+  }
   return i === -1 ? '' : token.slice(0, i + 1);
 }
 

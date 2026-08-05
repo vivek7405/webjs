@@ -441,10 +441,15 @@ names mechanically:
   under one prefix, classify by parsing the VALUE (`border-[3px]` is a width,
   `border-[#fff]` is a colour), and give each side its own group with the
   shorthand subsumption declared in `CONFLICTS`, the way padding does.
-- `lib/utils.ts` is the canonical copy, and `examples/blog/lib/utils/cn.ts` is
-  a hand-synced duplicate with no mechanical link, so any change here lands in
-  both. `test/ui/cn-copies-in-sync.test.mjs` merges a token battery through
-  both copies and fails on drift.
+- `lib/utils.ts` is the canonical copy, and the repo-root
+  `examples/blog/lib/utils/cn.ts` is a hand-synced duplicate with no mechanical
+  link, so any change here lands in both. The repo-root
+  `test/ui/cn-copies-in-sync.test.mjs` (not this package's `test/`) merges a
+  token battery through both copies and fails on drift.
+- A variant prefix is split on the last colon OUTSIDE square brackets, because
+  an arbitrary value carries colons of its own (`border-[length:2px]`,
+  `bg-[url(https://x/y.png)]`). Splitting on the last colon anywhere hands the
+  group matcher a fragment like `2px]`, so the utility silently stops deduping.
 
 ## Layout + typography helpers (the design system)
 

@@ -46,8 +46,10 @@ const TOKENS = [
   'text-sm', 'text-primary', 'text-center',
   'border', 'border-2', 'border-[3px]', 'border-t', 'border-t-4', 'border-x-2',
   'border-s-2', 'border-e-4',
+  'border-[length:2px]', 'border-[length:var(--w)]',
   'border-primary', 'border-border', 'border-accent', 'border-red-500/50',
   'border-[#fff]', 'border-t-primary', 'border-x-accent',
+  'bg-[url(https://a.b/c.png)]', 'text-[color:var(--c)]',
   'border-solid', 'border-dashed', 'border-collapse', 'border-spacing-2',
   'rounded', 'rounded-full', 'opacity-50', 'font-medium', 'shadow-sm', 'z-10',
   'flex', 'flex-1', 'flex-auto', 'flex-[2]', 'flex-row', 'flex-col',
@@ -82,4 +84,6 @@ test('cn: the blog copy carries the conflict-group fixes (#1065, #1072)', () => 
   assert.equal(blogCn('grid', 'grid-cols-2'), 'grid grid-cols-2');
   assert.equal(blogCn('border-border', 'border-accent'), 'border-accent');
   assert.equal(blogCn('border-2', 'border-primary'), 'border-2 border-primary');
+  assert.equal(blogCn('flex', 'flex'), 'flex');
+  assert.equal(blogCn('border-[length:2px]', 'border-4'), 'border-4');
 });

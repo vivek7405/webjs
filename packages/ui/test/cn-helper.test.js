@@ -103,6 +103,36 @@ test('cn: a bare flex/grid display survives next to its sub-utilities (#1072)', 
   assert.equal(cn('grid', 'grid-cols-2', 'grid-rows-3', 'grid-flow-col'), 'grid grid-cols-2 grid-rows-3 grid-flow-col');
 });
 
+test('cn: every display keyword shares one group, so a repeated one collapses', () => {
+  // Splitting the flex/grid sub-properties out must not leave a bare display
+  // value ungrouped: an identical repeated token has always collapsed, and
+  // `fieldRowClass()` already returns `flex items-center gap-3`, so a caller
+  // adding its own `flex` would otherwise emit it twice.
+  assert.equal(cn('flex', 'flex'), 'flex');
+  assert.equal(cn('grid', 'grid'), 'grid');
+  assert.equal(cn('flex items-center gap-3', 'flex'), 'items-center gap-3 flex');
+  // display is ONE property, so the keywords resolve against each other.
+  assert.equal(cn('hidden', 'flex'), 'flex');
+  assert.equal(cn('block', 'inline-flex'), 'inline-flex');
+  assert.equal(cn('table', 'table-cell'), 'table-cell');
+  // Still not a member of the sub-property groups.
+  assert.equal(cn('flex', 'flex-1'), 'flex flex-1');
+});
+
+test('cn: an arbitrary value may contain a colon without losing its group', () => {
+  // variantPrefix() splits on the last colon OUTSIDE brackets. Splitting on the
+  // last colon anywhere hands the matcher a fragment like `2px]`, which matches
+  // nothing, so the utility silently stops deduping against its own property.
+  assert.equal(cn('border-[length:2px]', 'border-4'), 'border-4');
+  assert.equal(cn('border-2', 'border-[length:var(--w)]'), 'border-[length:var(--w)]');
+  assert.equal(cn('border-[length:2px]', 'border-primary'), 'border-[length:2px] border-primary');
+  assert.equal(cn('bg-[url(https://a.b/c.png)]', 'bg-primary'), 'bg-primary');
+  assert.equal(cn('text-[color:var(--c)]', 'text-primary'), 'text-primary');
+  // A real variant prefix still splits, including a stacked one.
+  assert.equal(cn('hover:flex', 'flex'), 'hover:flex flex');
+  assert.equal(cn('md:hover:bg-red-500', 'md:hover:bg-blue-500'), 'md:hover:bg-blue-500');
+});
+
 test('cn: flex/grid sub-utilities still dedupe within their own property', () => {
   assert.equal(cn('flex-row', 'flex-col'), 'flex-col');
   assert.equal(cn('flex-wrap', 'flex-nowrap'), 'flex-nowrap');
