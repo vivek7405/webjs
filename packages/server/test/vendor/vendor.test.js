@@ -23,6 +23,7 @@ import {
   findOutdated,
   updatePinned,
 } from '../../src/vendor.js';
+import { withJspmDouble } from '../../../../test/fixtures/jspm-double.mjs';
 
 // --- extractPackageName ---
 
@@ -396,35 +397,43 @@ test('getPackageVersion: returns null for unresolvable package', () => {
   assert.equal(v, null);
 });
 
-// --- jspmGenerate (network-gated) ---
+// --- jspmGenerate ---
 //
-// These tests hit api.jspm.io. Skip via WEBJS_SKIP_NETWORK_TESTS=1 in
-// air-gapped CI.
+// These used to hit api.jspm.io, which is how a jspm outage redded the required
+// CI job on a documentation-only PR (#1149, #1150). They resolve through
+// `test/fixtures/jspm-double.mjs` now. The one test that genuinely needs the
+// real API lives in `jspm-cdn.live.test.js`, which both runners skip unless
+// `WEBJS_REQUIRE_NETWORK=1`.
 
-const NETWORK_OK = !process.env.WEBJS_SKIP_NETWORK_TESTS;
-
-test('jspmGenerate: empty install list returns empty map', { skip: !NETWORK_OK }, async () => {
+test('jspmGenerate: empty install list returns empty map', async () => {
   clearVendorCache();
+  // No double needed: an empty list short-circuits before any call.
   const result = await jspmGenerate([]);
   assert.deepEqual(result, {});
 });
 
-test('jspmGenerate: resolves a real package to a CDN URL', { skip: !NETWORK_OK }, async () => {
-  clearVendorCache();
-  const result = await jspmGenerate(['picocolors@1.1.1']);
-  const url = result['picocolors'];
-  assert.ok(url, 'expected picocolors entry in result');
-  assert.match(url, /^https:\/\/ga\.jspm\.io\/npm:picocolors@1\.1\.1/);
+test('jspmGenerate: resolves a package to a CDN URL', async () => {
+  await withJspmDouble({}, async () => {
+    const result = await jspmGenerate(['picocolors@1.1.1']);
+    const url = result['picocolors'];
+    assert.ok(url, 'expected picocolors entry in result');
+    assert.match(url, /^https:\/\/ga\.jspm\.io\/npm:picocolors@1\.1\.1/);
+  });
 });
 
-test('jspmGenerate: second call with same installs hits in-process cache', { skip: !NETWORK_OK }, async () => {
-  clearVendorCache();
-  const first = await jspmGenerate(['picocolors@1.1.1']);
-  // Per-install cache: each call rebuilds a merged container but the
-  // underlying URL is the cached Promise's resolved value, so the URL
-  // is identical and no second HTTP round-trip fires.
-  const second = await jspmGenerate(['picocolors@1.1.1']);
-  assert.deepEqual(first, second, 'cached call returns the same URLs');
+test('jspmGenerate: second call with same installs hits in-process cache', async () => {
+  await withJspmDouble({}, async (double) => {
+    const first = await jspmGenerate(['picocolors@1.1.1']);
+    // Per-install cache: each call rebuilds a merged container but the
+    // underlying URL is the cached Promise's resolved value, so the URL
+    // is identical and no second HTTP round-trip fires.
+    const second = await jspmGenerate(['picocolors@1.1.1']);
+    assert.deepEqual(first, second, 'cached call returns the same URLs');
+    // Against the live CDN this test could only compare the two results, which
+    // stays true even if a second round trip fired. The double can count, so
+    // the cache claim in the comment above is now actually asserted.
+    assert.equal(double.generateCalls.length, 1, 'the second call must not reach the API');
+  });
 });
 
 test('jspmGenerate: install order does not affect OUR merged output (deterministic mock, no live CDN)', async () => {
@@ -553,18 +562,24 @@ test('jspmGenerate: 200 with malformed JSON does not crash', async () => {
   });
 });
 
-test('jspmGenerate: per-package isolation - one bad install does not poison good ones', { skip: !NETWORK_OK }, async () => {
-  clearVendorCache();
-  // Mix a known-good package with a known-bad one. jspm.io 401s the
-  // bad one alone, but the good one MUST still resolve. This is the
-  // regression test for the batched-call bug where one unresolvable
-  // dep collapsed the entire importmap.
-  const result = await jspmGenerate([
-    'picocolors@1.1.1',
-    'this-package-truly-does-not-exist-xyz-789@99.0.0',
-  ]);
-  assert.ok(result['picocolors'], 'good package must resolve despite bad neighbor');
-  assert.match(result['picocolors'], /^https:\/\/ga\.jspm\.io\//);
+test('jspmGenerate: per-package isolation, one bad install does not poison good ones', async () => {
+  // Mix a known-good package with a known-bad one. jspm 401s the WHOLE batch
+  // when any single install is unresolvable, but the good one MUST still
+  // resolve through the per-install probes. This is the regression test for
+  // the batched-call bug where one unresolvable dep collapsed the entire
+  // importmap.
+  //
+  // The double models the whole-batch 401 rather than answering a partial map,
+  // because that premise is what the probe path exists for. It is re-checked
+  // against the real API by `jspm-cdn.live.test.js`.
+  const bad = 'this-package-truly-does-not-exist-xyz-789@99.0.0';
+  await withJspmDouble({ unresolvable: [bad] }, async () => {
+    const result = await jspmGenerate(['picocolors@1.1.1', bad]);
+    assert.ok(result['picocolors'], 'good package must resolve despite bad neighbor');
+    assert.match(result['picocolors'], /^https:\/\/ga\.jspm\.io\//);
+    assert.equal(result['this-package-truly-does-not-exist-xyz-789'], undefined,
+      'the unresolvable install must be dropped, not faked');
+  });
 });
 
 /* ---------- #446: unified whole-set resolution + 401 fallback + parity ---------- */
@@ -657,111 +672,6 @@ test('jspmGenerate #446: a conflicting graph cannot skew a version (deterministi
     assert.equal(map['@codemirror/view'], COHERENT['@codemirror/view'],
       'view stays at the version the unified graph chose, no transitive skew');
   });
-});
-
-test('jspmGenerate #446: matches jspm\'s own unified graph (real CDN)', { skip: !NETWORK_OK }, async (t) => {
-  // The integration half: our merged output must equal what jspm itself
-  // computes for the same install set. The mock above cannot prove this,
-  // because a mock only ever returns what this file already believes.
-  //
-  // The fixture is chosen so the comparison can actually FAIL two distinct
-  // ways, since a parity assertion over a set with nothing to disagree about
-  // is decoration:
-  //
-  //   1. Per-package skew. Resolved alone, @codemirror/lint drags in
-  //      view@6.41.x; in the unified graph the pinned view@6.39.0 wins. So a
-  //      revert of jspmGenerate to the pre-#446 per-package loop makes lint's
-  //      isolated call supply the newer view, which wins last-write and diverges
-  //      from the ground truth here. Two packages with no shared transitive
-  //      (say picocolors + clsx) cannot catch that: their unified graph is
-  //      byte-identical to the union of their single-install graphs.
-  //   2. A dropped flattenScope. This pair hoists five transitives to top level
-  //      (@codemirror/state, crelt, style-mod, w3c-keyname,
-  //      @marijn/find-cluster-break). vendor.js sends flattenScope: true so the
-  //      browser gets no unresolved bare specifier, and this ground truth sends
-  //      it too, so removing it from vendor.js drops those entries from our
-  //      imports and reds the deepEqual. Nothing else in the suite covers that
-  //      flag: every mock here answers only on `install`, so a mocked assertion
-  //      on a transitive key reads a value the mock itself fabricated.
-  //
-  // lint is pinned at 6.9.5 rather than a version whose view range EXCLUDES
-  // 6.39.0 (only 6.9.6 and 6.9.7 do that, and neither resolves on jspm.io, see
-  // the mock test above). The incompatible-range case is the mock's job; this
-  // one only needs a shared transitive whose resolution differs per strategy.
-  const installs = ['@codemirror/view@6.39.0', '@codemirror/lint@6.9.5'];
-
-  const skip = (reason) => {
-    // Loud on purpose. A silent skip is how a real regression hides, so name
-    // the fixture and the reason.
-    console.warn(`[vendor.test] SKIP unified-graph parity: ${installs.join(' + ')} (${String(reason).split('\n')[0]})`);
-    t.skip('jspm.io was not in a state that can answer this comparison');
-  };
-
-  // Half one, the ground truth. Every failure mode routes to the skip, not
-  // just an `error` in a well-formed JSON body: a DNS failure or reset throws
-  // out of fetch, a proxy's HTML 502 throws out of .json(), and a hang is cut
-  // by the timeout. Without that timeout a wedged api.jspm.io would hold the
-  // unit job open until the CI job limit, since node --test applies no
-  // per-test deadline of its own. The shipped code guards its own call the
-  // same way (JSPM_GENERATE_TIMEOUT_MS in packages/server/src/vendor.js).
-  let gt;
-  let why = '';
-  try {
-    const gtResp = await fetch('https://api.jspm.io/generate', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        install: installs, flattenScope: true,
-        env: ['browser', 'production', 'module'], provider: 'jspm.io',
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    gt = await gtResp.json();
-    if (!gtResp.ok) why = `HTTP ${gtResp.status}`;
-    else if (gt.error) why = String(gt.error);
-    else if (!gt.map?.imports) why = 'response carried no map.imports';
-  } catch (err) {
-    why = `${err.name}: ${err.message}`;
-  }
-  if (why) { skip(why); return; }
-
-  // Half two, our own call, watched at the TRANSPORT rather than judged by its
-  // return value. jspmGenerate fail-opens, so its output cannot tell the two
-  // failure kinds apart: a transient on the unified call returns a NON-empty
-  // merge of per-install fragments (skewed to view@6.41.x for this fixture),
-  // and an unresolvable set returns {}. Reading the map alone therefore either
-  // reds on an upstream blip or skips on a real bug, depending on which shape
-  // you test for. Both are wrong.
-  //
-  // So record what the network actually did. A throw, a 5xx, or a 429 is
-  // upstream having a bad moment, and skips. A 4xx does NOT skip: the ground
-  // truth just succeeded for this same fixture moments ago, so upstream is
-  // demonstrably healthy, and a 4xx now means OUR request is malformed, which
-  // is precisely the regression this test exists to catch.
-  const realFetch = globalThis.fetch;
-  /** @type {string[]} */
-  const transient = [];
-  globalThis.fetch = async (url, opts) => {
-    try {
-      const r = await realFetch(url, opts);
-      if (r.status >= 500 || r.status === 429) transient.push(`HTTP ${r.status}`);
-      return r;
-    } catch (err) {
-      transient.push(`${err.name}: ${err.message}`);
-      throw err;
-    }
-  };
-  let map;
-  try {
-    clearVendorCache();
-    map = await jspmGenerate(installs);
-  } finally {
-    globalThis.fetch = realFetch;
-  }
-  if (transient.length) { skip(`jspm.io flaked on our own call (${transient[0]})`); return; }
-
-  assert.deepEqual(map, gt.map.imports,
-    'jspmGenerate must equal the single unified graph, not a per-package merge');
 });
 
 test('jspmGenerate #446 fallback: an unresolvable install does not collapse the map', async () => {
@@ -1001,12 +911,13 @@ test('vendorImportMapEntries: skips packages with no installed version', async (
   assert.equal(entries['this-package-does-not-exist-xyz-456'], undefined);
 });
 
-test('vendorImportMapEntries: resolves installed packages to jspm.io URLs', { skip: !NETWORK_OK }, async () => {
-  clearVendorCache();
-  const entries = await vendorImportMapEntries(new Set(['picocolors']), process.cwd());
-  const url = entries['picocolors'];
-  assert.ok(url, 'expected picocolors entry');
-  assert.match(url, /^https:\/\/ga\.jspm\.io\/npm:picocolors@/);
+test('vendorImportMapEntries: resolves installed packages to jspm.io URLs', async () => {
+  await withJspmDouble({}, async () => {
+    const entries = await vendorImportMapEntries(new Set(['picocolors']), process.cwd());
+    const url = entries['picocolors'];
+    assert.ok(url, 'expected picocolors entry');
+    assert.match(url, /^https:\/\/ga\.jspm\.io\/npm:picocolors@/);
+  });
 });
 
 // --- file-based pin (Rails-style committed importmap.json) ---
@@ -1036,20 +947,51 @@ async function makeTempAppWithSource(sourceFiles) {
   return dir;
 }
 
-test('pinAll default: writes importmap.json with jspm.io URLs', { skip: !NETWORK_OK }, async () => {
-  clearVendorCache();
+test('pinAll default: writes importmap.json with jspm.io URLs', async () => {
   const dir = await makeTempAppWithSource({
     'app/page.ts': `import pico from 'picocolors';`,
   });
   try {
-    const result = await pinAll(dir);
-    assert.ok(!result.failed, 'pin should not be flagged failed');
-    assert.ok(result.pins.length >= 1, 'should pin picocolors');
-    assert.equal(result.pruned.length, 0, 'no orphans on fresh pin');
-    assert.equal(result.downloaded, 0, 'default mode does not download');
-    const file = await readPinFile(dir);
-    assert.ok(file, 'pin file should exist');
-    assert.match(file.imports['picocolors'], /^https:\/\/ga\.jspm\.io\/npm:picocolors@/);
+    await withJspmDouble({}, async () => {
+      const result = await pinAll(dir);
+      assert.ok(!result.failed, 'pin should not be flagged failed');
+      assert.ok(result.pins.length >= 1, 'should pin picocolors');
+      assert.equal(result.pruned.length, 0, 'no orphans on fresh pin');
+      assert.equal(result.downloaded, 0, 'default mode does not download');
+      const file = await readPinFile(dir);
+      assert.ok(file, 'pin file should exist');
+      assert.match(file.imports['picocolors'], /^https:\/\/ga\.jspm\.io\/npm:picocolors@/);
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('pinAll: a flattened transitive is pinned with a derivable bundle name (#446)', async () => {
+  // The unified resolve hoists a transitive to top level, and `pinAll` has to
+  // pin it even though it was never a directly scanned install: without it a
+  // pinned app's importmap is missing an entry the live path serves, and the
+  // browser hits an unresolved bare specifier. `partsByInstall` has no entry
+  // for such a spec, so `derivePinParts` recovers the version by locating
+  // `<name>@<version>` inside the resolved url.
+  //
+  // Nothing covered this before. Every pinAll test here resolves picocolors,
+  // which has no dependencies, so the live CDN never returned a transitive to
+  // exercise the path with. A double can just hand one over.
+  const dir = await makeTempAppWithSource({
+    'app/page.ts': `import pico from 'picocolors';`,
+  });
+  try {
+    const transitive = 'https://ga.jspm.io/npm:tiny-dep@2.3.4/double.js';
+    await withJspmDouble({ transitives: { 'tiny-dep': transitive } }, async () => {
+      const result = await pinAll(dir, { download: true });
+      const file = await readPinFile(dir);
+      assert.ok(file.imports['picocolors'], 'the direct install still pins');
+      assert.match(file.imports['tiny-dep'], /^\/__webjs\/vendor\/tiny-dep@2\.3\.4/,
+        'the transitive pins under a filename derived from its resolved url');
+      const pinned = result.pins.find((p) => p.pkg === 'tiny-dep');
+      assert.equal(pinned.version, '2.3.4', 'version recovered from the url, not from the scan');
+    });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -1112,7 +1054,7 @@ test('pinAll: reports found-but-uninstalled specifiers instead of noBareImports 
   }
 });
 
-test('pinAll: refuses to write empty pin file when every install fails', { skip: !NETWORK_OK }, async () => {
+test('pinAll: refuses to write empty pin file when every install fails', async () => {
   // Regression: previously pinAll wrote `{ imports: {} }` when every
   // jspm.io call failed (e.g. brand-new package version not yet on
   // CDN, or unrelated transient errors). The empty pin file would
@@ -1133,18 +1075,23 @@ test('pinAll: refuses to write empty pin file when every install fails', { skip:
   await writeFile(join(dir, 'app', 'page.ts'),
     `import x from 'fake-pkg-xyz-no-such-version';`);
   try {
-    const result = await pinAll(dir);
-    assert.ok(result.failed, 'pin must be flagged failed');
-    assert.deepEqual(result.pins, [], 'no pins recorded');
-    // Pin file MUST NOT have been written (so live API fallback runs next boot).
-    const file = await readPinFile(dir);
-    assert.equal(file, null, 'pin file must not exist after total failure');
+    // Drive the failure through the double's unresolvable list rather than by
+    // relaxing anything: a refused pin is the CORRECT outcome here, and the
+    // assertions below are the contract, not an artifact of the CDN being down.
+    await withJspmDouble({ unresolvable: ['fake-pkg-xyz-no-such-version@99.99.99'] }, async () => {
+      const result = await pinAll(dir);
+      assert.ok(result.failed, 'pin must be flagged failed');
+      assert.deepEqual(result.pins, [], 'no pins recorded');
+      // Pin file MUST NOT have been written (so live API fallback runs next boot).
+      const file = await readPinFile(dir);
+      assert.equal(file, null, 'pin file must not exist after total failure');
+    });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test('pinAll: warns by name when some installs fail (partial success)', { skip: !NETWORK_OK }, async () => {
+test('pinAll: warns by name when some installs fail (partial success)', async () => {
   // Regression for the partial-warning bug: the missing-installs
   // list was derived by filtering installs[] (versioned strings)
   // against pinnedSpecs (bare specs), which never matched. The warn
@@ -1171,82 +1118,93 @@ test('pinAll: warns by name when some installs fail (partial success)', { skip: 
   const origWarn = console.warn;
   console.warn = (...args) => { warns.push(args.join(' ')); };
   try {
-    const result = await pinAll(dir);
-    // picocolors succeeded so pinAll proceeded; partial-warn must fire.
-    assert.equal(result.failed, undefined, 'partial success is not total failure');
-    assert.ok(result.pins.length >= 1, 'at least picocolors made it into pins');
-    const partial = warns.find(w => w.includes('partial success'));
-    assert.ok(partial, `expected partial-success warn; got warns:\n${warns.join('\n')}`);
-    const missingLines = warns.filter(w => w.includes('fake-pkg-xyz-no-such-version'));
-    assert.ok(missingLines.length > 0, 'fake-pkg-xyz must appear in the missing list');
-    // The successful package must NOT appear in the missing list.
-    const wronglyListed = warns.find(w =>
-      /^\s+picocolors@/.test(w) && !w.includes('partial success')
-    );
-    assert.equal(wronglyListed, undefined,
-      'successful packages must NOT appear in the missing list');
+    await withJspmDouble({ unresolvable: ['fake-pkg-xyz-no-such-version@99.99.99'] }, async (double) => {
+      const result = await pinAll(dir);
+      // picocolors succeeded so pinAll proceeded; partial-warn must fire.
+      assert.equal(result.failed, undefined, 'partial success is not total failure');
+      assert.ok(result.pins.length >= 1, 'at least picocolors made it into pins');
+      const partial = warns.find(w => w.includes('partial success'));
+      assert.ok(partial, `expected partial-success warn; got warns:\n${warns.join('\n')}`);
+      const missingLines = warns.filter(w => w.includes('fake-pkg-xyz-no-such-version'));
+      assert.ok(missingLines.length > 0, 'fake-pkg-xyz must appear in the missing list');
+      // The successful package must NOT appear in the missing list.
+      const wronglyListed = warns.find(w =>
+        /^\s+picocolors@/.test(w) && !w.includes('partial success')
+      );
+      assert.equal(wronglyListed, undefined,
+        'successful packages must NOT appear in the missing list');
+      // The exact trace the permanent-failure ladder takes, which only a
+      // counting double can see: the unified call 401s, both installs are
+      // probed alone, and the single survivor is then served from the probe's
+      // cache rather than re-resolved. Four calls would mean the survivor was
+      // fetched twice; two would mean the probes never ran.
+      assert.equal(double.generateCalls.length, 3,
+        `expected unified + two probes; got ${JSON.stringify(double.generateCalls.map(c => c.installs))}`);
+    });
   } finally {
     console.warn = origWarn;
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test('pinAll --download: writes importmap.json with local URLs + bundle files', { skip: !NETWORK_OK }, async () => {
-  clearVendorCache();
+test('pinAll --download: writes importmap.json with local URLs + bundle files', async () => {
   const dir = await makeTempAppWithSource({
     'app/page.ts': `import pico from 'picocolors';`,
   });
   try {
-    const { pins, downloaded } = await pinAll(dir, { download: true });
-    assert.ok(pins.length >= 1);
-    assert.ok(downloaded >= 1, 'should download at least one bundle');
-    const file = await readPinFile(dir);
-    assert.match(file.imports['picocolors'], /^\/__webjs\/vendor\/picocolors@.*\.js$/);
-    const bundleFilename = file.imports['picocolors'].slice('/__webjs/vendor/'.length);
-    const bytes = await readFileFs(join(dir, '.webjs', 'vendor', bundleFilename), 'utf8');
-    assert.ok(bytes.length > 0, 'bundle file must contain bytes');
+    await withJspmDouble({}, async () => {
+      const { pins, downloaded } = await pinAll(dir, { download: true });
+      assert.ok(pins.length >= 1);
+      assert.ok(downloaded >= 1, 'should download at least one bundle');
+      const file = await readPinFile(dir);
+      assert.match(file.imports['picocolors'], /^\/__webjs\/vendor\/picocolors@.*\.js$/);
+      const bundleFilename = file.imports['picocolors'].slice('/__webjs/vendor/'.length);
+      const bytes = await readFileFs(join(dir, '.webjs', 'vendor', bundleFilename), 'utf8');
+      assert.ok(bytes.length > 0, 'bundle file must contain bytes');
+    });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test('pinAll: prune removes orphan bundle files from prior pins', { skip: !NETWORK_OK }, async () => {
-  clearVendorCache();
+test('pinAll: prune removes orphan bundle files from prior pins', async () => {
   const dir = await makeTempAppWithSource({
     'app/page.ts': `import pico from 'picocolors';`,
   });
   try {
     await mkdir(join(dir, '.webjs', 'vendor'), { recursive: true });
     await writeFile(join(dir, '.webjs', 'vendor', 'orphan-package@1.0.0.js'), 'export default {}');
-    const { pruned } = await pinAll(dir);
-    assert.ok(pruned.includes('orphan-package@1.0.0.js'), `expected orphan in pruned list, got: ${pruned.join(', ')}`);
+    await withJspmDouble({}, async () => {
+      const { pruned } = await pinAll(dir);
+      assert.ok(pruned.includes('orphan-package@1.0.0.js'), `expected orphan in pruned list, got: ${pruned.join(', ')}`);
+    });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test('pinAll: mode switch from --download to default removes bundles', { skip: !NETWORK_OK }, async () => {
-  clearVendorCache();
+test('pinAll: mode switch from --download to default removes bundles', async () => {
   const dir = await makeTempAppWithSource({
     'app/page.ts': `import pico from 'picocolors';`,
   });
   try {
-    const first = await pinAll(dir, { download: true });
-    assert.ok(first.downloaded >= 1);
-    const second = await pinAll(dir);
-    assert.ok(second.pruned.length >= 1, 'switching to default mode should prune leftover bundle files');
+    await withJspmDouble({}, async () => {
+      const first = await pinAll(dir, { download: true });
+      assert.ok(first.downloaded >= 1);
+      const second = await pinAll(dir);
+      assert.ok(second.pruned.length >= 1, 'switching to default mode should prune leftover bundle files');
+    });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test('unpinPackage: removes entry from importmap.json (deletes file when last pin removed)', { skip: !NETWORK_OK }, async () => {
-  clearVendorCache();
+test('unpinPackage: removes entry from importmap.json (deletes file when last pin removed)', async () => {
   const dir = await makeTempAppWithSource({
     'app/page.ts': `import pico from 'picocolors';`,
   });
   try {
-    await pinAll(dir);
+    await withJspmDouble({}, () => pinAll(dir));
     const r = await unpinPackage(dir, 'picocolors');
     assert.equal(r.removed, true);
     // After the last pin is removed the pin file is deleted so the
@@ -1698,40 +1656,42 @@ test('importMapTag: integrity field omitted when empty, present when populated',
   await setVendorEntries({}, {});
 });
 
-test('pinAll default mode: writes integrity field alongside imports', { skip: !NETWORK_OK }, async () => {
-  clearVendorCache();
+test('pinAll default mode: writes integrity field alongside imports', async () => {
   const dir = await makeTempAppWithSource({
     'app/page.ts': `import pico from 'picocolors';`,
   });
   try {
-    await pinAll(dir);
-    const file = await readPinFile(dir);
-    assert.ok(file.integrity, 'integrity field should be written');
-    const url = file.imports['picocolors'];
-    assert.ok(url, 'picocolors should pin');
-    assert.match(file.integrity[url], /^sha384-/, 'integrity must be sha384 hash of fetched bundle');
+    await withJspmDouble({}, async () => {
+      await pinAll(dir);
+      const file = await readPinFile(dir);
+      assert.ok(file.integrity, 'integrity field should be written');
+      const url = file.imports['picocolors'];
+      assert.ok(url, 'picocolors should pin');
+      assert.match(file.integrity[url], /^sha384-/, 'integrity must be sha384 hash of fetched bundle');
+    });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test('pinAll --download: writes integrity matching the on-disk bytes', { skip: !NETWORK_OK }, async () => {
-  clearVendorCache();
+test('pinAll --download: writes integrity matching the on-disk bytes', async () => {
   const dir = await makeTempAppWithSource({
     'app/page.ts': `import pico from 'picocolors';`,
   });
   try {
-    await pinAll(dir, { download: true });
-    const file = await readPinFile(dir);
-    assert.ok(file.integrity, 'integrity field should be written');
-    const localUrl = file.imports['picocolors'];
-    assert.match(localUrl, /^\/__webjs\/vendor\//);
-    assert.match(file.integrity[localUrl], /^sha384-/, 'integrity must match downloaded bytes');
-    // Recompute hash from the on-disk file to prove it matches.
-    const { sha384Integrity } = await import('../../src/vendor.js');
-    const filename = localUrl.slice('/__webjs/vendor/'.length);
-    const onDisk = await readFileFs(join(dir, '.webjs', 'vendor', filename), 'utf8');
-    assert.equal(file.integrity[localUrl], await sha384Integrity(onDisk));
+    await withJspmDouble({}, async () => {
+      await pinAll(dir, { download: true });
+      const file = await readPinFile(dir);
+      assert.ok(file.integrity, 'integrity field should be written');
+      const localUrl = file.imports['picocolors'];
+      assert.match(localUrl, /^\/__webjs\/vendor\//);
+      assert.match(file.integrity[localUrl], /^sha384-/, 'integrity must match downloaded bytes');
+      // Recompute hash from the on-disk file to prove it matches.
+      const { sha384Integrity } = await import('../../src/vendor.js');
+      const filename = localUrl.slice('/__webjs/vendor/'.length);
+      const onDisk = await readFileFs(join(dir, '.webjs', 'vendor', filename), 'utf8');
+      assert.equal(file.integrity[localUrl], await sha384Integrity(onDisk));
+    });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -1920,7 +1880,13 @@ test('updatePinned: respects pin file provider when --from is not passed', async
     }),
   );
   try {
-    const result = await updatePinned(dir);
+    // registry.npmjs.org is not part of what this asserts, and reaching it made
+    // an unrelated outage able to stall the required job for ten seconds here
+    // (#1150). A 404 exercises the same read path.
+    const result = await withMockedFetch(
+      async () => /** @type any */ ({ ok: false, status: 404, json: async () => ({}) }),
+      () => updatePinned(dir),
+    );
     assert.equal(result.provider, 'jsdelivr',
       'updatePinned must use the pin file provider when no --from passed');
   } finally {
@@ -1939,7 +1905,10 @@ test('updatePinned: explicit --from overrides pin file provider', async () => {
     }),
   );
   try {
-    const result = await updatePinned(dir, { from: 'unpkg' });
+    const result = await withMockedFetch(
+      async () => /** @type any */ ({ ok: false, status: 404, json: async () => ({}) }),
+      () => updatePinned(dir, { from: 'unpkg' }),
+    );
     assert.equal(result.provider, 'unpkg',
       'explicit opts.from must override pin file provider');
   } finally {
@@ -1947,11 +1916,10 @@ test('updatePinned: explicit --from overrides pin file provider', async () => {
   }
 });
 
-test('auditPinned: surfaces network failure as errored:true', { skip: !NETWORK_OK }, async () => {
+test('auditPinned: surfaces network failure as errored:true', async () => {
   // The audit command must NOT silently report "no vulnerabilities"
-  // when the registry call failed. Use an obviously-unresolvable
-  // hostname by stubbing the global fetch for the duration of the
-  // test. Fail-closed contract: errored:true means the user must
+  // when the registry call failed. Never network-bound despite the gate it
+  // used to carry: it stubs the global fetch for its own duration. Fail-closed contract: errored:true means the user must
   // retry.
   const dir = join(tmpdir(), `webjs-audit-err-${Date.now()}`);
   await mkdir(join(dir, '.webjs', 'vendor'), { recursive: true });

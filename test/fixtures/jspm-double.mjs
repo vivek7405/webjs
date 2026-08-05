@@ -190,13 +190,15 @@ export function jspmDouble(opts = {}) {
     return json(599, { error: 'Error: the jspm double does not proxy to the network' });
   }
 
-  return Object.assign(doubledFetch, {
-    calls,
+  // A getter has to be DEFINED rather than assigned. `Object.assign` reads a
+  // source accessor and copies its VALUE, so a `get generateCalls()` in an
+  // object literal here would freeze to the empty array it returns at
+  // construction, and every call count would silently read zero.
+  Object.defineProperty(doubledFetch, 'generateCalls', {
     /** Just the `/generate` calls, which is what a round-trip count means. */
-    get generateCalls() { return calls.filter((c) => c.url.startsWith(GENERATE_ENDPOINT)); },
-    unexpected,
-    minted,
+    get() { return calls.filter((c) => c.url.startsWith(GENERATE_ENDPOINT)); },
   });
+  return Object.assign(doubledFetch, { calls, unexpected, minted });
 }
 
 /**
