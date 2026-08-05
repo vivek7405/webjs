@@ -23,6 +23,14 @@
  */
 
 import { getStore } from './cache.js';
+// Aliased on purpose. `rateLimit()` binds a local `const trustProxy` from its
+// own options, which would shadow a same-named import inside that function and
+// leave the middleware path on the pre-override behaviour while the direct
+// `clientIp` path changed. `forwarded.js` imports nothing, so this adds no cycle.
+import { trustProxy as proxyIsTrusted } from './forwarded.js';
+
+/** Module-scope latch so the override warns once per process, never per request. */
+let warnedProxyOverride = false;
 
 /**
  * @param {{
@@ -167,12 +175,32 @@ export function propagateTrustedRemoteIp(src, dst) {
  * trust-proxy reintroduces the spoofability this option exists to
  * defend against.
  *
+ * `WEBJS_NO_TRUST_PROXY=1` OVERRIDES `trustProxy: true` (#1254). The env
+ * switch is the operator's statement about the deployment topology and it can
+ * only ever SUBTRACT trust, so when it is set this call falls back to the
+ * default path above: the framework-stamped peer, or `_anon_` when there is
+ * none, and never a forwarded-IP header. The override logs once per process.
+ * An app that genuinely sits behind a trusted proxy must unset the flag; the
+ * two settings answer the same question about one socket and one topology, so
+ * leaving them in disagreement buckets every visitor behind that proxy onto
+ * one key.
+ *
  * @param {Request} req
  * @param {{ trustProxy?: boolean }} [opts]
  * @returns {string}
  */
 export function clientIp(req, opts = {}) {
-  if (opts.trustProxy === true) {
+  if (opts.trustProxy === true && !proxyIsTrusted() && !warnedProxyOverride) {
+    warnedProxyOverride = true;
+    // No request data in this line, ever. It must not become a log of
+    // client-supplied header values.
+    console.warn(
+      '[webjs] WEBJS_NO_TRUST_PROXY=1 overrides trustProxy: true; ' +
+        'forwarded-IP headers are ignored and the framework-stamped peer is used. ' +
+        'Unset the env var if a trusted proxy really is in front of this process.',
+    );
+  }
+  if (opts.trustProxy === true && proxyIsTrusted()) {
     return (
       req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
       req.headers.get('cf-connecting-ip') ||
