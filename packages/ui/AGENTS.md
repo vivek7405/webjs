@@ -431,6 +431,50 @@ names mechanically:
 - All `.ts` files in `components/` export named functions. No default exports.
 - Use `cn()` from `'../lib/utils.ts'` to merge a helper's output with
   user-supplied classes when needed: `<button class=${cn(buttonClass(), 'rounded-full')}>`.
+- **A `cn()` conflict group is one CSS PROPERTY, never one class prefix.**
+  Utilities that merely share a prefix must land in different groups, or the
+  merger silently drops one of them. Two defects came from getting this wrong:
+  `^flex(-|$)` lumped the `flex` DISPLAY value in with `flex-1` / `flex-row` /
+  `flex-wrap` and dropped `display:flex` (#1072), and border colour had no
+  group at all, so an override's winner was decided by compiled stylesheet
+  order rather than class order (#1065). When a value can mean two properties
+  under one prefix, classify by parsing the VALUE (`border-[3px]` is a width,
+  `border-[#fff]` is a colour), and give each side its own group with the
+  shorthand subsumption declared in `CONFLICTS`, the way padding does.
+- `lib/utils.ts` is the canonical copy, and the repo-root
+  `examples/blog/lib/utils/cn.ts` is a hand-synced duplicate with no mechanical
+  link, so any change here lands in both. The repo-root
+  `test/ui/cn-copies-in-sync.test.mjs` (not this package's `test/`) merges a
+  token battery through both copies and fails on drift. Those TWO are the whole
+  inventory of hand-synced sources. Every OTHER `cn.ts` on disk is a copy of
+  this one, produced by some generator (`website/lib/utils/cn.ts` via
+  `website/scripts/copy-registry.mjs`; an app's copy via `webjs create`,
+  `webjsui init`, or `webjsui add`, which pulls `lib-utils` as a transitive
+  registry dependency). Never hand-edit one: a stale copy is a generator that
+  has not been re-run, not drift, so there is nothing for the sync test to
+  cover. Which sources a given generator reads, and when it goes to the
+  network, is the registry-resolution question, answered by the LOCAL-FIRST
+  section above, so do not restate it here.
+- A variant prefix is split on the last colon OUTSIDE square brackets, because
+  an arbitrary value carries colons of its own (`border-[length:2px]`,
+  `bg-[url(https://x/y.png)]`). Splitting on the last colon anywhere hands the
+  group matcher a fragment like `2px]`, so the utility silently stops deduping.
+- Once a bracketed value reaches the matcher, its TYPE HINT names the property
+  and picks the group, since the prefix alone cannot: `text-[length:14px]` is a
+  font size and `bg-[url(...)]` is an image, so routing either by prefix would
+  collapse it against a colour. That lives in `hintedGroup()` and the
+  `HINTED_GROUPS` map, and it is deliberately CENTRAL rather than a pattern per
+  prefix: handling only the prefixes that came to mind is how
+  `shadow-[color:red]` was left evicting `shadow-lg` while `bg-` and `text-`
+  were already correct. A `<prefix>:<hint>` pair the map does not cover gets a
+  group of its own, so it collides only with the identical hint under the
+  identical prefix and never with the prefix's default, which is the safe
+  direction to fail (an extra class renders, a dropped one does not).
+- The merger is coarse by design and does NOT claim full `tailwind-merge`
+  fidelity. Some prefixes are still grouped by prefix alone (`bg-clip-*` and
+  `bg-origin-*` sit in `bg-color`; `shadow-lg` and `shadow-red-500` share
+  `shadow`), so a less common pair can still collide. Say that plainly in any
+  doc you write about it rather than stating the property rule as absolute.
 
 ## Layout + typography helpers (the design system)
 
