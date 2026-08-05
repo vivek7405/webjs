@@ -10,11 +10,26 @@
  * so CI always ran live, and two `registry.npmjs.org` callers were never
  * covered by it at all.
  *
- * The rule is enforced on the PROPERTY, not on a spelling. Asserting that some
- * marker constant appears exactly once would certify nothing (a new test can
- * always call fetch without it) and would red on a rename or a reformat. So
- * this looks for the actual live surface: a third-party host inside a `fetch(`
- * call, and the vendor entry points that reach one internally.
+ * The analysis lives in `test/fixtures/live-caller-scan.mjs` so it can be run
+ * against inline fixtures rather than only against whatever the tree happens
+ * to contain, which is what the `counterfactual` tests below do. The first
+ * version of this guard was file-level and, measured against the pre-PR tree,
+ * flagged NEITHER of the two files this change converts: a single
+ * `withMockedFetch` anywhere in `vendor.test.js` exempted its live
+ * `fetch(api.jspm.io)` and all four of its unwrapped entry points. So the
+ * exemption is per call now, and the counterfactual is a real one.
+ *
+ * Measured against the pre-PR tree, the rewritten scan reports 24 offenders in
+ * `vendor.test.js`, starting with the live `fetch('https://api.jspm.io/generate')`.
+ *
+ * ONE BLIND SPOT, stated rather than papered over: it cannot see a SPAWNED
+ * child. `test/vendor-cli/vendor-cli.test.mjs` reaches jspm by running the CLI
+ * in another process, so it contains no `fetch(` and no entry-point call, and
+ * this scan reports zero for it both before and after the change. What covers
+ * that file is the `[jspm-double] armed` assertion inside its own `runCli`,
+ * which fires on every spawn and reds all ten of its tests if the preload flag
+ * is dropped. A future spawning test needs the same treatment; a static scan
+ * of the parent's source cannot give it.
  *
  * Both test runners drop `*.live.test.*` unless `WEBJS_REQUIRE_NETWORK=1`, so
  * a file on the allowlist below genuinely cannot run in a required check.
@@ -25,6 +40,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { findLiveCallers } from '../fixtures/live-caller-scan.mjs';
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
@@ -33,31 +50,32 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
  * purpose: a reason per entry, so adding one is a decision somebody wrote down
  * rather than a guard somebody silenced.
  *
- * Every entry MUST be a `*.live.test.*` path, which is what the runners key on.
+ * Every entry MUST be a `*.live.test.*` path, which is what the runners key
+ * on, with ONE exception recorded below.
  */
 const LIVE_CALLERS = [
   {
     file: 'packages/server/test/vendor/jspm-cdn.live.test.js',
+    live: true,
     why: 'the two things an offline double cannot vouch for: that our merged output equals '
       + "jspm's own unified graph (#446), and that jspm still fails a WHOLE batch permanently "
       + 'when one install is unresolvable, which the entire fallback ladder in vendor.js assumes.',
   },
   {
     file: 'test/vendor-cli/vendor-pin.live.test.mjs',
+    live: true,
     why: 'one real run of the command a user actually types, so `webjs vendor pin` does not '
       + 'become a thing that is only ever exercised against a fixture.',
   },
+  {
+    file: 'test/repo-health/e2e-vendor-stub.test.mjs',
+    live: false,
+    why: 'NOT a live caller. It POSTs to api.jspm.io on purpose to exercise the real request '
+      + 'shape, having installed a sentinel fetch at module scope BEFORE importing the fixture '
+      + 'under test, which is the whole point of that ordering (#1228). The sentinel is a bare '
+      + 'assignment outside any call, so a per-call scan cannot see it covering anything.',
+  },
 ];
-
-/** Third-party hosts no required check may depend on. */
-const LIVE_HOSTS = ['api.jspm.io', 'ga.jspm.io', 'registry.npmjs.org'];
-
-/**
- * Vendor entry points that reach a live host internally, so naming one is as
- * live as calling fetch. Each is allowed inside a `withMockedFetch` or
- * `withJspmDouble` body, which is how the offline suites use them.
- */
-const LIVE_ENTRY_POINTS = ['pinAll', 'updatePinned', 'auditPinned', 'findOutdated'];
 
 const LIVE_MARKER = '.live.test.';
 
@@ -86,91 +104,80 @@ for (const pkg of readdirSync(join(ROOT, 'packages'), { withFileTypes: true })) 
 }
 
 const rel = (f) => f.slice(ROOT.length + 1).split(sep).join('/');
-// This file names every host and entry point it polices, so it would match its
-// own rule. Excluded by exact path rather than by a heuristic, since a fuzzy
-// self-exclusion is the kind of hole that lets a real caller through too.
-const SELF = 'test/repo-health/live-cdn-callers.test.mjs';
 
-/**
- * Strip block and line comments, so a host named in a rationale is not read as
- * a call. Crude on purpose: it only has to be good enough to avoid false
- * positives on prose, and a missed strip fails LOUD rather than silent.
- * @param {string} src
- */
-function withoutComments(src) {
-  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-}
-
-/**
- * Whether a file installs a `fetch` it owns, which is what makes naming a live
- * host in it harmless. `e2e-vendor-stub.test.mjs` is the shape this exists for:
- * it POSTs to api.jspm.io on purpose, having replaced `globalThis.fetch` with a
- * sentinel first, so it exercises the real request shape without a packet
- * leaving the machine.
- *
- * Deliberately file-level rather than per-call. A per-call scope check needs a
- * parser, and this version cannot be quietly defeated by moving a call one
- * block outward. The tradeoff is real and worth stating: a file that mocks
- * fetch in one test and reaches the network in another passes. Accepted,
- * because the failure this guard exists to prevent is a whole file nobody
- * realised was live, not one call inside a file that is otherwise careful.
- *
- * @param {string} src
- */
-function controlsFetch(src) {
-  return /withJspmDouble|withMockedFetch|globalThis\.fetch\s*=/.test(src);
-}
-
-test('every allowlisted live caller is a *.live.test.* file that exists', () => {
+test('every allowlisted LIVE caller is a *.live.test.* file that exists', () => {
   for (const entry of LIVE_CALLERS) {
-    assert.ok(entry.file.includes(LIVE_MARKER),
-      `${entry.file} is allowlisted as live but the runners only skip *.live.test.* files`);
     assert.ok(files.some((f) => rel(f) === entry.file),
       `${entry.file} is allowlisted but no such test file exists`);
     assert.ok(entry.why.length > 40, `${entry.file} needs a real reason, not a placeholder`);
+    if (entry.live) {
+      assert.ok(entry.file.includes(LIVE_MARKER),
+        `${entry.file} is allowlisted as live but the runners only skip *.live.test.* files`);
+    }
   }
 });
 
-test('a live third-party host is only fetched from an allowlisted file', () => {
+test('no test outside the allowlist reaches a third party', () => {
   const allowed = new Set(LIVE_CALLERS.map((e) => e.file));
   /** @type {string[]} */
   const offenders = [];
   for (const file of files) {
     const path = rel(file);
-    if (path === SELF || allowed.has(path)) continue;
-    const raw = readFileSync(file, 'utf8');
-    if (controlsFetch(raw)) continue;
-    const src = withoutComments(raw);
-    // A host inside a fetch call. Anything else (a string fed to a mock, an
-    // expected url in an assertion, an importmap fixture) is inert, and the
-    // suite is full of those on purpose.
-    for (const m of src.matchAll(/\bfetch\s*\(([^)]*)/g)) {
-      const host = LIVE_HOSTS.find((h) => m[1].includes(h));
-      if (host) offenders.push(`${path}: fetch(... ${host} ...)`);
+    if (allowed.has(path)) continue;
+    for (const hit of findLiveCallers(readFileSync(file, 'utf8'))) {
+      offenders.push(`${path}:${hit.line} ${hit.kind === 'host' ? `fetch(${hit.what})` : `${hit.what}()`}`);
     }
   }
   assert.deepEqual(offenders, [],
-    'these reach a third party from a file a required check runs; move them into a '
-    + '*.live.test.* file and allowlist it, or resolve through test/fixtures/jspm-double.mjs');
+    'these reach a third party from a file a required check runs. Wrap the call in '
+    + 'withJspmDouble (test/fixtures/jspm-double.mjs), move it into a *.live.test.* file and '
+    + 'allowlist that, or if the call provably returns before dialling, mark the site with a '
+    + '`// live-cdn-ok: <reason>` comment.');
 });
 
-test('a vendor entry point that reaches the network is called inside a double or a mock', () => {
-  const allowed = new Set(LIVE_CALLERS.map((e) => e.file));
-  /** @type {string[]} */
-  const offenders = [];
-  for (const file of files) {
-    const path = rel(file);
-    if (path === SELF || allowed.has(path)) continue;
-    const src = readFileSync(file, 'utf8');
-    const uses = LIVE_ENTRY_POINTS.filter((fn) => new RegExp(`\\b${fn}\\s*\\(`).test(withoutComments(src)));
-    if (!uses.length) continue;
-    if (!controlsFetch(src)) {
-      offenders.push(`${path}: calls ${uses.join(', ')} with no double or mock in the file`);
-    }
-  }
-  assert.deepEqual(offenders, [],
-    'these call a vendor entry point that resolves through a third party, without controlling '
-    + 'fetch; wrap them in withJspmDouble from test/fixtures/jspm-double.mjs');
+test('counterfactual: the scan catches the shapes this change converted', () => {
+  // The two real regressions, reduced to their essentials. Before this guard
+  // was rewritten it reported ZERO offenders for both, because a single
+  // `withMockedFetch` elsewhere in the file exempted the whole file.
+  const liveFetchBesideAMock = `
+    function withMockedFetch(fn, body) { return body(); }
+    test('mocked', async () => {
+      await withMockedFetch(async () => ({ ok: true }), async () => { await jspmGenerate([]); });
+    });
+    test('live', async () => {
+      const res = await fetch('https://api.jspm.io/generate', { method: 'POST' });
+    });
+  `;
+  const hits = findLiveCallers(liveFetchBesideAMock);
+  assert.equal(hits.length, 1, `expected exactly the live call, got ${JSON.stringify(hits)}`);
+  assert.equal(hits[0].kind, 'host');
+  assert.equal(hits[0].what, 'api.jspm.io');
+
+  const unwrappedEntryBesideAMock = `
+    function withMockedFetch(fn, body) { return body(); }
+    test('mocked', async () => { await withMockedFetch(m, () => pinAll(dir)); });
+    test('live', async () => { const r = await pinAll(dir, { download: true }); });
+  `;
+  const entryHits = findLiveCallers(unwrappedEntryBesideAMock);
+  assert.equal(entryHits.length, 1, `expected exactly the unwrapped call, got ${JSON.stringify(entryHits)}`);
+  assert.equal(entryHits[0].what, 'pinAll');
+});
+
+test('counterfactual: the scan does not fire on the shapes that are genuinely safe', () => {
+  // A host inside an assertion, an expected-url string, or an importmap
+  // fixture is inert, and the suite is full of those on purpose.
+  assert.deepEqual(findLiveCallers(`
+    assert.match(url, /^https:\\/\\/ga\\.jspm\\.io\\/npm:picocolors@/);
+    const imports = { dayjs: 'https://ga.jspm.io/npm:dayjs@1.11.20/index.js' };
+    // A comment mentioning api.jspm.io and calling fetch('https://api.jspm.io/generate').
+  `), []);
+
+  // A call inside a double, and one carrying the explicit marker.
+  assert.deepEqual(findLiveCallers(`
+    await withJspmDouble({}, async () => { await pinAll(dir); });
+    // live-cdn-ok: no bare imports, so it returns before the resolve.
+    const r = await pinAll(emptyDir);
+  `), []);
 });
 
 test('both runners drop live files unless the network is explicitly required', () => {

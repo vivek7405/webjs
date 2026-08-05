@@ -1010,6 +1010,7 @@ test('pinAll: returns noBareImports without writing pin file when no bare import
   await writeFile(join(dir, 'package.json'), '{"name":"tmp","version":"0.0.0"}');
   await writeFile(join(dir, 'app', 'page.ts'), `export default () => 'no bare imports here';`);
   try {
+    // live-cdn-ok: no bare imports, so pinAll returns before the resolve.
     const result = await pinAll(dir);
     assert.ok(result.noBareImports, 'noBareImports must be true');
     assert.equal(result.failed, undefined, 'failed must be absent (not a failure, just nothing to do)');
@@ -1033,6 +1034,7 @@ test('pinAll: reports found-but-uninstalled specifiers instead of noBareImports 
     'app/page.ts': `import * as THREE from 'three';\nimport { OrbitControls } from 'three/addons/controls/OrbitControls.js';`,
   });
   try {
+    // live-cdn-ok: every specifier is dropped by the version gate, so installs is empty.
     const result = await pinAll(dir);
     assert.equal(result.noBareImports, undefined, 'must NOT claim there were no bare imports');
     assert.ok(Array.isArray(result.droppedUnresolvable), 'droppedUnresolvable must be an array');
@@ -1758,6 +1760,7 @@ test('pinAll: rejects unknown provider with a clear error', async () => {
   await writeFile(join(dir, 'package.json'), '{"name":"tmp"}');
   try {
     await assert.rejects(
+      // live-cdn-ok: the provider is rejected before any call is dialled.
       () => pinAll(dir, { from: 'not-a-real-cdn' }),
       /unknown provider 'not-a-real-cdn'/,
     );
@@ -1815,6 +1818,7 @@ test('auditPinned: no pin file returns zero-checked', async () => {
   const dir = join(tmpdir(), `webjs-audit-empty-${Date.now()}`);
   await mkdir(dir, { recursive: true });
   try {
+    // live-cdn-ok: no pin file, so it short-circuits before the registry call.
     const { vulnerable, totalChecked } = await auditPinned(dir);
     assert.equal(totalChecked, 0);
     assert.deepEqual(vulnerable, []);
@@ -1827,6 +1831,7 @@ test('findOutdated: no pin file returns []', async () => {
   const dir = join(tmpdir(), `webjs-outdated-empty-${Date.now()}`);
   await mkdir(dir, { recursive: true });
   try {
+    // live-cdn-ok: no pin file, so it short-circuits before the registry call.
     assert.deepEqual(await findOutdated(dir), []);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -1838,6 +1843,7 @@ test('updatePinned: rejects unknown provider', async () => {
   await mkdir(dir, { recursive: true });
   try {
     await assert.rejects(
+      // live-cdn-ok: the provider is rejected before any call is dialled.
       () => updatePinned(dir, { from: 'not-real' }),
       /unknown provider/,
     );
@@ -1853,6 +1859,7 @@ test('updatePinned: no outdated returns noOutdated:true without writing', async 
   const dir = join(tmpdir(), `webjs-update-clean-${Date.now()}`);
   await mkdir(dir, { recursive: true });
   try {
+    // live-cdn-ok: an empty pin file short-circuits before the registry call.
     const result = await updatePinned(dir);
     assert.ok(result.noOutdated);
     assert.deepEqual(result.updated, []);
@@ -1932,6 +1939,7 @@ test('auditPinned: surfaces network failure as errored:true', async () => {
   const origFetch = globalThis.fetch;
   globalThis.fetch = async () => { throw new Error('simulated network failure'); };
   try {
+    // live-cdn-ok: the test installs its own throwing fetch for its whole duration.
     const result = await auditPinned(dir);
     assert.equal(result.errored, true);
     assert.deepEqual(result.vulnerable, []);
@@ -1964,6 +1972,7 @@ test('pinAll: respects existing pin file provider when --from is not passed', as
     // without writing. The interesting assertion: it didn't throw
     // and pinAll read the provider for whatever it would have done.
     // Verify by checking pin file's provider field unchanged.
+    // live-cdn-ok: the app has no bare imports, so pinAll returns before the resolve.
     const result = await pinAll(dir);
     assert.ok(result.noBareImports);
     const file = await readPinFile(dir);
@@ -2060,6 +2069,7 @@ test('updatePinned: only counts a package as updated when at least one spec reso
     return /** @type any */ ({ ok: false, status: 404, json: async () => ({}) });
   };
   try {
+    // live-cdn-ok: the test installs its own fetch for its whole duration.
     const result = await updatePinned(dir);
     assert.deepEqual(result.updated, [],
       'no spec resolved, so updated[] must be empty even though findOutdated saw dayjs as outdated');
@@ -2109,6 +2119,7 @@ test('findOutdated: returns an Array, not undefined (ASI regression guard)', asy
   // No pin file → grouped is empty → no fetches → return empty array.
   // The interesting assertion is that the return value is an
   // ARRAY (.length accessible), not undefined.
+  // live-cdn-ok: the test installs its own fetch for its whole duration.
   const result = await findOutdated(dir);
   assert.ok(Array.isArray(result), 'findOutdated must always return an Array');
   assert.equal(result.length, 0);
@@ -2317,40 +2328,50 @@ test('resolveVendorImports live: in-process cache avoids re-fetching an already-
   }
 });
 
-test('pinAll: a bundle hash that hangs is abandoned, not waited on forever', async () => {
-  // fetchIntegrity was the one outbound call in vendor.js with no AbortSignal,
-  // while jspmCall, fetchNpmJson, and fetchLiveIntegrity all carry one. pinAll
-  // runs it once per resolved URL and there is no ambient deadline on a CLI
-  // run, so a CDN that accepts the connection and then stalls held the pin
-  // open indefinitely (#1150).
+test('pinAll: a bundle fetch that hangs is abandoned, not waited on forever', async () => {
+  // fetchIntegrity (default mode) and downloadBundle (--download) were the two
+  // outbound calls in vendor.js with no AbortSignal, while jspmCall,
+  // fetchNpmJson, and fetchLiveIntegrity all carried one. pinAll runs one of
+  // them once per resolved URL and there is no ambient deadline on a CLI run,
+  // so a CDN that accepted the connection and then stalled held the pin open
+  // indefinitely (#1150).
+  //
+  // BOTH modes are covered, because they take different calls. The first
+  // version of this test only exercised the default path, which left
+  // `webjs vendor pin --download` with exactly the behaviour the fix claimed
+  // to have removed.
   //
   // Assert the SIGNAL rather than the wall clock: a real 10s wait would make
   // this test the slow thing it is complaining about, and a shortened timeout
   // would need production code to grow a test-only knob.
-  const dir = await makeTempAppWithSource({ 'app/page.ts': `import pico from 'picocolors';` });
-  try {
-    /** @type {Array<AbortSignal | undefined>} */
-    const signals = [];
-    await withMockedFetch(async (url, opts) => {
-      const s = String(url);
-      if (s.includes('api.jspm.io')) {
-        return jspmResponse({ picocolors: 'https://ga.jspm.io/npm:picocolors@1.1.1/index.js' });
-      }
-      signals.push(opts && opts.signal);
-      // Abort exactly the way a timeout would, so the catch path is exercised.
-      const err = new Error('The operation was aborted');
-      err.name = 'AbortError';
-      throw err;
-    }, async () => {
-      const result = await pinAll(dir);
-      // Fail-open is unchanged: an unhashable bundle still pins, without SRI.
-      assert.ok(!result.failed, 'a failed hash must not fail the whole pin');
-    });
-    assert.equal(signals.length, 1, 'the bundle GET fired exactly once');
-    assert.ok(signals[0] instanceof AbortSignal,
-      'the bundle hash fetch must carry an AbortSignal so a stalled CDN cannot hang the pin');
-  } finally {
-    await rm(dir, { recursive: true, force: true });
+  for (const opts of [{}, { download: true }]) {
+    const mode = opts.download ? '--download' : 'default';
+    const dir = await makeTempAppWithSource({ 'app/page.ts': `import pico from 'picocolors';` });
+    try {
+      /** @type {Array<AbortSignal | undefined>} */
+      const signals = [];
+      await withMockedFetch(async (url, init) => {
+        const s = String(url);
+        if (s.includes('api.jspm.io')) {
+          return jspmResponse({ picocolors: 'https://ga.jspm.io/npm:picocolors@1.1.1/index.js' });
+        }
+        signals.push(init && init.signal);
+        // Abort exactly the way a timeout would, so the catch path is exercised.
+        const err = new Error('The operation was aborted');
+        err.name = 'AbortError';
+        throw err;
+      }, async () => {
+        const result = await pinAll(dir, opts);
+        // Fail-open is unchanged: an unreachable bundle must not fail the pin
+        // outright in default mode, where the entry still pins without a hash.
+        if (!opts.download) assert.ok(!result.failed, 'a failed hash must not fail the whole pin');
+      });
+      assert.equal(signals.length, 1, `${mode}: the bundle GET fired exactly once`);
+      assert.ok(signals[0] instanceof AbortSignal,
+        `${mode}: the bundle fetch must carry an AbortSignal so a stalled CDN cannot hang the pin`);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   }
 });
 

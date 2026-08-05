@@ -338,10 +338,11 @@ let lastLiveResolveFailed = false;
 
 const JSPM_GENERATE_ENDPOINT = 'https://api.jspm.io/generate';
 const JSPM_GENERATE_TIMEOUT_MS = 10_000;
-// Bounds a single bundle GET, whether it is being hashed for a pin
-// (`fetchIntegrity`) or during the warmup live-integrity pass
+// Bounds a single bundle GET: written to disk by `webjs vendor pin
+// --download` (`downloadBundle`), hashed in place by default-mode pin
+// (`fetchIntegrity`), or hashed during the warmup live-integrity pass
 // (`fetchLiveIntegrity`). Declared here with the other outbound timeouts
-// rather than beside one of its two callers.
+// rather than beside one of its three callers.
 const INTEGRITY_FETCH_TIMEOUT_MS = 10_000;
 
 /**
@@ -1082,14 +1083,22 @@ async function writePinFile(appDir, imports, integrity, provider) {
  * success or null on failure. The integrity hash is computed from the
  * downloaded bytes so it's always consistent with what's on disk.
  *
+ * Bounded by the same timeout as every other outbound call here.
+ * `pinAll(dir, { download: true })` runs this once per resolved URL on
+ * a CLI run with no ambient deadline, so a CDN that accepts the
+ * connection and then stalls would otherwise hang the pin with nothing
+ * to interrupt it (#1150).
+ *
  * @param {string} url
  * @param {string} appDir
  * @param {string} filename
  * @returns {Promise<{ bytes: number, integrity: string } | null>}
  */
 async function downloadBundle(url, appDir, filename) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), INTEGRITY_FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) {
       console.error(`[webjs] download ${url} returned ${response.status}`);
       return null;
@@ -1105,8 +1114,13 @@ async function downloadBundle(url, appDir, filename) {
     await writeFile(join(pinDir(appDir), filename), buf);
     return { bytes: buf.byteLength, integrity: await sha384Integrity(buf) };
   } catch (e) {
-    console.error(`[webjs] download ${url} failed: ${e && e.message}`);
+    const why = e && e.name === 'AbortError'
+      ? `timed out after ${INTEGRITY_FETCH_TIMEOUT_MS}ms`
+      : e && e.message;
+    console.error(`[webjs] download ${url} failed: ${why}`);
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -1117,11 +1131,11 @@ async function downloadBundle(url, appDir, filename) {
  * locally vendored.
  *
  * Bounded by the same timeout every other outbound call here carries.
- * `pinAll` runs this once per resolved URL, so a CDN that accepts the
- * connection and then stalls would otherwise hang the pin forever with
- * nothing to interrupt it: there is no ambient deadline on a CLI run,
- * and `node --test` imposes none either, so this was the one call in
- * the file that could hold a process open indefinitely (#1150).
+ * Default-mode `pinAll` runs this once per resolved URL, so a CDN that
+ * accepts the connection and then stalls would otherwise hang the pin
+ * with nothing to interrupt it: there is no ambient deadline on a CLI
+ * run, and `node --test` imposes none either. `downloadBundle` is the
+ * `--download` half of the same gap and is bounded the same way (#1150).
  *
  * @param {string} url
  * @returns {Promise<string | null>}  the integrity string, or null on failure
