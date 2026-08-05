@@ -29,15 +29,19 @@ both consumers:
 
 - **nvim** keeps a COMMITTED verbatim copy at
   `nvim/vendor/node_modules/@webjsdev/intellisense/`. It is GENERATED, never
-  hand-edited. After ANY `intellisense/src/` change you MUST re-vendor before
-  pushing:
+  hand-edited. After ANY `intellisense/src/` change, OR any edit to
+  `intellisense/package.json` other than its `version`, you MUST re-vendor
+  before pushing:
   ```sh
   node packages/editors/nvim/scripts/vendor-intellisense.mjs
   git add -f packages/editors/nvim/vendor   # the copy is under a gitignored node_modules/
   ```
   The drift guard `nvim/test/vendor-sync.test.mjs` FAILS the "Unit + integration"
-  CI job ("vendored intellisense src is byte-identical ...") whenever the copy
-  and `src/` diverge (whether you forgot to re-vendor, or hand-edited the copy).
+  CI job whenever the copy and the source diverge (whether you forgot to
+  re-vendor, or hand-edited the copy). It compares `src/` byte for byte
+  ("vendored intellisense src is byte-identical ...") AND the manifest apart
+  from its `version`, which is excluded because no release step re-vendors, so
+  a version bump legitimately leaves the copy behind.
   Confirm: `node --test packages/editors/nvim/test/vendor-sync.test.mjs`.
 - **vscode** rebuilds its bundle from `intellisense/` with esbuild at vsix
   package time (`vscode/scripts/build.mjs`, run by `package.mjs`), so it picks

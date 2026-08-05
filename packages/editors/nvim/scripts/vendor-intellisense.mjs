@@ -4,6 +4,11 @@
  * clones the repo), so the language-service plugin must be COMMITTED inside
  * the plugin and pointed at via tsserver's probe location.
  *
+ * Re-run this after any change under `packages/editors/intellisense/src`, AND
+ * after any edit to that package's `package.json` other than its `version`.
+ * The drift guard in `../test/vendor-sync.test.mjs` compares both, sparing the
+ * version because no release step re-vendors.
+ *
  * @webjsdev/intellisense is standalone, dependency-free plain CJS (#386), so we
  * copy its `package.json` + `src/` verbatim into
  *   packages/editors/nvim/vendor/node_modules/@webjsdev/intellisense/

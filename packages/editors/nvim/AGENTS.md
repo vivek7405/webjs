@@ -37,7 +37,10 @@ specific to the Neovim plugin.
    `node_modules/`). The `test/vendor-sync.test.mjs` drift guard FAILS the
    "Unit + integration" CI job ("vendored intellisense src is byte-identical ...")
    whenever the copy and `src/` diverge, whether you forgot to re-vendor after an
-   intellisense edit OR hand-edited the copy. Confirm green with
+   intellisense edit OR hand-edited the copy. It also compares the vendored
+   `package.json` against the source manifest in every field but `version`, so a
+   description or exports edit there needs a re-vendor too, while a release-time
+   version bump (which nothing re-vendors for) does not. Confirm green with
    `node --test packages/editors/nvim/test/vendor-sync.test.mjs`.
 4. **Docs**: `doc/webjs.txt` (`:help webjs`), `README.md`.
 
