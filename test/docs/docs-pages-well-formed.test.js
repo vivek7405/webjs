@@ -35,8 +35,14 @@ const ROOT = resolve(__dirname, '..', '..');
  * blocks); `<div>` matters because layout / page chrome relies on it;
  * `<ul>` / `<ol>` / `<table>` round out the structural containers most
  * commonly authored by hand in doc pages.
+ *
+ * `code-block` carries what `pre` used to: the website's docs pages author
+ * their samples as `<code-block>` (the component renders the `<pre>`), so that
+ * tag now holds every one of the long handwritten blocks this guard was
+ * written against, and an unbalanced one reproduces the original bug exactly.
+ * `pre` stays listed because other pages still author it directly.
  */
-const CONTAINERS = ['pre', 'div', 'ul', 'ol', 'table'];
+const CONTAINERS = ['pre', 'code-block', 'div', 'ul', 'ol', 'table'];
 
 /**
  * Count occurrences of `<tag` (open, attribute-tolerant) and `</tag>`

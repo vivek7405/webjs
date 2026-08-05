@@ -170,9 +170,14 @@ function bodyToMarkdown(raw: string): string {
   // parses SOURCE rather than rendered HTML, and losing a sample here is
   // silent: it does not vanish, it falls through to the prose pipeline,
   // which strips the fence, eats every ${...} hole in the code, and
-  // collapses the indentation. A line-leading "# " shell comment then
-  // reads as a markdown H1, which the search index scores as a heading.
-  // `(?=[\s>])` keeps <pre from matching <preview-tabs.
+  // collapses the indentation, leaving output that still reads like prose
+  // and teaches code nobody can run. `(?=[\s>])` keeps <pre from matching
+  // <preview-tabs.
+  //
+  // Separately, and NOT something fencing fixes: the docs search index
+  // (app/api/search/route.ts) picks its headings with a plain
+  // `line.startsWith('#')` and does no fence tracking, so a line-leading
+  // "# " shell comment inside a sample is scored as a heading either way.
   const codeBlocks: string[] = [];
   body = body.replace(/<(?:pre|code-block)(?=[\s>])[^>]*>([\s\S]*?)<\/(?:pre|code-block)>/g, (_m, code) => {
     const text = decodeEntities(String(code)).replace(/<\/?code[^>]*>/g, '').replace(/\n+$/, '');

@@ -10,9 +10,12 @@
  * output stayed plausible and every sample in it stopped being usable, which
  * is exactly the failure a test has to catch instead of a reader.
  *
- * The docs search index derives its headings from this same markdown
- * (`app/api/search/route.ts`), so an unfenced sample also feeds it whatever
- * the code happened to contain.
+ * The docs search index is built from this same markdown
+ * (`app/api/search/route.ts`), so it inherits whatever this produces. Note
+ * that its heading extraction is a plain `line.startsWith('#')` with no fence
+ * tracking, so a line-leading `# ` shell comment inside a sample scores as a
+ * heading whether or not the fence is there. That is a separate pre-existing
+ * problem, not one these tests cover.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
