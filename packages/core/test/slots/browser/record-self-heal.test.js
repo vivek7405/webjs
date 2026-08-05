@@ -157,9 +157,10 @@ suite('Record self-heal + overlay coherence (review round 16)', () => {
     try {
       const shell = parent.querySelector(fixedShell);
       const slot = shell.querySelector('slot[data-webjs-light]');
-      // Reads MARKER rather than hardcoding the prefix: a rename would
-      // otherwise leave this counting zero markers before AND after, so it
-      // would pass while asserting nothing at all.
+      // Reads MARKER for the prefix, but spells the `e` suffix here, so it
+      // still tracks only half the marker text. The non-zero assertion below
+      // is what actually stops a counter that has gone blind from passing on
+      // 0 against 0; reading MARKER on its own would not.
       const endMarkers = (root) =>
         [...root.childNodes].filter((n) => n.nodeType === 8 && n.data === `${MARKER}e`).length;
 
