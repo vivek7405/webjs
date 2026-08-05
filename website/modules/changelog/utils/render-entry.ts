@@ -73,15 +73,24 @@ export function renderEntryBody(md: string): string {
   // subordinate to its parent rather than as its parent's peer. The rule both
   // indented branches follow, stated once: only a bullet marker ESTABLISHES
   // depth, so an unmarked line can inherit or go shallower but never deeper.
-  // The corpus decided the inheriting half. There are zero bullets at four or
-  // more spaces across the 229 entry files, but there are 37 non-bullet lines
-  // at four or more, spread over 10 files, and every one is wrapped prose
-  // whose author aligned the continuation under the text above it. Letting a
-  // continuation read its own indent outright would re-render those 10 files
-  // today and lose the argument on the first release note anyone wraps by
-  // hand. The shallower half is what stops the opposite failure: closing
-  // prose written back at the entry level after a deeper bullet must not stay
-  // dragged under that bullet.
+  //
+  // The corpus decided the inheriting half, and the numbers are worth stating
+  // exactly, because the loose version of them ("37 lines, 10 files") reads
+  // as much stronger evidence than it is. There are zero bullets at four or
+  // more spaces across the 229 entry files, and 37 NON-bullet lines at four
+  // or more, spread over 10 files. All 37 render with no inset, but by two
+  // different mechanisms: 31 of them are soft wraps that join the paragraph
+  // above through the depth-blind branch below, which reads no indent under
+  // any implementation. Only 6 lines, in 4 files, actually reach the
+  // fresh-paragraph branch, and letting THAT branch read its own indent
+  // outright is what would re-render them. They are also not the wrapped
+  // prose the shorthand suggests: they are indented code blocks (a component
+  // class, an `export const metadata = {`) and one alignment table. Measured
+  // by rendering the whole corpus both ways, not by reading the sources.
+  //
+  // The shallower half stops the opposite failure: closing prose written back
+  // at the entry level after a deeper bullet must not stay dragged under that
+  // bullet.
   let itemOpen = false;
   let paras: Para[] = [];
   let open: Para | null = null;
@@ -149,13 +158,19 @@ export function renderEntryBody(md: string): string {
     } else if (itemOpen && /^ {2,}\S/.test(line)) {
       const text = line.trim();
       // Soft-wrapped continuation of the open paragraph, which simply joins
-      // it, or the start of a fresh one when a blank line closed the last.
-      // A fresh one can only INHERIT or go shallower, never deeper: an
-      // unmarked line cannot establish a level no bullet marker did, but it
-      // may return to one its own indent states. Both halves are load-bearing.
-      // Inheriting is what keeps the corpus's 37 wrapped-prose lines out of an
-      // inset, and the shallower half is what stops closing prose written back
-      // at the entry level from being dragged under the last deep bullet.
+      // it and reads no indent at all, or the start of a fresh one when a
+      // blank line closed the last.
+      //
+      // A fresh one is capped at the depth of the paragraph BEFORE it, so it
+      // inherits or goes shallower but never deeper. Note the ceiling is that
+      // one paragraph, not the deepest level any bullet in the item reached:
+      // once the item steps back out to the entry level, a later unmarked
+      // line cannot climb back in, which is the conservative direction for a
+      // signal as weak as leading whitespace. Both halves earn their keep,
+      // and each has its own test. The cap keeps the 6 corpus lines that
+      // reach this branch out of an inset; the shallower direction is what
+      // stops closing prose written back at the entry level from being
+      // dragged under the last deep bullet.
       if (open) open.lines.push(text);
       else {
         const last = paras.length ? paras[paras.length - 1].depth : 1;

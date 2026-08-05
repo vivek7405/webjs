@@ -17,9 +17,10 @@
  * represented, as a left inset on the paragraph, so a child point reads as
  * subordinate rather than as its parent's peer. Only a bullet marker
  * establishes that depth, so an unmarked line inherits or goes shallower but
- * never deeper: the corpus files carrying 4-space wrapped prose gain no
- * inset, and closing prose written back at the entry level is not left
- * dragged under the last deep bullet.
+ * never deeper. Both directions have their own case below, because both are
+ * real: a deep line with no bullet at its depth gains no inset, and closing
+ * prose written back at the entry level is not left dragged under the last
+ * deep bullet.
  *
  * The corpus has zero bullets past two spaces, so the depth cases below are
  * necessarily synthetic. A green corpus run proves nothing about them.
@@ -208,9 +209,13 @@ test('closing prose written back at the entry level is not dragged under a deepe
 });
 
 test('a paragraph after a blank line cannot invent a level no bullet established', () => {
-  // The inheriting half, as a unit rather than via the corpus. These are the
-  // shape of the corpus's 37 four-plus-space non-bullet lines: wrapped prose
-  // aligned under the text above it, with no bullet at that depth anywhere.
+  // The inheriting half, as a unit rather than via the corpus. Deliberately
+  // NOT described as standing for the corpus's 37 deep non-bullet lines: 31
+  // of those are soft wraps that take the join branch instead and would pass
+  // this either way. Only 6 lines, in 4 files, reach the branch under test,
+  // and they are indented code blocks rather than prose. What this pins is
+  // the rule itself, that a line with no bullet at its depth does not claim
+  // that depth.
   const html = renderEntryBody([
     '- **entry**',
     '  * commit subject line',
@@ -223,10 +228,12 @@ test('a paragraph after a blank line cannot invent a level no bullet established
   assert.ok(!wrapped[1].includes('pl-'), 'no bullet established depth 2, so the prose does not claim it');
 });
 
-test('a 4-space continuation line inherits its bullet depth instead of reading its own', () => {
-  // cli/0.10.30.md wraps prose under a 2-space bullet at four spaces. All 37
-  // such lines in the corpus are wrapped prose, not nested points, so the
-  // continuation branch inherits rather than reads.
+test('a 4-space soft wrap joins its bullet paragraph instead of reading its own indent', () => {
+  // cli/0.10.30.md wraps prose under a 2-space bullet at four spaces. This is
+  // the JOIN branch, which reads no indent at all, and it is the shape 31 of
+  // the corpus's 37 deep non-bullet lines take. The fresh-paragraph branch is
+  // covered separately above; conflating the two overstates what either
+  // case proves.
   const html = renderEntryBody(bodyOf(`${CHANGELOG_DIR}cli/0.10.30.md`));
 
   // The captured body spans inline markup (the glob in this line trips the
