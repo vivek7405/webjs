@@ -79,13 +79,17 @@ function body(inner) {
 }
 
 suite('Client router: a top-level script in a swapped range executes (#1102)', () => {
+  // NOTE: not named `setup` / `teardown`. web-test-runner runs mocha in TDD
+  // ui, where those names ARE the beforeEach / afterEach registrars, so a
+  // local function of either name shadows the hook and a later real hook in
+  // this suite would silently call the fixture helper instead of registering.
   let origFetch, before;
 
   /**
    * @param {string} liveBody  the live document's body markup.
    * @param {() => Response} responder
    */
-  function setup(liveBody, responder) {
+  function mount(liveBody, responder) {
     enableClientRouter(); // idempotent
     _resetPrefetch();
     document.body.innerHTML = liveBody;
@@ -97,7 +101,7 @@ suite('Client router: a top-level script in a swapped range executes (#1102)', (
     window.fetch = () => Promise.resolve(responder());
   }
 
-  function teardown() {
+  function unmount() {
     window.fetch = origFetch;
     try { history.replaceState(null, '', before); } catch { /* ignore */ }
     _resetPrefetch();
@@ -109,7 +113,7 @@ suite('Client router: a top-level script in a swapped range executes (#1102)', (
     // A CHANGED route-key is the replace tier, the path a navigation into a new
     // route takes. This is the shape that surfaced the bug: a layout emitting
     // its progressive-enhancement script as a sibling of its children.
-    setup(
+    mount(
       '<!--wj:children:/:/-->' + rangeMarkup('/docs/a') + '<!--/wj:children:/-->',
       () => swapBody('/docs/b'),
     );
@@ -125,7 +129,7 @@ suite('Client router: a top-level script in a swapped range executes (#1102)', (
       // could mislead a future reader into thinking it had.
       assert.notEqual(document.getElementById('wj1102-first'), firstBefore,
         'the range was actually swapped');
-    } finally { teardown(); }
+    } finally { unmount(); }
   });
 
   test('morph tier: a keyed top-level script re-runs rather than staying inert', async () => {
@@ -137,7 +141,7 @@ suite('Client router: a top-level script in a swapped range executes (#1102)', (
     // Equal keys on both sides, and `/` is a leaf on both, so this morphs `/`
     // in place. The live range already holds the scripts, so the differ has a
     // keyed node to reuse.
-    setup(
+    mount(
       '<!--wj:children:/:/-->' + flatRangeMarkup() + '<!--/wj:children:/-->',
       flatBody,
     );
@@ -151,6 +155,32 @@ suite('Client router: a top-level script in a swapped range executes (#1102)', (
         `a reused keyed script re-executes; got ${JSON.stringify(window.__wj1102)}`);
       assert.notEqual(document.getElementById('wj1102-first'), firstBefore,
         'the reused node was replaced by a fresh clone, which is what makes it run');
-    } finally { teardown(); }
+    } finally { unmount(); }
+  });
+
+  test('a data-webjs-permanent script still runs on the swap that first mounts it', async () => {
+    // Guards a fix that looks obviously right and is not. Exempting a permanent
+    // script from reactivation reads like the natural opt-out, but the regraft
+    // that would preserve its identity has a both-exist guard, so on the swap
+    // that FIRST mounts a route there is no live node: the inert parsed copy is
+    // what lands, and an exemption would leave it never executing on a soft
+    // navigation while still working on a cold load. That is #1102 itself,
+    // reintroduced. The live range below deliberately has no `#wj1102-perm`.
+    mount(
+      '<!--wj:children:/:/--><p id="wj1102-mid">plain</p><!--/wj:children:/-->',
+      () => body(
+        '<!--wj:children:/:/-->' +
+          '<script id="wj1102-perm" data-webjs-permanent>window.__wj1102.push("perm");</script>' +
+          '<p id="wj1102-mid">arrived</p>' +
+        '<!--/wj:children:/-->',
+      ),
+    );
+    try {
+      await navigate(location.origin + '/?perm=1');
+      for (let i = 0; i < 20 && !window.__wj1102.length; i++) await tick();
+
+      assert.deepEqual(window.__wj1102, ['perm'],
+        `a permanent script arriving for the first time must still run; got ${JSON.stringify(window.__wj1102)}`);
+    } finally { unmount(); }
   });
 });

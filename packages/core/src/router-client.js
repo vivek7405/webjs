@@ -4377,12 +4377,18 @@ async function streamBoundariesProgressively(reader, dec, initialBuf, isCurrent)
  * Replacing the container DETACHES it, which is why both callers snapshot the
  * range before iterating rather than walking live `nextSibling` links.
  *
- * A `data-webjs-permanent` container is EXEMPT. That attribute's whole contract
- * is node identity across a swap (`regraftPermanentInSlice` moves the live node
- * into the incoming slice and `diffElementInPlace` returns early on it), so
- * cloning one would destroy exactly what the author asked to keep. Before this
- * function handled container-is-a-script at all, a top-level permanent script
- * survived by accident; the carve-out keeps it working on purpose.
+ * `data-webjs-permanent` is deliberately NOT an exemption here, and must not be
+ * added as one. It reads like the natural opt-out, but it cannot work: its
+ * regraft has a both-exist guard (`regraftPermanentInSlice`), so on the swap
+ * that first mounts a route there is no live node to preserve, the inert parsed
+ * copy is what lands, and exempting it would leave a script that runs on a cold
+ * load and never on a soft navigation. That is precisely the #1102 failure,
+ * reintroduced under the banner of fixing it. The attribute preserves node
+ * identity for STATEFUL elements (a playing `<audio>`, a third-party widget);
+ * a script's only state is that it ran, and re-running is the contract for
+ * everything in a swapped range. A descendant permanent script has always been
+ * re-emitted by the walk below, so exempting the container would also have made
+ * the answer depend on nesting depth.
  *
  * @param {Element} container
  * @returns {Element} `container`, or its replacement when it was a script that
@@ -4391,7 +4397,7 @@ async function streamBoundariesProgressively(reader, dec, initialBuf, isCurrent)
  *   returned clone is detached too, so callers must not assume it is connected.
  */
 function reactivateScripts(container) {
-  if (container.tagName === 'SCRIPT' && !container.hasAttribute('data-webjs-permanent')) {
+  if (container.tagName === 'SCRIPT') {
     const fresh = cloneScriptWithCorrectNonce(/** @type {HTMLScriptElement} */ (container));
     // A no-op when the node has no parent. That happens when an EARLIER
     // script's reactivation ran code that removed this node from the range
@@ -4440,8 +4446,10 @@ function activateSwappedRange(range) {
   }
   for (const el of swapped) {
     const live = reactivateScripts(el);
-    // A detached node has nothing to upgrade: constructing custom elements
-    // off-document would fire their lifecycle for a tree no one can see.
+    // Nothing to upgrade in a detached tree. `customElements.upgrade` off
+    // document runs the CONSTRUCTOR (not `connectedCallback`, which waits for
+    // insertion), so this skips constructing elements for a tree that was just
+    // removed and will never be seen.
     if (live.isConnected !== false) upgradeCustomElements(live);
   }
 }

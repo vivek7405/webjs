@@ -1110,19 +1110,35 @@ test('reactivateScripts: a non-script container still walks its descendants (#11
   assert.equal(document.getElementById('inner').getAttribute('nonce'), 'page-nonce');
 });
 
-test('reactivateScripts: leaves a data-webjs-permanent script alone (#1102)', () => {
-  // That attribute's whole contract is node identity across a swap: the tiers
-  // regraft the live node into the incoming slice and the differ returns early
-  // on it. Cloning one here would destroy exactly what the author asked to
-  // keep, and re-run a script that opted out of re-running.
+test('reactivateScripts: data-webjs-permanent does NOT exempt a script (#1102)', () => {
+  // A counterfactual against a fix that looks obviously right and is not.
+  // Exempting a permanent script reads like the natural opt-out, but the
+  // regraft that would preserve it has a both-exist guard, so on the swap that
+  // first mounts a route there is no live node and the inert parsed copy is
+  // what lands. Exempting it there yields a script that runs on a cold load and
+  // never on a soft navigation, which is the bug this issue is about. A
+  // permanent script is also re-emitted by the descendant walk today, so an
+  // exemption would make the answer depend on nesting depth.
   document.head.innerHTML = '<meta name="csp-nonce" content="page-nonce">';
   document.body.innerHTML =
-    '<script id="perm" data-webjs-permanent nonce="page-nonce">window.p = 1;</script>';
+    '<script id="perm" data-webjs-permanent nonce="stale">window.p = 1;</script>';
   const original = document.getElementById('perm');
-  const returned = _reactivateScripts(original);
-  assert.strictEqual(document.getElementById('perm'), original,
-    'a permanent script keeps its node identity');
-  assert.strictEqual(returned, original, 'and is handed back as-is');
+  _reactivateScripts(original);
+  assert.notStrictEqual(document.getElementById('perm'), original,
+    'a permanent script is re-emitted like any other, so it still runs on arrival');
+  assert.equal(document.getElementById('perm').getAttribute('nonce'), 'page-nonce');
+});
+
+test('reactivateScripts: a permanent DESCENDANT script is re-emitted too (#1102)', () => {
+  // The consistency the exemption would have broken: nesting depth must not
+  // change whether a script re-runs.
+  document.head.innerHTML = '<meta name="csp-nonce" content="page-nonce">';
+  document.body.innerHTML =
+    '<div id="w"><script id="pd" data-webjs-permanent nonce="stale">window.q = 1;</script></div>';
+  const before = document.getElementById('pd');
+  _reactivateScripts(document.getElementById('w'));
+  assert.notStrictEqual(document.getElementById('pd'), before,
+    'the descendant path re-emits it, exactly as the container path now does');
 });
 
 test('reactivateScripts: a detached script inserts nothing (#1102)', () => {
