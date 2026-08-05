@@ -453,9 +453,19 @@ names mechanically:
 - Once a bracketed value reaches the matcher, its TYPE HINT names the property
   and picks the group, since the prefix alone cannot: `text-[length:14px]` is a
   font size and `bg-[url(...)]` is an image, so routing either by prefix would
-  collapse it against a colour. A hint the map does not cover is left ungrouped
-  and always survives, which is the safe direction to fail (an extra class
-  renders, a dropped one does not).
+  collapse it against a colour. That lives in `hintedGroup()` and the
+  `HINTED_GROUPS` map, and it is deliberately CENTRAL rather than a pattern per
+  prefix: handling only the prefixes that came to mind is how
+  `shadow-[color:red]` was left evicting `shadow-lg` while `bg-` and `text-`
+  were already correct. A `<prefix>:<hint>` pair the map does not cover gets a
+  group of its own, so it collides only with the identical hint under the
+  identical prefix and never with the prefix's default, which is the safe
+  direction to fail (an extra class renders, a dropped one does not).
+- The merger is coarse by design and does NOT claim full `tailwind-merge`
+  fidelity. Some prefixes are still grouped by prefix alone (`bg-clip-*` and
+  `bg-origin-*` sit in `bg-color`; `shadow-lg` and `shadow-red-500` share
+  `shadow`), so a less common pair can still collide. Say that plainly in any
+  doc you write about it rather than stating the property rule as absolute.
 
 ## Layout + typography helpers (the design system)
 

@@ -155,9 +155,23 @@ test('cn: an arbitrary value type hint names the property, so it picks the group
   assert.equal(cn('bg-[color:var(--c)]', 'bg-primary'), 'bg-primary');
   assert.equal(cn('text-[color:var(--c)]', 'text-primary'), 'text-primary');
   // An unmapped hint stays ungrouped and survives: an extra class renders, a
-  // dropped one does not, so that is the safe direction to fail.
+  // dropped one does not, so that is the safe direction to fail. This holds for
+  // EVERY prefix, not the ones that happened to get a bespoke pattern: handling
+  // only bg- and text- left `shadow-[color:red]` evicting `shadow-lg`.
   assert.equal(cn('text-[family-name:Inter]', 'text-primary'), 'text-[family-name:Inter] text-primary');
   assert.equal(cn('bg-[angle:45deg]', 'bg-primary'), 'bg-[angle:45deg] bg-primary');
+  assert.equal(cn('shadow-lg', 'shadow-[color:red]'), 'shadow-lg shadow-[color:red]');
+  assert.equal(cn('shadow-[0_0_10px_red]', 'shadow-[color:red]'), 'shadow-[0_0_10px_red] shadow-[color:red]');
+  assert.equal(cn('text-primary', 'text-shadow-[color:red]'), 'text-primary text-shadow-[color:red]');
+  assert.equal(cn('border-[angle:45deg]', 'border-primary'), 'border-[angle:45deg] border-primary');
+  assert.equal(cn('p-[length:4px]', 'p-2'), 'p-[length:4px] p-2');
+  // Ungrouped is not the same as never deduping: the identical hint under the
+  // identical prefix is still one property, and still collapses.
+  assert.equal(cn('shadow-[color:red]', 'shadow-[color:blue]'), 'shadow-[color:blue]');
+  assert.equal(cn('p-[length:4px]', 'p-[length:8px]'), 'p-[length:8px]');
+  assert.equal(cn('hover:shadow-[color:red]', 'shadow-[color:blue]'), 'hover:shadow-[color:red] shadow-[color:blue]');
+  // A per-side border hint still routes through the border value parser.
+  assert.equal(cn('border-t-[color:var(--c)]', 'border-t-primary'), 'border-t-primary');
   // A bracketed value with no hint keeps the prefix's default property.
   assert.equal(cn('bg-[#fff]', 'bg-primary'), 'bg-primary');
   assert.equal(cn('bg-[var(--x)]', 'bg-primary'), 'bg-primary');

@@ -55,6 +55,8 @@ const TOKENS = [
   'supports-[display:grid]:flex', '[&:hover]:bg-primary',
   'border-solid', 'border-dashed', 'border-collapse', 'border-spacing-2',
   'rounded', 'rounded-full', 'opacity-50', 'font-medium', 'shadow-sm', 'z-10',
+  'shadow-lg', 'shadow-[color:red]', 'shadow-[0_0_10px_red]',
+  'text-shadow-[color:red]', 'p-[length:4px]', 'border-[angle:45deg]',
   'flex', 'flex-1', 'flex-auto', 'flex-[2]', 'flex-row', 'flex-col',
   'flex-wrap', 'flex-nowrap',
   'grid', 'grid-cols-2', 'grid-rows-3', 'grid-flow-col',
@@ -89,4 +91,5 @@ test('cn: the blog copy carries the conflict-group fixes (#1065, #1072)', () => 
   assert.equal(blogCn('border-2', 'border-primary'), 'border-2 border-primary');
   assert.equal(blogCn('flex', 'flex'), 'flex');
   assert.equal(blogCn('border-[length:2px]', 'border-4'), 'border-4');
+  assert.equal(blogCn('shadow-lg', 'shadow-[color:red]'), 'shadow-lg shadow-[color:red]');
 });

@@ -52,30 +52,20 @@ const GROUPS: Array<[RegExp, string]> = [
   [/^p-/, 'p'], [/^px-/, 'px'], [/^py-/, 'py'], [/^pt-/, 'pt'], [/^pr-/, 'pr'], [/^pb-/, 'pb'], [/^pl-/, 'pl'],
   [/^m-/, 'm'], [/^mx-/, 'mx'], [/^my-/, 'my'], [/^mt-/, 'mt'], [/^mr-/, 'mr'], [/^mb-/, 'mb'], [/^ml-/, 'ml'],
   [/^w-/, 'w'], [/^h-/, 'h'], [/^size-/, 'size'],
-  // An arbitrary value may carry a Tailwind TYPE HINT (`bg-[image:var(--g)]`,
-  // `text-[length:14px]`). The hint names the CSS property, so it decides the
-  // group instead of the prefix's default, and a `bg-[url(…)]` background image
-  // is classified by its function for the same reason. A hint that is NOT
-  // mapped here stays ungrouped and always survives, which is the safe
-  // direction: an extra class renders, a dropped one does not. See the
-  // bracket-aware split in `variantPrefix` for why these reach the matcher.
-  [/^bg-\[(image:|url\(|linear-gradient|radial-gradient|conic-gradient)/, 'bg-image'],
-  [/^bg-\[position:/, 'bg-position'],
-  [/^bg-\[(size|length):/, 'bg-size'],
-  [/^text-\[length:/, 'text-size'],
+  // A `bg-[url(…)]` / `bg-[linear-gradient(…)]` background image is classified
+  // by its FUNCTION, since it carries no type hint to classify it by. The
+  // hinted forms are handled centrally, in `hintedGroup`.
+  [/^bg-\[(url\(|linear-gradient|radial-gradient|conic-gradient)/, 'bg-image'],
   [/^bg-(linear|gradient|conic|radial|none)/, 'bg-image'],
   [/^bg-(no-repeat|repeat|repeat-x|repeat-y|repeat-round|repeat-space)$/, 'bg-repeat'],
   [/^bg-(fixed|local|scroll)$/, 'bg-attach'],
   [/^bg-(auto|cover|contain)$/, 'bg-size'],
   [/^bg-(bottom|center|left|right|top)$/, 'bg-position'],
-  // Background color: NOT an arbitrary value carrying a non-color hint, which
-  // names some other property (an unmapped one is left ungrouped above).
-  [/^bg-(?!\[(?!color:)[a-z-]+:)/, 'bg-color'],
+  [/^bg-/, 'bg-color'],
   // Font size: explicit list of Tailwind size scale.
   [/^text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)$/, 'text-size'],
-  // Text color: anything else starting with text- that isn't alignment / wrap /
-  // overflow, and again not an arbitrary value hinted as another property.
-  [/^text-(?!align-|left$|right$|center$|justify$|start$|end$|wrap$|nowrap$|balance$|pretty$|clip$|ellipsis$|xs$|sm$|base$|lg$|xl$|\d?xl$|\[(?!color:)[a-z-]+:)/, 'text-color'],
+  // Text color: anything else starting with text- that isn't alignment / wrap / overflow.
+  [/^text-(?!align-|left$|right$|center$|justify$|start$|end$|wrap$|nowrap$|balance$|pretty$|clip$|ellipsis$|xs$|sm$|base$|lg$|xl$|\d?xl$)/, 'text-color'],
   // Border sub-properties that are neither a width nor a colour. These come
   // FIRST so the width / colour classifier below never sees them.
   [/^border-(collapse|separate)$/, 'border-collapse'],
@@ -127,6 +117,57 @@ const GROUPS: Array<[RegExp, string]> = [
  * shorthand, never by `border-x-*`: which physical side they land on depends on
  * the writing direction, so an axis override there would be a guess.
  */
+/**
+ * An arbitrary value may carry a Tailwind TYPE HINT: `bg-[image:var(--g)]`,
+ * `text-[length:14px]`, `shadow-[color:red]`. The hint exists precisely because
+ * the utility prefix is ambiguous, so the PREFIX cannot decide the group and
+ * the hint must. Letting a hinted value fall into the prefix's default group
+ * evicts a class that sets an entirely different property (`shadow-[color:red]`
+ * would eat `shadow-lg`).
+ *
+ * Every `<prefix>:<hint>` pair listed here names the group it belongs to; an
+ * empty string means the hint names the prefix's OWN default property, so the
+ * GROUPS table above is already right for it and matching falls through. A pair
+ * that is NOT listed gets a group of its own, so it can only ever collide with
+ * the identical hint under the identical prefix, never with the prefix's
+ * default. That is the safe direction to fail: an extra class renders, a
+ * dropped one does not.
+ *
+ * This is central rather than per-prefix on purpose. Handling only the prefixes
+ * that came to mind is how `shadow-[color:red]` was left evicting `shadow-lg`
+ * while `bg-` and `text-` were correct.
+ *
+ * These reach the matcher at all only because `variantPrefix` splits on the
+ * last colon OUTSIDE brackets; see the comment there.
+ */
+const HINTED_GROUPS: Record<string, string> = {
+  'bg:color': '',
+  'bg:image': 'bg-image',
+  'bg:position': 'bg-position',
+  'bg:size': 'bg-size',
+  'bg:length': 'bg-size',
+  'text:color': '',
+  'text:length': 'text-size',
+};
+
+/**
+ * The group for a hinted arbitrary value, `null` when the normal GROUPS table
+ * should decide it, `undefined` when the token carries no hint at all.
+ */
+function hintedGroup(bare: string): string | null | undefined {
+  const m = /^([a-z][a-z-]*)-\[([a-z][a-z-]*):/.exec(bare);
+  if (!m) return undefined;
+  const prefix = m[1];
+  const hint = m[2];
+  const key = `${prefix}:${hint}`;
+  if (key in HINTED_GROUPS) return HINTED_GROUPS[key] || null;
+  // A border width or colour hint is read by `borderGroups()`'s value parser,
+  // which already classifies `border-[length:2px]` as a width and everything
+  // else after `border-` as a colour.
+  if (/^border(-[xytrbl])?$/.test(prefix) && (hint === 'length' || hint === 'color')) return null;
+  return `hint:${key}`;
+}
+
 function borderGroups(): Array<[RegExp, string]> {
   const width = '(\\d+(\\.\\d+)?|\\[(length:|\\d|\\.)[^\\]]*\\])';
   const out: Array<[RegExp, string]> = [];
@@ -166,20 +207,28 @@ const CONFLICTS: Record<string, string[]> = {
 
 function dedupeUtilities(input: string): string {
   const tokens = input.split(/\s+/).filter(Boolean);
+  // `${prefix}::${group}` -> index of the last SURVIVING token in that group.
   const lastByKey = new Map<string, number>();
   const result: Array<string | null> = [];
 
   for (const token of tokens) {
     // Strip variant prefix (`hover:`, `dark:md:`, …) before testing each dedupe
     // regex so `hover:bg-red-500` still matches the `bg-color` group. Conflicts
-    // only apply WITHIN the same variant.
+    // only apply WITHIN the same variant (`px-4 hover:p-0` keeps both).
     const prefix = variantPrefix(token);
     const bare = prefix ? token.slice(prefix.length) : token;
-    let gk: string | null = null;
-    for (const [re, g] of GROUPS) {
-      if (re.test(bare)) { gk = g; break; }
+    // A type-hinted arbitrary value is classified by its HINT, which overrides
+    // the prefix-keyed table below (`hintedGroup` returns null when the hint
+    // names the prefix's own default property and the table is already right).
+    const hinted = hintedGroup(bare);
+    let gk: string | null = hinted ?? null;
+    if (hinted === undefined || hinted === null) {
+      for (const [re, g] of GROUPS) {
+        if (re.test(bare)) { gk = g; break; }
+      }
     }
     if (gk) {
+      // Remove earlier survivors in this group AND in every group it subsumes.
       for (const g of [gk, ...(CONFLICTS[gk] ?? [])]) {
         const k = `${prefix}::${g}`;
         const idx = lastByKey.get(k);
