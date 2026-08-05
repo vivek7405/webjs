@@ -46,9 +46,14 @@ before(async () => {
 });
 
 /**
- * Count renderer bookends under `root`, at any depth. Reads MARKER rather than
- * hardcoding the prefix, so a rename of the marker text cannot leave this
- * silently counting nothing and passing.
+ * Count renderer bookends under `root`, at any depth.
+ *
+ * It reads MARKER for the prefix but spells the `s` / `e` suffix here, so it
+ * tracks only half of the marker text and a rename of the other half would
+ * leave it counting zero. That is what `baselineBookends` is for: nothing in
+ * this file compares two counts without first proving the baseline is
+ * non-zero, so a counter that has stopped seeing anything fails instead of
+ * passing on `0 === 0`.
  */
 function countBookends(root) {
   let s = 0;
@@ -63,6 +68,19 @@ function countBookends(root) {
   };
   walk(root);
   return { s, e };
+}
+
+/**
+ * Capture the post-first-render count every leak case measures against, and
+ * refuse a baseline that is empty or unpaired. Without the non-zero arm a
+ * counter that matches nothing makes every later comparison `0 === 0`, and
+ * the case passes while observing exactly nothing.
+ */
+function baselineBookends(el, label) {
+  const got = countBookends(el);
+  assert.equal(got.s, got.e, `${label}: baseline unpaired (${got.s} start, ${got.e} end)`);
+  assert.ok(got.e > 0, `${label}: baseline counted no bookends, so nothing below can fail`);
+  return got;
 }
 
 /** Assert the bookends are paired AND back to `baseline`. */
@@ -85,8 +103,7 @@ test('repeat(): rows removed across many cycles leave no orphan markers', () => 
     html`<ul>${repeat(items, (it) => it.id, (it) => html`<li>${it.t}</li>`)}</ul>`;
 
   render(view(rows(4)), el);
-  const baseline = countBookends(el);
-  assert.equal(baseline.s, baseline.e, 'baseline is paired');
+  const baseline = baselineBookends(el, 'repeat');
   // The row at index 0 is present in every render below, so keyed
   // reconciliation must hand back the SAME element each time. This is the
   // teardown-only guarantee: removing rows 2 and 3 must not perturb the rows
@@ -119,7 +136,7 @@ test('repeat(): a same-key template swap leaves no orphan markers', () => {
     )}</ul>`;
 
   render(view(false), el);
-  const baseline = countBookends(el);
+  const baseline = baselineBookends(el, 'same-key swap');
 
   for (let i = 0; i < 5; i++) {
     render(view(true), el);
@@ -140,7 +157,7 @@ test('plain .map() array: shrinking the array leaves no orphan markers', () => {
   const view = (n) => html`<ul>${rows(n).map((it) => html`<li>${it.t}</li>`)}</ul>`;
 
   render(view(4), el);
-  const baseline = countBookends(el);
+  const baseline = baselineBookends(el, 'array shrink');
 
   for (let i = 0; i < 5; i++) {
     render(view(1), el);
@@ -156,7 +173,7 @@ test('plain .map() array: emptying it entirely leaves no orphan markers', () => 
   const view = (n) => html`<ul>${rows(n).map((it) => html`<li>${it.t}</li>`)}</ul>`;
 
   render(view(3), el);
-  const baseline = countBookends(el);
+  const baseline = baselineBookends(el, 'array empty');
 
   for (let i = 0; i < 5; i++) {
     render(view(0), el);
@@ -184,7 +201,7 @@ test('child hole: swapping template shape leaves no orphan markers', () => {
   const b = () => html`<em>B</em>`;
 
   render(view(a()), el);
-  const baseline = countBookends(el);
+  const baseline = baselineBookends(el, 'child hole swap');
 
   for (let i = 0; i < 5; i++) {
     render(view(b()), el);
@@ -197,8 +214,11 @@ test('child hole: swapping template shape leaves no orphan markers', () => {
 });
 
 /* ------------------------------------------------------------------ *
- * U5: teardownChild reaching teardownRepeat, when a hole stops being a
- * list at all.
+ * U5: a hole that stops being a list, and becomes one again. Each direction
+ * takes a different route: list to single tears the repeat down through
+ * `applyChildInnerRaw`'s own branch, and single to list removes the plain
+ * instance through `teardownChild`'s `strings` branch. `teardownChild`'s
+ * repeat branch is NOT what this reaches, and nothing in this file does.
  * ------------------------------------------------------------------ */
 
 test('child hole: swapping a repeat() out for a single template leaves no orphan markers', () => {
@@ -209,7 +229,7 @@ test('child hole: swapping a repeat() out for a single template leaves no orphan
   const single = () => html`<span>solo</span>`;
 
   render(view(list()), el);
-  const baseline = countBookends(el);
+  const baseline = baselineBookends(el, 'child hole list/single');
 
   for (let i = 0; i < 5; i++) {
     render(view(single()), el);
