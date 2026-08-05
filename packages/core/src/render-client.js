@@ -2055,42 +2055,95 @@ function reconcileArray(part, value) {
   const old = state.items;
   /** @type {ArrayItem[]} */
   const next = [];
+  // How many slots of `old` are fully processed. Tracked rather than inferred
+  // from `next.length`, because the shrink loop below advances through `old`
+  // while `next` stops growing, so the two part company there. The catch is
+  // the only reader.
+  let consumed = 0;
 
-  for (let i = 0; i < value.length; i++) {
-    const v = value[i];
-    const o = old[i];
-    if (isTemplate(v)) {
-      const tr = /** @type any */ (v);
-      if (o && o.type === 'tpl' && o.inst.strings === tr.strings) {
-        updateInstance(o.inst, tr.values);
-        next.push(o);
+  try {
+    for (let i = 0; i < value.length; i++) {
+      const v = value[i];
+      const o = old[i];
+      if (isTemplate(v)) {
+        const tr = /** @type any */ (v);
+        if (o && o.type === 'tpl' && o.inst.strings === tr.strings) {
+          updateInstance(o.inst, tr.values);
+          next.push(o);
+          consumed = i + 1;
+          continue;
+        }
+      } else if (v != null && v !== false && v !== true) {
+        if (o && o.type === 'text') {
+          const str = String(v);
+          if (o.node.data !== str) o.node.data = str;
+          next.push(o);
+          consumed = i + 1;
+          continue;
+        }
+      } else {
+        // Empty slot: drop any prior nodes that occupied this position. The
+        // push comes FIRST for the same reason as in the branch below.
+        next.push({ type: 'empty' });
+        if (o) removeArrayItem(o);
+        consumed = i + 1;
         continue;
       }
-    } else if (v != null && v !== false && v !== true) {
-      if (o && o.type === 'text') {
-        const str = String(v);
-        if (o.node.data !== str) o.node.data = str;
-        next.push(o);
-        continue;
-      }
-    } else {
-      // Empty slot: drop any prior nodes that occupied this position.
+      // Shape changed, or the array grew past the old length. Build fresh,
+      // insert at this position (before the current / next still-attached
+      // old node, else the marker), then drop the old slot it replaced.
+      // The push sits BEFORE the removal, which is a pure reordering on the
+      // success path and means a slot that has already been built and
+      // inserted is never untracked at any throw point.
+      const { item, frag } = buildArrayItem(v);
+      if (frag) parent.insertBefore(frag, nextArrayAnchor(old, i, marker));
+      next.push(item);
       if (o) removeArrayItem(o);
-      next.push({ type: 'empty' });
-      continue;
+      consumed = i + 1;
     }
-    // Shape changed, or the array grew past the old length. Build fresh,
-    // insert at this position (before the current / next still-attached
-    // old node, else the marker), then drop the old slot it replaced.
-    const { item, frag } = buildArrayItem(v);
-    if (frag) parent.insertBefore(frag, nextArrayAnchor(old, i, marker));
-    if (o) removeArrayItem(o);
-    next.push(item);
-  }
 
-  // Shrink: remove slots beyond the new length.
-  for (let i = value.length; i < old.length; i++) removeArrayItem(old[i]);
-  state.items = next;
+    // Shrink: remove slots beyond the new length.
+    for (let i = value.length; i < old.length; i++) {
+      removeArrayItem(old[i]);
+      consumed = i + 1;
+    }
+    state.items = next;
+  } catch (err) {
+    // `state.items` is committed only after the whole walk, so a throw part
+    // way through discards `next` entirely: the map of slots keeps describing
+    // positions whose nodes were already removed, while the freshly built and
+    // inserted ones are in the document tracked by nothing. Nothing is logged
+    // after the first throw, and the orphan outlives even a render of an EMPTY
+    // array, because the only code that could remove it walks `state.items`.
+    //
+    // Splice the untouched tail of `old` onto what `next` accumulated, so the
+    // bookkeeping describes the DOM again. The invariant that holds at any
+    // throw point: every live node is described by exactly one slot, the
+    // slots below `next.length` being the rebuilt or reused ones and the rest
+    // the part of `old` this pass never reached. Index alignment survives
+    // because this reconciler is POSITIONAL, so a slot's index IS its
+    // identity, which is also why the boundary has to come from `consumed`
+    // rather than `next.length`: during the shrink loop those differ, and
+    // splicing from `next.length` would re-describe slots already removed.
+    // A later render that grew the array would then match a live value
+    // against a DETACHED slot with the same `strings`, update it in place,
+    // and that row would silently never appear.
+    //
+    // Deliberately NOT a teardown-and-rebuild of the region, for the reason
+    // recorded on `reconcileRepeat`'s catch above: it discards node identity
+    // for every row, which cancels an in-progress native drag and drops focus
+    // and scroll.
+    //
+    // Two residuals, both from the removal step itself rather than the
+    // bookkeeping. A throw out of `removeArrayItem` leaves the slot it was
+    // removing described one position later than it sits, costing that row
+    // its identity on the next render but orphaning nothing (and it takes a
+    // throwing DOM to reach at all, since the teardown it calls is total).
+    // Beyond that only `removeBetween` can throw, and it calls `removeChild`
+    // solely on nodes the renderer owns.
+    state.items = next.concat(old.slice(consumed));
+    throw err;
+  }
 }
 
 /**
