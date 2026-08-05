@@ -38,8 +38,11 @@ That mints 16 random bytes per request, base64-encoded to a 24-character value, 
 content-security-policy: default-src 'self';
   script-src 'nonce-PHnV6C8xj3wFBaEaNxEXVw==' 'strict-dynamic' 'self' https:;
   style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;
-  base-uri 'self'; form-action 'self'; object-src 'none'
+  font-src 'self' data: https:; connect-src 'self'; base-uri 'self';
+  form-action 'self'; frame-ancestors 'self'; object-src 'none'
 ```
+
+(One header, wrapped here to fit. Those ten directives are the full default policy.)
 
 Every inline `<script>` in that response body carries `nonce="PHnV6C8xj3wFBaEaNxEXVw=="`, and so does every `<link rel="modulepreload">`. Request the same URL again and every one of those values has changed together. Nothing is shared between two requests, which is the entire point.
 
@@ -69,7 +72,7 @@ The real value moves to the `.nonce` IDL property, which is same-origin script-r
 
 WebJs emits that tag during SSR whenever CSP is enabled, and it is worth being precise about what it is and is not. It is not enforcement. The policy is enforced by the response header, always, never by a `<meta http-equiv>` tag, which is what lets directives like `frame-ancestors` and `report-uri` work at all (a meta-tag CSP cannot express them). The `csp-nonce` meta is purely a carrier: the server publishes the document's nonce there once, and the client reads it for the life of the document.
 
-Turbo and Rails landed on the same shape independently. When three codebases arrive at one answer from different directions, that is usually the answer.
+I did not arrive at that tag on my own. It is Turbo's pattern, with Rails emitting the meta tag to feed it, and I took it rather than inventing a second spelling of a solved problem. A value the server publishes once and the client reads for the life of the document is the right shape for this, and it was already sitting there.
 
 # Three things the router does on every swap
 
@@ -109,7 +112,7 @@ export default function Analytics() {
 
 Pages and layouts are the right home for this, since they render only on the server. In a component, interpolating into a `<style>` or `<script>` body breaks for an unrelated reason (the server emits it, the client drops the raw-text hole, and the content wipes on hydration), so component styling goes through `static styles` or Tailwind instead.
 
-For a staged rollout, `reportOnly` sends the violations to your logs without enforcing anything, and directives merge one at a time over the strict defaults rather than being restated wholesale.
+For a staged rollout, `reportOnly` emits the report-only header instead of the enforcing one, so violations surface without anything being blocked. They land in the browser console by default, so add a `report-to` or `report-uri` directive if you want them collected anywhere you can read later. Directives merge one at a time over the strict defaults rather than being restated wholesale.
 
 ```jsonc
 {
@@ -122,7 +125,7 @@ For a staged rollout, `reportOnly` sends the violations to your logs without enf
 }
 ```
 
-A malformed config disables CSP and says so rather than throwing, because a security knob that takes the app down on a typo teaches people to leave it off.
+A malformed config disables CSP rather than throwing, because a security knob that takes the app down on a typo teaches people to leave it off. Know that it fails quietly, though. A bad directive value gets a warning, but a config that is not an object at all, `"csp": "true"` with the quotes around it, just switches the whole thing off without a word. Check for the header once after you turn it on rather than assuming.
 
 # The control everyone turns off again
 

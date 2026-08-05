@@ -40,7 +40,7 @@ That is the complete divergence surface, at the level a person actually hits it.
 A few of the entries, to give the shape of it:
 
 - **`'use client'` does nothing.** There is no server/client component split, [no RSC render tree, and no Flight protocol](/blog/server-actions-without-react-server-components). The boundary in WebJs runs between kinds of file, not kinds of component.
-- **Reactive properties are declared in a base-class factory**, `extends WebComponent({ count: Number })`, not with a `@property()` decorator or a `static properties` block. The mechanism is [ordinary property descriptors on the prototype](/blog/building-on-javascript-not-around-it), which is why a class-field initializer breaks it.
+- **Reactive properties are declared in a base-class factory**, `extends WebComponent({ count: Number })`, not with a `@property()` decorator or a `static properties` block. Each one becomes [a real accessor the constructor installs on the instance](/blog/building-on-javascript-not-around-it), which is why a class-field initializer silently replaces it and the re-renders stop.
 - **Components render into [light DOM by default](/blog/light-dom-by-default)**, with shadow DOM one line away when you want it.
 - **`fetch()` in a page is the wrong tool.** You call a server action, imported like a normal function, and the import becomes a typed RPC stub.
 - **A browser global in a constructor or `render()` throws during SSR**, because SSR really does run those two and not the browser-only lifecycle hooks.
@@ -51,7 +51,7 @@ Read those five and a pattern shows up. Not one of them is a preference.
 
 Take the reactive-property factory, the divergence people notice first because it is the most visible cosmetic difference from Lit.
 
-Lit declares properties with a decorator. Decorators, in the TypeScript form that carries the metadata a framework needs, are not erasable syntax. WebJs has no build step, so types come off with Node's built-in stripper, which erases whitespace in place and refuses anything that is not pure erasure. A decorator that needs `emitDecoratorMetadata` cannot survive that, which means the decorator form is not available at any price, however much I might prefer the ergonomics.
+Lit declares properties with a decorator. Decorators, in the TypeScript form that carries the metadata a framework needs, are not erasable syntax. WebJs has no build step, so types come off with Node's built-in stripper, which overwrites the type syntax with whitespace in place and refuses anything that is not pure erasure. A decorator that needs `emitDecoratorMetadata` cannot survive that, which means the decorator form is not available at any price, however much I might prefer the ergonomics.
 
 So the choice was never "decorator or factory". It was "keep the no-build guarantee or keep the familiar spelling", and no-build is load-bearing for everything else, including the stack traces that point at your real line numbers and the `node_modules` source that reads like source. The factory is what the constraint left standing.
 
@@ -75,7 +75,7 @@ See https://webjs.dev/docs/components.
 
 It names your class, shows the replacement, and links the reference. The failure it replaces is the silent kind, which is what makes it worth the code. Reactivity that quietly stops working looks like your own bug, and you will go looking for it in your own code first.
 
-The static counterpart is `webjs check`, which today runs 22 correctness rules and nothing else. The bar for a rule is deliberately narrow. It has to catch code that is wrong to ship, a crash or a security leak or a type-strip failure, and never a matter of preference. Preferences live in prose where they can be argued with. So a class field shadowing a reactive accessor is a rule, and so is a server-only import reaching a module that genuinely ships to the browser. Where you put your files is not.
+The static counterpart is `webjs check`, which today runs 20 correctness rules and nothing else. The bar for a rule is deliberately narrow. It has to catch code that is wrong to ship, a crash or a security leak or a type-strip failure, and never a matter of preference. Preferences live in prose where they can be argued with. So a class field shadowing a reactive accessor is a rule, and so is a server-only import reaching a module that genuinely ships to the browser. Where you put your files is not.
 
 The pattern is that the divergences are the things that carry enforcement. Familiar surfaces need no guardrail, since being right by default is what makes them familiar. The exceptions are where the throws and the check rules go.
 
