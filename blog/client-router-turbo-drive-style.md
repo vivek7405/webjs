@@ -1,5 +1,5 @@
 ---
-title: "Client-Side Routing Without the Full-Page Reload (or: Goodbye, White Flash)"
+title: "Client-Side Routing Without the Full-Page Reload"
 date: 2026-02-22T10:30:00+05:30
 slug: client-router-turbo-drive-style
 description: "How WebJs does client-side routing by default. SPA navigation with no full-page reload and no white flash, keeping nested layouts mounted across page changes."
