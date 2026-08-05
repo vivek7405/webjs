@@ -534,7 +534,7 @@ webjs vendor pin|unpin|list|audit|outdated|update [--from PROVIDER]   # importma
 
 Every app ships the **conventions** as prose, in `.agents/skills/webjs/SKILL.md` (how to build) and `.agents/rules/workflow.md` (git, tests, review). These are guidance a reasonable project could do differently (modules layout, action placement, one-function-per-file, testing, styling, git workflow), followed by judgment, not tool-enforced.
 
-**`webjs check` is a separate, narrower tool: correctness checks only.** Every rule catches code that is wrong to ship (a crash, a security leak, a build/type-strip failure). They run unconditionally with no per-project disabling. The dividing line: could a sensible app legitimately want this to pass? If yes it is a convention (prose), if no it is a check (the tool). `webjs check --rules` lists them.
+**`webjs check` is a separate, narrower tool: correctness checks only.** Every rule catches code that is wrong to ship (a crash, a security leak, a reactive prop that silently stops re-rendering, a build/type-strip failure). They run unconditionally with no per-project disabling. The dividing line: could a sensible app legitimately want this to pass? If yes it is a convention (prose), if no it is a check (the tool). `webjs check --rules` lists them.
 
 So: read the skill and follow its conventions by judgment; run `webjs check` and fix every violation (correctness bugs, not style).
 

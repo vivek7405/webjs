@@ -655,7 +655,8 @@ async function main() {
       if (rest.includes('--rules')) {
         console.log('webjs check, correctness rules:');
         console.log('  Every rule catches code that is wrong to ship: a crash, a');
-        console.log('  security leak, or a build/type-strip failure. They always');
+        console.log('  security leak, a reactive prop that silently stops');
+        console.log('  re-rendering, or a build/type-strip failure. They always');
         console.log('  run. Project conventions (layout, style, process) are');
         console.log('  guidance in CONVENTIONS.md, not rules here.\n');
         for (const r of RULES) {

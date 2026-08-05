@@ -172,7 +172,7 @@ A cross-runtime proof is often a plain assert script rather than a test file, so
 
 ## Convention validation (`webjs check`)
 
-`npm run check` is the correctness validator. Every rule catches code that is wrong to ship (a crash, a security leak, a type-strip failure), plus the `no-scaffold-placeholder` sentinel for unreplaced scaffold content. Run it and fix every violation before considering the change done (`npm run check -- --json` for an agent loop, `npm run check -- --rules` to list the rules). It is separate from `CONVENTIONS.md`, which carries the customizable project conventions you follow by judgment.
+`npm run check` is the correctness validator. Every rule catches code that is wrong to ship, a crash, a security leak, a reactive prop that silently stops re-rendering, or a type-strip failure. Run it and fix every violation before considering the change done (`npm run check -- --json` for an agent loop, `npm run check -- --rules` to list the rules). It is separate from `CONVENTIONS.md`, which carries the customizable project conventions you follow by judgment.
 
 ## What NOT to do
 

@@ -20,10 +20,10 @@ The fix is to intercept link clicks, fetch the next page over fetch(), and patch
 
 The client router turns itself on as soon as `@webjsdev/core` loads, which any page carrying a component already does, so there is nothing to import and nothing to opt into. Once it is live, every same-origin `<a>` click goes through this path. The docstring describes it in five steps:
 
-1. SSR injects `<!--wj:children:<segment-path>:<route-key>-->...<!--/wj:children:<segment-path>-->` comment markers around each layout's `${children}` interpolation (one pair per layout in the chain). The route key is the resolved path with param values filled in, which is what lets step 3 tell one instance of a dynamic layout from another.
+1. SSR injects `<!--wj:children:<segment-path>:<route-key>-->...<!--/wj:children:<segment-path>-->` comment markers around each layout's `${children}` interpolation, one pair per layout in the chain, plus one around the page itself (skipped when the page's segment would collide with the innermost layout's). The route key is the resolved path with param values filled in.
 2. On link click, walk both the live DOM and the incoming HTML for these markers and build a path-to-range map.
-3. Find the longest shared marker path. That is the deepest layout both pages have in common.
-4. Replace nodes between that marker pair in the live DOM with the equivalent range from the incoming HTML, using a keyed reconciler that preserves input values, scroll, popover state, and DOM identity where it can.
+3. Compare the two maps. A shared boundary whose route key CHANGED wins first, and the swap is anchored at the parent of the shallowest such change, which remounts that layout the way Next does. Only when no key changed does the deepest shared boundary become the target.
+4. Replace nodes between that marker pair in the live DOM with the equivalent range from the incoming HTML, using a keyed reconciler that preserves input values, scroll, popover state, and DOM identity where it can. The cheaper in-place morph is chosen only when that deepest boundary is the leaf on both sides.
 5. Merge head tags, re-run scripts, upgrade custom elements, `history.pushState`.
 
 The whole loop runs in a microtask. The body never repaints between pages.
@@ -44,11 +44,11 @@ The naive alternative (full page reload) breaks all three. The slightly-less-nai
 
 # How it knows what to swap
 
-The framework auto-emits the HTML comment markers at SSR time. You do not write them. The renderer detects `${children}` interpolations inside layout functions and emits `<!--wj:children:<segment-path>:<route-key>-->` before and `<!--/wj:children:<segment-path>-->` after.
+The framework auto-emits the HTML comment markers at SSR time. You do not write them. The renderer detects `${children}` interpolations inside layout functions and emits `<!--wj:children:<segment-path>:<route-key>-->` before and `<!--/wj:children:<segment-path>-->` after. The page gets its own pair too, which is what makes a bare param change remount the page.
 
-The path encoding (`/<segment-path>`) lets the client distinguish between nested layouts. Root `/`, then `/dashboard`, then `/dashboard/settings`, each as its own marker pair. The deepest matching pair between the current and incoming DOM is where the swap happens.
+The path encoding (`/<segment-path>`) lets the client distinguish between nested layouts. Root `/`, then `/dashboard`, then `/dashboard/settings`, each as its own marker pair. Where no route key changed, the deepest matching pair between the current and incoming DOM is where the swap happens.
 
-The route key on the opening marker carries the resolved path with its param values, which is what separates two instances of the same dynamic layout. `/users/7` and `/users/9` share a segment path but not a route key, so the router replaces that layout rather than morphing one user's chrome into another's.
+The route key on the opening marker carries the resolved path with its param values, and it takes precedence over that deepest-pair rule. `/users/7` and `/users/9` share a segment path but not a route key, so the router replaces at the parent of that boundary rather than morphing one user's chrome into another's. Segment membership alone would have called those two the same layout.
 
 This is automatic. The user does not write the markers. The framework adds them at SSR time wherever a layout interpolates `${children}`. The router uses them as nav-stable swap points.
 

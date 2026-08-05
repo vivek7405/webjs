@@ -199,12 +199,12 @@ Run the mandatory generate + boot + check verifications in PARALLEL when more th
    ```sh
    # generate (files only is enough for structure/typecheck; install to boot)
    node -e "import('packages/cli/lib/create.js').then(m => m.scaffoldApp('probe', '/tmp/x', { template: 'full-stack', install: false }))"
-   # then in the generated app: webjs check (only no-scaffold-placeholder should
-   # remain), webjs typecheck (clean), and boot it to hit the new route(s).
+   # then in the generated app: webjs check (clean), webjs typecheck (clean),
+   # and boot it to hit the new route(s).
    ```
    A scaffold change is NOT done until a freshly generated app of each affected
-   template BOOTS, serves the new/changed route, passes `webjs check` (only the
-   intended `no-scaffold-placeholder` markers), and `webjs typecheck` is clean.
+   template BOOTS, serves the new/changed route, passes `webjs check`, and
+   `webjs typecheck` is clean.
 5. Run the scaffold tests (`node --test 'test/scaffolds/*.test.js'`) and add/adjust
    assertions (a new demo in the FEATURES list, a per-template inclusion/exclusion
    test, the counterfactual).
