@@ -140,6 +140,22 @@ test('a paragraph between indented bullets does start a new nested list', () => 
   assert.equal(countEntryItems(html), 1);
 });
 
+test('a changed bullet marker starts a new nested list', () => {
+  // CommonMark starts a new list when the bullet character changes, so the
+  // resume rule has to match on the marker too. Merging across it would join
+  // two lists the markdown separated on purpose.
+  const html = renderEntryBody([
+    '- **entry**',
+    '  - dash item',
+    '',
+    '  * star item',
+  ].join('\n'));
+
+  const nested = html.match(/<ul class="list-disc pl-5 space-y-1[^"]*">[\s\S]*?<\/ul>/g) || [];
+  assert.equal(nested.length, 2);
+  assert.equal(countEntryItems(html), 1);
+});
+
 test('no changelog file renders a fragmented nested list', () => {
   // Whole-corpus form of the two tests above. Adjacent nested lists inside
   // one entry are always a list that got split, since nothing can sit

@@ -34,7 +34,7 @@ function inline(s: string): string {
  */
 type Block =
   | { kind: 'p'; lines: string[] }
-  | { kind: 'ul'; items: string[][] };
+  | { kind: 'ul'; marker: string; items: string[][] };
 
 /** Render the body of one changelog entry: h1 / h2 / bulleted lists / paragraphs. */
 export function renderEntryBody(md: string): string {
@@ -101,6 +101,7 @@ export function renderEntryBody(md: string): string {
       startList();
       openItem(line.slice(2).trim());
     } else if (itemOpen && /^ {2,}[-*] /.test(line)) {
+      const marker = line.trim()[0];
       const text = line.trim().slice(2).trim();
       // Resume the TRAILING nested list rather than the open one. A blank
       // line between indented bullets is a LOOSE list in CommonMark, still
@@ -109,9 +110,13 @@ export function renderEntryBody(md: string): string {
       // would emit a separate single-item list per bullet, each with its own
       // margin, splitting one list into several. A paragraph in between is a
       // different matter, and genuinely does start a new list.
+      //
+      // The marker has to match to resume, because CommonMark starts a NEW
+      // list when the bullet character changes. Merging across that would
+      // join two lists the markdown deliberately separated.
       const last = blocks[blocks.length - 1];
-      if (last && last.kind === 'ul') { last.items.push([text]); openBlock = last; }
-      else pushBlock({ kind: 'ul', items: [[text]] });
+      if (last && last.kind === 'ul' && last.marker === marker) { last.items.push([text]); openBlock = last; }
+      else pushBlock({ kind: 'ul', marker, items: [[text]] });
     } else if (itemOpen && /^ {2,}\S/.test(line)) {
       const text = line.trim();
       // A lazy continuation of the sub-item when a nested list is open, a
