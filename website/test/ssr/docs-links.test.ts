@@ -194,6 +194,100 @@ test('a doc page h1 matches its sidebar label', async () => {
   }
 });
 
+test('every docs sidebar label and section title is Title Case', async () => {
+  // Two labels drifted to sentence case ('Build your own authentication' and
+  // 'Auth providers (createAuth)') against 42 Title Case siblings, and nothing
+  // caught it because casing is not a link, a title, or an order. The rule is
+  // the one comparable docs sites converge on: prose takes the project's
+  // convention, and a CODE IDENTIFIER is written verbatim and never recased.
+  // Qwik ships both 'API Reference' and 'API reference' in one sidebar because
+  // neither half was ever written down.
+  //
+  // This is a FLOOR, not a Title Case parser. It asserts each word STARTS with
+  // a capital, so 'Build YOUR Own Authentication' passes. That is deliberate:
+  // the drift it exists to catch is sentence case, and a stricter rule is one
+  // people delete the first time it fires on something legitimate.
+
+  // Words a title-case scheme leaves lowercase after the first position.
+  // Generous on purpose, so this PERMITS both 'Deploying With Docker' and
+  // 'Deploying with Docker'. Only 'Migrating from Next.js' exercises it today.
+  // The rest are here so the first 'Deploying on Railway' does not red CI for a
+  // label that was never wrong.
+  const MINOR_WORDS = new Set([
+    'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'if', 'in', 'into',
+    'nor', 'of', 'off', 'on', 'onto', 'or', 'over', 'per', 'so', 'the', 'to',
+    'up', 'via', 'vs', 'with', 'yet',
+  ]);
+
+  // Identifiers are kept VERBATIM. No structural rule can carry this: shape
+  // detects '@webjsdev/ui' and 'createAuth', but a future 'webjs check' label
+  // is two ordinary lowercase words, byte-indistinguishable from the slip this
+  // test hunts. So the exemption is a named list, and adding to it is the
+  // deliberate act that records "identifier, not prose". Matched against the
+  // word with wrapping punctuation stripped, so it survives a rename to
+  // 'Auth Providers (createAuth API)'.
+  const IDENTIFIERS = new Set(['createAuth', '@webjsdev/ui']);
+
+  const layout = await readFile(resolve(DOCS_ROOT, 'layout.ts'), 'utf8');
+  // Slice to the NAV_SECTIONS literal. Outside it sit the docs-scoped metadata
+  // block (its own `title:` keys) and the shell call's aria labels
+  // ('Documentation', 'Documentation menu'), none of which are nav text and the
+  // last of which is legitimately sentence case.
+  const start = layout.indexOf('const NAV_SECTIONS');
+  const end = layout.indexOf('\n];', start);
+  assert.ok(start !== -1 && end > start, 'could not locate the NAV_SECTIONS literal in layout.ts');
+  const nav = layout.slice(start, end);
+  assert.ok(!nav.includes('generateMetadata'), 'the NAV_SECTIONS slice ran past the end of the literal');
+
+  // `label:` is read on its own rather than anchored to a preceding `href:`.
+  // The anchored form yields NOTHING for an entry written
+  // `{ label: '...', href: '...' }`, and a guard that quietly checks 30 of 44
+  // labels is the exact failure mode it exists to prevent. The href count is
+  // the cross-check: every nav item has one of each.
+  const labels = [...nav.matchAll(/\blabel:\s*'([^']+)'/g)].map((m) => m[1]);
+  const titles = [...nav.matchAll(/\btitle:\s*'([^']+)'/g)].map((m) => m[1]);
+  const hrefs = [...nav.matchAll(/\bhref:\s*'([^']+)'/g)].map((m) => m[1]);
+
+  assert.equal(
+    labels.length,
+    hrefs.length,
+    `parsed ${hrefs.length} hrefs but ${labels.length} labels: a nav entry is written in a shape this test cannot read, so it is silently not being checked`,
+  );
+  // Floors matching the sibling checks in this file, so a regex that stops
+  // matching fails here instead of passing empty.
+  assert.ok(labels.length > 40, `sanity: expected the full sidebar, parsed ${labels.length} labels`);
+  assert.ok(titles.length > 3, `sanity: expected every section, parsed ${titles.length} titles`);
+
+  const offenders: string[] = [];
+  for (const value of [...titles, ...labels]) {
+    value.split(/\s+/).forEach((token, i) => {
+      // 'Runtime (Node & Bun)', 'Editor Setup (Neovim, VS Code)', 'cache()'
+      const word = token.replace(/^\(+|[)(,.]+$/g, '');
+      if (!/[A-Za-z]/.test(word)) return; // the bare & in 'Streaming & Suspense'
+      if (IDENTIFIERS.has(word)) return;
+      if (i > 0 && MINOR_WORDS.has(word.toLowerCase())) return;
+      if (!/^[A-Z]/.test(word)) offenders.push(`${value}  ->  '${word}'`);
+    });
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    'these docs sidebar entries are not Title Case (entry -> the lowercase word):\n  ' +
+      offenders.join('\n  ') +
+      '\n\nThe docs sidebar is Title Case throughout, section titles included. Pick the fix that matches the word:\n' +
+      '  1. ORDINARY WORD: recase it in app/docs/layout.ts. This is the fix nearly every\n' +
+      '     hit wants, and it is what the last two drifts needed.\n' +
+      "  2. CODE IDENTIFIER: add it VERBATIM to IDENTIFIERS at the top of this test\n" +
+      "     (a package like '@webjsdev/ui', an export like 'createAuth', a command like\n" +
+      "     'webjs check', a filename like 'package.json'). Identifiers keep their own\n" +
+      '     casing and are never title-cased, so the label is correct and the test is\n' +
+      '     what needs updating. Add each word of a multi-word command separately.\n' +
+      "  3. LOWERCASE-IN-TITLE WORD this list does not know yet ('amid', 'until'): add it\n" +
+      '     to MINOR_WORDS instead.',
+  );
+});
+
 test('the llms.txt index follows the sidebar order', async () => {
   // The order used to be a hand-copied list that had already drifted from the
   // sidebar, so the AI-facing index put Runtime and Security in an
