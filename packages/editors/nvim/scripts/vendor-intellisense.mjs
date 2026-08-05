@@ -4,6 +4,12 @@
  * clones the repo), so the language-service plugin must be COMMITTED inside
  * the plugin and pointed at via tsserver's probe location.
  *
+ * Re-run this after any change under `packages/editors/intellisense/src`, AND
+ * after any edit to that package's `package.json`, a release version bump
+ * included. The drift guard in `../test/vendor-sync.test.mjs` compares both
+ * in full, so a bumped-but-not-re-vendored manifest reds CI (#1117 shipped a
+ * plugin misreporting its own language-service version for want of that).
+ *
  * @webjsdev/intellisense is standalone, dependency-free plain CJS (#386), so we
  * copy its `package.json` + `src/` verbatim into
  *   packages/editors/nvim/vendor/node_modules/@webjsdev/intellisense/
@@ -15,9 +21,9 @@
  * repo's root .gitignore excludes. The files are committed anyway via
  * `git add -f` (once tracked, git keeps staging their changes regardless of
  * .gitignore). The standalone webjs.nvim repo (a subtree split of
- * packages/editors/nvim) ships them as ordinary files. Re-run this whenever
- * `packages/editors/intellisense/src` changes, then `git add -f packages/editors/nvim/vendor`.
- * `test/vendor-sync.test.mjs` fails if the committed copy drifts from source.
+ * packages/editors/nvim) ships them as ordinary files. After re-running this,
+ * `git add -f packages/editors/nvim/vendor`. `test/vendor-sync.test.mjs` fails
+ * if the committed copy drifts from source.
  */
 import { cpSync, mkdirSync, rmSync, copyFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

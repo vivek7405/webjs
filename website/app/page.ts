@@ -2,7 +2,7 @@ import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import '#components/like-button.ts';
 import { COMPONENT_SAMPLE, TOGGLE_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE, USAGE_SAMPLE } from '#lib/samples.ts';
-import { DOCS_PATH, DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_PATH, DOCS_START_PATH, GH_URL, NEW_TAB, SAME_AS } from '#lib/links.ts';
 // highlight() runs only at SSR (codeWindow renders its output into the served
 // HTML), but it does ship to the client as a small dead module: the page loads
 // in the browser to register copy-cmd, and that pulls in its
@@ -29,28 +29,47 @@ import { ctaPanel } from '#lib/ui/cta-panel.ts';
 const SITE_URL = 'https://webjs.dev';
 export const metadata = {
   jsonLd: [
+    // Every node carries an @id. Three of these share a name and a url, so
+    // without one a crawler cannot tell whether they are three descriptions
+    // of one thing or three things, and the two that also share a sameAs
+    // would differ only by @type. The @id says plainly which is which: the
+    // project as an organisation, the software it publishes, and the site
+    // you are reading. Consolidating a contested name is the point of the
+    // sameAs, and that only works if what is being consolidated is named.
     {
       '@context': 'https://schema.org',
       '@type': 'WebSite',
+      '@id': `${SITE_URL}#website`,
       name: 'WebJs',
       url: SITE_URL,
       description: 'An AI-first, web-components-first full-stack web framework with no build step.',
+      publisher: { '@id': `${SITE_URL}#organization` },
     },
     {
       '@context': 'https://schema.org',
       '@type': 'Organization',
+      '@id': `${SITE_URL}#organization`,
       name: 'WebJs',
       url: SITE_URL,
       logo: `${SITE_URL}/public/favicon.png`,
-      sameAs: ['https://github.com/webjsdev/webjs', 'https://discord.gg/qZScjWWNA8'],
+      // Every owned property, from the one shared list in lib/links.ts, so
+      // this node, the SoftwareApplication below it, and the one on
+      // /what-is-webjs all state the same entity graph (#1100).
+      sameAs: SAME_AS,
     },
     {
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',
+      // The SAME id as the node on /what-is-webjs, which is what makes them
+      // one software entity described twice rather than two that happen to
+      // agree. That is also why both carry the identical sameAs.
+      '@id': `${SITE_URL}#software`,
       name: 'WebJs',
       applicationCategory: 'DeveloperApplication',
       operatingSystem: 'Node.js 24+, Bun',
       url: SITE_URL,
+      publisher: { '@id': `${SITE_URL}#organization` },
+      sameAs: SAME_AS,
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
     },
   ],

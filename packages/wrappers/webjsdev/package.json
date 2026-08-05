@@ -2,7 +2,7 @@
   "name": "webjsdev",
   "version": "0.9.0",
   "type": "module",
-  "description": "The webjs CLI, published unscoped on npm. Unscoped alias for @webjsdev/cli. Installs the `webjs` command.",
+  "description": "WebJs is a full-stack JavaScript framework built on web components, with server-side rendering and no build step. Runs on Node 24+ or Bun. This package is the unscoped alias for @webjsdev/cli and installs the `webjs` command.",
   "bin": {
     "webjs": "bin/webjsdev.js"
   },
