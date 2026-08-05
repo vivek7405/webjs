@@ -22,18 +22,37 @@ import { assert } from '../../../../../test/browser-assert.js';
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 /**
- * Resolve once the router has SETTLED the navigation a click asked for, rather
- * than after an arbitrary macrotask. Two outcomes end a navigation and the
- * router announces both on `document`: `webjs:navigate` when a soft swap
- * committed, `webjs:navigation-fallback` when it degraded to a full load. The
- * promise is created BEFORE the click, because a degradation can be dispatched
- * synchronously from inside the click handler and a listener attached after the
- * click would miss it.
+ * Resolve once the router is done with the navigation in flight, rather than
+ * after an arbitrary macrotask, so a test never dismantles its fixture from
+ * under a running swap.
  *
- * The bounded timeout covers the third outcome, a click the router never
- * intercepted at all, which announces nothing. That case must still return so
- * the test fails on its own assertion instead of hanging to the runner's 10s
+ * It settles on the first of three things:
+ *
+ * - `webjs:navigate`, which means the router ran a navigation to COMPLETION. It
+ *   does not mean the navigation was soft: the degradation branches return
+ *   without the `'discard'` disposition, so `fetchAndApply` falls through and
+ *   dispatches this on the reload path too.
+ * - a RELOADING `webjs:navigation-fallback`. A `willReload: false` one is
+ *   explicitly documented as a dropped background op rather than the end of a
+ *   navigation, and at least one such path (a suppressed deploy-mismatch
+ *   reload) goes on to complete its swap, so treating it as terminal would
+ *   resolve mid-swap and reintroduce the very race this helper exists to close.
+ * - a bounded timeout.
+ *
+ * The timeout is NOT just the "router never intercepted" case. Several terminal
+ * paths in `fetchAndApply` announce nothing at all (an aborted or superseded
+ * navigation, a 204/205 empty body, an unparseable body, an error recovered in
+ * place), and a popstate snapshot restore applies a swap without dispatching
+ * `webjs:navigate`. The timeout is the backstop for every one of those, so a
+ * test fails on its own assertion instead of hanging to the runner's 10s
  * per-test limit (`web-test-runner.config.js`).
+ *
+ * Two call shapes, and the difference matters. The positive control ARMS it
+ * before the click, because a degradation can be dispatched synchronously from
+ * inside the router's click handler and a listener attached afterwards would
+ * miss it. The negative controls call it after the click instead, since there
+ * they are not waiting for an expected navigation at all; they are draining an
+ * unexpected one before teardown, and by then it is already in flight.
  *
  * @param {number} [timeoutMs]
  * @returns {Promise<void>}
@@ -47,14 +66,18 @@ function awaitNavigation(timeoutMs = 2000) {
       settled = true;
       clearTimeout(timer);
       document.removeEventListener('webjs:navigate', settle);
-      document.removeEventListener('webjs:navigation-fallback', settle);
+      document.removeEventListener('webjs:navigation-fallback', onFallbackSettle);
       // Hand back a macrotask later so the router's own post-dispatch work
       // unwinds before the caller asserts and dismantles the fixture.
       setTimeout(resolve, 0);
     };
+    const onFallbackSettle = (e) => {
+      if (e.detail && e.detail.willReload === false) return; // not a navigation end
+      settle();
+    };
     timer = setTimeout(settle, timeoutMs);
     document.addEventListener('webjs:navigate', settle);
-    document.addEventListener('webjs:navigation-fallback', settle);
+    document.addEventListener('webjs:navigation-fallback', onFallbackSettle);
   });
 }
 
@@ -109,12 +132,19 @@ suite('Client router: JS-handled links/forms are not hijacked (#150, #153)', () 
       render(html`<a href="/js-handled-link" @click=${(e) => { e.preventDefault(); ran = true; }}>go</a>`, container);
       container.querySelector('a').click();
       await tick();
-      // In the healthy case the router did not act, so there is nothing to
-      // settle and this costs nothing. On the REGRESSION this test exists to
-      // catch, the router hijacked the link and a swap is in flight; tearing
-      // the boundary pair out from under it in `finally` is the
-      // `live-boundaries-malformed` degradation, which reloads and aborts the
-      // whole session instead of failing this test readably.
+      // In the healthy case the router did not act, nothing was fetched, and
+      // this costs nothing. On the REGRESSION this test exists to catch, the
+      // router hijacked the link and a swap is in flight; tearing the boundary
+      // pair out from under it in `finally` is the `live-boundaries-malformed`
+      // degradation, which reloads and aborts the whole session instead of
+      // failing this test readably.
+      //
+      // Keyed on a fetch specifically, which is sound here because the router
+      // reaches its `await fetch(...)` inside the click dispatch, with no
+      // macrotask in between. It is not a general "is a swap in flight" test:
+      // a prefetch-cache hit swaps without calling `fetch` at all. This fixture
+      // never prefetches (`el.click()` fires none of the intent events), so
+      // that path cannot arise.
       if (fetched.length) await awaitNavigation();
       assert.ok(ran, 'the component @click handler ran');
       assert.equal(fetched.filter((u) => u.includes('/js-handled-link')).length, 0,
