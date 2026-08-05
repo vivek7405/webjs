@@ -969,7 +969,7 @@ async function checkStaticAssetFreshness(appDir) {
   };
 }
 
-// Directories the page/layout walk never descends into (deps, VCS, framework
+// Directories the route-module walk never descends into (deps, VCS, framework
 // and build caches). Mirrors FRESHNESS_IGNORE; kept separate so either walk can
 // change its exclusions without silently moving the other.
 const ROUTE_WALK_IGNORE = new Set(['node_modules', '.git', '.webjs', 'dist', '.next', 'coverage']);
@@ -985,7 +985,16 @@ const ROUTE_WALK_IGNORE = new Set(['node_modules', '.git', '.webjs', 'dist', '.n
  * @type {RegExp}
  */
 const ROUTE_MODULE_RE =
-  /^(?:page|layout|error|not-found|global-error|global-not-found|forbidden|unauthorized|loading)\.(?:js|ts|mjs|mts)$/;
+  /^(?:page|layout|error|not-found|forbidden|unauthorized|loading)\.(?:js|ts|mjs|mts)$/;
+
+/**
+ * The two boundary stems `router.js` registers ONLY at the app root (both are
+ * guarded by `dir === '.'` there). A nested `app/admin/global-error.ts` is never
+ * in the route table and never renders, so scanning one would advise on dead
+ * code, the same defect the `_private` skip exists to avoid.
+ * @type {RegExp}
+ */
+const ROOT_ONLY_MODULE_RE = /^(?:global-error|global-not-found)\.(?:js|ts|mjs|mts)$/;
 
 /**
  * One whole `<link …>` tag. QUOTE-AWARE (`(?:[^>"']|"[^"]*"|'[^']*')*`), the
@@ -1050,12 +1059,14 @@ function parseTagAttrs(tag) {
  *     stripped, since under a sub-path deploy the author writes the prefix
  *     themselves and `resolveAssetUrl` strips it before its own `public/` gate).
  *   - `resolveAssetUrl` would actually fingerprint it. It returns a path
- *     carrying a QUERY or a `..` unchanged, so flagging one would raise a
- *     warning that `asset()` cannot clear: the author wraps it, nothing
- *     changes, the warning stays, and `doctor --strict` can never go green. A
- *     hand-rolled `?v=` cache-buster is exactly what an author who has not
+ *     carrying a QUERY or a `..` unchanged, so wrapping one in `asset()` is a
+ *     runtime NO-OP: the author does the work and the url they ship is
+ *     byte-identical. Advising it would be advising a change that buys nothing.
+ *     A hand-rolled `?v=` cache-buster is exactly what an author who has not
  *     adopted `asset()` is most likely to have written, so this is the common
- *     case, not a corner. Only advise a fix that works.
+ *     case, not a corner. (The warning itself would clear, since this check
+ *     reads the SOURCE shape and a wrapped href is an unquoted hole. Clearing a
+ *     warning without improving the caching is the outcome to avoid.)
  *
  * @param {string} tag
  * @param {string} basePath  the app's normalized `webjs.basePath` (`''` at root)
@@ -1074,9 +1085,8 @@ function unmarkedStylesheetHref(tag, basePath = '') {
   // one `asset()` can actually fingerprint. It strips the base path, cuts at
   // `?` / `#`, DECODES, and only then tests `..` and the `public/` prefix.
   // Testing the raw value instead disagrees at both ends: `/public/%2e%2e/x`
-  // would be flagged although `asset()` refuses it (an unclearable warning,
-  // the very thing this check must never raise), and `/%70ublic/app.css` would
-  // be skipped although `asset()` fingerprints it.
+  // would be flagged although wrapping it changes nothing, and
+  // `/%70ublic/app.css` would be skipped although `asset()` fingerprints it.
   let probe = url;
   if (basePath && probe.startsWith(basePath + '/')) probe = probe.slice(basePath.length);
   const cuts = [probe.indexOf('?'), probe.indexOf('#')].filter((i) => i !== -1);
@@ -1129,29 +1139,73 @@ async function readAppBasePath(appDir) {
 }
 
 /**
- * Commented-out regions, so dead markup is never read as live. Covers the three
- * forms a route module can carry: an HTML comment inside a template, and the JS
- * block and line comments around it. The JS LINE form is the one that actually
- * bites, since commenting out a tag in a `.ts` page is done with `//`, and a
- * warning the author can only clear by deleting a comment is exactly the
- * un-clearable advice this check must never give.
+ * Blank commented-out regions to spaces so dead markup is never read as live,
+ * LENGTH-PRESERVING (newlines kept) so reported line numbers still point at the
+ * real source.
  *
- * The `//` matcher requires the slashes NOT be preceded by `:`, so a `https://`
- * or protocol-relative url inside an href is not mistaken for a comment. Any
- * residual mismatch blanks too much rather than too little, which costs a
- * detection instead of inventing one.
- * @type {RegExp}
+ * A quote-aware WALK rather than a regex, because the two comment families live
+ * in opposite contexts and a flat regex cannot tell them apart. The `<link>`
+ * tags sit inside a template literal, so an HTML comment must be blanked INSIDE
+ * a string, while a JS `//` or block comment is only a comment OUTSIDE one. A
+ * plain `(?<!:)//` matcher gets that second half wrong in the way that matters
+ * most here: it fires on a protocol-relative `href="//cdn/x.css"` and blanks the
+ * rest of the line, so a layout mixing a CDN sheet with a local one, the exact
+ * shape this check targets, goes silently inert.
+ *
+ * Backtick, single and double quotes all count as string context, so a `//`
+ * inside a `${}` hole is not treated as a comment. That fails toward scanning
+ * rather than toward blanking, which costs nothing but a redundant look.
+ *
+ * @param {string} src
+ * @returns {string}
  */
-const COMMENT_RE = /<!--[\s\S]*?-->|\/\*[\s\S]*?\*\/|(?<!:)\/\/[^\n]*/g;
+function blankComments(src) {
+  const blank = (t) => t.replace(/[^\n]/g, ' ');
+  let out = '';
+  let i = 0;
+  /** @type {string} */
+  let quote = '';
+  while (i < src.length) {
+    // An HTML comment is blanked in ANY context: it lives in the template.
+    if (src.startsWith('<!--', i)) {
+      const end = src.indexOf('-->', i + 4);
+      const stop = end === -1 ? src.length : end + 3;
+      out += blank(src.slice(i, stop));
+      i = stop;
+      continue;
+    }
+    const ch = src[i];
+    if (quote) {
+      if (ch === '\\') { out += src.slice(i, i + 2); i += 2; continue; }
+      if (ch === quote) quote = '';
+      out += ch; i++; continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') { quote = ch; out += ch; i++; continue; }
+    if (ch === '/' && src[i + 1] === '/') {
+      const nl = src.indexOf('\n', i);
+      const stop = nl === -1 ? src.length : nl;
+      out += blank(src.slice(i, stop));
+      i = stop; continue;
+    }
+    if (ch === '/' && src[i + 1] === '*') {
+      const end = src.indexOf('*/', i + 2);
+      const stop = end === -1 ? src.length : end + 2;
+      out += blank(src.slice(i, stop));
+      i = stop; continue;
+    }
+    out += ch; i++;
+  }
+  return out;
+}
 
 /**
- * Collect every `app/**` page + layout module path, depth-first.
+ * Collect every `app/**` route module that renders markup, depth-first.
  * Best-effort: an unreadable directory contributes nothing rather than throwing.
  * @param {string} dir
  * @param {string[]} [out]
  * @returns {string[]}
  */
-function collectRouteModules(dir, out = []) {
+function collectRouteModules(dir, root = dir, out = []) {
   let entries;
   try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
   for (const e of entries) {
@@ -1162,14 +1216,15 @@ function collectRouteModules(dir, out = []) {
     // never rendered. Advising on it would be advice about dead code.
     if (e.isDirectory() && e.name.startsWith('_')) continue;
     const abs = join(dir, e.name);
-    if (e.isDirectory()) collectRouteModules(abs, out);
+    if (e.isDirectory()) collectRouteModules(abs, root, out);
     else if (ROUTE_MODULE_RE.test(e.name)) out.push(abs);
+    else if (dir === root && ROOT_ONLY_MODULE_RE.test(e.name)) out.push(abs);
   }
   return out;
 }
 
 /**
- * ADVISORY (#1095): a page or layout hand-writes a `<link rel="stylesheet"
+ * ADVISORY (#1095): a route module hand-writes a `<link rel="stylesheet"
  * href="/public/…">` without `asset()`, so the url is un-versioned and a deploy
  * cannot bust a CDN's copy of it.
  *
@@ -1223,11 +1278,9 @@ async function checkUnmarkedAssetLinks(appDir) {
     // scanned, or the scanner's own case-insensitivity is unreachable exactly
     // where it is needed.
     if (!/<link/i.test(src)) continue;
-    // Blank commented-out regions to spaces, LENGTH-PRESERVING (a newline is
-    // kept as itself) so the reported line numbers still point at the real
-    // source. A commented-out tag emits nothing, so advising on it is advice
-    // about dead markup.
-    const scan = src.replace(COMMENT_RE, (c) => c.replace(/[^\n]/g, ' '));
+    // A commented-out tag emits nothing, so advising on it is advice about
+    // dead markup.
+    const scan = blankComments(src);
     LINK_TAG_RE.lastIndex = 0;
     for (const m of scan.matchAll(LINK_TAG_RE)) {
       const href = unmarkedStylesheetHref(m[0], basePath);
@@ -1238,7 +1291,7 @@ async function checkUnmarkedAssetLinks(appDir) {
     }
   }
   if (findings.length === 0) {
-    return { name, status: 'pass', message: 'every page/layout stylesheet link is content-hashed (or has none)' };
+    return { name, status: 'pass', message: 'every route-module stylesheet link is content-hashed (or has none)' };
   }
   const rel = (f) => relative(appDir, f) || f;
   return {

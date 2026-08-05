@@ -1129,3 +1129,32 @@ test('asset-link advisory covers the boundary modules, not just page and layout'
   assert.match(r.message, /ge\.css/);
   assert.match(r.message, /nf\.css/);
 });
+
+test('asset-link advisory scans global-error only at the app root, as the router does', async () => {
+  const nested = tmpDir();
+  // router.js registers global-error / global-not-found only when dir === '.',
+  // so a nested one is never in the route table and never renders.
+  write(nested, 'app/admin/global-error.ts', 'export default () => `<link rel="stylesheet" href="/public/dead.css">`;');
+  assert.equal(byName(await runDoctorChecks(nested, baseOpts()), ASSET_LINK_CHECK).status, 'pass');
+
+  const root = tmpDir();
+  write(root, 'app/global-error.ts', 'export default () => `<link rel="stylesheet" href="/public/ge.css">`;');
+  assert.equal(byName(await runDoctorChecks(root, baseOpts()), ASSET_LINK_CHECK).status, 'warn');
+});
+
+test('asset-link advisory does not treat a // inside an attribute value as a comment', async () => {
+  // A protocol-relative CDN sheet beside a local one is the exact layout this
+  // check targets. A flat `//` comment matcher blanks the rest of that line and
+  // makes the scan silently inert there.
+  for (const [label, markup] of [
+    ['protocol-relative sheet', '<link rel="stylesheet" href="//cdn.example/x.css"><link rel="stylesheet" href="/public/a.css">'],
+    ['preconnect', '<link rel="preconnect" href="//fonts.example"><link rel="stylesheet" href="/public/a.css">'],
+    ['// inside a data attribute', '<link data-x="a//b" rel="stylesheet" href="/public/a.css">'],
+  ]) {
+    const dir = tmpDir();
+    write(dir, 'app/layout.ts', 'export default () => `' + markup + '`;');
+    const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+    assert.equal(r.status, 'warn', label);
+    assert.match(r.message, /a\.css/, label);
+  }
+});
