@@ -214,6 +214,11 @@ function resolveTarget(cwd, config, item, file) {
 function helperTarget(config, item) {
   const utilsAbs = config?.resolvedPaths?.utils;
   if (!utilsAbs || !item) return null;
+  // Only the canonical single-file helpers. A custom registry (`--registry`)
+  // may legitimately ship its own `lib-utils` under the shadcn-compatible wire
+  // format (invariant 3), where `target` is part of the contract, and a
+  // multi-file item would otherwise collapse every file onto this one path.
+  if ((item.files || []).length > 1) return null;
   if (item.name === 'lib-utils') return utilsAbs;
   if (item.name === 'lib-dom') return join(dirname(utilsAbs), 'dom.ts');
   return null;

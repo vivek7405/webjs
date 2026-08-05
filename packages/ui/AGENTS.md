@@ -230,13 +230,31 @@ Browser tests for the Tier-2 guarantees live in
 
 | Command | What it does |
 |---|---|
-| `webjsui init` | Initialize a project, writes `components.json`, copies the `cn()` helper to `lib/utils/cn.ts` (plus `lib/utils/dom.ts` beside it), installs the theme tokens. Its defaults are fixed constants, not derived from the host project (#1129). HARD-FAILS (non-zero exit) when the tokens cannot be written (an unstyled install with a clean exit code was the old trap). |
+| `webjsui init` | Initialize a project, writes `components.json`, copies the `cn()` helper to `lib/utils/cn.ts` (plus `lib/utils/dom.ts` beside it), installs the theme tokens. Its defaults are fixed constants, not derived from the host project (#1129). NON-DESTRUCTIVE on a re-run: an existing `components.json` keeps its aliases and an existing helper file is left alone, since both are yours to edit; `--overwrite` opts into replacing them. HARD-FAILS (non-zero exit) when the tokens cannot be written (an unstyled install with a clean exit code was the old trap). |
 | `webjsui add <names...>` | Resolve transitive deps, copy component sources, install npm deps. Self-heals missing theme tokens. For a Tier-1 helper it strips the worked `@example` and leaves a pointer (see Registry resolution). |
 | `webjsui list [filter]` | List components in the registry |
 | `webjsui view <name>` | Print a component's source to stdout (the human / offline path to the full example) |
 | `webjsui diff [name]` | Show diffs between local and registry (against the LIVE upstream) |
 | `webjsui info` | Print cwd + config + registry URL |
 | `webjsui build [file]` | Compile a custom registry (for registry authors) |
+
+### Where the shared helpers land (#1129)
+
+`cn()` and the client-only `onBeforeCache()` follow the project's **`utils`
+alias**, not the `target` the registry manifest pins on the `lib-utils` /
+`lib-dom` items. `add` resolves them through one `helperTarget()` that reads
+the same alias `rewriteUtilsImport` retargets component imports to, so the file
+it writes and the file the components import are the same file by construction.
+The DOM helper is always the utils file's SIBLING (`lib/utils/dom.ts` next to
+`cn.ts`), which is the adjacency the rewrite assumes and the layout `init` and
+`webjs create` both emit.
+
+Honouring the manifest `target` instead is what produced the #1129 orphan bug:
+`add` wrote `lib/utils.ts` while every component resolved to `lib/utils/cn.ts`,
+so each install left a dead copy behind. The manifest `target` still governs
+every OTHER registry item, and a multi-file item is left to it as well, so a
+custom registry authored against the shadcn wire format (invariant 3) keeps
+working.
 
 ### Registry resolution: LOCAL-FIRST (#983)
 

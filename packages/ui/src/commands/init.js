@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import prompts from 'prompts';
-import { writeConfig, CONFIG_FILE } from '../utils/get-config.js';
+import { getConfig, writeConfig, CONFIG_FILE } from '../utils/get-config.js';
 import { logger } from '../utils/logger.js';
 import { getRegistryItem, DEFAULT_REGISTRY_URL } from '../registry/fetcher.js';
 import { ensureTheme } from '../utils/theme.js';
@@ -50,9 +50,28 @@ export const init = new Command()
   .option('-y, --yes', 'skip confirmation prompts', false)
   .option('--base-color <color>', `base color (${BASE_COLORS.join('|')})`)
   .option('--css <path>', 'path to the project Tailwind CSS file')
+  .option('-o, --overwrite', 'replace an existing alias map and existing helper files', false)
   .option('--registry <url>', 'registry base URL', DEFAULT_REGISTRY_URL)
   .action(async (opts) => {
     const cwd = opts.cwd;
+
+    // Re-running `init` on a project that already has one must not RELOCATE
+    // its helpers. The alias map decides where cn() lives and what every
+    // already-added component imports, so adopting the current defaults over
+    // an older project's map would strand those imports on files `add` no
+    // longer writes. Keep whatever the project declared; `--overwrite` opts
+    // into the move. A malformed config is treated as absent, since failing
+    // to parse it is not a reason to refuse to initialise.
+    let existing = null;
+    try {
+      existing = getConfig(cwd);
+    } catch {
+      existing = null;
+    }
+    const aliases = existing && !opts.overwrite ? existing.aliases : DEFAULT_ALIASES;
+    if (existing && !opts.overwrite) {
+      logger.info(`${CONFIG_FILE} already exists: keeping its aliases (use --overwrite to reset them).`);
+    }
 
     /** @type {{ baseColor: string, css: string }} */
     let answers = {
@@ -90,7 +109,7 @@ export const init = new Command()
         baseColor: answers.baseColor,
         cssVariables: true,
       },
-      aliases: DEFAULT_ALIASES,
+      aliases,
       iconLibrary: 'lucide',
     };
 
@@ -98,7 +117,7 @@ export const init = new Command()
     logger.success(`Wrote ${CONFIG_FILE}`);
 
     // Pull lib/utils + the chosen theme from the registry and write them in.
-    await writeLibUtils(cwd, DEFAULT_ALIASES.utils, opts.registry);
+    await writeLibUtils(cwd, aliases.utils, opts.registry, opts.overwrite);
 
     // The theme tokens are what the class helpers render against. A silent
     // failure here (the old behaviour) left an unstyled install with a clean
@@ -118,18 +137,34 @@ export const init = new Command()
     logger.info(`Add components with:  ${logger.cyan('npx webjsui add button card dialog')}`);
   });
 
-async function writeLibUtils(cwd, utilsAlias, registryUrl) {
+/**
+ * Write the two shared helpers, WITHOUT clobbering a copy the project already
+ * has. The kit is source-copied and you-own-it, so `lib/utils/cn.ts` is a file
+ * users are told to edit ("change one helper to retune the entire app"), and
+ * `webjs create` puts its own copy there. An unguarded write was harmless while
+ * init targeted `lib/utils.ts`, a path nothing else owned, but the moment it
+ * writes where the scaffold and the user's edits live it becomes silent data
+ * loss, and re-running init is the documented fix for an unstyled install. So
+ * an existing file is kept unless `--overwrite` says otherwise. This mirrors
+ * `add`, which prompts before replacing a file, and the theme, which is
+ * idempotent.
+ */
+async function writeLibUtils(cwd, utilsAlias, registryUrl, overwrite) {
   // The `utils` alias omits the extension ("lib/utils/cn"), matching how
   // get-config.js resolves it, so append '.ts' to get the target path.
   const utilsRel = utilsAlias.replace(/^@\//, '') + '.ts';
   const utilsTarget = join(cwd, utilsRel);
   try {
-    const item = await getRegistryItem('lib-utils', registryUrl);
-    if (item.files) {
-      for (const f of item.files) {
-        ensureDir(dirname(utilsTarget));
-        writeFileSync(utilsTarget, f.content || '', 'utf8');
-        logger.success(`Wrote ${utilsAlias}.ts`);
+    if (existsSync(utilsTarget) && !overwrite) {
+      logger.info(`${utilsRel} already exists: keeping it.`);
+    } else {
+      const item = await getRegistryItem('lib-utils', registryUrl);
+      if (item.files) {
+        for (const f of item.files) {
+          ensureDir(dirname(utilsTarget));
+          writeFileSync(utilsTarget, f.content || '', 'utf8');
+          logger.success(`Wrote ${utilsRel}`);
+        }
       }
     }
   } catch (e) {
@@ -144,6 +179,10 @@ async function writeLibUtils(cwd, utilsAlias, registryUrl) {
   // cn.ts. `add` reads that same adjacency when it rewrites the import.
   const domTarget = join(dirname(utilsTarget), 'dom.ts');
   try {
+    if (existsSync(domTarget) && !overwrite) {
+      logger.info(`${relative(cwd, domTarget)} already exists: keeping it.`);
+      return;
+    }
     const item = await getRegistryItem('lib-dom', registryUrl);
     if (!item.files) return;
     for (const f of item.files) {

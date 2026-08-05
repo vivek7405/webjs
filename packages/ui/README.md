@@ -86,7 +86,9 @@ npx webjsui add button card dialog
 
 Both paths write the same `components.json`. `init` takes no reading of the
 host project: the defaults below are fixed, and `--css <path>` overrides the
-stylesheet it appends the tokens to.
+stylesheet it appends the tokens to. Re-running it is safe, since an existing
+config keeps its aliases and an existing helper file is left as you edited it
+(pass `--overwrite` to replace them).
 
 ## What `init` writes
 

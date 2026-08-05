@@ -2,7 +2,7 @@
   "name": "@webjsdev/ui",
   "version": "0.3.10",
   "type": "module",
-  "description": "The AI-first component library for WebJs apps - class-helper functions for visuals, custom elements only where state matters. Source-copied into your repo, you own it.",
+  "description": "The AI-first component library for WebJs apps. Class-helper functions for visuals, custom elements only where state matters. Source-copied into your repo, you own it.",
   "bin": {
     "webjsui": "bin/webjsui.js"
   },

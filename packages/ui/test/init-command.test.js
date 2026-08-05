@@ -221,3 +221,69 @@ test('init: local-first (default registry) writes the theme and exits 0', async 
     rmSync(d, { recursive: true });
   }
 });
+
+// #1129 made `init` write into `lib/utils/`, which is where `webjs create`
+// puts the helper and where the you-own-it model expects your edits to live.
+// The write was unguarded, so re-running init (the documented fix for an
+// unstyled install) silently replaced edited source. It must not.
+test('init: keeps an existing cn helper instead of replacing it', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(join(d, 'lib', 'utils'), { recursive: true });
+    writeFileSync(join(d, 'lib', 'utils', 'cn.ts'), 'export const MINE = 1;\n');
+    writeFileSync(join(d, 'lib', 'utils', 'dom.ts'), 'export const ALSO_MINE = 1;\n');
+
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+
+    assert.match(readFileSync(join(d, 'lib', 'utils', 'cn.ts'), 'utf8'), /MINE/, 'edited cn.ts survives');
+    assert.match(readFileSync(join(d, 'lib', 'utils', 'dom.ts'), 'utf8'), /ALSO_MINE/, 'edited dom.ts survives');
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+test('init: --overwrite does replace them', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(join(d, 'lib', 'utils'), { recursive: true });
+    writeFileSync(join(d, 'lib', 'utils', 'cn.ts'), 'export const MINE = 1;\n');
+
+    await init.parseAsync(['--yes', '--overwrite', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+
+    assert.doesNotMatch(readFileSync(join(d, 'lib', 'utils', 'cn.ts'), 'utf8'), /MINE/);
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+// An older project initialised at alias `lib/utils` must not be silently
+// relocated to `lib/utils/cn` by a re-run: its already-added components import
+// the old path, and moving the alias would strand every one of them.
+test('init: re-run keeps an older project on its own aliases', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    writeFileSync(join(d, 'components.json'), JSON.stringify({
+      $schema: 'https://ui.webjs.dev/schema.json',
+      style: 'default',
+      tailwind: { css: 'styles/globals.css', baseColor: 'neutral', cssVariables: true },
+      aliases: { components: 'components', utils: 'lib/utils', ui: 'components/ui', lib: 'lib' },
+    }));
+
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+
+    const cfg = JSON.parse(readFileSync(join(d, 'components.json'), 'utf8'));
+    assert.equal(cfg.aliases.utils, 'lib/utils', 'the old alias is preserved');
+    assert.equal(existsSync(join(d, 'lib', 'utils', 'cn.ts')), false, 'no helper at the new layout');
+    assert.ok(existsSync(join(d, 'lib', 'utils.ts')), 'the helper stays where the project expects it');
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
