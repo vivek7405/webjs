@@ -1,6 +1,10 @@
 import { html } from '@webjsdev/core';
 
-export const metadata = { title: 'Auth Providers (createAuth) | WebJs' };
+export const metadata = {
+  title: 'Auth Providers (createAuth) | WebJs',
+  description:
+    'The built-in createAuth() surface: OAuth providers, credentials login, and JWT sessions with no external auth library. Covers setup, the auth API route, reading the session, callbacks, and session strategies.',
+};
 
 export default function Auth() {
   return html`

@@ -135,6 +135,8 @@ test('no two doc pages declare the same metadata title', async () => {
   // ships auth at all. The sitemap and llms.txt enumerate topics from disk,
   // so both were submitted to search engines as identically-titled entries.
   const byTitle = new Map<string, string[]>();
+  const pages: string[] = [];
+  const unparsed: string[] = [];
 
   for (const d of await readdir(DOCS_ROOT, { withFileTypes: true })) {
     if (!d.isDirectory() || d.name.startsWith('.') || d.name.startsWith('_') || d.name.startsWith('[')) continue;
@@ -142,14 +144,23 @@ test('no two doc pages declare the same metadata title', async () => {
     const files = await readdir(dir).catch(() => [] as string[]);
     const page = files.find((f) => f === 'page.ts' || f === 'page.js');
     if (!page) continue;
+    pages.push(d.name);
     const src = await readFile(resolve(dir, page), 'utf8');
     // `export const metadata = { title: '...' }`, the shape every docs page uses.
-    const m = src.match(/export\s+const\s+metadata\s*=\s*\{[^}]*?title:\s*['"`]([^'"`]+)['"`]/s);
-    if (!m) continue;
+    // NOT `[^}]*?`: that cannot cross a nested object, so a page growing a
+    // `jsonLd` or `openGraph` before `title` would silently stop being checked.
+    const m = src.match(/export\s+const\s+metadata\s*=\s*\{[\s\S]*?\btitle:\s*['"`]([^'"`]+)['"`]/);
+    if (!m) { unparsed.push(d.name); continue; }
     const list = byTitle.get(m[1]) ?? [];
     list.push(d.name);
     byTitle.set(m[1], list);
   }
+
+  // Sanity floor, matching the sibling tests in this file. Without it a parser
+  // change that yields nothing makes this test pass vacuously, which is the
+  // failure mode it exists to prevent.
+  assert.ok(pages.length > 30, `sanity: expected many doc pages, saw ${pages.length}`);
+  assert.deepEqual(unparsed, [], `these doc pages have a metadata block this test could not parse:\n  ${unparsed.join('\n  ')}`);
 
   const collisions = [...byTitle.entries()]
     .filter(([, dirs]) => dirs.length > 1)
@@ -175,7 +186,9 @@ test('a doc page h1 matches its sidebar label', async () => {
   };
 
   for (const slug of ['auth', 'authentication']) {
-    const src = await readFile(resolve(DOCS_ROOT, slug, 'page.ts'), 'utf8');
+    const src = await readFile(resolve(DOCS_ROOT, slug, 'page.ts'), 'utf8').catch(
+      () => readFile(resolve(DOCS_ROOT, slug, 'page.js'), 'utf8'),
+    );
     const h1 = src.match(/<h1>([^<]+)<\/h1>/)?.[1];
     assert.equal(h1, labelFor(`/docs/${slug}`), `/docs/${slug}: <h1> and sidebar label must agree`);
   }

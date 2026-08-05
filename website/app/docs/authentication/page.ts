@@ -1,6 +1,10 @@
 import { html } from '@webjsdev/core';
 
-export const metadata = { title: 'Build Your Own Authentication | WebJs' };
+export const metadata = {
+  title: 'Build Your Own Authentication | WebJs',
+  description:
+    'Build session-based authentication on the WebJs primitives when you want to own the session format, scrypt password hashing, and middleware route protection, instead of using the built-in createAuth() providers.',
+};
 
 export default function Authentication() {
   return html`
