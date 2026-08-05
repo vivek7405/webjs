@@ -18,10 +18,12 @@
  *
  * The fix is in `makeShutdown` (`packages/server/src/listener-core.js`): the
  * process now exits 0 in one case only, an operator-requested stop that drained
- * cleanly. A fatal shutdown exits 1 even on a clean drain, and so does a drain
- * that rejects or is still hanging at the 10s deadline, whatever started it. So
- * this file asserts all three arms, because only the three together prove the
- * mechanism DISCRIMINATES rather than always failing (or always passing):
+ * cleanly with no crash on the way out. A fatal shutdown exits 1 even on a clean
+ * drain, a fatal landing mid-drain upgrades an already-running shutdown to 1,
+ * and a drain that rejects or is still hanging at the 10s deadline exits 1
+ * whatever started it. So this file asserts all three arms, because only the
+ * three together prove the mechanism DISCRIMINATES rather than always failing
+ * (or always passing):
  *
  *   1. a proof script whose assertion fails exits NON-ZERO,
  *   2. a proof script whose assertions pass exits ZERO,

@@ -397,6 +397,40 @@ test('makeShutdown exits 1 for a FATAL shutdown even on a clean drain (#1092)', 
   assert.equal(await exitCodeOf(shutdown, ['uncaughtException', { fatal: true }]), 1);
 });
 
+test('makeShutdown exits 1 when a FATAL arrives mid-drain (#1092)', async () => {
+  // A SIGTERM drain is up to 10s wide and in-flight requests are still running
+  // in it, so an uncaught exception landing there is ordinary. The re-entrancy
+  // guard drops that second call, so a code captured at entry would stay 0 and
+  // a crashed process would tell systemd / Docker / Railway it stopped cleanly.
+  let release;
+  const shutdown = makeShutdown({
+    closeServer: () => new Promise((r) => { release = r; }),
+    hub: /** @type any */ (okHub),
+    logger: quietLogger,
+  });
+  const exited = exitCodeOf(shutdown, ['SIGTERM']);
+  // `closeServer` is invoked from a microtask, so yield until it has actually
+  // run and handed back its resolver before crashing into the open drain.
+  while (!release) await null;
+  shutdown('uncaughtException', { fatal: true }); // crash before the drain settles
+  release();
+  assert.equal(await exited, 1);
+});
+
+test('makeShutdown does not let a later signal downgrade a fatal verdict', async () => {
+  let release;
+  const shutdown = makeShutdown({
+    closeServer: () => new Promise((r) => { release = r; }),
+    hub: /** @type any */ (okHub),
+    logger: quietLogger,
+  });
+  const exited = exitCodeOf(shutdown, ['uncaughtException', { fatal: true }]);
+  while (!release) await null;
+  shutdown('SIGTERM'); // must not launder the crash into a success
+  release();
+  assert.equal(await exited, 1);
+});
+
 test('makeShutdown exits 1 when the drain itself fails', async () => {
   const shutdown = makeShutdown({
     closeServer: () => Promise.reject(new Error('close failed')),

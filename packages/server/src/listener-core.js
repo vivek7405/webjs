@@ -422,10 +422,19 @@ export function installProcessHandlers(logger, onFatal) {
  */
 export function makeShutdown({ closeServer, hub, logger }) {
   let shuttingDown = false;
+  // Read at EXIT time, not at entry, so a fatal arriving mid-drain still counts.
+  // The drain window is up to 10s wide and in-flight requests are still running
+  // in it, so an uncaught exception landing there is an ordinary event, not an
+  // exotic race. Because the re-entrancy guard below drops that second call, a
+  // code captured at entry would stay 0 and the crashed process would report a
+  // successful stop, which is the exact failure this whole mechanism exists to
+  // prevent. Upgrade only (1 never falls back to 0), so a signal arriving during
+  // a fatal shutdown cannot launder the crash into a success either.
+  let code = 0;
   return (signal, { fatal = false } = {}) => {
+    if (fatal) code = 1;
     if (shuttingDown) return;
     shuttingDown = true;
-    const code = fatal ? 1 : 0;
     logger.info(`received ${signal}, shutting down`);
     try { hub.closeAll(); } catch {}
     const hard = setTimeout(() => {
@@ -433,11 +442,16 @@ export function makeShutdown({ closeServer, hub, logger }) {
       process.exit(1);
     }, 10_000);
     if (typeof hard.unref === 'function') hard.unref();
+    // Disarm before exiting. In production `process.exit` ends everything so this
+    // is redundant, but it keeps the deadline from outliving the decision it was
+    // guarding, which is what let a stubbed-exit test leave a live timer armed to
+    // kill an unrelated process 10s later.
+    const done = (c) => { clearTimeout(hard); process.exit(c); };
     Promise.resolve()
       .then(closeServer)
       .then(
-        () => { logger.info('bye'); process.exit(code); },
-        (err) => { logger.error('server close error', { err: String(err) }); process.exit(1); },
+        () => { logger.info('bye'); done(code); },
+        (err) => { logger.error('server close error', { err: String(err) }); done(1); },
       );
   };
 }
