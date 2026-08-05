@@ -1701,16 +1701,45 @@ function nodesToFrag(nodes) {
   return frag;
 }
 
-/** @param {Node} start @param {Node} end */
+/**
+ * Remove a template instance's whole range, its bookend markers INCLUDED.
+ *
+ * Every caller discards the instance right after (the map entry or slot that
+ * held it is dropped, and any replacement gets fresh markers from
+ * `buildDetached`), so this is a REMOVE and never lit's clear-and-reuse. A
+ * caller that wants to keep the bookends and render into them again needs its
+ * OWN function, because the two want opposite answers for the end marker.
+ *
+ * `parent` is read BEFORE the walk because the walk removes `start` on its
+ * first iteration, which nulls `start.parentNode`. Reading it afterwards
+ * compared the end marker's live parent against `null`, so the guard could
+ * never fire and every teardown left one `wjm-e` comment in the document,
+ * unbounded for the life of the region.
+ *
+ * The terminator stays `end` ITSELF rather than an `end.nextSibling` stop
+ * sentinel captured up front. `removeChild` runs a custom element's
+ * `disconnectedCallback` synchronously, so a sentinel pointing at a sibling
+ * this region does not own can be detached or moved mid-walk, and the walk
+ * would then run off the end of the child list and take the part's own marker
+ * with it. `end` is renderer-created and reachable only through the instance.
+ *
+ * The `end.parentNode === parent` comparison is a refusal, not a formality. A
+ * marker moved under a different parent is not this region's to remove, and
+ * `parent.removeChild(end)` on it throws NotFoundError from inside a teardown
+ * that has to stay total.
+ *
+ * @param {Node} start @param {Node} end
+ */
 function removeBetween(start, end) {
-  if (!start.parentNode) return;
+  const parent = start.parentNode;
+  if (!parent) return;
   let n = start;
   while (n && n !== end) {
     const next = n.nextSibling;
     n.parentNode?.removeChild(n);
     n = next;
   }
-  if (end.parentNode === start.parentNode) end.parentNode?.removeChild(end);
+  if (end.parentNode === parent) parent.removeChild(end);
 }
 
 /* ================================================================
