@@ -1,4 +1,4 @@
-import { setHardNavigate } from '../packages/core/src/router-client.js';
+import { _setHardNavigate } from '../packages/core/src/router-client.js';
 
 /**
  * Shared navigation guard for browser tests (#1135). Sibling of
@@ -44,7 +44,7 @@ import { setHardNavigate } from '../packages/core/src/router-client.js';
  * `preventDefault` cancels a default action, not a script assignment, so it can
  * never stop the router assigning `location.href` when it degrades. That is a
  * separate channel and it needs a separate mechanism: the router routes every
- * hard navigation through one seam (#1286), and this installs an override that
+ * hard navigation through one `_setHardNavigate` seam (#1286), and this installs an override that
  * RECORDS the attempt into `hardNavigations` instead of performing it. So a
  * degradation now fails the one test with a readable message instead of
  * aborting the whole session.
@@ -92,7 +92,7 @@ export function installNavGuard() {
   const onFallback = (e) => { fallbacks.push(e.detail); };
 
   // Record the router's own hard navigations instead of performing them.
-  setHardNavigate((href) => { hardNavigations.push(String(href)); });
+  _setHardNavigate((href) => { hardNavigations.push(String(href)); });
 
   window.addEventListener('click', onClick);
   window.addEventListener('submit', onSubmit);
@@ -102,7 +102,7 @@ export function installNavGuard() {
     fallbacks,
     hardNavigations,
     remove() {
-      setHardNavigate(null);
+      _setHardNavigate(null);
       window.removeEventListener('click', onClick);
       window.removeEventListener('submit', onSubmit);
       document.removeEventListener('webjs:navigation-fallback', onFallback);

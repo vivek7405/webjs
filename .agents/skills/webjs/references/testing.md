@@ -51,7 +51,7 @@ window.addEventListener('click', onClick);     // bubble, never capture
 window.addEventListener('submit', onSubmit);
 ```
 
-(The WebJs framework repo keeps its own copy of exactly this in one shared module, `test/browser-nav-guard.js`, whose `installNavGuard()` returns `{ fallbacks, remove }`. That module is framework-repo infrastructure and is not part of a scaffolded app.)
+(The WebJs framework repo keeps its own copy of exactly this in one shared module, `test/browser-nav-guard.js`, whose `installNavGuard()` returns `{ fallbacks, hardNavigations, remove }`. That module is framework-repo infrastructure and is not part of a scaffolded app.)
 
 ## App runners (`webjs test`)
 

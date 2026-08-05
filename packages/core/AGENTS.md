@@ -238,7 +238,7 @@ Chromium, Firefox, and WebKit via web-test-runner).
 
 A browser test that clicks a real `<a href>` or submits a real `<form>`
 MUST install the shared guard from `test/browser-nav-guard.js`
-(`installNavGuard()`, returning `{ fallbacks, remove }`). web-test-runner
+(`installNavGuard()`, returning `{ fallbacks, hardNavigations, remove }`). web-test-runner
 aborts the whole session when the page navigates, so an escaped click
 takes down every browser file rather than failing one test. The guard
 listens on `window` in the BUBBLE phase, which is load-bearing: capture

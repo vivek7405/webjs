@@ -498,15 +498,6 @@ const NON_HTML_EXTENSIONS = /\.(?:pdf|zip|tar|gz|7z|rar|dmg|exe|msi|deb|rpm|apk|
  */
 let hardNavigate = (href) => { location.href = href; };
 
-/**
- * Replace the hard-navigate action. TEST-ONLY: this is a seam for browser
- * tests, not an app-facing API. Call with no argument to restore the default.
- *
- * @param {((href: string) => void) | null} [fn]
- */
-export function setHardNavigate(fn) {
-  hardNavigate = fn || ((href) => { location.href = href; });
-}
 
 /** @param {MouseEvent} e */
 function onClick(e) {
@@ -4554,6 +4545,20 @@ export function _resetPrefetch() {
   prefetchQueued.clear();
   clearPrefetchHover();
   clearPrefetchViewTimers();
+}
+
+/**
+ * Test-only: replace the hard-navigate action so a browser test can observe a
+ * navigation instead of being destroyed by it. Call with no argument to
+ * restore. Underscore-prefixed and kept in this block like every other
+ * test-only export here, so it stays out of `router-client.d.ts` and out of
+ * the app-facing API (the `./client-router` subpath resolves this file under
+ * the `source` condition, so an unprefixed name here would read as public).
+ *
+ * @param {((href: string) => void) | null} [fn]
+ */
+export function _setHardNavigate(fn) {
+  hardNavigate = fn || ((href) => { location.href = href; });
 }
 
 /** Test-only: read the monotonic navigation-token counter. */
