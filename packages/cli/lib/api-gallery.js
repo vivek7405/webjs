@@ -13,8 +13,8 @@ import { join } from 'node:path';
 /**
  * Write the api backend-features gallery into `<appDir>/app/api/features/**`
  * plus a boot-time env-validation example at `app/env.ts`. Each demo carries a
- * `webjs-scaffold-placeholder` marker so `webjs check` fails until it is
- * pruned or adapted.
+ * `webjs-scaffold-placeholder` marker naming what to delete when it is pruned.
+ * The marker is a reminder to the reader, not a lint rule.
  * @param {string} appDir
  */
 export async function writeApiGallery(appDir) {
@@ -35,7 +35,7 @@ export async function writeApiGallery(appDir) {
   ].join('\n'));
   await mkdir(feat('validate'), { recursive: true });
   await writeFile(feat('validate', 'route.ts'), [
-    "// webjs-scaffold-placeholder. API backend-features demo. Keep and adapt it, or prune it (delete this app/api/features/validate route AND modules/widgets), then delete this marker line. webjs check fails while the marker remains.",
+    "// webjs-scaffold-placeholder. API backend-features demo. Keep and adapt it, or prune it (delete this app/api/features/validate route AND modules/widgets), then delete this marker line.",
     "// route() turns a 'use server' action into a REST endpoint: it merges the URL",
     "// query, route params, and JSON body into one input, runs `validate` at the",
     "// boundary (a { success:false, fieldErrors } return is a 422, no action call),",
@@ -76,7 +76,7 @@ export async function writeApiGallery(appDir) {
     "",
   ].join('\n'));
   await writeFile(feat('rate-limit', 'route.ts'), [
-    "// webjs-scaffold-placeholder. API backend-features demo. Keep and adapt it, or prune it (delete this app/api/features/rate-limit route), then delete this marker line. webjs check fails while the marker remains.",
+    "// webjs-scaffold-placeholder. API backend-features demo. Keep and adapt it, or prune it (delete this app/api/features/rate-limit route), then delete this marker line.",
     "// The middleware.ts beside this file stamps X-RateLimit-* headers and returns",
     "// a 429 with Retry-After once the window is exhausted, so this handler never",
     "// runs on a limited request. Call it six times in ten seconds to see the 429.",
@@ -89,7 +89,7 @@ export async function writeApiGallery(appDir) {
   // 3) Streaming response (chunks flushed as produced, no buffering).
   await mkdir(feat('stream'), { recursive: true });
   await writeFile(feat('stream', 'route.ts'), [
-    "// webjs-scaffold-placeholder. API backend-features demo. Keep and adapt it, or prune it (delete this app/api/features/stream route), then delete this marker line. webjs check fails while the marker remains.",
+    "// webjs-scaffold-placeholder. API backend-features demo. Keep and adapt it, or prune it (delete this app/api/features/stream route), then delete this marker line.",
     "// Streams JSON-per-line chunks as they are produced, so a slow or large",
     "// result is delivered incrementally instead of buffered whole. A hand-written",
     "// route.ts returns a ReadableStream for full control. Served as text/plain so",
@@ -115,7 +115,7 @@ export async function writeApiGallery(appDir) {
   // 4) File storage (upload + serve), both hand-written route.ts.
   await mkdir(feat('files', '[key]'), { recursive: true });
   await writeFile(feat('files', 'route.ts'), [
-    "// webjs-scaffold-placeholder. API backend-features demo. Keep and adapt it, or prune it (delete this app/api/features/files route), then delete this marker line. webjs check fails while the marker remains.",
+    "// webjs-scaffold-placeholder. API backend-features demo. Keep and adapt it, or prune it (delete this app/api/features/files route), then delete this marker line.",
     "// POST a multipart file: the bytes stream into the FileStore (a local",
     "// .webjs/uploads dir by default, gitignored; swap for S3/R2 with one",
     "// setFileStore() call). Returns the key + a URL served by [key]/route.ts.",
@@ -166,7 +166,7 @@ export async function writeApiGallery(appDir) {
   // 5) WebSocket endpoint with broadcast fan-out.
   await mkdir(feat('ws'), { recursive: true });
   await writeFile(feat('ws', 'route.ts'), [
-    "// webjs-scaffold-placeholder. API backend-features demo. Keep and adapt it, or prune it (delete this app/api/features/ws route), then delete this marker line. webjs check fails while the marker remains.",
+    "// webjs-scaffold-placeholder. API backend-features demo. Keep and adapt it, or prune it (delete this app/api/features/ws route), then delete this marker line.",
     "// A WebSocket endpoint: exporting WS(ws, req) upgrades this route to a socket.",
     "// The framework auto-registers each connection to its path, so broadcast()",
     "// fans a message out to every connected client. Connect two clients to",

@@ -23,7 +23,7 @@ The client router turns itself on as soon as `@webjsdev/core` loads, which any p
 1. SSR injects `<!--wj:children:<segment-path>:<route-key>-->...<!--/wj:children:<segment-path>-->` comment markers around each layout's `${children}` interpolation, one pair per layout in the chain, plus one around the page itself (skipped when the page's segment would collide with the innermost layout's). The route key is the resolved path with param values filled in.
 2. On link click, walk both the live DOM and the incoming HTML for these markers and build a path-to-range map.
 3. Compare the two maps. A shared boundary whose route key CHANGED wins first, and the swap is anchored at the parent of the shallowest such change, which remounts that layout the way Next does. Only when no key changed does the deepest shared boundary become the target.
-4. Replace nodes between that marker pair in the live DOM with the equivalent range from the incoming HTML, using a keyed reconciler that preserves input values, scroll, popover state, and DOM identity where it can. The cheaper in-place morph is chosen only when that deepest boundary is the leaf on both sides.
+4. Apply the swap. A replace tears the live range out and inserts the incoming nodes, which is a real remount, and only elements marked `data-webjs-permanent` are carried across. A morph instead reconciles the two ranges with a keyed reconciler that preserves DOM identity, input values, scroll, and popover state; it is the more expensive path and it exists precisely to keep that state. Morphing is chosen only when the target boundary is the leaf on both sides and no route key changed.
 5. Merge head tags, re-run scripts, upgrade custom elements, `history.pushState`.
 
 The whole loop runs in a microtask. The body never repaints between pages.
@@ -39,7 +39,7 @@ Web component state survives. A `<theme-toggle>` holding its theme as an instanc
 
 Scroll position is preserved on the parts of the page that did not change. If you have a sidenav with a scroll position, navigation within the sidenav's sub-section does not snap it back to the top.
 
-The naive alternative (full page reload) breaks all three. The slightly-less-naive alternative (fetch + replace `<body>`) breaks them too because the layout itself unmounts. Walking marker pairs and replacing only the innermost is what preserves them.
+The naive alternative (full page reload) breaks all three. The slightly-less-naive alternative (fetch + replace `<body>`) breaks them too because the layout itself unmounts. Swapping the narrowest range that actually changed is what preserves them, and the route key is what decides how narrow that is: a layout still showing the same resolved path is left alone, while one whose params changed is remounted on purpose.
 
 
 # How it knows what to swap
