@@ -46,6 +46,7 @@ import {
 import { STREAM_MARKER } from '../../src/conditional-get.js';
 import { setVendorEntries, publishBuildId, publishedBuildId } from '../../src/importmap.js';
 import { applyForwarded } from '../../src/forwarded.js';
+import { withRequest } from '../../src/context.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const HTML_URL = pathToFileURL(
@@ -285,7 +286,11 @@ test('revalidatePath evicts the cached HTML so the next request re-renders', asy
   const cached = await (await app.handle(new Request('http://x/'))).text();
   assert.ok(cached.includes('render #1'), 'served from cache (#1)');
 
-  await revalidatePath('/');
+  // Bare-path eviction resolves the origin from the ambient request, which is
+  // how a server action reaches it: the mutation runs inside the request of the
+  // user who triggered it. Wrapped here to model that, since a naked call from
+  // a test has no request to resolve against (#1097).
+  await withRequest(new Request('http://x/'), () => revalidatePath('/'));
 
   const afterEvict = await (await app.handle(new Request('http://x/'))).text();
   assert.ok(afterEvict.includes('render #2'), 'after revalidatePath the page re-renders (#2)');
@@ -302,12 +307,12 @@ test('revalidatePath still evicts once the key carries an origin (#1097)', async
     'cached under the real origin',
   );
 
-  // A bare path no longer names one key, so this only works because the origin
-  // was resolved from what this process has cached under.
-  await revalidatePath('/');
+  // A bare path no longer names one key; it resolves against the ambient
+  // request, the shape a server action always has.
+  await withRequest(new Request('http://real.example/'), () => revalidatePath('/'));
   assert.ok(
     (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #2'),
-    'a bare path resolves the origin and evicts',
+    'a bare path resolves the ambient origin and evicts',
   );
 
   // And the absolute form targets an origin exactly, which is the shape a
@@ -320,6 +325,45 @@ test('revalidatePath still evicts once the key carries an origin (#1097)', async
   assert.ok(
     (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #3'),
     'an absolute url evicts that origin exactly',
+  );
+});
+
+test('a bare path with no ambient request evicts nothing and says so (#1097)', async () => {
+  freshStore();
+  const appDir = makeApp({ 'app/page.js': counterPage('no-ambient', { revalidate: 60 }) });
+  const app = await createRequestHandler({ appDir, dev: true });
+
+  await app.handle(shellRequest('http://real.example/'));
+  assert.ok(
+    (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #1'),
+    'cached',
+  );
+
+  // No ambient request (a cron job / queue worker). There is deliberately no
+  // process-local origin registry to fall back on, because it would be
+  // attacker-writable through X-Forwarded-Host, so this is a diagnosed no-op
+  // rather than a silent one.
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (m) => warnings.push(String(m));
+  try {
+    await revalidatePath('/');
+  } finally {
+    console.warn = realWarn;
+  }
+  assert.equal(warnings.length, 1, 'it warns exactly once');
+  assert.match(warnings[0], /evicted nothing/, 'the warning says the eviction did not happen');
+  assert.match(warnings[0], /absolute url/, 'and names the fix');
+  assert.ok(
+    (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #1'),
+    'still cached, as the warning said',
+  );
+
+  // The absolute form is the documented remedy, and it works from here.
+  await revalidatePath('http://real.example/');
+  assert.ok(
+    (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #2'),
+    'the absolute url evicts without any ambient request',
   );
 });
 

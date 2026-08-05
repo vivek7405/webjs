@@ -71,14 +71,14 @@ export const metadata = { cacheControl: 'public, max-age=60' };
 
 ### Server HTML response cache (`export const revalidate`)
 
-For a page that renders the **same HTML for every visitor**, opt into caching the SSR output (WebJs's no-build equivalent of ISR). Keyed by full URL only.
+For a page that renders the **same HTML for every visitor**, opt into caching the SSR output (WebJs's no-build equivalent of ISR). Keyed by the request origin plus the full URL.
 
 ```ts
 // app/blog/page.ts
 export const revalidate = 60;   // cache this page's HTML for 60s
 ```
 
-**Safety.** This asserts the page is identical for everyone for N seconds. Never set it on a page that reads `cookies()`, a session, or per-user data. The framework auto-marks a request dynamic and refuses to cache when the render reads per-user state through a framework helper (`cookies()`, `headers()`, `getSession()`, `auth()`), so an `auth()`-gated page fails safe. It also never caches a non-200, a streamed Suspense body, a `Set-Cookie` response, or a page under CSP. Evict on a write with `revalidatePath('/blog')`; `revalidateAll()` clears everything (single-instance / dev). This differs from the client-side `revalidate()` in `@webjsdev/core`, which evicts the browser snapshot cache. Keys carry the request ORIGIN as well as the path (#1097), because `ctx.url` comes from forwarded headers a proxy passes through rather than strips, so a hostile `X-Forwarded-Host` would otherwise bake an attacker-chosen origin into a body every later visitor gets served. A single-host deploy is unaffected (one origin, one entry per URL). It does mean a bare path does not name one entry, so `revalidatePath` resolves the origin from the calling request (exact for a server action) and from what the process has cached; pass an absolute url from a background job that serves no requests of its own.
+**Safety.** This asserts the page is identical for everyone for N seconds. Never set it on a page that reads `cookies()`, a session, or per-user data. The framework auto-marks a request dynamic and refuses to cache when the render reads per-user state through a framework helper (`cookies()`, `headers()`, `getSession()`, `auth()`), so an `auth()`-gated page fails safe. It also never caches a non-200, a streamed Suspense body, a `Set-Cookie` response, or a page under CSP. Evict on a write with `revalidatePath('/blog')`; `revalidateAll()` clears everything (single-instance / dev). This differs from the client-side `revalidate()` in `@webjsdev/core`, which evicts the browser snapshot cache. Keys carry the request ORIGIN as well as the path (#1097), because `ctx.url` comes from forwarded headers a proxy passes through rather than strips, so a hostile `X-Forwarded-Host` would otherwise bake an attacker-chosen origin into a body every later visitor gets served. A single-host deploy is unaffected (one origin, one entry per URL). It does mean a bare path does not name one entry, so `revalidatePath` resolves the origin from the calling request, which is exact for a server action; pass an absolute url from a background job that serves no requests of its own, where a bare path warns and evicts nothing.
 
 ### Content-hash asset URLs and conditional GET
 

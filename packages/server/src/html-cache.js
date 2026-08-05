@@ -109,32 +109,6 @@ export function readRevalidate(pageModule) {
 }
 
 /**
- * Origins this process has cached HTML under, in first-seen order. Only
- * `revalidatePath` reads it, to answer "which origins could a bare path have
- * been cached under" (see its own doc for why a bare path is ambiguous once
- * the origin is part of the key).
- *
- * Bounded, and the bound KEEPS THE EARLIEST entries rather than evicting to
- * make room. A hostile `X-Forwarded-Host` mints a distinct origin (#1097), so
- * an unbounded registry is an attacker-grown set and a most-recent-wins one
- * would let a flood push the deploy's real origin out of eviction range. The
- * real origin is whatever the first cached render used, so first-seen-wins is
- * the safe bias: flooding can only fail to ADD, never displace.
- *
- * @type {Set<string>}
- */
-const _knownOrigins = new Set();
-const ORIGIN_REGISTRY_CAP = 16;
-
-/** @param {URL} url */
-function rememberOrigin(url) {
-  const origin = originKey(url);
-  if (!origin || _knownOrigins.has(origin)) return;
-  if (_knownOrigins.size >= ORIGIN_REGISTRY_CAP) return;
-  _knownOrigins.add(origin);
-}
-
-/**
  * The origin component of a cache key. `url.origin` is already the normalized
  * lowercase `scheme://host[:port]` form for an http(s) URL; a non-special
  * scheme serializes to the literal string `null`, which is a fine constant key
@@ -208,10 +182,6 @@ export function htmlCacheKey(url) {
  */
 export async function readHtmlCache(url) {
   try {
-    // Register on the LOOKUP too, not only the write: an instance that only
-    // ever served cache HITS for an origin (a second replica behind a load
-    // balancer) must still be able to evict that origin's entries.
-    rememberOrigin(url);
     const raw = await getStore().get(htmlCacheKey(url));
     if (!raw) return null;
     const rec = JSON.parse(raw);
@@ -232,7 +202,6 @@ export async function readHtmlCache(url) {
  */
 export async function writeHtmlCache(url, rec, revalidateSeconds) {
   try {
-    rememberOrigin(url);
     await getStore().set(htmlCacheKey(url), JSON.stringify(rec), revalidateSeconds * 1000);
   } catch {
     /* a store write failure must never crash the response */
@@ -280,67 +249,85 @@ export function isCacheableResponse(res, guards = {}) {
  *
  * ORIGIN RESOLUTION (#1097). Cache keys carry the request's origin, so a bare
  * path does not name one entry, it names one per origin the path was cached
- * under. This resolves them in order:
+ * under. Two forms resolve it:
  *
- *  1. An ABSOLUTE url (`https://app.example/blog`) names its origin exactly.
- *     This is the precise form, and the one to reach for from a background
- *     job or a worker that serves no HTTP traffic of its own.
- *  2. Otherwise the CURRENT request's origin, when one is ambient. A mutation
- *     runs inside the request of the user who triggered it, and that user is
- *     on the same origin as the pages being evicted, so this is exact for the
- *     ordinary "server action writes, then evicts" flow.
- *  3. Plus every origin this process has cached under, so a path cached before
- *     the current request is still reached.
+ *  1. The CURRENT request's origin, when one is ambient. A mutation runs inside
+ *     the request of the user who triggered it, and that user is on the same
+ *     origin as the pages being evicted, so a bare path is exact for the
+ *     ordinary "server action writes, then evicts" flow, which is every
+ *     in-repo example and everything the docs show.
+ *  2. An ABSOLUTE url (`https://app.example/blog`) names its origin outright.
+ *     This is the form for a caller with NO ambient request: a cron job, a
+ *     queue worker, an `instrumentation.js` timer.
  *
- * The residual gap is a process that has served no traffic for the origin AND
- * has no ambient request: its registry is empty and there is nothing to
- * resolve, so a bare path evicts nothing. Pass the absolute url there. Like
- * `revalidateAll`, this is per-process best-effort; the TTL is the floor.
+ * A bare path with no ambient request cannot be resolved and WARNS ONCE naming
+ * the path, rather than silently evicting nothing.
+ *
+ * There is deliberately no process-local registry of "origins seen so far"
+ * standing in for case 2. The origin comes from `X-Forwarded-Host`, which is
+ * client-supplied and forwarded rather than stripped (the whole premise of
+ * #1097), so such a registry is attacker-writable: a flood of hostile hosts
+ * against a cold process either fills a bounded registry before the real origin
+ * is ever seen, or grows an unbounded one. Either way eviction silently stops
+ * working, which is worse than the explicit contract above.
  *
  * @param {string} path  e.g. '/blog', '/blog?page=2', or 'https://app.example/blog'
  * @returns {Promise<void>}
  */
 export async function revalidatePath(path) {
   if (typeof path !== 'string' || !path) return;
-  /** @type {URL[]} */
-  const targets = [];
+  let url;
   if (/^https?:\/\//i.test(path)) {
-    try { targets.push(new URL(path)); } catch { return; }
+    try { url = new URL(path); } catch { return; }
   } else {
-    for (const origin of revalidateOrigins()) {
-      // Build the same normalized key readHtmlCache / writeHtmlCache produce.
-      try { targets.push(new URL(path, origin)); } catch { /* skip a bad pairing */ }
+    const origin = ambientOrigin();
+    if (!origin) {
+      warnUnresolvedOriginOnce(path);
+      return;
     }
+    // Build the same normalized key readHtmlCache / writeHtmlCache produce.
+    try { url = new URL(path, origin); } catch { return; }
   }
-  await Promise.all(
-    targets.map(async (url) => {
-      try {
-        await getStore().delete(htmlCacheKey(url));
-      } catch {
-        /* a store delete failure is non-fatal: the TTL still expires the entry */
-      }
-    }),
-  );
+  try {
+    await getStore().delete(htmlCacheKey(url));
+  } catch {
+    /* a store delete failure is non-fatal: the TTL still expires the entry */
+  }
 }
 
 /**
- * The origins a bare-path `revalidatePath` should evict under: the ambient
- * request's origin first (exact for the server-action flow), then every origin
- * this process has cached under. Deduped, and never throws, since an eviction
- * helper must not take down the mutation that called it.
+ * The current request's origin, or '' when there is no ambient request. Never
+ * throws: an eviction helper must not take down the mutation that called it.
  *
- * @returns {string[]}
+ * @returns {string}
  */
-function revalidateOrigins() {
-  const out = new Set();
+function ambientOrigin() {
   try {
     const req = getRequest();
-    if (req) out.add(new URL(req.url).origin);
+    return req ? new URL(req.url).origin : '';
   } catch {
-    /* no ambient request, or a url that does not parse: fall through */
+    return '';
   }
-  for (const origin of _knownOrigins) out.add(origin);
-  return [...out];
+}
+
+/**
+ * Paths already warned about an unresolvable bare-path eviction, so the warning
+ * fires once per offending call site rather than once per invocation.
+ * @type {Set<string>}
+ */
+const _warnedUnresolvedPaths = new Set();
+
+/** @param {string} path */
+function warnUnresolvedOriginOnce(path) {
+  if (_warnedUnresolvedPaths.has(path)) return;
+  _warnedUnresolvedPaths.add(path);
+  console.warn(
+    `[webjs] revalidatePath(${JSON.stringify(path)}) evicted nothing: HTML cache ` +
+    `keys carry the request origin, and this call has no ambient request to take ` +
+    `one from (a cron job, a queue worker, a boot-time timer). Pass an absolute ` +
+    `url instead, e.g. revalidatePath('https://your-host${path.startsWith('/') ? path : '/' + path}'), ` +
+    `or call it from a server action, where the triggering request supplies the origin.`
+  );
 }
 
 /**

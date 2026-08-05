@@ -79,7 +79,12 @@ try {
   w('actions.server.ts', `'use server';\nexport async function ping() {\n  return { success: true };\n}\n`);
 
   let server;
-  ({ server, close } = await startServer({ appDir: dir, dev: false, port: 0, logger: quiet }));
+  // dev mode on purpose. The HTML cache is live in dev (the opt-in is the page
+  // export, not the mode), and a prod boot additionally resolves vendor imports
+  // over the network, which is the class of test that trips bun test's 5s
+  // default per-test timeout and lands siblings on the runner's DENYLIST. This
+  // matches forwarded-proto.mjs, which boots the same way and is not denylisted.
+  ({ server, close } = await startServer({ appDir: dir, dev: true, port: 0, logger: quiet }));
   const port = typeof server.port === 'number' ? server.port : server.address().port;
   const base = `http://localhost:${port}`;
   const endpoint = await actionEndpoint(dir, 'actions.server.ts', 'ping');

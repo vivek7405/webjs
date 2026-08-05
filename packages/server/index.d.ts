@@ -617,9 +617,9 @@ export declare function revalidateTags(tags: string[]): Promise<void>;
  * Evict the cached HTML for a path (the next request re-renders).
  *
  * Keys carry the request origin, so a bare path resolves it from the calling
- * request (exact from a server action) plus the origins this process has
- * cached under. Pass an absolute url (`https://app.example/blog`) to name one
- * exactly, which is what a background job serving no requests of its own needs.
+ * request, which is exact from a server action. Pass an absolute url
+ * (`https://app.example/blog`) from a caller with no request in scope (a cron
+ * job, a queue worker); a bare path there warns and evicts nothing.
  */
 export declare function revalidatePath(path: string): Promise<void>;
 /** Evict all cached HTML (per-process generation bump). */

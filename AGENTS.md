@@ -269,7 +269,7 @@ MyThing.register('my-thing');
 
 - Default export is a possibly-async function receiving `{ params, searchParams, url, actionData }`. Runs **only on the server**. Throw `notFound()` / `redirect(url)` to short-circuit. `params` / `searchParams` are awaitable AND synchronously readable (`params.id` and `await params` both work, Next 15/16 parity, #848).
 - Named exports: `metadata` (static), `generateMetadata(ctx)` (async, takes precedence). Type both with `Metadata`. See `references/routing-and-pages.md`.
-- Optional `export const revalidate` (seconds) opts into the server HTML response cache (#241). SAFETY: only on a page identical for every visitor (no `cookies()` / session / per-user data); keyed by URL only. See `references/built-ins.md`.
+- Optional `export const revalidate` (seconds) opts into the server HTML response cache (#241). SAFETY: only on a page identical for every visitor (no `cookies()` / session / per-user data); keyed by the request origin plus the URL, with no per-user keying. See `references/built-ins.md`.
 - A page has NO `action` export. The no-JS write path is a `<form action=${importedAction}>` binding a `'use server'` action (#1155): a non-GET submission to the page's own URL is dispatched to the action the hidden `__webjs_action` field names, returning an `ActionResult`. Success is a `303` (PRG); failure re-renders the SAME page at `422` with the result on `ctx.actionData`; a submission binding nothing is a `405`. See `references/data-and-actions.md`.
 - Page modules also load on the client so imported components register; keep top-level imports browser-safe. **Server-only code goes only in `.server.{js,ts}`, `route.ts`, or `middleware.ts`. Never in pages, layouts, or components.**
 
