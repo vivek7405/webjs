@@ -124,6 +124,28 @@ test('a valid kebab name still scaffolds, and its title survives verbatim', asyn
   }
 });
 
+// The generators emit STRINGS, so a malformed doctor-gate block only shows in a
+// freshly generated app. Both templates get the gate, and the generated CI
+// workflow runs the script that reads it, which is the whole loop (#1257).
+for (const template of ['full-stack', 'api']) {
+  test(`the ${template} scaffold gates UNMARKED_ASSET_LINKS and runs doctor in CI`, async () => {
+    const cwd = await tempCwd();
+    const restoreLog = console.log;
+    console.log = () => {};
+    try {
+      await scaffoldApp('my-app', cwd, { template, install: false });
+      const pkg = JSON.parse(await readFile(join(cwd, 'my-app', 'package.json'), 'utf8'));
+      assert.equal(pkg.webjs.doctor.gate.UNMARKED_ASSET_LINKS, 'error');
+      assert.equal(pkg.scripts.doctor, 'webjs doctor');
+      const ci = await readFile(join(cwd, 'my-app', '.github', 'workflows', 'ci.yml'), 'utf8');
+      assert.match(ci, /^\s+- run: npm run doctor$/m, 'the conventions job runs doctor');
+    } finally {
+      console.log = restoreLog;
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+}
+
 test('an uppercase name scaffolds a working app end to end', async () => {
   // The rule deliberately allows uppercase, and the claim that goes with it is
   // that a capital letter is safe as the DIRECTORY, in the package.json

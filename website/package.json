@@ -59,6 +59,11 @@
         "node scripts/copy-registry.mjs",
         "npm run css:build"
       ]
+    },
+    "doctor": {
+      "gate": {
+        "UNMARKED_ASSET_LINKS": "error"
+      }
     }
   },
   "dependencies": {

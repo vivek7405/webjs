@@ -34,6 +34,11 @@
         "webjs db migrate",
         "npm run css:build"
       ]
+    },
+    "doctor": {
+      "gate": {
+        "UNMARKED_ASSET_LINKS": "error"
+      }
     }
   },
   "dependencies": {
