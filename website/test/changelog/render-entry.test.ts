@@ -10,8 +10,10 @@
  *
  * The whole corpus is the fixture. changelog/ carries both shapes the repo
  * produces (hand-written multi-paragraph release notes, and generator output
- * that dumps a squashed commit body as indented `*` bullets), so asserting
+ * that dumps a squashed commit body as indented `*` lines), so asserting
  * across every file is what stops one shape being fixed at the other's cost.
+ * No entry body renders a second level of bullets: the page is one bullet
+ * per released change, and everything under it is prose.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -42,8 +44,8 @@ function everyEntryFile(): Array<[string, string]> {
 }
 
 /**
- * Top-level items carry the entry class; a nested sub-list's items are bare
- * `<li>`, so the class is what separates the two levels.
+ * Entry items carry the entry class. Nothing else in an entry body is an
+ * `<li>` at all, which is the property the corpus guard below pins.
  */
 const entryItems = (html: string) => html.split('<li class="text-fg-muted').slice(1);
 const countEntryItems = (html: string) => entryItems(html).length;
@@ -69,16 +71,20 @@ test('a multi-paragraph entry is ONE list item whose body is paragraphs', () => 
   );
 });
 
-test('a nested sub-list renders as a nested list inside its entry', () => {
+test('an indented sub-list renders as paragraphs, not a second level of bullets', () => {
+  // The changelog is one bullet per released change. A second level of glyphs
+  // under half the entries is noise, so an indented bullet keeps its grouping
+  // and loses its marker.
   const md = bodyOf(`${CHANGELOG_DIR}server/0.8.57.md`);
   const html = renderEntryBody(md);
 
-  const nested = html.match(/<ul class="list-disc pl-5 space-y-1[^"]*">[\s\S]*?<\/ul>/g) || [];
-  assert.equal(nested.length, 1, 'the four indented bullets form one nested list');
-  assert.equal((nested[0].match(/<li>/g) || []).length, 4);
-
-  // It sits inside the entry it belongs to, not beside it.
-  assert.ok(entryItems(html)[0].includes(nested[0]));
+  assert.equal(html.match(/<ul/g)?.length, 1, 'only the entry list itself');
+  const first = entryItems(html)[0];
+  // The four attack vectors are four paragraphs of the entry they explain.
+  for (const vector of ['A request target beginning with', 'was honored for any scheme', 'threw', 'supplied the origin outright']) {
+    assert.ok(first.includes(vector), `kept: ${vector}`);
+  }
+  assert.ok(!/<li>/.test(first.slice(0, first.indexOf('</li>') + 5)), 'no bullet inside the entry');
 });
 
 test('a top-level entry after an indented block is not absorbed into it', () => {
@@ -98,8 +104,10 @@ test('a top-level entry after an indented block is not absorbed into it', () => 
   assert.equal(countEntryItems(html), 2);
   assert.match(html, /<strong[^>]*>first<\/strong>/);
   assert.match(html, /<strong[^>]*>second<\/strong>/);
-  // The nested points stayed nested rather than becoming entries of their own.
-  assert.equal((html.match(/<li>a nested point<\/li>/g) || []).length, 1);
+  // The indented points stayed inside the first entry, as its body prose,
+  // rather than becoming entries of their own.
+  assert.ok(entryItems(html)[0].includes('a nested point'));
+  assert.ok(entryItems(html)[0].includes('another nested point'));
 });
 
 test('a single-line entry still renders as bare text in its item', () => {
@@ -108,85 +116,32 @@ test('a single-line entry still renders as bare text in its item', () => {
   assert.ok(!html.includes('<p class="my-2'), 'no paragraph wrapper for a body-less entry');
 });
 
-test('blank-separated indented bullets stay ONE nested list', () => {
-  // The dominant generated shape, and the one the tight-list fixture above
-  // cannot exercise: the generator writes each commit subject as its own
-  // `  * ` line separated by a whitespace-only line. CommonMark reads that
-  // as one LOOSE list. Emitting a single-item list per bullet would give
-  // each its own margin and visually split the list apart.
+test('blank-separated indented bullets become paragraphs of ONE entry', () => {
+  // The dominant generated shape: the generator writes each squashed commit
+  // subject as its own `  * ` line separated by a whitespace-only line. Each
+  // becomes a paragraph, and the entry stays a single bullet.
   const md = bodyOf(`${CHANGELOG_DIR}cli/0.10.11.md`);
   const html = renderEntryBody(md);
 
   const first = entryItems(html)[0];
-  const nested = first.match(/<ul class="list-disc pl-5 space-y-1[^"]*">[\s\S]*?<\/ul>/g) || [];
-  assert.equal(nested.length, 1, 'two blank-separated bullets form one list, not two');
-  assert.equal((nested[0].match(/<li>/g) || []).length, 2);
+  assert.ok(first.includes('feat: enforce scaffold-content removal'));
+  assert.ok(first.includes('docs: document the no-scaffold-placeholder'));
+  assert.equal(html.match(/<ul/g)?.length, 2, 'one entry list per section heading, and nothing nested');
 });
 
-test('a paragraph between indented bullets does start a new nested list', () => {
-  // The counterfactual for the rule above. Resuming the trailing list is
-  // correct across a blank line only; real prose in between separates them.
-  const html = renderEntryBody([
-    '- **entry**',
-    '  - first list',
-    '',
-    '  Prose that interrupts.',
-    '',
-    '  - second list',
-  ].join('\n'));
-
-  const nested = html.match(/<ul class="list-disc pl-5 space-y-1[^"]*">[\s\S]*?<\/ul>/g) || [];
-  assert.equal(nested.length, 2);
-  assert.equal(countEntryItems(html), 1);
-});
-
-test('a changed bullet marker starts a new nested list', () => {
-  // CommonMark starts a new list when the bullet character changes, so the
-  // resume rule has to match on the marker too. Merging across it would join
-  // two lists the markdown separated on purpose.
-  const html = renderEntryBody([
-    '- **entry**',
-    '  - dash item',
-    '',
-    '  * star item',
-  ].join('\n'));
-
-  const nested = html.match(/<ul class="list-disc pl-5 space-y-1[^"]*">[\s\S]*?<\/ul>/g) || [];
-  assert.equal(nested.length, 2);
-  assert.equal(countEntryItems(html), 1);
-});
-
-/**
- * Split a changelog body into its entries, each as its own lines. Anything
- * before the first column-0 bullet is section chrome and belongs to none.
- */
-function sourceEntries(md: string): string[][] {
-  const entries: string[][] = [];
-  for (const line of md.split('\n')) {
-    if (/^- /.test(line)) entries.push([line]);
-    else if (entries.length) entries[entries.length - 1].push(line);
-  }
-  return entries;
-}
-
-test('no changelog file renders a fragmented nested list', () => {
-  // Adjacent nested lists mean one list came out as several, EXCEPT where the
-  // entry changes bullet character, which legitimately starts a new list. So
-  // read the markers straight off the source and only demand adjacency-free
-  // output where there is a single marker. Deliberately not a model of the
-  // renderer's run-splitting: a guard that recomputes the thing it checks
-  // cannot fail, and an earlier attempt at one disagreed with the renderer on
-  // lazy continuations, which would have false-alarmed on the first file to
-  // use one.
+test('no changelog file renders a nested list', () => {
+  // Whole-corpus form of the two tests above, and the property the page is
+  // meant to have: the only lists are the per-section entry lists, so an
+  // entry body is always prose.
   for (const [label, md] of everyEntryFile()) {
-    const items = entryItems(renderEntryBody(md));
-    const sources = sourceEntries(md);
-    items.forEach((item, i) => {
-      const markers = new Set((sources[i] || []).flatMap((l) => /^ {2,}([-*]) /.exec(l)?.[1] ?? []));
-      if (markers.size > 1) return;
-      const adjacent = (item.match(/<\/ul><ul class="list-disc pl-5 space-y-1/g) || []).length;
-      assert.equal(adjacent, 0, `${label}: entry ${i + 1} split one nested list into ${adjacent + 1}`);
-    });
+    const html = renderEntryBody(md);
+    const sections = (md.match(/^## /gm) || []).length || 1;
+    const lists = (html.match(/<ul/g) || []).length;
+    assert.ok(lists <= sections, `${label}: ${lists} lists for ${sections} sections, so an entry body rendered one`);
+    for (const item of entryItems(html)) {
+      const body = item.slice(0, item.indexOf('</li>') + 5);
+      assert.ok(!body.includes('<li>'), `${label}: an entry body rendered a bullet`);
+    }
   }
 });
 
@@ -195,9 +150,11 @@ test('a generated entry keeps its commit-body content', () => {
   const html = renderEntryBody(md);
 
   assert.equal(countEntryItems(html), countMarkdownEntries(md));
-  // The `  * ` commit-subject line becomes a nested bullet, not literal text
-  // with a stray asterisk, and the wrapped prose under it survives.
-  assert.match(html, /<li>feat: ship @webjsdev\/ui class-helper primitives/);
+  // The `  * ` commit-subject line becomes body prose with its marker
+  // dropped, not literal text carrying a stray asterisk, and the wrapped
+  // prose under it survives.
+  assert.match(html, /<p class="my-2[^"]*">feat: ship @webjsdev\/ui class-helper primitives/);
+  assert.ok(!html.includes('* feat: ship'), 'the marker is not left in the text');
   assert.match(html, /Add components\/ui\//);
 });
 

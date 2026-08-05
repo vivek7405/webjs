@@ -28,47 +28,47 @@ function inline(s: string): string {
   return out;
 }
 
-/**
- * One block of an entry's body: a paragraph of soft-wrapped lines, or a
- * nested bullet list whose items are themselves soft-wrapped lines.
- */
-type Block =
-  | { kind: 'p'; lines: string[] }
-  | { kind: 'ul'; marker: string; items: string[][] };
+/** One paragraph of an entry's body, as its soft-wrapped source lines. */
+type Para = string[];
 
 /** Render the body of one changelog entry: h1 / h2 / bulleted lists / paragraphs. */
 export function renderEntryBody(md: string): string {
   const lines = md.split('\n');
   const out: string[] = [];
   let inList = false;
-  // An entry item is a sequence of blocks, not a flat run of lines. A blank
-  // line inside an item is a paragraph BREAK within it (CommonMark reads a
-  // 2-space-indented paragraph after a blank as list-item continuation), so
-  // it closes the open block rather than the item. Closing the item there is
-  // what used to turn one multi-paragraph entry into a stack of sibling
-  // bullets: 3 entries rendered as 23 peer list items.
+  // An entry item is a sequence of PARAGRAPHS, not a flat run of lines. A
+  // blank line inside an item is a paragraph BREAK within it (CommonMark
+  // reads a 2-space-indented paragraph after a blank as list-item
+  // continuation), so it closes the open paragraph rather than the item.
+  // Closing the item there is what used to turn one multi-paragraph entry
+  // into a stack of sibling bullets: 3 entries rendered as 23 peer items.
+  //
+  // An indented BULLET is a paragraph too, with its marker dropped. The
+  // changelog is one bullet per released change, and a second level of
+  // glyphs under half of them is noise: the generator writes each squashed
+  // commit subject as its own `*` line, which restated the entry title above
+  // it in 119 of the corpus's 378 indented bullets. So indentation controls
+  // grouping here, never bullet depth, and no entry body renders a list.
   let itemOpen = false;
-  let blocks: Block[] = [];
-  let openBlock: Block | null = null;
+  let paras: Para[] = [];
+  let open: Para | null = null;
 
-  function pushBlock(b: Block) { blocks.push(b); openBlock = b; }
+  function startPara(text: string) { open = [text]; paras.push(open); }
 
-  function renderBlocks(bs: Block[]): string {
+  function renderParas(ps: Para[]): string {
     // The overwhelmingly common entry is a single line with no body. Emit it
     // bare so its markup is unchanged by the multi-paragraph support.
-    if (bs.length === 1 && bs[0].kind === 'p') return inline(bs[0].lines.join(' '));
-    return bs.map((b) => b.kind === 'p'
-      ? `<p class="my-2 first:mt-0 last:mb-0">${inline(b.lines.join(' '))}</p>`
-      : `<ul class="list-disc pl-5 space-y-1 my-2 last:mb-0">${b.items.map((it) => `<li>${inline(it.join(' '))}</li>`).join('')}</ul>`
-    ).join('');
+    if (ps.length === 1) return inline(ps[0].join(' '));
+    return ps.map((lines) =>
+      `<p class="my-2 first:mt-0 last:mb-0">${inline(lines.join(' '))}</p>`).join('');
   }
 
   function flushItem() {
     if (itemOpen) {
-      out.push(`<li class="text-fg-muted text-[14px] leading-relaxed">${renderBlocks(blocks)}</li>`);
+      out.push(`<li class="text-fg-muted text-[14px] leading-relaxed">${renderParas(paras)}</li>`);
       itemOpen = false;
-      blocks = [];
-      openBlock = null;
+      paras = [];
+      open = null;
     }
   }
   function endList() {
@@ -77,12 +77,6 @@ export function renderEntryBody(md: string): string {
   }
   function startList() {
     if (!inList) { out.push('<ul class="list-disc pl-5 space-y-2 my-3">'); inList = true; }
-  }
-  function openItem(first: string) {
-    itemOpen = true;
-    blocks = [];
-    openBlock = null;
-    pushBlock({ kind: 'p', lines: [first] });
   }
 
   for (const raw of lines) {
@@ -95,46 +89,26 @@ export function renderEntryBody(md: string): string {
       out.push(`<h4 class="font-mono text-[11px] uppercase tracking-[0.15em] font-semibold text-fg-subtle mt-4 mb-1.5">${inline(line.slice(3).trim())}</h4>`);
     } else if (/^- /.test(line)) {
       // A top-level entry, recognised by its column-0 marker. Checking this
-      // BEFORE the indented-continuation branch is what stops an open item
-      // swallowing the entry that follows it.
+      // BEFORE the indented branches is what stops an open item swallowing
+      // the entry that follows it.
       flushItem();
       startList();
-      openItem(line.slice(2).trim());
+      itemOpen = true;
+      paras = [];
+      open = null;
+      startPara(line.slice(2).trim());
     } else if (itemOpen && /^ {2,}[-*] /.test(line)) {
-      const marker = line.trim()[0];
-      const text = line.trim().slice(2).trim();
-      // Resume the TRAILING nested list rather than the open one. A blank
-      // line between indented bullets is a LOOSE list in CommonMark, still
-      // one list, and the generator writes exactly that shape (one `*`
-      // commit subject per blank-separated line). Keying off the open block
-      // would emit a separate single-item list per bullet, each with its own
-      // margin, splitting one list into several. A paragraph in between is a
-      // different matter, and genuinely does start a new list.
-      //
-      // The marker has to match to resume, because CommonMark starts a NEW
-      // list when the bullet character changes. Merging across that would
-      // join two lists the markdown deliberately separated.
-      const last = blocks[blocks.length - 1];
-      if (last && last.kind === 'ul' && last.marker === marker) { last.items.push([text]); openBlock = last; }
-      else pushBlock({ kind: 'ul', marker, items: [[text]] });
+      // Its own paragraph, marker dropped. Depth is not read, so a deeper
+      // run groups exactly like a 2-space one instead of nesting.
+      startPara(line.trim().slice(2).trim());
     } else if (itemOpen && /^ {2,}\S/.test(line)) {
       const text = line.trim();
-      // A lazy continuation of the sub-item when a nested list is open, a
-      // soft-wrapped line when a paragraph is, and a fresh paragraph when a
-      // blank line closed whatever came before.
-      //
-      // Indentation DEPTH is deliberately not read here, or in the nested
-      // bullet branch above. Every indented bullet in the corpus sits at two
-      // spaces, so a deeper run has no instance to render, and honouring
-      // depth for real means recursive sub-lists. Reading it in one branch
-      // and not the other is worse than ignoring it in both, since a 4-space
-      // paragraph would then stay in its bullet while a 4-space bullet is
-      // still hoisted to a sibling.
-      if (openBlock && openBlock.kind === 'ul') openBlock.items[openBlock.items.length - 1].push(text);
-      else if (openBlock && openBlock.kind === 'p') openBlock.lines.push(text);
-      else pushBlock({ kind: 'p', lines: [text] });
+      // Soft-wrapped continuation of the open paragraph, or the start of a
+      // fresh one when a blank line closed the last.
+      if (open) open.push(text);
+      else startPara(text);
     } else if (line.trim() === '') {
-      if (itemOpen) openBlock = null;
+      if (itemOpen) open = null;
       else flushItem();
     } else {
       endList();
