@@ -551,9 +551,19 @@ export function assertNotFunctionActionAttr(val, attrName, tag) {
  *
  * A custom element is excluded for the same reason rather than a different
  * one: it has no IDL reflection, so its `.action` is an author-defined
- * property and a function is a legitimate value. Note the separate path that
- * DOES write the source there, a prop declared `reflect: true`, which runs in
- * the setter and never reaches any commit site.
+ * property and a function is a legitimate value. There is a separate path
+ * that reflects on a custom element, a prop declared `reflect: true`, which
+ * runs in the setter and never reaches any commit site. It used to write the
+ * source, which is why this carve-out was once narrower than it looked.
+ * #1169 closed it at the setter, where a function now removes the attribute.
+ *
+ * That close is not total, so do not read this exclusion as a guarantee the
+ * source can never reach a custom element's attribute. `_reflectAttribute`
+ * runs a prop's own `converter.toAttribute` BEFORE the function guard, so an
+ * author who supplies one still owns what gets written, a stringified
+ * function included. That is deliberate (supplying a converter is taking
+ * responsibility for the serialization), but it means the guarantee here
+ * covers the converter-less case.
  *
  * `<form .action=${fn}>` is refused rather than treated as the supported
  * binding: the supported one is the plain `action=${fn}` attribute, and a
@@ -1201,7 +1211,7 @@ function reflectsAsFormAction(propName, tag) {
  * @param {Set<unknown>} [seen]
  * @returns {boolean}
  */
-function carriesFunction(val, seen) {
+export function carriesFunction(val, seen) {
   if (typeof val === 'function') return true;
   if (!Array.isArray(val)) return false;
   const visited = seen || new Set();

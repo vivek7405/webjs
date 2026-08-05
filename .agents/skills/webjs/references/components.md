@@ -48,7 +48,7 @@ The bare form is shorthand: `count: Number` means `prop(Number)`. Use `prop()` t
 | Option | Default | Meaning |
 |---|---|---|
 | `type` | `String` | Constructor feeding the default attribute converter |
-| `reflect` | `false` | Property changes write back to the HTML attribute |
+| `reflect` | `false` | Property changes write back to the HTML attribute (a function value removes it instead, see below) |
 | `state` | `false` | Internal-only. No attribute, not observed |
 | `attribute` | derived from name | The HTML attribute name the property rides |
 | `default` | none | Declarative initial value (a function runs per instance for a fresh object / array) |
@@ -56,6 +56,8 @@ The bare form is shorthand: `count: Number` means `prop(Number)`. Use `prop()` t
 | `converter` | type-based | Custom attribute-to-property serialization |
 
 For an array-typed prop pass `Array`, not `Object` (`array-prop-uses-array-type` flags the `Object` form). For anything the built-in converters cannot parse (Date, Map, Set) supply a `converter`.
+
+**A `reflect: true` property holding a FUNCTION drops its attribute instead of writing one, and so does one holding an array that carries a function, unless the prop is `Object` or `Array` typed.** A function has no HTML attribute representation, and the serializations it would otherwise get are both useless and dangerous. `String(fn)` is the function's SOURCE, so a reflected `'use server'` action would ship its whole body, closure secrets included, to every visitor, and `JSON.stringify(fn)` is `undefined`, which lands in the attribute as the literal four-character string. So the reflection path treats a function like `null`, removes the attribute, and warns naming the property, the tag, and the attribute. This holds on both sides, since SSR and the client-side setter run the same path, and it holds for every property name (the leak was never specific to one called `action`). Two exceptions. A property with a custom `converter.toAttribute` runs that converter first and is left alone, because an author who writes one has taken responsibility for serializing whatever they are handed. And an `Object` or `Array` typed property CARRYING a function keeps its data, because `JSON.stringify` drops the function to `null` and omits the key, so `[1, 2, fn]` reflects as `[1,2,null]` with no source and nothing else lost. If you need a function on a component, use a plain property or a signal and do not mark it `reflect`.
 
 **Never use a class-field declaration OR initializer** (`count = 0`, `student: Student = {...}`, `todos!: Todo[]`). Under `useDefineForClassFields` even a type-only `todos!: Todo[]` compiles to define an own property after `super()`, which clobbers the prototype's reactive accessor and silently breaks reactivity. Only declare props in the factory and read/write them off `this`. The `reactive-props-no-class-field` rule catches this.
 
