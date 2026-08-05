@@ -292,8 +292,9 @@ export class UiToggleGroupItem extends WebComponent({
     // SSR runs render() but NOT connectedCallback. Without this the served item
     // carried aria-pressed / aria-disabled with no role at all, and neither is a
     // global ARIA attribute, so the first paint shipped attributes that are not
-    // allowed on a generic-role element. setAttribute rather than `this.role`
-    // because the attribute methods are what the server shims.
+    // allowed on a generic-role element. (`this.role` is shimmed server-side too,
+    // like the ariaPressed / dataset / className writes around it; setAttribute
+    // is simply the more explicit spelling.)
     this.setAttribute('role', 'button');
     this.setAttribute('data-slot', 'toggle-group-item');
     this.ariaPressed = String(this.pressed);

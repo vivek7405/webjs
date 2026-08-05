@@ -784,6 +784,63 @@ suite('ui-dropdown-menu checkbox + radio items', () => {
     root.remove();
   });
 
+  // Space must NOT be swallowed for a control the author slotted into the panel:
+  // it is inside [role="menu"] too, so an unconditional preventDefault meant a
+  // user could not type a space into their own filter input.
+  test('Space still reaches an author control slotted into the panel', async () => {
+    const root = await mount(html`
+      <ui-dropdown-menu>
+        <ui-dropdown-menu-trigger><button>Options</button></ui-dropdown-menu-trigger>
+        <ui-dropdown-menu-content>
+          <input id="menu-filter" placeholder="Filter">
+          <ui-dropdown-menu-item>Profile</ui-dropdown-menu-item>
+        </ui-dropdown-menu-content>
+      </ui-dropdown-menu>
+    `);
+    const menuEl = root.querySelector('ui-dropdown-menu');
+    const input = root.querySelector('#menu-filter');
+    menuEl.show();
+    await tick();
+    input.focus();
+    const ev = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+    input.dispatchEvent(ev);
+    await tick();
+    assert.equal(ev.defaultPrevented, false, 'the space was left for the input');
+    assert.equal(menuEl.open, true, 'and it did not activate anything');
+    root.remove();
+  });
+
+  // Space while a typeahead search is in flight belongs to the SEARCH, or a
+  // multi-word item can never be disambiguated past its first word.
+  test('Space continues a typeahead search rather than activating', async () => {
+    const root = await mount(html`
+      <ui-dropdown-menu>
+        <ui-dropdown-menu-trigger><button>View</button></ui-dropdown-menu-trigger>
+        <ui-dropdown-menu-content>
+          <ui-dropdown-menu-item text-value="Status line">Status line</ui-dropdown-menu-item>
+          <ui-dropdown-menu-item text-value="Status bar">Status bar</ui-dropdown-menu-item>
+        </ui-dropdown-menu-content>
+      </ui-dropdown-menu>
+    `);
+    const menuEl = root.querySelector('ui-dropdown-menu');
+    const inner = [...root.querySelectorAll('[role="menuitem"]')];
+    menuEl.show();
+    await tick();
+    // Type "status", then a space: the space must extend the buffer, not select.
+    for (const ch of 'status') {
+      inner[0].dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true }));
+    }
+    await tick();
+    inner[0].dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    await tick();
+    assert.equal(menuEl.open, true, 'the space did not activate and close the menu');
+    // "status b" now disambiguates to the second item.
+    inner[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'b', bubbles: true }));
+    await tick();
+    assert.equal(document.activeElement, inner[1], 'multi-word typeahead reached "Status bar"');
+    root.remove();
+  });
+
   test('Enter on a plain item activates it and closes the menu', async () => {
     const root = await mount(html`
       <ui-dropdown-menu>
@@ -1281,10 +1338,12 @@ suite('ui-hover-card a11y', () => {
     root.remove();
   });
 
-  // The delayed hover-close is a close of a popover="manual" panel too, and the
-  // focus linger this branch added means it can fire while an in-card link holds
-  // focus. Before the fix it did a bare `open = false` and dropped focus to body.
-  test('the delayed close hands focus back when the card holds it', async () => {
+  // The documented contract is that the card stays open while focus is inside
+  // it, which is what makes in-card content Tab-reachable. A mouseleave can
+  // schedule the delayed close while a keyboard user still holds focus on an
+  // in-card link, and closing then would pull the card out from under them.
+  // Counterfactual: a close path that ignores focus closes the card here.
+  test('the delayed close is refused while the card holds focus', async () => {
     const root = await mount(html`
       <ui-hover-card open-delay="0" close-delay="10">
         <ui-hover-card-trigger><a href="#hc-u" id="hc-t2">@vivek</a></ui-hover-card-trigger>
@@ -1300,9 +1359,13 @@ suite('ui-hover-card a11y', () => {
     assert.equal(document.activeElement, inner, 'focus is inside the card');
     card.hide();
     await new Promise((r) => setTimeout(r, 60));
-    assert.equal(card.open, false, 'the delayed close fired');
-    assert.notEqual(document.activeElement, document.body, 'focus was not dropped to <body>');
-    assert.equal(document.activeElement, trigger, 'it went back to the trigger');
+    assert.equal(card.open, true, 'the card stayed open for the focus it holds');
+    assert.equal(document.activeElement, inner, 'and focus was left exactly where it was');
+    // Once focus genuinely leaves, the next scheduled close does go through.
+    trigger.focus();
+    card.hide();
+    await new Promise((r) => setTimeout(r, 60));
+    assert.equal(card.open, false, 'closes once focus is no longer inside');
     root.remove();
   });
 

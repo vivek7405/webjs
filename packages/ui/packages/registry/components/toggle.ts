@@ -37,9 +37,12 @@
  *   The name is read during render(), which means markup present at first paint
  *   works, but a LATER `el.setAttribute('aria-label', ...)` does not re-render
  *   and so does not reach the inner button until something else happens to
- *   trigger a render. If your name is computed after mount, set it alongside a
- *   reactive prop change, or set it on the inner button yourself
- *   (`el.querySelector('button').setAttribute('aria-label', name)`).
+ *   trigger a render. If your name is computed after mount, set it on the inner
+ *   button yourself (`el.querySelector('button').setAttribute('aria-label',
+ *   name)`). Do NOT reach for "flip a reactive prop to force a re-render":
+ *   adding or removing the name switches which of the three templates below is
+ *   used, and a template swap REBUILDS the button, so doing it on a click would
+ *   destroy the control the user is focused on and drop focus to <body>.
  *   Using the Tier-1 `toggleClass()` helper on your own `<button>` instead? Then
  *   the name is entirely yours: give an icon-only button an `aria-label`, and
  *   carry the pressed state on `aria-pressed` + `data-state` as the example does.

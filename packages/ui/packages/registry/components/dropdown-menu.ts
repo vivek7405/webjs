@@ -511,11 +511,25 @@ export class UiDropdownMenu extends WebComponent({
       // the keyboard cannot activate any item at all, and a checkable item,
       // whose ONLY state transition is activation, cannot be toggled.
       //
-      // Space MUST be prevented either way: it is a single character, so it
-      // otherwise falls through to typeahead, matches nothing, and scrolls the
-      // page underneath the open menu.
-      e.preventDefault();
+      // Activation applies to a MENU ITEM only. A control the author slotted
+      // into the panel (a filter input, a plain button) is inside [role="menu"]
+      // too, so preventing Space unconditionally would swallow it there with
+      // nothing to handle it, and the user could not type a space into their own
+      // input. Bail before touching the event when the focus is not an item.
       const subTrigger = active?.closest('ui-dropdown-menu-sub-trigger');
+      const activeItem = active?.closest('ui-dropdown-menu-item') as UiDropdownMenuItem | null;
+      if (!subTrigger && !activeItem) return;
+      // Space while a typeahead search is in flight belongs to the SEARCH, or a
+      // multi-word item is unreachable past its first word ("Status bar" could
+      // never be disambiguated from "Status line"). Radix draws the same line.
+      // Enter always activates.
+      if (e.key === ' ' && this._typeBuffer) {
+        this._typeahead(e, items);
+        return;
+      }
+      // Space otherwise MUST be prevented, or it falls through to typeahead,
+      // matches nothing, and scrolls the page underneath the open menu.
+      e.preventDefault();
       if (subTrigger) {
         // Same as ArrowRight on a sub-trigger: open it and move focus in.
         if (!subTrigger.hasAttribute('data-disabled')) {
@@ -524,8 +538,7 @@ export class UiDropdownMenu extends WebComponent({
         }
         return;
       }
-      const item = active?.closest('ui-dropdown-menu-item') as UiDropdownMenuItem | null;
-      if (item && !item.hasAttribute('data-disabled')) item._select();
+      if (activeItem && !activeItem.hasAttribute('data-disabled')) activeItem._select();
     } else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
       this._typeahead(e, items);
     }

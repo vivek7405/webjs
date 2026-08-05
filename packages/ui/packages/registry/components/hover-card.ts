@@ -250,7 +250,16 @@ export class UiHoverCard extends WebComponent({
     // Reachable whenever two leave paths fire without a show() between them,
     // and the focus linger below doubles how many of those paths exist.
     clearTimeout(this._hideTimer);
-    this._hideTimer = window.setTimeout(() => this._closeReleasingFocus(), this.closeDelay);
+    this._hideTimer = window.setTimeout(() => {
+      // The card KEEPS ITSELF OPEN while focus is inside it. That is what makes
+      // in-card content Tab-reachable and what both doc surfaces promise, and a
+      // mouseleave can schedule this close while a keyboard user still holds
+      // focus on an in-card link. Closing then would pull the card out from
+      // under them, so leave it open: the content's own focusout schedules the
+      // close once focus has actually left, and that pass takes this branch.
+      if (this._focusIsInContent()) return;
+      this.open = false;
+    }, this.closeDelay);
   }
 
   // Every close of this popover="manual" panel owes the same focus care, not
