@@ -134,6 +134,13 @@ WebJs runs on Node 24+ or Bun. The Node suite is the source of truth; an additiv
 
 If your app targets Bun, Bun parity is part of the definition of done. A change to a runtime-sensitive surface (the serializer, the `node:http` vs `Bun.serve` listener and request path, SSR / action / CSRF dispatch, streams, `node:crypto`, the TS stripper, auth / session / cors) is NOT done until you also run your suite under the Bun runtime (needs `bun` installed) and add a cross-runtime assertion for the touched surface.
 
+### Writing a plain proof script that boots a server
+
+A cross-runtime proof is often a plain assert script rather than a test file, so the SAME file runs under `node script.mjs` and `bun script.mjs`. If it boots a real server through `startServer`, know what carries its verdict: the process EXIT CODE, since nothing is collecting results for you. WebJs makes that code trustworthy: a fatal shutdown, which is where a failed top-level assertion lands on both runtimes, exits 1, and so does a drain that rejects or is still hanging at the 10s deadline. The process exits 0 in one case only, an operator-requested stop that drained cleanly with no crash on the way out, so a proof script that finishes green really did finish green. Two habits keep it that way:
+
+- **Assert the exit code, never the logs.** These scripts conventionally pass a `quiet` logger, so anything that only logs is invisible. If your script catches its own failure, report it with an explicit `process.exit(1)` rather than a `console.error` alone, guarded as `if (import.meta.main) process.exit(1); else throw failure;`. The guard matters when a `.test.mjs` wrapper imports the script under `node --test`: an unguarded exit kills the whole single-process run and hides every other file's results, while the throw lets the harness report one failed test.
+- **Prove the script can FAIL before you trust it passing.** Break one assertion on purpose and confirm the run exits non-zero. A proof that cannot go red is worse than no proof: it reports success forever.
+
 ## Convention validation (`webjs check`)
 
 `npm run check` is the correctness validator. Every rule catches code that is wrong to ship (a crash, a security leak, a type-strip failure), plus the `no-scaffold-placeholder` sentinel for unreplaced scaffold content. Run it and fix every violation before considering the change done (`npm run check -- --json` for an agent loop, `npm run check -- --rules` to list the rules). It is separate from `CONVENTIONS.md`, which carries the customizable project conventions you follow by judgment.

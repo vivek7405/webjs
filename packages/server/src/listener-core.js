@@ -383,7 +383,7 @@ export class SseHub {
  * Install once-only process error handlers. Idempotent across multiple
  * `startServer` calls in the same process. Runtime-neutral (plain `process.on`).
  * @param {import('./logger.js').Logger} logger
- * @param {() => void} onFatal
+ * @param {() => void} onFatal Starts the FATAL shutdown, which exits non-zero.
  */
 export function installProcessHandlers(logger, onFatal) {
   if (/** @type any */ (globalThis).__webjsProcHandlers) return;
@@ -405,12 +405,37 @@ export function installProcessHandlers(logger, onFatal) {
  * `closeServer()` thunk that resolves once the server has stopped accepting
  * connections (node `server.close`, Bun `server.stop(true)`). Closes the SSE hub,
  * then drains, then exits; hard-exits after 10s if the drain hangs.
+ *
+ * Exit code, in full. Three things can force a 1, and only their absence
+ * leaves a 0:
+ *   - a drain that FAILS, so a rejected `closeServer()` and a drain still
+ *     hanging at the 10s deadline both exit 1 whatever started them;
+ *   - a FATAL start (the `uncaughtException` handler calling `onFatal`), which
+ *     exits 1 even when the drain is perfectly clean;
+ *   - a FATAL arriving MID-DRAIN, which upgrades a shutdown an operator signal
+ *     had already begun (see the upgrade-only note on `code` below).
+ * So 0 does NOT mean "a signal started it", it means an operator asked for the
+ * stop AND it drained cleanly AND nothing crashed on the way out. A supervisor
+ * reads only this code (systemd `Restart=on-failure`, Docker, Railway, and a CI
+ * step running a `test/bun/*.mjs` proof script, whose failed top-level assertion
+ * arrives here as an uncaught exception, #1092), so every one of those has to
+ * come back non-zero.
  * @param {{ closeServer: () => Promise<unknown>, hub: SseHub, logger: import('./logger.js').Logger }} opts
- * @returns {(signal: string) => void}
+ * @returns {(signal: string, opts?: { fatal?: boolean }) => void}
  */
 export function makeShutdown({ closeServer, hub, logger }) {
   let shuttingDown = false;
-  return (signal) => {
+  // Read at EXIT time, not at entry, so a fatal arriving mid-drain still counts.
+  // The drain window is up to 10s wide and in-flight requests are still running
+  // in it, so an uncaught exception landing there is an ordinary event, not an
+  // exotic race. Because the re-entrancy guard below drops that second call, a
+  // code captured at entry would stay 0 and the crashed process would report a
+  // successful stop, which is the exact failure this whole mechanism exists to
+  // prevent. Upgrade only (1 never falls back to 0), so a signal arriving during
+  // a fatal shutdown cannot launder the crash into a success either.
+  let code = 0;
+  return (signal, { fatal = false } = {}) => {
+    if (fatal) code = 1;
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info(`received ${signal}, shutting down`);
@@ -420,11 +445,16 @@ export function makeShutdown({ closeServer, hub, logger }) {
       process.exit(1);
     }, 10_000);
     if (typeof hard.unref === 'function') hard.unref();
+    // Disarm before exiting. In production `process.exit` ends everything so this
+    // is redundant, but it keeps the deadline from outliving the decision it was
+    // guarding, which is what let a stubbed-exit test leave a live timer armed to
+    // kill an unrelated process 10s later.
+    const done = (c) => { clearTimeout(hard); process.exit(c); };
     Promise.resolve()
       .then(closeServer)
       .then(
-        () => { logger.info('bye'); process.exit(0); },
-        (err) => { logger.error('server close error', { err: String(err) }); process.exit(1); },
+        () => { logger.info('bye'); done(code); },
+        (err) => { logger.error('server close error', { err: String(err) }); done(1); },
       );
   };
 }
