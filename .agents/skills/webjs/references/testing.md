@@ -24,6 +24,18 @@ Feature folders are primary, and the test kind is a subfolder inside the feature
 
 Assert only on what the layer needs. A block that inspects only the HTTP response, the SSR HTML string, headers, or the importmap does NOT need a browser. Keep in the browser suite only blocks that genuinely need a DOM (live state via `page.evaluate`, hydration, client-router nav, slots, view transitions, streaming into the DOM, custom-element upgrade).
 
+### A browser test that clicks a real link or submits a real form MUST cancel the default
+
+web-test-runner aborts the whole SESSION, not one file, when the page navigates. So a test that clicks a real `<a href>` or submits a real `<form>` is a single point of failure for every browser test file you have: whenever the client router loses the race to intercept, the browser performs the real navigation and the run dies reporting `0 failed` and then exiting non-zero, which reads as an infrastructure blip rather than a test problem. Cancel the default so an interception gap fails ONE test on its own assertion.
+
+Register the canceling listener on `window` in the BUBBLE phase. That is the last step of the propagation path, so it runs after the router's own document-level listeners, and `preventDefault()` still cancels the default action because that action runs only once dispatch completes.
+
+**Never use the capture phase.** Capture sets `defaultPrevented` before the router ever sees the event, and the router returns immediately on that flag (the same guard that lets a component's `@click` opt out). Every guarded router test then passes while testing nothing. Capture is correct only when suppressing the router is the actual goal, for a test that exercises a menu or a drawer rather than navigation; say so in a comment when you do it, because it looks identical to the mistake. Do not reach for `stopPropagation` either, which hides the click from the router and turns the assertion into a tautology.
+
+Cancel a form on its `submit` event, not on the submit control's `click`. The form's default action fires on submit, so canceling the click stops the form from ever submitting and the router never sees it.
+
+One thing this cannot cover: the router assigns `location.href` when it degrades a soft navigation, and `preventDefault` does not cancel a script assignment. Listen for `webjs:navigation-fallback` on `document` and assert none fired; its `cause` is the diagnosis. In the framework repo this all lives in one shared module, `test/browser-nav-guard.js`, whose `installNavGuard()` returns `{ fallbacks, remove }`.
+
 ## App runners (`webjs test`)
 
 ```sh
