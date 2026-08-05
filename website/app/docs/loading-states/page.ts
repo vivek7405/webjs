@@ -22,7 +22,7 @@ export default function LoadingStates() {
     <h2>Basic usage</h2>
     <p>Create a <code>loading.ts</code> file next to your page. The framework automatically wraps the page in a <code>Suspense</code> boundary using your loading component as the fallback:</p>
 
-    <pre>// app/blog/loading.ts
+    <code-block>// app/blog/loading.ts
 import { html } from '@webjsdev/core';
 
 export default function Loading() {
@@ -33,15 +33,15 @@ export default function Loading() {
       &lt;div class="skeleton-line"&gt;&lt;/div&gt;
     &lt;/div&gt;
   ${'`'};
-}</pre>
+}</code-block>
 
-    <pre>// app/blog/page.ts: this is async and may be slow
+    <code-block>// app/blog/page.ts: this is async and may be slow
 import { html } from '@webjsdev/core';
 
 export default async function BlogPage() {
   const posts = await fetchPosts();  // slow DB query
   return html${'`'}&lt;ul&gt;...${'`'};
-}</pre>
+}</code-block>
 
     <h3>What happens</h3>
     <ol>
@@ -53,11 +53,11 @@ export default async function BlogPage() {
     <h2>Nesting</h2>
     <p><code>loading.ts</code> files apply at their directory level. You can have different loading states for different sections:</p>
 
-    <pre>app/
+    <code-block>app/
   loading.ts            ← fallback for the root page
   blog/
     loading.ts          ← fallback for all /blog/* pages
-    [slug]/page.ts      ← wrapped by blog/loading.ts</pre>
+    [slug]/page.ts      ← wrapped by blog/loading.ts</code-block>
 
     <h2>Loading states on client navigation</h2>
     <p>The same <code>loading.ts</code> also feeds client-side navigation. The SSR pipeline emits each segment's loading content as a hidden <code>&lt;template id="wj-loading:&lt;segment-path&gt;"&gt;</code> at body end. When a user clicks a link, the router clones the deepest matching template into the swap slot <strong>immediately</strong>, before the fetch even completes, so the user sees the skeleton instantly instead of stale content from the previous page.</p>
@@ -66,7 +66,7 @@ export default async function BlogPage() {
     <h2>Manual Suspense</h2>
     <p>For more control, use <code>Suspense()</code> directly in your page template instead of a <code>loading.ts</code> file:</p>
 
-    <pre>import { html, Suspense } from '@webjsdev/core';
+    <code-block>import { html, Suspense } from '@webjsdev/core';
 
 export default function Page() {
   return html${'`'}
@@ -74,20 +74,20 @@ export default function Page() {
     ${'${Suspense({ fallback: html`<p>Loading stats…</p>`, children: loadStats() })}'}
     ${'${Suspense({ fallback: html`<p>Loading feed…</p>`, children: loadFeed() })}'}
   ${'`'};
-}</pre>
+}</code-block>
 
     <p>Each <code>Suspense</code> boundary resolves independently, so the feed can appear before the stats if it's faster.</p>
 
     <h2>Component re-fetch loading: renderFallback()</h2>
     <p>The loading states above are for a PAGE or REGION (a <code>loading.ts</code> skeleton, a <code>Suspense</code> boundary, a streamed <code>&lt;webjs-suspense&gt;</code>). A component that fetches its own data with <a href="/docs/data-fetching">async render</a> has a separate concern: what to show when it RE-FETCHES on the client (a prop / dependency change re-runs <code>async render()</code>).</p>
     <p>The default is stale-while-revalidate: the component keeps its current content until the new render resolves (no blank, no flash). Define <code>renderFallback()</code> ONLY to override that with an explicit loading state DURING the re-fetch. It is shown only on a client re-fetch, <strong>never on the first paint</strong>, and it does NOT trigger SSR streaming (to stream slow data on the first paint, wrap the component in <code>&lt;webjs-suspense&gt;</code> instead).</p>
-    <pre>class UserActivity extends WebComponent({ uid: String }) {
+    <code-block>class UserActivity extends WebComponent({ uid: String }) {
   renderFallback() { return html${'`'}&lt;div class="skeleton h-24"&gt;&lt;/div&gt;${'`'}; }   // re-fetch only
   async render() {
     const items = await getActivity(this.uid);
     return html${'`'}&lt;ul&gt;${'${items.map((i) => html`<li>${i.label}</li>`)}'}&lt;/ul&gt;${'`'};
   }
-}</pre>
+}</code-block>
 
     <h2>Next steps</h2>
     <ul>

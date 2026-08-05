@@ -147,7 +147,7 @@ function dedent(snippet: string): string {
  * prose rules add, since a tab pane is not a paragraph flow.
  */
 function codePane(code: string) {
-  return html`<div class="prose-docs ui-code"><pre><code>${dedent(code)}</code></pre></div>`;
+  return html`<div class="prose-docs ui-code"><code-block>${dedent(code)}</code-block></div>`;
 }
 
 // Wraps a live preview and its source in <preview-tabs> so the reader can flip
@@ -256,7 +256,7 @@ export default async function ComponentDoc({ params }: { params: { name: string 
          it beats .prose-docs pre on specificity rather than on source order,
          which would otherwise depend on the layout's style block being
          hoisted first. */
-      .prose-docs.ui-code > pre { margin: 0; }
+      .prose-docs.ui-code code-block pre { margin: 0; }
     </style>
 
     <header class="mb-8">
@@ -289,7 +289,7 @@ export default async function ComponentDoc({ params }: { params: { name: string 
 
     <section class="mb-12">
       <h2 class=${SECTION_HEADING}>Installation</h2>
-      <div class="prose-docs ui-code"><pre><code>webjs ui add ${item.name}</code></pre></div>
+      <div class="prose-docs ui-code"><code-block>webjs ui add ${item.name}</code-block></div>
     </section>
 
     ${
@@ -438,7 +438,7 @@ export default async function ComponentDoc({ params }: { params: { name: string 
            scrollbar renders inside its own element's border box. Put the
            overflow on an outer div and the scrollbar sits outside the visible
            rectangle, detached from the card it is scrolling. -->
-      <div class="prose-docs ui-code"><pre class="text-xs max-h-120 overflow-y-auto"><code>${source}</code></pre></div>
+      <div class="prose-docs ui-code"><code-block pre-class="text-xs max-h-120 overflow-y-auto">${source}</code-block></div>
     </section>
   `;
 }

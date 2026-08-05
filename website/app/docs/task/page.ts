@@ -7,12 +7,12 @@ export default function TaskPage() {
     <h1>Task Controller</h1>
     <p>The Task controller manages async operations inside components such as data fetching, computations, or any promise-based work. It tracks loading, success, and error states automatically, cancels in-flight requests when args change, and provides a convenient <code>render()</code> helper for mapping states to templates.</p>
 
-    <pre>import { Task, TaskStatus } from '@webjsdev/core/task';</pre>
+    <code-block>import { Task, TaskStatus } from '@webjsdev/core/task';</code-block>
 
     <h2>Basic Usage</h2>
     <p>Create a Task inside a component. Pass a task function and an <code>args</code> function that returns the reactive inputs. When the args change, the task re-runs automatically.</p>
 
-    <pre>import { WebComponent, html } from '@webjsdev/core';
+    <code-block>import { WebComponent, html } from '@webjsdev/core';
 import { Task } from '@webjsdev/core/task';
 
 class UserProfile extends WebComponent({ userId: String }) {
@@ -41,7 +41,7 @@ class UserProfile extends WebComponent({ userId: String }) {
     });
   }
 }
-UserProfile.register('user-profile');</pre>
+UserProfile.register('user-profile');</code-block>
 
     <h2>Task States</h2>
     <p>A task is always in one of four states, exposed as <code>TaskStatus</code> constants:</p>
@@ -60,7 +60,7 @@ UserProfile.register('user-profile');</pre>
 
     <p>You can check the status directly:</p>
 
-    <pre>render() {
+    <code-block>render() {
   if (this.#task.status === TaskStatus.PENDING) {
     return html\`&lt;spinner-icon&gt;&lt;/spinner-icon&gt;\`;
   }
@@ -71,17 +71,17 @@ UserProfile.register('user-profile');</pre>
     return html\`&lt;p&gt;\${this.#task.value.name}&lt;/p&gt;\`;
   }
   return html\`&lt;p&gt;Waiting...&lt;/p&gt;\`;
-}</pre>
+}</code-block>
 
     <h2>task.render()</h2>
     <p>The <code>render()</code> helper provides a cleaner pattern. Pass an object with callbacks for each state:</p>
 
-    <pre>this.#task.render({
+    <code-block>this.#task.render({
   initial: () =&gt; html\`&lt;p&gt;Enter a search term&lt;/p&gt;\`,
   pending: () =&gt; html\`&lt;p&gt;Searching...&lt;/p&gt;\`,
   complete: (data) =&gt; html\`&lt;result-list .items=\${data}&gt;&lt;/result-list&gt;\`,
   error: (err) =&gt; html\`&lt;p class="error"&gt;\${err.message}&lt;/p&gt;\`,
-})</pre>
+})</code-block>
 
     <p>All callbacks are optional. If a callback is not provided for the current state, nothing is rendered for that state.</p>
 
@@ -95,7 +95,7 @@ UserProfile.register('user-profile');</pre>
 
     <p>Pass the signal to <code>fetch()</code> or any other AbortSignal-aware API to cancel in-flight work:</p>
 
-    <pre>#search = new Task(this, {
+    <code-block>#search = new Task(this, {
   task: async ([query], { signal }) =&gt; {
     // If the user types again before this resolves,
     // the signal aborts and this fetch is cancelled.
@@ -103,7 +103,7 @@ UserProfile.register('user-profile');</pre>
     return res.json();
   },
   args: () =&gt; [this.query.get()],
-});</pre>
+});</code-block>
 
     <p>This prevents race conditions where an older, slower request resolves after a newer one, a common bug in naive async patterns.</p>
 
@@ -112,7 +112,7 @@ UserProfile.register('user-profile');</pre>
 
     <p>Set <code>autoRun: false</code> to control when the task runs manually:</p>
 
-    <pre>#submit = new Task(this, {
+    <code-block>#submit = new Task(this, {
   task: async ([formData], { signal }) =&gt; {
     const res = await fetch('/api/submit', {
       method: 'POST',
@@ -128,14 +128,14 @@ UserProfile.register('user-profile');</pre>
 handleSubmit(e) {
   e.preventDefault();
   this.#submit.run();  // manually trigger the task
-}</pre>
+}</code-block>
 
     <p>Use <code>autoRun: false</code> for tasks that should only fire on explicit user action: form submissions, delete confirmations, or manual refresh buttons.</p>
 
     <h2>Reactive Args</h2>
     <p>The <code>args</code> function is called on every host update. When the returned array differs from the previous one (shallow comparison per element), the task re-runs. This creates a reactive chain: property change triggers host update, host update evaluates <code>args</code>, changed args trigger the task.</p>
 
-    <pre>class SearchResults extends WebComponent({
+    <code-block>class SearchResults extends WebComponent({
   query: prop(String),
   page:  prop(Number),
 }) {
@@ -164,7 +164,7 @@ handleSubmit(e) {
     });
   }
 }
-SearchResults.register('search-results');</pre>
+SearchResults.register('search-results');</code-block>
 
     <h2>When to Use Task vs Async Page Functions</h2>
 
@@ -186,7 +186,7 @@ SearchResults.register('search-results');</pre>
 
     <h2>Full Example: Search With Debounce</h2>
 
-    <pre>import { WebComponent, html, css } from '@webjsdev/core';
+    <code-block>import { WebComponent, html, css } from '@webjsdev/core';
 import { Task } from '@webjsdev/core/task';
 
 class LiveSearch extends WebComponent {
@@ -243,7 +243,7 @@ class LiveSearch extends WebComponent {
     \`;
   }
 }
-LiveSearch.register('live-search');</pre>
+LiveSearch.register('live-search');</code-block>
 
     <h2>Next Steps</h2>
     <ul>

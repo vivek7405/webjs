@@ -14,10 +14,10 @@ export default function GettingStarted() {
     </ul>
 
     <h2>Quick Start</h2>
-    <pre># scaffold a new app (no global install needed)
+    <code-block># scaffold a new app (no global install needed)
 npm create webjs@latest my-app
 cd my-app && npm run dev
-# → http://localhost:8080</pre>
+# → http://localhost:8080</code-block>
 
     <p><strong><code>npm create webjs@latest</code> is the canonical way to scaffold.</strong> It always fetches the latest <code>create-webjs</code>, so you never need a global install. Prefer it over a bare <code>webjs create</code>, because a globally installed or version-manager-shimmed <code>webjs</code> (or a stray <code>npx webjs</code>) can shadow the real CLI or resolve to an unrelated package. If you DO want the global CLI for <code>webjs dev</code> / <code>db</code> and friends, install it with <code>npm i -g webjsdev</code>.</p>
 
@@ -26,11 +26,11 @@ cd my-app && npm run dev
     <h2>Create a New App</h2>
 
     <h3>Using the scaffold</h3>
-    <pre># full-stack app (pages + API + components + Drizzle/SQLite + gallery)
+    <code-block># full-stack app (pages + API + components + Drizzle/SQLite + gallery)
 webjs create my-app
 
 # backend-only API (route handlers + modules, no pages/components/SSR)
-webjs create my-api --template api</pre>
+webjs create my-api --template api</code-block>
 
     <p><strong>For AI agents:</strong> only those two templates exist, and the CLI rejects any other <code>--template</code> value. Default to full-stack with Drizzle + SQLite for any product app (todo, blog, dashboard, marketplace, social, e-commerce, a SaaS with accounts…). Pick <code>--template api</code> only if the user explicitly asks for a backend-only API with no UI. The scaffold is a starting point. Replace the example layout, page, and <code>User</code> model with the app the user actually asked for. Use Drizzle for any persisted data, never JSON files, in-memory arrays, or localStorage. When AGENTS.md doesn't cover what you need, the full hosted docs are at <a href="/docs">the rest of these docs</a>.</p>
 
@@ -42,17 +42,17 @@ webjs create my-api --template api</pre>
 
     <h3>Scaffolding a Bun app</h3>
     <p>WebJs runs on Node 24+ or Bun. To generate a Bun-flavored app, add <code>--runtime bun</code> (a separate axis from <code>--template</code>, so it works with both). It is auto-detected when you scaffold through Bun, so both forms below produce the same Bun app:</p>
-    <pre># auto-detected: scaffolding through bun implies --runtime bun
+    <code-block># auto-detected: scaffolding through bun implies --runtime bun
 bun create webjs my-app
 # the explicit pin-latest form (bun create maps to bunx create-webjs)
 bunx create-webjs@latest my-app
 # or via the installed CLI, on any package manager
-webjs create my-app --runtime bun</pre>
+webjs create my-app --runtime bun</code-block>
     <p>A Bun app commits <code>bun.lock</code> instead of <code>package-lock.json</code>, installs with Bun in CI, and its <code>dev</code> / <code>start</code> scripts force <code>bun --bun</code> so the server runs on Bun rather than the <code>webjs</code> bin's Node shebang. Run it with <code>bun --bun run dev</code>. The generated Dockerfile is a pure <code>oven/bun:1</code> image (<code>bun install</code>, <code>CMD ["bun", "--bun", "run", "start"]</code>, no Node), which works because the boot-time <code>webjs db migrate</code> resolves drizzle-kit and runs it under Bun with no <code>npx</code>. The other scripts (test / db / check) run on Node, the runtime the <code>webjs</code> tooling targets. One flag-forwarding difference to note: Bun forwards flags directly (<code>bun create webjs my-app --template api</code>), while npm needs the <code>--</code> separator (<code>npm create webjs@latest my-app -- --template api</code>). <code>--runtime node</code> (the default) is unchanged.</p>
 
     <h3>Manual setup</h3>
     <p>To start from scratch without the scaffold, create a directory with this structure:</p>
-    <pre>my-app/
+    <code-block>my-app/
 ├── app/
 │   ├── layout.ts     # root layout wrapping every page
 │   ├── page.ts       # home page at /
@@ -62,10 +62,10 @@ webjs create my-app --runtime bun</pre>
 ├── components/
 │   └── counter.ts    # interactive web component
 ├── package.json
-└── tsconfig.json     # optional, for type-checking</pre>
+└── tsconfig.json     # optional, for type-checking</code-block>
 
     <h3>package.json</h3>
-    <pre>{
+    <code-block>{
   "name": "my-app",
   "type": "module",
   "scripts": {
@@ -77,10 +77,10 @@ webjs create my-app --runtime bun</pre>
     "@webjsdev/core": "latest",
     "@webjsdev/server": "latest"
   }
-}</pre>
+}</code-block>
 
     <h3>app/layout.ts</h3>
-    <pre>import { html } from '@webjsdev/core';
+    <code-block>import { html } from '@webjsdev/core';
 import type { LayoutProps } from '@webjsdev/core';
 
 export default function Layout({ children }: LayoutProps) {
@@ -88,10 +88,10 @@ export default function Layout({ children }: LayoutProps) {
     &lt;h1&gt;My App&lt;/h1&gt;
     \${children}
   \`;
-}</pre>
+}</code-block>
 
     <h3>app/page.ts</h3>
-    <pre>import { html } from '@webjsdev/core';
+    <code-block>import { html } from '@webjsdev/core';
 import '#components/counter.ts';
 
 export default function Home() {
@@ -99,11 +99,11 @@ export default function Home() {
     &lt;p&gt;Welcome to webjs!&lt;/p&gt;
     &lt;my-counter count="0"&gt;&lt;/my-counter&gt;
   \`;
-}</pre>
+}</code-block>
 
     <h3>components/counter.ts</h3>
     <p>Components render into light DOM by default, so Tailwind utility classes apply directly. Set <code>static shadow = true</code> when you want scoped styles or third-party-embed isolation. <code>&lt;slot&gt;</code> projection works in both modes.</p>
-    <pre>import { WebComponent, html, signal } from '@webjsdev/core';
+    <code-block>import { WebComponent, html, signal } from '@webjsdev/core';
 
 export class Counter extends WebComponent {
   // Instance signal carries component-local state. WebComponent's
@@ -121,11 +121,11 @@ export class Counter extends WebComponent {
     \`;
   }
 }
-Counter.register('my-counter');</pre>
+Counter.register('my-counter');</code-block>
 
     <h3>Run it</h3>
-    <pre>npm run dev
-# → http://localhost:8080</pre>
+    <code-block>npm run dev
+# → http://localhost:8080</code-block>
 
     <p>That's it. No build step, no bundler config, no compilation. Edit any <code>.ts</code> file, refresh, and see it.</p>
 

@@ -20,7 +20,7 @@ export default function Routing() {
     </blockquote>
 
     <h2>File Conventions at a Glance</h2>
-    <pre>app/
+    <code-block>app/
 ├── layout.ts          # root layout, wraps every page
 ├── page.ts            # home page → /
 ├── not-found.ts       # 404 fallback
@@ -46,7 +46,7 @@ export default function Routing() {
     ├── hello/
     │   └── route.ts   # GET /api/hello
     └── chat/
-        └── route.ts   # GET + WS /api/chat</pre>
+        └── route.ts   # GET + WS /api/chat</code-block>
 
     <p>
       Files can use <code>.ts</code>, <code>.js</code>, <code>.mts</code>, or
@@ -65,7 +65,7 @@ export default function Routing() {
     </p>
 
     <h3>Signature</h3>
-    <pre>// app/blog/[slug]/page.ts
+    <code-block>// app/blog/[slug]/page.ts
 import { html } from '@webjsdev/core';
 
 type Ctx = {
@@ -83,7 +83,7 @@ export default async function BlogPost({ params, searchParams, url }: Ctx) {
     &lt;p&gt;\${post.body}&lt;/p&gt;
     &lt;p&gt;Page \${page} &middot; Loaded from \${url}&lt;/p&gt;
   \`;
-}</pre>
+}</code-block>
 
     <ul>
       <li><strong><code>params</code></strong>: the dynamic route segments (e.g. <code>{ slug: "hello-world" }</code>). Readable synchronously (<code>params.slug</code>) AND awaitable (<code>const { slug } = await params</code>, the Next 15/16 pattern). Both work.</li>
@@ -107,7 +107,7 @@ export default async function BlogPost({ params, searchParams, url }: Ctx) {
     </p>
 
     <h3>Root Layout</h3>
-    <pre>// app/layout.ts
+    <code-block>// app/layout.ts
 import { html } from '@webjsdev/core';
 import type { LayoutProps } from '@webjsdev/core';
 
@@ -117,10 +117,10 @@ export default function RootLayout({ children }: LayoutProps) {
     &lt;main&gt;\${children}&lt;/main&gt;
     &lt;footer&gt;&amp;copy; 2025 My App&lt;/footer&gt;
   \`;
-}</pre>
+}</code-block>
 
     <h3>Nested Layout</h3>
-    <pre>// app/dashboard/layout.ts
+    <code-block>// app/dashboard/layout.ts
 import { html } from '@webjsdev/core';
 import type { LayoutProps } from '@webjsdev/core';
 
@@ -134,15 +134,15 @@ export default function DashboardLayout({ children }: LayoutProps) {
       &lt;section&gt;\${children}&lt;/section&gt;
     &lt;/div&gt;
   \`;
-}</pre>
+}</code-block>
 
     <p>
       Layouts nest automatically by folder depth. For the route
       <code>/dashboard/settings</code>, WebJs renders:
     </p>
-    <pre>RootLayout
+    <code-block>RootLayout
   └── DashboardLayout
-        └── SettingsPage</pre>
+        └── SettingsPage</code-block>
 
     <p>
       The root <code>app/layout.ts</code> is the outermost wrapper. Every layout in the
@@ -178,25 +178,25 @@ export default function DashboardLayout({ children }: LayoutProps) {
     </p>
 
     <h3>Single Parameter</h3>
-    <pre>app/
+    <code-block>app/
 └── users/
     └── [id]/
-        └── page.ts     # matches /users/42, /users/abc, etc.</pre>
+        └── page.ts     # matches /users/42, /users/abc, etc.</code-block>
 
-    <pre>// app/users/[id]/page.ts
+    <code-block>// app/users/[id]/page.ts
 import { html } from '@webjsdev/core';
 
 export default async function UserPage({ params }: { params: { id: string } }) {
   const user = await db.users.find(params.id);
   return html\`&lt;h1&gt;\${user.name}&lt;/h1&gt;\`;
-}</pre>
+}</code-block>
 
     <h3>Multiple Parameters</h3>
-    <pre>app/
+    <code-block>app/
 └── blog/
     └── [year]/
         └── [month]/
-            └── page.ts   # /blog/2025/04 → { year: "2025", month: "04" }</pre>
+            └── page.ts   # /blog/2025/04 → { year: "2025", month: "04" }</code-block>
 
     <h3>Catch-All Routes (<code>[...rest]</code>)</h3>
     <p>
@@ -204,12 +204,12 @@ export default async function UserPage({ params }: { params: { id: string } }) {
       segments as a single string.
     </p>
 
-    <pre>app/
+    <code-block>app/
 └── files/
     └── [...path]/
-        └── page.ts     # /files/a/b/c → { path: "a/b/c" }</pre>
+        └── page.ts     # /files/a/b/c → { path: "a/b/c" }</code-block>
 
-    <pre>// app/files/[...path]/page.ts
+    <code-block>// app/files/[...path]/page.ts
 import { html } from '@webjsdev/core';
 
 export default function FilesPage({ params }: { params: { path: string } }) {
@@ -221,7 +221,7 @@ export default function FilesPage({ params }: { params: { path: string } }) {
       \${segments.map((s) =&gt; html\`&lt;li&gt;\${s}&lt;/li&gt;\`)}
     &lt;/ul&gt;
   \`;
-}</pre>
+}</code-block>
 
     <p>
       Route precedence is positional and deterministic, the same model as Next.js.
@@ -246,7 +246,7 @@ export default function FilesPage({ params }: { params: { path: string } }) {
       to a subset of routes.
     </p>
 
-    <pre>app/
+    <code-block>app/
 ├── (marketing)/
 │   ├── layout.ts       # marketing-specific layout
 │   ├── about/
@@ -256,7 +256,7 @@ export default function FilesPage({ params }: { params: { path: string } }) {
 └── (app)/
     ├── layout.ts       # app-specific layout (authenticated shell)
     └── dashboard/
-        └── page.ts     # URL is /dashboard</pre>
+        └── page.ts     # URL is /dashboard</code-block>
 
     <p>
       This is useful when you want different layouts or middleware for different sections
@@ -272,13 +272,13 @@ export default function FilesPage({ params }: { params: { path: string } }) {
       want to colocate with your routes without exposing it.
     </p>
 
-    <pre>app/
+    <code-block>app/
 ├── _lib/
 │   ├── db.ts           # not a route, safe to import from pages
 │   └── auth.ts
 ├── _components/
 │   └── header.ts       # colocated components, not routed
-└── page.ts             # /, can import from _lib/ and _components/</pre>
+└── page.ts             # /, can import from _lib/ and _components/</code-block>
 
     <!-- ===== API ROUTES ===== -->
     <h2>API Routes / Route Handlers (<code>route.ts</code>)</h2>
@@ -296,7 +296,7 @@ export default function FilesPage({ params }: { params: { path: string } }) {
     </p>
 
     <h3>Basic Example</h3>
-    <pre>// app/api/hello/route.ts
+    <code-block>// app/api/hello/route.ts
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const name = url.searchParams.get('name') || 'world';
@@ -307,17 +307,17 @@ export async function POST(req: Request) {
   const body = await req.json();
   // ... create resource ...
   return Response.json({ created: true }, { status: 201 });
-}</pre>
+}</code-block>
 
     <h3>Handler Signature</h3>
     <p>
       Each handler receives a standard <code>Request</code> object and an optional
       context object with <code>params</code> from dynamic route segments:
     </p>
-    <pre>export async function GET(
+    <code-block>export async function GET(
   req: Request,
   { params }: { params: Record&lt;string, string&gt; }
-): Promise&lt;Response | object&gt;</pre>
+): Promise&lt;Response | object&gt;</code-block>
 
     <ul>
       <li>Return a <code>Response</code> object for full control over status, headers, and body.</li>
@@ -326,7 +326,7 @@ export async function POST(req: Request) {
     </ul>
 
     <h3>Dynamic API Route</h3>
-    <pre>// app/api/posts/[slug]/route.ts
+    <code-block>// app/api/posts/[slug]/route.ts
 type Ctx = { params: { slug: string } };
 
 export async function GET(_req: Request, { params }: Ctx) {
@@ -338,7 +338,7 @@ export async function GET(_req: Request, { params }: Ctx) {
 export async function DELETE(_req: Request, { params }: Ctx) {
   await db.posts.delete(params.slug);
   return Response.json({ deleted: true });
-}</pre>
+}</code-block>
 
     <!-- ===== WEBSOCKET ROUTES ===== -->
     <h2>WebSocket Routes</h2>
@@ -348,7 +348,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
       URL, WebJs upgrades the connection and calls your <code>WS</code> handler.
     </p>
 
-    <pre>// app/api/chat/route.ts
+    <code-block>// app/api/chat/route.ts
 import type { WebSocket } from 'ws';
 
 const clients = new Set&lt;WebSocket&gt;();
@@ -375,14 +375,14 @@ export function WS(ws: WebSocket, req: Request, { params }: { params: Record&lt;
   ws.on('close', () =&gt; {
     clients.delete(ws);
   });
-}</pre>
+}</code-block>
 
     <h3>WS Handler Signature</h3>
-    <pre>export function WS(
+    <code-block>export function WS(
   ws: WebSocket,            // the ws library WebSocket instance
   req: Request,             // the original HTTP upgrade request (headers, cookies, etc.)
   ctx: { params: Record&lt;string, string&gt; }  // dynamic route params
-): void</pre>
+): void</code-block>
 
     <p>
       The <code>req</code> argument gives you access to cookies, authorization headers,
@@ -398,7 +398,7 @@ export function WS(ws: WebSocket, req: Request, { params }: { params: Record&lt;
       route matches a request, or when a page calls <code>notFound()</code>.
     </p>
 
-    <pre>// app/not-found.ts
+    <code-block>// app/not-found.ts
 import { html } from '@webjsdev/core';
 
 export default function NotFound() {
@@ -407,7 +407,7 @@ export default function NotFound() {
     &lt;p&gt;Page not found.&lt;/p&gt;
     &lt;p&gt;&lt;a href="/"&gt;&amp;larr; Home&lt;/a&gt;&lt;/p&gt;
   \`;
-}</pre>
+}</code-block>
 
     <p>
       If no <code>not-found.ts</code> exists, WebJs renders a default
@@ -424,7 +424,7 @@ export default function NotFound() {
       errors for its subtree without affecting the rest of the site.
     </p>
 
-    <pre>// app/error.ts: root error boundary
+    <code-block>// app/error.ts: root error boundary
 import { html } from '@webjsdev/core';
 
 export default function ErrorBoundary({ error }: { error: unknown }) {
@@ -434,16 +434,16 @@ export default function ErrorBoundary({ error }: { error: unknown }) {
     &lt;p&gt;\${message}&lt;/p&gt;
     &lt;p&gt;&lt;a href="/"&gt;Go home&lt;/a&gt;&lt;/p&gt;
   \`;
-}</pre>
+}</code-block>
 
     <h3>Nested Error Boundaries</h3>
-    <pre>app/
+    <code-block>app/
 ├── error.ts              # catches errors site-wide
 ├── dashboard/
 │   ├── error.ts          # catches errors only in /dashboard/*
 │   ├── page.ts
 │   └── settings/
-│       └── page.ts       # error here → caught by dashboard/error.ts</pre>
+│       └── page.ts       # error here → caught by dashboard/error.ts</code-block>
 
     <p>
       The error boundary receives the context object (<code>params</code>,
@@ -462,7 +462,7 @@ export default function ErrorBoundary({ error }: { error: unknown }) {
 
     <h3>Static Metadata</h3>
     <p>Export a <code>metadata</code> object from any page or layout:</p>
-    <pre>// app/about/page.ts
+    <code-block>// app/about/page.ts
 import { html } from '@webjsdev/core';
 
 export const metadata = {
@@ -476,14 +476,14 @@ export const metadata = {
 
 export default function About() {
   return html\`&lt;h1&gt;About&lt;/h1&gt;\`;
-}</pre>
+}</code-block>
 
     <h3>Dynamic Metadata (<code>generateMetadata</code>)</h3>
     <p>
       Export an async <code>generateMetadata</code> function for metadata that depends on
       route params or data fetching:
     </p>
-    <pre>// app/blog/[slug]/page.ts
+    <code-block>// app/blog/[slug]/page.ts
 import { html } from '@webjsdev/core';
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
@@ -495,7 +495,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 
 export default async function PostPage({ params }: { params: { slug: string } }) {
   // ...
-}</pre>
+}</code-block>
 
     <h3>Metadata Merging</h3>
     <p>
@@ -525,14 +525,14 @@ export default async function PostPage({ params }: { params: { slug: string } })
       Aborts rendering and returns a <code>404</code> response. If a
       <code>not-found.ts</code> exists at the app root, it is rendered.
     </p>
-    <pre>import { html, notFound } from '@webjsdev/core';
+    <code-block>import { html, notFound } from '@webjsdev/core';
 
 export default async function PostPage({ params }: { params: { slug: string } }) {
   const post = await db.posts.findBySlug(params.slug);
   if (!post) notFound();  // stops execution, returns 404
 
   return html\`&lt;h1&gt;\${post.title}&lt;/h1&gt;\`;
-}</pre>
+}</code-block>
 
     <h3><code>redirect(url, status?)</code></h3>
     <p>
@@ -546,7 +546,7 @@ export default async function PostPage({ params }: { params: { slug: string } })
       default: positionally as <code>redirect('/x', 308)</code>, or with the
       options form <code>redirect('/x', { status: 301 })</code>.
     </p>
-    <pre>import { redirect } from '@webjsdev/core';
+    <code-block>import { redirect } from '@webjsdev/core';
 
 export default async function ProtectedPage() {
   const user = await getSession();
@@ -555,7 +555,7 @@ export default async function ProtectedPage() {
   // if (!user) redirect('/login', { status: 301 }); // options form
 
   return html\`&lt;h1&gt;Welcome, \${user.name}&lt;/h1&gt;\`;
-}</pre>
+}</code-block>
     <p>
       Inside a server action, the same <code>redirect('/somewhere')</code>
       defaults to <code>307</code> instead, so a POST that bounces keeps its
@@ -576,9 +576,9 @@ export default async function ProtectedPage() {
       <code>location.href = ...</code> to keep the partial-swap behavior. Pushes a
       history entry by default; pass <code>{ replace: true }</code> to replace.
     </p>
-    <pre>import { navigate } from '@webjsdev/core';
+    <code-block>import { navigate } from '@webjsdev/core';
 await navigate('/about');
-await navigate('/login', { replace: true });</pre>
+await navigate('/login', { replace: true });</code-block>
 
     <h3><code>revalidate(url?)</code></h3>
     <p>
@@ -589,9 +589,9 @@ await navigate('/login', { replace: true });</pre>
       methods. You only need <code>revalidate()</code> for mutations that bypass the
       form pipeline.
     </p>
-    <pre>import { revalidate } from '@webjsdev/core';
+    <code-block>import { revalidate } from '@webjsdev/core';
 revalidate('/products/123');  // evict one URL
-revalidate();                 // clear the whole cache</pre>
+revalidate();                 // clear the whole cache</code-block>
 
     <!-- ===== LOADING ===== -->
     <h2>Loading UI (<code>loading.ts</code>)</h2>
@@ -601,7 +601,7 @@ revalidate();                 // clear the whole cache</pre>
       UI that will be shown while the page's async content is being resolved.
     </p>
 
-    <pre>// app/dashboard/loading.ts  (reserved for future Suspense integration)
+    <code-block>// app/dashboard/loading.ts  (reserved for future Suspense integration)
 import { html } from '@webjsdev/core';
 
 export default function Loading() {
@@ -611,7 +611,7 @@ export default function Loading() {
       &lt;div class="skeleton-line short"&gt;&lt;/div&gt;
     &lt;/div&gt;
   \`;
-}</pre>
+}</code-block>
 
     <p>
       WebJs automatically wraps the sibling page in a Suspense boundary with the
@@ -639,7 +639,7 @@ export default function Loading() {
     </ol>
 
     <h2>Quick Reference</h2>
-    <pre>File              Purpose                              Example URL
+    <code-block>File              Purpose                              Example URL
 ─────────────────────────────────────────────────────────────────────
 page.ts           Page component (SSR)                 /about
 layout.ts         Wrapping layout (nested)             wraps children
@@ -651,6 +651,6 @@ middleware.ts     Request middleware (nested)           runs before handlers
 [param]/          Dynamic segment                      /users/:id
 [...rest]/        Catch-all segment                    /files/*
 (group)/          Route group (not in URL)             scopes layouts
-_private/         Private folder (excluded)            not routable</pre>
+_private/         Private folder (excluded)            not routable</code-block>
   `;
 }

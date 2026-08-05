@@ -10,7 +10,7 @@ export default function Cache() {
     <h2>cache(): Server-Side Query Caching</h2>
     <p>Wrap any async function with <code>cache()</code> to cache its return value on the server. Same function + same arguments = cached result until TTL expires or you call <code>invalidate()</code>.</p>
 
-    <pre>import { cache } from '@webjsdev/server';
+    <code-block>import { cache } from '@webjsdev/server';
 import { db } from '#db/connection.server.ts';
 
 export const listPosts = cache(
@@ -21,7 +21,7 @@ export const listPosts = cache(
 );
 
 // Call it normally. First call hits DB, subsequent calls serve cache.
-const posts = await listPosts();</pre>
+const posts = await listPosts();</code-block>
 
     <h3>Options</h3>
     <ul>
@@ -35,21 +35,21 @@ const posts = await listPosts();</pre>
     <h3>Invalidation</h3>
     <p>The cached function has an <code>invalidate()</code> method. Call it after mutations to clear the cache:</p>
 
-    <pre>import { listPosts } from '#modules/posts/queries/list-posts.server.ts';
+    <code-block>import { listPosts } from '#modules/posts/queries/list-posts.server.ts';
 import { db } from '#db/connection.server.ts';
 import { posts } from '#db/schema.server.ts';
 
 export async function createPost(input) {
   await db.insert(posts).values(input);
   await listPosts.invalidate();  // next call to listPosts() will hit DB
-}</pre>
+}</code-block>
 
     <p>Invalidation clears the no-args cache key. Argument-specific keys (from calls with different arguments) expire naturally via TTL. To evict a specific argument's entry (for example one post id), tag the read and use <code>revalidateTag</code> (next section) rather than waiting on the TTL.</p>
 
     <h3>Tag-based invalidation (revalidateTag)</h3>
     <p>The <code>invalidate()</code> method only clears the no-args base key, so for a parameterized read each argument produces a distinct key. Add <code>tags</code> to a <code>cache()</code> so an unrelated mutation can evict the right entries without importing the wrapper. Tags are either a static <code>string[]</code> or a function <code>(...args) =&gt; string[]</code> that derives a per-entity tag from the arguments:</p>
 
-    <pre>export const postById = cache(
+    <code-block>export const postById = cache(
   async (id) =&gt; db.query.posts.findFirst({ where: { id } }),
   { key: 'post', ttl: 300, tags: (id) =&gt; ['post:' + id] }  // per-entity tag
 );
@@ -57,11 +57,11 @@ export async function createPost(input) {
 export const listPosts = cache(
   async () =&gt; db.query.posts.findMany(),
   { key: 'posts', ttl: 60, tags: ['posts'] }                // static tag
-);</pre>
+);</code-block>
 
     <p>A mutating server action then calls <code>revalidateTag(tag)</code> after the write. It works across modules (the comments module evicts a posts-module read with no import of the wrapper):</p>
 
-    <pre>// modules/comments/actions/create-comment.server.ts
+    <code-block>// modules/comments/actions/create-comment.server.ts
 'use server';
 import { revalidateTag, revalidatePath } from '@webjsdev/server';
 import { db } from '#db/connection.server.ts';
@@ -73,7 +73,7 @@ export async function createComment(input) {
   await revalidateTag('posts');                  // listPosts recomputes
   await revalidatePath('/blog');                 // also evict the cached HTML
   return { success: true };
-}</pre>
+}</code-block>
 
     <p><code>revalidateTag('post:5')</code> evicts ONLY the id-5 entry, leaving other ids cached. <code>revalidateTags([...])</code> clears several tags at once. This is the fix for the old argument-key leak. Tag a per-argument read and evict the exact id by tag instead of relying on a short TTL. An untagged <code>cache()</code> is untouched by any <code>revalidateTag</code>. Both <code>revalidateTag</code> and <code>revalidateTags</code> are imported from <code>@webjsdev/server</code>.</p>
 
@@ -86,11 +86,11 @@ export async function createComment(input) {
     <h2>HTTP Cache-Control: Page-Level Caching</h2>
     <p>For page-level caching served to browsers and CDNs, use the <code>metadata.cacheControl</code> export in any <code>page.ts</code>:</p>
 
-    <pre>// app/posts/page.ts
+    <code-block>// app/posts/page.ts
 export const metadata = {
   title: 'Posts',
   cacheControl: 'public, max-age=60, stale-while-revalidate=300',
-};</pre>
+};</code-block>
 
     <p>This sets the standard <code>Cache-Control</code> header on the HTTP response. Browsers and CDNs cache the rendered page without any server-side state.</p>
 
@@ -105,11 +105,11 @@ export const metadata = {
     <h2>Static Assets: asset()</h2>
     <p>A file in <code>public/</code> is served at a stable url, so after a deploy a browser or CDN can keep serving the PREVIOUS bytes until its cache expires. Wrap the url in <code>asset()</code> and it gains a content hash, which the framework then serves <code>immutable</code> for a year:</p>
 
-    <pre>import { html, asset } from '@webjsdev/core';
+    <code-block>import { html, asset } from '@webjsdev/core';
 
 export default function RootLayout({ children }) {
   return html\`&lt;link rel="stylesheet" href=\${asset('/public/app.css')}&gt;\`;
-}</pre>
+}</code-block>
 
     <p>In production that renders <code>/public/app.css?v=&lt;hash&gt;</code>. New bytes mean a new url, so no cache can serve a stale copy, and the year-long <code>immutable</code> lifetime is safe precisely because the url changes when the file does. The same url un-marked gets a short <code>max-age</code> instead. <code>asset()</code> resolves on the server; the browser has no resolver and returns the path unchanged. Call it from a <strong>page, layout, or metadata route</strong>, which render only on the server. Inside a component that ships to the browser it quietly forfeits the caching it was for: hydration is a full client re-render, so the bare path overwrites the hashed one and the asset is fetched twice. The url stays valid either way, so this is a convention rather than something <code>webjs check</code> rejects. It is off in development, so dev output stays byte-identical, and only <code>public/</code> paths resolve.</p>
 
@@ -120,13 +120,13 @@ export default function RootLayout({ children }) {
     <h2>Server HTML Response Cache (export const revalidate)</h2>
     <p>For a page that renders identical HTML for every visitor, opt into the server HTML response cache so the SSR pipeline runs once per window instead of once per request (webjs's no-build equivalent of Next.js's Full Route Cache and ISR). Declare a revalidation window on the page module:</p>
 
-    <pre>// app/blog/page.ts
+    <code-block>// app/blog/page.ts
 export const revalidate = 60;   // seconds: cache this page's HTML for 60s
 
 export default async function Blog() {
   const posts = await listPosts();
   return html\`...\`;
-}</pre>
+}</code-block>
 
     <p><strong>Safety.</strong> Caching is opt-in and conservative, because a wrongly-cached per-user page is a data leak. Declaring <code>revalidate</code> asserts <strong>this page is the same for everyone for N seconds</strong>. The cache is keyed by the full URL (path plus search) only, with no per-user keying, so a page that reads <code>cookies()</code>, a session, or any per-user data MUST NOT set <code>revalidate</code>. The framework also refuses to cache any response that is not a <code>200</code>, is a streamed Suspense body, sets <strong>any</strong> <code>Set-Cookie</code>, or runs under CSP. SSR responses carry no framework cookie (action CSRF is an Origin / Sec-Fetch-Site check, not a token cookie), so a cacheable page is cookieless and safe to share across visitors.</p>
 
@@ -134,7 +134,7 @@ export default async function Blog() {
 
     <p>Evict on a write with <code>revalidatePath</code> from a server action:</p>
 
-    <pre>// modules/blog/actions/publish-post.server.ts
+    <code-block>// modules/blog/actions/publish-post.server.ts
 'use server';
 import { revalidatePath } from '@webjsdev/server';
 
@@ -142,7 +142,7 @@ export async function publishPost(input) {
   // ... persist via Drizzle ...
   await revalidatePath('/blog');   // next /blog request re-renders fresh
   return { success: true };
-}</pre>
+}</code-block>
 
     <p><code>revalidatePath(path)</code> evicts the server HTML cache for one path, and <code>revalidateAll()</code> clears everything. This is distinct from the client-side <code>revalidate()</code> from <code>@webjsdev/core</code>, which evicts the browser snapshot cache used by client navigation. Time-based eviction is handled automatically by the store TTL (the <code>revalidate</code> seconds).</p>
 
@@ -151,7 +151,7 @@ export async function publishPost(input) {
     <h2>Low-Level Cache Store</h2>
     <p>Both <code>cache()</code> and the rate limiter are built on a pluggable cache store. You can use it directly for custom caching needs:</p>
 
-    <pre>import { getStore, setStore, redisStore } from '@webjsdev/server';
+    <code-block>import { getStore, setStore, redisStore } from '@webjsdev/server';
 
 // Get the default store (memoryStore in dev)
 const store = getStore();
@@ -162,7 +162,7 @@ const raw = await store.get('user:42');
 await store.delete('user:42');
 
 // Atomic increment (used by rate limiter)
-const count = await store.increment('api:hits:192.168.1.1', 60_000);</pre>
+const count = await store.increment('api:hits:192.168.1.1', 60_000);</code-block>
 
     <h3>Stores</h3>
     <h4>memoryStore (default)</h4>
@@ -171,8 +171,8 @@ const count = await store.increment('api:hits:192.168.1.1', 60_000);</pre>
     <h4>redisStore (production)</h4>
     <p>Redis-backed store for multi-instance deployments. Set it explicitly at app startup:</p>
 
-    <pre>import { setStore, redisStore } from '@webjsdev/server';
-setStore(redisStore({ url: process.env.REDIS_URL }));</pre>
+    <code-block>import { setStore, redisStore } from '@webjsdev/server';
+setStore(redisStore({ url: process.env.REDIS_URL }));</code-block>
 
     <h3>Store API</h3>
     <ul>

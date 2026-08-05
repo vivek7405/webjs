@@ -24,7 +24,7 @@ export default function LazyLoading() {
     <h2>Basic usage</h2>
     <p>Add <code>static lazy = true</code> to your component class:</p>
 
-    <pre>import { WebComponent, html, css } from '@webjsdev/core';
+    <code-block>import { WebComponent, html, css } from '@webjsdev/core';
 
 class HeavyChart extends WebComponent {
   static lazy = true;  // ← module loaded on scroll, not on page load
@@ -34,7 +34,7 @@ class HeavyChart extends WebComponent {
     return html${'`'}&lt;canvas&gt;&lt;/canvas&gt;${'`'};
   }
 }
-HeavyChart.register('heavy-chart');</pre>
+HeavyChart.register('heavy-chart');</code-block>
 
     <h2>How it works</h2>
     <ol>
@@ -49,10 +49,10 @@ HeavyChart.register('heavy-chart');</pre>
     <h2>Selective hydration</h2>
     <p>For even more control, use <code>static hydrate = 'visible'</code>. This defers the component's <code>connectedCallback</code> activation (not just the module load) until the element is visible:</p>
 
-    <pre>class LazyComments extends WebComponent {
+    <code-block>class LazyComments extends WebComponent {
   static hydrate = 'visible';  // ← activation deferred until visible
   // ...
-}</pre>
+}</code-block>
 
     <p>The difference: <code>lazy</code> defers the module download. <code>hydrate = 'visible'</code> defers the component's activation even if the module is already loaded. Use both together for maximum deferral.</p>
 

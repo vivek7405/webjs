@@ -7,7 +7,7 @@ export default function FileStorage() {
     <h1>File Storage</h1>
     <p>WebJs ships a pluggable file-storage primitive for uploaded <code>File</code> / <code>Blob</code> payloads. It mirrors the cache and session adapters: a documented <code>FileStore</code> interface, a default on-disk adapter (<code>diskStore</code>), and a module singleton (<code>getFileStore</code> / <code>setFileStore</code>) so an app swaps the backend in one call without touching any call site. The default lands bytes on local disk, and the same shape is S3-pluggable for production.</p>
 
-    <pre>import { getFileStore, setFileStore, diskStore, generateKey, signedUrl, verifySignedUrl } from '@webjsdev/server';</pre>
+    <code-block>import { getFileStore, setFileStore, diskStore, generateKey, signedUrl, verifySignedUrl } from '@webjsdev/server';</code-block>
 
     <h2>The FileStore interface</h2>
     <p>Every method operates on web-standard objects, so an S3-compatible adapter is a drop-in (see below).</p>
@@ -30,41 +30,41 @@ export default function FileStorage() {
     <h2>Reading and swapping the active store</h2>
     <p>Read the active store with <code>getFileStore()</code>, swap it once at startup with <code>setFileStore(store)</code>. Every call site reads through <code>getFileStore()</code>, so a single <code>setFileStore</code> call changes the backend everywhere.</p>
 
-    <pre>import { getFileStore } from '@webjsdev/server';
+    <code-block>import { getFileStore } from '@webjsdev/server';
 
-const { key, size, contentType } = await getFileStore().put(generateKey(file.name), file);</pre>
+const { key, size, contentType } = await getFileStore().put(generateKey(file.name), file);</code-block>
 
     <h2>diskStore (the default adapter)</h2>
     <p>The default store is a <code>diskStore</code> rooted at <code>&lt;cwd&gt;/.webjs/uploads</code>, served under <code>/uploads</code>. Override the root and base URL at startup:</p>
 
-    <pre>import { setFileStore, diskStore } from '@webjsdev/server';
+    <code-block>import { setFileStore, diskStore } from '@webjsdev/server';
 
-setFileStore(diskStore({ dir: '/var/data/uploads', baseUrl: '/files' }));</pre>
+setFileStore(diskStore({ dir: '/var/data/uploads', baseUrl: '/files' }));</code-block>
 
     <p>Add the uploads directory to <code>.gitignore</code>, because it holds user data, not source.</p>
 
     <h2>Traversal-safe keys</h2>
     <p>Every key is resolved to an absolute path under <code>dir</code> and rejected if it escapes, using the same containment guard the <code>/public/*</code> serve path uses. A key with <code>..</code>, an absolute path, a leading slash, a NUL byte, a backslash, or the reserved <code>.meta</code> suffix throws (<code>assertSafeKey</code>) before any filesystem operation. Never trust a user-supplied filename as a key. Use <code>generateKey</code>:</p>
 
-    <pre>const key = generateKey(file.name);   // &lt;uuid&gt;.&lt;ext&gt;, opaque + safe</pre>
+    <code-block>const key = generateKey(file.name);   // &lt;uuid&gt;.&lt;ext&gt;, opaque + safe</code-block>
 
     <p><code>generateKey(filename?)</code> returns a random <code>crypto.randomUUID()</code> key, preserving only a whitelisted, sanitized extension from the original filename. A malicious <code>'../../x.sh'</code> yields a bare opaque key with no path and no unsafe extension.</p>
 
     <h2>Signed URLs (gated serving)</h2>
     <p><code>signedUrl</code> / <code>verifySignedUrl</code> mint and verify an expiring HMAC-SHA256 (base64url) signature over the exact key plus its expiry, so a serving route can gate access without a session lookup. Neither the key nor the expiry can be tampered with (both are signed), and the comparison is constant-time.</p>
 
-    <pre>const url = signedUrl(key, { secret: process.env.AUTH_SECRET, expiresIn: 3600 });
+    <code-block>const url = signedUrl(key, { secret: process.env.AUTH_SECRET, expiresIn: 3600 });
 
 // in the serving route:
 const check = verifySignedUrl(new URL(request.url).searchParams, process.env.AUTH_SECRET);
-if (!check.valid) return new Response('Forbidden', { status: 403 });</pre>
+if (!check.valid) return new Response('Forbidden', { status: 403 });</code-block>
 
     <p>An explicit <code>expiresIn</code> of <code>0</code> or a negative number fails CLOSED (the minted URL is already expired), so a "no access" intent never silently becomes a 1-hour grant. The 1-hour default applies only when <code>expiresIn</code> is omitted.</p>
 
     <h2>Recipe: upload, persist, and serve back</h2>
     <p>A file upload is a <code>&lt;form&gt;</code> bound to a <code>'use server'</code> action. The renderer supplies the <code>multipart/form-data</code> enctype an upload needs, so the binding is the whole wiring. With JS disabled it is a native round-trip, with JS the client router upgrades it in place. No upload library, no <code>fetch</code>. The bytes are streamed to storage via <code>getFileStore()</code>, never buffered whole.</p>
 
-    <pre>// app/avatar/page.ts
+    <code-block>// app/avatar/page.ts
 import { html } from '@webjsdev/core';
 import { saveAvatar } from '#modules/avatar/actions/save-avatar.server.ts';
 
@@ -79,11 +79,11 @@ export default function Avatar({ actionData }: {
       &lt;button type="submit"&gt;Upload&lt;/button&gt;
     &lt;/form&gt;
   \`;
-}</pre>
+}</code-block>
 
     <p>The bound action receives the <code>FormData</code>, pulls the <code>File</code> out of it, and streams it to storage with a generated, traversal-safe key, persisting that key on the DB row.</p>
 
-    <pre>// modules/avatar/actions/save-avatar.server.ts
+    <code-block>// modules/avatar/actions/save-avatar.server.ts
 'use server';
 import { getFileStore, generateKey } from '@webjsdev/server';
 import { eq } from 'drizzle-orm';
@@ -103,11 +103,11 @@ export async function saveAvatar(formData: FormData) {
   }
   await db.update(users).set({ avatarKey: key }).where(eq(users.id, 'me'));
   return { success: true, redirect: '/avatar', data: { key, contentType } };
-}</pre>
+}</code-block>
 
     <p>Serve the stored file from a <code>route.ts</code>, streaming <code>get(key)</code> and gating it behind a signed URL so the object is not world-readable by key alone.</p>
 
-    <pre>// app/files/[key]/route.ts
+    <code-block>// app/files/[key]/route.ts
 import { getFileStore, verifySignedUrl } from '@webjsdev/server';
 
 export async function GET(request: Request, { params }: { params: { key: string } }) {
@@ -125,13 +125,13 @@ export async function GET(request: Request, { params }: { params: { key: string 
       'content-disposition': 'attachment',
     },
   });
-}</pre>
+}</code-block>
 
     <p>Mint the signed URL where you render the link (a page or component):</p>
 
-    <pre>import { signedUrl } from '@webjsdev/server';
+    <code-block>import { signedUrl } from '@webjsdev/server';
 
-const href = signedUrl(user.avatarKey, { secret: process.env.AUTH_SECRET!, expiresIn: 3600 });</pre>
+const href = signedUrl(user.avatarKey, { secret: process.env.AUTH_SECRET!, expiresIn: 3600 });</code-block>
 
     <h2>Serving user uploads safely</h2>
     <p>The content-type a store records is the one the BROWSER sent at upload time, so it is attacker-controlled. A serving route that reflects it inline lets an attacker run script in your origin (stored XSS) by uploading HTML or <code>image/svg+xml</code> tagged <code>text/html</code> under an innocent-looking key. The serving route MUST send <code>X-Content-Type-Options: nosniff</code>, and SHOULD send <code>Content-Disposition: attachment</code> for anything a user uploaded (the recipe above does both). Only serve a user upload inline when you have validated the bytes server-side and emit a content-type from a strict inert allowlist (<code>image/png</code>, <code>image/jpeg</code>), never <code>text/html</code> / <code>image/svg+xml</code>. Serving uploads from a separate cookieless origin is the strongest mitigation.</p>

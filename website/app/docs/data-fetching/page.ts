@@ -12,14 +12,14 @@ export default function DataFetching() {
 
     <h2>The default: async render()</h2>
     <p>Make a component's <code>render()</code> async and call a <code>'use server'</code> action directly. Writing <code>await</code> makes the function async; WebJs awaits a promise-returning <code>render()</code> automatically on both the server and the client. There is no flag.</p>
-    <pre>// (a) blocking async render: real data in the first paint, the common case
+    <code-block>// (a) blocking async render: real data in the first paint, the common case
 class UserProfile extends WebComponent({ uid: String }) {
   async render() {
     const u = await getUser(this.uid);   // real fn at SSR, RPC stub on the client
     return html\`&lt;h3&gt;${'${u.name}'}&lt;/h3&gt;\`;
   }
 }
-UserProfile.register('user-profile');</pre>
+UserProfile.register('user-profile');</code-block>
     <p>SSR awaits the render, so the resolved DATA is in the first paint with no fallback. A JS-off client reads it (a progressive-enhancement UPGRADE over a client-fetched <code>Task</code>, which shows nothing without JS). <code>getUser</code> is isomorphic: the real function during SSR, an RPC stub on the client.</p>
 
     <h2>The three concerns are decoupled (do not conflate them)</h2>
@@ -31,34 +31,34 @@ UserProfile.register('user-profile');</pre>
 
     <h2>Streaming a slow region with webjs-suspense</h2>
     <p>A bare <code>async render()</code> blocks the first byte. For a SLOW region where that wait hurts, wrap it in <code>&lt;webjs-suspense&gt;</code> to stream it. This is the ONLY way to show a first-paint fallback.</p>
-    <pre>// (b) webjs-suspense-wrapped slow component that streams (first-paint fallback)
+    <code-block>// (b) webjs-suspense-wrapped slow component that streams (first-paint fallback)
 html\`
   &lt;webjs-suspense .fallback=${'${html`<p>Loading section…</p>`}'}&gt;
     &lt;user-profile uid="42"&gt;&lt;/user-profile&gt;
     &lt;user-activity uid="42"&gt;&lt;/user-activity&gt;
   &lt;/webjs-suspense&gt;
-\`;</pre>
+\`;</code-block>
     <p>The fallback flushes on the first byte; the resolved content streams in. Multiple boundaries fetch concurrently (no server waterfall). One boundary groups several components under one fallback, and the boundary <code>.fallback</code> wins over a contained component's <code>renderFallback()</code>. On a client-router navigation the boundary streams progressively too (the shell with the fallback applies immediately, then the data streams in). A throwing component inside a boundary is isolated to its own error state while siblings stream.</p>
 
     <h2>The re-fetch loading state: renderFallback()</h2>
-    <pre>// (c) renderFallback() as the client re-fetch loading state (re-fetch on a prop change)
+    <code-block>// (c) renderFallback() as the client re-fetch loading state (re-fetch on a prop change)
 class UserActivity extends WebComponent({ uid: String }) {
   renderFallback() { return html\`&lt;div class="skeleton h-24"&gt;&lt;/div&gt;\`; }
   async render() {
     const items = await getActivity(this.uid);
     return html\`&lt;ul&gt;${'${items.map((i) => html`<li>${i.label}</li>`)}'}&lt;/ul&gt;\`;
   }
-}</pre>
+}</code-block>
     <p>Define <code>renderFallback()</code> only when stale content during a re-fetch would mislead. It is a prop-aware method (not a static field), so it can branch on the component's current state. <code>Task</code> cannot cover this case: a <code>Task</code> renders its pending state at SSR, losing the first-paint data, and you cannot wrap a signal around your own <code>await</code> inside <code>render()</code>.</p>
 
     <h2>Errors are isolated by default</h2>
-    <pre>// (d) the no-op error case: isolation works WITHOUT renderError()
+    <code-block>// (d) the no-op error case: isolation works WITHOUT renderError()
 class Report extends WebComponent {
   async render() { return html\`&lt;pre&gt;${'${await getReport()}'}&lt;/pre&gt;\`; }
   // no renderError() needed: a thrown await is isolated to THIS component,
   // siblings render, the page does not blank. Add renderError() only to
   // customize the error UI.
-}</pre>
+}</code-block>
     <p>A thrown <code>await getData()</code> (or any render throw) renders a component-scoped error state while siblings render, never bubbling to the route <code>error.ts</code>. The default surfaces the tag and message in dev and renders a silent empty element in prod (no leak). This is a per-route-error-boundary experience at the component level, with no per-component routes.</p>
 
     <h2>A bare async leaf ships zero JS (elision)</h2>
@@ -71,16 +71,16 @@ class Report extends WebComponent {
 
     <h2>HTTP-verb actions: cacheable reads and tag invalidation</h2>
     <p>An action declares its HTTP semantics through reserved sibling exports, the same way a page declares <code>export const revalidate</code>. The function stays a plain <code>export async function</code> (one per file); a <code>method</code> export picks the verb, and a GET can be cached.</p>
-    <pre>// modules/users/queries/get-user.server.ts
+    <code-block>// modules/users/queries/get-user.server.ts
 'use server';
 export const method = 'GET';                  // 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; absent =&gt; POST
 export const cache = 60;                       // seconds, or { maxAge, swr, public }; default private
 export const tags = (id) =&gt; ['user:' + id];
-export async function getUser(id) { return db.user.find(id); }</pre>
-    <pre>// modules/users/actions/update-user.server.ts
+export async function getUser(id) { return db.user.find(id); }</code-block>
+    <code-block>// modules/users/actions/update-user.server.ts
 'use server';
 export const invalidates = (id) =&gt; ['user:' + id];
-export async function updateUser(id, data) { /* ... */ }</pre>
+export async function updateUser(id, data) { /* ... */ }</code-block>
     <p>The call site never changes (<code>await getUser(7)</code>). A <strong>GET</strong> rides its args in the URL, is CSRF-exempt, and carries an ETag; add a <code>cache</code> export and it is also served with <code>Cache-Control</code>, so a repeat read within the window comes from the browser cache and a stale one revalidates with a 304. Without <code>cache</code> a GET is <code>no-store</code>, since the verb marks the read as safe and <code>cache</code> is what makes it cacheable. A <strong>mutation</strong> sends a body, is CSRF-protected, and on completion its <code>invalidates</code> tags evict the matching server cache and tell the client to refetch the affected reads. A wrong request method is a <code>405</code>. It is additive: an action with no <code>method</code> stays a POST, exactly as before. The cache defaults to <code>private</code>; <code>{ public: true }</code> shares the response across users keyed only by URL, so use it only for data identical for every visitor, never a per-user read. In the object form <code>maxAge</code> is the freshness window in seconds and <code>swr</code> adds a stale-while-revalidate grace window (also seconds), during which an expired response is still served instantly while the browser refreshes it in the background. The full header reference lives on the <a href="/docs/server-actions">server actions</a> page.</p>
     <p>A public REST endpoint is a <code>route.ts</code> that imports and calls the action; <code>validate</code> is a boundary concern (the RPC endpoint and the route handler), not a direct server-to-server call.</p>
     <p>Cancellation is automatic: a superseded <code>async render()</code> (a newer prop or signal change while a fetch is in flight) aborts the previous render's in-flight action fetch, and on the server an action can read the request's <code>AbortSignal</code> via <code>actionSignal()</code> to stop expensive work when the client disconnects.</p>
@@ -88,15 +88,15 @@ export async function updateUser(id, data) { /* ... */ }</pre>
 
     <h2>Streaming results: return a stream or async generator</h2>
     <p>When an action <em>returns</em> a <code>ReadableStream</code>, an async iterable, or an async generator, the framework streams each chunk over the single RPC response instead of buffering the whole thing. The call site gets back an async iterable to <code>for await</code>, and each chunk arrives as it is produced. This is for token streams (an LLM response), progress events, or a large result set you want to render incrementally.</p>
-    <pre>// modules/ai/actions/stream-answer.server.ts
+    <code-block>// modules/ai/actions/stream-answer.server.ts
 'use server';
 export async function* streamAnswer(prompt) {
   for await (const token of llm.complete(prompt)) yield token;
-}</pre>
-    <pre>// in a component
+}</code-block>
+    <code-block>// in a component
 for await (const token of await streamAnswer(q)) {
   this.text.set(this.text.get() + token);   // renders incrementally
-}</pre>
+}</code-block>
     <p>Detection is purely on the return value, so any verb can stream and there is no config export to set. Each chunk round-trips through the serializer (a <code>Date</code> / <code>Map</code> / <code>BigInt</code> inside a chunk survives). Back-pressure is respected, and the stream cancels when the client disconnects or the render is superseded (the same <code>AbortSignal</code> wiring as above), so a server generator stops producing. A streamed result is never cached or seeded; a mid-stream error surfaces as a throw from the iterable (wrap the <code>for await</code> in <code>try/catch</code>). For a slow region you want behind a fallback on the FIRST paint, reach for <code>&lt;webjs-suspense&gt;</code> instead; streaming RPC is for an imperative stream a component consumes after an interaction.</p>
 
     <h2>Decision rules</h2>
@@ -120,7 +120,7 @@ for await (const token of await streamAnswer(q)) {
       <li><strong>Is URL-addressable</strong> (a tab panel, a detail pane) that maps to a route.</li>
     </ol>
     <p><strong>Combining the two.</strong> A frame defers a region to a SECOND request; <code>&lt;webjs-suspense&gt;</code> streams slow data WITHIN a response. They compose: a frame whose route is itself slow can wrap that data in <code>&lt;webjs-suspense&gt;</code>, so the frame defers the load (lazy, on viewport) and the slow data then streams in behind a fallback inside the frame. A comments section that is both below the fold AND slow is the canonical case.</p>
-    <pre>// app/post/[id]/page.ts, defer the comments to a lazy frame
+    <code-block>// app/post/[id]/page.ts, defer the comments to a lazy frame
 html\`
   &lt;article&gt;...the post (in the first paint)...&lt;/article&gt;
   &lt;webjs-frame id="comments" src=${'${`/post/${id}/comments`}'} loading="lazy"&gt;&lt;/webjs-frame&gt;
@@ -133,12 +133,12 @@ html\`
       &lt;comment-list post-id=${'${id}'}&gt;&lt;/comment-list&gt;
     &lt;/webjs-suspense&gt;
   &lt;/webjs-frame&gt;
-\`;</pre>
+\`;</code-block>
     <p>The right way: point the frame's <code>src</code> / <code>data-webjs-frame</code> at a <code>route.ts</code> or page that renders the region server-side; wrap genuinely-slow data inside it in <code>&lt;webjs-suspense&gt;</code>; use <code>loading="lazy"</code> for below-the-fold; and keep PE-critical content in the first paint (a frame <code>src</code> is JS-dependent, so a no-JS client sees only what was rendered into the frame). One caveat: when a framed route streams, the frame's byte-saving subtree extraction is skipped (the full page renders server-side and the client slices out the region), so you trade some wire bytes for the streaming.</p>
     <h2>Surgical single-element updates and live channels: webjs-stream</h2>
     <p>A frame or a region swap redraws a whole region. That is too coarse for "append ONE comment", "remove ONE row", "bump a count", or "insert a toast". For those, <code>&lt;webjs-stream&gt;</code> applies a per-element update declared as plain HTML: a <code>&lt;webjs-stream action target&gt;</code> wrapping a single <code>&lt;template&gt;</code>, where <code>action</code> is one of <code>append</code> / <code>prepend</code> / <code>before</code> / <code>after</code> / <code>replace</code> / <code>update</code> / <code>remove</code> and <code>target</code> is an element id. The element self-applies on connect and removes itself, so it needs no per-app DOM code.</p>
     <p><strong>webjs-stream is webjs's take on Turbo Streams</strong> (from Hotwire Turbo); the action set mirrors <code>&lt;turbo-stream&gt;</code>, so that muscle memory transfers directly. The same applier serves two delivery paths: a content-negotiated <code>&lt;form&gt;</code> response (the client router asks for the stream MIME only on a JS-driven submit, so a JS-off form still gets a normal render), and a <strong>live channel</strong>, where <code>renderStream(message)</code> in a <code>connectWS</code> handler applies a <code>broadcast()</code>ed payload. So chat, notifications, and presence reuse the same grammar.</p>
-    <pre>// server: append one comment, fan it out to other viewers, degrade for no-JS
+    <code-block>// server: append one comment, fan it out to other viewers, degrade for no-JS
 import { stream, streamResponse, acceptsStream, broadcast } from '@webjsdev/server';
 import { escapeText } from '@webjsdev/core';
 export async function POST(req, { params }) {
@@ -146,7 +146,7 @@ export async function POST(req, { params }) {
   const html = stream.append('comments', '&lt;li&gt;' + escapeText(c.text) + '&lt;/li&gt;');
   broadcast('post:' + params.id, html);
   return acceptsStream(req) ? streamResponse(html) : Response.redirect(new URL('/post/' + params.id, req.url), 303);
-}</pre>
+}</code-block>
     <p>Reach for <code>&lt;webjs-stream&gt;</code> when the change is a single element inside an otherwise-unchanged region, or when a live channel pushes incremental updates. Use a region swap or a <code>&lt;webjs-frame&gt;</code> reload when a whole region changes; those are not the tool for one row.</p>
 
     <h2>Which primitive when (the decision boundary)</h2>

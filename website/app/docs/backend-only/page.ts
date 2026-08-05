@@ -19,7 +19,7 @@ export default function BackendOnly() {
     <p>Use full-stack WebJs when you want server-rendered pages, web components, streaming SSR, and server actions all in one codebase.</p>
 
     <h2>Minimal API-Only App Structure</h2>
-    <pre>my-api/
+    <code-block>my-api/
   app/
     api/
       health/
@@ -44,12 +44,12 @@ export default function BackendOnly() {
     session.ts
   middleware.ts             # root middleware (logging, timing)
   package.json
-  tsconfig.json</pre>
+  tsconfig.json</code-block>
     <p>There is no <code>page.ts</code>, no <code>layout.ts</code>, no <code>components/</code> directory. WebJs detects what files exist and only activates the features you use.</p>
 
     <h2>File-Based API Routing</h2>
     <p>A <code>route.ts</code> file anywhere under <code>app/</code> becomes an API endpoint. Export functions named after HTTP methods:</p>
-    <pre>// app/api/users/route.ts
+    <code-block>// app/api/users/route.ts
 import { db } from '#db/connection.server.ts';
 import { users } from '#db/schema.server.ts';
 
@@ -64,8 +64,8 @@ export async function POST(req: Request) {
   const body = await req.json();
   const [user] = await db.insert(users).values({ name: body.name, email: body.email }).returning();
   return Response.json(user, { status: 201 });
-}</pre>
-    <pre>// app/api/users/[id]/route.ts
+}</code-block>
+    <code-block>// app/api/users/[id]/route.ts
 import { eq } from 'drizzle-orm';
 import { db } from '#db/connection.server.ts';
 import { users } from '#db/schema.server.ts';
@@ -85,12 +85,12 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   await db.delete(users).where(eq(users.id, Number(params.id)));
   return new Response(null, { status: 204 });
-}</pre>
+}</code-block>
     <p>Dynamic segments (<code>[id]</code>), catch-all segments (<code>[...rest]</code>), and route groups (<code>(groupName)</code>) all work the same way as with pages.</p>
 
     <h2>Middleware for Auth, CORS, Rate Limiting</h2>
     <p>Middleware works identically in backend-only mode. Place <code>middleware.ts</code> files at the root or in any segment directory:</p>
-    <pre>// middleware.ts (root): logging for every request
+    <code-block>// middleware.ts (root): logging for every request
 export default async function logger(
   req: Request,
   next: () =&gt; Promise&lt;Response&gt;,
@@ -99,8 +99,8 @@ export default async function logger(
   const resp = await next();
   console.log(\`\${req.method} \${new URL(req.url).pathname} \${resp.status} \${Date.now() - start}ms\`);
   return resp;
-}</pre>
-    <pre>// app/middleware.ts: CORS for all routes under app/
+}</code-block>
+    <code-block>// app/middleware.ts: CORS for all routes under app/
 export default async function cors(
   req: Request,
   next: () =&gt; Promise&lt;Response&gt;,
@@ -119,15 +119,15 @@ export default async function cors(
   const resp = await next();
   resp.headers.set('access-control-allow-origin', '*');
   return resp;
-}</pre>
-    <pre>// app/api/auth/middleware.ts: rate limit auth endpoints
+}</code-block>
+    <code-block>// app/api/auth/middleware.ts: rate limit auth endpoints
 import { rateLimit } from '@webjsdev/server';
 
-export default rateLimit({ window: '10s', max: 5 });</pre>
+export default rateLimit({ window: '10s', max: 5 });</code-block>
 
     <h2>Server Actions over REST via route.ts</h2>
     <p>Define your API logic as plain server-action functions, then expose them over HTTP through a <code>route.ts</code> handler. The <code>route()</code> adapter from <code>@webjsdev/server</code> writes the common handler (merge query + params + JSON body, run an optional validator, JSON-respond) in one line:</p>
-    <pre>// actions/users.server.ts
+    <code-block>// actions/users.server.ts
 'use server';
 import { db } from '#db/connection.server.ts';
 import { users } from '#db/schema.server.ts';
@@ -147,8 +147,8 @@ export async function getUser({ id }: { id: string }) {
 export async function createUser({ name, email }: { name: string; email: string }) {
   const [user] = await db.insert(users).values({ name, email }).returning();
   return user;
-}</pre>
-    <pre>// app/api/v2/users/route.ts
+}</code-block>
+    <code-block>// app/api/v2/users/route.ts
 import { route } from '@webjsdev/server';
 import { listUsers, createUser } from '#actions/users.server.ts';
 
@@ -167,7 +167,7 @@ export const POST = route(createUser, { validate: validateUser });
 // app/api/v2/users/[id]/route.ts: ctx.params.id merges into the input
 import { route } from '@webjsdev/server';
 import { getUser } from '#actions/users.server.ts';
-export const GET = route(getUser);</pre>
+export const GET = route(getUser);</code-block>
     <p>The action is reachable two ways:</p>
     <ul>
       <li><strong>As an HTTP endpoint:</strong> <code>GET /api/v2/users/:id</code> from curl, Postman, or any HTTP client, served by the <code>route.ts</code> handler.</li>
@@ -177,7 +177,7 @@ export const GET = route(getUser);</pre>
 
     <h2>WebSocket Support</h2>
     <p>Export a <code>WS</code> function from any <code>route.ts</code> to create a WebSocket endpoint:</p>
-    <pre>// app/api/chat/route.ts
+    <code-block>// app/api/chat/route.ts
 import type { WebSocket } from 'ws';
 
 const clients = new Set&lt;WebSocket&gt;();
@@ -193,27 +193,27 @@ export function WS(ws: WebSocket, req: Request, { params }: { params: Record&lt;
   });
 
   ws.on('close', () =&gt; clients.delete(ws));
-}</pre>
+}</code-block>
     <p>WebSocket endpoints coexist with HTTP handlers in the same <code>route.ts</code>. The second argument is a <code>Request</code> object from the upgrade handshake, so you can read cookies, headers, and query params for auth.</p>
 
     <h2>Content-Negotiated JSON</h2>
     <p>Use the <code>json()</code> helper from <code>@webjsdev/server</code> and the <code>richFetch()</code> client helper from <code>webjs</code> for rich-encoded responses that preserve <code>Date</code>, <code>Map</code>, <code>Set</code>, <code>BigInt</code>, <code>TypedArray</code>, <code>Blob</code>, <code>File</code>, <code>FormData</code>, and reference cycles:</p>
-    <pre>// app/api/events/route.ts
+    <code-block>// app/api/events/route.ts
 import { json } from '@webjsdev/server';
 import { db } from '#db/connection.server.ts';
 
 export async function GET() {
   const events = await db.query.events.findMany();
   return json(events); // dates stay as Dates for richFetch callers
-}</pre>
-    <pre>// Internal client (another webjs app or same-app component)
+}</code-block>
+    <code-block>// Internal client (another webjs app or same-app component)
 import { richFetch } from '@webjsdev/core';
 
 const events = await richFetch('/api/events');
 // events[0].createdAt is a real Date object
 
 // External client (curl, Postman) gets plain JSON automatically
-// curl http://localhost:8080/api/events</pre>
+// curl http://localhost:8080/api/events</code-block>
     <p>The <code>json()</code> helper reads the <code>Accept</code> header. If the client sent <code>Accept: application/vnd.webjs+json</code> (as <code>richFetch</code> does), the response is encoded with the WebJs serializer. Otherwise, plain <code>application/json</code>. The <code>Vary: Accept</code> header is set automatically.</p>
     <p>For reading request bodies with the same content negotiation, use <code>readBody(req)</code> from <code>@webjsdev/server</code>.</p>
 
@@ -229,7 +229,7 @@ const events = await richFetch('/api/events');
 
     <h2>createRequestHandler() for Serverless/Edge</h2>
     <p>Embed a backend-only WebJs app in any environment that speaks <code>Request</code>/<code>Response</code>:</p>
-    <pre>import { createRequestHandler } from '@webjsdev/server';
+    <code-block>import { createRequestHandler } from '@webjsdev/server';
 
 // Build the handler once at cold start
 const app = await createRequestHandler({
@@ -260,7 +260,7 @@ fastify.all('*', async (request, reply) =&gt; {
   reply.send(body);
 });
 
-fastify.listen({ port: 8080 });</pre>
+fastify.listen({ port: 8080 });</code-block>
 
     <h2>Comparison with Express/Fastify</h2>
     <p>Here is what WebJs gives you compared to a traditional Node.js API framework:</p>
@@ -285,7 +285,7 @@ fastify.listen({ port: 8080 });</pre>
 
     <h2>Example: Complete API-Only Setup</h2>
     <h3>package.json</h3>
-    <pre>{
+    <code-block>{
   "name": "my-api",
   "type": "module",
   "scripts": {
@@ -303,10 +303,10 @@ fastify.listen({ port: 8080 });</pre>
     "drizzle-kit": "^1.0.0-rc.3",
     "typescript": "^5.7.0"
   }
-}</pre>
+}</code-block>
 
     <h3>middleware.ts (root)</h3>
-    <pre>export default async function logger(
+    <code-block>export default async function logger(
   req: Request,
   next: () =&gt; Promise&lt;Response&gt;,
 ): Promise&lt;Response&gt; {
@@ -315,10 +315,10 @@ fastify.listen({ port: 8080 });</pre>
   const ms = Date.now() - start;
   console.log(\`\${req.method} \${new URL(req.url).pathname} \${resp.status} \${ms}ms\`);
   return resp;
-}</pre>
+}</code-block>
 
     <h3>app/api/posts/route.ts</h3>
-    <pre>import { json } from '@webjsdev/server';
+    <code-block>import { json } from '@webjsdev/server';
 import { db } from '#db/connection.server.ts';
 import { posts } from '#db/schema.server.ts';
 
@@ -336,13 +336,13 @@ export async function POST(req: Request) {
     title, body, slug: title.toLowerCase().replace(/\s+/g, '-'), authorId,
   }).returning();
   return json(post, { status: 201 });
-}</pre>
+}</code-block>
 
     <h3>Run it</h3>
-    <pre>webjs dev
+    <code-block>webjs dev
 # API is live at http://localhost:8080
 # curl http://localhost:8080/api/posts
-# curl http://localhost:8080/__webjs/health</pre>
+# curl http://localhost:8080/__webjs/health</code-block>
     <p>No pages, no layouts, no components, no SSR. Just a fast, typed API server with file-based routing.</p>
   `;
 }

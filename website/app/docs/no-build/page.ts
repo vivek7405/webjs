@@ -43,7 +43,7 @@ export default function NoBuild() {
 
     <h2>The importmap</h2>
     <p>An <code>&lt;script type="importmap"&gt;</code> is emitted in every SSR response's <code>&lt;head&gt;</code>. It tells the browser how to resolve every bare specifier (anything that isn't a relative <code>./foo</code> or absolute <code>/bar</code>) to a real URL. WebJs ships a minimal map and extends it dynamically as your app references new npm packages:</p>
-    <pre>&lt;script type="importmap"&gt;
+    <code-block>&lt;script type="importmap"&gt;
 {
   "imports": {
     "@webjsdev/core":               "/__webjs/core/index-browser.js",
@@ -58,20 +58,20 @@ export default function NoBuild() {
     "zod":                          "https://ga.jspm.io/npm:zod@3.23.8/lib/index.mjs"
   }
 }
-&lt;/script&gt;</pre>
+&lt;/script&gt;</code-block>
     <p>The browser resolves every <code>import 'dayjs'</code> through this map. You never write a build config that says "alias dayjs to its dist file". The framework owns the registry, you write idiomatic ESM.</p>
 
     <h2>Module graph and modulepreload hints</h2>
     <p>At server startup, WebJs walks your app source and builds an in-memory graph of <code>file → Set&lt;imported files&gt;</code>. The walker parses <code>import</code> statements with a regex, resolves relative paths, and records every edge. Bare specifiers (npm deps) are not in the app graph, but the exact specifier is recorded as a separate <em>vendor edge</em> so reached npm dependencies can also be preloaded (see below).</p>
     <p>When the SSR pipeline renders a page, it computes the components on that page plus their transitive dependencies, and emits one <code>&lt;link rel="modulepreload"&gt;</code> per file:</p>
-    <pre>&lt;link rel="modulepreload" href="/app/page.ts"&gt;
+    <code-block>&lt;link rel="modulepreload" href="/app/page.ts"&gt;
 &lt;link rel="modulepreload" href="/components/post-card.ts"&gt;
 &lt;link rel="modulepreload" href="/components/avatar.ts"&gt;
-&lt;link rel="modulepreload" href="/lib/format-date.ts"&gt;</pre>
+&lt;link rel="modulepreload" href="/lib/format-date.ts"&gt;</code-block>
     <p>This converts a sequential <code>import</code> waterfall into a parallel fetch. The browser fires every request as soon as the HTML head is parsed, well before <code>&lt;script type="module"&gt;</code> at the bottom would have discovered them.</p>
     <h3>npm vendor dependencies are preloaded too</h3>
     <p>The same hinting extends to the npm packages your shipped modules import. WebJs emits a <code>&lt;link rel="modulepreload"&gt;</code> for each reached vendor URL (carrying its SRI <code>integrity</code> and <code>crossorigin</code>), byte-identical to the importmap target so the browser never double-fetches:</p>
-    <pre>&lt;link rel="modulepreload" href="https://ga.jspm.io/npm:dayjs@1/dayjs.min.js" crossorigin integrity="sha384-…"&gt;</pre>
+    <code-block>&lt;link rel="modulepreload" href="https://ga.jspm.io/npm:dayjs@1/dayjs.min.js" crossorigin integrity="sha384-…"&gt;</code-block>
     <p>Only <strong>reached</strong> vendors are hinted: a package imported solely by a display-only (elided) component, or pinned but never imported, is left out, so this never over-fetches.</p>
     <p><strong>The honest caveat vs a bundle.</strong> This flattens the <em>first</em> level of the vendor graph (the packages your code imports directly). A vendor's own transitive dependencies are still discovered by parsing each fetched CDN module in turn, level by level, over the cross-origin connection, which is exactly the waterfall a bundler eliminates. So the complementary practice is <strong>shallow-dependency discipline</strong>: prefer few, shallow ESM dependencies. A library with a flat or one-level graph fully benefits; a deep tree still waterfalls past the first level.</p>
     <p>Server-only modules (filename matches <code>.server.{js,ts}</code> or content has a <code>'use server'</code> directive) are excluded from preload hints, and the dependency walk <strong>stops at</strong> them: a plain module reached only through a server file (a util that a server action imports) is excluded too. The browser only ever fetches the action's RPC stub, never the server file's own imports, so the preload set is exactly the set the page actually fetches. None of it reaches the browser as source. Lazy components (<code>static lazy = true</code>) are also excluded, since they load on viewport entry via IntersectionObserver, not page load.</p>
@@ -86,14 +86,14 @@ export default function NoBuild() {
 
     <h2>103 Early Hints</h2>
     <p>In production, when a GET or HEAD request matches a page route, WebJs sends a <code>103 Early Hints</code> response <em>before</em> SSR begins. The hints carry <code>Link: &lt;url&gt;; rel=modulepreload</code> headers for the page's modules:</p>
-    <pre>HTTP/1.1 103 Early Hints
+    <code-block>HTTP/1.1 103 Early Hints
 Link: &lt;/app/page.ts&gt;; rel=modulepreload
 Link: &lt;/components/post-card.ts&gt;; rel=modulepreload
 ...
 
 HTTP/1.1 200 OK
 Content-Type: text/html
-...</pre>
+...</code-block>
     <p>The browser starts fetching JS modules while the server is still rendering HTML. By the time the document parser reaches the import statements, those files are already in cache. Most major edges (Cloudflare, fly-proxy, Fastly) forward 103 responses to the client. Early Hints are disabled in dev because file churn could send stale URLs before a rebuild.</p>
 
     <h2>Bare specifiers (npm packages)</h2>
@@ -109,34 +109,34 @@ Content-Type: text/html
 
     <h2>Optional: commit resolved URLs via <code>webjs vendor pin</code></h2>
     <p>By default the <code>api.jspm.io/generate</code> call happens once on the first request (memoized for the process), never at boot. To skip it entirely (no runtime dependency on jspm.io's API), run <code>webjs vendor pin</code>:</p>
-    <pre>$ webjs vendor pin
+    <code-block>$ webjs vendor pin
 Pinning vendor packages from /home/me/my-app...
   dayjs@1.11.13
   zod@3.23.8
-Pinned 2 packages, wrote .webjs/vendor/importmap.json.</pre>
+Pinned 2 packages, wrote .webjs/vendor/importmap.json.</code-block>
     <p>This writes <code>.webjs/vendor/importmap.json</code> with the resolved jspm.io URLs. Commit the file to source control. The server reads it from disk on the first request (memoized for the process), never at boot; no <code>api.jspm.io</code> call needed.</p>
     <p>The pin output is meant to be committed, so <code>webjs vendor pin</code> keeps it committable for you. The scaffold's <code>.gitignore</code> already excludes the transient <code>.webjs</code> caches (the generated <code>routes.d.ts</code>) while un-ignoring <code>.webjs/vendor/</code>, so a fresh app needs nothing. If your <code>.gitignore</code> would swallow the pins (for example an older or hand-edited one with a blanket <code>.webjs/</code> line), pinning adds the <code>!.webjs/vendor/</code> exception for you and tells you to <code>git add .gitignore .webjs/vendor</code>. When the exclusion lives somewhere it cannot patch (a parent repo's <code>.gitignore</code>, or <code>.git/info/exclude</code>), it prints a one-line notice with the exact lines to add instead. A no-vendor app, which never runs this command, is untouched.</p>
     <p>For offline-capable production (compliance, air-gapped, strict CSP), add <code>--download</code>:</p>
-    <pre>$ webjs vendor pin --download
+    <code-block>$ webjs vendor pin --download
 Pinning vendor packages from /home/me/my-app (downloading bundles)...
   dayjs@1.11.13                            8.2 KB
   zod@3.23.8                               12.5 KB
-Pinned 2 packages, wrote .webjs/vendor/importmap.json + 2 bundles.</pre>
+Pinned 2 packages, wrote .webjs/vendor/importmap.json + 2 bundles.</code-block>
     <p>This downloads each bundle from jspm.io to <code>.webjs/vendor/&lt;pkg&gt;@&lt;version&gt;.js</code>. The importmap then points at local <code>/__webjs/vendor/&lt;file&gt;.js</code> URLs; the server serves the committed bundle files. Browser never touches jspm.io at runtime; works fully offline.</p>
     <p>Pin is intentionally manual (no <code>predev</code>/<code>prestart</code> auto-run). Auto-pin would cause silent churn in the committed importmap.json as jspm.io resolves URLs or transitive deps drift. Rails takes the same posture: <code>bin/importmap pin</code> is always developer-invoked.</p>
     <p><code>sha384</code> SRI integrity is on by default, with OR without a pin file. An unpinned (live-resolved) app hashes each cross-origin bundle at warmup and the SSR pipeline stamps the matching hash on each <code>&lt;link rel="modulepreload"&gt;</code> and on the importmap entry itself, so the browser refuses to execute a bundle whose bytes don't match (CDN compromise defense), even before you pin. The live hashing is bounded and fail-open: if a bundle fetch fails (a CDN hiccup), that one URL simply loads without integrity (logged once) and the app still boots. Running <code>webjs vendor pin</code> makes the hashes reproducible and removes the warmup fetch: it writes them alongside the imports in <code>importmap.json</code> under an <code>integrity</code> key (both <code>webjs vendor pin</code> and <code>--download</code> populate it), so the hashes only update when the command is rerun and routine cache-busting cannot drop them.</p>
 
     <h2>Switch CDN with <code>--from</code></h2>
     <p>If jspm.io has an incident, or you want jsdelivr-served packages, pass a different resolver:</p>
-    <pre>$ webjs vendor pin --from jsdelivr
-Pinning vendor packages from /home/me/my-app via jsdelivr...</pre>
+    <code-block>$ webjs vendor pin --from jsdelivr
+Pinning vendor packages from /home/me/my-app via jsdelivr...</code-block>
     <p>Accepts <code>jspm</code> (default), <code>jsdelivr</code>, <code>unpkg</code>, or <code>skypack</code>. Same shape as Rails's <code>bin/importmap pin foo --from jsdelivr</code>. The chosen resolver is persisted in <code>importmap.json</code> as a <code>provider</code> sibling field so <code>webjs vendor update</code> targets the same CDN.</p>
 
     <h2>Maintenance commands</h2>
     <p>For pinned packages, three commands stand in for <code>npm audit</code> / <code>npm outdated</code> / <code>npm update</code>:</p>
-    <pre>$ webjs vendor audit
+    <code-block>$ webjs vendor audit
 $ webjs vendor outdated
-$ webjs vendor update</pre>
+$ webjs vendor update</code-block>
     <p><code>audit</code> POSTs your pinned versions to the same <code>registry.npmjs.org/-/npm/v1/security/advisories/bulk</code> endpoint <code>npm audit</code> uses, prints any CVEs, and exits non-zero on findings so CI can gate. <code>outdated</code> queries each pinned package's <code>dist-tags.latest</code> and lists what trails. <code>update</code> re-pins every outdated package to its latest, recomputes SRI, and writes the new pin file (you still run <code>npm install &lt;pkg&gt;@&lt;latest&gt;</code> afterward to sync your <code>node_modules</code>).</p>
 
     <h2>A heavy client-only library (WebGL, canvas, a big imperative module)</h2>
@@ -157,13 +157,13 @@ $ webjs vendor update</pre>
 
     <h2>Browser-side env vars without a build step</h2>
     <p>Next.js exposes <code>NEXT_PUBLIC_*</code> to the browser via build-time static substitution. WebJs has no build step, so it can't substitute literals into source. Instead, the SSR pipeline emits an inline <code>&lt;script&gt;</code> in the document head, before the importmap and any module code:</p>
-    <pre>&lt;script&gt;
+    <code-block>&lt;script&gt;
   window.process = window.process || {};
   window.process.env = Object.assign(window.process.env || {}, {
     "WEBJS_PUBLIC_API_URL": "https://api.example.com",
     "NODE_ENV": "production"
   });
-&lt;/script&gt;</pre>
+&lt;/script&gt;</code-block>
     <p>After that runs, <code>process.env.WEBJS_PUBLIC_X</code> is a real property read on a real object in the browser. No transform, no substitution, no build step. Same source equals runtime invariant as everything else on this page.</p>
     <p>Only env vars with the <code>WEBJS_PUBLIC_</code> prefix cross the wire. Everything else stays on the server. <code>NODE_ENV</code> is also defined so vendor bundles that probe it (lit, react, etc.) run cleanly in the browser. Full user-facing docs in <a href="/docs/configuration">Configuration</a>.</p>
 

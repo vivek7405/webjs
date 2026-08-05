@@ -39,7 +39,7 @@ export default function EditorSetup() {
 
     <h2><code>tsconfig.json</code>: baseline</h2>
     <p>The scaffold writes this file. Manual apps should match it:</p>
-    <pre>{
+    <code-block>{
   "compilerOptions": {
     "target": "ES2022",
     "module": "NodeNext",
@@ -54,7 +54,7 @@ export default function EditorSetup() {
       { "name": "@webjsdev/intellisense" }
     ]
   }
-}</pre>
+}</code-block>
     <p>Key points:</p>
     <ul>
       <li><code>moduleResolution: "NodeNext"</code>: required for the framework's <code>exports</code> map to resolve correctly.</li>
@@ -66,7 +66,7 @@ export default function EditorSetup() {
 
     <h2>Layer 1: component internals (works everywhere)</h2>
     <p>Declare each property in the <code>WebComponent({ ... })</code> factory. The factory types each field for you (no <code>declare</code> line), and the <code>prop()</code> helper narrows the type when a bare constructor is not specific enough (<code>prop&lt;Student&gt;(Object)</code>):</p>
-    <pre>import { WebComponent, html, prop } from '@webjsdev/core';
+    <code-block>import { WebComponent, html, prop } from '@webjsdev/core';
 import type { Student } from './student-types.ts';
 
 export class StudentCard extends WebComponent({
@@ -76,7 +76,7 @@ export class StudentCard extends WebComponent({
     return html\`&lt;p&gt;\${this.student.name}&lt;/p&gt;\`;
   }
 }
-StudentCard.register('student-card');</pre>
+StudentCard.register('student-card');</code-block>
 
     <p>Inside the class, <code>this.student</code> is a real <code>Student</code>. Hover, autocomplete, and type-checking all work. <code>this.requestUpdate</code>, signal helpers (<code>signal</code>, <code>computed</code>) imported from <code>@webjsdev/core</code>, and all lifecycle hooks are typed by the framework's <code>.d.ts</code> overlay.</p>
 
@@ -105,28 +105,28 @@ StudentCard.register('student-card');</pre>
     </table>
 
     <h3>Install (manual)</h3>
-    <pre>npm i -D typescript @webjsdev/intellisense</pre>
+    <code-block>npm i -D typescript @webjsdev/intellisense</code-block>
     <p>Then make sure the single plugin entry is in <code>tsconfig.json</code> (already in the baseline above):</p>
-    <pre>{
+    <code-block>{
   "compilerOptions": {
     "plugins": [{ "name": "@webjsdev/intellisense" }]
   }
-}</pre>
+}</code-block>
 
     <h3>VS Code</h3>
     <p>Prefer the <code>webjs</code> extension (top of this page). To wire the plugin manually instead, tell VS Code to use your workspace's TypeScript so it picks up the plugin. Open any <code>.ts</code> file and:</p>
-    <pre>Cmd/Ctrl+Shift+P  →  "TypeScript: Select TypeScript Version"  →  "Use Workspace Version"</pre>
+    <code-block>Cmd/Ctrl+Shift+P  →  "TypeScript: Select TypeScript Version"  →  "Use Workspace Version"</code-block>
     <p>Reload the window. The plugin is now active.</p>
 
     <h3>Neovim</h3>
     <p>Install <a href="https://github.com/webjsdev/webjs.nvim" target="_blank"><code>webjsdev/webjs.nvim</code></a> for treesitter template highlighting, <code>:WebjsCheck</code>, and <code>:checkhealth webjs</code>. It also gives you a helper to load the tsserver plugin without editing <code>tsconfig.json</code>:</p>
-    <pre>require('lspconfig').ts_ls.setup({
+    <code-block>require('lspconfig').ts_ls.setup({
   init_options = require('webjs').with_tsserver_plugin(),
-})</pre>
+})</code-block>
     <p>Otherwise, any LSP client that speaks tsserver loads the plugin automatically from <code>tsconfig.json</code>. The key is pointing the LSP at your <strong>workspace's</strong> <code>node_modules/typescript</code> so the plugin resolves.</p>
 
     <h4><code>nvim-lspconfig</code></h4>
-    <pre>-- lua/plugins/tsserver.lua
+    <code-block>-- lua/plugins/tsserver.lua
 return {
   'neovim/nvim-lspconfig',
   config = function()
@@ -137,21 +137,21 @@ return {
       },
     })
   end,
-}</pre>
+}</code-block>
 
     <h4><code>typescript-tools.nvim</code> (recommended for large projects)</h4>
     <p>Faster for large projects. Plugin-loading works the same way:</p>
-    <pre>return {
+    <code-block>return {
   'pmizio/typescript-tools.nvim',
   dependencies = { 'nvim-lua/plenary.nvim', 'neovim/nvim-lspconfig' },
   opts = {},
-}</pre>
+}</code-block>
 
     <h3>Verify the plugin loaded</h3>
     <p>In Neovim: <code>:LspInfo</code> should list <code>ts_ls</code> (or <code>typescript-tools</code>) attached to your <code>.ts</code> file. In VS Code: the bottom-right status bar shows the TypeScript version; click it and confirm it matches your workspace version.</p>
     <p>Then write a deliberately wrong binding:</p>
-    <pre>html\`&lt;student-card .student=\${42}&gt;&lt;/student-card&gt;\`
-//                            ^^^ squiggle: \`number\` is not assignable to property 'student' of type \`Student\`.</pre>
+    <code-block>html\`&lt;student-card .student=\${42}&gt;&lt;/student-card&gt;\`
+//                            ^^^ squiggle: \`number\` is not assignable to property 'student' of type \`Student\`.</code-block>
 
     <h3>After upgrading the plugin</h3>
     <p>tsserver loads plugins on startup, so an editor restart is required to pick up new plugin code. In Neovim: <code>:LspRestart</code>. In VS Code: <code>Cmd/Ctrl+Shift+P</code> then "TypeScript: Restart TS Server".</p>

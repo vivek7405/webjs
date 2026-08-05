@@ -86,7 +86,7 @@ export function renderPostBody(md: string): string {
         const body = HIGHLIGHTED.has(codeLang.toLowerCase())
           ? highlightToHtml(src)
           : src.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        out.push(`<pre class="bg-fg/8 border border-border rounded-lg my-[48px] overflow-x-auto"><code class="font-mono text-[13px] leading-[1.7] text-fg whitespace-pre block px-[24px] py-[20px]"${codeLang ? ` data-lang="${codeLang}"` : ''}>${body}</code></pre>`);
+        out.push(`<pre tabindex="0" class="bg-fg/8 border border-border rounded-lg my-[48px] overflow-x-auto"><code class="font-mono text-[13px] leading-[1.7] text-fg whitespace-pre block px-[24px] py-[20px]"${codeLang ? ` data-lang="${codeLang}"` : ''}>${body}</code></pre>`);
         codeBuf = [];
         codeLang = '';
         inCode = false;

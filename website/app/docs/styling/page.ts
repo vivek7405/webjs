@@ -12,7 +12,7 @@ export default function Styling() {
 
     <p>In dev the scaffold keeps that stylesheet fresh with an on-request recompile (a <code>webjs.dev.regenerate</code> rule), not a background <code>tailwindcss --watch</code>. When a source changes, the dev server recompiles <code>public/tailwind.css</code> before serving it, so a newly added utility class is never rendered unstyled and there is no watch process that can die or lag. Prod builds the same file once before serving, so dev and prod share the identical compile.</p>
 
-    <pre>// public/input.css (compiled to a static public/tailwind.css by css:build,
+    <code-block>// public/input.css (compiled to a static public/tailwind.css by css:build,
 // which the dev / start tasks run automatically). The @theme maps live here.
 @import "tailwindcss";
 @theme {
@@ -45,16 +45,16 @@ export default function RootLayout({ children }: LayoutProps) {
       \${children}
     &lt;/main&gt;
   \`;
-}</pre>
+}</code-block>
 
     <p>From any page or component you now write things like:</p>
-    <pre>&lt;h1 class="font-serif text-display text-foreground mb-6"&gt;Hello&lt;/h1&gt;
+    <code-block>&lt;h1 class="font-serif text-display text-foreground mb-6"&gt;Hello&lt;/h1&gt;
 &lt;p class="text-muted-foreground font-sans"&gt;Lede copy&lt;/p&gt;
-&lt;a class="text-primary hover:underline duration-150"&gt;Link&lt;/a&gt;</pre>
+&lt;a class="text-primary hover:underline duration-150"&gt;Link&lt;/a&gt;</code-block>
 
     <h2>Light-DOM components</h2>
     <p>Light DOM is the default for any <code>WebComponent</code>. Tailwind classes apply as they would on plain HTML:</p>
-    <pre>import { WebComponent, html, signal } from '@webjsdev/core';
+    <code-block>import { WebComponent, html, signal } from '@webjsdev/core';
 
 export class Counter extends WebComponent {
   // static shadow = false is the default, no need to declare it.
@@ -72,12 +72,12 @@ export class Counter extends WebComponent {
     \`;
   }
 }
-Counter.register('my-counter');</pre>
+Counter.register('my-counter');</code-block>
 
     <h2>Class-prefix rule for light-DOM custom CSS</h2>
     <p>Tailwind utilities are unique by construction, so most light-DOM components need zero custom CSS. But when you <em>do</em> reach for a <code>&lt;style&gt;</code> block or an imported stylesheet, <strong>every class selector MUST be prefixed with the component's tag name</strong>. Otherwise two components that both define <code>.card</code> or <code>.header</code> will style each other.</p>
 
-    <pre>// Pattern A: BEM-ish class names prefixed with tag
+    <code-block>// Pattern A: BEM-ish class names prefixed with tag
 class MyCard extends WebComponent {
   render() {
     return html\`
@@ -103,7 +103,7 @@ class MyCard extends WebComponent {
       &lt;div class="body"&gt;&lt;h3 class="title"&gt;\${title}&lt;/h3&gt;&lt;/div&gt;
     \`;
   }
-}</pre>
+}</code-block>
 
     <p>Pick one pattern and stay consistent across a component.</p>
 
@@ -114,12 +114,12 @@ class MyCard extends WebComponent {
     <p><strong>Size the HOST, not just an inner wrapper.</strong> The host custom element is the box the parent lays out. <code>display: block</code> stops the inline-collapse, but a host that is a flex/grid item in a centering parent (<code>flex justify-center</code>, <code>grid place-items-center</code>) is still sized to its content unless it carries width itself. Put <code>w-full max-w-[...]</code> on the host, not only on an inner <code>&lt;div&gt;</code> (an inner <code>w-full</code> resolves against a collapsed host and the whole component shrinks). Symptom: a board or card renders tiny even though its inner grid says <code>w-full max-w-100</code>.</p>
     <p><strong>An even grid uses <code>1fr</code> tracks, never <code>auto</code> rows.</strong> The reflow bug (a cell grows when it gets content while the others shrink) comes from <code>auto</code>-sized rows. Put <code>aspect-ratio</code> on the CONTAINER, size the tracks explicitly, and cap the cells:</p>
 
-    <pre>&lt;!-- a 3x3 board whose cells stay equal and square as it fills --&gt;
+    <code-block>&lt;!-- a 3x3 board whose cells stay equal and square as it fills --&gt;
 &lt;div class="grid gap-2 aspect-square [grid-template-columns:repeat(3,1fr)] [grid-template-rows:repeat(3,1fr)]"&gt;
   \${cells.map((c) =&gt; html\`
     &lt;button class="grid place-items-center min-h-0 overflow-hidden text-[clamp(1rem,8cqi,3rem)]"&gt;\${c}&lt;/button&gt;
   \`)}
-&lt;/div&gt;</pre>
+&lt;/div&gt;</code-block>
 
     <ul>
       <li><code>aspect-square</code> on the CONTAINER plus <code>repeat(N,1fr)</code> columns AND rows makes every cell an equal square that does not resize as marks land. Putting <code>aspect-square</code> on the CELLS is the common mistake that produces uneven rows.</li>
@@ -131,7 +131,7 @@ class MyCard extends WebComponent {
     <h2>Opting in to shadow DOM</h2>
     <p>Set <code>static shadow = true</code> when you want <code>adoptedStyleSheets</code>-scoped styles, real <code>&lt;slot&gt;</code> projection, or third-party-embed-proof CSS isolation:</p>
 
-    <pre>import { WebComponent, html, css } from '@webjsdev/core';
+    <code-block>import { WebComponent, html, css } from '@webjsdev/core';
 
 export class Card extends WebComponent {
   static shadow = true;                  // opt in
@@ -147,7 +147,7 @@ export class Card extends WebComponent {
     \`;
   }
 }
-Card.register('my-card');</pre>
+Card.register('my-card');</code-block>
 
     <p>Shadow-DOM components are SSR'd via Declarative Shadow DOM. Styles paint before JS loads, no hydration runtime, and the browser enforces the boundary. Light-DOM components are SSR'd as direct HTML with a <code>&lt;!--webjs-hydrate--&gt;</code> marker, and client-side rendering replaces the marker without flash.</p>
 
@@ -158,17 +158,17 @@ Card.register('my-card');</pre>
     <p>An element that paints a registered <code>@property</code> custom property directly, for example <code>background: var(--brand-cycle, &lt;fallback&gt;)</code>, paints the <strong>fallback</strong> instead of the live animated value whenever it has an <code>&lt;a href&gt;</code> ancestor, when <code>--brand-cycle</code> is a registered <code>@property</code> animated by <code>@keyframes</code> on <code>:root</code>. A registered <code>@property</code> always has a valid computed value, so it must never paint its <code>var()</code> fallback; that it does here is a Chromium paint bug (confirmed headless and headed; other engines are unaffected).</p>
     <p>The tell that it is a PAINT bug, not a style bug: <code>getComputedStyle</code> returns the correct live animated value, only the painted pixels are stale. So verify with a screenshot or pixel sample, never with <code>getComputedStyle</code> (it lies here). The trigger is specifically an <code>&lt;a&gt;</code> with an <code>href</code> (a real link). The same subtree under a <code>&lt;div&gt;</code>, a <code>&lt;button&gt;</code>, or an <code>&lt;a&gt;</code> with no <code>href</code> animates correctly, which points at Chromium's visited-link paint isolation (links paint through a separate path, for <code>:visited</code> history-sniffing defense, that does not invalidate on a registered-custom-property animation). Neither <code>isolation: isolate</code>, <code>will-change</code>, <code>content-visibility</code>, a self-<code>animation</code>, nor re-declaring the property fixes it.</p>
     <p><strong>The fix is to route the value through <code>color</code> + <code>currentColor</code></strong> instead of a direct <code>var()</code> paint reference. Chromium's link paint path does invalidate <code>color</code>, so this sidesteps the bug with no JavaScript:</p>
-    <pre>/* BROKEN inside &lt;a href&gt;: paints the fallback, not the animated color */
+    <code-block>/* BROKEN inside &lt;a href&gt;: paints the fallback, not the animated color */
 .wordmark { background: var(--brand-cycle, #ebeff2); }
 
 /* WORKS: the animated property rides color, the paint reads currentColor */
 .logo-link { color: var(--brand-cycle, #ebeff2); }   /* the &lt;a&gt; (or the element) */
-.wordmark  { background: currentColor; }             /* the painted descendant */</pre>
+.wordmark  { background: currentColor; }             /* the painted descendant */</code-block>
 
     <h2>DRY'ing up repeated Tailwind classes via JS helpers</h2>
     <p>When the same bundle of Tailwind classes appears in 2+ places, extract it into a JS helper in <code>lib/utils/ui.ts</code>. The helper runs at SSR time inside <code>html\`\`</code>, so the browser sees fully materialised HTML. No client-side runtime, no diff from inline classes.</p>
 
-    <pre>// lib/utils/ui.ts
+    <code-block>// lib/utils/ui.ts
 import { html } from '@webjsdev/core';
 
 /** \`label\` kicker: small caps, accent colour, above headings. */
@@ -183,10 +183,10 @@ export function backLink(href: string, label: string) {
   return html\`
     &lt;a href=\${href} class="inline-block mb-12 text-muted-foreground/70 no-underline font-mono text-xs uppercase tracking-widest duration-150 hover:text-foreground"&gt;← \${label}&lt;/a&gt;
   \`;
-}</pre>
+}</code-block>
 
     <p>Consume anywhere:</p>
-    <pre>// app/blog/[slug]/page.ts
+    <code-block>// app/blog/[slug]/page.ts
 import { rubric, backLink } from '#lib/utils/ui.ts';
 
 export default function Post({ params }) {
@@ -195,7 +195,7 @@ export default function Post({ params }) {
     \${rubric('post')}
     &lt;h1 class="font-serif text-display text-foreground"&gt;Hello&lt;/h1&gt;
   \`;
-}</pre>
+}</code-block>
 
     <p><strong>When to extract.</strong> Inline classes when they appear once. Extract when they repeat 2+ times identically, or vary only by 1–2 props (e.g. a margin size). Don't force-fit. Radically different call sites should stay inline.</p>
 
@@ -204,7 +204,7 @@ export default function Post({ params }) {
     <h2>Global styles and pseudo-elements</h2>
     <p>Some CSS can't be expressed as utility classes: body defaults, <code>::selection</code>, <code>::-webkit-scrollbar</code>, <code>body::before</code> decorative overlays. Put these in a plain <code>&lt;style&gt;</code> block in the root layout:</p>
 
-    <pre>// app/layout.ts excerpt
+    <code-block>// app/layout.ts excerpt
 &lt;style&gt;
   html, body { margin: 0; }
   body {
@@ -215,7 +215,7 @@ export default function Post({ params }) {
   ::selection { background: var(--primary-tint); }
   ::-webkit-scrollbar { width: 10px; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
-&lt;/style&gt;</pre>
+&lt;/style&gt;</code-block>
 
     <h2>Dark mode</h2>
     <ol>
@@ -241,7 +241,7 @@ export default function Post({ params }) {
     <p>Every page wraps its output in <code>&lt;div class="page-&lt;route&gt;"&gt;</code>. Every layout wraps in <code>&lt;div class="layout-&lt;name&gt;"&gt;</code>. Components scope via their tag name. Styles colocate with the markup as <code>const STYLES = css\`…\`</code> and interpolate via <code>&lt;style&gt;\${STYLES.text}&lt;/style&gt;</code>. The standalone <code>@webjsdev/intellisense</code> (and the <code>webjs</code> editor extension) resolves class go-to-definition inside those blocks.</p>
 
     <h3>Page scope</h3>
-    <pre>// app/dashboard/page.ts
+    <code-block>// app/dashboard/page.ts
 import { html, css } from '@webjsdev/core';
 
 const STYLES = css\`
@@ -261,10 +261,10 @@ export default function Dashboard() {
       &lt;/div&gt;
     &lt;/div&gt;
   \`;
-}</pre>
+}</code-block>
 
     <h3>Layout scope</h3>
-    <pre>// app/layout.ts
+    <code-block>// app/layout.ts
 import { html, css } from '@webjsdev/core';
 import type { LayoutProps } from '@webjsdev/core';
 
@@ -285,14 +285,14 @@ export default function RootLayout({ children }: LayoutProps) {
       &lt;main&gt;\${children}&lt;/main&gt;
     &lt;/div&gt;
   \`;
-}</pre>
+}</code-block>
 
     <p><strong>Pin a header with <code>position: fixed</code>, never <code>position: sticky</code>.</strong> A sticky header flickers its background for one frame on iOS WebKit (every iOS browser) during a client-router navigation: the preserved header plus the scroll-to-top trips a WebKit sticky-repaint bug, and the GPU-promotion hacks (<code>translateZ</code>, <code>will-change</code>) do not fix it. Use <code>position: fixed</code> and reserve the header height on the content with a <code>--header-height</code> CSS variable (kept exact by a <code>ResizeObserver</code>). It is iOS-only and invisible on desktop, Android, and in DevTools emulation, so it shows only on a real device.</p>
 
     <p><strong>A fixed header plus a modal that locks scroll.</strong> Locking page scroll hides the scrollbar, and a classic scrollbar takes real layout width, so hiding it widens the viewport. Padding the body compensates in-flow content but does nothing for a fixed header, which lays out against the initial containing block rather than the body's padding box, so it slides right by half the scrollbar width. <code>&lt;ui-dialog&gt;</code> and <code>&lt;ui-alert-dialog&gt;</code> handle this: the lock reserves the scrollbar gutter so the viewport width never changes, leaving it alone if your page already declared its own. Where the gutter is honoured nothing moves and the lock does nothing else. Where it is ignored (WebKit today) the lock measures how much the viewport widened, pads <code>&lt;html&gt;</code> by it to hold in-flow content still, and publishes the amount as <code>--wj-scrollbar-compensation</code>, which a fixed element opts into with <code>border-right: var(--wj-scrollbar-compensation, 0px) solid transparent</code>. A transparent border rather than padding, because it composes with the padding the element already has and a background still paints across it, so a header carrying its own background stays full bleed. The property is set only while a lock is active and the viewport actually widened, so the <code>0px</code> fallback covers every other moment. Put that declaration on the element that is both viewport-width and painting. Viewport-width, or a left-aligned child still moves: insetting a <code>max-width</code> container holds its centred children still but not its leading ones, since its own box is not what widened. Painting, or the background stops short of the widened edge: insetting a wrapper that paints nothing insets the child that does, leaving an unpainted strip. Measure a left-aligned child, not just a centred one.</p>
 
     <h3>Component scope</h3>
-    <pre>// components/my-card.ts
+    <code-block>// components/my-card.ts
 import { WebComponent, html, css } from '@webjsdev/core';
 
 const STYLES = css\`
@@ -312,7 +312,7 @@ export class MyCard extends WebComponent {
     \`;
   }
 }
-MyCard.register('my-card');</pre>
+MyCard.register('my-card');</code-block>
 
     <h3>Primitives stay intentionally global</h3>
     <p>A small curated set of design-system classes (<code>rubric</code>, <code>banner</code>, <code>accent-link</code>, <code>display-h1</code>, <code>code-chip</code>, …) lives once in the root layout and is intentionally global. These are your design system, treated the way Bootstrap treats <code>.btn</code>. Everything else is scoped.</p>

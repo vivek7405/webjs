@@ -10,7 +10,7 @@ export default function SSR() {
     <h2>How SSR Works</h2>
     <p>Pages are plain async functions that return <code>html\`\`</code> tagged templates (a <code>TemplateResult</code>). The server imports the page module, calls its default export, and passes the result through <code>renderToString()</code>. That function walks the template tree, resolves every <code>Promise</code> it encounters in template holes, and produces a complete HTML string.</p>
 
-    <pre>// app/page.ts
+    <code-block>// app/page.ts
 import { html } from '@webjsdev/core';
 
 export const metadata = { title: 'Home' };
@@ -23,7 +23,7 @@ export default async function Home() {
       \${posts.map(p =&gt; html\`&lt;li&gt;\${p.title}&lt;/li&gt;\`)}
     &lt;/ul&gt;
   \`;
-}</pre>
+}</code-block>
 
     <p>The runtime (Node 24+ or Bun) strips TypeScript types natively when it imports a <code>.ts</code> file, so the file above runs directly on the server with no manual compilation step.</p>
 
@@ -44,14 +44,14 @@ export default async function Home() {
     <h2>Declarative Shadow DOM (DSD)</h2>
     <p>Declarative Shadow DOM is the key technology that makes web component SSR work without a hydration runtime. When the server renders a custom element like <code>&lt;my-counter count="5"&gt;</code>, the output looks like this:</p>
 
-    <pre>&lt;my-counter count="5"&gt;
+    <code-block>&lt;my-counter count="5"&gt;
   &lt;template shadowrootmode="open"&gt;
     &lt;style&gt;:host { display: inline-flex; gap: 8px; } ...&lt;/style&gt;
     &lt;button&gt;-&lt;/button&gt;
     &lt;span&gt;5&lt;/span&gt;
     &lt;button&gt;+&lt;/button&gt;
   &lt;/template&gt;
-&lt;/my-counter&gt;</pre>
+&lt;/my-counter&gt;</code-block>
 
     <p>The browser's HTML parser recognises <code>&lt;template shadowrootmode="open"&gt;</code> and immediately attaches a shadow root with that content. This happens during parsing, before any JavaScript runs. The result is:</p>
     <ul>
@@ -74,12 +74,12 @@ export default async function Home() {
 
     <h3>closest() at SSR for compound components</h3>
     <p>A compound component (a tabs trigger, a toggle-group item) derives its active or pressed state by walking up to its parent and reading the parent's value. WebJs supports <code>this.closest(...)</code> at SSR for <strong>tag-name selectors only</strong>, backed by the SSR walker's ancestor chain, so the active or pressed state is marked in the first server paint rather than only after hydration.</p>
-    <pre>get _tabs() { return this.closest('ui-tabs'); }
+    <code-block>get _tabs() { return this.closest('ui-tabs'); }
 render() {
   const active = this._tabs?.value === this.value;
   this.dataset.state = active ? 'active' : 'inactive';
   return html\`&lt;button data-state=\${active ? 'active' : 'inactive'}&gt;&lt;slot&gt;&lt;/slot&gt;&lt;/button&gt;\`;
-}</pre>
+}</code-block>
     <p>The walker threads the chain of enclosing custom-element instances into each instance, and the shim's <code>closest()</code> resolves a parent over that chain, so <code>this.closest('ui-tabs').value</code> reads the live parent property the walker already applied. The first client render produces the identical state (the browser's real <code>closest()</code> against the real DOM), so there is no hydration flash. Two limits apply.</p>
     <ul>
       <li>Only <strong>tag-name selectors</strong> resolve at SSR (<code>closest('ui-tabs')</code>). A class, attribute, or descendant selector returns <code>null</code> server-side and resolves on the client. That covers the compound-component pattern, anything finer is client-only.</li>
@@ -90,7 +90,7 @@ render() {
     <h2>Async Rendering</h2>
     <p>Pages, layouts, and components can all be async. The server awaits every level of the render tree:</p>
 
-    <pre>// app/posts/[slug]/page.ts
+    <code-block>// app/posts/[slug]/page.ts
 import { html } from '@webjsdev/core';
 import '#components/post-card.ts';
 
@@ -104,14 +104,14 @@ export default async function PostPage({ params }: { params: { slug: string } })
       date="\${post.createdAt.toISOString()}"&gt;
     &lt;/post-card&gt;
   \`;
-}</pre>
+}</code-block>
 
     <p>The component's <code>render()</code> method can also be async. During SSR, if <code>render()</code> returns a Promise, <code>injectDSD</code> awaits it before serialising the contents, so a component can fetch its own server data into the first paint (<code>const u = await getUser(this.uid)</code>). SSR blocks by default, so the resolved DATA is in the first paint with no fallback (a JS-off client reads it). On the client, a re-fetch keeps the prior content (stale-while-revalidate) until the new render resolves, and a thrown <code>await</code> is isolated to that component. See <a href="/docs/components">Components</a> and <a href="/docs/lifecycle">Lifecycle</a>.</p>
 
     <h2>Streaming SSR with Suspense</h2>
     <p>Not every data fetch should block the initial HTML flush. The <code>Suspense</code> function creates a boundary that streams deferred content after the initial paint:</p>
 
-    <pre>import { html, Suspense } from '@webjsdev/core';
+    <code-block>import { html, Suspense } from '@webjsdev/core';
 
 export default function CataloguePage() {
   return html\`
@@ -126,7 +126,7 @@ export default function CataloguePage() {
 async function loadExpensiveItems() {
   const items = await db.item.findMany();
   return html\`&lt;ul&gt;\${items.map(i =&gt; html\`&lt;li&gt;\${i.name}&lt;/li&gt;\`)}&lt;/ul&gt;\`;
-}</pre>
+}</code-block>
 
     <p>Here is how streaming works under the hood:</p>
     <ol>
@@ -170,7 +170,7 @@ async function loadExpensiveItems() {
     <h2>Metadata in &lt;head&gt;</h2>
     <p>The SSR pipeline collects metadata from the layout chain and the page, then injects it into the document <code>&lt;head&gt;</code>. You declare metadata via a named export:</p>
 
-    <pre>// Static metadata
+    <code-block>// Static metadata
 export const metadata = {
   title: 'Blog Post Title | My App',
   description: 'A summary for search engines and social cards.',
@@ -185,18 +185,18 @@ export const metadata = {
   preload: [
     { href: '/fonts/inter.woff2', as: 'font', type: 'font/woff2', crossorigin: '' },
   ],
-};</pre>
+};</code-block>
 
     <p>Or generate it dynamically based on route params:</p>
 
-    <pre>export async function generateMetadata({ params }: { params: { slug: string } }) {
+    <code-block>export async function generateMetadata({ params }: { params: { slug: string } }) {
   const post = await db.post.findUnique({ where: { slug: params.slug } });
   return {
     title: post ? post.title + ' | My App' : 'Not Found',
     description: post?.summary,
     openGraph: post ? { title: post.title, image: post.coverImage } : undefined,
   };
-}</pre>
+}</code-block>
 
     <p>Metadata is merged outermost-layout-first, page-last. The page's values win when keys conflict. The resulting <code>&lt;head&gt;</code> includes:</p>
     <ul>
@@ -212,7 +212,7 @@ export const metadata = {
     <h3>JSON-LD structured data</h3>
     <p>Set <code>metadata.jsonLd</code> to a schema.org object (or an array of objects, one script per element) to emit <code>&lt;script type="application/ld+json"&gt;</code> for Google rich results (Article, Product, BreadcrumbList, FAQ, etc.). WebJs serializes and HTML-safe-escapes it for you, so a value containing <code>&lt;/script&gt;</code> can never break out of the tag. You own the schema; the framework adds no schema library. It works in <code>generateMetadata</code> too, for per-request data.</p>
 
-    <pre>export const metadata = {
+    <code-block>export const metadata = {
   jsonLd: {
     '@context': 'https://schema.org',
     '@type': 'Article',
@@ -220,7 +220,7 @@ export const metadata = {
     author: { '@type': 'Person', name: 'Ada' },
     datePublished: '2026-06-01',
   },
-};</pre>
+};</code-block>
 
     <h2>Module Preload Hints</h2>
     <p>The SSR pipeline automatically emits <code>&lt;link rel="modulepreload"&gt;</code> tags for:</p>
@@ -237,7 +237,7 @@ export const metadata = {
     <p>Before SSR even starts, the server sends HTTP 103 Early Hints to the browser with the same modulepreload URLs that will appear in the <code>&lt;head&gt;</code>. This uses the Node.js <code>res.writeEarlyHints()</code> API. The browser can begin DNS resolution, TLS negotiation, and module fetching while the server is still executing page code and rendering templates.</p>
     <p>Early Hints are sent only in production mode (dev-mode file churn would send stale URLs after rebuilds) and only for GET/HEAD requests to page routes.</p>
 
-    <pre>// Conceptual flow:
+    <code-block>// Conceptual flow:
 // 1. Browser sends GET /blog/hello
 // 2. Server matches route, resolves module URLs
 // 3. Server sends 103 Early Hints:
@@ -246,7 +246,7 @@ export const metadata = {
 //      Link: &lt;/components/post-card.ts&gt;; rel=modulepreload
 // 4. Server runs SSR (may take 50-200ms for DB queries)
 // 5. Server sends 200 OK with full HTML
-// 6. Browser already has modules cached from step 3</pre>
+// 6. Browser already has modules cached from step 3</code-block>
 
     <h2>Error Handling</h2>
     <p>If a page or layout throws during rendering, the SSR pipeline catches the error and walks up the layout chain looking for the nearest <code>error.ts</code> file. Error boundaries are nested: <code>app/blog/error.ts</code> catches errors in blog pages, while <code>app/error.ts</code> is the outermost fallback.</p>
@@ -261,7 +261,7 @@ export const metadata = {
     <p>SSR responses set no per-request CSRF cookie. Server-action CSRF is enforced by an Origin / <code>Sec-Fetch-Site</code> check on the request itself (see <a href="/docs/security">Security</a>), so nothing has to ride the page. Because the HTML carries no <code>Set-Cookie</code>, a page that opts into a public <code>Cache-Control</code> (via <code>metadata.cacheControl</code>, e.g. on a root layout for a whole visitor-identical app) can be cached at a CDN edge. A per-user page simply leaves the default <code>no-store</code> in place.</p>
 
     <h2>Full SSR Example</h2>
-    <pre>// app/layout.ts
+    <code-block>// app/layout.ts
 import { html } from '@webjsdev/core';
 import type { LayoutProps } from '@webjsdev/core';
 export const metadata = { title: 'My App' };
@@ -302,7 +302,7 @@ async function recentPosts() {
       \${posts.map(p =&gt; html\`&lt;li&gt;&lt;a href="/posts/\${p.slug}"&gt;\${p.title}&lt;/a&gt;&lt;/li&gt;\`)}
     &lt;/ul&gt;
   \`;
-}</pre>
+}</code-block>
 
     <p>When a browser requests <code>/</code>, it receives the full HTML with the hero banner painted via DSD, the "Loading recent posts..." fallback visible immediately, and (milliseconds later) the real post list streamed in, all before the page's JavaScript has finished loading.</p>
   `;

@@ -22,81 +22,81 @@ export default function Lifecycle() {
 
     <h2>render()</h2>
     <p>The template the component should produce for the current state. Returns a <code>TemplateResult</code> via the <code>html</code> tag.</p>
-    <pre>render() {
+    <code-block>render() {
   return html\`
     &lt;p&gt;\${this.filtered.length} active items&lt;/p&gt;
     &lt;ul&gt;\${this.filtered.map(i =&gt; html\`&lt;li&gt;\${i.name}&lt;/li&gt;\`)}&lt;/ul&gt;
   \`;
-}</pre>
+}</code-block>
 
     <h2>shouldUpdate(changedProperties)</h2>
     <p>Decide whether to render at all. Default returns <code>true</code>. Use to skip expensive renders when only irrelevant properties changed.</p>
-    <pre>shouldUpdate(cp) {
+    <code-block>shouldUpdate(cp) {
   return cp.has('items') || cp.has('mode');
-}</pre>
+}</code-block>
 
     <h2>willUpdate(changedProperties)</h2>
     <p>Compute derived values from inputs before <code>render()</code> reads them. Property assignments inside <code>willUpdate</code> fold into the current cycle without triggering another update.</p>
-    <pre>willUpdate(cp) {
+    <code-block>willUpdate(cp) {
   if (cp.has('items')) {
     this.totalCount = this.items.length;
   }
-}</pre>
+}</code-block>
 
     <h2>update(changedProperties)</h2>
     <p>The render-and-commit step. The default implementation calls <code>render()</code> and commits to the render root. Override only when you need to wrap or short-circuit the commit. Most users override <code>render()</code> instead.</p>
 
     <h2>updated(changedProperties)</h2>
     <p>Post-render DOM work. Runs after every commit (both the first render and all subsequent ones). Inspect <code>changedProperties</code> to branch on what changed this cycle. This is the right place for ad-hoc DOM work that previously needed <code>requestAnimationFrame</code> shims.</p>
-    <pre>updated(cp) {
+    <code-block>updated(cp) {
   if (cp.has('open') && this.open) {
     this.querySelector('input')?.focus();
   }
-}</pre>
+}</code-block>
 
     <h2>firstUpdated(changedProperties)</h2>
     <p>Runs once, after the first render. Use for one-time DOM-dependent setup: focus, measurements, third-party library init on a DOM node. The <code>changedProperties</code> Map on the first render contains every reactive property that has a value, with <code>undefined</code> as the old value.</p>
-    <pre>firstUpdated() {
+    <code-block>firstUpdated() {
   this.shadowRoot?.querySelector('input')?.focus();
   this._chart = new Chart(this.shadowRoot.querySelector('canvas'));
-}</pre>
+}</code-block>
     <p><code>connectedCallback</code> fires <em>before</em> the first render, so shadow children don't exist there yet. <code>firstUpdated</code> is the post-render equivalent.</p>
 
     <h2>updateComplete (and getUpdateComplete)</h2>
     <p>A Promise that resolves after the next render commit. <code>await el.updateComplete</code> in tests or in code that needs to read the post-render DOM after triggering an update. Override <code>getUpdateComplete()</code> to chain additional async work.</p>
-    <pre>el.count = 5;
+    <code-block>el.count = 5;
 await el.updateComplete;
-// DOM now reflects count = 5</pre>
+// DOM now reflects count = 5</code-block>
 
     <h2>State mutation</h2>
     <p>Signals are the default state primitive. Mutating a signal that the render() reads schedules a microtask-batched re-render via the component's built-in SignalWatcher. Multiple <code>signal.set</code> calls in the same microtask coalesce into one render. Reactive properties (declared via the <code>WebComponent({ ... })</code> factory) follow the same scheduler and surface their own entries in <code>changedProperties</code>.</p>
-    <pre>this.count.set(this.count.get() + 1);
+    <code-block>this.count.set(this.count.get() + 1);
 this.name = 'updated';                       // reactive property assignment
-// One render. changedProperties.has('name') is true; signal change drove the watcher.</pre>
+// One render. changedProperties.has('name') is true; signal change drove the watcher.</code-block>
 
     <p>For a fine-grained binding that updates a single template hole without re-running the host's <code>render()</code> (and without going through the lifecycle hooks above), see the <code>watch(signal)</code> directive in the <a href="/docs/components">Components</a> doc. Lifecycle hooks fire only on a full re-render; <code>watch()</code>-driven updates bypass them.</p>
 
     <h2>requestUpdate(name, oldValue)</h2>
     <p>Manually schedule a re-render. Optionally record a property change so hooks see it in <code>changedProperties</code>. Used by controllers and code that mutates outside the reactive property system.</p>
-    <pre>this.requestUpdate('items', oldItems);</pre>
+    <code-block>this.requestUpdate('items', oldItems);</code-block>
 
     <h2>renderError(error)</h2>
     <p>Runs when <code>update()</code>/<code>render()</code> throws. Return a fallback template to show instead of crashing the page.</p>
-    <pre>renderError(error) {
+    <code-block>renderError(error) {
   return html\`&lt;p style="color:red"&gt;Error: \${error.message}&lt;/p&gt;\`;
-}</pre>
+}</code-block>
     <p>Without this, one broken component would crash the entire page. The default implementation renders nothing and logs to console.</p>
 
     <h2>async render() and renderFallback()</h2>
     <p>A component's <code>render()</code> may be <code>async</code>, so it can fetch its own server data into the first paint. Writing <code>await</code> makes the function async; WebJs awaits a promise-returning <code>render()</code> automatically on both the server and the client. There is no flag.</p>
-    <pre>async render() {
+    <code-block>async render() {
   const user = await getUser(this.uid);   // a 'use server' action: real fn at SSR, RPC stub on the client
   return html\`&lt;h3&gt;\${user.name}&lt;/h3&gt;\`;
-}</pre>
+}</code-block>
     <p>Three concerns stay separate. First, <strong>SSR always blocks</strong>, so the resolved data is in the first paint with no fallback (JS-off reads it). Second, the <strong>client re-fetch default is stale-while-revalidate</strong>: a prop change re-runs <code>async render()</code> and the current content stays until the new render resolves (no blank, no flash). Third, <code>renderFallback()</code> is the optional loading UI shown ONLY during a client re-fetch, never on the first paint.</p>
-    <pre>renderFallback() {
+    <code-block>renderFallback() {
   return html\`&lt;div class="skeleton h-24"&gt;&lt;/div&gt;\`;   // shown only while a re-fetch is in flight
-}</pre>
+}</code-block>
     <p>A failed <code>async render()</code> (a thrown <code>await getData()</code>) is isolated to that component automatically: siblings render, the page does not blank, and <code>renderError()</code> optionally customizes the error UI. To STREAM slow data with a first-paint fallback, wrap the region in <code>&lt;webjs-suspense .fallback=\${html\`…\`}&gt;</code> (it flushes the fallback on the first byte, then streams the data in, progressively on soft navigation too). See <a href="/docs/components">Components</a> and <a href="/docs/data-fetching">Data fetching</a> for the full decision guide and anti-patterns.</p>
 
     <h2>Native Web Component Callbacks</h2>

@@ -2,20 +2,29 @@ import { html } from '@webjsdev/core';
 import type { TemplateResult } from '@webjsdev/core';
 
 /**
- * Tiny SSR-time syntax highlighter for the marketing code samples.
+ * The one syntax-highlighting grammar the whole site uses.
  *
- * It runs during server render and emits colored <span>s. Token text is
- * passed through `html` text interpolation, which escapes it, so a
- * sample can contain real backticks, angle brackets, and ${...} without
- * any manual escaping (the sample lives in a plain JS string, never
- * inside an html`` body). The token classes (t-kw, t-str, ...) are
- * styled once in the page stylesheet and are theme-aware.
+ * Every surface that colors code reads its tokens from `tokenize()` here:
+ * the marketing pages and the blog markdown renderer call `highlight()` /
+ * `highlightToHtml()` at SSR, and `<code-block>` (components/code-block.ts)
+ * calls `tokenize()` in the browser for the documentation samples, which are
+ * authored as inline template text and so cannot be tokenized at SSR. There
+ * used to be a second copy of this grammar in `public/code-highlight.js`,
+ * kept in sync by hand and by comment; the two drifted in exactly the ways
+ * you would expect (unterminated quotes, shell comments), and this module is
+ * the merge of both.
+ *
+ * Token text is passed through `html` text interpolation, which escapes it,
+ * so a sample can contain real backticks, angle brackets, and ${...} without
+ * any manual escaping (a sample handed to this module lives in a plain JS
+ * string, never inside an html`` body). The token classes (t-kw, t-str, ...)
+ * are styled once in public/input.css and are theme-aware.
  *
  * This is a display highlighter, not a full parser. It is deliberately
  * small and covers the JS and TS surface the samples use.
  */
 
-type Tok = { t: string; v: string };
+export type Tok = { t: string; v: string };
 
 // 'get'/'set' are deliberately NOT keywords: they are contextual (only
 // keywords in a getter/setter declaration), and the keyword check runs before
@@ -28,7 +37,11 @@ const KEYWORDS = new Set([
   'throw', 'try', 'catch', 'void', 'static', 'as',
 ]);
 
-function tokenize(src: string): Tok[] {
+/**
+ * Split a code sample into tokens. Exported so `<code-block>` can run the
+ * same grammar in the browser instead of carrying a second copy of it.
+ */
+export function tokenize(src: string): Tok[] {
   const out: Tok[] = [];
   let i = 0;
   const n = src.length;
@@ -68,13 +81,24 @@ function tokenize(src: string): Tok[] {
     // strings (single, double, backtick), treated as a flat string
     if (c === "'" || c === '"' || c === '`') {
       let j = i + 1;
-      while (j < n && src[j] !== c) {
-        if (src[j] === '\\') j++;
+      let closed = false;
+      while (j < n) {
+        if (src[j] === '\\') { j += 2; continue; }
+        if (src[j] === '\n' && c !== '`') break; // ' and " do not span lines
+        if (src[j] === c) { closed = true; j++; break; }
         j++;
       }
-      j = Math.min(n, j + 1);
-      push('str', src.slice(i, j));
-      i = j;
+      // A backtick template spans lines; a ' or " that never closes on its
+      // own line is not a string (an apostrophe in a prose comment is the
+      // common case), so emit the quote as punctuation and keep tokenizing
+      // the rest of the line rather than swallowing it.
+      if (c === '`' || closed) {
+        push('str', src.slice(i, j));
+        i = j;
+        continue;
+      }
+      push('punc', c);
+      i++;
       continue;
     }
 
@@ -85,6 +109,22 @@ function tokenize(src: string): Tok[] {
       push('num', src.slice(i, j));
       i = j;
       continue;
+    }
+
+    // Shell-style line comment: '#' starts the line AND is followed by a
+    // space, so a CSS id selector (#app), a JS private field (#count), a
+    // path-alias import (#lib/...), or a hex color (#fff) is not swallowed,
+    // only a real "# comment".
+    if (c === '#' && src[i + 1] === ' ') {
+      let back = i - 1;
+      while (back >= 0 && (src[back] === ' ' || src[back] === '\t')) back--;
+      if (back < 0 || src[back] === '\n') {
+        let j = i + 1;
+        while (j < n && src[j] !== '\n') j++;
+        push('com', src.slice(i, j));
+        i = j;
+        continue;
+      }
     }
 
     // identifiers
@@ -114,9 +154,19 @@ const CLASS: Record<string, string> = {
   fn: 't-fn', type: 't-type', punc: 't-punc', id: 't-id', ws: '',
 };
 
+/** The token class for a token type, or '' for text that carries no class. */
+export function tokenClass(type: string): string {
+  return CLASS[type] ?? '';
+}
+
+/** Strip the blank lines an authored block picks up around its content. */
+export function trimBlock(code: string): string {
+  return code.replace(/^\n+|\n+$/g, '');
+}
+
 /** Highlight a code sample into a TemplateResult of styled spans. */
 export function highlight(code: string): TemplateResult[] {
-  return tokenize(code.replace(/^\n+|\n+$/g, '')).map((tok) => {
+  return tokenize(trimBlock(code)).map((tok) => {
     const cls = CLASS[tok.t] ?? '';
     return cls ? html`<span class=${cls}>${tok.v}</span>` : html`${tok.v}`;
   });
@@ -135,7 +185,7 @@ function esc(s: string): string {
  * `<`, `&`, and backticks safely.
  */
 export function highlightToHtml(code: string): string {
-  return tokenize(code.replace(/^\n+|\n+$/g, '')).map((tok) => {
+  return tokenize(trimBlock(code)).map((tok) => {
     const cls = CLASS[tok.t] ?? '';
     const v = esc(tok.v);
     return cls ? `<span class="${cls}">${v}</span>` : v;
