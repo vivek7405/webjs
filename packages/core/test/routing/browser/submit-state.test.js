@@ -21,6 +21,10 @@ import { render } from '../../../src/render-client.js';
 import { enableClientRouter } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
+import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
+
+/** Shared across the suites below; installed per test in setup(). */
+let navGuard;
 const tick = () => new Promise((r) => setTimeout(r, 20));
 
 function htmlResponse(body, status = 200) {
@@ -38,6 +42,7 @@ suite('Client router: form submission-state events + aria-busy (#246)', () => {
 
   let bOpen, bClose;
   function setup() {
+    navGuard = installNavGuard();
     enableClientRouter(); // idempotent
     container = document.createElement('div');
     // Bracket the container with a live keyed boundary pair (#1015): the
@@ -56,6 +61,7 @@ suite('Client router: form submission-state events + aria-busy (#246)', () => {
     });
   }
   function teardown() {
+    navGuard.remove();
     window.fetch = origFetch;
     container.remove();
     bOpen.remove();

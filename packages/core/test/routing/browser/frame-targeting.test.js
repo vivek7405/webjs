@@ -23,6 +23,10 @@ import {
 } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
+import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
+
+/** Shared across the suites below; installed per test in setup(). */
+let navGuard;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 async function settle() { await tick(); await tick(); await tick(); }
 
@@ -34,6 +38,7 @@ suite('Client router: <webjs-frame> external targeting (#252)', () => {
   let container;
 
   function setup() {
+    navGuard = installNavGuard();
     enableClientRouter(); // idempotent
     container = document.createElement('div');
     container.innerHTML =
@@ -53,7 +58,7 @@ suite('Client router: <webjs-frame> external targeting (#252)', () => {
       '</webjs-frame>';
     document.body.appendChild(container);
   }
-  function teardown() { container.remove(); }
+  function teardown() { navGuard.remove(); container.remove(); }
 
   test('an external data-webjs-frame link (not nested) resolves the external frame id', () => {
     setup();
@@ -138,6 +143,7 @@ suite('Client router: <webjs-frame> aria-busy lifecycle (#252)', () => {
   let container, origFetch;
 
   function setup() {
+    navGuard = installNavGuard();
     enableClientRouter();
     container = document.createElement('div');
     container.innerHTML =
@@ -148,7 +154,7 @@ suite('Client router: <webjs-frame> aria-busy lifecycle (#252)', () => {
     document.body.appendChild(container);
     origFetch = window.fetch;
   }
-  function teardown() { window.fetch = origFetch; container.remove(); }
+  function teardown() { navGuard.remove(); window.fetch = origFetch; container.remove(); }
 
   test('aria-busy is true during the fetch and false after a successful swap, with start+finish events', async () => {
     setup();

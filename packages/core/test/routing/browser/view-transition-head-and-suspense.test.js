@@ -21,6 +21,10 @@
  */
 import { enableClientRouter } from '../../../src/router-client.js';
 import { assert } from '../../../../../test/browser-assert.js';
+import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
+
+/** Shared across the suites below; installed per test in setup(). */
+let navGuard;
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 async function settle() { for (let i = 0; i < 6; i++) await tick(); }
@@ -46,6 +50,7 @@ function setViewTransitionMeta(on) {
 suite('Client router: page-scoped <meta> reconciliation on soft nav (#1046)', () => {
   let container, origFetch, origSVT;
   function setup() {
+    navGuard = installNavGuard();
     enableClientRouter();
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -53,6 +58,7 @@ suite('Client router: page-scoped <meta> reconciliation on soft nav (#1046)', ()
     origSVT = document.startViewTransition;
   }
   function teardown() {
+    navGuard.remove();
     window.fetch = origFetch;
     document.startViewTransition = origSVT;
     setViewTransitionMeta(false);
@@ -194,6 +200,7 @@ suite('Client router: Suspense streaming resolves under view transitions (#1048)
     '<!--/wj:children:/-->';
 
   function setup() {
+    navGuard = installNavGuard();
     enableClientRouter();
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -201,6 +208,7 @@ suite('Client router: Suspense streaming resolves under view transitions (#1048)
     origSVT = document.startViewTransition;
   }
   function teardown() {
+    navGuard.remove();
     window.fetch = origFetch;
     document.startViewTransition = origSVT;
     setViewTransitionMeta(false);
