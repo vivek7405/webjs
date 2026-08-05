@@ -188,8 +188,9 @@ test('declarative optimistic: handles thenables lacking finally method', async (
 // canonical docs snippets used to do exactly that (`crypto.randomUUID()` inside
 // `update`), which silently breaks a keyed list: `repeat(todos, t => t.id, ...)`
 // sees a brand-new key every update and rebuilds the row, losing focus, any
-// in-progress transition, and DOM state. These pin the contract the docs now
-// teach: derive the row from the payload, mint the temp id in the handler.
+// in-progress transition, and DOM state. These pin the RUNTIME fact the docs
+// now rely on (the reducer re-runs per read); the doc snippets themselves have
+// no test coverage, so a doc revert would not red these.
 test('declarative optimistic: .value is stable across repeated reads for one queued update', () => {
   const host = new MockHost();
   const todos = [{ id: 'real-1', title: 'existing' }];
@@ -237,12 +238,21 @@ test('declarative optimistic: two concurrent adds get distinct ids from their pa
     update: (state, add) => [...state, { id: add.tempId, title: add.title }],
   });
 
-  // The old `{ id: 'tmp' }` snippet collided here: both pending rows shared one
-  // id, defeating the "multiple .add() calls stack independently" guarantee.
-  opt.add({ tempId: 'tmp-1', title: 'first' });
+  // The old `{ id: 'tmp' }` snippet gave both pending rows the SAME id. Queue
+  // stacking and release survive that (`add()` keys its entry on an internal
+  // `opt-N`, never on the row's id), so what breaks is downstream: a keyed
+  // list, a handler capturing the id, an `aria-activedescendant`, a selector.
+  const releaseFirst = opt.add({ tempId: 'tmp-1', title: 'first' });
   opt.add({ tempId: 'tmp-2', title: 'second' });
 
-  const ids = opt.value.map(t => t.id);
-  assert.deepEqual(ids, ['tmp-1', 'tmp-2']);
-  assert.equal(new Set(ids).size, 2, 'concurrent pending rows must not share an id');
+  // Both queued updates must fold, so a payload-derived id yields two rows.
+  // Under the old hardcoded `{ id: 'tmp' }` the SAME two folds produced two
+  // rows sharing one id, which is what broke keyed rendering downstream.
+  assert.equal(opt.value.length, 2, 'both queued updates must fold into .value');
+  assert.equal(new Set(opt.value.map(t => t.id)).size, 2, 'concurrent pending rows must not share an id');
+
+  // Releasing the FIRST must drop only its row, which is what proves the queue
+  // is keyed independently of whatever id the reducer wrote.
+  releaseFirst();
+  assert.deepEqual(opt.value.map(t => t.title), ['second']);
 });
