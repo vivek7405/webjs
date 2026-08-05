@@ -190,12 +190,22 @@ export function applyForwarded(url, headers) {
 /**
  * Is a reverse proxy in front of this process trusted to speak for the client?
  *
- * The ONE place the posture is decided (#1104). Every reader of an
- * `X-Forwarded-*` header goes through this: the URL rewrite here, the HSTS
- * scheme gate in `headers.js`, and the CSRF host resolution in `csrf.js`. It
- * used to be three separate reads with two different answers, so
+ * The ONE place the ORIGIN posture is decided (#1104): every reader of the
+ * forwarded HOST and PROTO goes through this, namely the URL rewrite here, the
+ * HSTS scheme gate in `headers.js`, and the CSRF host resolution in `csrf.js`.
+ * It used to be three separate reads with two different answers, so
  * `WEBJS_NO_TRUST_PROXY=1` turned off two of them and an operator could not
  * tell from any single file whether their app trusted forwarded headers.
+ *
+ * SCOPE, so this comment does not overclaim: `clientIp` in `rate-limit.js` is
+ * NOT a consumer. It reads `x-forwarded-for` / `cf-connecting-ip` /
+ * `x-real-ip`, a different question (who the client is, not what origin the
+ * app is serving), behind its own EXPLICIT per-call opt-in
+ * (`rateLimit({ trustProxy: true })`), and it defaults to the framework-stamped
+ * peer address. An app that passes that option is asking for those headers on
+ * that call, so this env switch deliberately does not override it. Note the
+ * name collision is real: `trustProxy()` here is env-backed and package-wide,
+ * `trustProxy` there is a per-call boolean.
  *
  * Read from `process.env` at CALL time, never cached at boot, so a test (and a
  * runtime that mutates its own env) can toggle it per case.

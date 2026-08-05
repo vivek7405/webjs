@@ -47,6 +47,7 @@ import {
 import { STREAM_MARKER } from '../../src/conditional-get.js';
 import { setVendorEntries, publishBuildId, publishedBuildId, setBasePath } from '../../src/importmap.js';
 import { applyForwarded } from '../../src/forwarded.js';
+import { actionEndpoint } from '../../src/testing.js';
 import { withRequest } from '../../src/context.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -62,6 +63,11 @@ const CONTEXT_URL = pathToFileURL(
 // (whose readSession path marks the request dynamic, the #241 auth-path fix).
 const AUTH_URL = pathToFileURL(
   resolve(__dirname, '../../src/auth.js')
+).toString();
+// File URL of the html-cache module, so an action fixture can import the REAL
+// `revalidatePath` rather than a stand-in.
+const HTML_CACHE_URL = pathToFileURL(
+  resolve(__dirname, '../../src/html-cache.js')
 ).toString();
 
 let tmpRoot;
@@ -369,6 +375,47 @@ test('a bare path with no ambient request evicts nothing and says so (#1097)', a
   assert.ok(
     (await (await app.handle(shellRequest('http://real.example/no-ambient'))).text()).includes('render #2'),
     'the absolute url evicts without any ambient request',
+  );
+});
+
+test('a REAL action dispatch supplies the origin, so an existing bare revalidatePath keeps working (#1097)', async () => {
+  freshStore();
+  // The PR's central compatibility claim: every existing `revalidatePath('/x')`
+  // inside a server action still works, because the action runs inside the
+  // triggering request and the framework's ALS scope covers that execution.
+  // Asserting it through `withRequest` only proves the helper, since the test
+  // builds the scope itself. This drives the REAL RPC endpoint instead, so the
+  // scope has to come from the request pipeline. If action dispatch ever stopped
+  // running inside `withRequest`, this fails and the other tests would not.
+  const appDir = makeApp({
+    'app/page.js': counterPage('via-action', { revalidate: 60 }),
+    'evict.server.js':
+      `'use server';\n` +
+      `import { revalidatePath } from ${JSON.stringify(HTML_CACHE_URL)};\n` +
+      `export async function evict() {\n` +
+      `  await revalidatePath('/');\n` +
+      `  return { success: true };\n` +
+      `}\n`,
+  });
+  const app = await createRequestHandler({ appDir, dev: true });
+
+  await app.handle(shellRequest('http://real.example/'));
+  assert.ok(
+    (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #1'),
+    'cached under the request origin',
+  );
+
+  const endpoint = await actionEndpoint(appDir, 'evict.server.js', 'evict');
+  const res = await app.handle(new Request('http://real.example' + endpoint, {
+    method: 'POST',
+    headers: { 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' },
+    body: '[]',
+  }));
+  assert.equal(res.status, 200, 'the action ran');
+
+  assert.ok(
+    (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #2'),
+    'the bare path evicted: the action dispatch supplied the origin',
   );
 });
 
