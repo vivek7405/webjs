@@ -105,11 +105,17 @@ for (const pkg of readdirSync(join(ROOT, 'packages'), { withFileTypes: true })) 
 
 const rel = (f) => f.slice(ROOT.length + 1).split(sep).join('/');
 
-test('every allowlisted LIVE caller is a *.live.test.* file that exists', () => {
+test('every allowlist entry declares itself and, if live, is a *.live.test.* file', () => {
   for (const entry of LIVE_CALLERS) {
     assert.ok(files.some((f) => rel(f) === entry.file),
       `${entry.file} is allowlisted but no such test file exists`);
     assert.ok(entry.why.length > 40, `${entry.file} needs a real reason, not a placeholder`);
+    // `live` is REQUIRED and must be boolean. Reading it as merely falsy would
+    // let an entry added without the key skip the marker check below while
+    // still collecting a whole-file scan exemption, which is the quietest
+    // possible way to reopen the hole this guard exists to close.
+    assert.equal(typeof entry.live, 'boolean',
+      `${entry.file} must state \`live: true\` or \`live: false\` explicitly`);
     if (entry.live) {
       assert.ok(entry.file.includes(LIVE_MARKER),
         `${entry.file} is allowlisted as live but the runners only skip *.live.test.* files`);
@@ -178,6 +184,46 @@ test('counterfactual: the scan does not fire on the shapes that are genuinely sa
     // live-cdn-ok: no bare imports, so it returns before the resolve.
     const r = await pinAll(emptyDir);
   `), []);
+});
+
+test('counterfactual: a regex literal carrying a quote does not blind the scan', () => {
+  // The subtlest failure this guard can have, and it went undetected until a
+  // review reproduced it. A pattern like /rel=["']modulepreload["']/ has quote
+  // characters in it; a masker without regex awareness reads the first one as
+  // a string opener and desyncs for the REST OF THE FILE, so every live call
+  // below that line silently vanishes from the scan. Eighteen test files here
+  // carry that shape, including the app-boot tests.
+  const afterARegex = [
+    'const re = /<link[^>]+rel=["\']modulepreload["\']/g;',
+    'const leak = await fetch("https://api.jspm.io/generate", { method: "POST" });',
+  ].join('\n');
+  assert.deepEqual(findLiveCallers(afterARegex).map((h) => h.what), ['api.jspm.io'],
+    'a live call after a quote-bearing regex must still be seen');
+
+  // The other half: a `/` that is division must NOT be read as a regex, or the
+  // mask desyncs the other way and starts swallowing real code.
+  const withDivision = [
+    'const half = total / 2;',
+    'const other = count / 4;',
+    'await fetch("https://api.jspm.io/generate");',
+  ].join('\n');
+  assert.deepEqual(findLiveCallers(withDivision).map((h) => h.what), ['api.jspm.io']);
+});
+
+test('counterfactual: a host named near, but not inside, a fetch call is inert', () => {
+  // The scan reads the call's actual argument list, not a character window. A
+  // window crossed statement boundaries, so a local fetch followed by an
+  // assertion naming a jspm url read as a live call.
+  assert.deepEqual(findLiveCallers([
+    'const r = await fetch(localUrl);',
+    'assert.equal(r.status, 200);',
+    'assert.equal(map.dayjs, "https://ga.jspm.io/npm:dayjs@1.11.20/index.js");',
+  ].join('\n')), []);
+
+  assert.deepEqual(findLiveCallers([
+    'await fetch(baseUrl);',
+    '// TODO: point this at the double instead of ga.jspm.io one day.',
+  ].join('\n')), []);
 });
 
 test('both runners drop live files unless the network is explicitly required', () => {

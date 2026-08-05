@@ -42,24 +42,58 @@ export const LIVE_ENTRY_POINTS = ['pinAll', 'updatePinned', 'auditPinned', 'find
 const GUARDS = ['withMockedFetch', 'withJspmDouble'];
 
 /**
- * Blank out comments, strings, and template literals, replacing each with
- * same-length filler so every index still lines up with the original source.
+ * Blank out comments, strings, template literals, and REGEX literals, replacing
+ * each with same-length filler so every index still lines up with the original
+ * source.
  *
  * Preserving offsets is what lets the guarded-range scan below run on the
  * masked text and still report positions in the real file. Blanking strings
  * matters for two different reasons: a host named inside a mock's expected-url
  * string is not a call, and an unbalanced parenthesis inside a string would
- * otherwise wreck the brace matching.
+ * otherwise wreck the paren matching.
+ *
+ * Regex literals are the subtle one, and skipping them is not a rounding
+ * error: this suite is full of patterns like
+ * `/rel=["']modulepreload["']/`, whose quote characters would otherwise be
+ * read as string delimiters. That desyncs the mask for the REST OF THE FILE,
+ * so every live call below such a line silently disappears from the scan.
+ * Eighteen test files here carry that shape, including the app-boot tests, so
+ * a masker without this is a guard that reports clean because it went blind.
+ *
+ * Telling a regex from a division needs the preceding token, since `/` is
+ * both. The usual heuristic applies: a regex may start where a VALUE may not
+ * have just ended, so after an operator, an opening bracket, a comma, a
+ * semicolon, or a keyword like `return`, but not after an identifier, a
+ * number, or a closing bracket.
  *
  * @param {string} src
  * @returns {string}
  */
+/** Keywords after which a `/` opens a regex rather than dividing. */
+const REGEX_PRECEDING_WORDS = new Set([
+  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void',
+  'throw', 'case', 'do', 'else', 'yield', 'await',
+]);
+
 export function maskLiterals(src) {
   const out = src.split('');
   let i = 0;
   const blank = (from, to) => {
     for (let k = from; k < to && k < out.length; k++) if (out[k] !== '\n') out[k] = ' ';
   };
+
+  /** The last token character that was not whitespace and not masked away. */
+  let prev = '';
+  /** The identifier immediately before `prev`, when `prev` ends a word. */
+  let prevWord = '';
+
+  const regexCanStartHere = () => {
+    if (!prev) return true;
+    if (/[)\]}]/.test(prev)) return false;
+    if (/[A-Za-z0-9_$]/.test(prev)) return REGEX_PRECEDING_WORDS.has(prevWord);
+    return true;
+  };
+
   while (i < src.length) {
     const c = src[i];
     const next = src[i + 1];
@@ -73,6 +107,25 @@ export function maskLiterals(src) {
       const stop = end === -1 ? src.length : end;
       blank(i, stop); i = stop; continue;
     }
+    if (c === '/' && regexCanStartHere()) {
+      // Scan to the closing delimiter, honouring escapes and character
+      // classes (a `/` inside `[...]` does not end the literal).
+      let j = i + 1;
+      let inClass = false;
+      let closed = false;
+      while (j < src.length && src[j] !== '\n') {
+        const d = src[j];
+        if (d === '\\') { j += 2; continue; }
+        if (d === '[') inClass = true;
+        else if (d === ']') inClass = false;
+        else if (d === '/' && !inClass) { closed = true; break; }
+        j++;
+      }
+      if (closed) {
+        blank(i + 1, j); prev = '/'; prevWord = ''; i = j + 1; continue;
+      }
+      // An unterminated `/` was a division after all. Fall through.
+    }
     if (c === '"' || c === "'" || c === '`') {
       let j = i + 1;
       while (j < src.length) {
@@ -82,11 +135,35 @@ export function maskLiterals(src) {
       }
       // Blank the CONTENTS but keep the quotes, so a masked string is still
       // recognisably a string and cannot merge with the token beside it.
-      blank(i + 1, j); i = j + 1; continue;
+      blank(i + 1, j); prev = c; prevWord = ''; i = j + 1; continue;
+    }
+    if (!/\s/.test(c)) {
+      if (/[A-Za-z0-9_$]/.test(c)) {
+        prevWord = /[A-Za-z0-9_$]/.test(prev) ? prevWord + c : c;
+      } else {
+        prevWord = '';
+      }
+      prev = c;
     }
     i++;
   }
   return out.join('');
+}
+
+/**
+ * Index of the `)` matching the `(` at `openIdx`, or -1.
+ * @param {string} masked @param {number} openIdx
+ */
+function matchParen(masked, openIdx) {
+  let depth = 0;
+  for (let k = openIdx; k < masked.length; k++) {
+    if (masked[k] === '(') depth++;
+    else if (masked[k] === ')') {
+      depth--;
+      if (depth === 0) return k;
+    }
+  }
+  return -1;
 }
 
 /**
@@ -103,14 +180,8 @@ export function guardedRanges(masked) {
     const re = new RegExp(`\\b${guard}\\s*\\(`, 'g');
     for (const m of masked.matchAll(re)) {
       const open = m.index + m[0].length - 1;
-      let depth = 0;
-      for (let k = open; k < masked.length; k++) {
-        if (masked[k] === '(') depth++;
-        else if (masked[k] === ')') {
-          depth--;
-          if (depth === 0) { ranges.push([open, k]); break; }
-        }
-      }
+      const close = matchParen(masked, open);
+      if (close !== -1) ranges.push([open, close]);
     }
   }
   return ranges;
@@ -139,13 +210,17 @@ export function findLiveCallers(src) {
   const found = [];
 
   // A host literal has to be read from the ORIGINAL source, since masking
-  // blanks string contents. Only its position is taken from the mask, and a
-  // `fetch(` whose argument names a live host is what counts; the same host in
-  // an assertion or an importmap fixture is inert, and the suite is full of
-  // those on purpose.
+  // blanks string contents. Only the BOUNDS come from the mask, and they are
+  // the call's actual argument list rather than a fixed character window: a
+  // window crosses statement boundaries, so `fetch(localUrl)` followed two
+  // lines later by an assertion naming a jspm url read as a live call. The
+  // same host in an assertion, a comment, or an importmap fixture is inert,
+  // and this suite is full of those on purpose.
   for (const m of masked.matchAll(/\bfetch\s*\(/g)) {
-    const argStart = m.index + m[0].length;
-    const arg = src.slice(argStart, argStart + 200);
+    const open = m.index + m[0].length - 1;
+    const close = matchParen(masked, open);
+    if (close === -1) continue;
+    const arg = src.slice(open + 1, close);
     const host = LIVE_HOSTS.find((h) => arg.includes(h));
     if (host && !guarded(m.index)) found.push({ kind: 'host', what: host, line: lineAt(m.index) });
   }
