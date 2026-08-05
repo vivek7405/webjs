@@ -151,6 +151,54 @@ const INSTANCE = Symbol.for('webjs.instance');
  */
 
 /**
+ * The container the in-progress `render()` is committing into, or null
+ * outside one. Every part created or applied during that render belongs to
+ * THIS container's component, which is what an out-of-band commit needs to
+ * know to reach the right error boundary. A structural parent walk cannot
+ * work it out: `html`<child-el>${watch(sig)}</child-el>`` puts the part in the
+ * PARENT's template but inside the child's tag, so the walk meets the child
+ * first. Same reason `SLOT_OWNER` exists.
+ * @type {any}
+ */
+let currentRenderRoot = null;
+
+/**
+ * The element carrying the error boundary for a render root. A ShadowRoot has
+ * no boundary of its own; its `.host` is the component.
+ * @param {any} root
+ * @returns {any}
+ */
+function boundaryOwnerOf(root) {
+  if (!root) return null;
+  if (root.nodeType === 11 && root.host) return root.host;
+  return root;
+}
+
+/**
+ * Run an OUT-OF-BAND commit (a `watch` notify microtask, an `until`
+ * resolution) with the part's owner installed as the current render root.
+ *
+ * Without this the commit runs with no owner in scope, so any `watch` /
+ * `until` nested INSIDE the template it commits is installed unstamped and
+ * its own later throw escapes to the window. A directive nested in that
+ * template belongs to the same component as the part committing it, which is
+ * exactly the owner already recorded here.
+ *
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {() => void} fn
+ */
+function commitOutOfBand(part, fn) {
+  const owner = /** @type any */ (part).__commitOwner;
+  const prev = currentRenderRoot;
+  if (owner) currentRenderRoot = owner;
+  try {
+    fn();
+  } finally {
+    currentRenderRoot = prev;
+  }
+}
+
+/**
  * Render a value into a container, reusing DOM where possible.
  *
  * @param {unknown} value
@@ -165,6 +213,8 @@ export function render(value, container) {
   // between a renderer commit and an author write.
   const prevRendering = host[RENDERING];
   host[RENDERING] = true;
+  const prevRenderRoot = currentRenderRoot;
+  currentRenderRoot = container;
   try {
     const prev = host[INSTANCE];
 
@@ -212,6 +262,7 @@ export function render(value, container) {
     }
     container.appendChild(document.createTextNode(String(value)));
   } finally {
+    currentRenderRoot = prevRenderRoot;
     host[RENDERING] = prevRendering;
     // Outermost window closing: drain this commit's childList records off the
     // slot backstop (drainRendererBackstop processes them with a renderer-output
@@ -963,6 +1014,13 @@ function bindPart(p, root) {
 }
 
 /**
+ * Sentinel parked in `lastValues` for a hole whose commit threw, so the next
+ * render cannot mistake the un-advanced entry for "already applied". Never
+ * equal (by `Object.is`) to anything an author can pass through a template.
+ */
+const COMMIT_FAILED = Symbol('webjs.commitFailed');
+
+/**
  * @param {TemplateInstance} inst
  * @param {unknown[]} values
  */
@@ -977,10 +1035,28 @@ function updateInstance(inst, values) {
     // anchor hole's. Without this, a change confined to a non-anchor hole is
     // dropped (the attribute goes stale).
     const anchor = /** @type any */ (bp).mixedAnchor;
-    if (bp.kind === 'noop' && anchor != null) {
-      applyPart(inst.bound[anchor], values[anchor], inst.lastValues[anchor], values);
-    } else {
-      applyPart(bp, next, inst.lastValues[i], values);
+    try {
+      if (bp.kind === 'noop' && anchor != null) {
+        applyPart(inst.bound[anchor], values[anchor], inst.lastValues[anchor], values);
+      } else {
+        applyPart(bp, next, inst.lastValues[i], values);
+      }
+    } catch (err) {
+      // A commit that throws leaves `lastValues` for THIS hole un-advanced,
+      // still holding the value from before the throw. That is almost always
+      // the value the recovering render supplies, so the `Object.is` skip at
+      // the top of this loop would skip the hole FOREVER. Harmless for an
+      // attribute (its commit stringifies before touching the DOM, so nothing
+      // changed), and permanently destructive for a child position, whose
+      // commit tears the old content down BEFORE the step that throws: the
+      // region is left empty and never re-rendered.
+      //
+      // Poison the entry with a sentinel no author value can ever be, so the
+      // next render always re-applies this hole. The value is deliberately
+      // NOT advanced to `next` either, since `next` was never committed.
+      inst.lastValues[i] = COMMIT_FAILED;
+      if (bp.kind === 'noop' && anchor != null) inst.lastValues[anchor] = COMMIT_FAILED;
+      throw err;
     }
     inst.lastValues[i] = next;
   }
@@ -1438,10 +1514,17 @@ function applyChildInnerRaw(part, value) {
         : Object.is(prevDeps, nextDeps);
       if (equal) return;
     }
-    /** @type any */ (part).__guardDeps = Array.isArray(nextDeps)
-      ? nextDeps.slice()
-      : nextDeps;
+    // Snapshot the deps BEFORE running `fn` (so a fn that mutates the array
+    // it was handed cannot rewrite what we record), but RECORD them only
+    // after the commit succeeds. Recording first meant a throw part-way
+    // through the commit left the region torn down with the NEW deps already
+    // stored, so every later render with the same deps hit the `equal`
+    // short-circuit above and skipped the region forever. Renders are always
+    // microtask-scheduled (`_scheduleUpdate`), so `fn()` cannot re-enter this
+    // part synchronously and see the stale deps.
+    const depsSnapshot = Array.isArray(nextDeps) ? nextDeps.slice() : nextDeps;
     applyChildInner(part, v.fn());
+    /** @type any */ (part).__guardDeps = depsSnapshot;
     return;
   }
 
@@ -1730,36 +1813,73 @@ function reconcileRepeat(part, value) {
 
   const newMap = new Map();
 
-  // Walk the new list and position each item's nodes immediately before the marker.
-  for (let i = 0; i < items.length; i++) {
-    const key = keyFn(items[i], i);
-    const tr = templateFn(items[i], i);
-    if (!isTemplate(tr)) continue;
-    const existing = state.map.get(key);
-    if (existing && existing.strings === /** @type any */ (tr).strings) {
-      updateInstance(existing, /** @type any */ (tr).values);
-      // Move nodes before marker preserving element identity.
-      moveRange(existing.startNode, existing.endNode, parent, marker);
-      newMap.set(key, existing);
-      state.map.delete(key);
-    } else {
-      if (existing) {
-        disposeInstance(existing);
-        removeBetween(existing.startNode, existing.endNode);
+  try {
+    // Walk the new list and position each item's nodes immediately before the marker.
+    for (let i = 0; i < items.length; i++) {
+      const key = keyFn(items[i], i);
+      const tr = templateFn(items[i], i);
+      if (!isTemplate(tr)) continue;
+      const existing = state.map.get(key);
+      if (existing && existing.strings === /** @type any */ (tr).strings) {
+        updateInstance(existing, /** @type any */ (tr).values);
+        // Move nodes before marker preserving element identity.
+        moveRange(existing.startNode, existing.endNode, parent, marker);
+        newMap.set(key, existing);
         state.map.delete(key);
+      } else {
+        if (existing) {
+          disposeInstance(existing);
+          removeBetween(existing.startNode, existing.endNode);
+          state.map.delete(key);
+        }
+        const { inst, frag } = buildDetached(/** @type any */ (tr));
+        parent.insertBefore(frag, marker);
+        newMap.set(key, inst);
       }
-      const { inst, frag } = buildDetached(/** @type any */ (tr));
-      parent.insertBefore(frag, marker);
-      newMap.set(key, inst);
     }
-  }
 
-  // Remove any keys that remain in the old map.
-  for (const inst of state.map.values()) {
-    disposeInstance(inst);
-    removeBetween(inst.startNode, inst.endNode);
+    // Remove any keys that remain in the old map.
+    for (const inst of state.map.values()) {
+      disposeInstance(inst);
+      removeBetween(inst.startNode, inst.endNode);
+    }
+    state.map = newMap;
+  } catch (err) {
+    // The walk moves DOM and drains `state.map` incrementally while the
+    // replacement map is accumulated locally, so a throw part-way through
+    // leaves NEITHER map describing what is on screen: the already-processed
+    // keys sit only in `newMap`, which is about to be discarded, while their
+    // nodes stay in the document tracked by nothing. The next (perfectly
+    // valid) render then rebuilds those keys from scratch and the orphaned
+    // originals are never removed, so the list shows duplicated rows forever
+    // with nothing logged after the first throw.
+    //
+    // Re-unite every instance still in the document under `state.map` (the
+    // two maps are disjoint: a key lands in `newMap` only after being deleted
+    // from `state.map`), so the map describes the DOM again and nothing is
+    // orphaned. That is the whole repair. The next render is then an ORDINARY
+    // reconcile against a truthful map, which repositions every row and
+    // re-applies whatever the throw skipped.
+    //
+    // Deliberately NOT a teardown-and-rebuild of the region. Rebuilding is
+    // the obvious defensive move and it is measurably worse: it discards node
+    // identity for every row, which is the exact cost keyed reconciliation
+    // exists to avoid (see the plain-array note below, a rebuild cancels an
+    // in-progress native drag). It is also unnecessary, because this map is
+    // restored to the truth rather than left describing a DOM that moved, so
+    // there is nothing to guess and no partial DOM move to unwind.
+    //
+    // That is only half of it, and the other half does NOT live here: the row
+    // whose own commit threw is repaired by the COMMIT_FAILED sentinel in
+    // `updateInstance`, not by anything below. Without it the failed hole
+    // compares EQUAL on the next render (its `lastValues` entry never
+    // advanced past the throw, so it still holds the value that render
+    // supplies) and is skipped forever, which for a child position means the
+    // row stays permanently blank. Do not remove the sentinel on the theory
+    // that a half-updated instance heals itself; it does not.
+    for (const [k, inst] of newMap) state.map.set(k, inst);
+    throw err;
   }
-  state.map = newMap;
 }
 
 /** @param {{ kind: 'repeat', map: Map<any, TemplateInstance> }} state */
@@ -2173,6 +2293,9 @@ function applyUntil(part, args) {
   // a fresh TemplateResult on every call but the strings array is
   // interned per call site, so the conceptual value is unchanged.
   const partAny = /** @type any */ (part);
+  // Same as applyWatch: the promise handlers below commit with no render on
+  // the stack, so the owning component is recorded here while it is knowable.
+  if (currentRenderRoot) partAny.__commitOwner = boundaryOwnerOf(currentRenderRoot);
   const prevState = partAny.__untilState;
   const prevArgs = partAny.__untilArgs;
   const argEq = (a, b) => {
@@ -2239,8 +2362,19 @@ function applyUntil(part, args) {
       (resolved) => {
         if (state.aborted) return;
         if (i >= state.highestResolved) return;
+        // Commit FIRST, record the new priority only once it succeeded.
+        // Advancing `highestResolved` up front meant a commit throw left the
+        // region torn down while the state claimed index `i` had won, so
+        // every later resolution at a lower priority was refused and the
+        // region stayed empty. Committing first also keeps the throw inside
+        // the try, where it can reach the component boundary.
+        try {
+          commitOutOfBand(part, () => applyChildInner(part, resolved));
+        } catch (err) {
+          reportOutOfBandCommitError(part, err);
+          return;
+        }
         state.highestResolved = i;
-        applyChildInner(part, resolved);
       },
       () => {
         // Swallow rejection. A rejected Promise is treated as "no value";
@@ -2248,6 +2382,54 @@ function applyUntil(part, args) {
       },
     );
   }
+}
+
+/**
+ * Route a throw from an OUT-OF-BAND commit to the owning component's
+ * render-error boundary.
+ *
+ * `watch`'s notify microtask and `until`'s Promise resolution commit from
+ * outside `component.js`'s update cycle, so none of the boundaries that wrap
+ * every other render path are on the stack. Left alone, a commit throw there
+ * escapes as a window-level `error` / unhandled rejection instead of the
+ * per-component `renderError()` the sync and async render paths both route
+ * to, which breaks per-component error isolation for exactly these two
+ * directives.
+ *
+ * Reads the owner stamped on the part when the directive was installed. See
+ * the note in the body for why this is not a walk up the parent chain.
+ *
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {unknown} error
+ */
+function reportOutOfBandCommitError(part, error) {
+  let err;
+  try {
+    err = error instanceof Error ? error : new Error(String(error));
+  } catch {
+    // The thrown value's own `toString` threw. That is the exact class of
+    // value that makes a commit throw in the first place, so it is reachable
+    // here; do not let stringifying it mask the original failure.
+    err = new Error('render error (unstringifiable thrown value)');
+  }
+  // The owner stamped when the directive was installed, which is the
+  // component whose TEMPLATE holds this part. Never walk the parent chain
+  // for this: `_handleRenderError` lives on WebComponent's prototype, so
+  // every upgraded element on the way up carries one, and the FIRST one a
+  // structural walk meets is the innermost element the part happens to sit
+  // inside, not the template that owns it. Routing there is not merely the
+  // wrong log line: a light-DOM component's renderError() commits into the
+  // component itself, which would replace the very children holding this
+  // part's markers and silently kill every later update through it.
+  const owner = /** @type any */ (part).__commitOwner;
+  if (owner && typeof owner._handleRenderError === 'function') {
+    owner._handleRenderError(err);
+    return;
+  }
+  // No component boundary owns this part (a bare `render()` into a plain
+  // container). Nothing can contain the error, so surface it rather than
+  // swallow it.
+  throw err;
 }
 
 /**
@@ -2281,6 +2463,11 @@ function teardownUntil(state) {
  */
 function applyWatch(part, sig) {
   const partAny = /** @type any */ (part);
+  // Record the owning component while we are still inside its render(), the
+  // only moment it is knowable. The notify microtask below commits with no
+  // render on the stack and no way to derive it. Keep a prior stamp if this
+  // somehow runs outside a render, rather than clearing a good owner.
+  if (currentRenderRoot) partAny.__commitOwner = boundaryOwnerOf(currentRenderRoot);
   // Same signal as last render: refresh dep tracking via observe (the
   // spec-aligned Watcher fires once per arm, so re-observing re-arms).
   if (partAny.__watchSig === sig && partAny.__watchSub) {
@@ -2302,8 +2489,15 @@ function applyWatch(part, sig) {
     queueMicrotask(() => {
       if (partAny.__watchSub !== watcher) return; // disposed mid-flight
       let v;
-      watcher.observe(() => { v = sig.get(); });
-      applyChildInner(part, v);
+      // Nothing above this microtask catches: it runs outside the host's
+      // update cycle, so a commit throw here would surface at the window
+      // instead of the component's renderError(). Route it explicitly.
+      try {
+        watcher.observe(() => { v = sig.get(); });
+        commitOutOfBand(part, () => applyChildInner(part, v));
+      } catch (err) {
+        reportOutOfBandCommitError(part, err);
+      }
     });
   });
   partAny.__watchSub = watcher;
