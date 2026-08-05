@@ -8,7 +8,7 @@
  * Runs in a REAL browser via WTR + Playwright.
  */
 import { WebComponent } from '../../../src/component.js';
-import { html } from '../../../src/html.js';
+import { html, MARKER } from '../../../src/html.js';
 import { repeat, cache, asyncAppend } from '../../../src/directives.js';
 import { projectAuthored, isAuthoredContentSlot } from '../../../src/slot.js';
 
@@ -157,11 +157,15 @@ suite('Record self-heal + overlay coherence (review round 16)', () => {
     try {
       const shell = parent.querySelector(fixedShell);
       const slot = shell.querySelector('slot[data-webjs-light]');
+      // Reads MARKER rather than hardcoding the prefix: a rename would
+      // otherwise leave this counting zero markers before AND after, so it
+      // would pass while asserting nothing at all.
       const endMarkers = (root) =>
-        [...root.childNodes].filter((n) => n.nodeType === 8 && n.data === 'wjm-e').length;
+        [...root.childNodes].filter((n) => n.nodeType === 8 && n.data === `${MARKER}e`).length;
 
       assert.equal(slot.querySelectorAll('.item').length, 4, 'four items projected');
       const baseMarkers = endMarkers(slot);
+      assert.ok(baseMarkers > 0, 'the projected rows really carry end markers to count');
       const baseAssigned = slot.assignedNodes().length;
 
       for (let i = 0; i < 5; i++) {

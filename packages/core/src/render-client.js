@@ -1718,10 +1718,14 @@ function nodesToFrag(nodes) {
  *
  * The terminator stays `end` ITSELF rather than an `end.nextSibling` stop
  * sentinel captured up front. `removeChild` runs a custom element's
- * `disconnectedCallback` synchronously, so a sentinel pointing at a sibling
- * this region does not own can be detached or moved mid-walk, and the walk
- * would then run off the end of the child list and take the part's own marker
- * with it. `end` is renderer-created and reachable only through the instance.
+ * `disconnectedCallback` synchronously, so author code runs part-way through
+ * the walk. A sentinel is whatever node happened to follow the range, which
+ * this region does not own and has no claim on: move or detach it mid-walk
+ * and the walk never meets its terminator, runs off the end of the child
+ * list, and takes the part's own marker with it. Terminating on `end` bounds
+ * the walk by the range the instance itself defines. That is a smaller claim
+ * than `end` being immovable, which it is not (the guard below is there
+ * precisely because it can be moved), and it is the claim the walk needs.
  *
  * The `end.parentNode === parent` comparison is a refusal, not a formality. A
  * marker moved under a different parent is not this region's to remove, and
