@@ -159,11 +159,16 @@ in THREE co-located places that MUST stay in lockstep:
    `readBodyLimits` / `computeServerTimeouts` (`body-limit.js`, the byte
    caps + timeouts), `readAllowedOrigins` (`csrf.js`, `allowedOrigins`),
    `readRegenerateRules` (`dev-regenerate.js`, `dev.regenerate`, #967), and
-   `readDevWatchPathsFromApp` (`dev.js`, `dev.watch`, #894). Two readers
+   `readDevWatchPathsFromApp` (`dev.js`, `dev.watch`, #894). Four readers
    live in the CLI rather than here: `readAppTasks`
    (`packages/cli/lib/app-tasks.js`, `dev.before` / `dev.parallel` /
-   `start.before`, #550) and `readDoctorPolicy`
-   (`packages/cli/lib/doctor.js`, `doctor.gate`, #1257).
+   `start.before`, #550), `readDoctorPolicy`
+   (`packages/cli/lib/doctor.js`, `doctor.gate`, #1257), and two more inside
+   `lib/doctor.js` that read keys the server also reads, so a change to
+   either key's semantics needs BOTH implementations updated:
+   `checkStaticAssetFreshness` re-reads `dev.regenerate`, and
+   `readAppBasePath` is a hand-maintained port of `readBasePath`'s
+   normalization (its own docblock says "ported rather than imported").
 
    **THIS list is the canonical one.** It used to be duplicated in the JSON
    Schema's `$comment`, the `WebjsConfig` docblock, and the drift test's

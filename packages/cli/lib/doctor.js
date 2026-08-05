@@ -119,8 +119,13 @@ export function codeForName(name) {
 }
 
 /**
- * @typedef {{ gate: Record<string, DoctorSeverity>, unknownCodes: string[], badSeverities: Array<{ code: string, value: unknown }> }} DoctorPolicy
+ * @typedef {{ gate: Record<string, DoctorSeverity>, unknownCodes: string[], badSeverities: Array<{ code: string, value: unknown }>, malformed: Array<{ path: string, value: unknown }>, unknownKeys: string[] }} DoctorPolicy
  */
+
+/** A plain JSON object (not null, not an array), the only shape the gate accepts. */
+function isPlainObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
 
 /**
  * Read the app's per-check severity policy out of `package.json`
@@ -130,10 +135,17 @@ export function codeForName(name) {
  * `gate` keeps only WELL-FORMED entries, so a caller can fold it over the
  * results without re-validating. Everything rejected is reported separately:
  * a key that is not a value of `DOCTOR_CODES` lands in `unknownCodes`, a value
- * outside `DOCTOR_SEVERITIES` in `badSeverities`. Both are surfaced as a hard
- * error by the CLI rather than skipped, because silently ignoring a typo in a
- * map whose whole job is to make a check fatal would leave CI un-gated while
- * looking gated, which is the worst outcome this mechanism has.
+ * outside `DOCTOR_SEVERITIES` in `badSeverities`, and a wrong SHAPE (a
+ * non-object `doctor` or `gate`, in `malformed`, and a misspelled
+ * sibling of `gate` such as `gates` in `unknownKeys`. All four are surfaced as a hard error by the CLI
+ * rather than skipped.
+ *
+ * The shape check matters as much as the per-entry one, and is the easier half
+ * to leave out. A gate that FAILS OPEN is the one outcome this mechanism cannot
+ * afford: `"gate": "error"` or a misspelled `"gates": {...}` would leave CI
+ * un-gated while the package.json looks gated, which is strictly worse than
+ * having no gate at all, since nobody goes looking. The JSON Schema catches
+ * these in an editor, but it is editor-only, so it can never be the enforcement.
  *
  * A missing package.json, a missing block, or unparseable JSON is an EMPTY
  * policy with no problems: an app that declares nothing behaves exactly as it
@@ -146,7 +158,7 @@ export function codeForName(name) {
  */
 export function readDoctorPolicy(appDir) {
   /** @type {DoctorPolicy} */
-  const empty = { gate: {}, unknownCodes: [], badSeverities: [] };
+  const empty = { gate: {}, unknownCodes: [], badSeverities: [], malformed: [], unknownKeys: [] };
   let raw;
   try {
     raw = readFileSync(join(appDir, 'package.json'), 'utf8');
@@ -159,12 +171,24 @@ export function readDoctorPolicy(appDir) {
   } catch {
     return empty;
   }
-  const declared = pkg?.webjs?.doctor?.gate;
-  if (!declared || typeof declared !== 'object' || Array.isArray(declared)) return empty;
+  const doctor = pkg?.webjs?.doctor;
+  if (doctor === undefined) return empty;
+  if (!isPlainObject(doctor)) return { ...empty, malformed: [{ path: 'webjs.doctor', value: doctor }] };
+
+  /** @type {DoctorPolicy} */
+  const policy = { gate: {}, unknownCodes: [], badSeverities: [], malformed: [], unknownKeys: [] };
+  // A misspelled sibling (`gates`) would otherwise be dropped in silence, which
+  // is the fail-open case. `gate` is the only key this block accepts.
+  for (const key of Object.keys(doctor)) {
+    if (key !== 'gate') policy.unknownKeys.push(`webjs.doctor.${key}`);
+  }
+  const declared = doctor.gate;
+  if (declared !== undefined && !isPlainObject(declared)) {
+    policy.malformed.push({ path: 'webjs.doctor.gate', value: declared });
+  }
+  if (!isPlainObject(declared)) return policy;
 
   const known = new Set(Object.values(DOCTOR_CODES));
-  /** @type {DoctorPolicy} */
-  const policy = { gate: {}, unknownCodes: [], badSeverities: [] };
   for (const [code, value] of Object.entries(declared)) {
     if (!known.has(code)) {
       policy.unknownCodes.push(code);

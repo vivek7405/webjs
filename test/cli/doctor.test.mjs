@@ -668,7 +668,8 @@ function res(code, status, extra = {}) {
 
 test('readDoctorPolicy returns an empty policy when the app declares nothing', () => {
   const missingPkg = tmpDir();
-  assert.deepEqual(readDoctorPolicy(missingPkg), { gate: {}, unknownCodes: [], badSeverities: [] });
+  const EMPTY = { gate: {}, unknownCodes: [], badSeverities: [], malformed: [], unknownKeys: [] };
+  assert.deepEqual(readDoctorPolicy(missingPkg), EMPTY);
 
   const noBlock = tmpDir();
   write(noBlock, 'package.json', JSON.stringify({ name: 'x', webjs: { dev: { before: [] } } }));
@@ -678,7 +679,56 @@ test('readDoctorPolicy returns an empty policy when the app declares nothing', (
   // that condition, and doctor must never crash on a broken app file.
   const broken = tmpDir();
   write(broken, 'package.json', '{ not json');
-  assert.deepEqual(readDoctorPolicy(broken), { gate: {}, unknownCodes: [], badSeverities: [] });
+  assert.deepEqual(readDoctorPolicy(broken), EMPTY);
+});
+
+// A gate that FAILS OPEN is the one outcome this mechanism cannot afford: the
+// package.json looks gated, CI is not, and nobody goes looking. The per-entry
+// validation only covers what is INSIDE a well-formed object, so the container
+// shape needs its own check. The JSON Schema catches these in an editor, but it
+// is editor-only and never runs in CI, so it can never be the enforcement.
+test('readDoctorPolicy hard-errors on a malformed gate container rather than failing open', () => {
+  const cases = [
+    ['gate is a string', { gate: 'error' }, 'malformed', 'webjs.doctor.gate'],
+    ['gate is an array', { gate: ['UNMARKED_ASSET_LINKS'] }, 'malformed', 'webjs.doctor.gate'],
+    ['gate is null', { gate: null }, 'malformed', 'webjs.doctor.gate'],
+    ['doctor is a string', 'strict', 'malformed', 'webjs.doctor'],
+    ['doctor is an array', [], 'malformed', 'webjs.doctor'],
+  ];
+  for (const [label, doctor, bucket, path] of cases) {
+    const dir = tmpDir();
+    write(dir, 'package.json', JSON.stringify({ name: 'x', webjs: { doctor } }));
+    const p = readDoctorPolicy(dir);
+    assert.deepEqual(p.gate, {}, `${label}: nothing is gated`);
+    assert.deepEqual(p[bucket].map((m) => m.path), [path], `${label}: reported as ${bucket}`);
+  }
+
+  // A misspelled sibling of `gate` is the subtler one: the object is well
+  // formed, so only an explicit key check catches it.
+  const dir = tmpDir();
+  write(dir, 'package.json', JSON.stringify({
+    name: 'x',
+    webjs: { doctor: { gates: { UNMARKED_ASSET_LINKS: 'error' } } },
+  }));
+  const p = readDoctorPolicy(dir);
+  assert.deepEqual(p.gate, {});
+  assert.deepEqual(p.unknownKeys, ['webjs.doctor.gates']);
+});
+
+test('a malformed gate container exits 1 without running the checks', () => {
+  const dir = assetLinkFixture(null);
+  write(dir, 'package.json', JSON.stringify({ name: 'x', webjs: { doctor: { gate: 'error' } } }));
+  const r = runCliArgs(dir, []);
+  assert.equal(r.status, 1, 'a fail-open gate must be loud');
+  assert.match(r.stderr, /Expected an object at webjs\.doctor\.gate, got "error"/);
+  assert.doesNotMatch(r.stdout, /project-health checklist/, 'the checks did not run');
+
+  write(dir, 'package.json', JSON.stringify({ name: 'x', webjs: { doctor: { gates: {} } } }));
+  const typo = runCliArgs(dir, ['--json']);
+  assert.equal(typo.status, 1);
+  assert.deepEqual(JSON.parse(typo.stdout).configErrors, [
+    { kind: 'unknown-key', path: 'webjs.doctor.gates' },
+  ]);
 });
 
 test('readDoctorPolicy keeps well-formed entries and reports the rest separately', () => {

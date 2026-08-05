@@ -87,7 +87,7 @@ export interface WebjsRegenerateRule {
   inputs?: string[];
 }
 
-/** Dev task orchestration in `webjs.dev` (#550). `before`/`parallel` read by the CLI, `regenerate` by the server. */
+/** Dev task orchestration in `webjs.dev` (#550). `before`/`parallel` read by the CLI, `regenerate` and `watch` by the server (each sub-key names its own reader below). */
 export interface WebjsDevTasks {
   /**
    * One-shot commands run sequentially to completion BEFORE the dev server

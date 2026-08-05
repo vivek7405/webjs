@@ -160,7 +160,7 @@
       "default": 5000
     },
     "dev": {
-      "description": "Dev task orchestration (#550). `before`/`parallel` are read by the CLI (readAppTasks in packages/cli/lib/app-tasks.js); `regenerate` is read by the server (readRegenerateRules in dev-regenerate.js). webjs dev runs `before` (one-shot, e.g. webjs db migrate) to completion, then `parallel` (long-lived watchers) alongside the server. Replaces the old predev hook + concurrently watchers.",
+      "description": "Dev task orchestration (#550). Split per sub-key: `before`/`parallel` are read by the CLI (readAppTasks in packages/cli/lib/app-tasks.js), while `regenerate` (readRegenerateRules in dev-regenerate.js) and `watch` (readDevWatchPathsFromApp in dev.js) are read by the server. webjs dev runs `before` (one-shot, e.g. webjs db migrate) to completion, then `parallel` (long-lived watchers) alongside the server. Replaces the old predev hook + concurrently watchers.",
       "type": "object",
       "additionalProperties": false,
       "properties": {

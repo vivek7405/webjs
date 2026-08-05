@@ -706,12 +706,14 @@ async function main() {
       const strict = rest.includes('--strict');
       const asJson = rest.includes('--json');
 
-      // Read the policy FIRST. A key that is not a known code, or a value that
-      // is not a severity, exits 1 without running the checks: a typo silently
-      // ignored would leave CI un-gated while looking gated, which is the worst
-      // failure a mechanism like this can have.
+      // Read the policy FIRST. A wrong shape, a key that is not a known code, or
+      // a value that is not a severity exits 1 without running the checks: a
+      // typo silently ignored would leave CI un-gated while looking gated,
+      // which is the worst failure a mechanism like this can have.
       const policy = readDoctorPolicy(appDir);
       const configErrors = [
+        ...policy.malformed.map(({ path, value }) => ({ kind: 'malformed', path, value })),
+        ...policy.unknownKeys.map((path) => ({ kind: 'unknown-key', path })),
         ...policy.unknownCodes.map((code) => ({ kind: 'unknown-code', code })),
         ...policy.badSeverities.map(({ code, value }) => ({ kind: 'bad-severity', code, value })),
       ];
@@ -726,10 +728,13 @@ async function main() {
         }
         console.error('webjs doctor: invalid "webjs.doctor.gate" in package.json\n');
         for (const e of configErrors) {
-          if (e.kind === 'unknown-code') console.error(`  Unknown check code: ${e.code}`);
+          if (e.kind === 'malformed') console.error(`  Expected an object at ${e.path}, got ${JSON.stringify(e.value)}`);
+          else if (e.kind === 'unknown-key') console.error(`  Unknown config key: ${e.path} (the only key is "gate")`);
+          else if (e.kind === 'unknown-code') console.error(`  Unknown check code: ${e.code}`);
           else console.error(`  Invalid severity for ${e.code}: ${JSON.stringify(e.value)}`);
         }
-        console.error(`\n  Valid severities: ${DOCTOR_SEVERITIES.join(' / ')}`);
+        console.error('\n  Shape: "webjs": { "doctor": { "gate": { "<CODE>": "<severity>" } } }');
+        console.error(`  Valid severities: ${DOCTOR_SEVERITIES.join(' / ')}`);
         console.error(`  Valid codes: ${Object.values(DOCTOR_CODES).join(', ')}`);
         process.exit(1);
       }
