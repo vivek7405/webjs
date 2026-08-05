@@ -92,13 +92,14 @@ export interface WebjsDevTasks {
   /**
    * One-shot commands run sequentially to completion BEFORE the dev server
    * boots (the old `predev` hook: `webjs db migrate`, a registry copy). A
-   * non-zero exit aborts the boot.
+   * non-zero exit aborts the boot. Read by the CLI (`readAppTasks`).
    */
   before?: string[];
   /**
    * Long-lived commands run as child processes ALONGSIDE the dev server (the
    * old `concurrently` watchers). Spawned once in the parent and torn down on
-   * exit, so a watcher cannot leak past the server.
+   * exit, so a watcher cannot leak past the server. Read by the CLI
+   * (`readAppTasks`).
    */
   parallel?: string[];
   /**
@@ -151,9 +152,11 @@ export interface WebjsDoctorConfig {
    * `error` for a hard toolchain failure, `warn` otherwise. This is how CI gates
    * on a chosen subset without `--strict` making every warning fatal.
    *
-   * An unknown code or severity is a hard error, so a typo cannot silently
-   * un-gate CI. A result that could not check (a network or toolchain outage) is
-   * capped at `warn` and can never be escalated to `error`.
+   * A malformed gate is a hard error, so a typo cannot silently un-gate CI:
+   * that covers an unknown code, a bad severity, a wrong SHAPE (a non-object
+   * `doctor` or `gate`), and a misspelled sibling of `gate` such as `gates`.
+   * A result that could not check (a network or toolchain outage) is capped at
+   * `warn` and can never be escalated to `error`.
    */
   gate?: Record<string, WebjsDoctorSeverity>;
 }

@@ -135,10 +135,10 @@ function isPlainObject(v) {
  * `gate` keeps only WELL-FORMED entries, so a caller can fold it over the
  * results without re-validating. Everything rejected is reported separately:
  * a key that is not a value of `DOCTOR_CODES` lands in `unknownCodes`, a value
- * outside `DOCTOR_SEVERITIES` in `badSeverities`, and a wrong SHAPE (a
- * non-object `doctor` or `gate`, in `malformed`, and a misspelled
- * sibling of `gate` such as `gates` in `unknownKeys`. All four are surfaced as a hard error by the CLI
- * rather than skipped.
+ * outside `DOCTOR_SEVERITIES` in `badSeverities`, a wrong SHAPE (a non-object
+ * `doctor` or `gate`) in `malformed`, and a misspelled sibling of `gate` such
+ * as `gates` in `unknownKeys`. All four are surfaced as a hard error by the
+ * CLI rather than skipped.
  *
  * The shape check matters as much as the per-entry one, and is the easier half
  * to leave out. A gate that FAILS OPEN is the one outcome this mechanism cannot

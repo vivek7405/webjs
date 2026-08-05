@@ -731,6 +731,30 @@ test('a malformed gate container exits 1 without running the checks', () => {
   ]);
 });
 
+// `--json` is the agent-loop contract, so the config-error path's `kind`
+// discriminants are a real API surface and not an implementation detail. Pin
+// the whole set here: broadening the trigger without documenting the new kinds
+// is exactly the drift this asserts against.
+test('the --json configErrors contract is the four documented kinds', () => {
+  const dir = assetLinkFixture(null);
+  /** @type {Array<[unknown, object]>} */
+  const cases = [
+    [{ gate: 'error' }, { kind: 'malformed', path: 'webjs.doctor.gate', value: 'error' }],
+    [{ gates: {} }, { kind: 'unknown-key', path: 'webjs.doctor.gates' }],
+    [{ gate: { NOPE: 'error' } }, { kind: 'unknown-code', code: 'NOPE' }],
+    [{ gate: { ENV_DRIFT: 'loud' } }, { kind: 'bad-severity', code: 'ENV_DRIFT', value: 'loud' }],
+  ];
+  for (const [doctor, expected] of cases) {
+    write(dir, 'package.json', JSON.stringify({ name: 'x', webjs: { doctor } }));
+    const r = runCliArgs(dir, ['--json']);
+    assert.equal(r.status, 1, `${JSON.stringify(doctor)} exits 1`);
+    const out = JSON.parse(r.stdout);
+    assert.deepEqual(out.results, [], 'no check ran');
+    assert.equal(out.summary.ok, false);
+    assert.deepEqual(out.configErrors, [expected]);
+  }
+});
+
 test('readDoctorPolicy keeps well-formed entries and reports the rest separately', () => {
   const dir = tmpDir();
   write(dir, 'package.json', JSON.stringify({

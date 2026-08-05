@@ -154,8 +154,10 @@ const HELP = {
     notes: [
       'Per-check severity is CONFIG, not a flag. Declare it in package.json under',
       '"webjs": { "doctor": { "gate": { "<CODE>": "off" | "warn" | "error" } } }, so CI',
-      'gates on a chosen subset without --strict making every warning fatal. An unknown',
-      'code or severity exits 1 naming it. A "could not check" result (a network or',
+      'gates on a chosen subset without --strict making every warning fatal. A malformed',
+      'gate exits 1 naming it (an unknown code, a bad severity, a non-object doctor/gate,',
+      'or a misspelled sibling like "gates"); under --json those come back as a',
+      'configErrors array with results empty. A "could not check" result (a network or',
       'toolchain outage) is capped at warn and can never be escalated to error.',
     ],
     examples: ['webjs doctor', 'webjs doctor --json', 'webjs doctor --strict', 'webjs doctor --json --strict'],
@@ -726,7 +728,10 @@ async function main() {
           }));
           process.exit(1);
         }
-        console.error('webjs doctor: invalid "webjs.doctor.gate" in package.json\n');
+        // Header names the BLOCK, not `gate`: two of the four error kinds are
+        // about `webjs.doctor` itself or a misspelled sibling, so naming `gate`
+        // would point at a key the package.json may not even contain.
+        console.error('webjs doctor: invalid "webjs.doctor" config in package.json\n');
         for (const e of configErrors) {
           if (e.kind === 'malformed') console.error(`  Expected an object at ${e.path}, got ${JSON.stringify(e.value)}`);
           else if (e.kind === 'unknown-key') console.error(`  Unknown config key: ${e.path} (the only key is "gate")`);
