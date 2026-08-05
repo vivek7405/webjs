@@ -948,3 +948,41 @@ test('asset-link advisory reports every occurrence across pages and layouts', as
   assert.match(r.message, /b\.css/);
   assert.match(r.message, /^2 stylesheet link/);
 });
+
+test('asset-link advisory does not flag rel="stylesheet" appearing inside another attribute value', async () => {
+  const dir = tmpDir();
+  // The canonical async-CSS idiom. `rel` is `preload` here; the `stylesheet`
+  // string lives in the onload swap. Flagging it would be actively harmful:
+  // wrapping this href in asset() versions the HINT, which then can never match
+  // the unversioned request the browser makes, so the file downloads twice.
+  // A `data-rel` is the same class of near-miss on a genuine icon.
+  write(dir, 'app/layout.ts', [
+    "import { html } from '@webjsdev/core';",
+    'export default function Layout({ children }) {',
+    '  return html`',
+    '    <link rel="preload" as="style" href="/public/app.css" onload="this.rel=\'stylesheet\'">',
+    '    <link data-rel="stylesheet" rel="icon" href="/public/favicon.svg">',
+    '    ${children}`;',
+    '}',
+  ].join('\n'));
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'pass', 'rel must mean the rel ATTRIBUTE, not the string anywhere in the tag');
+});
+
+test('asset-link advisory still flags an unmarked sheet written in uppercase', async () => {
+  const dir = tmpDir();
+  write(dir, 'app/layout.ts', 'export default () => `<LINK REL="stylesheet" HREF="/public/up.css">`;');
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'warn', 'HTML tag and attribute names are case-insensitive');
+  assert.match(r.message, /up\.css/);
+});
+
+test('asset-link advisory tolerates a > inside a quoted attribute value', async () => {
+  const dir = tmpDir();
+  // A quote-unaware tag scan would end the tag at the `>` in the title and miss
+  // the href entirely (the #406 class of bug in the SSR hoist scanner).
+  write(dir, 'app/layout.ts', 'export default () => `<link title="a > b" rel="stylesheet" href="/public/q.css">`;');
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /q\.css/);
+});

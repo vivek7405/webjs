@@ -978,23 +978,80 @@ const ROUTE_WALK_IGNORE = new Set(['node_modules', '.git', '.webjs', 'dist', '.n
 const ROUTE_MODULE_RE = /^(?:page|layout)\.(?:js|ts|mjs|mts)$/;
 
 /**
- * A `<link rel="stylesheet">` whose `href` is a STATIC, quoted, root-absolute
- * `/public/…` literal, i.e. one nobody wrapped in `asset()`.
- *
- * Deliberately narrow, so a flag is never a guess:
- *   - `rel` must be `stylesheet` (see the icon note on the check itself).
- *   - the href must be QUOTED. A hole (`href=${asset('/public/app.css')}`, or
- *     any other expression) is left alone, because its value is not decidable
- *     here and the marked form is exactly the shape that uses one.
- *   - the path must be under `/public/`, the only prefix `asset()` fingerprints.
- *     A root remap (`/favicon.ico`, `/sw.js`) is returned unchanged by
- *     `resolveAssetUrl`, so advising on one would advise a non-fix.
- *
- * `rel` is matched on either side of `href`, since attribute order is free.
+ * One whole `<link …>` tag. QUOTE-AWARE (`(?:[^>"']|"[^"]*"|'[^']*')*`), the
+ * same shape `ssr.js`'s hoist scanner uses, so a `>` inside a quoted attribute
+ * value cannot terminate the tag early.
  * @type {RegExp}
  */
-const UNMARKED_STYLESHEET_RE =
-  /<link\b(?=[^>]*\brel\s*=\s*["']?stylesheet\b)[^>]*\bhref\s*=\s*["'](\/public\/[^"']*)["'][^>]*>/gi;
+const LINK_TAG_RE = /<link\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+
+/**
+ * One attribute inside a tag: a name, then optionally `=` and a double-quoted,
+ * single-quoted, or unquoted value. Matching attributes as WHOLE units is what
+ * makes the scan correct, because each quoted value is consumed in one step and
+ * can therefore never be re-scanned as if it contained an attribute of its own.
+ * @type {RegExp}
+ */
+const ATTR_RE = /([a-zA-Z_:][-\w:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+
+/**
+ * Parse a tag's attributes into a lowercased-name map. The value is `null` for a
+ * valueless attribute and carries a `quoted` flag, since this check treats an
+ * UNQUOTED href (a template hole) as undecidable rather than as a path.
+ * @param {string} tag
+ * @returns {Map<string, { value: string | null, quoted: boolean }>}
+ */
+function parseTagAttrs(tag) {
+  /** @type {Map<string, { value: string | null, quoted: boolean }>} */
+  const attrs = new Map();
+  // Skip the tag name itself so `link` is not read as an attribute.
+  const body = tag.replace(/^<[a-zA-Z_:][-\w:.]*/, '');
+  ATTR_RE.lastIndex = 0;
+  for (const m of body.matchAll(ATTR_RE)) {
+    const name = m[1].toLowerCase();
+    if (attrs.has(name)) continue; // first wins, as in HTML parsing
+    const quoted = m[2] !== undefined || m[3] !== undefined;
+    const value = m[2] ?? m[3] ?? m[4] ?? null;
+    attrs.set(name, { value, quoted });
+  }
+  return attrs;
+}
+
+/**
+ * Whether a parsed `<link>` is an unmarked stylesheet, and if so its href.
+ *
+ * Attribute PARSING rather than a lookahead over the raw tag is load-bearing,
+ * not tidiness. A scan that merely looks ahead for `rel=…stylesheet` anywhere in
+ * the tag matches the string inside ANOTHER attribute's value, which flags the
+ * two shapes this check most needs to leave alone: the canonical async-CSS
+ * `<link rel="preload" as="style" href="/public/app.css" onload="this.rel='stylesheet'">`
+ * (where the advised `asset()` fix would actively BREAK the preload, since the
+ * versioned hint could then never match the unversioned request), and a
+ * `data-rel="stylesheet"` sitting on a `rel="icon"`. Reading real attributes
+ * makes `rel` mean the `rel` attribute and nothing else.
+ *
+ * Returns the href only when every condition holds:
+ *   - `rel` is a token list CONTAINING `stylesheet` (so `rel="preload"` with an
+ *     onload swap, and `rel="icon"`, are both out).
+ *   - `href` is QUOTED. An unquoted value is a template hole
+ *     (`href=${asset('/public/app.css')}`), undecidable from source, and is
+ *     exactly the shape the marked form uses.
+ *   - the path is under `/public/`, the only prefix `asset()` fingerprints. A
+ *     root remap (`/favicon.ico`, `/sw.js`) is returned unchanged by
+ *     `resolveAssetUrl`, so advising on one would advise a non-fix.
+ *
+ * @param {string} tag
+ * @returns {string | null}
+ */
+function unmarkedStylesheetHref(tag) {
+  const attrs = parseTagAttrs(tag);
+  const rel = attrs.get('rel');
+  if (!rel || !rel.value) return null;
+  if (!rel.value.toLowerCase().split(/\s+/).includes('stylesheet')) return null;
+  const href = attrs.get('href');
+  if (!href || !href.quoted || !href.value) return null;
+  return href.value.startsWith('/public/') ? href.value : null;
+}
 
 /**
  * Collect every `app/**` page + layout module path, depth-first.
@@ -1065,12 +1122,18 @@ async function checkUnmarkedAssetLinks(appDir) {
   for (const file of collectRouteModules(routeDir)) {
     let src;
     try { src = await readFile(file, 'utf8'); } catch { continue; }
-    if (!src.includes('<link')) continue; // cheap bail before any regex work
-    UNMARKED_STYLESHEET_RE.lastIndex = 0;
-    for (const m of src.matchAll(UNMARKED_STYLESHEET_RE)) {
+    // Cheap bail before any tag scanning. Case-INSENSITIVE to match the tag
+    // regex: a file whose only link tag is written `<LINK …>` must still be
+    // scanned, or the scanner's own case-insensitivity is unreachable exactly
+    // where it is needed.
+    if (!/<link/i.test(src)) continue;
+    LINK_TAG_RE.lastIndex = 0;
+    for (const m of src.matchAll(LINK_TAG_RE)) {
+      const href = unmarkedStylesheetHref(m[0]);
+      if (!href) continue;
       // 1-indexed line of the match, for a jump-to reference.
       const line = src.slice(0, m.index).split('\n').length;
-      findings.push({ file, line, href: m[1] });
+      findings.push({ file, line, href });
     }
   }
   if (findings.length === 0) {
