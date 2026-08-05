@@ -17,6 +17,7 @@ import { html } from '@webjsdev/core';
 import { renderToString } from '@webjsdev/core/server';
 import '#components/code-block.ts';
 import Routing from '#app/docs/routing/page.ts';
+import { ssrMarkup } from '#test/fixtures/code-block-markup.js';
 
 /** The text inside the block's `<pre>`, tags removed, entities decoded. */
 function preText(rendered: string) {
@@ -69,4 +70,45 @@ test('a real docs page serves its samples as readable text', async () => {
   const blocks = out.match(/<pre\b[^>]*>[\s\S]*?<\/pre>/g) ?? [];
   assert.ok(blocks.length > 20, `expected the page's blocks, found ${blocks.length}`);
   assert.equal(blocks.filter((b) => preText(b).trim() === '').length, 0, 'no block was served empty');
+});
+
+/*
+ * The browser suite mounts a hand-written copy of the server's output, because
+ * `renderToString` does not exist in the browser. That copy is only useful
+ * while it is accurate: the runtime picks its light-DOM adoption branch on the
+ * hydrate marker and its slot adoption on `data-webjs-light` together with
+ * `data-projection`, so a fixture that drifts on any of them silently reroutes
+ * the whole browser suite onto the client-first-mount path that no production
+ * page takes, and every test there keeps passing.
+ *
+ * This is the guard for that, and it lives here because this is where the real
+ * renderer runs. An earlier attempt asserted the markers from inside the
+ * browser test instead, which could not work: the runtime sets `data-wj-host`
+ * on every light-DOM connect regardless of branch, and the component resolves
+ * its text before the base hook either way, so both paths leave identical DOM.
+ * Nothing observable in the browser distinguishes them. Comparing bytes here
+ * does.
+ */
+test('the browser suite mounts what the server actually emits', async () => {
+  const cases = [
+    { code: "const x = 1;", attrs: '' },
+    { code: 'x', attrs: ' label="root layout"' },
+    { code: 'x', attrs: ' pre-class="max-h-120 overflow-y-auto"' },
+    { code: 'html`<my-tag>&</my-tag>`', attrs: '' },
+  ];
+  for (const { code, attrs } of cases) {
+    const label = attrs.match(/label="([^"]*)"/)?.[1];
+    const preClass = attrs.match(/pre-class="([^"]*)"/)?.[1];
+    const real = await renderToString(
+      label ? html`<code-block label=${label}>${code}</code-block>`
+        : preClass ? html`<code-block pre-class=${preClass}>${code}</code-block>`
+        : html`<code-block>${code}</code-block>`,
+    );
+    assert.equal(
+      ssrMarkup(code, attrs),
+      real,
+      `the browser fixture has drifted from real server output for ${JSON.stringify(attrs || 'the plain shape')}. `
+      + 'Regenerate test/fixtures/code-block-markup.js from renderToString; do not edit this expectation to match.',
+    );
+  }
 });

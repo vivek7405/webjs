@@ -14,6 +14,7 @@
  * cannot double the content.
  */
 import '#components/code-block.ts';
+import { ssrMarkup, authoredMarkup } from '#test/fixtures/code-block-markup.js';
 
 const assert = {
   ok: (v, msg) => { if (!v) throw new Error(msg || `Expected truthy, got ${v}`); },
@@ -23,30 +24,6 @@ const assert = {
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
 const SAMPLE = "const greeting = 'hi';\n// a comment\nexport function run() {}";
-
-/**
- * The exact bytes `renderToString` emits, not an approximation of them.
- *
- * This matters more than it looks. `@webjsdev/core` picks its light-DOM
- * adoption branch on the `webjs-hydrate` marker comment, and its slot
- * adoption on `data-webjs-light` AND `data-projection` together. A fixture
- * missing any of those falls through to the client-first-mount path instead,
- * so the whole file would exercise the branch NO production page takes while
- * appearing to cover the one all 480 of them do. Copied verbatim from the
- * server; regenerate rather than hand-edit if the renderer's markers change.
- */
-const ssrMarkup = (code, attrs = '') => {
-  const esc = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const label = attrs.match(/label="([^"]*)"/)?.[1];
-  const preClass = attrs.match(/pre-class="([^"]*)"/)?.[1] ?? '';
-  const named = label ? ` role="region" aria-label="${label}"` : '';
-  return `<code-block${attrs} data-wj-host><!--webjs-hydrate--><pre class="${preClass}" tabindex="0"${named}>`
-    + `<code><slot data-webjs-light data-projection="actual" data-wj-slot-owner="code-block">${esc}</slot></code></pre></code-block>`;
-};
-
-/** The shape a template authors: the code as plain text children. */
-const authoredMarkup = (code, attrs = '') =>
-  `<code-block${attrs}>${code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code-block>`;
 
 async function mount(markup) {
   const holder = document.createElement('div');
@@ -148,19 +125,6 @@ suite('code-block', () => {
     assert.equal(preOf(host).textContent, SAMPLE, 'the code is not repeated');
     assert.equal(tokens(host).length, before, 'the token count is unchanged');
     assert.equal(holder.querySelectorAll('pre').length, 1, 'still one pre');
-  });
-
-  test('adopts the server-rendered slot rather than re-mounting from scratch', async () => {
-    // The fixture above only covers the production path if the runtime takes
-    // its SSR-adoption branch on it. Assert the marks that select that branch
-    // are present and consumed, so a renderer change that moves them fails
-    // here instead of silently rerouting every test in this file onto the
-    // client-first-mount path.
-    const { host } = await track(ssrMarkup(SAMPLE));
-    assert.ok(host.hasAttribute('data-wj-host'), 'the host is marked as framework-rendered');
-    const slot = host.querySelector('slot');
-    assert.equal(slot, null, 'the slot is gone once the tokens replace it');
-    assert.equal(preOf(host).textContent, SAMPLE, 'and the projected code survived that adoption');
   });
 
   test('escapes rather than parses angle brackets in a sample', async () => {

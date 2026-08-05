@@ -18,9 +18,10 @@
  * the documentation and gallery pages are discovered from the file system, and
  * every gallery detail page comes from the registry index the sidebar is built
  * from, so a page or a component added tomorrow is checked without anyone
- * remembering to add it here. The marketing pages, the error boundary, and the
- * markdown post body ARE listed by hand, because there are four of them and
- * they have no directory to walk.
+ * remembering to add it here. Six entries ARE listed by hand, because they have
+ * no directory to walk: the three marketing pages, the error boundary, the
+ * gallery introduction at /ui, and the markdown post body that /blog/[slug],
+ * /articles/[slug], and /compare/[slug] all share.
  *
  * Pages are rendered THROUGH their layout, not alone. That is what makes rule
  * 3 real rather than vacuous: a docs block scrolls because of the shell's
