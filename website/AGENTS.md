@@ -48,24 +48,28 @@ website/
                        sidebar label and section title is Title Case" in
                        test/ssr/docs-links.test.ts.
                        Casing is the only thing pinned sidebar-wide. A nav
-                       label usually reads exactly as the page's own h1 (39
-                       of the 43 doc entries do), but that is the norm, not
-                       a rule, and 4 entries deliberately diverge: a label
-                       may be SHORTER than the heading (Introduction against
-                       a "Getting Started" h1), LONGER (Runtime (Node & Bun)
-                       against "Runtime", Task (Async Data) against "Task
-                       Controller"), or simply reworded (Editor Setup
-                       (Neovim, VS Code) against "Editor Setup for VS Code &
-                       Neovim"). Do not "fix" those four.
+                       label usually reads exactly as the page's own h1, and
+                       38 of the 43 doc entries match it byte for byte, but
+                       that is the norm, not a rule. Five diverge, four of
+                       them deliberately: a label may be SHORTER than the
+                       heading (Introduction against a "Getting Started"
+                       h1), LONGER (Runtime (Node & Bun) against "Runtime",
+                       Task (Async Data) against "Task Controller"), or
+                       reworded (Editor Setup (Neovim, VS Code) against
+                       "Editor Setup for VS Code & Neovim"). The fifth,
+                       conventions, READS the same but is not byte-equal,
+                       because its h1 escapes the ampersand as an HTML
+                       entity where the label carries the raw character.
+                       Do not "fix" any of the five.
                        Only the two auth slugs are PINNED byte-equal, by the
-                       test "a doc page h1 matches its sidebar label". They
-                       earned the pin because both pages once rendered the
-                       same h1 as each other under the same metadata title,
-                       so a reader arriving on either could not tell which
-                       page they had landed on (#1103). The pin is scoped to
-                       those two on purpose, since the other 41 have never
-                       been audited against it and 4 would fail it. Do NOT
-                       generalise it to other pages.
+                       test "a doc page h1 matches its sidebar label". The
+                       pin exists because /docs/auth once rendered an h1
+                       naming its SIBLING's label rather than its own, so a
+                       reader following the nav landed on a heading that
+                       belonged to the other page (#1103). It is scoped to
+                       those two because the other 41 have never been
+                       audited against byte-equality and 5 would fail it
+                       today. Do NOT generalise it to other pages.
                        The /ui sidebar is exempt from all of the above. Its
                        labels are component names from the live registry, so
                        they are identifiers by construction.

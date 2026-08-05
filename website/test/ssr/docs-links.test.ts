@@ -37,7 +37,7 @@ before(async () => {
  *
  * Two sources, and the second is the one that matters most. Doc page prose
  * yields around 36 distinct slugs, but the SIDEBAR is the only surface that
- * links all 45, and its hrefs are single-quoted object literals rendered
+ * links all 43, and its hrefs are single-quoted object literals rendered
  * through a template hole, so a walk that only reads `href="..."` in page
  * files cannot see them. A typo there would ship a 404 in the primary
  * navigation of every docs page with this test green.
@@ -76,7 +76,7 @@ async function internalDocLinks(): Promise<{ from: string; href: string }[]> {
 
 test('every internal /docs link the docs publish resolves', async () => {
   const links = await internalDocLinks();
-  // The sidebar alone contributes 45, so a floor well above that proves both
+  // The sidebar alone contributes 43, so a floor well above that proves both
   // sources were actually read rather than one silently yielding nothing.
   assert.ok(links.length > 60, `sanity: expected many internal links, found ${links.length}`);
   assert.ok(
@@ -174,19 +174,22 @@ test('no two doc pages declare the same metadata title', async () => {
 });
 
 test('a doc page h1 matches its sidebar label', async () => {
-  // The pair above also disagreed with their own nav entries: both rendered
-  // <h1>Authentication</h1> while their labels were 'Auth (Providers)' and
-  // 'Authentication', so one page's heading named no label at all and the
-  // other's named a heading its sibling rendered identically.
+  // One of the pair also disagreed with its own nav entry, and only one.
+  // Both rendered <h1>Authentication</h1>. /docs/authentication was labelled
+  // 'Authentication', so it agreed with itself. /docs/auth was labelled
+  // 'Auth (Providers)' and rendered a heading byte-identical to its SIBLING's
+  // label, so a reader who clicked one nav entry landed on a heading that
+  // named the other page. That is what this pin is for.
   //
   // Scoped to these two slugs rather than every page, and NOT because the
-  // rest diverge. 39 of the 43 doc entries already read the same in both
-  // places. It is scoped because the remaining 4 diverge deliberately
-  // (Introduction over a 'Getting Started' h1, 'Runtime (Node & Bun)' over
-  // 'Runtime', 'Task (Async Data)' over 'Task Controller', 'Editor Setup
-  // (Neovim, VS Code)' over 'Editor Setup for VS Code & Neovim'), and the
-  // other 41 have never been audited against a byte-equal pin. Widening this
-  // test would red on those 4, which are correct as they stand.
+  // rest diverge. 38 of the 43 doc entries are already byte-equal. It is
+  // scoped because 4 diverge deliberately (Introduction over a 'Getting
+  // Started' h1, 'Runtime (Node & Bun)' over 'Runtime', 'Task (Async Data)'
+  // over 'Task Controller', 'Editor Setup (Neovim, VS Code)' over 'Editor
+  // Setup for VS Code & Neovim'), a 5th (conventions) reads the same but
+  // escapes its ampersand in the h1 so it is not byte-equal, and the other
+  // 41 have never been audited against this pin. Widening the test would red
+  // on all five, every one of which is correct as it stands.
   const layout = await readFile(resolve(DOCS_ROOT, 'layout.ts'), 'utf8');
   const labelFor = (href: string) => {
     const m = layout.match(new RegExp(`href:\\s*'${href}',\\s*label:\\s*'([^']+)'`));
