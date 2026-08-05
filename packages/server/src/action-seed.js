@@ -333,18 +333,27 @@ function splitDeclarators(stmt) {
  *    `const` is in TDZ until the facade body runs, so a FUNCTION emitted this
  *    way re-breaks the #1208 cycle.
  *
- * So a name is classified as a value only on POSITIVE evidence (a literal /
- * object / array / `new` / tagged-template right-hand side, or a `class`), and
- * everything undecidable falls back to `fnNames`. That keeps the cycle-critical
- * cases safe: a name re-exported from another module (`export { helper }`, the
- * #1208 fixture) is never locally declared at all, so it can never look like a
- * value, and a higher-order-wrapped action (`const post = withAuth(...)`) has a
- * call-expression right-hand side that is likewise undecidable.
+ * The two export FORMS are therefore defaulted in opposite directions, because
+ * each starts from a different prior:
  *
- * The residue is a list-exported `const x = someCall()` returning a non-function,
- * which is still emitted as a function. That is unchanged from before the split
- * existed (every list export used to land in `fnNames` unconditionally), so the
- * classification is a strict improvement rather than a new trade.
+ *  - An `export { ... }` LIST is the cycle-critical form: its local may not be
+ *    declared in this file at all (`export { helper } from './c2.server.js'` is
+ *    the #1208 fixture). So a listed name is demoted to a value only on POSITIVE
+ *    evidence (a literal / object / array / `new` / tagged-template right-hand
+ *    side, or a `class`), and anything undecidable stays a function.
+ *  - A direct `export const` always HAS its initializer right here, and is much
+ *    more often a genuine value, so it defaults to `valNames` and is promoted to
+ *    `fnNames` only on positive function evidence.
+ *
+ * Both residues are wrong in the value-as-function direction and both PREDATE
+ * this split, so it is a strict improvement rather than a new trade, but neither
+ * is eliminated. A list-exported name whose right-hand side is computed rather
+ * than literal (`const limit = Number(env.L)`, `const x = cond ? a : b`,
+ * `const x = someCall()`, or a value whose TS annotation contains a generic
+ * comma, which splits the declarator) is still emitted as a function. And a
+ * direct `export const` whose right-hand side is a call (`export const post =
+ * withAuth(...)`) is still emitted as a `const`, so it keeps the TDZ exposure in
+ * a circular import that every direct value export has always had.
  *
  * Scanning runs over a REDACTED copy (string / template / regex / comment bodies
  * blanked by the shared `js-scan` lexer), so a `const` written in a doc comment
@@ -399,10 +408,19 @@ export function extractExportNames(src) {
   const reClass = /\bexport\s+(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)/g;
   while ((m = reClass.exec(code))) valNames.add(m[1]);
 
-  // Direct variable exports that are not function assignments.
+  // Direct variable exports that are not function assignments. `reFnVar` above
+  // only sees a bare `function` / arrow right-hand side, so consult `localFns`
+  // too: it ran the declarator through `RHS_FN_RE`, which tolerates a TS type
+  // annotation, and so recognises the very common
+  // `export const create: Handler = async (i) => ...`. This only ever PROMOTES
+  // a name to the hoisted bucket on positive function evidence; the default for
+  // a direct `export const` stays the value binding.
   const reVar = /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g;
   while ((m = reVar.exec(code))) {
-    if (!fnNames.has(m[1])) valNames.add(m[1]);
+    const n = m[1];
+    if (fnNames.has(n)) continue;
+    if (localFns.has(n)) fnNames.add(n);
+    else valNames.add(n);
   }
 
   // Export list: `export { a, b as bee }`.

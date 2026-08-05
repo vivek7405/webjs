@@ -115,6 +115,24 @@ test('export classification: value only on positive evidence, undecidable falls 
   assert.deepEqual(reexport.valNames, []);
 });
 
+test('a TS-annotated direct export const arrow is a function, not a value', () => {
+  // `export const create: Handler = async (i) => ...` is an ordinary shape, and
+  // the direct-export regex only recognises a BARE `function` / arrow right-hand
+  // side, so the annotation used to push it into the value bucket and cost it
+  // the hoisting a circular import needs (#1208).
+  const { fnNames, valNames } = extractExportNames(
+    `'use server';\nexport const createTodo: Handler = async (i) => i;\n`,
+  );
+  assert.deepEqual(fnNames, ['createTodo']);
+  assert.deepEqual(valNames, []);
+
+  // The promotion is on positive function evidence only: a genuine value export
+  // must not be dragged along with it.
+  const plain = extractExportNames(`'use server';\nexport const VERSION = '1.0';\nexport const CFG = { a: 1 };\n`);
+  assert.deepEqual(plain.fnNames, []);
+  assert.deepEqual(plain.valNames.sort(), ['CFG', 'VERSION']);
+});
+
 test('extraction reads code position only, not comments or strings', () => {
   // The scan runs over a redacted copy, so a declaration written in prose
   // cannot demote a real exported function to a value binding.
