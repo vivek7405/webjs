@@ -94,7 +94,9 @@ If jspm.io's CDN is compromised and starts serving different bytes, the browser 
 
 While I was already in the request pipeline, I followed Turbo Drive's CSP-nonce pattern and threaded a per-request nonce through every SSR path. Server emits `<meta name="csp-nonce" content="...">` once at SSR time. Every inline script (boot module, importmap, env shim, Suspense resolution) carries `nonce="..."`. Every modulepreload link carries the same nonce. The client router reads that meta tag and stamps the original document's nonce onto every dynamically-inserted script and link, so head-merge during partial swaps does not get blocked by strict CSP.
 
-`script-src 'nonce-...'` is now sufficient policy for a WebJs app, with no `'unsafe-inline'` and no `'unsafe-eval'` among the script sources. (`style-src` still permits inline styles, since Tailwind's runtime injects a `<style>` element and a style element is not a script-injection vector.) Run a strict CSP and the app still works.
+A nonce-based `script-src` is now enough for a WebJs app, with no `'unsafe-inline'` and no `'unsafe-eval'` among the script sources. The default pairs the nonce with `'strict-dynamic'`, which is the part that lets a nonce-loaded module pull in its own importmap-driven dependency graph without every URL being allow-listed by hand.
+
+`style-src` is the directive that still permits inline styles, and that is the framework's own doing rather than the app's. Every page carries a small inline `<style>` in the head, and a shadow component's `static styles` are serialized into the document as an inline `<style>` with no nonce on it. A style element is not a script-injection vector, so this does not weaken the script protection. Run a strict CSP and the app still works.
 
 # What this lets us delete
 
