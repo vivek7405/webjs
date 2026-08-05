@@ -31,9 +31,13 @@
  * open work on what that reaches is #1097 (HTML cache poisoning) and
  * #1104 (centralizing the proxy-trust decision).
  *
- * For self-hosted bare-VM deploys where the container is directly
- * exposed, set `WEBJS_NO_TRUST_PROXY=1` to fall back to the raw `Host`
- * header and `http://` default.
+ * `WEBJS_NO_TRUST_PROXY=1` makes THIS module ignore both headers and
+ * fall back to the raw `Host` header and the `http://` default. It is
+ * the remedy for a directly-exposed container, and it also narrows the
+ * forwarded-host exposure above, so it is not only a bare-VM concern.
+ * Note it is not a global trust switch: `csrf.js`'s `requestHost` reads
+ * `x-forwarded-host` without consulting it, which is part of what #1104
+ * exists to centralize.
  *
  * Header semantics:
  * - `X-Forwarded-Host` / `X-Forwarded-Proto` can be a comma-separated
