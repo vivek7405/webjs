@@ -39,6 +39,39 @@ const RESERVED_NAMES = ['node_modules', 'favicon.ico'];
 /** Every character npm allows in an unscoped package name. */
 const ALLOWED_CHAR = /[a-z0-9._-]/;
 
+/** What a name may start with, per the shape both error surfaces state. */
+const ALLOWED_FIRST_CHAR = /[a-z0-9]/;
+
+/**
+ * How much of the rejected name to echo back. The name is attacker-shaped by
+ * definition here (it is the thing that just failed validation), and it is
+ * echoed into a terminal, so it is capped rather than printed whole.
+ */
+const DISPLAY_MAX_LENGTH = 48;
+
+/**
+ * Render the rejected name for an error message. Two things it must not do:
+ * break the message onto a second line (a thrown Error is read programmatically
+ * and documented as single-line, and a newline is a name `checkAppName`
+ * rejects), and replay a control sequence into the terminal it is printed to (a
+ * name of `\x1b[31m...` would otherwise repaint the user's shell). So every
+ * character with no safe visible form is named by code point, and the result is
+ * capped so a 214-character name cannot produce a 240-column line.
+ * @param {unknown} name
+ * @returns {string}
+ */
+function describeName(name) {
+  const raw = typeof name === 'string' ? name : String(name);
+  let out = '';
+  for (const ch of raw) {
+    const code = ch.codePointAt(0) ?? 0;
+    out += code < 0x20 || code === 0x7f
+      ? `<U+${code.toString(16).toUpperCase().padStart(4, '0')}>`
+      : ch;
+  }
+  return out.length > DISPLAY_MAX_LENGTH ? `${out.slice(0, DISPLAY_MAX_LENGTH)}...` : out;
+}
+
 /**
  * Render a character for an error message. A control character has no visible
  * form, so name it by code point instead of printing it. The quote delimiter is
@@ -65,7 +98,13 @@ function describeChar(ch) {
  * @returns {{ ok: true } | { ok: false, reason: string }}
  */
 export function checkAppName(name) {
-  if (typeof name !== 'string' || name.length === 0) {
+  // A non-string reaches here only from a programmatic caller, and calling it
+  // "empty" states something false about the input (a `123` is not empty), which
+  // is worse than no message at all when the reader is debugging their own call.
+  if (typeof name !== 'string') {
+    return { ok: false, reason: `an app name must be a string (this one is a ${typeof name})` };
+  }
+  if (name.length === 0) {
     return { ok: false, reason: 'an app name cannot be empty' };
   }
   if (name.trim() !== name) {
@@ -94,9 +133,14 @@ export function checkAppName(name) {
     return { ok: false, reason: `${describeChar(ch)} is not allowed in an app name` };
   }
   // Checked after the character scan so a leading quote is reported as the bad
-  // character rather than as a leading-separator problem.
-  if (name.startsWith('.') || name.startsWith('_')) {
-    return { ok: false, reason: `an app name cannot start with '${name[0]}'` };
+  // character rather than as a leading-separator problem. Every separator is
+  // refused here, not just the leading dot and underscore npm itself refuses:
+  // the shape both error surfaces state is "starting with a letter or a digit",
+  // and a rule the message claims but does not enforce is worse than either
+  // rule on its own. A leading hyphen also reads as a flag everywhere the name
+  // is later used as a directory.
+  if (!ALLOWED_FIRST_CHAR.test(name[0])) {
+    return { ok: false, reason: `an app name cannot start with ${describeChar(name[0])}` };
   }
   return { ok: true };
 }
@@ -109,8 +153,7 @@ export function checkAppName(name) {
  * @returns {string}
  */
 export function appNameErrorMessage(name, reason) {
-  const shown = typeof name === 'string' ? name : String(name);
-  return `Error: invalid app name "${shown}".
+  return `Error: invalid app name "${describeName(name)}".
 
 ${reason[0].toUpperCase()}${reason.slice(1)}.
 
@@ -135,9 +178,8 @@ Example: webjs create my-app`;
 export function assertValidAppName(name) {
   const result = checkAppName(name);
   if (!result.ok) {
-    const shown = typeof name === 'string' ? name : String(name);
     throw new Error(
-      `Invalid app name '${shown}'. ${result.reason[0].toUpperCase()}${result.reason.slice(1)}. Allowed: ${APP_NAME_SHAPE}.`,
+      `Invalid app name '${describeName(name)}'. ${result.reason[0].toUpperCase()}${result.reason.slice(1)}. Allowed: ${APP_NAME_SHAPE}.`,
     );
   }
   return /** @type {string} */ (name);

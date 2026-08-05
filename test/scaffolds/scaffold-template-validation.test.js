@@ -140,3 +140,36 @@ test('the CLI rejects a bad app name non-zero, before writing anything', async (
     await rm(cwd, { recursive: true, force: true });
   }
 });
+
+test('the create-webjs wrapper rejects a bad name too (npm / bun create webjs)', async () => {
+  // `npm create webjs` and `bun create webjs` route through this wrapper, not
+  // through `webjs create`, so its guard is a third entry point and needs its
+  // own coverage. Without the guard the wrapper reaches `scaffoldApp`, whose
+  // throw surfaces as an unhandled rejection instead of the guidance.
+  const cwd = await tempCwd();
+  try {
+    const bin = fileURLToPath(
+      new URL('../../packages/wrappers/create-webjs/bin/create-webjs.js', import.meta.url),
+    );
+    const res = spawnSync(process.execPath, [bin, "bad'name", '--no-install'], {
+      cwd,
+      encoding: 'utf8',
+    });
+    assert.notEqual(res.status, 0, 'a bad name must exit non-zero');
+    // Assert on what ONLY the wrapper's own guard produces. Matching merely
+    // "invalid app name" would also match `scaffoldApp`'s throw, so the test
+    // would pass with the wrapper guard deleted (it did, before this line).
+    // The guidance block and the absence of a stack trace are the difference.
+    assert.match(res.stderr, /The name becomes the app's directory/);
+    assert.match(res.stderr, /Example: webjs create my-app/);
+    assert.ok(
+      // Match on the frame markers, not on `at `: the guidance's own
+      // "at most 214 characters" line is both indented and starts with `at`.
+      !/file:\/\/|node:internal/.test(res.stderr),
+      `a stack trace means the wrapper guard did not fire; got: ${res.stderr}`,
+    );
+    assert.deepEqual(await readdir(cwd), [], 'the wrapper writes nothing for a rejected name');
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
