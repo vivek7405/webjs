@@ -118,6 +118,25 @@ suite('Browser-test nav guard (#1135)', () => {
     } finally { teardown(); }
   });
 
+  test('blocks a link inside a shadow root, which retargets away from the anchor', async () => {
+    setup();
+    const before = location.pathname;
+    try {
+      // A `static shadow = true` component rendering a link. The listener is on
+      // `window`, so `e.target` here is the HOST, not the anchor, and a
+      // `target.closest('a[href]')` lookup finds nothing and fails open. The
+      // guard walks the composed path instead, like the router does.
+      const host = document.createElement('div');
+      container.appendChild(host);
+      host.attachShadow({ mode: 'open' }).innerHTML =
+        '<a href="/nav-guard-shadow" data-no-router>go</a>';
+      host.shadowRoot.querySelector('a').click();
+      await tick();
+      assert.equal(location.pathname, before,
+        'the guard must block an anchor inside a shadow root');
+    } finally { teardown(); }
+  });
+
   test('does NOT suppress the router on a plain link (capture-phase regression)', async () => {
     setup();
     try {

@@ -34,7 +34,24 @@ Register the canceling listener on `window` in the BUBBLE phase. That is the las
 
 Cancel a form on its `submit` event, not on the submit control's `click`. The form's default action fires on submit, so canceling the click stops the form from ever submitting and the router never sees it.
 
-One thing this cannot cover: the router assigns `location.href` when it degrades a soft navigation, and `preventDefault` does not cancel a script assignment. Listen for `webjs:navigation-fallback` on `document` and assert none fired; its `cause` is the diagnosis. In the framework repo this all lives in one shared module, `test/browser-nav-guard.js`, whose `installNavGuard()` returns `{ fallbacks, remove }`.
+Resolve the anchor from `e.composedPath()`, not `e.target.closest('a[href]')`. The listener is on `window`, so a click inside a shadow root (a `static shadow = true` component) arrives retargeted to the host, and `closest()` walks only light-tree ancestors and never finds the link, which fails open exactly where the router itself handles the case. A pure-fragment `href="#x"` link needs no guard at all, since it never navigates the page away.
+
+One thing this cannot cover: the router assigns `location.href` when it degrades a soft navigation, and `preventDefault` does not cancel a script assignment. Listen for `webjs:navigation-fallback` on `document` and assert none fired; its `cause` is the diagnosis.
+
+It is a few lines, so write it in your suite's setup and detach it in teardown:
+
+```js
+const onClick = (e) => {
+  for (const el of e.composedPath()) {
+    if (el instanceof HTMLAnchorElement && el.hasAttribute('href')) { e.preventDefault(); return; }
+  }
+};
+const onSubmit = (e) => e.preventDefault();
+window.addEventListener('click', onClick);     // bubble, never capture
+window.addEventListener('submit', onSubmit);
+```
+
+(The WebJs framework repo keeps its own copy of exactly this in one shared module, `test/browser-nav-guard.js`, whose `installNavGuard()` returns `{ fallbacks, remove }`. That module is framework-repo infrastructure and is not part of a scaffolded app.)
 
 ## App runners (`webjs test`)
 

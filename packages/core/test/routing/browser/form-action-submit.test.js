@@ -29,9 +29,10 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
 suite('Client router: bound form submissions (#1155)', () => {
   // The navigation backstop this suite used to declare inline now lives in the
   // shared guard (#1135), which is the same window-bubble listener with the
-  // same reasoning, so every browser suite gets it rather than the few that
-  // hand-rolled a copy. See `test/browser-nav-guard.js` for why the phase is
-  // window bubble and never capture.
+  // same reasoning. It is installed per suite, not globally, so any NEW suite
+  // that clicks a real link or submits a real form has to opt in. See
+  // `test/browser-nav-guard.js` for why the phase is window bubble and never
+  // capture.
   let navGuard;
 
   let container, origFetch, calls;

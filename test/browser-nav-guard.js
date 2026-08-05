@@ -11,9 +11,13 @@
  * navigation and the run dies with `0 failed` plus exit 1, which reads as an
  * infrastructure blip rather than a test problem.
  *
- * This makes the browser's default activation structurally impossible while
- * leaving the router fully exercised, so an interception gap FAILS one test on
- * its own assertion instead of taking down the run.
+ * This cancels the browser's default activation while leaving the router fully
+ * exercised, so an interception gap FAILS one test on its own assertion
+ * instead of taking down the run.
+ *
+ * It is opt-in PER SUITE, not global, so a new suite that clicks a real link or
+ * submits a real form has to install it. A pure-fragment `href="#x"` link needs
+ * no guard, since it never navigates the page away.
  *
  * ## The phase is load-bearing: `window`, BUBBLE, never capture
  *
@@ -50,10 +54,18 @@ export function installNavGuard() {
   const fallbacks = [];
 
   const onClick = (e) => {
-    // `closest` is guarded because the target can be a text node or the
-    // document itself, neither of which has it.
-    const anchor = e.target && e.target.closest && e.target.closest('a[href]');
-    if (anchor) e.preventDefault();
+    // Walk the COMPOSED path, exactly as the router's `findAnchorInPath` does,
+    // rather than `e.target.closest('a[href]')`. This listener is on `window`,
+    // so a click originating inside an open shadow root arrives retargeted to
+    // the shadow HOST, and `closest()` walks only light-tree ancestors and
+    // never finds the anchor. The guard would then fail open for a
+    // `static shadow = true` component rendering a link, which is precisely a
+    // case the router itself handles, so the backstop must not be narrower
+    // than the thing it backstops.
+    const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+    for (const el of path) {
+      if (el instanceof HTMLAnchorElement && el.hasAttribute('href')) { e.preventDefault(); return; }
+    }
   };
 
   // Forms need the `submit` event, NOT the click on the submit control. The

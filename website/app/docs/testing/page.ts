@@ -216,6 +216,23 @@ suite('Example browser tests', () =&gt; {
   });
 });</code-block>
 
+    <h3>Clicking a real link or submitting a real form</h3>
+    <p>web-test-runner aborts the whole test <em>session</em>, not one file, when the page navigates. So a browser test that clicks a real <code>&lt;a href&gt;</code> or submits a real <code>&lt;form&gt;</code> is a single point of failure for every browser test you have: if the client router loses the race to intercept, the browser performs the real navigation and the run dies reporting zero failures and then exiting non-zero, which reads as an infrastructure blip rather than a test problem. Cancel the default so an interception gap fails one test on its own assertion.</p>
+    <code-block>const onClick = (e) =&gt; {
+  // Walk the COMPOSED path: this listener is on window, so a click inside a
+  // shadow root is retargeted to the host and closest() would never find the
+  // link.
+  for (const el of e.composedPath()) {
+    if (el instanceof HTMLAnchorElement &amp;&amp; el.hasAttribute('href')) { e.preventDefault(); return; }
+  }
+};
+const onSubmit = (e) =&gt; e.preventDefault();   // forms cancel on submit, not on the button's click
+
+window.addEventListener('click', onClick);    // window BUBBLE phase, never capture
+window.addEventListener('submit', onSubmit);</code-block>
+    <p>Register on <code>window</code> in the <strong>bubble</strong> phase. That is the last step of the propagation path, so it runs after the router's own listeners, and <code>preventDefault()</code> still cancels the default action. Never use the capture phase: it sets <code>defaultPrevented</code> before the router sees the event, and the router bows out on that flag, so every such test would pass while testing nothing. A pure-fragment <code>href="#x"</code> link needs no guard, since it never navigates the page away.</p>
+    <p>One case this cannot cover: the router assigns <code>location.href</code> when it degrades a soft navigation, and <code>preventDefault</code> does not cancel a script assignment. Listen for <code>webjs:navigation-fallback</code> on <code>document</code> and assert none fired; its <code>cause</code> names the reason.</p>
+
     <h2>Convention Validation</h2>
     <p><code>webjs check</code> validates your app for correctness issues:</p>
     <code-block># Run the correctness checks
