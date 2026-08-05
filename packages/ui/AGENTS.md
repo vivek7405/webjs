@@ -448,9 +448,14 @@ names mechanically:
   token battery through both copies and fails on drift. Those TWO are the whole
   inventory of hand-synced sources; every other `cn.ts` on disk is GENERATED
   from this file and must not be hand-edited (`website/lib/utils/cn.ts` via
-  `website/scripts/copy-registry.mjs`, gitignored; a scaffolded app's copy at
-  `webjs ui init` time). A stale generated copy is not drift, it is a generator
-  that has not been re-run.
+  `website/scripts/copy-registry.mjs`, gitignored; a scaffolded app's copy
+  written by `webjs create` through `writeUiBootstrap()` in
+  `packages/cli/lib/create.js`, which reads this file off disk). A stale
+  generated copy is not drift, it is a generator that has not been re-run.
+  `webjs ui init` is NOT one of them: that is the non-scaffold flow
+  (`packages/ui/src/commands/init.js`) and it fetches `lib-utils` over HTTP from
+  the PUBLISHED registry, so a fix here reaches it only once `@webjsdev/ui`
+  ships.
 - A variant prefix is split on the last colon OUTSIDE square brackets, because
   an arbitrary value carries colons of its own (`border-[length:2px]`,
   `bg-[url(https://x/y.png)]`). Splitting on the last colon anywhere hands the
