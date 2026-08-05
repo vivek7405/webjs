@@ -92,9 +92,11 @@ If jspm.io's CDN is compromised and starts serving different bytes, the browser 
 
 # CSP nonce, end to end
 
-While I was already in the request pipeline, I followed Turbo Drive's CSP-nonce pattern and threaded a per-request nonce through every SSR path. Server emits `<meta name="csp-nonce" content="...">` once at SSR time. Every inline script (boot module, importmap, env shim, Suspense resolution) carries `nonce="..."`. Every modulepreload link carries the same nonce. The client router reads the meta tag on each navigation and stamps the per-page nonce onto every dynamically-inserted script and link, so head-merge during partial swaps does not get blocked by strict CSP.
+While I was already in the request pipeline, I followed Turbo Drive's CSP-nonce pattern and threaded a per-request nonce through every SSR path. Server emits `<meta name="csp-nonce" content="...">` once at SSR time. Every inline script (boot module, importmap, env shim, Suspense resolution) carries `nonce="..."`. Every modulepreload link carries the same nonce. The client router reads that meta tag and stamps the original document's nonce onto every dynamically-inserted script and link, so head-merge during partial swaps does not get blocked by strict CSP.
 
-`script-src 'nonce-...'` is now sufficient policy for a WebJs app, with no `'unsafe-inline'` or `'unsafe-eval'` anywhere. Run a strict CSP and the app still works.
+A nonce-based `script-src` is now enough for a WebJs app, with no `'unsafe-inline'` and no `'unsafe-eval'` among the script sources. The default pairs the nonce with `'strict-dynamic'`, which is the part that lets a nonce-loaded module pull in its own importmap-driven dependency graph without every URL being allow-listed by hand.
+
+`style-src` is the directive that still permits inline styles, and it is there for what the app puts in the document rather than for anything the framework emits. The framework's own head `<style>` carries the nonce. App styles generally do not: a light-DOM component's `<style>` block in `render()`, a shadow component's `static styles`, an inline `<style>` written by a page or layout. Then there are `style="..."` attributes, which no nonce can ever reach, because the nonce mechanism applies to elements and there is no such thing as a nonce on an attribute. A style element is not a script-injection vector, so none of this weakens the script protection. Run a strict CSP and the app still works.
 
 # What this lets us delete
 
