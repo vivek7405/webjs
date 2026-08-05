@@ -59,7 +59,7 @@ What this gets us is that an agent in autonomous mode (running with permission t
 
 Each rule lives in `packages/server/src/check.js`. The agent runs `webjs check` before committing, sees violations as concrete messages, and fixes them.
 
-The lint is intentionally narrow. Every rule catches something that is wrong to ship, a crash, a leaked secret, or source that will not strip, and the framework does not lint style preferences. `webjs check --rules` prints the current set, which is the only place worth reading it from, because a list copied into a blog post goes stale the next time a rule lands.
+The lint is intentionally narrow. Every rule catches something that is wrong to ship, a crash, a leaked secret, a reactive prop that silently stops re-rendering, or source that will not strip, and the framework does not lint style preferences. `webjs check --rules` prints the current set, which is the only place worth reading it from, because a list copied into a blog post goes stale the next time a rule lands.
 
 # Hooks beyond pre-commit
 

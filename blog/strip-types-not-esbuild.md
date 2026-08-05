@@ -30,7 +30,7 @@ import * as nodeModule from 'node:module';
 // nodeModule.stripTypeScriptTypes, or undefined on a runtime without it
 ```
 
-That detail is not stylistic. A named import of a builtin export that does not exist is a link-time SyntaxError, which fires before any module body runs and would take down the import of the server package itself on a runtime that ships no stripper. A namespace import links everywhere and leaves the branch to run time.
+That detail is not stylistic. A named import of a builtin export that does not exist is a link-time SyntaxError, and it fires before any module body runs, so on an older Node that never shipped the API it would crash the import of the server package before the version preflight could report the real problem. A namespace import links on every runtime, leaves the property simply undefined where the builtin is absent, which is the case on Bun, and lets the choice happen at run time.
 
 It is a position-preserving type eraser. Take a `.ts` file, strip the types, and the output has every line at the same line number and every column at the same column. Where there used to be `let foo: number = 1`, there is now `let foo         = 1`. The whitespace shows up where the type annotation used to be. The semantics are identical to what the user wrote.
 

@@ -22,7 +22,7 @@ export default function ViewTransitionsExample() {
     ${pageHeading('View transitions')}
     <div class="rounded-2xl bg-primary/10 border border-primary/30 p-6 mb-6">
       <p class="text-foreground m-0">Page one. Navigate to page two: with the
-        <code class="font-mono">&lt;meta name="view-transition"&gt;</code> opt-in,
+        <code class="font-mono">&lt;meta name="view-transition" content="same-origin"&gt;</code> opt-in,
         the swap cross-fades.</p>
     </div>
     <label class="block mb-6">

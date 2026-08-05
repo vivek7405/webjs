@@ -18,9 +18,9 @@ The fix is to intercept link clicks, fetch the next page over fetch(), and patch
 
 # The mechanism
 
-When the framework's client router is loaded (one ES module import in your root layout), every same-origin `<a>` click goes through this path. The docstring describes it in five steps:
+The client router turns itself on as soon as `@webjsdev/core` loads, which any page carrying a component already does, so there is nothing to import and nothing to opt into. Once it is live, every same-origin `<a>` click goes through this path. The docstring describes it in five steps:
 
-1. SSR injects `<!--wj:children:<segment-path>-->...<!--/wj:children-->` comment markers around each layout's `${children}` interpolation (one pair per layout in the chain).
+1. SSR injects `<!--wj:children:<segment-path>:<route-key>-->...<!--/wj:children:<segment-path>-->` comment markers around each layout's `${children}` interpolation (one pair per layout in the chain). The route key is the resolved path with param values filled in, which is what lets step 3 tell one instance of a dynamic layout from another.
 2. On link click, walk both the live DOM and the incoming HTML for these markers and build a path-to-range map.
 3. Find the longest shared marker path. That is the deepest layout both pages have in common.
 4. Replace nodes between that marker pair in the live DOM with the equivalent range from the incoming HTML, using a keyed reconciler that preserves input values, scroll, popover state, and DOM identity where it can.
@@ -44,16 +44,18 @@ The naive alternative (full page reload) breaks all three. The slightly-less-nai
 
 # How it knows what to swap
 
-The framework auto-emits the HTML comment markers at SSR time. You do not write them. The renderer detects `${children}` interpolations inside layout functions and emits `<!--wj:children:<segment-path>-->` before and `<!--/wj:children-->` after.
+The framework auto-emits the HTML comment markers at SSR time. You do not write them. The renderer detects `${children}` interpolations inside layout functions and emits `<!--wj:children:<segment-path>:<route-key>-->` before and `<!--/wj:children:<segment-path>-->` after.
 
 The path encoding (`/<segment-path>`) lets the client distinguish between nested layouts. Root `/`, then `/dashboard`, then `/dashboard/settings`, each as its own marker pair. The deepest matching pair between the current and incoming DOM is where the swap happens.
+
+The route key on the opening marker carries the resolved path with its param values, which is what separates two instances of the same dynamic layout. `/users/7` and `/users/9` share a segment path but not a route key, so the router replaces that layout rather than morphing one user's chrome into another's.
 
 This is automatic. The user does not write the markers. The framework adds them at SSR time wherever a layout interpolates `${children}`. The router uses them as nav-stable swap points.
 
 
 # The X-Webjs-Have optimization
 
-A naive implementation would fetch the full HTML for every navigation. The client router does better. It sends an `X-Webjs-Have` header listing the marker paths it already has.
+A naive implementation would fetch the full HTML for every navigation. The client router does better. It sends an `X-Webjs-Have` header listing what it already holds, as `segment:route-key` entries rather than bare paths, so a dynamic layout it is holding for different params is re-rendered instead of wrongly short-circuited.
 
 The server reads this header in `packages/server/src/ssr.js`. It iterates the target page's layout chain from innermost to outermost. Layouts at-or-above the deepest match are skipped. The response wraps only the divergent fragment in the deepest shared marker pair.
 
@@ -79,7 +81,7 @@ No view-transitions API by default. View Transitions are great when supported, b
 
 Prefetching was the first of the two. The router warms link targets on its own now, and it picks the strategy from the device rather than applying one everywhere: hover intent where there is a real pointer, and dwell-gated viewport entry on touch, where hover does not exist to hook. I wrote up how that choice gets made in [Device-adaptive link prefetch](/blog/device-adaptive-link-prefetch).
 
-Per-navigation full refetch was the second. The `X-Webjs-Have` mechanism described above is exactly the deduplication this section used to disclaim, so a navigation that shares a layout chain with the current page pays for the divergent fragment and nothing more.
+Per-navigation full refetch was the second. The `X-Webjs-Have` mechanism described above is exactly the deduplication this section used to disclaim, so a navigation whose shared layouts match on segment AND route key pays for the divergent fragment and nothing more. Shared chrome held for different params does not count as shared, which is the point of keying the entries.
 
 
 # What happens on a rapid click
