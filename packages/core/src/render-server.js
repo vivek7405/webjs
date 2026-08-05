@@ -2208,8 +2208,9 @@ async function streamTemplate(tr, ctx, controller, formScopeAtStart = 'none') {
           // tag. A custom element is excluded for a different reason than
           // "it does not reflect": a prop declared `reflect: true` DOES
           // reflect there, and used to write the source from its own setter.
-          // #1169 guards that at the setter (a function removes the
-          // attribute), so it needs no commit-site check here.
+          // #1169 guards that at the setter (a function, or an array
+          // carrying one, removes the attribute), so it needs no
+          // commit-site check here.
           //
           // Unlike the buffered machine this drops EVERY prop, including
           // `<webjs-suspense .fallback>`: there is no injectDSD pre-pass on

@@ -724,21 +724,16 @@ class WebComponentBase extends Base {
         const serialized = decl.converter.toAttribute(value, decl.type);
         if (serialized == null) this.removeAttribute(attrName);
         else this.setAttribute(attrName, serialized);
-      } else if (carriesFunction(value)) {
-        // #1169: a function has no meaningful HTML attribute value, and the
-        // built-in serializations below produce something both useless and
-        // dangerous. `String(fn)` is the function's SOURCE, so a reflected
-        // `'use server'` action would ship its whole body, closure secrets
-        // included, to every visitor; `JSON.stringify(fn)` is `undefined`,
-        // which `setAttribute` writes as the literal string "undefined".
+      } else if (typeof value === 'function') {
+        // #1169: the value IS a function, and no branch below has a
+        // meaningful serialization for one. `String(fn)` is the function's
+        // SOURCE, so a reflected `'use server'` action would ship its whole
+        // body, closure secrets included, to every visitor, and
+        // `JSON.stringify(fn)` is `undefined`, which `setAttribute` writes as
+        // the literal string "undefined". Treat it like `null` and remove the
+        // attribute, matching what the `.prop=${fn}` SSR binding already does
+        // for an unserializable value.
         //
-        // The test is `carriesFunction`, the same recursive predicate the
-        // form-action guard uses, NOT a bare `typeof`. `String([fn])` joins
-        // through `String()` on each element, so `[serverAction]` leaks
-        // exactly as `serverAction` does, and a bare typeof check would let
-        // the array form straight through to the fall-through below.
-        // Treat it like `null` and remove the attribute, matching what the
-        // `.prop=${fn}` SSR binding already does for an unserializable value.
         // Placed AFTER the converter branch on purpose: a custom
         // `toAttribute` is author-controlled, so its author has taken
         // responsibility for serializing whatever they are handed.
@@ -750,7 +745,22 @@ class WebComponentBase extends Base {
       } else if (value == null) {
         this.removeAttribute(attrName);
       } else if (decl.type === Object || decl.type === Array) {
+        // A JSON-typed prop CARRYING a function is safe and stays whole:
+        // `JSON.stringify` drops a function to `null` in an array and omits
+        // the key in an object, so `[1, 2, fn]` serializes to `[1,2,null]`
+        // with no source and no data loss. Refusing here would discard the
+        // `1` and the `2` on a path that never leaked.
         this.setAttribute(attrName, JSON.stringify(value));
+      } else if (carriesFunction(value)) {
+        // The string fall-through is the one place a CARRIED function still
+        // leaks. `String([fn])` is `Array.prototype.join`, which runs
+        // `String()` on every element, so `[serverAction]` writes the same
+        // source `serverAction` does. Hence the recursive predicate the
+        // form-action guard already uses, rather than a bare `typeof`, but
+        // scoped to this branch rather than applied above, where JSON
+        // handles the same shape losslessly.
+        this.removeAttribute(attrName);
+        warnFunctionReflection(this, propName, attrName);
       } else {
         this.setAttribute(attrName, String(value));
       }

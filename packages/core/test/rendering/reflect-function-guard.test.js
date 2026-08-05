@@ -186,6 +186,37 @@ describe('reflect:true never stringifies a function (#1169)', () => {
     }
   });
 
+  test('a JSON-typed prop CARRYING a function keeps its other data', async () => {
+    // The guard must not reach across the JSON branch. `JSON.stringify` drops
+    // a function to `null` in an array and omits the key in an object, so
+    // nothing leaks there and the surrounding data is real. Refusing the whole
+    // value would discard the 1 and the 2 to close a hole that is not open,
+    // which is a data-loss regression rather than a fix.
+    class JsonCarrier extends WebComponent({
+      arr: prop(Array, { reflect: true }),
+      obj: prop(Object, { reflect: true }),
+    }) {
+      constructor() {
+        super();
+        this.arr = [1, 2, secretAction];
+        this.obj = { a: 1, b: secretAction };
+      }
+      render() {
+        return html`<span>x</span>`;
+      }
+    }
+    JsonCarrier.register('reflect-fn-json-carrier');
+
+    const { out, warnings } = await renderCapturingWarnings(
+      html`<reflect-fn-json-carrier></reflect-fn-json-carrier>`
+    );
+
+    assert.ok(!out.includes('REFLECT_LEAK_MARKER'), `JSON must not carry the source: ${out}`);
+    assert.ok(out.includes('arr="[1,2,null]"'), `the array's real elements must survive: ${out}`);
+    assert.ok(out.includes('a&quot;:1') || out.includes('"a":1'), `the object's real keys must survive: ${out}`);
+    assert.equal(warnings.length, 0, `a safely-serialized value must not warn: ${warnings.join(' | ')}`);
+  });
+
   test('a self-referential array does not hang the guard', async () => {
     // `Array.prototype.join` has a cycle guard, so a self-referential array
     // stringifies rather than recursing forever. The predicate has to match
