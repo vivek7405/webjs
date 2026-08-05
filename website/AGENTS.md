@@ -40,9 +40,11 @@ website/
                        tree + docs-scoped metadata; the shell itself is shared,
                        see lib/ui/docs-shell.ts. Nav labels and section titles
                        are Title Case (the Next.js and Rails convention, not
-                       Tailwind's sentence case), and a code identifier keeps
-                       its own casing inside a label (createAuth,
-                       @webjsdev/ui). Casing is the only thing pinned
+                       Tailwind's sentence case). A word whose casing is fixed
+                       by something other than prose keeps it, which covers
+                       code tokens (createAuth, @webjsdev/ui) and brands that
+                       start lowercase (macOS, npm). Recasing either one
+                       misspells it. Casing is the only thing pinned
                        sidebar-wide: a nav label NEED NOT match the page's
                        own h1, several deliberately do not, and those are
                        correct as they stand. The one exception is the

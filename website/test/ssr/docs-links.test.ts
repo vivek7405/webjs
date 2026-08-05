@@ -209,8 +209,11 @@ test('every docs sidebar label and section title is Title Case', async () => {
   // Two labels drifted to sentence case ('Build your own authentication' and
   // 'Auth providers (createAuth)') against 42 Title Case siblings, and nothing
   // caught it because casing is not a link, a title, or an order. The rule is
-  // the one comparable docs sites converge on: prose takes the project's
-  // convention, and a CODE IDENTIFIER is written verbatim and never recased.
+  // the one comparable docs sites converge on: PROSE takes the project's
+  // convention, and a word whose casing is fixed by something else is written
+  // verbatim and never recased. That second half covers code tokens
+  // ('createAuth', '@webjsdev/ui') and brands that start lowercase ('macOS',
+  // 'npm') alike, since recasing either one misspells it.
   // Qwik ships both 'API Reference' and 'API reference' in one sidebar because
   // neither half was ever written down.
   //
@@ -258,8 +261,15 @@ test('every docs sidebar label and section title is Title Case', async () => {
   // The anchored form yields NOTHING for an entry written
   // `{ label: '...', href: '...' }`, so a key reorder drops that entry from
   // the check. The floor below is too coarse to catch it on its own, since it
-  // only fires once four entries are missing. The href count is what makes
-  // even a single dropped entry loud: every nav item has one of each.
+  // only fires once four entries are missing, so the href count is the
+  // cross-check: every nav item has one of each.
+  //
+  // That is not total, and the gap is worth knowing. An entry written with
+  // DOUBLE quotes on both keys is invisible to both regexes at once, so the
+  // counts stay equal and this test passes over it. That shape is caught a few
+  // tests up instead, by 'every doc page on disk is reachable from the
+  // sidebar', which reads single-quoted hrefs and so reports the page as
+  // orphaned. Verified: double-quoting one entry reds that test, not this one.
   const labels = [...nav.matchAll(/\blabel:\s*'([^']+)'/g)].map((m) => m[1]);
   const titles = [...nav.matchAll(/\btitle:\s*'([^']+)'/g)].map((m) => m[1]);
   const hrefs = [...nav.matchAll(/\bhref:\s*'([^']+)'/g)].map((m) => m[1]);
