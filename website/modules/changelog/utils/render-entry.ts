@@ -71,15 +71,17 @@ export function renderEntryBody(md: string): string {
   // Depth is still REPRESENTED, as a left inset on the paragraph and nothing
   // else (no marker, no type-size change, no rule), so a child point reads as
   // subordinate to its parent rather than as its parent's peer. The rule both
-  // indented branches follow, stated once: a bullet marker ESTABLISHES depth,
-  // a continuation INHERITS the open paragraph's. The continuation half is
-  // the counter-intuitive one and the corpus decided it. There are zero
-  // bullets at four or more spaces across the 229 entry files, but there are
-  // 37 non-bullet lines at four or more, spread over 10 files, and every one
-  // is wrapped prose whose author aligned the continuation under the text
-  // above it. Reading depth off a continuation line would re-render those 10
-  // files today and lose the argument on the first release note anyone wraps
-  // by hand. Do not "fix" that branch to read its own indent.
+  // indented branches follow, stated once: only a bullet marker ESTABLISHES
+  // depth, so an unmarked line can inherit or go shallower but never deeper.
+  // The corpus decided the inheriting half. There are zero bullets at four or
+  // more spaces across the 229 entry files, but there are 37 non-bullet lines
+  // at four or more, spread over 10 files, and every one is wrapped prose
+  // whose author aligned the continuation under the text above it. Letting a
+  // continuation read its own indent outright would re-render those 10 files
+  // today and lose the argument on the first release note anyone wraps by
+  // hand. The shallower half is what stops the opposite failure: closing
+  // prose written back at the entry level after a deeper bullet must not stay
+  // dragged under that bullet.
   let itemOpen = false;
   let paras: Para[] = [];
   let open: Para | null = null;
@@ -146,12 +148,19 @@ export function renderEntryBody(md: string): string {
       open = startPara(line.trim().slice(2).trim(), depthOf(indent));
     } else if (itemOpen && /^ {2,}\S/.test(line)) {
       const text = line.trim();
-      // Soft-wrapped continuation of the open paragraph, or the start of a
-      // fresh one when a blank line closed the last. Depth-blind on purpose:
-      // it INHERITS, from the open paragraph or, when a blank line closed
-      // that one, from the last paragraph of the item.
+      // Soft-wrapped continuation of the open paragraph, which simply joins
+      // it, or the start of a fresh one when a blank line closed the last.
+      // A fresh one can only INHERIT or go shallower, never deeper: an
+      // unmarked line cannot establish a level no bullet marker did, but it
+      // may return to one its own indent states. Both halves are load-bearing.
+      // Inheriting is what keeps the corpus's 37 wrapped-prose lines out of an
+      // inset, and the shallower half is what stops closing prose written back
+      // at the entry level from being dragged under the last deep bullet.
       if (open) open.lines.push(text);
-      else open = startPara(text, paras.length ? paras[paras.length - 1].depth : 1);
+      else {
+        const last = paras.length ? paras[paras.length - 1].depth : 1;
+        open = startPara(text, Math.min(depthOf((/^( +)/.exec(line)?.[1] ?? '').length), last));
+      }
     } else if (line.trim() === '') {
       if (itemOpen) open = null;
       else flushItem();

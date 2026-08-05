@@ -15,9 +15,11 @@
  * No entry body renders a second level of bullets: the page is one bullet
  * per released change, and everything under it is prose. Depth is still
  * represented, as a left inset on the paragraph, so a child point reads as
- * subordinate rather than as its parent's peer. A bullet marker establishes
- * that depth and a continuation line inherits the open paragraph's, which is
- * why the corpus files carrying 4-space wrapped prose gain no inset.
+ * subordinate rather than as its parent's peer. Only a bullet marker
+ * establishes that depth, so an unmarked line inherits or goes shallower but
+ * never deeper: the corpus files carrying 4-space wrapped prose gain no
+ * inset, and closing prose written back at the entry level is not left
+ * dragged under the last deep bullet.
  *
  * The corpus has zero bullets past two spaces, so the depth cases below are
  * necessarily synthetic. A green corpus run proves nothing about them.
@@ -178,9 +180,47 @@ test('bullet depth clamps at three levels', () => {
     assert.ok(m, `expected a paragraph for "${text}"`);
     assert.ok(m[1].includes('pl-8'), `${text}: clamped to depth 3`);
   }
-  // The clamp is what stops a pathological source emitting a runaway ladder,
-  // so nothing deeper than pl-8 is ever generated.
-  assert.ok(!/pl-1[26]|pl-2[04]/.test(html), 'no inset past the depth-3 class');
+  // The `includes('pl-8')` loop above IS the clamp's guard: drop the clamp
+  // and the 10-space bullet asks for depth 5, which the inset lookup has no
+  // key for, so it renders with no inset at all and the loop reds. An extra
+  // "nothing deeper than pl-8" assertion would add nothing, since the lookup
+  // can only ever emit the three classes it holds.
+});
+
+test('closing prose written back at the entry level is not dragged under a deeper bullet', () => {
+  // The other half of the depth rule. An unmarked line inherits so the
+  // corpus's wrapped prose gains no inset, but it must still be able to go
+  // SHALLOWER, or a paragraph the author wrote at column 2 stays inset under
+  // whatever bullet happened to precede it.
+  const html = renderEntryBody([
+    '- **entry**',
+    '  - parent point',
+    '    - child of parent',
+    '',
+    '  Closing prose written at the entry level.',
+  ].join('\n'));
+
+  const closing = /<p class="([^"]*)">Closing prose written at the entry level\.<\/p>/.exec(html);
+  assert.ok(closing, 'expected the closing paragraph');
+  assert.ok(!closing[1].includes('pl-'), 'a column-2 paragraph sits at the entry level');
+  // The deeper bullet it follows keeps its own inset.
+  assert.match(html, /<p class="[^"]*pl-4[^"]*">child of parent<\/p>/);
+});
+
+test('a paragraph after a blank line cannot invent a level no bullet established', () => {
+  // The inheriting half, as a unit rather than via the corpus. These are the
+  // shape of the corpus's 37 four-plus-space non-bullet lines: wrapped prose
+  // aligned under the text above it, with no bullet at that depth anywhere.
+  const html = renderEntryBody([
+    '- **entry**',
+    '  * commit subject line',
+    '',
+    '    Wrapped prose the author aligned under the subject above it.',
+  ].join('\n'));
+
+  const wrapped = /<p class="([^"]*)">Wrapped prose the author aligned/.exec(html);
+  assert.ok(wrapped, 'expected the wrapped paragraph');
+  assert.ok(!wrapped[1].includes('pl-'), 'no bullet established depth 2, so the prose does not claim it');
 });
 
 test('a 4-space continuation line inherits its bullet depth instead of reading its own', () => {
@@ -197,14 +237,25 @@ test('a 4-space continuation line inherits its bullet depth instead of reading i
   assert.ok(wrapped[2].includes('closed the enclosing'), 'the 4-space lines stayed in that paragraph');
 });
 
-test('no corpus entry file renders an inset', () => {
-  // The invariance guard for the 229 files: every indented bullet on disk
-  // sits at exactly two spaces today, so the page must render byte-for-byte
-  // as it did before depth was represented.
+test('a corpus entry file insets only when its source carries a deep bullet', () => {
+  // The invariance guard for the 229 files. Every indented bullet on disk
+  // sits at exactly two spaces today, so every file must render with no inset
+  // at all, exactly as it did before depth was represented.
+  //
+  // Phrased against the SOURCE rather than as a flat "no file insets",
+  // because the corpus is generated data, not a fixture. backfill-changelog
+  // prefixes each commit-body line with two spaces, so a commit body carrying
+  // its own nested bullet lands at four and legitimately insets. A flat
+  // assertion would red the next release PR for rendering exactly right.
+  // This stays a coarse presence check, never a re-implementation of the
+  // renderer's run-splitting: the counterfactual that proves it still bites
+  // is making the continuation branch read its own indent, which insets files
+  // whose source has no deep bullet at all and reds this.
   for (const [label, md] of everyEntryFile()) {
-    const html = renderEntryBody(md);
-    assert.ok(!/class="[^"]*\bpl-4\b/.test(html), `${label}: emitted a depth-2 inset`);
-    assert.ok(!/class="[^"]*\bpl-8\b/.test(html), `${label}: emitted a depth-3 inset`);
+    const deepBullets = md.split('\n').filter((l) => /^ {4,}[-*] /.test(l)).length;
+    const insets = (renderEntryBody(md).match(/\bpl-[48]\b/g) || []).length;
+    if (deepBullets === 0) assert.equal(insets, 0, `${label}: inset with no deep bullet in its source`);
+    else assert.ok(insets > 0, `${label}: ${deepBullets} deep bullets rendered flat`);
   }
 });
 
