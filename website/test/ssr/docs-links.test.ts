@@ -174,11 +174,19 @@ test('no two doc pages declare the same metadata title', async () => {
 });
 
 test('a doc page h1 matches its sidebar label', async () => {
-  // The pair above also disagreed with their own nav entries ('Auth
-  // (Providers)' and 'Authentication' over two <h1>Authentication</h1>s), so
-  // neither entry matched the heading a reader landed on. Scoped to the two
-  // pages the mismatch was found on rather than all of them, because the rest
-  // of the docs use a deliberately shorter nav label than their heading.
+  // The pair above also disagreed with their own nav entries: both rendered
+  // <h1>Authentication</h1> while their labels were 'Auth (Providers)' and
+  // 'Authentication', so one page's heading named no label at all and the
+  // other's named a heading its sibling rendered identically.
+  //
+  // Scoped to these two slugs rather than every page, and NOT because the
+  // rest diverge. 39 of the 43 doc entries already read the same in both
+  // places. It is scoped because the remaining 4 diverge deliberately
+  // (Introduction over a 'Getting Started' h1, 'Runtime (Node & Bun)' over
+  // 'Runtime', 'Task (Async Data)' over 'Task Controller', 'Editor Setup
+  // (Neovim, VS Code)' over 'Editor Setup for VS Code & Neovim'), and the
+  // other 41 have never been audited against a byte-equal pin. Widening this
+  // test would red on those 4, which are correct as they stand.
   const layout = await readFile(resolve(DOCS_ROOT, 'layout.ts'), 'utf8');
   const labelFor = (href: string) => {
     const m = layout.match(new RegExp(`href:\\s*'${href}',\\s*label:\\s*'([^']+)'`));

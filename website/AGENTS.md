@@ -47,16 +47,25 @@ website/
                        sidebar and is enforced by the test "every docs
                        sidebar label and section title is Title Case" in
                        test/ssr/docs-links.test.ts.
-                       Casing is the only thing pinned. A nav label MAY be
-                       shorter than the page's own h1, and usually is
-                       (Introduction against a "Getting Started" heading,
-                       "Runtime (Node & Bun)" against "Runtime"). The two
-                       auth pages are the one exception: their labels and
-                       h1 values are held byte-equal by the test "a doc page
-                       h1 matches its sidebar label", because those two once
-                       carried headings that matched neither their labels
-                       nor each other. That pin is scoped to those two slugs
-                       on purpose. Do NOT generalise it to other pages.
+                       Casing is the only thing pinned sidebar-wide. A nav
+                       label usually reads exactly as the page's own h1 (39
+                       of the 43 doc entries do), but that is the norm, not
+                       a rule, and 4 entries deliberately diverge: a label
+                       may be SHORTER than the heading (Introduction against
+                       a "Getting Started" h1), LONGER (Runtime (Node & Bun)
+                       against "Runtime", Task (Async Data) against "Task
+                       Controller"), or simply reworded (Editor Setup
+                       (Neovim, VS Code) against "Editor Setup for VS Code &
+                       Neovim"). Do not "fix" those four.
+                       Only the two auth slugs are PINNED byte-equal, by the
+                       test "a doc page h1 matches its sidebar label". They
+                       earned the pin because both pages once rendered the
+                       same h1 as each other under the same metadata title,
+                       so a reader arriving on either could not tell which
+                       page they had landed on (#1103). The pin is scoped to
+                       those two on purpose, since the other 41 have never
+                       been audited against it and 4 would fail it. Do NOT
+                       generalise it to other pages.
                        The /ui sidebar is exempt from all of the above. Its
                        labels are component names from the live registry, so
                        they are identifiers by construction.
