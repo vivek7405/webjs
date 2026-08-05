@@ -23,7 +23,7 @@ export default function CachingExample() {
     ${pageHeading('Caching')}
     ${lede(html`
       This page sets <code>export const revalidate = 10</code>, so its
-      server-rendered HTML is cached per URL for ten seconds.
+      server-rendered HTML is cached per origin and URL for ten seconds.
     `)}
     <p class="mb-4">
       Rendered at

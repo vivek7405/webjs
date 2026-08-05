@@ -34,17 +34,18 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { createRequestHandler } from '../../src/dev.js';
-import { setStore, memoryStore } from '../../src/cache.js';
+import { setStore, memoryStore, getStore } from '../../src/cache.js';
 import {
   readRevalidate,
   htmlCacheKey,
   isCacheableResponse,
   revalidatePath,
   revalidateAll,
+  writeHtmlCache,
   setAppSourceFingerprint,
 } from '../../src/html-cache.js';
 import { STREAM_MARKER } from '../../src/conditional-get.js';
-import { setVendorEntries, publishBuildId, publishedBuildId } from '../../src/importmap.js';
+import { setVendorEntries, publishBuildId, publishedBuildId, setBasePath } from '../../src/importmap.js';
 import { applyForwarded } from '../../src/forwarded.js';
 import { withRequest } from '../../src/context.js';
 
@@ -330,12 +331,15 @@ test('revalidatePath still evicts once the key carries an origin (#1097)', async
 
 test('a bare path with no ambient request evicts nothing and says so (#1097)', async () => {
   freshStore();
-  const appDir = makeApp({ 'app/page.js': counterPage('no-ambient', { revalidate: 60 }) });
+  // A path unique to this file. The warn-once set is module-global and nothing
+  // resets it, so reusing '/' would make the "warned exactly once" assertion
+  // depend on whether an earlier test in this file had already warned for it.
+  const appDir = makeApp({ 'app/no-ambient/page.js': counterPage('no-ambient', { revalidate: 60 }) });
   const app = await createRequestHandler({ appDir, dev: true });
 
-  await app.handle(shellRequest('http://real.example/'));
+  await app.handle(shellRequest('http://real.example/no-ambient'));
   assert.ok(
-    (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #1'),
+    (await (await app.handle(shellRequest('http://real.example/no-ambient'))).text()).includes('render #1'),
     'cached',
   );
 
@@ -347,24 +351,55 @@ test('a bare path with no ambient request evicts nothing and says so (#1097)', a
   const realWarn = console.warn;
   console.warn = (m) => warnings.push(String(m));
   try {
-    await revalidatePath('/');
+    await revalidatePath('/no-ambient');
+    await revalidatePath('/no-ambient');
   } finally {
     console.warn = realWarn;
   }
-  assert.equal(warnings.length, 1, 'it warns exactly once');
+  assert.equal(warnings.length, 1, 'it warns once per path, not once per call');
   assert.match(warnings[0], /evicted nothing/, 'the warning says the eviction did not happen');
   assert.match(warnings[0], /absolute url/, 'and names the fix');
   assert.ok(
-    (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #1'),
+    (await (await app.handle(shellRequest('http://real.example/no-ambient'))).text()).includes('render #1'),
     'still cached, as the warning said',
   );
 
   // The absolute form is the documented remedy, and it works from here.
-  await revalidatePath('http://real.example/');
+  await revalidatePath('http://real.example/no-ambient');
   assert.ok(
-    (await (await app.handle(shellRequest('http://real.example/'))).text()).includes('render #2'),
+    (await (await app.handle(shellRequest('http://real.example/no-ambient'))).text()).includes('render #2'),
     'the absolute url evicts without any ambient request',
   );
+});
+
+test('revalidatePath strips the base path off an absolute url (#256 + #1097)', async () => {
+  freshStore();
+  // Cache entries key on the APP-ROOT-RELATIVE path: the write strips the base
+  // path (dev.js) so a mounted app still hits its own cache. A caller with no
+  // ambient request is told to pass an absolute url, and the absolute url is
+  // the PUBLIC one, which carries the mount prefix. Without stripping it here
+  // that caller computes a key nothing was ever stored under, so the one form
+  // available to them would be the one that does not work.
+  await setBasePath('/app');
+  try {
+    const key = htmlCacheKey(new URL('http://real.example/blog'));
+    assert.equal(
+      htmlCacheKey(new URL('http://real.example/app/blog')),
+      htmlCacheKey(new URL('http://real.example/app/blog')),
+      'sanity: the key builder itself is stable',
+    );
+    // Store under the app-root-relative path, the way the write does.
+    await writeHtmlCache(new URL('http://real.example/blog'), {
+      body: '<h1>x</h1>', contentType: 'text/html', cacheControl: 'no-store', status: 200,
+    }, 60);
+    assert.ok(await getStore().get(key), 'stored under the stripped path');
+
+    // The public absolute url a background job would naturally pass.
+    await revalidatePath('http://real.example/app/blog');
+    assert.equal(await getStore().get(key), null, 'the public url evicts the stripped-path entry');
+  } finally {
+    await setBasePath('');
+  }
 });
 
 test('revalidateAll evicts every cached HTML entry', async () => {

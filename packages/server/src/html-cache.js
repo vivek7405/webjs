@@ -27,7 +27,8 @@
 import { getStore } from './cache.js';
 import { STREAM_MARKER } from './conditional-get.js';
 import { createHash } from 'node:crypto';
-import { publishedBuildId } from './importmap.js';
+import { publishedBuildId, basePath } from './importmap.js';
+import { stripBasePath } from './base-path.js';
 import { dynamicAccessed, getRequest } from './context.js';
 
 /** Namespace prefix for every cached-HTML key, so a flush can target it. */
@@ -279,6 +280,17 @@ export async function revalidatePath(path) {
   let url;
   if (/^https?:\/\//i.test(path)) {
     try { url = new URL(path); } catch { return; }
+    // An absolute url is the PUBLIC one, so under `webjs.basePath` it carries
+    // the mount prefix. Cache entries key on the app-root-relative path (the
+    // write strips it in dev.js for exactly this reason), so strip it here too
+    // or the caller who was told to use this form, the one with no ambient
+    // request, computes a key nothing was ever stored under. A path that is
+    // not under the base path is left alone, matching the write's behaviour.
+    const base = basePath();
+    if (base) {
+      const stripped = stripBasePath(url.pathname, base);
+      if (stripped !== null) url.pathname = stripped;
+    }
   } else {
     const origin = ambientOrigin();
     if (!origin) {
@@ -312,7 +324,7 @@ function ambientOrigin() {
 
 /**
  * Paths already warned about an unresolvable bare-path eviction, so the warning
- * fires once per offending call site rather than once per invocation.
+ * fires once per offending path rather than once per invocation.
  * @type {Set<string>}
  */
 const _warnedUnresolvedPaths = new Set();
