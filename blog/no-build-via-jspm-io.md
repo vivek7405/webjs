@@ -96,7 +96,7 @@ While I was already in the request pipeline, I followed Turbo Drive's CSP-nonce 
 
 A nonce-based `script-src` is now enough for a WebJs app, with no `'unsafe-inline'` and no `'unsafe-eval'` among the script sources. The default pairs the nonce with `'strict-dynamic'`, which is the part that lets a nonce-loaded module pull in its own importmap-driven dependency graph without every URL being allow-listed by hand.
 
-`style-src` is the directive that still permits inline styles, and that is the framework's own doing rather than the app's. Every page carries a small inline `<style>` in the head, and a shadow component's `static styles` are serialized into the document as an inline `<style>` with no nonce on it. A style element is not a script-injection vector, so this does not weaken the script protection. Run a strict CSP and the app still works.
+`style-src` is the directive that still permits inline styles, and the reason is narrower than the default policy makes it look. The framework's own head `<style>` carries the nonce, so it would pass a nonce-based style policy perfectly well. The element that would not is a shadow component's `static styles`, which get serialized into the document as an inline `<style>` with no nonce on it. So the default is written for the app that opts into shadow DOM somewhere, and an app that never sets `static shadow = true` can tighten `style-src` to `'self' 'nonce-__NONCE__'` itself, since directives override one at a time. Either way a style element is not a script-injection vector, so none of this weakens the script protection. Run a strict CSP and the app still works.
 
 # What this lets us delete
 
