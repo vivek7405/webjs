@@ -126,11 +126,42 @@ test('cn: an arbitrary value may contain a colon without losing its group', () =
   assert.equal(cn('border-[length:2px]', 'border-4'), 'border-4');
   assert.equal(cn('border-2', 'border-[length:var(--w)]'), 'border-[length:var(--w)]');
   assert.equal(cn('border-[length:2px]', 'border-primary'), 'border-[length:2px] border-primary');
-  assert.equal(cn('bg-[url(https://a.b/c.png)]', 'bg-primary'), 'bg-primary');
-  assert.equal(cn('text-[color:var(--c)]', 'text-primary'), 'text-primary');
-  // A real variant prefix still splits, including a stacked one.
+  // A real variant prefix still splits, including a stacked one and one whose
+  // own arbitrary value carries a colon.
   assert.equal(cn('hover:flex', 'flex'), 'hover:flex flex');
   assert.equal(cn('md:hover:bg-red-500', 'md:hover:bg-blue-500'), 'md:hover:bg-blue-500');
+  assert.equal(cn('supports-[display:grid]:flex', 'flex'), 'supports-[display:grid]:flex flex');
+  assert.equal(
+    cn('[&:hover]:bg-[url(https://x/y.png)]', '[&:hover]:bg-primary'),
+    '[&:hover]:bg-[url(https://x/y.png)] [&:hover]:bg-primary',
+  );
+});
+
+test('cn: an arbitrary value type hint names the property, so it picks the group', () => {
+  // Once a bracketed value reaches the matcher, the prefix alone is not enough
+  // to say which property it sets: `text-[length:14px]` is a font SIZE, not a
+  // colour, and `bg-[url(...)]` is an image, not a background colour. Routing
+  // by prefix would collapse a size against a colour, which is the exact
+  // regression the text-size / text-color split at the top of the file exists
+  // to prevent.
+  assert.equal(cn('text-[length:14px]', 'text-primary'), 'text-[length:14px] text-primary');
+  assert.equal(cn('text-[length:14px]', 'text-sm'), 'text-sm');
+  assert.equal(cn('bg-[url(https://a.b/c.png)]', 'bg-primary'), 'bg-[url(https://a.b/c.png)] bg-primary');
+  assert.equal(cn('bg-[url(/a.png)]', 'bg-none'), 'bg-none');
+  assert.equal(cn('bg-[image:var(--g)]', 'bg-primary'), 'bg-[image:var(--g)] bg-primary');
+  assert.equal(cn('bg-[position:center]', 'bg-center'), 'bg-center');
+  assert.equal(cn('bg-[size:cover]', 'bg-cover'), 'bg-cover');
+  // A hint that DOES name the prefix's default property still collapses.
+  assert.equal(cn('bg-[color:var(--c)]', 'bg-primary'), 'bg-primary');
+  assert.equal(cn('text-[color:var(--c)]', 'text-primary'), 'text-primary');
+  // An unmapped hint stays ungrouped and survives: an extra class renders, a
+  // dropped one does not, so that is the safe direction to fail.
+  assert.equal(cn('text-[family-name:Inter]', 'text-primary'), 'text-[family-name:Inter] text-primary');
+  assert.equal(cn('bg-[angle:45deg]', 'bg-primary'), 'bg-[angle:45deg] bg-primary');
+  // A bracketed value with no hint keeps the prefix's default property.
+  assert.equal(cn('bg-[#fff]', 'bg-primary'), 'bg-primary');
+  assert.equal(cn('bg-[var(--x)]', 'bg-primary'), 'bg-primary');
+  assert.equal(cn('text-[#fff]', 'text-primary'), 'text-primary');
 });
 
 test('cn: flex/grid sub-utilities still dedupe within their own property', () => {

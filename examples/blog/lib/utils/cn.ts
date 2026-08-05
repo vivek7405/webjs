@@ -52,16 +52,30 @@ const GROUPS: Array<[RegExp, string]> = [
   [/^p-/, 'p'], [/^px-/, 'px'], [/^py-/, 'py'], [/^pt-/, 'pt'], [/^pr-/, 'pr'], [/^pb-/, 'pb'], [/^pl-/, 'pl'],
   [/^m-/, 'm'], [/^mx-/, 'mx'], [/^my-/, 'my'], [/^mt-/, 'mt'], [/^mr-/, 'mr'], [/^mb-/, 'mb'], [/^ml-/, 'ml'],
   [/^w-/, 'w'], [/^h-/, 'h'], [/^size-/, 'size'],
+  // An arbitrary value may carry a Tailwind TYPE HINT (`bg-[image:var(--g)]`,
+  // `text-[length:14px]`). The hint names the CSS property, so it decides the
+  // group instead of the prefix's default, and a `bg-[url(…)]` background image
+  // is classified by its function for the same reason. A hint that is NOT
+  // mapped here stays ungrouped and always survives, which is the safe
+  // direction: an extra class renders, a dropped one does not. See the
+  // bracket-aware split in `variantPrefix` for why these reach the matcher.
+  [/^bg-\[(image:|url\(|linear-gradient|radial-gradient|conic-gradient)/, 'bg-image'],
+  [/^bg-\[position:/, 'bg-position'],
+  [/^bg-\[(size|length):/, 'bg-size'],
+  [/^text-\[length:/, 'text-size'],
   [/^bg-(linear|gradient|conic|radial|none)/, 'bg-image'],
   [/^bg-(no-repeat|repeat|repeat-x|repeat-y|repeat-round|repeat-space)$/, 'bg-repeat'],
   [/^bg-(fixed|local|scroll)$/, 'bg-attach'],
   [/^bg-(auto|cover|contain)$/, 'bg-size'],
   [/^bg-(bottom|center|left|right|top)$/, 'bg-position'],
-  [/^bg-/, 'bg-color'],
+  // Background color: NOT an arbitrary value carrying a non-color hint, which
+  // names some other property (an unmapped one is left ungrouped above).
+  [/^bg-(?!\[(?!color:)[a-z-]+:)/, 'bg-color'],
   // Font size: explicit list of Tailwind size scale.
   [/^text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)$/, 'text-size'],
-  // Text color: anything else starting with text- that isn't alignment / wrap / overflow.
-  [/^text-(?!align-|left$|right$|center$|justify$|start$|end$|wrap$|nowrap$|balance$|pretty$|clip$|ellipsis$|xs$|sm$|base$|lg$|xl$|\d?xl$)/, 'text-color'],
+  // Text color: anything else starting with text- that isn't alignment / wrap /
+  // overflow, and again not an arbitrary value hinted as another property.
+  [/^text-(?!align-|left$|right$|center$|justify$|start$|end$|wrap$|nowrap$|balance$|pretty$|clip$|ellipsis$|xs$|sm$|base$|lg$|xl$|\d?xl$|\[(?!color:)[a-z-]+:)/, 'text-color'],
   // Border sub-properties that are neither a width nor a colour. These come
   // FIRST so the width / colour classifier below never sees them.
   [/^border-(collapse|separate)$/, 'border-collapse'],

@@ -450,6 +450,12 @@ names mechanically:
   an arbitrary value carries colons of its own (`border-[length:2px]`,
   `bg-[url(https://x/y.png)]`). Splitting on the last colon anywhere hands the
   group matcher a fragment like `2px]`, so the utility silently stops deduping.
+- Once a bracketed value reaches the matcher, its TYPE HINT names the property
+  and picks the group, since the prefix alone cannot: `text-[length:14px]` is a
+  font size and `bg-[url(...)]` is an image, so routing either by prefix would
+  collapse it against a colour. A hint the map does not cover is left ungrouped
+  and always survives, which is the safe direction to fail (an extra class
+  renders, a dropped one does not).
 
 ## Layout + typography helpers (the design system)
 
