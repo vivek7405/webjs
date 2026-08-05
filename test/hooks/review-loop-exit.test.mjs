@@ -25,8 +25,11 @@ test('the skill prescribes ONE reviewer, never a fleet', () => {
   // tier choice deciding its shape.
   assert.match(skill, /Round 1: ONE fresh reviewer over the WHOLE diff/);
   assert.match(skill, /No fleet, no lenses, no jury, no per-diff tier choice/);
-  // Later rounds narrow the QUESTION to the fixes, not the evidence.
-  assert.match(skill, /Each later round is delta-scoped: ONE fresh reviewer whose QUESTION is the previous round's fix commits/);
+  // Later rounds narrow the QUESTION to the fixes, not the evidence. The
+  // fast default allows exactly one such round; the escalated cycle chains
+  // them. Both phrasings must keep saying the question is the fix commits.
+  assert.match(skill, /delta-scoped reviewer whose QUESTION is those fix commits alone/);
+  assert.match(skill, /each later round is delta-scoped to the previous round's fix commits/);
   // Structure alone cannot bound a chain where every fix produces the next
   // round's finding, which is the case the deleted budget was written for.
   assert.match(skill, /\*\*A delta chain that keeps producing fixes stops after the FIFTH DELTA ROUND\*\*/);
@@ -43,7 +46,7 @@ test('the skill prescribes ONE reviewer, never a fleet', () => {
   // The final whole-diff pass is what a clean delta round buys, and it is
   // the reason a clean round is not by itself the end.
   assert.match(skill, /buys the FINAL review: ONE fresh reviewer over the WHOLE diff again/);
-  assert.match(skill, /Either way a clean round is not the end of the cycle/);
+  assert.match(skill, /Either way a clean round is not the end of the THOROUGH cycle/);
   // The final review's findings end in a fix plus ONE delta check of that
   // fix, which does not re-open the cycle.
   assert.match(skill, /Its fixes get ONE delta-scoped check of those fix commits alone/);
@@ -56,8 +59,9 @@ test('the skill prescribes ONE reviewer, never a fleet', () => {
   // A fix-check that finds something gets ONE more of the same shape, then
   // the cycle stops unfinished rather than looping.
   assert.match(skill, /ONE more check of the same shape, and if that one does too, stop and report the PR unfinished/);
-  // A clean round 1 skips the delta rounds but still gets the final review.
-  assert.match(skill, /every PR gets at least two reviews/);
+  // NOTE: a clean round 1 no longer buys the final review unconditionally.
+  // That floor is now bought by the escalation ladder, which the FAST
+  // default test below owns; asserting it here too would contradict it.
 });
 
 test('the skill pins every reviewer to Opus, async, and worktree-isolated', () => {
@@ -67,6 +71,44 @@ test('the skill pins every reviewer to Opus, async, and worktree-isolated', () =
   assert.match(skill, /`subagent_type: "general-purpose"`/);
   // No reviewer anywhere in the skill is pinned to another model family.
   assert.ok(!/fable/i.test(skill), 'a reviewer was pinned back to fable');
+});
+
+test('FAST is the default cycle, and the thorough one is bought by evidence', () => {
+  // The owner should never have to ask for a short cycle. A reviewer spawn
+  // costs about 10 minutes, so an unconditional second round taxes every PR
+  // to cover a miss that mostly matters on a few surfaces.
+  assert.match(skill, /\*\*FAST is the default shape\.\*\*/);
+  assert.match(skill, /a clean or minor-only round 1 finishes the cycle with ONE review/i);
+  // Speed must come from fewer ROUNDS, never from a softer bar inside one.
+  // Reclassifying findings as minor is the cheat this forbids.
+  assert.match(skill, /Speed is bought by running fewer rounds, NEVER by lowering the bar inside a round/);
+
+  // All three escalation triggers, since dropping any one silently widens
+  // the fast path over changes that were meant to get the second read.
+  assert.match(skill, /the owner asks for a thorough, full, or deep review/);
+  assert.match(skill, /TWO OR MORE must-fix findings/);
+  assert.match(skill, /the serializer, SSR or action dispatch, auth or session, the client router, or the elision analyser/);
+
+  // The final review still EXISTS; it is conditional, not deleted.
+  assert.match(skill, /buys the FINAL review: ONE fresh reviewer over the WHOLE diff again/);
+  // And the five-delta cap survives on the escalated path.
+  assert.match(skill, /\*\*A delta chain that keeps producing fixes stops after the FIFTH DELTA ROUND\*\*/);
+
+  // A review finding that is out of scope is reported, not filed.
+  assert.match(skill, /\*\*Do not file follow-up issues for what a review turns up\.\*\*/);
+
+  // The do-not-restore note must record WHY the two-review floor went, or
+  // the next agent reads the missing final review as a regression to fix.
+  assert.match(skill, /Do NOT reinstate an unconditional final review or an unconditional two-review floor/);
+  assert.ok(
+    !/every PR gets at least two reviews/.test(skill),
+    'the unconditional two-review floor is back in the skill',
+  );
+
+  // The hook mirrors the skill, so the default must match on both sides.
+  assert.match(hook, /defaults to its FAST shape/);
+  assert.match(hook, /Escalate to the THOROUGH shape/);
+  assert.match(hook, /Do not file follow-up issues for review findings that are out of scope/);
 });
 
 test('the minor / must-fix call is by surface, not by importance', () => {
@@ -83,8 +125,10 @@ test('the minor / must-fix call is by surface, not by importance', () => {
   // reviewer that is never told what was already handled, which is how the
   // pre-final loop lost its bound when the round budget went. The refuter
   // is what adjudicates a rejection, and it terminates in one spawn.
-  assert.match(skill, /\*\*Only a FIX buys another round\*\*/);
-  assert.match(skill, /A rejection buys one REFUTER instead, a deferral buys nothing/);
+  // Under the fast default it is specifically a MUST-FIX fix, since a
+  // minor-only round cannot introduce the class of defect a round catches.
+  assert.match(skill, /\*\*Only a MUST-FIX fix buys a round, and it buys exactly ONE:\*\*/);
+  assert.match(skill, /A rejection buys one REFUTER, a deferral buys nothing/);
   assert.match(skill, /what a rejection buys instead of a whole round, and it terminates: one spawn per rejection, never a refuter of a refuter/);
   // A refuter has two verdicts and the cycle must define both, or a finding
   // whose rejection was contradicted ends with no disposition at all.
