@@ -176,15 +176,57 @@ test("a nested bullet's own continuation paragraph stays inside it", () => {
   assert.match(nested[0], /bullet a A continuation paragraph/);
 });
 
-test('no changelog file renders a fragmented nested list', () => {
-  // Whole-corpus form of the tests above, stated as the real invariant: an
-  // entry holds at most one nested list. Matching only ADJACENT lists missed
-  // a split whose halves were separated by a hoisted paragraph.
-  for (const [label, md] of everyEntryFile()) {
-    for (const item of entryItems(renderEntryBody(md))) {
-      const lists = (item.match(/<ul class="list-disc pl-5 space-y-1/g) || []).length;
-      assert.ok(lists <= 1, `${label}: an entry rendered ${lists} nested lists, so one list was split`);
+/**
+ * Split a changelog body into its entries, each as its own lines. Anything
+ * before the first column-0 bullet is section chrome and belongs to none.
+ */
+function sourceEntries(md: string): string[][] {
+  const entries: string[][] = [];
+  for (const line of md.split('\n')) {
+    if (/^- /.test(line)) entries.push([line]);
+    else if (entries.length) entries[entries.length - 1].push(line);
+  }
+  return entries;
+}
+
+/**
+ * How many nested lists one entry's markdown implies, walked from the SOURCE
+ * rather than from the render. A run breaks on a marker change or on a line
+ * that returns to parent level, and specifically NOT on a blank line, which
+ * is the break the renderer used to take and the whole bug this file covers.
+ */
+function expectedNestedLists(entryLines: string[]): number {
+  let runs = 0;
+  let marker = '';
+  let open = false;
+  for (const line of entryLines) {
+    const bullet = /^ {2,}([-*]) /.exec(line);
+    if (bullet) {
+      if (!open || bullet[1] !== marker) { runs++; marker = bullet[1]; open = true; }
+    } else if (line.trim() === '') {
+      // A blank line is a loose-list separator, never a break.
+    } else if (!/^ {4,}\S/.test(line)) {
+      open = false;
     }
+  }
+  return runs;
+}
+
+test('no changelog file renders a fragmented nested list', () => {
+  // Whole-corpus form of the tests above. Counting the runs the SOURCE
+  // implies is what lets this hold without contradicting the two cases that
+  // legitimately produce more than one nested list in a single entry, a
+  // marker change and a parent paragraph in between. An earlier version
+  // asserted at most one list per entry, which called both of those a split.
+  for (const [label, md] of everyEntryFile()) {
+    const items = entryItems(renderEntryBody(md));
+    const sources = sourceEntries(md);
+    assert.equal(items.length, sources.length, `${label}: entry count`);
+    items.forEach((item, i) => {
+      const actual = (item.match(/<ul class="list-disc pl-5 space-y-1/g) || []).length;
+      const expected = expectedNestedLists(sources[i]);
+      assert.equal(actual, expected, `${label}: entry ${i + 1} rendered ${actual} nested lists, source implies ${expected}`);
+    });
   }
 });
 
