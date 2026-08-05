@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, readdir, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -193,5 +193,93 @@ test('the create-webjs wrapper rejects a bad name too (npm / bun create webjs)',
     assert.deepEqual(await readdir(cwd), [], 'the wrapper writes nothing for a rejected name');
   } finally {
     await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+// `action=""` is a conformance error: the HTML spec requires `action` to be a
+// valid non-empty URL when the attribute is present. Every browser treats it as
+// "submit to the current URL", which is why it went unnoticed in the gallery for
+// so long. The WebJs fix is to BIND the action, not to drop the attribute: a
+// page has no `action` export, so an unbound `method="post"` form is conformant
+// and 405s (a bare GET form just re-renders). The gallery binds its forms now,
+// so this guard is what stops the empty attribute creeping back into an app
+// that `webjs create` generates.
+//
+// Scope note: CODE templates only, never `.md`. That is what makes a plain
+// attribute scan safe here. Two earlier versions of this guard tried to match
+// whole `<form>` tags so that prose in the copied skill markdown would not trip
+// it, and both had holes: `[^>]*` stopped at the `>` inside an arrow function,
+// and masking `${...}` holes blinded the scan to every form nested in a mapped
+// sub-template. Skipping markdown removes the reason to parse tags at all.
+//
+// Framework tests that use the empty attribute are out of scope by
+// construction, since they live outside `packages/cli/templates/`. They pin
+// BEHAVIOUR rather than teaching the idiom: `router-client.test.js:2535` uses
+// `formaction=""` as a fixture for how the client router resolves it, and the
+// form-action guard tests assert that a REFUSED `?action=${fn}` still leaves
+// the `action=""` a boolean binding would have emitted.
+const EMPTY_ACTION_RE = /(?:^|\s)(?:form)?action\s*=\s*(""|'')/;
+
+test('no scaffold template ships a conformance-error action="" or formaction=""', async () => {
+  const templates = fileURLToPath(new URL('../../packages/cli/templates/', import.meta.url));
+
+  const offenders = [];
+  let scanned = 0;
+  async function walk(dir) {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules') continue;
+        await walk(path);
+        continue;
+      }
+      // Markdown IS in scope: `webjs create` ships AGENTS.md, CONVENTIONS.md,
+      // and the agent rule files into every generated app, and those are what
+      // TEACH the idiom. The one exclusion is the generated skill bundle under
+      // `.agents/skills/`, the single place prose legitimately writes the
+      // attribute while explaining why not to use it. (`prepack` copies it in
+      // and `postpack --clean` removes it, so it is usually absent anyway.)
+      if (!/\.(ts|tsx|js|jsx|mjs|html|md|cursorrules)$/.test(entry.name)) continue;
+      if (path.includes(`${sep}.agents${sep}skills${sep}`)) continue;
+      scanned++;
+      const src = await readFile(path, 'utf8');
+      src.split('\n').forEach((line, i) => {
+        if (EMPTY_ACTION_RE.test(line)) {
+          offenders.push(`${path.slice(templates.length)}:${i + 1}: ${line.trim()}`);
+        }
+      });
+    }
+  }
+  await walk(templates);
+
+  // Sanity floor: a walk that silently scanned nothing would pass vacuously.
+  assert.ok(scanned > 20, `sanity: expected many template files, scanned ${scanned}`);
+  assert.deepEqual(
+    offenders,
+    [],
+    `scaffold templates must bind the action rather than emit an empty attribute:\n${offenders.join('\n')}`,
+  );
+});
+
+test('the empty-action pattern matches every shape a template can write it in', () => {
+  // The tree has zero offenders, so the assertion above passes whether or not
+  // the pattern works. These fixtures are what prove it discriminates, and they
+  // cover the two shapes that defeated the previous tag-matching versions: an
+  // arrow function earlier in the tag, and a form nested in a sub-template.
+  for (const shape of [
+    '<form action="">',
+    "<form action=''>",
+    '<form\n  action=""\n  class="x">',
+    '<form @submit=${(e: SubmitEvent) => this.add(e)}\n  action="">',
+    '<form\naction=""\n  class="x">',
+    '${list.map((t) => html`<form action="">${t.title}</form>`)}',
+    '<button formaction="">go</button>',
+    '<button @click=${(e) => this.go(e)}\n  formaction="">go</button>',
+  ]) {
+    assert.ok(EMPTY_ACTION_RE.test(shape.split('\n').find((l) => EMPTY_ACTION_RE.test(l)) ?? ''), `missed: ${shape}`);
+  }
+
+  for (const ok of ['<form action=${submitTodo}>', '<form action="/real/url">', '<button formaction=${publish}>']) {
+    assert.ok(!ok.split('\n').some((l) => EMPTY_ACTION_RE.test(l)), `false positive: ${ok}`);
   }
 });
