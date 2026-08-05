@@ -12,6 +12,10 @@
  *    cross-origin vendor emits `<link rel="modulepreload" href integrity
  *    crossorigin>` for the reached vendor URL; an elided/unused vendor is NOT
  *    preloaded; the modulepreload href is byte-identical to the importmap target.
+ *
+ * Also covers the CORE runtime hint (#1118), which lives in the same head
+ * builder but deliberately NOT in `vendorPreloadTargets` (core is same-origin,
+ * not a CDN-waterfall vendor). Same byte-identity rule, same over-fetch rule.
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -351,4 +355,69 @@ test('import-only page: skipping the dropped page module does NOT drop its shipp
   assert.ok(links.some((l) => l.includes('dayjs')),
     'the shipping component\'s vendor IS preloaded (skipping the dropped page did not drop it)');
   await setCoreInstall(CORE_DIR, true);
+});
+
+/* ---------------- core runtime modulepreload (#1118) ---------------- */
+
+test('a page shipping a boot module preloads @webjsdev/core, byte-identical to the importmap target', async () => {
+  // The boot script names only page and component URLs, so without this hint the
+  // browser discovers core one round trip later (fetch a component -> parse ->
+  // fetch core). That round trip is the pre-boot click window on a cold link.
+  const appDir = makeApp();
+  writeVendorWidget(appDir);
+  writeFileSync(
+    join(appDir, 'app', 'page.js'),
+    `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+    `import './widget.js';\n` +
+    `export default () => html\`<x-widget></x-widget>\`;\n`,
+  );
+  const app = await createRequestHandler({ appDir, dev: false });
+  await app.warmup();
+  const html = await (await app.handle(new Request('http://x/'))).text();
+
+  const target = importmapTarget(html, '@webjsdev/core');
+  assert.ok(target, '@webjsdev/core is in the served importmap');
+  const core = modulepreloadLinks(html).filter((l) => l.includes(`href="${target}"`));
+  assert.equal(core.length, 1, 'exactly one modulepreload for the core runtime');
+  // Byte-identity is the whole correctness condition: a differing href makes the
+  // browser treat the preload and the import as two resources and fetch core
+  // twice, silently (the page still works, it just pays double).
+  assert.ok(core[0].includes(`href="${target}"`), 'preload href === importmap target (no double fetch)');
+
+  // The hint is emitted FIRST, ahead of the page/component preloads, since every
+  // one of them imports it.
+  const links = modulepreloadLinks(html);
+  assert.ok(links[0].includes(`href="${target}"`), 'the core hint is the first modulepreload');
+  assert.ok(links.some((l) => l.includes('/app/widget.js')), 'the component preloads are still emitted');
+});
+
+test('a fully elided page (no boot module) does NOT preload core (#780 no over-fetch)', async () => {
+  // A display-only page ships nothing, so a preload for the runtime it never
+  // loads is pure over-fetch. Same rule that keeps a core hint off
+  // `global-error.{js,ts}`, whose document is returned verbatim with no boot.
+  const appDir = makeApp();
+  writeFileSync(
+    join(appDir, 'app', 'page.js'),
+    `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+    `export default () => html\`<main>static</main>\`;\n`,
+  );
+  const app = await createRequestHandler({ appDir, dev: false });
+  await app.warmup();
+  const html = await (await app.handle(new Request('http://x/'))).text();
+
+  // Precondition: nothing ships, so the assertion below cannot pass vacuously
+  // for the wrong reason (a rendered page that simply had no modules at all).
+  assert.ok(!/<script type="module"/.test(html), 'the elided page ships no boot script');
+  const target = importmapTarget(html, '@webjsdev/core');
+  assert.ok(
+    !modulepreloadLinks(html).some((l) => target && l.includes(`href="${target}"`)),
+    'no core preload for a page that never loads core',
+  );
+});
+
+test('vendorPreloadTargets still excludes core: the hint comes from the head builder', () => {
+  // Guards the seam. If someone "fixes" the exclusion in `vendorPreloadTargets`
+  // instead, the href stops being the raw importmap target on a base-path or
+  // fingerprinted deploy and core double-fetches.
+  assert.deepEqual(vendorPreloadTargets(['@webjsdev/core', '@webjsdev/core/lazy-loader']), []);
 });

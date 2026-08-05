@@ -1,7 +1,7 @@
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { renderToString, isNotFound, isRedirect, isForbidden, isUnauthorized, lookupModuleUrl, isLazy, cspNonce } from '@webjsdev/core';
-import { importMapTag, vendorIntegrityFor, publishedBuildId, appSourceId, basePath, vendorPreconnectOrigins, vendorPreloadTargets } from './importmap.js';
+import { importMapTag, vendorIntegrityFor, publishedBuildId, appSourceId, basePath, vendorPreconnectOrigins, vendorPreloadTargets, buildImportMap } from './importmap.js';
 import { withBasePath } from './base-path.js';
 import { withAssetHash } from './asset-hash.js';
 import { jsonForScriptTag } from './script-tag-json.js';
@@ -1660,6 +1660,36 @@ function wrapHead(opts) {
   // importmap-rails) applies nonce on every modulepreload tag for
   // the same reason.
   const noncePreload = opts.nonce ? ` nonce="${escapeAttr(opts.nonce)}"` : '';
+  // Core runtime modulepreload (#1118). Every module the boot imports pulls
+  // `@webjsdev/core`, but the boot script names only page and component URLs,
+  // so without this hint the browser discovers core only after one of those is
+  // fetched AND parsed: one full round trip into the load, which is exactly
+  // where the pre-boot click window lives on a cold, throttled connection.
+  //
+  // The href comes STRAIGHT from the importmap target (no `fp()` rewrite: the
+  // map's targets are already base-path-prefixed and content-hashed), so it is
+  // byte-identical to what the import resolves to. A differing href makes the
+  // browser treat the preload and the import as two resources and fetch core
+  // twice. That is why this copies the vendor loop below, not the module loop
+  // above. `vendorPreloadTargets` still excludes core deliberately; this hint
+  // is emitted from the head builder, not the vendor path.
+  //
+  // Gated on the boot actually shipping something. A fully elided page ships no
+  // boot module and must not be handed a preload for a runtime it never loads
+  // (#780), which also keeps it off `global-error.{js,ts}`, whose document is
+  // returned verbatim with no importmap and no boot script.
+  if (opts.moduleUrls.length || lazyEntries) {
+    const coreMap = buildImportMap();
+    const coreHref = coreMap.imports['@webjsdev/core'];
+    if (coreHref) {
+      const raw = coreMap.integrity ? coreMap.integrity[coreHref] : undefined;
+      const coreIntegrity = raw ? ` integrity="${escapeAttr(raw)}"` : '';
+      linkTags.push(
+        `<link rel="modulepreload" href="${escapeAttr(coreHref)}"` +
+        `${preloadCrossOriginAttr(coreHref)}${coreIntegrity}${noncePreload}>`,
+      );
+    }
+  }
   // Sub-path deployment (issue #256): the modulepreload href is prefixed with
   // the base path (a no-op when empty), but `crossorigin` / `integrity` are
   // decided on the ORIGINAL url, so the integrity lookup still keys on the

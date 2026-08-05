@@ -260,6 +260,95 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     assert.equal(unused.length, 0, `every modulepreload must be requested by the module graph (else it warms a dead cache key):\n${unused.join('\n')}`);
   });
 
+  test('the core runtime is preloaded and fetched exactly ONCE (#1118)', async () => {
+    // The boot script names only page and component URLs, so without the head
+    // hint the browser discovers core a full round trip late: fetch a component,
+    // parse it, then fetch core. That round trip is the pre-boot click window on
+    // a cold connection.
+    //
+    // Exactly-once is what proves the hint's href matched the importmap target
+    // byte for byte. A differing href still WORKS, it just makes the browser
+    // treat the preload and the import as two resources and fetch core twice,
+    // which is why eyeballing the tag is not enough.
+    /** @type {string[]} */
+    const requested = [];
+    const onRequest = (req) => { requested.push(req.url()); };
+    const p = await browser.newPage();
+    p.on('request', onRequest);
+    try {
+      await p.setCacheEnabled(false);
+      await p.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await sleep(3000);
+
+      const target = await p.evaluate(() => {
+        const tag = document.querySelector('script[type="importmap"]');
+        return tag ? (JSON.parse(tag.textContent).imports['@webjsdev/core'] || null) : null;
+      });
+      assert.ok(target, '@webjsdev/core is in the served importmap');
+
+      const hinted = await p.evaluate((t) => {
+        const links = [...document.querySelectorAll('link[rel="modulepreload"]')];
+        // Compare on the RESOLVED url, since the served href may be relative.
+        const abs = new URL(t, location.href).href;
+        return links.filter((l) => l.href === abs).length;
+      }, target);
+      assert.equal(hinted, 1, 'the served head carries exactly one core modulepreload');
+
+      const absTarget = new URL(target, baseUrl).href;
+      const coreRequests = requested.filter((u) => u === absTarget);
+      assert.equal(
+        coreRequests.length, 1,
+        `the core bundle must be requested exactly once (a preload href that differs from the importmap target double-fetches); saw ${coreRequests.length}`,
+      );
+    } finally {
+      p.off('request', onRequest);
+      await p.close();
+    }
+  });
+
+  test('a same-origin load the router never saw reports pre-boot-navigation (#1118)', async () => {
+    // The window between first paint and the deferred boot module cannot be
+    // closed from inside the router, so it is measured instead. The listener has
+    // to be installed before the boot module runs, which no in-page script can
+    // do, hence `evaluateOnNewDocument`.
+    const p = await browser.newPage();
+    try {
+      await p.evaluateOnNewDocument(() => {
+        window.__wjFallbacks = [];
+        document.addEventListener('webjs:navigation-fallback', (e) => {
+          window.__wjFallbacks.push(e.detail);
+        });
+      });
+
+      // Entry load: no referrer, so nothing to report. This is the control that
+      // stops the assertion below from passing on a router that reports every
+      // load unconditionally.
+      await p.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await sleep(1500);
+      const onEntry = await p.evaluate(() => window.__wjFallbacks.filter((d) => d.cause === 'pre-boot-navigation'));
+      assert.equal(onEntry.length, 0, 'an external / typed entry has no router that could have missed a click');
+
+      // A same-origin FULL document load, which is exactly what an unintercepted
+      // click produces. The destination must be a route that SHIPS the runtime:
+      // the report comes from the router's own boot, so a fully elided page has
+      // nothing running to report with (and no router that could have been
+      // missed either).
+      await Promise.all([
+        p.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }),
+        p.evaluate(() => { location.href = '/about'; }),
+      ]);
+      await sleep(1500);
+
+      const details = await p.evaluate(() => window.__wjFallbacks);
+      const preBoot = details.filter((d) => d.cause === 'pre-boot-navigation');
+      assert.equal(preBoot.length, 1, `the arriving document reports one pre-boot navigation; saw ${JSON.stringify(details)}`);
+      assert.equal(preBoot[0].willReload, false, 'the document load already happened, so nothing further will reload');
+      assert.match(preBoot[0].href, /\/about/, 'the report names the document that loaded');
+    } finally {
+      await p.close();
+    }
+  });
+
   test('theme-toggle custom element is upgraded (light DOM)', async () => {
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
     await sleep(2000);
