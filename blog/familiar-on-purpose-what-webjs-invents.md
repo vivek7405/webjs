@@ -66,17 +66,18 @@ A short list of differences is only useful if you find out you crossed one. Twen
 Write a `static properties` block from Lit muscle memory and the component throws immediately, with the migration in the message.
 
 ```
-Bad: `static properties` is no longer supported. Declare reactive properties
-via the factory instead: `class Bad extends WebComponent({ count: Number })`.
-Use the `prop()` helper for options (`prop(Number, { reflect: true })`) and
-set defaults in the constructor after `super()`.
+Counter: `static properties` is no longer supported. Declare reactive
+properties via the factory instead: `class Counter extends WebComponent({
+count: Number })`. Use the `prop()` helper for options (`prop(Number,
+{ reflect: true })`) and set defaults in the constructor after `super()`.
+See https://webjs.dev/docs/components.
 ```
 
-That message costs about eight lines of framework code and saves an afternoon, because the failure it replaces is the silent kind. Reactivity that quietly stops working looks like your own bug, and you will look for it in your own code first.
+It names your class, shows the replacement, and links the reference. The failure it replaces is the silent kind, which is what makes it worth the code. Reactivity that quietly stops working looks like your own bug, and you will go looking for it in your own code first.
 
 The static counterpart is `webjs check`, which today runs 22 correctness rules and nothing else. The bar for a rule is deliberately narrow. It has to catch code that is wrong to ship, a crash or a security leak or a type-strip failure, and never a matter of preference. Preferences live in prose where they can be argued with. So a class field shadowing a reactive accessor is a rule, and so is a server-only import reaching a module that genuinely ships to the browser. Where you put your files is not.
 
-The pattern is that the divergences carry their own enforcement. Familiar surfaces need no guardrail, since being right by default is what makes them familiar. The 24 exceptions get a throw, a check rule, or both.
+The pattern is that the divergences are the things that carry enforcement. Familiar surfaces need no guardrail, since being right by default is what makes them familiar. The exceptions are where the throws and the check rules go.
 
 # Writing for a reader who never got to learn the framework
 
