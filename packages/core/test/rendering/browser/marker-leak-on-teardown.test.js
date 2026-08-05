@@ -1,13 +1,16 @@
 /**
  * Real-browser assertions for the teardown that takes its own end marker.
  *
- * The unit suite proves the accounting under linkedom. Two things it cannot
- * reach live here. A component drives its re-renders through the update
- * pipeline rather than a bare `render()` call, so the leak has to be shown on
- * that path too. And linkedom never runs `disconnectedCallback`, while a real
- * browser runs it SYNCHRONOUSLY from inside `removeChild`, so author code
- * executes part-way through the removal rather than after it. Nothing in the
- * unit suite exercises that at all.
+ * The unit suite proves the accounting under linkedom, driving the renderer
+ * with bare `render()` calls. Two things are left for a real engine. A
+ * component reaches the same teardown through the update pipeline instead, so
+ * the leak is shown on the path an app actually takes. And `removeChild` runs
+ * a custom element's `disconnectedCallback` synchronously, which means author
+ * code lands part-way through the removal walk; that is worth pinning on the
+ * engines people run rather than on a shim, and no unit case covers it.
+ *
+ * (linkedom does fire `disconnectedCallback`, so the second one is a question
+ * of fidelity rather than of capability. Do not write the stronger claim.)
  */
 import { html } from '../../../src/html.js';
 import { MARKER } from '../../../src/html.js';
@@ -86,8 +89,8 @@ suite('teardown takes its own end marker', () => {
     // This reds on the reverted fix like the case above (it counts bookends
     // too), but that is not what it is for. It exists to prove the removal
     // finishes, and the region stays renderable, while a `disconnectedCallback`
-    // runs synchronously in the middle of the walk, which is the property
-    // linkedom cannot express at all.
+    // runs synchronously in the middle of the walk, on the engines people
+    // actually run.
     //
     // The callback here writes OUTSIDE the range being torn down, which is what
     // ordinary author code does. It deliberately does not move a node the walk
@@ -142,6 +145,7 @@ suite('teardown takes its own end marker', () => {
     try {
       const baseline = countBookends(host);
       assert.equal(baseline.s, baseline.e, 'baseline is paired');
+      assert.ok(baseline.e > 0, 'the list really rendered bookends to count');
 
       host.items = rows(1);
       await host.updateComplete;

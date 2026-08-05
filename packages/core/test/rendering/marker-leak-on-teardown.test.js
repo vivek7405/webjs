@@ -9,14 +9,17 @@
  * for the life of the region.
  *
  * The leak is invisible to `textContent` and to `querySelectorAll`, which is
- * exactly why nothing caught it for so long. So every case here counts comment
- * nodes directly, and asserts BOTH halves of the accounting: the pair count is
- * balanced (`s === e`), and it is back to the baseline the first render
- * established. Each case also asserts the rendered output, so no test here can
- * pass by rendering nothing at all.
+ * exactly why nothing caught it for so long. So the six LEAK cases count
+ * comment nodes directly, and assert BOTH halves of the accounting: the pair
+ * count is balanced (`s === e`), and it is back to the baseline the first
+ * render established. Each also asserts the rendered output, so none of them
+ * can pass by rendering nothing at all. One case per distinct caller, since
+ * they reach `removeBetween` through different paths and a repair on one
+ * branch says nothing about the others.
  *
- * One case per distinct caller, since they reach `removeBetween` through
- * different paths and a repair on one branch says nothing about the others.
+ * The LAST case is not one of those and does not count markers at all. It
+ * pins the guard, which is a separate decision from the leak, and it is green
+ * with or without the fix by design. Its own comment says so.
  */
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
