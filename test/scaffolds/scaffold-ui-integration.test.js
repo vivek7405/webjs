@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { scaffoldApp } from '../../packages/cli/lib/create.js';
+import { DEFAULT_ALIASES, DEFAULT_TAILWIND_CSS } from '../../packages/ui/src/commands/init.js';
 
 async function tempCwd() {
   return mkdtemp(join(tmpdir(), 'webjs-scaffold-ui-'));
@@ -40,12 +41,15 @@ test('full-stack scaffold pre-initialises the Webjs UI kit', async () => {
     assert.ok(await exists(join(appDir, 'components', 'ui', 'badge.ts')), 'the gallery ships badgeClass');
     assert.ok(await exists(join(appDir, 'lib', 'utils', 'ui.ts')), 'the gallery ships the ui.ts fragment helpers');
 
-    // components.json shape matches what webjsui init writes for webjs
+    // The scaffold and `webjsui init` must emit the SAME components.json, so
+    // that initialising a bare app and scaffolding a new one land on one
+    // layout. Asserted against the ui package's own constants rather than a
+    // copied literal, because these two generators silently disagreed on the
+    // `utils` alias until #1129 while a comment on each claimed they matched.
     const cfg = JSON.parse(await readFile(join(appDir, 'components.json'), 'utf8'));
-    assert.equal(cfg.tailwind.css, 'styles/globals.css');
+    assert.equal(cfg.tailwind.css, DEFAULT_TAILWIND_CSS);
     assert.equal(cfg.tailwind.baseColor, 'neutral');
-    assert.equal(cfg.aliases.ui, 'components/ui');
-    assert.equal(cfg.aliases.utils, 'lib/utils/cn');
+    assert.deepEqual(cfg.aliases, DEFAULT_ALIASES);
 
     // The gallery home builds its feature/example cards on the design system.
     const layout = await readFile(join(appDir, 'app', 'layout.ts'), 'utf8');
