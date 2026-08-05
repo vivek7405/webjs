@@ -70,19 +70,24 @@ class TodoList extends WebComponent({ todos: prop(Array) }) {
     this.todos = [];
     this.optTodos = optimistic(this, {
       source: () => this.todos,
-      update: (state, title) => [...state, { id: 'tmp', title, pending: true }],
+      // Pure: the row is derived from the payload, nothing is minted here.
+      // The .value getter re-folds the queue on EVERY read, so a minted id
+      // would differ per render, and a hardcoded 'tmp' would collide across
+      // two concurrent adds. The temp id is minted once in the handler.
+      update: (state, add) => [...state, { id: add.tempId, title: add.title, pending: true }],
     });
   }
   async handleSubmit(e) {
     const title = e.target.querySelector('input').value;
+    const tempId = crypto.randomUUID();
     const promise = createTodo({ title });
-    this.optTodos.add(title, promise);  // auto-releases on settle
+    this.optTodos.add({ tempId, title }, promise);  // auto-releases on settle
     const result = await promise;
     if (result.success) this.todos = [...this.todos, result.data];
   }
   render() {
     return html\`&lt;ul&gt;\${this.optTodos.value.map(t =>
-      html\`&lt;li class=\${t.pending ? 'opacity-50' : ''}&gt;\${t.title}&lt;/li&gt;\`)\}\`;
+      html\`&lt;li class=\${t.pending ? 'opacity-50' : ''}&gt;\${t.title}&lt;/li&gt;\`)\}&lt;/ul&gt;\`;
   }
 }</pre>
     <p><strong>Imperative:</strong> <code>optimistic(signal, value, action)</code> sets the signal to <code>value</code> immediately, runs <code>action()</code>, and rolls back on a thrown error or <code>{ success: false }</code> envelope.</p>
