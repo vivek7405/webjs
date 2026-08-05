@@ -12,13 +12,37 @@
  * breaks OG / og:image tags, OAuth callback URLs, and any user code
  * that builds absolute URLs.
  *
- * Threat model: in webjs's typical deployment topology, the
- * container's HTTP port is only reachable through the trusted edge
- * proxy. There's no path for an attacker to inject these headers
- * without going through that proxy. For self-hosted bare-VM deploys
- * where the container is somehow directly exposed, set
- * `WEBJS_NO_TRUST_PROXY=1` to fall back to the raw `Host` header and
- * `http://` default.
+ * Threat model: the two headers have DIFFERENT trust properties, so do
+ * not reason about them as one.
+ *
+ * `X-Forwarded-Proto` is written by the proxy that terminates TLS, which
+ * OVERWRITES whatever the client sent. In WebJs's typical deployment
+ * topology the container's HTTP port is only reachable through that
+ * trusted edge, so the value this code reads is the edge's, not the
+ * client's. The guarantee is the overwrite, not the topology: an edge
+ * that APPENDS instead would put the client's entry first in the chain,
+ * and the comma rule below takes the first entry.
+ *
+ * `X-Forwarded-Host` is NOT covered by that argument. Cloudflare and
+ * Railway FORWARD a client-supplied `X-Forwarded-Host` rather than
+ * overwriting it, so going through the trusted proxy is exactly how a
+ * hostile value arrives. Treat a forged forwarded host as reachable in
+ * the NORMAL topology, not just on a directly-exposed container.
+ * Consequence, and the rule to apply to your own code: anything SHARED
+ * that is derived from the resulting origin must be KEYED by that origin
+ * rather than assumed constant. That is what `html-cache.js` does, folding
+ * `url.origin` into every cache key (#1097), after a single request
+ * carrying a hostile host could poison a `revalidate` page for every
+ * later visitor.
+ *
+ * `WEBJS_NO_TRUST_PROXY=1` makes THIS module ignore both headers and
+ * fall back to the raw `Host` header and the `http://` default. It is
+ * the remedy for a directly-exposed container, and it also narrows the
+ * forwarded-host exposure above, so it is not only a bare-VM concern.
+ * That switch is `trustProxy()` below, and it is now the ONE place the
+ * posture is decided: `csrf.js`'s `requestHost` used to read
+ * `x-forwarded-host` without consulting it, which is what #1104
+ * centralized. See `trustProxy()` for the one deliberate non-consumer.
  *
  * Header semantics:
  * - `X-Forwarded-Host` / `X-Forwarded-Proto` can be a comma-separated
@@ -164,15 +188,45 @@ export function applyForwarded(url, headers) {
 }
 
 /**
+ * Is a reverse proxy in front of this process trusted to speak for the client?
+ *
+ * The ONE place the ORIGIN posture is decided (#1104): every reader of the
+ * forwarded HOST and PROTO goes through this, namely the URL rewrite here, the
+ * HSTS scheme gate in `headers.js`, and the CSRF host resolution in `csrf.js`.
+ * It used to be three separate reads with two different answers, so
+ * `WEBJS_NO_TRUST_PROXY=1` turned off two of them and an operator could not
+ * tell from any single file whether their app trusted forwarded headers.
+ *
+ * SCOPE, so this comment does not overclaim: `clientIp` in `rate-limit.js` is
+ * NOT a consumer. It reads `x-forwarded-for` / `cf-connecting-ip` /
+ * `x-real-ip`, a different question (who the client is, not what origin the
+ * app is serving), behind its own EXPLICIT per-call opt-in
+ * (`rateLimit({ trustProxy: true })`), and it defaults to the framework-stamped
+ * peer address. An app that passes that option is asking for those headers on
+ * that call, so this env switch deliberately does not override it. Note the
+ * name collision is real: `trustProxy()` here is env-backed and package-wide,
+ * `trustProxy` there is a per-call boolean.
+ *
+ * Read from `process.env` at CALL time, never cached at boot, so a test (and a
+ * runtime that mutates its own env) can toggle it per case.
+ *
+ * @returns {boolean}
+ */
+export function trustProxy() {
+  return process.env.WEBJS_NO_TRUST_PROXY !== '1';
+}
+
+/**
  * Read the forwarded host / proto through a header getter, honoring the
- * `WEBJS_NO_TRUST_PROXY=1` opt-out. The one place the trust decision and the
- * comma-chain rule live, shared by the node and Bun entry points above.
+ * `trustProxy()` opt-out. The one place the HEADER SHAPE rules (the
+ * comma-chain, the scheme allowlist) live, shared by the node and Bun entry
+ * points above.
  *
  * @param {(name: string) => string | string[] | undefined | null} getHeader
  * @returns {{ host: string | null, proto: string | null }}
  */
 function readForwarded(getHeader) {
-  if (process.env.WEBJS_NO_TRUST_PROXY === '1') return { host: null, proto: null };
+  if (!trustProxy()) return { host: null, proto: null };
   return {
     host: firstHeaderValue(getHeader('x-forwarded-host')),
     proto: normalizeProto(firstHeaderValue(getHeader('x-forwarded-proto'))),

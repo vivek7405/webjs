@@ -39,6 +39,8 @@ Both `webjs create` and `create-webjs-app` auto-install dependencies in the new 
 
 ```sh
 webjs create <name>            # scaffold a full-stack app (default; auth ships as a gallery card)
+                               # <name> must be a valid package name: letters, digits,
+                               # and - . _ , starting with a letter or a digit
 webjs create <name> --template api   # backend-only API app (routes + modules + Drizzle)
 
 webjs dev                      # dev server with live reload (runs webjs.dev.before, e.g. webjs db migrate, then serves; npm run dev is a thin alias)

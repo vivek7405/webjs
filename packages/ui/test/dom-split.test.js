@@ -155,15 +155,54 @@ test('add: sonner (dom-only import) still gets ../lib/dom.ts rewritten', async (
   }
 });
 
-test('init: writes lib/dom.ts alongside lib/utils.ts', async () => {
+// The two helpers must land as SIBLINGS, because that adjacency is what
+// `add`'s import rewriting assumes when it resolves '../lib/dom.ts' (it takes
+// the dirname of the resolved utils path). #1129 moved the pair from
+// lib/utils.ts + lib/dom.ts into lib/utils/, matching what `webjs create`
+// scaffolds; the adjacency, not the directory, is the invariant.
+test('init: writes dom.ts alongside the cn helper', async () => {
   stubFetch();
   const d = mkdtempSync(join(tmpdir(), 'webjsui-domsplit-init-'));
   writeFileSync(join(d, 'package.json'), JSON.stringify({ dependencies: { '@webjsdev/server': '*' } }));
   try {
     await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/domsplit-init'], { from: 'user' });
-    assert.ok(existsSync(join(d, 'lib', 'utils.ts')), 'lib/utils.ts must be written');
-    assert.ok(existsSync(join(d, 'lib', 'dom.ts')), 'lib/dom.ts must be written');
-    assert.match(readFileSync(join(d, 'lib', 'dom.ts'), 'utf8'), /onBeforeCache/);
+    assert.ok(existsSync(join(d, 'lib', 'utils', 'cn.ts')), 'lib/utils/cn.ts must be written');
+    assert.ok(existsSync(join(d, 'lib', 'utils', 'dom.ts')), 'lib/utils/dom.ts must be written');
+    assert.match(readFileSync(join(d, 'lib', 'utils', 'dom.ts'), 'utf8'), /onBeforeCache/);
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+// The gap a reviewer caught on #1129: every test above drives ONE command, so
+// nothing noticed that `init` and `add` disagreed about where the shared
+// helpers live. `add` resolved them from the registry manifest's pinned
+// `lib/utils.ts` / `lib/dom.ts` targets while rewriting component imports to
+// the CONFIGURED utils alias, so the second command wrote a duplicate pair
+// that nothing imported. Drive the real sequence and assert the whole tree.
+test('init then add: no orphaned helper copy at the manifest path', async () => {
+  stubFetch();
+  const d = mkdtempSync(join(tmpdir(), 'webjsui-domsplit-seq-'));
+  writeFileSync(join(d, 'package.json'), JSON.stringify({ dependencies: {} }));
+  try {
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/domsplit-seq'], { from: 'user' });
+    await add.parseAsync(
+      ['dialog', '--yes', '--no-deps', '--cwd', d, '--registry', 'http://test/domsplit-seq'],
+      { from: 'user' },
+    );
+
+    // The helpers live where the `utils` alias points, in exactly one place.
+    assert.ok(existsSync(join(d, 'lib', 'utils', 'cn.ts')), 'cn.ts at the utils alias');
+    assert.ok(existsSync(join(d, 'lib', 'utils', 'dom.ts')), 'dom.ts beside it');
+    assert.equal(existsSync(join(d, 'lib', 'utils.ts')), false, 'no orphan at the manifest utils target');
+    assert.equal(existsSync(join(d, 'lib', 'dom.ts')), false, 'no orphan at the manifest dom target');
+
+    // ...and the component resolves to that one place, so every file the
+    // install wrote is reachable.
+    const body = readFileSync(join(d, 'components', 'ui', 'dialog.ts'), 'utf8');
+    assert.match(body, /from '\.\.\/\.\.\/lib\/utils\/cn\.ts'/);
+    assert.match(body, /from '\.\.\/\.\.\/lib\/utils\/dom\.ts'/);
   } finally {
     globalThis.fetch = origFetch;
     rmSync(d, { recursive: true });

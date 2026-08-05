@@ -18,6 +18,7 @@ import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { bunifyProse, bunifyDockerfile, bunifyCompose, bunifyCi } from './runtime-rewrite.js';
+import { assertValidAppName } from './app-name.js';
 
 /**
  * Detect which package manager invoked us. Reads `npm_config_user_agent`,
@@ -166,8 +167,11 @@ async function writeUiBootstrap(appDir) {
   );
   await writeFile(join(appDir, 'lib', 'utils', 'dom.ts'), domContent);
 
-  // 2) components.json: the same shape `webjsui init` writes for webjs
-  // projects (see packages/ui/src/utils/detect-project.js). The utils alias
+  // 2) components.json: byte for byte what `webjsui init` writes (see the
+  // DEFAULT_ALIASES / DEFAULT_TAILWIND_CSS constants in
+  // packages/ui/src/commands/init.js, which #1129 made the single source of
+  // these values). Keep the two in step: an app that scaffolds and one that
+  // runs `webjs ui init` must end up with the same config. The utils alias
   // is lib/utils/cn so get-config.js's `+ '.ts'` resolves to lib/utils/cn.ts.
   // The theme CSS lives at styles/globals.css, NOT app/globals.css: app/ is
   // routing-only, so a non-routing stylesheet does not belong there.
@@ -255,9 +259,15 @@ function assertUiRegistryAvailable() {
  * @param {string} cwd   Current working directory
  */
 export async function scaffoldApp(name, cwd, opts = {}) {
+  // Defence in depth, same as the template check below. `webjs create` already
+  // validates the name, but a programmatic caller can pass anything, and the
+  // name is interpolated into generated source as a template-literal value
+  // (#1066), so an unvalidated quote / backtick / `${` would emit a file that
+  // fails to parse. Throwing here happens before any directory is created.
+  assertValidAppName(name);
   const template = opts.template || 'full-stack';
-  // A human-friendly display title for the example home page. The npm `name`
-  // stays the raw slug (lowercase, hyphenated), but showing a hyphenated slug as
+  // A human-friendly display title for the example home page. The package
+  // `name` stays the raw slug as typed, but showing a hyphenated slug as
   // a hero title looks unpolished, so title-case it for display ("my-app" ->
   // "My App"). Replace this with your real brand anyway.
   const displayName = name.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());

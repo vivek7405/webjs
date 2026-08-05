@@ -92,14 +92,41 @@ test('add: multiple components at once', async () => {
   }
 });
 
-test('add: respects registry:lib `target` field for utils.ts placement', async () => {
+// The shared helpers follow the `utils` ALIAS, not the registry manifest's
+// pinned `target` (#1129): the alias is what component imports are rewritten
+// to, so honouring the manifest instead left a copy nothing imported. This
+// fixture's alias is `lib/utils`, so the helper still lands at lib/utils.ts,
+// but now because the alias says so. The sibling test below is the one that
+// proves the alias actually drives it.
+test('add: places the lib helper at the utils alias, not in components/ui', async () => {
   stubFetch();
   const d = tmp();
   try {
     await add.parseAsync(['card', '--yes', '--no-deps', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
-    // lib-utils has `target: 'lib/utils.ts'`: it should land there, not in components/ui/
     assert.ok(existsSync(join(d, 'lib', 'utils.ts')));
     assert.ok(!existsSync(join(d, 'components', 'ui', 'utils.ts')));
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+test('add: a non-default utils alias moves the lib helper, overriding the manifest target', async () => {
+  stubFetch();
+  const d = mkdtempSync(join(tmpdir(), 'webjsui-add-alias-'));
+  writeFileSync(
+    join(d, 'components.json'),
+    JSON.stringify({
+      $schema: 'https://ui.webjs.dev/schema.json',
+      style: 'default',
+      tailwind: { css: 'styles/globals.css', baseColor: 'neutral', cssVariables: true },
+      aliases: { components: 'components', utils: 'src/shared/cn', ui: 'components/ui', lib: 'lib' },
+    }),
+  );
+  try {
+    await add.parseAsync(['card', '--yes', '--no-deps', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+    assert.ok(existsSync(join(d, 'src', 'shared', 'cn.ts')), 'helper follows the alias');
+    assert.equal(existsSync(join(d, 'lib', 'utils.ts')), false, 'nothing at the manifest target');
   } finally {
     globalThis.fetch = origFetch;
     rmSync(d, { recursive: true });
@@ -367,6 +394,39 @@ test('add: rewrites a registry component\'s ../lib/utils.ts import to the user\'
     assert.doesNotMatch(body, /from '\.\.\/lib\/utils\.ts'/);
   } finally {
     globalThis.fetch = origFetchLocal;
+    rmSync(d, { recursive: true });
+  }
+});
+
+// `--yes` means "do not prompt me", not "replace my edited source". Since
+// #1129 the helper sits at the `utils` alias, the file webjs create generates
+// and the docs tell you to retune, so add must leave it alone there.
+test('add: --yes does not replace an existing cn helper', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(join(d, 'lib'), { recursive: true });
+    writeFileSync(join(d, 'lib', 'utils.ts'), 'export const MINE = 1;\n');
+    await add.parseAsync(['card', '--yes', '--no-deps', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+    assert.match(readFileSync(join(d, 'lib', 'utils.ts'), 'utf8'), /MINE/, 'edited helper survives --yes');
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+test('add: --overwrite does replace it', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(join(d, 'lib'), { recursive: true });
+    writeFileSync(join(d, 'lib', 'utils.ts'), 'export const MINE = 1;\n');
+    await add.parseAsync(['card', '--yes', '--overwrite', '--no-deps', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+    assert.doesNotMatch(readFileSync(join(d, 'lib', 'utils.ts'), 'utf8'), /MINE/);
+  } finally {
+    globalThis.fetch = origFetch;
     rmSync(d, { recursive: true });
   }
 });

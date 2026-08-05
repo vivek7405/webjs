@@ -615,6 +615,8 @@ test('scaffoldApp: template placeholder substitution in copied files', async () 
   const cwd = await tempCwd();
   const restore = muteConsole();
   try {
+    // Deliberately mixed-case: this is the repo's only uppercase exercise of the
+    // {{APP_NAME}} substitution path in create.js, and #1066 allows uppercase.
     await scaffoldApp('PlaceholderTest', cwd, { template: 'full-stack' });
     const appDir = join(cwd, 'PlaceholderTest');
 

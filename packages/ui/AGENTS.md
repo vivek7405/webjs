@@ -85,7 +85,7 @@ packages/ui/
   src/
     index.js                      CLI entry (Commander program + dispatch)
     commands/
-      init.js                     init, writes components.json, theme CSS, lib/utils.ts
+      init.js                     init, writes components.json, theme CSS, lib/utils/cn.ts (defaults are fixed constants)
       add.js                      add, resolve registry items + write into project + install deps
       list.js                     list, show all registry items
       view.js                     view, print a component's source
@@ -101,13 +101,12 @@ packages/ui/
       resolver.js                 walk registryDependencies transitively
     utils/
       get-config.js               read components.json
-      detect-project.js           webjs / next / vite / astro / plain detection
       theme.js                    ensureTheme(): install the design tokens (init hard-fails, add self-heals)
       logger.js                   kleur-based logger
   test/
     schema.test.js                schema validation
     resolver.test.js              transitive deps + npm dedupe
-    detect-project.test.js        project-type detection + defaults
+    init-command.test.js          the components.json init writes + its fixed defaults
     get-config.test.js            config read/write/round-trip
 
   packages/registry/              the registry (internal, not published)
@@ -284,13 +283,37 @@ later change cannot quietly make the test non-discriminating.
 
 | Command | What it does |
 |---|---|
-| `webjsui init` | Initialize a project, writes `components.json`, copies `lib/utils.ts`, installs the theme tokens. HARD-FAILS (non-zero exit) when the tokens cannot be written (an unstyled install with a clean exit code was the old trap). |
-| `webjsui add <names...>` | Resolve transitive deps, copy component sources, install npm deps. Self-heals missing theme tokens. For a Tier-1 helper it strips the worked `@example` and leaves a pointer (see Registry resolution). |
+| `webjsui init` | Initialize a project, writes `components.json`, copies the `cn()` helper to `lib/utils/cn.ts` (plus `lib/utils/dom.ts` beside it), installs the theme tokens. Its defaults are fixed constants, not derived from the host project (#1129). NON-DESTRUCTIVE on a re-run: an existing `components.json` keeps its settings (aliases, `tailwind.css`, base color, and any unknown keys) and an existing helper file is left alone, since both are yours; a config that cannot be parsed at all is a hard error rather than a silent replacement. `--overwrite` opts into replacing them. HARD-FAILS (non-zero exit) when the tokens cannot be written (an unstyled install with a clean exit code was the old trap). |
+| `webjsui add <names...>` | Resolve transitive deps, copy component sources, install npm deps. Self-heals missing theme tokens. Leaves an existing `cn()` / dom helper alone (see the placement section); `--overwrite` replaces it. For a Tier-1 helper it strips the worked `@example` and leaves a pointer (see Registry resolution). |
 | `webjsui list [filter]` | List components in the registry |
 | `webjsui view <name>` | Print a component's source to stdout (the human / offline path to the full example) |
 | `webjsui diff [name]` | Show diffs between local and registry (against the LIVE upstream) |
-| `webjsui info` | Print project type + config + registry URL |
+| `webjsui info` | Print cwd + config + registry URL |
 | `webjsui build [file]` | Compile a custom registry (for registry authors) |
+
+### Where the shared helpers land (#1129)
+
+`cn()` and the client-only `onBeforeCache()` follow the project's **`utils`
+alias**, not the `target` the registry manifest pins on the `lib-utils` /
+`lib-dom` items. `add` resolves them through one `helperTarget()` that reads
+the same alias `rewriteUtilsImport` retargets component imports to, so the file
+it writes and the file the components import are the same file by construction.
+The DOM helper is always the utils file's SIBLING (`lib/utils/dom.ts` next to
+`cn.ts`), which is the adjacency the rewrite assumes and the layout `init` and
+`webjs create` both emit.
+
+Honouring the manifest `target` instead is what produced the #1129 orphan bug:
+`add` wrote `lib/utils.ts` while every component resolved to `lib/utils/cn.ts`,
+so each install left a dead copy behind. The manifest `target` still governs
+every OTHER registry item. It is deliberately NOT honoured for these two, in
+any registry, including a custom one authored against the shadcn wire format
+(invariant 3): the rewrite always points component imports at the alias, so a
+write that went anywhere else would recreate the orphan. The two answers have
+to agree, and the alias is the one that has consumers.
+
+Both files are also treated as user-owned once they exist. `init` and `add`
+leave them alone (`add`'s `--yes` suppresses prompts but does not license
+replacing them); only an explicit `--overwrite` replaces one.
 
 ### Registry resolution: LOCAL-FIRST (#983)
 
@@ -377,6 +400,19 @@ when the caller passes an explicit custom `--registry <url>`.
    no `ElementInternals`, no `setFormValue` proxying. Submission,
    autofill, browser autocomplete, native validation all work.
 
+7. **The kit targets WebJs apps, and only WebJs apps (#1129).** There is no
+   host-project detection and no per-framework branching anywhere in the
+   package. `init` writes one fixed set of defaults (`styles/globals.css`, and
+   the alias map whose `utils` entry is `lib/utils/cn`), which are the same
+   values `webjs create` scaffolds, so `init` on a bare app and a scaffolded
+   app land on the same layout. The output is plain Tailwind classes and
+   standard custom elements, so it will render in a non-WebJs host, but that
+   is not a supported, tested, or advertised path: point `--css` somewhere
+   else and hand-edit `components.json` at your own risk. Do NOT reintroduce a
+   `detectProject()` in any form. A switch that picks paths per framework buys
+   about thirty lines of defaults in exchange for a cross-framework promise
+   the rest of the package does not keep.
+
 ## Component tag convention (Tier 2)
 
 Single `ui-` prefix; sub-components hyphenated. Matches shadcn's React tag
@@ -419,12 +455,12 @@ Change one helper to retune the entire app, every form field that uses
 ## Tests
 
 ```sh
-npm test --workspace=@webjsdev/ui    # schema + resolver + project-detect + config
+npm test --workspace=@webjsdev/ui    # schema + resolver + init defaults + config
 ```
 
 Tests live in **`packages/ui/test/`** as flat files for the CLI
 helpers (`schema.test.js`, `resolver.test.js`,
-`detect-project.test.js`, etc.) plus `test/registry-contents.test.js`
+`init-command.test.js`, etc.) plus `test/registry-contents.test.js`
 which smoke-validates the component sources (reads
 `components/*.ts` and verifies Tier-1/Tier-2 shape + hallmark
 class strings, that every component carries an `A11y` JSDoc block above

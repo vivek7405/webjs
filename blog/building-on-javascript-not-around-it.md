@@ -35,7 +35,7 @@ An instance signal created in a constructor is the opposite: a fresh closure per
 
 # Reactive properties are just property descriptors
 
-*Objects & Classes* spends its hardest chapters on the thing most tutorials skip: a property is not a slot, it is a descriptor, and there is a real difference between an own property sitting on an instance and an accessor living on the prototype.
+*Objects & Classes* spends its hardest chapters on the thing most tutorials skip: a property is not a slot, it is a descriptor, and a plain data slot and an accessor pair are two different things wearing the same syntax.
 
 WebJs components are real ES classes over a real prototype chain, and reactive properties are accessors. When you write `extends WebComponent({ count: Number })`, the factory installs a getter and setter pair with `Object.defineProperty`, so that assigning `this.count = 3` runs through a setter that schedules a render. There is no virtual DOM diffing a plain object. There is a property descriptor doing exactly what the language says a property descriptor does.
 
@@ -43,11 +43,11 @@ That design has one sharp edge, and it is the exact footgun the book warns about
 
 ```ts
 class Counter extends WebComponent({ count: Number }) {
-  count = 0;   // wrong: defines an OWN property on the instance
+  count = 0;   // wrong: overwrites the accessor with a plain slot
 }
 ```
 
-the class field runs `[[Define]]` on the instance, creating an own property that shadows the prototype accessor. The setter never fires, and the component silently stops reacting. This is the "own property versus prototype accessor" distinction straight out of Chapter 2, and it is the kind of bug that eats an afternoon. WebJs catches it with a lint rule so you get told at check time instead of at 2am, but the reason the rule has to exist is that the framework respects the real object model rather than hiding it behind a setState bag. The right form sets the default in the constructor, after `super()`, where an assignment goes through the accessor:
+the class field runs `[[Define]]` on the instance, and so did the factory's accessor, one line earlier inside `super()`. The field wins because it lands second, replacing the accessor with a plain data slot. The setter never fires, and the component silently stops reacting. This is the descriptor-versus-slot distinction straight out of Chapter 2, plus the initialization ordering the class-fields proposal spells out, and it is the kind of bug that eats an afternoon. WebJs catches it with a lint rule so you get told at check time instead of at 2am, but the reason the rule has to exist is that the framework respects the real object model rather than hiding it behind a setState bag. The right form sets the default in the constructor, after `super()`, where an assignment goes through the accessor:
 
 ```ts
 class Counter extends WebComponent({ count: Number }) {

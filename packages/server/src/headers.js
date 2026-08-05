@@ -29,6 +29,8 @@
  * touch the response pipeline again.
  */
 
+import { trustProxy } from './forwarded.js';
+
 /**
  * Baseline security headers, as literal name -> value pairs. Set only
  * when absent, so an app override always wins. HSTS is NOT here: it is
@@ -190,18 +192,18 @@ export function applySecurityHeaders(res, ctx) {
 
 /**
  * Detect whether the original client request was HTTPS, from a web
- * `Request` (the shape `handle()` works with). Honors the same
- * reverse-proxy trust posture as `forwarded.js`: read
- * `X-Forwarded-Proto` only when proxy trust is on
- * (`WEBJS_NO_TRUST_PROXY !== '1'`); otherwise fall back to the request
- * URL's scheme. Never trusts the header blindly.
+ * `Request` (the shape `handle()` works with). Reads `X-Forwarded-Proto`
+ * only when `trustProxy()` says a proxy speaks for the client; otherwise
+ * falls back to the request URL's scheme. Never trusts the header blindly.
+ *
+ * The posture comes from `forwarded.js` rather than an inline `process.env`
+ * read (#1104), so this gate cannot drift from the URL rewrite it shadows.
  *
  * @param {Request} req
  * @returns {boolean}
  */
 export function webRequestIsHttps(req) {
-  const trust = process.env.WEBJS_NO_TRUST_PROXY !== '1';
-  if (trust) {
+  if (trustProxy()) {
     const proto = req.headers.get('x-forwarded-proto');
     if (proto) return proto.split(',')[0].trim().toLowerCase() === 'https';
   }

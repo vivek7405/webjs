@@ -269,7 +269,7 @@ MyThing.register('my-thing');
 
 - Default export is a possibly-async function receiving `{ params, searchParams, url, actionData }`. Runs **only on the server**. Throw `notFound()` / `redirect(url)` to short-circuit. `params` / `searchParams` are awaitable AND synchronously readable (`params.id` and `await params` both work, Next 15/16 parity, #848).
 - Named exports: `metadata` (static), `generateMetadata(ctx)` (async, takes precedence). Type both with `Metadata`. See `references/routing-and-pages.md`.
-- Optional `export const revalidate` (seconds) opts into the server HTML response cache (#241). SAFETY: only on a page identical for every visitor (no `cookies()` / session / per-user data); keyed by URL only. See `references/built-ins.md`.
+- Optional `export const revalidate` (seconds) opts into the server HTML response cache (#241). SAFETY: only on a page identical for every visitor (no `cookies()` / session / per-user data); keyed by the request origin plus the URL, with no per-user keying. See `references/built-ins.md`.
 - A page has NO `action` export. The no-JS write path is a `<form action=${importedAction}>` binding a `'use server'` action (#1155): a non-GET submission to the page's own URL is dispatched to the action the hidden `__webjs_action` field names, returning an `ActionResult`. Success is a `303` (PRG); failure re-renders the SAME page at `422` with the result on `ctx.actionData`; a submission binding nothing is a `405`. See `references/data-and-actions.md`.
 - Page modules also load on the client so imported components register; keep top-level imports browser-safe. **Server-only code goes only in `.server.{js,ts}`, `route.ts`, or `middleware.ts`. Never in pages, layouts, or components.**
 
@@ -377,11 +377,15 @@ class TodoList extends WebComponent({
 }) {
   private optimisticTodos = optimistic(this, {
     source: () => this.todos,
-    update: (state, title: string) => [
+    // KEEP THIS REDUCER PURE. `.value` re-folds every queued update on EVERY
+    // read, so a `crypto.randomUUID()` here would mint a NEW id per render and
+    // a keyed list would tear the pending row down on each update. Mint the
+    // temp id in the handler and carry it in the payload.
+    update: (state, add: { tempId: string; title: string }) => [
       ...state,
-      // No cast needed: `Todo['id']` is a string (a uuid primary key). Against
-      // an auto-increment integer id, model the temp row instead of casting.
-      { id: crypto.randomUUID(), title, completed: false, createdAt: new Date(), pending: true },
+      // `createdAt` is rebuilt per read too, tolerable only because nothing
+      // keys on it. Put it in the payload as well if anything does.
+      { id: add.tempId, title: add.title, completed: false, createdAt: new Date(), pending: true },
     ],
   });
 
@@ -391,8 +395,12 @@ class TodoList extends WebComponent({
     if (!title) return;
     (e.target as HTMLFormElement).reset();
 
+    // Minted ONCE here, not in the reducer. No cast needed: `Todo['id']` is a
+    // string (a uuid primary key). Against an auto-increment integer id, model
+    // the temp row instead of casting.
+    const tempId = crypto.randomUUID();
     const promise = createTodo({ title });
-    this.optimisticTodos.add(title, promise);
+    this.optimisticTodos.add({ tempId, title }, promise);
 
     const result = await promise;
     if (result.success && result.data) {
@@ -413,7 +421,9 @@ class TodoList extends WebComponent({
 TodoList.register('todo-list');
 ```
 
-`.add(payload, promise)` auto-releases when the promise settles (resolve or reject). No try-catch, no manual rollback, no temp-ID bookkeeping.
+`.add(payload, promise)` auto-releases when the promise settles (resolve or reject). No try-catch, no manual rollback, no reconciling a temp id against the real one.
+
+**Keep `update` pure.** `.value` re-folds the whole queue on every read, so the reducer runs again on each render rather than once per `.add()`, and anything it mints is minted per render. Mint a temp id in the handler and pass it in the payload, as above. A `crypto.randomUUID()` inside the reducer hands the pending row a fresh id every read, which breaks `repeat()` keying and anything else treating that id as stable.
 
 ### Simple flips: imperative API
 
@@ -470,6 +480,8 @@ const result = await optimistic(liked, true, () => likePost(postId));
 
 Two scaffolds exist (do not invent template names): `webjs create <name>` (full-stack: layout, page, components, modules, Drizzle+SQLite, plus a browsable feature gallery), and `webjs create <name> --template api` (backend-only routes + modules + Drizzle, no SSR). Auth is one of the full-stack gallery cards (login + a signed session + a real protected route), so a full-stack app already carries a promotable auth baseline (this replaced the former `--template saas`). The `--db sqlite|postgres` flag (default sqlite) picks the dialect; the schema/queries/actions are identical across dialects (see #563). The `--runtime node|bun` flag (default node, #541) is ORTHOGONAL to the template and re-flavors either for Bun (`bun --bun` dev/start scripts so the SERVER runs on Bun, `bun.lock`, a pure `oven/bun:1` Dockerfile (#595; safe since cli@0.10.20's npx-free `webjs db migrate` (#570) needs no Node in the image) + bun-install CI, bun-command agent docs; the test/db/check tooling stays on Node); `bun create webjs <name>` auto-detects it. Pick from the request: default (full-stack) for any product with UI (todo, blog, dashboard, marketplace, social, e-commerce, a SaaS with accounts/login), `api` for an HTTP/JSON API with no UI; default to full-stack when ambiguous.
 
+The `<name>` must be a valid package name (letters, digits, and the separators `-`, `.`, `_`, starting with a letter or a digit, at most 214 characters, and not `node_modules` or `favicon.ico`, which npm reserves). It becomes the app directory, the generated `package.json` `name`, AND a value the scaffold writes into generated source, so anything else is rejected before a single file is written (#1066). Uppercase is fine (`webjs create MyApp` works), since the scaffold's manifest is private and never published.
+
 Rules: **always scaffold via `webjs create`** (never hand-roll). **Default to a real database (Drizzle + SQLite); NEVER use JSON files, in-memory arrays, or localStorage for persistence.** Update `db/schema.server.ts` to real models FIRST, then `webjs db generate` + `webjs db migrate`, then build pages/actions/queries. **The scaffold ships a gallery index home, a neutral-palette root layout, db wiring, and a densely-commented feature gallery** (single-concept demos under `app/features/` plus the `app/examples/todo` app, with logic in `modules/`), alongside the one cross-agent skill at `.agents/skills/webjs/` (a routing `SKILL.md` + on-demand `references/`) that teaches how to build. Treat the gallery as browsable reference: read the demos to learn the idioms, then build the app the user asked for by growing the scaffold (add routes under `app/`, components under `components/`, features under `modules/<feature>/`, keep server-only code behind `.server.ts`) and prune the demos the app does not use (delete the `app/features/<x>` route AND its `modules/<x>`). Give a UI app its own palette by setting the token values in `app/layout.ts`. There is no design gate and no placeholder gate: taste is the agent's job, not the checker's. Docs at https://webjs.dev/docs.
 
 ---
@@ -483,7 +495,7 @@ webjs test   [--server] [--browser] [--watch]
 webjs check  [--rules] [--json]    # correctness validator (report-only, no autofix); --json for an agent loop
 webjs routes [--json] [--table] [--no-headers]   # print the route table (path / owner file / methods, #975). Default tree; --json is byte-identical to the MCP list_routes tool; --no-headers drops the --table header for piping
 webjs mcp                          # read-only MCP: routes, actions (RPC hashes), components, check, ui kit
-webjs doctor [--json] [--strict]   # project-health checklist (incl. a framework-resolve check that warns when @webjsdev/core can't be resolved from the app dir, the fresh-worktree-without-node_modules trap #954; a page/layout elision advisory); non-zero exit on a hard fail. --json emits `{ results, summary }` (results is the DoctorResult[], each carrying a stable code); --strict also fails the exit on warnings (#975)
+webjs doctor [--json] [--strict]   # project-health checklist (incl. a framework-resolve check that warns when @webjsdev/core can't be resolved from the app dir, the fresh-worktree-without-node_modules trap #954; a page/layout elision advisory; a warning when a route module writes a `<link rel="stylesheet">` without `asset()`, #1095); non-zero exit on a hard fail. --json emits `{ results, summary }` (results is the DoctorResult[], each carrying a stable code); --strict also fails the exit on warnings (#975)
 webjs types                        # generate .webjs/routes.d.ts (typed Route union + per-route params, #258)
 webjs version                      # print the installed @webjsdev/cli version (also: webjs --version / -v, #975)
 webjs help   [command]             # full usage banner, or per-command usage + Options + Examples (e.g. webjs help routes, #975). Flag forms: webjs --help / -h (banner), webjs <command> --help / -h (that command). typecheck/db/ui --help forward to their wrapped tool; an unknown topic exits 1
