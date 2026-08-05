@@ -29,7 +29,7 @@ export default function ErrorHandling() {
     <h2>Route-level error boundaries</h2>
     <p>Place an <code>error.ts</code> file at any level in the <code>app/</code> directory. When a page or layout at that level (or deeper) throws, the nearest <code>error.ts</code> is rendered instead.</p>
 
-    <pre>// app/error.ts: root error boundary
+    <code-block>// app/error.ts: root error boundary
 import { html } from '@webjsdev/core';
 
 export default function ErrorPage({ error }: { error: Error }) {
@@ -38,22 +38,22 @@ export default function ErrorPage({ error }: { error: Error }) {
     &lt;p&gt;${'${error.message}'}&lt;/p&gt;
     &lt;a href="/"&gt;Go home&lt;/a&gt;
   ${'`'};
-}</pre>
+}</code-block>
 
     <h3>Nesting</h3>
     <p>Error boundaries are nested. The framework walks from the throwing component outward until it finds the nearest <code>error.ts</code>:</p>
-    <pre>app/
+    <code-block>app/
   error.ts              ← catches errors from any page
   blog/
     error.ts            ← catches errors from /blog/* pages only
-    [slug]/page.ts      ← if this throws, blog/error.ts handles it</pre>
+    [slug]/page.ts      ← if this throws, blog/error.ts handles it</code-block>
 
     <p>If <code>blog/error.ts</code> also throws, the parent <code>app/error.ts</code> catches it.</p>
 
     <h2>not-found.ts</h2>
     <p>A special error boundary for 404 responses. Place <code>not-found.ts</code> at any route level, and the nearest one wins:</p>
 
-    <pre>// app/not-found.ts
+    <code-block>// app/not-found.ts
 import { html } from '@webjsdev/core';
 
 export default function NotFound() {
@@ -62,36 +62,36 @@ export default function NotFound() {
     &lt;p&gt;The page you're looking for doesn't exist.&lt;/p&gt;
     &lt;a href="/"&gt;Go home&lt;/a&gt;
   ${'`'};
-}</pre>
+}</code-block>
 
     <p>Trigger a 404 programmatically from any page function or server action:</p>
 
-    <pre>import { notFound } from '@webjsdev/core';
+    <code-block>import { notFound } from '@webjsdev/core';
 
 export default async function PostPage({ params }: { params: { slug: string } }) {
   const post = await getPost(params.slug);
   if (!post) notFound();  // renders nearest not-found.ts
   return html${'`'}...&lt;/h1&gt;${'`'};
-}</pre>
+}</code-block>
 
     <h2>forbidden.ts and unauthorized.ts</h2>
     <p>Throw <code>forbidden()</code> (403) or <code>unauthorized()</code> (401) from a page/layout function or a form-bound action, the same way as <code>notFound()</code>. The nearest <code>forbidden.ts</code> / <code>unauthorized.ts</code> boundary renders (a default page when none exists). Use <code>unauthorized()</code> for a request that is not authenticated, and <code>forbidden()</code> for an authenticated user who lacks permission:</p>
 
-    <pre>import { forbidden, unauthorized } from '@webjsdev/core';
+    <code-block>import { forbidden, unauthorized } from '@webjsdev/core';
 
 export default async function AdminPage() {
   const user = await currentUser();
   if (!user) unauthorized();        // renders nearest unauthorized.ts (401)
   if (!user.isAdmin) forbidden();   // renders nearest forbidden.ts (403)
   return html${'`'}...${'`'};
-}</pre>
+}</code-block>
 
     <p>Inside a <code>'use server'</code> RPC action (one a client component calls), return a <code>{ success: false, error, status }</code> <code>ActionResult</code> for an auth failure rather than throwing <code>forbidden()</code> / <code>unauthorized()</code>. The boundary render is a page-routing concern, the same guidance as for <code>notFound()</code> / <code>redirect()</code>.</p>
 
     <h2>global-error.ts and global-not-found.ts</h2>
     <p>Two root-only boundaries (in <code>app/</code> exactly). <code>global-error.ts</code> is the app-wide catch-all, tried after the nested <code>error.ts</code> boundaries are exhausted, and it renders its OWN full document (a root-layout failure is when it fires):</p>
 
-    <pre>// app/global-error.ts
+    <code-block>// app/global-error.ts
 import { html } from '@webjsdev/core';
 
 export default function GlobalError({ error }: { error: Error }) {
@@ -99,7 +99,7 @@ export default function GlobalError({ error }: { error: Error }) {
     &lt;!doctype html&gt;
     &lt;html&gt;&lt;body&gt;&lt;h1&gt;Something went wrong&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;
   ${'`'};
-}</pre>
+}</code-block>
 
     <p>Keep <code>global-error.ts</code> static (no components / hydration): it is returned verbatim with no importmap or boot script, so it must not depend on the module system that may have just failed. Under an opt-in CSP, give any inline <code>&lt;style&gt;</code> the <code>cspNonce()</code>.</p>
 
@@ -108,7 +108,7 @@ export default function GlobalError({ error }: { error: Error }) {
     <h2>Component-level error handling</h2>
     <p>Override <code>renderError(error)</code> in any <code>WebComponent</code> to catch errors from that component's <code>render()</code> method:</p>
 
-    <pre>class MyWidget extends WebComponent {
+    <code-block>class MyWidget extends WebComponent {
 
   render() {
     // If this throws, renderError() is called instead
@@ -118,7 +118,7 @@ export default function GlobalError({ error }: { error: Error }) {
   renderError(error: Error) {
     return html${'`'}&lt;p class="error"&gt;Widget failed: ${'${error.message}'}&lt;/p&gt;${'`'};
   }
-}</pre>
+}</code-block>
 
     <p>If <code>renderError()</code> is not defined, the error is logged to the console and the component's shadow root shows the last successful render (or nothing on first render).</p>
 

@@ -25,11 +25,11 @@ export default function ProgressiveEnhancement() {
       <li><strong>Custom elements' initial markup.</strong> Every web component's <code>render()</code> runs server-side. Light-DOM components serialize as direct children, and shadow-DOM components emit Declarative Shadow DOM so scoped styles paint before JS loads.</li>
       <li><strong>Navigation.</strong> <code>&lt;a href="..."&gt;</code> is a real link. The client router enhances it into a partial-swap when JS is active. With JS off, the browser performs a standard navigation.</li>
       <li><strong>Form submissions (write-paths).</strong> A server action binds straight into the form and submits as a plain HTML POST:
-        <pre>&lt;form action=\${createPost}&gt;
+        <code-block>&lt;form action=\${createPost}&gt;
   &lt;input name="title"&gt;
   &lt;textarea name="body"&gt;&lt;/textarea&gt;
   &lt;button type="submit"&gt;Save&lt;/button&gt;
-&lt;/form&gt;</pre>
+&lt;/form&gt;</code-block>
         Submitting this form works whether or not JavaScript is enabled. The client router upgrades it to a partial-swap submission when active.
       </li>
       <li><strong>CSS-driven interactivity.</strong> Hover, focus, <code>:checked</code>, <code>:target</code>, <code>&lt;details&gt;</code>/<code>&lt;summary&gt;</code>, native dropdowns (<code>&lt;select&gt;</code>) all work without JS by construction.</li>
@@ -80,7 +80,7 @@ export default function ProgressiveEnhancement() {
       It is the no-build framework's answer to dead-JavaScript-on-the-wire elimination, the one benefit React Server Components offer that a progressive-enhancement framework would otherwise lack, achieved here without a bundler, a Flight protocol, or a new mental model. (And it really is just an optimization on isomorphic modules, not an RSC-style server/client split, see <a href="/docs/architecture">Architecture</a>.)
     </p>
 
-    <pre>// Elided: pure render, no interactivity. SSR'd HTML is the whole story,
+    <code-block>// Elided: pure render, no interactivity. SSR'd HTML is the whole story,
 // the browser never downloads this module.
 class Badge extends WebComponent {
   render() { return html\`&lt;span class="badge"&gt;verified&lt;/span&gt;\`; }
@@ -91,7 +91,7 @@ Badge.register('status-badge');
 class Counter extends WebComponent {
   render() { return html\`&lt;button @click=\${() =&gt; this.inc()}&gt;+&lt;/button&gt;\`; }
 }
-Counter.register('my-counter');</pre>
+Counter.register('my-counter');</code-block>
 
     <h3>Where your npm packages run</h3>
     <p>An npm package reaches the browser when a module that loads on the client imports it (the boot script loads page/layout modules and the components they register; loading a module runs its <code>import</code> statements). So:</p>
@@ -113,13 +113,13 @@ Counter.register('my-counter');</pre>
       Don't write JS-only click handlers for routing.
     </p>
 
-    <pre>// ✅ works without JS, and the router enhances it
+    <code-block>// ✅ works without JS, and the router enhances it
 &lt;a href="/posts/${'${post.id}'}"&gt;${'${post.title}'}&lt;/a&gt;
 
 // ❌ requires JS to navigate
 &lt;button @click=${'${() => router.push(`/posts/${post.id}`)}'}&gt;
   ${'${post.title}'}
-&lt;/button&gt;</pre>
+&lt;/button&gt;</code-block>
 
     <h3>2. Use <code>&lt;form action=\${importedAction}&gt;</code> for writes</h3>
 
@@ -131,7 +131,7 @@ Counter.register('my-counter');</pre>
       The action validates on the server, then returns one of two outcomes. A <strong>success</strong> result is a <code>303 See Other</code> to <code>result.redirect</code> (Post/Redirect/Get). A <strong>failure</strong> result re-SSRs the same page at <code>422</code> with the result on <code>ctx.actionData</code>, so the page repopulates the fields from <code>actionData.values</code> and shows the messages from <code>actionData.fieldErrors</code>.
     </p>
 
-    <pre>// modules/posts/actions/create-post.server.ts
+    <code-block>// modules/posts/actions/create-post.server.ts
 'use server';
 // A form-bound action always receives the FormData.
 export async function createPost(formData: FormData) {
@@ -162,7 +162,7 @@ export default function NewPost({ actionData }: {
       &lt;button type="submit"&gt;Publish&lt;/button&gt;
     &lt;/form&gt;
   \`;
-}</pre>
+}</code-block>
 
     <p>
       With JS off the browser submits, follows the 303, or renders the 422. With JS on the client router posts the same body to the same URL, applies the 422 in place (no reload, typed input preserved) and follows the 303 via fetch, so the two paths are identical by construction rather than by two implementations agreeing. Both are Origin-verified, so a no-JS form needs no CSRF token field. Avoid the pattern of <code>fetch('/api/...')</code> + a click handler for write-paths. That's JS-required by construction.
@@ -182,7 +182,7 @@ export default function NewPost({ actionData }: {
       The component's <code>render()</code> output must be the right HTML, not a placeholder waiting for hydration. Bad:
     </p>
 
-    <pre>// ❌ first paint is empty, relies on hydration
+    <code-block>// ❌ first paint is empty, relies on hydration
 class PostList extends WebComponent {
   posts = [];
   render() { return html\`&lt;ul&gt;${'${this.posts.map(...)}'}&lt;/ul&gt;\`; }
@@ -190,17 +190,17 @@ class PostList extends WebComponent {
     this.posts = await fetchPosts();   // ← only runs in browser
     this.requestUpdate();
   }
-}</pre>
+}</code-block>
 
     <p>Good. Fetch on the server, render with real data, no client roundtrip:</p>
 
-    <pre>// ✅ first paint has the data
+    <code-block>// ✅ first paint has the data
 // app/posts/page.ts
 import { listPosts } from '#modules/posts/queries/list-posts.server.ts';
 export default async function Posts() {
   const posts = await listPosts();
   return html\`&lt;post-list .posts=\${posts}&gt;&lt;/post-list&gt;\`;
-}</pre>
+}</code-block>
 
     <h3>4. Don't gate read-paths on hydration</h3>
 
@@ -220,7 +220,7 @@ export default async function Posts() {
       The SSR pipeline constructs each web component (<code>new Cls()</code>), applies its attributes, runs <code>willUpdate</code> and controllers' <code>hostUpdate</code>, reflects <code>reflect: true</code> properties, and calls <code>render()</code>. <strong>It does <em>not</em> call <code>connectedCallback</code>, <code>firstUpdated</code>, <code>updated</code>, or any browser-only hook.</strong> Those run only in the browser, after the script loads. Whatever state your component should display on first paint must be set in the constructor, derived in <code>willUpdate</code>, or be derivable from the factory's reactive properties on the element's attributes.
     </p>
 
-    <pre>// ❌ first paint is empty, initial state set in browser-only hook
+    <code-block>// ❌ first paint is empty, initial state set in browser-only hook
 class Cart extends WebComponent({ items: prop&lt;Item[]&gt;(Array) }) {
   connectedCallback() {                       // ← server never runs this
     super.connectedCallback();
@@ -229,9 +229,9 @@ class Cart extends WebComponent({ items: prop&lt;Item[]&gt;(Array) }) {
   }
 
   render() { return html\`&lt;ul&gt;${'${this.items.map(...)}'}&lt;/ul&gt;\`; }
-}</pre>
+}</code-block>
 
-    <pre>// ✅ SSR-safe: sensible default in the constructor, browser hook
+    <code-block>// ✅ SSR-safe: sensible default in the constructor, browser hook
 //    refines it after hydration
 class Cart extends WebComponent {
   items = signal&lt;Item[]&gt;([]);                  // ← SSR uses this
@@ -243,7 +243,7 @@ class Cart extends WebComponent {
   }
 
   render() { return html\`&lt;ul&gt;${'${this.items.get().map(...)}'}&lt;/ul&gt;\`; }
-}</pre>
+}</code-block>
 
     <p>
       For data that genuinely can't be known on the server (a user's <code>localStorage</code>, viewport size, online status, time zone, theme preference), one of three patterns works:

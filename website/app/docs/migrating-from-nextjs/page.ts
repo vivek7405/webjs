@@ -45,7 +45,7 @@ export default function MigratingFromNextjs() {
 
     <h2>Before and after</h2>
     <p>A Next.js App Router page that fetches on the server and renders an interactive counter, split across a Server Component and a Client Component:</p>
-    <pre>// app/dashboard/page.tsx  (Next.js)
+    <code-block>// app/dashboard/page.tsx  (Next.js)
 import { getStats } from '@/lib/stats';
 import { Counter } from './counter';
 
@@ -65,9 +65,9 @@ import { useState } from 'react';
 export function Counter({ start }: { start: number }) {
   const [n, setN] = useState(start);
   return &lt;button onClick={() =&gt; setN(n + 1)}&gt;{n}&lt;/button&gt;;
-}</pre>
+}</code-block>
     <p>The WebJs equivalent. The page is an async server function that reads data through a <code>.server</code> query, and the interactive part is a web component that hydrates:</p>
-    <pre>// modules/stats/queries/get-stats.server.ts  (webjs: the server boundary)
+    <code-block>// modules/stats/queries/get-stats.server.ts  (webjs: the server boundary)
 'use server';
 import { db } from '#db/connection.server.ts';
 export async function getStats() {
@@ -98,7 +98,7 @@ export class Counter extends WebComponent({ start: Number }) {
     return html\`&lt;button @click=\${() =&gt; { this.start = this.start + 1; }}&gt;\${this.start}&lt;/button&gt;\`;
   }
 }
-Counter.register('my-counter');</pre>
+Counter.register('my-counter');</code-block>
     <p>The shape is the same (a server-rendered shell with an interactive island), but there is no <code>'use client'</code> directive and no Server/Client Component pair. The page renders on the server and never hydrates; the <code>&lt;my-counter&gt;</code> element hydrates and owns its interactivity; the data crosses the <code>.server</code> boundary as an RPC-backed query.</p>
 
     <h2>What ports cleanly, and what does not</h2>

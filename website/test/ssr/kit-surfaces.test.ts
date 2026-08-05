@@ -87,11 +87,15 @@ test('no colour is declared under a per-theme selector anywhere', () => {
 
   for (const rel of files) {
     // Comments are stripped so prose naming a selector is not read as a rule,
-    // and `pre` blocks in the docs pages are left alone: those are code
-    // SAMPLES teaching the reader, not this site's own styling.
+    // and code blocks in the docs pages are left alone: those are code SAMPLES
+    // teaching the reader, not this site's own styling. Both tags are matched
+    // because the docs author `<code-block>` and the marketing pages still
+    // author `<pre>`; dropping either would scan a sample that teaches a
+    // dark-theme override as if it were this site's own styling.
     const src = readFileSync(resolve(ROOT, rel), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/<pre[\s\S]*?<\/pre>/g, '');
+      .replace(/<pre[\s\S]*?<\/pre>/g, '')
+      .replace(/<code-block[\s\S]*?<\/code-block>/g, '');
     // Terminate on the first closing brace, NOT on one at the start of a line:
     // a single-line rule (`:root[data-theme='dark'] .t-str { color: ... }`) is
     // the exact shape the highlight classes used, and anchoring to a newline

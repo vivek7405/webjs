@@ -17,7 +17,7 @@ export default function SuspensePage() {
     </ol>
 
     <h2>Usage</h2>
-    <pre>import { html, Suspense } from '@webjsdev/core';
+    <code-block>import { html, Suspense } from '@webjsdev/core';
 
 async function SlowStats() {
   const data = await fetchExpensiveAnalytics();
@@ -34,20 +34,20 @@ export default function Dashboard() {
       children: SlowStats(),
     })}
   \`;
-}</pre>
+}</code-block>
 
     <p>The user sees "Loading stats…" immediately. When <code>SlowStats()</code> resolves (maybe 500ms later), the real content streams in and replaces the fallback, without a full page reload or client-side JS re-render.</p>
 
     <h2>TTFB Impact</h2>
     <p>Without Suspense, the server waits for ALL data before sending the first byte. With Suspense, TTFB equals the time to render everything OUTSIDE the boundaries, typically milliseconds:</p>
-    <pre>Without Suspense:  TTFB = slowest await = 500ms
+    <code-block>Without Suspense:  TTFB = slowest await = 500ms
 With Suspense:     TTFB = shell render = ~40ms
                    Total = still 500ms (stream completes)
-                   But the user sees content 460ms earlier.</pre>
+                   But the user sees content 460ms earlier.</code-block>
 
     <h2>Nested Suspense</h2>
     <p>Boundaries can nest. A resolved boundary can itself contain Suspense, and the server keeps streaming until all promises drain:</p>
-    <pre>\${Suspense({
+    <code-block>\${Suspense({
   fallback: html\`&lt;p&gt;Loading section…&lt;/p&gt;\`,
   children: (async () =&gt; {
     const section = await loadSection();
@@ -59,31 +59,31 @@ With Suspense:     TTFB = shell render = ~40ms
       })}
     \`;
   })(),
-})}</pre>
+})}</code-block>
 
     <h2>Without a Suspense Context</h2>
     <p>If <code>renderToString</code> is called without a <code>suspenseCtx</code> (e.g., in a static pre-render), Suspense boundaries render the fallback only, and the promise is dropped. This is the safe default for contexts where streaming isn't available.</p>
 
     <h2>Client-Side Resolver</h2>
     <p>The tiny client-side script (auto-injected when any Suspense boundary is present) is a single function:</p>
-    <pre>window.__webjsResolve = function(id) {
+    <code-block>window.__webjsResolve = function(id) {
   const tpl = document.querySelector('template[data-webjs-resolve="' + id + '"]');
   const boundary = document.getElementById(id);
   if (tpl && boundary) {
     boundary.replaceWith(tpl.content.cloneNode(true));
     tpl.remove();
   }
-};</pre>
+};</code-block>
     <p>No framework runtime. No hydration. Just a DOM swap.</p>
 
     <h2>Component-level Suspense: &lt;webjs-suspense&gt;</h2>
     <p>The <code>Suspense({ fallback, children })</code> primitive above is page/region-level (you pass a promise as <code>children</code>). With <a href="/docs/data-fetching">async render</a>, a COMPONENT can be the suspending unit instead. A component that does <code>async render() { const u = await getUser(this.uid); ... }</code> BLOCKS the first byte by default (the data is in the first paint). To STREAM a slow component, wrap it in the <code>&lt;webjs-suspense&gt;</code> element:</p>
-    <pre>html\`
+    <code-block>html\`
   &lt;webjs-suspense .fallback=${'${html`<p>Loading section…</p>`}'}&gt;
     &lt;user-profile uid="42"&gt;&lt;/user-profile&gt;
     &lt;user-activity uid="42"&gt;&lt;/user-activity&gt;
   &lt;/webjs-suspense&gt;
-\`;</pre>
+\`;</code-block>
     <p>The decoupled model: <strong>SSR blocks by default</strong> (real data in the first paint, no fallback), and <code>&lt;webjs-suspense&gt;</code> is the EXPLICIT opt-in that flushes the fallback on the first byte and streams the data in. It reuses the same boundary engine as page-level Suspense, so:</p>
     <ul>
       <li><strong>Grouping + override.</strong> One boundary wraps several components under ONE fallback; the boundary <code>.fallback</code> wins over a contained component's <code>renderFallback()</code>.</li>

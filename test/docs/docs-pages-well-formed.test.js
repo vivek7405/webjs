@@ -35,8 +35,17 @@ const ROOT = resolve(__dirname, '..', '..');
  * blocks); `<div>` matters because layout / page chrome relies on it;
  * `<ul>` / `<ol>` / `<table>` round out the structural containers most
  * commonly authored by hand in doc pages.
+ *
+ * `code-block` carries what `pre` used to: the website's docs pages author
+ * their samples as `<code-block>` (the component renders the `<pre>`), so that
+ * tag now holds every one of the long handwritten blocks this guard was
+ * written against, and an unbalanced one reproduces the original bug exactly.
+ * `pre` stays listed so a docs page that goes back to authoring one directly
+ * is still counted; none does today, so that entry matches nothing. It is NOT
+ * cover for the marketing pages, which do author `<pre>` and which this
+ * guard's glob does not reach.
  */
-const CONTAINERS = ['pre', 'div', 'ul', 'ol', 'table'];
+const CONTAINERS = ['pre', 'code-block', 'div', 'ul', 'ol', 'table'];
 
 /**
  * Count occurrences of `<tag` (open, attribute-tolerant) and `</tag>`
@@ -93,7 +102,10 @@ async function listDocsPages() {
 }
 
 describe('docs pages produce balanced container tags (router-safe HTML)', () => {
-  test('every page.{js,ts} under website/app/docs has matching open/close counts for <pre>, <div>, <ul>, <ol>, <table>', async () => {
+  // Named from CONTAINERS rather than spelled out, so the name cannot go on
+  // advertising a list the check no longer uses. It said <pre> and omitted
+  // code-block for exactly as long as the guard was inert.
+  test(`every page.{js,ts} under website/app/docs has matching open/close counts for ${CONTAINERS.map((t) => `<${t}>`).join(', ')}`, async () => {
     const pages = await listDocsPages();
     // A floor, not just "more than zero". When the docs moved to
     // website/app/docs this glob kept pointing at the old app and matched a
@@ -136,7 +148,8 @@ describe('docs pages produce balanced container tags (router-safe HTML)', () => 
       'will nest the rest of the page (including layout markers like ' +
       '<!--/wj:children-->) inside the unclosed tag, after which ' +
       'router-client.js reconcileSiblings throws NotFoundError from ' +
-      'insertBefore. Close the offending tag in the page source.\n' +
+      'insertBefore. Close the offending tag in the page source. A code ' +
+      'sample is a <code-block>, so that is the usual offender.\n' +
       failures.join('\n')
     );
   });

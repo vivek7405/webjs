@@ -34,14 +34,14 @@ export default function Runtime() {
 
     <h2>Node (the default)</h2>
     <p>Scaffold with <code>webjs create my-app</code> (Node is the default runtime). Then:</p>
-    <pre>npm install
-npm run dev      # or: npm run start</pre>
+    <code-block>npm install
+npm run dev      # or: npm run start</code-block>
     <p>Node 24+ is required: the built-in TypeScript stripper (<code>module.stripTypeScriptTypes</code>, stable from Node 24) and recursive <code>fs.watch</code> need it. The CLI's <code>assertNodeVersion()</code> preflight enforces the floor.</p>
 
     <h2>Bun</h2>
     <p>Scaffold with <code>webjs create my-app --runtime bun</code>, or <code>bun create webjs my-app</code> (the runtime is auto-detected from the invoking package manager). Then:</p>
-    <pre>bun install
-bun run dev      # or: bun run start</pre>
+    <code-block>bun install
+bun run dev      # or: bun run start</code-block>
     <p>A Bun app installs with <code>bun install</code> (like Node), then runs on Bun: its <code>dev</code> / <code>start</code> / <code>db</code> scripts force <code>bun --bun</code>, which overrides the <code>webjs</code> bin's Node shebang so the server runs on Bun, where it selects the native <code>Bun.serve</code> listener and strips types via <code>amaro</code>. The dependencies resolve from <code>node_modules</code>, the same as Node.</p>
     <p>The install also gives editor type intelligence (the editor reads the <code>.d.ts</code> files in <code>node_modules</code>).</p>
 

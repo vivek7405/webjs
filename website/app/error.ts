@@ -23,7 +23,7 @@ export default function ErrorBoundary({ error }: { error: unknown }) {
       <div class="text-xs font-mono uppercase tracking-widest text-accent mb-4">500 &middot; server error</div>
       <h1 class="font-serif text-5xl md:text-6xl font-bold tracking-tight text-fg mb-4" style="letter-spacing: -0.03em">Something went wrong.</h1>
       <p class="text-fg-muted text-lg mb-6 max-w-2xl">We hit an unexpected error while rendering this page. The full stack is logged on the server; only the short message is shown here.</p>
-      <pre class="w-full mb-8 text-sm overflow-x-auto" style="background: var(--bg-sunken); border: 1px solid var(--border); border-radius: 8px; padding: 16px"><code>${message}</code></pre>
+      <pre tabindex="0" class="w-full mb-8 text-sm overflow-x-auto" style="background: var(--bg-sunken); border: 1px solid var(--border); border-radius: 8px; padding: 16px"><code>${message}</code></pre>
       <a href="/" class="inline-flex items-center gap-1.5 text-accent no-underline font-medium hover:underline">&larr; Back home</a>
     </main>
   `;

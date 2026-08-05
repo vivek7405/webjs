@@ -13,7 +13,7 @@ export default function Auth() {
     <p>It is not the only route. If you want to own the session format, the password hashing, and the route-protection rules yourself, build on the framework primitives instead, which is what <a href="/docs/authentication">Build your own authentication</a> covers and what the blog example does. Pick <code>createAuth()</code> for OAuth and a batteries-included setup, pick the primitives when you want full control of the session.</p>
 
     <h2>Setup</h2>
-    <pre>// lib/auth.server.ts: create once
+    <code-block>// lib/auth.server.ts: create once
 import { createAuth, Credentials, Google, GitHub } from '@webjsdev/server';
 import { db } from '#db/connection.server.ts';
 
@@ -34,27 +34,27 @@ export const { auth, signIn, signOut, handlers } = createAuth({
     GitHub(),  // reads AUTH_GITHUB_ID, AUTH_GITHUB_SECRET from env
   ],
   secret: process.env.AUTH_SECRET,
-});</pre>
+});</code-block>
 
     <h2>Mount the auth API route</h2>
-    <pre>// app/api/auth/[...path]/route.ts
+    <code-block>// app/api/auth/[...path]/route.ts
 import { handlers } from '#lib/auth.server.ts';
 export const GET = handlers.GET;
-export const POST = handlers.POST;</pre>
+export const POST = handlers.POST;</code-block>
 
     <h2>Read the session</h2>
-    <pre>// In any page or server action:
+    <code-block>// In any page or server action:
 import { auth } from '#lib/auth.server.ts';
 
 export default async function Dashboard() {
   const session = await auth();
   if (!session) throw redirect('/login');
   return html\`&lt;h1&gt;Welcome, \${session.user.name}&lt;/h1&gt;\`;
-}</pre>
+}</code-block>
     <p>A <code>redirect()</code> thrown during a GET page render (an auth gate like this) defaults to <code>302 Found</code>, the conventional bounce code. The same <code>redirect()</code> thrown from a server action (a POST) defaults to the method-preserving <code>307</code> instead; an explicit <code>redirect(url, status)</code> overrides either. To type <code>session.user</code> so <code>session.user.name</code> needs no cast, see <a href="/docs/typescript">Typing the auth() Session User</a>.</p>
 
     <h2>Sign in and sign out</h2>
-    <pre>// Server actions
+    <code-block>// Server actions
 import { signIn, signOut } from '#lib/auth.server.ts';
 
 export async function login(credentials) {
@@ -67,12 +67,12 @@ export async function loginWithGoogle() {
 
 export async function logout() {
   return signOut({ redirectTo: '/' });
-}</pre>
+}</code-block>
     <p><code>signOut</code> is also reachable as a route: the mounted <code>handlers</code> serve <code>POST /api/auth/signout</code>, so a plain <code>&lt;form method="POST" action="/api/auth/signout"&gt;</code> logs a user out with no JavaScript. That is how the scaffold's auth gallery card renders its logout button.</p>
 
     <h2>Showing a failed sign-in</h2>
     <p>A failed credentials sign-in redirects to <code>&#36;{pages.error}?error=CredentialsSignin</code>, falling back to the home page when <code>pages.error</code> is unset (which silently swallows the failure). Point the error page at your login route, then read the code and render a message:</p>
-    <pre>createAuth({
+    <code-block>createAuth({
   // ...providers, secret
   pages: { error: '/login' },  // a failed sign-in returns here
 });
@@ -84,12 +84,12 @@ export default function LoginPage({ searchParams }) {
     &#36;{failed ? html\`&lt;p role="alert"&gt;Invalid email or password.&lt;/p&gt;\` : ''}
     &lt;form method="POST" action="/api/auth/signin/credentials"&gt;...&lt;/form&gt;
   \`;
-}</pre>
+}</code-block>
     <p>The scaffold's auth gallery card wires exactly this, so a wrong password shows a message on the login page instead of bouncing to the landing page with no feedback.</p>
 
     <h2>Callbacks</h2>
     <p>Customize the session and JWT with callbacks:</p>
-    <pre>createAuth({
+    <code-block>createAuth({
   // ...providers
   callbacks: {
     async jwt({ token, user }) {
@@ -107,23 +107,23 @@ export default function LoginPage({ searchParams }) {
       return session;
     },
   },
-});</pre>
+});</code-block>
 
     <h2>Type the session</h2>
     <p>By default <code>auth()</code> resolves <code>{ user: Record&lt;string, unknown&gt; }</code>, so reading a custom field your callbacks set (like <code>session.user.id</code>) needs a cast and a typo slips past TypeScript. Opt into a typed <code>user</code> one of two ways.</p>
 
     <p><strong>Augment <code>AuthUser</code></strong> (NextAuth/Auth.js style) to type every <code>auth()</code> call across the app. Declare the fields your <code>session</code>/<code>jwt</code> callbacks set:</p>
-    <pre>// lib/auth.server.ts (or any .d.ts in the project)
+    <code-block>// lib/auth.server.ts (or any .d.ts in the project)
 declare module '@webjsdev/server' {
   interface AuthUser {
     id: string;
     role: 'admin' | 'member';
   }
-}</pre>
+}</code-block>
     <p>Now <code>session.user.id</code> is <code>string</code> everywhere, and a misspelling like <code>session.user.idd</code> is a compile error.</p>
 
     <p><strong>Or parameterise the factory</strong> with <code>createAuth&lt;TUser&gt;()</code> to type just this instance, without a global augmentation:</p>
-    <pre>interface AppUser {
+    <code-block>interface AppUser {
   id: string;
   role: 'admin' | 'member';
 }
@@ -132,7 +132,7 @@ export const { auth, signIn, signOut, handlers } =
   createAuth&lt;AppUser&gt;({ /* ...providers, secret */ });
 
 const session = await auth();
-session?.user.role; // typed as 'admin' | 'member', no cast</pre>
+session?.user.role; // typed as 'admin' | 'member', no cast</code-block>
     <p>Both are types-only and opt-in: leave them out and <code>auth().user</code> stays the loose <code>Record&lt;string, unknown&gt;</code>, so existing code keeps working unchanged. The fields you declare should match what your callbacks actually write onto <code>session.user</code>.</p>
 
     <h2>Providers</h2>
@@ -148,17 +148,17 @@ session?.user.role; // typed as 'admin' | 'member', no cast</pre>
     <h2>Session strategies</h2>
     <p><strong>JWT (default):</strong> Session data signed in a cookie. Stateless and scales horizontally without Redis. Cannot be revoked before expiry.</p>
     <p><strong>Database:</strong> Session ID in cookie, data in cache store. Can revoke sessions instantly. Requires Redis or similar for horizontal scaling.</p>
-    <pre>createAuth({
+    <code-block>createAuth({
   session: { strategy: 'database' },  // default: 'jwt'
   // ...
-});</pre>
+});</code-block>
 
     <h2>Environment variables</h2>
-    <pre>AUTH_SECRET=your-random-secret-32-chars-minimum
+    <code-block>AUTH_SECRET=your-random-secret-32-chars-minimum
 AUTH_GOOGLE_ID=your-google-oauth-client-id
 AUTH_GOOGLE_SECRET=your-google-oauth-client-secret
 AUTH_GITHUB_ID=your-github-oauth-client-id
-AUTH_GITHUB_SECRET=your-github-oauth-client-secret</pre>
+AUTH_GITHUB_SECRET=your-github-oauth-client-secret</code-block>
     <p>Generate a secret: <code>node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"</code></p>
   `;
 }

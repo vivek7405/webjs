@@ -23,10 +23,10 @@ export default function RateLimiting() {
     <h2>Basic usage</h2>
     <p>Create a <code>middleware.ts</code> file and export the rate limiter:</p>
 
-    <pre>// app/api/auth/middleware.ts
+    <code-block>// app/api/auth/middleware.ts
 import { rateLimit } from '@webjsdev/server';
 
-export default rateLimit({ window: '1m', max: 10 });</pre>
+export default rateLimit({ window: '1m', max: 10 });</code-block>
 
     <p>This limits the <code>/api/auth/*</code> routes to 10 requests per minute per IP address.</p>
 
@@ -45,16 +45,16 @@ export default rateLimit({ window: '1m', max: 10 });</pre>
 
     <p><strong>When you're fronted by a reverse proxy or CDN</strong> (Cloudflare, nginx, Caddy, Railway, Fly, Render, Vercel, Heroku), the socket IP is the proxy, not the user. Every request shares the same IP and the limiter buckets everyone together. Opt in to forwarded-header parsing:</p>
 
-    <pre>// app/api/auth/middleware.ts
+    <code-block>// app/api/auth/middleware.ts
 import { rateLimit } from '@webjsdev/server';
 
-export default rateLimit({ window: '1m', max: 10, trustProxy: true });</pre>
+export default rateLimit({ window: '1m', max: 10, trustProxy: true });</code-block>
 
     <p>With <code>trustProxy: true</code>, the limiter reads the leftmost <code>X-Forwarded-For</code> entry, then <code>CF-Connecting-IP</code>, then <code>X-Real-IP</code>, then the stamped socket IP, then <code>'_anon_'</code>. Your reverse proxy MUST strip any inbound <code>X-Forwarded-For</code> from the wire before adding its own; otherwise <code>trustProxy</code> re-introduces the spoofability it exists to defend against. Cloudflare, Fly, Railway, Render, and Vercel all strip by default. Nginx and Caddy strip only if explicitly configured (<code>proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for</code> in nginx).</p>
 
     <p><strong>Embedded adapters</strong> (running WebJs via <code>createRequestHandler</code> under Express / Fastify / Bun / Deno / edge runtimes) do NOT get the socket-stamping automatically, the framework's <code>startServer</code> path does it. The adapter MUST call <code>stampRemoteIp(req, remoteAddress)</code> before passing the request to webjs:</p>
 
-    <pre>// express adapter
+    <code-block>// express adapter
 import { createRequestHandler, stampRemoteIp } from '@webjsdev/server';
 
 const handler = createRequestHandler({ appDir: './app' });
@@ -64,14 +64,14 @@ app.use(async (req, res) => {
   const safe = stampRemoteIp(webReq, req.socket.remoteAddress);
   const webRes = await handler.handle(safe);
   // write webRes back to res
-});</pre>
+});</code-block>
 
     <p>Without <code>stampRemoteIp</code>, the adapter passes inbound headers through unmodified. A malicious client can include <code>x-webjs-remote-ip: &lt;anything&gt;</code> on the wire and <code>clientIp(req)</code> will trust it, defeating the limiter even with <code>trustProxy: false</code>.</p>
 
     <h2>Custom key function</h2>
     <p>Rate limit by authenticated user instead of IP:</p>
 
-    <pre>// app/api/posts/middleware.ts
+    <code-block>// app/api/posts/middleware.ts
 import { rateLimit } from '@webjsdev/server';
 import { auth } from '#modules/auth/index.ts';
 
@@ -82,7 +82,7 @@ export default rateLimit({
     const session = await auth(req);
     return session?.user?.id ?? 'anon';
   },
-});</pre>
+});</code-block>
 
     <h2>Response headers</h2>
     <p>Every response from a rate-limited route includes standard headers:</p>
@@ -104,8 +104,8 @@ export default rateLimit({
     <h2>Scaling with Redis</h2>
     <p>In production with multiple server instances, set <code>REDIS_URL</code> and call <code>setStore(redisStore({ url: process.env.REDIS_URL }))</code> once at app startup. The rate limiter uses whatever store is active, so switching once applies to every <code>rateLimit()</code> middleware in the app.</p>
 
-    <pre># .env
-REDIS_URL=redis://localhost:6379</pre>
+    <code-block># .env
+REDIS_URL=redis://localhost:6379</code-block>
 
     <h2>Next steps</h2>
     <ul>

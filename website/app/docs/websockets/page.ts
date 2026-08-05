@@ -10,7 +10,7 @@ export default function WebSockets() {
     <h2>Server Side: Export WS</h2>
     <p>Add a named <code>WS</code> export to any <code>route.ts</code> file. The function receives the raw WebSocket connection, the upgrade Request, and the route params:</p>
 
-    <pre>// app/api/echo/route.ts
+    <code-block>// app/api/echo/route.ts
 import type { WebSocket } from 'ws';
 
 export function WS(ws: WebSocket, req: Request, { params }: { params: Record&lt;string, string&gt; }) {
@@ -23,14 +23,14 @@ export function WS(ws: WebSocket, req: Request, { params }: { params: Record&lt;
   ws.on('close', () =&gt; {
     console.log('Client disconnected');
   });
-}</pre>
+}</code-block>
 
     <h3>The WS Function Signature</h3>
-    <pre>export function WS(
+    <code-block>export function WS(
   ws: WebSocket,          // ws library WebSocket instance
   req: Request,           // the HTTP upgrade Request
   ctx: { params: Record&lt;string, string&gt; }  // dynamic route params
-): void</pre>
+): void</code-block>
 
     <p>The three arguments give you everything you need:</p>
     <ul>
@@ -54,7 +54,7 @@ export function WS(ws: WebSocket, req: Request, { params }: { params: Record&lt;
     <h3>Accessing Cookies, Headers, and Auth</h3>
     <p>The <code>req</code> parameter carries the full HTTP upgrade request, so you can authenticate the connection before accepting messages:</p>
 
-    <pre>// app/api/protected-ws/route.ts
+    <code-block>// app/api/protected-ws/route.ts
 import type { WebSocket } from 'ws';
 
 export function WS(ws: WebSocket, req: Request) {
@@ -82,11 +82,11 @@ function parseCookies(header: string): Record&lt;string, string&gt; {
     if (eq &gt; 0) out[part.slice(0, eq)] = decodeURIComponent(part.slice(eq + 1));
   }
   return out;
-}</pre>
+}</code-block>
 
     <p>You can also read query parameters from the upgrade URL:</p>
 
-    <pre>export function WS(ws: WebSocket, req: Request) {
+    <code-block>export function WS(ws: WebSocket, req: Request) {
   const url = new URL(req.url);
   const token = url.searchParams.get('token');
   if (!verifyToken(token)) {
@@ -94,12 +94,12 @@ function parseCookies(header: string): Record&lt;string, string&gt; {
     return;
   }
   // ... handle messages
-}</pre>
+}</code-block>
 
     <h2>Client Side: connectWS()</h2>
     <p>The <code>connectWS()</code> function from <code>webjs</code> creates a managed WebSocket connection with automatic reconnection, JSON handling, and send queuing:</p>
 
-    <pre>import { connectWS } from '@webjsdev/core';
+    <code-block>import { connectWS } from '@webjsdev/core';
 
 const conn = connectWS('/api/chat', {
   onOpen: () =&gt; {
@@ -124,7 +124,7 @@ conn.send({ type: 'say', text: 'Hello!' });
 conn.send('ping');
 
 // Later: permanently close (disables reconnect)
-conn.close();</pre>
+conn.close();</code-block>
 
     <h3>URL Resolution</h3>
     <p>Relative paths like <code>'/api/chat'</code> are automatically promoted to the correct WebSocket URL based on the current page's protocol:</p>
@@ -145,10 +145,10 @@ conn.close();</pre>
     </ul>
     <p>Every successful connection resets the backoff counter to zero. To disable reconnect:</p>
 
-    <pre>const conn = connectWS('/api/one-shot', {
+    <code-block>const conn = connectWS('/api/one-shot', {
   reconnect: false,
   onMessage: (data) =&gt; { /* ... */ },
-});</pre>
+});</code-block>
 
     <p>Calling <code>conn.close()</code> permanently stops reconnection.</p>
 
@@ -161,9 +161,9 @@ conn.close();</pre>
     <h3>Send Queuing While Disconnected</h3>
     <p>If you call <code>conn.send()</code> before the socket is open or while it is reconnecting, the message is queued in memory. When the connection (re)opens, all queued messages are flushed in order. This means you do not need to check connection state before sending. Messages are never silently dropped.</p>
 
-    <pre>// Safe to call immediately: message is queued if not yet connected
+    <code-block>// Safe to call immediately: message is queued if not yet connected
 const conn = connectWS('/api/events');
-conn.send({ type: 'subscribe', channel: 'updates' });</pre>
+conn.send({ type: 'subscribe', channel: 'updates' });</code-block>
 
     <h3>Connection State</h3>
     <p>The returned connection object exposes:</p>
@@ -177,7 +177,7 @@ conn.send({ type: 'subscribe', channel: 'updates' });</pre>
     <h2>The globalThis Pattern for Shared State</h2>
     <p>In dev mode, WebJs cache-busts module imports on every request so that edits take effect immediately. This means module-level variables (like a <code>Set</code> of connected clients) are reset every time the module reloads. To preserve shared state across dev reloads, attach it to <code>globalThis</code>:</p>
 
-    <pre>// modules/chat/clients.ts
+    <code-block>// modules/chat/clients.ts
 import type { WebSocket } from 'ws';
 
 declare global {
@@ -196,7 +196,7 @@ export function broadcast(msg: unknown, except?: WebSocket): void {
       try { c.send(payload); } catch { /* ignore dead client */ }
     }
   }
-}</pre>
+}</code-block>
 
     <p>This pattern works because <code>globalThis</code> persists across module re-imports within the same Node.js process. In production (no cache-busting), the module is loaded once and this pattern is a no-op.</p>
 
@@ -204,7 +204,7 @@ export function broadcast(msg: unknown, except?: WebSocket): void {
     <p>A complete live chat implementation with server broadcast and client UI:</p>
 
     <h3>Server</h3>
-    <pre>// modules/chat/clients.ts (shared state as above)
+    <code-block>// modules/chat/clients.ts (shared state as above)
 import type { WebSocket } from 'ws';
 
 declare global {
@@ -254,10 +254,10 @@ export function WS(ws: WebSocket) {
     clients.delete(ws);
     broadcast({ kind: 'leave', count: clients.size });
   });
-}</pre>
+}</code-block>
 
     <h3>Client Component</h3>
-    <pre>// components/live-chat.ts
+    <code-block>// components/live-chat.ts
 import { WebComponent, html, css, connectWS } from '@webjsdev/core';
 
 export class LiveChat extends WebComponent {
@@ -319,10 +319,10 @@ export class LiveChat extends WebComponent {
     \`;
   }
 }
-LiveChat.register('live-chat');</pre>
+LiveChat.register('live-chat');</code-block>
 
     <p>Use it in a page:</p>
-    <pre>// app/chat/page.ts
+    <code-block>// app/chat/page.ts
 import { html } from '@webjsdev/core';
 import '#components/live-chat.ts';
 
@@ -333,13 +333,13 @@ export default function ChatPage() {
     &lt;h1&gt;Live Chat&lt;/h1&gt;
     &lt;live-chat&gt;&lt;/live-chat&gt;
   \`;
-}</pre>
+}</code-block>
 
     <h2>Example: Live Comments (Pub/Sub Bus + WS)</h2>
     <p>A more structured pattern uses a per-topic pub/sub bus so each post's comment section only receives relevant updates:</p>
 
     <h3>Pub/Sub Bus</h3>
-    <pre>// modules/pubsub.ts
+    <code-block>// modules/pubsub.ts
 import type { WebSocket } from 'ws';
 
 declare global {
@@ -368,10 +368,10 @@ export function publish(topic: string, msg: unknown): void {
       try { ws.send(payload); } catch {}
     }
   }
-}</pre>
+}</code-block>
 
     <h3>WebSocket Route</h3>
-    <pre>// app/api/comments/[postId]/ws/route.ts
+    <code-block>// app/api/comments/[postId]/ws/route.ts
 import type { WebSocket } from 'ws';
 import { subscribe, publish } from '#modules/pubsub.ts';
 
@@ -388,10 +388,10 @@ export function WS(ws: WebSocket, req: Request, { params }: { params: { postId: 
     // Publish to all subscribers watching this post
     publish(topic, { kind: 'new-comment', comment });
   });
-}</pre>
+}</code-block>
 
     <h3>Client Component</h3>
-    <pre>// components/live-comments.ts
+    <code-block>// components/live-comments.ts
 import { WebComponent, html, css, connectWS } from '@webjsdev/core';
 
 export class LiveComments extends WebComponent({ postId: Number }) {
@@ -449,10 +449,10 @@ export class LiveComments extends WebComponent({ postId: Number }) {
     \`;
   }
 }
-LiveComments.register('live-comments');</pre>
+LiveComments.register('live-comments');</code-block>
 
     <p>Usage in a page:</p>
-    <pre>// app/posts/[slug]/page.ts
+    <code-block>// app/posts/[slug]/page.ts
 import { html } from '@webjsdev/core';
 import '#components/live-comments.ts';
 
@@ -467,12 +467,12 @@ export default async function PostPage({ params }: { params: { slug: string } })
     &lt;h2&gt;Comments&lt;/h2&gt;
     &lt;live-comments post-id="\${post.id}"&gt;&lt;/live-comments&gt;
   \`;
-}</pre>
+}</code-block>
 
     <h2>Coexisting with HTTP Handlers</h2>
     <p>A single <code>route.ts</code> can export both HTTP methods and <code>WS</code>. This is useful for providing a REST fallback alongside the WebSocket endpoint:</p>
 
-    <pre>// app/api/events/route.ts
+    <code-block>// app/api/events/route.ts
 import type { WebSocket } from 'ws';
 
 // HTTP: return recent events as JSON
@@ -488,12 +488,12 @@ export function WS(ws: WebSocket) {
   };
   eventBus.on('new-event', listener);
   ws.on('close', () =&gt; eventBus.off('new-event', listener));
-}</pre>
+}</code-block>
 
     <h2>Dynamic Route Params with WebSockets</h2>
     <p>Dynamic segments in WebSocket routes work exactly like in API routes:</p>
 
-    <pre>// app/api/rooms/[roomId]/route.ts
+    <code-block>// app/api/rooms/[roomId]/route.ts
 import type { WebSocket } from 'ws';
 
 export function WS(ws: WebSocket, req: Request, { params }: { params: { roomId: string } }) {
@@ -501,7 +501,7 @@ export function WS(ws: WebSocket, req: Request, { params }: { params: { roomId: 
   joinRoom(room, ws);
   ws.on('message', (data) =&gt; broadcastToRoom(room, data.toString(), ws));
   ws.on('close', () =&gt; leaveRoom(room, ws));
-}</pre>
+}</code-block>
 
     <h2>Summary</h2>
     <ul>

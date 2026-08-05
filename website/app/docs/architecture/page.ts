@@ -10,7 +10,7 @@ export default function Architecture() {
     <p><strong>Mental model, especially if you come from React Server Components:</strong> WebJs has no server/client component split. Pages, layouts, and components are <em>isomorphic</em> modules, the same source runs on the server to produce SSR'd HTML and then loads in the browser to add interactivity. There is no Flight protocol and no "server component" identity. The one server boundary is the <code>.server.{js,ts}</code> file, which is an RPC + source-protection mechanism (server actions and server-only utilities), not a server-rendered component. <code>route.{js,ts}</code> is a server-only HTTP handler. And elision (skipping the JS download of a module that does no client work) is a build-free optimization on those isomorphic modules, not a boundary, it never changes behaviour because progressive enhancement is the no-JS baseline.</p>
 
     <h2>Package Overview</h2>
-    <pre>webjs/
+    <code-block>webjs/
 ├── packages/
 │   ├── core/     # webjs       : browser + server runtime
 │   ├── server/   # @webjsdev/server : dev/prod server, router, SSR, actions
@@ -18,7 +18,7 @@ export default function Architecture() {
 ├── examples/
 │   └── blog/     # reference app exercising every feature
 ├── website/      # webjs.dev, including this documentation at /docs
-└── docs/         # docs.webjs.dev, a redirect-only host</pre>
+└── docs/         # docs.webjs.dev, a redirect-only host</code-block>
 
     <h3>WebJs (core)</h3>
     <p>Isomorphic: safe to import on both server and client. Contains:</p>
@@ -57,7 +57,7 @@ export default function Architecture() {
 
     <h2>Modules Architecture (Recommended)</h2>
     <p>For non-trivial apps, WebJs recommends a feature-scoped modules pattern:</p>
-    <pre>my-app/
+    <code-block>my-app/
 ├── app/                    # thin route adapters
 │   ├── layout.ts
 │   ├── page.ts
@@ -81,7 +81,7 @@ export default function Architecture() {
 │       ├── utils/
 │       └── types.ts
 ├── components/             # shared UI primitives
-└── middleware.ts            # root middleware</pre>
+└── middleware.ts            # root middleware</code-block>
 
     <h3>Rules</h3>
     <ul>
@@ -93,11 +93,11 @@ export default function Architecture() {
 
     <h2>Imports: the <code>#</code> root alias</h2>
     <p>App-internal imports use the <code>#</code> path alias instead of deep <code>../../../</code> relatives:</p>
-    <pre>import { db } from '#db/connection.server.ts';
+    <code-block>import { db } from '#db/connection.server.ts';
 import { Button } from '#components/ui/button.ts';
-import { listPosts } from '#modules/posts/queries/list-posts.server.ts';</pre>
+import { listPosts } from '#modules/posts/queries/list-posts.server.ts';</code-block>
     <p>This is Node's native <code>package.json</code> <code>"imports"</code> field. The scaffold ships a single catch-all key, so every top-level folder is aliased and a new one needs no config change:</p>
-    <pre>"imports": { "#*": "./*" }</pre>
+    <code-block>"imports": { "#*": "./*" }</code-block>
     <p>It resolves at runtime on Node 24+ AND Bun with no build step and no <code>tsconfig</code> <code>paths</code>. The sigil is <code>#</code> (not <code>@</code>) and there is no slash after it (<code>#lib/...</code>, not <code>#/lib/...</code>): a <code>#/</code>-prefixed key does not resolve on Bun. WebJs expands the same map for its import graph, so a <code>#</code>-aliased <code>.server.ts</code> still trips the server-only boundary, and the browser importmap gets a matching scope per top-level folder automatically. A same-directory import stays a plain relative (<code>./sibling.ts</code>); opt out anywhere by writing a relative path.</p>
 
     <h2>Request Lifecycle</h2>
@@ -126,7 +126,7 @@ import { listPosts } from '#modules/posts/queries/list-posts.server.ts';</pre>
 
     <h2>Embedding</h2>
     <p>WebJs can be embedded in any Node-compatible runtime via <code>createRequestHandler</code>:</p>
-    <pre>import { createRequestHandler } from '@webjsdev/server';
+    <code-block>import { createRequestHandler } from '@webjsdev/server';
 
 const app = await createRequestHandler({
   appDir: process.cwd(),
@@ -135,7 +135,7 @@ const app = await createRequestHandler({
 
 // Use with any HTTP server:
 const resp = await app.handle(new Request('http://x/api/hello'));
-console.log(await resp.json());</pre>
+console.log(await resp.json());</code-block>
 
     <p>This returns standard <code>Request → Response</code>, usable in Express, Fastify, Bun, Deno, Cloudflare Workers (with the file-system caveat documented in the deployment guide).</p>
 

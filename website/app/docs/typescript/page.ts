@@ -17,7 +17,7 @@ export default function TypeScript() {
 
     <h2>tsconfig.json Setup</h2>
     <p>TypeScript type-checking is entirely optional, but recommended. Here is the recommended <code>tsconfig.json</code>:</p>
-    <pre>{
+    <code-block>{
   "compilerOptions": {
     "target": "ES2022",
     "module": "NodeNext",
@@ -41,7 +41,7 @@ export default function TypeScript() {
     "middleware.ts"
   ],
   "exclude": ["node_modules", ".webjs", "db/migrations"]
-}</pre>
+}</code-block>
     <p>Key settings explained:</p>
     <ul>
       <li><strong>erasableSyntaxOnly: true</strong>: rejects non-erasable TypeScript syntax (<code>enum</code>, <code>namespace</code> with values, constructor parameter properties, legacy decorators, <code>import = require</code>) at compile time. Required because Node's built-in stripper only supports erasable TypeScript. Violations surface as red squiggles in the editor. See <strong>TypeScript Feature Support</strong> below for the erasable equivalents.</li>
@@ -56,7 +56,7 @@ export default function TypeScript() {
     <h2>Import Convention: the # root alias and explicit .ts extensions</h2>
     <p>WebJs apps address top-level folders through the <code>#</code> root alias (<code>#db/...</code>, <code>#lib/...</code>, <code>#modules/...</code>, <code>#components/...</code>) rather than deep <code>../../</code> relative paths. It is Node's native <code>package.json</code> <code>"imports"</code> map (the scaffold ships a single <code>"#*": "./*"</code> entry, so every top-level folder is aliased), resolved with no build step and no tsconfig <code>paths</code> on Node 24+ and Bun. The sigil is <code>#</code> with no slash after it (<code>#lib/...</code>, never <code>#/lib/...</code>). A same-directory import stays relative (<code>./sibling.ts</code>).</p>
     <p>Always use the real file extension in your imports:</p>
-    <pre>// Good: explicit .ts extension
+    <code-block>// Good: explicit .ts extension
 import { db } from '#db/connection.server.ts';
 import { createPost } from '#modules/posts/actions/create-post.server.ts';
 import type { PostFormatted } from '#modules/posts/types.ts';
@@ -65,7 +65,7 @@ import type { PostFormatted } from '#modules/posts/types.ts';
 import { slugify } from '#lib/utils/slugify.js';
 
 // Avoid: extensionless imports don't work with Node's ESM or in browsers
-import { db } from '#db/connection.server';       // ERROR</pre>
+import { db } from '#db/connection.server';       // ERROR</code-block>
     <p>This convention works because:</p>
     <ul>
       <li>The runtime strips types from <code>.ts</code> imports server-side natively (Node 24+, or Bun). No loader hook required.</li>
@@ -75,7 +75,7 @@ import { db } from '#db/connection.server';       // ERROR</pre>
 
     <h2>Full-Stack Type Safety</h2>
     <p>Server actions in WebJs provide end-to-end type safety without code generation. When a client component imports from a <code>.server.ts</code> file, TypeScript sees the real function signature:</p>
-    <pre>// modules/posts/actions/create-post.server.ts
+    <code-block>// modules/posts/actions/create-post.server.ts
 'use server';
 
 export type ActionResult&lt;T&gt; =
@@ -91,8 +91,8 @@ export async function createPost(
   const me = await currentUser();
   if (!me) return { success: false, error: 'Not signed in', status: 401 };
   // ...
-}</pre>
-    <pre>// components/new-post-form.ts: client component
+}</code-block>
+    <code-block>// components/new-post-form.ts: client component
 import { createPost } from '#modules/posts/actions/create-post.server.ts';
 
 // TypeScript knows createPost accepts (input: CreatePostInput)
@@ -101,7 +101,7 @@ const result = await createPost({ title, body });
 if (result.success) {
   // result.data is typed as PostFormatted
   console.log(result.data.slug);
-}</pre>
+}</code-block>
     <p>At runtime, the browser never receives the server code. WebJs replaces the import with a thin RPC stub that calls <code>POST /__webjs/action/:hash/createPost</code>. But TypeScript's type checker sees through the <code>.server.ts</code> boundary and validates argument/return types at compile time.</p>
 
     <h3>Derive the type, never <code>unknown</code> or <code>any</code></h3>
@@ -130,7 +130,7 @@ if (result.success) {
 
     <h3>Page metadata: <code>Metadata</code> and <code>generateMetadata</code></h3>
     <p>A page or layout exports <code>metadata</code> (static) or <code>generateMetadata(ctx)</code> (request-scoped). Annotate the return with the exported <code>Metadata</code> type so a misspelled field (<code>titel</code>, <code>descripton</code>) or a wrong-typed value (<code>themeColor: 123</code>) is a compile-time error, the same ergonomics as Next.js's <code>import type { Metadata } from 'next'</code> (#257). <code>MetadataContext</code> types the <code>generateMetadata</code> argument.</p>
-    <pre>import type { Metadata, MetadataContext } from '@webjsdev/core';
+    <code-block>import type { Metadata, MetadataContext } from '@webjsdev/core';
 
 export const metadata: Metadata = {
   title: 'Blog',
@@ -141,12 +141,12 @@ export const metadata: Metadata = {
 
 export async function generateMetadata(ctx: MetadataContext): Promise&lt;Metadata&gt; {
   return { title: ${'`Post: ${ctx.params.slug}`'}, metadataBase: new URL(ctx.url).origin };
-}</pre>
+}</code-block>
     <p><code>Metadata</code> covers every field the SSR pipeline reads. Each field is optional, and string-or-object fields (<code>title</code>, <code>viewport</code>, <code>robots</code>, <code>appleWebApp</code>, <code>icons</code>) are unions, so both forms type-check. <code>MetadataContext</code> is <code>{ params, searchParams, url, actionData }</code> (where <code>actionData</code> is set only on a failed form-action re-render). See <a href="/docs/metadata-routes">Metadata Routes</a> for the full field reference.</p>
 
     <h3>Page / layout / route-handler props (<code>PageProps</code>, <code>LayoutProps</code>, <code>RouteHandlerContext</code>)</h3>
     <p>A page default export receives <code>{ params, searchParams, url, actionData }</code>; a layout receives the same plus <code>children</code>; a <code>route.ts</code> handler receives <code>(request, { params })</code>. Type each with the exported helpers so a typo in a param name or a wrong-typed field is a compile-time error (#258).</p>
-    <pre>import type { PageProps, LayoutProps, RouteHandlerContext } from '@webjsdev/core';
+    <code-block>import type { PageProps, LayoutProps, RouteHandlerContext } from '@webjsdev/core';
 
 // A static route: params is Record&lt;string, string&gt;.
 export default function About({ searchParams }: PageProps) { /* ... */ }
@@ -163,7 +163,7 @@ export default function RootLayout({ children }: LayoutProps) { /* ... */ }
 // A route handler's 2nd arg.
 export async function GET(req: Request, ctx: RouteHandlerContext) {
   return Response.json({ id: ctx.params.id });
-}</pre>
+}</code-block>
     <p><code>PageProps&lt;R&gt;</code> / <code>LayoutProps&lt;R&gt;</code> / <code>RouteHandlerContext&lt;R&gt;</code> take an optional route literal <code>R</code>. With no <code>R</code> (or in an app that has not generated route types), <code>params</code> is <code>Record&lt;string, string&gt;</code>, the runtime default. With <code>R</code> set to a generated dynamic route, <code>params</code> narrows to its exact shape (<code>{ slug: string }</code>, <code>{ rest: string[] }</code>, <code>{ slug?: string[] }</code>). The shapes mirror what the server actually passes, NOT Next.js's superset.</p>
 
     <h3>The generated route union (<code>webjs types</code>)</h3>
@@ -172,12 +172,12 @@ export async function GET(req: Request, ctx: RouteHandlerContext) {
       <li>The <code>Route</code> href type that <code>navigate()</code> and a typed <code>&lt;a href&gt;</code> accept: <code>navigate('/blog/anything')</code> is accepted, <code>navigate('/nonexistent')</code> is a type error. Until you generate the types, <code>Route</code> is <code>string</code>, so <code>navigate()</code> is unconstrained, non-breaking for JSDoc apps and un-generated apps alike.</li>
       <li>Per-route <code>params</code>: <code>PageProps&lt;'/blog/[slug]'&gt;['params']</code> becomes <code>{ slug: string }</code>, derived from the generated <code>RouteParamMap</code>.</li>
     </ul>
-    <pre>webjs types     # writes .webjs/routes.d.ts (count of routes printed)</pre>
+    <code-block>webjs types     # writes .webjs/routes.d.ts (count of routes printed)</code-block>
     <p><code>webjs dev</code> also emits it automatically at startup and re-emits after each route rebuild, so an editor always has fresh route types. The file is gitignored (regenerated per machine, like Next's <code>.next/types</code>); the scaffold <code>tsconfig.json</code> lists <code>.webjs/routes.d.ts</code> in <code>include</code> so tsserver picks it up. To opt in for an existing app, run <code>webjs types</code> once and ensure your <code>tsconfig.json</code> <code>include</code> lists <code>.webjs/routes.d.ts</code>. This is webjs's no-build equivalent of Next 15's <code>typedRoutes</code>, achieved via interface declaration-merging rather than a bundler. Output is deterministic (sorted keys), so re-running yields a byte-identical file.</p>
 
     <h2>Rich Types Across the Wire</h2>
     <p>Standard JSON cannot represent <code>Date</code>, <code>Map</code>, <code>Set</code>, <code>BigInt</code>, <code>undefined</code>, <code>NaN</code>, <code>Infinity</code>, <code>TypedArray</code>, <code>Blob</code>, <code>File</code>, or <code>FormData</code>. WebJs ships its own pure-ESM serializer (in <code>@webjsdev/core</code>) used for all server action RPC calls and for the <code>json()</code> / <code>richFetch()</code> helpers, so rich types survive the network round-trip, including binary content (file uploads through actions just work).</p>
-    <pre>// Server action
+    <code-block>// Server action
 export async function getEvents(): Promise&lt;Event[]&gt; {
   return db.query.events.findMany(); // createdAt is a Date
 }
@@ -185,27 +185,27 @@ export async function getEvents(): Promise&lt;Event[]&gt; {
 // Client: createdAt arrives as a real Date, not a string
 const events = await getEvents();
 events[0].createdAt instanceof Date; // true
-events[0].createdAt.toLocaleDateString(); // works</pre>
+events[0].createdAt.toLocaleDateString(); // works</code-block>
     <p>For API routes, the same content negotiation applies. Use <code>json()</code> from <code>@webjsdev/server</code> on the server side and <code>richFetch()</code> from <code>webjs</code> on the client side to get rich-type encoding. External consumers (curl, other services) get plain JSON automatically.</p>
 
     <h2>Typing the <code>auth()</code> Session User</h2>
     <p><code>auth()</code> resolves <code>{ user }</code>, and by default <code>user</code> is <code>Record&lt;string, unknown&gt;</code>, so reading a custom field your <code>session</code>/<code>jwt</code> callbacks set (such as <code>session.user.id</code>) needs a cast and a typo is not caught. Two opt-in, types-only ways make <code>user</code> typed.</p>
     <p>Augment the <code>AuthUser</code> interface (NextAuth/Auth.js style) to type every <code>auth()</code> call across the app:</p>
-    <pre>declare module '@webjsdev/server' {
+    <code-block>declare module '@webjsdev/server' {
   interface AuthUser {
     id: string;
     role: 'admin' | 'member';
   }
-}</pre>
+}</code-block>
     <p>Or parameterise the factory to type one instance without a global augmentation: <code>createAuth&lt;AppUser&gt;(...)</code> returns an <code>auth()</code> whose <code>user</code> is <code>AppUser</code>:</p>
-    <pre>const { auth } = createAuth&lt;AppUser&gt;({ secret, providers });
+    <code-block>const { auth } = createAuth&lt;AppUser&gt;({ secret, providers });
 const session = await auth();
-session?.user.role; // typed, no cast</pre>
+session?.user.role; // typed, no cast</code-block>
     <p>Un-augmented and un-parameterised, <code>AuthUser</code> is empty and resolves back to <code>Record&lt;string, unknown&gt;</code>, so pre-existing untyped code keeps compiling. The declared fields should mirror what the callbacks write onto <code>session.user</code>. See <a href="/docs/auth">Auth providers (createAuth)</a>.</p>
 
     <h2>JSDoc Alternative</h2>
     <p>If you prefer <code>.js</code> files, you can achieve the same type safety using JSDoc annotations with <code>checkJs: true</code> in your tsconfig:</p>
-    <pre>// db/connection.server.js
+    <code-block>// db/connection.server.js
 import * as schema from './schema.server.js';
 const { DatabaseSync } = await import('node:sqlite');
 const { drizzle } = await import('drizzle-orm/node-sqlite');
@@ -217,9 +217,9 @@ export const db = drizzle({ client: new DatabaseSync('db/dev.db'), relations: sc
  */
 export async function createPost(input) {
   // TypeScript checks types via JSDoc, same strictness
-}</pre>
+}</code-block>
     <p>You can also define complex types with <code>@typedef</code>:</p>
-    <pre>/**
+    <code-block>/**
  * @typedef {{
  *   id: number,
  *   title: string,
@@ -233,7 +233,7 @@ export async function createPost(input) {
 /** @param {PostFormatted} post */
 export function formatDate(post) {
   return post.createdAt.toLocaleDateString();
-}</pre>
+}</code-block>
     <p>JSDoc-typed <code>.js</code> files and <code>.ts</code> files can import each other freely. The type checker treats them as part of the same project.</p>
 
     <h2>TypeScript Feature Support: Erasable Only</h2>
@@ -247,7 +247,7 @@ export function formatDate(post) {
       <li><strong><code>import = require()</code></strong> is not allowed. Use standard ES import.</li>
       <li><strong>Generics</strong>, type aliases, interfaces, type assertions, satisfies, const assertions: all supported (these are erasable).</li>
     </ul>
-    <pre>// Not allowed (red squiggle with erasableSyntaxOnly):
+    <code-block>// Not allowed (red squiggle with erasableSyntaxOnly):
 enum Direction { Up, Down, Left, Right }
 class User { constructor(public name: string) {} }
 namespace Util { export const VERSION = '1.0'; }
@@ -263,13 +263,13 @@ class User {
   }
 }
 
-const Util = { VERSION: '1.0' };</pre>
+const Util = { VERSION: '1.0' };</code-block>
     <p>This constraint exists because Node's stripper performs whitespace replacement, not AST regeneration. <code>enum</code> requires emitting a real runtime object, which would change line numbers and require shipping a sourcemap. Banning it preserves the byte-exact position property.</p>
     <p>WebJs is buildless end-to-end: there is no bundler fallback for non-erasable syntax. If a <code>.ts</code> file uses <code>enum</code>, <code>namespace</code> with values, parameter properties, legacy decorators with <code>emitDecoratorMetadata</code>, or <code>import = require</code>, Node's stripper throws and the dev server returns a 500 naming the file and pointing at the <code>no-non-erasable-typescript</code> lint rule. The companion <code>erasable-typescript-only</code> rule additionally warns when <code>erasableSyntaxOnly</code> is missing or off in <code>tsconfig.json</code>, so the compiler catches the same constructs at edit time. The realistic edge case (a third-party package shipping raw non-erasable <code>.ts</code>) is rare in practice: published packages compile to <code>.js</code> with sidecar <code>.d.ts</code> files, which the runtime serves as plain JavaScript with no transform.</p>
 
     <h2>Mixed Codebases</h2>
     <p><code>.js</code> and <code>.ts</code> files can coexist in the same WebJs project and import each other without restriction:</p>
-    <pre>my-app/
+    <code-block>my-app/
 app/
   layout.ts                # TypeScript
   page.js                  # JavaScript
@@ -285,27 +285,27 @@ db/
 lib/
   utils.js                 # JSDoc-typed JavaScript
 middleware.ts              # TypeScript
-tsconfig.json</pre>
-    <pre>// app/page.js can import from .ts files
+tsconfig.json</code-block>
+    <code-block>// app/page.js can import from .ts files
 import '#components/counter.ts';
 
 // lib/utils.js can import from .ts files
 import { db } from '#db/connection.server.ts';
 
 // app/blog/page.ts can import from .js files
-import '#components/footer.js';</pre>
+import '#components/footer.js';</code-block>
     <p>The router, action scanner, dev server, and production bundler all accept <code>.ts</code>, <code>.mts</code>, <code>.js</code>, and <code>.mjs</code> interchangeably. Type-check the whole project with a single <code>tsc --noEmit</code>.</p>
 
     <h2>Running Type Checks</h2>
     <p>WebJs does not type-check at runtime or during dev serving. Add a type-check command to your workflow:</p>
-    <pre>{
+    <code-block>{
   "scripts": {
     "dev": "webjs dev",
     "start": "webjs start",
     "typecheck": "tsc --noEmit",
     "typecheck:watch": "tsc --noEmit --watch"
   }
-}</pre>
+}</code-block>
     <p>Run <code>npm run typecheck</code> in CI or as a pre-commit hook. The dev server stays fast because it only strips types. Full type analysis is a separate, parallelizable step.</p>
   `;
 }

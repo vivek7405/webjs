@@ -9,11 +9,11 @@ export default function Deployment() {
 
     <h2>Dev vs Prod</h2>
     <p>WebJs has two modes, controlled by the npm script (which wraps the underlying <code>webjs dev</code> / <code>webjs start</code> CLI):</p>
-    <pre># Development: live reload, no compression, no caching, verbose errors
+    <code-block># Development: live reload, no compression, no caching, verbose errors
 npm run dev -- --port 8080
 
 # Production: compression, ETags, cache headers, graceful shutdown
-npm run start -- --port 8080</pre>
+npm run start -- --port 8080</code-block>
     <p>Key differences:</p>
     <ul>
       <li><strong>Dev:</strong> Node's built-in <code>fs.watch</code> watches your source tree and triggers live reload via SSE. TypeScript files are served with <code>Cache-Control: no-cache</code>. Errors include full stack traces. No compression.</li>
@@ -40,7 +40,7 @@ npm run start -- --port 8080</pre>
     <p>Every <em>cacheable</em> response carries a content-hash <code>ETag</code>, and a repeat request whose <code>If-None-Match</code> matches it gets a <code>304 Not Modified</code> with no body (RFC 7232). A client holding an identical copy revalidates with a tiny 304 instead of re-downloading the whole body. This applies uniformly to static assets, app source modules, the core / vendor runtime, and to SSR HTML pages that opt into caching via <code>metadata.cacheControl</code>. The ETag is a <em>weak</em> validator (<code>W/"..."</code>), since it is computed over the uncompressed body and reused across the identity, gzip, and Brotli encodings, which a strong validator may not do (RFC 7232 2.3.3).</p>
     <p><strong>Unstorable content is excluded.</strong> A page with the default <code>Cache-Control: no-store</code> (every dynamic / per-user page) gets <em>no</em> ETag and never returns a 304: <code>no-store</code> forbids storage outright, so there is nothing to validate. A <code>private</code> response IS validated, because <code>private</code> forbids only SHARED storage and the ETag hashes that response's own body: two users with different bodies get different ETags and neither can match the other's, while two users with identical bodies are asking about identical bytes, where a 304 discloses nothing. <strong>Streaming responses are excluded too</strong>, both streamed Suspense pages and a <code>route.&#123;js,ts&#125;</code> handler that returns a <code>ReadableStream</code> (including an SSE <code>text/event-stream</code>). Their bodies are never buffered to be hashed, so a long-lived or never-ending stream is never read into memory and never stalls the response. A 304 preserves the validators and caching headers (<code>ETag</code>, <code>Cache-Control</code>, <code>Vary</code>) and drops only the body.</p>
     <p>Set a page's <code>metadata.cacheControl</code> to any value other than <code>no-store</code> to enable conditional GET on it:</p>
-    <pre>export const metadata = &#123; cacheControl: 'public, max-age=60' &#125;;</pre>
+    <code-block>export const metadata = &#123; cacheControl: 'public, max-age=60' &#125;;</code-block>
 
     <h3>Content Security Policy (CSP) and vendor packages</h3>
     <p>The default vendor mode serves bundles from <code>https://ga.jspm.io</code> (the jspm.io CDN). If your app sets a strict <code>Content-Security-Policy</code> header with <code>script-src 'self'</code>, the browser blocks the jspm.io script and vendor imports fail to load.</p>
@@ -64,31 +64,31 @@ npm run start -- --port 8080</pre>
     <p>A default is set only when the response does not already carry that header, so anything your middleware, a <code>route.&#123;js,ts&#125;</code> handler, or <code>expose</code> sets always wins.</p>
     <h4>Per-path overrides</h4>
     <p>Declare per-path header rules in <code>package.json</code> under <code>"webjs": &#123; "headers": [...] &#125;</code>, shaped like Next's. The <code>source</code> is a path pattern matched with the native URLPattern API, so <code>:param</code> and <code>:rest*</code> tokens work:</p>
-    <pre>&#123;
+    <code-block>&#123;
   "webjs": &#123;
     "headers": [
       &#123; "source": "/embed/:path*", "headers": [&#123; "key": "X-Frame-Options", "value": null &#125;] &#125;,
       &#123; "source": "/app/:path*",   "headers": [&#123; "key": "X-Frame-Options", "value": "DENY" &#125;] &#125;
     ]
   &#125;
-&#125;</pre>
+&#125;</code-block>
     <p>A rule can ADD a header, OVERRIDE a default by giving a new value, or DISABLE a default on a path with a <code>null</code> value (the first example drops <code>X-Frame-Options</code> so a public-embed route can be framed). Precedence, lowest to highest, runs secure defaults, then the <code>webjs.headers</code> path config, then app middleware (which always wins, since its headers are already on the response when WebJs merges).</p>
 
     <h4>Content-Security-Policy (nonce, opt-in)</h4>
     <p>WebJs can mint a fresh per-request CSP nonce and emit a matching <code>Content-Security-Policy</code> response header. It is OFF by default (a strict policy would break an app with third-party inline scripts/styles, so you opt in). Enable it with a <code>webjs.csp</code> key in <code>package.json</code>:</p>
-    <pre>&#123;
+    <code-block>&#123;
   "webjs": &#123; "csp": true &#125;
-&#125;</pre>
+&#125;</code-block>
     <p><code>true</code> turns on a strict-by-default policy: <code>script-src 'nonce-&lt;minted&gt;' 'strict-dynamic' 'self' https:</code> plus <code>default-src 'self'</code>, <code>object-src 'none'</code>, <code>frame-ancestors 'self'</code>, and an inline-style allowance. That last one is there for the styles your app puts in the document, which do not carry a nonce: a light-DOM component's <code>&lt;style&gt;</code> block in <code>render()</code>, a shadow component's <code>static styles</code>, an inline <code>&lt;style&gt;</code> written by a page or layout, and <code>style="…"</code> attributes, which no nonce can reach at all since nonces apply to elements rather than attributes. The framework's own head style rule carries the nonce. On every request the framework mints a CSPRNG nonce (16 random bytes, base64), stamps it on every inline <code>&lt;script&gt;</code>, the importmap, and the <code>modulepreload</code> hints it emits (the same value <code>cspNonce()</code> returns during SSR), and sets the header carrying that exact nonce. The nonce on the header and the nonce on the scripts are one minted value, so there is no drift, and it changes every request.</p>
     <p>For a custom policy, give an object. <code>directives</code> is merged over the strict defaults (override one directive without restating the rest; a <code>null</code> value drops a default directive), and <code>reportOnly: true</code> emits <code>Content-Security-Policy-Report-Only</code> for a staged rollout:</p>
-    <pre>&#123;
+    <code-block>&#123;
   "webjs": &#123;
     "csp": &#123;
       "directives": &#123; "connect-src": "'self' https://api.example.com" &#125;,
       "reportOnly": true
     &#125;
   &#125;
-&#125;</pre>
+&#125;</code-block>
     <p>The <code>__NONCE__</code> placeholder inside a directive value (e.g. in a custom <code>script-src</code>) is substituted with the minted nonce per request. A CSP header your app already set (in middleware, a <code>route.&#123;js,ts&#125;</code> handler, or the <code>webjs.headers</code> config) is never clobbered, so an explicit app policy still wins. Inside layouts/pages, read the nonce with <code>import &#123; cspNonce &#125; from '@webjsdev/core'</code> to stamp it on your own inline <code>&lt;script&gt;</code> tags; it is isomorphic (returns <code>''</code> in the browser, so the same source is safe to ship).</p>
 
     <h3>Request body limits &amp; server timeouts</h3>
@@ -108,12 +108,12 @@ npm run start -- --port 8080</pre>
 
     <h3>Health and readiness probes</h3>
     <p>WebJs answers two built-in probe endpoints, and the distinction matters under runtime-first boot:</p>
-    <pre>GET /__webjs/health    # liveness:  always 200 once the process is listening
-GET /__webjs/ready     # readiness: 503 until the instance is fully warm, then 200</pre>
+    <code-block>GET /__webjs/health    # liveness:  always 200 once the process is listening
+GET /__webjs/ready     # readiness: 503 until the instance is fully warm, then 200</code-block>
     <p><code>/__webjs/health</code> is <strong>liveness</strong>. It returns <code>200 { "status": "ok" }</code> as soon as the process is accepting connections, so an orchestrator can tell the process is alive. It never waits on the analysis.</p>
     <p><code>/__webjs/ready</code> is <strong>readiness</strong>. Because boot is instant and the whole-app analysis runs lazily on the first request, <code>/ready</code> returns <code>503 { "status": "pending" }</code> until the instance is <strong>fully warm</strong>, then <code>200 { "status": "ok" }</code>. Fully warm means both the deterministic analysis and the first vendor attempt have completed, so the importmap and its build id are settled. Point your <code>readinessProbe</code> at it and the orchestrator holds traffic off an instance until then, instead of routing the first user request into the cold analysis OR into the brief window where the importmap is still resolving. A background warm-up runs automatically once the server is listening, so on a rolling deploy the prior instance keeps serving until the new one is fully warm. The first vendor attempt is bounded by the jspm fetch timeout, so a vendor-CDN hiccup does not hold readiness down indefinitely: the instance becomes ready shortly after the timeout and serves with the resolved-or-best-effort importmap, and a transient failure is re-attempted on the next request.</p>
     <p>Both responses carry <code>Cache-Control: no-store</code>. Use them for Kubernetes probes, Docker HEALTHCHECK, load-balancer health checks, or uptime monitoring.</p>
-    <pre># Kubernetes deployment
+    <code-block># Kubernetes deployment
 livenessProbe:
   httpGet:
     path: /__webjs/health
@@ -125,16 +125,16 @@ readinessProbe:
     path: /__webjs/ready
     port: 8080
   initialDelaySeconds: 3
-  periodSeconds: 5</pre>
+  periodSeconds: 5</code-block>
     <h4>Gating readiness on dependencies (optional)</h4>
     <p>Warm-complete does not by itself prove the database or a queue is reachable: the database driver connects lazily on the first query (node:sqlite opens the file, pg connects), not at warm-up. To gate readiness on live dependency health, add a <code>readiness.&#123;js,ts&#125;</code> file at the app root that default-exports an async function. Once the analysis is warm, <code>/ready</code> runs it on every probe; returning <code>false</code> or throwing reports <code>503 { "status": "unready" }</code>, so the orchestrator holds traffic off an instance whose dependencies are down.</p>
-    <pre>// readiness.ts
+    <code-block>// readiness.ts
 import { db } from './db/connection.server.ts';
 
 export default async function ready() {
   await db.query.users.findFirst();  // throws if the database is unreachable
   return true;
-}</pre>
+}</code-block>
 
     <h2>HTTP/2: at the edge, not in webjs</h2>
     <p>WebJs delegates TLS termination and HTTP/2 negotiation to whatever sits in front of <code>npm run start</code>. The framework's HTTP server speaks plain HTTP/1.1. ALPN, certificates, and h2 framing are entirely the proxy's concern. Two reasons:</p>
@@ -147,13 +147,13 @@ export default async function ready() {
 
     <h2>Pluggable Logger</h2>
     <p>WebJs includes a minimal logger that writes structured JSON in production and human-readable lines in development:</p>
-    <pre># Dev output:
+    <code-block># Dev output:
 [webjs] webjs dev server ready on http://localhost:8080
 
 # Prod output (one JSON line per event):
-{"level":"info","msg":"webjs prod server ready on http://localhost:8080","time":"2026-01-15T10:30:00.000Z"}</pre>
+{"level":"info","msg":"webjs prod server ready on http://localhost:8080","time":"2026-01-15T10:30:00.000Z"}</code-block>
     <p>Replace it with your own logger by passing any object with <code>info</code>, <code>warn</code>, and <code>error</code> methods to <code>createRequestHandler</code>:</p>
-    <pre>import { createRequestHandler } from '@webjsdev/server';
+    <code-block>import { createRequestHandler } from '@webjsdev/server';
 import pino from 'pino';
 
 const logger = pino({ level: 'info' });
@@ -166,29 +166,29 @@ const app = await createRequestHandler({
     warn: (msg, meta) =&gt; logger.warn(meta, msg),
     error: (msg, meta) =&gt; logger.error(meta, msg),
   },
-});</pre>
+});</code-block>
 
     <h2>Observability: access log, request id, error hook, build-info</h2>
     <p>Day-2 ops needs more than liveness probes. WebJs ships four standards-native observability surfaces, all wired at the single response funnel so they apply uniformly across pages, route handlers, server actions, and assets.</p>
 
     <h3>Per-request access log</h3>
     <p>Every handled request emits ONE structured <code>info</code> line through the pluggable logger after the response is produced, carrying <code>method</code>, <code>path</code>, <code>status</code>, <code>durationMs</code>, and <code>requestId</code>. It never logs request bodies or secrets. In prod the default logger writes it as one JSON object per line; in dev it is a readable line.</p>
-    <pre>{"level":"info","msg":"request","time":"2026-06-03T10:30:00.000Z","requestId":"4f1c…","method":"GET","path":"/dashboard","status":200,"durationMs":12.4}</pre>
+    <code-block>{"level":"info","msg":"request","time":"2026-06-03T10:30:00.000Z","requestId":"4f1c…","method":"GET","path":"/dashboard","status":200,"durationMs":12.4}</code-block>
     <p>The framework's own <code>/__webjs/*</code> probe and static traffic is suppressed from the access log so it does not spam. App routes (including your <code>/api/*</code>) are logged. Swap in pino / your aggregator via the pluggable logger above and these lines flow straight into it.</p>
     <p><code>durationMs</code> is time-to-response-headers (a TTFB-like measure), not full-stream completion. For a streaming / Suspense response it reflects when the headers were produced, not when the last chunk flushed.</p>
 
     <h3>Request id / correlation id (X-Request-Id)</h3>
     <p>Each request gets a correlation id, minted with the native <code>crypto.randomUUID()</code>. An inbound <code>X-Request-Id</code> from a trusted upstream proxy is honored instead (so one trace id propagates across services); a missing or malformed value falls back to a minted id. The id is set on the response as <code>X-Request-Id</code>, included in the access log and the error log, and readable inside any server-side code (pages, layouts, server actions, route handlers, middleware) via <code>requestId()</code>:</p>
-    <pre>import { requestId } from '@webjsdev/server';
+    <code-block>import { requestId } from '@webjsdev/server';
 
 export async function GET() {
   const id = requestId();   // same id the response's X-Request-Id carries
   return Response.json({ traceId: id });
-}</pre>
+}</code-block>
 
     <h3>onError hook (APM / Sentry integration point)</h3>
     <p>Register an error sink to forward unhandled errors to your APM. <code>createRequestHandler({ onError })</code> (and <code>startServer({ onError })</code>) calls it whenever the request pipeline catches an unhandled error: the 500 path (a thrown route handler, middleware, or page render), or a server action that throws unexpectedly. The sink receives the original error plus a context object with the <code>request</code>, the <code>requestId</code>, and a coarse <code>phase</code> label, so you can correlate the report with the access log line.</p>
-    <pre>import { createRequestHandler } from '@webjsdev/server';
+    <code-block>import { createRequestHandler } from '@webjsdev/server';
 import * as Sentry from '@sentry/node';
 
 const app = await createRequestHandler({
@@ -196,26 +196,26 @@ const app = await createRequestHandler({
   onError(error, { request, requestId, phase }) {
     Sentry.captureException(error, { tags: { requestId, phase } });
   },
-});</pre>
+});</code-block>
     <p><strong>The contract is best-effort.</strong> A throwing <code>onError</code> is caught and ignored so it can never crash the response, and the hook is purely additive: webjs's existing behavior (the sanitized 500, with only <code>error.message</code> in prod and never the stack) is unchanged. The hook fires BEFORE the sanitized response is sent, so the sink always sees the real error.</p>
 
     <h3>Build-info endpoint</h3>
     <p><code>GET /__webjs/version</code> returns JSON describing the live build, alongside the health and readiness probes. A deploy can curl it to confirm which build is serving. It carries no secrets, and it is answered before the analysis warms (like the other probes), so it responds on a cold instance.</p>
-    <pre>GET /__webjs/version
-{ "version": "0.8.10", "build": "&lt;importmap-hash&gt;", "node": "v24.4.0", "uptime": 38.21 }</pre>
+    <code-block>GET /__webjs/version
+{ "version": "0.8.10", "build": "&lt;importmap-hash&gt;", "node": "v24.4.0", "uptime": 38.21 }</code-block>
     <p><code>version</code> is the <code>@webjsdev/server</code> framework version, <code>build</code> is the published build id (the reload signal the client router reads from <code>data-webjs-build</code>, the importmap hash folded with the installed <code>@webjsdev/core</code> version; empty until the vendor map resolves). An app-source or SSR-only deploy is carried by a separate <code>X-Webjs-Src</code> / <code>data-webjs-src</code> signal (an automatic content hash of the app source) that evicts client caches softly; both are automatic, needing no configuration. <code>node</code> is the running Node version, and <code>uptime</code> is process uptime in seconds. The response carries <code>Cache-Control: no-store</code>.</p>
 
     <h2>createRequestHandler for Embedding</h2>
     <p>If you need to embed WebJs inside an existing server (Express, Fastify, Bun, Deno, serverless), use <code>createRequestHandler</code> directly. It returns a <code>handle(req: Request) =&gt; Promise&lt;Response&gt;</code> function that takes a standard Web API Request and returns a standard Response:</p>
-    <pre>import { createRequestHandler } from '@webjsdev/server';
+    <code-block>import { createRequestHandler } from '@webjsdev/server';
 
 const app = await createRequestHandler({
   appDir: '/path/to/your/app',
   dev: false,
-});</pre>
+});</code-block>
 
     <h3>Express</h3>
-    <pre>import express from 'express';
+    <code-block>import express from 'express';
 import { createRequestHandler } from '@webjsdev/server';
 
 const app = await createRequestHandler({ appDir: process.cwd(), dev: false });
@@ -247,26 +247,26 @@ server.all('*', async (req, res) =&gt; {
   res.end();
 });
 
-server.listen(8080);</pre>
+server.listen(8080);</code-block>
 
     <h3>Bun</h3>
     <p>Running a WebJs app with <code>bun --bun run start</code> already uses <code>Bun.serve</code> natively: <code>startServer</code> detects Bun and selects a <code>Bun.serve</code> listener shell (skipping the node:http compatibility bridge for ~1.9x more requests/sec on the listening path), with near-complete feature parity (SSR, <code>route.ts</code>, SSE live-reload, WebSocket upgrade, brotli/gzip compression, timeouts, proxy-IP, and the <code>X-Forwarded-Proto</code> / <code>X-Forwarded-Host</code> URL correction so absolute URLs carry the original scheme and host behind a TLS-terminating proxy). The one node-only exception is 103 Early Hints, which <code>Bun.serve</code> cannot send (no informational-response API). So you only need the snippet below to <em>embed</em> WebJs inside your own <code>Bun.serve</code> alongside other routes:</p>
     <p><strong>Embedding moves the proxy-header responsibility to you.</strong> The parity list above describes <code>startServer</code>, which owns the listener. <code>createRequestHandler</code> takes the <code>Request</code> you hand it and derives every absolute URL from its <code>url</code>, so behind a TLS-terminating proxy you must rebuild that <code>Request</code> with the original scheme and host yourself, or <code>ctx.url</code> stays on the internal <code>http://</code> hop and og:image tags, canonical links, and OAuth callbacks come out wrong. The same applies to the trusted client IP. If you do not need to share the port with other routes, prefer <code>startServer</code> and let the framework handle it.</p>
-    <pre>import { createRequestHandler } from '@webjsdev/server';
+    <code-block>import { createRequestHandler } from '@webjsdev/server';
 
 const app = await createRequestHandler({ appDir: process.cwd(), dev: false });
 
 Bun.serve({
   port: 8080,
   fetch: (req) =&gt; app.handle(req),
-});</pre>
+});</code-block>
 
     <h3>Deno</h3>
-    <pre>import { createRequestHandler } from '@webjsdev/server';
+    <code-block>import { createRequestHandler } from '@webjsdev/server';
 
 const app = await createRequestHandler({ appDir: Deno.cwd(), dev: false });
 
-Deno.serve({ port: 8080 }, (req) =&gt; app.handle(req));</pre>
+Deno.serve({ port: 8080 }, (req) =&gt; app.handle(req));</code-block>
 
     <h2>Environment Variables</h2>
     <p>WebJs reads the following environment variables:</p>
@@ -276,10 +276,10 @@ Deno.serve({ port: 8080 }, (req) =&gt; app.handle(req));</pre>
     </ul>
     <p>There is no deploy-id env var to set. WebJs detects a deploy automatically from the CONTENT of what it serves (the no-build model, where the source hashes ARE the version): a change to your app source or a <code>@webjsdev/server</code> upgrade turns over the client's stale caches on the next navigation (soft, no reload), and a vendor pin or a <code>@webjsdev/core</code> upgrade hard-reloads. A framework upgrade reflects once the app has installed the new <code>@webjsdev/*</code> version (governed by your dependency range and lockfile).</p>
     <p>For app-specific environment variables, use <code>process.env</code> in server-side code (pages, server actions, middleware, API routes). These are never exposed to the client.</p>
-    <pre># .env at the app root (auto-loaded at boot)
+    <code-block># .env at the app root (auto-loaded at boot)
 DATABASE_URL="postgresql://user:pass@localhost:5432/mydb"
 SESSION_SECRET="change-me"
-API_KEY="sk-..."</pre>
+API_KEY="sk-..."</code-block>
     <p>WebJs auto-loads <code>&lt;appDir&gt;/.env</code> into <code>process.env</code> on boot via Node 24+'s built-in <code>process.loadEnvFile</code>. No <code>dotenv</code> dependency. Shell-exported values take precedence over the file, so production platforms (Railway, Fly, Render, Docker, systemd) keep injecting secrets the same way they already do. See <a href="/docs/configuration">Configuration</a> for the full precedence rules.</p>
 
     <h2>Secrets: platform injection, not a committed file</h2>
@@ -305,25 +305,25 @@ API_KEY="sk-..."</pre>
     <p>SQLite needs no pool tuning. When you move to Postgres in production, size the connection pool, because connection exhaustion is the most common scaling surprise and WebJs gives no prior signal in dev (SQLite has no pool).</p>
     <p>A WebJs server is ONE Node process per instance, and the <code>pg</code> driver behind Drizzle opens its own connection pool inside that process. A <code>pg.Pool</code> defaults to a max of 10 connections, which is fine for a single instance but multiplies as you scale: with <strong>N</strong> instances the database sees up to <strong>N times the per-instance pool</strong> connections at once. Postgres caps total connections (often 100 on a small managed plan), so a few instances on the default pool can exhaust it.</p>
     <p><strong>Bound the per-instance pool with <code>max</code> in the <code>Pool</code> config</strong> (the snippet below), sized so <code>instances * max</code> stays comfortably under the database's <code>max_connections</code> (leave headroom for migrations and admin tools). The <code>pg</code> driver behind Drizzle takes its pool size from <code>new Pool({ max })</code> in code, not from a <code>DATABASE_URL</code> query parameter:</p>
-    <pre># The URL carries no pool-size hint; db/connection.server.ts sets the pool max.
-DATABASE_URL="postgresql://user:pass@db.example.com:5432/app"</pre>
+    <code-block># The URL carries no pool-size hint; db/connection.server.ts sets the pool max.
+DATABASE_URL="postgresql://user:pass@db.example.com:5432/app"</code-block>
     <p><strong>Front Postgres with a pooler when instance count is high or variable</strong> (autoscaling, many small instances, or a low <code>max_connections</code> plan). Point <code>DATABASE_URL</code> at a transaction-mode pooler (PgBouncer, or a managed pooler like Supabase, Neon, or PlanetScale) so many app connections share a small set of real database connections. With PgBouncer in transaction mode, the <code>pg</code> pool must NOT use prepared statements, and migrations need a DIRECT connection (the pooler does not support the session features migrations need):</p>
-    <pre># App traffic goes through the pooler (port 6543), migrations go direct (5432).
+    <code-block># App traffic goes through the pooler (port 6543), migrations go direct (5432).
 DATABASE_URL="postgresql://user:pass@pooler.example.com:6543/app?pgbouncer=true"
-DIRECT_URL="postgresql://user:pass@db.example.com:5432/app"</pre>
-    <pre>// db/connection.server.ts (Postgres variant)
+DIRECT_URL="postgresql://user:pass@db.example.com:5432/app"</code-block>
+    <code-block>// db/connection.server.ts (Postgres variant)
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from './schema.server.ts';
 
 // max bounds the per-instance pool; 1 behind a transaction pooler.
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
-export const db = drizzle({ client: pool, relations: schema.relations });</pre>
+export const db = drizzle({ client: pool, relations: schema.relations });</code-block>
     <p>Behind a transaction pooler, set <code>max: 1</code> per instance (the pooler does the multiplexing). Without a pooler, set <code>max</code> to a per-instance budget and keep the instance count bounded. Point <code>drizzle-kit</code> (via <code>DIRECT_URL</code>) at the direct connection for migrations. Either way, import <code>db</code> from the scaffolded <code>db/connection.server.ts</code> singleton, never construct a new <code>Pool</code> per request, so a process opens one pool, not one per call.</p>
 
     <h2>Docker / Containerisation</h2>
     <p>A minimal Dockerfile for a WebJs app:</p>
-    <pre>FROM node:24-slim
+    <code-block>FROM node:24-slim
 
 WORKDIR /app
 
@@ -337,7 +337,7 @@ COPY . .
 EXPOSE 8080
 HEALTHCHECK CMD curl -f http://localhost:8080/__webjs/health || exit 1
 
-CMD ["npx", "webjs", "start"]</pre>
+CMD ["npx", "webjs", "start"]</code-block>
     <p>Tips:</p>
     <ul>
       <li><code>node:slim</code> works fine. WebJs strips TypeScript via the runtime's stripper (Node's built-in <code>module.stripTypeScriptTypes</code>, or <code>amaro</code> on a Bun image), so no extra system packages are needed.</li>
@@ -352,7 +352,7 @@ CMD ["npx", "webjs", "start"]</pre>
     <p>For production deployments, a reverse proxy handles TLS termination, HTTP/2, static asset caching, and load balancing. WebJs runs as an HTTP/1.1 upstream, and the proxy speaks HTTP/2 to clients.</p>
 
     <h3>nginx</h3>
-    <pre>upstream webjs {
+    <code-block>upstream webjs {
     server 127.0.0.1:8080;
 }
 
@@ -374,18 +374,18 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
-}</pre>
+}</code-block>
 
     <h3>Caddy</h3>
-    <pre>example.com {
+    <code-block>example.com {
     reverse_proxy localhost:8080
-}</pre>
+}</code-block>
     <p>Caddy automatically provisions TLS certificates via Let's Encrypt and enables HTTP/2. It also handles WebSocket upgrades transparently.</p>
 
 
     <h2>Process Managers</h2>
     <p>For non-containerised deployments, use a process manager to keep WebJs running:</p>
-    <pre># systemd unit
+    <code-block># systemd unit
 [Unit]
 Description=webjs app
 After=network.target
@@ -401,9 +401,9 @@ Environment=NODE_ENV=production
 Environment=DATABASE_URL=postgresql://...
 
 [Install]
-WantedBy=multi-user.target</pre>
-    <pre># Or with PM2
-pm2 start "webjs start" --name my-app</pre>
+WantedBy=multi-user.target</code-block>
+    <code-block># Or with PM2
+pm2 start "webjs start" --name my-app</code-block>
 
     <h2>Deployment Checklist</h2>
     <ul>

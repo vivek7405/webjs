@@ -7,7 +7,7 @@ export default function Context() {
     <h1>Context Protocol</h1>
     <p>The context protocol lets you share data across deeply nested components without threading attributes through every intermediate element. It uses DOM events under the hood, which means it works across shadow DOM boundaries, so a provider at the top of the tree can reach consumers buried many levels deep.</p>
 
-    <pre>import { createContext, ContextProvider, ContextConsumer } from '@webjsdev/core/context';</pre>
+    <code-block>import { createContext, ContextProvider, ContextConsumer } from '@webjsdev/core/context';</code-block>
 
     <h2>When to Use Context</h2>
     <p>Context is the right tool when:</p>
@@ -28,18 +28,18 @@ export default function Context() {
     <h2>Creating a Context</h2>
     <p><code>createContext(name)</code> returns a unique context key. The name is for debugging, while uniqueness comes from the object identity.</p>
 
-    <pre>// contexts/theme.ts (or .js)
+    <code-block>// contexts/theme.ts (or .js)
 import { createContext } from '@webjsdev/core/context';
 
 export const themeContext = createContext('theme');
-export type Theme = 'light' | 'dark' | 'system';</pre>
+export type Theme = 'light' | 'dark' | 'system';</code-block>
 
     <p>Define your context keys in shared modules so both providers and consumers import the same object.</p>
 
     <h2>Providing a Value</h2>
     <p><code>ContextProvider</code> is a reactive controller that provides a value to all descendants. Attach it to any component:</p>
 
-    <pre>import { WebComponent, html, css } from '@webjsdev/core';
+    <code-block>import { WebComponent, html, css } from '@webjsdev/core';
 import { ContextProvider } from '@webjsdev/core/context';
 import { themeContext } from '#contexts/theme.ts';
 
@@ -70,14 +70,14 @@ class AppShell extends WebComponent {
     \`;
   }
 }
-AppShell.register('app-shell');</pre>
+AppShell.register('app-shell');</code-block>
 
     <p>When you call <code>provider.setValue(newValue)</code>, every subscribed consumer is notified and its host component re-renders automatically.</p>
 
     <h2>Consuming a Value</h2>
     <p><code>ContextConsumer</code> is a reactive controller that reads the nearest provider's value. Attach it to any descendant component:</p>
 
-    <pre>import { WebComponent, html, css } from '@webjsdev/core';
+    <code-block>import { WebComponent, html, css } from '@webjsdev/core';
 import { ContextConsumer } from '@webjsdev/core/context';
 import { themeContext } from '#contexts/theme.ts';
 
@@ -104,7 +104,7 @@ class ThemedCard extends WebComponent {
     \`;
   }
 }
-ThemedCard.register('themed-card');</pre>
+ThemedCard.register('themed-card');</code-block>
 
     <h2>Subscribe vs One-Shot Mode</h2>
     <p>The <code>subscribe</code> option controls whether the consumer receives ongoing updates:</p>
@@ -112,20 +112,20 @@ ThemedCard.register('themed-card');</pre>
     <h3>subscribe: true (default for most use cases)</h3>
     <p>The consumer re-renders whenever the provider calls <code>setValue()</code>. This is what you want for live data like theme, auth state, or locale.</p>
 
-    <pre>// Consumer re-renders every time the provider's value changes
+    <code-block>// Consumer re-renders every time the provider's value changes
 #theme = new ContextConsumer(this, {
   context: themeContext,
   subscribe: true,
-});</pre>
+});</code-block>
 
     <h3>subscribe: false (one-shot)</h3>
     <p>The consumer reads the provider's value once during <code>connectedCallback</code> and never updates afterward. This is useful for configuration that is set once and never changes, like a base URL or API key:</p>
 
-    <pre>// Consumer reads the value once and ignores future changes
+    <code-block>// Consumer reads the value once and ignores future changes
 #apiBase = new ContextConsumer(this, {
   context: apiBaseContext,
   subscribe: false,
-});</pre>
+});</code-block>
 
     <p>With <code>subscribe: false</code>, calling <code>provider.setValue()</code> does not notify this consumer.</p>
 
@@ -144,7 +144,7 @@ ThemedCard.register('themed-card');</pre>
     <h2>Multiple Contexts</h2>
     <p>A single component can provide or consume multiple contexts:</p>
 
-    <pre>import { createContext, ContextProvider } from '@webjsdev/core/context';
+    <code-block>import { createContext, ContextProvider } from '@webjsdev/core/context';
 
 const themeContext = createContext('theme');
 const localeContext = createContext('locale');
@@ -175,12 +175,12 @@ class AppRoot extends WebComponent {
     return html\`&lt;slot&gt;&lt;/slot&gt;\`;
   }
 }
-AppRoot.register('app-root');</pre>
+AppRoot.register('app-root');</code-block>
 
     <h2>Nested Providers</h2>
     <p>Providers can be nested. A consumer resolves to the nearest ancestor provider with a matching context key:</p>
 
-    <pre>&lt;app-root&gt;                  &lt;!-- provides theme: 'light' --&gt;
+    <code-block>&lt;app-root&gt;                  &lt;!-- provides theme: 'light' --&gt;
   &lt;themed-card&gt;             &lt;!-- consumes theme: 'light' --&gt;
   &lt;/themed-card&gt;
 
@@ -188,14 +188,14 @@ AppRoot.register('app-root');</pre>
     &lt;themed-card&gt;           &lt;!-- consumes theme: 'dark' --&gt;
     &lt;/themed-card&gt;
   &lt;/dark-section&gt;
-&lt;/app-root&gt;</pre>
+&lt;/app-root&gt;</code-block>
 
     <p>This mirrors how CSS custom properties cascade. Inner values shadow outer ones.</p>
 
     <h2>Full Example: Auth Context</h2>
     <p>A complete provider + consumer pair for authentication state:</p>
 
-    <pre>// contexts/auth.ts
+    <code-block>// contexts/auth.ts
 import { createContext } from '@webjsdev/core/context';
 export const authContext = createContext('auth');
 
@@ -247,7 +247,7 @@ class UserMenu extends WebComponent {
     return html\`&lt;span&gt;Hi, \${user.name}&lt;/span&gt;\`;
   }
 }
-UserMenu.register('user-menu');</pre>
+UserMenu.register('user-menu');</code-block>
 
     <h2>Next Steps</h2>
     <ul>

@@ -52,7 +52,7 @@ export default async function UiIntro() {
         collapsible sit on <code>&lt;details&gt;</code>, progress on
         <code>&lt;progress value max&gt;</code>, popover on the <code>popover</code> attribute.
       </p>
-      <pre>import { cardClass, cardHeaderClass, cardTitleClass, cardContentClass } from '#modules/ui/components/card.ts';
+      <code-block>import { cardClass, cardHeaderClass, cardTitleClass, cardContentClass } from '#modules/ui/components/card.ts';
 import { buttonClass } from '#modules/ui/components/button.ts';
 
 &lt;div class=\${cardClass()}&gt;
@@ -62,7 +62,7 @@ import { buttonClass } from '#modules/ui/components/button.ts';
   &lt;div class=\${cardContentClass()}&gt;
     &lt;button class=\${buttonClass({ variant: 'default' })}&gt;Click me&lt;/button&gt;
   &lt;/div&gt;
-&lt;/div&gt;</pre>
+&lt;/div&gt;</code-block>
 
       <p>
         <strong>Tier 2 (${tier2.length} components)</strong> is a small set of stateful custom
@@ -72,7 +72,7 @@ import { buttonClass } from '#modules/ui/components/button.ts';
         and hover-card use <code>popover="manual"</code>) and adds only the open-state tracking,
         focus trap, or queue on top.
       </p>
-      <pre>&lt;ui-dialog&gt;
+      <code-block>&lt;ui-dialog&gt;
   &lt;ui-dialog-trigger&gt;
     &lt;button class=\${buttonClass({ variant: 'outline' })}&gt;Edit profile&lt;/button&gt;
   &lt;/ui-dialog-trigger&gt;
@@ -80,7 +80,7 @@ import { buttonClass } from '#modules/ui/components/button.ts';
     &lt;h2 data-slot="dialog-title" class=\${dialogTitleClass()}&gt;Edit profile&lt;/h2&gt;
     &lt;form action="/profile" method="post"&gt;…&lt;/form&gt;
   &lt;/ui-dialog-content&gt;
-&lt;/ui-dialog&gt;</pre>
+&lt;/ui-dialog&gt;</code-block>
       <p>
         Reach for Tier 1 by default. Reach for Tier 2 only when the browser does not ship the
         behaviour natively.
@@ -94,8 +94,8 @@ import { buttonClass } from '#modules/ui/components/button.ts';
         <code>components/ui/</code>, and those files import <code>@webjsdev/core</code> rather
         than the kit.
       </p>
-      <pre>webjs ui init
-webjs ui add button card dialog input label</pre>
+      <code-block>webjs ui init
+webjs ui add button card dialog input label</code-block>
       <p>
         <code>init</code> writes <code>components.json</code>, copies the <code>cn()</code> helper
         into <code>lib/utils/cn.ts</code>, and installs the theme tokens.

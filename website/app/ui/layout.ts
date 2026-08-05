@@ -1,6 +1,7 @@
 import type { LayoutProps } from '@webjsdev/core';
 import { docsShell } from '#lib/ui/docs-shell.ts';
 import '#components/docs-drawer.ts';
+import '#components/code-block.ts';
 import { loadRegistryIndex } from '#modules/ui/queries/registry.server.ts';
 import { splitByTier } from '#modules/ui/utils/tier.ts';
 

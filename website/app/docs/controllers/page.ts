@@ -35,7 +35,7 @@ export default function Controllers() {
     <h2>Creating a Custom Controller</h2>
     <p>Here is a minimal controller that tracks the host element's visibility via IntersectionObserver:</p>
 
-    <pre>class VisibilityController {
+    <code-block>class VisibilityController {
   constructor(host, options = {}) {
     this.host = host;
     this.isVisible = false;
@@ -59,11 +59,11 @@ export default function Controllers() {
     this._observer?.disconnect();
     this._observer = null;
   }
-}</pre>
+}</code-block>
 
     <p>Usage in any component:</p>
 
-    <pre>import { WebComponent, html, css } from '@webjsdev/core';
+    <code-block>import { WebComponent, html, css } from '@webjsdev/core';
 
 class LazyImage extends WebComponent({ src: String }) {
   #visibility = new VisibilityController(this, { threshold: 0.1 });
@@ -81,12 +81,12 @@ class LazyImage extends WebComponent({ src: String }) {
     \`;
   }
 }
-LazyImage.register('lazy-image');</pre>
+LazyImage.register('lazy-image');</code-block>
 
     <h2>Example: FetchController</h2>
     <p>A reusable controller that fetches data from a URL and exposes loading/error/data states:</p>
 
-    <pre>class FetchController {
+    <code-block>class FetchController {
   constructor(host, url) {
     this.host = host;
     this.url = url;
@@ -117,11 +117,11 @@ LazyImage.register('lazy-image');</pre>
   hostDisconnected() {
     // Could abort an in-flight request here if using AbortController
   }
-}</pre>
+}</code-block>
 
     <p>Any component can now fetch data by creating a <code>FetchController</code> instance:</p>
 
-    <pre>import { WebComponent, html } from '@webjsdev/core';
+    <code-block>import { WebComponent, html } from '@webjsdev/core';
 
 class UserList extends WebComponent {
 
@@ -138,12 +138,12 @@ class UserList extends WebComponent {
     \`;
   }
 }
-UserList.register('user-list');</pre>
+UserList.register('user-list');</code-block>
 
     <h2>Multiple Controllers on One Component</h2>
     <p>Controllers compose naturally. A single component can use any number of controllers:</p>
 
-    <pre>class DashboardWidget extends WebComponent {
+    <code-block>class DashboardWidget extends WebComponent {
 
   #data = new FetchController(this, '/api/dashboard/stats');
   #visibility = new VisibilityController(this, { threshold: 0.5 });
@@ -159,7 +159,7 @@ UserList.register('user-list');</pre>
     return html\`&lt;div&gt;\${this.#data.data?.summary}&lt;/div&gt;\`;
   }
 }
-DashboardWidget.register('dashboard-widget');</pre>
+DashboardWidget.register('dashboard-widget');</code-block>
 
     <h2>Built-in Controllers</h2>
     <p>WebJs ships three controllers out of the box:</p>
@@ -167,7 +167,7 @@ DashboardWidget.register('dashboard-widget');</pre>
     <h3>Task</h3>
     <p>Manages async operations with automatic loading/error states, abort support, and reactive args. Imported from <code>webjs/task</code>. See the <a href="/docs/task">Task Controller</a> page for full documentation.</p>
 
-    <pre>import { Task } from '@webjsdev/core/task';
+    <code-block>import { Task } from '@webjsdev/core/task';
 
 class UserProfile extends WebComponent({ userId: String }) {
   #task = new Task(this, {
@@ -185,12 +185,12 @@ class UserProfile extends WebComponent({ userId: String }) {
       error: (e) =&gt; html\`&lt;p&gt;Error: \${e.message}&lt;/p&gt;\`,
     });
   }
-}</pre>
+}</code-block>
 
     <h3>ContextProvider</h3>
     <p>Provides a value to all descendant components via the context protocol. Imported from <code>webjs/context</code>. See the <a href="/docs/context">Context Protocol</a> page for full documentation.</p>
 
-    <pre>import { createContext, ContextProvider } from '@webjsdev/core/context';
+    <code-block>import { createContext, ContextProvider } from '@webjsdev/core/context';
 
 const themeContext = createContext('theme');
 
@@ -205,12 +205,12 @@ class AppShell extends WebComponent {
     const next = this.#themeProvider.value === 'light' ? 'dark' : 'light';
     this.#themeProvider.setValue(next);
   }
-}</pre>
+}</code-block>
 
     <h3>ContextConsumer</h3>
     <p>Consumes a value from an ancestor provider. Imported from <code>webjs/context</code>.</p>
 
-    <pre>import { createContext, ContextConsumer } from '@webjsdev/core/context';
+    <code-block>import { createContext, ContextConsumer } from '@webjsdev/core/context';
 
 const themeContext = createContext('theme');
 
@@ -224,7 +224,7 @@ class ThemeBadge extends WebComponent {
   render() {
     return html\`&lt;span&gt;Current theme: \${this.#theme.value}&lt;/span&gt;\`;
   }
-}</pre>
+}</code-block>
 
     <h2>When to Use Controllers</h2>
     <ul>

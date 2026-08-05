@@ -141,13 +141,17 @@ function truncate(s: string, max: number): string {
 }
 
 /**
+ * Exported for its own unit test. It is a pure string-to-string function, and
+ * exporting it is what lets a test drive the extractor on a fixture instead of
+ * planting scaffolding in a real docs page that readers would see.
+ *
  * Convert a doc page's `html\`...\`` body to lightweight, readable
  * markdown. Reuses the search route's stripping approach but preserves
  * structure: headings become `##`/`###`, list items become `-`, and
- * `<pre>` code blocks are fenced, rather than collapsing everything to
+ * `<code-block>` samples are fenced, rather than collapsing everything to
  * one blob. Perfection is not required; a clean-ish rendering is.
  */
-function bodyToMarkdown(raw: string): string {
+export function bodyToMarkdown(raw: string): string {
   // Isolate the html template body (between the first `html\`` and its
   // matching closing backtick). Doc pages are a single top-level
   // template, so a simple slice from the first `html\`` to the final
@@ -159,15 +163,46 @@ function bodyToMarkdown(raw: string): string {
     if (lastTick > tplStart) body = raw.slice(tplStart + 'html`'.length, lastTick);
   }
 
-  // Pull <pre> blocks out first, replacing them with placeholders so
+  // Pull the code samples out first, replacing them with placeholders so
   // their inner whitespace + angle brackets survive the tag stripping.
   // The sentinel is U+E000 (private use), written as an escape rather
   // than a literal: it cannot occur in doc prose, and unlike the raw NUL
   // this used to use it keeps the file TEXT, so git can diff it.
+  //
+  // A docs page writes <code-block> (components/code-block.ts renders the
+  // <pre>), so that is what this reads. <pre> stays matched because this
+  // parses SOURCE rather than rendered HTML, and losing a sample here is
+  // silent: it does not vanish, it falls through to the prose pipeline,
+  // which strips the fence, eats every ${...} hole in the code, and
+  // collapses the indentation, leaving output that still reads like prose
+  // and teaches code nobody can run. `(?=[\s>])` keeps <pre from matching
+  // <preview-tabs.
+  //
+  // Separately, and NOT something fencing fixes: the docs search index
+  // (app/api/search/route.ts) picks its headings with a plain
+  // `line.startsWith('#')` and does no fence tracking, so a line-leading
+  // "# " shell comment inside a sample is scored as a heading either way.
+  //
+  // Nothing strips a <code> wrapper out of the captured text any more. That
+  // strip existed for the `<pre><code>` shape docs pages used to author, and
+  // <code-block> supplies the wrapper itself, so it matched nothing. What it
+  // still did was run AFTER decodeEntities, so a sample TEACHING `&lt;code&gt;`
+  // had the decoded tags deleted out of it, silently, in the one pipeline
+  // whose silent losses this function exists to avoid.
+  //
+  // A related loss is still live and is NOT fixed here: oneLine() below
+  // decodes `&lt;` to a bare `<` while rewriting a <p>, and the generic tag
+  // strip further down then matches from that stray `<` to the next `>` and
+  // swallows what lies between, including these sentinels. On
+  // /docs/metadata-routes that costs 5 of its 9 samples and the paragraphs
+  // among them. Not fixed here: the repair reorders this pipeline for every
+  // page, and the decode is what makes prose about markup readable, so it
+  // needs its own before-and-after across all 43. test/ssr/docs-llms.test.ts
+  // pins that page at its exact counts, so it cannot decay further and a
+  // repair fails the test rather than passing unnoticed.
   const codeBlocks: string[] = [];
-  body = body.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/g, (_m, code) => {
-    const text = decodeEntities(String(code)).replace(/<\/?code[^>]*>/g, '').replace(/\n+$/, '');
-    codeBlocks.push(text);
+  body = body.replace(/<(?:pre|code-block)(?=[\s>])[^>]*>([\s\S]*?)<\/(?:pre|code-block)>/g, (_m, code) => {
+    codeBlocks.push(decodeEntities(String(code)).replace(/\n+$/, ''));
     return `\uE000CODE${codeBlocks.length - 1}\uE000`;
   });
 

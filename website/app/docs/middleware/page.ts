@@ -9,14 +9,14 @@ export default function Middleware() {
 
     <h2>Root Middleware</h2>
     <p>Place a <code>middleware.ts</code> at the root of your project (next to <code>app/</code>, not inside it). This middleware runs on <strong>every request</strong> before WebJs routes it to a page, API route, or server action. Any of <code>middleware.ts</code>, <code>.js</code>, <code>.mts</code>, or <code>.mjs</code> works, and <code>.ts</code> wins if you somehow have more than one.</p>
-    <pre>my-app/
+    <code-block>my-app/
   middleware.ts          # root middleware: runs on every request
   app/
     page.ts
     api/
       hello/
-        route.ts</pre>
-    <pre>// middleware.ts
+        route.ts</code-block>
+    <code-block>// middleware.ts
 export default async function middleware(
   req: Request,
   next: () =&gt; Promise&lt;Response&gt;,
@@ -27,11 +27,11 @@ export default async function middleware(
   console.log(\`\${req.method} \${new URL(req.url).pathname} -> \${resp.status} (\${elapsed}ms)\`);
   resp.headers.set('x-response-time', \`\${elapsed}ms\`);
   return resp;
-}</pre>
+}</code-block>
 
     <h2>Per-Segment Middleware</h2>
     <p>Place a <code>middleware.ts</code> inside any directory under <code>app/</code> to scope it to that subtree. It runs only for requests whose URL matches that segment and its children.</p>
-    <pre>my-app/
+    <code-block>my-app/
   middleware.ts               # root: every request
   app/
     page.ts                   # /: root + no segment middleware
@@ -46,14 +46,14 @@ export default async function middleware(
         login/
           route.ts             # POST /api/auth/login
         signup/
-          route.ts             # POST /api/auth/signup</pre>
+          route.ts             # POST /api/auth/signup</code-block>
 
     <h2>Signature</h2>
     <p>Every middleware function has the same signature, whether root or per-segment:</p>
-    <pre>export default async function middleware(
+    <code-block>export default async function middleware(
   req: Request,
   next: () =&gt; Promise&lt;Response&gt;,
-): Promise&lt;Response&gt;</pre>
+): Promise&lt;Response&gt;</code-block>
     <ul>
       <li><strong>req</strong>: a standard <a href="https://developer.mozilla.org/en-US/docs/Web/API/Request">Request</a> object. Read headers, cookies, URL, method, body.</li>
       <li><strong>next()</strong>: calls the next middleware in the chain, or the final handler (page render, API route, action). Returns a <code>Promise&lt;Response&gt;</code>.</li>
@@ -71,18 +71,18 @@ export default async function middleware(
       <li><strong>Handler</strong> (page SSR, API route, or server action)</li>
     </ol>
     <p>Each middleware calls <code>next()</code> to proceed. Responses bubble back up through the chain in reverse order, so outer middleware can inspect or modify the final response.</p>
-    <pre>// Execution flow for GET /dashboard/settings:
+    <code-block>// Execution flow for GET /dashboard/settings:
 //
 //   root middleware
 //     -> app/dashboard/middleware.ts
 //       -> SSR app/dashboard/settings/page.ts
 //       &lt;- Response
 //     &lt;- Response (dashboard middleware can modify)
-//   &lt;- Response (root middleware can modify)</pre>
+//   &lt;- Response (root middleware can modify)</code-block>
 
     <h2>Short-Circuiting</h2>
     <p>Return a <code>Response</code> without calling <code>next()</code> to stop the chain early. The request never reaches downstream middleware or the route handler.</p>
-    <pre>// app/api/middleware.ts: require API key for all /api/* routes
+    <code-block>// app/api/middleware.ts: require API key for all /api/* routes
 export default async function apiAuth(
   req: Request,
   next: () =&gt; Promise&lt;Response&gt;,
@@ -95,11 +95,11 @@ export default async function apiAuth(
     );
   }
   return next();
-}</pre>
+}</code-block>
 
     <h2>Use Case: Auth Gate on /dashboard</h2>
     <p>A common pattern: require authentication for an entire subtree by placing a middleware in the segment directory.</p>
-    <pre>// app/dashboard/middleware.ts
+    <code-block>// app/dashboard/middleware.ts
 import { cookies } from '@webjsdev/server';
 import { getUserByToken, SESSION_COOKIE } from '#lib/session.server.ts';
 
@@ -116,11 +116,11 @@ export default async function requireAuth(
     });
   }
   return next();
-}</pre>
+}</code-block>
     <p>Every page and API route under <code>app/dashboard/</code> is now protected. Unauthenticated users are redirected to <code>/login</code> with a <code>then</code> query param so they can be sent back after signing in.</p>
 
     <h2>Use Case: Logging and Timing</h2>
-    <pre>// middleware.ts (root)
+    <code-block>// middleware.ts (root)
 export default async function logger(
   req: Request,
   next: () =&gt; Promise&lt;Response&gt;,
@@ -131,10 +131,10 @@ export default async function logger(
   const ms = Date.now() - start;
   console.log(\`\${req.method} \${url.pathname} \${resp.status} \${ms}ms\`);
   return resp;
-}</pre>
+}</code-block>
 
     <h2>Use Case: CORS Headers</h2>
-    <pre>// app/api/middleware.ts: add CORS to all /api/* routes
+    <code-block>// app/api/middleware.ts: add CORS to all /api/* routes
 export default async function cors(
   req: Request,
   next: () =&gt; Promise&lt;Response&gt;,
@@ -155,25 +155,25 @@ export default async function cors(
   const resp = await next();
   resp.headers.set('access-control-allow-origin', '*');
   return resp;
-}</pre>
+}</code-block>
     <p>WebJs also ships a ready-made <code>cors()</code> middleware (from <code>@webjsdev/server</code>) you can wrap around a single <code>route.ts</code> handler. Use middleware CORS when you need blanket coverage across all routes in a segment.</p>
 
     <h2>Rate Limiting</h2>
     <p>WebJs ships a built-in rate limiter as a middleware factory. Import <code>rateLimit</code> from <code>@webjsdev/server</code>:</p>
-    <pre>// app/api/auth/middleware.ts
+    <code-block>// app/api/auth/middleware.ts
 import { rateLimit } from '@webjsdev/server';
 
-export default rateLimit({ window: '10s', max: 5 });</pre>
+export default rateLimit({ window: '10s', max: 5 });</code-block>
     <p>That single line protects every route under <code>/api/auth/</code> (login, signup, password reset) with a limit of 5 requests per 10 seconds per IP address.</p>
     <h3>rateLimit() Options</h3>
-    <pre>rateLimit({
+    <code-block>rateLimit({
   window: '1m',       // time window: number (ms) or string: '30s', '1m', '1h'
   max: 60,            // max requests per window per key
   key: req =&gt; {       // custom key function (default: IP from x-forwarded-for)
     return \`login:\${req.headers.get('x-forwarded-for') || 'anon'}\`;
   },
   message: 'Slow down' // custom 429 error message
-})</pre>
+})</code-block>
     <p>The rate limiter is in-memory and uses a fixed-window algorithm. Response headers are set automatically:</p>
     <ul>
       <li><code>x-ratelimit-limit</code>: the max for this window</li>
@@ -185,7 +185,7 @@ export default rateLimit({ window: '10s', max: 5 });</pre>
 
     <h2>cookies() and headers() Helpers</h2>
     <p>WebJs provides request-scoped helpers via <code>@webjsdev/server</code> that let you read cookies and headers from anywhere in your server-side code (middleware, pages, server actions, API routes) without explicitly threading the request object:</p>
-    <pre>import { cookies, headers } from '@webjsdev/server';
+    <code-block>import { cookies, headers } from '@webjsdev/server';
 
 // In any server-side function:
 const token = cookies().get('session_token');
@@ -193,7 +193,7 @@ const hasToken = cookies().has('session_token');
 const allCookies = cookies().entries(); // [string, string][]
 
 const auth = headers().get('authorization');
-const userAgent = headers().get('user-agent');</pre>
+const userAgent = headers().get('user-agent');</code-block>
     <p>These are backed by AsyncLocalStorage. The request context is established before your middleware runs, so they work everywhere in the request lifecycle. Calling them outside a request scope (e.g., at module top level) throws an error.</p>
     <p><strong>Note:</strong> <code>cookies()</code> is read-only. To set a cookie, include a <code>Set-Cookie</code> header on the Response you return from your middleware, API route, or server action.</p>
 

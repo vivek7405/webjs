@@ -49,19 +49,19 @@ export default function ClientRouter() {
       <li>The router sets the native <code>aria-busy="true"</code> on the form for the in-flight duration (cleared on settle). This IS the readable "is this form submitting" primitive. Any component can poll <code>form.getAttribute('aria-busy')</code> or style <code>form[aria-busy="true"]</code> in CSS.</li>
       <li>It dispatches a bubbling <code>webjs:submit-start</code> (detail <code>{ form, url }</code>) when the submission fetch starts, and <code>webjs:submit-end</code> (detail <code>{ form, url, ok }</code>, where <code>ok</code> is whether the submission settled as a success) on EVERY settle (a success, a 4xx/5xx validation re-render, a navigation error, or an abort by a superseding submit). The pair is balanced even under a rapid re-submit (a nav-token guard keeps a superseded submit's teardown from clearing the busy state a newer submit set, the same guard <code>&lt;webjs-frame&gt;</code> uses).</li>
     </ul>
-    <pre>// A submit button that disables itself while its form is submitting.
+    <code-block>// A submit button that disables itself while its form is submitting.
 form.addEventListener('webjs:submit-start', () =&gt; { button.disabled = true; });
 form.addEventListener('webjs:submit-end', (e) =&gt; {
   button.disabled = false;            // e.detail = { form, url, ok }
 });
 /* or purely in CSS, no JS: */
-/* form[aria-busy="true"] button[type="submit"] { opacity: .5; pointer-events: none; } */</pre>
+/* form[aria-busy="true"] button[type="submit"] { opacity: .5; pointer-events: none; } */</code-block>
     <p>Progressive enhancement is unaffected. With JS off the form is a normal POST. The events and <code>aria-busy</code> are a client-only enhancement.</p>
 
     <h3>Optimistic mutations (<code>optimistic()</code>)</h3>
     <p>WebJs ships two signatures for optimistic UI: a <strong>declarative</strong> React 19-style state wrapper (recommended for collections) and a <strong>legacy imperative</strong> signal-based helper (ideal for single-value toggles).</p>
     <p><strong>Declarative:</strong> <code>optimistic(host, { source, update })</code> manages a queue of pending updates, computes the combined value through a reducer, and auto-releases when a passed promise settles.</p>
-    <pre>import { WebComponent, prop, optimistic, html } from '@webjsdev/core';
+    <code-block>import { WebComponent, prop, optimistic, html } from '@webjsdev/core';
 import { createTodo } from '#actions/create-todo.server.js';
 
 class TodoList extends WebComponent({ todos: prop(Array) }) {
@@ -89,15 +89,15 @@ class TodoList extends WebComponent({ todos: prop(Array) }) {
     return html\`&lt;ul&gt;\${this.optTodos.value.map(t =>
       html\`&lt;li class=\${t.pending ? 'opacity-50' : ''}&gt;\${t.title}&lt;/li&gt;\`)\}&lt;/ul&gt;\`;
   }
-}</pre>
+}</code-block>
     <p><strong>Imperative:</strong> <code>optimistic(signal, value, action)</code> sets the signal to <code>value</code> immediately, runs <code>action()</code>, and rolls back on a thrown error or <code>{ success: false }</code> envelope.</p>
-    <pre>import { signal, optimistic } from '@webjsdev/core';
+    <code-block>import { signal, optimistic } from '@webjsdev/core';
 import { likePost } from '#actions/like-post.server.js';
 
 const liked = signal(false);
 const result = await optimistic(liked, true, () => likePost(postId));
 // liked flips to true instantly. Rolls back on throw or failure envelope.
-On success the optimistic value stays; reconcile from result if needed.</pre>
+On success the optimistic value stays; reconcile from result if needed.</code-block>
     <p>Both signatures are client-only, so a component importing <code>optimistic</code> is never elided as display-only. See <a href="/docs/data-fetching">Data Fetching</a> for the full reference.</p>
 
     <h2>Non-2xx HTML responses render in place</h2>
@@ -120,23 +120,23 @@ On success the optimistic value stays; reconcile from result if needed.</pre>
       <li><strong>Last-resort hard load</strong> happens only when there is no shared layout marker to render into (a genuine cross-document nav), and only after the event was not cancelled.</li>
     </ul>
     <p>An <strong>AbortError</strong> (a newer navigation superseding this one) is a normal supersede, not an error, and never fires <code>webjs:navigation-error</code>.</p>
-    <pre>document.addEventListener('webjs:navigation-error', (e) =&gt; {
+    <code-block>document.addEventListener('webjs:navigation-error', (e) =&gt; {
   // e.detail = { url, status, error }
   e.preventDefault();                 // app handles recovery; page left intact
   showToast(\`Could not load \${e.detail.url} (status \${e.detail.status})\`);
-});</pre>
+});</code-block>
 
     <h2>Strip transient state before back/forward (<code>webjs:before-cache</code>)</h2>
     <p>Back/Forward restores from a URL-keyed snapshot cache (Turbo's SnapshotCache pattern) for instant navigation. Because a snapshot is a raw <code>outerHTML</code> clone of the live page, anything <em>open</em> when you navigate away (a hover-card, a dropdown, a toast) is captured open and <strong>restored open</strong> on Forward. The router dispatches <code>webjs:before-cache</code> on <code>document</code> synchronously, on the page being cached, right before the snapshot is read, so a handler can reset that state and edits land in the snapshot. The kit's overlays already do this, so they come back closed.</p>
-    <pre>document.addEventListener('webjs:before-cache', () =&gt; {
+    <code-block>document.addEventListener('webjs:before-cache', () =&gt; {
   document.querySelectorAll('[data-transient]').forEach((el) =&gt; el.remove());
   // close open menus, clear in-progress toasts, reset a wizard step, ...
-});</pre>
+});</code-block>
 
     <h2><code>&lt;webjs-frame&gt;</code>: escape hatch for non-layout regions</h2>
     <p><code>&lt;webjs-frame&gt;</code> is webjs's take on <strong>Turbo Frames</strong> (from Hotwire Turbo), so if you know <code>&lt;turbo-frame&gt;</code> the model transfers directly: a lazy, URL-addressable region that swaps on its own, driven by a link or form that targets its id. See <a href="/docs/data-fetching">Data fetching</a> for when to reach for a frame versus async render, <code>&lt;webjs-suspense&gt;</code>, or <code>&lt;webjs-stream&gt;</code>, and for combining a lazy frame with streamed content inside it.</p>
     <p>The marker mechanism scopes swaps to the deepest shared <strong>layout</strong>. When you need a swap region <em>smaller</em> than the deepest layout (typically a widget inside a page that should swap independently of the rest of the page) wrap it in <code>&lt;webjs-frame id="..."&gt;</code>.</p>
-    <pre>// app/posts/[slug]/page.ts
+    <code-block>// app/posts/[slug]/page.ts
 export default async function PostPage({ params }) {
   const post = await getPost(params.slug);
   return html\`
@@ -147,19 +147,19 @@ export default async function PostPage({ params }) {
       &lt;a href="/posts/\${params.slug}/comments?page=2"&gt;Load more&lt;/a&gt;
     &lt;/webjs-frame&gt;
   \`;
-}</pre>
+}</code-block>
     <p>When the user clicks "Load more", the router's <code>closest('webjs-frame')</code> from the click target finds <code>#comments</code>. The fetched response is expected to contain a <code>&lt;webjs-frame id="comments"&gt;</code> too. Only its children swap into the live frame, leaving the article body (and any reading scroll position, video playback, etc.) fully intact.</p>
     <p>This takes precedence over the layout-marker mechanism. Most apps never need it. Only reach for it when you've identified that the auto-marker swap is wider than the actual change.</p>
 
     <h3>External targeting (<code>data-webjs-frame</code>) and <code>_top</code></h3>
     <p>A trigger does not have to be nested inside the frame it drives. Mirroring Turbo's <code>data-turbo-frame</code>, an <code>&lt;a&gt;</code> or <code>&lt;form&gt;</code> (or any ancestor of it) carrying <code>data-webjs-frame="&lt;id&gt;"</code> drives the frame with that id from anywhere in the document, resolved via <code>getElementById</code>. So an external nav/sidebar link or a filter form can drive a content frame it does not enclose.</p>
-    <pre>&lt;nav data-webjs-frame="results"&gt;
+    <code-block>&lt;nav data-webjs-frame="results"&gt;
   &lt;a href="/products?sort=new"&gt;Newest&lt;/a&gt;
   &lt;a href="/products?sort=top"&gt;Top rated&lt;/a&gt;
 &lt;/nav&gt;
 &lt;form action="/products" data-webjs-frame="results"&gt;…filters…&lt;/form&gt;
 
-&lt;webjs-frame id="results"&gt;…current results…&lt;/webjs-frame&gt;</pre>
+&lt;webjs-frame id="results"&gt;…current results…&lt;/webjs-frame&gt;</code-block>
     <p>An explicit <code>data-webjs-frame</code> WINS over the closest-enclosing-frame default. The reserved token <code>data-webjs-frame="_top"</code> on a trigger INSIDE a frame breaks OUT to a full-page navigation. An id that does not resolve to a live <code>&lt;webjs-frame&gt;</code> warns once and falls back to a normal navigation (it never throws). With JS disabled the attribute is inert on a plain <code>&lt;a href&gt;</code>, so the click is a normal full navigation, the correct progressive-enhancement fallback.</p>
 
     <h3>Busy state (<code>aria-busy</code> + <code>webjs:frame-busy</code>)</h3>
@@ -167,22 +167,22 @@ export default async function PostPage({ params }) {
 
     <h3>Self-loading frames (<code>src</code> + <code>loading</code>)</h3>
     <p>A frame can fetch its OWN content instead of waiting for a click or a form. Give it a <code>src</code> and it self-fetches that URL as a frame nav and applies the matching <code>&lt;webjs-frame id&gt;</code> subtree from the response into itself, through the same frame-swap path (so the busy lifecycle, the navigation-error recovery, and the frame-missing fallback all apply). The <code>loading</code> attribute picks when: <code>eager</code> (or absent) fetches on connect, <code>lazy</code> fetches when the frame first scrolls into view (reusing the same IntersectionObserver budget as a <code>static lazy = true</code> component).</p>
-    <pre>&lt;webjs-frame id="comments" src="/posts/42/comments" loading="lazy"&gt;
+    <code-block>&lt;webjs-frame id="comments" src="/posts/42/comments" loading="lazy"&gt;
   &lt;p&gt;Loading comments...&lt;/p&gt;
-&lt;/webjs-frame&gt;</pre>
+&lt;/webjs-frame&gt;</code-block>
     <p>A <code>src</code> change after connect re-loads; eager connect, the lazy observer, and a <code>src</code> mutation never double-fetch the same URL. Because the request carries the <code>x-webjs-frame</code> header, the <strong>server returns only the matched subtree</strong> (byte-equivalent to what the client would slice from a full-page render, but far fewer bytes), falling back to the full page when the frame is absent.</p>
     <p><strong>Progressive-enhancement caveat:</strong> a <code>src</code>-driven frame is JS-dependent. The browser does not natively fetch a <code>&lt;webjs-frame src&gt;</code> (unlike an <code>&lt;iframe&gt;</code>), so with JS off the frame shows only whatever children were server-rendered into it. Use <code>src</code> / <code>loading</code> for deferred content (comments, a recommendations rail, an expensive card) where a JS-off placeholder is acceptable; for content that must exist without JS, render it server-side into the frame instead.</p>
 
     <h2>Stream actions (surgical element updates)</h2>
     <p><code>&lt;webjs-stream&gt;</code> is webjs's take on <strong>Turbo Streams</strong> (from Hotwire Turbo); the action set (<code>append</code> / <code>prepend</code> / <code>before</code> / <code>after</code> / <code>replace</code> / <code>update</code> / <code>remove</code>) mirrors <code>&lt;turbo-stream&gt;</code>, so that knowledge transfers directly.</p>
     <p>A region swap is the right tool for "this part of the page changed". It is too coarse for "append ONE comment", "remove ONE row", or "bump a count". For those, a server response declares per-element actions as plain HTML, a <code>&lt;webjs-stream action target&gt;</code> wrapping one <code>&lt;template&gt;</code>:</p>
-    <pre>&lt;webjs-stream action="append" target="comments"&gt;
+    <code-block>&lt;webjs-stream action="append" target="comments"&gt;
   &lt;template&gt;&lt;li&gt;Nice post!&lt;/li&gt;&lt;/template&gt;
-&lt;/webjs-stream&gt;</pre>
+&lt;/webjs-stream&gt;</code-block>
     <p>The element clones its template on connect, applies the action by native DOM, then removes itself. Actions mirror Turbo's set: <code>append</code> / <code>prepend</code> (last / first child of the target id), <code>before</code> / <code>after</code> (sibling of the target), <code>replace</code> (the target element), <code>update</code> (its children), <code>remove</code> (delete it, no template). A <code>targets</code> CSS selector applies to every match instead of a single <code>target</code> id.</p>
     <p>One applier serves two delivery paths. Over HTTP, a <code>&lt;form&gt;</code> submission rides the router, which adds <code>Accept: text/vnd.webjs-stream.html</code>; the server returns a stream only then and the router applies it surgically. With JS off the browser sends no such header, so the same endpoint returns a normal render and the form is a plain full-page POST (progressive-enhancement-safe). Over a live channel, <code>renderStream(message)</code> from a <code>connectWS</code> handler applies a <code>broadcast()</code>ed payload, so chat and notifications reuse the same applier.</p>
     <p>Build the payload server-side and apply it client-side:</p>
-    <pre>// app/posts/[id]/route.ts
+    <code-block>// app/posts/[id]/route.ts
 import { stream, streamResponse, acceptsStream, broadcast } from '@webjsdev/server';
 import { escapeText } from '@webjsdev/core';
 export async function POST(req, { params }) {
@@ -191,23 +191,23 @@ export async function POST(req, { params }) {
   broadcast('post:' + params.id, html);              // fan out to other viewers
   if (acceptsStream(req)) return streamResponse(html); // JS client: surgical
   return Response.redirect(new URL('/posts/' + params.id, req.url), 303); // no-JS: normal render
-}</pre>
-    <pre>// a component, for the live channel
+}</code-block>
+    <code-block>// a component, for the live channel
 import { connectWS, renderStream } from '@webjsdev/core';
-connectWS('/posts/' + id + '/feed', { onMessage: (m) =&gt; renderStream(m) });</pre>
+connectWS('/posts/' + id + '/feed', { onMessage: (m) =&gt; renderStream(m) });</code-block>
     <p><code>stream.*</code> escapes the target id but NOT the content (server-authored HTML, like an <code>html</code> hole, so escape any user substring yourself with <code>escapeText</code> from <code>@webjsdev/core</code>). <code>renderStream</code> and the <code>&lt;webjs-stream&gt;</code> element are auto-registered by the client router.</p>
 
     <h2>View Transitions (opt-in, all three swap paths)</h2>
     <p>The router can wrap a client navigation's DOM mutation in the native <a href="https://developer.mozilla.org/en-US/docs/Web/API/View_Transitions_API">View Transitions API</a> (<code>document.startViewTransition</code>), so a same-shell partial swap cross-fades (or runs your <code>::view-transition-*</code> CSS) instead of snapping. It is OFF by default and purely OPT-IN, so an unconfigured app behaves exactly as before (no animation surprise, no regression in a browser without the API). Opt in by adding a meta to the page head, mirroring Turbo's <code>&lt;meta name="view-transition"&gt;</code> convention:</p>
-    <pre>&lt;!-- in the root layout's &lt;head&gt;, or any page's head --&gt;
-&lt;meta name="view-transition" content="same-origin"&gt;</pre>
+    <code-block>&lt;!-- in the root layout's &lt;head&gt;, or any page's head --&gt;
+&lt;meta name="view-transition" content="same-origin"&gt;</code-block>
     <p>The accepted opt-in value is <code>same-origin</code> (every client-router swap is same-origin by construction, so it reads as "animate these in-app navigations"); any other value, or the meta being absent, keeps transitions off. The opt-in is PER page, so it is a page-scoped meta: put it on one page's metadata to animate that page, or on the root layout to animate the whole app. Navigating to a page that does NOT declare it turns transitions back off, because the soft-nav head merge reconciles page-scoped <code>&lt;meta&gt;</code> tags (a stale one the previous page declared is removed, not left to leak).</p>
     <p>View transitions COMPOSE with Suspense streaming: a streamed boundary (a <code>loading.ts</code> skeleton or a <code>&lt;webjs-suspense&gt;</code> region) navigated to under an active transition still resolves its content progressively, because the streamed resolve waits for the transition's DOM swap to commit before applying.</p>
     <p>When enabled and supported, the transition wraps ALL THREE swap paths, the deepest-marker layout swap, the <code>&lt;webjs-frame&gt;</code> swap, AND the full-body fallback, not just the full-body case (the inverse of what an author expects, since the marker and frame swaps are the common designed-for paths). The transition wraps the DOM MUTATION ONLY, never the fetch (which already happened); the browser captures the before/after around the synchronous swap. When <code>startViewTransition</code> is unavailable (Firefox / older Safari), the swap runs synchronously, byte-identical to the no-transition path, with no flash and no throw.</p>
 
     <h3>Persisting elements across a swap (<code>data-webjs-permanent</code>)</h3>
     <p>An element marked <code>data-webjs-permanent</code> (it MUST also carry an <code>id</code>) survives a navigation as the SAME live DOM node, by node identity, so a playing <code>&lt;audio&gt;</code> / <code>&lt;video&gt;</code>, a live widget, an open menu, or any element with accumulated JS state keeps running across the swap instead of being destroyed and re-created from the incoming HTML. Mirrors Turbo's permanent-element behaviour.</p>
-    <pre>&lt;audio id="player" data-webjs-permanent controls src="/track.mp3"&gt;&lt;/audio&gt;</pre>
+    <code-block>&lt;audio id="player" data-webjs-permanent controls src="/track.mp3"&gt;&lt;/audio&gt;</code-block>
     <p>Mechanism: before the destructive swap, for each <code>[data-webjs-permanent][id]</code> in the CURRENT DOM the router looks for a matching <code>#id</code> in the INCOMING document; when BOTH exist, the LIVE node is moved into the incoming tree's position (replacing the incoming placeholder), so the swap adopts the live node rather than recreating it. It works for the full-body path AND the in-region (marker / frame) paths, and is a STRONGER guarantee than the keyed reconciler (which preserves identity for matched keyed children): a permanent node keeps EXACT identity even where the reconciler would otherwise recreate it. Rules:</p>
     <ul>
       <li>The element must have an <code>id</code> (the match key) and the attribute on BOTH the current and incoming render of the page.</li>
@@ -221,24 +221,24 @@ connectWS('/posts/' + id + '/feed', { onMessage: (m) =&gt; renderStream(m) });</
     <p>The router maintains a URL-keyed LRU cache of page snapshots (capacity 16). On back/forward via <code>popstate</code>, the cached DOM is applied instantly and the captured window-scroll position is restored. A background refetch then revalidates the snapshot quietly.</p>
     <p>Nav scroll restoration (both the back/forward restore and the scroll-to-top on a forward nav) is forced <code>behavior: 'instant'</code>, so setting <code>html { scroll-behavior: smooth }</code> in your app does not make navigation visibly animate the scroll. It jumps like a native page load. A hash-anchor (<code>#section</code>) link still scrolls smoothly when you opt into it. Because route transitions ignore <code>scroll-behavior: smooth</code> (it only affects in-page anchors), the router logs a one-time dev-only console hint if it detects that setting on <code>&lt;html&gt;</code>, and notes that combining it with a sticky <code>backdrop-filter</code> header can flash on iOS during navigation.</p>
     <p>After a server action mutates data that a cached page depends on, call <code>revalidate()</code>:</p>
-    <pre>import { revalidate } from '@webjsdev/core';
+    <code-block>import { revalidate } from '@webjsdev/core';
 
 // Invalidate one cached URL, next visit refetches
 revalidate('/products/123');
 
 // Clear the entire cache, useful after broad mutations
-revalidate();</pre>
+revalidate();</code-block>
     <p>Mutating form submissions (POST / PUT / PATCH / DELETE) clear the cache automatically on success. You only need <code>revalidate()</code> when the mutation happens via JS / RPC and didn't go through a form.</p>
 
     <h2>Link prefetch (on by default)</h2>
     <p>Same-origin in-app links are prefetched speculatively, so a click resolves from a warm cache with no round-trip. No attribute is needed; it is on for every internal <code>&lt;a href&gt;</code>, the way Next, Nuxt, and SvelteKit ship auto-prefetch, and the prefetch sends the same headers a real navigation does so the click consumes the fragment.</p>
     <p>The default strategy is <strong>device-adaptive</strong>, because one strategy cannot serve both input modalities. On a hover-capable pointer (mouse / trackpad) the default is <strong>intent</strong> (warm on hover or focus, a real head-start before the click). On touch the default is <strong>viewport</strong> (warm as links settle on-screen), because touch has no hover and <code>touchstart</code> fires at tap time, too late to help. The modality is detected with <code>matchMedia('(hover: hover) and (pointer: fine)')</code>, not a user-agent sniff, and a per-link <code>data-prefetch</code> always overrides it.</p>
     <p>Choose a strategy per link with <code>data-prefetch</code> (a valid-HTML <code>data-*</code> attribute, since WebJs has no Link component). Next-style aliases are accepted:</p>
-    <pre>&lt;a href="/dashboard"&gt;adaptive: intent on pointer, viewport on touch (default)&lt;/a&gt;
+    <code-block>&lt;a href="/dashboard"&gt;adaptive: intent on pointer, viewport on touch (default)&lt;/a&gt;
 &lt;a href="/dashboard" data-prefetch="intent"&gt;hover / focus / touch&lt;/a&gt;
 &lt;a href="/dashboard" data-prefetch="render"&gt;eager, on insert (alias: true)&lt;/a&gt;
 &lt;a href="/dashboard" data-prefetch="viewport"&gt;on scroll into view (alias: auto)&lt;/a&gt;
-&lt;a href="/dashboard" data-prefetch="none"&gt;never (alias: false)&lt;/a&gt;</pre>
+&lt;a href="/dashboard" data-prefetch="none"&gt;never (alias: false)&lt;/a&gt;</code-block>
     <p>The <strong>viewport</strong> strategy waits a ~250ms dwell before warming and cancels the instant a link scrolls back out, so a fast scroll through a long list spends no requests (the same over-fetch gate Astro, Next, Nuxt, Remix, TanStack, and Turbo apply). On touch, <code>touchstart</code> additionally warms the tapped link itself. The guiding rule is snappy without bloating the network tab: when the two conflict, the gate under-fetches.</p>
     <p>Only internal links qualify, using the same eligibility as a click: cross-origin, <code>download</code>, <code>target</code> other than <code>_self</code>, non-HTML extensions, <code>data-no-router</code>, and pure hash jumps are skipped. Opt out with <code>data-prefetch="none"</code>, <code>data-no-prefetch</code>, or <code>rel="external"</code>. Speculation is bounded (a concurrency cap with a draining queue, in-flight de-dupe, an LRU + TTL cache) and is disabled under <code>Save-Data</code>, <code>prefers-reduced-data</code>, or a 2g connection. A mutating form submission and <code>revalidate()</code> evict the prefetch cache too, so a fragment prefetched before a mutation is never served stale.</p>
     <p><strong>Prefetch issues a real GET</strong>, so a non-idempotent action (logout, anything that mutates) must be a POST or a <code>&lt;form&gt;</code>, never a GET link. This matches every framework that auto-prefetches. A native <code>&lt;link rel="prefetch"&gt;</code> in the document head is the browser's own mechanism and is left untouched.</p>
@@ -251,10 +251,10 @@ revalidate();</pre>
     <h2>Observing a degraded navigation (<code>webjs:navigation-fallback</code>)</h2>
     <p>Some conditions make a soft navigation impossible: the boundary-integrity scan finds no trustworthy shared segment, a click lands while the document is still parsing, or a cross-deploy build mismatch is detected. Rather than guess and risk a corrupt DOM, the router degrades to a full page load, which is bounded and correct but not soft.</p>
     <p>Every such path dispatches <code>webjs:navigation-fallback</code> on <code>document</code>, <strong>in all environments including production</strong>, with detail <code>&#123; cause, href, willReload &#125;</code>. Causes are <code>no-shared-boundary</code>, <code>live-boundaries-malformed</code>, <code>incoming-boundaries-malformed</code>, <code>readyState-loading</code>, <code>deploy-mismatch</code>, <code>deploy-mismatch-reload-suppressed</code>, <code>navigation-error-unrecoverable</code>, and <code>revalidation-discarded</code>. <code>willReload</code> is <code>false</code> for a degradation that does not reload (a dropped background revalidation), so a listener can tell a click that became a document load from a background op that was skipped. The event is not cancelable: by the time it fires, degrading is the only safe option. In development a deduped console warning also prints.</p>
-    <pre>document.addEventListener('webjs:navigation-fallback', (e) =&gt; {
+    <code-block>document.addEventListener('webjs:navigation-fallback', (e) =&gt; {
   // A full document load on a click is a UX regression worth knowing about.
   if (e.detail.willReload) analytics.track('router_full_load', e.detail);
-});</pre>
+});</code-block>
 
     <h2>Per-segment loading skeletons</h2>
     <p>Each <code>loading.{js,ts}</code> in the route chain is rendered into a hidden <code>&lt;template id="wj-loading:&lt;segment-path&gt;"&gt;</code> at body end. On nav-start, the client clones the deepest matching template into the swap slot, so users see an instant per-segment skeleton during the fetch instead of stale content.</p>
@@ -264,18 +264,18 @@ revalidate();</pre>
     <p>Each click / submit <code>abort()</code>s any in-flight fetch from the prior one (Turbo Drive's <code>navigator.stop()</code> pattern). Rapid clicks won't produce N parallel requests competing to be applied last. A monotonic nav-token additionally short-circuits any response that arrives after a newer navigation has settled, so a slow first request that races past its abort cannot revert the newer page.</p>
 
     <h2>Programmatic navigation</h2>
-    <pre>import { navigate } from '@webjsdev/core';
+    <code-block>import { navigate } from '@webjsdev/core';
 
 // Push history entry
 await navigate('/about');
 
 // Replace current history entry
-await navigate('/login', { replace: true });</pre>
+await navigate('/login', { replace: true });</code-block>
 
     <h2>Opt-out per link / form</h2>
-    <pre>&lt;a href="/logout" data-no-router&gt;Log out&lt;/a&gt;
+    <code-block>&lt;a href="/logout" data-no-router&gt;Log out&lt;/a&gt;
 &lt;form action="/legacy" data-no-router&gt;...&lt;/form&gt;
-&lt;form action="/x"&gt;&lt;button data-no-router&gt;Full reload&lt;/button&gt;&lt;/form&gt;</pre>
+&lt;form action="/x"&gt;&lt;button data-no-router&gt;Full reload&lt;/button&gt;&lt;/form&gt;</code-block>
     <p>Use <code>data-no-router</code> for:</p>
     <ul>
       <li><strong>Auth flows</strong>: <code>/logout</code>, <code>/auth/google</code>, OAuth redirect chains. A full reload wipes in-memory module state (cached user data, auth tokens) that an SPA-style swap would leave behind.</li>
@@ -294,7 +294,7 @@ await navigate('/login', { replace: true });</pre>
 
     <h2>Loading indicator</h2>
     <p>The router can expose a <code>data-navigating</code> attribute on <code>&lt;html&gt;</code> during navigation (deferred 150ms, so quick sub-150ms navs never trigger it) for a subtle progress indicator. It is <strong>opt-in</strong>: add <code>data-webjs-nav-progress</code> to your <code>&lt;html&gt;</code> element to enable it. It stays off by default because toggling an attribute on the root re-resolves <code>oklch()</code> and <code>color-mix()</code> token values on WebKit (so every iOS browser), repainting them for one frame. On a token-driven theme that shows as a visible flash on a slow nav. Enable it only when your theme does not lean on wide-gamut color tokens, or drive your indicator off the <code>webjs:navigate</code> event instead.</p>
-    <pre>&lt;html data-webjs-nav-progress&gt; &lt;!-- opt in once, in your root layout --&gt;
+    <code-block>&lt;html data-webjs-nav-progress&gt; &lt;!-- opt in once, in your root layout --&gt;
 
 html[data-navigating] {
   cursor: progress;
@@ -306,17 +306,17 @@ html[data-navigating]::after {
   height: 2px;
   background: var(--accent);
   animation: progress 1s ease-in-out infinite;
-}</pre>
+}</code-block>
 
     <h2>Listening for navigations</h2>
-    <pre>document.addEventListener('webjs:navigate', (e) =&gt; {
+    <code-block>document.addEventListener('webjs:navigate', (e) =&gt; {
   console.log('Navigated to:', e.detail.url);
   // Track page view, update active nav indicator, etc.
-});</pre>
+});</code-block>
 
     <h2>Disabling the router entirely</h2>
-    <pre>import { disableClientRouter } from '@webjsdev/core/client-router';
-disableClientRouter();</pre>
+    <code-block>import { disableClientRouter } from '@webjsdev/core/client-router';
+disableClientRouter();</code-block>
 
     <h2>Next steps</h2>
     <ul>

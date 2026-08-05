@@ -22,11 +22,11 @@ export default function Conventions() {
     <h3>How to Override Architectural Conventions</h3>
     <p>The conventions are prose, so you customize them by editing the skill (<code>.agents/skills/webjs/SKILL.md</code>) or the workflow rules (<code>.agents/rules/workflow.md</code>) to match your team's preferences. For example, if you prefer shadow DOM components by default (the scaffold defaults to light DOM + Tailwind), state that in the component-patterns section:</p>
 
-    <pre># Component patterns
+    <code-block># Component patterns
 
 - Opt in to shadow DOM (static shadow = true) for every component
 - Author styles via static styles = css\`...\`
-- Always call register()</pre>
+- Always call register()</code-block>
 
     <p>AI agents read the skill and <code>AGENTS.md</code> before every task and follow them. Together they are the source of truth for <em>project conventions</em>: how code is organized, named, and tested. These are preferences you can change, so they are guidance, not a hard gate.</p>
 
@@ -36,11 +36,11 @@ export default function Conventions() {
     <h3>The dividing line</h3>
     <p>One test decides where something belongs: <em>could a sensible app legitimately want this to pass?</em> If yes, it is a convention (it lives in the skill and <code>AGENTS.md</code> as guidance). If no, it is a check (it lives in <code>webjs check</code> and always runs). That is why checks are not overridable, they catch real breakage, and conventions are not enforced by a tool, they are judgment.</p>
 
-    <pre># Validate the project (correctness only)
+    <code-block># Validate the project (correctness only)
 webjs check
 
 # List the correctness checks and their descriptions
-webjs check --rules</pre>
+webjs check --rules</code-block>
 
     <h3>Workflow for AI agents</h3>
     <ol>
@@ -54,14 +54,14 @@ webjs check --rules</pre>
     <p>WebJs ships a testing setup based on <code>node:test</code> and WTR + Playwright.</p>
 
     <h3>Unit Tests</h3>
-    <pre># Run all unit tests
+    <code-block># Run all unit tests
 webjs test
 
-# Test files live in test/unit/*.test.{ts,js}</pre>
+# Test files live in test/unit/*.test.{ts,js}</code-block>
 
     <p>Unit tests use <code>node:test</code> and <code>node:assert/strict</code>. Test server actions (via direct import), component rendering (via <code>renderToString</code>), and utility functions:</p>
 
-    <pre>import { test } from 'node:test';
+    <code-block>import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { html } from '@webjsdev/core';
 import { renderToString } from '@webjsdev/core/server';
@@ -75,13 +75,13 @@ test('action validates input', async () =&gt; {
   const result = await createPost({ title: '', body: '' });
   assert.equal(result.success, false);
   assert.equal(result.status, 400);
-});</pre>
+});</code-block>
 
     <h3>E2E Tests</h3>
-    <pre># Run unit + E2E tests
+    <code-block># Run unit + E2E tests
 webjs test --e2e
 
-# Test files live in test/browser/*.test.{ts,js}</pre>
+# Test files live in test/browser/*.test.{ts,js}</code-block>
 
     <p>E2E tests use WTR + Playwright to launch a real browser and test complete user flows: navigation, form submission, auth, and live interactions.</p>
 
@@ -107,8 +107,8 @@ webjs test --e2e
 
     <h3>Merge Approval</h3>
     <p>Agents never merge without explicit user permission. Before any merge, the agent asks:</p>
-    <pre>Ready to merge &lt;branch&gt; into &lt;target&gt;?
-After merging, should &lt;branch&gt; be deleted or kept?</pre>
+    <code-block>Ready to merge &lt;branch&gt; into &lt;target&gt;?
+After merging, should &lt;branch&gt; be deleted or kept?</code-block>
     <p>The agent waits for approval before proceeding.</p>
 
     <h3>Automatic Tests &amp; Docs</h3>
@@ -165,9 +165,9 @@ After merging, should &lt;branch&gt; be deleted or kept?</pre>
     <h2>webjs create</h2>
     <p>The scaffolding command generates a complete project with all conventions, config files, and example tests pre-configured:</p>
 
-    <pre>npm i -g webjsdev
+    <code-block>npm i -g webjsdev
 webjs create my-app
-cd my-app && npm run dev</pre>
+cd my-app && npm run dev</code-block>
 
     <p>This generates:</p>
     <ul>
@@ -189,13 +189,13 @@ cd my-app && npm run dev</pre>
     <h2>The Complete Workflow</h2>
     <p>When a user tells an AI agent "add a contact page" in a WebJs project, the agent automatically delivers:</p>
 
-    <pre>app/contact/page.ts                           # the page
+    <code-block>app/contact/page.ts                           # the page
 modules/contact/actions/send-message.server.ts # the server action
 modules/contact/types.ts                       # type definitions
 test/unit/contact.test.ts                      # unit test for the action
 test/browser/contact.test.ts                       # E2E test for the form flow
 AGENTS.md                                      # updated if new API/conventions
-docs/app/docs/contact/page.ts                  # doc page (if docs/ exists)</pre>
+docs/app/docs/contact/page.ts                  # doc page (if docs/ exists)</code-block>
 
     <p>Plus: a git commit with a meaningful message, passing tests, and valid conventions. The user never has to ask for tests, docs, or a commit. That is the default behavior.</p>
 

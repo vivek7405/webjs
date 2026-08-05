@@ -10,7 +10,7 @@ export default function Components() {
     <h2>The WebComponent Base Class</h2>
     <p>Every interactive component extends <code>WebComponent</code>, declares its <strong>property map</strong> by passing a shape into the base-class factory (<code>extends WebComponent({ ... })</code>, and optionally <code>static styles</code> for shadow-DOM components), implements <code>render()</code>, and registers itself by passing a hyphenated tag name to <code>ClassName.register('tag-name')</code>. The tag name is an argument to <code>.register()</code>, not a static field.</p>
 
-    <pre>import { WebComponent, html, css, signal } from '@webjsdev/core';
+    <code-block>import { WebComponent, html, css, signal } from '@webjsdev/core';
 
 class MyCounter extends WebComponent {
 
@@ -33,23 +33,23 @@ class MyCounter extends WebComponent {
   }
 }
 
-MyCounter.register('my-counter');</pre>
+MyCounter.register('my-counter');</code-block>
 
     <p>That is a complete, working component. Import it from a page or layout and use it like any HTML element:</p>
 
-    <pre>import '#components/my-counter.ts';
+    <code-block>import '#components/my-counter.ts';
 
 export default function Home() {
   return html\`&lt;my-counter&gt;&lt;/my-counter&gt;\`;
-}</pre>
+}</code-block>
 
     <h2>Tag Names</h2>
     <p>The HTML spec requires that custom element names contain a <strong>hyphen</strong>. This is how the browser distinguishes <code>&lt;my-counter&gt;</code> from built-in elements like <code>&lt;div&gt;</code>. Register the component with <code>Class.register('tag')</code> at the bottom of the file:</p>
 
-    <pre>class UserCard extends WebComponent {
+    <code-block>class UserCard extends WebComponent {
   // ...
 }
-UserCard.register('user-card');</pre>
+UserCard.register('user-card');</code-block>
 
     <p>If you forget the hyphen, the browser throws at registration time with a clear error message.</p>
 
@@ -59,7 +59,7 @@ UserCard.register('user-card');</pre>
     <h3>The factory shape</h3>
     <p>Map each property name to its type constructor. Default values are set in the constructor after <code>super()</code> (never a class-field initializer, which runs after <code>super()</code> and clobbers the reactive accessor):</p>
 
-    <pre>import { WebComponent, html } from '@webjsdev/core';
+    <code-block>import { WebComponent, html } from '@webjsdev/core';
 
 class UserCard extends WebComponent({
   name:     String,
@@ -85,12 +85,12 @@ class UserCard extends WebComponent({
     \`;
   }
 }
-UserCard.register('user-card');</pre>
+UserCard.register('user-card');</code-block>
 
     <h3>Property options and narrowed types with prop()</h3>
     <p>When a property needs options (reflection, a renamed attribute, internal-only state) or a narrowed TypeScript type, wrap the type in the <code>prop()</code> helper. A bare constructor (<code>name: String</code>) is shorthand for <code>name: prop(String)</code>.</p>
 
-    <pre>import { WebComponent, html, prop } from '@webjsdev/core';
+    <code-block>import { WebComponent, html, prop } from '@webjsdev/core';
 
 interface Student { name: string; gpa: number; }
 
@@ -110,7 +110,7 @@ class UserCard extends WebComponent({
     return html\`&lt;p&gt;\${this.student.name} (\${this.size})&lt;/p&gt;\`;
   }
 }
-UserCard.register('user-card');</pre>
+UserCard.register('user-card');</code-block>
 
     <p>Set a default by assigning in the <code>constructor()</code> after <code>super()</code> (never a class-field initializer, which clobbers the reactive accessor). An applied attribute overrides it.</p>
 
@@ -137,7 +137,7 @@ UserCard.register('user-card');</pre>
     <h2>State</h2>
     <p>Signals are the default state primitive. Import <code>signal</code> from <code>@webjsdev/core</code> and read with <code>signal.get()</code> inside <code>render()</code>. The component's built-in SignalWatcher tracks the read and re-renders whenever the signal changes. Instance signals (class-field initializers) carry component-local state; module-scope signals share state across components.</p>
 
-    <pre>import { WebComponent, html, signal } from '@webjsdev/core';
+    <code-block>import { WebComponent, html, signal } from '@webjsdev/core';
 
 class TodoList extends WebComponent {
   items  = signal&lt;{ id: number; text: string; done: boolean }[]&gt;([]);
@@ -170,7 +170,7 @@ class TodoList extends WebComponent {
     \`;
   }
 }
-TodoList.register('todo-list');</pre>
+TodoList.register('todo-list');</code-block>
 
     <h3>How signal updates render</h3>
     <ul>
@@ -178,15 +178,15 @@ TodoList.register('todo-list');</pre>
       <li><strong>Batched re-render</strong>: calling <code>signal.set</code> (or assigning a reactive property, or calling <code>requestUpdate</code>) multiple times in the same synchronous block only triggers <strong>one</strong> re-render. Updates are batched via <code>queueMicrotask</code>, so the DOM update happens after the current call stack finishes but before the next frame paints.</li>
     </ul>
 
-    <pre>// These two writes result in a single re-render, not two:
+    <code-block>// These two writes result in a single re-render, not two:
 this.count.set(1);
 this.label = 'hello';
-// render() is called once with the new count and label.</pre>
+// render() is called once with the new count and label.</code-block>
 
     <h3>Fine-grained binding with <code>watch()</code></h3>
     <p>Reading <code>signal.get()</code> inside <code>render()</code> subscribes the WHOLE component to that signal: any change re-runs <code>render()</code>. When a single template hole depends on a single signal value and the rest of the template doesn't, the <code>watch(signal)</code> directive from <code>@webjsdev/core/directives</code> is a cheaper alternative: the directive sets up its own per-hole subscription, and <em>only</em> the bound text node (or attribute value) updates when the signal fires. The host's <code>render()</code> does not re-run, which also means <code>shouldUpdate</code> / <code>willUpdate</code> / <code>updated</code> are bypassed for that change.</p>
 
-    <pre>import { html, signal } from '@webjsdev/core';
+    <code-block>import { html, signal } from '@webjsdev/core';
 import { watch } from '@webjsdev/core/directives';
 
 const count = signal(0);
@@ -201,14 +201,14 @@ class Counter extends WebComponent {
     \`;
   }
 }
-Counter.register('my-counter');</pre>
+Counter.register('my-counter');</code-block>
 
     <p>SSR inlines the current value once; subscription is a client-only concern. Pick <code>watch()</code> when the binding is a scalar (text node, attribute value) tied to one signal and the surrounding template is expensive or static. Pick <code>signal.get()</code> when the render branches on the value, derives several things from it, or reads multiple signals together.</p>
 
     <h2>Styles</h2>
     <p>Use the <code>css</code> tagged template to declare scoped styles. They are automatically adopted into the component's shadow root.</p>
 
-    <pre>import { WebComponent, html, css } from '@webjsdev/core';
+    <code-block>import { WebComponent, html, css } from '@webjsdev/core';
 
 class StyledCard extends WebComponent {
   static styles = css\`
@@ -234,7 +234,7 @@ class StyledCard extends WebComponent {
     \`;
   }
 }
-StyledCard.register('styled-card');</pre>
+StyledCard.register('styled-card');</code-block>
 
     <h3>How Styles Are Applied</h3>
     <ul>
@@ -245,7 +245,7 @@ StyledCard.register('styled-card');</pre>
     <h3>Design Tokens via CSS Custom Properties</h3>
     <p>CSS custom properties (variables) <strong>inherit across shadow DOM boundaries</strong>. This is the primary mechanism for theming in WebJs. Define tokens on <code>:root</code> or a parent element, and every component in the tree can read them:</p>
 
-    <pre>/* In your root layout or global stylesheet */
+    <code-block>/* In your root layout or global stylesheet */
 :root {
   --accent: oklch(0.58 0.15 55);
   --bg-elev: white;
@@ -263,7 +263,7 @@ static styles = css\`
     padding: var(--sp-4);
   }
   .accent { color: var(--accent); }
-\`;</pre>
+\`;</code-block>
 
     <blockquote>This is fundamentally different from React CSS-in-JS solutions that require runtime injection or build tooling. WebJs uses the platform: shadow DOM gives you scoping, CSS custom properties give you theming, and there is nothing to configure.</blockquote>
 
@@ -271,7 +271,7 @@ static styles = css\`
     <p>Light DOM is the default because global CSS and Tailwind utility classes apply directly: no <code>:host</code>, no <code>::part</code>, no CSS-variable plumbing. The browser renders a plain custom element with normal children. This is the mode the blog example uses everywhere except when shadow DOM buys something specific.</p>
     <p><strong>Light-DOM hosts default to <code>display: block</code>.</strong> A custom element is <code>display: inline</code> by default (so a container component would collapse), and a light-DOM component has no <code>:host</code> to fix it with. So the framework marks every light host <code>data-wj-host</code> and injects one low-priority-layer rule (<code>@layer webjs-host &#123; :where([data-wj-host]) &#123; display: block &#125; &#125;</code>), overridable by any author style including Tailwind utilities (<code>class="flex"</code> wins). Shadow-DOM hosts are NOT marked: set their display via <code>:host</code> in <code>static styles</code>, the way Lit does (fully respected). See the <a href="/docs/styling">styling</a> page.</p>
 
-    <pre>// static shadow = false is the default, no need to declare it.
+    <code-block>// static shadow = false is the default, no need to declare it.
 class AppCard extends WebComponent({ heading: String }) {
   constructor() {
     super();
@@ -287,12 +287,12 @@ class AppCard extends WebComponent({ heading: String }) {
     \`;
   }
 }
-AppCard.register('app-card');</pre>
+AppCard.register('app-card');</code-block>
 
     <h3>Class-prefix rule for custom CSS</h3>
     <p>Tailwind utilities are unique by construction, so most light-DOM components need zero custom CSS. If you <em>do</em> author a <code>&lt;style&gt;</code> block or import a stylesheet, <strong>every class selector MUST be prefixed with the component's tag name</strong>. Otherwise two components with a <code>.card</code> or <code>.header</code> class will style each other.</p>
 
-    <pre>// Pattern A: BEM-ish class names prefixed with tag
+    <code-block>// Pattern A: BEM-ish class names prefixed with tag
 class MyCard extends WebComponent {
   render() {
     return html\`
@@ -316,7 +316,7 @@ class MyCard extends WebComponent {
       &lt;div class="body"&gt;&lt;h3 class="title"&gt;\${t}&lt;/h3&gt;&lt;/div&gt;
     \`;
   }
-}</pre>
+}</code-block>
 
     <h2>Shadow DOM (opt-in)</h2>
     <p>Set <code>static shadow = true</code> when you want one of these:</p>
@@ -327,7 +327,7 @@ class MyCard extends WebComponent {
     </ul>
     <p><strong>Slots themselves are NOT a reason to opt into shadow DOM.</strong> <code>&lt;slot&gt;</code>, <code>&lt;slot name="x"&gt;</code>, fallback content, <code>assignedNodes()</code>, <code>assignedElements()</code>, <code>assignedSlot</code>, <code>slotchange</code>, named-slot routing, and first-wins resolution all work identically in light DOM (the framework's default). See the <strong>Slots</strong> section below for the full surface.</p>
 
-    <pre>class Card extends WebComponent {
+    <code-block>class Card extends WebComponent {
   static shadow = true;                 // opt in
   static styles = css\`
     :host { display: block; padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
@@ -341,7 +341,7 @@ class MyCard extends WebComponent {
     \`;
   }
 }
-Card.register('my-card');</pre>
+Card.register('my-card');</code-block>
 
     <p><code>static styles</code> on a light-DOM component is silently ignored. There's no shadow root to adopt them into. If you see your styles failing, check whether you forgot <code>static shadow = true</code>.</p>
 
@@ -377,7 +377,7 @@ Card.register('my-card');</pre>
 
     <p>Whatever state should appear in the first paint MUST be set in the constructor (after <code>super()</code>) or be derivable from the factory's properties + the tag's attributes. The SSR pipeline reads exactly these values.</p>
 
-    <pre>// ❌ first paint is empty (initial state set in browser-only hook)
+    <code-block>// ❌ first paint is empty (initial state set in browser-only hook)
 class Cart extends WebComponent({ items: prop&lt;Item[]&gt;(Array) }) {
   connectedCallback() {                       // ← server never runs this
     super.connectedCallback();
@@ -386,9 +386,9 @@ class Cart extends WebComponent({ items: prop&lt;Item[]&gt;(Array) }) {
   }
 
   render() { return html\`&lt;ul&gt;\${this.items.map(/* … */)}&lt;/ul&gt;\`; }
-}</pre>
+}</code-block>
 
-    <pre>// ✅ SSR-safe: instance signal carries the default,
+    <code-block>// ✅ SSR-safe: instance signal carries the default,
 //    browser hook refines after hydration
 class Cart extends WebComponent {
   items = signal&lt;Item[]&gt;([]);                  // ← SSR uses this
@@ -400,7 +400,7 @@ class Cart extends WebComponent {
   }
 
   render() { return html\`&lt;ul&gt;\${this.items.get().map(/* … */)}&lt;/ul&gt;\`; }
-}</pre>
+}</code-block>
 
     <h3>Where each kind of data belongs</h3>
 
@@ -422,7 +422,7 @@ class Cart extends WebComponent {
     <h3>Compound components: reading the parent with closest() at SSR</h3>
     <p>A compound component (a tabs trigger, a toggle-group item) derives its active or pressed state by walking up to the parent and reading the parent's value. WebJs supports <code>this.closest(...)</code> at SSR for <strong>tag-name selectors only</strong>, so the active or pressed state is marked in the <strong>first server paint</strong>, not only after hydration.</p>
 
-    <pre>class UiTabsTrigger extends WebComponent({ value: String }) {
+    <code-block>class UiTabsTrigger extends WebComponent({ value: String }) {
   get _tabs() { return this.closest('ui-tabs'); }
 
   render() {
@@ -431,7 +431,7 @@ class Cart extends WebComponent {
     return html\`&lt;button data-state=\${active ? 'active' : 'inactive'}&gt;&lt;slot&gt;&lt;/slot&gt;&lt;/button&gt;\`;
   }
 }
-UiTabsTrigger.register('ui-tabs-trigger');</pre>
+UiTabsTrigger.register('ui-tabs-trigger');</code-block>
 
     <p>The SSR walker threads the chain of enclosing custom-element instances into each instance, and the server element shim's <code>closest()</code> resolves a parent over that chain (so <code>this.closest('ui-tabs').value</code> reads the live parent property the walker already applied). Host IDL properties a <code>render()</code> mutates on <code>this</code> (<code>this.dataset.*</code>, <code>this.className</code>, <code>this.hidden</code>, the <code>aria*</code> mixin) reflect to the matching attribute on the SSR'd host tag, so the active tab is marked before any JavaScript runs. The first client render produces the identical state (the browser's real <code>closest()</code> against the real DOM), so there is no hydration flash. Two limits apply.</p>
     <ul>
@@ -442,13 +442,13 @@ UiTabsTrigger.register('ui-tabs-trigger');</pre>
 
     <h2>Fetching data in a component (async render)</h2>
     <p>A leaf component can fetch its own server data into the first paint, so you do not have to fetch it in the page and prop-drill it down. Make <code>render()</code> async and call a <code>'use server'</code> action directly:</p>
-    <pre>class UserProfile extends WebComponent({ uid: String }) {
+    <code-block>class UserProfile extends WebComponent({ uid: String }) {
   async render() {
     const u = await getUser(this.uid);   // real fn at SSR, RPC stub on the client
     return html\`&lt;h3&gt;\${u.name}&lt;/h3&gt;\`;
   }
 }
-UserProfile.register('user-profile');</pre>
+UserProfile.register('user-profile');</code-block>
     <p>SSR awaits the render, so the data is in the first paint with no fallback (JS-off reads it). On a client re-fetch (a prop change) the default is stale-while-revalidate: the prior content stays until the new render resolves. Define <code>renderFallback()</code> only to show a loading state DURING a re-fetch (never on the first paint). A thrown <code>await</code> is isolated to that component, with <code>renderError()</code> as the optional custom UI.</p>
     <h3>Which tool to reach for</h3>
     <ul>
@@ -471,7 +471,7 @@ UserProfile.register('user-profile');</pre>
     <h3>The native slot API, in light DOM</h3>
     <p>There is no WebJs-specific slot API. Light-DOM slots ARE the native DOM slot API, so post-mount writes are live exactly as in shadow DOM: <code>appendChild</code>, <code>insertBefore</code>, <code>removeChild</code>, <code>el.remove()</code>, <code>innerHTML</code>, flipping a child's <code>slot=""</code> attribute, and <code>HTMLSlotElement.assign()</code> all re-project immediately. The reads (<code>assignedNodes()</code>, <code>assignedElements()</code>, <code>assignedSlot</code>) and the <code>slotchange</code> event behave identically to shadow DOM, including native async-coalesced <code>slotchange</code> timing. One caveat rides <code>assign()</code>, which in light DOM is an <em>extension</em> (an element-bound overlay that works alongside name matching) while native shadow <code>assign()</code> only works under <code>slotAssignment: 'manual'</code>, a mode WebJs's shadow side does not set. So <code>assign()</code> is the one write that does not survive flipping to <code>static shadow = true</code>; prefer <code>slot=""</code> attributes in a component meant to move between modes.</p>
 
-    <pre>const card = document.querySelector('my-card');
+    <code-block>const card = document.querySelector('my-card');
 
 // Every one of these is live, and identical to shadow DOM:
 card.appendChild(node);
@@ -481,7 +481,7 @@ card.innerHTML = '&lt;p&gt;replaced&lt;/p&gt;';
 // Reads mirror shadow DOM:
 card.querySelector('slot').assignedNodes();
 node.assignedSlot;
-card.querySelector('slot').addEventListener('slotchange', ...);</pre>
+card.querySelector('slot').addEventListener('slotchange', ...);</code-block>
 
     <p><strong>Migrating from a shadow-DOM component</strong>: flip <code>static shadow</code> and nothing else changes, with the documented gaps on this page as the exceptions (most notably the <code>assign()</code> caveat above and first-render read timing). You write the same template and the same imperative code.</p>
 
@@ -506,7 +506,7 @@ card.querySelector('slot').addEventListener('slotchange', ...);</pre>
     <h3>Default Slot</h3>
     <p>The <code>&lt;slot&gt;&lt;/slot&gt;</code> element in a component's <code>render()</code> is where the parent's child content appears:</p>
 
-    <pre>// Component definition
+    <code-block>// Component definition
 class AppShell extends WebComponent {
   // ...
   render() {
@@ -523,14 +523,14 @@ html\`
   &lt;app-shell&gt;
     &lt;p&gt;This paragraph appears inside the main slot.&lt;/p&gt;
   &lt;/app-shell&gt;
-\`;</pre>
+\`;</code-block>
 
     <p>This is how WebJs layouts work: the <code>doc-shell</code> and <code>blog-shell</code> components in the examples use a default <code>&lt;slot&gt;</code> to receive page content from the router.</p>
 
     <h3>Named Slots</h3>
     <p>Use <code>&lt;slot name="..."&gt;</code> to route different pieces of content to different parts of a component:</p>
 
-    <pre>class PageLayout extends WebComponent {
+    <code-block>class PageLayout extends WebComponent {
   static styles = css\`
     .sidebar { float: left; width: 200px; }
     .content { margin-left: 220px; }
@@ -566,7 +566,7 @@ html\`
 
     &lt;small slot="footer"&gt;Custom footer here.&lt;/small&gt;
   &lt;/page-layout&gt;
-\`;</pre>
+\`;</code-block>
 
     <p>Content without a <code>slot</code> attribute goes to the default (unnamed) slot. Content with <code>slot="name"</code> is routed to the matching <code>&lt;slot name="name"&gt;</code>. Text inside the <code>&lt;slot&gt;</code> tag itself is fallback content shown when no matching content is provided.</p>
 
@@ -576,35 +576,35 @@ html\`
     <h3>connectedCallback()</h3>
     <p>Called when the element is inserted into the document. This is where WebJs attaches the shadow root, adopts styles, and performs the first render. Use it for setup work like fetching data, opening WebSocket connections, or reading from <code>localStorage</code>:</p>
 
-    <pre>connectedCallback() {
+    <code-block>connectedCallback() {
   super.connectedCallback();  // REQUIRED: sets up shadow root + first render
   this._ws = connectWS('/api/chat', {
     onMessage: (msg) =&gt; this.messages.set([...this.messages.get(), msg]),
   });
-}</pre>
+}</code-block>
 
     <blockquote>Forgetting <code>super.connectedCallback()</code> is the #1 mistake. Without it, the component will never render.</blockquote>
 
     <h3>disconnectedCallback()</h3>
     <p>Called when the element is removed from the document. Clean up event listeners, timers, WebSocket connections, and other resources:</p>
 
-    <pre>disconnectedCallback() {
+    <code-block>disconnectedCallback() {
   this._ws?.close();
   this._ws = null;
   clearInterval(this._timer);
-}</pre>
+}</code-block>
 
     <p>You do not need to call <code>super.disconnectedCallback()</code> (the base class is a no-op), but it does not hurt to include it for safety.</p>
 
     <h3>attributeChangedCallback(name, oldValue, newValue)</h3>
     <p>Called when one of the <code>observedAttributes</code> changes. WebJs handles this for you. It coerces the attribute value based on the type declared in the factory shape, sets the corresponding instance property, and schedules a re-render. You rarely need to override this, but you can if you need side effects when a specific attribute changes:</p>
 
-    <pre>attributeChangedCallback(name, oldVal, newVal) {
+    <code-block>attributeChangedCallback(name, oldVal, newVal) {
   super.attributeChangedCallback(name, oldVal, newVal);
   if (name === 'src' &amp;&amp; newVal !== oldVal) {
     this._loadImage(newVal);
   }
-}</pre>
+}</code-block>
 
     <h3>Render Is Automatic</h3>
     <p>You never call <code>render()</code> directly. It is called automatically:</p>
@@ -619,7 +619,7 @@ html\`
     <h2>Events in Templates</h2>
     <p>Attach event listeners using the <code>@event</code> syntax in templates. This works like React's <code>onClick</code>, <code>onSubmit</code>, etc., but maps directly to DOM event names:</p>
 
-    <pre>render() {
+    <code-block>render() {
   return html\`
     &lt;button @click=\${() =&gt; this.increment()}&gt;Click me&lt;/button&gt;
     &lt;form @submit=\${(e) =&gt; this.handleSubmit(e)}&gt;
@@ -627,7 +627,7 @@ html\`
       &lt;button type="submit"&gt;Send&lt;/button&gt;
     &lt;/form&gt;
   \`;
-}</pre>
+}</code-block>
 
     <h3>How Event Binding Works</h3>
     <ul>
@@ -635,7 +635,7 @@ html\`
       <li><strong>Client rendering</strong>: on the client, each <code>@event</code> binding creates a <strong>stable dispatcher</strong> function that is registered once with <code>addEventListener</code>. When you re-render with a new handler reference, the dispatcher is updated in place, so no listener is removed and re-added. This eliminates event listener churn that plagues naive re-render strategies.</li>
     </ul>
 
-    <pre>// Even though this creates a new arrow function on every render,
+    <code-block>// Even though this creates a new arrow function on every render,
 // the actual addEventListener is only called once. The dispatcher
 // swaps the inner handler reference behind the scenes.
 render() {
@@ -644,7 +644,7 @@ render() {
       \${this.count.get()}
     &lt;/button&gt;
   \`;
-}</pre>
+}</code-block>
 
     <h2>Properties vs Attributes in Templates</h2>
     <p>Templates support three binding prefixes for setting values on elements:</p>
@@ -654,12 +654,12 @@ render() {
     <h3>Regular Attributes: <code>attr=\${value}</code></h3>
     <p>Sets an HTML attribute. The value is stringified. If the value is <code>null</code>, <code>undefined</code>, or <code>false</code>, the attribute is removed.</p>
 
-    <pre>html\`&lt;input type="text" value=\${this.name} class=\${this.active ? 'on' : 'off'} /&gt;\`</pre>
+    <code-block>html\`&lt;input type="text" value=\${this.name} class=\${this.active ? 'on' : 'off'} /&gt;\`</code-block>
 
     <h3>Property Bindings: <code>.prop=\${value}</code></h3>
     <p>Sets a JavaScript property directly on the DOM element, bypassing attribute serialization. Use this when you need to pass objects, arrays, or other non-string values to a child component:</p>
 
-    <pre>html\`&lt;my-chart .data=\${this.chartData} .options=\${{ animate: true }}&gt;&lt;/my-chart&gt;\`</pre>
+    <code-block>html\`&lt;my-chart .data=\${this.chartData} .options=\${{ animate: true }}&gt;&lt;/my-chart&gt;\`</code-block>
 
     <p><strong>On custom elements, property bindings round-trip through SSR.</strong> The renderer serializes the value via webjs's wire format (which handles Array, Object, Date, Map, Set, BigInt, and reference cycles) and emits it as a <code>data-webjs-prop-*</code> attribute. The SSR walker reads the attribute before calling <code>render()</code> so the component's first paint includes the bound value. On the client, <code>connectedCallback</code> applies and strips the attribute. End-to-end DX: <code>html\`&lt;post-list .posts=\${posts}&gt;&lt;/post-list&gt;\`</code> in a page function just works, with rich types preserved.</p>
 
@@ -670,18 +670,18 @@ render() {
     <h3>Boolean Attributes: <code>?attr=\${flag}</code></h3>
     <p>Adds the attribute if the value is truthy, removes it if falsy. This is the correct way to handle boolean HTML attributes like <code>disabled</code>, <code>checked</code>, <code>hidden</code>, and <code>readonly</code>:</p>
 
-    <pre>html\`
+    <code-block>html\`
   &lt;button ?disabled=\${!this.connected.get()}&gt;Send&lt;/button&gt;
   &lt;input ?checked=\${this.agreed.get()} type="checkbox" /&gt;
   &lt;div ?hidden=\${this.items.get().length === 0}&gt;No items&lt;/div&gt;
-\`</pre>
+\`</code-block>
 
     <p>During SSR, <code>?disabled=\${true}</code> emits <code>disabled=""</code> and <code>?disabled=\${false}</code> emits nothing, matching how the browser interprets boolean attributes.</p>
 
     <h2>Class.register('tag')</h2>
     <p>Register the component with <code>Class.register('tag')</code> at the bottom of the file:</p>
 
-    <pre>MyCounter.register('my-counter');</pre>
+    <code-block>MyCounter.register('my-counter');</code-block>
 
     <p>WebJs wraps the native API (and installs a compatible shim on the server) so the same line works in both environments:</p>
     <ul>
@@ -698,7 +698,7 @@ render() {
     <h2>Server Rendering</h2>
     <p>WebJs components are server-rendered using <strong>Declarative Shadow DOM</strong>. When the server renders a page containing <code>&lt;my-counter count="5"&gt;&lt;/my-counter&gt;</code>, the output looks like:</p>
 
-    <pre>&lt;my-counter count="5"&gt;
+    <code-block>&lt;my-counter count="5"&gt;
   &lt;template shadowrootmode="open"&gt;
     &lt;style&gt;
       :host { display: inline-flex; gap: 8px; }
@@ -708,7 +708,7 @@ render() {
     &lt;output&gt;5&lt;/output&gt;
     &lt;button&gt;+&lt;/button&gt;
   &lt;/template&gt;
-&lt;/my-counter&gt;</pre>
+&lt;/my-counter&gt;</code-block>
 
     <h3>How SSR Works</h3>
     <ul>
@@ -722,7 +722,7 @@ render() {
     <h3>Async Rendering on the Server</h3>
     <p>On the server, <code>render()</code> can be async. This lets you fetch data inside a component:</p>
 
-    <pre>class UserProfile extends WebComponent({ userId: String }) {
+    <code-block>class UserProfile extends WebComponent({ userId: String }) {
   constructor() {
     super();
     this.userId = '';
@@ -737,7 +737,7 @@ render() {
     \`;
   }
 }
-UserProfile.register('user-profile');</pre>
+UserProfile.register('user-profile');</code-block>
 
     <p>On the client, <code>render()</code> is called synchronously. If you need async data on the client, fetch it in <code>connectedCallback()</code> and write a signal when the data arrives.</p>
 
@@ -765,7 +765,7 @@ UserProfile.register('user-profile');</pre>
     <h3>Keyed Lists with repeat()</h3>
     <p>By default, rendering an array of templates rebuilds all children when any item changes. For lists where items have stable identities, use <code>repeat()</code> to enable keyed reconciliation:</p>
 
-    <pre>import { WebComponent, html, css, repeat } from '@webjsdev/core';
+    <code-block>import { WebComponent, html, css, repeat } from '@webjsdev/core';
 
 class TaskList extends WebComponent {
   tasks = signal([
@@ -797,7 +797,7 @@ class TaskList extends WebComponent {
     \`;
   }
 }
-TaskList.register('task-list');</pre>
+TaskList.register('task-list');</code-block>
 
     <h3>How repeat() Works</h3>
     <ul>
@@ -814,7 +814,7 @@ TaskList.register('task-list');</pre>
     <h2>Putting It All Together</h2>
     <p>Here is a complete example showing properties, state, events, lifecycle, slots, and scoped styles in a single component:</p>
 
-    <pre>import { WebComponent, html, css, repeat, connectWS } from '@webjsdev/core';
+    <code-block>import { WebComponent, html, css, repeat, connectWS } from '@webjsdev/core';
 
 class ChatBox extends WebComponent {
 
@@ -873,7 +873,7 @@ class ChatBox extends WebComponent {
     \`;
   }
 }
-ChatBox.register('chat-box');</pre>
+ChatBox.register('chat-box');</code-block>
 
     <h2>Quick Reference</h2>
     <ul>

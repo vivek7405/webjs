@@ -10,13 +10,13 @@ export default function Sessions() {
     <h2>Setup</h2>
     <p>Add session middleware in <code>middleware.ts</code>:</p>
 
-    <pre>// middleware.ts
+    <code-block>// middleware.ts
 import { session, cookieSessionStorage } from '@webjsdev/server';
 
 export default session({
   secret: process.env.SESSION_SECRET,
   storage: cookieSessionStorage(),  // or storeSessionStorage() for Redis
-});</pre>
+});</code-block>
 
     <p>The only requirement is <code>SESSION_SECRET</code> (or pass <code>secret</code> directly), the key used to sign session cookies.</p>
 
@@ -30,12 +30,12 @@ export default session({
       <li>Every response includes the full session cookie.</li>
     </ul>
 
-    <pre>import { session, cookieSessionStorage } from '@webjsdev/server';
+    <code-block>import { session, cookieSessionStorage } from '@webjsdev/server';
 
 export default session({
   secret: process.env.SESSION_SECRET,
   storage: cookieSessionStorage(),
-});</pre>
+});</code-block>
 
     <h3>storeSessionStorage() (production)</h3>
     <p>Only a session ID is stored in the cookie. Session data lives in the global cache store, which is in-memory by default. Switch to Redis for horizontal scaling by calling <code>setStore(redisStore({ url: process.env.REDIS_URL }))</code> once at app startup.</p>
@@ -45,57 +45,57 @@ export default session({
       <li>For production, use with Redis: <code>setStore(redisStore(...))</code>.</li>
     </ul>
 
-    <pre>import { session, storeSessionStorage } from '@webjsdev/server';
+    <code-block>import { session, storeSessionStorage } from '@webjsdev/server';
 
 export default session({
   secret: process.env.SESSION_SECRET,
   storage: storeSessionStorage(),  // uses getStore(), memory or Redis
-});</pre>
+});</code-block>
 
     <h2>Session Class API</h2>
     <p>Use <code>getSession(req)</code> in any server-side code (API routes, server actions, middleware):</p>
 
-    <pre>import { getSession } from '@webjsdev/server';
+    <code-block>import { getSession } from '@webjsdev/server';
 
-const s = getSession(req);</pre>
+const s = getSession(req);</code-block>
 
     <h3>s.get(key)</h3>
     <p>Returns the value for the key, checking both regular data and flash data.</p>
 
-    <pre>const userId = s.get('userId');</pre>
+    <code-block>const userId = s.get('userId');</code-block>
 
     <h3>s.set(key, value)</h3>
     <p>Sets a value. Pass <code>null</code> or <code>undefined</code> to delete the key.</p>
 
-    <pre>s.set('userId', user.id);
-s.set('role', 'admin');</pre>
+    <code-block>s.set('userId', user.id);
+s.set('role', 'admin');</code-block>
 
     <h3>s.has(key)</h3>
     <p>Returns <code>true</code> if the key exists in either regular or flash data.</p>
 
-    <pre>if (s.has('userId')) { /* authenticated */ }</pre>
+    <code-block>if (s.has('userId')) { /* authenticated */ }</code-block>
 
     <h3>s.flash(key, value)</h3>
     <p>Sets a value that exists for one request only. Use for success/error messages after redirects.</p>
 
-    <pre>s.flash('message', 'Post created!');
+    <code-block>s.flash('message', 'Post created!');
 // Next request: s.get('message') → 'Post created!'
-// Request after: s.get('message') → undefined</pre>
+// Request after: s.get('message') → undefined</code-block>
 
     <h3>s.destroy()</h3>
     <p>Clears all session data and removes the cookie. Use for logout flows.</p>
 
-    <pre>s.destroy();</pre>
+    <code-block>s.destroy();</code-block>
 
     <h3>s.regenerateId(deleteOld?)</h3>
     <p>Regenerates the session ID. Call after login to prevent session fixation attacks. Pass <code>true</code> to delete the old session entry from the store.</p>
 
-    <pre>// After successful login:
+    <code-block>// After successful login:
 s.set('userId', user.id);
-s.regenerateId(true);  // new ID, old store entry deleted</pre>
+s.regenerateId(true);  // new ID, old store entry deleted</code-block>
 
     <h2>Example: Login Flow</h2>
-    <pre>// app/api/login/route.ts
+    <code-block>// app/api/login/route.ts
 import { getSession } from '@webjsdev/server';
 import { db } from '#db/connection.server.ts';
 import { verifyPassword } from '#lib/auth.server.ts';
@@ -114,31 +114,31 @@ export async function POST(req: Request) {
   s.regenerateId(true);
 
   return Response.json({ ok: true });
-}</pre>
+}</code-block>
 
     <h2>Example: Logout</h2>
-    <pre>// app/api/logout/route.ts
+    <code-block>// app/api/logout/route.ts
 import { getSession } from '@webjsdev/server';
 
 export async function POST(req: Request) {
   const s = getSession(req);
   s.destroy();
   return Response.json({ ok: true });
-}</pre>
+}</code-block>
 
     <h2>Example: Flash Messages</h2>
-    <pre>// In a server action after creating a post:
+    <code-block>// In a server action after creating a post:
 const s = getSession(req);
 s.flash('success', 'Post published!');
 
 // In the page that renders after redirect:
 const s = getSession(req);
-const message = s.get('success');  // 'Post published!', only this request</pre>
+const message = s.get('success');  // 'Post published!', only this request</code-block>
 
     <h2>Session Options</h2>
     <p>The <code>session()</code> middleware accepts these options:</p>
 
-    <pre>session({
+    <code-block>session({
   secret: '...',                      // required (or SESSION_SECRET env var)
   storage: cookieSessionStorage(),    // default: cookieSessionStorage()
   cookieName: 'webjs.sid',            // default: 'webjs.sid'
@@ -147,7 +147,7 @@ const message = s.get('success');  // 'Post published!', only this request</pre>
   httpOnly: true,                     // default: true
   secure: true,                       // default: true
   sameSite: 'Lax',                    // default: 'Lax'
-})</pre>
+})</code-block>
 
     <h2>Next Steps</h2>
     <ul>

@@ -34,7 +34,7 @@ export default function AIFirst() {
     <h3>2. The WebJs MCP Server</h3>
     <p>Alongside the static <code>AGENTS.md</code> contract, every WebJs app ships a <strong>read-only Model Context Protocol server</strong> agents can wire up for live, version-accurate introspection of THIS app and the framework. It mutates nothing, so it is safe to call freely, and it is preferred over recalling WebJs from training data (which drifts). It is already available with no install (the WebJs CLI, a project dependency, has it built in as <code>webjs mcp</code>, and the equivalent standalone package runs as <code>npx @webjsdev/mcp</code>). It is an MCP STDIO server, so you do not run it in a terminal and read its output. Your MCP host (Claude Code, Cursor, etc.) launches it and surfaces its tools.</p>
     <p>Claude Code is pre-wired by the scaffold. For another host, register the server by pointing it at the package:</p>
-    <pre>// .cursor/mcp.json (or your host's MCP config)
+    <code-block>// .cursor/mcp.json (or your host's MCP config)
 {
   "mcpServers": {
     "webjs": {
@@ -42,7 +42,7 @@ export default function AIFirst() {
       "args": ["@webjsdev/mcp"]
     }
   }
-}</pre>
+}</code-block>
     <p><strong>Introspection of this app</strong> (read-only, no module load, no DB side effects):</p>
     <ul>
       <li><code>list_routes</code>: the live route table.</li>
@@ -56,7 +56,7 @@ export default function AIFirst() {
     <p>An agent has two complementary ways to understand the framework, and either beats guessing from training data: grep the full no-build source under <code>node_modules/@webjsdev/*/src</code> (the real code that runs, no sourcemaps), and the MCP for live app introspection plus the curated <code>init</code> / <code>docs</code> / <code>source</code> knowledge tools.</p>
 
     <h3>3. Predictable File Layout</h3>
-    <pre>app/
+    <code-block>app/
   page.ts              → always the page component for this URL
   layout.ts            → always the wrapping layout
   route.ts             → always the HTTP handler
@@ -69,15 +69,15 @@ modules/
     queries/           → reads, one file per function
     components/        → feature-owned UI
     utils/             → pure helpers
-    types.ts           → shared type definitions</pre>
+    types.ts           → shared type definitions</code-block>
     <p>Every file has one job. An AI agent looking for "the function that creates a post" searches <code>modules/posts/actions/</code>, not a 500-line utils.ts or a re-exported barrel index. One grep, one result.</p>
 
     <h3>4. One Function Per File</h3>
     <p>Server actions and queries follow a strict <strong>one exported function per file</strong> convention:</p>
-    <pre>modules/posts/actions/create-post.server.ts   → exports createPost()
+    <code-block>modules/posts/actions/create-post.server.ts   → exports createPost()
 modules/posts/actions/delete-post.server.ts   → exports deletePost()
 modules/posts/queries/list-posts.server.ts    → exports listPosts()
-modules/posts/queries/get-post.server.ts      → exports getPost()</pre>
+modules/posts/queries/get-post.server.ts      → exports getPost()</code-block>
     <p>This is the single most AI-friendly decision in the architecture. When an LLM needs to modify <code>createPost</code>, it reads exactly one file. It doesn't need to understand the rest of the module. Context window usage is minimal. The blast radius of a change is visible from the filename.</p>
 
     <h3>5. No Build Step = What You See Is What Runs</h3>
@@ -90,10 +90,10 @@ modules/posts/queries/get-post.server.ts      → exports getPost()</pre>
 
     <h3>7. Typed RPC Without Schema</h3>
     <p>When an AI agent writes a server action:</p>
-    <pre>// modules/posts/actions/create-post.server.ts
+    <code-block>// modules/posts/actions/create-post.server.ts
 export async function createPost(
   input: { title: string; body: string }
-): Promise&lt;ActionResult&lt;PostFormatted&gt;&gt; { ... }</pre>
+): Promise&lt;ActionResult&lt;PostFormatted&gt;&gt; { ... }</code-block>
     <p>The TypeScript signature IS the API contract. No separate schema file, no OpenAPI spec, no GraphQL SDL. The client component imports the function, TypeScript checks the types, and webjs's built-in serializer preserves them on the wire. An AI agent can:</p>
     <ol>
       <li>Read the function signature to understand the API.</li>
@@ -129,11 +129,11 @@ export async function createPost(
       <li><strong>Persist with Drizzle, not JSON files.</strong> A <code>data/todos.json</code> or <code>db.json</code> used as a database resets on reload and cannot scale. This is a project convention in <code>AGENTS.md</code> and the shipped skill, so an agent reading it takes the database path.</li>
     </ul>
     <p><strong>Picking the right scaffold from the user's prompt:</strong></p>
-    <pre>User asks for…                                          Scaffold
+    <code-block>User asks for…                                          Scaffold
 ─────────────────────────────────────────────────────────────────────
 Todo app, blog, notes, dashboard, marketplace, social   default
 App with auth / login / signup / accounts (SaaS)        default (auth card)
-HTTP/JSON API only, no UI                                --template api</pre>
+HTTP/JSON API only, no UI                                --template api</code-block>
     <p>The scaffold is REFERENCE, not the final product. The agent's job after scaffolding is to replace the example <code>app/page.ts</code> ("Hello from …"), the example <code>User</code> model in <code>db/schema.server.ts</code>, and the example components with the app the user actually requested. The infrastructure (Drizzle wiring, test config, agent rules, route conventions) stays.</p>
 
     <p><strong>When the scaffolded <code>AGENTS.md</code> doesn't cover what you need</strong> (an obscure directive, an auth-provider recipe, deployment specifics, edge cases), the full hosted documentation is at <a href="/docs">the rest of these docs</a>. Every API, every recipe, every example lives there. Reach for it before guessing or hand-rolling.</p>
@@ -164,7 +164,7 @@ HTTP/JSON API only, no UI                                --template api</pre>
 
     <h2>Comparison: AI-Friendliness</h2>
     <blockquote>This is an opinionated comparison. Every framework has trade-offs.</blockquote>
-    <pre>                       webjs        NextJs       Express
+    <code-block>                       webjs        NextJs       Express
 ──────────────────────────────────────────────────────────
 AGENTS.md contract     ✅ built-in   ❌ none       ❌ none
 MCP server (read-only) ✅ webjs mcp  ❌ none       ❌ none
@@ -176,11 +176,11 @@ File = function        ✅ one/file   ⚠️ varies     ❌ free-form
 No build transforms    ✅ none       ❌ SWC/webpack ✅ none
 Explicit server bound. ✅ .server.ts ⚠️ 'use srv'  n/a
 Typed RPC (no schema)  ✅ rich types ⚠️ Flight     ❌ manual
-Autonomous mode        ✅ defaults   ❌ n/a        ❌ n/a</pre>
+Autonomous mode        ✅ defaults   ❌ n/a        ❌ n/a</code-block>
 
     <h2>The AGENTS.md File</h2>
     <p>Here's what a WebJs app's <code>AGENTS.md</code> contains (the blog example ships a complete one):</p>
-    <pre>## What webjs is
+    <code-block>## What webjs is
 ## App layout (file conventions table)
 ## Public API: webjs
 ## Public API: @webjsdev/server
@@ -191,7 +191,7 @@ Autonomous mode        ✅ defaults   ❌ n/a        ❌ n/a</pre>
 ## Security checklist for REST endpoints
 ## Advanced features (Suspense, bundling, rate limiting, WebSockets...)
 ## Runtime targets (Node, embedded, edge)
-## Deliberately deferred (what NOT to implement)</pre>
+## Deliberately deferred (what NOT to implement)</code-block>
     <p>You can read the full <a href="https://github.com/webjsdev/webjs/blob/main/AGENTS.md">AGENTS.md on GitHub</a>.</p>
   `;
 }
