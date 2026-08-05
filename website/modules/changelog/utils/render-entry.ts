@@ -28,8 +28,26 @@ function inline(s: string): string {
   return out;
 }
 
-/** One paragraph of an entry's body, as its soft-wrapped source lines. */
-type Para = string[];
+/**
+ * One paragraph of an entry's body, as its soft-wrapped source lines plus the
+ * indent depth it was opened at. Depth 1 is the entry's own level.
+ */
+type Para = { depth: number; lines: string[] };
+
+/**
+ * Depth a bullet's leading indent states. Two spaces per level, clamped at 3
+ * because a release note has no legitimate fourth level and the clamp is what
+ * stops a pathological source file emitting a runaway ladder.
+ */
+function depthOf(indent: number): number { return Math.min(Math.floor(indent / 2), 3); }
+
+/**
+ * Depth as a left inset, from a literal lookup. Tailwind v4 scans this tree
+ * for complete literal class strings, so a computed `pl-${depth * 4}` would
+ * generate no utility at all and the inset would silently do nothing while
+ * every test asserting on the class name still passed.
+ */
+const INSET: Record<number, string> = { 1: '', 2: ' pl-4', 3: ' pl-8' };
 
 /** Render the body of one changelog entry: h1 / h2 / bulleted lists / paragraphs. */
 export function renderEntryBody(md: string): string {
@@ -47,8 +65,32 @@ export function renderEntryBody(md: string): string {
   // changelog is one bullet per released change, and a second level of
   // glyphs under half of them is noise: the generator writes each squashed
   // commit subject as its own `*` line, which restated the entry title above
-  // it in 119 of the corpus's 378 indented bullets. So indentation controls
-  // grouping here, never bullet depth, and no entry body renders a list.
+  // it in 119 of the corpus's 378 indented bullets. So no entry body renders
+  // a list, at any depth.
+  //
+  // Depth is still REPRESENTED, as a left inset on the paragraph and nothing
+  // else (no marker, no type-size change, no rule), so a child point reads as
+  // subordinate to its parent rather than as its parent's peer. The rule both
+  // indented branches follow, stated once: only a bullet marker ESTABLISHES
+  // depth, so an unmarked line can inherit or go shallower but never deeper.
+  //
+  // The corpus decided the inheriting half, and the numbers are worth stating
+  // exactly, because the loose version of them ("37 lines, 10 files") reads
+  // as much stronger evidence than it is. There are zero bullets at four or
+  // more spaces across the 229 entry files, and 37 NON-bullet lines at four
+  // or more, spread over 10 files. All 37 render with no inset, but by two
+  // different mechanisms: 31 of them are soft wraps that join the paragraph
+  // above through the depth-blind branch below, which reads no indent under
+  // any implementation. Only 6 lines, in 4 files, actually reach the
+  // fresh-paragraph branch, and letting THAT branch read its own indent
+  // outright is what would re-render them. They are also not the wrapped
+  // prose the shorthand suggests: they are indented code blocks (a component
+  // class, an `export const metadata = {`) and one alignment table. Measured
+  // by rendering the whole corpus both ways, not by reading the sources.
+  //
+  // The shallower half stops the opposite failure: closing prose written back
+  // at the entry level after a deeper bullet must not stay dragged under that
+  // bullet.
   let itemOpen = false;
   let paras: Para[] = [];
   let open: Para | null = null;
@@ -59,14 +101,20 @@ export function renderEntryBody(md: string): string {
   // leaves `open` narrowed to `null` at the read below and the truthiness
   // guard there narrows it to `never`. Assigning at each call site keeps the
   // write in the enclosing function's own control-flow graph.
-  function startPara(text: string): Para { const p: Para = [text]; paras.push(p); return p; }
+  function startPara(text: string, depth: number): Para {
+    const p: Para = { depth, lines: [text] };
+    paras.push(p);
+    return p;
+  }
 
   function renderParas(ps: Para[]): string {
     // The overwhelmingly common entry is a single line with no body. Emit it
-    // bare so its markup is unchanged by the multi-paragraph support.
-    if (ps.length === 1) return inline(ps[0].join(' '));
-    return ps.map((lines) =>
-      `<p class="my-2 first:mt-0 last:mb-0">${inline(lines.join(' '))}</p>`).join('');
+    // bare so its markup is unchanged by the multi-paragraph support. Only
+    // the column-0 branch can open an item's first paragraph, so a lone
+    // paragraph is always depth 1; the guard says so rather than assuming it.
+    if (ps.length === 1 && ps[0].depth === 1) return inline(ps[0].lines.join(' '));
+    return ps.map((p) =>
+      `<p class="my-2 first:mt-0 last:mb-0${INSET[p.depth] ?? ''}">${inline(p.lines.join(' '))}</p>`).join('');
   }
 
   function flushItem() {
@@ -101,17 +149,33 @@ export function renderEntryBody(md: string): string {
       startList();
       itemOpen = true;
       paras = [];
-      open = startPara(line.slice(2).trim());
+      open = startPara(line.slice(2).trim(), 1);
     } else if (itemOpen && /^ {2,}[-*] /.test(line)) {
-      // Its own paragraph, marker dropped. Depth is not read, so a deeper
-      // run groups exactly like a 2-space one instead of nesting.
-      open = startPara(line.trim().slice(2).trim());
+      // Its own paragraph, marker dropped, at the depth its own indent
+      // states. This is the branch that ESTABLISHES depth.
+      const indent = (/^( +)/.exec(line)?.[1] ?? '').length;
+      open = startPara(line.trim().slice(2).trim(), depthOf(indent));
     } else if (itemOpen && /^ {2,}\S/.test(line)) {
       const text = line.trim();
-      // Soft-wrapped continuation of the open paragraph, or the start of a
-      // fresh one when a blank line closed the last.
-      if (open) open.push(text);
-      else open = startPara(text);
+      // Soft-wrapped continuation of the open paragraph, which simply joins
+      // it and reads no indent at all, or the start of a fresh one when a
+      // blank line closed the last.
+      //
+      // A fresh one is capped at the depth of the paragraph BEFORE it, so it
+      // inherits or goes shallower but never deeper. Note the ceiling is that
+      // one paragraph, not the deepest level any bullet in the item reached:
+      // once the item steps back out to the entry level, a later unmarked
+      // line cannot climb back in, which is the conservative direction for a
+      // signal as weak as leading whitespace. Both halves earn their keep,
+      // and each has its own test. The cap keeps the 6 corpus lines that
+      // reach this branch out of an inset; the shallower direction is what
+      // stops closing prose written back at the entry level from being
+      // dragged under the last deep bullet.
+      if (open) open.lines.push(text);
+      else {
+        const last = paras.length ? paras[paras.length - 1].depth : 1;
+        open = startPara(text, Math.min(depthOf((/^( +)/.exec(line)?.[1] ?? '').length), last));
+      }
     } else if (line.trim() === '') {
       if (itemOpen) open = null;
       else flushItem();
