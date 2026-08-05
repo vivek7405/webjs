@@ -28,19 +28,32 @@ export const APP_NAME_MAX_LENGTH = 214;
 
 /** One-line description of the allowed shape, reused by both error surfaces. */
 export const APP_NAME_SHAPE =
-  'lowercase letters, digits, and the separators "-", "." and "_", starting with a letter or a digit, at most 214 characters, and not a name npm reserves';
+  'letters, digits, and the separators "-", "." and "_", starting with a letter or a digit, at most 214 characters, and not a name npm reserves';
 
 /**
- * npm rejects these outright, whatever else the name looks like.
+ * npm rejects these outright, whatever else the name looks like. Matched
+ * case-insensitively, since the name is also a directory and `Node_Modules`
+ * collides with `node_modules` on a case-insensitive filesystem.
  * @type {string[]}
  */
 const RESERVED_NAMES = ['node_modules', 'favicon.ico'];
 
-/** Every character npm allows in an unscoped package name. */
-const ALLOWED_CHAR = /[a-z0-9._-]/;
+/**
+ * Every character allowed in an app name.
+ *
+ * npm's own rule for a PUBLISHED package name is lowercase-only, and this guard
+ * followed it at first. Uppercase is allowed back deliberately: it never broke
+ * anything. The scaffold's `package.json` is `private: true`, so the name is
+ * never published, and npm installs a capitalized private package without
+ * complaint (checked, not assumed). Every OTHER character this rule refuses
+ * corrupts generated source or the manifest, which is what the guard is for, so
+ * refusing a capital letter alongside them would have been a naming convention
+ * wearing a correctness costume, and `webjs create MyApp` worked before.
+ */
+const ALLOWED_CHAR = /[A-Za-z0-9._-]/;
 
 /** What a name may start with, per the shape both error surfaces state. */
-const ALLOWED_FIRST_CHAR = /[a-z0-9]/;
+const ALLOWED_FIRST_CHAR = /[A-Za-z0-9]/;
 
 /**
  * How much of the rejected name to echo back. The name is attacker-shaped by
@@ -129,20 +142,13 @@ export function checkAppName(name) {
       reason: `an app name cannot be longer than ${APP_NAME_MAX_LENGTH} characters (this one is ${name.length})`,
     };
   }
-  if (RESERVED_NAMES.includes(name)) {
+  if (RESERVED_NAMES.includes(name.toLowerCase())) {
     return { ok: false, reason: `'${name}' is reserved by npm and cannot be a package name` };
   }
   // Report the first offending character, since that is what the user has to
-  // change. Uppercase gets its own wording because "not allowed" reads as a
-  // typo when the character itself is perfectly ordinary.
+  // change.
   for (const ch of name) {
     if (ALLOWED_CHAR.test(ch)) continue;
-    if (/[A-Z]/.test(ch)) {
-      return {
-        ok: false,
-        reason: `'${ch}' is uppercase, and an npm package name must be all lowercase`,
-      };
-    }
     return { ok: false, reason: `${describeChar(ch)} is not allowed in an app name` };
   }
   // Checked after the character scan so a leading quote is reported as the bad
@@ -173,7 +179,7 @@ ${reason[0].toUpperCase()}${reason.slice(1)}.
 The name becomes the app's directory, its npm package name, AND a value the
 scaffold writes into generated source, so it has to be a name npm accepts:
 
-  lowercase letters and digits
+  letters and digits
   the separators "-", "." and "_"
   starting with a letter or a digit
   at most ${APP_NAME_MAX_LENGTH} characters

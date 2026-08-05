@@ -62,7 +62,7 @@ const USAGE = `webjs commands:
   webjs types                                     Generate .webjs/routes.d.ts (typed Route union + per-route params)
   webjs typecheck [tsc args...]                   Type-check the app with the project's tsc --noEmit (non-zero on errors)
   webjs create <name> [--template full-stack|api] [--db sqlite|postgres] [--runtime node|bun] [--no-install]  Scaffold a new webjs app
-                                                  <name> must be a valid npm package name (lowercase, digits, - . _, starts with a letter or digit)
+                                                  <name> must be a valid package name (letters, digits, - . _, starts with a letter or digit)
                                                   (only 2 templates exist. default: full-stack, Drizzle, --db sqlite, --runtime node)
                                                   --runtime bun emits a Bun-flavored app (bun.lock, bun Dockerfile/CI, bun docs);
                                                   also auto-detected when run via "bun create webjs".
@@ -169,7 +169,7 @@ const HELP = {
       // wrap, so a long description renders as one 300-column line.
       {
         flag: '<name>',
-        description: 'npm package name: lowercase, digits, - . _ , starts with a letter or digit.',
+        description: 'Package name: letters, digits, - . _ , starts with a letter or digit.',
       },
       { flag: '--template <t>', description: 'full-stack (default) or api (backend-only, no UI).' },
       { flag: '--db <d>', description: 'sqlite (default) or postgres.' },
@@ -862,7 +862,7 @@ async function main() {
         // rule it prints has to lead with the first-character requirement. An
         // earlier wording listed the separators as allowed characters, which
         // reads as permission to the one user who just typed a leading hyphen.
-        console.error('<app-name> must start with a lowercase letter or a digit, then lowercase letters, digits, "-", "." or "_".');
+        console.error('<app-name> must start with a letter or a digit, then letters, digits, "-", "." or "_".');
         process.exit(1);
       }
       const template = flag(rest, '--template', 'full-stack');

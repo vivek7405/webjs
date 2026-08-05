@@ -28,6 +28,12 @@ test('accepts the names npm accepts', () => {
     '2app',
     'a',
     'a'.repeat(APP_NAME_MAX_LENGTH),
+    // Uppercase is deliberately allowed. It never broke a generated file, the
+    // scaffold's package.json is private so the name is never published, and
+    // `webjs create MyApp` worked before this guard existed.
+    'MyApp',
+    'TaskFlow',
+    'My_App.v2',
   ]) {
     assert.equal(checkAppName(name).ok, true, `${name} should be accepted`);
     assert.equal(assertValidAppName(name), name);
@@ -66,11 +72,13 @@ test('a control character is named by code point, not printed raw', () => {
   assert.ok(!result.reason.includes('\x01'), 'the raw control byte is not echoed back');
 });
 
-test('rejects uppercase with wording that says why', () => {
-  const result = checkAppName('MyApp');
-  assert.equal(result.ok, false);
-  assert.match(result.reason, /uppercase/);
-  assert.match(result.reason, /lowercase/);
+test('a reserved name is refused whatever its case', () => {
+  // The name is also a directory, so `Node_Modules` collides with
+  // `node_modules` on a case-insensitive filesystem.
+  for (const name of ['node_modules', 'NODE_MODULES', 'Node_Modules', 'Favicon.ICO']) {
+    assert.equal(checkAppName(name).ok, false, `${name} should be rejected`);
+    assert.match(checkAppName(name).reason, /reserved/);
+  }
 });
 
 test('rejects empty, whitespace-padded, over-long, and reserved names', () => {
@@ -192,13 +200,13 @@ test('a maximally long name cannot blow out the message width', () => {
 test('rejects a leading separator, matching the shape the message states', () => {
   // The message claims "starting with a letter or a digit". A leading hyphen
   // passed, so the CLI printed a rule it did not enforce.
-  for (const name of ['-app', '-', '--', '.app', '_app']) {
+  for (const name of ['-app', '-', '--', '.app', '_app', '-App', '.MyApp']) {
     const r = checkAppName(name);
     assert.equal(r.ok, false, `${JSON.stringify(name)} should be rejected`);
     assert.match(r.reason, /cannot start with/);
   }
   // A digit or letter start is still fine, including a name that is all digits.
-  for (const name of ['2app', 'a', '9']) assert.equal(checkAppName(name).ok, true, name);
+  for (const name of ['2app', 'a', '9', 'A', 'MyApp']) assert.equal(checkAppName(name).ok, true, name);
 });
 
 test('appNameErrorMessage names the input, the problem, and the shape', () => {
@@ -206,7 +214,7 @@ test('appNameErrorMessage names the input, the problem, and the shape', () => {
   const msg = appNameErrorMessage('bad`name', result.reason);
   assert.match(msg, /invalid app name "bad`name"/);
   assert.match(msg, /`/);
-  assert.match(msg, /lowercase letters and digits/);
+  assert.match(msg, /letters and digits/);
   assert.match(msg, new RegExp(String(APP_NAME_MAX_LENGTH)));
   assert.match(msg, /webjs create my-app/);
   // No line runs past a narrow terminal, since this is the first thing a user

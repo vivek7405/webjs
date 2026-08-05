@@ -64,7 +64,7 @@ test('scaffoldApp error message mentions the valid templates', async () => {
 test('scaffoldApp rejects names that would break generated source', async () => {
   const cwd = await tempCwd();
   try {
-    for (const bad of ["bad'name", 'bad`name', 'bad${name}', 'bad\\name', 'bad name', 'BadName']) {
+    for (const bad of ["bad'name", 'bad`name', 'bad${name}', 'bad\\name', 'bad name', '-badname']) {
       await assert.rejects(
         () => scaffoldApp(bad, cwd, { template: 'full-stack' }),
         /Invalid app name/,
@@ -94,7 +94,7 @@ test('scaffoldApp app-name error states the allowed shape', async () => {
     await scaffoldApp('bad`name', cwd, { template: 'full-stack' });
     assert.fail('should have thrown');
   } catch (err) {
-    assert.match(err.message, /lowercase letters/);
+    assert.match(err.message, /letters, digits/);
     assert.match(err.message, /214/);
   } finally {
     await rm(cwd, { recursive: true, force: true });
@@ -134,7 +134,7 @@ test('the CLI rejects a bad app name non-zero, before writing anything', async (
     });
     assert.notEqual(res.status, 0, 'a bad name must exit non-zero');
     assert.match(res.stderr, /invalid app name/i);
-    assert.match(res.stderr, /lowercase letters/);
+    assert.match(res.stderr, /letters and digits/);
     assert.deepEqual(await readdir(cwd), [], 'the CLI writes nothing for a rejected name');
   } finally {
     await rm(cwd, { recursive: true, force: true });

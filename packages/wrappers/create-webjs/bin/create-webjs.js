@@ -35,7 +35,7 @@ const usage = `Usage:
   npm create webjs@latest <app-name> [-- --template full-stack|api] [-- --no-install]
   npx create-webjs@latest <app-name> [--template full-stack|api] [--no-install]
 
-The <app-name> must be a valid npm package name: lowercase letters, digits, and
+The <app-name> must be a valid package name: letters, digits, and
 the separators "-", "." and "_", starting with a letter or a digit, at most 214
 characters. It becomes the directory, the package.json name, AND a value written
 into generated source, so anything else is rejected before any file is written.
