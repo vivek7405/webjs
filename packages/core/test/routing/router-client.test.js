@@ -35,7 +35,7 @@ let _collect, _plan, _keyOf, _diffEl, _reconcile,
   _eligibleAnchorHref, _prefetchSuppressed, _prefetchMode, _prefetchHasHoverPointer, _prefetch, _prefetchTake, _prefetchAnchor,
   _buildHaveHeader,
   _prefetchSaysSaveData, _prefetchPeek, _prefetchInflightSize, _resetPrefetch,
-  _viewTransitionsEnabled, _runWithTransition, _regraftPermanentElements,
+  _viewTransitionsEnabled, _runWithTransition, _regraftPermanentElements, _regraftPermanentInSlice,
   _applyStreamedResolve,
   enableClientRouter, disableClientRouter, revalidate,
   WebComponent, html;
@@ -119,6 +119,7 @@ before(async () => {
     _viewTransitionsEnabled,
     _runWithTransition,
     _regraftPermanentElements,
+    _regraftPermanentInSlice,
     _applyStreamedResolve,
     navigate,
     revalidate,
@@ -1129,16 +1130,118 @@ test('reactivateScripts: data-webjs-permanent does NOT exempt a script (#1102)',
   assert.equal(document.getElementById('perm').getAttribute('nonce'), 'page-nonce');
 });
 
-test('reactivateScripts: a permanent DESCENDANT script is re-emitted too (#1102)', () => {
-  // The consistency the exemption would have broken: nesting depth must not
-  // change whether a script re-runs.
+test('reactivateScripts: a REGRAFTED permanent container keeps its descendant scripts (#1252)', () => {
+  // The settled rule: `data-webjs-permanent` is SUBTREE-scoped, so a script
+  // inside an element the swap preserved by identity is not re-emitted. The
+  // author kept that widget alive on purpose; re-running its init script
+  // against the live instance is a double-initialization, not a refresh.
+  //
+  // Driving a real regraft is load-bearing: the exemption keys on the node
+  // having ACTUALLY been preserved, never on the attribute, so merely setting
+  // the attribute must not be enough to reach this state.
+  document.head.innerHTML = '<meta name="csp-nonce" content="page-nonce">';
+  const live = bodyFrom('<div id="w" data-webjs-permanent><script id="pd">window.q = 1;</script></div>');
+  const incoming = bodyFrom('<div id="w" data-webjs-permanent><script>window.q = 1;</script></div>');
+  const liveNode = live.querySelector('#w');
+  const innerBefore = liveNode.querySelector('#pd');
+
+  _regraftPermanentElements(live, incoming);
+  assert.equal(incoming.querySelector('#w'), liveNode, 'precondition: the live node was regrafted');
+
+  _reactivateScripts(incoming);
+
+  assert.strictEqual(incoming.querySelector('#pd'), innerBefore,
+    'the preserved subtree keeps the same script node, so it never re-runs');
+});
+
+test('reactivateScripts: a permanent container that was NOT regrafted re-emits its scripts (#1252)', () => {
+  // The both-exist guard means "permanent" does not imply "was preserved". A
+  // permanent element arriving for the first time is a freshly imported node
+  // whose scripts have never run, so an attribute-only filter would leave them
+  // never running on any path. This is the counterfactual against that filter.
   document.head.innerHTML = '<meta name="csp-nonce" content="page-nonce">';
   document.body.innerHTML =
-    '<div id="w"><script id="pd" data-webjs-permanent nonce="stale">window.q = 1;</script></div>';
+    '<div id="fresh"><div id="w" data-webjs-permanent>' +
+      '<script id="pd" nonce="stale">window.q = 1;</script>' +
+    '</div></div>';
   const before = document.getElementById('pd');
-  _reactivateScripts(document.getElementById('w'));
+
+  _reactivateScripts(document.getElementById('fresh'));
+
   assert.notStrictEqual(document.getElementById('pd'), before,
-    'the descendant path re-emits it, exactly as the container path now does');
+    'nothing was preserved here, so the script is re-emitted and runs on arrival');
+  assert.equal(document.getElementById('pd').getAttribute('nonce'), 'page-nonce');
+});
+
+test('reactivateScripts: an id-less permanent element gets no exemption (#1252)', () => {
+  // The regrafts select `[data-webjs-permanent][id]`, so an element with no
+  // `id` can never be preserved. Its scripts must therefore keep re-running,
+  // matching the documented `id` requirement.
+  document.head.innerHTML = '<meta name="csp-nonce" content="page-nonce">';
+  const live = bodyFrom('<div data-webjs-permanent><script id="nid">window.r = 1;</script></div>');
+  const incoming = bodyFrom('<div data-webjs-permanent><script id="nid">window.r = 1;</script></div>');
+  const innerBefore = incoming.querySelector('#nid');
+
+  _regraftPermanentElements(live, incoming);
+  _reactivateScripts(incoming);
+
+  assert.notStrictEqual(incoming.querySelector('#nid'), innerBefore,
+    'no id means no regraft, so no exemption');
+});
+
+test('reactivateScripts: the slice regraft protects a detached top-level permanent (#1252)', () => {
+  // `regraftPermanentInSlice` has two success branches, and the detached one
+  // (a permanent node that is a direct child of the swapped range, so its
+  // placeholder has no parent) writes into the slice array instead of calling
+  // `replaceChild`. Missing that branch leaves exactly this shape unprotected.
+  document.head.innerHTML = '<meta name="csp-nonce" content="page-nonce">';
+  const live = bodyFrom('<div id="w" data-webjs-permanent><script id="sd">window.s = 1;</script></div>');
+  const incomingHost = bodyFrom('<div id="w" data-webjs-permanent><script>window.s = 1;</script></div>');
+  const liveNode = live.querySelector('#w');
+  const innerBefore = liveNode.querySelector('#sd');
+  // Detach the incoming member so it is a parentless top-level slice entry.
+  const placeholder = incomingHost.querySelector('#w');
+  placeholder.remove();
+  const incomingSlice = [placeholder];
+
+  _regraftPermanentInSlice([liveNode], incomingSlice);
+  assert.equal(incomingSlice[0], liveNode, 'precondition: the slice entry became the live node');
+
+  // The reconciler inserts the slice entries; reactivation then runs over the
+  // container they landed in.
+  const host = bodyFrom('');
+  host.append(incomingSlice[0]);
+  _reactivateScripts(host);
+
+  assert.strictEqual(host.querySelector('#sd'), innerBefore,
+    'the detached-branch regraft marked the node, so its script is exempt too');
+});
+
+test('reactivateScripts: a REGRAFTED permanent SCRIPT is still re-emitted (#1252 / #1102)', () => {
+  // The two cases must not be unified, and this is the seam where unifying them
+  // hides. The regraft selector is `[data-webjs-permanent][id]` with NO tag
+  // filter, so a marked script present on both sides is preserved by identity
+  // and lands in the WeakSet exactly like a marked div. If the exemption were
+  // reflexive (`p === old`), the descendant walk would then skip it, while the
+  // container-is-a-script branch above still re-emits it: one script, opposite
+  // answers depending on which entry point reached it, and #1102's
+  // stops-working-after-the-first-soft-nav failure back for that shape.
+  document.head.innerHTML = '<meta name="csp-nonce" content="page-nonce">';
+  const live = bodyFrom('<div><script id="ps" data-webjs-permanent nonce="stale">window.t = 1;</script></div>');
+  const incoming = bodyFrom('<div><script id="ps" data-webjs-permanent>window.t = 1;</script></div>');
+  const liveScript = live.querySelector('#ps');
+
+  _regraftPermanentElements(live, incoming);
+  assert.equal(incoming.querySelector('#ps'), liveScript,
+    'precondition: a marked SCRIPT is regrafted like any other marked element');
+
+  // Reached as a DESCENDANT, which is the full-body path (`reactivateScripts`
+  // is called on `document.body`, not on the script).
+  _reactivateScripts(incoming);
+
+  assert.notStrictEqual(incoming.querySelector('#ps'), liveScript,
+    'the marked script itself is never exempt, however the walk reaches it');
+  assert.equal(incoming.querySelector('#ps').getAttribute('nonce'), 'page-nonce');
 });
 
 test('reactivateScripts: a detached script inserts nothing (#1102)', () => {
