@@ -195,9 +195,11 @@ export function bodyToMarkdown(raw: string): string {
   // strip further down then matches from that stray `<` to the next `>` and
   // swallows what lies between, including these sentinels. On
   // /docs/metadata-routes that costs 5 of its 9 samples and the paragraphs
-  // among them. The repair reorders this pipeline for every page, so it is
-  // tracked on its own rather than folded in here; the exemption is named in
-  // test/ssr/docs-llms.test.ts so no OTHER page can develop it unnoticed.
+  // among them. Not fixed here: the repair reorders this pipeline for every
+  // page, and the decode is what makes prose about markup readable, so it
+  // needs its own before-and-after across all 43. test/ssr/docs-llms.test.ts
+  // pins that page at its exact counts, so it cannot decay further and a
+  // repair fails the test rather than passing unnoticed.
   const codeBlocks: string[] = [];
   body = body.replace(/<(?:pre|code-block)(?=[\s>])[^>]*>([\s\S]*?)<\/(?:pre|code-block)>/g, (_m, code) => {
     codeBlocks.push(decodeEntities(String(code)).replace(/\n+$/, ''));

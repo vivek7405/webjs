@@ -56,9 +56,13 @@ test('a fenced sample keeps the interpolation holes and indentation the prose pi
 });
 
 /**
- * The one page whose samples do NOT all reach the corpus, listed by name so
- * the exemption is visible and so any OTHER page developing the same problem
- * fails rather than being skipped.
+ * The one page whose samples do NOT all reach the corpus, pinned at its exact
+ * counts rather than merely named. A bare name would exempt the page from
+ * every check, which is the failure this set exists to avoid: skipped by name
+ * is still skipped, and the page could then lose its remaining samples
+ * unnoticed. The counts are asserted below in both directions, so further loss
+ * fails and so does a repair, the latter forcing this entry to be removed
+ * instead of quietly outliving the bug.
  *
  * Cause, verified rather than assumed: `oneLine()` decodes `&lt;` to a bare
  * `<` while rewriting a `<p>`, and the generic tag strip that runs afterwards
@@ -68,10 +72,24 @@ test('a fenced sample keeps the interpolation holes and indentation the prose pi
  * them. Removing the angle-bracket decode from `oneLine()` restores all 9,
  * which is how the cause was pinned down; that is not the fix, because the
  * decode is what makes prose about markup readable in the corpus, and the
- * real repair reorders the pipeline for all 43 pages. Pre-existing and
- * byte-identical on main, so it is tracked separately rather than here.
+ * real repair reorders the pipeline for all 43 pages. Pre-existing: the
+ * generated corpus is byte-identical on main, so this PR neither causes it
+ * nor fixes it.
  */
-const KNOWN_TRUNCATED = new Set(['/docs/metadata-routes']);
+const KNOWN_TRUNCATED = new Map([['/docs/metadata-routes', { authored: 9, fenced: 4 }]]);
+
+test('the truncation exemption still describes reality', async () => {
+  // An exemption nobody rechecks is a blind spot. This is what keeps the
+  // entry above honest: it fails if the page loses more samples, and it fails
+  // if the pipeline is repaired, which is the signal to delete the entry.
+  for (const [path, expected] of KNOWN_TRUNCATED) {
+    const page = (await getDocPages()).find((p) => p.path === path);
+    assert.ok(page, `${path} is exempted but no longer exists, so remove the entry`);
+    const src = await readFile(new URL(`../../app${path}/page.ts`, import.meta.url), 'utf8');
+    assert.equal((src.match(/<code-block(?=[\s>])/g) ?? []).length, expected.authored, `${path} authors a different number of samples now`);
+    assert.equal(fenceCount(page.markdown), expected.fenced, `${path} reaches the corpus with a different number of samples now: if it is ${expected.authored}, the pipeline was repaired, so delete its KNOWN_TRUNCATED entry`);
+  }
+});
 
 test('every sample a page authors reaches the corpus', async () => {
   // Stronger than the fence test above, which only asks for one fence per
