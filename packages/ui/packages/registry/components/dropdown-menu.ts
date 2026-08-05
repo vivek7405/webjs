@@ -882,8 +882,16 @@ export class UiDropdownMenuSub extends WebComponent({
   }
 
   _panelIsOpen(): boolean {
-    const panel = this.querySelector<HTMLElement>('ui-dropdown-menu-sub-content [popover]');
-    return !!panel && typeof panel.matches === 'function' && panel.matches(':popover-open');
+    const panel = this.querySelector<HTMLElement & { showPopover?: () => void }>(
+      'ui-dropdown-menu-sub-content [popover]',
+    );
+    // Gate on showPopover, not just on matches, like the two sibling call sites.
+    // `:popover-open` is an unknown pseudo-class where the Popover API is
+    // absent, so matches() THROWS SyntaxError there. This runs synchronously
+    // from the document keydown handler, so the throw would escape _onKeyDown
+    // and take out all submenu keyboard handling on such an engine.
+    if (!panel || typeof panel.showPopover !== 'function') return false;
+    return typeof panel.matches === 'function' && panel.matches(':popover-open');
   }
 
   _consumeFocusFirst(): void {

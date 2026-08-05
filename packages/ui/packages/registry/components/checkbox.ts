@@ -40,7 +40,7 @@
  * </div>
  *
  * <!-- A group of related checkboxes is named by its legend. -->
- * <fieldset class=${stackClass({ gap: 3 })}>
+ * <fieldset class=${stackClass({ gap: 'sm' })}>
  *   <legend class=${fieldLabelClass()}>Email preferences</legend>
  *   <div class="flex items-center gap-2">
  *     <input type="checkbox" data-slot="checkbox" name="digest" id="pref-digest" class=${checkboxClass()}>
