@@ -108,9 +108,14 @@ suite('Client router: JS-handled links/forms are not hijacked (#150, #153)', () 
       let ran = false;
       render(html`<a href="/js-handled-link" @click=${(e) => { e.preventDefault(); ran = true; }}>go</a>`, container);
       container.querySelector('a').click();
-      // No settle event to await: the assertion is that the router did NOT act,
-      // so a macrotask is the only signal there is.
       await tick();
+      // In the healthy case the router did not act, so there is nothing to
+      // settle and this costs nothing. On the REGRESSION this test exists to
+      // catch, the router hijacked the link and a swap is in flight; tearing
+      // the boundary pair out from under it in `finally` is the
+      // `live-boundaries-malformed` degradation, which reloads and aborts the
+      // whole session instead of failing this test readably.
+      if (fetched.length) await awaitNavigation();
       assert.ok(ran, 'the component @click handler ran');
       assert.equal(fetched.filter((u) => u.includes('/js-handled-link')).length, 0,
         'router must NOT navigate a preventDefaulted link');
@@ -125,8 +130,10 @@ suite('Client router: JS-handled links/forms are not hijacked (#150, #153)', () 
       let ran = false;
       render(html`<form @submit=${(e) => { e.preventDefault(); ran = true; }}><button type="submit">go</button></form>`, container);
       container.querySelector('button').click();
-      // Same as the link case: nothing settles, because nothing should navigate.
       await tick();
+      // Same reasoning as the link case: only a regression puts a swap in
+      // flight, and only then must teardown wait for it.
+      if (fetched.length) await awaitNavigation();
       assert.ok(ran, 'the component @submit handler ran');
       assert.equal(fetched.length, 0, 'router must NOT submit a preventDefaulted form');
       assert.equal(fallbacks.length, 0,
@@ -159,8 +166,15 @@ suite('Client router: JS-handled links/forms are not hijacked (#150, #153)', () 
         `router must SOFT-navigate a plain link, but it degraded (cause: ${causeOf(fallbacks)})`);
       assert.ok(fetched.some((u) => u.includes('/plain-link-target')),
         'router must SPA-navigate a plain link (the fix must not break progressive enhancement)');
+      // `webjs:navigate` proves the router ran a navigation to completion
+      // rather than bailing out part-way (a discarded revalidation, an early
+      // error return). It does NOT prove the navigation was soft: the
+      // degradation branch in `applySwap` returns `undefined`, which is not
+      // the `'discard'` disposition, so `fetchAndApply` falls through and
+      // dispatches this event on the reload path too. The `fallbacks`
+      // assertion above is the only thing that separates those two.
       assert.ok(navigated.some((u) => u && String(u).includes('/plain-link-target')),
-        'the soft swap must COMMIT (webjs:navigate), not merely start');
+        'the router must run the navigation to completion (webjs:navigate)');
     } finally { teardown(); }
   });
 });
