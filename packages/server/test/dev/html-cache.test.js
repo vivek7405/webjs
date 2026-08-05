@@ -383,10 +383,10 @@ test('revalidatePath strips the base path off an absolute url (#256 + #1097)', a
   await setBasePath('/app');
   try {
     const key = htmlCacheKey(new URL('http://real.example/blog'));
-    assert.equal(
+    assert.notEqual(
       htmlCacheKey(new URL('http://real.example/app/blog')),
-      htmlCacheKey(new URL('http://real.example/app/blog')),
-      'sanity: the key builder itself is stable',
+      key,
+      'the premise: the public /app/blog url keys DIFFERENTLY from the stored /blog entry, which is why the strip has to happen',
     );
     // Store under the app-root-relative path, the way the write does.
     await writeHtmlCache(new URL('http://real.example/blog'), {

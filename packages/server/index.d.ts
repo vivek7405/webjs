@@ -619,7 +619,9 @@ export declare function revalidateTags(tags: string[]): Promise<void>;
  * Keys carry the request origin, so a bare path resolves it from the calling
  * request, which is exact from a server action. Pass an absolute url
  * (`https://app.example/blog`) from a caller with no request in scope (a cron
- * job, a queue worker); a bare path there warns and evicts nothing.
+ * job, a queue worker); a bare path there warns and evicts nothing. Under
+ * `webjs.basePath` the absolute url is the PUBLIC one and its mount prefix is
+ * stripped, so it evicts the entry the write actually stored.
  */
 export declare function revalidatePath(path: string): Promise<void>;
 /** Evict all cached HTML (per-process generation bump). */

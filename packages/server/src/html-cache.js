@@ -259,7 +259,9 @@ export function isCacheableResponse(res, guards = {}) {
  *     in-repo example and everything the docs show.
  *  2. An ABSOLUTE url (`https://app.example/blog`) names its origin outright.
  *     This is the form for a caller with NO ambient request: a cron job, a
- *     queue worker, an `instrumentation.js` timer.
+ *     queue worker, an `instrumentation.js` timer. Under `webjs.basePath` pass
+ *     the PUBLIC url and the mount prefix is stripped for you, so it keys the
+ *     same entry the write stored.
  *
  * A bare path with no ambient request cannot be resolved and WARNS ONCE naming
  * the path, rather than silently evicting nothing.
