@@ -230,11 +230,15 @@ test('every docs sidebar label and section title is Title Case', async () => {
     'up', 'via', 'vs', 'with', 'yet',
   ]);
 
-  // Identifiers are kept VERBATIM. No structural rule can carry this: shape
-  // detects '@webjsdev/ui' and 'createAuth', but a future 'webjs check' label
-  // is two ordinary lowercase words, byte-indistinguishable from the slip this
-  // test hunts. So the exemption is a named list, and adding to it is the
-  // deliberate act that records "identifier, not prose". Matched against the
+  // Words whose casing is fixed by something other than prose, so recasing
+  // them would be WRONG rather than a correction. Two kinds qualify: a code
+  // token ('@webjsdev/ui', 'createAuth', 'webjs check', 'package.json') and a
+  // brand that starts lowercase ('macOS', 'iOS', 'npm'). No structural rule
+  // can carry this: shape detects '@webjsdev/ui' and 'createAuth', but a
+  // future 'webjs check' label is two ordinary lowercase words,
+  // byte-indistinguishable from the slip this test hunts. So the exemption is
+  // a named list, and adding to it is the deliberate act that records "this
+  // spelling is correct, not a slip". Matched against the
   // word with wrapping punctuation stripped, so it survives a rename to
   // 'Auth Providers (createAuth API)'.
   const IDENTIFIERS = new Set(['createAuth', '@webjsdev/ui']);
@@ -252,9 +256,10 @@ test('every docs sidebar label and section title is Title Case', async () => {
 
   // `label:` is read on its own rather than anchored to a preceding `href:`.
   // The anchored form yields NOTHING for an entry written
-  // `{ label: '...', href: '...' }`, and a guard that quietly checks 30 of 44
-  // labels is the exact failure mode it exists to prevent. The href count is
-  // the cross-check: every nav item has one of each.
+  // `{ label: '...', href: '...' }`, so a key reorder drops that entry from
+  // the check. The floor below is too coarse to catch it on its own, since it
+  // only fires once four entries are missing. The href count is what makes
+  // even a single dropped entry loud: every nav item has one of each.
   const labels = [...nav.matchAll(/\blabel:\s*'([^']+)'/g)].map((m) => m[1]);
   const titles = [...nav.matchAll(/\btitle:\s*'([^']+)'/g)].map((m) => m[1]);
   const hrefs = [...nav.matchAll(/\bhref:\s*'([^']+)'/g)].map((m) => m[1]);
@@ -289,14 +294,15 @@ test('every docs sidebar label and section title is Title Case', async () => {
       '\n\nThe docs sidebar is Title Case throughout, section titles included. Pick the fix that matches the word:\n' +
       '  1. ORDINARY WORD: recase it in app/docs/layout.ts. This is the fix nearly every\n' +
       '     hit wants, and it is what the last two drifts needed.\n' +
-      '  2. CODE IDENTIFIER: add it to IDENTIFIERS at the top of this test, spelled\n' +
-      '     EXACTLY as this message printed it above. Wrapping brackets and trailing\n' +
-      "     punctuation are stripped before the lookup, so a 'cache()' in a label is\n" +
-      "     listed as 'cache'. What belongs there: a package like '@webjsdev/ui', an\n" +
-      "     export like 'createAuth', a command like 'webjs check', a filename like\n" +
-      "     'package.json'. Identifiers keep their own casing and are never\n" +
-      '     title-cased, so the label is correct and the test is what needs updating.\n' +
-      '     Add each word of a multi-word command separately.\n' +
+      '  2. A WORD WHOSE CASING IS NOT PROSE: add it to IDENTIFIERS at the top of\n' +
+      '     this test, spelled EXACTLY as this message printed it above. Wrapping\n' +
+      "     brackets and trailing punctuation are stripped before the lookup, so a\n" +
+      "     'cache()' in a label is listed as 'cache'. Two kinds belong there: a code\n" +
+      "     token (a package like '@webjsdev/ui', an export like 'createAuth', a\n" +
+      "     command like 'webjs check', a filename like 'package.json') and a brand\n" +
+      "     that starts lowercase ('macOS', 'iOS', 'npm'). For both, recasing would\n" +
+      "     MISSPELL the word, so the label is right and this test is what needs\n" +
+      '     updating. Add each word of a multi-word command separately.\n' +
       "  3. LOWERCASE-IN-TITLE WORD this list does not know yet ('amid', 'until'): add it\n" +
       '     to MINOR_WORDS instead.',
   );
