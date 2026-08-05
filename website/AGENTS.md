@@ -53,6 +53,10 @@ website/
     theme-toggle.ts    system/light/dark cycle
     copy-cmd.ts        click-to-copy command line (light DOM, always-on button)
     doc-search.ts      the docs sidebar search field
+    code-block.ts      every code sample on the site: renders the <pre> (the
+                       keyboard focus stop, the optional landmark name) and
+                       colours the docs samples in the browser with the one
+                       grammar from lib/utils/highlight.ts
     preview-tabs.ts    Preview / Code toggle around a gallery demo
     docs-drawer.ts     the /docs + /ui sidebar shell and its mobile drawer:
                        backdrop, toggle, aside, open state, every close path
@@ -315,14 +319,32 @@ calling an action), re-enable it and delete the assertion in
   `test/ssr/design-tokens.test.ts` and `test/ssr/kit-surfaces.test.ts`.
 - Each section in `page.ts` is a `<section>` wrapper for predictable
   scroll anchors.
-- **Code blocks follow three accessibility rules.** `test/ssr/pre-block-a11y.test.ts`
-  enforces them, but only on the pages in its `PAGES` list, currently the three
-  marketing pages. Coverage is PARTIAL and the rest of the site is not clean:
-  sections outside that list still render a `<pre>` with no `tabindex`, whether
-  the scroll comes from an `overflow-x-auto` utility or from
-  `.prose-docs pre { overflow-x: auto }` in `lib/ui/docs-shell.ts`. Do not read
-  the list as an inventory of what is left. Follow the rules in any new markup,
-  and add a page to `PAGES` once its section satisfies them.
+- **Code samples are `<code-block>`, not `<pre>`.** `components/code-block.ts`
+  renders the `<pre>` and colours the code, and it is what every sample under
+  `/docs` and `/ui` uses. Write `<code-block>your code</code-block>` and pass
+  nothing else; `label` (which also adds `role="region"`) and `pre-class` exist
+  for the rare block that needs them. Authoring a bare `<pre>` there loses both
+  the highlighting and the focus stop, silently.
+- **Code blocks follow three accessibility rules**, and the element is how the
+  first two are satisfied without anyone remembering them. A named block takes
+  `role="region"`, because ARIA prohibits an author-supplied name on the
+  `generic` role a `<pre>` maps to; no two blocks on a page share a name,
+  because a named region is a landmark; and a block that can scroll takes
+  `tabindex="0"`, because a scroll container no keyboard can reach is unusable
+  without a pointer. `test/ssr/pre-block-a11y.test.ts` enforces all three
+  across the marketing pages, the error boundary, the markdown post body
+  (shared by `/blog/[slug]`, `/articles/[slug]`, and `/compare/[slug]`), and
+  every page under `app/docs/` and `app/ui/`, which it DISCOVERS from the file
+  system rather than from a list, so a page added tomorrow is covered. It reads
+  scrollability from the rendered document, not from the tag, since a docs
+  block scrolls because of `.prose-docs pre { overflow-x: auto }` in
+  `lib/ui/docs-shell.ts` and nothing on the tag records that.
+- **One tokenizer, in `lib/utils/highlight.ts`.** The marketing pages and the
+  blog markdown renderer call it at SSR; `<code-block>` calls the same
+  `tokenize()` in the browser, because the docs samples are authored as inline
+  template text with `&lt;` and `&#123;` escapes and so give the server no
+  string to tokenize. There used to be a second ES5 copy served out of
+  `public/`, kept in sync by hand, and it drifted. Do not add another.
 
 ## Run
 

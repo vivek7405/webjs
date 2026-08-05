@@ -67,12 +67,13 @@ export class CodeBlock extends WebComponent({
   private _code = signal<string | null>(null);
 
   connectedCallback() {
-    super.connectedCallback?.();
-    // Read before the first client render, which replaces the light DOM with
-    // this component's own template. Works from either starting point: the
-    // authored children on a fresh element, or the server's projected text on
+    // Read BEFORE the base hook, which is what takes the light DOM over and
+    // renders this component's own template into it. Reading after leaves
+    // nothing to read. Works from either starting point: the authored
+    // children on a fresh element, or the server's projected text on
     // hydration. Both spell the same code, so re-connecting is idempotent.
     if (this._code.get() === null) this._code.set(trimBlock(this.textContent ?? ''));
+    super.connectedCallback?.();
   }
 
   render() {

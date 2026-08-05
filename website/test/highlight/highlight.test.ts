@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { html } from '@webjsdev/core';
 import { renderToString } from '@webjsdev/core/server';
-import { highlight, highlightToHtml } from '#lib/utils/highlight.ts';
+import { highlight, highlightToHtml, tokenize, tokenClass, trimBlock } from '#lib/utils/highlight.ts';
 import { renderPostBody } from '#modules/blog/utils/render-post.ts';
 
 const render = (code: string) => renderToString(html`<pre>${highlight(code)}</pre>`);
@@ -143,4 +143,59 @@ test('blog renderer escapes angle brackets in a highlighted fence', () => {
   const out = renderPostBody('```ts\nconst el = html`<my-tag>`;\n```');
   assert.match(out, /&lt;my-tag&gt;/);
   assert.ok(!out.includes('<my-tag>'), 'no raw custom element injected');
+});
+
+/*
+ * The grammar used to exist twice: here, and again in an ES5 copy served as a
+ * static asset for the documentation. Each had learned something the other had
+ * not, so the surviving one is the merge, and these cover the two rules that
+ * arrived from the deleted copy. `<code-block>` runs this same tokenize() in
+ * the browser now, so a divergence here is a divergence everywhere rather than
+ * a difference between two surfaces.
+ */
+test('an unterminated quote is punctuation, not a string running to the end of the block', () => {
+  // An apostrophe in a prose comment is the common case. Treated as a string
+  // opener it swallows every line below it, which is how a whole sample loses
+  // its colour from one word.
+  const toks = tokenize("// it's fine\nconst x = 1;");
+  assert.equal(toks.filter((t) => t.t === 'str').length, 0, 'no string token');
+  assert.ok(toks.some((t) => t.t === 'kw' && t.v === 'const'), 'the code below still tokenizes');
+});
+
+test('a quote that does close on its own line is still a string', () => {
+  const toks = tokenize("const greeting = 'hi';");
+  assert.deepEqual(toks.filter((t) => t.t === 'str').map((t) => t.v), ["'hi'"]);
+});
+
+test('a backtick template spans lines, unlike a quote', () => {
+  const toks = tokenize('const t = `line one\nline two`;');
+  assert.deepEqual(toks.filter((t) => t.t === 'str').map((t) => t.v), ['`line one\nline two`']);
+});
+
+test('a line-leading "# " is a shell comment', () => {
+  const toks = tokenize('# install it\nnpm create webjs@latest');
+  assert.deepEqual(toks.filter((t) => t.t === 'com').map((t) => t.v), ['# install it']);
+});
+
+test('a hash that is not a comment marker is left alone', () => {
+  // A CSS id selector, a private field, a path alias, and a hex colour all
+  // start with '#', and swallowing the rest of their line would be a visible
+  // regression on the docs pages that show them.
+  for (const src of ['#app { color: #fff; }', 'this.#count = 1;', "import { db } from '#db/connection.server.ts';"]) {
+    assert.equal(tokenize(src).filter((t) => t.t === 'com').length, 0, `not a comment: ${src}`);
+  }
+});
+
+test('tokenClass maps every token type the tokenizer emits', () => {
+  const src = "// c\nconst a = 'x' + 1;\nfunction f() {}\nclass K {}";
+  for (const tok of tokenize(src)) {
+    // 'ws' is deliberately unclassed: whitespace needs no span.
+    if (tok.t === 'ws') continue;
+    assert.ok(tokenClass(tok.t), `token type ${tok.t} has no class, so it would render unstyled`);
+  }
+});
+
+test('trimBlock drops the blank lines an authored block picks up, and nothing else', () => {
+  assert.equal(trimBlock('\n\nconst x = 1;\n\n'), 'const x = 1;');
+  assert.equal(trimBlock('  indented\n  still'), '  indented\n  still');
 });
