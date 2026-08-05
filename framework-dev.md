@@ -117,7 +117,7 @@ WebJs ships per-package per-version changelogs under `changelog/<pkg>/<version>.
 
 **How it works for AI agents and humans:**
 
-1. Bump the `version` field in a `packages/<pkg>/package.json` and stage the change.
+1. Bump the `version` field in a `packages/<pkg>/package.json` and stage the change. Bumping `@webjsdev/intellisense` additionally requires a re-vendor in the same commit (`node packages/editors/nvim/scripts/vendor-intellisense.mjs`, then `git add -f packages/editors/nvim/vendor`), because webjs.nvim ships a committed copy of that manifest and `packages/editors/nvim/test/vendor-sync.test.mjs` compares it in full.
 2. Run `git commit` as usual. The `.hooks/pre-commit` hook detects the staged bump, runs `node scripts/backfill-changelog.js` automatically, stages the resulting `changelog/<pkg>/<version>.md`, and lets the commit proceed. The bump and its release notes land in the same commit.
 3. Optionally review and edit the generated file before pushing. The script's body excerpts are the first lines of each commit message; for `breaking` entries especially, add migration notes by hand. Re-runs are idempotent (existing files are never overwritten), so hand-edits survive.
 4. Never edit `changelog/<pkg>/<version>.md` for a version that has already been published. Bump the version and edit `changelog/<pkg>/<next>.md` instead.

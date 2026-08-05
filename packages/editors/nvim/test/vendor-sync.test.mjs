@@ -56,7 +56,7 @@ test('vendored package.json is byte-identical to the source manifest', () => {
   // the field both times:
   //
   //   #978 bumped intellisense to 0.5.4 and the copy stayed at 0.5.1 for
-  //   roughly 140 commits, so the published plugin misreported the
+  //   53 commits, so the published plugin misreported the
   //   language-service version it shipped until #1117 re-vendored by hand.
   //   That commit named this exact missing assertion as the reason.
   //
