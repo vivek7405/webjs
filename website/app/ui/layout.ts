@@ -24,12 +24,8 @@ import { splitByTier } from '#modules/ui/utils/tier.ts';
  * Started.
  */
 
-// The kit is framework-neutral, so this says where it comes from without
-// scoping who it is for. It reads as a search snippet for every page under
-// /ui, the same surface the npm description is, and a Next or Astro reader
-// bouncing off "for WebJs" is the exact loss both are written to avoid.
 const UI_DESCRIPTION =
-  'The AI-first component library from WebJs: 32 primitives in two tiers, class-helper functions for visuals and custom elements only where state matters, source-copied into your project. Works in any Tailwind v4 project, not only a WebJs app.';
+  'The AI-first component library for WebJs: 32 primitives in two tiers, class-helper functions for visuals and custom elements only where state matters, source-copied into your project and styled with Tailwind v4.';
 const UI_OG_TITLE = 'WebJs UI components';
 
 /**
