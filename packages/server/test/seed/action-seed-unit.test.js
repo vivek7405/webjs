@@ -61,11 +61,89 @@ test('extractExportNames finds function / const / class / list / default exports
   assert.deepEqual(valNames.sort(), ['VERSION', 'counter', 'Thing', 'a', 'bee'].sort());
 });
 
-test('buildSeedFacade memoizes action wrap lookups and generates hoisted function facades', () => {
+test('buildSeedFacade memoizes the action wrap behind a HOISTED (var) memo', () => {
   const src = `'use server';\nexport async function submitData(d) { return d; }\n`;
   const facade = buildSeedFacade('file:///app/s.server.js', '/app/s.server.js', src);
-  assert.match(facade, /let _fn_submitData;/);
-  assert.match(facade, /const fn = _fn_submitData \|\| \(_fn_submitData = __w\(/);
+  assert.match(facade, /const fn = _fn_submitData \|\| \(_fn_submitData = __w\(/, 'the wrap is memoized, not redone per call');
+  // `var`, not `let`. The exported function is hoisted so a circular
+  // `'use server'` pair can call it before this facade's body runs (#1208); a
+  // `let` memo would be in TDZ at that moment and throw. The runtime proof is
+  // in seed-hook.test.js, but pin the emitted keyword here too, because this is
+  // the line that silently re-breaks the cycle if someone "modernises" it.
+  assert.match(facade, /var _fn_submitData;/);
+  assert.doesNotMatch(facade, /let _fn_submitData;/);
+});
+
+test('a memo variable never collides with a real export name', () => {
+  // A module exporting both `ping` and `_fn_ping` would emit `var _fn_ping`
+  // beside `export function _fn_ping`: a duplicate declaration, i.e. a
+  // SyntaxError in generated source. The load hook's try/catch cannot contain
+  // that (the parse happens after the hook returns), so it would be a hard
+  // crash rather than the fail-open degradation the feature promises.
+  const src = `'use server';\nexport async function ping() {}\nexport async function _fn_ping() {}\n`;
+  const facade = buildSeedFacade('file:///app/y.server.js', '/app/y.server.js', src);
+  const declared = [...facade.matchAll(/^(?:var|export function) ([A-Za-z_$][\w$]*)/gm)].map((m) => m[1]);
+  assert.equal(new Set(declared).size, declared.length, `no duplicate declaration, got: ${declared.join(', ')}`);
+});
+
+test('export classification: value only on positive evidence, undecidable falls back to a function', () => {
+  // The two buckets fail in opposite directions, so the fallback direction is
+  // the decision: a VALUE emitted as a function is handed to importers as a
+  // callable, while a FUNCTION emitted as a const loses the hoisting that makes
+  // a circular re-export load (#1208). Only positive value evidence (literal /
+  // object / `new` / class) may demote a name.
+  const val = extractExportNames(
+    `'use server';\nconst VERSION = '1.0';\nconst cache = new Map();\nconst cfg = { a: 1 };\nexport { VERSION, cache, cfg };\n`,
+  );
+  assert.deepEqual(val.fnNames, [], 'literal / new / object-literal consts are values, not callables');
+  assert.deepEqual(val.valNames.sort(), ['VERSION', 'cache', 'cfg']);
+
+  // A higher-order-wrapped action has a call-expression right-hand side, which
+  // is undecidable, so it must stay in the hoisted bucket.
+  const hof = extractExportNames(
+    `'use server';\nconst createPost = withAuth(async (input) => input);\nexport { createPost };\n`,
+  );
+  assert.deepEqual(hof.fnNames, ['createPost']);
+  assert.deepEqual(hof.valNames, []);
+
+  // A name re-exported from ANOTHER module is never locally declared, so it can
+  // never look like a value. This is the #1208 shape and must stay hoisted.
+  const reexport = extractExportNames(
+    `'use server';\nexport { helper } from './c2.server.js';\nexport async function ring(x) { return x + 1; }\n`,
+  );
+  assert.deepEqual(reexport.fnNames.sort(), ['helper', 'ring']);
+  assert.deepEqual(reexport.valNames, []);
+});
+
+test('extraction reads code position only, not comments or strings', () => {
+  // The scan runs over a redacted copy, so a declaration written in prose
+  // cannot demote a real exported function to a value binding.
+  const src =
+    `'use server';\n` +
+    `// const submitOrder = 'not a real declaration';\n` +
+    `const note = 'const submitOrder = 1';\n` +
+    `export async function submitOrder(o) { return o; }\n` +
+    `export { submitOrder as submit };\n`;
+  const { fnNames, valNames } = extractExportNames(src);
+  assert.ok(fnNames.includes('submit'), 'the commented-out const must not demote the export');
+  assert.ok(!valNames.includes('submit'));
+});
+
+test('`export { default as X } from` does not fabricate a default export', () => {
+  // It re-exports ANOTHER module's default under a named binding, so this
+  // module has no default of its own. Claiming one makes the facade emit
+  // `export default __w(..., __orig.default)`, i.e. `export default undefined`,
+  // turning what was a loud link-time error for importers into a silent one.
+  const { hasDefault } = extractExportNames(
+    `'use server';\nexport { default as Helper } from './h.server.js';\nexport async function go() {}\n`,
+  );
+  assert.equal(hasDefault, false);
+  const facade = buildSeedFacade(
+    'file:///app/x.server.js',
+    '/app/x.server.js',
+    `'use server';\nexport { default as Helper } from './h.server.js';\nexport async function go() {}\n`,
+  );
+  assert.doesNotMatch(facade, /export default/);
 });
 
 test('a star re-export is FACETED, not passed through (#1155)', () => {

@@ -68,6 +68,7 @@ import { stringify } from '@webjsdev/core';
 import { hashFile } from './actions.js';
 import { isStreamable } from './action-stream.js';
 import { serverRuntime } from './listener-core.js';
+import { redactStringsAndTemplates } from './js-scan.js';
 
 /** Ambient per-render seed collector. `Map<key, value>` or undefined. */
 const als = new AsyncLocalStorage();
@@ -275,67 +276,144 @@ function seedProxy(file, fnName, orig) {
   });
 }
 
+/** A declarator right-hand side that is unambiguously a function. */
+const RHS_FN_RE = /^(?:async\s+)?function\b|^(?:async\s*)?(?:<[^>]*>\s*)?\([^)]*\)\s*=>|^(?:async\s*)?[A-Za-z_$][\w$]*\s*=>/;
 /**
- * Extract the names of every named export from an action module's source, used
- * to generate the facade's `export const NAME = wrap(...)` lines. Conservative:
- * a name it misses simply is not wrapped (no seed for it, RPC fallback). A
- * `export *` re-export cannot be enumerated statically and is not reported
- * here: the facade re-exports it wholesale through its own `export * from`
- * catch-all (#538), so nothing about it needs a decision.
+ * A declarator right-hand side that is unambiguously NOT a function: a string /
+ * template / numeric literal, an object or array literal, a `new` expression, a
+ * tagged template, or a keyword literal. Runs on REDACTED source, so a literal
+ * body is blank but its delimiters survive, which is all this needs.
+ */
+const RHS_VAL_RE = /^['"`]|^[+-]?\d|^[{[]|^new\s|^(?:true|false|null|undefined)\s*[;,]?\s*$|^[A-Za-z_$][\w$]*\s*`/;
+
+/**
+ * Split a declaration statement into its declarators on TOP-LEVEL commas, so
+ * `const a = 1, b = f(x, y)` yields two parts rather than three. Depth-tracking
+ * is enough because the input is redacted (no string / template / regex body can
+ * carry an unbalanced bracket).
+ * @param {string} stmt
+ * @returns {string[]}
+ */
+function splitDeclarators(stmt) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < stmt.length; i++) {
+    const c = stmt[i];
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') depth--;
+    else if (c === ',' && depth === 0) {
+      parts.push(stmt.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(stmt.slice(start));
+  return parts;
+}
+
+/**
+ * Extract the names of every named export from an action module's source, split
+ * into the ones that must be emitted as HOISTED function declarations and the
+ * ones that must stay plain value bindings. Conservative: a name it misses
+ * simply is not wrapped (no seed for it, RPC fallback). A `export *` re-export
+ * cannot be enumerated statically and is not reported here: the facade
+ * re-exports it wholesale through its own `export * from` catch-all (#538), so
+ * nothing about it needs a decision.
+ *
+ * ## Why the split matters, and which way to guess
+ *
+ * The two buckets get structurally different facade code, and each is wrong for
+ * the other's members in a DIFFERENT way, so the fallback direction is a real
+ * decision rather than a detail:
+ *
+ *  - `fnNames` emits a hoisted `export function n(...)`. Hoisting is what makes
+ *    a circular re-export between two `'use server'` modules load (#1208), but
+ *    a VALUE emitted this way is silently handed to importers as a callable.
+ *  - `valNames` emits `export const n = __w(...)`. Correct for any value, but a
+ *    `const` is in TDZ until the facade body runs, so a FUNCTION emitted this
+ *    way re-breaks the #1208 cycle.
+ *
+ * So a name is classified as a value only on POSITIVE evidence (a literal /
+ * object / array / `new` / tagged-template right-hand side, or a `class`), and
+ * everything undecidable falls back to `fnNames`. That keeps the cycle-critical
+ * cases safe: a name re-exported from another module (`export { helper }`, the
+ * #1208 fixture) is never locally declared at all, so it can never look like a
+ * value, and a higher-order-wrapped action (`const post = withAuth(...)`) has a
+ * call-expression right-hand side that is likewise undecidable.
+ *
+ * The residue is a list-exported `const x = someCall()` returning a non-function,
+ * which is still emitted as a function. That is unchanged from before the split
+ * existed (every list export used to land in `fnNames` unconditionally), so the
+ * classification is a strict improvement rather than a new trade.
+ *
+ * Scanning runs over a REDACTED copy (string / template / regex / comment bodies
+ * blanked by the shared `js-scan` lexer), so a `const` written in a doc comment
+ * or quoted in a string cannot register as a real declaration.
+ *
  * @param {string} src
  * @returns {{ fnNames: string[], valNames: string[], names: string[], hasDefault: boolean }}
  */
 export function extractExportNames(src) {
   const fnNames = new Set();
   const valNames = new Set();
+  // Blank every literal body (`blankStrings`), so only code position is read.
+  const code = redactStringsAndTemplates(src, true);
 
-  // Find local function declarations & function variable assignments
+  // Locally declared functions: declarations, and declarators whose right-hand
+  // side is unambiguously a function.
   const localFns = new Set();
-  let m;
-  const reLocalFn = /\b(?:async\s+)?function\s*\*?\s+([A-Za-z_$][\w$]*)/g;
-  while ((m = reLocalFn.exec(src))) localFns.add(m[1]);
-
-  const reLocalFnVar = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function|\([^)]*\)\s*=>|[\w$]+\s*=>)/g;
-  while ((m = reLocalFnVar.exec(src))) localFns.add(m[1]);
-
-  // Find direct function exports
-  const reFn = /\bexport\s+(?:async\s+)?function\s*\*?\s+([A-Za-z_$][\w$]*)/g;
-  while ((m = reFn.exec(src))) fnNames.add(m[1]);
-
-  const reFnVar = /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function|\([^)]*\)\s*=>|[\w$]+\s*=>)/g;
-  while ((m = reFnVar.exec(src))) fnNames.add(m[1]);
-
-  // Find local non-function variables and classes
+  // Locally declared non-functions, on POSITIVE evidence only (see above).
   const localVals = new Set();
-  const reLocalClass = /\b(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)/g;
-  while ((m = reLocalClass.exec(src))) localVals.add(m[1]);
+  let m;
 
-  const reLocalVarStmt = /\b(?:const|let|var)\s+([^;\n]+)/g;
-  while ((m = reLocalVarStmt.exec(src))) {
-    const stmt = m[1];
-    const idRe = /\b([A-Za-z_$][\w$]*)\s*(?:=|,|;|$)/g;
-    let idM;
-    while ((idM = idRe.exec(stmt))) {
-      const name = idM[1];
-      if (name !== 'const' && name !== 'let' && name !== 'var' && name !== 'async' && name !== 'function') {
-        if (!localFns.has(name)) localVals.add(name);
-      }
+  const reLocalFn = /\b(?:async\s+)?function\s*\*?\s+([A-Za-z_$][\w$]*)/g;
+  while ((m = reLocalFn.exec(code))) localFns.add(m[1]);
+
+  const reLocalClass = /\b(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)/g;
+  while ((m = reLocalClass.exec(code))) localVals.add(m[1]);
+
+  const reDeclStmt = /\b(?:const|let|var)\s+([^;\n]+)/g;
+  while ((m = reDeclStmt.exec(code))) {
+    for (const part of splitDeclarators(m[1])) {
+      // `name = rhs`, tolerating a TS type annotation. A destructuring head or a
+      // bare `let x;` does not match and is left undecided on purpose.
+      const d = /^\s*([A-Za-z_$][\w$]*)\s*(?::[^=]*)?=\s*([\s\S]*)$/.exec(part);
+      if (!d) continue;
+      const [, name, rhs] = d;
+      const body = rhs.trim();
+      if (RHS_FN_RE.test(body)) localFns.add(name);
+      else if (RHS_VAL_RE.test(body)) localVals.add(name);
+      // Otherwise undecided: left out of both, so a list export of it falls
+      // through to `fnNames` (hoisted, cycle-safe).
     }
   }
 
-  // Direct class exports
-  const reClass = /\bexport\s+(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)/g;
-  while ((m = reClass.exec(src))) valNames.add(m[1]);
+  // Direct function exports.
+  const reFn = /\bexport\s+(?:async\s+)?function\s*\*?\s+([A-Za-z_$][\w$]*)/g;
+  while ((m = reFn.exec(code))) fnNames.add(m[1]);
 
-  // Direct variable exports (not function assignments)
+  const reFnVar = /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function|\([^)]*\)\s*=>|[\w$]+\s*=>)/g;
+  while ((m = reFnVar.exec(code))) fnNames.add(m[1]);
+
+  // Direct class exports.
+  const reClass = /\bexport\s+(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)/g;
+  while ((m = reClass.exec(code))) valNames.add(m[1]);
+
+  // Direct variable exports that are not function assignments.
   const reVar = /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g;
-  while ((m = reVar.exec(src))) {
+  while ((m = reVar.exec(code))) {
     if (!fnNames.has(m[1])) valNames.add(m[1]);
   }
 
-  // Export list: export { a, b as bee }
+  // Export list: `export { a, b as bee }`.
   const reList = /\bexport\s*\{([^}]*)\}/g;
-  while ((m = reList.exec(src))) {
+  while ((m = reList.exec(code))) {
+    // `export { default as X } from './other.js'` re-exports ANOTHER module's
+    // default under a named binding. It gives this module no default export, so
+    // it must not set `hasDefault` (that would fabricate `export default
+    // undefined` on a module that has none). `X` itself needs no entry here: it
+    // is a named export of the re-export target, which the facade's own
+    // `export * from` catch-all already carries.
     for (const part of m[1].split(',')) {
       const seg = part.trim();
       if (!seg) continue;
@@ -343,22 +421,42 @@ export function extractExportNames(src) {
       const local = as[0].trim();
       const exported = (as[1] || as[0]).trim();
       if (!/^[A-Za-z_$][\w$]*$/.test(exported)) continue;
+      if (local === 'default') continue;
 
-      if (exported === 'default' || local === 'default') {
-        fnNames.add('__default__');
-      } else if (localVals.has(local) && !localFns.has(local)) {
-        valNames.add(exported);
-      } else {
-        fnNames.add(exported);
-      }
+      if (exported === 'default') fnNames.add('__default__');
+      else if (localVals.has(local) && !localFns.has(local)) valNames.add(exported);
+      else fnNames.add(exported);
     }
   }
 
-  // Clean up any overlap if an item ended up in both (fnNames wins if it's a function)
+  // A name reaching both buckets (e.g. `export const x = () => {}` also seen as
+  // a plain variable export) is a function: the hoisted form is the safe one.
   for (const fn of fnNames) valNames.delete(fn);
 
-  const hasDefault = /\bexport\s+default\b/.test(src) || fnNames.delete('__default__') || valNames.delete('__default__');
+  const hasDefault = /\bexport\s+default\b/.test(code) || fnNames.delete('__default__') || valNames.delete('__default__');
   return { fnNames: [...fnNames], valNames: [...valNames], names: [...fnNames, ...valNames], hasDefault };
+}
+
+/**
+ * Pick a prefix for the facade's per-function memo variables that cannot collide
+ * with anything else the facade declares.
+ *
+ * The memo for export `n` is declared at module scope as `<prefix>n`, so a module
+ * exporting both `ping` and `_fn_ping` would emit `var _fn_ping` alongside
+ * `export function _fn_ping`, a duplicate declaration. That is a SyntaxError in
+ * generated source, which the load hook's try/catch cannot contain (the parse
+ * happens after the hook returns), so it would crash the module load outright
+ * instead of degrading to no seeding. Pathological naming, but the feature's
+ * contract is that any failure is fail-open, and a hard crash is not.
+ *
+ * @param {{ fnNames: string[], valNames: string[] }} exports
+ * @returns {string}
+ */
+function memoPrefix(exports) {
+  const taken = new Set([...exports.fnNames, ...exports.valNames, '__orig', '__w']);
+  let prefix = '_fn_';
+  while (exports.fnNames.some((n) => taken.has(prefix + n))) prefix = `_${prefix}`;
+  return prefix;
 }
 
 /**
@@ -374,13 +472,21 @@ function buildFacade(origUrl, absPath, exports) {
   const sep = origUrl.includes('?') ? '&' : '?';
   const origSpec = JSON.stringify(origUrl + sep + 'webjs-seed-orig');
   const file = JSON.stringify(absPath);
+  const memo = memoPrefix(exports);
   let out = `import * as __orig from ${origSpec};\n`;
   out += `import { __actionWrap as __w } from ${JSON.stringify(SELF_URL)};\n`;
   out += `export * from ${origSpec};\n`;
   for (const n of exports.fnNames) {
     const k = JSON.stringify(n);
-    const v = `_fn_${n}`;
-    out += `let ${v};\n`;
+    const v = `${memo}${n}`;
+    // `var`, NOT `let`. The exported function is hoisted, which is the whole
+    // reason a circular re-export between two `'use server'` modules loads
+    // (#1208): the other module in the cycle can call it before this facade's
+    // body has run. A `let` memo would be in TDZ at that moment, so the call
+    // would throw `Cannot access '...' before initialization`, re-breaking the
+    // very cycle the hoisting exists to survive. `var` hoists initialized to
+    // undefined, so the first call falls through to the lookup as intended.
+    out += `var ${v};\n`;
     out += `export function ${n}(...args) {\n`;
     out += `  const fn = ${v} || (${v} = __w(${file}, ${k}, __orig[${k}]));\n`;
     out += `  return typeof fn === 'function' ? fn.apply(this, args) : fn;\n`;
