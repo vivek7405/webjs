@@ -204,10 +204,12 @@ suite('dev error overlay URL scope (#1047)', () => {
   });
 
   test('a snapshot restore cannot leave an undismissable overlay copy behind', () => {
-    // The router's back/forward snapshot is `outerHTML`, so it can carry an
-    // overlay, and its tier-4 restore does `document.body.replaceChildren`
-    // straight from that HTML. The reinserted copy is not the node this module
-    // holds, so nothing could remove it and its Dismiss button has no listener.
+    // The backstop, driven directly: whatever the source, a body replacement
+    // from cached HTML can put an overlay element in the DOM that this module
+    // does not own, and such a node is unremovable with a dead Dismiss button.
+    // (The router's own snapshot no longer carries one, since `before-cache`
+    // detaches across its read, so the copy is fabricated here rather than
+    // produced by the router.)
     renderDevOverlay({ kind: 'render', message: 'was on screen at snapshot time', url: CRASH }, CRASH);
     const snapshot = overlay().outerHTML;
     overlay().remove();                                   // the body swap drops the live node...

@@ -171,14 +171,16 @@ export function renderDevOverlay(f, currentPath) {
  */
 export function syncDevOverlayToLocation(currentPath) {
   const here = currentPath === undefined ? __wjCurrentPath() : currentPath;
-  // A back/forward restore can replace document.body wholesale from the
-  // router's snapshot, and that snapshot is `outerHTML` taken while an overlay
-  // may have been on screen, so the restore reinserts a PARSED COPY of it. The
-  // copy is not the node this module is holding, so nothing else can ever
-  // remove it and its Dismiss button carries no listener: an undismissable
-  // card. Sweep anything we do not own, and notice when the node we did own was
-  // replaced out from under us (it is detached, so `.remove()` would no-op and
-  // the slot would lie about what is on screen).
+  // The BACKSTOP for an overlay element this module does not own. Any such node
+  // is unremovable and its Dismiss button carries no listener, so it would sit
+  // there forever: a `document.body.replaceChildren` from cached HTML is the way
+  // that happens. The router's OWN back/forward snapshot is already handled
+  // upstream, since `before-cache` detaches the overlay across its `outerHTML`
+  // read, so what is left here is everything else (a snapshot cached before this
+  // client installed its listeners, or any other wholesale body replacement).
+  // Also notice when the node we did own was replaced out from under us: it is
+  // detached, so `.remove()` would no-op and the slot would lie about what is
+  // on screen.
   if (typeof document !== 'undefined') {
     const live = __wjOverlay && __wjOverlay.isConnected ? __wjOverlay : null;
     __wjOverlay = live;

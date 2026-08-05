@@ -93,10 +93,13 @@ export function readCodeFrame(file, line, column, context = 3) {
  *
  * `opts.url` stamps the frame with the request URL that produced it (#1047).
  * Only a `render` frame carries one, and the browser overlay uses it to refuse a
- * frame belonging to a page the tab is not looking at (a speculative link
- * prefetch of a throwing page, another tab's crash, a page navigated away from).
- * A frame with no url renders unconditionally, which is what a `rebuild` /
- * `ts-strip` frame wants: those describe a still-broken build, not one URL.
+ * frame belonging to a page the tab is not looking at (another tab's crash, a
+ * background render of some other url, a page navigated away from). A frame with
+ * no url renders unconditionally, which is what a `rebuild` / `ts-strip` frame
+ * wants: those describe a still-broken build, not one URL.
+ *
+ * A speculative link prefetch is NOT in that list, and cannot be: `dev.js` drops
+ * the report hook for one, so no frame is ever built for it to refuse.
  *
  * @param {unknown} error
  * @param {{ kind?: 'render' | 'ts-strip' | 'rebuild', appDir?: string, file?: string, line?: number, column?: number, hint?: string, url?: string }} [opts]
