@@ -22,7 +22,7 @@ import '#components/code-block.ts';
  *
  * Doc page bodies are plain HTML with no component wrapper, so their
  * typography is styled through the shell's `.prose-docs` rules rather than
- * per-element utility classes across 45 pages.
+ * per-element utility classes across 43 pages.
  */
 const NAV_SECTIONS = [
   {
@@ -114,7 +114,7 @@ const NAV_SECTIONS = [
  * one field each page sets.
  *
  * Without this the docs inherit the marketing pitch: the deleted docs root
- * layout carried its own title and description, so dropping it left all 45
+ * layout carried its own title and description, so dropping it left all 43
  * pages advertising "the web framework for AI agents" as their search snippet
  * and social card.
  *

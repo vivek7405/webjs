@@ -46,8 +46,10 @@ website/
                        sidebar-wide: a nav label NEED NOT match the page's
                        own h1, several deliberately do not, and those are
                        correct as they stand. The one exception is the
-                       /docs/auth and /docs/authentication pair, held
-                       byte-equal after their headings once collided (#1103).
+                       /docs/auth and /docs/authentication pair, where each
+                       page's h1 is held byte-equal to its OWN label after
+                       one of them once rendered a heading that named the
+                       other page (#1103).
                        Do NOT generalise that pin to other pages. The /ui
                        sidebar is exempt from all of the above, since its
                        labels are component names from the live registry.
