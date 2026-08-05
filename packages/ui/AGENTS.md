@@ -431,6 +431,20 @@ names mechanically:
 - All `.ts` files in `components/` export named functions. No default exports.
 - Use `cn()` from `'../lib/utils.ts'` to merge a helper's output with
   user-supplied classes when needed: `<button class=${cn(buttonClass(), 'rounded-full')}>`.
+- **A `cn()` conflict group is one CSS PROPERTY, never one class prefix.**
+  Utilities that merely share a prefix must land in different groups, or the
+  merger silently drops one of them. Two defects came from getting this wrong:
+  `^flex(-|$)` lumped the `flex` DISPLAY value in with `flex-1` / `flex-row` /
+  `flex-wrap` and dropped `display:flex` (#1072), and border colour had no
+  group at all, so an override's winner was decided by compiled stylesheet
+  order rather than class order (#1065). When a value can mean two properties
+  under one prefix, classify by parsing the VALUE (`border-[3px]` is a width,
+  `border-[#fff]` is a colour), and give each side its own group with the
+  shorthand subsumption declared in `CONFLICTS`, the way padding does.
+- `lib/utils.ts` is the canonical copy, and `examples/blog/lib/utils/cn.ts` is
+  a hand-synced duplicate with no mechanical link, so any change here lands in
+  both. `test/ui/cn-copies-in-sync.test.mjs` merges a token battery through
+  both copies and fails on drift.
 
 ## Layout + typography helpers (the design system)
 
