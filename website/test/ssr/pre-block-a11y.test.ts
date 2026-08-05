@@ -14,10 +14,13 @@
  *     unusable without a pointer.
  *
  * This lives in its own file, and loops over pages, because the rules belong
- * to the site rather than to any one page. Coverage is no longer a hand-kept
- * list: the documentation and gallery pages are discovered from the file
- * system, so a page added tomorrow is checked without anyone remembering to
- * add it here.
+ * to the site rather than to any one page. Coverage is not a hand-kept list:
+ * the documentation and gallery pages are discovered from the file system, and
+ * every gallery detail page comes from the registry index the sidebar is built
+ * from, so a page or a component added tomorrow is checked without anyone
+ * remembering to add it here. The marketing pages, the error boundary, and the
+ * markdown post body ARE listed by hand, because there are four of them and
+ * they have no directory to walk.
  *
  * Pages are rendered THROUGH their layout, not alone. That is what makes rule
  * 3 real rather than vacuous: a docs block scrolls because of the shell's
@@ -28,6 +31,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { renderToString } from '@webjsdev/core/server';
 import type { LayoutProps } from '@webjsdev/core';
 import Home from '#app/page.ts';
@@ -76,23 +80,38 @@ async function htmlOf(page: Page) {
 }
 
 /** Discover a section's pages instead of listing them by hand. */
-async function sectionPages(dir: string, base: string, layout: (p: LayoutProps) => unknown): Promise<Page[]> {
+async function sectionPages(dir: string, base: string, layout: (p: LayoutProps) => unknown, expectSome = true): Promise<Page[]> {
   const entries = await readdir(new URL(`../../app/${dir}`, import.meta.url), { withFileTypes: true });
   const pages: Page[] = [];
   for (const entry of entries.filter((e) => e.isDirectory() && !e.name.startsWith('['))) {
+    // A segment can be a route handler rather than a page (app/ui/registry
+    // serves the JSON API the CLI fetches), and those render no markup.
+    const file = new URL(`../../app/${dir}/${entry.name}/page.ts`, import.meta.url);
+    if (!existsSync(file)) continue;
     const mod = await import(`#app/${dir}/${entry.name}/page.ts`);
     pages.push({
       name: `${base}/${entry.name}`,
       render: async () => layout({ children: await mod.default({}) } as unknown as LayoutProps),
     });
   }
-  assert.ok(pages.length > 0, `no pages discovered under app/${dir}, so this section is silently uncovered`);
+  // app/docs is all static topic pages, so finding none there means discovery
+  // broke. app/ui legitimately has none: its content is the index page plus
+  // the [name] route, and the only other segment is a route handler. Walking
+  // it anyway is what covers a static gallery page added later.
+  if (expectSome) assert.ok(pages.length > 0, `no pages discovered under app/${dir}, so this section is silently uncovered`);
   return pages;
 }
 
-const UI_COMPONENT = 'button';
 const uiDetail = await import('#app/ui/[name]/page.ts');
 const uiIntro = await import('#app/ui/page.ts');
+const { loadRegistryIndex } = await import('#modules/ui/queries/registry.server.ts');
+
+/**
+ * Every gallery detail page, from the same registry index the sidebar is built
+ * from. Sampling one component here would leave the other thirty-one unchecked
+ * while the file claimed to cover the gallery.
+ */
+const uiComponents = (await loadRegistryIndex()).filter((i) => i.type === 'registry:ui').map((i) => i.name);
 
 const PAGES: Page[] = [
   { name: '/', render: () => Home() },
@@ -103,11 +122,12 @@ const PAGES: Page[] = [
     render: () => ErrorBoundary({ error: new Error('a single unbroken line of detail long enough to overflow a narrow viewport') }),
   },
   ...await sectionPages('docs', '/docs', DocsLayout),
+  ...await sectionPages('ui', '/ui', UiLayout, false),
   { name: '/ui', render: async () => UiLayout({ children: await uiIntro.default() } as unknown as LayoutProps) },
-  {
-    name: `/ui/${UI_COMPONENT}`,
-    render: async () => UiLayout({ children: await uiDetail.default({ params: { name: UI_COMPONENT } }) } as unknown as LayoutProps),
-  },
+  ...uiComponents.map((name) => ({
+    name: `/ui/${name}`,
+    render: async () => UiLayout({ children: await uiDetail.default({ params: { name } }) } as unknown as LayoutProps),
+  })),
   // The markdown renderer is one body shared by /blog/[slug], /articles/[slug],
   // and /compare/[slug], so covering it covers all three route families. A
   // fenced block is what it emits a <pre> for.

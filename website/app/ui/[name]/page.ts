@@ -140,11 +140,13 @@ function dedent(snippet: string): string {
  * The "Code" side of a preview: the idiomatic snippet that composes the demo,
  * escaped (text interpolation, not unsafeHTML) so the markup shows as source.
  *
- * Wrapped in `.prose-docs` on purpose. That is the site's one code surface
- * (declared in lib/ui/docs-shell.ts) and the scope the client highlighter reads,
- * so a snippet here gets the same card and the same token colors as one in the
- * documentation, for free. `.ui-code` drops the trailing block margin the
- * prose rules add, since a tab pane is not a paragraph flow.
+ * Wrapped in `.prose-docs` on purpose: that is the site's one code surface
+ * (declared in lib/ui/docs-shell.ts), so a snippet here gets the same card as
+ * one in the documentation, for free. `.ui-code` drops the trailing block
+ * margin the prose rules add, since a tab pane is not a paragraph flow. The
+ * token colors do NOT come from the wrapper; `<code-block>` supplies them
+ * wherever it is placed. That used to be the wrapper's job, back when a
+ * site-wide script highlighted whatever it found under `.prose-docs`.
  */
 function codePane(code: string) {
   return html`<div class="prose-docs ui-code"><code-block>${dedent(code)}</code-block></div>`;

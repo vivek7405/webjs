@@ -338,9 +338,11 @@ calling an action), re-enable it and delete the assertion in
   `tabindex="0"`, because a scroll container no keyboard can reach is unusable
   without a pointer. `test/ssr/pre-block-a11y.test.ts` enforces all three
   across the marketing pages, the error boundary, the markdown post body
-  (shared by `/blog/[slug]`, `/articles/[slug]`, and `/compare/[slug]`), and
-  every page under `app/docs/` and `app/ui/`, which it DISCOVERS from the file
-  system rather than from a list, so a page added tomorrow is covered. It reads
+  (shared by `/blog/[slug]`, `/articles/[slug]`, and `/compare/[slug]`), every
+  page under `app/docs/` and `app/ui/`, and every gallery detail page. It does
+  not keep a list: the section pages are DISCOVERED from the file system and
+  the gallery components come from the same registry index the sidebar is
+  built from, so a page or a component added tomorrow is covered. It reads
   scrollability from the rendered document, not from the tag, since a docs
   block scrolls because of `.prose-docs pre { overflow-x: auto }` in
   `lib/ui/docs-shell.ts` and nothing on the tag records that.
