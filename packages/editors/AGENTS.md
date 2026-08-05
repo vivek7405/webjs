@@ -30,8 +30,8 @@ both consumers:
 - **nvim** keeps a COMMITTED verbatim copy at
   `nvim/vendor/node_modules/@webjsdev/intellisense/`. It is GENERATED, never
   hand-edited. After ANY `intellisense/src/` change, OR any edit to
-  `intellisense/package.json` other than its `version`, you MUST re-vendor
-  before pushing:
+  `intellisense/package.json` INCLUDING a release version bump, you MUST
+  re-vendor before pushing:
   ```sh
   node packages/editors/nvim/scripts/vendor-intellisense.mjs
   git add -f packages/editors/nvim/vendor   # the copy is under a gitignored node_modules/

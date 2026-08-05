@@ -123,6 +123,10 @@ export function generateMetadata() {
       {
         '@context': 'https://schema.org',
         '@type': 'SoftwareApplication',
+        // The same @id the home page's SoftwareApplication carries, so this
+        // richer description merges into that node rather than standing up a
+        // second software entity with the same name (#1100).
+        '@id': `${SITE_URL}#software`,
         name: 'WebJs',
         alternateName: ['webjs', 'WebJS framework'],
         applicationCategory: 'DeveloperApplication',

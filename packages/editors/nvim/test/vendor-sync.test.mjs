@@ -4,9 +4,9 @@
  * webjs.nvim bundles a verbatim copy of the standalone intellisense (it has no
  * install-time build step) and points tsserver at it. That copy MUST stay in
  * sync with `packages/editors/intellisense`, both its `src/` tree and its
- * manifest apart from the `version`. This test fails if either drifts, telling
- * you to re-run `node packages/editors/nvim/scripts/vendor-intellisense.mjs`
- * then `git add -f packages/editors/nvim/vendor`.
+ * manifest in full. This test fails if either drifts, telling you to re-run
+ * `node packages/editors/nvim/scripts/vendor-intellisense.mjs` then
+ * `git add -f packages/editors/nvim/vendor`.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -49,24 +49,25 @@ test('vendored package.json main resolves to the bundled entry', () => {
   assert.ok(existsSync(join(DIR, '../vendor/node_modules/@webjsdev/intellisense', pkg.main)), 'main entry exists');
 });
 
-test('vendored package.json matches the source manifest apart from its version', () => {
+test('vendored package.json is byte-identical to the source manifest', () => {
   // The script copies the whole manifest, but this only ever checked `name`
   // and `main`, so an edit to any other field left a stale copy that ships to
-  // the standalone webjs.nvim repo. That happened with the description
-  // (#1100), which drifted back to text the source had already fixed.
+  // the standalone webjs.nvim repo. It has bitten twice, and the VERSION is
+  // the field both times:
   //
-  // `version` is excluded, and that carve-out is load-bearing rather than
-  // lazy. Nothing in the release path re-vendors (no workflow or script
-  // invokes vendor-intellisense.mjs), so a release that bumps intellisense
-  // leaves the copy behind by design: #978 bumped it to 0.5.4 and the vendored
-  // copy did not catch up until #1117, roughly 140 commits later. Comparing
-  // the version too would red CI on every release commit, for a field the
-  // bundled copy never reads. Everything else is compared, which is where the
-  // drift that actually matters lives.
-  const stripVersion = (s) => s.replace(/^[ \t]*"version":[^\n]*\n/m, '');
+  //   #978 bumped intellisense to 0.5.4 and the copy stayed at 0.5.1 for
+  //   roughly 140 commits, so the published plugin misreported the
+  //   language-service version it shipped until #1117 re-vendored by hand.
+  //   That commit named this exact missing assertion as the reason.
+  //
+  // So the version is compared too, deliberately. It means a release that
+  // bumps intellisense reds CI until the copy is re-vendored on the release
+  // branch, which is the point: that is the forcing function whose absence
+  // #1117 had to clean up manually. The package has been bumped five times in
+  // its life, so the cost is five re-vendors, not one per commit.
   assert.equal(
-    stripVersion(readFileSync(join(DIR, '../vendor/node_modules/@webjsdev/intellisense/package.json'), 'utf8')),
-    stripVersion(readFileSync(join(SRC, '..', 'package.json'), 'utf8')),
+    readFileSync(join(DIR, '../vendor/node_modules/@webjsdev/intellisense/package.json'), 'utf8'),
+    readFileSync(join(SRC, '..', 'package.json'), 'utf8'),
     'vendored package.json drifted; re-run node packages/editors/nvim/scripts/vendor-intellisense.mjs',
   );
 });

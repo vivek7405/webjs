@@ -29,16 +29,26 @@ import { ctaPanel } from '#lib/ui/cta-panel.ts';
 const SITE_URL = 'https://webjs.dev';
 export const metadata = {
   jsonLd: [
+    // Every node carries an @id. Three of these share a name and a url, so
+    // without one a crawler cannot tell whether they are three descriptions
+    // of one thing or three things, and the two that also share a sameAs
+    // would differ only by @type. The @id says plainly which is which: the
+    // project as an organisation, the software it publishes, and the site
+    // you are reading. Consolidating a contested name is the point of the
+    // sameAs, and that only works if what is being consolidated is named.
     {
       '@context': 'https://schema.org',
       '@type': 'WebSite',
+      '@id': `${SITE_URL}#website`,
       name: 'WebJs',
       url: SITE_URL,
       description: 'An AI-first, web-components-first full-stack web framework with no build step.',
+      publisher: { '@id': `${SITE_URL}#organization` },
     },
     {
       '@context': 'https://schema.org',
       '@type': 'Organization',
+      '@id': `${SITE_URL}#organization`,
       name: 'WebJs',
       url: SITE_URL,
       logo: `${SITE_URL}/public/favicon.png`,
@@ -50,13 +60,15 @@ export const metadata = {
     {
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',
+      // The SAME id as the node on /what-is-webjs, which is what makes them
+      // one software entity described twice rather than two that happen to
+      // agree. That is also why both carry the identical sameAs.
+      '@id': `${SITE_URL}#software`,
       name: 'WebJs',
       applicationCategory: 'DeveloperApplication',
       operatingSystem: 'Node.js 24+, Bun',
       url: SITE_URL,
-      // Same entity as the SoftwareApplication on /what-is-webjs (same name,
-      // same url, no @id to tell them apart), so it makes the same claim.
-      // Leaving it off here would be the drift the shared list prevents.
+      publisher: { '@id': `${SITE_URL}#organization` },
       sameAs: SAME_AS,
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
     },

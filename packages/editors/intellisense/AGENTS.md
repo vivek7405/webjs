@@ -20,7 +20,8 @@ This file only covers what's specific to `@webjsdev/intellisense`.
 This package is the SOURCE OF TRUTH for two downstream consumers, and one of
 them keeps a COMMITTED copy that a CI drift test enforces. After ANY change
 under `src/` (even a one-line edit), and after any edit to this package's
-`package.json` other than its `version`, run, in this order, BEFORE committing:
+`package.json` INCLUDING a release version bump, run, in this order, BEFORE
+committing:
 
 ```sh
 node packages/editors/nvim/scripts/vendor-intellisense.mjs

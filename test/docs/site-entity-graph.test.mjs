@@ -117,6 +117,32 @@ test('every node that states an entity claim states the same one', async () => {
   }
 });
 
+test('each node is identified, and the two software nodes are one entity', async () => {
+  // Three nodes share a name and a url, and two of them share a sameAs, so
+  // without an @id they would differ only by @type and a crawler could not
+  // tell one entity described three ways from three entities. A sameAs is an
+  // identity claim, so it is only worth anything once the thing it identifies
+  // is named.
+  const home = jsonLdNodes(await getHtml('/'));
+  const ids = home.map((n) => n['@id']);
+  assert.ok(
+    ids.every(Boolean),
+    `every home-page node carries an @id, got ${JSON.stringify(ids)}`,
+  );
+  assert.equal(new Set(ids).size, ids.length, 'the home-page nodes are distinct entities');
+
+  // The one deliberate exception: /what-is-webjs describes the SAME software,
+  // so it reuses that @id and merges into it rather than declaring a second.
+  const definition = jsonLdNodes(await getHtml('/what-is-webjs'));
+  const softwareId = (nodes) => nodes.find((n) => n['@type'] === 'SoftwareApplication')?.['@id'];
+  assert.ok(softwareId(home), 'the home SoftwareApplication has an @id');
+  assert.equal(
+    softwareId(definition),
+    softwareId(home),
+    'the two SoftwareApplication nodes are one entity, which is why they share a sameAs',
+  );
+});
+
 test('every claimed property is a distinct absolute https URL', async () => {
   // A malformed or duplicated entry is a wasted claim at best. Reachability is
   // verified by hand when a property is added, since a live network probe in

@@ -5,9 +5,10 @@
  * the plugin and pointed at via tsserver's probe location.
  *
  * Re-run this after any change under `packages/editors/intellisense/src`, AND
- * after any edit to that package's `package.json` other than its `version`.
- * The drift guard in `../test/vendor-sync.test.mjs` compares both, sparing the
- * version because no release step re-vendors.
+ * after any edit to that package's `package.json`, a release version bump
+ * included. The drift guard in `../test/vendor-sync.test.mjs` compares both
+ * in full, so a bumped-but-not-re-vendored manifest reds CI (#1117 shipped a
+ * plugin misreporting its own language-service version for want of that).
  *
  * @webjsdev/intellisense is standalone, dependency-free plain CJS (#386), so we
  * copy its `package.json` + `src/` verbatim into
