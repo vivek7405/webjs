@@ -7,22 +7,18 @@
  *     import type { WebjsConfig } from '@webjsdev/core';
  *     const config: WebjsConfig = { trailingSlash: 'never', csp: true };
  *
- * The server reads this object key by key. Without a type or schema a
- * typo'd key (e.g. `redirect` for `redirects`) was silently dropped and
- * the feature stayed at its default with no diagnostic. This type plus
- * the published JSON Schema close that gap.
+ * This object is read key by key, mostly by the server and for a few keys
+ * by the CLI. Without a type or schema a typo'd key (e.g. `redirect` for
+ * `redirects`) was silently dropped and the feature stayed at its default
+ * with no diagnostic. This type plus the published JSON Schema close that
+ * gap.
  *
  * LOCKSTEP: this file, the JSON Schema at
- * packages/server/webjs-config.schema.json, and the server reader
- * functions MUST stay in sync. The readers are: readElideEnabled
- * (dev.js, elide), readSeedEnabled (dev.js, seed), readClientRouterEnabled
- * (dev.js, clientRouter), compileHeaderRules (headers.js, headers),
- * compileRedirectRules / readTrailingSlashPolicy (redirects.js,
- * redirects / trailingSlash), readBasePath (base-path.js, basePath),
- * readCspConfig (csp.js, csp), and
- * readBodyLimits / computeServerTimeouts (body-limit.js, the byte caps
- * and timeouts). Adding a `webjs.*` key means updating all three places.
- * See packages/server/AGENTS.md for the one documented procedure.
+ * packages/server/webjs-config.schema.json, and the reader functions MUST
+ * stay in sync, so adding a `webjs.*` key means updating all three places
+ * (plus the KNOWN_KEYS drift test). The reader inventory is NOT repeated
+ * here on purpose: packages/server/AGENTS.md holds the one canonical list
+ * along with the procedure, and every copy of it that existed drifted.
  *
  * Every key is optional (the whole block is optional and every key has a
  * default). Zero runtime cost: nothing in this file ships to the browser.

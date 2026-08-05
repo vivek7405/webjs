@@ -2,8 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://webjs.dev/schemas/webjs-config.schema.json",
   "title": "webjs config block",
-  "description": "Schema for the `webjs` object in a webjs app's package.json. Each key maps to a documented reader (a server reader, or for `dev`/`start` the CLI's readAppTasks). An unknown key is flagged (additionalProperties is false) so a typo no longer silently falls back to the default.",
-  "$comment": "Single source of truth lives in THREE co-located places that must stay in lockstep: this schema, the TS type at packages/core/src/webjs-config.d.ts, and the reader functions (readElideEnabled in dev.js, readSeedEnabled in dev.js, compileHeaderRules in headers.js, compileRedirectRules / readTrailingSlashPolicy in redirects.js, readBasePath in base-path.js, readCspConfig in csp.js, readBodyLimits / computeServerTimeouts in body-limit.js, and the CLI's readAppTasks in packages/cli/lib/app-tasks.js for dev/start, #550). Adding a webjs.* key means updating all three. See packages/server/AGENTS.md for the one documented procedure.",
+  "description": "Schema for the `webjs` object in a WebJs app's package.json. Each key maps to a documented reader, mostly a server reader and for a few keys a CLI one. An unknown key is flagged (additionalProperties is false) so a typo no longer silently falls back to the default.",
+  "$comment": "Single source of truth lives in THREE co-located places that must stay in lockstep: this schema, the TS type at packages/core/src/webjs-config.d.ts, and the reader functions. Adding a `webjs.*` key means updating all three (plus the KNOWN_KEYS drift test). The reader inventory is deliberately NOT repeated here: packages/server/AGENTS.md holds the one canonical list and the procedure, because every duplicate of that list drifted.",
   "type": "object",
   "additionalProperties": false,
   "properties": {

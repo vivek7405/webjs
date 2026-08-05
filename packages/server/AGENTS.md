@@ -157,17 +157,25 @@ in THREE co-located places that MUST stay in lockstep:
    `redirects` / `trailingSlash`), `readBasePath` (`base-path.js`,
    `basePath`), `readCspConfig` (`csp.js`, `csp`), and
    `readBodyLimits` / `computeServerTimeouts` (`body-limit.js`, the byte
-   caps + timeouts), plus `readRegenerateRules` (`dev-regenerate.js`,
-   `dev.regenerate`, #967). Some readers live in the CLI rather than here:
-   `readAppTasks` (`packages/cli/lib/app-tasks.js`, `dev.before` /
-   `dev.parallel` / `start.before`, #550) and `readDoctorPolicy`
-   (`packages/cli/lib/doctor.js`, `doctor.gate`, #1257). Note `dev` is
-   split across both sides, its task sub-keys read by the CLI and
-   `regenerate` by the server, so the question is per sub-key, not per
-   top-level key. Wherever the reader lives, the key sits in the same
-   `webjs` block, so it is in the schema + type + `KNOWN_KEYS` all the same
-   (or `additionalProperties:false` would flag a valid app), and a new
-   CLI-read key changes nothing about what the lockstep owes.
+   caps + timeouts), `readAllowedOrigins` (`csrf.js`, `allowedOrigins`),
+   `readRegenerateRules` (`dev-regenerate.js`, `dev.regenerate`, #967), and
+   `readDevWatchPathsFromApp` (`dev.js`, `dev.watch`, #894). Two readers
+   live in the CLI rather than here: `readAppTasks`
+   (`packages/cli/lib/app-tasks.js`, `dev.before` / `dev.parallel` /
+   `start.before`, #550) and `readDoctorPolicy`
+   (`packages/cli/lib/doctor.js`, `doctor.gate`, #1257).
+
+   **THIS list is the canonical one.** It used to be duplicated in the JSON
+   Schema's `$comment`, the `WebjsConfig` docblock, and the drift test's
+   docblock, and every copy drifted independently (three review rounds on
+   #1257 each found a different stale one). Those three now POINT here
+   instead of enumerating, so there is one list to update. Two things the
+   copies kept getting wrong, worth stating outright: the split is per SUB-KEY,
+   not per top-level key (`dev` has CLI-read task sub-keys AND two
+   server-read ones), and where the reader lives changes nothing about what
+   the lockstep owes, since every key sits in the same `webjs` block and so
+   must be in the schema + type + `KNOWN_KEYS` regardless (or
+   `additionalProperties:false` would flag a valid app).
 
 **To add or change a `webjs.*` key, update all three (schema + type +
 reader), and the `KNOWN_KEYS` list in the drift test.** The drift test

@@ -145,7 +145,7 @@ setFileStore(diskStore({ dir: '/var/data/uploads', baseUrl: '/files' }));
 
 ## The `"webjs"` config block (package.json)
 
-All keys are optional; a malformed entry is dropped at boot with a warning, never crashing the pipeline.
+All keys are optional, and a malformed entry in a key the SERVER reads is dropped at boot with a warning, never crashing the pipeline. The one exception is `doctor.gate`, which is read by the `webjs doctor` CLI rather than the server and rejects a bad entry outright (see the doctor severity gate below): a gate whose typo was quietly ignored would leave CI un-gated while looking gated, which is the one thing that mechanism cannot afford.
 
 ### Security headers
 
