@@ -42,7 +42,8 @@
  * That switch is `trustProxy()` below, and it is now the ONE place the
  * posture is decided: `csrf.js`'s `requestHost` used to read
  * `x-forwarded-host` without consulting it, which is what #1104
- * centralized. See `trustProxy()` for the one deliberate non-consumer.
+ * centralized. See `trustProxy()` for the full consumer list and for the
+ * direction rule that resolves it against the per-call `trustProxy` option.
  *
  * Header semantics:
  * - `X-Forwarded-Host` / `X-Forwarded-Proto` can be a comma-separated
