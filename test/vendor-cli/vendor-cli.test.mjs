@@ -1,29 +1,52 @@
 /**
  * CLI integration tests for `webjs vendor pin` / `unpin` / `list`.
  *
- * Spawns the actual webjs CLI binary against a temp app directory and
- * asserts the file-system + stdout contracts.
+ * Spawns the actual CLI binary against a temp app directory and asserts the
+ * file-system + stdout contracts.
  *
- * Network-gated: pin without --download calls api.jspm.io. Skip via
- * WEBJS_SKIP_NETWORK_TESTS=1 in air-gapped CI environments.
+ * OFFLINE (#1150). `webjs vendor pin` resolves through api.jspm.io, and this
+ * file used to let the spawned CLI reach it, which is how a jspm outage redded
+ * the required CI job on PR #1149, a documentation-only change. Every spawn now
+ * carries `test/fixtures/jspm-double-preload.mjs`, so the child answers itself.
+ * The live half of the same contract lives in `vendor-pin.live.test.mjs`, which
+ * both test runners skip unless `WEBJS_REQUIRE_NETWORK=1`.
  */
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { statSync } from 'node:fs';
 import { mkdtemp, writeFile, mkdir, readFile, rm, symlink } from 'node:fs/promises';
 import { join, resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
 const CLI = resolve(REPO_ROOT, 'packages', 'cli', 'bin', 'webjs.js');
 
-const NETWORK_OK = !process.env.WEBJS_SKIP_NETWORK_TESTS;
+const PRELOAD = resolve(__dirname, '..', 'fixtures', 'jspm-double-preload.mjs');
+// A moved or renamed preload must fail here rather than in the child, where a
+// module-not-found would surface as an opaque non-zero exit code and the
+// obvious reading would be that the CLI itself broke.
+statSync(PRELOAD);
+
+/**
+ * The flag that loads the preload into the child, chosen by runtime.
+ *
+ * Node and Bun each ignore the other's spelling, and Bun ignores NODE_OPTIONS
+ * entirely, so this cannot be one hardcoded flag or an env var. The parent
+ * runtime IS the child runtime here, because the spawn below uses
+ * `process.execPath`, which under `bun test` is the bun binary. Node wants a
+ * URL rather than a path, since the spawn sets `cwd` to the temp app directory
+ * and a relative `--import` would resolve against that instead of the repo.
+ */
+const PRELOAD_ARGS = process.versions.bun
+  ? ['--preload', PRELOAD]
+  : ['--import', pathToFileURL(PRELOAD).href];
 
 function runCli(args, cwd) {
   return new Promise((res, rej) => {
-    const child = spawn(process.execPath, [CLI, ...args], {
+    const child = spawn(process.execPath, [...PRELOAD_ARGS, CLI, ...args], {
       cwd,
       env: { ...process.env, FORCE_COLOR: '0' },
     });
@@ -31,7 +54,16 @@ function runCli(args, cwd) {
     let stderr = '';
     child.stdout.on('data', (d) => { stdout += d.toString(); });
     child.stderr.on('data', (d) => { stderr += d.toString(); });
-    child.on('exit', (code) => res({ code, stdout, stderr }));
+    child.on('exit', (code) => {
+      // Assert the wiring on EVERY spawn, not in one test. Dropping the flag
+      // would otherwise leave this file green while silently restoring the
+      // live-CDN dependency, since the CLI's own output is identical either
+      // way. The preload also forces a non-zero exit on any request the double
+      // does not serve, which the per-test `code` assertions then catch.
+      assert.match(stderr, /\[jspm-double\] armed/,
+        'the jspm double must be preloaded into every CLI child');
+      res({ code, stdout, stderr });
+    });
     child.on('error', rej);
   });
 }
@@ -62,7 +94,7 @@ describe('webjs vendor CLI', () => {
     assert.match(stdout, /No pin file/);
   });
 
-  test('pin writes .webjs/vendor/importmap.json with picocolors entry', { skip: !NETWORK_OK }, async () => {
+  test('pin writes .webjs/vendor/importmap.json with picocolors entry', async () => {
     const { code, stdout, stderr } = await runCli(['vendor', 'pin'], appDir);
     assert.equal(code, 0, `pin failed: ${stderr}`);
     assert.match(stdout, /Pinning vendor packages/);
@@ -73,16 +105,21 @@ describe('webjs vendor CLI', () => {
     const parsed = JSON.parse(file);
     assert.ok(parsed.imports.picocolors, 'picocolors should be in the pinned importmap');
     assert.match(parsed.imports.picocolors, /^https:\/\/ga\.jspm\.io\/npm:picocolors@/);
+    // The prefix above is equally true of the real CDN, so on its own it cannot
+    // tell a doubled resolve from a live one. This tail can: jspm never emits
+    // it, so it only appears when the preload is actually in the child.
+    assert.match(parsed.imports.picocolors, /\/double\.js$/,
+      'the url must come from the jspm double, not from the network');
   });
 
-  test('list with pin file reports the pinned package + URL', { skip: !NETWORK_OK }, async () => {
+  test('list with pin file reports the pinned package + URL', async () => {
     const { code, stdout } = await runCli(['vendor', 'list'], appDir);
     assert.equal(code, 0);
     assert.match(stdout, /picocolors@/);
     assert.match(stdout, /https:\/\/ga\.jspm\.io\/npm:picocolors@/);
   });
 
-  test('unpin removes a package entry from importmap.json', { skip: !NETWORK_OK }, async () => {
+  test('unpin removes a package entry from importmap.json', async () => {
     const { code, stdout } = await runCli(['vendor', 'unpin', 'picocolors'], appDir);
     assert.equal(code, 0);
     assert.match(stdout, /picocolors\s+unpinned/);
@@ -107,7 +144,7 @@ describe('webjs vendor CLI', () => {
     assert.match(stderr, /not in pin file/);
   });
 
-  test('pin --download writes bundle files alongside importmap.json', { skip: !NETWORK_OK }, async () => {
+  test('pin --download writes bundle files alongside importmap.json', async () => {
     const { code, stdout, stderr } = await runCli(['vendor', 'pin', '--download'], appDir);
     assert.equal(code, 0, `pin --download failed: ${stderr}`);
     assert.match(stdout, /downloading bundles/);
@@ -162,7 +199,7 @@ describe('webjs vendor CLI', () => {
 // #448: the opt-in pins `webjs vendor pin` writes must be committable. A
 // `.gitignore` that excludes `.webjs/` silently swallows them; pinning must
 // self-heal that so a user can commit what they deliberately created.
-describe('webjs vendor pin makes pins committable (#448)', { skip: !NETWORK_OK }, () => {
+describe('webjs vendor pin makes pins committable (#448)', () => {
   function git(args, cwd) {
     return new Promise((res) => {
       const { GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_PREFIX, ...env } = process.env;
