@@ -54,6 +54,10 @@ export const metadata = {
       applicationCategory: 'DeveloperApplication',
       operatingSystem: 'Node.js 24+, Bun',
       url: SITE_URL,
+      // Same entity as the SoftwareApplication on /what-is-webjs (same name,
+      // same url, no @id to tell them apart), so it makes the same claim.
+      // Leaving it off here would be the drift the shared list prevents.
+      sameAs: SAME_AS,
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
     },
   ],

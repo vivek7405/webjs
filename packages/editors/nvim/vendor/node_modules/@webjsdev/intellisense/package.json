@@ -2,7 +2,7 @@
   "name": "@webjsdev/intellisense",
   "version": "0.5.4",
   "type": "commonjs",
-  "description": "Standalone TypeScript language-service plugin for webjs (no Lit dependency). Adds in-template intelligence inside html`` templates: go-to-definition on tags / attributes / CSS classes, binding-aware completions, value/binding diagnostics, and hover, all driven by its own template parser and gated on import-graph reachability.",
+  "description": "The TypeScript language-service plugin for WebJs, a full-stack JavaScript framework built on web components with server-side rendering and no build step. Adds in-template intelligence with no Lit dependency: go-to-definition on tags, attributes, and CSS classes, binding-aware completions, value and binding diagnostics, and hover.",
   "main": "src/index.js",
   "peerDependencies": {
     "typescript": ">=5.0.0"

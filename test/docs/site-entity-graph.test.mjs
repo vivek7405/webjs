@@ -8,11 +8,15 @@
  * is contested (a dormant Java framework, a client-side toolkit, and the
  * common short form of whatsapp-web.js all collide with it).
  *
- * Two nodes carry the claim: the `Organization` on the home page and the
- * `SoftwareApplication` on /what-is-webjs, which is the page that does the
- * disambiguating. They must state the SAME graph, which is the whole reason
- * the list lives in one exported constant. This asserts the rendered output,
- * not the constant, so an import that silently stops being used still fails.
+ * Three nodes carry the claim: the `Organization` and the
+ * `SoftwareApplication` on the home page, and the `SoftwareApplication` on
+ * /what-is-webjs, which is the page that does the disambiguating. The two
+ * SoftwareApplication nodes share a name and a url with no `@id` between
+ * them, so they describe one entity and cannot make different claims.
+ *
+ * They must all state the SAME graph, which is the whole reason the list
+ * lives in one exported constant. This asserts the rendered output, not the
+ * constant, so an import that silently stops being used still fails.
  */
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -75,12 +79,22 @@ test('the /what-is-webjs SoftwareApplication node claims the same properties', a
   assert.ok(sameAs.includes('https://github.com/webjsdev/webjs'), 'includes the GitHub repo');
 });
 
-test('the two nodes state an identical graph', async () => {
+test('every node that names the project states an identical graph', async () => {
   // The anti-drift assertion, and the reason the list is a shared constant. A
   // second hand-maintained copy would diverge on the next property added.
-  const home = await sameAsOf('/', 'Organization');
-  const definition = await sameAsOf('/what-is-webjs', 'SoftwareApplication');
-  assert.deepEqual(definition, home, 'both nodes emit the same sameAs, in the same order');
+  // Listing the home page's own SoftwareApplication is the point: it is the
+  // node most easily forgotten, being the third on a page whose Organization
+  // already carries the claim.
+  const carriers = [
+    { path: '/', type: 'Organization' },
+    { path: '/', type: 'SoftwareApplication' },
+    { path: '/what-is-webjs', type: 'SoftwareApplication' },
+  ];
+  const [first, ...rest] = await Promise.all(carriers.map((c) => sameAsOf(c.path, c.type)));
+  for (const [i, sameAs] of rest.entries()) {
+    const c = carriers[i + 1];
+    assert.deepEqual(sameAs, first, `${c.type} on ${c.path} emits the same sameAs, in the same order`);
+  }
 });
 
 test('every claimed property is a distinct absolute https URL', async () => {

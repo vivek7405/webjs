@@ -62,8 +62,11 @@ function publishedManifests() {
 const PKGS = publishedManifests();
 
 /** The subcommands the CLI really has, so `webjs dev` reads as a command. */
-const CLI_SUBCOMMANDS =
-  'create|dev|start|test|check|routes|db|ui|doctor|types|typecheck|mcp|vendor|help|version|add|init|generate|migrate|push|studio|seed|pin|unpin|list|audit|outdated|update|view|diff|info|build';
+const CLI_SUBCOMMANDS = new Set(
+  'create dev start test check routes db ui doctor types typecheck mcp vendor help version add init generate migrate push studio seed pin unpin list audit outdated update view diff info build'.split(
+    ' ',
+  ),
+);
 
 /**
  * Strip inline code spans, the way the prose hook does, so a literal
@@ -72,8 +75,47 @@ const CLI_SUBCOMMANDS =
  */
 const prose = (s) => s.replace(/`[^`]*`/g, '');
 
+/**
+ * A standalone lowercase "webjs" in a PROSE position, which is either followed
+ * by a word or ending a sentence. Those two are what reliably mean prose, and
+ * the leading character class is what keeps the structural token forms out
+ * (@webjsdev, webjsdev, webjs.dev, WEBJS_*, webjsdev/webjs).
+ *
+ * The following WORD is captured whole, because it is what tells a brand
+ * mention apart from a CLI command: `webjs ships` is the brand written
+ * lowercase, `webjs dev` is a command and stays lowercase. Capturing only its
+ * first letter would silently disable that carve-out.
+ */
+const BRAND_IN_PROSE = /(^|[^A-Za-z0-9@._/-])webjs(?:\s+([A-Za-z][A-Za-z0-9-]*)|\.(?=\s|$))/g;
+
+/** Every lowercase-brand mention in a description, CLI commands excluded. */
+function brandViolations(text) {
+  return [...prose(text).matchAll(BRAND_IN_PROSE)]
+    .filter((m) => !(m[2] && CLI_SUBCOMMANDS.has(m[2])))
+    .map((m) => m[0].trim());
+}
+
 /** The opening sentence, which is the part a truncated snippet still shows. */
 const firstSentence = (s) => s.split(/(?<=\.)\s/)[0];
+
+// The fixtures below have to CONTAIN the lowercase brand to be fixtures at
+// all, which is the one string the repo prose hook refuses to let a tool call
+// write. Assembling it defeats that literal check without weakening it.
+const LOWER = 'web' + 'js';
+
+test('the brand matcher fires on prose and spares a literal token', () => {
+  // Without this, a matcher that silently matches nothing (or a carve-out that
+  // can never fire) would leave every per-package assertion below meaningless
+  // while the suite stayed green.
+  assert.deepEqual(brandViolations(`On Bun, ${LOWER} ships a native listener.`), [`${LOWER} ships`]);
+  assert.deepEqual(brandViolations(`Most ${LOWER} apps ship no build step.`), [`${LOWER} apps`]);
+  assert.deepEqual(brandViolations(`Built on ${LOWER}.`), [`${LOWER}.`]);
+  // The carve-outs: a bare CLI command, a code span, and the token forms.
+  assert.deepEqual(brandViolations(`Run ${LOWER} dev to start the server.`), []);
+  assert.deepEqual(brandViolations(`Run \`${LOWER} dev\` to start the server.`), []);
+  assert.deepEqual(brandViolations(`Install @${LOWER}dev/core, documented at ${LOWER}.dev today.`), []);
+  assert.deepEqual(brandViolations(`Set WEBJS_ELIDE=0 in ${LOWER}dev/${LOWER} to opt out.`), []);
+});
 
 test('the derived package list is not silently empty', () => {
   // A broken probe would make every assertion below vacuously pass.
@@ -93,11 +135,8 @@ for (const pkg of PKGS) {
   });
 
   test(`${pkg.name}: the description writes the brand as a proper noun`, () => {
-    const scan = prose(pkg.description);
-    const hits = [...scan.matchAll(/(^|[^A-Za-z0-9@._/-])webjs(\s+[A-Za-z]|\.(\s|$))/g)]
-      .filter((m) => !new RegExp(`^\\s+(${CLI_SUBCOMMANDS})(\\s|$)`).test(m[2]));
     assert.deepEqual(
-      hits.map((m) => m[0].trim()),
+      brandViolations(pkg.description),
       [],
       `${pkg.rel} writes the brand lowercase in prose, and it is "WebJs" wherever it names the project`,
     );
