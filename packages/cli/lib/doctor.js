@@ -6,7 +6,8 @@
  * Node 24+ strip-types floor, the `erasableSyntaxOnly` TS flag, importmap pin
  * freshness, env drift vs `.env.example`, `@webjsdev/*` version coherence,
  * whether the framework even resolves from the app dir (the fresh-git-worktree
- * trap, #954), and the git pre-commit hook activation. `webjs doctor` verifies
+ * trap, #954), whether a route-module stylesheet link is content-hashed (#1095),
+ * and the git pre-commit hook activation. `webjs doctor` verifies
  * each one up front and prints pass/warn/fail with an actionable fix line.
  *
  * This module is PURE: `runDoctorChecks(appDir, opts?)` reads files (and, for
@@ -73,6 +74,7 @@ export const DOCTOR_CODES = {
   'git-hook': 'GIT_HOOK',
   'Page/layout elision (carrier hygiene)': 'ELISION_CARRIERS',
   'Static build outputs (dev.regenerate freshness)': 'STATIC_ASSET_FRESHNESS',
+  'Asset urls (unmarked stylesheet links)': 'UNMARKED_ASSET_LINKS',
 };
 
 /**
@@ -967,6 +969,322 @@ async function checkStaticAssetFreshness(appDir) {
   };
 }
 
+// Directories the route-module walk never descends into (deps, VCS, framework
+// and build caches). Mirrors FRESHNESS_IGNORE; kept separate so either walk can
+// change its exclusions without silently moving the other.
+const ROUTE_WALK_IGNORE = new Set(['node_modules', '.git', '.webjs', 'dist', '.next', 'coverage']);
+
+/**
+ * A route module that renders markup on the server, which is where `asset()`
+ * belongs. Page and layout are the common case, but the BOUNDARY modules matter
+ * too and are easy to miss: `error` / `not-found` / `forbidden` / `unauthorized`
+ * / `loading` are always shipped and never elided, and `global-error` renders
+ * its OWN `<!doctype><html><head>` and is returned verbatim with no framework
+ * head splice, which makes it the likeliest place outside the root layout for
+ * an author to hand-write a stylesheet link.
+ * @type {RegExp}
+ */
+const ROUTE_MODULE_RE =
+  /^(?:page|layout|error|not-found|forbidden|unauthorized|loading)\.(?:js|ts|mjs|mts)$/;
+
+/**
+ * The two boundary stems `router.js` registers ONLY at the app root (both are
+ * guarded by `dir === '.'` there). A nested `app/admin/global-error.ts` is never
+ * in the route table and never renders, so scanning one would advise on dead
+ * code, the same defect the `_private` skip exists to avoid.
+ * @type {RegExp}
+ */
+const ROOT_ONLY_MODULE_RE = /^(?:global-error|global-not-found)\.(?:js|ts|mjs|mts)$/;
+
+/**
+ * One whole `<link …>` tag. QUOTE-AWARE (`(?:[^>"']|"[^"]*"|'[^']*')*`), the
+ * same shape `ssr.js`'s hoist scanner uses, so a `>` inside a quoted attribute
+ * value cannot terminate the tag early.
+ * @type {RegExp}
+ */
+const LINK_TAG_RE = /<link\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+
+/**
+ * One attribute inside a tag: a name, then optionally `=` and a double-quoted,
+ * single-quoted, or unquoted value. Matching attributes as WHOLE units is what
+ * makes the scan correct, because each quoted value is consumed in one step and
+ * can therefore never be re-scanned as if it contained an attribute of its own.
+ * @type {RegExp}
+ */
+const ATTR_RE = /([a-zA-Z_:][-\w:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+
+/**
+ * Parse a tag's attributes into a lowercased-name map. The value is `null` for a
+ * valueless attribute and carries a `quoted` flag, since this check treats an
+ * UNQUOTED href (a template hole) as undecidable rather than as a path.
+ * @param {string} tag
+ * @returns {Map<string, { value: string | null, quoted: boolean }>}
+ */
+function parseTagAttrs(tag) {
+  /** @type {Map<string, { value: string | null, quoted: boolean }>} */
+  const attrs = new Map();
+  // Skip the tag name itself so `link` is not read as an attribute.
+  const body = tag.replace(/^<[a-zA-Z_:][-\w:.]*/, '');
+  ATTR_RE.lastIndex = 0;
+  for (const m of body.matchAll(ATTR_RE)) {
+    const name = m[1].toLowerCase();
+    if (attrs.has(name)) continue; // first wins, as in HTML parsing
+    const quoted = m[2] !== undefined || m[3] !== undefined;
+    const value = m[2] ?? m[3] ?? m[4] ?? null;
+    attrs.set(name, { value, quoted });
+  }
+  return attrs;
+}
+
+/**
+ * Whether a parsed `<link>` is an unmarked stylesheet, and if so its href.
+ *
+ * Attribute PARSING rather than a lookahead over the raw tag is load-bearing,
+ * not tidiness. A scan that merely looks ahead for `rel=…stylesheet` anywhere in
+ * the tag matches the string inside ANOTHER attribute's value, which flags the
+ * two shapes this check most needs to leave alone: the canonical async-CSS
+ * `<link rel="preload" as="style" href="/public/app.css" onload="this.rel='stylesheet'">`
+ * (where the advised `asset()` fix would actively BREAK the preload, since the
+ * versioned hint could then never match the unversioned request), and a
+ * `data-rel="stylesheet"` sitting on a `rel="icon"`. Reading real attributes
+ * makes `rel` mean the `rel` attribute and nothing else.
+ *
+ * Returns the href only when every condition holds:
+ *   - `rel` is a token list CONTAINING `stylesheet` (so `rel="preload"` with an
+ *     onload swap, and `rel="icon"`, are both out).
+ *   - `href` is QUOTED. An unquoted value is a template hole
+ *     (`href=${asset('/public/app.css')}`), undecidable from source, and is
+ *     exactly the shape the marked form uses.
+ *   - the path is under `/public/` (after the app's `webjs.basePath` is
+ *     stripped, since under a sub-path deploy the author writes the prefix
+ *     themselves and `resolveAssetUrl` strips it before its own `public/` gate).
+ *   - `resolveAssetUrl` would actually fingerprint it. It returns a path
+ *     carrying a QUERY or a `..` unchanged, so wrapping one in `asset()` is a
+ *     runtime NO-OP: the author does the work and the url they ship is
+ *     byte-identical. Advising it would be advising a change that buys nothing.
+ *     A hand-rolled `?v=` cache-buster is exactly what an author who has not
+ *     adopted `asset()` is most likely to have written, so this is the common
+ *     case, not a corner. (The warning itself would clear, since this check
+ *     reads the SOURCE shape and a wrapped href is an unquoted hole. Clearing a
+ *     warning without improving the caching is the outcome to avoid.)
+ *
+ * @param {string} tag
+ * @param {string} basePath  the app's normalized `webjs.basePath` (`''` at root)
+ * @returns {string | null}
+ */
+function unmarkedStylesheetHref(tag, basePath = '') {
+  const attrs = parseTagAttrs(tag);
+  const rel = attrs.get('rel');
+  if (!rel || !rel.value) return null;
+  if (!rel.value.toLowerCase().split(/\s+/).includes('stylesheet')) return null;
+  const href = attrs.get('href');
+  if (!href || !href.quoted || !href.value) return null;
+  const url = href.value;
+  if (url[0] !== '/' || url[1] === '/') return null;
+  // Mirror `resolveAssetUrl`'s refusals IN ITS ORDER, so every flagged href is
+  // one `asset()` can actually fingerprint. It strips the base path, cuts at
+  // `?` / `#`, DECODES, and only then tests `..` and the `public/` prefix.
+  // Testing the raw value instead disagrees at both ends: `/public/%2e%2e/x`
+  // would be flagged although wrapping it changes nothing, and
+  // `/%70ublic/app.css` would be skipped although `asset()` fingerprints it.
+  let probe = url;
+  if (basePath && probe.startsWith(basePath + '/')) probe = probe.slice(basePath.length);
+  const cuts = [probe.indexOf('?'), probe.indexOf('#')].filter((i) => i !== -1);
+  let decoded = probe.slice(0, cuts.length ? Math.min(...cuts) : probe.length);
+  try { decoded = decodeURIComponent(decoded); } catch { /* keep raw */ }
+  if (decoded.includes('..') || !decoded.startsWith('/public/')) return null;
+  // A query is refused outright (an author query may carry meaning we do not
+  // own, so `resolveAssetUrl` returns the url untouched); a `#fragment` is not,
+  // since it is split off and preserved.
+  const beforeFragment = url.indexOf('#') === -1 ? url : url.slice(0, url.indexOf('#'));
+  if (beforeFragment.includes('?')) return null;
+  return url;
+}
+
+/**
+ * The app's `webjs.basePath`, normalized to `''` (root mount) or `/segment…`.
+ *
+ * A faithful port of `normalizeBasePath` (`packages/server/src/base-path.js`),
+ * which is the source of truth: it trims, PREPENDS the leading slash (so the
+ * documented `"myapp"`, `"/myapp"` and `"/myapp/"` all normalize alike), and
+ * fails safe to `''` on a value that is not a plain same-origin prefix. Reading
+ * only `startsWith('/')` would leave this check inert for an app configured
+ * `"myapp"`, which is exactly the silently-inert case it exists to close.
+ *
+ * Ported rather than imported because that helper is not on `@webjsdev/server`'s
+ * public surface, and because doctor must stay usable when the framework does
+ * not resolve from the app dir at all (the #954 fresh-worktree case this same
+ * command exists to diagnose). `test/cli/doctor.test.mjs` pins the forms.
+ * @param {string} appDir
+ * @returns {Promise<string>}
+ */
+async function readAppBasePath(appDir) {
+  let raw;
+  try {
+    const pkg = JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8'));
+    raw = pkg?.webjs?.basePath;
+  } catch {
+    return '';
+  }
+  if (typeof raw !== 'string') return '';
+  let v = raw.trim();
+  if (v === '' || v === '/') return '';
+  // Not a plain same-origin path prefix: fail safe to no base path.
+  if (v.includes('..') || v.includes('://') || v.includes('\\') || /\s/.test(v)) return '';
+  // A network-path reference (`//host`) is rejected BEFORE leading slashes are
+  // collapsed, since collapsing would turn an origin escape into `/host`.
+  if (v.startsWith('//')) return '';
+  v = ('/' + v.replace(/^\/+/, '')).replace(/\/+$/, '');
+  return v === '' || v === '/' ? '' : v;
+}
+
+/**
+ * Whether the `<link>` tag at `idx` is commented out, so dead markup is never
+ * reported as a live finding.
+ *
+ * A DELIMITED comment is decided by an unclosed opener behind the tag. Neither
+ * `<!--` nor `/*` nests, so "nearest opener beats nearest closer" is exact, and
+ * it covers a multi-line block whose interior lines carry no marker of their
+ * own (what an editor's toggle-block-comment writes). A `//` has no closer, so
+ * it is decided from the tag's own line: a `//` inside an href later in the
+ * line cannot match, because the line does not START with it.
+ *
+ * Do NOT replace this with a lexer. Two attempts did, and both shipped bugs a
+ * stateless test cannot have: a line-blanking regex killed any line holding a
+ * protocol-relative url, and a quote-tracking walk inverted string/code
+ * polarity on a nested ``html`...` `` inside a `${}` hole (one quote char
+ * cannot model nesting), so an unbalanced apostrophe in template text
+ * desynchronized the rest of the file. This check does not need to lex
+ * JavaScript. If it ever genuinely does, export `redactStringsAndTemplates`
+ * from `@webjsdev/server` (`src/js-scan.js`, fuzz-tested differentially against
+ * a real TypeScript parse) rather than growing a third one here.
+ *
+ * Residual gap: a tag behind a `//` that trails real code on the same line
+ * stays reported. Rare, and it fails toward reporting rather than toward the
+ * silent inertness both lexers produced.
+ *
+ * @param {string} src
+ * @param {number} idx  index of the tag's `<`
+ * @returns {boolean}
+ */
+function isCommentedOut(src, idx) {
+  const before = src.slice(0, idx);
+  if (before.lastIndexOf('<!--') > before.lastIndexOf('-->')) return true;
+  if (before.lastIndexOf('/*') > before.lastIndexOf('*/')) return true;
+  const lineStart = before.lastIndexOf('\n') + 1;
+  return before.slice(lineStart).trimStart().startsWith('//');
+}
+
+/**
+ * Collect every `app/**` route module that renders markup, depth-first.
+ * Best-effort: an unreadable directory contributes nothing rather than throwing.
+ * @param {string} dir
+ * @param {string[]} [out]
+ * @returns {string[]}
+ */
+function collectRouteModules(dir, root = dir, out = []) {
+  let entries;
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  for (const e of entries) {
+    if (e.name.startsWith('.') || ROUTE_WALK_IGNORE.has(e.name)) continue;
+    if (e.isSymbolicLink()) continue; // never follow: can cycle or escape into deps
+    // `_`-prefixed folders are PRIVATE: `router.js` drops any route whose
+    // directory has such a segment, so markup under one is never routed and
+    // never rendered. Advising on it would be advice about dead code.
+    if (e.isDirectory() && e.name.startsWith('_')) continue;
+    const abs = join(dir, e.name);
+    if (e.isDirectory()) collectRouteModules(abs, root, out);
+    else if (ROUTE_MODULE_RE.test(e.name)) out.push(abs);
+    else if (dir === root && ROOT_ONLY_MODULE_RE.test(e.name)) out.push(abs);
+  }
+  return out;
+}
+
+/**
+ * ADVISORY (#1095): a route module hand-writes a `<link rel="stylesheet"
+ * href="/public/…">` without `asset()`, so the url is un-versioned and a deploy
+ * cannot bust a CDN's copy of it.
+ *
+ * The failure this names was caught in production on webjs.dev: the edge served
+ * a `public/tailwind.css` built BEFORE the deploy (`cf-cache-status: HIT`,
+ * `max-age=14400`) against post-deploy HTML, so the new page rendered with its
+ * content edge to edge and its grid collapsed, because the cached css was
+ * missing the arbitrary-value utilities that page introduced. It is invisible
+ * while a deploy only restyles existing classes and maximally visible the moment
+ * one adds a page using new utilities.
+ *
+ * Why this is an ADVISORY over the author's SOURCE rather than a rewrite of the
+ * framework's OUTPUT. The first attempt at the automatic form (#1196) matched
+ * urls in the assembled HTML, and two deep-review rounds found six major
+ * defects, five of them one bug: at that layer framework output and author data
+ * are indistinguishable, so the matcher kept editing things it did not own. That
+ * is why `asset()` (#1194) is opt-in, and it is what Rails (a
+ * `stylesheet_link_tag` helper over a digest manifest) and Remix (a hashed url
+ * from the build graph, surfaced through `links()`) both do: take the
+ * fingerprint from an authoritative source at the point the url is PRODUCED, and
+ * never rewrite a rendered document. The gap `asset()` leaves is purely
+ * ergonomic. In Rails the helper is the only idiomatic way to write the tag, so
+ * forgetting it is nearly impossible; in WebJs the `<link>` is hand-written HTML,
+ * so it is easy to omit. This check closes exactly that gap, at authoring time,
+ * where the author's meaning is unambiguous and nothing is rewritten.
+ *
+ * Scoped to `rel="stylesheet"` on purpose. An icon is a legitimate deliberate
+ * NON-mark (the website leaves its favicons bare so the SEO repo-health tests
+ * can parse the hrefs literally), and a `rel="preload"` must NOT be marked at
+ * all, since its versioned hint could never match the unversioned request a CSS
+ * `url()` actually makes. Flagging either would nag about a correct choice.
+ *
+ * WARN only: an un-versioned stylesheet still SERVES correctly, it just caches
+ * badly, and an app fronted by no CDN may not care.
+ * @param {string} appDir
+ * @returns {Promise<DoctorResult>}
+ */
+async function checkUnmarkedAssetLinks(appDir) {
+  const name = 'Asset urls (unmarked stylesheet links)';
+  const routeDir = join(appDir, 'app');
+  if (!existsSync(routeDir)) {
+    return { name, status: 'pass', message: 'no app/ directory to analyse' };
+  }
+  const basePath = await readAppBasePath(appDir);
+  const findings = [];
+  for (const file of collectRouteModules(routeDir)) {
+    let src;
+    try { src = await readFile(file, 'utf8'); } catch { continue; }
+    // Cheap bail before any tag scanning. Case-INSENSITIVE to match the tag
+    // regex: a file whose only link tag is written `<LINK …>` must still be
+    // scanned, or the scanner's own case-insensitivity is unreachable exactly
+    // where it is needed.
+    if (!/<link/i.test(src)) continue;
+    LINK_TAG_RE.lastIndex = 0;
+    for (const m of src.matchAll(LINK_TAG_RE)) {
+      const href = unmarkedStylesheetHref(m[0], basePath);
+      if (!href) continue;
+      // A commented-out tag emits nothing, so advising on it is advice about
+      // dead markup.
+      if (isCommentedOut(src, /** @type {number} */ (m.index))) continue;
+      // 1-indexed line of the match, for a jump-to reference.
+      const line = src.slice(0, m.index).split('\n').length;
+      findings.push({ file, line, href });
+    }
+  }
+  if (findings.length === 0) {
+    return { name, status: 'pass', message: 'every route-module stylesheet link is content-hashed (or has none)' };
+  }
+  const rel = (f) => relative(appDir, f) || f;
+  return {
+    name,
+    status: 'warn',
+    message:
+      `${findings.length} stylesheet link(s) are served at an un-versioned url, so a deploy cannot bust a cached copy:\n` +
+      findings.map((f) => `    ${rel(f.file)}:${f.line} href="${f.href}"`).join('\n'),
+    fix:
+      "Wrap the path in asset(): `import { asset } from '@webjsdev/core'` then "
+      + '`<link rel="stylesheet" href=${asset(\'/public/app.css\')}>`. It appends a content hash in prod '
+      + '(the framework then serves that url immutable for a year) and is a no-op in dev and in the browser. '
+      + 'Call it inside the render function, not at module scope.',
+  };
+}
+
 /**
  * Probe whether `@webjsdev/core` resolves from `appDir`. Node resolution is
  * directory-relative, so this must probe FROM the app (not the CLI's own
@@ -1058,6 +1376,7 @@ export async function runDoctorChecks(appDir, opts = {}) {
     Promise.resolve(checkGitHook(appDir)),
     checkElisionCarriers(appDir),
     checkStaticAssetFreshness(appDir),
+    checkUnmarkedAssetLinks(appDir),
   ]);
   // Attach the stable machine code to every result (#975). Centralized here so
   // each check function stays free of the code-contract concern.

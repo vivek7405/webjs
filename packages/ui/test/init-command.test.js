@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'no
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { init } from '../src/commands/init.js';
+import { getConfig } from '../src/utils/get-config.js';
 
 const origFetch = globalThis.fetch;
 
@@ -34,12 +35,18 @@ function stubFetch() {
 
 function tmp() {
   const d = mkdtempSync(join(tmpdir(), 'webjsui-init-'));
-  // Make it look like a webjs project so defaults pick the right paths.
-  writeFileSync(join(d, 'package.json'), JSON.stringify({ dependencies: { '@webjsdev/server': '*' } }));
+  writeFileSync(join(d, 'package.json'), JSON.stringify({ dependencies: {} }));
   return d;
 }
 
-test('init: writes components.json with project-detected defaults', async () => {
+// #1129: the defaults used to be computed by a `defaultsForProject()` switch on
+// a detected project type. They are plain constants now, so this test is what
+// stands between a stray edit and a silently different components.json. It
+// pins EVERY field, not a sample: a wrong `utils` alias is the failure mode
+// that matters (get-config.js appends '.ts', so `lib/utils/cn` is what
+// resolves to lib/utils/cn.ts), and it is invisible until `add` writes an
+// import that does not resolve.
+test('init: writes components.json with the WebJs defaults', async () => {
   stubFetch();
   const d = tmp();
   try {
@@ -47,22 +54,52 @@ test('init: writes components.json with project-detected defaults', async () => 
     const cfg = JSON.parse(readFileSync(join(d, 'components.json'), 'utf8'));
     assert.equal(cfg.style, 'default');
     assert.equal(cfg.tailwind.baseColor, 'neutral');
-    assert.equal(cfg.tailwind.css, 'styles/globals.css'); // webjs default (app/ is routing-only)
-    assert.equal(cfg.aliases.ui, 'components/ui');
+    assert.equal(cfg.tailwind.cssVariables, true);
+    // styles/globals.css, NOT app/globals.css: app/ is routing-only in WebJs.
+    assert.equal(cfg.tailwind.css, 'styles/globals.css');
+    assert.deepEqual(cfg.aliases, {
+      components: 'components',
+      utils: 'lib/utils/cn',
+      ui: 'components/ui',
+      lib: 'lib',
+    });
+    assert.equal(cfg.iconLibrary, 'lucide');
   } finally {
     globalThis.fetch = origFetch;
     rmSync(d, { recursive: true });
   }
 });
 
-test('init: writes lib/utils.ts from registry', async () => {
+// The emitted config is only half the contract. These assert the FILES land
+// where the aliases say they do, which is what `add`'s import rewriting reads:
+// the cn() helper at the `utils` alias + '.ts', and the client-only DOM helper
+// as its sibling (#819).
+test('init: writes the cn helper and its DOM sibling under lib/utils/', async () => {
   stubFetch();
   const d = tmp();
   try {
     await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
-    assert.ok(existsSync(join(d, 'lib', 'utils.ts')));
-    const utils = readFileSync(join(d, 'lib', 'utils.ts'), 'utf8');
-    assert.match(utils, /cn/);
+    assert.ok(existsSync(join(d, 'lib', 'utils', 'cn.ts')), 'cn.ts at the utils alias');
+    assert.match(readFileSync(join(d, 'lib', 'utils', 'cn.ts'), 'utf8'), /cn/);
+    assert.ok(existsSync(join(d, 'lib', 'utils', 'dom.ts')), 'dom.ts beside it');
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+// The whole point of scoping the kit to WebJs is that there is ONE default set.
+// A Next-shaped project used to get app/globals.css and @/ aliases; it now gets
+// the same config as anything else, and `--css` remains the escape hatch.
+test('init: does not vary its defaults by what the host project looks like', async () => {
+  stubFetch();
+  const d = mkdtempSync(join(tmpdir(), 'webjsui-init-next-'));
+  writeFileSync(join(d, 'package.json'), JSON.stringify({ dependencies: { next: '15.0.0' } }));
+  try {
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+    const cfg = JSON.parse(readFileSync(join(d, 'components.json'), 'utf8'));
+    assert.equal(cfg.tailwind.css, 'styles/globals.css');
+    assert.equal(cfg.aliases.utils, 'lib/utils/cn');
   } finally {
     globalThis.fetch = origFetch;
     rmSync(d, { recursive: true });
@@ -181,6 +218,172 @@ test('init: local-first (default registry) writes the theme and exits 0', async 
   } finally {
     process.exit = origExit;
     console.log = origLog;
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+// #1129 made `init` write into `lib/utils/`, which is where `webjs create`
+// puts the helper and where the you-own-it model expects your edits to live.
+// The write was unguarded, so re-running init (the documented fix for an
+// unstyled install) silently replaced edited source. It must not.
+test('init: keeps an existing cn helper instead of replacing it', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(join(d, 'lib', 'utils'), { recursive: true });
+    writeFileSync(join(d, 'lib', 'utils', 'cn.ts'), 'export const MINE = 1;\n');
+    writeFileSync(join(d, 'lib', 'utils', 'dom.ts'), 'export const ALSO_MINE = 1;\n');
+
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+
+    assert.match(readFileSync(join(d, 'lib', 'utils', 'cn.ts'), 'utf8'), /MINE/, 'edited cn.ts survives');
+    assert.match(readFileSync(join(d, 'lib', 'utils', 'dom.ts'), 'utf8'), /ALSO_MINE/, 'edited dom.ts survives');
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+test('init: --overwrite does replace them', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(join(d, 'lib', 'utils'), { recursive: true });
+    writeFileSync(join(d, 'lib', 'utils', 'cn.ts'), 'export const MINE = 1;\n');
+
+    await init.parseAsync(['--yes', '--overwrite', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+
+    assert.doesNotMatch(readFileSync(join(d, 'lib', 'utils', 'cn.ts'), 'utf8'), /MINE/);
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+// An older project initialised at alias `lib/utils` must not be silently
+// relocated to `lib/utils/cn` by a re-run: its already-added components import
+// the old path, and moving the alias would strand every one of them.
+test('init: re-run keeps an older project on its own aliases', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    writeFileSync(join(d, 'components.json'), JSON.stringify({
+      $schema: 'https://ui.webjs.dev/schema.json',
+      style: 'default',
+      tailwind: { css: 'styles/globals.css', baseColor: 'neutral', cssVariables: true },
+      aliases: { components: 'components', utils: 'lib/utils', ui: 'components/ui', lib: 'lib' },
+    }));
+
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+
+    const cfg = JSON.parse(readFileSync(join(d, 'components.json'), 'utf8'));
+    assert.equal(cfg.aliases.utils, 'lib/utils', 'the old alias is preserved');
+    assert.equal(existsSync(join(d, 'lib', 'utils', 'cn.ts')), false, 'no helper at the new layout');
+    assert.ok(existsSync(join(d, 'lib', 'utils.ts')), 'the helper stays where the project expects it');
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+// The first pass at the re-run guard only preserved `aliases`, so a project
+// whose stylesheet is not the default (examples/blog builds public/input.css)
+// still got repointed, and the theme appended to a file it never compiles.
+test('init: re-run preserves a non-default stylesheet and base color', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    writeFileSync(join(d, 'components.json'), JSON.stringify({
+      $schema: 'https://ui.webjs.dev/schema.json',
+      style: 'default',
+      tailwind: { css: 'public/input.css', baseColor: 'zinc', cssVariables: true },
+      aliases: { components: 'components', utils: 'lib/utils/cn', ui: 'components/ui', lib: 'lib' },
+    }));
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+    const cfg = JSON.parse(readFileSync(join(d, 'components.json'), 'utf8'));
+    assert.equal(cfg.tailwind.css, 'public/input.css', 'stylesheet path is preserved');
+    assert.equal(cfg.tailwind.baseColor, 'zinc', 'base color is preserved');
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+// The config schema is .strict(), so a shadcn-shaped config with extra keys
+// throws on parse. Treating that as "no config" would relocate the aliases and
+// then overwrite the file, which is the data loss the guard exists to stop.
+test('init: keeps settings from a config carrying unknown keys', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    writeFileSync(join(d, 'components.json'), JSON.stringify({
+      $schema: 'https://ui.webjs.dev/schema.json',
+      style: 'default',
+      rsc: true,
+      tsx: true,
+      tailwind: { css: 'src/app.css', baseColor: 'stone', cssVariables: true },
+      aliases: { components: 'components', utils: 'src/lib/cn', ui: 'components/ui', lib: 'lib' },
+    }));
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+    const cfg = JSON.parse(readFileSync(join(d, 'components.json'), 'utf8'));
+    assert.equal(cfg.aliases.utils, 'src/lib/cn', 'aliases survive a strict-schema miss');
+    assert.equal(cfg.tailwind.css, 'src/app.css');
+    // Unknown keys are DROPPED, not carried through: the schema is strict, so
+    // writing one back produces a config `add` / `diff` / `info` throw on. The
+    // file must stay readable by the commands that consume it.
+    assert.equal(cfg.rsc, undefined, 'unknown keys are not written back');
+    assert.doesNotThrow(() => getConfig(d), 'what init wrote must parse');
+  } finally {
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+test('init: refuses to replace a components.json it cannot parse', async () => {
+  stubFetch();
+  const d = tmp();
+  const origExit = process.exit;
+  const origErr = console.error;
+  let code = null;
+  process.exit = (c) => { code = c; throw new Error('__exit__'); };
+  console.error = () => {};
+  try {
+    writeFileSync(join(d, 'components.json'), '{ this is not json');
+    await init
+      .parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' })
+      .catch((e) => { if (e.message !== '__exit__') throw e; });
+    assert.equal(code, 1, 'exits non-zero rather than clobbering');
+    assert.equal(readFileSync(join(d, 'components.json'), 'utf8'), '{ this is not json', 'file untouched');
+  } finally {
+    process.exit = origExit;
+    console.error = origErr;
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+// A declared alias map may omit keys the schema defaults. Reading the config
+// raw skips that default-filling, so taking the map wholesale left `utils`
+// undefined and crashed init after it had already written the config.
+test('init: a partial alias map is filled from the defaults, not left undefined', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    writeFileSync(join(d, 'components.json'), JSON.stringify({
+      $schema: 'https://ui.webjs.dev/schema.json',
+      style: 'default',
+      tailwind: { css: 'styles/globals.css', baseColor: 'neutral', cssVariables: true },
+      aliases: { components: 'components', ui: 'components/ui', lib: 'lib' },
+    }));
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+    const cfg = JSON.parse(readFileSync(join(d, 'components.json'), 'utf8'));
+    assert.equal(cfg.aliases.utils, 'lib/utils/cn', 'the missing key takes the default');
+    assert.equal(cfg.aliases.components, 'components', 'declared keys are still preserved');
+    assert.ok(existsSync(join(d, 'lib', 'utils', 'cn.ts')), 'and the helper is actually written');
+  } finally {
     globalThis.fetch = origFetch;
     rmSync(d, { recursive: true });
   }
