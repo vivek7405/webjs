@@ -37,6 +37,7 @@ let _collect, _plan, _keyOf, _diffEl, _reconcile,
   _prefetchSaysSaveData, _prefetchPeek, _prefetchInflightSize, _resetPrefetch,
   _viewTransitionsEnabled, _runWithTransition, _regraftPermanentElements, _regraftPermanentInSlice,
   _applyStreamedResolve,
+  _isPreBootNavigation, _FALLBACK_MARKER_KEY,
   enableClientRouter, disableClientRouter, revalidate,
   WebComponent, html;
 
@@ -84,6 +85,8 @@ before(async () => {
     _mergeHead: _merge,
     _isNonHtmlPath,
     _reactivateScripts,
+    _isPreBootNavigation,
+    _FALLBACK_MARKER_KEY,
     _activateSwappedRange,
     _findAnchorInPath,
     _activeFrameId,
@@ -4415,5 +4418,110 @@ test('a prefetch that reveals a NEW app-source id evicts stale caches, no build 
     globalThis.document.head.innerHTML = savedHead;
     _snapshotCache.clear();
     _prefetchCache.clear();
+  }
+});
+
+/* ==========================================================================
+ * Pre-boot navigation reporting (#1118)
+ *
+ * A module script is deferred by spec, so links are clickable before the router
+ * listens. The window cannot be closed from inside the router, so it is
+ * measured: a same-origin document load the router never soft-navigated is
+ * reported through the existing `webjs:navigation-fallback` channel. These pin
+ * the branch logic; the headline behaviour is the e2e assertion.
+ * ========================================================================== */
+
+test('#1118: a same-origin navigate with no router marker is a pre-boot navigation', () => {
+  assert.equal(
+    _isPreBootNavigation('navigate', 'https://app.test/from', 'https://app.test/to', null),
+    true,
+  );
+});
+
+test('#1118: a reload and a back/forward restore are NOT pre-boot navigations', () => {
+  // Neither is a click the router could have intercepted, so counting them
+  // would make the production number meaningless.
+  for (const navType of ['reload', 'back_forward', 'prerender', '']) {
+    assert.equal(
+      _isPreBootNavigation(navType, 'https://app.test/from', 'https://app.test/to', null),
+      false,
+      `${navType || '(empty)'} must not report`,
+    );
+  }
+});
+
+test('#1118: a cross-origin or absent referrer is NOT a pre-boot navigation', () => {
+  // An external entry or a typed URL had no router running to miss the click.
+  assert.equal(
+    _isPreBootNavigation('navigate', 'https://other.test/x', 'https://app.test/to', null),
+    false,
+    'cross-origin referrer',
+  );
+  assert.equal(_isPreBootNavigation('navigate', '', 'https://app.test/to', null), false, 'empty referrer');
+  assert.equal(
+    _isPreBootNavigation('navigate', 'not a url', 'https://app.test/to', null),
+    false,
+    'an unparseable referrer reports nothing rather than throwing',
+  );
+});
+
+test('#1118: a marker matching this href means the ROUTER chose the load, so it does not double-count', () => {
+  // `reportFallback` already dispatched its own cause for this load.
+  assert.equal(
+    _isPreBootNavigation('navigate', 'https://app.test/from', 'https://app.test/to', 'https://app.test/to'),
+    false,
+    'the router-chosen full load is not re-reported as pre-boot',
+  );
+  // A STALE marker naming some other destination must not suppress a real one.
+  assert.equal(
+    _isPreBootNavigation('navigate', 'https://app.test/from', 'https://app.test/to', 'https://app.test/elsewhere'),
+    true,
+    'a marker for a different href does not suppress the report',
+  );
+});
+
+test('#1118: the marker key is a stable literal', () => {
+  // The write and the read are in different documents, so the key cannot be
+  // derived or renamed on one side only.
+  assert.equal(_FALLBACK_MARKER_KEY, 'webjs:nav-fallback');
+});
+
+test('#1118: the report is once per DOCUMENT, not once per enable', () => {
+  // `enableClientRouter` is re-callable after `disableClientRouter()`, the
+  // documented per-moment opt-out. The report describes the load that produced
+  // this document, which does not happen again when the router is toggled back
+  // on, so a toggling app must not inflate the rate the report exists to
+  // measure. The consumed marker cannot prevent this on its own: it is gone
+  // after the first read, so the second enable would see a clean slate.
+  const savedLocation = globalThis.location;
+  const savedGet = globalThis.performance.getEntriesByType;
+  const savedReferrer = Object.getOwnPropertyDescriptor(globalThis.document, 'referrer');
+  /** @type {any[]} */
+  const seen = [];
+  const onFallback = (e) => { if (e.detail.cause === 'pre-boot-navigation') seen.push(e.detail); };
+  document.addEventListener('webjs:navigation-fallback', onFallback);
+  try {
+    globalThis.location = /** @type any */ ({ href: 'http://x/to', origin: 'http://x' });
+    Object.defineProperty(globalThis.document, 'referrer', {
+      configurable: true, get: () => 'http://x/from',
+    });
+    globalThis.performance.getEntriesByType = (t) => (t === 'navigation' ? [{ type: 'navigate' }] : []);
+    globalThis.sessionStorage.clear();
+
+    disableClientRouter();
+    enableClientRouter();
+    assert.equal(seen.length, 1, 'the first enable of this document reports once');
+
+    disableClientRouter();
+    enableClientRouter();
+    assert.equal(seen.length, 1, 'a re-enable does not re-report the same document load');
+  } finally {
+    disableClientRouter();
+    document.removeEventListener('webjs:navigation-fallback', onFallback);
+    globalThis.performance.getEntriesByType = savedGet;
+    if (savedReferrer) Object.defineProperty(globalThis.document, 'referrer', savedReferrer);
+    else delete (/** @type any */ (globalThis.document)).referrer;
+    globalThis.location = savedLocation;
+    globalThis.sessionStorage.clear();
   }
 });

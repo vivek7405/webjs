@@ -65,7 +65,7 @@ document.addEventListener('webjs:navigation-error', (e) => {
 });
 ```
 
-**Observing a degradation.** Some conditions make a soft nav impossible, and the router then degrades to a full page load rather than risk a corrupt DOM (the #1015 integrity model). Every such path dispatches `webjs:navigation-fallback` on `document`, in ALL environments including production, with `detail { cause, href, willReload }`. Causes: `no-shared-boundary`, `live-boundaries-malformed`, `incoming-boundaries-malformed`, `readyState-loading`, `deploy-mismatch`, `deploy-mismatch-reload-suppressed`, `navigation-error-unrecoverable`, `revalidation-discarded`. `willReload` is false for a degradation that does NOT reload (a dropped background revalidation), so a listener can tell "this click became a document load" from "a background op was skipped". Not cancelable: by the time it fires the degradation is the only safe option. In dev a deduped console warning also prints.
+**Observing a degradation.** Some conditions make a soft nav impossible, and the router then degrades to a full page load rather than risk a corrupt DOM (the #1015 integrity model). Every such path dispatches `webjs:navigation-fallback` on `document`, in ALL environments including production, with `detail { cause, href, willReload }`. Causes: `no-shared-boundary`, `live-boundaries-malformed`, `incoming-boundaries-malformed`, `readyState-loading`, `deploy-mismatch`, `deploy-mismatch-reload-suppressed`, `navigation-error-unrecoverable`, `revalidation-discarded`, `pre-boot-navigation`. `willReload` is false for a degradation that does NOT reload (a dropped background revalidation), so a listener can tell "this click became a document load" from "a background op was skipped". Not cancelable: by the time it fires the degradation is the only safe option. In dev a deduped console warning also prints.
 
 ```ts
 document.addEventListener('webjs:navigation-fallback', (e) => {
@@ -73,6 +73,8 @@ document.addEventListener('webjs:navigation-fallback', (e) => {
   if (e.detail.willReload) analytics.track('router_full_load', e.detail);
 });
 ```
+
+**`pre-boot-navigation` reports ABOUT a load, not during one (#1118).** The boot is a module script, which the HTML spec defers until parsing finishes, while the links it will intercept are clickable from first paint. A click in that window is a plain browser navigation, and the ARRIVING document reports it with `willReload: false` (the load already happened). The window is a few tens of milliseconds warm and network-sized on a cold, throttled first visit, which is why `@webjsdev/core` is hinted in the head with `<link rel="modulepreload">` (emitted only when the page actually ships a boot module) instead of being discovered a round trip later. Read the cause as a RATE: the check knows only that this document arrived by a same-origin navigation that was not a soft nav, so a `data-no-router` link, a `target="_blank"` open, a cross-document form post, and a `clientRouter: false` app all land here too. Excluded: a reload, a back/forward restore, an external or typed entry, and a full load the router itself chose (already reported under its own cause). The report rides the router's own boot, so a fully elided page that ships no client runtime reports nothing.
 
 **Form state.** A form submitting through the router gets `aria-busy="true"` for the in-flight duration, plus bubbling `webjs:submit-start` and `webjs:submit-end` (detail `{ form, url, ok }`) events. Style `form[aria-busy="true"]` in pure CSS or listen for the events.
 

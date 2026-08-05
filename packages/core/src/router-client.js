@@ -345,6 +345,11 @@ export function enableClientRouter() {
   // Seed the "current page" tracker so the first navigation can
   // snapshot the page the user is leaving.
   if (typeof location !== 'undefined') currentPageUrl = location.href;
+  // Last, once the listeners are on: report whether the load that got us here
+  // was a same-origin navigation the router never saw (#1118). Running it after
+  // the listeners means a throw inside a diagnostic can never leave the router
+  // half-installed.
+  reportPreBootNavigation();
 }
 
 /** Disable the client router. */
@@ -792,6 +797,105 @@ function shouldFullLoadDuringParse(isPopState, frameId) {
 }
 
 /**
+ * `sessionStorage` key holding the destination of a full load the ROUTER
+ * itself chose (#1118). Written by `reportFallback` when `willReload` is true,
+ * consumed once by the next document's boot. Per-tab and cleared with the tab,
+ * which is the right lifetime for a marker about one navigation.
+ */
+const FALLBACK_MARKER_KEY = 'webjs:nav-fallback';
+
+/**
+ * Has the pre-boot check already run for THIS document (#1118)? Module scope,
+ * so it resets with the document, which is the lifetime the report is about.
+ */
+let reportedPreBoot = false;
+
+/**
+ * Was THIS document load a same-origin navigation the client router never saw?
+ *
+ * Pure so the branch logic is testable without driving a real navigation
+ * (#1118). Every argument is read from the environment by the one caller.
+ *
+ * @param {string} navType `performance.getEntriesByType('navigation')[0].type`.
+ *   Only `'navigate'` qualifies: a `'reload'` and a `'back_forward'` restore are
+ *   things the browser does, not clicks the router could have intercepted.
+ * @param {string} referrer `document.referrer`. Must parse to the same origin as
+ *   `href`: an empty referrer means a typed URL or an external entry (no router
+ *   was running to miss the click), and a cross-origin one means the previous
+ *   page was not ours.
+ * @param {string} href `location.href` of the document that just loaded.
+ * @param {string | null} marker the consumed `FALLBACK_MARKER_KEY` value. When
+ *   it equals `href` the router already reported this load under its own cause,
+ *   so counting it again would double-count a known degradation as an unknown.
+ * @returns {boolean}
+ */
+function isPreBootNavigation(navType, referrer, href, marker) {
+  if (navType !== 'navigate') return false;
+  if (!referrer) return false;
+  if (marker && marker === href) return false;
+  try {
+    return new URL(referrer).origin === new URL(href).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Report a document load that reached us by a same-origin navigation the router
+ * did not soft-navigate (#1118).
+ *
+ * A module script is deferred by spec, so it runs only after HTML parsing
+ * completes, while the links it will intercept are clickable from first paint.
+ * That window cannot be closed from inside the router (see #1118 for why an
+ * inline capture shim was rejected), so it is MEASURED instead: this turns the
+ * frequency into a production number a deployed app can read off the existing
+ * `webjs:navigation-fallback` channel, rather than folklore.
+ *
+ * Deliberately imprecise, and the docs say so: a `data-no-router` link, a
+ * cross-document form post, and an app that opted out of the client router all
+ * land here too. The signal is the RATE, not any single event.
+ *
+ * `willReload` is false because the document load has already happened. That is
+ * exactly the distinction the flag was added for.
+ */
+function reportPreBootNavigation() {
+  // Same guard the scroll/current-page seeding above uses: a DOM shim without a
+  // `location` (linkedom under the unit runner) is not a document load to
+  // report on, and reading through would throw inside the boot.
+  if (typeof location === 'undefined') return;
+  // Once per DOCUMENT, not once per enable. `enableClientRouter` is re-callable
+  // after `disableClientRouter()` (the documented per-moment opt-out), and this
+  // reports on the load that produced the document, which does not happen again
+  // when the router is toggled back on. Without this, an app that toggles would
+  // emit a duplicate for a single load and inflate the very rate the report
+  // exists to measure. The marker is already consumed by then, so it cannot
+  // suppress the duplicate on its own.
+  if (reportedPreBoot) return;
+  reportedPreBoot = true;
+  /** @type {string | null} */
+  let marker = null;
+  try {
+    marker = sessionStorage.getItem(FALLBACK_MARKER_KEY);
+    // Consume unconditionally, even when it does not match: a stale marker left
+    // by an earlier navigation must never suppress a later real one.
+    sessionStorage.removeItem(FALLBACK_MARKER_KEY);
+  } catch {
+    // No marker available. Treated as absent, which can only over-report.
+  }
+  let navType = '';
+  try {
+    const nav = performance.getEntriesByType('navigation')[0];
+    navType = nav ? /** @type {PerformanceNavigationTiming} */ (nav).type : '';
+  } catch {
+    // No Navigation Timing Level 2 entry. Without a nav type the check cannot
+    // exclude a reload, so it reports nothing rather than guessing.
+  }
+  if (isPreBootNavigation(navType, document.referrer, location.href, marker)) {
+    reportFallback('pre-boot-navigation', location.href, false);
+  }
+}
+
+/**
  * The client router degraded a soft navigation. Records WHY (the `cause`), so
  * "why did my SPA nav do a full reload?" is answerable instead of guessed at.
  *
@@ -824,6 +928,21 @@ function shouldFullLoadDuringParse(isPopState, frameId) {
  *   dropped", which are very different user-visible events.
  */
 function reportFallback(cause, href, willReload = true) {
+  if (willReload) {
+    // Leave a marker naming the destination this full load is going to
+    // (#1118). The next document's boot reads it to tell "the router itself
+    // chose this full load, and already reported it under its own cause" from
+    // "a same-origin navigation the router never saw", which is the pre-boot
+    // click window. Best-effort: `sessionStorage` throws in some privacy modes
+    // and partitioned contexts, and a diagnostic must never break a navigation.
+    try {
+      sessionStorage.setItem(FALLBACK_MARKER_KEY, href);
+    } catch {
+      // Without the marker the next boot may attribute this load to the
+      // pre-boot window. That is a false positive in a diagnostic, which is
+      // strictly better than a thrown navigation.
+    }
+  }
   if (typeof document !== 'undefined' && typeof CustomEvent !== 'undefined') {
     try {
       document.dispatchEvent(new CustomEvent('webjs:navigation-fallback', {
@@ -4542,6 +4661,8 @@ export {
   addNewHeadElements as _addNewHeadElements,
   mergeHead as _mergeHead,
   reactivateScripts as _reactivateScripts,
+  isPreBootNavigation as _isPreBootNavigation,
+  FALLBACK_MARKER_KEY as _FALLBACK_MARKER_KEY,
   activateSwappedRange as _activateSwappedRange,
   findAnchorInPath as _findAnchorInPath,
   activeFrameId as _activeFrameId,
