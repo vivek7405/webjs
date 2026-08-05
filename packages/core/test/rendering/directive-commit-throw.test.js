@@ -316,6 +316,111 @@ test('a plain template child hole recovers too (not just repeat)', () => {
   assert.equal(container.querySelector('span').textContent, 'ok');
 });
 
+// --- plain .map() arrays (the non-keyed child reconciler) ---
+
+/** Rendered markup of the array region, with the renderer's markers stripped. */
+function regionHTML(container) {
+  return container.querySelector('div').innerHTML.replace(/<!--[^>]*-->/g, '');
+}
+
+// The REPLACE branch is the destructive one: it inserts the replacement and
+// removes the old slot BEFORE the walk can finish. An in-place update touches
+// only values and cannot reach it. Three different things route there, and
+// the cases below cover more than one, because narrowing this to "the
+// template shape changed" would leave the others untested: the item's
+// template shape changed, its slot KIND changed (text, template, empty), or
+// the array GREW past the old length, where there is no old slot to compare
+// against at all.
+
+test('array: a mid-walk throw does not strand a row on the next valid render', () => {
+  const container = document.createElement('div');
+  const view = (items) => html`<div>${items.map((it) => (
+    it.kind === 'a' ? html`<p>${it.v}</p>` : html`<b>${it.v}</b>`
+  ))}</div>`;
+
+  render(view([{ kind: 'a', v: '1' }, { kind: 'a', v: '2' }]), container);
+  assert.equal(regionHTML(container), '<p>1</p><p>2</p>');
+
+  // Item 0 changes shape (destructive) and item 1's child hole then throws.
+  assert.throws(() => {
+    render(view([{ kind: 'b', v: '1' }, { kind: 'a', v: poison }]), container);
+  }, /boom/);
+
+  // The freshly built <b> used to be tracked by nothing, so it survived
+  // alongside a rebuilt copy of itself: <b>1</b><b>1</b><p>2</p>.
+  render(view([{ kind: 'b', v: '1' }, { kind: 'a', v: '2' }]), container);
+  assert.equal(regionHTML(container), '<b>1</b><p>2</p>');
+
+  // Not merely delayed by one render.
+  render(view([{ kind: 'b', v: '1' }, { kind: 'a', v: '2' }]), container);
+  assert.equal(regionHTML(container), '<b>1</b><p>2</p>');
+});
+
+test('array: a GROWN array reaches the same branch, with no shape change at all', () => {
+  // Every item here is the same template shape, so nothing about this render
+  // is a "shape change". The new tail index simply has no old slot to reuse,
+  // which routes it to the same build-insert-remove branch.
+  const container = document.createElement('div');
+  const view = (items) => html`<div>${items.map((v) => html`<p>${v}</p>`)}</div>`;
+
+  render(view(['1']), container);
+  assert.throws(() => { render(view(['1', '2', poison]), container); }, /boom/);
+
+  render(view(['1', '2', '3']), container);
+  assert.equal(regionHTML(container), '<p>1</p><p>2</p><p>3</p>');
+  render(view([]), container);
+  assert.equal(regionHTML(container), '');
+});
+
+test('array: an EMPTY render after a throw leaves nothing behind', () => {
+  const container = document.createElement('div');
+  const view = (items) => html`<div>${items.map((it) => (
+    it.kind === 'a' ? html`<p>${it.v}</p>` : html`<b>${it.v}</b>`
+  ))}</div>`;
+
+  render(view([{ kind: 'a', v: '1' }, { kind: 'a', v: '2' }]), container);
+  assert.throws(() => {
+    render(view([{ kind: 'b', v: '1' }, { kind: 'a', v: poison }]), container);
+  }, /boom/);
+
+  // The sharpest probe there is: the only code that could remove a slot walks
+  // the tracked list, so anything tracked by nothing outlives even a render
+  // that asks for no rows at all.
+  render(view([]), container);
+  assert.equal(regionHTML(container), '');
+});
+
+test('array: a throw in the SHRINK loop leaves no slot describing a detached row', () => {
+  // The shrink loop advances through the old slots while the replacement list
+  // stops growing, so this is the case that separates the processed-slot
+  // cursor from the replacement list's length. Splicing from the latter would
+  // re-describe an already-removed slot, and the bug only surfaces later, on a
+  // render that GROWS the array back.
+  const container = document.createElement('div');
+  const view = (items) => html`<div>${items.map((v) => html`<p>${v}</p>`)}</div>`;
+
+  render(view(['1', '2', '3', '4']), container);
+  const region = container.querySelector('div');
+  const fourth = [...region.querySelectorAll('p')][3];
+
+  const origRemove = region.removeChild.bind(region);
+  region.removeChild = (node) => {
+    if (node === fourth) throw new Error('rm-boom');
+    return origRemove(node);
+  };
+
+  // Drop the last two. Slot 2 is removed cleanly, slot 3 refuses part-way.
+  assert.throws(() => { render(view(['1', '2']), container); }, /rm-boom/);
+  region.removeChild = origRemove;
+
+  // Grow back. The already-removed slot must not still be described, or its
+  // detached instance matches by shape, is updated in place, and that row
+  // silently never appears.
+  render(view(['1', '2', '3', '4']), container);
+  assert.equal([...region.querySelectorAll('p')].length, 4, 'every row must render');
+  assert.deepEqual([...region.querySelectorAll('p')].map((p) => p.textContent), ['1', '2', '3', '4']);
+});
+
 // --- guard() ---
 
 test('guard: a throw during the commit does not blank the region forever', () => {

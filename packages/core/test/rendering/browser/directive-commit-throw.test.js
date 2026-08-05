@@ -286,6 +286,37 @@ suite('directive commit throws (browser)', () => {
     );
   });
 
+  test('a plain .map() array recovers a shape-changed row without losing identity', () => {
+    // The non-keyed reconciler updates in place, so the rows that were NOT
+    // rebuilt must survive the recovery as the same elements. linkedom can
+    // show the markup is right; only a real DOM can show it was repaired
+    // rather than rebuilt.
+    const view = (items) => html`<div>${items.map((it) => (
+      it.kind === 'a' ? html`<p>${it.v}</p>` : html`<b>${it.v}</b>`
+    ))}</div>`;
+
+    render(view([{ kind: 'a', v: '1' }, { kind: 'a', v: '2' }]), container);
+    const before = [...container.querySelectorAll('p')];
+
+    throwsMatching(() => {
+      render(view([{ kind: 'b', v: '1' }, { kind: 'a', v: poison }]), container);
+    }, /boom/);
+
+    render(view([{ kind: 'b', v: '1' }, { kind: 'a', v: '2' }]), container);
+    const region = container.querySelector('div');
+    assert.deepEqual(
+      [...region.children].map((el) => `${el.tagName.toLowerCase()}:${el.textContent}`),
+      ['b:1', 'p:2'],
+    );
+    // Row 1 changed shape and was legitimately rebuilt; row 2 did not, and
+    // holding its identity is what proves this is a reconcile against
+    // repaired bookkeeping rather than a teardown of the region.
+    assert.strictEqual(region.querySelector('p'), before[1]);
+
+    render(view([]), container);
+    assert.equal(container.querySelector('div').children.length, 0);
+  });
+
   test('removing rows after recovery leaves nothing behind', () => {
     render(rows(good), container);
     throwsMatching(() => {
