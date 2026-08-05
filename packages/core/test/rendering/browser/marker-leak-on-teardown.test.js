@@ -6,8 +6,8 @@
  * pipeline rather than a bare `render()` call, so the leak has to be shown on
  * that path too. And linkedom never runs `disconnectedCallback`, while a real
  * browser runs it SYNCHRONOUSLY from inside `removeChild`, so author code
- * executes part-way through the removal walk, on a range the walk is still
- * stepping through. Nothing in the unit suite exercises that at all.
+ * executes part-way through the removal rather than after it. Nothing in the
+ * unit suite exercises that at all.
  */
 import { html } from '../../../src/html.js';
 import { MARKER } from '../../../src/html.js';
