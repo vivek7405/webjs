@@ -3151,12 +3151,7 @@ function replaceBoundaryRange(target, source) {
   for (const n of incomingSlice) {
     liveParent.insertBefore(n, target.end);
   }
-  for (let n = target.start.nextSibling; n && n !== target.end; n = n.nextSibling) {
-    if (n.nodeType === 1) {
-      reactivateScripts(/** @type {Element} */ (n));
-      upgradeCustomElements(/** @type {Element} */ (n));
-    }
-  }
+  activateSwappedRange(target);
 }
 
 /**
@@ -3209,13 +3204,13 @@ function swapMarkerRange(target, source, _doc) {
   // Run the keyed diff.
   reconcileSiblings(liveParent, target.start, target.end, liveSlice, incomingSlice);
 
-  // Upgrade + activate scripts in the just-swapped range.
-  for (let n = target.start.nextSibling; n && n !== target.end; n = n.nextSibling) {
-    if (n.nodeType === 1) {
-      reactivateScripts(/** @type {Element} */ (n));
-      upgradeCustomElements(/** @type {Element} */ (n));
-    }
-  }
+  // Upgrade + activate scripts in the just-swapped range. A top-level script
+  // here is usually one the keyed reconciler REUSED (`keyOf` reads
+  // `data-key || id`), so it re-executes on every soft nav that morphs this
+  // boundary. That is deliberate: a descendant script inside a reused
+  // container has always re-run through this same pass, and a script's
+  // position in the range is not a reason to treat it differently (#1102).
+  activateSwappedRange(target);
 }
 
 /**
@@ -4369,10 +4364,93 @@ async function streamBoundariesProgressively(reader, dec, initialBuf, isCurrent)
   }
 }
 
-/** @param {Element} container */
+/**
+ * Re-execute every `<script>` in `container`, INCLUDING `container` itself when
+ * it is one (#1102). A script parsed by `DOMParser` carries the spec's
+ * "already started" flag, so the node grafted into the live document is inert
+ * and only a fresh clone runs. `querySelectorAll` never matches the element it
+ * is called on, so a container-is-a-script was silently skipped: the two swap
+ * tiers hand this function each TOP-LEVEL node of the swapped range in turn, so
+ * a script emitted as a sibling of the content (a layout's progressive-
+ * enhancement script, the shape that surfaced this) never ran after a soft nav.
+ *
+ * Replacing the container DETACHES it, which is why both callers snapshot the
+ * range before iterating rather than walking live `nextSibling` links.
+ *
+ * `data-webjs-permanent` is deliberately NOT an exemption here, and must not be
+ * added as one. It reads like the natural opt-out, but it cannot work: its
+ * regraft has a both-exist guard (`regraftPermanentInSlice`), so on the swap
+ * that first mounts a route there is no live node to preserve, the inert parsed
+ * copy is what lands, and exempting it would leave a script that runs on a cold
+ * load and never on a soft navigation. That is precisely the #1102 failure,
+ * reintroduced under the banner of fixing it. The attribute preserves node
+ * identity for STATEFUL elements (a playing `<audio>`, a third-party widget);
+ * a script's only state is that it ran, and re-running is the contract for
+ * everything in a swapped range. A descendant permanent script has always been
+ * re-emitted by the walk below, so exempting the container would also have made
+ * the answer depend on nesting depth.
+ *
+ * @param {Element} container
+ * @returns {Element} `container`, or its replacement when it was a script that
+ *   was re-emitted. The replacement sits wherever `container` was; when
+ *   `container` was already detached, `replaceWith` is a spec no-op and the
+ *   returned clone is detached too, so callers must not assume it is connected.
+ */
 function reactivateScripts(container) {
+  if (container.tagName === 'SCRIPT') {
+    const fresh = cloneScriptWithCorrectNonce(/** @type {HTMLScriptElement} */ (container));
+    // A no-op when the node has no parent. That happens when an EARLIER
+    // script's reactivation ran code that removed this node from the range
+    // (reactivation executes synchronously), so a stale snapshot entry cannot
+    // resurrect itself into the document.
+    container.replaceWith(fresh);
+    return fresh;
+  }
   for (const old of container.querySelectorAll('script')) {
     old.replaceWith(cloneScriptWithCorrectNonce(/** @type {HTMLScriptElement} */ (old)));
+  }
+  return container;
+}
+
+/**
+ * Reactivate scripts + upgrade custom elements across a just-swapped boundary
+ * range. The range is SNAPSHOT first: `reactivateScripts` replaces a top-level
+ * script node, which detaches it and cuts a live `nextSibling` walk, silently
+ * skipping every node after it (#1102).
+ *
+ * The snapshot is taken AFTER the tier has finished writing the range (the
+ * replace tier's insert loop, the morph tier's `reconcileSiblings`), so every
+ * entry is attached when it is recorded. It can still go stale DURING the walk,
+ * because reactivating a script executes it synchronously and that code may
+ * mutate the range. Two consequences, both deliberate. A node an earlier script
+ * REMOVED is skipped, since `replaceWith` on a parentless node is a spec no-op.
+ * A node an earlier script INSERTED is not visited, unlike the live walk this
+ * replaced. That costs nothing reachable: such a node is connected by
+ * definition, so the browser upgrades it on insertion, and `ensureUpgradeObserver`
+ * catches it on the microtask regardless. Do NOT "restore" the live walk to
+ * recover it. A correct live walk has to advance off the REPLACEMENT (advancing
+ * off the detached original is bug #1102 itself), and in that form a script
+ * appending a sibling script loops forever, each clone appending the next; it
+ * would also re-run a script that already executed when its own creator
+ * inserted it. The snapshot is additionally safer under a MOVE, since a live
+ * walk would follow a node out of the range and start re-executing unrelated
+ * scripts in the rest of the body.
+ *
+ * @param {{ start: Comment, end: Comment }} range
+ */
+function activateSwappedRange(range) {
+  /** @type {Element[]} */
+  const swapped = [];
+  for (let n = range.start.nextSibling; n && n !== range.end; n = n.nextSibling) {
+    if (n.nodeType === 1) swapped.push(/** @type {Element} */ (n));
+  }
+  for (const el of swapped) {
+    const live = reactivateScripts(el);
+    // Nothing to upgrade in a detached tree. `customElements.upgrade` off
+    // document runs the CONSTRUCTOR (not `connectedCallback`, which waits for
+    // insertion), so this skips constructing elements for a tree that was just
+    // removed and will never be seen.
+    if (live.isConnected !== false) upgradeCustomElements(live);
   }
 }
 
@@ -4384,6 +4462,7 @@ export {
   addNewHeadElements as _addNewHeadElements,
   mergeHead as _mergeHead,
   reactivateScripts as _reactivateScripts,
+  activateSwappedRange as _activateSwappedRange,
   findAnchorInPath as _findAnchorInPath,
   activeFrameId as _activeFrameId,
   resolveTargetFrameId as _resolveTargetFrameId,
