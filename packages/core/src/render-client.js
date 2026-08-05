@@ -1140,8 +1140,11 @@ function applyPart(part, value, _prev, allValues) {
       //
       // Not covered here, because it is not a commit: a custom element's prop
       // declared `reflect: true` reflects from its own setter. That path used
-      // to write String(value) and leak the source; #1169 made it remove the
-      // attribute instead, so it is guarded at the setter rather than here.
+      // to write String(value) and leak the source. #1169 made it remove the
+      // attribute instead, so it is guarded at the setter rather than here,
+      // with one carve-out that stays the author's call: a prop supplying its
+      // own `converter.toAttribute` runs that converter first and is left
+      // alone, so it still writes whatever the author returns for a function.
       assertNotFunctionReflectedActionProp(value, part.name, part.el.localName);
       /** @type any */ (part.el)[part.name] = value;
       break;

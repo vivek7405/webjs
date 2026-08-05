@@ -554,8 +554,16 @@ export function assertNotFunctionActionAttr(val, attrName, tag) {
  * property and a function is a legitimate value. There is a separate path
  * that reflects on a custom element, a prop declared `reflect: true`, which
  * runs in the setter and never reaches any commit site. It used to write the
- * source and is why this carve-out was once narrower than it looked; #1169
- * closed it at the setter, where a function now removes the attribute.
+ * source, which is why this carve-out was once narrower than it looked.
+ * #1169 closed it at the setter, where a function now removes the attribute.
+ *
+ * That close is not total, so do not read this exclusion as a guarantee the
+ * source can never reach a custom element's attribute. `_reflectAttribute`
+ * runs a prop's own `converter.toAttribute` BEFORE the function guard, so an
+ * author who supplies one still owns what gets written, a stringified
+ * function included. That is deliberate (supplying a converter is taking
+ * responsibility for the serialization), but it means the guarantee here
+ * covers the converter-less case, which is every prop that has not opted out.
  *
  * `<form .action=${fn}>` is refused rather than treated as the supported
  * binding: the supported one is the plain `action=${fn}` attribute, and a
