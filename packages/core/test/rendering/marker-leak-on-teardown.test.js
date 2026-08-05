@@ -170,15 +170,21 @@ test('plain .map() array: emptying it entirely leaves no orphan markers', () => 
 
 test('child hole: swapping template shape leaves no orphan markers', () => {
   const el = document.createElement('div');
+  // ONE outer template site, so the outer instance UPDATES in place and the
+  // swap really reaches the child-hole teardown. Rendering two separate outer
+  // literals instead would give the container two different `strings`
+  // identities, rebuild the whole instance each time, and wipe the leak with
+  // `replaceChildren` before this could ever see it.
+  const view = (inner) => html`<div>${inner}</div>`;
   const a = () => html`<span>A</span>`;
   const b = () => html`<em>B</em>`;
 
-  render(html`<div>${a()}</div>`, el);
+  render(view(a()), el);
   const baseline = countBookends(el);
 
   for (let i = 0; i < 5; i++) {
-    render(html`<div>${b()}</div>`, el);
-    render(html`<div>${a()}</div>`, el);
+    render(view(b()), el);
+    render(view(a()), el);
   }
 
   assertBookends(el, baseline, 'child hole after 5 shape swaps');
@@ -193,17 +199,18 @@ test('child hole: swapping template shape leaves no orphan markers', () => {
 
 test('child hole: swapping a repeat() out for a single template leaves no orphan markers', () => {
   const el = document.createElement('div');
-  const list = () =>
-    html`<div>${repeat(rows(3), (it) => it.id, (it) => html`<p>${it.t}</p>`)}</div>`;
-  const single = () => html`<div>${html`<span>solo</span>`}</div>`;
+  // One outer template site, for the reason spelled out on the case above.
+  const view = (inner) => html`<div>${inner}</div>`;
+  const list = () => repeat(rows(3), (it) => it.id, (it) => html`<p>${it.t}</p>`);
+  const single = () => html`<span>solo</span>`;
 
-  render(list(), el);
+  render(view(list()), el);
   const baseline = countBookends(el);
 
   for (let i = 0; i < 5; i++) {
-    render(single(), el);
+    render(view(single()), el);
     assert.equal(el.querySelector('span').textContent, 'solo');
-    render(list(), el);
+    render(view(list()), el);
   }
 
   assertBookends(el, baseline, 'child hole after 5 list/single swaps');
