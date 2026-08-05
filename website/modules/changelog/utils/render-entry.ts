@@ -28,8 +28,26 @@ function inline(s: string): string {
   return out;
 }
 
-/** One paragraph of an entry's body, as its soft-wrapped source lines. */
-type Para = string[];
+/**
+ * One paragraph of an entry's body, as its soft-wrapped source lines plus the
+ * indent depth it was opened at. Depth 1 is the entry's own level.
+ */
+type Para = { depth: number; lines: string[] };
+
+/**
+ * Depth a bullet's leading indent states. Two spaces per level, clamped at 3
+ * because a release note has no legitimate fourth level and the clamp is what
+ * stops a pathological source file emitting a runaway ladder.
+ */
+function depthOf(indent: number): number { return Math.min(Math.floor(indent / 2), 3); }
+
+/**
+ * Depth as a left inset, from a literal lookup. Tailwind v4 scans this tree
+ * for complete literal class strings, so a computed `pl-${depth * 4}` would
+ * generate no utility at all and the inset would silently do nothing while
+ * every test asserting on the class name still passed.
+ */
+const INSET: Record<number, string> = { 1: '', 2: ' pl-4', 3: ' pl-8' };
 
 /** Render the body of one changelog entry: h1 / h2 / bulleted lists / paragraphs. */
 export function renderEntryBody(md: string): string {
@@ -47,8 +65,21 @@ export function renderEntryBody(md: string): string {
   // changelog is one bullet per released change, and a second level of
   // glyphs under half of them is noise: the generator writes each squashed
   // commit subject as its own `*` line, which restated the entry title above
-  // it in 119 of the corpus's 378 indented bullets. So indentation controls
-  // grouping here, never bullet depth, and no entry body renders a list.
+  // it in 119 of the corpus's 378 indented bullets. So no entry body renders
+  // a list, at any depth.
+  //
+  // Depth is still REPRESENTED, as a left inset on the paragraph and nothing
+  // else (no marker, no type-size change, no rule), so a child point reads as
+  // subordinate to its parent rather than as its parent's peer. The rule both
+  // indented branches follow, stated once: a bullet marker ESTABLISHES depth,
+  // a continuation INHERITS the open paragraph's. The continuation half is
+  // the counter-intuitive one and the corpus decided it. There are zero
+  // bullets at four or more spaces across the 229 entry files, but there are
+  // 37 non-bullet lines at four or more, spread over 10 files, and every one
+  // is wrapped prose whose author aligned the continuation under the text
+  // above it. Reading depth off a continuation line would re-render those 10
+  // files today and lose the argument on the first release note anyone wraps
+  // by hand. Do not "fix" that branch to read its own indent.
   let itemOpen = false;
   let paras: Para[] = [];
   let open: Para | null = null;
@@ -59,14 +90,20 @@ export function renderEntryBody(md: string): string {
   // leaves `open` narrowed to `null` at the read below and the truthiness
   // guard there narrows it to `never`. Assigning at each call site keeps the
   // write in the enclosing function's own control-flow graph.
-  function startPara(text: string): Para { const p: Para = [text]; paras.push(p); return p; }
+  function startPara(text: string, depth: number): Para {
+    const p: Para = { depth, lines: [text] };
+    paras.push(p);
+    return p;
+  }
 
   function renderParas(ps: Para[]): string {
     // The overwhelmingly common entry is a single line with no body. Emit it
-    // bare so its markup is unchanged by the multi-paragraph support.
-    if (ps.length === 1) return inline(ps[0].join(' '));
-    return ps.map((lines) =>
-      `<p class="my-2 first:mt-0 last:mb-0">${inline(lines.join(' '))}</p>`).join('');
+    // bare so its markup is unchanged by the multi-paragraph support. Only
+    // the column-0 branch can open an item's first paragraph, so a lone
+    // paragraph is always depth 1; the guard says so rather than assuming it.
+    if (ps.length === 1 && ps[0].depth === 1) return inline(ps[0].lines.join(' '));
+    return ps.map((p) =>
+      `<p class="my-2 first:mt-0 last:mb-0${INSET[p.depth] ?? ''}">${inline(p.lines.join(' '))}</p>`).join('');
   }
 
   function flushItem() {
@@ -101,17 +138,20 @@ export function renderEntryBody(md: string): string {
       startList();
       itemOpen = true;
       paras = [];
-      open = startPara(line.slice(2).trim());
+      open = startPara(line.slice(2).trim(), 1);
     } else if (itemOpen && /^ {2,}[-*] /.test(line)) {
-      // Its own paragraph, marker dropped. Depth is not read, so a deeper
-      // run groups exactly like a 2-space one instead of nesting.
-      open = startPara(line.trim().slice(2).trim());
+      // Its own paragraph, marker dropped, at the depth its own indent
+      // states. This is the branch that ESTABLISHES depth.
+      const indent = (/^( +)/.exec(line)?.[1] ?? '').length;
+      open = startPara(line.trim().slice(2).trim(), depthOf(indent));
     } else if (itemOpen && /^ {2,}\S/.test(line)) {
       const text = line.trim();
       // Soft-wrapped continuation of the open paragraph, or the start of a
-      // fresh one when a blank line closed the last.
-      if (open) open.push(text);
-      else open = startPara(text);
+      // fresh one when a blank line closed the last. Depth-blind on purpose:
+      // it INHERITS, from the open paragraph or, when a blank line closed
+      // that one, from the last paragraph of the item.
+      if (open) open.lines.push(text);
+      else open = startPara(text, paras.length ? paras[paras.length - 1].depth : 1);
     } else if (line.trim() === '') {
       if (itemOpen) open = null;
       else flushItem();

@@ -13,7 +13,14 @@
  * that dumps a squashed commit body as indented `*` lines), so asserting
  * across every file is what stops one shape being fixed at the other's cost.
  * No entry body renders a second level of bullets: the page is one bullet
- * per released change, and everything under it is prose.
+ * per released change, and everything under it is prose. Depth is still
+ * represented, as a left inset on the paragraph, so a child point reads as
+ * subordinate rather than as its parent's peer. A bullet marker establishes
+ * that depth and a continuation line inherits the open paragraph's, which is
+ * why the corpus files carrying 4-space wrapped prose gain no inset.
+ *
+ * The corpus has zero bullets past two spaces, so the depth cases below are
+ * necessarily synthetic. A green corpus run proves nothing about them.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -127,6 +134,78 @@ test('blank-separated indented bullets become paragraphs of ONE entry', () => {
   assert.ok(first.includes('feat: enforce scaffold-content removal'));
   assert.ok(first.includes('docs: document the no-scaffold-placeholder'));
   assert.equal(html.match(/<ul/g)?.length, 2, 'one entry list per section heading, and nothing nested');
+});
+
+test('a child point is inset, its parent and its parent peer are not', () => {
+  // Synthetic by necessity: the corpus has no bullet past two spaces, so this
+  // behaviour has no real fixture. Before the inset, `child of parent` and
+  // `sibling of parent` rendered identically and a reader could not tell
+  // which was subordinate to which.
+  const html = renderEntryBody([
+    '- **entry**',
+    '  - parent point',
+    '    - child of parent',
+    '    - second child',
+    '  - sibling of parent',
+  ].join('\n'));
+
+  const para = (text: string) => {
+    const m = new RegExp(`<p class="([^"]*)">${text}</p>`).exec(html);
+    assert.ok(m, `expected a paragraph for "${text}" in ${html}`);
+    return m[1];
+  };
+
+  assert.ok(!para('parent point').includes('pl-'), 'a 2-space bullet keeps the entry level');
+  assert.ok(!para('sibling of parent').includes('pl-'), 'a peer of the parent is at the parent level');
+  assert.ok(para('child of parent').includes('pl-4'), 'a 4-space bullet is inset one level');
+  assert.ok(para('second child').includes('pl-4'));
+  assert.notEqual(para('child of parent'), para('sibling of parent'), 'a child and a peer render differently');
+  // Still no second level of glyphs: the depth is the inset, nothing else.
+  assert.ok(!/<li>/.test(html));
+  assert.equal(html.match(/<ul/g)?.length, 1, 'only the entry list itself');
+});
+
+test('bullet depth clamps at three levels', () => {
+  const html = renderEntryBody([
+    '- **entry**',
+    '      - six spaces',
+    '          - ten spaces',
+    '                - sixteen spaces',
+  ].join('\n'));
+
+  for (const text of ['six spaces', 'ten spaces', 'sixteen spaces']) {
+    const m = new RegExp(`<p class="([^"]*)">${text}</p>`).exec(html);
+    assert.ok(m, `expected a paragraph for "${text}"`);
+    assert.ok(m[1].includes('pl-8'), `${text}: clamped to depth 3`);
+  }
+  // The clamp is what stops a pathological source emitting a runaway ladder,
+  // so nothing deeper than pl-8 is ever generated.
+  assert.ok(!/pl-1[26]|pl-2[04]/.test(html), 'no inset past the depth-3 class');
+});
+
+test('a 4-space continuation line inherits its bullet depth instead of reading its own', () => {
+  // cli/0.10.30.md wraps prose under a 2-space bullet at four spaces. All 37
+  // such lines in the corpus are wrapped prose, not nested points, so the
+  // continuation branch inherits rather than reads.
+  const html = renderEntryBody(bodyOf(`${CHANGELOG_DIR}cli/0.10.30.md`));
+
+  // The captured body spans inline markup (the glob in this line trips the
+  // italic rule), so match through tags rather than up to the first one.
+  const wrapped = /<p class="([^"]*)">#794: Fix block-comment-close bug([\s\S]*?)<\/p>/.exec(html);
+  assert.ok(wrapped, 'the bullet and its wrapped lines are one paragraph');
+  assert.ok(!wrapped[1].includes('pl-'), 'the wrapped continuation gains no inset');
+  assert.ok(wrapped[2].includes('closed the enclosing'), 'the 4-space lines stayed in that paragraph');
+});
+
+test('no corpus entry file renders an inset', () => {
+  // The invariance guard for the 229 files: every indented bullet on disk
+  // sits at exactly two spaces today, so the page must render byte-for-byte
+  // as it did before depth was represented.
+  for (const [label, md] of everyEntryFile()) {
+    const html = renderEntryBody(md);
+    assert.ok(!/class="[^"]*\bpl-4\b/.test(html), `${label}: emitted a depth-2 inset`);
+    assert.ok(!/class="[^"]*\bpl-8\b/.test(html), `${label}: emitted a depth-3 inset`);
+  }
 });
 
 test('no changelog file renders a nested list', () => {
