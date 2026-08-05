@@ -2,7 +2,7 @@ import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import '#components/like-button.ts';
 import { COMPONENT_SAMPLE, TOGGLE_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE, USAGE_SAMPLE } from '#lib/samples.ts';
-import { DOCS_PATH, DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_PATH, DOCS_START_PATH, GH_URL, NEW_TAB, SAME_AS } from '#lib/links.ts';
 // highlight() runs only at SSR (codeWindow renders its output into the served
 // HTML), but it does ship to the client as a small dead module: the page loads
 // in the browser to register copy-cmd, and that pulls in its
@@ -42,7 +42,10 @@ export const metadata = {
       name: 'WebJs',
       url: SITE_URL,
       logo: `${SITE_URL}/public/favicon.png`,
-      sameAs: ['https://github.com/webjsdev/webjs', 'https://discord.gg/qZScjWWNA8'],
+      // Every owned property, from the one shared list in lib/links.ts, so
+      // this node and the SoftwareApplication on /what-is-webjs state the
+      // same entity graph (#1100).
+      sameAs: SAME_AS,
     },
     {
       '@context': 'https://schema.org',

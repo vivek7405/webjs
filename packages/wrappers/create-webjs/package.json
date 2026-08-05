@@ -2,7 +2,7 @@
   "name": "create-webjs",
   "version": "0.10.28",
   "type": "module",
-  "description": "Scaffold a new webjs app. `npm create webjs@latest my-app`.",
+  "description": "WebJs is a full-stack JavaScript framework built on web components, with server-side rendering and no build step. Runs on Node 24+ or Bun. Scaffold an app with `npm create webjs@latest my-app`.",
   "bin": {
     "create-webjs": "bin/create-webjs.js"
   },

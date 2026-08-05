@@ -2,7 +2,7 @@
   "name": "@webjsdev/core",
   "version": "0.7.46",
   "type": "module",
-  "description": "webjs core runtime - html/css tags, WebComponent base, isomorphic renderers",
+  "description": "The runtime for WebJs, a full-stack JavaScript framework built on web components with server-side rendering and no build step. Ships the html and css template tags, the WebComponent base class, signals, directives, and the isomorphic renderers.",
   "types": "./index.d.ts",
   "exports": {
     ".": {

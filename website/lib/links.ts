@@ -36,6 +36,39 @@ export const DISCORD_URL = 'https://discord.gg/qZScjWWNA8';
 export const X_URL = 'https://x.com/webjsdev';
 export const BLUESKY_URL = 'https://bsky.app/profile/webjs.bsky.social';
 
+/**
+ * Every canonical property this project owns, declared once (#1100).
+ *
+ * Search engines have no way to know that webjs.dev, the GitHub repo, the npm
+ * packages, and the social profiles are one entity rather than unrelated pages
+ * that happen to contain the same string. That matters more here than for most
+ * projects, because the name is genuinely contested: a dormant Java framework,
+ * a small client-side toolkit, and whatsapp-web.js all answer to some spelling
+ * of it. A `sameAs` array is the explicit statement that resolves them.
+ *
+ * Every JSON-LD node that carries a `sameAs` imports THIS array, so the two
+ * (the Organization on the home page and the SoftwareApplication on
+ * /what-is-webjs) cannot drift apart. A test asserts they stay identical.
+ *
+ * Only list a property that resolves and is project-controlled. A dead URL in
+ * `sameAs` is a negative signal, so a shorter verified list beats a longer
+ * aspirational one. Every entry below was probed before being added.
+ */
+export const SAME_AS = [
+  GH_URL,
+  'https://www.npmjs.com/package/webjsdev',
+  'https://www.npmjs.com/package/create-webjs',
+  'https://www.npmjs.com/package/@webjsdev/core',
+  X_URL,
+  BLUESKY_URL,
+  'https://dev.to/webjs',
+  'https://webjs.hashnode.dev',
+  'https://medium.com/@webjsdev',
+  'https://www.facebook.com/webjs',
+  'https://www.instagram.com/webjs_dev/',
+  DISCORD_URL,
+];
+
 // Visually-hidden cue appended inside target="_blank" links so a screen reader
 // announces the new-tab context change.
 export const NEW_TAB = html`<span class="sr-only"> (opens in a new tab)</span>`;

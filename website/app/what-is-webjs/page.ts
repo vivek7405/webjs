@@ -2,7 +2,7 @@ import { html } from '@webjsdev/core';
 import '#components/copy-cmd.ts';
 import { COMPONENT_SAMPLE, ACTION_SAMPLE, PAGE_SAMPLE } from '#lib/samples.ts';
 import { BTN_PRIMARY, BTN_GHOST, INSTALL } from '#lib/design/recipes.ts';
-import { DOCS_START_PATH, GH_URL, NEW_TAB } from '#lib/links.ts';
+import { DOCS_START_PATH, GH_URL, NEW_TAB, SAME_AS } from '#lib/links.ts';
 import { faqJsonLd } from '#lib/utils/faq.ts';
 import { highlight } from '#lib/utils/highlight.ts';
 
@@ -131,6 +131,10 @@ export function generateMetadata() {
         description: DESCRIPTION,
         license: 'https://opensource.org/licenses/MIT',
         codeRepository: GH_URL,
+        // This is the page that disambiguates the contested name, so it is the
+        // one that most needs to say which properties are the same entity. The
+        // list is shared with the home page's Organization node (#1100).
+        sameAs: SAME_AS,
         offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
       },
       {
