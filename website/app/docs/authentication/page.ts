@@ -8,9 +8,9 @@ export const metadata = {
 
 export default function Authentication() {
   return html`
-    <h1>Build your own authentication</h1>
+    <h1>Build Your Own Authentication</h1>
     <p>This page is the hand-rolled route: session-based auth built on the framework primitives, where you own the session format, the password hashing, and the route-protection rules. The blog example is a complete implementation of it, using scrypt password hashing, session tokens in cookies, and middleware-based route protection.</p>
-    <p>WebJs does ship a batteries-included option, so this is a choice rather than a necessity. <a href="/docs/auth">Auth providers (createAuth)</a> gives you OAuth providers, credentials login, and JWT sessions out of the box. Take that page if you want OAuth or do not want to own the session. Stay here if you want full control over how a session is minted, stored, and checked.</p>
+    <p>WebJs does ship a batteries-included option, so this is a choice rather than a necessity. <a href="/docs/auth">Auth Providers (createAuth)</a> gives you OAuth providers, credentials login, and JWT sessions out of the box. Take that page if you want OAuth or do not want to own the session. Stay here if you want full control over how a session is minted, stored, and checked.</p>
 
     <h2>Architecture</h2>
     <code-block>lib/

@@ -113,7 +113,7 @@ REDIS_URL=redis://localhost:6379</code-block>
     <ul>
       <li><a href="/docs/middleware">Middleware</a>: how middleware chains work</li>
       <li><a href="/docs/cache">Caching</a>: the underlying cache store that powers rate limiting</li>
-      <li><a href="/docs/authentication">Build your own authentication</a>: protect routes with auth</li>
+      <li><a href="/docs/authentication">Build Your Own Authentication</a>: protect routes with auth</li>
     </ul>
   `;
 }
