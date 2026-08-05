@@ -53,7 +53,16 @@ cd ../<repo>-<slug>          # do ALL work for the task here
 # ... commit + push from this worktree; after merge: git worktree remove ../<repo>-<slug>
 ```
 
-**A fresh worktree has NO `node_modules`** (git worktrees do not copy it), so running an app from one (`webjs dev` / `webjs start`, the test runner, a scaffolded app) fails to resolve `@webjsdev/*` until you install or link it. `webjs doctor` warns for this exact case (#954) and `webjs dev` / `webjs start` print the cause + remedy instead of a raw `ERR_MODULE_NOT_FOUND`. Fix by installing in the worktree (`npm install`) or symlinking the primary checkout's modules (`ln -s ../<primary-checkout>/node_modules node_modules`). When only a subset of `@webjsdev/*` packages was edited, link those from the worktree and the rest from the primary checkout so a built `dist/` (e.g. `@webjsdev/core`) still resolves.
+**A fresh worktree has NO `node_modules`** (git worktrees do not copy it), so running an app from one (`webjs dev` / `webjs start`, the test runner, a scaffolded app) fails to resolve `@webjsdev/*` until you install or link it. `webjs doctor` warns for this exact case (#954) and `webjs dev` / `webjs start` print the cause + remedy instead of a raw `ERR_MODULE_NOT_FOUND`.
+
+Fix it with **`npm run worktree:link`** from inside the worktree (or a full `npm install` there, which is correct but slow and duplicates a large tree per worktree). **Do NOT hand-symlink only the root `node_modules`.** That is the obvious move and it produces a worktree that looks set up and then fails dozens of tests for reasons that point nowhere near the real cause. Two things beyond the root tree are needed, and the script handles both:
+
+- **Every NESTED `node_modules`, not just the root.** npm hoists what it can, but a workspace whose range conflicts with the hoisted copy keeps its own nested tree. `packages/server` is the live example: the root carries `ws@7` (hoisted for another dependent) while `packages/server` declares `^8.20.0` and keeps `ws@8` nested. Link only the root and `WebSocketServer`, a ws@8-only named export, resolves up to ws@7 and throws at module load. That single miss failed hundreds of assertions across the server, integration, and smoke suites, none of them naming ws.
+- **`packages/core/dist`**, which is built rather than committed, so a fresh worktree has none and every test importing the built bundle fails to resolve it.
+
+The script discovers both from the primary checkout rather than hardcoding a list (the set changes whenever a package gains a nested tree), never overwrites an existing path, and never creates a dangling link, so it is safe to re-run and safe in a worktree where you already ran a real `npm install`.
+
+When only a subset of `@webjsdev/*` packages was edited, link those from the worktree and the rest from the primary checkout so a built `dist/` (e.g. `@webjsdev/core`) still resolves.
 
 Git enforces one-branch-per-worktree, so separate worktrees make the collision impossible. There is NO lone-agent exception: every task cuts a worktree, and the primary checkout stays an untouched mirror of main (tracked-file edits there are hook-blocked). The repo's `.hooks/pre-commit` additionally BLOCKS a published-library (`core`/`server`/`cli`/`mcp`/`ui`/`intellisense`) version bump on any non-`chore/release-*` branch, the canonical wrong-branch-release symptom.
 
