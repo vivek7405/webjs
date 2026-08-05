@@ -62,6 +62,7 @@ const USAGE = `webjs commands:
   webjs types                                     Generate .webjs/routes.d.ts (typed Route union + per-route params)
   webjs typecheck [tsc args...]                   Type-check the app with the project's tsc --noEmit (non-zero on errors)
   webjs create <name> [--template full-stack|api] [--db sqlite|postgres] [--runtime node|bun] [--no-install]  Scaffold a new webjs app
+                                                  <name> must be a valid npm package name (lowercase, digits, - . _, starts with a letter or digit)
                                                   (only 2 templates exist. default: full-stack, Drizzle, --db sqlite, --runtime node)
                                                   --runtime bun emits a Bun-flavored app (bun.lock, bun Dockerfile/CI, bun docs);
                                                   also auto-detected when run via "bun create webjs".
@@ -164,6 +165,11 @@ const HELP = {
     usage: 'webjs create <name> [--template full-stack|api] [--db sqlite|postgres] [--runtime node|bun] [--no-install]',
     summary: 'Scaffold a new app. Defaults: full-stack template, Drizzle + SQLite, Node runtime.',
     options: [
+      {
+        flag: '<name>',
+        description:
+          'Must be a valid npm package name: lowercase letters, digits, and the separators "-", "." and "_", starting with a letter or a digit, at most 214 characters. It becomes the directory, the package.json name, AND a value written into generated source, so anything else is rejected before any file is written (#1066).',
+      },
       { flag: '--template <t>', description: 'full-stack (default) or api (backend-only, no UI).' },
       { flag: '--db <d>', description: 'sqlite (default) or postgres.' },
       { flag: '--runtime <r>', description: 'node (default) or bun.' },
@@ -851,6 +857,7 @@ async function main() {
       const name = rest[0];
       if (!name || name.startsWith('-')) {
         console.error('Usage: webjs create <app-name> [--template full-stack|api]');
+        console.error('<app-name> must be a valid npm package name (lowercase letters, digits, - . _).');
         process.exit(1);
       }
       const template = flag(rest, '--template', 'full-stack');
