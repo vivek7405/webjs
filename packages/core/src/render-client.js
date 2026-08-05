@@ -1856,9 +1856,15 @@ function reconcileRepeat(part, value) {
         state.map.delete(key);
       } else {
         if (existing) {
+          // Unmapped BEFORE the row is touched, for the reason spelled out
+          // in the leftover loop below: a key kept across a refused removal
+          // points at a half-removed row, and reusing that row later walks
+          // the removal off the end of the region. Same ordering, same
+          // trade, and the two have to agree or the invariant the catch
+          // relies on holds on one branch and not the other.
+          state.map.delete(key);
           disposeInstance(existing);
           removeBetween(existing.startNode, existing.endNode);
-          state.map.delete(key);
         }
         const { inst, frag } = buildDetached(/** @type any */ (tr));
         parent.insertBefore(frag, marker);
@@ -1906,10 +1912,12 @@ function reconcileRepeat(part, value) {
     // disposed, detached rows. That was the failure: the row the app DELETED
     // stayed on screen, the survivors reordered, and a later render that
     // re-added that key reinserted the detached instance. The invariant, at
-    // any throw point on either branch: every instance still in the document
-    // is described by exactly one of the two maps, `newMap` for the processed
-    // new keys and `state.map` for the leftovers not reached yet, which is
-    // what makes the merge below correct.
+    // any throw point on either branch: every instance this pass has not
+    // destructively touched is described by exactly one of the two maps,
+    // `newMap` for the processed new keys and `state.map` for the leftovers
+    // not reached yet, which is what makes the merge below correct. The
+    // exception is the row named in the residual just below, whose removal
+    // refused part-way; that one is in neither map, by choice.
     //
     // The residual is a throw from `removeBetween` ITSELF, which only calls
     // `removeChild` on nodes the renderer owns, so it takes a throwing DOM to

@@ -254,29 +254,36 @@ test('repeat: a throw INSIDE the removal loop leaves no leftover still mapped', 
   assert.throws(() => { render(rows([{ id: 1, n: 'one' }]), container); }, /rm-boom/);
   ul.removeChild = origRemove;
 
-  // Key 2 came out of the map before its row was touched, so re-adding it
-  // builds fresh. It used to stay mapped, and the detached instance was
-  // moved back in with its refs already unbound.
-  render(rows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }]), container);
+  // `liThree` is the named residual: `removeBetween` itself refused, so those
+  // nodes stayed, and the key was already dropped, so nothing tracks them.
+  assert.equal(liThree.parentNode, ul);
+
+  // Re-add BOTH dropped keys in ONE render, with no render in between. That
+  // ordering is load-bearing rather than incidental: any render that treats
+  // key 3 as a leftover again unmaps it under EITHER unmap ordering (its
+  // start marker is gone, so `removeBetween` early-returns and the delete
+  // runs), which collapses the difference this test exists to catch. Re-added
+  // immediately, key 3 is already unmapped, so it MISSES and builds a fresh
+  // row beside the remnant. Unmapping after the removal instead would keep
+  // that key pointing at a half-removed row, the re-add would take the reuse
+  // branch, and `moveRange` would re-attach the lone start marker AFTER its
+  // own end marker.
+  render(rows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }, { id: 3, n: 'three' }]), container);
   const at = (text) => [...container.querySelectorAll('li')].filter((li) => li.textContent === text);
 
   assert.equal(at('one').length, 1);
   assert.equal(at('two').length, 1, 'exactly one row for the re-added key');
   assert.notEqual(at('two')[0], liTwo, 'a disposed instance must not be resurrected');
+  assert.equal(at('three').length, 2, 'a fresh row for the re-added key, beside the remnant');
 
-  // `liThree` is the named residual: `removeBetween` itself refused, so those
-  // nodes stayed, and the key was already dropped, so nothing tracks them.
-  // The list still RECONCILES, which is what the residual is traded for. Do
-  // not "fix" this by unmapping after the removal instead: that keeps the key
-  // pointing at a half-removed row whose start marker is gone, the re-add
-  // re-attaches that marker after its own end marker, and the next removal
-  // walks off the end and takes the whole region with it.
-  assert.equal(liThree.parentNode, ul);
+  // And the region is still alive. Under the other ordering the removal below
+  // walks off the end of the mis-ordered range and takes the repeat part's
+  // own marker with it, after which no render ever lands again.
   render(rows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }, { id: 4, n: 'four' }]), container);
   assert.deepEqual(
     [...container.querySelectorAll('li')].map((li) => li.textContent).filter((t) => t !== 'three'),
     ['one', 'two', 'four'],
-    'the region keeps reconciling around the untracked remnant',
+    'the region still reconciles rather than being dead',
   );
 });
 
