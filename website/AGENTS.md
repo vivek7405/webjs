@@ -42,15 +42,24 @@ website/
                        are Title Case, the convention the Next.js and Rails
                        docs follow, rather than Tailwind's sentence case. A
                        code identifier keeps its own casing inside a label
-                       (createAuth, Drizzle), which is what every comparable
-                       docs site does. A doc page's h1 reads exactly as its
-                       nav label. Two tests in test/ssr/docs-links.test.ts
-                       enforce all of this, "every docs sidebar label and
-                       section title is Title Case" and "a doc page h1
-                       matches its sidebar label". The /ui sidebar is
-                       deliberately exempt: its labels are component names
-                       from the live registry, so they are identifiers by
-                       construction.
+                       (createAuth, @webjsdev/ui), which is what every
+                       comparable docs site does. That rule covers the whole
+                       sidebar and is enforced by the test "every docs
+                       sidebar label and section title is Title Case" in
+                       test/ssr/docs-links.test.ts.
+                       Casing is the only thing pinned. A nav label MAY be
+                       shorter than the page's own h1, and usually is
+                       (Introduction against a "Getting Started" heading,
+                       "Runtime (Node & Bun)" against "Runtime"). The two
+                       auth pages are the one exception: their labels and
+                       h1 values are held byte-equal by the test "a doc page
+                       h1 matches its sidebar label", because those two once
+                       carried headings that matched neither their labels
+                       nor each other. That pin is scoped to those two slugs
+                       on purpose. Do NOT generalise it to other pages.
+                       The /ui sidebar is exempt from all of the above. Its
+                       labels are component names from the live registry, so
+                       they are identifiers by construction.
     ui/                /ui, the @webjsdev/ui component gallery (#1099 moved it
                        here from ui.webjs.dev). page.ts is the introduction,
                        [name]/page.ts one page per component, layout.ts the

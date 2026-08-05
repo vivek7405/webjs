@@ -278,11 +278,14 @@ test('every docs sidebar label and section title is Title Case', async () => {
       '\n\nThe docs sidebar is Title Case throughout, section titles included. Pick the fix that matches the word:\n' +
       '  1. ORDINARY WORD: recase it in app/docs/layout.ts. This is the fix nearly every\n' +
       '     hit wants, and it is what the last two drifts needed.\n' +
-      "  2. CODE IDENTIFIER: add it VERBATIM to IDENTIFIERS at the top of this test\n" +
-      "     (a package like '@webjsdev/ui', an export like 'createAuth', a command like\n" +
-      "     'webjs check', a filename like 'package.json'). Identifiers keep their own\n" +
-      '     casing and are never title-cased, so the label is correct and the test is\n' +
-      '     what needs updating. Add each word of a multi-word command separately.\n' +
+      '  2. CODE IDENTIFIER: add it to IDENTIFIERS at the top of this test, spelled\n' +
+      '     EXACTLY as this message printed it above. Wrapping brackets and trailing\n' +
+      "     punctuation are stripped before the lookup, so a 'cache()' in a label is\n" +
+      "     listed as 'cache'. What belongs there: a package like '@webjsdev/ui', an\n" +
+      "     export like 'createAuth', a command like 'webjs check', a filename like\n" +
+      "     'package.json'. Identifiers keep their own casing and are never\n" +
+      '     title-cased, so the label is correct and the test is what needs updating.\n' +
+      '     Add each word of a multi-word command separately.\n' +
       "  3. LOWERCASE-IN-TITLE WORD this list does not know yet ('amid', 'until'): add it\n" +
       '     to MINOR_WORDS instead.',
   );
