@@ -144,7 +144,7 @@ function truncate(s: string, max: number): string {
  * Convert a doc page's `html\`...\`` body to lightweight, readable
  * markdown. Reuses the search route's stripping approach but preserves
  * structure: headings become `##`/`###`, list items become `-`, and
- * `<pre>` code blocks are fenced, rather than collapsing everything to
+ * `<code-block>` samples are fenced, rather than collapsing everything to
  * one blob. Perfection is not required; a clean-ish rendering is.
  */
 function bodyToMarkdown(raw: string): string {
@@ -159,13 +159,22 @@ function bodyToMarkdown(raw: string): string {
     if (lastTick > tplStart) body = raw.slice(tplStart + 'html`'.length, lastTick);
   }
 
-  // Pull <pre> blocks out first, replacing them with placeholders so
+  // Pull the code samples out first, replacing them with placeholders so
   // their inner whitespace + angle brackets survive the tag stripping.
   // The sentinel is U+E000 (private use), written as an escape rather
   // than a literal: it cannot occur in doc prose, and unlike the raw NUL
   // this used to use it keeps the file TEXT, so git can diff it.
+  //
+  // A docs page writes <code-block> (components/code-block.ts renders the
+  // <pre>), so that is what this reads. <pre> stays matched because this
+  // parses SOURCE rather than rendered HTML, and losing a sample here is
+  // silent: it does not vanish, it falls through to the prose pipeline,
+  // which strips the fence, eats every ${...} hole in the code, and
+  // collapses the indentation. A line-leading "# " shell comment then
+  // reads as a markdown H1, which the search index scores as a heading.
+  // `(?=[\s>])` keeps <pre from matching <preview-tabs.
   const codeBlocks: string[] = [];
-  body = body.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/g, (_m, code) => {
+  body = body.replace(/<(?:pre|code-block)(?=[\s>])[^>]*>([\s\S]*?)<\/(?:pre|code-block)>/g, (_m, code) => {
     const text = decodeEntities(String(code)).replace(/<\/?code[^>]*>/g, '').replace(/\n+$/, '');
     codeBlocks.push(text);
     return `\uE000CODE${codeBlocks.length - 1}\uE000`;
