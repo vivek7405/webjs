@@ -159,5 +159,13 @@ try {
 if (failure) {
   console.error(`FAIL proof-script exit codes on ${runtime}`);
   console.error(failure instanceof Error ? failure.stack || failure.message : String(failure));
-  process.exit(1);
+  // Hard-exit ONLY as a standalone script (`node`/`bun test/bun/proof-exit-code.mjs`):
+  // Bun swallows a top-level-await rejection inside try/finally, so a plain throw
+  // would exit 0, which is the very failure this file exists to catch. When
+  // IMPORTED by the `.test.mjs` wrapper under `node --test`, a `process.exit(1)`
+  // would kill the whole single-process run and hide every other file's results,
+  // so throw instead and let the harness report one failed test. Same convention
+  // as `test/bun/listener-overhead.mjs`.
+  if (import.meta.main) process.exit(1);
+  else throw failure;
 }
