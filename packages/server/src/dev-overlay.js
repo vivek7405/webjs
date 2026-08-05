@@ -25,9 +25,11 @@
  *
  * A held frame is only ever rendered for the navigation it actually belongs to,
  * which is what `__wjNavSeq` is for. A frame that arrives while a navigation is
- * IN FLIGHT is that navigation's; one that arrived while the tab sat idle (a
- * link prefetch, another tab's render) is not, and must never paint on a later
- * visit to that url, because by then the page may well render fine. Both look
+ * IN FLIGHT is that navigation's; one that arrived while the tab sat idle is
+ * not, and must never paint on a later visit to that url, because by then the
+ * page may well render fine. An idle-time frame comes from a render this tab
+ * did not navigate for: another tab's page, or a background fetch of some other
+ * url. NOT from a link prefetch, which reports no frame at all. Both look
  * identical once held, so the seq records which navigation was in flight when
  * the frame landed, and the sync renders it only if that is still the one
  * finishing. `webjs:before-cache` is the nav-START signal (the router snapshots
@@ -167,16 +169,34 @@ export function renderDevOverlay(f, currentPath) {
  */
 export function syncDevOverlayToLocation(currentPath) {
   const here = currentPath === undefined ? __wjCurrentPath() : currentPath;
+  // A back/forward restore can replace document.body wholesale from the
+  // router's snapshot, and that snapshot is `outerHTML` taken while an overlay
+  // may have been on screen, so the restore reinserts a PARSED COPY of it. The
+  // copy is not the node this module is holding, so nothing else can ever
+  // remove it and its Dismiss button carries no listener: an undismissable
+  // card. Sweep anything we do not own, and notice when the node we did own was
+  // replaced out from under us (it is detached, so `.remove()` would no-op and
+  // the slot would lie about what is on screen).
+  if (typeof document !== 'undefined') {
+    const live = __wjOverlay && __wjOverlay.isConnected ? __wjOverlay : null;
+    __wjOverlay = live;
+    document.querySelectorAll('[data-webjs-error-overlay]').forEach((el) => {
+      if (el !== live) el.remove();
+    });
+  }
   // A live overlay whose page we have navigated away from comes down. An
   // unscoped overlay (rebuild / ts-strip) is untouched: it describes the build,
   // not one URL, and only the next successful rebuild clears it.
   if (__wjScoped(__wjFrame) && !__wjSamePath(__wjFrame.url, here)) __wjRemoveOverlay();
+  // Still the right frame for this page, but its node was swept away by the
+  // restore above: put a REAL one back, with a working Dismiss button.
+  if (__wjFrame && !__wjOverlay) renderDevOverlay(__wjFrame, here);
   // The pending frame is consumed by this navigation either way. It renders
   // only if this is BOTH the page it names and the navigation it belongs to;
-  // a frame held from an idle-time render (a link prefetch, another tab) is
-  // dropped, because by the time you actually visit that url the page may
-  // render perfectly well and an overlay over it would be the very bug this
-  // whole gate exists to stop.
+  // a frame held from an idle-time render (another tab's page, a background
+  // fetch of some other url) is dropped, because by the time you actually
+  // visit that url the page may render perfectly well, and an overlay over it
+  // would be the very bug this whole gate exists to stop.
   const p = __wjPending;
   const seq = __wjPendingSeq;
   __wjPending = null;

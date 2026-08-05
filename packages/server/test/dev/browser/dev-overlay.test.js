@@ -157,16 +157,45 @@ suite('dev error overlay URL scope (#1047)', () => {
   });
 
   test('a frame held from an IDLE render never paints on a later visit', () => {
-    // Hovering a link prefetches the throwing page, so a frame for it lands
-    // while the tab sits on /good with no navigation in flight. If that page
-    // later renders fine, visiting it must be clean: rendering the held frame
-    // there would put a "Server render error" over a page that just rendered
-    // perfectly, which is the bug this whole gate exists to stop.
-    renderDevOverlay({ kind: 'render', message: 'stale from a prefetch', url: CRASH }, HERE);
-    assert.equal(overlay(), null, 'held while idle');
-    markDevOverlayNavStart();          // the user now clicks through to it
-    syncDevOverlayToLocation(CRASH);   // ...and it renders fine this time
-    assert.equal(overlay(), null, 'the idle-time frame is not this navigation\'s');
+    // Another tab renders /crash and it throws, so the frame reaches this tab
+    // over the shared SSE channel while it sits on /good with no navigation in
+    // flight. If /crash later renders fine, visiting it must be clean: painting
+    // the held frame there would put a "Server render error" over a page that
+    // just rendered perfectly, which is the bug this whole gate exists to stop.
+    //
+    // Driven through the INSTALLED listeners, not by calling the nav-start
+    // marker by hand: `webjs:before-cache` is the only thing that bumps the
+    // seq in the shipping client, so a test that marks it directly would pass
+    // with that wiring deleted.
+    let path = HERE;
+    const uninstall = installDevOverlayNavSync({ document, window, getPath: () => path });
+    try {
+      renderDevOverlay({ kind: 'render', message: 'stale, from another tab', url: CRASH }, HERE);
+      assert.equal(overlay(), null, 'held while idle');
+      // The user now clicks through to /crash, and it renders fine this time.
+      document.dispatchEvent(new CustomEvent('webjs:before-cache', { detail: { url: HERE } }));
+      path = CRASH;
+      document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: CRASH } }));
+      assert.equal(overlay(), null, 'the idle-time frame is not this navigation\'s');
+    } finally { uninstall(); teardown(); }
+  });
+
+  test('a snapshot restore cannot leave an undismissable overlay copy behind', () => {
+    // The router's back/forward snapshot is `outerHTML`, so it can carry an
+    // overlay, and its tier-4 restore does `document.body.replaceChildren`
+    // straight from that HTML. The reinserted copy is not the node this module
+    // holds, so nothing could remove it and its Dismiss button has no listener.
+    renderDevOverlay({ kind: 'render', message: 'was on screen at snapshot time', url: CRASH }, CRASH);
+    const snapshot = overlay().outerHTML;
+    overlay().remove();                                   // the body swap drops the live node...
+    document.body.insertAdjacentHTML('beforeend', snapshot); // ...and parses the cached copy in
+    assert.ok(overlay(), 'the restored copy is in the DOM');
+
+    syncDevOverlayToLocation(CRASH);
+    const after = document.querySelectorAll('[data-webjs-error-overlay]');
+    assert.equal(after.length, 1, 'exactly one overlay, not the copy plus a re-render');
+    after[0].querySelector('button').click();
+    assert.equal(overlay(), null, 'and it is a real one: Dismiss works');
     teardown();
   });
 
