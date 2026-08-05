@@ -1,3 +1,5 @@
+import { setHardNavigate } from '../packages/core/src/router-client.js';
+
 /**
  * Shared navigation guard for browser tests (#1135). Sibling of
  * `test/browser-assert.js` (#777) and with the same "one source of truth for
@@ -37,21 +39,34 @@
  * possible failure here, and it is why `nav-guard.test.js` asserts the router
  * still ran rather than trusting this by inspection.
  *
- * ## What it cannot do
+ * ## The second channel: the router's own hard navigation
  *
- * It cannot stop the router's own `location.href` assignment on a degradation:
- * `preventDefault` cancels a default action, not a script assignment. The
- * `fallbacks` array is the coverage for that second channel. Every reload site
- * dispatches `webjs:navigation-fallback` with a stable `cause` immediately
- * beforehand, so a test asserts `fallbacks` is empty and names the cause.
- * Removing the conditions that cause a degradation is the fixture work in
- * #1053.
+ * `preventDefault` cancels a default action, not a script assignment, so it can
+ * never stop the router assigning `location.href` when it degrades. That is a
+ * separate channel and it needs a separate mechanism: the router routes every
+ * hard navigation through one seam (#1286), and this installs an override that
+ * RECORDS the attempt into `hardNavigations` instead of performing it. So a
+ * degradation now fails the one test with a readable message instead of
+ * aborting the whole session.
  *
- * @returns {{ fallbacks: Array<{cause: string, href: string, willReload: boolean}>, remove: () => void }}
+ * Intercepting `location.href` directly is not an option and should not be
+ * attempted: it is non-configurable on all three engines, so its setter cannot
+ * be redefined. That is why the seam lives in the router rather than here.
+ *
+ * `fallbacks` stays useful alongside it: it carries the stable `cause` slug
+ * that says WHY the router degraded, which the recorded href alone does not.
+ *
+ * Note this module imports the router, which self-enables on load. Every suite
+ * that installs the guard is already a router suite that imports it, so this
+ * changes nothing in practice.
+ *
+ * @returns {{ fallbacks: Array<{cause: string, href: string, willReload: boolean}>, hardNavigations: string[], remove: () => void }}
  */
 export function installNavGuard() {
   /** @type {Array<{cause: string, href: string, willReload: boolean}>} */
   const fallbacks = [];
+  /** @type {string[]} */
+  const hardNavigations = [];
 
   const onClick = (e) => {
     // Walk the COMPOSED path, exactly as the router's `findAnchorInPath` does,
@@ -76,13 +91,18 @@ export function installNavGuard() {
 
   const onFallback = (e) => { fallbacks.push(e.detail); };
 
+  // Record the router's own hard navigations instead of performing them.
+  setHardNavigate((href) => { hardNavigations.push(String(href)); });
+
   window.addEventListener('click', onClick);
   window.addEventListener('submit', onSubmit);
   document.addEventListener('webjs:navigation-fallback', onFallback);
 
   return {
     fallbacks,
+    hardNavigations,
     remove() {
+      setHardNavigate(null);
       window.removeEventListener('click', onClick);
       window.removeEventListener('submit', onSubmit);
       document.removeEventListener('webjs:navigation-fallback', onFallback);

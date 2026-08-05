@@ -137,6 +137,40 @@ suite('Browser-test nav guard (#1135)', () => {
     } finally { teardown(); }
   });
 
+  test('a real degradation is recorded, not performed (#1286)', async () => {
+    setup();
+    // A document load wipes the realm, so a surviving sentinel is the proof
+    // that the navigation was recorded rather than performed. `location`
+    // cannot serve here: the degradation path still falls through to
+    // `history.pushState`, so the pathname legitimately changes either way.
+    window.__navGuardSentinel = 'alive';
+    try {
+      // Force the router to degrade: strip the live boundary pair so the swap
+      // cannot find a shared boundary. That path reports a fallback and then
+      // hands the navigation to the browser, which before the seam existed
+      // aborted the whole web-test-runner session rather than failing here.
+      bOpen.remove();
+      bClose.remove();
+      render(html`<a href="/nav-guard-degrade">go</a>`, container);
+      const settled = awaitNavigation();
+      container.querySelector('a').click();
+      await settled;
+
+      assert.ok(guard.hardNavigations.some((u) => u.includes('/nav-guard-degrade')),
+        'the hard navigation must be RECORDED by the seam');
+      assert.equal(window.__navGuardSentinel, 'alive',
+        'and must NOT have been performed (the realm survived)');
+      // The cause slug is the diagnosis, and it only survives because the
+      // navigation no longer happens.
+      assert.ok(guard.fallbacks.length > 0, 'the degradation reported a cause');
+      assert.match(String(guard.fallbacks[0].cause), /boundar|shared/,
+        `expected a boundary-related cause, got ${guard.fallbacks[0].cause}`);
+    } finally {
+      // teardown() removes bOpen/bClose; they are already detached here.
+      teardown();
+    }
+  });
+
   test('does NOT suppress the router on a plain link (capture-phase regression)', async () => {
     setup();
     try {
