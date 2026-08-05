@@ -16,6 +16,8 @@ import type {
   WebjsRedirectRule,
   WebjsCspConfig,
   WebjsTrailingSlash,
+  WebjsDoctorConfig,
+  WebjsDoctorSeverity,
 } from '@webjsdev/core';
 
 /* ------------- A fully-populated, valid config ------------- */
@@ -40,8 +42,21 @@ const full: WebjsConfig = {
   requestTimeoutMs: 30000,
   headersTimeoutMs: 20000,
   keepAliveTimeoutMs: 5000,
+  doctor: { gate: { UNMARKED_ASSET_LINKS: 'error', ELISION_CARRIERS: 'off', ENV_DRIFT: 'warn' } },
 };
 void full;
+
+/* ------------- The doctor gate (#1257) ------------- */
+
+const doctorConfig: WebjsDoctorConfig = { gate: { NODE_VERSION: 'off' } };
+void doctorConfig;
+
+const severity: WebjsDoctorSeverity = 'error';
+void severity;
+
+// An empty doctor block is valid: `gate` is optional.
+const emptyDoctor: WebjsConfig = { doctor: {} };
+void emptyDoctor;
 
 /* ------------- The minimal / boolean-csp forms ------------- */
 
@@ -105,3 +120,11 @@ void badBasePath;
 // @ts-expect-error a header value of true is rejected (only string, null, or false).
 const badHeaderValue: WebjsConfig = { headers: [{ source: '/a', headers: [{ key: 'X-Test', value: true }] }] };
 void badHeaderValue;
+
+// @ts-expect-error a doctor gate severity is a fixed union; 'fatal' is not a member.
+const badSeverity: WebjsConfig = { doctor: { gate: { NODE_VERSION: 'fatal' } } };
+void badSeverity;
+
+// @ts-expect-error the doctor block seals its keys; `rules` is not one.
+const badDoctorKey: WebjsConfig = { doctor: { rules: {} } };
+void badDoctorKey;

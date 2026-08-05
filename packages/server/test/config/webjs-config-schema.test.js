@@ -54,6 +54,7 @@ const KNOWN_KEYS = [
   'keepAliveTimeoutMs', // computeServerTimeouts (body-limit.js)
   'dev', // readAppTasks (cli/lib/app-tasks.js), CLI-read not server (#550)
   'start', // readAppTasks (cli/lib/app-tasks.js), CLI-read not server (#550)
+  'doctor', // readDoctorPolicy (cli/lib/doctor.js), CLI-read not server (#1257)
 ];
 
 test('schema file is valid JSON and parses', () => {

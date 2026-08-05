@@ -46,7 +46,7 @@ webjs create <name> --template api   # backend-only API app (routes + modules + 
 webjs dev                      # dev server with live reload (runs webjs.dev.before, e.g. webjs db migrate, then serves; npm run dev is a thin alias)
 webjs start                    # production server (no build step, serves source directly)
 webjs check                    # validate source-code conventions (CI gate)
-webjs doctor                   # verify the project/toolchain setup (local onboarding, not CI)
+webjs doctor                   # verify the project/toolchain setup (per-check severity via webjs.doctor.gate, so CI can gate a subset)
 webjs test                     # run server + browser tests
 webjs vendor pin [--download]  # pin client deps to a committable importmap (offline/reproducible)
 webjs db <generate|migrate|push|studio|seed>   # drizzle-kit passthrough (+ seed)

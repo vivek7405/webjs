@@ -136,6 +136,30 @@ export interface WebjsStartTasks {
   before?: string[];
 }
 
+/**
+ * A severity a `webjs.doctor.gate` entry may declare, mirroring ESLint's
+ * three-level scale. `error` fails the `webjs doctor` exit, `warn` reports
+ * without failing, and `off` silences the check entirely (including under
+ * `--strict`).
+ */
+export type WebjsDoctorSeverity = 'off' | 'warn' | 'error';
+
+/** The object form of `webjs.doctor` (#1257). */
+export interface WebjsDoctorConfig {
+  /**
+   * Per-check severity, keyed by the stable doctor code (`NODE_VERSION`,
+   * `UNMARKED_ASSET_LINKS`, `ELISION_CARRIERS`, and so on; `webjs doctor --json`
+   * carries the code on every result). A code with no entry keeps its default:
+   * `error` for a hard toolchain failure, `warn` otherwise. This is how CI gates
+   * on a chosen subset without `--strict` making every warning fatal.
+   *
+   * An unknown code or severity is a hard error, so a typo cannot silently
+   * un-gate CI. A result that could not check (a network or toolchain outage) is
+   * capped at `warn` and can never be escalated to `error`.
+   */
+  gate?: Record<string, WebjsDoctorSeverity>;
+}
+
 /** The object form of `webjs.csp` (the non-boolean shape). */
 export interface WebjsCspConfig {
   /**
@@ -190,6 +214,13 @@ export interface WebjsConfig {
    */
   dev?: WebjsDevTasks;
   start?: WebjsStartTasks;
+
+  /**
+   * `webjs doctor` policy (#1257): which project-health checks the project
+   * treats as fatal. Read by the CLI (`packages/cli/lib/doctor.js`), NOT the
+   * server readers.
+   */
+  doctor?: WebjsDoctorConfig;
 
   /** Per-path response-header rules, shaped like Next's. */
   headers?: WebjsHeaderRule[];

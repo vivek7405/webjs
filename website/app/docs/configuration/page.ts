@@ -47,6 +47,18 @@ webjs routes --json             # structured JSON (matches the MCP list_routes t
     <code-block>webjs doctor            # human-readable project-health checklist
 webjs doctor --json     # structured results (each with a stable code) + a summary
 webjs doctor --strict   # also fail the exit on warnings, not just hard failures</code-block>
+    <p>Per-check severity is <em>configuration</em>, not a flag. Declare it in <code>package.json</code> under <code>webjs.doctor.gate</code>, keyed by the stable code every result carries, on the same three-level scale ESLint uses. That is what lets CI gate on a chosen subset without <code>--strict</code> making every warning fatal, which is unusable on a runner (the git-hook, env-drift, vendor-pin, and framework-resolve checks are all environment-shaped and would fail a perfectly healthy build).</p>
+    <code-block>&#123;
+  "webjs": &#123;
+    "doctor": &#123;
+      "gate": &#123;
+        "UNMARKED_ASSET_LINKS": "error",
+        "ELISION_CARRIERS": "off"
+      &#125;
+    &#125;
+  &#125;
+&#125;</code-block>
+    <p><code>error</code> fails the exit, <code>warn</code> reports without failing, and <code>off</code> silences the check entirely, including under <code>--strict</code>. A code with no entry keeps its default (<code>error</code> for a hard toolchain failure, <code>warn</code> otherwise), so an app that declares nothing behaves exactly as it did before. Two guarantees make it safe to put in a required CI job: a result that could not check, such as a network or toolchain outage, is capped at <code>warn</code> and can never be escalated, and an unknown code or severity exits 1 naming the offender rather than being ignored, so a typo cannot silently un-gate the build.</p>
     <p>Verifies project health: the Node version floor, <code>erasableSyntaxOnly</code>, <code>.env</code> drift, vendor-pin freshness, importmap coherence, <code>@webjsdev/*</code> version coherence, framework resolvability, the git hook, a page/layout elision advisory, and a warning when a route module writes a <code>&lt;link rel="stylesheet"&gt;</code> without <code>asset()</code> (so its url is un-versioned and a deploy cannot bust a cached copy). Each result carries a stable machine <code>code</code> (for example <code>NODE_VERSION</code>, <code>TSCONFIG_ERASABLE</code>, <code>IMPORTMAP_COHERENCE</code>) so an agent branches on the failure kind, not the message text. The <code>--json</code> payload is an object <code>&#123; results, summary &#125;</code> (the <code>results</code> array holds the per-check objects, each with its <code>code</code>). By default the exit is non-zero only on a hard <em>toolchain</em> failure; <code>--strict</code> also fails on warnings, so it can gate a fully-clean fix loop the way <code>webjs check --json</code> does.</p>
 
     <h3>webjs version</h3>

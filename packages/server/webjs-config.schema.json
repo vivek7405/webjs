@@ -216,6 +216,22 @@
           "items": { "type": "string" }
         }
       }
+    },
+    "doctor": {
+      "description": "`webjs doctor` policy (#1257). Read by the CLI (readDoctorPolicy in packages/cli/lib/doctor.js), NOT the server.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gate": {
+          "description": "Per-check severity, keyed by the stable DOCTOR_CODES code (NODE_VERSION, UNMARKED_ASSET_LINKS, ELISION_CARRIERS, ...). `error` fails the exit, `warn` reports without failing, `off` silences the check entirely (including under --strict). A code with no entry keeps its default: error for a hard toolchain failure, warn otherwise. This is how CI gates on a chosen subset without --strict making every warning fatal. An unknown code or severity is a hard error, so a typo cannot silently un-gate CI. A result that could not check (a network or toolchain outage) is capped at warn and can never be escalated to error.",
+          "type": "object",
+          "propertyNames": { "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["off", "warn", "error"]
+          }
+        }
+      }
     }
   }
 }

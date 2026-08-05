@@ -52,6 +52,8 @@ export type {
   WebjsRedirectRule,
   WebjsTrailingSlash,
   WebjsCspConfig,
+  WebjsDoctorConfig,
+  WebjsDoctorSeverity,
 } from './src/webjs-config.d.ts';
 
 // Compile-time serializability typing for server actions (#488): the opt-in

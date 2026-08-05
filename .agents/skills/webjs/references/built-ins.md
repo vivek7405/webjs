@@ -93,7 +93,7 @@ html`<link rel="stylesheet" href=${asset('/public/app.css')}>`
 
 That emits `/public/app.css?v=<hash>` in production and gets the immutable year; the same url un-marked gets a ~1h cap and can serve stale bytes from a CDN after a deploy until something purges it. `asset()` resolves on the server; the browser has no resolver and returns the path unchanged. Call it from a PAGE, LAYOUT, or metadata route, which render only on the server. Inside a component that ships to the browser it silently costs you the caching: hydration is a full client re-render, so the bare path overwrites the hashed one and the asset downloads twice. The url stays valid either way, so this is a convention rather than a `webjs check` rule (`webjs doctor` does flag the plain form, see below). Under `webjs.basePath`, include the prefix yourself (`asset('/app/public/x.css')`): the framework base-path-prefixes only the urls it emits, so an author-written url is already yours to prefix. Two more constraints: call it INSIDE the render function, because a module-scope call is a side effect the elision analyser reads as client work and it ships the whole module; and mark only files that change with a DEPLOY, because the hash is memoized for the process lifetime, so a `public/` file rewritten in place at runtime would keep its old url while being served `immutable` for a year. Off in dev, so dev output is byte-identical. Only `public/` paths resolve; anything else (and a path that fails to resolve) is returned untouched.
 
-Forgetting it is the one real cost of opt-in, so `webjs doctor` catches it: a page, layout, or error boundary writing a plain `<link rel="stylesheet" href="/public/app.css">` gets a WARN naming the `file:line` and the fix (#1095). It reads your source and rewrites nothing, and it stays quiet about the non-marks that are deliberate: a cross-origin sheet, a `rel="icon"`, a `rel="preload"`, and any `href=${expr}` hole. Same posture as Rails (a `stylesheet_link_tag` helper over a digest manifest) and Remix (a hashed url from the build graph, surfaced through `links()`): take the fingerprint at the point the url is PRODUCED, never by rewriting a rendered document.
+Forgetting it is the one real cost of opt-in, so `webjs doctor` catches it: a page, layout, or error boundary writing a plain `<link rel="stylesheet" href="/public/app.css">` gets a WARN naming the `file:line` and the fix (#1095). It reads your source and rewrites nothing, and it stays quiet about the non-marks that are deliberate: a cross-origin sheet, a `rel="icon"`, a `rel="preload"`, and any `href=${expr}` hole. Same posture as Rails (a `stylesheet_link_tag` helper over a digest manifest) and Remix (a hashed url from the build graph, surfaced through `links()`): take the fingerprint at the point the url is PRODUCED, never by rewriting a rendered document. A warning is easy to miss, so make it fatal in the app that cares: gate `UNMARKED_ASSET_LINKS` to `error` (see the doctor severity gate below) and one `npm run doctor` step in CI stops the un-versioned url reaching a deploy. The scaffold ships exactly that.
 
 It is opt-in rather than automatic because only the author knows which urls are the REQUEST. Do NOT mark a `rel="preload"` hint whose asset is actually fetched by CSS `url()`: the preload cache is keyed on the full url, so a versioned hint can never satisfy the unversioned request the stylesheet makes, and the file is fetched twice. Mark the thing that fetches, not the hint. Every cacheable response also carries a weak `ETag`, and a repeat request with a matching `If-None-Match` gets a `304 Not Modified` with no body. Unstorable (`no-store`) and streamed responses are excluded from the ETag path. A `private` response IS validated: `private` forbids SHARED storage, not validation, and the ETag hashes that response's own body, so two users with different bodies get different ETags and neither can match the other's, while two users with identical bodies are asking about identical bytes, where a 304 discloses nothing (#1140). That is what keeps the client router's partial responses cheap on a page that opted into caching; a default `no-store` page has nothing to validate either way. Dev is byte-faithful (no hashing).
 
@@ -209,6 +209,23 @@ An over-limit body responds `413` without buffering the whole payload.
 ```
 
 `before` runs to completion first (a non-zero exit aborts the boot). `parallel` (dev only) runs long-lived watchers alongside the server and tears them down on exit. `watch` (dev only) adds extra live-reload directories outside the app tree.
+
+### Doctor severity gate
+
+`webjs doctor` reports project health, and by default only a broken toolchain fails the exit. `--strict` makes EVERY warning fatal, which is unusable in CI, because four checks are environment-shaped: `GIT_HOOK` wants a local pre-commit hook a runner has no reason to have, `ENV_DRIFT` compares against a `.env` CI does not carry, `VENDOR_PIN` fetches the network, and `FRAMEWORK_RESOLVE` depends on the environment. So per-check severity is CONFIG, keyed by the stable code every result carries.
+
+```jsonc
+{ "webjs": {
+  "doctor": { "gate": {
+    "UNMARKED_ASSET_LINKS": "error",   // fail the exit on this one
+    "ELISION_CARRIERS": "off"          // silence it entirely, even under --strict
+  } }
+} }
+```
+
+Three levels, the same scale ESLint uses: `error` fails the exit, `warn` reports without failing, `off` silences the check. A code with no entry keeps its default (`error` for a hard toolchain failure, `warn` otherwise), so an app that declares nothing behaves exactly as before. Read the codes off `webjs doctor --json`, where every result carries its `code` and its effective `severity`.
+
+Two guarantees worth knowing. A result that could not check (a network or toolchain outage) is capped at `warn` and can never be escalated, so a jspm or npm outage cannot red your CI. And an unknown code or severity exits 1 naming the offender rather than being ignored, so a typo cannot silently un-gate the build. Wire it up with one workflow step, `npm run doctor`, and change what is fatal in `package.json` rather than in the workflow.
 
 ## Observability
 

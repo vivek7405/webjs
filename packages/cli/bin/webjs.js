@@ -58,7 +58,9 @@ const USAGE = `webjs commands:
   webjs routes [--json|--table] [--no-headers]    Print the route table (path / owner file / methods). Default tree; --json matches the MCP list_routes shape; --no-headers drops the --table header
   webjs mcp                                       Start the read-only MCP server (routes / actions / components / check)
   webjs doctor [--json] [--strict]                Verify project health (Node, tsconfig, env, vendor pins, importmap coherence, @webjsdev versions, git hook, page/layout elision, un-versioned stylesheet links).
-                                                  --json emits the structured results (with stable codes). --strict also fails the exit on warnings
+                                                  --json emits the structured results (with stable codes). --strict also fails the exit on warnings.
+                                                  Per-check severity is CONFIG: map a code to off/warn/error under "webjs": { "doctor": { "gate": {...} } }
+                                                  in package.json, so CI gates on a chosen subset without every warning becoming fatal
   webjs types                                     Generate .webjs/routes.d.ts (typed Route union + per-route params)
   webjs typecheck [tsc args...]                   Type-check the app with the project's tsc --noEmit (non-zero on errors)
   webjs create <name> [--template full-stack|api] [--db sqlite|postgres] [--runtime node|bun] [--no-install]  Scaffold a new webjs app
@@ -146,8 +148,15 @@ const HELP = {
     usage: 'webjs doctor [--json] [--strict]',
     summary: 'Verify project health. Each result carries a stable code so an agent branches on the failure kind.',
     options: [
-      { flag: '--json', description: 'Emit the DoctorResult[] (with stable codes) + a summary as JSON.' },
+      { flag: '--json', description: 'Emit the DoctorResult[] (with stable codes + severities) + a summary as JSON.' },
       { flag: '--strict', description: 'Also fail the exit on warnings, not just hard failures.' },
+    ],
+    notes: [
+      'Per-check severity is CONFIG, not a flag. Declare it in package.json under',
+      '"webjs": { "doctor": { "gate": { "<CODE>": "off" | "warn" | "error" } } }, so CI',
+      'gates on a chosen subset without --strict making every warning fatal. An unknown',
+      'code or severity exits 1 naming it. A "could not check" result (a network or',
+      'toolchain outage) is capped at warn and can never be escalated to error.',
     ],
     examples: ['webjs doctor', 'webjs doctor --json', 'webjs doctor --strict', 'webjs doctor --json --strict'],
   },
@@ -243,6 +252,12 @@ function printCommandHelp(name) {
   const width = Math.max(...options.map((o) => o.flag.length));
   console.log('Options:');
   for (const o of options) console.log(`  ${o.flag.padEnd(width)}  ${o.description}`);
+  // Optional per-command prose for surface a flag table cannot carry (doctor's
+  // package.json severity gate is the one that needs it).
+  if (h.notes) {
+    console.log('\nConfig:');
+    for (const line of h.notes) console.log(`  ${line}`);
+  }
   console.log('\nExamples:');
   for (const ex of h.examples) console.log(`  ${ex}`);
   return true;
@@ -679,51 +694,95 @@ async function main() {
     }
     case 'doctor': {
       // Project-health checklist (#266). The checks are PURE (in lib/doctor.js);
-      // this branch only renders them and owns the exit code: non-zero iff any
-      // HARD check FAILS, so CI can gate on it. Warns are informational and do
-      // NOT fail the exit (env drift / pin staleness / version drift are the
-      // app's concern, not a broken toolchain).
-      const { runDoctorChecks } = await import('../lib/doctor.js');
-      const results = await runDoctorChecks(process.cwd());
+      // this branch only renders them and owns the exit code. By default the
+      // exit is non-zero iff a HARD check FAILS; warns are informational (env
+      // drift / pin staleness / version drift are the app's concern, not a
+      // broken toolchain). On top of that, an app declares per-check severity
+      // in its package.json `webjs.doctor.gate` (#1257), which is what lets CI
+      // gate on a chosen subset without `--strict` making every warning fatal.
+      const { runDoctorChecks, readDoctorPolicy, applyDoctorPolicy, DOCTOR_CODES, DOCTOR_SEVERITIES } =
+        await import('../lib/doctor.js');
+      const appDir = process.cwd();
+      const strict = rest.includes('--strict');
+      const asJson = rest.includes('--json');
+
+      // Read the policy FIRST. A key that is not a known code, or a value that
+      // is not a severity, exits 1 without running the checks: a typo silently
+      // ignored would leave CI un-gated while looking gated, which is the worst
+      // failure a mechanism like this can have.
+      const policy = readDoctorPolicy(appDir);
+      const configErrors = [
+        ...policy.unknownCodes.map((code) => ({ kind: 'unknown-code', code })),
+        ...policy.badSeverities.map(({ code, value }) => ({ kind: 'bad-severity', code, value })),
+      ];
+      if (configErrors.length > 0) {
+        if (asJson) {
+          console.log(JSON.stringify({
+            results: [],
+            summary: { pass: 0, warn: 0, fail: 0, off: 0, strict, ok: false },
+            configErrors,
+          }));
+          process.exit(1);
+        }
+        console.error('webjs doctor: invalid "webjs.doctor.gate" in package.json\n');
+        for (const e of configErrors) {
+          if (e.kind === 'unknown-code') console.error(`  Unknown check code: ${e.code}`);
+          else console.error(`  Invalid severity for ${e.code}: ${JSON.stringify(e.value)}`);
+        }
+        console.error(`\n  Valid severities: ${DOCTOR_SEVERITIES.join(' / ')}`);
+        console.error(`  Valid codes: ${Object.values(DOCTOR_CODES).join(', ')}`);
+        process.exit(1);
+      }
+
+      const results = applyDoctorPolicy(await runDoctorChecks(appDir), policy.gate);
+      // Counts come off the EFFECTIVE severity, not the raw status, so a gated
+      // code lands in the bucket the app asked for. With no gate the two are
+      // identical (a `fail` defaults to `error`, a `warn` to `warn`), which is
+      // what keeps an un-configured app byte-identical to before.
       const counts = results.reduce((acc, r) => {
-        acc[r.status] = (acc[r.status] || 0) + 1;
+        acc[r.severity] = (acc[r.severity] || 0) + 1;
         return acc;
       }, /** @type {Record<string, number>} */ ({}));
       const pass = counts.pass || 0;
       const warn = counts.warn || 0;
-      const fail = counts.fail || 0;
+      const fail = counts.error || 0;
+      const off = counts.off || 0;
       // `--strict` also fails the exit on warnings, so an agent can gate on a
       // fully-clean toolchain (drift / staleness / pin freshness) in a fix loop,
       // not just on a hard toolchain break. Default keeps warnings non-fatal.
-      const strict = rest.includes('--strict');
       const failing = fail > 0 || (strict && warn > 0);
 
-      // --json emits the raw DoctorResult[] (each carries a stable `code`) plus
-      // a summary, so an agent consumes structured data instead of scraping the
-      // text. Shape mirrors `check --json`: a top-level array-bearing object
-      // with a `summary` count. The non-zero exit is preserved (an agent gates
-      // on the exit code AND parses the report).
-      if (rest.includes('--json')) {
+      // --json emits the raw DoctorResult[] (each carries a stable `code` and
+      // its effective `severity`) plus a summary, so an agent consumes
+      // structured data instead of scraping the text. Shape mirrors `check
+      // --json`: a top-level array-bearing object with a `summary` count. The
+      // non-zero exit is preserved (an agent gates on the exit code AND parses
+      // the report).
+      if (asJson) {
         console.log(JSON.stringify({
           results,
-          summary: { pass, warn, fail, strict, ok: !failing },
+          summary: { pass, warn, fail, off, strict, ok: !failing },
         }));
         if (failing) process.exit(1);
         break;
       }
 
-      const marker = { pass: '[pass]', warn: '[warn]', fail: '[fail]' };
+      const marker = { pass: '[pass]', off: '[off]', warn: '[warn]', error: '[fail]' };
       console.log('webjs doctor: project-health checklist\n');
       for (const r of results) {
-        console.log(`  ${marker[r.status]} ${r.name} (${r.code})`);
+        // Name the gate whenever it moved a result off its default, so the
+        // reason a warning is fatal (or silenced) is on the line itself.
+        const dflt = r.status === 'fail' ? 'error' : 'warn';
+        const gated = r.status !== 'pass' && r.severity !== dflt ? `, gated: ${r.severity}` : '';
+        console.log(`  ${marker[r.severity]} ${r.name} (${r.code}${gated})`);
         console.log(`    ${r.message}`);
         if (r.fix && r.status !== 'pass') console.log(`    Fix: ${r.fix}`);
         console.log();
       }
-      console.log(`  ${pass} passed, ${warn} warning(s), ${fail} failed.`);
+      console.log(`  ${pass} passed, ${warn} warning(s), ${fail} failed${off > 0 ? `, ${off} silenced` : ''}.`);
       if (failing) {
         const reason = fail > 0
-          ? `${fail} hard check(s) failed. Fix the toolchain issue(s) above.`
+          ? `${fail} check(s) failed. Fix the issue(s) above, or adjust "webjs.doctor.gate" in package.json.`
           : `${warn} warning(s) found and --strict was set.`;
         console.error(`\nwebjs doctor: ${reason}`);
         process.exit(1);
