@@ -98,6 +98,15 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+      # FIRST, because it is what makes every step below able to fail (#1092).
+      # Each of those runs a proof script that boots a real app, and startServer
+      # installs an uncaughtException handler whose graceful shutdown used to
+      # exit 0 unconditionally, so a failed top-level assertion was swallowed and
+      # the step went green on a real regression. This asserts the three arms
+      # that prove the exit code discriminates: a failed assertion is non-zero, a
+      # passing script is 0, and SIGTERM against a live server is still 0.
+      - name: Proof-script exit codes on Bun
+        run: bun test/bun/proof-exit-code.mjs
       # Boot a webjs app under Bun: SSR + TypeScript strip (via amaro, since Bun
       # has no built-in stripper) + a server-action RPC round-trip.
       - name: webjs runtime smoke on Bun
