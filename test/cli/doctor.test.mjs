@@ -1187,3 +1187,34 @@ test('asset-link advisory survives nested html`` templates in ${} holes', async 
     'an unbalanced apostrophe must not desynchronize the scan and resurrect dead markup',
   );
 });
+
+test('asset-link advisory ignores a tag inside a multi-line block comment', async () => {
+  // The interior lines of a block comment carry no marker of their own, which
+  // is what an editor's toggle-block-comment produces. Judging from the tag's
+  // own line prefix alone cannot see it.
+  const dir = tmpDir();
+  write(dir, 'app/layout.ts', [
+    '/*',
+    '  const legacy = html`<link rel="stylesheet" href="/public/legacy.css">`;',
+    '*/',
+    'export default () => html`<link rel="stylesheet" href="/public/live.css">`;',
+  ].join('\n'));
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'warn');
+  assert.doesNotMatch(r.message, /legacy\.css/, 'a block-commented tag emits nothing');
+  assert.match(r.message, /app\/layout\.ts:4 href="\/public\/live\.css"/);
+});
+
+test('asset-link advisory is not confused by balanced CSS comments in a style block', async () => {
+  // A `<style>` block legitimately contains /* */ pairs. Balanced ones must
+  // leave the backward scan where it started.
+  const dir = tmpDir();
+  write(dir, 'app/layout.ts', [
+    'export default () => html`',
+    '  <style>/* tokens */ :root { --a: 1 } /* end */</style>',
+    '  <link rel="stylesheet" href="/public/after.css">`;',
+  ].join('\n'));
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /after\.css/);
+});

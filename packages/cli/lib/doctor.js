@@ -1173,10 +1173,17 @@ async function readAppBasePath(appDir) {
  */
 function isCommentedOut(src, idx) {
   const before = src.slice(0, idx);
+  // Unclosed block openers, the same backward test for both comment families.
+  // Neither `<!--` nor `/*` nests, so "the nearest opener is closer than the
+  // nearest closer" is exact, and it needs no state, which is what the two
+  // deleted lexers got wrong. This is what covers a MULTI-LINE block whose
+  // interior lines carry no marker of their own, the shape an editor's
+  // toggle-block-comment produces.
   if (before.lastIndexOf('<!--') > before.lastIndexOf('-->')) return true;
+  if (before.lastIndexOf('/*') > before.lastIndexOf('*/')) return true;
+  // A `//` line comment has no closer, so it is judged from the tag's own line.
   const lineStart = before.lastIndexOf('\n') + 1;
-  const prefix = before.slice(lineStart).trim();
-  return prefix.startsWith('//') || prefix.startsWith('/*') || prefix.startsWith('*');
+  return before.slice(lineStart).trimStart().startsWith('//');
 }
 
 /**
