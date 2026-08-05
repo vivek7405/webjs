@@ -650,6 +650,69 @@ test('asyncReplace: the stream\'s OWN chunk commit throw reaches the boundary an
   assert.equal(owner.querySelector('p'), null);
 });
 
+test('asyncReplace: a mapper throw is the author\'s code too, so it stays at the console', async () => {
+  // The mapper sits in the same span as the iterable on purpose: it is the
+  // author's function, not a render. Asserted so the docs claim about what
+  // reaches the boundary is backed rather than assumed.
+  const seen = [];
+  const logged = [];
+  const owner = document.createElement('owner-el');
+  owner._handleRenderError = (err) => { seen.push(err); };
+
+  async function* gen() { yield 'chunk'; }
+  const origError = console.error;
+  console.error = (...args) => { logged.push(args.join(' ')); };
+  try {
+    render(html`<div>${asyncReplace(gen(), () => { throw new Error('mapper-boom'); })}</div>`, owner);
+    await assertNothingEscapes(async () => { await tick(); });
+  } finally {
+    console.error = origError;
+  }
+
+  assert.equal(seen.length, 0, 'a mapper throw must not reach the boundary');
+  assert.equal(logged.length, 1);
+  assert.match(logged[0], /mapper-boom/);
+});
+
+test('asyncReplace: a nested watch throw does NOT stop the stream', async () => {
+  // Only a throw from the CHUNK COMMIT stops the loop. A directive nested
+  // inside a committed chunk throws from its own handler, outside the loop
+  // entirely, so the stream keeps pulling. The docs used to bind the stop to
+  // both cases; this is what makes that claim checkable.
+  const seen = [];
+  const owner = document.createElement('owner-el');
+  owner._handleRenderError = (err) => { seen.push(err); };
+
+  const inner = signal(html`<p>b</p>`);
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  let yielded = 0;
+  async function* gen() {
+    yielded++; yield html`<span>${watch(inner)}</span>`;
+    await gate;
+    yielded++; yield html`<em>second</em>`;
+  }
+  render(html`<div>${asyncReplace(gen())}</div>`, owner);
+
+  await assertNothingEscapes(async () => {
+    await tick();
+    inner.set(html`<section title=${poison}>bad</section>`);
+    await tick();
+  });
+  assert.equal(seen.length, 1, 'the nested throw still reaches the boundary');
+
+  release();
+  await tick();
+  assert.equal(yielded, 2, 'the stream keeps pulling after a NESTED throw');
+});
+
+// Not covered here: a chunk commit throw with NO component owner (a bare
+// `render()` into a plain container). It rethrows rather than being
+// swallowed, which is what `watch` and `until` already do there, but the
+// surfacing is an unhandled rejection and this runner claims those itself, so
+// asserting it would fail the test it is asserting in. It is stated in both
+// doc surfaces instead.
+
 test('asyncReplace: an ITERATION throw is unchanged, logged and never routed', async () => {
   const seen = [];
   const logged = [];
