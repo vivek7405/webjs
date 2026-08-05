@@ -95,7 +95,7 @@ lit ships no built-in router. You bring your own (vaadin-router, lit-router, etc
 
 Stencil ships a router closer in spirit to WebJs's, but it does not have the layouts-stay-mounted optimization. Every navigation re-mounts the full component tree.
 
-Hotwire's Turbo Drive is the closest precedent. Same DOM-swap philosophy, same scroll-restoration logic, similar form integration. WebJs's version is implemented from scratch in TypeScript with web-component awareness (it walks `composedPath()` for shadow-DOM-piercing link detection), but the design borrows heavily.
+Hotwire's Turbo Drive is the closest precedent. Same DOM-swap philosophy, same scroll-restoration logic, similar form integration. WebJs's version is written from scratch in plain JavaScript with JSDoc types, like the rest of the framework packages, and it is web-component aware (it walks `composedPath()` for shadow-DOM-piercing link detection), but the design borrows heavily.
 
 
 # Why I shipped this in core
