@@ -55,37 +55,45 @@ test('a fenced sample keeps the interpolation holes and indentation the prose pi
   assert.match(layout, /\n {2,}\S/, 'indentation survives inside the fence');
 });
 
-test('a sample that reaches the corpus reaches it whole', () => {
+test('a page whose samples all reached the corpus has none of them mangled', () => {
   // The loss this catches is per-character: an extractor step that quietly
   // deletes something. A `<code>` strip running AFTER entity decoding used to
   // delete the tags out of a sample TEACHING `&lt;code&gt;`, leaving the block
   // present and its lesson gone, which is the shape that survives review.
   //
-  // Anchored on the sample's first line so it asks only "did this arrive
-  // intact", not "did it arrive". Whether a block reaches the corpus at all is
-  // a different question, answered by the fence test above, and one page
-  // (/docs/metadata-routes) already fails it on main for an unrelated reason:
-  // the template-isolation heuristic truncates the page.
+  // Scoped per PAGE, by comparing authored blocks against fenced ones, rather
+  // than per sample. Anchoring on a sample's own text cannot work: the first
+  // thing a mangling breaks is the text you would anchor on, so the check
+  // skips itself exactly when it should fire. A page whose counts agree had
+  // every block extracted, so every one of them must also be intact.
+  //
+  // /docs/metadata-routes is the one page that does not qualify, and it does
+  // not on main either: the template-isolation heuristic truncates it, so 5 of
+  // its 9 samples never reach the corpus at all. That is a separate defect,
+  // and the count comparison is what keeps this test from quietly absorbing it.
   return Promise.all([]).then(async () => {
     const pages = await getDocPages();
     const mangled: string[] = [];
-    let compared = 0;
+    let comparedPages = 0;
+    let comparedSamples = 0;
     for (const page of pages) {
       const src = await readFile(new URL(`../../app${page.path}/page.ts`, import.meta.url), 'utf8');
-      for (const m of src.matchAll(/<code-block(?=[\s>])[^>]*>([\s\S]*?)<\/code-block>/g)) {
+      const authored = [...src.matchAll(/<code-block(?=[\s>])[^>]*>([\s\S]*?)<\/code-block>/g)];
+      if (!authored.length) continue;
+      const fenced = (page.markdown.match(/^```/gm) ?? []).length / 2;
+      if (fenced !== authored.length) continue; // page is truncated; not this test's question
+      comparedPages++;
+      for (const m of authored) {
         // A sample carrying a template hole has no source text to compare:
         // what it says is only known at render time.
         if (m[1].includes('${')) continue;
-        const authored = decodeEntities(m[1]).replace(/\n+$/, '');
-        const firstLine = authored.split('\n')[0];
-        if (!firstLine.trim() || !page.markdown.includes(firstLine)) continue;
-        compared++;
-        if (!page.markdown.includes(authored)) {
-          mangled.push(`${page.path}: ${JSON.stringify(authored.slice(0, 70))}`);
-        }
+        comparedSamples++;
+        const text = decodeEntities(m[1]).replace(/\n+$/, '');
+        if (!page.markdown.includes(text)) mangled.push(`${page.path}: ${JSON.stringify(text.slice(0, 70))}`);
       }
     }
-    assert.ok(compared > 300, `only ${compared} samples compared, so this proves little`);
+    assert.ok(comparedPages > 30, `only ${comparedPages} pages had every sample extracted, so this proves little`);
+    assert.ok(comparedSamples > 300, `only ${comparedSamples} samples compared, so this proves little`);
     assert.deepEqual(mangled.slice(0, 5), [], `${mangled.length} samples arrived in the corpus with characters missing`);
   });
 });
