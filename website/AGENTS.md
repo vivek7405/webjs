@@ -44,10 +44,10 @@ website/
                        code identifier keeps its own casing inside a label
                        (createAuth, Drizzle), which is what every comparable
                        docs site does. A doc page's h1 reads exactly as its
-                       nav label. Both rules are enforced, by the
-                       test/ssr/docs-links.test.ts tests "every docs sidebar
-                       label and section title is Title Case" and "a doc page
-                       h1 matches its sidebar label". The /ui sidebar is
+                       nav label. Two tests in test/ssr/docs-links.test.ts
+                       enforce all of this, "every docs sidebar label and
+                       section title is Title Case" and "a doc page h1
+                       matches its sidebar label". The /ui sidebar is
                        deliberately exempt: its labels are component names
                        from the live registry, so they are identifiers by
                        construction.
