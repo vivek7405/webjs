@@ -119,21 +119,19 @@ export function renderEntryBody(md: string): string {
       else pushBlock({ kind: 'ul', marker, items: [[text]] });
     } else if (itemOpen && /^ {2,}\S/.test(line)) {
       const text = line.trim();
-      const prev = blocks[blocks.length - 1];
       // A lazy continuation of the sub-item when a nested list is open, a
       // soft-wrapped line when a paragraph is, and a fresh paragraph when a
       // blank line closed whatever came before.
+      //
+      // Indentation DEPTH is deliberately not read here, or in the nested
+      // bullet branch above. Every indented bullet in the corpus sits at two
+      // spaces, so a deeper run has no instance to render, and honouring
+      // depth for real means recursive sub-lists. Reading it in one branch
+      // and not the other is worse than ignoring it in both, since a 4-space
+      // paragraph would then stay in its bullet while a 4-space bullet is
+      // still hoisted to a sibling.
       if (openBlock && openBlock.kind === 'ul') openBlock.items[openBlock.items.length - 1].push(text);
       else if (openBlock && openBlock.kind === 'p') openBlock.lines.push(text);
-      // Indented past a nested bullet's own marker, so CommonMark reads it as
-      // a continuation paragraph of that bullet. Treating it as parent-level
-      // prose would hoist it out of the bullet AND split the list in two,
-      // which is the same fragmentation the resume rule above prevents, one
-      // level down. `openBlock` deliberately stays null so a following
-      // 2-space line is still parent-level prose.
-      else if (!openBlock && prev && prev.kind === 'ul' && /^ {4,}\S/.test(line)) {
-        prev.items[prev.items.length - 1].push(text);
-      }
       else pushBlock({ kind: 'p', lines: [text] });
     } else if (line.trim() === '') {
       if (itemOpen) openBlock = null;
