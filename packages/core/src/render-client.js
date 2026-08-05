@@ -1866,23 +1866,19 @@ function reconcileRepeat(part, value) {
       }
     }
 
-    // Remove any keys that remain in the old map. Both the removal and the
-    // unmapping sit in a `finally`, in that order, so at any throw point
-    // `state.map` holds exactly the rows still in the document: a dispose
-    // throw still removes the row AND drops its key, while a removal that
-    // itself refuses keeps the key, because the row it failed to remove is
-    // still there. Unmapping FIRST would trade one broken invariant for its
-    // mirror image, leaving that row in the document described by neither
-    // map, which is the untracked-orphan class this whole repair is about.
+    // Remove any keys that remain in the old map. The key leaves the map
+    // BEFORE its row is touched and the removal is in a `finally`, so at any
+    // throw point `state.map` holds exactly the leftovers this pass has not
+    // reached, and a row whose dispose threw still leaves the document.
     // Iterating a snapshot keeps the delete obviously safe rather than
     // relying on the reader knowing that deleting during a Map iteration is
     // legal.
     for (const [k, inst] of [...state.map]) {
+      state.map.delete(k);
       try {
         disposeInstance(inst);
       } finally {
         removeBetween(inst.startNode, inst.endNode);
-        state.map.delete(k);
       }
     }
     state.map = newMap;
@@ -1904,29 +1900,29 @@ function reconcileRepeat(part, value) {
     // re-applies whatever the throw skipped.
     //
     // That claim covers the REMOVAL loop as well as the walk, and only
-    // because the loop was written to earn it. Each leftover is removed and
-    // unmapped together in a `finally`, so it is either gone from both the
-    // map and the document or still in both, never one without the other.
-    // Without that, a throw mid-removal would merge `newMap` over a
-    // `state.map` still holding disposed, detached rows: the row the app
-    // DELETED stays on screen, the survivors reorder, and a later render that
-    // re-adds that key reinserts the detached instance. The invariant, at any
-    // throw point on either branch: every instance still in the document is
-    // described by exactly one of the two maps, `newMap` for the processed
-    // new keys and `state.map` for the leftovers not fully removed, which is
+    // because the loop was written to earn it. It drops each key before
+    // touching that row and removes the nodes in a `finally`, so a throw
+    // mid-removal cannot merge `newMap` over a `state.map` still holding
+    // disposed, detached rows. That was the failure: the row the app DELETED
+    // stayed on screen, the survivors reordered, and a later render that
+    // re-added that key reinserted the detached instance. The invariant, at
+    // any throw point on either branch: every instance still in the document
+    // is described by exactly one of the two maps, `newMap` for the processed
+    // new keys and `state.map` for the leftovers not reached yet, which is
     // what makes the merge below correct.
     //
-    // The residual, scoped honestly: if `removeBetween` itself refuses part
-    // way (it only calls `removeChild` on nodes the renderer owns, so it
-    // takes a throwing DOM), that row keeps its key and its remaining nodes,
-    // so the invariant above still holds AT THE THROW and a re-add reuses the
-    // row rather than duplicating it. What that row loses is its POSITION,
-    // since the removal already took its start marker and `moveRange` has no
-    // range left to move. And the guarantee is not permanent: those nodes can
-    // never be removed afterwards either, because `removeBetween` returns
-    // early once the start marker is gone, so the next pass that treats the
-    // key as a leftover unmaps it and the remnant is left untracked. One
-    // refusing DOM removal costs one row, deferred rather than prevented.
+    // The residual is a throw from `removeBetween` ITSELF, which only calls
+    // `removeChild` on nodes the renderer owns, so it takes a throwing DOM to
+    // reach. That row is already unmapped, so its remaining nodes stay in the
+    // document tracked by nothing and a later re-add of that key builds a
+    // second row beside them. Unmapping AFTER the removal instead would keep
+    // that key, and it is measurably worse rather than better: the row is
+    // half removed, its start marker gone and its end marker still in place,
+    // so the re-add hits the reuse branch and `moveRange` re-attaches the
+    // lone start marker AFTER the end marker. The next removal of that key
+    // then walks forward from a start that never reaches its end, taking the
+    // repeat part's own marker and every following sibling with it, and the
+    // region is dead for good. One untracked row beats a destroyed list.
     //
     // Deliberately NOT a teardown-and-rebuild of the region. Rebuilding is
     // the obvious defensive move and it is measurably worse: it discards node
@@ -1955,11 +1951,11 @@ function teardownRepeat(state) {
   // for the same reason: a throw part-way must not leave already-removed
   // instances in the map. The trailing `clear()` stays as a no-op safety net.
   for (const [k, inst] of [...state.map]) {
+    state.map.delete(k);
     try {
       disposeInstance(inst);
     } finally {
       removeBetween(inst.startNode, inst.endNode);
-      state.map.delete(k);
     }
   }
   state.map.clear();

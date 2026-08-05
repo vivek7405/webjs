@@ -264,25 +264,26 @@ suite('directive commit throws (browser)', () => {
     throwsMatching(() => { render(idRows([{ id: 1, n: 'one' }]), container); }, /rm-boom/);
     ul.removeChild = origRemove;
 
-    render(idRows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }, { id: 3, n: 'three' }]), container);
+    render(idRows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }]), container);
     const after = [...container.querySelectorAll('li')];
 
-    // Every key renders exactly once. Key 1 never left, so it is the same
-    // element. Key 2 left the map together with its row, so it MISSES and
-    // rebuilds. Key 3 never left either, because its row never left the
-    // document, so it HITS and reuses the row already there instead of
-    // building a second one beside it, which is the whole point.
-    assert.equal(after.length, 3);
+    // Key 1 never left the map, so it is the same element. Key 2 left the map
+    // together with its row, so it MISSES and rebuilds rather than having a
+    // disposed instance handed back.
     assert.strictEqual(after.filter((li) => li === liOne).length, 1);
-    assert.strictEqual(after.filter((li) => li === liThree).length, 1);
     assert.ok(!after.includes(liTwo), 'a removed row must not be resurrected');
-    assert.deepEqual([...after].map((li) => li.textContent).sort(), ['one', 'three', 'two']);
+    assert.strictEqual(after.filter((li) => li.textContent === 'two').length, 1);
 
-    // Its ORDER is the residual, and it is asserted rather than glossed: the
-    // refused removal already took the row's start marker, so the reconciler
-    // can no longer move that range and the row keeps whatever slot it had.
-    // One refusing DOM removal costs that row its position.
-    assert.strictEqual(after[0], liThree);
+    // `liThree` is the named residual: the DOM removal itself refused, so
+    // those nodes stayed, and its key was already dropped, so nothing tracks
+    // them. What the trade buys is that the region still RECONCILES, which is
+    // the assertion that matters and the one only a real browser settles.
+    assert.strictEqual(liThree.parentNode, ul);
+    render(idRows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }, { id: 4, n: 'four' }]), container);
+    assert.deepEqual(
+      [...container.querySelectorAll('li')].map((li) => li.textContent).filter((t) => t !== 'three'),
+      ['one', 'two', 'four'],
+    );
   });
 
   test('removing rows after recovery leaves nothing behind', () => {

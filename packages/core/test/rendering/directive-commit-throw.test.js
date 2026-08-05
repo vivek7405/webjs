@@ -249,26 +249,35 @@ test('repeat: a throw INSIDE the removal loop leaves no leftover still mapped', 
     return origRemove(node);
   };
 
-  // Drop keys 2 and 3. Key 2 is removed and unmapped together; key 3's DOM
-  // removal refuses part-way, so it keeps BOTH its nodes and its key.
+  // Drop keys 2 and 3. Key 2 is processed cleanly; key 3's DOM removal
+  // refuses part-way.
   assert.throws(() => { render(rows([{ id: 1, n: 'one' }]), container); }, /rm-boom/);
   ul.removeChild = origRemove;
-  assert.equal(liThree.parentNode, ul, 'the refused removal leaves its nodes behind');
 
-  // One render that re-adds both, which is where the two halves of the
-  // invariant show up as opposite outcomes. Key 2 left the map with its row,
-  // so it MISSES and builds fresh (it used to stay mapped, and the detached
-  // instance was moved back in with its refs already unbound). Key 3 never
-  // left the map, because its row never left the document, so it HITS and
-  // reuses the row already there rather than building a duplicate beside it.
-  render(rows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }, { id: 3, n: 'three' }]), container);
+  // Key 2 came out of the map before its row was touched, so re-adding it
+  // builds fresh. It used to stay mapped, and the detached instance was
+  // moved back in with its refs already unbound.
+  render(rows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }]), container);
   const at = (text) => [...container.querySelectorAll('li')].filter((li) => li.textContent === text);
 
   assert.equal(at('one').length, 1);
   assert.equal(at('two').length, 1, 'exactly one row for the re-added key');
   assert.notEqual(at('two')[0], liTwo, 'a disposed instance must not be resurrected');
-  assert.equal(at('three').length, 1, 'the row that could not be removed must not be duplicated');
-  assert.equal(at('three')[0], liThree);
+
+  // `liThree` is the named residual: `removeBetween` itself refused, so those
+  // nodes stayed, and the key was already dropped, so nothing tracks them.
+  // The list still RECONCILES, which is what the residual is traded for. Do
+  // not "fix" this by unmapping after the removal instead: that keeps the key
+  // pointing at a half-removed row whose start marker is gone, the re-add
+  // re-attaches that marker after its own end marker, and the next removal
+  // walks off the end and takes the whole region with it.
+  assert.equal(liThree.parentNode, ul);
+  render(rows([{ id: 1, n: 'one' }, { id: 2, n: 'two' }, { id: 4, n: 'four' }]), container);
+  assert.deepEqual(
+    [...container.querySelectorAll('li')].map((li) => li.textContent).filter((t) => t !== 'three'),
+    ['one', 'two', 'four'],
+    'the region keeps reconciling around the untracked remnant',
+  );
 });
 
 test('clearInstance: a throwing ref unbind does not wedge template swaps', () => {
