@@ -366,7 +366,28 @@ calling an action), re-enable it and delete the assertion in
 
 ```sh
 cd website && npm run dev       # http://localhost:5001
+cd website && npm run typecheck # tsc --noEmit, the same gate CI runs
 ```
+
+`npm run typecheck` mirrors the kit sources in before it runs `webjs typecheck`,
+because the mirror is gitignored and without it `tsc` reports 45 errors that
+have nothing to do with your change (17 unresolved-module, 19 implicit-any, 9
+side-effect-import) and bury any real one. The CI `apps` job runs the same
+script, so a type break reds the build instead of riding onto `main` unnoticed
+(#1260).
+
+What it covers is exactly the tsconfig `include`: `app/`, `components/`,
+`lib/`, and `modules/`. **`test/` is deliberately outside it.** Adding
+`test/**/*` surfaces 17 pre-existing errors across 5 of its 25 TypeScript
+files (a `never` argument in the sitemap test, `LayoutProps` calls missing
+`params` / `searchParams` / `url`, and an `unknown` not assignable to
+`TemplateResult` in the determinism test), so including it would red the gate
+on day one. Fixing those is its own task.
+
+Across apps the gate covers `website/` only, which is a SCOPE decision rather
+than a claim about the others. Measured: `examples/blog` is genuinely red (13
+errors), but `docs/` and `packages/ui/packages/website` both typecheck clean
+today, so gating them is a small, separate change and not a blocked one.
 
 `npm run dev` and `webjs dev` behave identically (#550): `webjs.dev.before`
 mirrors the kit sources in and compiles `public/tailwind.css`, and

@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "webjs dev --port ${PORT:-5001}",
     "start": "webjs start",
+    "typecheck": "node scripts/copy-registry.mjs && webjs typecheck",
     "pretest": "node scripts/copy-registry.mjs",
     "test": "webjs test",
     "pretest:browser": "node scripts/copy-registry.mjs",
@@ -69,7 +70,8 @@
     "@types/node": "^24.0.0",
     "@web/test-runner": "^0.20.0",
     "@web/test-runner-playwright": "^0.11.0",
-    "playwright": "^1.59.0"
+    "playwright": "^1.59.0",
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=24.0.0"

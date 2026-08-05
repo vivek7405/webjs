@@ -53,7 +53,13 @@ export function renderEntryBody(md: string): string {
   let paras: Para[] = [];
   let open: Para | null = null;
 
-  function startPara(text: string) { open = [text]; paras.push(open); }
+  // Returns the paragraph rather than assigning `open` itself. TypeScript's
+  // control-flow analysis ignores a write made inside a nested function when
+  // it narrows a `let` read in the enclosing scope, so an assigning version
+  // leaves `open` narrowed to `null` at the read below and the truthiness
+  // guard there narrows it to `never`. Assigning at each call site keeps the
+  // write in the enclosing function's own control-flow graph.
+  function startPara(text: string): Para { const p: Para = [text]; paras.push(p); return p; }
 
   function renderParas(ps: Para[]): string {
     // The overwhelmingly common entry is a single line with no body. Emit it
@@ -95,18 +101,17 @@ export function renderEntryBody(md: string): string {
       startList();
       itemOpen = true;
       paras = [];
-      open = null;
-      startPara(line.slice(2).trim());
+      open = startPara(line.slice(2).trim());
     } else if (itemOpen && /^ {2,}[-*] /.test(line)) {
       // Its own paragraph, marker dropped. Depth is not read, so a deeper
       // run groups exactly like a 2-space one instead of nesting.
-      startPara(line.trim().slice(2).trim());
+      open = startPara(line.trim().slice(2).trim());
     } else if (itemOpen && /^ {2,}\S/.test(line)) {
       const text = line.trim();
       // Soft-wrapped continuation of the open paragraph, or the start of a
       // fresh one when a blank line closed the last.
       if (open) open.push(text);
-      else startPara(text);
+      else open = startPara(text);
     } else if (line.trim() === '') {
       if (itemOpen) open = null;
       else flushItem();
