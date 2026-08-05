@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'no
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { init } from '../src/commands/init.js';
+import { getConfig } from '../src/utils/get-config.js';
 
 const origFetch = globalThis.fetch;
 
@@ -330,7 +331,11 @@ test('init: keeps settings from a config carrying unknown keys', async () => {
     const cfg = JSON.parse(readFileSync(join(d, 'components.json'), 'utf8'));
     assert.equal(cfg.aliases.utils, 'src/lib/cn', 'aliases survive a strict-schema miss');
     assert.equal(cfg.tailwind.css, 'src/app.css');
-    assert.equal(cfg.rsc, true, 'unknown keys are carried through, not dropped');
+    // Unknown keys are DROPPED, not carried through: the schema is strict, so
+    // writing one back produces a config `add` / `diff` / `info` throw on. The
+    // file must stay readable by the commands that consume it.
+    assert.equal(cfg.rsc, undefined, 'unknown keys are not written back');
+    assert.doesNotThrow(() => getConfig(d), 'what init wrote must parse');
   } finally {
     globalThis.fetch = origFetch;
     rmSync(d, { recursive: true });
@@ -355,6 +360,30 @@ test('init: refuses to replace a components.json it cannot parse', async () => {
   } finally {
     process.exit = origExit;
     console.error = origErr;
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+});
+
+// A declared alias map may omit keys the schema defaults. Reading the config
+// raw skips that default-filling, so taking the map wholesale left `utils`
+// undefined and crashed init after it had already written the config.
+test('init: a partial alias map is filled from the defaults, not left undefined', async () => {
+  stubFetch();
+  const d = tmp();
+  try {
+    writeFileSync(join(d, 'components.json'), JSON.stringify({
+      $schema: 'https://ui.webjs.dev/schema.json',
+      style: 'default',
+      tailwind: { css: 'styles/globals.css', baseColor: 'neutral', cssVariables: true },
+      aliases: { components: 'components', ui: 'components/ui', lib: 'lib' },
+    }));
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+    const cfg = JSON.parse(readFileSync(join(d, 'components.json'), 'utf8'));
+    assert.equal(cfg.aliases.utils, 'lib/utils/cn', 'the missing key takes the default');
+    assert.equal(cfg.aliases.components, 'components', 'declared keys are still preserved');
+    assert.ok(existsSync(join(d, 'lib', 'utils', 'cn.ts')), 'and the helper is actually written');
+  } finally {
     globalThis.fetch = origFetch;
     rmSync(d, { recursive: true });
   }

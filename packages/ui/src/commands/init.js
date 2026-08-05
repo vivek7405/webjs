@@ -87,7 +87,11 @@ export const init = new Command()
     if (keep) {
       logger.info(`${CONFIG_FILE} already exists: keeping its settings (use --overwrite to reset them).`);
     }
-    const aliases = (keep && existing.aliases) || DEFAULT_ALIASES;
+    // Layer over the defaults rather than replacing them: the schema gives
+    // several alias keys defaults, so a hand-written map may legitimately omit
+    // one, and reading it raw (above) skips that default-filling. Taking the
+    // map wholesale left `utils` undefined and crashed on the write.
+    const aliases = { ...DEFAULT_ALIASES, ...((keep && existing.aliases) || null) };
     const initialCss = (keep && existing.tailwind && existing.tailwind.css) || DEFAULT_TAILWIND_CSS;
     const initialBaseColor = (keep && existing.tailwind && existing.tailwind.baseColor) || 'neutral';
 
@@ -105,7 +109,7 @@ export const init = new Command()
             name: 'baseColor',
             message: 'Base color?',
             choices: BASE_COLORS.map((c) => ({ title: c, value: c })),
-            initial: 0,
+            initial: Math.max(0, BASE_COLORS.indexOf(initialBaseColor)),
           },
           {
             type: opts.css ? null : 'text',
@@ -119,12 +123,14 @@ export const init = new Command()
       answers = { ...answers, ...r };
     }
 
+    // Built from KNOWN keys only. The schema is `.strict()`, so carrying an
+    // unrecognised key through here would write a file that `getConfig` (and
+    // therefore `add` / `diff` / `info`) throws on. Preserving a project's
+    // settings means its VALUES, not arbitrary extra fields.
     const config = {
-      ...(keep ? existing : null),
       $schema: 'https://ui.webjs.dev/schema.json',
       style: (keep && existing.style) || 'default',
       tailwind: {
-        ...(keep && existing.tailwind ? existing.tailwind : null),
         css: answers.css,
         baseColor: answers.baseColor,
         cssVariables: keep && existing.tailwind && existing.tailwind.cssVariables !== undefined

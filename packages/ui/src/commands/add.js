@@ -79,7 +79,7 @@ async function writeRegistryFile(cwd, config, item, file, opts) {
   // docs tell you to retune. `--yes` means "do not ask me about overwrites",
   // which is the normal non-interactive invocation, so honouring it here would
   // replace edited source on every `add`. Only an explicit `--overwrite` may.
-  if (existsSync(target) && !opts.overwrite && helperTarget(config, item)) {
+  if (existsSync(target) && !opts.overwrite && helperTarget(config, item, file)) {
     logger.info(`${relative(cwd, target)} already exists: keeping it.`);
     return;
   }
@@ -186,7 +186,7 @@ function resolveTarget(cwd, config, item, file) {
   // nothing imports while the components resolve to the aliased one.
   // The dom helper is the utils file's SIBLING, the same relationship the
   // rewrite assumes, so the two cannot disagree.
-  const helper = helperTarget(config, item);
+  const helper = helperTarget(config, item, file);
   if (helper) return helper;
 
   // explicit `target` wins
@@ -219,17 +219,22 @@ function resolveTarget(cwd, config, item, file) {
  *
  * @param {{ resolvedPaths?: { utils?: string } }} config parsed components.json
  * @param {{ name?: string }} [item] the registry item
+ * @param {{ path?: string }} [file] the file within that item
  * @returns {string | null}
  */
-function helperTarget(config, item) {
+function helperTarget(config, item, file) {
   const utilsAbs = config?.resolvedPaths?.utils;
   if (!utilsAbs || !item) return null;
-  // No multi-file escape hatch here on purpose. `rewriteUtilsImport` ALWAYS
-  // retargets component imports to `resolvedPaths.utils`, so routing the write
-  // anywhere else, for any registry, recreates the orphan-copy bug this exists
-  // to prevent. The write and the rewrite have to answer alike or not at all.
-  if (item.name === 'lib-utils') return utilsAbs;
-  if (item.name === 'lib-dom') return join(dirname(utilsAbs), 'dom.ts');
+  // Matched per FILE, not per item. `rewriteUtilsImport` always retargets
+  // component imports to `resolvedPaths.utils`, so the ONE file those imports
+  // resolve to has to be written there or it is an orphan. Any other file a
+  // custom registry ships under the same item is not that file, so it keeps
+  // its manifest target: routing them all here would collapse them onto one
+  // path and lose every file but the last.
+  if (!file) return null;
+  const name = basename(file.path || '');
+  if (item.name === 'lib-utils' && name === 'utils.ts') return utilsAbs;
+  if (item.name === 'lib-dom' && name === 'dom.ts') return join(dirname(utilsAbs), 'dom.ts');
   return null;
 }
 
