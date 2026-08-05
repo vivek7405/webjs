@@ -46,9 +46,12 @@ export const BLUESKY_URL = 'https://bsky.app/profile/webjs.bsky.social';
  * a small client-side toolkit, and whatsapp-web.js all answer to some spelling
  * of it. A `sameAs` array is the explicit statement that resolves them.
  *
- * Every JSON-LD node that carries a `sameAs` imports THIS array, so the two
- * (the Organization on the home page and the SoftwareApplication on
- * /what-is-webjs) cannot drift apart. A test asserts they stay identical.
+ * Every JSON-LD node that identifies the PROJECT imports THIS array, so no
+ * two of them can drift apart. That is the Organization and the
+ * SoftwareApplication on the home page plus the SoftwareApplication on
+ * /what-is-webjs, and any later one, since the test derives the carriers from
+ * what is rendered rather than from a list. The WebSite node is not one of
+ * them: it describes this site as a document collection, not the project.
  *
  * Only list a property that resolves and is project-controlled. A dead URL in
  * `sameAs` is a negative signal, so a shorter verified list beats a longer

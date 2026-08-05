@@ -8,15 +8,19 @@
  * is contested (a dormant Java framework, a client-side toolkit, and the
  * common short form of whatsapp-web.js all collide with it).
  *
- * Three nodes carry the claim: the `Organization` and the
- * `SoftwareApplication` on the home page, and the `SoftwareApplication` on
- * /what-is-webjs, which is the page that does the disambiguating. The two
- * SoftwareApplication nodes share a name and a url with no `@id` between
- * them, so they describe one entity and cannot make different claims.
+ * The claim belongs on every node that identifies the PROJECT: the
+ * `Organization` and the `SoftwareApplication` on the home page, and the
+ * `SoftwareApplication` on /what-is-webjs, which is the page that does the
+ * disambiguating. The two SoftwareApplication nodes share a name and a url
+ * with no `@id` between them, so they describe one entity and cannot make
+ * different claims. The `WebSite` node is left out because it describes this
+ * site as a document collection rather than the project.
  *
  * They must all state the SAME graph, which is the whole reason the list
  * lives in one exported constant. This asserts the rendered output, not the
- * constant, so an import that silently stops being used still fails.
+ * constant, so an import that silently stops being used still fails, and it
+ * derives the carriers from what is rendered rather than naming them, so a
+ * node added later cannot quietly opt out.
  */
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -26,6 +30,9 @@ import { createRequestHandler } from '@webjsdev/server';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SITE_DIR = resolve(ROOT, 'website');
+
+/** Every page that emits JSON-LD naming the project. */
+const PAGES = ['/', '/what-is-webjs'];
 
 /** @type {(path: string) => Promise<string>} */
 let getHtml;
@@ -79,21 +86,34 @@ test('the /what-is-webjs SoftwareApplication node claims the same properties', a
   assert.ok(sameAs.includes('https://github.com/webjsdev/webjs'), 'includes the GitHub repo');
 });
 
-test('every node that names the project states an identical graph', async () => {
-  // The anti-drift assertion, and the reason the list is a shared constant. A
-  // second hand-maintained copy would diverge on the next property added.
-  // Listing the home page's own SoftwareApplication is the point: it is the
-  // node most easily forgotten, being the third on a page whose Organization
-  // already carries the claim.
-  const carriers = [
-    { path: '/', type: 'Organization' },
-    { path: '/', type: 'SoftwareApplication' },
-    { path: '/what-is-webjs', type: 'SoftwareApplication' },
-  ];
-  const [first, ...rest] = await Promise.all(carriers.map((c) => sameAsOf(c.path, c.type)));
-  for (const [i, sameAs] of rest.entries()) {
-    const c = carriers[i + 1];
-    assert.deepEqual(sameAs, first, `${c.type} on ${c.path} emits the same sameAs, in the same order`);
+test('every node that states an entity claim states the same one', async () => {
+  // The anti-drift assertion, and the reason the list is a shared constant.
+  // The carriers are DERIVED from the rendered nodes, not listed here: a
+  // hand-written list would be a second copy of exactly what the shared
+  // constant exists to remove, and a node added later without a sameAs (or
+  // with a different one) would pass it green.
+  const nodes = (await Promise.all(PAGES.map(async (p) => (await jsonLdNodes(await getHtml(p))).map((n) => ({ ...n, page: p }))))).flat();
+
+  const carriers = nodes.filter((n) => n.sameAs !== undefined);
+  assert.ok(carriers.length >= 3, `found the sameAs carriers, got ${carriers.length}`);
+  for (const node of carriers) {
+    assert.deepEqual(
+      node.sameAs,
+      carriers[0].sameAs,
+      `the ${node['@type']} node on ${node.page} emits the same sameAs, in the same order`,
+    );
+  }
+
+  // And the types that identify the PROJECT must be carriers at all, so
+  // deleting the property from one is a failure rather than a smaller set
+  // that still agrees with itself. WebSite is excluded on purpose: it
+  // describes this site as a document collection, not the project, which is
+  // the entity the sameAs claim is about.
+  for (const node of nodes.filter((n) => n['@type'] === 'Organization' || n['@type'] === 'SoftwareApplication')) {
+    assert.ok(
+      Array.isArray(node.sameAs),
+      `the ${node['@type']} node on ${node.page} carries a sameAs`,
+    );
   }
 });
 

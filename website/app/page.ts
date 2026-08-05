@@ -43,8 +43,8 @@ export const metadata = {
       url: SITE_URL,
       logo: `${SITE_URL}/public/favicon.png`,
       // Every owned property, from the one shared list in lib/links.ts, so
-      // this node and the SoftwareApplication on /what-is-webjs state the
-      // same entity graph (#1100).
+      // this node, the SoftwareApplication below it, and the one on
+      // /what-is-webjs all state the same entity graph (#1100).
       sameAs: SAME_AS,
     },
     {

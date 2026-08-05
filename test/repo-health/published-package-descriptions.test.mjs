@@ -61,10 +61,15 @@ function publishedManifests() {
 
 const PKGS = publishedManifests();
 
-/** The subcommands the CLI really has, so `webjs dev` reads as a command. */
+/**
+ * The subcommands the CLI really has, so `webjs dev` reads as a command rather
+ * than as the brand written lowercase. Read out of the CLI's own switch
+ * instead of copied, because a copied list drifts: the prose hook's equivalent
+ * carries `build`, which is a command WebJs deliberately does not have.
+ */
 const CLI_SUBCOMMANDS = new Set(
-  'create dev start test check routes db ui doctor types typecheck mcp vendor help version add init generate migrate push studio seed pin unpin list audit outdated update view diff info build'.split(
-    ' ',
+  [...readFileSync(join(ROOT, 'packages/cli/bin/webjs.js'), 'utf8').matchAll(/case '([a-z][a-z-]*)'/g)].map(
+    (m) => m[1],
   ),
 );
 
@@ -102,6 +107,15 @@ const firstSentence = (s) => s.split(/(?<=\.)\s/)[0];
 // all, which is the one string the repo prose hook refuses to let a tool call
 // write. Assembling it defeats that literal check without weakening it.
 const LOWER = 'web' + 'js';
+
+test('the CLI subcommand set was really read out of the CLI', () => {
+  // A regex that stops matching would empty the set silently, turning the
+  // carve-out off and reporting every bare command as a brand violation.
+  assert.ok(CLI_SUBCOMMANDS.size > 10, `read the CLI switch, got ${CLI_SUBCOMMANDS.size} entries`);
+  for (const cmd of ['dev', 'start', 'check', 'create']) {
+    assert.ok(CLI_SUBCOMMANDS.has(cmd), `covers the ${cmd} command`);
+  }
+});
 
 test('the brand matcher fires on prose and spares a literal token', () => {
   // Without this, a matcher that silently matches nothing (or a carve-out that
