@@ -406,17 +406,20 @@ export function installProcessHandlers(logger, onFatal) {
  * connections (node `server.close`, Bun `server.stop(true)`). Closes the SSE hub,
  * then drains, then exits; hard-exits after 10s if the drain hangs.
  *
- * Exit code, in full. A drain that FAILS is always a failure, so a rejected
- * `closeServer()` and a drain still hanging at the 10s deadline both exit 1
- * whatever started them. When the drain SUCCEEDS the code reports why the
- * process is going down: an operator signal (SIGINT / SIGTERM) is a requested
- * stop and exits 0, while a FATAL shutdown (the `uncaughtException` handler
- * calling `onFatal`) exits 1 even though the drain was clean, because the
- * process is dying from an error and a supervisor reads only the code (systemd
- * `Restart=on-failure`, Docker, Railway, and a CI step running a
- * `test/bun/*.mjs` proof script, whose failed top-level assertion arrives here
- * as an uncaught exception, #1092). So 0 means one thing only: an operator
- * asked for the stop AND it drained cleanly.
+ * Exit code, in full. Three things can force a 1, and only their absence
+ * leaves a 0:
+ *   - a drain that FAILS, so a rejected `closeServer()` and a drain still
+ *     hanging at the 10s deadline both exit 1 whatever started them;
+ *   - a FATAL start (the `uncaughtException` handler calling `onFatal`), which
+ *     exits 1 even when the drain is perfectly clean;
+ *   - a FATAL arriving MID-DRAIN, which upgrades a shutdown an operator signal
+ *     had already begun (see the upgrade-only note on `code` below).
+ * So 0 does NOT mean "a signal started it", it means an operator asked for the
+ * stop AND it drained cleanly AND nothing crashed on the way out. A supervisor
+ * reads only this code (systemd `Restart=on-failure`, Docker, Railway, and a CI
+ * step running a `test/bun/*.mjs` proof script, whose failed top-level assertion
+ * arrives here as an uncaught exception, #1092), so every one of those has to
+ * come back non-zero.
  * @param {{ closeServer: () => Promise<unknown>, hub: SseHub, logger: import('./logger.js').Logger }} opts
  * @returns {(signal: string, opts?: { fatal?: boolean }) => void}
  */
