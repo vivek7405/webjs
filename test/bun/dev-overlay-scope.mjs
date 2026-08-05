@@ -38,20 +38,35 @@ async function until(fn, { timeoutMs, stepMs = 200 }) {
   }
 }
 
-/** Read the first SSE chunk off a fresh connection, then hang up. */
-async function firstSseChunk() {
+/**
+ * Read what a freshly-connected tab is handed on the SSE channel, then hang up.
+ *
+ * Every read is raced against a deadline, because the interesting assertion here
+ * is a NEGATIVE one (no error frame was replayed), and in that case the stream
+ * simply goes quiet after the hello frame: a bare `reader.read()` would block
+ * until the next keepalive, which is long enough to trip `bun test`'s per-test
+ * timeout and turn a passing assertion into a hang.
+ */
+async function replayedFrames(budgetMs = 700) {
   const res = await fetch(`${BASE}/__webjs/events`, { headers: { accept: 'text/event-stream' } });
   const reader = res.body.getReader();
+  const deadline = Date.now() + budgetMs;
   let text = '';
-  // The hello frame and any replayed error frame may arrive in one chunk or
-  // two, so read until an error frame shows up or the reads run out.
-  for (let i = 0; i < 4; i++) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    text += new TextDecoder().decode(value);
-    if (text.includes('event: webjs-error')) break;
+  try {
+    while (Date.now() < deadline) {
+      const chunk = await Promise.race([
+        reader.read(),
+        sleep(Math.max(0, deadline - Date.now())).then(() => null),
+      ]);
+      if (!chunk || chunk.done) break;
+      text += new TextDecoder().decode(chunk.value);
+      // The server writes hello first and the replayed error frame right after,
+      // so once the error frame is in hand there is nothing left to wait for.
+      if (text.includes('event: webjs-error')) break;
+    }
+  } finally {
+    try { await reader.cancel(); } catch { /* already closed */ }
   }
-  try { await reader.cancel(); } catch { /* already closed */ }
   return text;
 }
 
@@ -81,7 +96,7 @@ try {
   // connects afterwards is handed no error frame at all.
   const pre = await fetch(`${BASE}/crash`, { headers: { 'x-webjs-router': '1', 'x-webjs-prefetch': '1' } });
   assert.equal(pre.status, 500, `the prefetched page should still render its 500 on ${runtime}`);
-  const afterPrefetch = await firstSseChunk();
+  const afterPrefetch = await replayedFrames();
   assert.ok(
     !afterPrefetch.includes('event: webjs-error'),
     `a prefetch render must not become the replayed frame on ${runtime}: ${JSON.stringify(afterPrefetch)}`,
@@ -91,7 +106,7 @@ try {
   // what lets the browser overlay decide the frame belongs on this page.
   const real = await fetch(`${BASE}/crash`);
   assert.equal(real.status, 500, `the throwing page renders a 500 on ${runtime}`);
-  const afterVisit = await firstSseChunk();
+  const afterVisit = await replayedFrames();
   assert.match(afterVisit, /event: webjs-error/, `no replayed error frame on ${runtime}: ${JSON.stringify(afterVisit)}`);
   const line = afterVisit.split('\n').find((l) => l.startsWith('data: ') && l.includes('"kind":"render"'));
   assert.ok(line, `no render frame in the replay on ${runtime}: ${JSON.stringify(afterVisit)}`);
@@ -103,7 +118,7 @@ try {
   // later is not shown an error the page has recovered from. The home page is
   // a DIFFERENT url, so it must leave the retained frame standing first.
   await fetch(`${BASE}/`);
-  const afterUnrelated = await firstSseChunk();
+  const afterUnrelated = await replayedFrames();
   assert.match(
     afterUnrelated, /event: webjs-error/,
     `an unrelated good render must not clear the retained frame on ${runtime}`,
