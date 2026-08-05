@@ -861,7 +861,7 @@ async function main() {
         // This branch fires for a MISSING name or one starting with `-`, so the
         // rule it prints has to lead with the first-character requirement. An
         // earlier wording listed the separators as allowed characters, which
-        // read as "a leading - is fine" to the one user who just typed one.
+        // reads as permission to the one user who just typed a leading hyphen.
         console.error('<app-name> must start with a lowercase letter or a digit, then lowercase letters, digits, "-", "." or "_".');
         process.exit(1);
       }
