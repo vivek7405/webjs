@@ -27,11 +27,11 @@ before(() => {
   globalThis.HTMLElement = window.HTMLElement;
 });
 
-let html, render, guard, until, watch, ref, repeat, signal;
+let html, render, guard, until, watch, ref, asyncAppend, asyncReplace, repeat, signal;
 before(async () => {
   ({ html } = await import('../../src/html.js'));
   ({ render } = await import('../../src/render-client.js'));
-  ({ guard, until, watch, ref } = await import('../../src/directives.js'));
+  ({ guard, until, watch, ref, asyncAppend, asyncReplace } = await import('../../src/directives.js'));
   ({ repeat } = await import('../../src/repeat.js'));
   ({ signal } = await import('../../src/signal.js'));
 });
@@ -506,7 +506,9 @@ function ownershipTest(label, installDirective) {
     // The child upgrades and gains the boundary from its prototype.
     owner.querySelector('child-el')._handleRenderError = (err) => { childSeen.push(err); };
 
-    fire();
+    // `fire` may be async: an async-stream case has to let its first chunk
+    // commit before the directive nested inside that chunk even exists.
+    await fire();
     await tick();
 
     assert.equal(ownerSeen.length, 1, 'the OWNING template must get the error');
@@ -526,6 +528,156 @@ ownershipTest('until: routes to the template that owns the part, not the element
   const pending = new Promise((r) => { resolveIt = r; });
   render(html`<child-el>${until(pending, html`<p>fallback</p>`)}</child-el>`, owner);
   return () => resolveIt(html`<section title=${poison}>bad</section>`);
+});
+
+// --- asyncAppend / asyncReplace ---
+
+/**
+ * Run `fn` with nothing allowed to escape. Asserting only that the boundary
+ * was called cannot tell "routed" from "routed AND also escaped", and an
+ * escape is the whole failure being fixed here. The commit runs in a
+ * microtask, so a `watch` rethrow surfaces as an uncaughtException and a
+ * promise rejection as an unhandledRejection; watch for both.
+ */
+async function assertNothingEscapes(fn) {
+  const escaped = [];
+  const onUncaught = (err) => { escaped.push(err); };
+  process.on('uncaughtException', onUncaught);
+  process.on('unhandledRejection', onUncaught);
+  try {
+    await fn();
+    await tick();
+  } finally {
+    process.off('uncaughtException', onUncaught);
+    process.off('unhandledRejection', onUncaught);
+  }
+  assert.deepEqual(escaped.map((e) => e?.message ?? String(e)), [], 'nothing may reach the window');
+}
+
+// `consumeAsyncStream` is the third out-of-band commit site. It commits with
+// no render on the stack, so a directive installed BY that commit used to see
+// no owner, was never stamped, and its own later throw fell through to a bare
+// rethrow inside a microtask.
+
+for (const [label, makeDirective] of [
+  ['asyncAppend', (gen) => asyncAppend(gen)],
+  ['asyncReplace', (gen) => asyncReplace(gen)],
+]) {
+  test(`${label}: a watch nested in a chunk routes its throw to the boundary`, async () => {
+    const seen = [];
+    const owner = document.createElement('owner-el');
+    owner._handleRenderError = (err) => { seen.push(err); };
+
+    const inner = signal(html`<p>b</p>`);
+    async function* gen() { yield html`<span>${watch(inner)}</span>`; }
+    render(html`<div>${makeDirective(gen())}</div>`, owner);
+
+    await assertNothingEscapes(async () => {
+      await tick();
+      inner.set(html`<section title=${poison}>bad</section>`);
+      await tick();
+    });
+
+    assert.equal(seen.length, 1, 'the nested directive must inherit the owner');
+    assert.match(seen[0].message, /boom/);
+  });
+}
+
+test('asyncReplace: an until nested in a chunk routes its throw to the boundary', async () => {
+  // The two directives stamp independently, so covering one says nothing
+  // about the other.
+  const seen = [];
+  const owner = document.createElement('owner-el');
+  owner._handleRenderError = (err) => { seen.push(err); };
+
+  let resolveIt;
+  const pending = new Promise((r) => { resolveIt = r; });
+  async function* gen() { yield html`<span>${until(pending, html`<p>fallback</p>`)}</span>`; }
+  render(html`<div>${asyncReplace(gen())}</div>`, owner);
+
+  await assertNothingEscapes(async () => {
+    await tick();
+    resolveIt(html`<section title=${poison}>bad</section>`);
+    await tick();
+  });
+
+  assert.equal(seen.length, 1);
+  assert.match(seen[0].message, /boom/);
+});
+
+ownershipTest('asyncAppend: a nested watch routes to the template that owns the part', (owner) => {
+  const inner = signal(html`<p>b</p>`);
+  async function* gen() { yield html`<span>${watch(inner)}</span>`; }
+  render(html`<child-el>${asyncAppend(gen())}</child-el>`, owner);
+  return async () => {
+    await tick();
+    inner.set(html`<section title=${poison}>bad</section>`);
+  };
+});
+
+test('asyncReplace: the stream\'s OWN chunk commit throw reaches the boundary and stops it', async () => {
+  const seen = [];
+  const logged = [];
+  const owner = document.createElement('owner-el');
+  owner._handleRenderError = (err) => { seen.push(err); };
+
+  let yielded = 0;
+  async function* gen() {
+    yielded++; yield html`<p>${poison}</p>`;
+    yielded++; yield html`<p>after</p>`;
+  }
+
+  const origError = console.error;
+  console.error = (...args) => { logged.push(args.join(' ')); };
+  try {
+    render(html`<div>${asyncReplace(gen())}</div>`, owner);
+    await assertNothingEscapes(async () => { await tick(); });
+  } finally {
+    console.error = origError;
+  }
+
+  // A chunk commit is a render of the component whose template holds the
+  // binding, so it belongs to that component's boundary, not to the console.
+  // Routing the nested case but not this one would be an indefensible seam.
+  assert.equal(seen.length, 1, 'the chunk commit throw must reach the boundary');
+  assert.match(seen[0].message, /boom/);
+  assert.deepEqual(logged, [], 'and must NOT also be logged as an iteration error');
+
+  // The stream stops: the boundary is about to render an error state, and
+  // appending into a region it may have replaced is not a recovery.
+  await tick();
+  assert.equal(yielded, 1, 'no further chunk may be pulled');
+  assert.equal(owner.querySelector('p'), null);
+});
+
+test('asyncReplace: an ITERATION throw is unchanged, logged and never routed', async () => {
+  const seen = [];
+  const logged = [];
+  const owner = document.createElement('owner-el');
+  owner._handleRenderError = (err) => { seen.push(err); };
+
+  async function* gen() {
+    yield html`<p>ok</p>`;
+    throw new Error('generator-boom');
+  }
+
+  const origError = console.error;
+  console.error = (...args) => { logged.push(args.join(' ')); };
+  try {
+    render(html`<div>${asyncReplace(gen())}</div>`, owner);
+    await assertNothingEscapes(async () => { await tick(); });
+  } finally {
+    console.error = origError;
+  }
+
+  // The author's generator failing is not a render, and an author's iterable
+  // is expected to handle its own errors. Deliberately left as it was.
+  assert.equal(seen.length, 0, 'an iteration throw must NOT reach the boundary');
+  assert.equal(logged.length, 1);
+  assert.match(logged[0], /generator-boom/);
+  // It also ENDS the stream, and always has: the catch used to sit outside
+  // the loop, so there has never been a resume path.
+  assert.equal(owner.querySelector('p')?.textContent, 'ok');
 });
 
 test('a directive installed BY an out-of-band commit still reaches the boundary', async () => {
