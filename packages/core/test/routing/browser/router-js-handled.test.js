@@ -39,13 +39,19 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
  *   resolve mid-swap and reintroduce the very race this helper exists to close.
  * - a bounded timeout.
  *
- * The timeout is NOT just the "router never intercepted" case. Several terminal
- * paths in `fetchAndApply` announce nothing at all (an aborted or superseded
- * navigation, a 204/205 empty body, an unparseable body, an error recovered in
- * place), and a popstate snapshot restore applies a swap without dispatching
- * `webjs:navigate`. The timeout is the backstop for every one of those, so a
- * test fails on its own assertion instead of hanging to the runner's 10s
- * per-test limit (`web-test-runner.config.js`).
+ * The timeout is NOT just the "router never intercepted" case. Some terminal
+ * paths in `fetchAndApply` announce nothing on either channel (an aborted or
+ * superseded navigation, a 204/205 empty body), and a popstate snapshot restore
+ * applies a swap without dispatching `webjs:navigate`. The timeout is the
+ * backstop for those, so a test fails on its own assertion instead of hanging
+ * to the runner's 10s per-test limit (`web-test-runner.config.js`).
+ *
+ * A navigation error is the one case that is neither: an unparseable body or a
+ * failed fetch announces `webjs:navigation-error`, which this helper does not
+ * listen for, so it waits out the timeout when the error is recovered in place.
+ * When it CANNOT be recovered in place, the router emits a reloading
+ * `navigation-error-unrecoverable` fallback, and that does settle here. This
+ * fixture always installs a live boundary pair, so recovery is always in place.
  *
  * Two call shapes, and the difference matters. The positive control ARMS it
  * before the click, because a degradation can be dispatched synchronously from
