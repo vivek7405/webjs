@@ -2082,10 +2082,17 @@ function reconcileArray(part, value) {
           continue;
         }
       } else {
-        // Empty slot: drop any prior nodes that occupied this position. The
-        // push comes FIRST for the same reason as in the branch below.
-        next.push({ type: 'empty' });
+        // Empty slot: drop any prior nodes that occupied this position.
+        // Deliberately NOT reordered like the branch below. That reorder
+        // exists to keep a slot that was already BUILT and INSERTED tracked,
+        // and this branch builds and inserts nothing, so pushing first would
+        // only mean a throw from the removal leaves a phantom empty slot at
+        // this index AND `old[i]` spliced in at the next one, shifting every
+        // later slot by one in a POSITIONAL reconciler. Removing first, a
+        // throw here leaves `old[i]` describing its own position, which is
+        // still exactly where its nodes are.
         if (o) removeArrayItem(o);
+        next.push({ type: 'empty' });
         consumed = i + 1;
         continue;
       }
@@ -2134,13 +2141,18 @@ function reconcileArray(part, value) {
     // for every row, which cancels an in-progress native drag and drops focus
     // and scroll.
     //
-    // Two residuals, both from the removal step itself rather than the
-    // bookkeeping. A throw out of `removeArrayItem` leaves the slot it was
-    // removing described one position later than it sits, costing that row
-    // its identity on the next render but orphaning nothing (and it takes a
-    // throwing DOM to reach at all, since the teardown it calls is total).
-    // Beyond that only `removeBetween` can throw, and it calls `removeChild`
-    // solely on nodes the renderer owns.
+    // The residual is a throw from the removal step itself, which takes a
+    // throwing DOM to reach (the teardown it calls is total, so only
+    // `removeBetween` is left, and that calls `removeChild` solely on nodes
+    // the renderer owns). State it rather than deny it: `removeBetween`
+    // takes the start marker first and then early-returns for good once that
+    // marker is gone, so a row whose removal refused part-way can never be
+    // removed afterwards. Its remaining nodes stay in the document, and an
+    // EMPTY render will not clear them. Tracked or not, they are there for
+    // the life of the region, the same residual `reconcileRepeat`'s catch
+    // names. What this repair buys is that there is only ONE such row and
+    // every other slot still reconciles, where before the whole pass was
+    // discarded.
     state.items = next.concat(old.slice(consumed));
     throw err;
   }
