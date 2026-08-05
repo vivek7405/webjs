@@ -986,3 +986,44 @@ test('asset-link advisory tolerates a > inside a quoted attribute value', async 
   assert.equal(r.status, 'warn');
   assert.match(r.message, /q\.css/);
 });
+
+test('asset-link advisory does not raise a warning asset() could never clear', async () => {
+  const dir = tmpDir();
+  // resolveAssetUrl returns a path carrying a query or a `..` UNCHANGED, so
+  // flagging one would tell the author to apply a fix that changes nothing:
+  // they wrap it, the warning stays, and `doctor --strict` can never go green.
+  // A hand-rolled ?v= cache-buster is the likeliest thing an author who has not
+  // adopted asset() will already have written.
+  write(dir, 'app/layout.ts', [
+    'export default () => `',
+    '  <link rel="stylesheet" href="/public/app.css?v=3">',
+    '  <link rel="stylesheet" href="/public/../db/app.db">`;',
+  ].join('\n'));
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'pass', 'only advise a fix that actually works');
+});
+
+test('asset-link advisory honours webjs.basePath', async () => {
+  const dir = tmpDir();
+  // Under a sub-path deploy the author writes the prefix themselves
+  // (`asset('/myapp/public/x.css')`), so a check that only knows `/public/`
+  // would be silently inert for exactly the apps with extra ceremony to forget.
+  write(dir, 'package.json', JSON.stringify({ name: 'x', webjs: { basePath: '/myapp' } }));
+  write(dir, 'app/layout.ts', 'export default () => `<link rel="stylesheet" href="/myapp/public/app.css">`;');
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /\/myapp\/public\/app\.css/);
+});
+
+test('asset-link advisory ignores a commented-out tag but keeps line numbers accurate', async () => {
+  const dir = tmpDir();
+  write(dir, 'app/layout.ts', [
+    'export default () => `',
+    '  <!-- <link rel="stylesheet" href="/public/old.css"> -->',
+    '  <link rel="stylesheet" href="/public/live.css">`;',
+  ].join('\n'));
+  const r = byName(await runDoctorChecks(dir, baseOpts()), ASSET_LINK_CHECK);
+  assert.equal(r.status, 'warn');
+  assert.doesNotMatch(r.message, /old\.css/, 'a commented-out tag emits nothing');
+  assert.match(r.message, /app\/layout\.ts:3 href="\/public\/live\.css"/, 'blanking comments must not shift line numbers');
+});

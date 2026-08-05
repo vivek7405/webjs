@@ -1036,22 +1036,59 @@ function parseTagAttrs(tag) {
  *   - `href` is QUOTED. An unquoted value is a template hole
  *     (`href=${asset('/public/app.css')}`), undecidable from source, and is
  *     exactly the shape the marked form uses.
- *   - the path is under `/public/`, the only prefix `asset()` fingerprints. A
- *     root remap (`/favicon.ico`, `/sw.js`) is returned unchanged by
- *     `resolveAssetUrl`, so advising on one would advise a non-fix.
+ *   - the path is under `/public/` (after the app's `webjs.basePath` is
+ *     stripped, since under a sub-path deploy the author writes the prefix
+ *     themselves and `resolveAssetUrl` strips it before its own `public/` gate).
+ *   - `resolveAssetUrl` would actually fingerprint it. It returns a path
+ *     carrying a QUERY or a `..` unchanged, so flagging one would raise a
+ *     warning that `asset()` cannot clear: the author wraps it, nothing
+ *     changes, the warning stays, and `doctor --strict` can never go green. A
+ *     hand-rolled `?v=` cache-buster is exactly what an author who has not
+ *     adopted `asset()` is most likely to have written, so this is the common
+ *     case, not a corner. Only advise a fix that works.
  *
  * @param {string} tag
+ * @param {string} basePath  the app's normalized `webjs.basePath` (`''` at root)
  * @returns {string | null}
  */
-function unmarkedStylesheetHref(tag) {
+function unmarkedStylesheetHref(tag, basePath = '') {
   const attrs = parseTagAttrs(tag);
   const rel = attrs.get('rel');
   if (!rel || !rel.value) return null;
   if (!rel.value.toLowerCase().split(/\s+/).includes('stylesheet')) return null;
   const href = attrs.get('href');
   if (!href || !href.quoted || !href.value) return null;
-  return href.value.startsWith('/public/') ? href.value : null;
+  const url = href.value;
+  // Mirror `resolveAssetUrl`'s own refusals, so every flagged href is one
+  // `asset()` can actually fingerprint.
+  if (url.includes('?') || url.includes('..')) return null;
+  let probe = url;
+  if (basePath && probe.startsWith(basePath + '/')) probe = probe.slice(basePath.length);
+  return probe.startsWith('/public/') ? url : null;
 }
+
+/**
+ * The app's `webjs.basePath`, normalized to `''` (root mount) or `/segment…`.
+ * Deliberately a local read of the one key rather than an import of the
+ * server's `readBasePath`: doctor must stay usable when the framework does not
+ * resolve from the app dir at all (the #954 fresh-worktree case this same
+ * command exists to diagnose).
+ * @param {string} appDir
+ * @returns {Promise<string>}
+ */
+async function readAppBasePath(appDir) {
+  try {
+    const pkg = JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8'));
+    const raw = pkg?.webjs?.basePath;
+    if (typeof raw !== 'string' || !raw.startsWith('/')) return '';
+    return raw.replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
+}
+
+/** An HTML comment, so a commented-out tag is not read as live markup. @type {RegExp} */
+const HTML_COMMENT_RE = /<!--[\s\S]*?-->/g;
 
 /**
  * Collect every `app/**` page + layout module path, depth-first.
@@ -1118,6 +1155,7 @@ async function checkUnmarkedAssetLinks(appDir) {
   if (!existsSync(routeDir)) {
     return { name, status: 'pass', message: 'no app/ directory to analyse' };
   }
+  const basePath = await readAppBasePath(appDir);
   const findings = [];
   for (const file of collectRouteModules(routeDir)) {
     let src;
@@ -1127,9 +1165,13 @@ async function checkUnmarkedAssetLinks(appDir) {
     // scanned, or the scanner's own case-insensitivity is unreachable exactly
     // where it is needed.
     if (!/<link/i.test(src)) continue;
+    // Blank HTML comments to spaces (LENGTH-PRESERVING, so the reported line
+    // numbers still point at the real source). A commented-out tag emits
+    // nothing, so advising on it is advice about dead markup.
+    const scan = src.replace(HTML_COMMENT_RE, (c) => ' '.repeat(c.length));
     LINK_TAG_RE.lastIndex = 0;
-    for (const m of src.matchAll(LINK_TAG_RE)) {
-      const href = unmarkedStylesheetHref(m[0]);
+    for (const m of scan.matchAll(LINK_TAG_RE)) {
+      const href = unmarkedStylesheetHref(m[0], basePath);
       if (!href) continue;
       // 1-indexed line of the match, for a jump-to reference.
       const line = src.slice(0, m.index).split('\n').length;
