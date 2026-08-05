@@ -56,6 +56,12 @@ import { _setHardNavigate } from '../packages/core/src/router-client.js';
  * `fallbacks` stays useful alongside it: it carries the stable `cause` slug
  * that says WHY the router degraded, which the recorded href alone does not.
  *
+ * This catches one navigation that is NOT a degradation: a cross-origin
+ * `navigate()`, which is an intentional full-page nav. It is recorded rather
+ * than performed like any other, so it is observable (assert on
+ * `hardNavigations`) instead of ending the session. Nothing is swallowed
+ * silently; a suite asserting `hardNavigations` is empty will fail on it.
+ *
  * Note this module imports the router, which self-enables on load. Every suite
  * that installs the guard is already a router suite that imports it, so this
  * changes nothing in practice.
