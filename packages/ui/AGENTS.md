@@ -166,8 +166,8 @@ tracked source, the standard shadcn "you own it" pattern.
 | 1a | `alert` | `alertClass({ variant })`, `alertTitleClass`, `alertDescriptionClass` |
 | 1a | `card` | `cardClass`, `cardHeaderClass`, `cardTitleClass`, `cardDescriptionClass`, `cardActionClass`, `cardContentClass`, `cardFooterClass` |
 | 1a | `input` / `textarea` / `label` | `inputClass`, `textareaClass`, `labelClass` |
-| 1a | `checkbox` | `checkboxClass`, native `<input type="checkbox">` with SVG check on `:checked` |
-| 1a | `radio-group` | `radioGroupClass`, `radioClass`, native `<input type="radio">` |
+| 1a | `checkbox` | `checkboxClass`, native `<input type="checkbox">` with SVG check on `:checked`. REQUIRES `data-slot="checkbox"` on the input for the check to render. |
+| 1a | `radio-group` | `radioGroupClass`, `radioClass`, native `<input type="radio">`. REQUIRES `data-slot="radio"` on the input for the dot to render. |
 | 1a | `switch` | `switchInputClass`, `switchTrackClass({ size })`, hidden native checkbox + visible track |
 | 1a | `native-select` | `nativeSelectWrapperClass`, `nativeSelectClass`, `nativeSelectIconClass`, `nativeSelectOptionClass`, `nativeSelectOptGroupClass` |
 | 1a | `avatar` | `avatarClass`, `avatarImageClass`, `avatarFallbackClass`, `avatarBadgeClass`, `avatarGroupClass`, `avatarGroupCountClass` |
@@ -183,14 +183,14 @@ tracked source, the standard shadcn "you own it" pattern.
 | 1b | `accordion` | `accordionClass`, `accordionItemClass`, `accordionTriggerClass`, `accordionContentClass`. Compose with `<details name="...">` + `<summary>`; `name` provides exclusive-open behavior natively. |
 | 1b | `collapsible` | `collapsibleClass`, `collapsibleTriggerClass`, `collapsibleContentClass`. Compose with `<details>` + `<summary>`. |
 | 1b | `progress` | `progressClass()`, apply to native `<progress value max>`. Browser draws the bar via `::-webkit-progress-value` and `::-moz-progress-bar`. Omit `value` for the indeterminate / pulse state. |
-| 2  | `toggle-group` | `<ui-toggle-group type value variant size>` + `<ui-toggle-group-item value>`. Roving tabindex (one Tab stop) with Arrow / Home / End navigation, plus `aria-pressed` per item. |
+| 2  | `toggle-group` | `<ui-toggle-group type value variant size>` + `<ui-toggle-group-item value disabled>`. Roving tabindex (one Tab stop) with Arrow / Home / End navigation, plus `aria-pressed` per item. A `disabled` item reports `aria-disabled`, refuses activation, and is skipped by navigation and by the tab stop. |
 | 2  | `dialog` | `<ui-dialog>` + `<ui-dialog-trigger>` / `<ui-dialog-content>` / `<ui-dialog-close>`. Built on native `<dialog>.showModal()`, top-layer rendering, ::backdrop overlay, focus trap, Escape close, and focus restoration are all platform-provided. We add a scroll lock (refcounted, and shift-free for a `position: fixed` header, see invariant 5) + class helpers for `dialogHeader/Title/Description/Footer`. On open it wires `aria-labelledby` / `aria-describedby` to the `data-slot="dialog-title"` / `dialog-description` nodes (falling back to the first heading / paragraph). |
 | 2  | `alert-dialog` | Like dialog, role=alertdialog. Native Escape close is cancelled via the `cancel` event; no backdrop-click dismissal. `<ui-alert-dialog-action>` / `<ui-alert-dialog-cancel>`. Wires `aria-labelledby` / `aria-describedby` to its `alert-dialog-title` / `alert-dialog-description` the same way. |
-| 2  | `tooltip` | `<ui-tooltip delay-duration>`, hover/focus + delay. Content uses `popover="manual"` for top-layer rendering. The trigger references the tip via `aria-describedby` (APG tooltip wiring). |
-| 2  | `hover-card` | `<ui-hover-card open-delay close-delay>`, hover with linger-keep-open. Content uses `popover="manual"` for top-layer rendering. The trigger (focusable, also opens on focus) gets `aria-haspopup` / `aria-expanded` / `aria-controls`. |
-| 2  | `tabs` | `<ui-tabs value orientation>` + List / Trigger / Content. Arrow-key keyboard nav. Triggers carry `aria-controls`, panels `aria-labelledby` (cross-linked per group), the list `aria-orientation`, and an inactive panel is `inert`. |
-| 2  | `dropdown-menu` | `<ui-dropdown-menu>` + Trigger / Content / Item (variant) / Label / Separator / Shortcut / Group. Content uses `popover="manual"` for top-layer rendering. ArrowUp/Down nav, Escape close. Menu declares `aria-orientation`, a `data-disabled` item reflects `aria-disabled`, and the trigger gets `aria-haspopup` / `aria-expanded` / `aria-controls`. |
-| 2  | `sonner` | `<ui-sonner position>` + `toast()` / `toast.success` / `toast.error` / `toast.promise` API. The viewport is a persistent `aria-live` region so inserted toasts are announced (an `error` toast is `role=alert`). |
+| 2  | `tooltip` | `<ui-tooltip delay-duration>`, hover/focus + delay. Content uses `popover="manual"` for top-layer rendering. The trigger references the tip via `aria-describedby` (APG tooltip wiring). Escape dismisses a showing tip without moving focus; a closed tip never consumes Escape. |
+| 2  | `hover-card` | `<ui-hover-card open-delay close-delay>`, hover with linger-keep-open, mirrored for focus so in-card content is Tab-reachable. Content uses `popover="manual"` for top-layer rendering. The trigger (focusable, also opens on focus) gets `aria-haspopup` / `aria-expanded` / `aria-controls`; the `role="dialog"` panel is always named (author name, then a title node, then the trigger) and Escape dismisses it, returning focus to the trigger. |
+| 2  | `tabs` | `<ui-tabs value orientation>` + List / Trigger / Content. Arrow / Home / End move focus AND selection via a roving tabindex (one Tab stop). Triggers carry `aria-controls`, panels `aria-labelledby` (cross-linked per group), the list `aria-orientation`, and an inactive panel is `inert`. |
+| 2  | `dropdown-menu` | `<ui-dropdown-menu>` + Trigger / Content / Item (variant, `type="checkbox"` / `type="radio"` + `checked` / `value`) / Label / Separator / Shortcut / Group. Content uses `popover="manual"` for top-layer rendering. ArrowUp/Down nav, Home/End, typeahead, and synthesized Enter / Space activation (a `div[role=menuitem]` gets none natively). Escape closes the menu holding focus (a submenu first) and Tab closes and moves on; both return focus to the trigger, as do item activation and an outside click that did not itself land focus. Each submenu panel is named by its sub-trigger. Menu declares `aria-orientation`, a `data-disabled` item reflects `aria-disabled`, a checkable item carries `menuitemcheckbox` / `menuitemradio` + `aria-checked`, and the trigger gets `aria-haspopup` / `aria-expanded` / `aria-controls`. Emits a cancelable `ui-item-select`. |
+| 2  | `sonner` | `<ui-sonner position>` + `toast()` / `toast.success` / `toast.error` / `toast.promise` API, with `action` and `cancel` per toast. The viewport is a persistent `aria-live` region so inserted toasts are announced (an `error` toast is `role=alert`), and every toast carries a labelled close button so even a never-auto-dismissing `toast.loading()` can be dismissed by hand. |
 
 ## Accessibility
 
@@ -201,18 +201,61 @@ splits by tier, and an agent MUST know which half it owns.
 markup, it wires the WAI-ARIA pattern itself, with zero author effort: tabs
 cross-links triggers and panels (`aria-controls` / `aria-labelledby`), reports
 `aria-orientation`, and marks an inactive panel `inert`; toggle-group uses
-roving tabindex plus Arrow / Home / End; dropdown-menu declares
-`aria-orientation`, reflects `aria-disabled` on a `data-disabled` item, and
-gives the trigger `aria-haspopup` / `aria-expanded` / `aria-controls`; dialog
-and alert-dialog name themselves from their title and description on open;
-tooltip references its tip with `aria-describedby`; hover-card exposes the
-popup relationship on its (focus-openable) trigger; sonner is a persistent
-`aria-live` region. Do not hand-add these attributes; the element already has.
+roving tabindex plus Arrow / Home / End and skips `disabled` items; toggle
+forwards the host's `aria-label` onto the inner button it renders;
+dropdown-menu declares `aria-orientation`, reflects `aria-disabled` on a
+`data-disabled` item, gives the trigger `aria-haspopup` / `aria-expanded` /
+`aria-controls`, returns focus to that trigger on EVERY close path (Escape, Tab, activation, and
+an outside click that did not itself put focus somewhere), synthesizes Enter /
+Space activation because a `div[role=menuitem]` gets none natively, names each
+submenu panel from its sub-trigger, and
+exposes `menuitemcheckbox` / `menuitemradio` + `aria-checked` for a
+`type="checkbox"` / `type="radio"` item; dialog and alert-dialog name
+themselves from their title and description on open, falling back to a generic
+`aria-label` so an unnamed modal is impossible; tooltip references its tip with
+`aria-describedby` and dismisses on Escape; hover-card exposes the popup
+relationship on its (focus-openable) trigger, always names its `role="dialog"`
+panel, dismisses on Escape, and keeps itself open while focus is inside so its
+content is Tab-reachable; sonner is a persistent `aria-live` region whose every
+toast carries a labelled close button. Do not hand-add these attributes; the
+element already has.
+
+**The focusable element is the one that needs the ARIA.** The recurring bug
+class in this kit (#1078, and finding 1 of #1080) is a Tier-2 element whose host
+is NOT the control the browser focuses: the host renders an inner `<button>` or
+`<div role="...">`, and ARIA put on the host never reaches it, because a name on
+a generic-role element does not contribute to a descendant's name. When adding
+or changing a Tier-2 component, ask which element actually takes focus and put
+the role, the name, and the state THERE, forwarding from the host if that is
+where the author writes it. A browser test asserting the attribute on the
+FOCUSABLE node, not on the host, is what catches a regression.
+
+**A popover panel needs its focus restored before it hides.** Every overlay here
+renders `popover="manual"`, so hiding the panel while a descendant holds focus
+drops focus to `<body>`. Move focus out FIRST, then hide, and do it on EVERY
+close path, not just the keyboard one (a delayed hover-close and an outside tap
+can both fire while the panel holds focus).
+
+Guard the restore on focus still being inside the overlay, so a close that
+deliberately moved focus elsewhere does not have it yanked back. For a
+POINTER-driven dismiss that guard cannot be evaluated at click time: clicking a
+non-focusable area has usually already blurred the panel's focused descendant to
+`<body>` by then, so a check there cannot tell "clicked away from everything"
+(restore) from "clicked another control" (leave it). Sample focus-inside on
+`pointerdown` instead, before the browser moves focus, and read it at click time
+(`dropdown-menu.ts` `_onDocPointerDown`).
 
 **Tier-1 class helpers push their ARIA to YOU.** A helper returns only Tailwind
 classes, so the semantic element, role, and ARIA are the caller's job. Every
-Tier-1 component's JSDoc carries an `A11y (required for accessible output)`
-block stating exactly what to supply. The recurring obligations:
+component's JSDoc carries an `A11y` block stating exactly what to supply, and
+`test/registry-contents.test.js` enforces that a block is PRESENT on every
+component and sits above `@example` so the agent-facing projection does not drop
+it (the claim used to be aspirational and was false for ten components). Most are
+headed `A11y (required for accessible output)`; a component whose native
+primitive already carries the pattern says so instead (accordion and collapsible
+use `A11y (mostly handled by the native primitives)`), and a Tier-2 element's
+block states what it OWNS rather than what you supply. The recurring
+obligations:
 
 - `button`: an icon-only button needs `aria-label`; an overlay trigger needs `aria-haspopup` + `aria-expanded`.
 - `alert`: choose `role="alert"` (urgent) or `role="status"` (polite).
@@ -222,9 +265,19 @@ block stating exactly what to supply. The recurring obligations:
 - `table`: `scope="col"` / `scope="row"` on header cells, and a `<caption>`.
 - `pagination` / `breadcrumb`: a labelled `<nav>`, `aria-current="page"`, and hidden separators / icon-only control names.
 - `progress`: an `aria-label` (the native element supplies the role + value).
+- **form controls** (`input` / `textarea` / `native-select` / `checkbox` / `radio-group` / `switch`): a real `<label for>` (or a wrapping `<label>`) is the accessible name, and a `placeholder` is not one. On failure, `aria-invalid="true"` plus an `aria-describedby` pointing at error text that EXISTS on the page. A standalone switch needs `aria-label`, since its visible track is a `<span>` and the real input is `sr-only`. Group radios by a shared `name` and NAME the group (`aria-labelledby` on the `role="radiogroup"`, or `<fieldset>` + `<legend>`).
+- **`checkbox` / `radio-group` also need `data-slot`** on the input (`data-slot="checkbox"` / `data-slot="radio"`). The injected stylesheet keys the checkmark and the radio dot on it, and neither class carries a fallback fill, so without it the checked state reads as colour alone (WCAG 1.4.1). Source tests assert the examples keep the pairing.
+- `popover`: the biggest Tier-1 obligation, because the panel is a bare `<div popover>` with no role and no name. Supply `role="dialog"` + `aria-labelledby` to the `popoverTitleClass()` heading, `aria-haspopup="dialog"` + a `toggle`-event-synced `aria-expanded` on the trigger, and prefer `popover` (auto) over `popover="manual"` so the platform still gives you light-dismiss, Escape, and focus restoration.
+- `card`: use a REAL heading for `cardTitleClass()`, at the level the surrounding document wants, and never wrap a whole card in one `<a>`.
+- `kbd`: a symbol-only key (`⌘`) needs a spoken name, but NOT via `aria-label` on the `<kbd>`: that maps to `role=generic`, where a name is prohibited and ignored. Hide the glyph (`aria-hidden`) and put the spoken form in an `sr-only` sibling. For a chord, wrap the group in `role="img"` + `aria-label`, which supports a name AND makes children presentational, so it is announced once.
+- `label`: put the classes on a real `<label>` linked by `for` / `id` or by nesting. The same classes on a `<span>` name nothing.
+- `accordion` / `collapsible`: build on `<details>` + `<summary>` and put the trigger classes on the `<summary>` ITSELF. Nesting a `<button>` inside a `<summary>` is the #1078 bug class.
+- `aspect-ratio`: layout only, so the obligations belong to the content (`alt`, `title`, captions).
 
 Browser tests for the Tier-2 guarantees live in
-`test/components/browser/ui-a11y.test.js`.
+`test/components/browser/ui-a11y.test.js`. Every behavioural fix there ships
+with a counterfactual, an assertion that fails against the pre-fix code, so a
+later change cannot quietly make the test non-discriminating.
 
 ## Public commands (binary: `webjsui`)
 
@@ -410,11 +463,24 @@ helpers (`schema.test.js`, `resolver.test.js`,
 `init-command.test.js`, etc.) plus `test/registry-contents.test.js`
 which smoke-validates the component sources (reads
 `components/*.ts` and verifies Tier-1/Tier-2 shape + hallmark
-class strings).
+class strings, that every component carries an `A11y` JSDoc block above
+`@example`, and that the checkbox / radio examples keep the `data-slot`
+their stylesheets key on).
+
+**`test/ssr-aria.test.js` is the SSR layer, and it is not optional for an ARIA
+change.** It renders Tier-2 components through `renderToString` and asserts the
+ARIA in the SERVED markup. It exists because the browser suite runs only the
+CLIENT renderer, which removes a nullish attribute hole while the server
+stringifies it to `attr=""`. So a component that "omits" ARIA via a null hole
+passes every browser assertion while serving the empty attribute, and SSR then
+disagrees with the hydrated DOM. Three real defects shipped that way before this
+layer existed. Any conditional ARIA needs an assertion here, not just in the
+browser suite.
 
 Real-browser tests for the kit live under
 `packages/ui/test/components/browser/`
-(`ui-overlay.test.js`, `ui-stateful.test.js`) and run via the
+(`ui-overlay.test.js`, `ui-stateful.test.js`, `ui-a11y.test.js` for the Tier-2
+ARIA + keyboard guarantees) and run via the
 top-level `npm run test:browser`. See
 [`references/testing.md`](../../.agents/skills/webjs/references/testing.md) for
 the overall layout.

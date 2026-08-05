@@ -30,6 +30,21 @@
  *   Home / End               first / last
  *   Enter / Space            activate (native button activation)
  *
+ * A11y (owned by the element, nothing to supply beyond trigger names):
+ *   The element wires the whole APG Tabs pattern: the list is a
+ *   `role="tablist"` reporting `aria-orientation`, each trigger is a
+ *   `role="tab"` cross-linked to its panel with `aria-controls` while the panel
+ *   points back with `aria-labelledby`, ids stay unique across groups on one
+ *   page, and an inactive panel is both `hidden` and `inert`. Arrow / Home / End
+ *   move focus AND selection (APG automatic activation) via a roving tabindex,
+ *   so the tablist is a single Tab stop and nav stays inside its own group when
+ *   tabs are nested. Do not hand-add any of these; the element already has.
+ *   What you DO supply: a name for each trigger. A trigger's name comes from its
+ *   own content, so an icon-only tab needs an `aria-label` on the
+ *   `<ui-tabs-trigger>` and an `aria-hidden="true"` icon inside it.
+ *   Keep the panel's content after the tablist in the DOM, which the example
+ *   shape already does, so reading order follows the tab that was activated.
+ *
  * Design tokens used: --muted, --muted-foreground, --foreground, --background,
  * --input, --ring.
  *

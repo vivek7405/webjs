@@ -12,10 +12,29 @@
  * Design tokens used: --input, --background, --muted-foreground, --ring,
  * --destructive.
  *
+ * A11y (required for accessible output):
+ *   LABEL IT. A `<label class=${labelClass()} for="<the textarea's id">` linked
+ *   by the `for` / `id` pair is the whole requirement. The `placeholder` in the
+ *   old example was doing that job and cannot: it vanishes as soon as the user
+ *   types, and it is not reliably exposed as a name.
+ *   Point `aria-describedby` at a hint or a character counter that EXISTS on the
+ *   page, and on a validation failure set `aria-invalid="true"` plus an
+ *   `aria-describedby` error element so the reason is announced with the field.
+ *   If you show a live character count, put it in an `aria-live="polite"`
+ *   region, otherwise the number updates silently for a screen reader user.
+ *   Leave the textarea RESIZABLE. The class autosizes via `field-sizing:
+ *   content`, which is fine, but do not add `resize-none` on top: a user who
+ *   needs more room to read their own text has no other way to get it (WCAG
+ *   1.4.4-adjacent).
+ *
  * @example
  * ```html
- * <textarea class=${textareaClass()} name="message" rows="4" placeholder="Your message">
- * </textarea>
+ * <div class=${fieldClass()}>
+ *   <label class=${labelClass()} for="message">Message</label>
+ *   <textarea class=${textareaClass()} name="message" id="message" rows="4"
+ *             aria-describedby="message-hint"></textarea>
+ *   <p class=${hintClass()} id="message-hint">Markdown is supported.</p>
+ * </div>
  * ```
  */
 import { cn } from '../lib/utils.ts';

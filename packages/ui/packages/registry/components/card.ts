@@ -13,11 +13,30 @@
  *
  * Design tokens used: --card, --card-foreground, --muted-foreground, --border.
  *
+ * A11y (required for accessible output):
+ *   Use a REAL HEADING for `cardTitleClass()` whenever the card has a
+ *   meaningful title. The helper only styles text, so on a `<div>` the title is
+ *   invisible to the heading outline a screen reader user navigates by, and on a
+ *   page of cards they get an unstructured wall. Pick the level that fits the
+ *   surrounding document (`<h2>` under the page `<h1>`, `<h3>` inside a
+ *   sectioned region); do not pick it for the font size, which the class sets.
+ *   The card root is a plain `<div>` with no role, which is correct: it is a
+ *   visual container. Give it a role only when it really is one thing, and then
+ *   name it, e.g. `<section aria-labelledby="<the title's id">` for a landmark,
+ *   or `role="listitem"` inside a `role="list"` for a card grid.
+ *   A WHOLE-CARD LINK is the trap. Do not wrap the card in an `<a>` around a
+ *   header, body, and buttons: it swallows the nested controls and gives a
+ *   screen reader user one enormous link whose name is the entire card text.
+ *   Put the link on the title instead and let the card be a container.
+ *   Keep the reading order of the DOM matching the visual order.
+ *   `cardActionClass()` places an action at the top right, but it stays after
+ *   the title and description in the markup, which is what you want announced.
+ *
  * @example
  * ```html
  * <div class=${cardClass()}>
  *   <div class=${cardHeaderClass()}>
- *     <div class=${cardTitleClass()}>Notifications</div>
+ *     <h3 class=${cardTitleClass()}>Notifications</h3>
  *     <div class=${cardDescriptionClass()}>You have 3 unread messages.</div>
  *     <div class=${cardActionClass()}>
  *       <button class=${buttonClass({ variant: 'ghost', size: 'sm' })}>Mark all read</button>

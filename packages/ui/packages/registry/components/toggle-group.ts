@@ -22,15 +22,30 @@
  *   `orientation`: "horizontal" (default) | "vertical".
  *
  * Attributes on <ui-toggle-group-item>:
- *   `value`:   string. Identifier this item contributes when selected.
- *   `pressed`: boolean (reflected). Mirrors the group's selection for this item.
+ *   `value`:    string. Identifier this item contributes when selected.
+ *   `pressed`:  boolean (reflected). Mirrors the group's selection for this item.
+ *   `disabled`: boolean (reflected). Refuses click + Enter / Space, is skipped by
+ *               Arrow / Home / End, and never holds the group's tab stop.
  *
  * Events:
  *   `ui-value-change` on <ui-toggle-group>: `{ detail: { value } }` after selection changes.
  *
  * Keyboard: Arrow keys move focus between items (roving tabindex, so the
  * group is a single Tab stop), Home / End jump to the first / last item, and
- * Enter / Space toggles the focused item.
+ * Enter / Space toggles the focused item. A `disabled` item is skipped by all
+ * of these.
+ *
+ * A11y (owned by the element, nothing to supply beyond item names):
+ *   The group is a `role="group"` whose items carry `aria-pressed`, navigated by
+ *   a roving tabindex so the whole group is one Tab stop. A `disabled` item
+ *   reports `aria-disabled` and is skipped by navigation: since the group is a
+ *   single tab stop, focus landing on a disabled item could not be tabbed past,
+ *   so skipping it is what keeps the group usable rather than a nicety.
+ *   Note `disabled` on the item is deliberately exposed as `aria-disabled`, not
+ *   a `disabled` attribute. The item's host IS the button and it is a custom
+ *   element, so a `disabled` attribute there is inert: no `:disabled` CSS, no
+ *   click suppression, no removal from the tab order.
+ *   What you DO supply: an `aria-label` on any icon-only item, as below.
  *
  * Design tokens used: inherited from toggleClass (--muted, --accent, --ring,
  * --input, --destructive).
@@ -48,6 +63,13 @@
  *   <ui-toggle-group-item value="bold">B</ui-toggle-group-item>
  *   <ui-toggle-group-item value="italic">I</ui-toggle-group-item>
  * </ui-toggle-group>
+ *
+ * <!-- A disabled item: unclickable, and skipped by Arrow / Home / End. -->
+ * <ui-toggle-group type="single" value="left">
+ *   <ui-toggle-group-item value="left" aria-label="Align left">L</ui-toggle-group-item>
+ *   <ui-toggle-group-item value="justify" aria-label="Justify" disabled>J</ui-toggle-group-item>
+ *   <ui-toggle-group-item value="right" aria-label="Align right">R</ui-toggle-group-item>
+ * </ui-toggle-group>
  * ```
  */
 import { WebComponent, html, prop } from '@webjsdev/core';
@@ -57,8 +79,13 @@ import { toggleClass, type ToggleVariant, type ToggleSize } from './toggle.ts';
 const ROOT_BASE =
   'group/toggle-group flex w-fit items-center rounded-md data-[spacing=default]:data-[variant=outline]:shadow-xs data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch';
 
+// The `disabled:` variants inside toggleClass() key on the :disabled pseudo,
+// which only ever matches a real form control. An item's host IS the button
+// here (a custom element), so `disabled` on it is inert as far as CSS and the
+// browser are concerned, and the disabled look has to come from the
+// aria-disabled variant instead.
 const ITEM_EXTRA =
-  'w-auto min-w-0 shrink-0 px-3 focus:z-10 focus-visible:z-10 data-[spacing=0]:rounded-none data-[spacing=0]:shadow-none data-[spacing=0]:first:rounded-l-md data-[spacing=0]:last:rounded-r-md data-[spacing=0]:data-[variant=outline]:border-l-0 data-[spacing=0]:data-[variant=outline]:first:border-l';
+  'w-auto min-w-0 shrink-0 px-3 focus:z-10 focus-visible:z-10 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[spacing=0]:rounded-none data-[spacing=0]:shadow-none data-[spacing=0]:first:rounded-l-md data-[spacing=0]:last:rounded-r-md data-[spacing=0]:data-[variant=outline]:border-l-0 data-[spacing=0]:data-[variant=outline]:first:border-l';
 
 // --------------------------------------------------------------------------
 // <ui-toggle-group>
@@ -117,6 +144,14 @@ export class UiToggleGroup extends WebComponent({
     return Array.from(this.querySelectorAll<UiToggleGroupItem>('ui-toggle-group-item'));
   }
 
+  // Arrow / Home / End navigate among ENABLED items only. Landing focus on a
+  // disabled item would strand the user on a control that refuses every
+  // interaction, and since this group is a single tab stop they cannot simply
+  // Tab past it.
+  _enabledItems(): UiToggleGroupItem[] {
+    return this._items().filter((i) => !i.disabled);
+  }
+
   _reflectItems(): void {
     const values = this._values;
     const items = this._items();
@@ -138,18 +173,29 @@ export class UiToggleGroup extends WebComponent({
   // single tabbable slot via `focusItem`.
   _roving(items: UiToggleGroupItem[], current?: UiToggleGroupItem): void {
     if (!items.length) return;
+    // The tab stop must land on an ENABLED item: promoting a disabled one makes
+    // the group's single Tab stop a dead end.
+    const enabled = items.filter((i) => !i.disabled);
+    if (!enabled.length) {
+      items.forEach((item) => {
+        item.tabIndex = -1;
+      });
+      return;
+    }
     const values = this._values;
     const active =
       typeof document !== 'undefined' ? (document.activeElement as Element | null) : null;
-    const focused = active ? items.find((i) => i === active) : undefined;
-    const selected = items.find((i) => !!i.value && values.has(i.value));
-    const tabbable = focused ?? current ?? selected ?? items[0];
+    const focused = active ? enabled.find((i) => i === active) : undefined;
+    const selected = enabled.find((i) => !!i.value && values.has(i.value));
+    const held = current && !current.disabled ? current : undefined;
+    const tabbable = focused ?? held ?? selected ?? enabled[0];
     items.forEach((item) => {
       item.tabIndex = item === tabbable ? 0 : -1;
     });
   }
 
   focusItem(item: UiToggleGroupItem): void {
+    if (item.disabled) return;
     this._items().forEach((el) => {
       el.tabIndex = el === item ? 0 : -1;
     });
@@ -189,11 +235,13 @@ UiToggleGroup.register('ui-toggle-group');
 export class UiToggleGroupItem extends WebComponent({
   value: prop(String, { reflect: true }),
   pressed: prop(Boolean, { reflect: true }),
+  disabled: prop(Boolean, { reflect: true }),
 }) {
   constructor() {
     super();
     this.value = '';
     this.pressed = false;
+    this.disabled = false;
   }
 
   // render() runs server-side too. webjs resolves closest() at SSR against
@@ -240,12 +288,36 @@ export class UiToggleGroupItem extends WebComponent({
     this.dataset.size = size;
     this.dataset.spacing = spacing;
     this.dataset.state = this.pressed ? 'on' : 'off';
+    // role and data-slot are set HERE as well as in connectedCallback, because
+    // SSR runs render() but NOT connectedCallback. Without this the served item
+    // carried aria-pressed / aria-disabled with no role at all, and neither is a
+    // global ARIA attribute, so the first paint shipped attributes that are not
+    // allowed on a generic-role element. (`this.role` is shimmed server-side too,
+    // like the ariaPressed / dataset / className writes around it; setAttribute
+    // is simply the more explicit spelling.)
+    this.setAttribute('role', 'button');
+    this.setAttribute('data-slot', 'toggle-group-item');
     this.ariaPressed = String(this.pressed);
+    // aria-disabled rather than a `disabled` attribute: the host is a custom
+    // element, so `disabled` would be inert (no CSS pseudo, no click blocking,
+    // no removal from the tab order). aria-disabled is what actually reaches
+    // assistive tech, and the group skips these in its roving tabindex.
+    this.ariaDisabled = String(this.disabled);
     this.className = cn(toggleClass({ variant, size }), ITEM_EXTRA);
     return html`<slot></slot>`;
   }
 
+  // Disabling the item that happens to hold the group's only tab stop would
+  // leave the group unreachable by keyboard, and the group cannot see an item's
+  // prop change on its own, so ask it to recompute which item is tabbable.
+  updated(changedProperties: Map<string, unknown>): void {
+    if (!changedProperties.has('disabled')) return;
+    if (changedProperties.get('disabled') === undefined) return;
+    queueMicrotask(() => this._group?._reflectItems());
+  }
+
   _onClick = (): void => {
+    if (this.disabled) return;
     if (!this.value) return;
     this.dispatchEvent(
       new CustomEvent('ui-toggle-item-click', { detail: { value: this.value }, bubbles: true }),
@@ -253,6 +325,7 @@ export class UiToggleGroupItem extends WebComponent({
   };
 
   _onKeyDown = (e: KeyboardEvent): void => {
+    if (this.disabled) return;
     if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
       this._onClick();
@@ -263,7 +336,7 @@ export class UiToggleGroupItem extends WebComponent({
     const horizontal = group.orientation !== 'vertical';
     const nextKey = horizontal ? 'ArrowRight' : 'ArrowDown';
     const prevKey = horizontal ? 'ArrowLeft' : 'ArrowUp';
-    const items = group._items();
+    const items = group._enabledItems();
     const idx = items.indexOf(this);
     if (idx === -1) return;
     let target: UiToggleGroupItem | null = null;

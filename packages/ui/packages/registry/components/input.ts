@@ -15,10 +15,42 @@
  * Design tokens used: --input, --background, --primary, --primary-foreground,
  * --muted-foreground, --foreground, --ring, --destructive.
  *
+ * A11y (required for accessible output):
+ *   LABEL IT. A `<label class=${labelClass()} for="<the input's id">` is the
+ *   whole requirement, and the `for` / `id` pair is what links them. Without it
+ *   the input has no accessible name and a screen reader announces only "edit
+ *   text". A `placeholder` is NOT a label: it disappears the moment the user
+ *   types, and some engines never expose it as a name at all.
+ *   Every `aria-describedby` must point at an element that EXISTS on the page.
+ *   A dangling id silently contributes nothing, so the hint or error text is
+ *   never announced; the example below therefore renders the `#email-hint` node
+ *   it references rather than assuming it.
+ *   On a validation failure set `aria-invalid="true"` (the class styles the
+ *   error ring off it) and point `aria-describedby` at the error text, so the
+ *   reason is announced along with the field rather than only shown in red.
+ *   Set the right `type` and `autocomplete`. Both are accessibility features:
+ *   `type` picks the mobile keyboard and the native validation, and
+ *   `autocomplete` is what lets a password manager or an autofill user avoid
+ *   retyping. `type="search"` / `type="email"` also announce as such.
+ *   A required field wants the native `required` attribute, not just an
+ *   asterisk in the label, so the state reaches assistive tech.
+ *
  * @example
  * ```html
- * <input class=${inputClass()} type="email" name="email" id="email" required
- *        aria-describedby="email-hint">
+ * <div class=${fieldClass()}>
+ *   <label class=${labelClass()} for="email">Email</label>
+ *   <input class=${inputClass()} type="email" name="email" id="email" required
+ *          autocomplete="email" aria-describedby="email-hint">
+ *   <p class=${hintClass()} id="email-hint">We never share it.</p>
+ * </div>
+ *
+ * <!-- Failed validation: invalid state plus the reason, both announced. -->
+ * <div class=${fieldClass()}>
+ *   <label class=${labelClass()} for="email-2">Email</label>
+ *   <input class=${inputClass()} type="email" name="email" id="email-2"
+ *          aria-invalid="true" aria-describedby="email-2-error" value="nope">
+ *   <p class=${errorClass()} id="email-2-error">Enter a valid email address.</p>
+ * </div>
  * ```
  */
 import { cn } from '../lib/utils.ts';
