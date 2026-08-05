@@ -238,7 +238,7 @@ Chromium, Firefox, and WebKit via web-test-runner).
 
 A browser test that clicks a real `<a href>` or submits a real `<form>`
 MUST install the shared guard from `test/browser-nav-guard.js`
-(`installNavGuard()`, returning `{ fallbacks, remove }`). web-test-runner
+(`installNavGuard()`, returning `{ fallbacks, hardNavigations, remove }`). web-test-runner
 aborts the whole session when the page navigates, so an escaped click
 takes down every browser file rather than failing one test. The guard
 listens on `window` in the BUBBLE phase, which is load-bearing: capture
@@ -246,6 +246,17 @@ would set `defaultPrevented` before the router's document-level listener
 runs, and `onClick` returns on that flag, so every guarded router test
 would pass while testing nothing. Full rule in
 [`references/testing.md`](../../.agents/skills/webjs/references/testing.md).
+
+The guard also covers the SECOND channel, the router's own hard navigation on
+a degradation. `preventDefault` cannot cancel a script assignment, and
+`location.href` is non-configurable on all three engines so its setter cannot
+be redefined, so `router-client.js` routes every hard navigation through one
+`hardNavigate` indirection with a `setHardNavigate(fn)` seam. The guard
+installs an override that records the attempt into `hardNavigations` instead of
+performing it, so a degradation fails one test with its `cause` slug rather
+than aborting the whole session. `setHardNavigate` is TEST-ONLY and is
+deliberately not re-exported from `index.js` / `index-browser.js`; tests reach
+it through the same direct `src/router-client.js` import they already use.
 
 Cross-package tests that exercise core through the SSR pipeline
 or scaffolds live at the repo root in `test/ssr/`,

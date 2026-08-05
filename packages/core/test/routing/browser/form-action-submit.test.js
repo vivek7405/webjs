@@ -36,10 +36,6 @@ suite('Client router: bound form submissions (#1155)', () => {
   let navGuard;
 
   let container, origFetch, calls;
-  // When a test redefines window.location.href (to detect a full-page reload),
-  // it records the restore fn here so teardown reverts it even if the body
-  // throws. Null when no redefine is active.
-  let restoreHref;
 
   let bOpen, bClose;
   function setup(responder) {
@@ -55,7 +51,6 @@ suite('Client router: bound form submissions (#1155)', () => {
     document.body.appendChild(container);
     document.body.appendChild(bClose);
     calls = [];
-    restoreHref = null;
     origFetch = window.fetch;
     window.fetch = (url, init) => {
       calls.push({ url: String(url), init: init || {} });
@@ -65,38 +60,11 @@ suite('Client router: bound form submissions (#1155)', () => {
   function teardown() {
     navGuard.remove();
     window.fetch = origFetch;
-    if (restoreHref) { try { restoreHref(); } catch { /* ignore */ } restoreHref = null; }
     container.remove();
     if (bOpen) bOpen.remove();
     if (bClose) bClose.remove();
   }
 
-  /**
-   * Replace window.location.href's setter with a spy so a full-page reload is
-   * observable (the router falls back to `location.href = url` only for a
-   * non-HTML / error response). Returns a getter for the reload count. The
-   * descriptor restore is registered on `restoreHref` so teardown always
-   * reverts it. Some browsers forbid redefining the accessor; in that case the
-   * spy is a no-op and the test leans on the DOM-applied assertion instead.
-   */
-  function spyOnReload() {
-    let reloads = 0;
-    const realDescriptor = Object.getOwnPropertyDescriptor(Location.prototype, 'href')
-      || Object.getOwnPropertyDescriptor(window.location, 'href');
-    let installed = false;
-    try {
-      Object.defineProperty(window.location, 'href', {
-        configurable: true,
-        get: () => location.toString(),
-        set: () => { reloads += 1; },
-      });
-      installed = true;
-    } catch { /* redefining forbidden here; rely on the DOM assertion */ }
-    if (installed && realDescriptor) {
-      restoreHref = () => Object.defineProperty(window.location, 'href', realDescriptor);
-    }
-    return { count: () => reloads, installed: () => installed };
-  }
 
   test('a bound form posts to the page own url and carries the identity field', async () => {
     // The rendered form has NO `action` attribute (the renderer omits it so the
@@ -161,7 +129,6 @@ suite('Client router: bound form submissions (#1155)', () => {
       '<input name="email" value="bad"></form></main><!--/wj:children:/-->',
       { status: 422, headers: { 'content-type': 'text/html', 'x-webjs-build': '' } },
     ));
-    const reload = spyOnReload();
     try {
       render(html`
         <main>
@@ -176,7 +143,12 @@ suite('Client router: bound form submissions (#1155)', () => {
       await tick();
 
       assert.ok(calls.length, 'fetch was issued');
-      assert.equal(reload.count(), 0, '422 HTML must be applied in place, never a full reload');
+      // The seam (#1286) records a hard navigation instead of performing it, so
+      // this is a real observation. The old `spyOnReload` helper could not make
+      // it: `location.href` is non-configurable on all three engines, so its
+      // redefine always threw and the count was structurally always zero.
+      assert.equal(navGuard.hardNavigations.length, 0,
+        '422 HTML must be applied in place, never a full reload');
       // The 422 body was actually applied to the live DOM (the field error is
       // now present), which a full reload would never achieve from a fetch stub.
       assert.ok(document.getElementById(marker), 'the 422 re-render body was applied in place');

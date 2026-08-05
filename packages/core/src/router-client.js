@@ -377,7 +377,9 @@ export function disableClientRouter() {
 export async function navigate(url, opts) {
   const target = new URL(url, location.href);
   if (target.origin !== location.origin) {
-    location.href = url;
+    // Cross-origin: an intentional full-page nav, not a degradation, but it
+    // ends the session in a test just the same, so it rides the same seam.
+    hardNavigate(url);
     return;
   }
   await performNavigation(target.href, opts?.replace ?? false, null);
@@ -474,6 +476,28 @@ export function revalidate(url) {
  * Pathnames with these extensions are never HTML pages.
  */
 const NON_HTML_EXTENSIONS = /\.(?:pdf|zip|tar|gz|7z|rar|dmg|exe|msi|deb|rpm|apk|ipa|xlsx?|docx?|pptx?|csv|odt|ods|odp|rtf|epub|mobi|xml|json|rss|atom|txt|md|wasm|mp3|mp4|mov|avi|webm|ogg|flac|wav|m4a|m4v|mkv|png|jpe?g|gif|webp|avif|bmp|ico|svg|tiff?|heic)$/i;
+
+/**
+ * The one place the router hands a navigation back to the browser.
+ *
+ * Every hard navigation the router performs goes through here rather than
+ * assigning `location.href` inline, so a browser test can observe it. The
+ * default is exactly the assignment it replaces, so behaviour is unchanged
+ * unless something calls `setHardNavigate`.
+ *
+ * This exists because a hard navigation is UNOBSERVABLE and UNPREVENTABLE from
+ * outside. `preventDefault` cancels a default action, not a script assignment,
+ * and `location.href` is non-configurable on Chromium, Firefox, and WebKit
+ * alike, so a test cannot redefine its setter either (measured; the older
+ * `spyOnReload` helper that tried was silently a no-op on every engine). In a
+ * web-test-runner session a real navigation aborts the WHOLE session, so one
+ * degradation destroys every remaining browser test file and reports `0 failed`
+ * on the way out. A seam is the only thing that makes it catchable.
+ *
+ * @param {string} href
+ */
+let hardNavigate = (href) => { location.href = href; };
+
 
 /** @param {MouseEvent} e */
 function onClick(e) {
@@ -1181,7 +1205,7 @@ async function performNavigation(href, isPopState, frameId) {
   // nav carries its own boundary element.
   if (shouldFullLoadDuringParse(isPopState, frameId) && typeof location !== 'undefined') {
     reportFallback('readyState-loading', href);
-    location.href = href;
+    hardNavigate(href);
     return;
   }
 
@@ -2082,7 +2106,7 @@ function handleNavigationError(href, status, error) {
   // carries no `cause` / `willReload`, so it is not a substitute.
   if (typeof location !== 'undefined') {
     reportFallback('navigation-error-unrecoverable', href);
-    location.href = href;
+    hardNavigate(href);
   }
 }
 
@@ -2910,14 +2934,14 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
         } else {
           if (sessionStorage) sessionStorage.setItem(flag, '1');
           reportFallback('deploy-mismatch', href);
-          location.href = href;
+          hardNavigate(href);
           return;
         }
       } catch {
         // sessionStorage unavailable (private mode w/ quota etc.):
         // fall through to a single reload like before.
         reportFallback('deploy-mismatch', href);
-        location.href = href;
+        hardNavigate(href);
         return;
       }
     } else if (!mismatch) {
@@ -3055,7 +3079,7 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
     reportFallback(!here ? 'live-boundaries-malformed'
       : !there ? 'incoming-boundaries-malformed'
       : 'no-shared-boundary', href);
-    location.href = href;
+    hardNavigate(href);
     return;
   }
 
@@ -4521,6 +4545,20 @@ export function _resetPrefetch() {
   prefetchQueued.clear();
   clearPrefetchHover();
   clearPrefetchViewTimers();
+}
+
+/**
+ * Test-only: replace the hard-navigate action so a browser test can observe a
+ * navigation instead of being destroyed by it. Call with no argument to
+ * restore. Underscore-prefixed and kept in this block like every other
+ * test-only export here, so it stays out of `router-client.d.ts` and out of
+ * the app-facing API (the `./client-router` subpath resolves this file under
+ * the `source` condition, so an unprefixed name here would read as public).
+ *
+ * @param {((href: string) => void) | null} [fn]
+ */
+export function _setHardNavigate(fn) {
+  hardNavigate = fn || ((href) => { location.href = href; });
 }
 
 /** Test-only: read the monotonic navigation-token counter. */

@@ -137,6 +137,45 @@ suite('Browser-test nav guard (#1135)', () => {
     } finally { teardown(); }
   });
 
+  test('a real degradation is recorded, not performed (#1286)', async () => {
+    setup();
+    try {
+      // Force the router to degrade: strip the live boundary pair so the swap
+      // cannot find a shared boundary. That path reports a fallback and then
+      // hands the navigation to the browser, which before the seam existed
+      // aborted the whole web-test-runner session rather than failing here.
+      bOpen.remove();
+      bClose.remove();
+      render(html`<a href="/nav-guard-degrade">go</a>`, container);
+      const settled = awaitNavigation();
+      container.querySelector('a').click();
+      await settled;
+
+      assert.ok(guard.hardNavigations.some((u) => u.includes('/nav-guard-degrade')),
+        'the hard navigation must be RECORDED by the seam');
+      // There is deliberately NO in-test assertion that the navigation was not
+      // PERFORMED, because none can be honest. `location` cannot serve: the
+      // degradation path falls through to `history.pushState`, so the pathname
+      // changes either way. Nor can a surviving window sentinel: a
+      // `location.href` assignment starts a navigation that commits on a later
+      // task rather than tearing the realm down synchronously, so the sentinel
+      // reads the same on both sides and would be a vacuous assertion, which is
+      // the exact defect class this seam exists to remove.
+      //
+      // What proves non-performance is the counterfactual: disable the override
+      // in `installNavGuard` and this file does not fail, it aborts the whole
+      // web-test-runner session on every engine.
+      // The cause slug is the diagnosis, and it only survives because the
+      // navigation no longer happens.
+      assert.ok(guard.fallbacks.length > 0, 'the degradation reported a cause');
+      assert.match(String(guard.fallbacks[0].cause), /boundar|shared/,
+        `expected a boundary-related cause, got ${guard.fallbacks[0].cause}`);
+    } finally {
+      // teardown() removes bOpen/bClose; they are already detached here.
+      teardown();
+    }
+  });
+
   test('does NOT suppress the router on a plain link (capture-phase regression)', async () => {
     setup();
     try {
