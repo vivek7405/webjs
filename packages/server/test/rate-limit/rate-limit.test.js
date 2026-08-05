@@ -264,3 +264,124 @@ test('stampRemoteIp: preserves AbortSignal for host-side cancellation', async ()
   assert.equal(safe.signal.aborted, true,
     'aborting the source controller must propagate to the safe Request');
 });
+
+// ---------------------------------------------------------------------------
+// WEBJS_NO_TRUST_PROXY=1 overrides `trustProxy: true` (#1254)
+//
+// The env switch is the operator's statement about the topology, so it only
+// ever SUBTRACTS trust: under the flag an explicit opt-in resolves to the
+// framework-stamped peer, exactly as the default path does.
+// ---------------------------------------------------------------------------
+
+/** Run `fn` with `WEBJS_NO_TRUST_PROXY` set to `value`, restoring it after. */
+async function withNoTrustProxy(value, fn) {
+  const prev = process.env.WEBJS_NO_TRUST_PROXY;
+  if (value === undefined) delete process.env.WEBJS_NO_TRUST_PROXY;
+  else process.env.WEBJS_NO_TRUST_PROXY = value;
+  try {
+    return await fn();
+  } finally {
+    if (prev === undefined) delete process.env.WEBJS_NO_TRUST_PROXY;
+    else process.env.WEBJS_NO_TRUST_PROXY = prev;
+  }
+}
+
+test('WEBJS_NO_TRUST_PROXY=1: clientIp({trustProxy:true}) returns the stamped peer, not XFF (#1254)', async () => {
+  const { clientIp } = await import('../../src/rate-limit.js');
+  const req = new Request('http://x/', {
+    headers: {
+      'x-forwarded-for': '1.1.1.1, 2.2.2.2',
+      'cf-connecting-ip': '4.4.4.4',
+      'x-real-ip': '8.8.8.8',
+      'x-webjs-remote-ip': '9.9.9.9',
+    },
+  });
+  await withNoTrustProxy('1', () => {
+    assert.equal(clientIp(req, { trustProxy: true }), '9.9.9.9',
+      'the env switch must override the explicit opt-in and land on the stamped peer');
+  });
+});
+
+test('WEBJS_NO_TRUST_PROXY=1: clientIp({trustProxy:true}) with no stamp returns `_anon_`, never a forwarded value (#1254)', async () => {
+  const { clientIp } = await import('../../src/rate-limit.js');
+  const req = new Request('http://x/', {
+    headers: { 'x-forwarded-for': '1.1.1.1', 'cf-connecting-ip': '4.4.4.4', 'x-real-ip': '8.8.8.8' },
+  });
+  await withNoTrustProxy('1', () => {
+    assert.equal(clientIp(req, { trustProxy: true }), '_anon_',
+      'the override must fall all the way through to anon rather than to a forwarded header');
+  });
+});
+
+test('WEBJS_NO_TRUST_PROXY=1: rateLimit({trustProxy:true}) buckets rotated XFF together (#1254)', async () => {
+  // The exact inverse of the flag-off case above, where rotating XFF escapes
+  // the bucket. Same stamped peer, different XFF per request, one bucket.
+  const mw = rateLimit({ window: '1s', max: 1, trustProxy: true });
+  const ip = 'x-webjs-remote-ip';
+  const r1 = new Request('http://x/', { headers: { [ip]: '1.2.3.4', 'x-forwarded-for': '10.0.0.1' } });
+  const r2 = new Request('http://x/', { headers: { [ip]: '1.2.3.4', 'x-forwarded-for': '10.0.0.2' } });
+  await withNoTrustProxy('1', async () => {
+    assert.equal((await mw(r1, async () => new Response())).status, 200);
+    assert.equal((await mw(r2, async () => new Response())).status, 429,
+      'under the env switch a rotated XFF must NOT escape the bucket');
+  });
+});
+
+test('WEBJS_NO_TRUST_PROXY: only the literal "1" overrides (#1254)', async () => {
+  const { clientIp } = await import('../../src/rate-limit.js');
+  const req = new Request('http://x/', {
+    headers: { 'x-forwarded-for': '1.1.1.1', 'x-webjs-remote-ip': '9.9.9.9' },
+  });
+  // Matches the `!== '1'` semantics forwarded.test.js already pins for the
+  // origin side, so the two readers cannot drift on what counts as "set".
+  for (const v of ['0', 'true', 'yes', '', undefined]) {
+    await withNoTrustProxy(v, () => {
+      assert.equal(clientIp(req, { trustProxy: true }), '1.1.1.1',
+        `WEBJS_NO_TRUST_PROXY=${JSON.stringify(v)} must NOT override the opt-in`);
+    });
+  }
+});
+
+test('WEBJS_NO_TRUST_PROXY=1: the override warns exactly once per process (#1254)', async () => {
+  // A fresh module instance, so this test owns the module-scope warn latch and
+  // cannot be tripped by whichever earlier test happened to fire it first.
+  const { clientIp } = await import('../../src/rate-limit.js?warn-once');
+  const seen = [];
+  const realWarn = console.warn;
+  console.warn = (...args) => seen.push(args.join(' '));
+  try {
+    const req = new Request('http://x/', {
+      headers: { 'x-forwarded-for': '1.1.1.1', 'x-webjs-remote-ip': '9.9.9.9' },
+    });
+    // Flag unset: the opt-in is honoured and nothing is logged.
+    await withNoTrustProxy(undefined, () => {
+      clientIp(req, { trustProxy: true });
+      clientIp(req, { trustProxy: true });
+    });
+    assert.equal(seen.length, 0, 'no warning may fire while the flag is unset');
+
+    await withNoTrustProxy('1', () => {
+      clientIp(req, { trustProxy: true });
+      clientIp(req, { trustProxy: true });
+      clientIp(req, { trustProxy: true });
+    });
+    assert.equal(seen.length, 1, 'the override must warn once, not once per request');
+    assert.match(seen[0], /WEBJS_NO_TRUST_PROXY/);
+    assert.match(seen[0], /trustProxy/);
+    // The line must carry no request data, or it becomes a log of
+    // client-supplied header values.
+    assert.doesNotMatch(seen[0], /1\.1\.1\.1|9\.9\.9\.9/, 'the warning must carry no request data');
+  } finally {
+    console.warn = realWarn;
+  }
+});
+
+test('WEBJS_NO_TRUST_PROXY=1: the default path (no option) is unchanged (#1254)', async () => {
+  const { clientIp } = await import('../../src/rate-limit.js');
+  const req = new Request('http://x/', {
+    headers: { 'x-forwarded-for': '1.1.1.1', 'x-webjs-remote-ip': '9.9.9.9' },
+  });
+  await withNoTrustProxy('1', () => {
+    assert.equal(clientIp(req), '9.9.9.9', 'the default path must still read only the stamped peer');
+  });
+});

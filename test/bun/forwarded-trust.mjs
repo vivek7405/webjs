@@ -40,6 +40,7 @@ import { actionEndpoint } from '@webjsdev/server/testing';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CORE = pathToFileURL(resolve(__dirname, '../../packages/core/index.js')).toString();
+const SERVER = pathToFileURL(resolve(__dirname, '../../packages/server/index.js')).toString();
 const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`;
 const quiet = { info() {}, warn() {}, error() {}, debug() {} };
 
@@ -77,6 +78,15 @@ try {
   // An action, so the CSRF host resolution (#1104) is exercised through the
   // real RPC dispatch rather than by calling the helper directly.
   w('actions.server.ts', `'use server';\nexport async function ping() {\n  return { success: true };\n}\n`);
+
+  // A rate-limited segment, so the #1254 override is proven through the real
+  // middleware dispatch rather than by calling `clientIp` directly.
+  w(
+    'app/limited/middleware.ts',
+    `import { rateLimit } from ${JSON.stringify(SERVER)};\n` +
+      `export default rateLimit({ window: '1m', max: 1, trustProxy: true });\n`,
+  );
+  w('app/limited/route.ts', `export async function GET() {\n  return { ok: true };\n}\n`);
 
   let server;
   // dev mode on purpose. The HTML cache is live in dev (the opt-in is the page
@@ -140,9 +150,33 @@ try {
   assert.notEqual(modern.status, 403, `the Sec-Fetch-Site path is unchanged by the flag on ${runtime}`);
   delete process.env.WEBJS_NO_TRUST_PROXY;
 
+  /* ---- 3. WEBJS_NO_TRUST_PROXY overrides rateLimit trustProxy too (#1254) ---- */
+
+  // This block is load-bearing per runtime, not decorative. Under the override
+  // the bucket key comes from `trustedRemoteIp`, whose plumbing genuinely
+  // differs per shell (the node shell stamps `x-webjs-remote-ip` through
+  // `toWebRequest`, the Bun shell stamps out of band through a WeakMap, #756),
+  // so the override could resolve to the peer on one runtime and to `_anon_`
+  // on the other while both looked correct in isolation.
+  const limited = (xff) => fetch(`${base}/limited`, { headers: { 'x-forwarded-for': xff } });
+
+  // Flag unset: the opt-in is honored, so a rotated XFF is a different bucket.
+  assert.equal((await limited('10.0.0.1')).status, 200, `first forwarded IP is allowed on ${runtime}`);
+  assert.equal((await limited('10.0.0.2')).status, 200,
+    `a different forwarded IP is its own bucket while the flag is unset on ${runtime}`);
+
+  // Flag set: the opt-in is overridden, so both requests key on the one real
+  // peer (the loopback socket) and the second exhausts that single bucket.
+  process.env.WEBJS_NO_TRUST_PROXY = '1';
+  assert.equal((await limited('10.0.0.3')).status, 200, `the peer's first request is allowed on ${runtime}`);
+  const rotated = await limited('10.0.0.4');
+  assert.equal(rotated.status, 429,
+    `WEBJS_NO_TRUST_PROXY=1 reaches the rate-limit bucket key on ${runtime}: a rotated XFF must not escape it`);
+  delete process.env.WEBJS_NO_TRUST_PROXY;
+
   await close();
   close = null;
-  console.log(`OK  forwarded trust passed on ${runtime} (cache not poisonable across origins, opt-out reaches CSRF)`);
+  console.log(`OK  forwarded trust passed on ${runtime} (cache not poisonable across origins, opt-out reaches CSRF + rate-limit)`);
 } catch (e) {
   failure = e;
 } finally {

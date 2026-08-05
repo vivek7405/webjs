@@ -109,7 +109,7 @@ import { rateLimit } from '@webjsdev/server';
 export default rateLimit({ window: '1m', max: 60 });
 ```
 
-Options: `window` (ms or a string like `'1m'`), `max`, `key` (a string prefix or a `(req) => string` function, defaults to the client IP), `message`, `store`, `trustProxy`. Over-limit responds `429` with `Retry-After` and `X-RateLimit-*` headers; an allowed response carries the remaining-quota headers too. For multi-instance scaling, set the global store to Redis once at startup.
+Options: `window` (ms or a string like `'1m'`), `max`, `key` (a string prefix or a `(req) => string` function, defaults to the client IP), `message`, `store`, `trustProxy` (honour the forwarded-IP headers; inert while `WEBJS_NO_TRUST_PROXY=1` is set, which outranks it and keeps the limiter on the framework-stamped peer). Over-limit responds `429` with `Retry-After` and `X-RateLimit-*` headers; an allowed response carries the remaining-quota headers too. For multi-instance scaling, set the global store to Redis once at startup.
 
 ## Broadcast
 

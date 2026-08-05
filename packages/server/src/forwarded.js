@@ -197,15 +197,18 @@ export function applyForwarded(url, headers) {
  * `WEBJS_NO_TRUST_PROXY=1` turned off two of them and an operator could not
  * tell from any single file whether their app trusted forwarded headers.
  *
- * SCOPE, so this comment does not overclaim: `clientIp` in `rate-limit.js` is
- * NOT a consumer. It reads `x-forwarded-for` / `cf-connecting-ip` /
- * `x-real-ip`, a different question (who the client is, not what origin the
- * app is serving), behind its own EXPLICIT per-call opt-in
- * (`rateLimit({ trustProxy: true })`), and it defaults to the framework-stamped
- * peer address. An app that passes that option is asking for those headers on
- * that call, so this env switch deliberately does not override it. Note the
- * name collision is real: `trustProxy()` here is env-backed and package-wide,
- * `trustProxy` there is a per-call boolean.
+ * SCOPE: `clientIp` in `rate-limit.js` is a consumer too (#1254), so the switch
+ * now covers every forwarded-header read in the package, the client-IP ones
+ * (`x-forwarded-for` / `cf-connecting-ip` / `x-real-ip`) included. The name
+ * collision is still real: `trustProxy()` here is env-backed and package-wide,
+ * `trustProxy` there is a per-call boolean. They point the same direction, and
+ * the DIRECTION RULE is what resolves them. This switch only ever SUBTRACTS
+ * trust; the per-call option can only add it while this switch is unset. So
+ * `rateLimit({ trustProxy: true })` under `WEBJS_NO_TRUST_PROXY=1` resolves to
+ * the framework-stamped peer, because an env switch that two subsystems honour
+ * and one ignores cannot tell an operator their posture, and because the
+ * failure mode of an over-firing override is a shared bucket (visible,
+ * self-inflicted) rather than a limiter keyed on a header the client chooses.
  *
  * Read from `process.env` at CALL time, never cached at boot, so a test (and a
  * runtime that mutates its own env) can toggle it per case.

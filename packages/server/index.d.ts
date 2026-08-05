@@ -537,11 +537,26 @@ export declare function rateLimit(opts?: {
   key?: string | ((req: Request) => string | Promise<string>);
   message?: string;
   store?: CacheStore;
+  /**
+   * Bucket on the forwarded-IP headers (`X-Forwarded-For`, `CF-Connecting-IP`,
+   * `X-Real-IP`) instead of the framework-stamped peer. Inert while
+   * `WEBJS_NO_TRUST_PROXY=1` is set: that env switch is the operator's
+   * statement about the topology and it outranks this option, so the limiter
+   * falls back to the stamped peer and logs once. Only safe behind a proxy
+   * that STRIPS inbound `X-Forwarded-For` before adding its own.
+   */
   trustProxy?: boolean;
 }): Middleware;
 /** Parse a window string (`'1m'`, `'30s'`) to milliseconds. */
 export declare function parseWindow(w: number | string): number;
-/** Resolve the client IP for a request (honoring proxy-trust posture). */
+/**
+ * Resolve the client IP for a request (honoring proxy-trust posture).
+ *
+ * Defaults to the framework-stamped peer, or `_anon_` when there is none.
+ * `trustProxy: true` reads the forwarded-IP headers instead, UNLESS
+ * `WEBJS_NO_TRUST_PROXY=1` is set, which overrides the option back to the
+ * stamped peer and logs once per process.
+ */
 export declare function clientIp(req: Request, opts?: { trustProxy?: boolean }): string;
 /** Stamp the socket remote address onto a request for `clientIp` to read. */
 export declare function stampRemoteIp(req: Request, remoteAddress: string): void;
