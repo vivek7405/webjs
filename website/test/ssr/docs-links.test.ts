@@ -257,25 +257,22 @@ test('every docs sidebar label and section title is Title Case', async () => {
   const nav = layout.slice(start, end);
   assert.ok(!nav.includes('generateMetadata'), 'the NAV_SECTIONS slice ran past the end of the literal');
 
-  // Two ways an entry can slip out of this check unnoticed, both closed here.
+  // Three deliberate choices in this one regex, each closing a way an entry
+  // could go unread. Stated as what the pattern DOES, not as a promise about
+  // which assertion catches a given malformed entry: the parse degrades
+  // differently depending on which key is malformed and in what order the keys
+  // are written, so any such promise would be true for some shapes only.
   //
-  // Anchoring `label:` to a preceding `href:` yields NOTHING for an entry
-  // written `{ label: '...', href: '...' }`, so a key reorder would drop it.
-  // Each key is therefore read on its own, and the href count is the
-  // cross-check, since every nav item has one of each.
+  // Each key is read on its own rather than anchored to a neighbour, since an
+  // `href:`-anchored pattern reads nothing from `{ label: '...', href: '...' }`.
+  // The quote character is captured and back-referenced rather than hard-coded,
+  // so both quote styles parse and a value may carry the other quote inside it.
+  // And it takes `+` rather than `*`, so an empty value does not quietly become
+  // an empty string that the has-a-letter test below then skips.
   //
-  // Matching only single quotes would miss a double-quoted entry, and when
-  // BOTH its keys are double-quoted the counts stay equal, so the cross-check
-  // would not notice either. The sibling orphan test covers that for a
-  // `/docs/*` entry, but NOT for the one `/ui` cross-link, which is not a doc
-  // directory, so nothing in this file would have caught a sentence-cased
-  // relabel of it. The quote character is captured and back-referenced instead
-  // of hard-coded, which reads both styles and lets a label carry the other
-  // quote inside it. It stays `+` rather than `*` so an EMPTY value does not
-  // match: an empty label is a nav row with no visible text, and leaving it
-  // unmatched is what makes the count cross-check fire on it. Matching it as
-  // an empty string would keep the counts equal and then skip it at the
-  // has-a-letter test below, which is silent.
+  // The href count is a cross-check on the label count. It is a useful signal,
+  // not a guarantee: a malformed entry can also surface as a garbage row in the
+  // offender list instead, which is equally loud and names the entry.
   const quoted = (key) => new RegExp(`\\b${key}:\\s*(['"])(.+?)\\1`, 'g');
   const labels = [...nav.matchAll(quoted('label'))].map((m) => m[2]);
   const titles = [...nav.matchAll(quoted('title'))].map((m) => m[2]);
@@ -284,7 +281,7 @@ test('every docs sidebar label and section title is Title Case', async () => {
   assert.equal(
     labels.length,
     hrefs.length,
-    `parsed ${hrefs.length} hrefs but ${labels.length} labels: a nav entry is written in a shape this test cannot read, so it is silently not being checked`,
+    `parsed ${hrefs.length} hrefs but ${labels.length} labels: a nav entry did not parse, so it is not being checked. Usual causes are an empty value or a quoting style this regex does not read. Fix the nav entry if it is malformed; widen the regex only if the entry is legitimate`,
   );
   // Floors matching the sibling checks in this file, so a regex that stops
   // matching fails here instead of passing empty.
