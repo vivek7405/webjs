@@ -2665,6 +2665,24 @@ function runWithTransition(thunk, afterFinished) {
 }
 
 /**
+ * Live nodes a regraft actually moved into the incoming tree, so they
+ * survived the swap BY IDENTITY. Membership is strictly narrower than
+ * "carries `data-webjs-permanent`": the regrafts have a both-exist guard, so
+ * a permanent element arriving for the first time is a freshly imported node
+ * that was never preserved and is not in here. `reactivateScripts` reads this
+ * to decide whether a script inside a permanent element is a script the
+ * author kept alive (skip it) or one that has never run (run it).
+ *
+ * Weak and keyed by node identity, so a destroyed node drops out on its own
+ * and a later element reusing the same `#id` is a different object that
+ * correctly re-runs. Never cleared per navigation: a node preserved across
+ * several navigations must keep its exemption on every one of them.
+ *
+ * @type {WeakSet<Element>}
+ */
+const regraftedPermanents = new WeakSet();
+
+/**
  * Persist `data-webjs-permanent` elements across a swap by NODE IDENTITY.
  *
  * Mirrors Turbo's permanent-element behaviour: an element the author
@@ -2717,6 +2735,7 @@ function regraftPermanentElements(currentRoot, incomingRoot) {
     // incoming placeholder. The swap then adopts the live node.
     if (placeholder === live) continue;
     parent.replaceChild(live, placeholder);
+    regraftedPermanents.add(live);
   }
 }
 
@@ -2759,12 +2778,16 @@ function regraftPermanentInSlice(liveSlice, incomingSlice) {
     const parent = placeholder.parentNode;
     if (parent) {
       parent.replaceChild(live, placeholder);
+      regraftedPermanents.add(live);
     } else {
       // Placeholder is a top-level slice member with no parent (detached):
       // replace it in the incomingSlice array so the reconciler inserts the
       // live node in that position.
       const idx = incomingSlice.indexOf(placeholder);
-      if (idx !== -1) incomingSlice[idx] = live;
+      if (idx !== -1) {
+        incomingSlice[idx] = live;
+        regraftedPermanents.add(live);
+      }
     }
   }
 }
@@ -4401,18 +4424,31 @@ async function streamBoundariesProgressively(reader, dec, initialBuf, isCurrent)
  * Replacing the container DETACHES it, which is why both callers snapshot the
  * range before iterating rather than walking live `nextSibling` links.
  *
- * `data-webjs-permanent` is deliberately NOT an exemption here, and must not be
- * added as one. It reads like the natural opt-out, but it cannot work: its
- * regraft has a both-exist guard (`regraftPermanentInSlice`), so on the swap
- * that first mounts a route there is no live node to preserve, the inert parsed
- * copy is what lands, and exempting it would leave a script that runs on a cold
- * load and never on a soft navigation. That is precisely the #1102 failure,
- * reintroduced under the banner of fixing it. The attribute preserves node
- * identity for STATEFUL elements (a playing `<audio>`, a third-party widget);
- * a script's only state is that it ran, and re-running is the contract for
- * everything in a swapped range. A descendant permanent script has always been
- * re-emitted by the walk below, so exempting the container would also have made
- * the answer depend on nesting depth.
+ * `data-webjs-permanent` splits into two cases here, and the split is the whole
+ * rule (#1252):
+ *
+ *   - The marked element IS a script: NEVER exempt, however the walk reaches
+ *     it. This holds whether it arrives as the `container` or as a descendant
+ *     of one, because the regraft selector has no tag filter and will happily
+ *     preserve a `<script id data-webjs-permanent>` by identity. The exemption
+ *     below is therefore STRICT containment, never reflexive. This must not be
+ *     changed. The regrafts have a both-exist guard, so on the swap that first
+ *     mounts a route there is no live node to preserve, the inert parsed copy
+ *     is what lands, and exempting it would leave a script that runs on a cold
+ *     load and never on a soft navigation. That is precisely the #1102 failure,
+ *     reintroduced under the banner of fixing it. A script's only state is that
+ *     it ran, and re-running is the contract for everything in a swapped range.
+ *   - A script INSIDE a marked element that was ACTUALLY preserved: exempt.
+ *     The attribute means the subtree survives as the same live node, which is
+ *     what `diffElementInPlace` already implements by returning early rather
+ *     than recursing into it. Re-emitting an init script against a widget
+ *     instance the author deliberately kept alive is a double-initialization,
+ *     not a refresh.
+ *
+ * The filter keys on `regraftedPermanents` (actual preservation by identity),
+ * never on the attribute alone. A permanent element arriving for the FIRST time
+ * was never preserved, so its scripts have never run and must run now; an
+ * attribute-only filter would leave them never running on any path.
  *
  * @param {Element} container
  * @returns {Element} `container`, or its replacement when it was a script that
@@ -4430,7 +4466,27 @@ function reactivateScripts(container) {
     container.replaceWith(fresh);
     return fresh;
   }
+  // Roots whose subtrees survived this swap by identity. Collected from the
+  // container DOWNWARD so the exemption is bounded to the swapped range by
+  // construction; `closest()` from a script upward could escape into an outer
+  // ancestor that was never part of this swap.
+  /** @type {Element[]} */
+  const preserved = [];
+  if (regraftedPermanents.has(container)) preserved.push(container);
+  for (const el of container.querySelectorAll('[data-webjs-permanent]')) {
+    if (regraftedPermanents.has(el)) preserved.push(el);
+  }
+
   for (const old of container.querySelectorAll('script')) {
+    // STRICT containment: a preserved root exempts its DESCENDANTS, never
+    // itself. The regrafts select `[data-webjs-permanent][id]` with no tag
+    // filter, so a `<script id data-webjs-permanent>` present on both sides is
+    // regrafted like any other element and lands in the WeakSet. Skipping it
+    // here would exempt the marked script itself whenever the walk reaches it
+    // as a descendant (the full-body path), while the container branch above
+    // still re-emits it, so one script would get opposite answers depending on
+    // which entry point reached it. `contains()` is reflexive, hence `p !== old`.
+    if (preserved.length && preserved.some((p) => p !== old && p.contains(old))) continue;
     old.replaceWith(cloneScriptWithCorrectNonce(/** @type {HTMLScriptElement} */ (old)));
   }
   return container;

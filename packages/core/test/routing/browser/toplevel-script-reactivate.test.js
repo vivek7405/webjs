@@ -183,4 +183,89 @@ suite('Client router: a top-level script in a swapped range executes (#1102)', (
         `a permanent script arriving for the first time must still run; got ${JSON.stringify(window.__wj1102)}`);
     } finally { unmount(); }
   });
+
+  /**
+   * A permanent container holding an init script, plus an ordinary sibling
+   * script. The sibling is what proves the swap and the reactivation pass
+   * actually ran, so an empty array can never pass by accident.
+   */
+  const permBoxMarkup =
+    '<div id="wj1102-box" data-webjs-permanent>' +
+      '<script>window.__wj1102.push("inner");</script>' +
+    '</div>' +
+    '<script id="wj1102-sib">window.__wj1102.push("sib");</script>';
+
+  test('morph tier: a preserved permanent element does not re-run its inner script (#1252)', async () => {
+    // The headline claim, and it is only provable here: the unit layer runs
+    // under linkedom, which never executes a script, so it can only observe
+    // node replacement. `data-webjs-permanent` means the subtree survives as
+    // the same live node, so re-running an init script against the instance
+    // the author kept alive is a double-initialization.
+    //
+    // Equal route-keys morph `/` in place, and the regraft inside
+    // `reconcileChildren` is what preserves `#wj1102-box` by identity.
+    mount(
+      '<!--wj:children:/:/-->' + permBoxMarkup + '<!--/wj:children:/-->',
+      () => body('<!--wj:children:/:/-->' + permBoxMarkup + '<!--/wj:children:/-->'),
+    );
+    try {
+      const boxBefore = document.getElementById('wj1102-box');
+
+      await navigate(location.origin + '/?perm=morph');
+      for (let i = 0; i < 20 && !window.__wj1102.length; i++) await tick();
+
+      assert.equal(document.getElementById('wj1102-box'), boxBefore,
+        'precondition: the permanent element survived the swap as the same node');
+      assert.deepEqual(window.__wj1102, ['sib'],
+        `only the ordinary sibling re-ran; got ${JSON.stringify(window.__wj1102)}`);
+    } finally { unmount(); }
+  });
+
+  test('replace tier: a preserved permanent element does not re-run its inner script (#1252)', async () => {
+    // The other regraft branch. A CHANGED inner route-key remounts at the
+    // parent `/` range, where the permanent element is a TOP-LEVEL member of
+    // the imported slice, so its incoming copy is parentless and the regraft
+    // writes into the slice array rather than calling `replaceChild`. That
+    // branch is easy to miss, and missing it leaves exactly this shape
+    // unprotected.
+    const withInner = (innerKey) =>
+      '<!--wj:children:/:/-->' +
+        permBoxMarkup +
+        `<!--wj:children:/docs:${innerKey}-->` +
+          '<p id="wj1102-mid">between</p>' +
+        '<!--/wj:children:/docs-->' +
+      '<!--/wj:children:/-->';
+
+    mount(withInner('/docs/a'), () => body(withInner('/docs/b')));
+    try {
+      const boxBefore = document.getElementById('wj1102-box');
+
+      await navigate(location.origin + '/docs/b');
+      for (let i = 0; i < 20 && !window.__wj1102.length; i++) await tick();
+
+      assert.equal(document.getElementById('wj1102-box'), boxBefore,
+        'precondition: the permanent element survived the swap as the same node');
+      assert.deepEqual(window.__wj1102, ['sib'],
+        `only the ordinary sibling re-ran; got ${JSON.stringify(window.__wj1102)}`);
+    } finally { unmount(); }
+  });
+
+  test('a permanent element arriving for the FIRST time runs its inner script (#1252)', async () => {
+    // The both-exist guard means "permanent" does not imply "was preserved".
+    // Nothing here can be regrafted (the live range has no `#wj1102-box`), so
+    // the container is a freshly imported node whose script has never run. An
+    // exemption keyed on the attribute rather than on actual preservation
+    // would leave it never running on any path.
+    mount(
+      '<!--wj:children:/:/--><p id="wj1102-mid">plain</p><!--/wj:children:/-->',
+      () => body('<!--wj:children:/:/-->' + permBoxMarkup + '<!--/wj:children:/-->'),
+    );
+    try {
+      await navigate(location.origin + '/?perm=first');
+      for (let i = 0; i < 20 && window.__wj1102.length < 2; i++) await tick();
+
+      assert.deepEqual(window.__wj1102, ['inner', 'sib'],
+        `a first-mount permanent element still runs its script; got ${JSON.stringify(window.__wj1102)}`);
+    } finally { unmount(); }
+  });
 });
