@@ -29,10 +29,16 @@
  * `resolveVendorImports`, with no `fetch(` and no vendor entry point anywhere
  * in their source.
  *
- * Denying at runtime needs no parsing and has no blind spots. A test that
- * depends on a third party now fails on EVERY run rather than only during an
- * outage, which is a better signal than any scan could give, and it arrives
- * the day the test is written instead of months later.
+ * Denying at runtime needs no parsing, and inside the test process it has no
+ * blind spots. A test that depends on a third party now fails on EVERY run
+ * rather than only during an outage, which is a better signal than any scan
+ * could give, and it arrives the day the test is written instead of months
+ * later.
+ *
+ * The one thing it does NOT cover is a SPAWNED child, which starts with its
+ * own `globalThis`. `test/vendor-cli/vendor-cli.test.mjs` runs the CLI in
+ * another process, so it passes its own preload and asserts a marker on every
+ * spawn. A new test that spawns a process and vendors needs the same.
  *
  * WHY A 503 RATHER THAN A THROW. Every fetch caller in
  * `packages/server/src/vendor.js` catches, so a throw is indistinguishable

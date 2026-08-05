@@ -129,6 +129,16 @@ test('both runners install the deny and skip live files, unless the network is r
     assert.match(src, /deny-live-hosts/, `${runner} must install the third-party deny`);
     assert.match(src, /const denyArgs = wantsNetwork/, `${runner} must lift the deny when the network is required`);
   }
+
+  // Flag ORDER, not just presence. `bun --preload X test <file>` stops
+  // treating `test` as the subcommand and runs the package.json script of that
+  // name instead, which here is the whole Node suite: every matrix file then
+  // spawns it, times out at 120s, and the job goes red having run zero Bun
+  // tests. A guard that only greps for the fixture path passes on exactly that
+  // argv, which is how it shipped once.
+  const bun = readFileSync(join(ROOT, 'scripts/run-bun-tests.js'), 'utf8');
+  assert.match(bun, /spawnSync\(BUN, \['test', \.\.\.denyArgs/,
+    "the preload must come AFTER bun's `test` subcommand");
 });
 
 test('every allowlisted live caller is a *.live.test.* file that exists', () => {

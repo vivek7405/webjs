@@ -101,6 +101,9 @@ const LIVE_MARKER = '.live.test.';
 const wantsNetwork = Boolean(process.env.WEBJS_REQUIRE_NETWORK);
 // Same third-party deny the node runner installs, so a jspm outage cannot red
 // this job either (#1150). Bun ignores NODE_OPTIONS, hence the explicit flag.
+// It goes AFTER the `test` subcommand: `bun --preload X test <file>` treats
+// `test` as the package.json SCRIPT and runs the whole Node suite instead,
+// which fails in a way that looks nothing like a flag-order mistake.
 const denyArgs = wantsNetwork
   ? []
   : ['--preload', resolve(ROOT, 'test', 'fixtures', 'deny-live-hosts.mjs')];
@@ -137,7 +140,7 @@ for (const f of files) {
     console.log(`SKIP(node-only) ${rel(f)}`);
     continue;
   }
-  const r = spawnSync(BUN, [...denyArgs, 'test', f], {
+  const r = spawnSync(BUN, ['test', ...denyArgs, f], {
     cwd: ROOT, encoding: 'utf8', timeout: PER_FILE_TIMEOUT_MS,
     env: { ...process.env, FORCE_COLOR: '0' },
   });
