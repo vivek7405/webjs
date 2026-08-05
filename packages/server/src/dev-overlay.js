@@ -14,8 +14,10 @@
  * produced it, and this module is the single gate deciding whether a frame
  * belongs on the page currently being viewed. Without it, a body-level overlay
  * outlives every client-router swap (which works strictly inside the keyed
- * boundary comment ranges), and a mere link PREFETCH of a throwing page raises
- * an overlay on the page the user is actually looking at, in every open tab.
+ * boundary comment ranges), and any render of a page this tab is NOT looking at
+ * raises an overlay over the one it is, in every open tab, since the frame fans
+ * out over the shared SSE channel. (The other half of #1047, a link prefetch
+ * reporting a frame at all, is cut server-side in `dev.js`, not here.)
  *
  * The gate cannot be a plain refuse-and-drop, because the SSE frame is pushed
  * DURING the render, before the navigation response is even sent, so it reaches
@@ -223,15 +225,16 @@ export function markDevOverlayNavStart() {
  *   after `history.pushState` so `location` is already current.
  * - `popstate` on `window`, because a back/forward restore served from the
  *   router's snapshot cache returns before it dispatches `webjs:navigate`.
- * - `webjs:before-cache` on `document`, used ONLY as the nav-START marker: the
- *   router dispatches it from `snapshotCurrent`, which runs at the top of every
- *   navigation and form submission, before the fetch. It touches no DOM here.
- *   That matters twice over. It is the only signal that separates a frame
- *   belonging to the navigation in flight from one held since the tab was idle.
- *   And stripping the overlay on it, which the event's own contract invites,
- *   would be wrong: it fires on EVERY navigation, so it would tear down a
- *   `rebuild` / `ts-strip` overlay the moment you clicked any link, while the
- *   build was still broken and nothing would put it back.
+ * - `webjs:before-cache` on `document`, which does two things. It is the
+ *   nav-START marker (the router dispatches it from `snapshotCurrent`, at the
+ *   top of every navigation and form submission, before the fetch), the only
+ *   signal separating a frame belonging to the navigation in flight from one
+ *   held since the tab was idle. And it detaches the overlay across the
+ *   snapshot read, re-attaching it a microtask later, so the cached HTML
+ *   carries no copy. What it must NOT do is strip the overlay for good, which
+ *   the event's own contract invites: it fires on EVERY navigation, so that
+ *   would tear a `rebuild` / `ts-strip` overlay off the page the moment you
+ *   clicked any link, while the build was still broken.
  *
  * @param {{ document?: any, window?: any, getPath?: () => string }} [opts] injection seam for the browser test
  * @returns {() => void} an uninstall thunk
@@ -242,7 +245,31 @@ export function installDevOverlayNavSync(opts) {
   const win = o.window || (typeof window !== 'undefined' ? window : null);
   const getPath = o.getPath || __wjCurrentPath;
   const onNav = () => syncDevOverlayToLocation(getPath());
-  const onBeforeCache = () => markDevOverlayNavStart();
+  const onBeforeCache = () => {
+    markDevOverlayNavStart();
+    // Keep the overlay out of the snapshot the router is about to take. It
+    // reads `outerHTML` SYNCHRONOUSLY right after this event, so detaching here
+    // and re-attaching in a microtask (which runs once that read has returned,
+    // and long before any paint) means the cached HTML never carries a copy,
+    // while the overlay on screen never flickers.
+    //
+    // This is not the strip that used to live here. That one dropped the frame
+    // permanently, so any link click tore down a `rebuild` / `ts-strip`
+    // overlay while the build was still broken; this puts the SAME node back.
+    // The sweep in `syncDevOverlayToLocation` stays as the backstop, because
+    // it cannot cover every ordering on its own: under an opt-in view
+    // transition the router defers the body swap past the sync, so a copy
+    // parsed in afterwards would otherwise sit there undismissable.
+    const el = __wjOverlay;
+    if (!el || !el.isConnected) return;
+    const parent = el.parentNode;
+    el.remove();
+    queueMicrotask(() => {
+      // Only if it is still the live overlay: a frame arriving meanwhile may
+      // have replaced it, or the user may have dismissed it.
+      if (__wjOverlay === el && !el.isConnected && parent) parent.appendChild(el);
+    });
+  };
   if (doc) {
     doc.addEventListener('webjs:navigate', onNav);
     doc.addEventListener('webjs:before-cache', onBeforeCache);

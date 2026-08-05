@@ -91,9 +91,9 @@ suite('dev error overlay renderer (#264)', () => {
 /**
  * The URL scope gate (#1047). A render frame carries the url that produced it,
  * and the overlay renders only on that page. The whole point is browser
- * behaviour (what is in the DOM after a client-router navigation, and what a
- * mere link prefetch does NOT put there), so it belongs here rather than in a
- * node unit test.
+ * behaviour: what is in the DOM after a client-router navigation, and what a
+ * render of some OTHER page does not put there. So it belongs here rather than
+ * in a node unit test.
  */
 suite('dev error overlay URL scope (#1047)', () => {
   const HERE = '/good';
@@ -106,9 +106,9 @@ suite('dev error overlay URL scope (#1047)', () => {
 
   const overlay = () => document.querySelector('[data-webjs-error-overlay]');
 
-  test('a render frame for ANOTHER page renders nothing (the prefetch case)', () => {
-    // Hovering a link to a throwing page fires a real GET, which reports a
-    // frame to every open tab. The tab is looking at /good, so: no overlay.
+  test('a render frame for ANOTHER page renders nothing', () => {
+    // A frame fans out to every open tab over the shared SSE channel, whichever
+    // tab's render produced it. This tab is looking at /good, so: no overlay.
     renderDevOverlay({ kind: 'render', message: 'demo: this page threw', url: CRASH }, HERE);
     assert.equal(overlay(), null, 'another page\'s render error stays off this page');
     teardown();
@@ -180,6 +180,29 @@ suite('dev error overlay URL scope (#1047)', () => {
     } finally { uninstall(); teardown(); }
   });
 
+  test('the overlay is out of the DOM for the router\'s synchronous snapshot read', async () => {
+    // The mechanism, pinned at the point that actually matters. `snapshotCurrent`
+    // dispatches before-cache and then reads `documentElement.outerHTML` in the
+    // SAME synchronous block, so what that read sees is whatever the DOM holds
+    // the instant the dispatch returns. Anything still there is serialized into
+    // the back/forward cache and parsed back in on a restore, as a copy this
+    // module does not own and cannot dismiss.
+    let path = CRASH;
+    const uninstall = installDevOverlayNavSync({ document, window, getPath: () => path });
+    try {
+      renderDevOverlay({ kind: 'render', message: 'on screen at snapshot time', url: CRASH }, CRASH);
+      document.dispatchEvent(new CustomEvent('webjs:before-cache', { detail: { url: CRASH } }));
+      // Read it exactly as the router does: synchronously, right here.
+      const snapshotted = document.documentElement.outerHTML;
+      assert.ok(
+        !snapshotted.includes('data-webjs-error-overlay'),
+        'the snapshot the router would cache carries no overlay',
+      );
+      await Promise.resolve();
+      assert.ok(overlay(), 'and the user never loses sight of it');
+    } finally { uninstall(); teardown(); }
+  });
+
   test('a snapshot restore cannot leave an undismissable overlay copy behind', () => {
     // The router's back/forward snapshot is `outerHTML`, so it can carry an
     // overlay, and its tier-4 restore does `document.body.replaceChildren`
@@ -246,7 +269,7 @@ suite('dev error overlay URL scope (#1047)', () => {
     teardown();
   });
 
-  test('installDevOverlayNavSync wires webjs:navigate, popstate, and webjs:before-cache', () => {
+  test('installDevOverlayNavSync wires webjs:navigate, popstate, and webjs:before-cache', async () => {
     let path = HERE;
     const uninstall = installDevOverlayNavSync({
       document, window, getPath: () => path,
@@ -266,7 +289,9 @@ suite('dev error overlay URL scope (#1047)', () => {
       // (it fires on every navigation, including ones that go nowhere), and
       // webjs:navigate takes it down because the page changed.
       document.dispatchEvent(new CustomEvent('webjs:before-cache', { detail: { url: CRASH } }));
-      assert.ok(overlay(), 'before-cache alone does not remove anything');
+      assert.equal(overlay(), null, 'detached across the router\'s synchronous snapshot read');
+      await Promise.resolve();
+      assert.ok(overlay(), 'and back a microtask later, before any paint');
       path = HERE;
       document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: HERE } }));
       assert.equal(overlay(), null, 'the overlay follows the page off screen');
@@ -290,6 +315,7 @@ suite('dev error overlay URL scope (#1047)', () => {
       teardown();
       renderDevOverlay({ kind: 'rebuild', message: 'rebuild failed' }, CRASH);
       document.dispatchEvent(new CustomEvent('webjs:before-cache', { detail: { url: CRASH } }));
+      await Promise.resolve();
       path = HERE;
       document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: HERE } }));
       assert.ok(overlay(), 'a rebuild overlay survives a client-router navigation');
