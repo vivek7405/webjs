@@ -1,6 +1,6 @@
 # Single image for the whole monorepo. Each Railway service runs the
 # same image with a different start command. Locally:
-# `docker compose up --build` runs all three via compose.yaml.
+# `docker compose up --build` runs both via compose.yaml.
 #
 # No build step for JS. webjs serves .ts directly by stripping types at the
 # runtime layer (position-preserving whitespace replacement, no sourcemap shipped

@@ -17,6 +17,30 @@ Net: edit the `HEALTHCHECK` for the Docker contract, keep `railway.json` for the
 
 ---
 
+### docs.webjs.dev and ui.webjs.dev: Cloudflare redirect rules, not apps
+
+Both subdomains used to be redirect-only apps in this repo (`docs/` and `packages/ui/packages/website/`). They are two Cloudflare Redirect Rules now, on the `webjs.dev` zone, with no origin. Nothing here serves them, so this is the only in-repo record of what they do:
+
+| Rule | Expression | Action |
+|---|---|---|
+| docs | `http.host eq "docs.webjs.dev"` | 301 static to `https://webjs.dev/docs` |
+| ui | `http.host eq "ui.webjs.dev"` | 301 static to `https://webjs.dev/ui` |
+
+Both are static rather than path-preserving, which is a deliberate trade rather than an oversight: every path on each host collapses onto its hub page. That was measured before the apps came out. No third-party page links to either host, neither had recent traffic, neither is in the sitemap, and the destinations were already canonicalised and indexed, so there was no ranking signal left to preserve.
+
+**Keep both rules.** Already-published npm packages reach these hosts and can never be corrected. That is why the apps existed, and deleting the apps did not delete the reason. One consequence is already live: `ui.webjs.dev/registry/<name>.json` used to serve registry JSON and now redirects to an HTML page, so `webjsui add` is broken on the published `@webjsdev/ui` 0.3.1 through 0.3.8, which hardcode that URL and take the network path. 0.3.9 onward resolves local-first and never fetches it.
+
+CI cannot see any of this. The two tests that asserted the redirect mappings went with the apps, and a job that reds when Cloudflare has a bad minute would be worse than the gap, so the behaviour is verified by hand:
+
+```sh
+for u in https://docs.webjs.dev/ https://ui.webjs.dev/ ; do
+  printf '%-28s -> ' "$u"
+  curl -sSI -m 15 "$u" | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}'
+done
+```
+
+---
+
 ### CDN cache: purged automatically after each deploy
 
 `webjs.dev` sits behind Cloudflare, and the site's static assets (`/public/tailwind.css`, the brand SVGs) are served with `cache-control: public, max-age=14400` at STABLE urls. Without an eviction the edge therefore keeps serving the PREVIOUS copy for up to four hours after a deploy. That shipped two visible regressions in one day (a pre-redesign stylesheet after #1179, then the un-fixed logo marks after #1185), and staleness is per-asset rather than all-or-nothing, so the site can look half-updated.

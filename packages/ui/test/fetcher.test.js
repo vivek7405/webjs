@@ -83,10 +83,12 @@ globalThis.fetch = origFetch;
  * default install silently starts taking the network path instead of reading
  * the sources that ship inside this package.
  *
- * The previous value, `https://ui.webjs.dev/registry`, is still live as a
- * permanent redirect and must stay that way forever for already-published
- * versions. That side of the contract is covered by
- * `test/ui/ui-host-redirect.test.mjs`.
+ * The previous value, `https://ui.webjs.dev/registry`, no longer serves the
+ * registry: it redirects to the gallery page, so a fetch of it returns HTML.
+ * The published 0.3.1 through 0.3.8 hardcode it and take the network path, so
+ * `webjsui add` is broken there and cannot be corrected. Nothing in this repo
+ * asserts that side any more, because the redirect lives in Cloudflare rather
+ * than in an app here.
  */
 test('the hosted registry URL points at the live endpoint', () => {
   assert.equal(HOSTED_REGISTRY_URL, 'https://webjs.dev/ui/registry');

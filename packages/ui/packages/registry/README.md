@@ -10,8 +10,10 @@ fetches. There is no build step, no generated output, no `prestart` hook.
 
 The composer and the routes moved out of this package with #1099, when the
 gallery merged into the marketing site. The old `ui.webjs.dev/registry/**`
-URLs still resolve, permanently redirecting to the new ones, because
-already-published CLI versions fetch from them.
+URLs now redirect to the gallery page rather than to their new equivalents,
+so they no longer serve registry JSON. That breaks `webjsui add` on the
+published 0.3.1 through 0.3.8, which hardcode them; 0.3.9 onward resolves
+local-first and never fetches them.
 
 ## Layout
 

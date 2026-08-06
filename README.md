@@ -182,8 +182,7 @@ WEBSITE_PORT=8001 BLOG_PORT=8004 npm run dev
 
 The landing site cross-links to the demo by URL, defaulting to the localhost
 port above and overridable via `EXAMPLE_BLOG_URL` (this is also how a deploy
-points it at the real domain). The two redirect hosts read `SITE_URL`, which is
-where they send every request. Nothing else needs a URL: the docs and the UI
+points it at the real domain). Nothing else needs a URL: the docs and the UI
 gallery are served by the landing site itself at `/docs` and `/ui`, so they are
 plain paths.
 
@@ -292,8 +291,9 @@ itself. They live in `website/app/docs/`, so running the site runs them:
 cd website && npm run dev    # webjs dev; compiles Tailwind, then recompiles on request (see AGENTS.md)
 ```
 
-`docs.webjs.dev` still resolves and path-preservingly redirects here, because
-error messages in already-published npm packages point at it.
+`docs.webjs.dev` still resolves, as a Cloudflare redirect rule rather than an
+app in this repo. It sends every request to `webjs.dev/docs`, the hub page,
+rather than to the matching page.
 
 The pages cover: getting started, AI-first development, routing,
 components, SSR, styling, Suspense, loading states, error handling,

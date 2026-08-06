@@ -217,9 +217,10 @@ jobs:
             exit 1
           fi
 
-          # Zone-wide rather than a file list. Every site hostname
-          # (webjs.dev, example-blog / docs / ui .webjs.dev) is proxied inside
-          # this one zone, so a single call covers them all, and a zone purge
+          # Zone-wide rather than a file list. Both asset-serving hostnames
+          # (webjs.dev, example-blog.webjs.dev) are proxied inside this one
+          # zone, so a single call covers them all (docs / ui .webjs.dev sit
+          # in the same zone but are redirect rules serving no assets), and a zone purge
           # cannot silently miss an asset the way a hand-maintained path list
           # does. Purging evicts only; nothing is deleted, and the next
           # request refetches from the origin.

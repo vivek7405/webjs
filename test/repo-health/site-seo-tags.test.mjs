@@ -17,8 +17,8 @@
  *
  * The docs are no longer a separate app here (#1098): they are served by the
  * website at /docs and share its root layout, so the website row now covers
- * them. `docs.webjs.dev` still resolves, but as a redirect-only host with no
- * layout and nothing indexable of its own, which is the point of the move.
+ * them. `docs.webjs.dev` still resolves, but as a Cloudflare redirect rule
+ * with nothing indexable of its own, which is the point of the move.
  *
  * These are source-level assertions on the layout file rather than SSR
  * renders, because the three apps have different dependency trees and
@@ -33,11 +33,11 @@ import { fileURLToPath } from 'node:url';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
- * Only apps that actually SERVE HTML are checked here. `docs.webjs.dev` and,
- * since #1099, `ui.webjs.dev` are redirect-only hosts: they render no markup
- * at all, so they have no layout, no icons, and no canonical to assert. The
- * pages they used to serve now live under `website/` (at /docs and /ui) and
- * are covered by this app's entry.
+ * Only apps that actually SERVE HTML are checked here. `docs.webjs.dev` and
+ * `ui.webjs.dev` are Cloudflare redirect rules: they render no markup at all,
+ * so they have no layout, no icons, and no canonical to assert. The pages they
+ * used to serve now live under `website/` (at /docs and /ui) and are covered
+ * by this app's entry.
  */
 const APPS = [
   { name: 'website (webjs.dev, incl. /docs and /ui)', dir: 'website' },

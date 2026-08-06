@@ -17,8 +17,8 @@ export default function Architecture() {
 │   └── cli/      # @webjsdev/cli   : webjs dev/start/build/db commands
 ├── examples/
 │   └── blog/     # reference app exercising every feature
-├── website/      # webjs.dev, including this documentation at /docs
-└── docs/         # docs.webjs.dev, a redirect-only host</code-block>
+└── website/      # webjs.dev, including this documentation at /docs
+                #            and the component gallery at /ui</code-block>
 
     <h3>WebJs (core)</h3>
     <p>Isomorphic: safe to import on both server and client. Contains:</p>
