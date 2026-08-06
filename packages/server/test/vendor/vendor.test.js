@@ -2347,12 +2347,23 @@ test('pinAll: a bundle fetch that hangs is abandoned, not waited on forever', as
   for (const opts of [{}, { download: true }]) {
     const mode = opts.download ? '--download' : 'default';
     const dir = await makeTempAppWithSource({ 'app/page.ts': `import pico from 'picocolors';` });
+    const realSetTimeout = globalThis.setTimeout;
     try {
       /** @type {Array<AbortSignal | undefined>} */
       const signals = [];
+      /** Milliseconds each bundle fetch was given, read off the real timer. */
+      /** @type {number[]} */
+      const timeouts = [];
+      globalThis.setTimeout = /** @type {any} */ ((fn, ms, ...rest) => {
+        if (typeof ms === 'number' && ms >= 1000) timeouts.push(ms);
+        return realSetTimeout(fn, ms, ...rest);
+      });
       await withMockedFetch(async (url, init) => {
         const s = String(url);
         if (s.includes('api.jspm.io')) {
+          // Forget the generate call's own 10s timer, so the only budget left
+          // in `timeouts` is the one the BUNDLE fetch sets a moment from now.
+          timeouts.length = 0;
           return jspmResponse({ picocolors: 'https://ga.jspm.io/npm:picocolors@1.1.1/index.js' });
         }
         signals.push(init && init.signal);
@@ -2369,7 +2380,16 @@ test('pinAll: a bundle fetch that hangs is abandoned, not waited on forever', as
       assert.equal(signals.length, 1, `${mode}: the bundle GET fired exactly once`);
       assert.ok(signals[0] instanceof AbortSignal,
         `${mode}: the bundle fetch must carry an AbortSignal so a stalled CDN cannot hang the pin`);
+      // The BUDGET, not just its existence. A pin transfers a whole package on
+      // a link the user may not control, so it gets 60s rather than the 10s
+      // the server's readiness-gating warmup pass uses; asserting only that a
+      // signal exists could not tell the two apart. 60s is what
+      // importmap-rails effectively allows, since Ruby's Net::HTTP defaults
+      // read_timeout to 60 even though the gem sets none.
+      assert.equal(timeouts[0], 60_000,
+        `${mode}: a pin bundle fetch must get the 60s budget, not the warmup pass's 10s`);
     } finally {
+      globalThis.setTimeout = realSetTimeout;
       await rm(dir, { recursive: true, force: true });
     }
   }

@@ -338,12 +338,27 @@ let lastLiveResolveFailed = false;
 
 const JSPM_GENERATE_ENDPOINT = 'https://api.jspm.io/generate';
 const JSPM_GENERATE_TIMEOUT_MS = 10_000;
-// Bounds a single bundle GET: written to disk by `webjs vendor pin
-// --download` (`downloadBundle`), hashed in place by default-mode pin
-// (`fetchIntegrity`), or hashed during the warmup live-integrity pass
-// (`fetchLiveIntegrity`). Declared here with the other outbound timeouts
-// rather than beside one of its three callers.
+// Bounds a single bundle GET during the SERVER's warmup live-integrity pass
+// (`fetchLiveIntegrity`). Short on purpose: that pass gates readiness, so a
+// stalled CDN must not hold the first request, and it is additionally capped
+// by INTEGRITY_TOTAL_BUDGET_MS across all URLs.
 const INTEGRITY_FETCH_TIMEOUT_MS = 10_000;
+
+// Bounds a single bundle GET made by the pin command, which either writes the
+// bytes to disk (`downloadBundle`) or fetches them to hash
+// (`fetchIntegrity`). Deliberately six times the warmup budget, because the
+// two are not the same situation: a pin is a one-shot command a person ran and
+// is waiting on, with a whole multi-megabyte package to transfer, while the
+// warmup is a server holding a request. Ten seconds is generous for the
+// latter and tight for the former on a slow link.
+//
+// 60s matches what importmap-rails effectively allows. It sets no timeout at
+// all, but Ruby's Net::HTTP defaults open_timeout and read_timeout to 60s, so
+// a Rails pin is bounded at a minute without asking. JavaScript's fetch() has
+// no default whatsoever, which is why this has to be explicit: without it a
+// CDN that accepts the connection and then stalls hangs the pin forever, with
+// no ambient deadline on a CLI run to cut it short.
+const PIN_BUNDLE_TIMEOUT_MS = 60_000;
 
 /**
  * Provider names accepted by `webjs vendor pin --from <provider>`.
@@ -1083,11 +1098,10 @@ async function writePinFile(appDir, imports, integrity, provider) {
  * success or null on failure. The integrity hash is computed from the
  * downloaded bytes so it's always consistent with what's on disk.
  *
- * Bounded by the same timeout as every other outbound call here.
- * `pinAll(dir, { download: true })` runs this once per resolved URL on
- * a CLI run with no ambient deadline, so a CDN that accepts the
- * connection and then stalls would otherwise hang the pin with nothing
- * to interrupt it (#1150).
+ * Bounded by PIN_BUNDLE_TIMEOUT_MS. `pinAll(dir, { download: true })`
+ * runs this once per resolved URL on a CLI run with no ambient
+ * deadline, so a CDN that accepts the connection and then stalls would
+ * otherwise hang the pin with nothing to interrupt it (#1150).
  *
  * @param {string} url
  * @param {string} appDir
@@ -1096,7 +1110,7 @@ async function writePinFile(appDir, imports, integrity, provider) {
  */
 async function downloadBundle(url, appDir, filename) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), INTEGRITY_FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), PIN_BUNDLE_TIMEOUT_MS);
   try {
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) {
@@ -1115,7 +1129,7 @@ async function downloadBundle(url, appDir, filename) {
     return { bytes: buf.byteLength, integrity: await sha384Integrity(buf) };
   } catch (e) {
     const why = e && e.name === 'AbortError'
-      ? `timed out after ${INTEGRITY_FETCH_TIMEOUT_MS}ms`
+      ? `timed out after ${PIN_BUNDLE_TIMEOUT_MS}ms`
       : e && e.message;
     console.error(`[webjs] download ${url} failed: ${why}`);
     return null;
@@ -1130,19 +1144,19 @@ async function downloadBundle(url, appDir, filename) {
  * so the importmap can carry SRI hashes even when bundles aren't
  * locally vendored.
  *
- * Bounded by the same timeout every other outbound call here carries.
- * Default-mode `pinAll` runs this once per resolved URL, so a CDN that
- * accepts the connection and then stalls would otherwise hang the pin
- * with nothing to interrupt it: there is no ambient deadline on a CLI
- * run, and `node --test` imposes none either. `downloadBundle` is the
- * `--download` half of the same gap and is bounded the same way (#1150).
+ * Bounded by PIN_BUNDLE_TIMEOUT_MS, the same budget `downloadBundle`
+ * gets, since it transfers the same bytes and differs only in whether
+ * they are written to disk. Default-mode `pinAll` runs this once per
+ * resolved URL, so a CDN that accepts the connection and then stalls
+ * would otherwise hang the pin with nothing to interrupt it: there is
+ * no ambient deadline on a CLI run (#1150).
  *
  * @param {string} url
  * @returns {Promise<string | null>}  the integrity string, or null on failure
  */
 async function fetchIntegrity(url) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), INTEGRITY_FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), PIN_BUNDLE_TIMEOUT_MS);
   try {
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) {
@@ -1156,7 +1170,7 @@ async function fetchIntegrity(url) {
     return await sha384Integrity(buf);
   } catch (e) {
     const why = e && e.name === 'AbortError'
-      ? `timed out after ${INTEGRITY_FETCH_TIMEOUT_MS}ms`
+      ? `timed out after ${PIN_BUNDLE_TIMEOUT_MS}ms`
       : e && e.message;
     console.error(`[webjs] hash ${url} failed: ${why}`);
     return null;
