@@ -1701,16 +1701,46 @@ function nodesToFrag(nodes) {
   return frag;
 }
 
-/** @param {Node} start @param {Node} end */
+/**
+ * Remove a template instance's whole range, its bookend markers INCLUDED.
+ *
+ * Every caller discards the instance right after: the map entry or slot that
+ * held it is dropped, and a replacement, where there is one, is built with
+ * markers of its own. So this is a REMOVE, never lit's clear-and-reuse. A
+ * caller that wants to keep the bookends and render into them again needs its
+ * OWN function, because the two want opposite answers for the end marker.
+ *
+ * `parent` is read BEFORE the walk because the walk removes `start` on its
+ * first iteration, which nulls `start.parentNode`. Reading it afterwards
+ * compared the end marker's live parent against `null`, so the guard could
+ * never fire and every teardown left one `wjm-e` comment in the document,
+ * unbounded for the life of the region.
+ *
+ * The `end.parentNode === parent` comparison is a refusal, not a formality. A
+ * marker moved under a different parent is not this region's to remove, and
+ * `parent.removeChild(end)` on it throws NotFoundError from inside a teardown
+ * that has to stay total.
+ *
+ * The walk assumes the range is INTACT: it steps `nextSibling` from `start`
+ * and stops on `end`, so a range whose end no longer follows its start runs
+ * off the child list and takes the part's own marker with it. That is not
+ * something this function defends against, before or after the parent capture,
+ * and the consequence is spelled out where it bites, on `reconcileRepeat`'s
+ * catch below. The guard is the narrower promise: whatever the walk did, a
+ * marker that is somewhere else is left alone.
+ *
+ * @param {Node} start @param {Node} end
+ */
 function removeBetween(start, end) {
-  if (!start.parentNode) return;
+  const parent = start.parentNode;
+  if (!parent) return;
   let n = start;
   while (n && n !== end) {
     const next = n.nextSibling;
     n.parentNode?.removeChild(n);
     n = next;
   }
-  if (end.parentNode === start.parentNode) end.parentNode?.removeChild(end);
+  if (end.parentNode === parent) parent.removeChild(end);
 }
 
 /* ================================================================

@@ -8,7 +8,7 @@
  * Runs in a REAL browser via WTR + Playwright.
  */
 import { WebComponent } from '../../../src/component.js';
-import { html } from '../../../src/html.js';
+import { html, MARKER } from '../../../src/html.js';
 import { repeat, cache, asyncAppend } from '../../../src/directives.js';
 import { projectAuthored, isAuthoredContentSlot } from '../../../src/slot.js';
 
@@ -126,6 +126,61 @@ suite('Record self-heal + overlay coherence (review round 16)', () => {
       shell.appendChild(document.createElement('aside'));
       await tick();
       assert.equal(slot.querySelectorAll('.item').length, 1, 'the removed item was NOT resurrected');
+    } finally {
+      parent.remove();
+    }
+  });
+
+  test('a list churning inside the slot leaves no bookends behind and does not perturb the record', async () => {
+    // A teardown removes the row's own boundary markers, and inside a slot that
+    // removal is seen by the backstop as one extra `removedNodes` entry per
+    // row. Those comments were never in the authored record (they sit between
+    // the host instance's own bookends, so `instanceOwns` claims them for the
+    // renderer), so churning the list must leave the record and the assignment
+    // exactly where they started. The marker count is asserted directly,
+    // because the leak is invisible to `querySelectorAll`.
+    ensureFixedShell();
+    const parentTag = tagName('heal-churn');
+    const rows = (n) => Array.from({ length: n }, (_, i) => `i${i}`);
+    class P extends WebComponent({ items: Array }) {
+      constructor() { super(); this.items = rows(4); }
+      render() {
+        return html`<heal-shell-fixed>${this.items.map(
+          (i) => html`<p class="item">${i}</p>`,
+        )}</heal-shell-fixed>`;
+      }
+    }
+    P.register(parentTag);
+    const parent = document.createElement(parentTag);
+    document.body.appendChild(parent);
+    await tick();
+    try {
+      const shell = parent.querySelector(fixedShell);
+      const slot = shell.querySelector('slot[data-webjs-light]');
+      // Reads MARKER for the prefix, but spells the `e` suffix here, so it
+      // still tracks only half the marker text. The non-zero assertion below
+      // is what actually stops a counter that has gone blind from passing on
+      // 0 against 0; reading MARKER on its own would not.
+      const endMarkers = (root) =>
+        [...root.childNodes].filter((n) => n.nodeType === 8 && n.data === `${MARKER}e`).length;
+
+      assert.equal(slot.querySelectorAll('.item').length, 4, 'four items projected');
+      const baseMarkers = endMarkers(slot);
+      assert.ok(baseMarkers > 0, 'the projected rows really carry end markers to count');
+      const baseAssigned = slot.assignedNodes().length;
+
+      for (let i = 0; i < 5; i++) {
+        parent.items = rows(1);
+        await parent.updateComplete;
+        await tick();
+        parent.items = rows(4);
+        await parent.updateComplete;
+        await tick();
+      }
+
+      assert.equal(endMarkers(slot), baseMarkers, 'end markers under the slot drifted');
+      assert.equal(slot.querySelectorAll('.item').length, 4, 'all four items are projected again');
+      assert.equal(slot.assignedNodes().length, baseAssigned, 'the assigned set drifted');
     } finally {
       parent.remove();
     }

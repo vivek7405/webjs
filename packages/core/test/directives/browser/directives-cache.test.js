@@ -22,8 +22,11 @@ import { cache } from '../../../src/directives.js';
 import { assert } from '../../../../../test/browser-assert.js';
 
 /**
- * Strip webjs marker comments (the framework injects `<!--?webjs?-->`
- * style comments around dynamic parts; tests assert plain HTML).
+ * Strip the renderer's marker comments (it brackets each instance with a
+ * `wjm-s` / `wjm-e` pair and marks each hole with a `wjm-N`; tests here assert
+ * plain HTML). Note this hides marker ACCOUNTING by construction, so it cannot
+ * be used to show markers are balanced. Assertions about that live in
+ * `rendering/marker-leak-on-teardown.test.js`, which counts them directly.
  */
 function stripExpressionComments(s) {
   return s.replace(/<!--[\s\S]*?-->/g, '');
