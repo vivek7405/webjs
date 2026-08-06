@@ -5,8 +5,9 @@
 // returned verbatim with NO framework <head> splice, so it ships no importmap
 // and no boot script. Keep it static HTML with no components or hydration: a
 // last-resort page must not depend on the module system that may have just
-// failed. (Under an opt-in CSP, any inline <style>/<script> here needs a nonce
-// via cspNonce() from @webjsdev/server.)
+// failed. (Under an opt-in CSP, an inline <script> here needs a nonce via
+// cspNonce() from @webjsdev/server. An inline <style> only needs one if you
+// tighten style-src, since the default policy allows inline style outright.)
 //
 // Distinct from error.ts (a nested, per-segment boundary that renders a body
 // fragment the framework wraps) and from global-not-found.ts (the unmatched-URL
@@ -17,8 +18,10 @@ export default function GlobalError({ error }: { error: Error }) {
   const message = process.env.NODE_ENV === 'production'
     ? 'Something went wrong. Please try again.'
     : error?.message || 'Unknown error';
-  // cspNonce() is '' with CSP off (the default), so this is safe as-is; under an
-  // opt-in CSP it carries the per-request nonce so the inline <style> is allowed.
+  // cspNonce() is '' with CSP off (the default), so this is safe as-is. Under the
+  // default opt-in policy the inline <style> is allowed by 'unsafe-inline' rather
+  // than by this nonce, which is stamped so the page still works if you tighten
+  // style-src to a nonce source.
   return html`<!doctype html>
     <html lang="en">
       <head>

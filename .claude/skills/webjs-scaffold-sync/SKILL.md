@@ -212,10 +212,11 @@ Run the mandatory generate + boot + check verifications in PARALLEL when more th
    keep each demo densely commented (a header stating the webjs concept + the
    why, and inline comments on the non-obvious idiom). Add a prune note where
    removal is NOT obvious, which is what the demos that carry one do: a card
-   spanning several paths, or one that another card depends on (the auth and
-   server-actions cards name each other). A self-contained demo needs none,
-   since `AGENTS.md` tells the app-building agent to delete the
-   `app/features/<x>` route and its `modules/<x>` and `npm run gallery:clear`
+   spanning several paths (the auth card names its route, its module, its api
+   routes and its schema column), or one that depends on another (the
+   server-actions card says to prune it with auth). A self-contained demo needs
+   none, since the generated `app/page.ts` header tells the agent to delete the
+   `app/features/<x>` route with its `modules/<x>`, and `npm run gallery:clear`
    sheds the lot. The scaffold teaches by its comments, and a thin demo is a
    bug.
 
