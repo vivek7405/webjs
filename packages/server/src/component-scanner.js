@@ -171,10 +171,13 @@ export async function findOrphanComponents(appDir) {
     // `class X extends WebComponent` written inside an `html` template or a
     // string is a CODE SAMPLE (every docs page is full of them), not a real
     // declaration, and reporting it as an unregistered component is a false
-    // orphan. Redaction blanks string / template bodies and comments while
-    // preserving positions, so a genuine top-level declaration still matches
-    // and the registration's literal tag survives as a `__STR_<idx>__`
-    // placeholder.
+    // orphan. Redaction blanks comments and swaps each string / template body
+    // for a `__STR_<idx>__` placeholder, so a genuine top-level declaration
+    // still matches while a sample inside a template does not. It does NOT
+    // preserve offsets (a placeholder is a different length than the body it
+    // replaces), which is fine here because an orphan is reported by class
+    // name and file, never by position. Reach for `redactStringsAndTemplates`
+    // instead if this scan ever needs to report a line or column.
     const { redacted } = redactToPlaceholders(src);
     // Find every class that extends WebComponent (exact name: we trust
     // the framework convention).
