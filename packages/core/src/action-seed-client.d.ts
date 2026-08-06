@@ -7,8 +7,15 @@ export const SEED_MISS: unique symbol;
  * Merge any seeds found under `root` (or the whole document) into the global
  * consume-once store, removing the carriers. Reads the page-level
  * `#__webjs-seeds` JSON block and per-element `[data-webjs-seed]` carriers.
+ *
+ * A DETACHED root means a new PAGE is arriving, which evicts whatever the
+ * outgoing page left unconsumed. Pass `{ frame: true }` for a `<webjs-frame>`
+ * subtree swap, which is not a page navigation and must leave page state alone.
  */
-export function scanSeeds(root?: ParentNode): void;
+export function scanSeeds(
+  root?: ParentNode,
+  opts?: { frame?: boolean },
+): void;
 
 /**
  * Look up and CONSUME the seed for an action call, or return `SEED_MISS`.

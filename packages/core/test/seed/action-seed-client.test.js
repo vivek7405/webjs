@@ -1,3 +1,19 @@
+test('an empty page after a seeded one does not inherit the seeded one\'s count', async () => {
+  // `merged` is measured from BEFORE this scan, so the second page reads 0 and
+  // stays silent rather than inheriting page one's count and claiming a key
+  // mismatch it has no evidence for.
+  const { warns } = await withReporter(async () => {
+    scanSeeds(root([el('script', await stringify({ 'h/f/[1]': 1 }), 'ok')]));
+    takeSeed('h', 'f', '[1]');
+  });
+  assert.deepEqual(warns, []);
+  const second = await withReporter(async () => {
+    scanSeeds(root([el('script', await stringify({}), 'ok')]));
+    takeSeed('h', 'f', '[9]');
+  });
+  assert.deepEqual(second.warns, [], 'no inherited count, so no unmatched-keys claim');
+});
+
 /**
  * Unit tests for the client-side SSR action-seed consumer (#472).
  *
@@ -179,16 +195,19 @@ test('one miss inside the window logs one line naming the unmatched-keys cause',
   assert.match(warns[0], /carried seeds, but not for these calls/);
 });
 
-test('a page with NO seeds names that cause instead of the unmatched-keys one', async () => {
+test('a page with NO seeds stays SILENT, because the client cannot tell why', async () => {
+  // Deliberately no line here. Every action call routes through `takeSeed`,
+  // including ones that were never SSR-invoked and never could have been seeded
+  // (a mutation, a `Task` autorun, a `connectedCallback` read). On a page that
+  // emitted no seeds those are indistinguishable from a broken seeding path, so
+  // a warning would tell a developer whose code is correct to check a
+  // `'use server'` directive that is already right, on every page view. The
+  // server's `X-Webjs-Seed: collected=0` states that case unambiguously instead.
   const { warns } = await withReporter(async () => {
-    // The dev marker with an empty payload, which is what a page that seeded
-    // nothing emits in dev.
     scanSeeds(root([el('script', await stringify({}), 'ok')]));
     takeSeed('h', 'f', '[1]');
   });
-  assert.equal(warns.length, 1);
-  assert.match(warns[0], /carried no seeds at all/);
-  assert.match(warns[0], /'use server'/);
+  assert.deepEqual(warns, []);
 });
 
 test('a streamed page names streaming as the cause', async () => {
@@ -298,23 +317,6 @@ test('a scan with NO marker (a back/forward restore) schedules nothing', async (
   assert.deepEqual(warns, [], 'and no wrong-cause line is printed');
 });
 
-test('the cause still distinguishes an empty page after an earlier seeded one', async () => {
-  // `ingested` is measured from BEFORE this scan, so a second page that carried
-  // no seeds reports "carried no seeds at all" rather than inheriting page one's
-  // count and reporting the unmatched-keys cause.
-  const { warns } = await withReporter(async () => {
-    scanSeeds(root([el('script', await stringify({ 'h/f/[1]': 1 }), 'ok')]));
-    takeSeed('h', 'f', '[1]');
-  });
-  assert.deepEqual(warns, []);
-  const second = await withReporter(async () => {
-    scanSeeds(root([el('script', await stringify({}), 'ok')]));
-    takeSeed('h', 'f', '[9]');
-  });
-  assert.equal(second.warns.length, 1);
-  assert.match(second.warns[0], /carried no seeds at all/);
-});
-
 test('a scan whose seeds all REPLACE unconsumed ones still counts as seeds merged', async () => {
   // The merged baseline is `ingested + replaced`, not `ingested`. Revisiting a
   // page whose seeding component elided re-emits a key the store still holds, so
@@ -395,9 +397,10 @@ test('a soft nav BEFORE the idle callback does not lend its seeds to the previou
     takeSeed('h', 'f', '[1]');
     scanSeeds(root([el('script', await stringify({ 'h/g/[1]': 1, 'h/g/[2]': 2, 'h/g/[3]': 3 }), 'ok')]));
   });
-  assert.equal(warns.length, 1);
-  assert.match(warns[0], /0 seed\(s\) on this page/, 'page A carried none, whatever page B carried');
-  assert.match(warns[0], /carried no seeds at all/);
+  // Page A carried none, so it is silent. That IS the discriminator: if page B's
+  // three seeds leaked into page A's window, `merged` would be 3 and page A
+  // would report the unmatched-keys cause for a page that has no evidence of one.
+  assert.deepEqual(warns, [], 'page A stays silent rather than borrowing page B\'s seeds');
 });
 
 test('a HEALTHY page is not blamed for the next page\'s correct misses', async () => {

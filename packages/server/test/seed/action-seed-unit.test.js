@@ -486,3 +486,16 @@ test('buildSeedScript: prod output is byte-identical to before the marker', asyn
   assert.equal(await buildSeedScript(collector, { reason: 'streamed' }), bare);
   assert.ok(!bare.includes('data-webjs-dev'), 'no marker attribute in prod');
 });
+
+test('dev marks a serializer DROP so the browser can name it; prod stays silent', async () => {
+  // The one failure the counting exists to expose. A value the wire cannot carry
+  // makes `stringify` throw and the whole block is dropped; without a marker the
+  // client opens no report window and the page prints nothing at all.
+  const collector = new Map();
+  // A function is not serializer-safe, so `stringify` throws and the whole block
+  // is dropped, taking every OTHER seed on the page with it.
+  collector.set('h/f/[1]', () => {});
+  const devOut = await buildSeedScript(collector, { dev: true });
+  assert.match(devOut, /data-webjs-dev="drop"/, 'dev names the drop');
+  assert.equal(await buildSeedScript(collector), '', 'prod is byte-identical to before');
+});

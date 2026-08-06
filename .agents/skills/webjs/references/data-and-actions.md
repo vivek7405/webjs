@@ -245,7 +245,7 @@ When a shipping component's `async render()` awaits an action during SSR, WebJs 
 
 ### The correctness boundary
 
-A seed hit returns the value the SSR render that produced this page computed for exactly this action, function, and argument list, so a hit cannot show the user something different from the HTML they are already looking at. On an HTML-cached page (`export const revalidate`) the seed rides inside the cached bytes, so it is exactly as fresh as the HTML it came with. A miss simply re-fetches.
+A seed hit returns the value the SSR render that produced this page computed for exactly this action, function, and argument list, so a hit cannot show the user something different from the HTML they are already looking at. A page navigation evicts whatever the outgoing page left unconsumed, both the block still in the DOM and anything already ingested from it, so a departed render's value is never served. On an HTML-cached page (`export const revalidate`) the seed rides inside the cached bytes, so it is exactly as fresh as the HTML it came with. A miss simply re-fetches.
 
 There is one shape where a hit can differ from the paint, and WebJs warns about it in dev: **an action that returns a DIFFERENT result for the SAME arguments twice in one render.** The seed carries the last result while the first component painted the first one. So keep an action deterministic for a given argument list. A counter, a `Math.random()`, a `new Date()` in the return value, or a read of mutable module state all break that rule, and dev prints:
 
@@ -271,15 +271,15 @@ A miss is invisible from the outside: the page still renders correctly, it just 
 
 Check it with `curl -sSI localhost:3000/` or in the network tab.
 
-**Browser side, per page view.** One `console.warn` at the first idle after hydration, and ONLY when a call missed. Silence means every call hit. The line names which of three causes applies:
+**Browser side, per page view.** One `console.warn` at the first idle after hydration, and only when a call missed AND the client can be certain why. It stays silent otherwise, including on a page that emitted no seeds at all: every action call routes through the seed lookup, including ones that were never SSR-invoked and never could have been seeded (a mutation, a `Task` autorun, a `connectedCallback` read), so a miss there is not evidence of a defect. That case is the server header's job, where `collected=0` is unambiguous. The line names one of these:
 
 - *"This page streams"*, so no seeds could be emitted. Expected, not a bug (see below).
-- *"The page carried no seeds at all."* Usually the action is not reachable as an action: check the file is `*.server.{js,ts}` with `'use server'` on its first line, and that a component really awaited it during SSR rather than in `connectedCallback` or a `Task`.
+- *"The page's seeds could not be serialized."* Something an action returned is not serializer-safe, so the whole block was dropped. The response header shows `collected` above `emitted` for the same reason.
 - *"The page carried seeds, but not for these calls."* The key is `hash(action file) / function name / serialized arguments`, so the client asked with an argument the SSR render never used. Common cause: the component computes its argument from browser-only state (a `localStorage` read, a `connectedCallback` assignment), which the server render could not have known.
 
 A miss AFTER hydration is correct and is not reported: the seed is consume-once, so a deliberate refetch or an argument change is supposed to go to the network.
 
-`seedStats()` from `@webjsdev/core` returns `{ ingested, replaced, hits, misses, pending }` if you want to assert this in a browser test or read it from the console. A non-zero `pending` at rest usually means the seeding component ELIDED, so its module never shipped and nothing on the client was ever going to consume the seed. `pending` covers the page you are on: navigating away discards whatever that page left unconsumed, since those values belong to a render no longer on screen.
+`seedStats()` from `@webjsdev/core` returns `{ ingested, replaced, hits, misses, pending }` if you want to assert this in a browser test or read it from the console. A non-zero `pending` at rest usually means the seeding component ELIDED, so its module never shipped and nothing on the client was ever going to consume the seed. `pending` covers the page you are on: a page navigation evicts whatever the outgoing page left unconsumed, both the block still sitting in the DOM and anything already ingested from it, since those values belong to a render no longer on screen.
 
 ### The streamed-page exception
 

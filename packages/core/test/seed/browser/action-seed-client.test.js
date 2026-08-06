@@ -196,6 +196,33 @@ suite('SSR action seeding, real DOM (#1309)', () => {
     region.remove();
   });
 
+  test('an already-INGESTED unconsumed seed does not survive a navigation', async () => {
+    // The second route into the same "a hit disagrees with the paint" hole, and
+    // the one stripping DOM carriers does not close. Page A carries an elided
+    // component AND a shipping one, so the shipping one's first `takeSeed` fires
+    // the lazy scan and the WHOLE block is ingested: the elided component's key
+    // is now in the store with no carrier left to strip and nothing that will
+    // ever consume it. Page B emits no seed for that key (a streamed page emits
+    // no block at all), so without eviction a component on B calling the same
+    // action with the same arguments gets page A's value.
+    seedBlock(await stringify({ 'h/getUser/[1]': 'PAGE-A-STALE', 'h/used/[1]': 1 }), 'ok');
+    takeSeed('h', 'used', '[1]');   // fires the lazy scan; the block leaves the DOM
+    assert.equal(seedStats().pending, 1, 'page A left one seed ingested and unconsumed');
+
+    const detached = document.implementation.createHTMLDocument('');
+    const fresh = detached.createElement('script');
+    fresh.type = 'application/json';
+    fresh.id = '__webjs-seeds';
+    fresh.setAttribute('data-webjs-dev', 'ok');
+    fresh.textContent = await stringify({ 'h/other/[1]': 'B' });
+    detached.body.appendChild(fresh);
+    scanSeeds(detached);
+
+    assert.equal(takeSeed('h', 'getUser', '[1]'), SEED_MISS, 'a departed page\'s value is never served');
+    assert.equal(takeSeed('h', 'other', '[1]'), 'B', 'the incoming page\'s own seed still works');
+  });
+
+
   test('an UNMARKED block (production) reports nothing at all', async () => {
     const warns = await withIdle(async () => {
       seedBlock(await stringify({ 'h/f/[1]': 1 }));

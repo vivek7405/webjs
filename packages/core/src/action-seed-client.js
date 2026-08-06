@@ -144,7 +144,26 @@ export function scanSeeds(root, opts) {
   // keys from pages the developer has already left. The cost of discarding is
   // that an in-flight `async render()` from the outgoing page misses and
   // refetches, which is a round-trip rather than wrong data.
-  if (incomingPage) drainCarriers(live, true);
+  if (incomingPage) {
+    drainCarriers(live, true);
+    // And evict what the outgoing page ALREADY ingested. Stripping the DOM
+    // carrier is not enough: a page carrying an elided component alongside a
+    // shipping one has its WHOLE block ingested by the lazy scan the shipping
+    // one triggers, so the elided component's keys are in the store with no
+    // carrier left to strip and nothing that will ever consume them. Navigate to
+    // a page that emits no seed for such a key (a streamed page emits no block
+    // at all) and a component calling the same action with the same arguments
+    // gets a HIT carrying the DEPARTED page's value, painted over the fresh SSR
+    // HTML. That is the same "a hit disagrees with the paint" class the drain
+    // above closes, reached through the store instead of through the DOM, so it
+    // has to close here too or the guarantee is not one.
+    //
+    // Everything still held at this moment belongs to the page being replaced:
+    // a hit deletes its key, so anything left is unconsumed. Dropping it costs
+    // an in-flight `async render()` from the outgoing page a round-trip, never
+    // wrong data.
+    seeds.clear();
+  }
   // The lazy scan must not run again once the live document has been handled: a
   // second pass finds nothing to ingest but would close the window this scan is
   // about to open. Only when it HAS been handled, though. A live SUBTREE scan
@@ -283,11 +302,29 @@ function reportSeeds(w) {
   const misses = stats.misses - w.misses;
   const merged = (stats.ingested + stats.replaced) - w.merged;
   if (misses === 0) return;
+  // Report ONLY a cause this side can be sure of. A miss is not evidence of a
+  // defect on its own: EVERY action call routes through `takeSeed`, including
+  // ones that were never SSR-invoked and never could have been seeded (a
+  // mutation, a `Task` autorun, a `connectedCallback` read, an `optimistic()`
+  // call). On a page that emitted no seeds those are indistinguishable from a
+  // broken seeding path, so claiming a defect there tells a developer whose code
+  // is correct to go check a `'use server'` directive that is already right, and
+  // does it on every page view with no way to silence it. That is exactly the
+  // false alarm the defect-only rule exists to prevent, so the ambiguous case is
+  // left to the SERVER, whose `X-Webjs-Seed` header states `collected=0`
+  // unambiguously and per request.
+  //
+  // Two cases remain certain. A `streamed` or `drop` marker is the server saying
+  // why no seed could ride the page. And a page that DID seed while some
+  // hydration call still missed is a genuine key mismatch.
   const cause = w.marker === 'streamed'
     ? 'This page streams (a Suspense or <webjs-suspense> boundary), and a streamed render emits no seeds, so every action call on it goes to the network.'
-    : merged === 0
-      ? 'The page carried no seeds at all. Check that the action lives in a *.server.{js,ts} file whose head declares \'use server\', and that a component actually awaited it during the SSR render.'
-      : 'The page carried seeds, but not for these calls. The key is the action file hash plus the function name plus the serialized arguments, so a different argument misses (a deliberate refetch after hydration misses too, and is expected).';
+    : w.marker === 'drop'
+      ? 'The page\'s seeds could not be serialized, so the whole block was dropped. Something an action returned is not serializer-safe; the server response reports collected above emitted.'
+      : merged === 0
+        ? null
+        : 'The page carried seeds, but not for these calls. The key is the action file hash plus the function name plus the serialized arguments, so a different argument misses (a deliberate refetch after hydration misses too, and is expected).';
+  if (cause === null) return;
   console.warn(
     `[webjs] SSR action seeding: ${misses} of ${hits + misses} hydration action call(s) missed the seed and cost a network round-trip `
     + `(${merged} seed(s) on this page, ${seeds.size} still unconsumed). ${cause} `

@@ -720,6 +720,17 @@ export async function buildSeedScript(collector, opts = {}) {
     const marker = dev ? ` data-webjs-dev="${opts.reason || 'ok'}"` : '';
     return `<script type="application/json" id="__webjs-seeds"${marker}>${safe}</script>`;
   } catch {
+    // The serializer threw, so the whole block is dropped. This is the ONE
+    // failure the counting exists to expose (`collected` above `emitted`), and
+    // in prod it stays silent as before. In DEV emit a marker-only block so the
+    // browser can name it: with no marker at all the client opens no report
+    // window, so every missed hydration call on the page prints nothing, which
+    // is precisely the invisible failure this feature removes.
+    if (dev) {
+      try {
+        return `<script type="application/json" id="__webjs-seeds" data-webjs-dev="drop">{}</script>`;
+      } catch { /* fall through to the silent drop */ }
+    }
     return '';
   }
 }
