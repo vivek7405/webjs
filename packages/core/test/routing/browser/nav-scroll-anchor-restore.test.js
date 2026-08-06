@@ -249,6 +249,39 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     } finally { await teardown(); }
   });
 
+  test('a form SUBMISSION inside the window closes it too', async () => {
+    // A submission is a navigation and runs its own pipeline
+    // (`performSubmission`), so it needs the same close as `performNavigation`.
+    // Covered separately because a test that only drives `navigate()` leaves
+    // that second call site free to be deleted with every suite still green.
+    await setup();
+    try {
+      await goBack();
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), 'none',
+        'precondition: a window is open');
+      // Appended to the LIVE body, not to `container`: the restore swaps the
+      // body wholesale, so `container` is detached by now and a form inside it
+      // would never reach the router's document-level submit listener.
+      //
+      // The action must also not be this page's own url. The runner serves test
+      // files at a `.js` path, and the router skips a submission whose action
+      // carries a non-HTML extension, so that form would never reach
+      // `performSubmission` at all.
+      const holder = document.createElement('div');
+      holder.innerHTML = '<form id="wj-anchor-form" method="post" '
+        + 'action="/wj-submit-target-1310"><button type="submit">go</button></form>';
+      document.body.appendChild(holder);
+      const form = holder.querySelector('#wj-anchor-form');
+      // Well inside the floor. The router intercepts this and the nav guard
+      // cancels the browser's own submission, so nothing leaves the page.
+      form.requestSubmit(form.querySelector('button'));
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
+        'a submission ends the previous restore\'s window, same as a link nav');
+      holder.remove();
+    } finally { await teardown(); }
+  });
+
   test('anchoring WORKS again once the window has closed', async () => {
     // The inverse of the headline, and the regression that would matter most if
     // this fix were wrong: suppression is temporary, so once the restore is over
