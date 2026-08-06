@@ -215,9 +215,7 @@ Run the mandatory generate + boot + check verifications in PARALLEL when more th
    spanning several paths (the auth card names its route, its module, its api
    routes and its schema column), or one that depends on another (the
    server-actions card says to prune it with auth). A self-contained demo needs
-   none, since the generated `app/page.ts` header tells the agent to delete the
-   `app/features/<x>` route with its `modules/<x>`, and `npm run gallery:clear`
-   sheds the lot. The scaffold teaches by its comments, and a thin demo is a
+   none, since `npm run gallery:clear` sheds the lot. The scaffold teaches by its comments, and a thin demo is a
    bug.
 
 ## Audit-mode procedure (sweep the scaffold for drift)

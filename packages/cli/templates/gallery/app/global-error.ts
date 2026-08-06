@@ -6,7 +6,7 @@
 // and no boot script. Keep it static HTML with no components or hydration: a
 // last-resort page must not depend on the module system that may have just
 // failed. (Under an opt-in CSP, an inline <script> here needs a nonce via
-// cspNonce() from @webjsdev/server. An inline <style> only needs one if you
+// cspNonce() from @webjsdev/core. An inline <style> only needs one if you
 // tighten style-src, since the default policy allows inline style outright.)
 //
 // Distinct from error.ts (a nested, per-segment boundary that renders a body
