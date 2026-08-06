@@ -132,8 +132,7 @@ packages/
   webjsdev/         # unscoped npm name for @webjsdev/cli (so `npm i -g webjsdev` works without a scope)
 examples/
   blog/             # full-featured reference app (auth, posts, comments, chat)
-website/            # landing site AND the documentation at /docs
-docs/               # docs.webjs.dev, a redirect-only host (kept forever)
+website/            # landing site AND the documentation at /docs and gallery at /ui
 AGENTS.md           # AI-agent contract for the framework
 CLAUDE.md           # Claude Code quick-reference
 ```
@@ -150,17 +149,15 @@ the Tailwind stylesheet is recompiled on request when a source changes
 
 ```sh
 npm install                          # once, from the repo root (installs every workspace)
-npm run dev                          # all four apps at once
+npm run dev                          # both apps at once
 ```
 
-Default ports (a contiguous 5001-5004 block; port 5000 is skipped
-because macOS reserves it for the AirPlay Receiver / Control Center):
+Default ports (port 5000 is skipped because macOS reserves it for the
+AirPlay Receiver / Control Center):
 
 | App | Dir | Port | Env override |
 |---|---|---|---|
 | Landing site, docs, UI gallery | `website/` | 5001 | `WEBSITE_PORT` |
-| docs.webjs.dev redirect | `docs/` | 5002 | `DOCS_PORT` |
-| ui.webjs.dev redirect | `packages/ui/packages/website/` | 5003 | `UI_PORT` |
 | Example blog | `examples/blog/` | 5004 | `BLOG_PORT` |
 
 **Run a single app** (from its directory). Each honors a `PORT` env var:
@@ -170,10 +167,10 @@ cd website && npm run dev            # landing site + docs on 5001
 PORT=8080 npm run dev                # ...or on 8080
 ```
 
-**Override ports when running all four** via the per-app env vars:
+**Override ports when running both** via the per-app env vars:
 
 ```sh
-WEBSITE_PORT=8001 DOCS_PORT=8002 UI_PORT=8003 BLOG_PORT=8004 npm run dev
+WEBSITE_PORT=8001 BLOG_PORT=8004 npm run dev
 ```
 
 > Use the `PORT` / `*_PORT` env vars, **not** a `--port` flag. `npm run dev

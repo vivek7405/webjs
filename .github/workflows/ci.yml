@@ -32,14 +32,14 @@ jobs:
           cache: npm
       - run: npm ci
       # Dogfood the framework's own correctness checks on the in-repo apps.
-      - name: webjs check (blog, website, docs host, ui host)
+      - name: webjs check (blog, website)
         run: |
-          for app in examples/blog website docs packages/ui/packages/website; do
+          for app in examples/blog website; do
             echo "::group::webjs check $app"
             ( cd "$app" && node "$GITHUB_WORKSPACE/packages/cli/bin/webjs.js" check )
             echo "::endgroup::"
           done
-      # Project health on the same four apps (#1257). WHICH findings are fatal
+      # Project health on the same two apps (#1257). WHICH findings are fatal
       # is each app's own call, declared in its package.json `webjs.doctor.gate`
       # rather than here, so a local `webjs doctor` and this step agree. Today
       # website + examples/blog gate UNMARKED_ASSET_LINKS to error. Two checks
@@ -48,9 +48,9 @@ jobs:
       # and cannot red this job. Deliberately NOT --strict:
       # the git-hook, env-drift, vendor-pin, and framework-resolve checks are
       # environment-shaped and would fail a perfectly healthy runner.
-      - name: webjs doctor (blog, website, docs host, ui host)
+      - name: webjs doctor (blog, website)
         run: |
-          for app in examples/blog website docs packages/ui/packages/website; do
+          for app in examples/blog website; do
             echo "::group::webjs doctor $app"
             ( cd "$app" && node "$GITHUB_WORKSPACE/packages/cli/bin/webjs.js" doctor )
             echo "::endgroup::"
@@ -453,14 +453,14 @@ jobs:
       - run: npm run build:dist --workspace=@webjsdev/core
 
   apps:
-    name: In-repo app tests (all four apps)
+    name: In-repo app tests (website + blog)
     runs-on: ubuntu-latest
     # The framework jobs above cover packages/* and the root cross-package
     # suite. This job runs each IN-REPO app's OWN test suite (its `webjs test`
     # script), which the root runners do not discover, so a regression in an
     # app's tests gates the merge (issue #342). The website's `test` runs both
     # its node + browser suites (hence Playwright), and covers the docs too
-    # since they are its own /docs routes; the blog is node-only and touches
+    # since they are its own /docs routes. The blog is node-only and touches
     # its SQLite DB (the same setup the unit + e2e jobs do). The website's
     # suite also covers the component gallery, which is its own /ui routes
     # since #1099. The `node test/bun/app-boot.mjs` boot-check step below
@@ -489,9 +489,8 @@ jobs:
       # covers the website's tsconfig include (app, components, lib, modules)
       # and NOT test/, which would add 17 pre-existing errors across 5 of its
       # 25 .ts files. And it gates website/ only, which is a scope call rather
-      # than a claim about the others: examples/blog is genuinely red today,
-      # but docs/ and packages/ui/packages/website both typecheck clean, so
-      # adding them is a small separate change. Widening either is its own fix.
+      # than a claim about the other: examples/blog is genuinely red today, so
+      # adding it is a small separate change of its own.
       - name: website typecheck
         run: npm run typecheck --workspace=@webjsdev/website
       - name: website tests (node + browser)
@@ -502,10 +501,8 @@ jobs:
       # broken modulepreload, covering its /docs (#1098) and /ui (#1099)
       # routes. Runs the app's `webjs.start.before` presteps first (the ui
       # registry copy, the #526 root cause). The blog is covered by the e2e
-      # job. The docs.webjs.dev and ui.webjs.dev redirect hosts are not here on
-      # purpose: every route on them is an empty 301, which would pass
-      # vacuously; they are covered by test/docs/docs-host-redirect.test.mjs
-      # and test/ui/ui-host-redirect.test.mjs.
+      # job. docs.webjs.dev and ui.webjs.dev are Cloudflare redirect rules with
+      # no origin, so there is nothing here to boot for them.
       - name: App boot-check on Node (website incl. /docs + /ui)
         run: node test/bun/app-boot.mjs
 

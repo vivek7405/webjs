@@ -1,11 +1,12 @@
-# docker compose runs website + docs + blog + ui-website as four services
-# from a single image. Local parity with Railway deployment (same Dockerfile).
+# docker compose runs website + blog as two services from a single image.
+# Local parity with Railway deployment (same Dockerfile).
 #
 #   docker compose up --build
-#     website    → http://localhost:15001
-#     docs       → http://localhost:15002  (redirect-only; the docs live at website/docs)
+#     website    → http://localhost:15001  (serves /docs and /ui too)
 #     blog       → http://localhost:15004
-#     ui-website → http://localhost:15003  (redirect-only; the gallery lives at website/ui)
+#
+# docs.webjs.dev and ui.webjs.dev used to be two more services here. Both are
+# Cloudflare redirect rules now, so they have no origin and nothing to run.
 #
 # Readiness gate: the image carries a single PORT-driven HEALTHCHECK (it probes
 # /__webjs/ready, see Dockerfile), so each service only sets PORT and compose
@@ -26,20 +27,6 @@ services:
     environment:
       PORT: "5001"
       EXAMPLE_BLOG_URL: ${EXAMPLE_BLOG_URL:-http://localhost:15004}
-
-  # The documentation itself is served by the `website` service at /docs. This
-  # service is the docs.webjs.dev host, which redirects every request there and
-  # must keep resolving indefinitely (shipped npm packages link to it).
-  docs:
-    image: webjs
-    build: .
-    working_dir: /app/docs
-    command: ["bun", "/app/node_modules/@webjsdev/cli/bin/webjs.js", "start"]
-    ports:
-      - "15002:5002"
-    environment:
-      PORT: "5002"
-      SITE_URL: ${SITE_URL:-http://localhost:15001}
 
   blog:
     image: webjs
@@ -63,21 +50,6 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:-change-me-at-least-32-characters-long!}
     volumes:
       - blog-data:/data
-
-  # The gallery and the registry API are served by the `website` service at
-  # /ui. This service is the ui.webjs.dev host, which redirects every request
-  # there and must keep resolving indefinitely: shipped @webjsdev/ui versions
-  # fetch components from its /registry endpoints.
-  ui-website:
-    image: webjs
-    build: .
-    working_dir: /app/packages/ui/packages/website
-    command: ["bun", "/app/node_modules/@webjsdev/cli/bin/webjs.js", "start"]
-    ports:
-      - "15003:5003"
-    environment:
-      PORT: "5003"
-      SITE_URL: ${SITE_URL:-http://localhost:15001}
 
 volumes:
   blog-data:

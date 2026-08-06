@@ -403,9 +403,8 @@ files (a `never` argument in the sitemap test, `LayoutProps` calls missing
 on day one. Fixing those is its own task.
 
 Across apps the gate covers `website/` only, which is a SCOPE decision rather
-than a claim about the others. Measured: `examples/blog` is genuinely red (13
-errors), but `docs/` and `packages/ui/packages/website` both typecheck clean
-today, so gating them is a small, separate change and not a blocked one.
+than a claim about the other. Measured: `examples/blog` is genuinely red (13
+errors), so gating it is a small, separate change and not a blocked one.
 
 `npm run dev` and `webjs dev` behave identically (#550): `webjs.dev.before`
 mirrors the kit sources in and compiles `public/tailwind.css`, and

@@ -27,7 +27,7 @@ out
 # `gitignore-vendor-not-ignored` lint rule guards this.
 # The `**/` prefix is REQUIRED in this monorepo: a slash-bearing
 # `.webjs/*` anchors to the repo root, so the nested in-repo apps
-# (website/, docs/, packages/ui/packages/website/) leaked their
+# (website/, examples/blog/) leaked their
 # generated `.webjs/routes.d.ts` into `git status`. `**/.webjs/*`
 # matches the dir at every depth while the negations still re-include
 # vendor at each (a re-included parent allows child negation).

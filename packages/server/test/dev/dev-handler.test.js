@@ -1719,8 +1719,8 @@ test('gate: page imports from app/_components/ stay servable', async () => {
   // them), but files inside are still importable from pages and
   // layouts. The graph walker must enter `_*` dirs to follow
   // those imports, or legitimate imports 404.
-  // Real example: packages/ui/packages/website/app/layout.ts
-  // imports from `./_components/theme-toggle.ts`.
+  // Real example: a root layout importing from
+  // `./_components/theme-toggle.ts`.
   const appDir = makeApp({
     'app/layout.ts':
       `import './_components/theme-toggle.ts';\n` +

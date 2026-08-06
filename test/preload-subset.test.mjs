@@ -34,9 +34,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const APPS = [
   { name: 'blog', dir: 'examples/blog', routes: ['/about', '/static-info'] },
   // The docs (#1098) and the component gallery (#1099) are both served by the
-  // website app, so their routes are probed as part of it. `docs/` and
-  // `packages/ui/packages/website/` are redirect-only hosts with no pages
-  // left, so there is no HTML there to carry a modulepreload at all.
+  // website app, so their routes are probed as part of it.
   //
   // /ui/button is the gallery's heaviest page: it is the one that pulls the
   // mirrored kit component sources, which is exactly the class of import a
