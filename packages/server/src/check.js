@@ -1526,7 +1526,7 @@ function checkSubmitterNeedsBoundForm(files, violations) {
   // Every call site of every tag, as a scope. A 'none' site needs attribution
   // before it means anything, so it is recorded with the component that renders
   // it (or as unknowable when no single component owns it).
-  /** @type {Map<string, Array<{ scope: 'none'|'unbound'|'bound', delivers: boolean | null, via: string | null }>>} */
+  /** @type {Map<string, Array<{ scope: import('./js-scan.js').FormScope, delivers: boolean | null, via: string | null }>>} */
   const callSites = new Map();
   for (const { fileSites, ownerTag, bodySites } of scanned) {
     // A 'none' use is attributed to this file's component ONLY when the
@@ -1587,6 +1587,13 @@ function checkSubmitterNeedsBoundForm(files, violations) {
    *
    * One delivering call site, one bound call site, one unknowable call site, a
    * cycle, or no call site at all all answer `'unknowable'`, which is silent.
+   *
+   * The scope tests below are EXACT `'none'` on purpose. A `'handed'` site (a
+   * template sitting in a start-tag hole, so some other element received it and
+   * places it) must fall through to `'unknowable'`, and it does so only because
+   * nothing here treats it as a cannot-tell. Loosening these to a catch-all
+   * would resolve a handed-off template through this component's call sites,
+   * which is the wrong component's answer.
    *
    * @param {string} tag
    * @returns {'undeliverable' | 'unknowable'}

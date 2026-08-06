@@ -827,9 +827,21 @@ function unboundFormDelivers(tagText) {
 }
 
 /**
+ * @typedef {'none'|'unbound'|'bound'|'handed'} FormScope
+ *
+ * `'none'` and `'handed'` are BOTH "no enclosing form in this scan", and they
+ * are deliberately separate values because a caller must treat them
+ * differently. `'none'` is a cannot-tell that the file's own component may
+ * legitimately own, so a caller may attribute it and resolve it against that
+ * component's call sites. `'handed'` is a template sitting in a start-tag hole,
+ * which is an attribute or property VALUE: some OTHER element received it and
+ * decides where it renders, so this file's call sites say nothing about it and
+ * it can never be attributed to anything. Collapsing the two makes a handed-off
+ * template resolve through the wrong component's call sites.
+ *
  * @typedef {{
  *   tag: string,
- *   scope: 'none'|'unbound'|'bound',
+ *   scope: FormScope,
  *   delivers: boolean | null,
  * }} FormScopeSite
  *
@@ -881,7 +893,7 @@ export function scanHtmlFormScopes(src) {
    *
    * @param {number} i
    * @param {boolean} stopAtBrace return at the `}` closing the enclosing hole
-   * @param {'none'|'unbound'|'bound'} scope inherited by any template found here
+   * @param {FormScope} scope inherited by any template found here
    * @param {boolean | null} delivers inherited alongside `scope`
    * @returns {number}
    */
@@ -914,12 +926,12 @@ export function scanHtmlFormScopes(src) {
    *
    * @param {number} i
    * @param {boolean} isHtml whether its markup should be read
-   * @param {'none'|'unbound'|'bound'} startScope
+   * @param {FormScope} startScope
    * @param {boolean | null} startDelivers
    * @returns {number} the index just past the closing backtick
    */
   function walkTemplate(i, isHtml, startScope, startDelivers) {
-    /** @type {'none'|'unbound'|'bound'} */
+    /** @type {FormScope} */
     let scope = startScope;
     /** @type {boolean | null} */
     let delivers = startDelivers;
@@ -1018,17 +1030,21 @@ export function scanHtmlFormScopes(src) {
         }
         // A hole inside a START TAG is an attribute or property VALUE, so a
         // template in it is handed to the receiving element and rendered in
-        // THAT component's own pass, not inline here. It therefore starts fresh
-        // at 'none' rather than inheriting this scan's scope, exactly as a
-        // top-level template does. A hole in CHILD position is rendered inline
-        // by this scan and does inherit.
+        // THAT component's own pass, not inline here. It therefore starts at
+        // 'handed' rather than inheriting this scan's scope. A hole in CHILD
+        // position is rendered inline by this scan and does inherit.
         //
         // Without the split, `<form method="post"><my-thing .tpl=${html`<button
         // formaction=${del}>x</button>`}></my-thing></form>` scored the button
         // 'unbound' from lexical nesting, while the renderer sees a cannot-tell
-        // in `my-thing`'s pass and binds. The form delivers, so the shape works
-        // and reporting it would be a false positive.
-        const holeScope = tag && !tag.isClose ? 'none' : scope;
+        // in `my-thing`'s pass and binds. The form delivers, so the shape works.
+        //
+        // 'handed' and NOT 'none', which is the subtle half: 'none' is the
+        // cannot-tell a caller attributes to this file's own component and
+        // resolves against ITS call sites, and a handed-off template belongs to
+        // whichever element received it instead. Using 'none' here silences the
+        // false positive on a page and recreates it in a component file.
+        const holeScope = tag && !tag.isClose ? 'handed' : scope;
         const holeDelivers = tag && !tag.isClose ? null : delivers;
         // Only the segment IMMEDIATELY before a hole can commit an attribute,
         // so two adjacent holes leave nothing for the second to read.

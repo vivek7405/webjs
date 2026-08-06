@@ -246,6 +246,47 @@ export default () => html\`<form method="post"><my-thing .tpl=\${html\`<button f
   await rm(dir, { recursive: true, force: true });
 });
 
+test('silent when a COMPONENT hands its submitter template to another element', async () => {
+  // The variant that matters most, and the one a page-only test misses. Marking
+  // the handed-off template 'none' silences it on a page and recreates the false
+  // positive here, because 'none' is exactly the value the cross-module half
+  // attributes to this file's own tag and resolves against ITS call sites.
+  // <my-thing> is what decides where the button lands.
+  const dir = await makeApp({
+    'components/row-btn.ts': `import { html, WebComponent } from '@webjsdev/core';
+import { publishDraft } from '#modules/feedback/actions/publish.server.ts';
+class RowBtn extends WebComponent({}) {
+  render() { return html\`<my-thing .tpl=\${html\`<button formaction=\${publishDraft}>P</button>\`}></my-thing>\`; }
+}
+RowBtn.register('row-btn');
+`,
+    'app/page.ts': `import { html } from '@webjsdev/core';
+export default () => html\`<form><row-btn></row-btn></form>\`;
+`,
+  });
+  assert.deepEqual(hits(await checkConventions(dir)), [], 'the receiving element places the button');
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('silent when a component hands a TAG to another element', async () => {
+  // The same root cause on the tag half: <my-shell> places the row, so
+  // <todo-list>'s call sites say nothing about where <todo-row> renders.
+  const dir = await makeApp({
+    'components/todo-list.ts': `import { html, WebComponent } from '@webjsdev/core';
+class TodoList extends WebComponent({}) {
+  render() { return html\`<my-shell .rows=\${html\`<todo-row></todo-row>\`}></my-shell>\`; }
+}
+TodoList.register('todo-list');
+`,
+    'components/todo-row.ts': TODO_ROW,
+    'app/page.ts': `import { html } from '@webjsdev/core';
+export default () => html\`<form><todo-list></todo-list></form>\`;
+`,
+  });
+  assert.deepEqual(hits(await checkConventions(dir)), [], 'a handed-off tag has no attributable call site');
+  await rm(dir, { recursive: true, force: true });
+});
+
 test('silent when the tag has no call site anywhere in the app', async () => {
   const dir = await makeApp({
     'components/row-btn.ts': rowBtn(),

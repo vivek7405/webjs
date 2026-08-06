@@ -182,7 +182,19 @@ test('a template in a START-TAG hole does not inherit the lexical scope', () => 
   // pass. Scoring it by lexical nesting reported a shape the renderer treats as
   // cannot-tell (and therefore binds) as a conclusive 'unbound'.
   const passed = 'html`<form method="post"><my-thing .tpl=${html`<button formaction=${del}>x</button>`}></my-thing></form>`';
-  assert.deepEqual(scanHtmlFormScopes(passed).submitters, [{ tag: 'button', scope: 'none', delivers: null }]);
+  // 'handed', NOT 'none'. Both mean "no enclosing form in this scan", but only
+  // 'none' is a cannot-tell the caller may attribute to this file's own
+  // component. A handed-off template belongs to whichever element received it,
+  // so collapsing the two resolves it through the wrong call sites.
+  assert.deepEqual(scanHtmlFormScopes(passed).submitters, [{ tag: 'button', scope: 'handed', delivers: null }]);
+  // A hyphenated tag inside a property hole is placed by the receiving element
+  // too, so it is not this file's call site either.
+  const tagPassed = 'html`<my-shell .rows=${html`<todo-row></todo-row>`}></my-shell>`';
+  assert.deepEqual(scanHtmlFormScopes(tagPassed).tagUses.filter((u) => u.tag === 'todo-row'),
+    [{ tag: 'todo-row', scope: 'handed', delivers: null }]);
+  // A form the handed-off template opens ITSELF is still its own scope.
+  const ownForm = 'html`<my-thing .tpl=${html`<form action=${s}><button formaction=${del}>x</button></form>`}></my-thing>`';
+  assert.deepEqual(scanHtmlFormScopes(ownForm).submitters, [{ tag: 'button', scope: 'bound', delivers: null }]);
   // A hole in CHILD position IS rendered inline by this scan, so it still
   // inherits. This is the pair that keeps the fix from being a blanket opt-out.
   const child = 'html`<form method="post">${html`<button formaction=${del}>x</button>`}</form>`';
