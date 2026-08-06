@@ -230,16 +230,23 @@ export async function withJspmDouble(opts, body) {
   const original = globalThis.fetch;
   globalThis.fetch = /** @type {any} */ (double);
   clearVendorCache();
+  let result;
   try {
-    return await body(double);
+    result = await body(double);
   } finally {
     globalThis.fetch = original;
     clearVendorCache();
-    if (double.unexpected.length) {
-      throw new Error(
-        `the jspm double was asked for ${double.unexpected.length} request(s) it does not serve:\n  ` +
-        `${double.unexpected.join('\n  ')}`,
-      );
-    }
   }
+  // Deliberately OUTSIDE the finally. Throwing from a finally REPLACES an
+  // in-flight error, and a refused request usually travels with the assertion
+  // it broke, so raising it there would discard the message that explains
+  // what actually went wrong. Restoring is what the finally is for; reporting
+  // happens only on the success path, where nothing is being displaced.
+  if (double.unexpected.length) {
+    throw new Error(
+      `the jspm double was asked for ${double.unexpected.length} request(s) it does not serve:\n  ` +
+      `${double.unexpected.join('\n  ')}`,
+    );
+  }
+  return result;
 }

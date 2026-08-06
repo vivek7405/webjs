@@ -13,8 +13,9 @@
  * whole job is to talk to jspm, and a double can only ever return what this
  * repo already believes about the API. So these two assertions stay real, and
  * `.github/workflows/vendor-cdn.yml` runs them nightly with
- * `WEBJS_REQUIRE_NETWORK=1`, which ALSO turns a skip into a failure. Without
- * that, a permanently skipping test is indistinguishable from a passing one.
+ * `WEBJS_REQUIRE_NETWORK=1`, and surfaces any skip as a warning annotation, so
+ * a permanently skipping test is visible rather than indistinguishable from a
+ * passing one.
  *
  * Upstream trouble skips rather than reds, judged at the transport: a throw, a
  * 5xx, or a 429 is jspm having a bad moment. A 4xx does not skip, because by
@@ -22,6 +23,16 @@
  * upstream is demonstrably healthy and a 4xx means OUR request is malformed.
  * That distinction is #1219's, and it is the reason this file can be run
  * nightly without becoming a source of false alarms.
+ *
+ * That only holds if the skip is REACHABLE where the file runs. It briefly was
+ * not: `WEBJS_REQUIRE_NETWORK` both selected these files and promoted every
+ * skip to a failure, and the nightly always sets it, so the transport
+ * distinction had no effect anywhere automated and a single 503 at 04:20 UTC
+ * would have filed a bug issue. The two concerns are separate variables now.
+ * `WEBJS_REQUIRE_NETWORK` selects the files and lifts the deny;
+ * `WEBJS_FAIL_ON_SKIP` promotes a skip, and the nightly does NOT set it. The
+ * nightly instead reports skips as a warning annotation, so a permanently
+ * skipping test is visible without waking anyone for an outage.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -37,10 +48,14 @@ const GENERATE_BODY = (install) => JSON.stringify({
  * Build a loud skip for one fixture.
  *
  * Loud on purpose: a silent skip is how a real regression hides, so the reason
- * and the fixture are always named. Under `WEBJS_REQUIRE_NETWORK` the skip
- * becomes a FAILURE instead, which is what makes the nightly job able to tell
- * "jspm changed under us" from "everything is fine". A normal run is
- * unaffected, since the runners exclude this file entirely.
+ * and the fixture are always named, and the nightly turns any skip into a
+ * warning annotation.
+ *
+ * `WEBJS_FAIL_ON_SKIP` promotes it to a failure. Deliberately NOT the same
+ * variable that selects this file, and deliberately not set by the nightly:
+ * upstream being down is not a regression, and a job that reds on it is a job
+ * whose reds get ignored. Set it by hand when you want to know that the check
+ * genuinely ran.
  *
  * @param {import('node:test').TestContext} t
  * @param {string} fixture
@@ -48,7 +63,7 @@ const GENERATE_BODY = (install) => JSON.stringify({
 function skipper(t, fixture) {
   return (reason) => {
     const first = String(reason).split('\n')[0];
-    if (process.env.WEBJS_REQUIRE_NETWORK) {
+    if (process.env.WEBJS_FAIL_ON_SKIP) {
       assert.fail(`live jspm check could not run (${fixture}): ${first}`);
     }
     console.warn(`[jspm-cdn.live] SKIP ${fixture} (${first})`);

@@ -22,10 +22,18 @@ name: Vendor CDN contract (nightly)
 # outage; it would just be a red somebody is told to ignore, which is how a
 # real failure gets ignored too.
 #
-# WEBJS_REQUIRE_NETWORK does double duty. It selects the live files, and it
-# turns their upstream-trouble SKIP into a FAILURE. Without that second half a
-# permanently skipping test is indistinguishable from a passing one, which is
-# the exact way live coverage rots into decoration.
+# WEBJS_REQUIRE_NETWORK selects the live files and lifts the test-run deny. It
+# does NOT promote their upstream-trouble skip into a failure, and that
+# separation is deliberate: it briefly did both, and since this job always sets
+# it, the transport-level skip was unreachable wherever the tests actually run.
+# A single jspm 503 or DNS blip at 04:20 UTC would then have redded the job and
+# filed the issue below, which is precisely the cry-wolf failure the paragraph
+# above argues against.
+#
+# A permanently skipping test still must not pass for a healthy one, so the run
+# is scanned for skips and annotates a warning instead. That is visible in the
+# run summary without waking anyone for an outage. `WEBJS_FAIL_ON_SKIP=1`
+# promotes a skip to a failure when you want to force the question by hand.
 #
 # There is deliberately no `pull_request` trigger, so this can never become a
 # required check and can never block a merge.
@@ -61,12 +69,30 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Run the live CDN tests
+        id: live
         env:
           WEBJS_REQUIRE_NETWORK: '1'
         run: |
+          set -o pipefail
           node --test \
             packages/server/test/vendor/jspm-cdn.live.test.js \
-            test/vendor-cli/vendor-pin.live.test.mjs
+            test/vendor-cli/vendor-pin.live.test.mjs 2>&1 | tee live.log
+
+      - name: Warn if a live check only skipped
+        # Runs even when the step above failed, so a partial skip is still
+        # reported. A skip means jspm could not answer, which is upstream's
+        # problem, not a regression; it is surfaced rather than escalated.
+        if: always()
+        run: |
+          set -euo pipefail
+          skipped=$(grep -c '^# SKIP\|^ℹ skipped' live.log 2>/dev/null || true)
+          if grep -q 'SKIP ' live.log 2>/dev/null; then
+            echo "::warning title=Live jspm check skipped::jspm.io could not answer at least one check. \
+          Not a regression, but if this repeats for days the live coverage has stopped running. \
+          Re-run with WEBJS_FAIL_ON_SKIP=1 to force it to fail instead."
+            grep 'SKIP ' live.log || true
+          fi
+          echo "skip markers: ${skipped}"
 
       - name: Report a failure on the tracking issue
         if: failure()

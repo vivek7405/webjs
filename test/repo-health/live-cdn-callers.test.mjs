@@ -31,7 +31,10 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { denyLiveHosts, DENIED_HOSTS } from '../fixtures/deny-live-hosts.mjs';
+import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
+
+import { denyLiveHosts, DENIED_HOSTS, DENY_INSTALLED_FLAG } from '../fixtures/deny-live-hosts.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -142,6 +145,37 @@ test('both runners install the deny and skip live files, unless the network is r
   const bun = readFileSync(join(ROOT, 'scripts/run-bun-tests.js'), 'utf8');
   assert.match(bun, /spawnSync\(BUN, \['test', \.\.\.denyArgs/,
     "the preload must come AFTER bun's `test` subcommand");
+});
+
+test('the preload actually arms the deny in a real process', () => {
+  // Everything else here checks `denyLiveHosts` as a pure function or greps a
+  // runner's source, and neither notices if the self-install at the bottom of
+  // the fixture is inverted or deleted: the unit tests stay green while the
+  // required job goes back to reaching jspm. That is the same class of defect
+  // three earlier review rounds found in this guard, so prove the install by
+  // running it.
+  //
+  // Spawned rather than asserted on this process, so the check does not depend
+  // on how THIS file was launched, and so both branches of the env switch can
+  // be exercised in one test.
+  const fixture = pathToFileURL(join(ROOT, 'test/fixtures/deny-live-hosts.mjs')).href;
+  const probe = 'const r = await fetch("https://api.jspm.io/generate", { method: "POST" });'
+    + `console.log(JSON.stringify({ status: r.status, armed: Boolean(globalThis[${JSON.stringify(DENY_INSTALLED_FLAG)}]) }));`;
+
+  const run = (env) => {
+    const r = spawnSync(process.execPath, ['--import', fixture, '--input-type=module', '-e', probe],
+      { encoding: 'utf8', env: { ...process.env, ...env }, timeout: 30_000 });
+    return JSON.parse((r.stdout || '{}').trim() || '{}');
+  };
+
+  const denied = run({ WEBJS_REQUIRE_NETWORK: '' });
+  assert.equal(denied.armed, true, 'the preload must install itself by default');
+  assert.equal(denied.status, 503, 'a jspm call in a preloaded process must be denied, not sent');
+
+  // The opt-out has to actually opt out, or the nightly could never reach the
+  // real CDN. Asserting the flag rather than a live status keeps this offline.
+  const allowed = run({ WEBJS_REQUIRE_NETWORK: '1' });
+  assert.notEqual(allowed.armed, true, 'WEBJS_REQUIRE_NETWORK must lift the deny');
 });
 
 test('every allowlisted live caller is a *.live.test.* file that exists', () => {

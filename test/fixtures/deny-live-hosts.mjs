@@ -77,6 +77,15 @@ export function denyLiveHosts(realFetch, onDenied) {
   };
 }
 
+/**
+ * Set on `globalThis` when the self-install below has run, so a guard can
+ * prove the preload actually took effect in a process rather than only that a
+ * runner's source mentions it. An inverted or dropped self-install is
+ * otherwise invisible: every unit test of `denyLiveHosts` keeps passing while
+ * the required job goes back to reaching jspm.
+ */
+export const DENY_INSTALLED_FLAG = '__webjsDenyLiveHostsInstalled';
+
 if (!process.env.WEBJS_REQUIRE_NETWORK) {
   /** @type {Set<string>} */
   const seen = new Set();
@@ -92,4 +101,5 @@ if (!process.env.WEBJS_REQUIRE_NETWORK) {
     seen.add(key);
     process.stderr.write(`[deny-live-hosts] refused ${key}\n`);
   }));
+  /** @type {any} */ (globalThis)[DENY_INSTALLED_FLAG] = true;
 }
