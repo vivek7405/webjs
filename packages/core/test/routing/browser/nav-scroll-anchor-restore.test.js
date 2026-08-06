@@ -155,6 +155,8 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
   let releaseFetch;
   /** Frame self-loads seen, so a case can prove its fixture actually loaded. */
   let frameLoads = 0;
+  /** Frame-targeted navigations seen, so a case can prove the click routed. */
+  let frameNavs = 0;
 
   /**
    * @param {{ instantRevalidation?: boolean, restoredY?: number }} [opts] By
@@ -211,7 +213,11 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       headers: { 'content-type': 'text/html', 'x-webjs-build': '' },
     });
     frameLoads = 0;
-    const count = (u) => { if (String(u).includes('wj-frame-target')) frameLoads += 1; };
+    frameNavs = 0;
+    const count = (u) => {
+      if (String(u).includes('wj-frame-target')) frameLoads += 1;
+      if (String(u).includes('wj-frame-nav-1310')) frameNavs += 1;
+    };
     window.fetch = instant
       ? (u) => { count(u); return Promise.resolve(respond()); }
       : (u) => { count(u); return new Promise((resolve) => { releaseFetch = () => resolve(respond()); }); };
@@ -360,7 +366,9 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     // would close the window and then have the stale restore reopen it, keyed to
     // the previous history entry, scrolling a page it was never meant for.
     const origSVT = (/** @type any */ (document)).startViewTransition;
+    let transitions = 0;
     (/** @type any */ (document)).startViewTransition = (cb) => {
+      transitions += 1;
       const done = new Promise((resolve) => {
         requestAnimationFrame(() => { cb(); resolve(); });
       });
@@ -369,6 +377,10 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     await setup({ viewTransition: true, tallOutgoing: true });
     try {
       await goBack();
+      assert.ok(transitions > 0,
+        'precondition: the swap really was deferred. On the synchronous path '
+        + 'the restore has already run and the navigation below simply closes '
+        + 'its window, which passes while exercising none of the guard');
       // Inside the deferred frame: the swap has not committed, so the restore
       // is still pending. Not awaited, since the point is that it STARTS.
       navigate(location.origin + entryUrl('during-deferred')).catch(() => {});
@@ -469,6 +481,11 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       try {
         holder.querySelector('#wj-frame-link').click();
         await new Promise((r) => setTimeout(r, 0));
+        // Positive proof the click actually routed. Without this the assertion
+        // below also passes when the router never saw the click at all, which
+        // is the only other way the window stays open.
+        assert.ok(frameNavs > 0,
+          'precondition: the click reached the router as a frame-targeted nav');
         assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), 'none',
           'a frame-targeted navigation must leave the restore window open');
       } finally { holder.remove(); }
