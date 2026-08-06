@@ -51,12 +51,13 @@ export default function Elision() {
     </p>
 
     <p>
-      <code>static interactive = true</code> is the explicit author override. It forces the module to ship when the component's interactivity is invisible to static analysis. There are exactly two such shapes:
+      <code>static interactive = true</code> is the explicit author override. It forces the module to ship when the component's interactivity is invisible to static analysis:
     </p>
 
     <ul>
       <li><strong>An observer that computes the tag it waits for.</strong> <code>customElements.whenDefined(TAG)</code> with a variable does not name a tag the analyser can resolve, so the observed component is elided, its registration never runs, and the <code>await</code> never settles. Put the override on the OBSERVED component.</li>
       <li><strong>A <code>:defined</code> rule in an external stylesheet.</strong> A <code>public/app.css</code> is not in the module graph, so <code>my-badge:defined { ... }</code> is invisible. Same fix, on the component the rule names.</li>
+      <li><strong>A consumer that reaches the element through a string selector.</strong> The analyser matches <code>whenDefined</code>, <code>:defined</code>, and <code>instanceof</code>, so a <code>document.querySelector('my-wrapper')</code> consumer escapes all three. Same fix, on the component being reached.</li>
     </ul>
 
     <h2>A computed registration tag is a different problem</h2>
@@ -77,7 +78,7 @@ Badge.register('my-badge');</code-block>
     </p>
 
     <p>
-      <code>webjs dev</code> warns, and <code>webjs elision</code> and <code>webjs doctor</code> report it, as an <strong>orphan</strong>. That name covers <strong>two</strong> shapes and they fail differently. A computed tag is the case above. A class with no registration call at all is the plainer one, someone forgot to register it, and that element never upgrades under any circumstances. Both lose the verdict, the registry entry, and the preload hint.
+      <code>webjs dev</code> warns, and <code>webjs elision</code> and <code>webjs doctor</code> report it, as an <strong>orphan</strong>. That name covers <strong>two</strong> shapes and they fail differently. A computed tag is the case above. A class with no registration call anywhere in the app is the plainer one, someone forgot to register it, and that element never upgrades. The check is app-wide, so registering the class from a sibling module is fine and is not reported. Both lose the verdict, the registry entry, and the preload hint.
     </p>
 
     <h2>Inspecting the verdict</h2>

@@ -480,8 +480,10 @@ export declare function primeComponentRegistry(
 export declare function extractComponents(src: string): Array<{ className: string; tag: string }>;
 /**
  * Find ORPHAN component classes: a `class X extends WebComponent` that its own
- * file never registers with a LITERAL tag, either because there is no
- * registration call or because the tag is computed. Neither is visible to the
+ * file declares and NOTHING in the app registers with a LITERAL tag, either
+ * because there is no registration call anywhere or because the tag is
+ * computed. The registration cross-reference is app-wide, so a class a sibling
+ * module registers is not an orphan. Neither is visible to the
  * scanner, so both always lose the elision verdict, the tag-to-module registry
  * entry, and the preload hint; assume the element does not upgrade either.
  * This is about REGISTRATION, never about import reachability. The full

@@ -153,8 +153,10 @@ export async function primeComponentRegistry(appDir, components) {
  * TWO shapes land here and they fail differently, so any message about this
  * must cover both:
  *
- *   - No registration call at all (the forgot-to-register case). Nothing ever
- *     registers the tag, so the element NEVER upgrades.
+ *   - No registration call ANYWHERE in the app (the forgot-to-register case).
+ *     Nothing ever registers the tag, so the element NEVER upgrades. The
+ *     cross-reference is app-wide precisely so a class registered by a sibling
+ *     module is not accused of this.
  *   - A registration whose tag is COMPUTED (`X.register(TAG)`). That call is
  *     ordinary code, so it runs IF the module reaches the browser, which
  *     requires the importing module to ship WHOLE. An inert, import-only, or
@@ -184,6 +186,23 @@ export async function findOrphanComponents(appDir) {
     /\.m?[jt]sx?$/.test(p) &&
     !/\.(test|spec)\.m?[jt]sx?$/.test(p) &&
     !/\.server\.m?[jt]s$/.test(p);
+
+  // TWO passes, because registration is an APP-WIDE fact while the declaration
+  // is per-file. A class may legitimately be declared in one module and
+  // registered by a sibling (`customElements.define('my-badge', Badge)` in a
+  // separate file), which the scanner header calls equally supported and which
+  // `extractComponents` already picks up as a real component. Reporting it as
+  // an orphan is a FALSE positive, and a false warning on a legitimate pattern
+  // is exactly what makes an author stop reading the warnings.
+  //
+  // Trade-off, deliberate: the cross-reference is by class NAME, so two
+  // same-named classes in different files, one registered and one genuinely
+  // orphaned, hide the real orphan. That is rarer than the sibling-registration
+  // pattern and errs toward silence rather than toward a wrong accusation.
+  /** @type {Array<{ file: string, declared: Set<string> }>} */
+  const declaredPerFile = [];
+  /** @type {Set<string>} every class name registered ANYWHERE in the app */
+  const registeredAnywhere = new Set();
 
   for await (const file of walk(appDir, filter)) {
     let src;
@@ -216,16 +235,14 @@ export async function findOrphanComponents(appDir) {
     const declared = new Set();
     let m;
     while ((m = classRe.exec(redacted)) !== null) declared.add(m[1]);
-    if (declared.size === 0) continue;
+    while ((m = registerRe.exec(redacted)) !== null) registeredAnywhere.add(m[1]);
+    while ((m = defineRe.exec(redacted)) !== null) registeredAnywhere.add(m[1]);
+    if (declared.size) declaredPerFile.push({ file, declared });
+  }
 
-    const registered = new Set();
-    while ((m = registerRe.exec(redacted)) !== null) registered.add(m[1]);
-    while ((m = defineRe.exec(redacted)) !== null) registered.add(m[1]);
-
+  for (const { file, declared } of declaredPerFile) {
     for (const cls of declared) {
-      if (!registered.has(cls)) {
-        orphans.push({ className: cls, file });
-      }
+      if (!registeredAnywhere.has(cls)) orphans.push({ className: cls, file });
     }
   }
   return orphans;

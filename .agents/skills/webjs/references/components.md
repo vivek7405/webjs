@@ -268,14 +268,15 @@ A bare `async render()` (no other signal, light DOM) is elided too: the SSR'd da
 
 ### What `static interactive = true` does and does not rescue
 
-The analyser reads source lexically, so exactly two real shapes escape it, and the override covers both:
+The analyser reads source lexically, so a few real shapes escape it. The override covers them:
 
 - **An OBSERVER that computes the tag it waits for.** `customElements.whenDefined(TAG)` where `TAG` is a variable does not name a tag the analyser can resolve, so the observed component is elided, its `register` never runs, and the `await` never settles. Put `static interactive = true` on the OBSERVED component.
 - **A `:defined` rule in an external stylesheet.** `public/app.css` is not in the module graph, so a `my-badge:defined { … }` rule is invisible. Same fix, on the component the rule names.
+- **A consumer that reaches the element through a string selector.** The analyser matches `whenDefined` / `:defined` / `instanceof`, so a `document.querySelector('my-wrapper')` consumer escapes all three. Same fix, on the component being reached.
 
 **It does NOT rescue a component whose OWN registration tag is computed.** `Badge.register(TAG)` is not a registration the scanner recognises (invariant 3 requires a literal tag), so that component is never in the component set at all: it gets no verdict, nothing consults the analyser for it, and the override has nothing to attach to. The registration still runs if the module reaches the browser, so what you ALWAYS lose is the verdict, the tag-to-module registry entry, and the preload hint. Whether the element upgrades depends on one thing: the importing module has to ship WHOLE. An inert, import-only, or elided importer is dropped from the boot and takes the import with it, and then the element never registers at all. A page rendering a real component alongside the orphan is import-only unless it ALSO does its own client work, so shipping whole is the narrower case: assume the element does not upgrade. Always pass a literal: `Badge.register('my-badge')`.
 
-`webjs dev` warns, and `webjs elision` / `webjs doctor` report it, as an **orphan**. That name covers TWO shapes and they fail differently, so read the warning carefully: a computed tag is the case above, while a class with NO registration call at all is the plainer one (someone forgot to register it), and that element never upgrades under any circumstances. Both lose the verdict, the registry entry, and the preload hint.
+`webjs dev` warns, and `webjs elision` / `webjs doctor` report it, as an **orphan**. That name covers TWO shapes and they fail differently, so read the warning carefully: a computed tag is the case above, while a class with NO registration call anywhere in the app is the plainer one (someone forgot to register it), and that element never upgrades. The check is app-wide, so registering the class from a sibling module is fine and is not reported. Both lose the verdict, the registry entry, and the preload hint.
 
 ### Inspecting and proving the verdict
 

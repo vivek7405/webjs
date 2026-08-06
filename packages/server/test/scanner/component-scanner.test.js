@@ -147,6 +147,30 @@ test('findOrphanComponents: ignores files with no WebComponent subclass', async 
   }
 });
 
+test('findOrphanComponents: a SIBLING-registered class is not an orphan (#1308)', async () => {
+  // Registration is an APP-WIDE fact; the declaration is per-file. A class
+  // declared in one module and registered by a sibling is a legitimate pattern
+  // (the native `customElements.define` form the scanner header calls equally
+  // supported), and `scanComponents` already reports it as a real component
+  // with a tag. Reporting it as an orphan too was a false accusation, and once
+  // an orphan became a `webjs doctor` warning that false warning is what makes
+  // an author stop reading them.
+  const dir = await scaffold({
+    'components/badge.ts': `export class Badge extends WebComponent {\n  render() {}\n}\n`,
+    'components/register.ts': `import { Badge } from './badge.ts';\ncustomElements.define('my-badge', Badge);\n`,
+    // A genuinely unregistered class in the same tree, so this cannot pass by
+    // the scan going blind.
+    'components/forgotten.ts': `export class Forgotten extends WebComponent {\n  render() {}\n}\n`,
+  });
+  try {
+    const orphans = await findOrphanComponents(dir);
+    assert.deepEqual(orphans.map((o) => o.className).sort(), ['Forgotten'],
+      'only the class nothing registers anywhere is an orphan');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('findOrphanComponents: a class in a CODE SAMPLE is not an orphan (#1308)', async () => {
   // Every docs page writes `class X extends WebComponent` inside an `html`
   // template to SHOW the reader what a component looks like. Scanning raw
