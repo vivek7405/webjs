@@ -1,19 +1,3 @@
-test('an empty page after a seeded one does not inherit the seeded one\'s count', async () => {
-  // `merged` is measured from BEFORE this scan, so the second page reads 0 and
-  // stays silent rather than inheriting page one's count and claiming a key
-  // mismatch it has no evidence for.
-  const { warns } = await withReporter(async () => {
-    scanSeeds(root([el('script', await stringify({ 'h/f/[1]': 1 }), 'ok')]));
-    takeSeed('h', 'f', '[1]');
-  });
-  assert.deepEqual(warns, []);
-  const second = await withReporter(async () => {
-    scanSeeds(root([el('script', await stringify({}), 'ok')]));
-    takeSeed('h', 'f', '[9]');
-  });
-  assert.deepEqual(second.warns, [], 'no inherited count, so no unmatched-keys claim');
-});
-
 /**
  * Unit tests for the client-side SSR action-seed consumer (#472).
  *
@@ -317,12 +301,27 @@ test('a scan with NO marker (a back/forward restore) schedules nothing', async (
   assert.deepEqual(warns, [], 'and no wrong-cause line is printed');
 });
 
+test('an empty page after a seeded one does not inherit the seeded one\'s count', async () => {
+  // `merged` is measured from BEFORE this scan, so the second page reads 0 and
+  // stays silent rather than inheriting page one's count and claiming a key
+  // mismatch it has no evidence for.
+  const { warns } = await withReporter(async () => {
+    scanSeeds(root([el('script', await stringify({ 'h/f/[1]': 1 }), 'ok')]));
+    takeSeed('h', 'f', '[1]');
+  });
+  assert.deepEqual(warns, []);
+  const second = await withReporter(async () => {
+    scanSeeds(root([el('script', await stringify({}), 'ok')]));
+    takeSeed('h', 'f', '[9]');
+  });
+  assert.deepEqual(second.warns, [], 'no inherited count, so no unmatched-keys claim');
+});
+
 test('a scan whose seeds all REPLACE unconsumed ones still counts as seeds merged', async () => {
-  // The merged baseline is `ingested + replaced`, not `ingested`. Revisiting a
-  // page whose seeding component elided re-emits a key the store still holds, so
-  // every seed on the second visit is a replacement. Counting only `ingested`
-  // measures zero and reports "the page carried no seeds at all" in the same
-  // sentence that says one seed was on the page.
+  // The merged baseline is `ingested + replaced`, not `ingested`. A re-scan that
+  // re-emits a key the store still holds makes every seed a replacement, so
+  // counting only `ingested` measures zero and the report falls to the silent
+  // branch even though the page plainly carried a seed.
   const payload = await stringify({ 'h/elided/[1]': 'never-consumed' });
   const first = await withReporter(async () => {
     scanSeeds(root([el('script', payload, 'ok')]));
@@ -388,10 +387,10 @@ async function withWindows(body) {
 }
 
 test('a soft nav BEFORE the idle callback does not lend its seeds to the previous page', async () => {
-  // Page A carried NO seeds and took a miss, so its cause is "carried no seeds
-  // at all". Page B arrives with three seeds before A's callback fires. If A's
-  // window stays open across the navigation, B's seeds are counted into it and
-  // the branch that exists to say "none" is bypassed entirely.
+  // Page A carried NO seeds and took a miss, so it must stay silent (the client
+  // cannot prove a defect there). Page B arrives with three seeds before A's
+  // callback fires. If A's window stays open across the navigation, B's seeds
+  // are counted into it and page A reports a key mismatch it has no evidence of.
   const warns = await withWindows(async () => {
     scanSeeds(root([el('script', await stringify({}), 'ok')]));
     takeSeed('h', 'f', '[1]');

@@ -172,9 +172,10 @@ export function scanSeeds(root, opts) {
 
   // MERGED is `ingested + replaced`, not `ingested`: a key already in the store
   // counts as a replacement, so a scan whose seeds all replace unconsumed ones
-  // (revisiting a page whose seeding component elided, exactly the shape
-  // last-write-wins exists for) would otherwise measure as zero and claim the
-  // page carried no seeds while naming one.
+  // would otherwise measure as zero and claim the page carried no seeds while
+  // naming one. A page navigation can no longer produce that shape (it evicts
+  // first), but a re-scan of the same document still can, and the count has to
+  // mean "merged by this scan" either way.
   const mergedBefore = stats.ingested + stats.replaced;
   startReportWindow(drainCarriers(scope), mergedBefore);
 }
@@ -210,13 +211,17 @@ function drainCarriers(scope, discard) {
  * the element).
  *
  * LAST write wins. A hit DELETES its key (`takeSeed`), so a duplicate can only
- * mean "a later render emitted a seed for a key an earlier render left
- * unconsumed", and the later render is the one whose paint is on screen. The
- * previous first-write-wins rule handed that component the OLDER value, the one
- * path where a hit could disagree with the visible HTML. It is reachable on a
- * soft navigation, on the background revalidation after one, and on a
- * back/forward snapshot restore, all of which route through `applySwap`'s
- * `scanSeeds(doc)`.
+ * mean "a later carrier emitted a seed for a key an earlier one left
+ * unconsumed", and the later carrier is the one whose paint is on screen.
+ *
+ * Note what this rule is NOT load-bearing for any more. It was introduced for
+ * the cross-PAGE case, where a departed render's value could win a shared key;
+ * that case is now closed at the source, because an incoming page evicts the
+ * outgoing page's carriers AND its already-ingested seeds before ingesting its
+ * own, so no cross-render duplicate can reach here at all. What remains is the
+ * within-page case: two carriers in one scan, or a re-scan of the same document,
+ * where the later one is still the right answer and first-write-wins would still
+ * be the wrong one.
  * @param {string | null} raw
  * @param {Element} el
  * @param {() => void} [cleanup]

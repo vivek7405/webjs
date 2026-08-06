@@ -687,6 +687,15 @@ export async function collectSeeds(fn) {
 }
 
 /**
+ * The dev-only block emitted when the serializer THREW and the whole payload was
+ * dropped. Exported so the SSR emitter can tell it apart from a real block: it
+ * carries a marker so the browser can name the cause, but it ships NO seeds, so
+ * counting it as emitted would report a total success on the one failure the
+ * counts exist to expose.
+ */
+export const SEED_DROP_BLOCK = '<script type="application/json" id="__webjs-seeds" data-webjs-dev="drop">{}</script>';
+
+/**
  * Serialize a collector into a `<script type="application/json">` block to embed
  * in the page. Returns '' for an empty collector (so a render with no seeded
  * action is byte-identical to before). The payload is rich-serialized (same wire
@@ -716,7 +725,7 @@ export async function buildSeedScript(collector, opts = {}) {
       .replace(/\u2028/g, '\\u2028')
       .replace(/\u2029/g, '\\u2029');
     // Attribute-safe by construction: `reason` is a framework literal ('ok' /
-    // 'streamed'), never app input, and is emitted only in dev.
+    // 'streamed' / 'drop'), never app input, and is emitted only in dev.
     const marker = dev ? ` data-webjs-dev="${opts.reason || 'ok'}"` : '';
     return `<script type="application/json" id="__webjs-seeds"${marker}>${safe}</script>`;
   } catch {
@@ -726,11 +735,7 @@ export async function buildSeedScript(collector, opts = {}) {
     // browser can name it: with no marker at all the client opens no report
     // window, so every missed hydration call on the page prints nothing, which
     // is precisely the invisible failure this feature removes.
-    if (dev) {
-      try {
-        return `<script type="application/json" id="__webjs-seeds" data-webjs-dev="drop">{}</script>`;
-      } catch { /* fall through to the silent drop */ }
-    }
+    if (dev) return SEED_DROP_BLOCK;
     return '';
   }
 }

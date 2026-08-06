@@ -43,6 +43,12 @@ const ACTION =
   `'use server';\n` +
   `export async function getThing(id) { return { id, label: 'thing-' + id }; }\n`;
 
+// An action returning a FUNCTION, which the wire cannot carry, so `stringify`
+// throws and the whole block is dropped, taking every other seed with it.
+const UNSERIALIZABLE_ACTION =
+  `'use server';\n` +
+  `export async function getThing(id) { return { id, boom: () => id }; }\n`;
+
 // A SHIPPING async component (a reactive prop plus an @click, so elision does
 // not drop it): its `async render()` awaits the action, which is what puts a
 // seed in the collector.
@@ -156,4 +162,25 @@ test('DEV, #241 HTML cache hit: the header says html-cache, not zero', async () 
   assert.equal(second.status, 200);
   await second.text();
   assert.equal(second.headers.get('x-webjs-seed'), 'html-cache');
+});
+
+test('DEV, a serializer DROP: emitted is 0 and the block carries only the drop marker', async () => {
+  // The regression guard for the header itself. A dropped block still emits a
+  // MARKER in dev so the browser can name the cause, and counting that marker as
+  // emitted would report `collected=1, emitted=1` on a page that shipped no
+  // seeds at all, which is a total success reported on the one failure these
+  // counts exist to expose.
+  const handle = await boot({ ...SEEDING_APP, 'actions/things.server.js': UNSERIALIZABLE_ACTION }, true);
+  const res = await handle(new Request('http://localhost/'));
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('x-webjs-seed'), 'collected=1, emitted=0');
+  const html = await res.text();
+  assert.match(html, /id="__webjs-seeds" data-webjs-dev="drop"/, 'dev names the drop');
+  assert.ok(!html.includes('thing-1"'), 'and no seed payload rode along');
+});
+
+test('PROD, a serializer DROP: no block at all, unchanged from before #1309', async () => {
+  const handle = await boot({ ...SEEDING_APP, 'actions/things.server.js': UNSERIALIZABLE_ACTION }, false);
+  const res = await handle(new Request('http://localhost/'));
+  assert.doesNotMatch(await res.text(), /__webjs-seeds/);
 });

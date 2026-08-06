@@ -6,7 +6,7 @@ import { withBasePath } from './base-path.js';
 import { withAssetHash } from './asset-hash.js';
 import { jsonForScriptTag } from './script-tag-json.js';
 import { transitiveDeps, bareImports } from './module-graph.js';
-import { seedingEnabled, collectSeeds, buildSeedScript } from './action-seed.js';
+import { seedingEnabled, collectSeeds, buildSeedScript, SEED_DROP_BLOCK } from './action-seed.js';
 import { BUFFERED_MARKER, STREAM_MARKER } from './conditional-get.js';
 import {
   readRevalidate,
@@ -317,8 +317,12 @@ export async function ssrPage(route, params, url, opts) {
       if (seedScript) outBody = streamBody + seedScript;
       // `emitted` differs from `collected` exactly when the serializer threw and
       // dropped the whole block, which is otherwise a completely invisible
-      // failure.
-      seedHeader = `collected=${seedCollector.size}, emitted=${seedScript ? seedCollector.size : 0}`;
+      // failure. In DEV that throw still emits a marker-only block, so the
+      // browser can name the cause; it carries no seeds, so it must NOT count as
+      // emitted or the header would report a total success on the very failure
+      // it exists to expose.
+      const dropped = seedScript === SEED_DROP_BLOCK;
+      seedHeader = `collected=${seedCollector.size}, emitted=${seedScript && !dropped ? seedCollector.size : 0}`;
     }
     const res = streamingHtmlResponse(
       prefix,
