@@ -47,8 +47,10 @@ cross-origin access use the `cors()` middleware from `@webjsdev/server`; with
 Run each of these and fix what it reports, in order:
 
 - `npm run check` (correctness: no browser-import or boundary violation).
-- `npm run doctor` (project health; CI runs it too, and it fails on whatever
-  `package.json` `webjs.doctor.gate` marks `error`).
+- `npm run doctor` (project health; CI runs it too). It fails on whatever
+  `package.json` `webjs.doctor.gate` marks `error`, plus the two hard toolchain
+  checks that are fatal with no gate entry, `NODE_VERSION` and
+  `TSCONFIG_ERASABLE`.
 - `npm run typecheck` (zero type errors).
 - `npm test` (unit tests for the endpoints and modules you built).
 
