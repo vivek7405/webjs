@@ -388,6 +388,27 @@ jobs:
         env:
           WEBJS_E2E: '1'
         run: node --test test/e2e/dev-overlay-nav.test.mjs
+      # Form-submission, concurrent-nav and scroll-restoration e2e (#1310). This
+      # one runs against the WEBSITE rather than the blog, because the scroll
+      # case needs a page whose content settles taller after the swap, which is
+      # what a /ui/<name> gallery page does and a blog page does not. It was
+      # outside CI entirely until now, so the one assertion covering a Back
+      # restore on a real growing page never ran on a PR.
+      #
+      # `webjs dev` runs the website's own `webjs.dev.before` tasks (the registry
+      # copy and the Tailwind build), so no extra setup step is needed here.
+      - name: Run form-submission + scroll-restoration e2e (#1310)
+        env:
+          WEBJS_E2E: '1'
+        run: |
+          npm run dev --workspace=@webjsdev/website &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:5001/ui/button && break
+            sleep 2
+          done
+          curl -sf -o /dev/null http://localhost:5001/ui/button \
+            || { echo "website dev server never came up"; exit 1; }
+          node --test test/e2e/form-submission-and-race.test.mjs
       # Touch-emulation e2e for interactive Tier-2 ui components (#745/#747):
       # boots the site serving the gallery and taps hover-card / dropdown-submenu / sonner
       # under a Chromium iPhone context (faithful touch events, no real device).

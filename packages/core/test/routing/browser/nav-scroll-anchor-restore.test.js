@@ -283,6 +283,51 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     }
   });
 
+  test('a clamped restore is CHASED to the exact recorded offset', async () => {
+    // Leaving anchoring on is not enough on its own. It adds the FULL growth
+    // whatever the shortfall was, so it only lands a reader who left at the very
+    // bottom, where those two numbers coincide; anyone above that is carried too
+    // far (1902 came back as 2002 on /ui/button). The catch-up re-asserts the
+    // recorded offset the moment the page is tall enough to hold it.
+    //
+    // The target is picked from the live viewport so it sits INSIDE the band
+    // that only the grown page can reach: past the un-grown document's maximum
+    // (3000px of fixture), and 300px into the 763px the grower adds.
+    const restoredY = Math.max(0, 3000 - window.innerHeight + 300);
+    await setup({ restoredY });
+    try {
+      await goBack();
+      assert.ok(window.scrollY < restoredY - 1,
+        `precondition: the restore was clamped (got ${window.scrollY} for ${restoredY})`);
+      for (let i = 0; i < 12; i++) await frame();
+      assert.ok(Math.abs(window.scrollY - restoredY) < 5,
+        `the catch-up lands on the recorded offset once it is reachable `
+        + `(expected ~${restoredY}, got ${window.scrollY})`);
+    } finally { await teardown(); }
+  });
+
+  test('a reader taking over cancels the catch-up', async () => {
+    // The catch-up WRITES scroll, unlike suppression, so it is the one part of
+    // this that could yank someone. It stops on the same inputs a suppression
+    // window closes on, before the offset becomes reachable.
+    const restoredY = Math.max(0, 3000 - window.innerHeight + 300);
+    await setup({ restoredY });
+    try {
+      await goBack();
+      const clamped = window.scrollY;
+      assert.ok(clamped < restoredY - 1, 'precondition: the restore was clamped');
+      window.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+      for (let i = 0; i < 12; i++) await frame();
+      // Asserted as "the catch-up never wrote", not as "nothing moved". The
+      // clamped path deliberately leaves anchoring ON, so the browser still
+      // carries the position as the page grows, exactly as it does on main.
+      // What must not happen is this code adding a write of its own on top.
+      assert.ok(Math.abs(window.scrollY - restoredY) >= 5,
+        'a reader who has taken over is never scrolled onto the recorded '
+        + `offset (landed exactly on ${restoredY}, so the catch-up wrote)`);
+    } finally { await teardown(); }
+  });
+
   test('anchoring WORKS again once the window has closed', async () => {
     // The inverse of the headline, and the regression that would matter most if
     // this fix were wrong: suppression is temporary, so once the restore is over

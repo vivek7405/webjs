@@ -430,6 +430,72 @@ function suppressScrollAnchoring() {
 }
 
 /**
+ * Cancels an in-flight catch-up, or null when none is running.
+ * @type {(() => void) | null}
+ */
+let cancelScrollCatchUp = null;
+
+/**
+ * Chase a restored scroll offset the document was too SHORT to reach (#1310).
+ *
+ * The sibling of `suppressScrollAnchoring`, for the case that one deliberately
+ * declines. When the recorded offset is past the un-grown document's maximum,
+ * the browser clamps, and anchoring then adds the growth back as the page
+ * settles. That lands a reader who left at the very bottom back at the bottom,
+ * because there the shortfall and the growth are the same number. It is wrong
+ * for everyone else: anchoring adds the FULL growth whatever the shortfall was,
+ * so a reader who left 100px above the bottom is carried 100px too far.
+ *
+ * This re-asserts the recorded offset once the document can actually hold it,
+ * which is the only moment the number becomes reachable, and then stops.
+ *
+ * It is deliberately narrow, because #1310 rejected re-asserting the scroll in
+ * the general case and that reasoning still holds. The difference is that this
+ * knows exactly where it is going and can tell when it has arrived: it runs
+ * ONLY on the clamped path, only while the offset is still out of reach, and it
+ * stops on the first real input, so it cannot fight a reader who has taken over.
+ * A settling restore does not have to be told apart from a streaming boundary
+ * here, which is the question that sank the general version.
+ *
+ * @param {number} targetY  The recorded offset to reach.
+ * @param {number} targetX
+ */
+function catchUpToRestoredScroll(targetY, targetX) {
+  if (typeof window === 'undefined' || typeof requestAnimationFrame !== 'function') return;
+  if (cancelScrollCatchUp) cancelScrollCatchUp();
+  let rafId = 0;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let timer = null;
+  const stop = () => {
+    if (cancelScrollCatchUp !== stop) return;
+    cancelScrollCatchUp = null;
+    if (rafId) cancelAnimationFrame(rafId);
+    if (timer) { clearTimeout(timer); timer = null; }
+    for (const ev of ANCHOR_RELEASE_EVENTS) {
+      window.removeEventListener(ev, stop, /** @type {any} */ ({ capture: true }));
+    }
+  };
+  const tick = () => {
+    if (cancelScrollCatchUp !== stop) return;
+    const maxY = document.documentElement.scrollHeight - window.innerHeight;
+    if (maxY >= targetY) {
+      // Reachable at last. One write, then done.
+      window.scrollTo({ left: targetX, top: targetY, behavior: 'instant' });
+      stop();
+      return;
+    }
+    rafId = requestAnimationFrame(tick);
+  };
+  cancelScrollCatchUp = stop;
+  // Same inputs that close a suppression window: the reader has taken over.
+  for (const ev of ANCHOR_RELEASE_EVENTS) {
+    window.addEventListener(ev, stop, { capture: true, passive: true });
+  }
+  timer = setTimeout(stop, ANCHOR_SUPPRESS_CEILING_MS);
+  rafId = requestAnimationFrame(tick);
+}
+
+/**
  * Run `fn` after two animation frames, so a just-applied DOM has laid out
  * before it reads or acts. Falls back to a macrotask where
  * `requestAnimationFrame` is absent (the linkedom-backed node test harness).
@@ -511,8 +577,10 @@ export function disableClientRouter() {
     history.scrollRestoration = prevScrollRestoration;
     prevScrollRestoration = null;
   }
-  // Never leave a restore window open on <html> (#1310).
+  // Never leave a restore window open on <html>, nor a catch-up chasing a
+  // scroll offset after the router is gone (#1310).
   if (releaseScrollAnchor) releaseScrollAnchor();
+  if (cancelScrollCatchUp) cancelScrollCatchUp();
   currentPageUrl = null;
 }
 
@@ -1484,7 +1552,10 @@ async function performNavigation(href, isPopState, frameId) {
   // would run the whole growth under the previous restore's suppression and
   // freeze its clamp, and a forward nav would carry it onto a different page
   // entirely. Reopening for this navigation, if it earns one, happens below.
+  // The clamped path's catch-up is cancelled for the same reason: it chases an
+  // offset recorded for the page being navigated away from.
   if (releaseScrollAnchor) releaseScrollAnchor();
+  if (cancelScrollCatchUp) cancelScrollCatchUp();
 
   // Snapshot the page the user is LEAVING (with its scroll position)
   // so back/forward navigation can restore it. We key under
@@ -1556,6 +1627,13 @@ async function performNavigation(href, isPopState, frameId) {
             // scroll just landed in, so the two are consistent by construction.
             if (window.scrollY >= cached.scrollY - 1) {
               releaseAnchor = suppressScrollAnchoring();
+            } else {
+              // Clamped. Anchoring is left on, since it is what carries the
+              // reader back down, but it adds the FULL growth regardless of how
+              // far short the clamp fell, so on its own it only lands a reader
+              // who left at the very bottom. Chase the recorded offset instead,
+              // once the page is tall enough to hold it.
+              catchUpToRestoredScroll(cached.scrollY, cached.scrollX);
             }
           }
           // Fire-and-forget revalidation. Uses a fresh AbortController
@@ -1642,8 +1720,10 @@ async function performSubmission(href, method, body, frameId, form) {
   const signal = activeAbortController.signal;
   const myToken = ++currentNavigationToken;
   // Same reasoning as performNavigation: a submission is a navigation, so it
-  // ends any restore window a recent Back left open (#1310).
+  // ends any restore window a recent Back left open (#1310), and cancels a
+  // clamped restore's catch-up.
   if (releaseScrollAnchor) releaseScrollAnchor();
+  if (cancelScrollCatchUp) cancelScrollCatchUp();
 
   const isSafe = method === 'get' || method === 'head';
   let url = new URL(href, location.href);
