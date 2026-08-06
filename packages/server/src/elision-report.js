@@ -24,9 +24,9 @@
  *     literal tag), so it always loses its elision verdict, its tag-to-module
  *     registry entry, and its preload hint, and `static interactive = true`
  *     cannot rescue it. Whether the ELEMENT still upgrades differs by shape:
- *     with no registration call it never does, while a computed tag registers
- *     fine as long as its module reaches the browser. It is the one shape the
- *     verdict cannot speak for.
+ *     with no registration call it never does, and with a computed tag only
+ *     while its importing module ships WHOLE, which is the exception rather
+ *     than the rule. It is the one shape the verdict cannot speak for.
  *
  * Consumed by `webjs elision` (the CLI report + `--json`), the MCP
  * `list_elision` tool, and `webjs doctor`'s two elision checks, which share

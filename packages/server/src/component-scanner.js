@@ -155,14 +155,20 @@ export async function primeComponentRegistry(appDir, components) {
  *
  *   - No registration call at all (the forgot-to-register case). Nothing ever
  *     registers the tag, so the element NEVER upgrades.
- *   - A registration whose tag is COMPUTED (`X.register(TAG)`). The call does
- *     run if the module reaches the browser, which requires its importer to
- *     ship WHOLE: an inert, import-only, or elided importer is dropped from
- *     the boot and takes the import with it, so the element does not upgrade
- *     there either. Import-only is the ordinary case, since an orphan is not
- *     in `componentFiles` and so never joins the emitted frontier. Lost in
- *     every case: the elision verdict, the tag-to-module registry entry, and
- *     the modulepreload hint.
+ *   - A registration whose tag is COMPUTED (`X.register(TAG)`). That call is
+ *     ordinary code, so it runs IF the module reaches the browser, which
+ *     requires the importing module to ship WHOLE. An inert, import-only, or
+ *     elided importer is dropped from the boot and takes the import with it,
+ *     and then the element does not upgrade either. Assume it does not: an
+ *     orphan is not in `componentFiles`, so it never joins the frontier an
+ *     import-only page emits in its place, and a page that renders any real
+ *     component alongside the orphan IS import-only. That mix is the ordinary
+ *     shape, so shipping-whole is the exception rather than the rule.
+ *
+ * Lost in EVERY case, whichever shape: the elision verdict, the tag-to-module
+ * registry entry, and the modulepreload hint. That, not the upgrade, is the
+ * part that is always true, and it is what every message about this should
+ * lead with.
  *
  * Matches the literal `extends WebComponent` only, so a class extending a
  * component SUBCLASS is not reported.

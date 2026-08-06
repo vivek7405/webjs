@@ -988,17 +988,19 @@ export async function createRequestHandler(opts) {
             if (dev) {
               // An orphan is EITHER shape `findOrphanComponents` reports: no
               // registration call at all, or one whose tag is computed. The
-              // scanner matches only a literal tag, so it sees neither, but
-              // they fail DIFFERENTLY (no call never upgrades; a computed tag
-              // still registers when its module reaches the browser), so one
-              // message has to distinguish them. The doctor check and
-              // `webjs elision` say the same thing.
+              // scanner matches only a literal tag, so it sees neither, and
+              // what is ALWAYS lost is the verdict, the registry entry, and the
+              // preload hint. The upgrade is the part that differs, and a
+              // computed tag only survives when its importer ships WHOLE (see
+              // findOrphanComponents for why that is the exception). The doctor
+              // check and `webjs elision` say the same thing.
               for (const { className, file } of await findOrphanComponents(appDir)) {
                 logger.warn?.(
                   `[webjs] ${className} extends WebComponent but is never registered with a literal tag in ${file} ` +
                     `(either there is no registration call, or its tag is computed), so the scanner cannot see it: ` +
-                    `no elision verdict, no preload hint, and with no registration call at all ` +
-                    `<${kebab(className)}> tags never upgrade. ` +
+                    `no elision verdict, no registry entry, no preload hint. ` +
+                    `<${kebab(className)}> tags never upgrade with no registration call, and a computed tag ` +
+                    `upgrades only while its importing module ships whole. ` +
                     `Add \`${className}.register('<tag-name>');\` with a literal tag.`,
                 );
               }

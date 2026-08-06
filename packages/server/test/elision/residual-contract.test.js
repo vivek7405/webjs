@@ -46,6 +46,21 @@ export class Badge extends WebComponent {
 Badge.register(TAG);
 `;
 
+/**
+ * An interactive component, as a template literal rather than a plain string.
+ * The scanner-fuzz corpus sweep reads every file under `test/elision` and
+ * compares its lexical class window against a real AST; redaction blanks a
+ * template body while keeping a plain-string body verbatim, so a class written
+ * in a plain string skews that differential.
+ */
+const INTERACTIVE_COUNTER = `
+import { WebComponent, html } from '@webjsdev/core';
+export class Counter extends WebComponent {
+  render() { return html\`<button @click=\${() => {}}>+</button>\`; }
+}
+Counter.register('my-counter');
+`;
+
 const PAGE = `
 import { html } from '@webjsdev/core';
 import '../components/badge.js';
@@ -232,9 +247,7 @@ test('an IMPORT-ONLY importer drops the computed-tag orphan, the ordinary case (
     await mkdir(join(dir, 'app'), { recursive: true });
     await mkdir(join(dir, 'components'), { recursive: true });
     await writeFile(join(dir, 'components/badge.js'), badgeComputedRegistration());
-    await writeFile(join(dir, 'components/counter.js'),
-      "import { WebComponent, html } from '@webjsdev/core';\nexport class Counter extends WebComponent {\n" +
-      "  render() { return html`<button @click=${() => {}}>+</button>`; }\n}\nCounter.register('my-counter');\n");
+    await writeFile(join(dir, 'components/counter.js'), INTERACTIVE_COUNTER);
     await writeFile(join(dir, 'app/page.js'),
       "import { html } from '@webjsdev/core';\nimport '../components/counter.js';\n" +
       "import '../components/badge.js';\nexport default () => html`<my-counter></my-counter><my-badge></my-badge>`;\n");
