@@ -115,9 +115,20 @@ function restoredBody(tag) {
     + '<!--/wj:children:/-->';
 }
 
-function restoredHtml(tag) {
-  return '<!doctype html><html><head></head><body>' + restoredBody(tag) + '</body></html>';
+function restoredHtml(tag, head) {
+  return `<!doctype html><html><head>${head || ''}</head><body>`
+    + restoredBody(tag) + '</body></html>';
 }
+
+/**
+ * The view-transition opt-in, in the SNAPSHOT's head rather than the live
+ * document's. That placement is load-bearing: the full-body restore merges the
+ * incoming head BEFORE it decides whether to run a transition, so a meta added
+ * only to the live document is gone by the time that check runs and the
+ * transition never engages. A real snapshot carries it, since it is serialized
+ * from the live document.
+ */
+const VT_META = '<meta name="view-transition" content="same-origin">';
 
 
 
@@ -147,14 +158,18 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
    *   default the revalidation is held open so a case can assert inside the
    *   restore window. `instantRevalidation` answers it immediately instead,
    *   which is the ordering a fast server produces. `restoredY` overrides the
-   *   recorded offset, so a case can force the clamped path, and `manualGrowth`
-   *   swaps in a grower the test drives by hand.
+   *   recorded offset, so a case can force the clamped path, `manualGrowth`
+   *   swaps in a grower the test drives by hand, and `viewTransition` puts the
+   *   view-transition opt-in in the snapshot's head.
    */
   async function setup(opts) {
     const instant = Boolean(opts && opts.instantRevalidation);
     const restoredY = (opts && opts.restoredY) != null ? opts.restoredY : RESTORED_Y;
-    const html = restoredHtml((opts && opts.manualGrowth) ? 'wj-grow-on-command-1310'
-      : instant ? 'wj-grow-very-late-1310' : 'wj-grow-late-1310');
+    const outgoingHeight = (opts && opts.tallOutgoing) ? 60000 : 3000;
+    const html = restoredHtml(
+      (opts && opts.manualGrowth) ? 'wj-grow-on-command-1310'
+        : instant ? 'wj-grow-very-late-1310' : 'wj-grow-late-1310',
+      (opts && opts.viewTransition) ? VT_META : '');
     // Clear any fixture a previous case left in the document BEFORE starting.
     // Teardown removes it, but a revalidation swap can land after teardown has
     // run and put it back, and a leftover grower is already at full height, so
@@ -177,7 +192,7 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     container = document.createElement('div');
     container.innerHTML =
       '<!--wj:children:/:/anchor-restore-b-->'
-      + '<div style="height:3000px">outgoing</div>'
+      + `<div style="height:${outgoingHeight}px">outgoing</div>`
       + '<!--/wj:children:/-->';
     document.body.appendChild(container);
 
@@ -238,6 +253,8 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     // The swapped-in restored page, which replaced the body wholesale.
     const restored = document.getElementById('wj-restored-1310');
     if (restored) restored.remove();
+    // The head merge can bring the opt-in into the live document.
+    document.querySelectorAll('meta[name="view-transition"]').forEach((m) => m.remove());
     document.documentElement.style.removeProperty('overflow-anchor');
     document.documentElement.style.scrollBehavior = origScrollBehavior;
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
@@ -289,6 +306,42 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
         'starting another navigation ends the previous restore\'s window');
     } finally { await teardown(); }
+  });
+
+  test('under a view transition the decision waits for the swap to commit', async () => {
+    // `applySwap` defers its DOM mutation a frame when a transition is running,
+    // so writing and measuring the scroll straight through would act on the
+    // OUTGOING page. Here that page is far taller than the restored one, so a
+    // decision taken against it says "landed" and suppresses anchoring, and the
+    // restored page then clamps with anchoring held off. That is the stranding
+    // the clamped path exists to avoid, arriving by a different route.
+    //
+    // The transition is SIMULATED. A hidden document skips a real one, and the
+    // runner puts test files in concurrent pages, so the deferred path is not
+    // otherwise reachable from this suite on any engine. The stub defers the
+    // callback exactly as the spec does.
+    const origSVT = (/** @type any */ (document)).startViewTransition;
+    let transitions = 0;
+    (/** @type any */ (document)).startViewTransition = (cb) => {
+      transitions += 1;
+      const done = new Promise((resolve) => {
+        requestAnimationFrame(() => { cb(); resolve(); });
+      });
+      return { updateCallbackDone: done, finished: done, ready: done, skipTransition() {} };
+    };
+    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true, viewTransition: true, tallOutgoing: true });
+    try {
+      await goBack();
+      assert.ok(transitions > 0,
+        'precondition: the swap actually ran through a view transition');
+      for (let i = 0; i < 4; i++) await frame();
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
+        'the clamp is judged against the restored page, so a restore that '
+        + 'clamps leaves anchoring alone rather than freezing it');
+    } finally {
+      await teardown();
+      (/** @type any */ (document)).startViewTransition = origSVT;
+    }
   });
 
   test('a form SUBMISSION inside the window closes it too', async () => {

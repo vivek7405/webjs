@@ -401,7 +401,23 @@ jobs:
         env:
           WEBJS_E2E: '1'
         run: |
-          npm run dev --workspace=@webjsdev/website &
+          # Redirected to a FILE, not left on the step's stdout. A background
+          # child that keeps the log pipe open outlives the script and stalls
+          # the step: run locally, the identical script hung for ten minutes
+          # after the tests had already passed, with the server still listening.
+          setsid npm run dev --workspace=@webjsdev/website > /tmp/website-dev.log 2>&1 &
+          server_pid=$!
+          # Stop the server however this step ends. `trap ... EXIT` keeps the
+          # test's exit code, which a trailing `kill` would not: the step runs
+          # under `bash -e`, so a failing test aborts the script before any
+          # cleanup line placed after it could run. The pid is captured into a
+          # variable rather than read as `$!` inside the trap, which would
+          # resolve at FIRE time against whatever job was most recent then.
+          # `setsid` puts the server in its own process GROUP and the trap
+          # signals the whole group. `webjs dev` spawns a watcher which spawns
+          # the listener, so killing only the npm pid leaves the port held; that
+          # was measured, the step exited cleanly and :5001 stayed up.
+          trap 'kill -- -"$server_pid" 2>/dev/null || true' EXIT
           for i in $(seq 1 60); do
             curl -sf -o /dev/null http://localhost:5001/ui/button && break
             sleep 2

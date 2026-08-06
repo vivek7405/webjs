@@ -452,10 +452,15 @@ let cancelScrollCatchUp = null;
  * It is deliberately narrow, because #1310 rejected re-asserting the scroll in
  * the general case and that reasoning still holds. The difference is that this
  * knows exactly where it is going and can tell when it has arrived: it runs
- * ONLY on the clamped path, only while the offset is still out of reach, and it
- * stops on the first real input, so it cannot fight a reader who has taken over.
- * A settling restore does not have to be told apart from a streaming boundary
- * here, which is the question that sank the general version.
+ * ONLY on the clamped path, only while the offset is still out of reach, writes
+ * once, and stops on the first real input.
+ *
+ * It does NOT escape the settling-versus-streaming question, and it is worth
+ * being exact about that rather than claiming otherwise. It cannot tell the
+ * restore settling apart from any other growth, so the guard is its WINDOW: it
+ * lives only as long as the floor, the same span the restore's own suppression
+ * covers. Outside that it is gone, so late-resolving content cannot move a
+ * reader who is simply reading and generating no input to cancel it.
  *
  * @param {number} targetY  The recorded offset to reach.
  * @param {number} targetX
@@ -491,7 +496,17 @@ function catchUpToRestoredScroll(targetY, targetX) {
   for (const ev of ANCHOR_RELEASE_EVENTS) {
     window.addEventListener(ev, stop, { capture: true, passive: true });
   }
-  timer = setTimeout(stop, ANCHOR_SUPPRESS_CEILING_MS);
+  // Bounded by the FLOOR, not the ceiling. The ceiling is a backstop for a hung
+  // fetch; this is a scroll WRITE, so its window is the one thing that decides
+  // whether a reader can be moved without asking. Any growth past the target
+  // fires it, and growth is not exclusively the restore settling: a
+  // <webjs-suspense> boundary resolving, a lazy component entering, or a late
+  // image would all qualify. Holding it open for the full ceiling would mean a
+  // reader who landed and started READING, and so generates no input to cancel
+  // it, could be scrolled up to two seconds after pressing Back. The floor
+  // covers the restore's own settling, which is what it is for, and is measured
+  // in a few hundred milliseconds rather than seconds.
+  timer = setTimeout(stop, ANCHOR_SUPPRESS_FLOOR_MS);
   rafId = requestAnimationFrame(tick);
 }
 
@@ -1599,41 +1614,56 @@ async function performNavigation(href, isPopState, frameId) {
           // lands below where they left (#1310).
           let releaseAnchor = () => {};
           if (typeof window !== 'undefined') {
-            window.scrollTo({ left: cached.scrollX, top: cached.scrollY, behavior: 'instant' });
-            // Suppress ONLY when the recorded offset was actually reached.
+            // Restore the scroll, then decide whether to suppress anchoring.
             //
-            // A document that has not grown yet can be too SHORT to scroll that
+            // Suppress ONLY when the recorded offset was actually reached. A
+            // document that has not grown yet can be too SHORT to scroll that
             // far, and the browser clamps to its current maximum. A reader at
             // the bottom of the settled page is the clear case: the shortfall is
             // then exactly the growth still to come, and anchoring ADDING that
             // growth is what carries them back to the bottom. Suppressing there
             // freezes the clamp instead and strands them a full page-growth
-            // ABOVE where they left, which is this bug's own mirror image.
+            // ABOVE where they left, which is this bug's own mirror image. The
+            // two situations want opposite things and are told apart by the one
+            // question that separates them: did the scroll land.
             //
-            // So the two situations want opposite things, and they are told
-            // apart by the one question that separates them: did the scroll
-            // land. Reading it here is safe because nothing can grow between
-            // the write and the read, both being in this synchronous block.
-            //
-            // The read MUST stay synchronous, and that is the subtle part.
-            // Deferring it even by a microtask breaks the fix outright: by then
-            // the restored components' renders have been applied, and reading
-            // `scrollY` forces the layout that flushes them, so anchoring runs
-            // DURING the read and hands back the already-shifted offset.
-            // Measured on /ui/button, the suppression then landed 19ms after
-            // the scroll with `scrollY` already 800 -> 1563, which is the bug
-            // it exists to prevent. What makes the synchronous read correct is
-            // not which document it sees but that it sees the SAME layout the
-            // scroll just landed in, so the two are consistent by construction.
-            if (window.scrollY >= cached.scrollY - 1) {
-              releaseAnchor = suppressScrollAnchoring();
+            // Both halves must read the SAME layout, and the scroll must be
+            // written against the page being restored. That is why this is
+            // ordered rather than simply inlined, and why the ordering differs
+            // by path.
+            const restoreScroll = () => {
+              window.scrollTo({ left: cached.scrollX, top: cached.scrollY, behavior: 'instant' });
+              if (window.scrollY >= cached.scrollY - 1) {
+                releaseAnchor = suppressScrollAnchoring();
+              } else {
+                // Clamped. Anchoring is left on, since it is what carries the
+                // reader back down, but it adds the FULL growth regardless of
+                // how far short the clamp fell, so on its own it only lands a
+                // reader who left at the very bottom. Chase the recorded offset
+                // instead, once the page is tall enough to hold it.
+                catchUpToRestoredScroll(cached.scrollY, cached.scrollX);
+              }
+            };
+            if (viewTransitionsEnabled() && typeof (/** @type any */ (document)).startViewTransition === 'function') {
+              // Under a view transition `applySwap` defers its DOM mutation a
+              // frame, so running now would write and measure against the
+              // OUTGOING page. Measured with a 60000px outgoing page and a
+              // 3000px restored one: the scroll "landed" at 20000, suppression
+              // opened, and the restored page then clamped to 2416 with
+              // anchoring held off, which is precisely the stranding the
+              // conditional exists to prevent. Wait for the swap to commit.
+              _swapCommit.then(restoreScroll).catch(() => {});
             } else {
-              // Clamped. Anchoring is left on, since it is what carries the
-              // reader back down, but it adds the FULL growth regardless of how
-              // far short the clamp fell, so on its own it only lands a reader
-              // who left at the very bottom. Chase the recorded offset instead,
-              // once the page is tall enough to hold it.
-              catchUpToRestoredScroll(cached.scrollY, cached.scrollX);
+              // The synchronous path, and the read must STAY synchronous here.
+              // Deferring it even by a microtask breaks the fix outright: by
+              // then the restored components' renders have been applied, and
+              // reading `scrollY` forces the layout that flushes them, so
+              // anchoring runs DURING the read and hands back the
+              // already-shifted offset. Measured on /ui/button, the suppression
+              // landed 19ms late with `scrollY` already 800 -> 1563. What makes
+              // it correct is not which document it sees but that it sees the
+              // same layout the scroll just landed in.
+              restoreScroll();
             }
           }
           // Fire-and-forget revalidation. Uses a fresh AbortController
