@@ -838,10 +838,12 @@ function unboundFormDelivers(tagText) {
  * with the enclosing form scope, rather than handing to the receiving element:
  * `<webjs-suspense .fallback=${html`…`}>` (#471).
  *
- * A `TemplateResult` is not serializer-safe and a normal custom-element property
- * applies only at hydration, too late for a streaming placeholder, so
- * `render-server.js` renders the fallback right there and carries the HTML as
- * `data-webjs-fallback`. That means a submitter in a fallback IS judged against
+ * A custom-element property applies only at HYDRATION, which is too late for a
+ * placeholder that has to be in the first flushed bytes, so `render-server.js`
+ * renders the fallback right there and carries the HTML as
+ * `data-webjs-fallback`. (The timing is the operative reason on its own. A
+ * serializable `TemplateResult` would otherwise ride as `data-webjs-prop-*`
+ * perfectly well; only one carrying a function fails to serialize.) That means a submitter in a fallback IS judged against
  * the enclosing form, and the renderer really does throw for an unbound one.
  * Treating it as handed off would make the same-scan half blind to the one shape
  * it exists to pre-warn about.
@@ -1074,17 +1076,22 @@ export function scanHtmlFormScopes(src) {
           // dynamic, so whether an unbound form would deliver becomes unknowable.
           else if (tag.name === 'form') tag.dynamicAttrs = true;
         }
-        // A hole inside a START TAG is USUALLY an attribute or property VALUE,
-        // so a template in it is handed to the receiving element and rendered in
-        // THAT component's own pass rather than inline here. Those start at
-        // 'handed' instead of inheriting this scan's scope. A hole in CHILD
-        // position is rendered inline by this scan and does inherit, and so does
-        // the one start-tag hole the renderer also renders inline (below).
+        // A hole inside a START TAG is USUALLY an attribute or property VALUE
+        // whose placement this scan cannot speak for, so it starts at 'handed'
+        // instead of inheriting. A hole in CHILD position is rendered inline by
+        // this scan and does inherit, and so does the one start-tag hole the
+        // renderer also renders inline (`isInlineStartTagHole`).
+        //
+        // Read the JSDoc on `scanHtmlFormScopes` for why 'handed' is right: SSR
+        // does NOT render such a template in place, so the receiving element
+        // decides where it lands, in the browser.
         //
         // Without the split, `<form method="post"><my-thing .tpl=${html`<button
         // formaction=${del}>x</button>`}></my-thing></form>` scored the button
-        // 'unbound' from lexical nesting, while the renderer sees a cannot-tell
-        // in `my-thing`'s pass and binds. The form delivers, so the shape works.
+        // 'unbound' from lexical nesting. Nothing renders that button at SSR at
+        // all (the binding carries a function, so it fails to serialize and is
+        // dropped), and where it ends up is `my-thing`'s decision at hydration,
+        // so a conclusive verdict here was never this scan's to give.
         //
         // 'handed' and NOT 'none', which is the subtle half: 'none' is the
         // cannot-tell a caller attributes to this file's own component and

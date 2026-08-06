@@ -423,12 +423,14 @@ async function renderTemplate(tr, ctx, formScopeAtStart = 'none') {
           // page-level `.prop` on a native element could have set the
           // property to begin with.
           out = out.slice(0, attrStart);
-          // `<webjs-suspense .fallback=${html`...`}>` (#471). A TemplateResult
-          // is not serializer-safe (the normal data-webjs-prop-* path would
-          // drop it) and a normal custom-element prop applies only at
-          // hydration, too late for the streaming placeholder. So render the
-          // fallback to HTML now and carry it as data-webjs-fallback, which the
-          // injectDSD streaming pre-pass reads as the boundary placeholder.
+          // `<webjs-suspense .fallback=${html`...`}>` (#471). A custom-element
+          // prop applies only at HYDRATION, far too late for a placeholder that
+          // has to be in the first flushed bytes. So render the fallback to HTML
+          // now and carry it as data-webjs-fallback, which the injectDSD
+          // streaming pre-pass reads as the boundary placeholder. (Timing is the
+          // whole reason. A plain TemplateResult serializes fine and would ride
+          // the normal data-webjs-prop-* path; only one carrying a function
+          // fails, and that is a separate case handled below.)
           if (currentTag === 'webjs-suspense' && name === 'fallback') {
             const fbHtml = await render(val, ctx, formScope);
             out += `data-webjs-fallback="${escapeAttr(fbHtml)}"`;

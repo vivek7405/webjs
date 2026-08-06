@@ -224,8 +224,8 @@ test('the start-tag-hole rule matches what the RENDERER actually does', async ()
   // whole 'handed' state is a claim about the renderer's behaviour. Most
   // start-tag holes are values the receiving element places, but
   // `<webjs-suspense .fallback=${…}>` is rendered INLINE with the enclosing form
-  // scope (#471: a TemplateResult is not serializer-safe and a hydration-time
-  // property is too late for a streaming placeholder). Treating that one as
+  // scope (#471: a custom-element property applies at hydration, too late for a
+  // placeholder that must be in the first flushed bytes). Treating that one as
   // handed off would blind the same-scan half to a real render-time throw.
   const { html } = await import('../../../core/src/html.js');
   const { renderToString } = await import('../../../core/src/render-server.js');

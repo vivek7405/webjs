@@ -233,9 +233,11 @@ export default () => html\`<form method="post" enctype="nonsense"><row-btn></row
 });
 
 test('silent when the submitter template is passed as a component PROPERTY', async () => {
-  // Lexically inside the form, but handed to <my-thing> and rendered in its own
-  // pass, so the renderer sees a cannot-tell and binds. The form delivers, so
-  // the shape works.
+  // Lexically inside the form, but the scan cannot say where it lands. SSR
+  // renders nothing for it at all: the binding carries a function, so it fails
+  // to serialize and is dropped with a warning, and <my-thing> decides where the
+  // button goes at hydration. A conclusive verdict here was never this scan's
+  // to give.
   const dir = await makeApp({
     'app/page.ts': `import { html } from '@webjsdev/core';
 import { publishDraft } from '#modules/feedback/actions/publish.server.ts';
