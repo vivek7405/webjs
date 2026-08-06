@@ -215,6 +215,114 @@ function looksLikeFormSubmission(req) {
 }
 
 /**
+ * Fingerprints already reported this process, keyed `METHOD /path`. Capped, and
+ * never cleared.
+ *
+ * Both signals below are reachable by anyone: an empty urlencoded POST to any
+ * page path, or `?__webjs_action=x` appended to any url. Reporting every hit
+ * would turn a public endpoint into a free amplifier into a paid APM sink. The
+ * cap also matches the intent, since an app needs to learn the SHAPE exists,
+ * not count it, and a real bug reproduces on the next boot.
+ *
+ * @type {Set<string>}
+ */
+const reportedFormFingerprints = new Set();
+const FINGERPRINT_CAP = 256;
+
+/**
+ * @param {string} key
+ * @returns {boolean} true the first time only, and false once the cap is hit
+ */
+function firstSighting(key) {
+  if (reportedFormFingerprints.has(key)) return false;
+  if (reportedFormFingerprints.size >= FINGERPRINT_CAP) return false;
+  reportedFormFingerprints.add(key);
+  return true;
+}
+
+/**
+ * Reset the per-process report dedupe. Test seam only: the cap and the
+ * never-cleared set are the point in production.
+ */
+export function resetFormReportDedupe() {
+  reportedFormFingerprints.clear();
+}
+
+/**
+ * A form posted to a page and carried no action identity, so nothing ran and
+ * the answer is a 405. Route it to the APM sink with a code an app can group
+ * on, instead of leaving an anonymous 405 in an access log.
+ *
+ * Carries the field NAMES, which are template constants and are what identify
+ * WHICH form posted nowhere. Never the values, which are user data. The form's
+ * own `action` attribute is not carried because a bound form has none (the
+ * renderer strips it so the form posts to its own url), so the request url
+ * already is that information.
+ *
+ * @param {URL} url
+ * @param {Request} req
+ * @param {FormData} formData
+ * @param {((error: unknown) => void) | undefined} onError
+ * @param {{ warn?: (msg: string, meta?: Record<string, unknown>) => void }} [logger]
+ * @param {boolean} [dev]
+ */
+export function reportFormActionMissing(url, req, formData, onError, logger, dev) {
+  if (!firstSighting(`${req.method} ${url.pathname}`)) return;
+  const fields = [...new Set([...formData.keys()])];
+  if (dev && logger && logger.warn) {
+    logger.warn(
+      `[webjs] a form posted to ${url.pathname} carrying no action identity, so nothing ran (405). Bind the action: <form action=\${yourAction}>.`,
+      { fields },
+    );
+  }
+  if (typeof onError !== 'function') return;
+  const err = new Error(
+    `A form submission to ${url.pathname} carried no \`${FORM_ACTION_FIELD}\` identity, so no server action ran and the request was answered with a 405.`,
+  );
+  /** @type {any} */ (err).code = 'WEBJS_FORM_ACTION_MISSING';
+  /** @type {any} */ (err).method = req.method;
+  /** @type {any} */ (err).pathname = url.pathname;
+  /** @type {any} */ (err).fields = fields;
+  onError(err);
+}
+
+/**
+ * A page GET carrying `__webjs_action` in the QUERY STRING (#1307). Nothing in
+ * this framework ever puts the reserved field in a url, so this can only be a
+ * bound submitter submitted through an UNBOUND form: the form defaulted to GET,
+ * the browser (or `performSubmission`, which promotes a safe-method body to the
+ * query string) put the identity in the url, and the page is about to render as
+ * if nothing was submitted.
+ *
+ * DETECTS ONLY. The GET keeps rendering its 200 page, because answering
+ * differently on a query parameter would hand any visitor a way to turn any
+ * page into an error.
+ *
+ * @param {URL} url
+ * @param {Request} req
+ * @param {((error: unknown) => void) | undefined} onError
+ * @param {{ warn?: (msg: string, meta?: Record<string, unknown>) => void }} [logger]
+ * @param {boolean} [dev]
+ */
+export function reportFormSubmittedAsGet(url, req, onError, logger, dev) {
+  if (!url.searchParams.has(FORM_ACTION_FIELD)) return;
+  if (!firstSighting(`${req.method} ${url.pathname}`)) return;
+  if (dev && logger && logger.warn) {
+    logger.warn(
+      `[webjs] ${url.pathname} was requested with \`${FORM_ACTION_FIELD}\` in the query string, which only a bound submitter inside an UNBOUND <form> produces. The form had no method, so the browser submitted it as a GET, the action never ran, and this page is simply re-rendering. Bind the enclosing form: <form action=\${yourAction}>. The submitter-needs-bound-form rule finds these statically.`,
+    );
+  }
+  if (typeof onError !== 'function') return;
+  const err = new Error(
+    `A form submission reached ${url.pathname} as a GET with the \`${FORM_ACTION_FIELD}\` identity in the query string, so no server action ran. The submitter's enclosing <form> binds no action.`,
+  );
+  /** @type {any} */ (err).code = 'WEBJS_FORM_SUBMITTED_AS_GET';
+  /** @type {any} */ (err).method = req.method;
+  /** @type {any} */ (err).pathname = url.pathname;
+  onError(err);
+}
+
+/**
  * The submitted TEXT fields as a plain record, for repopulating a form the
  * dispatcher could not run.
  *
@@ -258,11 +366,12 @@ function methodNotAllowed() {
  *   actionIndex: import('./actions.js').ActionIndex,
  *   allowedOrigins?: string[],
  *   onError?: (error: unknown) => void,
+ *   logger?: { warn?: (msg: string, meta?: Record<string, unknown>) => void },
  * }} deps
  * @returns {Promise<Response>}
  */
 export async function runFormAction(route, params, url, req, ssrOpts, deps) {
-  const { actionIndex, allowedOrigins = [], onError } = deps;
+  const { actionIndex, allowedOrigins = [], onError, logger } = deps;
 
   // Not a form body at all (a stray JSON POST, a probe): the page path exists
   // and only renders. Answered before the body is touched.
@@ -289,8 +398,14 @@ export async function runFormAction(route, params, url, req, ssrOpts, deps) {
   const actions = formData.getAll(FORM_ACTION_FIELD);
   const id = actions.length ? actions[actions.length - 1] : null;
   // A form body carrying no identity: a hand-written `<form method="post">`
-  // that binds no action. Nothing to run, and the page only renders.
-  if (typeof id !== 'string' || !id) return methodNotAllowed();
+  // that binds no action, or (#1307) a bound submitter whose host form was
+  // unbound and carried an enctype the server cannot parse. Nothing to run, and
+  // the page only renders. Reported before the 405 so the shape is not just an
+  // anonymous status in an access log.
+  if (typeof id !== 'string' || !id) {
+    reportFormActionMissing(url, req, formData, onError, logger, !!ssrOpts.dev);
+    return methodNotAllowed();
+  }
   // The field is framework wire, not app data. Removing it keeps an action
   // that iterates the FormData (building a record, echoing values back into a
   // 422 re-render) from seeing a key it did not put there.

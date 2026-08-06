@@ -28,6 +28,7 @@ import { join, dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { createRequestHandler } from '../../packages/server/src/dev.js';
+import { resetFormReportDedupe } from '../../packages/server/src/form-dispatch.js';
 
 const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`;
 const CORE = JSON.stringify(pathToFileURL(resolve('packages/core/index.js')).toString());
@@ -154,5 +155,45 @@ function urlencoded(fields) {
   assert.equal(res.status, 405, `[${runtime}] a submission with no identity is a 405`);
 }
 
+// #1307: both fingerprints of a form that posts nowhere reach the `onError`
+// sink with a groupable code, and neither changes the response. Cross-runtime
+// by construction: the code paths are `url.searchParams.has()`,
+// `formData.keys()`, and `Error` property assignment, all of which Node and Bun
+// implement separately.
+{
+  resetFormReportDedupe();
+  /** @type {any[]} */
+  const seen = [];
+  const reporting = await createRequestHandler({
+    appDir: dir, dev: false, onError: (e) => seen.push(e),
+  });
+  await reporting.warmup();
+
+  // A page GET carrying the reserved field in the QUERY STRING: the fingerprint
+  // of a bound submitter submitted through an UNBOUND form.
+  const got = await reporting.handle(new Request(`http://x/signup?${FIELD}=abc123%2Fsignup`));
+  assert.equal(got.status, 200, `[${runtime}] the GET still renders (detect only)`);
+  assert.equal(seen.length, 1, `[${runtime}] the query-string GET is reported once`);
+  assert.equal(seen[0].code, 'WEBJS_FORM_SUBMITTED_AS_GET', `[${runtime}] with a groupable code`);
+
+  // Deduplicated per process on method + pathname, so a crafted flood cannot
+  // amplify into a paid APM sink.
+  await reporting.handle(new Request(`http://x/signup?${FIELD}=abc123%2Fsignup`));
+  assert.equal(seen.length, 1, `[${runtime}] a second identical request adds no report`);
+
+  // A submission carrying no identity: still a 405, now with a report naming
+  // the submitted field NAMES and none of the values.
+  const missing = await reporting.handle(new Request('http://x/signup', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'http://x' },
+    body: new URLSearchParams({ email: 'a@b.com' }).toString(),
+  }));
+  assert.equal(missing.status, 405, `[${runtime}] the 405 is unchanged`);
+  const bodyless = seen.find((e) => e.code === 'WEBJS_FORM_ACTION_MISSING');
+  assert.ok(bodyless, `[${runtime}] the bind-nothing 405 is reported`);
+  assert.deepEqual(bodyless.fields, ['email'], `[${runtime}] field names ride, values do not`);
+  assert.ok(!JSON.stringify(bodyless.fields).includes('a@b.com'), `[${runtime}] no user data`);
+}
+
 rmSync(dir, { recursive: true, force: true });
-console.log(`[form-action-dispatch] #1155 dispatch OK on ${runtime} (identity ${id})`);
+console.log(`[form-action-dispatch] #1155 dispatch + #1307 reporting OK on ${runtime} (identity ${id})`);

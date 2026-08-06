@@ -185,4 +185,60 @@ suite('Client router: bound form submissions (#1155)', () => {
       teardown();
     }
   });
+  /**
+   * #1307. A submitter bound inside a component whose host form is unbound
+   * reaches the browser through the renderer's cannot-tell fallback, and the
+   * submission it produces cannot deliver the identity. The client cannot
+   * answer that at reconcile time, but by submit time both the form and the
+   * body are in hand, so the guard fires here.
+   */
+  test('a submission that cannot deliver its action logs once, and still submits', async () => {
+    // A response carrying the SAME keyed boundary the container is bracketed
+    // with, so the router morphs in place. Without it the nav degrades to a
+    // full page load, which is the real production behaviour here but would
+    // reload the test page out from under the runner.
+    setup(() => new Response(
+      '<!--wj:children:/:/--><p>ok</p><!--/wj:children:/-->',
+      { status: 200, headers: { 'content-type': 'text/html', 'x-webjs-build': '' } },
+    ));
+    const errors = [];
+    const origError = console.error;
+    console.error = (...a) => { errors.push(a.join(' ')); };
+    const before = location.pathname + location.search;
+    try {
+      // An UNBOUND form (no method) holding a bound submitter: exactly what the
+      // cannot-tell fallback emits when the button lives in a component.
+      render(html`
+        <form>
+          <button type="submit" name="__webjs_action" value="a1b2c3d4e5/publish">go</button>
+        </form>
+      `, container);
+      // A DISPATCHED submit event, not a click. The router handles it exactly
+      // the same way, but a synthetic event never triggers the browser's own
+      // submission, so a GET promotion cannot navigate the runner page away.
+      const fire = () => {
+        const btn = container.querySelector('button');
+        container.querySelector('form').dispatchEvent(
+          new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: btn }),
+        );
+      };
+      fire();
+      await tick();
+
+      assert.equal(errors.length, 1, 'exactly one console error');
+      assert.ok(errors[0].includes('[webjs]'), 'the message is framework-prefixed');
+      assert.ok(errors[0].includes('<form action='), 'and it names the fix');
+      // The guard observes; it must not change what the submission does.
+      assert.ok(calls.length, 'the submission still went through');
+
+      // Fire-once per shape, so a repeated misconfiguration does not spam.
+      fire();
+      await tick();
+      assert.equal(errors.length, 1, 'still one after a second submit');
+    } finally {
+      console.error = origError;
+      history.replaceState(null, '', before);
+      teardown();
+    }
+  });
 });

@@ -15,7 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildRouteTable, matchPage, matchApi } from './router.js';
 import { generateRouteTypes } from './route-types.js';
 import { ssrPage, ssrNotFound, setClientRouterEnabled } from './ssr.js';
-import { runFormAction } from './form-dispatch.js';
+import { runFormAction, reportFormSubmittedAsGet } from './form-dispatch.js';
 import { handleApi } from './api.js';
 import {
   buildActionIndex,
@@ -1479,7 +1479,7 @@ export async function createRequestHandler(opts) {
       // Build all whole-app analysis on the first request (memoized), before
       // any SSR, module serve, gate check, action dispatch, or middleware runs.
       await ensureReady();
-      const next = () => handleCore(req, { state, appDir, coreDir, dev, reportError, reportDevError, cspEnabled: cspConfig.enabled, allowedOrigins: allowedOriginsValue });
+      const next = () => handleCore(req, { state, appDir, coreDir, dev, logger, reportError, reportDevError, cspEnabled: cspConfig.enabled, allowedOrigins: allowedOriginsValue });
       if (state.middleware) {
         try {
           return await state.middleware(req, next);
@@ -1976,7 +1976,7 @@ async function tryServeFrameworkStatic(path, method, ctx) {
 }
 
 async function handleCore(req, ctx) {
-  const { state, appDir, coreDir, dev, reportError, reportDevError, cspEnabled, allowedOrigins } = ctx;
+  const { state, appDir, coreDir, dev, logger, reportError, reportDevError, cspEnabled, allowedOrigins } = ctx;
   const url = new URL(req.url);
   // Decode percent-encoded characters so filesystem lookups match real
   // filenames. Dynamic route segments like `[slug]` and route groups like
@@ -2252,6 +2252,17 @@ async function handleCore(req, ctx) {
           : undefined,
       };
       if (method === 'GET' || method === 'HEAD') {
+        // #1307: `__webjs_action` in the QUERY STRING is the fingerprint of a
+        // bound submitter submitted through an UNBOUND form. Nothing else in
+        // the framework ever puts that reserved field in a url. Detect only, so
+        // the render below is unchanged: answering a GET differently because of
+        // a query parameter would hand any visitor a way to turn any page into
+        // an error.
+        reportFormSubmittedAsGet(
+          url, req,
+          reportError ? (e) => reportError(e, req, 'action') : undefined,
+          logger, dev,
+        );
         // A successful render of URL U supersedes a RETAINED render error for
         // that same URL (#1047), so a reconnecting tab is not handed a frame the
         // page has since recovered from. Keyed on BOTH frame identity and url:
@@ -2281,6 +2292,7 @@ async function handleCore(req, ctx) {
         actionIndex: state.actionIndex,
         allowedOrigins,
         onError: reportError ? (e) => reportError(e, req, 'action') : undefined,
+        logger,
       };
       const handler = () => runFormAction(page.route, page.params, url, req, ssrOpts, deps);
       return runWithSegmentMiddleware(req, page.route.middlewares, handler, dev);
