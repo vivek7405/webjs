@@ -45,8 +45,6 @@ let scannedInitial = false;
  */
 const stats = { ingested: 0, replaced: 0, hits: 0, misses: 0 };
 
-/** `null` in prod. In dev, the `data-webjs-dev` value the server stamped. */
-let devMarker = null;
 /** One scheduled report at a time. */
 let reportScheduled = false;
 /**
@@ -66,8 +64,15 @@ let reportEpoch = 0;
  * at report end instead and those legitimate misses bank up and get charged to
  * the next page on the next soft navigation, which reports a defect on a page
  * that has none.
+ *
+ * The MARKER belongs to the window for the same reason the counters do. It used
+ * to be a module global, so a second scan landing inside a pending window (which
+ * early-returns without scheduling) still overwrote it, and the report then named
+ * a cause read off a page the window never measured: a soft nav to a streamed
+ * page before the idle callback fired made the PREVIOUS page's miss report
+ * "this page streams".
  */
-let windowStart = { hits: 0, misses: 0, ingested: 0 };
+let windowStart = { hits: 0, misses: 0, merged: 0, marker: null };
 
 /**
  * Merge any seeds found under `root` into the global store, then remove the
@@ -82,20 +87,26 @@ export function scanSeeds(root) {
   if (!scope || typeof scope.querySelectorAll !== 'function') return;
   // Read BEFORE ingesting: the report distinguishes "the page carried no seeds
   // at all" from "it carried seeds, but not for these calls", and that turns on
-  // how many THIS scan merged.
-  const ingestedBefore = stats.ingested;
-  // Page-level JSON block(s). The dev marker rides this carrier only, and
-  // whether THIS scan found one is what decides if there is a report to make.
-  let sawMarker = false;
+  // how many THIS scan merged. MERGED is `ingested + replaced`, not `ingested`:
+  // a key already in the store counts as a replacement, so a scan whose seeds
+  // all replace unconsumed ones (revisiting a page whose seeding component
+  // elided, exactly the shape last-write-wins exists for) would otherwise
+  // measure as zero and claim the page carried no seeds while naming one.
+  const mergedBefore = stats.ingested + stats.replaced;
+  // Page-level JSON block(s). The dev marker rides this carrier only, and it is
+  // THIS scan's marker that decides whether there is a report to make and what
+  // cause it names.
+  let scanMarker = null;
   for (const el of scope.querySelectorAll('script[type="application/json"]#__webjs-seeds, script[type="application/json"][data-webjs-seeds]')) {
-    if (noteDevMarker(el.getAttribute?.('data-webjs-dev'))) sawMarker = true;
+    const m = readDevMarker(el.getAttribute?.('data-webjs-dev'));
+    if (m !== null) scanMarker = m;
     ingest(el.textContent, el);
   }
   // Per-element carriers (streamed boundaries / future per-component seeding).
   for (const el of scope.querySelectorAll('[data-webjs-seed]')) {
     ingest(el.getAttribute('data-webjs-seed'), el, () => el.removeAttribute('data-webjs-seed'));
   }
-  scheduleSeedReport(sawMarker, ingestedBefore);
+  scheduleSeedReport(scanMarker, mergedBefore);
 }
 
 /**
@@ -134,16 +145,17 @@ function ingest(raw, el, cleanup) {
 }
 
 /**
- * Record the server's dev marker, the ONLY dev signal this bundle can trust (a
- * `process.env.NODE_ENV` comparison here is a compile-time constant, see
- * `stats`). Absent in production, so the reporting below never runs there.
+ * Read the server's dev marker off one carrier, the ONLY dev signal this bundle
+ * can trust (a `process.env.NODE_ENV` comparison here is a compile-time
+ * constant, see `stats`). Absent in production, so the reporting below never
+ * runs there. Pure: the value belongs to the scan that read it, never to the
+ * module.
  * @param {string | null | undefined} v the `data-webjs-dev` attribute value
- * @returns {boolean} whether this carrier actually carried a marker
+ * @returns {string | null} the marker, or null when this carrier had none
  */
-function noteDevMarker(v) {
-  if (typeof v !== 'string') return false;
-  devMarker = v || 'ok';
-  return true;
+function readDevMarker(v) {
+  if (typeof v !== 'string') return null;
+  return v || 'ok';
 }
 
 /**
@@ -153,10 +165,10 @@ function noteDevMarker(v) {
  * is consume-once, so a deliberate refetch or an argument change is supposed to
  * miss). A slow `async render()` whose call lands after idle is undercounted,
  * which is a false negative rather than a false alarm.
- * @param {boolean} sawMarker whether THIS scan found a `data-webjs-dev` marker
- * @param {number} ingestedBefore `stats.ingested` as it stood before this scan
+ * @param {string | null} scanMarker THIS scan's `data-webjs-dev` marker, or null
+ * @param {number} mergedBefore merged-seed count as it stood before this scan
  */
-function scheduleSeedReport(sawMarker, ingestedBefore) {
+function scheduleSeedReport(scanMarker, mergedBefore) {
   // Gated on THIS scan having found a marker, not on one ever having been seen.
   // A back/forward restore scans a snapshot carrying no seed block at all (the
   // first scan removed it before the snapshot was serialized), so a sticky
@@ -164,10 +176,10 @@ function scheduleSeedReport(sawMarker, ingestedBefore) {
   // "the page carried no seeds at all, check the 'use server' head" is wrong
   // advice for a back button, and a stale `streamed` marker is wrong the other
   // way. No marker in this scan means nothing to report on.
-  if (!sawMarker || reportScheduled) return;
+  if (scanMarker === null || reportScheduled) return;
   reportScheduled = true;
   const epoch = ++reportEpoch;
-  windowStart = { hits: stats.hits, misses: stats.misses, ingested: ingestedBefore };
+  windowStart = { hits: stats.hits, misses: stats.misses, merged: mergedBefore, marker: scanMarker };
   const run = () => {
     if (epoch !== reportEpoch) return; // superseded; the newer generation owns the flag
     reportScheduled = false;
@@ -189,16 +201,16 @@ function scheduleSeedReport(sawMarker, ingestedBefore) {
 function reportSeeds() {
   const hits = stats.hits - windowStart.hits;
   const misses = stats.misses - windowStart.misses;
-  const ingested = stats.ingested - windowStart.ingested;
+  const merged = (stats.ingested + stats.replaced) - windowStart.merged;
   if (misses === 0) return;
-  const cause = devMarker === 'streamed'
+  const cause = windowStart.marker === 'streamed'
     ? 'This page streams (a Suspense or <webjs-suspense> boundary), and a streamed render emits no seeds, so every action call on it goes to the network.'
-    : ingested === 0
+    : merged === 0
       ? 'The page carried no seeds at all. Check that the action lives in a *.server.{js,ts} file whose head declares \'use server\', and that a component actually awaited it during the SSR render.'
       : 'The page carried seeds, but not for these calls. The key is the action file hash plus the function name plus the serialized arguments, so a different argument misses (a deliberate refetch after hydration misses too, and is expected).';
   console.warn(
     `[webjs] SSR action seeding: ${misses} of ${hits + misses} hydration action call(s) missed the seed and cost a network round-trip `
-    + `(${ingested} seed(s) on this page, ${seeds.size} still unconsumed). ${cause} `
+    + `(${merged} seed(s) on this page, ${seeds.size} still unconsumed). ${cause} `
     + 'See https://webjs.dev/docs/data-fetching for the seeding reference.',
   );
 }
@@ -250,8 +262,7 @@ export function __resetSeeds() {
   stats.replaced = 0;
   stats.hits = 0;
   stats.misses = 0;
-  devMarker = null;
   reportScheduled = false;
   reportEpoch++; // burn any in-flight callback rather than let it report a reset window
-  windowStart = { hits: 0, misses: 0, ingested: 0 };
+  windowStart = { hits: 0, misses: 0, merged: 0, marker: null };
 }

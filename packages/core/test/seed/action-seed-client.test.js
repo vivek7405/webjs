@@ -314,3 +314,54 @@ test('the cause still distinguishes an empty page after an earlier seeded one', 
   assert.equal(second.warns.length, 1);
   assert.match(second.warns[0], /carried no seeds at all/);
 });
+
+test('a scan whose seeds all REPLACE unconsumed ones still counts as seeds merged', async () => {
+  // The merged baseline is `ingested + replaced`, not `ingested`. Revisiting a
+  // page whose seeding component elided re-emits a key the store still holds, so
+  // every seed on the second visit is a replacement. Counting only `ingested`
+  // measures zero and reports "the page carried no seeds at all" in the same
+  // sentence that says one seed was on the page.
+  const payload = await stringify({ 'h/elided/[1]': 'never-consumed' });
+  const first = await withReporter(async () => {
+    scanSeeds(root([el('script', payload, 'ok')]));
+    takeSeed('h', 'other', '[1]');
+  });
+  assert.equal(first.warns.length, 1);
+  assert.match(first.warns[0], /1 seed\(s\) on this page/);
+  assert.match(first.warns[0], /carried seeds, but not for these calls/);
+
+  const second = await withReporter(async () => {
+    scanSeeds(root([el('script', payload, 'ok')]));
+    takeSeed('h', 'other', '[1]');
+  });
+  assert.equal(second.warns.length, 1);
+  assert.match(second.warns[0], /1 seed\(s\) on this page/, 'a replacement is still a seed on the page');
+  assert.match(second.warns[0], /carried seeds, but not for these calls/, 'and the cause must not flip');
+});
+
+test('the cause comes from the window\'s OWN marker, not a later scan\'s', async () => {
+  // A soft nav landing inside a pending window early-returns without scheduling,
+  // so its marker must not reach the report for the window it did not measure.
+  // Before the marker moved into the window, a buffered page's unmatched-key miss
+  // was reported as "this page streams" whenever the next page happened to.
+  const origIdle = globalThis.requestIdleCallback;
+  const origWarn = console.warn;
+  const warns = [];
+  const queued = [];
+  globalThis.requestIdleCallback = (fn) => { queued.push(fn); };
+  console.warn = (...a) => warns.push(a.join(' '));
+  try {
+    scanSeeds(root([el('script', await stringify({ 'h/f/[1]': 1 }), 'ok')]));
+    takeSeed('h', 'f', '[2]');
+    // A soft nav to a STREAMED page, before the idle callback for page one fires.
+    scanSeeds(root([el('script', await stringify({}), 'streamed')]));
+    queued.forEach((fn) => fn());
+  } finally {
+    if (origIdle === undefined) delete globalThis.requestIdleCallback;
+    else globalThis.requestIdleCallback = origIdle;
+    console.warn = origWarn;
+  }
+  assert.equal(warns.length, 1);
+  assert.match(warns[0], /carried seeds, but not for these calls/, 'the buffered page keeps its own cause');
+  assert.ok(warns[0].indexOf('This page streams') === -1, 'the later page\'s marker must not leak in');
+});
