@@ -159,11 +159,12 @@ export async function primeComponentRegistry(appDir, components) {
  *     ordinary code, so it runs IF the module reaches the browser, which
  *     requires the importing module to ship WHOLE. An inert, import-only, or
  *     elided importer is dropped from the boot and takes the import with it,
- *     and then the element does not upgrade either. Assume it does not: an
+ *     and then the element does not upgrade either. Assume it does not. An
  *     orphan is not in `componentFiles`, so it never joins the frontier an
- *     import-only page emits in its place, and a page that renders any real
- *     component alongside the orphan IS import-only. That mix is the ordinary
- *     shape, so shipping-whole is the exception rather than the rule.
+ *     import-only page emits in its place, and a page that renders a real
+ *     component alongside the orphan is import-only unless it ALSO does its
+ *     own client work (which ships it whole, #963). Shipping whole is the
+ *     narrower case, so treat the upgrade as lost until proven otherwise.
  *
  * Lost in EVERY case, whichever shape: the elision verdict, the tag-to-module
  * registry entry, and the modulepreload hint. That, not the upgrade, is the
