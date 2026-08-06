@@ -227,16 +227,26 @@ test('every docs sidebar label and section title is Title Case', async () => {
   // 'Deploying with Docker'. Only 'Migrating from Next.js' exercises it today.
   // The rest are here so the first 'Deploying on Railway' does not red CI for a
   // label that was never wrong.
+  //
+  // This list is matched case-INSENSITIVELY, so an entry here SHADOWS any
+  // fixed-casing word that lowercases to it, and the shadow wins because a
+  // minor word is checked against the lowercased token. 'vs' is deliberately
+  // absent for that reason: it would swallow the VS of 'Editor Setup (Neovim,
+  // VS Code)', and a drift to 'vs Code' would then read as an ordinary minor
+  // word and pass. Before adding a word here, check no label depends on its
+  // capitalised form; if one does, it belongs in FIXED_CASING instead.
   const MINOR_WORDS = new Set([
     'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'if', 'in', 'into',
     'nor', 'of', 'off', 'on', 'onto', 'or', 'over', 'per', 'so', 'the', 'to',
-    'up', 'via', 'vs', 'with', 'yet',
+    'up', 'via', 'with', 'yet',
   ]);
 
   // Words whose casing is fixed by something other than prose, so recasing
   // them would be WRONG rather than a correction. Two kinds qualify: a code
   // token ('@webjsdev/ui', 'createAuth', 'webjs check', 'package.json') and a
-  // brand that starts lowercase ('macOS', 'iOS', 'npm'). No structural rule
+  // brand with non-prose capitalisation ('macOS', 'iOS', 'npm', and the VS of
+  // 'VS Code', which is here rather than left to MINOR_WORDS because 'vs'
+  // there would shadow it). No structural rule
   // can carry this: shape detects '@webjsdev/ui' and 'createAuth', but a
   // future 'webjs check' label is two ordinary lowercase words,
   // byte-indistinguishable from the slip this test hunts. So the exemption is
@@ -244,7 +254,7 @@ test('every docs sidebar label and section title is Title Case', async () => {
   // spelling is correct, not a slip". Matched against the
   // word with wrapping punctuation stripped, so it survives a rename to
   // 'Auth Providers (createAuth API)'.
-  const FIXED_CASING = new Set(['createAuth', '@webjsdev/ui']);
+  const FIXED_CASING = new Set(['createAuth', '@webjsdev/ui', 'VS']);
 
   const layout = await readFile(resolve(DOCS_ROOT, 'layout.ts'), 'utf8');
   // Slice to the NAV_SECTIONS literal. Outside it sit the docs-scoped metadata
@@ -273,7 +283,7 @@ test('every docs sidebar label and section title is Title Case', async () => {
   // The href count is a cross-check on the label count. It is a useful signal,
   // not a guarantee: a malformed entry can also surface as a garbage row in the
   // offender list instead, which is equally loud and names the entry.
-  const quoted = (key) => new RegExp(`\\b${key}:\\s*(['"])(.+?)\\1`, 'g');
+  const quoted = (key: string) => new RegExp(`\\b${key}:\\s*(['"])((?:\\\\.|(?!\\1).)+)\\1`, 'g');
   const labels = [...nav.matchAll(quoted('label'))].map((m) => m[2]);
   const titles = [...nav.matchAll(quoted('title'))].map((m) => m[2]);
   const hrefs = [...nav.matchAll(quoted('href'))].map((m) => m[2]);
