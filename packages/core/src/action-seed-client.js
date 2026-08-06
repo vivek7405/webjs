@@ -41,38 +41,38 @@ let scannedInitial = false;
  * this bundle is a constant that reads the wrong way round. Four integer
  * increments on a path that already awaits `stringify(args)` and usually a
  * `fetch`, so nothing is gated here; only the REPORTING is, by a server-emitted
- * marker (see `noteDevMarker`).
+ * marker (see `readDevMarker`).
  */
 const stats = { ingested: 0, replaced: 0, hits: 0, misses: 0 };
 
-/** One scheduled report at a time. */
-let reportScheduled = false;
 /**
- * Generation of the pending report. A scheduled idle callback outlives the state
- * it was scheduled against (`__resetSeeds` between tests is the reachable case),
- * and once `windowStart` no longer moves at report time, a stale callback would
- * re-report the CURRENT window a second time. Each schedule takes a token and a
- * reset burns it, so a superseded callback is a no-op instead.
- */
-let reportEpoch = 0;
-/**
- * Counter snapshot at the START of the pending report's window, taken when the
- * report is SCHEDULED rather than when it runs. That difference is the whole
- * correctness of the metric: the window has to be the hydration window (scan to
- * idle), because a miss AFTER it is correct behaviour (the seed is consume-once,
- * so a deliberate refetch or an argument change is SUPPOSED to miss). Snapshot
- * at report end instead and those legitimate misses bank up and get charged to
- * the next page on the next soft navigation, which reports a defect on a page
- * that has none.
+ * The open report window, or null. Each scan OPENS one and CLOSES the previous,
+ * so a window measures exactly the page it was opened for.
  *
- * The MARKER belongs to the window for the same reason the counters do. It used
- * to be a module global, so a second scan landing inside a pending window (which
- * early-returns without scheduling) still overwrote it, and the report then named
- * a cause read off a page the window never measured: a soft nav to a streamed
- * page before the idle callback fired made the PREVIOUS page's miss report
- * "this page streams".
+ * The window has to be the hydration window (scan to idle), because a miss AFTER
+ * it is correct behaviour: the seed is consume-once, so a deliberate refetch or
+ * an argument change is SUPPOSED to miss. Measure any wider and correct misses
+ * are reported as defects, which is what trains a developer to filter the
+ * channel out.
+ *
+ * "Wider" has two directions and both were live at some point in this PR. Late:
+ * snapshotting at report time rather than schedule time banks post-hydration
+ * misses and charges them to the next page. Early: letting a report stay open
+ * across a soft navigation folds the NEXT page's seeds and calls into the
+ * previous page's numbers, so a healthy page gets a defect line and the page
+ * that actually had one gets no report at all. Closing on the next scan bounds
+ * it from both ends, and the marker rides the window for the same reason the
+ * counters do.
+ *
+ * `epoch` lets a scheduled callback tell whether its window is still the open
+ * one; a window closed early (by the next scan, or by `__resetSeeds`) leaves a
+ * callback behind that must be a no-op rather than report a window it does not
+ * own.
+ * @type {{ epoch: number, hits: number, misses: number, merged: number, marker: string } | null}
  */
-let windowStart = { hits: 0, misses: 0, merged: 0, marker: null };
+let openWindow = null;
+/** Monotonic window id, so a stale callback can recognise itself. */
+let windowEpoch = 0;
 
 /**
  * Merge any seeds found under `root` into the global store, then remove the
@@ -85,6 +85,15 @@ let windowStart = { hits: 0, misses: 0, merged: 0, marker: null };
 export function scanSeeds(root) {
   const scope = root || (typeof document !== 'undefined' ? document : null);
   if (!scope || typeof scope.querySelectorAll !== 'function') return;
+  // An explicit whole-document scan IS the initial scan. Without this the lazy
+  // scan in `takeSeed` runs a second time over the same document, finds the
+  // carriers already removed, and closes the window this scan just opened.
+  if (typeof document !== 'undefined' && scope === document) scannedInitial = true;
+  // Close the previous page's window BEFORE ingesting anything: the moment this
+  // page's content arrives is exactly where the previous page's numbers stop. Do
+  // it after the ingest loops instead and this scan's seeds are already counted
+  // into the window being closed, which is the whole defect.
+  closeReportWindow();
   // Read BEFORE ingesting: the report distinguishes "the page carried no seeds
   // at all" from "it carried seeds, but not for these calls", and that turns on
   // how many THIS scan merged. MERGED is `ingested + replaced`, not `ingested`:
@@ -106,7 +115,7 @@ export function scanSeeds(root) {
   for (const el of scope.querySelectorAll('[data-webjs-seed]')) {
     ingest(el.getAttribute('data-webjs-seed'), el, () => el.removeAttribute('data-webjs-seed'));
   }
-  scheduleSeedReport(scanMarker, mergedBefore);
+  startReportWindow(scanMarker, mergedBefore);
 }
 
 /**
@@ -159,38 +168,39 @@ function readDevMarker(v) {
 }
 
 /**
- * Schedule the one dev report for this page view. The window it measures runs
- * from the scan to the idle callback, which IS the hydration window: a miss
- * inside it is a wasted round-trip, while a miss AFTER it is correct (the seed
- * is consume-once, so a deliberate refetch or an argument change is supposed to
- * miss). A slow `async render()` whose call lands after idle is undercounted,
- * which is a false negative rather than a false alarm.
+ * Open the window for this scan. Called at the END of a scan, once the merged
+ * count for it is known; the window it supersedes was already closed at the TOP
+ * of the scan, so a markerless scan still ends the previous page's window.
  * @param {string | null} scanMarker THIS scan's `data-webjs-dev` marker, or null
  * @param {number} mergedBefore merged-seed count as it stood before this scan
  */
-function scheduleSeedReport(scanMarker, mergedBefore) {
-  // Gated on THIS scan having found a marker, not on one ever having been seen.
-  // A back/forward restore scans a snapshot carrying no seed block at all (the
-  // first scan removed it before the snapshot was serialized), so a sticky
-  // marker would schedule a report whose cause is read off the PREVIOUS page:
-  // "the page carried no seeds at all, check the 'use server' head" is wrong
-  // advice for a back button, and a stale `streamed` marker is wrong the other
-  // way. No marker in this scan means nothing to report on.
-  if (scanMarker === null || reportScheduled) return;
-  reportScheduled = true;
-  const epoch = ++reportEpoch;
-  windowStart = { hits: stats.hits, misses: stats.misses, merged: mergedBefore, marker: scanMarker };
+function startReportWindow(scanMarker, mergedBefore) {
+  // The previous window was already closed at the top of the scan, before any
+  // ingest. No marker in THIS scan means there is nothing to report on. Production never
+  // has one, and a back/forward restore scans a snapshot carrying no seed block
+  // at all (the first scan removed it before the snapshot was serialized), so a
+  // marker inherited from the previous page would name a cause read off it.
+  if (scanMarker === null) return;
+  const epoch = ++windowEpoch;
+  openWindow = { epoch, hits: stats.hits, misses: stats.misses, merged: mergedBefore, marker: scanMarker };
   const run = () => {
-    if (epoch !== reportEpoch) return; // superseded; the newer generation owns the flag
-    reportScheduled = false;
-    try { reportSeeds(); } catch { /* diagnostics never break a page */ }
+    if (!openWindow || openWindow.epoch !== epoch) return; // already closed; not ours
+    closeReportWindow();
   };
   try {
     if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 1000 });
     else setTimeout(run, 250);
   } catch {
-    reportScheduled = false;
+    openWindow = null;
   }
+}
+
+/** Close the open window and report on it. A no-op when none is open. */
+function closeReportWindow() {
+  const w = openWindow;
+  openWindow = null;
+  if (!w) return;
+  try { reportSeeds(w); } catch { /* diagnostics never break a page */ }
 }
 
 /**
@@ -198,12 +208,12 @@ function scheduleSeedReport(scanMarker, mergedBefore) {
  * navigation trains a developer to filter the channel out, and the healthy
  * numbers are already on the server's access-log line for every request.
  */
-function reportSeeds() {
-  const hits = stats.hits - windowStart.hits;
-  const misses = stats.misses - windowStart.misses;
-  const merged = (stats.ingested + stats.replaced) - windowStart.merged;
+function reportSeeds(w) {
+  const hits = stats.hits - w.hits;
+  const misses = stats.misses - w.misses;
+  const merged = (stats.ingested + stats.replaced) - w.merged;
   if (misses === 0) return;
-  const cause = windowStart.marker === 'streamed'
+  const cause = w.marker === 'streamed'
     ? 'This page streams (a Suspense or <webjs-suspense> boundary), and a streamed render emits no seeds, so every action call on it goes to the network.'
     : merged === 0
       ? 'The page carried no seeds at all. Check that the action lives in a *.server.{js,ts} file whose head declares \'use server\', and that a component actually awaited it during the SSR render.'
@@ -262,7 +272,6 @@ export function __resetSeeds() {
   stats.replaced = 0;
   stats.hits = 0;
   stats.misses = 0;
-  reportScheduled = false;
-  reportEpoch++; // burn any in-flight callback rather than let it report a reset window
-  windowStart = { hits: 0, misses: 0, merged: 0, marker: null };
+  openWindow = null;   // drop it silently; a reset is not a page view
+  windowEpoch++;       // and burn any in-flight callback rather than let it report
 }

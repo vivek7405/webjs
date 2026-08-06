@@ -365,3 +365,54 @@ test('the cause comes from the window\'s OWN marker, not a later scan\'s', async
   assert.match(warns[0], /carried seeds, but not for these calls/, 'the buffered page keeps its own cause');
   assert.ok(warns[0].indexOf('This page streams') === -1, 'the later page\'s marker must not leak in');
 });
+
+/** Drive scans and calls with the idle callback under test control. */
+async function withWindows(body) {
+  const origIdle = globalThis.requestIdleCallback;
+  const origWarn = console.warn;
+  const warns = [];
+  const queued = [];
+  globalThis.requestIdleCallback = (fn) => { queued.push(fn); };
+  console.warn = (...a) => warns.push(a.join(' '));
+  try {
+    await body();
+    queued.forEach((fn) => fn());
+  } finally {
+    if (origIdle === undefined) delete globalThis.requestIdleCallback;
+    else globalThis.requestIdleCallback = origIdle;
+    console.warn = origWarn;
+  }
+  return warns;
+}
+
+test('a soft nav BEFORE the idle callback does not lend its seeds to the previous page', async () => {
+  // Page A carried NO seeds and took a miss, so its cause is "carried no seeds
+  // at all". Page B arrives with three seeds before A's callback fires. If A's
+  // window stays open across the navigation, B's seeds are counted into it and
+  // the branch that exists to say "none" is bypassed entirely.
+  const warns = await withWindows(async () => {
+    scanSeeds(root([el('script', await stringify({}), 'ok')]));
+    takeSeed('h', 'f', '[1]');
+    scanSeeds(root([el('script', await stringify({ 'h/g/[1]': 1, 'h/g/[2]': 2, 'h/g/[3]': 3 }), 'ok')]));
+  });
+  assert.equal(warns.length, 1);
+  assert.match(warns[0], /0 seed\(s\) on this page/, 'page A carried none, whatever page B carried');
+  assert.match(warns[0], /carried no seeds at all/);
+});
+
+test('a HEALTHY page is not blamed for the next page\'s correct misses', async () => {
+  // Page A: one seed, one hit, no defect, so it must stay silent. Page B streams
+  // and its two misses are correct and expected. Leaving A's window open across
+  // the nav charges them to A, printing a defect line for a page that has none,
+  // and B never gets a report of its own.
+  const warns = await withWindows(async () => {
+    scanSeeds(root([el('script', await stringify({ 'h/f/[1]': 1 }), 'ok')]));
+    takeSeed('h', 'f', '[1]');
+    scanSeeds(root([el('script', await stringify({}), 'streamed')]));
+    takeSeed('h', 'g', '[1]');
+    takeSeed('h', 'g', '[2]');
+  });
+  assert.equal(warns.length, 1, 'page A silent, page B reported: one line, not two and not zero');
+  assert.match(warns[0], /2 of 2 hydration action call\(s\) missed/, 'the line belongs to page B');
+  assert.match(warns[0], /This page streams/, 'and names page B\'s own cause');
+});
