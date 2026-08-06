@@ -173,15 +173,22 @@ anything stale you found in the existing body, and confirmation the
 
 ### 5. Verify each plan and move the card to Ready
 
-When an agent reports back, confirm the body actually changed before trusting the
-report:
+**Poll the issue body over REST, never GraphQL.** An agent reporting success is
+not proof, so confirm the body actually changed, and confirm it against the
+section contract rather than by eye. `gh issue view --json` goes through GraphQL,
+which is the budget this skill has to protect (see "GraphQL budget" below), while
+the issues REST endpoint does not:
 
 ```sh
-gh issue view <N> --repo webjsdev/webjs --json body -q '.body' | head -40
+gh api repos/webjsdev/webjs/issues/<N> --jq '.body' \
+  | grep -cE '^## (Problem|Design / approach|Implementation plan|Tests|Docs|Acceptance criteria|Out of scope)$'
 ```
 
-Then move the card. The project board carries a **Ready** column between Todo and
-In progress, whose ids are fixed:
+Seven means the contract is met. Anything less means the agent has not written
+yet, or wrote a partial body, and the card stays where it is.
+
+Then move the card. The board carries a **Ready** column between Todo and In
+progress. These ids are stable, so hard-code them rather than looking them up:
 
 | Thing | Id |
 |---|---|
@@ -189,9 +196,23 @@ In progress, whose ids are fixed:
 | Status field | `PVTSSF_lADOERfAXc4BZDhVzhUE7nE` |
 | Ready option | `ad471dd5` |
 
+The one thing you must fetch is each issue's project-item id. Fetch them ONCE for
+the whole batch, in a single aliased query, and cache the result in the scratchpad:
+
 ```sh
-ITEM=$(gh project item-list 1 --owner webjsdev --format json --limit 20000 \
-  | jq -r '.items[] | select(.content.number == <N>) | .id')
+gh api graphql -f query='
+query {
+  r: repository(owner: "webjsdev", name: "webjs") {
+    i1253: issue(number: 1253) { projectItems(first: 5) { nodes { id project { number } } } }
+    i1264: issue(number: 1264) { projectItems(first: 5) { nodes { id project { number } } } }
+  }
+}' | jq -r '.data.r | to_entries[]
+  | "\(.key|ltrimstr("i"))=\(.value.projectItems.nodes[] | select(.project.number == 1) | .id)"'
+```
+
+Then each move is one small mutation against the cached id:
+
+```sh
 gh project item-edit --id "$ITEM" \
   --project-id PVT_kwDOERfAXc4BZDhV \
   --field-id PVTSSF_lADOERfAXc4BZDhVzhUE7nE \
@@ -201,6 +222,24 @@ gh project item-edit --id "$ITEM" \
 Move the card ONLY after the body edit is confirmed. A card in Ready is a promise
 that the plan in the body is implementable, so a card moved on a failed edit is
 worse than one left in Todo.
+
+### GraphQL budget
+
+The GitHub Projects V2 API is **GraphQL only**, and it rate-limits on a point
+budget rather than a request count, so a few careless calls exhaust it for the
+session. Two rules keep this skill inside it.
+
+**Never call `gh project item-list 1 --owner webjsdev --limit 20000` in a loop.**
+That query paginates every item on the board (well past 500 today) to find one
+id. Reach the item id from the ISSUE node instead, as above: it is a single node
+lookup, it aliases so a whole batch costs one request, and the result is stable
+enough to cache for the session.
+
+**Keep polling off GraphQL entirely.** Waiting on N background agents means
+repeated reads, and those belong on the issues REST endpoint
+(`gh api repos/webjsdev/webjs/issues/<N>`), which has its own separate budget.
+Reserve GraphQL for the two things only it can do: the one batched item-id fetch,
+and the per-card status mutation.
 
 ### 6. Report
 
