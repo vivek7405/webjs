@@ -8,6 +8,7 @@ import {
   extractWebComponentClassBodies,
   redactStringsAndTemplates,
 } from '../../src/js-scan.js';
+import { PARSEABLE_ENCTYPES } from '../../../core/src/form-action.js';
 
 /**
  * Unit tests for the lexical half of `submitter-needs-bound-form` (#1307):
@@ -136,6 +137,13 @@ test('an unbound form reports whether it would still DELIVER the identity', () =
   // whitespace stripping, so a padded value falls to the GET default.
   assert.equal(sub('<form method=" post ">').delivers, false);
   assert.equal(sub('<form method="post" enctype="text/plain">').delivers, false, 'the server cannot parse it');
+  // `enctype` is an enumerated attribute whose missing AND invalid value default
+  // are both application/x-www-form-urlencoded, so an unrecognised value falls
+  // back to a parseable body. Treating it as unparseable reported a working form
+  // as broken, which is the one thing this rule must never do.
+  assert.equal(sub('<form method="post" enctype="nonsense">').delivers, true, 'an invalid enctype falls back to urlencoded');
+  assert.equal(sub('<form method="post" enctype=" text/plain ">').delivers, true, 'padded, so invalid, so urlencoded');
+  assert.equal(sub('<form method="post" enctype="TEXT/PLAIN">').delivers, false, 'the keyword folds case');
   // A hole anywhere else in the start tag makes the answer dynamic.
   assert.equal(sub('<form method=${m}>').delivers, null);
   assert.equal(sub('<form enctype=${e} method="post">').delivers, null);
@@ -166,4 +174,32 @@ test('class-body offsets index the RAW source identically to the mask', () => {
   const body = src.slice(bodies[0].bodyStart, bodies[0].bodyEnd);
   assert.match(body, /formaction=\$\{del\}/, 'the raw slice keeps the template intact');
   assert.deepEqual(scanHtmlFormScopes(body).submitters, [{ tag: 'button', scope: 'none', delivers: null }]);
+});
+
+test('a template in a START-TAG hole does not inherit the lexical scope', () => {
+  // A hole inside a start tag is an attribute or property VALUE, so the template
+  // is handed to the receiving element and rendered in THAT component's own
+  // pass. Scoring it by lexical nesting reported a shape the renderer treats as
+  // cannot-tell (and therefore binds) as a conclusive 'unbound'.
+  const passed = 'html`<form method="post"><my-thing .tpl=${html`<button formaction=${del}>x</button>`}></my-thing></form>`';
+  assert.deepEqual(scanHtmlFormScopes(passed).submitters, [{ tag: 'button', scope: 'none', delivers: null }]);
+  // A hole in CHILD position IS rendered inline by this scan, so it still
+  // inherits. This is the pair that keeps the fix from being a blanket opt-out.
+  const child = 'html`<form method="post">${html`<button formaction=${del}>x</button>`}</form>`';
+  assert.deepEqual(scanHtmlFormScopes(child).submitters, [{ tag: 'button', scope: 'unbound', delivers: true }]);
+});
+
+test('the unparseable-enctype constant tracks the renderer\'s own set', () => {
+  // The scanner states its enctype rule as a DENYLIST of one because of the
+  // invalid-value default, while the renderer refuses the wider allowlist. This
+  // pins the relationship rather than asserting the two are equal, so a change
+  // to core's set surfaces here instead of drifting silently.
+  assert.ok(!PARSEABLE_ENCTYPES.has('text/plain'), 'the renderer cannot parse text/plain either');
+  for (const e of PARSEABLE_ENCTYPES) {
+    const src = `html\`<form method="post" enctype="${e}"><button formaction=\${d}>x</button></form>\``;
+    assert.equal(scanHtmlFormScopes(src).submitters[0].delivers, true, `${e} delivers`);
+  }
+  assert.deepEqual([...PARSEABLE_ENCTYPES].sort(),
+    ['application/x-www-form-urlencoded', 'multipart/form-data'],
+    'if core gains an enctype, revisit the scanner denylist');
 });

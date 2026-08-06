@@ -765,11 +765,21 @@ export function classifyActionHole(literalBefore) {
 }
 
 /**
- * The two enctypes `parseFormBody` can read. Inlined rather than imported from
- * `@webjsdev/core`'s `form-action.js`, which this lexer does not depend on;
- * kept in sync by `packages/server/test/scanner/html-form-scopes.test.js`.
+ * The ONE `enctype` keyword that loses a form body the server could otherwise
+ * read.
+ *
+ * Stated as a denylist rather than an allowlist because `enctype` is an
+ * enumerated attribute whose missing value default AND invalid value default are
+ * both `application/x-www-form-urlencoded`. So `enctype="nonsense"` falls back to
+ * urlencoded and submits a perfectly parseable body; only the third valid
+ * keyword, `text/plain`, is a real loss. An allowlist inverts that and reports a
+ * working form as broken, which this rule must never do.
+ *
+ * (`form-action.js`'s render-time `PARSEABLE_ENCTYPES` refuses the same wider
+ * set, but there it is a loud throw on an attribute the author wrote
+ * deliberately, not a silent verdict about someone else's form.)
  */
-const PARSEABLE_FORM_ENCTYPES = new Set(['multipart/form-data', 'application/x-www-form-urlencoded']);
+const UNPARSEABLE_FORM_ENCTYPE = 'text/plain';
 
 /**
  * Read one attribute's literal value out of a start tag's accumulated text.
@@ -798,9 +808,12 @@ function startTagAttr(tagText, name) {
  * `method="get"` (a GET puts the identity in the query string and the page just
  * re-renders), or an enctype `parseFormBody` cannot parse (a 405).
  *
- * `method` and `enctype` are enumerated attributes matched against exact
- * keywords with no whitespace stripping, so a padded `method=" post "` falls to
- * the invalid-value default and submits as a GET.
+ * Both are enumerated attributes matched against exact keywords with no
+ * whitespace stripping, and their defaults pull in OPPOSITE directions, which is
+ * why they are tested differently. `method` defaults to GET, so anything that is
+ * not exactly `post` loses the body (a padded `method=" post "` included).
+ * `enctype` defaults to `application/x-www-form-urlencoded` for both a missing
+ * AND an invalid value, so only the `text/plain` keyword actually loses it.
  *
  * @param {string} tagText the form's start tag, from `<form` to just before `>`
  * @returns {boolean}
@@ -809,7 +822,7 @@ function unboundFormDelivers(tagText) {
   const method = startTagAttr(tagText, 'method');
   if (method === null || method.toLowerCase() !== 'post') return false;
   const enctype = startTagAttr(tagText, 'enctype');
-  if (enctype !== null && !PARSEABLE_FORM_ENCTYPES.has(enctype.toLowerCase())) return false;
+  if (enctype !== null && enctype.toLowerCase() === UNPARSEABLE_FORM_ENCTYPE) return false;
   return true;
 }
 
@@ -1003,10 +1016,24 @@ export function scanHtmlFormScopes(src) {
           // dynamic, so whether an unbound form would deliver becomes unknowable.
           else if (tag.name === 'form') tag.dynamicAttrs = true;
         }
+        // A hole inside a START TAG is an attribute or property VALUE, so a
+        // template in it is handed to the receiving element and rendered in
+        // THAT component's own pass, not inline here. It therefore starts fresh
+        // at 'none' rather than inheriting this scan's scope, exactly as a
+        // top-level template does. A hole in CHILD position is rendered inline
+        // by this scan and does inherit.
+        //
+        // Without the split, `<form method="post"><my-thing .tpl=${html`<button
+        // formaction=${del}>x</button>`}></my-thing></form>` scored the button
+        // 'unbound' from lexical nesting, while the renderer sees a cannot-tell
+        // in `my-thing`'s pass and binds. The form delivers, so the shape works
+        // and reporting it would be a false positive.
+        const holeScope = tag && !tag.isClose ? 'none' : scope;
+        const holeDelivers = tag && !tag.isClose ? null : delivers;
         // Only the segment IMMEDIATELY before a hole can commit an attribute,
         // so two adjacent holes leave nothing for the second to read.
         lastLiteral = '';
-        i = walkCode(i + 2, true, scope, delivers);
+        i = walkCode(i + 2, true, holeScope, holeDelivers);
         if (i < n && redacted[i] === '}') i++;
         continue;
       }

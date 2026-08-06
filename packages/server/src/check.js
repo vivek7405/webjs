@@ -1534,13 +1534,19 @@ function checkSubmitterNeedsBoundForm(files, violations) {
     // from a bare `html` helper, which is rendered inside the CALLER's scan and
     // inherits the caller's form scope, so it is unknowable.
     //
-    // And only when this file opens NO form of its own. A fragment built into a
-    // local (`const rows = html`<todo-row>`;`) and spliced into a form the same
-    // file opens (`html`<form action=${save}>${rows}</form>``) inherits the
-    // SPLICE point's scope, not this component's call-site scope, and the two
-    // templates are separate scans so nothing here can tell them apart. That is
-    // the same reasoning the submitter half already applies to a bare helper.
-    const attributable = ownerTag && bodySites && !bodySites.opensForm ? ownerTag : null;
+    // And only when this file opens NO form of its own, ANYWHERE. A fragment
+    // built into a local (`const rows = html`<todo-row>`;`) and spliced into a
+    // form the same file opens (`html`<form action=${save}>${rows}</form>``)
+    // inherits the SPLICE point's scope, not this component's call-site scope,
+    // and the two templates are separate scans so nothing here can tell them
+    // apart. That is the same reasoning the submitter half already applies to a
+    // bare helper.
+    //
+    // The test is the WHOLE-FILE scan, not the class body: a module-scope
+    // helper (`const shell = (inner) => html`<form action=${save}>${inner}</form>``)
+    // opens a form the class body never sees, and splicing into that is the same
+    // hole.
+    const attributable = ownerTag && bodySites && !fileSites.opensForm ? ownerTag : null;
     /** @type {Map<string, number>} */
     const bodyNoneByTag = new Map();
     for (const u of attributable && bodySites ? bodySites.tagUses : []) {
@@ -1562,7 +1568,7 @@ function checkSubmitterNeedsBoundForm(files, violations) {
     }
   }
 
-  /** @type {Map<string, 'unbound' | 'unknowable'>} */
+  /** @type {Map<string, 'undeliverable' | 'unknowable'>} */
   const verdicts = new Map();
   /** @type {Set<string>} */
   const inProgress = new Set();
@@ -1621,11 +1627,15 @@ function checkSubmitterNeedsBoundForm(files, violations) {
       violations.push({
         rule: 'submitter-needs-bound-form',
         file: rel,
-        message: `Binds an action with \`formaction=\${…}\` on a <${s.tag}>, but the enclosing <form> in the SAME template carries no \`action=\${action}\` binding. The renderer refuses this shape, so the page throws at render rather than shipping.`,
+        message: `Binds an action with \`formaction=\${…}\` on a <${s.tag}>, but the enclosing <form> in the SAME template carries no \`action=\${action}\` binding. Wherever the renderer sees both halves in one pass it refuses this shape outright, so the page throws at render rather than shipping it.`,
         fix: FIX,
       });
     }
-    if (!ownerTag || !bodySites) continue;
+    // The SAME `opensForm` guard the tag half uses, and for the same reason: a
+    // submitter fragment built into a local and spliced into a form this file
+    // opens is inside that form, not at the component's call site. The rule
+    // description states this condition, so the code has to hold it.
+    if (!ownerTag || !bodySites || fileSites.opensForm) continue;
     const cannotTell = bodySites.submitters.filter((s) => s.scope === 'none');
     if (!cannotTell.length) continue;
     if (resolveTagScope(ownerTag) !== 'undeliverable') continue;

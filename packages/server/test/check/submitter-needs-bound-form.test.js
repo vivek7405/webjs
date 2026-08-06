@@ -198,6 +198,54 @@ export default () => html\`<form><row-btn></row-btn></form>\`;
   await rm(dir, { recursive: true, force: true });
 });
 
+test('silent when a module-scope helper in the component file opens a form', async () => {
+  // The guard is the WHOLE-FILE scan, not the class body: a helper outside the
+  // class can open a form the body never sees, and splicing into that is the
+  // same hole the class-body case has.
+  const dir = await makeApp({
+    'components/row-btn.ts': `import { html, WebComponent } from '@webjsdev/core';
+import { publishDraft } from '#modules/feedback/actions/publish.server.ts';
+const shell = (inner) => html\`<form action=\${save}>\${inner}</form>\`;
+class RowBtn extends WebComponent({}) {
+  render() { return shell(html\`<button formaction=\${publishDraft}>Publish</button>\`); }
+}
+RowBtn.register('row-btn');
+`,
+    'app/page.ts': `import { html } from '@webjsdev/core';
+export default () => html\`<form><row-btn></row-btn></form>\`;
+`,
+  });
+  assert.deepEqual(hits(await checkConventions(dir)), [], 'the submitter may be spliced into the helper form');
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('silent on an unrecognised enctype, which falls back to a parseable body', async () => {
+  // `enctype` defaults to application/x-www-form-urlencoded for a missing AND an
+  // invalid value, so this form really does deliver.
+  const dir = await makeApp({
+    'components/row-btn.ts': rowBtn(),
+    'app/page.ts': `import { html } from '@webjsdev/core';
+export default () => html\`<form method="post" enctype="nonsense"><row-btn></row-btn></form>\`;
+`,
+  });
+  assert.deepEqual(hits(await checkConventions(dir)), []);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('silent when the submitter template is passed as a component PROPERTY', async () => {
+  // Lexically inside the form, but handed to <my-thing> and rendered in its own
+  // pass, so the renderer sees a cannot-tell and binds. The form delivers, so
+  // the shape works.
+  const dir = await makeApp({
+    'app/page.ts': `import { html } from '@webjsdev/core';
+import { publishDraft } from '#modules/feedback/actions/publish.server.ts';
+export default () => html\`<form method="post"><my-thing .tpl=\${html\`<button formaction=\${publishDraft}>P</button>\`}></my-thing></form>\`;
+`,
+  });
+  assert.deepEqual(hits(await checkConventions(dir)), []);
+  await rm(dir, { recursive: true, force: true });
+});
+
 test('silent when the tag has no call site anywhere in the app', async () => {
   const dir = await makeApp({
     'components/row-btn.ts': rowBtn(),
@@ -260,7 +308,7 @@ export default () => html\`<form><button formaction=\${publishDraft}>Publish</bu
   assert.match(v[0].file, /page\.ts/);
   // The same-scan case is a RENDER error, not the silent one, so it says so.
   assert.match(v[0].message, /SAME template/);
-  assert.match(v[0].message, /renderer refuses this shape/);
+  assert.match(v[0].message, /refuses this shape outright/);
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -275,7 +323,7 @@ export default () => html\`<form method="post"><button formaction=\${publishDraf
   });
   const v = hits(await checkConventions(dir));
   assert.equal(v.length, 1);
-  assert.match(v[0].message, /renderer refuses this shape/);
+  assert.match(v[0].message, /refuses this shape outright/);
   await rm(dir, { recursive: true, force: true });
 });
 
