@@ -21,7 +21,7 @@
  * connected models the real cause: as raw parsed markup it is 0px tall, and it
  * reaches its real size only once its own render has run.
  */
-import { enableClientRouter, disableClientRouter, _snapshotCache, _setCurrentPageUrl } from '../../../src/router-client.js';
+import { enableClientRouter, disableClientRouter, navigate, _snapshotCache, _setCurrentPageUrl } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
 import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
@@ -200,6 +200,65 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     navGuard.remove();
     enableClientRouter();
   }
+
+  test('anchoring WORKS again once the window has closed', async () => {
+    // The inverse of the headline, and the regression that would matter most if
+    // this fix were wrong: suppression is temporary, so once the restore is over
+    // the browser must be holding the reader's position again exactly as it does
+    // on any other page. Asserting only that the inline property is gone would
+    // not catch a release that cleared the property while leaving anchoring
+    // broken some other way, so this asserts the BEHAVIOUR: growth above the
+    // viewport moves `scrollY` again.
+    await setup({ instantRevalidation: true });
+    try {
+      await goBack();
+      await new Promise((r) => setTimeout(r, 900));   // past the floor
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
+        'precondition: the window is closed');
+
+      const before = window.scrollY;
+      const grower = document.createElement('div');
+      grower.style.height = GROWTH + 'px';
+      const region = document.querySelector('wj-grow-very-late-1310');
+      region.parentNode.insertBefore(grower, region);
+      // Anchoring acts at layout, so give it a frame to compensate.
+      await frame();
+      await frame();
+      assert.ok(Math.abs((window.scrollY - before) - GROWTH) < 5,
+        'with the window closed the browser holds the visual position again, '
+        + `so ${GROWTH}px inserted above the viewport moves scrollY by that much `
+        + `(moved ${window.scrollY - before})`);
+      grower.remove();
+    } finally { await teardown(); }
+  });
+
+  test('a forward navigation opens no window', async () => {
+    // The fix is scoped to the popstate cache-hit branch. Every other scroll
+    // path lands at offset 0 or targets an element, so anchoring is either inert
+    // or correct there, and touching it would be a regression rather than a fix.
+    // The instant stub, since a forward nav AWAITS its fetch (the popstate path
+    // does not, which is why the other cases can hold it open).
+    await setup({ instantRevalidation: true });
+    try {
+      await navigate(location.origin + entryUrl('forward-target'));
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
+        'a forward nav never suppresses anchoring');
+    } finally { await teardown(); }
+  });
+
+  test('a revalidation that never settles still releases on the ceiling', async () => {
+    // The ceiling exists so a hung fetch cannot leave anchoring off for the life
+    // of the page. Nothing else would ever release this window: the floor has
+    // passed and the fetch never answers.
+    await setup();
+    try {
+      await goBack();
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), 'none');
+      await new Promise((r) => setTimeout(r, 2400));   // past the 2s ceiling
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
+        'the ceiling releases a window whose revalidation never came back');
+    } finally { await teardown(); }
+  });
 
   test('the restore opens a scroll-anchoring window', async () => {
     await setup();
