@@ -72,11 +72,26 @@ test('scanSeeds ingests per-element [data-webjs-seed] carriers and strips the at
   assert.equal(carrier.getAttribute('data-webjs-seed'), null, 'the attribute is removed after ingest');
 });
 
-test('first-write-wins: an earlier seed is not clobbered by a duplicate key', async () => {
+test('last-write-wins: a later render\'s seed replaces an unconsumed earlier one', async () => {
+  // This was first-write-wins until #1309. Its stated rationale ("an
+  // already-consumed seed is never clobbered") described a case that cannot
+  // occur, because a hit DELETES its key, so a duplicate could only ever mean
+  // "a later render seeded a key an earlier render left unconsumed" and the old
+  // rule handed the component the value from the render no longer on screen.
   const a = await stringify({ 'h/f/[1]': 'first' });
   const b = await stringify({ 'h/f/[1]': 'second' });
   scanSeeds(root([el('script', a), el('script', b)]));
-  assert.equal(takeSeed('h', 'f', '[1]'), 'first');
+  assert.equal(takeSeed('h', 'f', '[1]'), 'second');
+});
+
+test('staleness counterfactual: a soft nav\'s seed wins over the previous page\'s unconsumed one', async () => {
+  // Two SEPARATE scans, the shape `applySwap` produces: render 1 seeds a key
+  // nothing consumes (its component elided), then a soft navigation scans
+  // render 2's block for the same key. Reverting `ingest` to first-write-wins
+  // makes this return 'render-1-value'.
+  scanSeeds(root([el('script', await stringify({ 'h/getUser/[1]': 'render-1-value' }))]));
+  scanSeeds(root([el('script', await stringify({ 'h/getUser/[1]': 'render-2-value' }))]));
+  assert.equal(takeSeed('h', 'getUser', '[1]'), 'render-2-value');
 });
 
 test('takeSeed never throws when there is no document (server / no carriers)', () => {

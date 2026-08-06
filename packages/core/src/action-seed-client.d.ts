@@ -15,3 +15,16 @@ export function scanSeeds(root?: ParentNode): void;
  * Keyed `hash/fn/argsKey`; the first call lazily scans the initial document.
  */
 export function takeSeed(hash: string, fnName: string, argsKey: string): unknown;
+
+/**
+ * The cumulative seed counters for this page session (#1309). `ingested` and
+ * `replaced` are what `scanSeeds` merged; `hits` and `misses` are what the
+ * generated RPC stubs asked for; `pending` is what is still unconsumed.
+ */
+export function seedStats(): {
+  ingested: number;
+  replaced: number;
+  hits: number;
+  misses: number;
+  pending: number;
+};

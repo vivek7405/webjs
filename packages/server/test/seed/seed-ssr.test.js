@@ -95,7 +95,10 @@ test('the SSR HTML carries the seed payload, keyed exactly as the stub looks it 
   assert.match(html, /data-y="2020"/, 'rich Date resolved server-side');
 
   // The seed script is present and keyed by hashFile(actionPath)/getUser/[1].
-  const m = html.match(/<script type="application\/json" id="__webjs-seeds">([\s\S]*?)<\/script>/);
+  // The handler is `dev: true`, so the block also carries the #1309
+  // `data-webjs-dev` marker; the attribute list is tolerated here and asserted
+  // exactly in seed-observability.test.js.
+  const m = html.match(/<script type="application\/json" id="__webjs-seeds"[^>]*>([\s\S]*?)<\/script>/);
   assert.ok(m, 'a __webjs-seeds script is emitted');
   const hash = await hashFile(actionPath);
   const key = `${hash}/getUser/${await stringify([1])}`;
