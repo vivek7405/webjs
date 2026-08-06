@@ -68,6 +68,82 @@ test('a non-erasable-TS module in dev pushes a frame with the file + the no-eras
   assert.match(tsFrame.hint || '', /erasable/i, 'the no-non-erasable hint is in the frame (not only a JS comment)');
 });
 
+test('a render frame is stamped with the URL that produced it (#1047)', async () => {
+  const appDir = makeApp({
+    'app/crash/page.js': 'export default function P() {\n  throw new Error("kaboom scope");\n}\n',
+  });
+  const frames = [];
+  const app = await createRequestHandler({ appDir, dev: true, onDevError: (f) => frames.push(f) });
+
+  await app.handle(new Request('http://x/crash?from=list'));
+  assert.equal(frames.length, 1, 'one frame pushed');
+  assert.equal(
+    frames[0].url, '/crash?from=list',
+    'the frame names the path AND query, the form the browser sees in location',
+  );
+});
+
+test('a speculative prefetch render pushes NO frame and does not become the retained error (#1047)', async () => {
+  const appDir = makeApp({
+    'app/page.js': "export default function P() { return 'home'; }\n",
+    'app/crash/page.js': 'export default function P() {\n  throw new Error("kaboom prefetch");\n}\n',
+  });
+  const frames = [];
+  const app = await createRequestHandler({ appDir, dev: true, onDevError: (f) => frames.push(f) });
+
+  // The exact request the client router's link prefetch sends.
+  const res = await app.handle(new Request('http://x/crash', {
+    headers: { 'x-webjs-router': '1', 'x-webjs-prefetch': '1' },
+  }));
+  assert.equal(res.status, 500, 'the prefetched page still renders its 500 (the response is unchanged)');
+  assert.equal(frames.length, 0, 'hovering a link to a throwing page raises no overlay');
+  assert.equal(app.getLastDevError(), null, 'and never becomes the frame replayed to a new tab');
+
+  // The same URL fetched normally (a real navigation) still reports.
+  await app.handle(new Request('http://x/crash'));
+  assert.equal(frames.length, 1, 'a real visit to the same page still reports');
+  assert.equal(frames[0].url, '/crash');
+});
+
+test('a successful render supersedes a retained error for the SAME url only (#1047)', async () => {
+  const appDir = makeApp({
+    'app/page.js': "export default function P() { return 'home'; }\n",
+    'app/flaky/page.js': "export default function P() {\n  if (!globalThis.__wjFixed) throw new Error('kaboom flaky');\n  return 'fixed';\n}\n",
+  });
+  const app = await createRequestHandler({ appDir, dev: true });
+
+  await app.handle(new Request('http://x/flaky'));
+  assert.equal(app.getLastDevError()?.url, '/flaky', 'the error is retained for replay');
+
+  // A good render of a DIFFERENT page must leave it standing: the user may
+  // still be looking at /flaky.
+  await app.handle(new Request('http://x/'));
+  assert.equal(app.getLastDevError()?.url, '/flaky', 'an unrelated good render does not erase it');
+
+  // A good render of the SAME page supersedes it.
+  globalThis.__wjFixed = true;
+  try {
+    await app.handle(new Request('http://x/flaky'));
+    assert.equal(app.getLastDevError(), null, 'the page recovered, so the retained frame is dropped');
+  } finally { delete globalThis.__wjFixed; }
+});
+
+test('the stamped url carries webjs.basePath, so the gate works on a sub-path deploy (#1047)', async () => {
+  const appDir = makeApp({
+    'package.json': JSON.stringify({ name: 'bp', type: 'module', webjs: { basePath: '/app' } }),
+    'app/crash/page.js': 'export default function P() {\n  throw new Error("kaboom basepath");\n}\n',
+  });
+  const frames = [];
+  const app = await createRequestHandler({ appDir, dev: true, onDevError: (f) => frames.push(f) });
+
+  await app.handle(new Request('http://x/app/crash'));
+  assert.equal(frames.length, 1, 'the sub-path request still renders + reports');
+  assert.equal(
+    frames[0].url, '/app/crash',
+    'the base path is put back, because the browser location carries it',
+  );
+});
+
 test('PROD counterfactual: no frame is built and the overlay client 404s', async () => {
   const appDir = makeApp({
     'app/page.js': 'export default function P() {\n  throw new Error("kaboom prod");\n}\n',

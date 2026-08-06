@@ -47,6 +47,14 @@ test('dev serves the reload SharedWorker, and the client uses it with a direct E
   assert.match(clientSrc, /catch\s*\(_\)\s*\{\s*__webjsDirectEvents/, 'a worker failure falls back');
   // The overlay still renders on the main thread (a worker has no DOM).
   assert.match(clientSrc, /renderDevOverlay/, 'the error overlay still renders in the client');
+  // ...and it tracks the page actually on screen (#1047). The gate lives in the
+  // inlined module, so what ships has to be the module PLUS this one call.
+  assert.match(clientSrc, /function installDevOverlayNavSync/, 'the nav sync is inlined');
+  assert.match(clientSrc, /^installDevOverlayNavSync\(\);$/m, 'and the client installs it');
+  // The inlined modules are `export`-stripped, so a leftover `export` keyword
+  // would be a syntax error in the classic script the browser runs.
+  assert.ok(!/\bexport\s/.test(clientSrc), 'no export keyword survives into the classic script');
+  assert.doesNotThrow(() => new Function(clientSrc), 'the emitted client parses');
 
   const worker = await app.handle(new Request('http://x/__webjs/reload-worker.js'));
   assert.equal(worker.status, 200);

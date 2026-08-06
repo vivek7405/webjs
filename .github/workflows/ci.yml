@@ -194,10 +194,15 @@ jobs:
       # per-test timeout) since each boots the real CLI + polls for readiness;
       # the node:test integration versions are node:http-listener-specific and
       # denylisted in run-bun-tests.js.
-      - name: webjs dev extra-watch + reload-retry on Bun
+      # dev-overlay-scope rides here for the same reason: each listener shell
+      # replays the retained dev error frame with its own code (node writes into
+      # a node:http res, Bun enqueues into a ReadableStream controller), so the
+      # frame's new url field has to be proven on both (#1047).
+      - name: webjs dev extra-watch + reload-retry + overlay-scope on Bun
         run: |
           bun test/bun/dev-extra-watch.mjs
           bun test/bun/dev-reload-retry.mjs
+          bun test/bun/dev-overlay-scope.mjs
       # The app-source deploy signal (#899) is derived from an fs source walk +
       # a node:crypto digest, so it must be byte-identical on the Bun.serve path.
       - name: App-source deploy signal on Bun
@@ -374,6 +379,15 @@ jobs:
         env:
           WEBJS_E2E: '1'
         run: node --test test/e2e/browser-harness.test.mjs
+      # Dev error overlay URL scope (#1047): spawns `webjs dev` against a fixture
+      # app and drives a real browser, because both halves of the bug are only
+      # observable there. Hovering a link to a throwing page fires a real
+      # prefetch GET (no navigation at all), and the overlay's survival across a
+      # client-router swap is a DOM fact, not a server one.
+      - name: Run dev-overlay-nav e2e (#1047)
+        env:
+          WEBJS_E2E: '1'
+        run: node --test test/e2e/dev-overlay-nav.test.mjs
       # Touch-emulation e2e for interactive Tier-2 ui components (#745/#747):
       # boots the site serving the gallery and taps hover-card / dropdown-submenu / sonner
       # under a Chromium iPhone context (faithful touch events, no real device).

@@ -91,9 +91,19 @@ export function readCodeFrame(file, line, column, context = 3) {
 /**
  * Build a dev error frame from an error. DEV-ONLY (the caller gates on `dev`).
  *
+ * `opts.url` stamps the frame with the request URL that produced it (#1047).
+ * Only a `render` frame carries one, and the browser overlay uses it to refuse a
+ * frame belonging to a page the tab is not looking at (another tab's crash, a
+ * background render of some other url, a page navigated away from). A frame with
+ * no url renders unconditionally, which is what a `rebuild` / `ts-strip` frame
+ * wants: those describe a still-broken build, not one URL.
+ *
+ * A speculative link prefetch is NOT in that list, and cannot be: `dev.js` drops
+ * the report hook for one, so no frame is ever built for it to refuse.
+ *
  * @param {unknown} error
- * @param {{ kind?: 'render' | 'ts-strip' | 'rebuild', appDir?: string, file?: string, line?: number, column?: number, hint?: string }} [opts]
- * @returns {{ kind: string, message: string, stack: string|null, file: string|null, line: number|null, column: number|null, codeFrame: string|null, hint: string|null }}
+ * @param {{ kind?: 'render' | 'ts-strip' | 'rebuild', appDir?: string, file?: string, line?: number, column?: number, hint?: string, url?: string }} [opts]
+ * @returns {{ kind: string, message: string, stack: string|null, file: string|null, line: number|null, column: number|null, codeFrame: string|null, hint: string|null, url: string|null }}
  */
 export function buildDevErrorFrame(error, opts = {}) {
   const err = error instanceof Error ? error : new Error(String(error));
@@ -125,5 +135,6 @@ export function buildDevErrorFrame(error, opts = {}) {
     column,
     codeFrame,
     hint: opts.hint || null,
+    url: typeof opts.url === 'string' && opts.url ? opts.url : null,
   };
 }
