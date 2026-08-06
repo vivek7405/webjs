@@ -156,13 +156,6 @@ probes in `test/e2e/e2e.test.mjs` can assert that no dead JS ships.
   the boot script actually keeps the module. The probe asserts its module is
   downloaded on a run where `build-stamp` on the same page still is not.
 
-Two of these fixtures carry doc comments that deliberately AVOID writing a
-literal tag in angle brackets or a `whenDefined` call shape, because the
-elision analyser scans raw source including comments, so such prose would
-register as a real rendered tag or observation and the fixture would ship
-for the wrong reason (making its test pass vacuously). Keep that discipline
-when editing them.
-
 ### Client-router script reactivation (#1102)
 `app/script-swap/` exists ONLY as an e2e fixture. Its layout emits two inline
 scripts as SIBLINGS of `${children}`, one on each side, so both are TOP-LEVEL

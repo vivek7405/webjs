@@ -1102,7 +1102,8 @@ async function main() {
             ? `Elision dropped ${dropped.size} module(s) across that corpus, so the comparison was a real one.`
             : 'Elision dropped NO modules across that corpus: nothing on these routes was elidable, so '
               + 'there was nothing for elision to change. The comparison holds, it just had no work to '
-              + 'do. Run `webjs elision` to see why every module here ships.'),
+              + 'do. Run `WEBJS_ELIDE=1 webjs elision` to see why every module here ships (the same '
+              + 'override this run used, so the verdict matches even in an app that opts out).'),
         );
         console.log(VERIFY_CAVEAT);
         break;

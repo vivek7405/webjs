@@ -13,11 +13,6 @@ import { WebComponent, html } from '@webjsdev/core';
  * keeps the module. The e2e probe asserts the browser downloads THIS module on
  * a run where the unobserved build-stamp element is still not downloaded, so
  * the assertion cannot pass because elision stopped working altogether.
- *
- * The doc comments here deliberately avoid literal tag-in-angle-brackets and
- * whenDefined-call syntax, because the elision analyser scans raw source
- * (comments included), so such prose would be read as a real rendered tag or
- * observation and this fixture would ship for the wrong reason.
  */
 export class ForcedBadge extends WebComponent {
   static interactive = true;

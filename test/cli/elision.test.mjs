@@ -230,6 +230,11 @@ test('webjs elision --verify says so when elision dropped nothing', () => {
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /Elision dropped NO modules/);
   assert.match(r.stdout, /nothing on these routes was elidable/);
+  // The follow-up hint must carry the override: --verify forces elision on,
+  // while the plain report path reads the config, so on an opted-out app a bare
+  // `webjs elision` would answer "elision is disabled" instead of the verdict this
+  // run just pointed the author at.
+  assert.match(r.stdout, /WEBJS_ELIDE=1 webjs elision/);
   // Exit 0 is deliberate. The command's question is whether elision changed the
   // bytes this app serves, and "it dropped nothing" answers that truthfully.
   // That is NOT the zero-route vacuity above, where the question was never
