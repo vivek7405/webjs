@@ -48,13 +48,15 @@ Badge.register(TAG);
 
 /**
  * An interactive component, as a template literal rather than a plain string.
- * The scanner-fuzz corpus sweep reads every file under `test/elision`, and
- * `redactStringsAndTemplates` keeps a plain-string body VERBATIM while blanking
- * a template one. A class in a plain string therefore reaches the sweep's name
- * window but not its class-body extractor, the two counts disagree, and the
- * internal assert throws into the miss list, which FAILS the suite. A bare
- * over-match would be fine, that direction is explicitly accepted; the count
- * mismatch is what reds it. Verified by reverting this fixture.
+ * The scanner-fuzz corpus sweep reads every file under `test/elision`.
+ * `redactStringsAndTemplates` keeps a plain-string body VERBATIM, so the
+ * embedded html-template BACKTICK survives into the mask, `matchClosingBrace`
+ * returns -1, and the class-body extractor yields 0 bodies against 1
+ * name-window match. That internal count assert THROWS, the corpus test's
+ * try/catch pushes the throw into `misses`, and `misses` is asserted, so the
+ * suite FAILS. A bare over-match would be fine (that direction is explicitly
+ * accepted); this is a count mismatch, which is not the same thing. Verified
+ * both by reverting a fixture and by an independent check.
  */
 const INTERACTIVE_COUNTER = `
 import { WebComponent, html } from '@webjsdev/core';

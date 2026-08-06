@@ -55,11 +55,17 @@ Counter.register('my-counter');
 /**
  * A badge whose own source is inert but whose IMPORT does client work.
  *
- * Fixture sources here are template literals, never plain strings: the
- * scanner-fuzz corpus sweep reads every file under `test/elision` and compares
- * its lexical class window against a real AST, and redaction blanks a template
- * body while keeping a plain string verbatim. A class written in a plain string
- * would therefore skew that differential.
+ * Fixture sources here are template literals, never plain strings. The
+ * scanner-fuzz corpus sweep reads every file under `test/elision`.
+ * `redactStringsAndTemplates` keeps a plain-string body VERBATIM, so the
+ * embedded html-template BACKTICK survives into the mask, `matchClosingBrace`
+ * returns -1, and the class-body extractor yields 0 bodies against 1
+ * name-window match. That internal count assert THROWS, the corpus test's
+ * try/catch pushes the throw into `misses`, and `misses` is asserted, so the
+ * suite FAILS. A bare over-match would be fine (that direction is explicitly
+ * accepted); this is a count mismatch, which is not the same thing. Verified
+ * both by reverting a fixture and by an independent check.
+ * This file is where that was first hit.
  */
 const BADGE_IMPORTING_SIGNAL = `
 import { WebComponent, html } from '@webjsdev/core';
