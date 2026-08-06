@@ -113,6 +113,13 @@ test('the SSR HTML carries the seed payload, keyed exactly as the stub looks it 
   assert.ok(obj[key].joined instanceof Date);
 });
 
+test('a dev render reports its counts on X-Webjs-Seed and marks the block (#1309)', async () => {
+  const res = await handle(new Request('http://localhost/'));
+  assert.equal(res.headers.get('x-webjs-seed'), 'collected=1, emitted=1');
+  const html = await res.text();
+  assert.match(html, /id="__webjs-seeds" data-webjs-dev="ok"/, 'the client dev gate rides the block');
+});
+
 test('the action ran exactly once at SSR (one rendered component, no double-call)', async () => {
   // The action's counter is cumulative across the process, so assert the DELTA
   // of one render is exactly 1 (one rendered <user-card>, no double-invoke).

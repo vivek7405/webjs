@@ -393,3 +393,96 @@ test('a non-function export registers no identity', () => {
   assert.equal(actionIdentityOf(__actionWrap(FILE, 'VERSION', '1.0')), null);
   assert.equal(actionIdentityOf(undefined), null);
 });
+
+// --- Dev observability (#1309) ----------------------------------------------
+//
+// The determinism assertion is reached through `__actionWrap` + `collectSeeds`,
+// the same path a real render takes. `registerActionHooks` sets `_seedEnabled`
+// / `_devMode` BEFORE its `_registered` idempotency guard, so a second call in a
+// test still flips the flags. Each test uses its own function NAME because the
+// warning is deduped per `hash/fn` for the process lifetime.
+
+/** Run `fn` with `console.warn` captured; returns the captured messages. */
+async function withWarn(fn, impl) {
+  const orig = console.warn;
+  const seen = [];
+  console.warn = impl || ((...a) => seen.push(a.join(' ')));
+  try { await fn(); } finally { console.warn = orig; }
+  return seen;
+}
+
+/** One `collectSeeds` render calling `fn` through the wrap with each arg list. */
+async function renderCalling(fnName, impl, argLists) {
+  const wrapped = __actionWrap(FILE, fnName, impl);
+  return collectSeeds(async () => { for (const args of argLists) await wrapped(...args); });
+}
+
+test('dev warns once when one render returns two DIFFERENT results for the same args', async () => {
+  await registerActionHooks({ seed: true, dev: true });
+  let n = 0;
+  const warns = await withWarn(() => renderCalling('flaky', async () => ({ n: ++n }), [[1], [1], [1]]));
+  assert.equal(warns.length, 1, 'deduped per action function, however many duplicates');
+  assert.match(warns[0], /two DIFFERENT results for the SAME arguments/);
+  assert.match(warns[0], /"flaky"/);
+});
+
+test('dev does NOT warn for structurally equal but distinct objects', async () => {
+  await registerActionHooks({ seed: true, dev: true });
+  // `Object.is` fails on two fresh objects, so this only passes if the fallback
+  // compares through the serializer, which is what actually reaches a client.
+  const warns = await withWarn(() => renderCalling('fresh', async () => ({ id: 1, at: new Date(0) }), [[1], [1]]));
+  assert.deepEqual(warns, []);
+});
+
+test('dev does NOT warn for the same function called with DIFFERENT args', async () => {
+  await registerActionHooks({ seed: true, dev: true });
+  // The counterfactual for comparing on the FULL key: keying the check on
+  // `hash/fn` makes this fire on every legitimate second call.
+  const warns = await withWarn(() => renderCalling('perArg', async (id) => ({ id }), [[1], [2], [3]]));
+  assert.deepEqual(warns, []);
+});
+
+test('the determinism assertion is dev-only', async () => {
+  await registerActionHooks({ seed: true, dev: false });
+  let n = 0;
+  const warns = await withWarn(() => renderCalling('prodFlaky', async () => ({ n: ++n }), [[1], [1]]));
+  assert.deepEqual(warns, []);
+  await registerActionHooks({ seed: true, dev: true });
+});
+
+test('fail-open: a throwing console.warn still records the seed and still emits the block', async () => {
+  await registerActionHooks({ seed: true, dev: true });
+  let n = 0;
+  let collector;
+  await withWarn(
+    async () => { ({ collector } = await renderCalling('throwyWarn', async () => ({ n: ++n }), [[1], [1]])); },
+    () => { throw new Error('logger exploded'); },
+  );
+  const key = `${await hashFile(FILE)}/throwyWarn/${await stringify([1])}`;
+  assert.ok(collector.has(key), 'the seed is recorded even when the diagnostic throws');
+  assert.deepEqual(collector.get(key), { n: 2 }, 'the LAST result wins, as documented');
+  const html = await buildSeedScript(collector);
+  assert.ok(html.includes('__webjs-seeds'), 'the block still serializes');
+});
+
+test('buildSeedScript: the dev marker is emitted even for an EMPTY collector', async () => {
+  const empty = await buildSeedScript(new Map(), { dev: true });
+  assert.match(empty, /^<script type="application\/json" id="__webjs-seeds" data-webjs-dev="ok">/);
+  // The body is a real (empty) payload, so the client's `ingest` parses it and
+  // reads the marker rather than bailing on a malformed block.
+  assert.deepEqual(parse(empty.replace(/^<script[^>]*>/, '').replace(/<\/script>$/, '')), {});
+  assert.match(await buildSeedScript(null, { dev: true, reason: 'streamed' }), /data-webjs-dev="streamed"/);
+});
+
+test('buildSeedScript: prod output is byte-identical to before the marker', async () => {
+  // The prod-leak counterfactual. Passing `dev: false` (or nothing) must not
+  // change a single byte of what shipped before #1309.
+  assert.equal(await buildSeedScript(new Map()), '');
+  assert.equal(await buildSeedScript(new Map(), { dev: false }), '');
+  assert.equal(await buildSeedScript(null, {}), '');
+  const collector = new Map([['h/f/[1]', { ok: true }]]);
+  const bare = await buildSeedScript(collector);
+  assert.equal(await buildSeedScript(collector, { dev: false }), bare);
+  assert.equal(await buildSeedScript(collector, { reason: 'streamed' }), bare);
+  assert.ok(!bare.includes('data-webjs-dev'), 'no marker attribute in prod');
+});

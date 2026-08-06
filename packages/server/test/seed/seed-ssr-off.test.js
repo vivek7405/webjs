@@ -79,3 +79,11 @@ test('the SSR HTML has NO seed payload but still carries the first-paint data', 
   assert.match(html, /User 1/, 'SSR data still in the first paint (PE-safe) with seeding off');
   assert.doesNotMatch(html, /__webjs-seeds/, 'no seed payload is emitted when seeding is off');
 });
+
+test('a dev render of a seeding-DISABLED app reports X-Webjs-Seed: off', async () => {
+  // #1309: `off` is kept distinct from `collected=0` so a seeding-disabled app
+  // never looks like a seeding-BROKEN one. This is why the counting lives with
+  // the collector rather than behind `seedingEnabled()`.
+  const res = await handle(new Request('http://localhost/'));
+  assert.equal(res.headers.get('x-webjs-seed'), 'off');
+});
