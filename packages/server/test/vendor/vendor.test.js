@@ -1010,7 +1010,7 @@ test('pinAll: returns noBareImports without writing pin file when no bare import
   await writeFile(join(dir, 'package.json'), '{"name":"tmp","version":"0.0.0"}');
   await writeFile(join(dir, 'app', 'page.ts'), `export default () => 'no bare imports here';`);
   try {
-    // live-cdn-ok: no bare imports, so pinAll returns before the resolve.
+    // Offline: no bare imports, so pinAll returns before the resolve.
     const result = await pinAll(dir);
     assert.ok(result.noBareImports, 'noBareImports must be true');
     assert.equal(result.failed, undefined, 'failed must be absent (not a failure, just nothing to do)');
@@ -1034,7 +1034,7 @@ test('pinAll: reports found-but-uninstalled specifiers instead of noBareImports 
     'app/page.ts': `import * as THREE from 'three';\nimport { OrbitControls } from 'three/addons/controls/OrbitControls.js';`,
   });
   try {
-    // live-cdn-ok: every specifier is dropped by the version gate, so installs is empty.
+    // Offline: every specifier is dropped by the version gate, so installs is empty.
     const result = await pinAll(dir);
     assert.equal(result.noBareImports, undefined, 'must NOT claim there were no bare imports');
     assert.ok(Array.isArray(result.droppedUnresolvable), 'droppedUnresolvable must be an array');
@@ -1760,7 +1760,7 @@ test('pinAll: rejects unknown provider with a clear error', async () => {
   await writeFile(join(dir, 'package.json'), '{"name":"tmp"}');
   try {
     await assert.rejects(
-      // live-cdn-ok: the provider is rejected before any call is dialled.
+      // Offline: the provider is rejected before any call is dialled.
       () => pinAll(dir, { from: 'not-a-real-cdn' }),
       /unknown provider 'not-a-real-cdn'/,
     );
@@ -1818,7 +1818,7 @@ test('auditPinned: no pin file returns zero-checked', async () => {
   const dir = join(tmpdir(), `webjs-audit-empty-${Date.now()}`);
   await mkdir(dir, { recursive: true });
   try {
-    // live-cdn-ok: no pin file, so it short-circuits before the registry call.
+    // Offline: no pin file, so it short-circuits before the registry call.
     const { vulnerable, totalChecked } = await auditPinned(dir);
     assert.equal(totalChecked, 0);
     assert.deepEqual(vulnerable, []);
@@ -1831,7 +1831,7 @@ test('findOutdated: no pin file returns []', async () => {
   const dir = join(tmpdir(), `webjs-outdated-empty-${Date.now()}`);
   await mkdir(dir, { recursive: true });
   try {
-    // live-cdn-ok: no pin file, so it short-circuits before the registry call.
+    // Offline: no pin file, so it short-circuits before the registry call.
     assert.deepEqual(await findOutdated(dir), []);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -1843,7 +1843,7 @@ test('updatePinned: rejects unknown provider', async () => {
   await mkdir(dir, { recursive: true });
   try {
     await assert.rejects(
-      // live-cdn-ok: the provider is rejected before any call is dialled.
+      // Offline: the provider is rejected before any call is dialled.
       () => updatePinned(dir, { from: 'not-real' }),
       /unknown provider/,
     );
@@ -1859,7 +1859,7 @@ test('updatePinned: no outdated returns noOutdated:true without writing', async 
   const dir = join(tmpdir(), `webjs-update-clean-${Date.now()}`);
   await mkdir(dir, { recursive: true });
   try {
-    // live-cdn-ok: an empty pin file short-circuits before the registry call.
+    // Offline: an empty pin file short-circuits before the registry call.
     const result = await updatePinned(dir);
     assert.ok(result.noOutdated);
     assert.deepEqual(result.updated, []);
@@ -1939,7 +1939,7 @@ test('auditPinned: surfaces network failure as errored:true', async () => {
   const origFetch = globalThis.fetch;
   globalThis.fetch = async () => { throw new Error('simulated network failure'); };
   try {
-    // live-cdn-ok: the test installs its own throwing fetch for its whole duration.
+    // Offline: the test installs its own throwing fetch for its whole duration.
     const result = await auditPinned(dir);
     assert.equal(result.errored, true);
     assert.deepEqual(result.vulnerable, []);
@@ -1972,7 +1972,7 @@ test('pinAll: respects existing pin file provider when --from is not passed', as
     // without writing. The interesting assertion: it didn't throw
     // and pinAll read the provider for whatever it would have done.
     // Verify by checking pin file's provider field unchanged.
-    // live-cdn-ok: the app has no bare imports, so pinAll returns before the resolve.
+    // Offline: the app has no bare imports, so pinAll returns before the resolve.
     const result = await pinAll(dir);
     assert.ok(result.noBareImports);
     const file = await readPinFile(dir);
@@ -2069,7 +2069,7 @@ test('updatePinned: only counts a package as updated when at least one spec reso
     return /** @type any */ ({ ok: false, status: 404, json: async () => ({}) });
   };
   try {
-    // live-cdn-ok: the test installs its own fetch for its whole duration.
+    // Offline: the test installs its own fetch for its whole duration.
     const result = await updatePinned(dir);
     assert.deepEqual(result.updated, [],
       'no spec resolved, so updated[] must be empty even though findOutdated saw dayjs as outdated');
@@ -2119,7 +2119,7 @@ test('findOutdated: returns an Array, not undefined (ASI regression guard)', asy
   // No pin file → grouped is empty → no fetches → return empty array.
   // The interesting assertion is that the return value is an
   // ARRAY (.length accessible), not undefined.
-  // live-cdn-ok: the test installs its own fetch for its whole duration.
+  // Offline: the test installs its own fetch for its whole duration.
   const result = await findOutdated(dir);
   assert.ok(Array.isArray(result), 'findOutdated must always return an Array');
   assert.equal(result.length, 0);
