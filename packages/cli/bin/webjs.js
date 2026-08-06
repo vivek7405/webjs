@@ -149,7 +149,7 @@ const HELP = {
     summary: 'Verify project health. Each result carries a stable code so an agent branches on the failure kind.',
     options: [
       { flag: '--json', description: 'Emit the DoctorResult[] (with stable codes + severities) + a summary as JSON.' },
-      { flag: '--strict', description: 'Also fail the exit on warnings, not just hard failures.' },
+      { flag: '--strict', description: 'Also fail the exit on EVERY remaining warning, not just hard failures and gated errors.' },
     ],
     notes: [
       'Per-check severity is CONFIG, not a flag. Declare it in package.json under',
@@ -696,10 +696,11 @@ async function main() {
     }
     case 'doctor': {
       // Project-health checklist (#266). The checks are PURE (in lib/doctor.js);
-      // this branch only renders them and owns the exit code. By default the
-      // exit is non-zero iff a HARD check FAILS; warns are informational (env
-      // drift / pin staleness / version drift are the app's concern, not a
-      // broken toolchain). On top of that, an app declares per-check severity
+      // this branch only renders them and owns the exit code. The exit is
+      // non-zero when a HARD check FAILS or when a check the app gated `error`
+      // reports something; an UNGATED warn stays informational (env drift / pin
+      // staleness / version drift are the app's concern, not a broken
+      // toolchain). An app declares per-check severity
       // in its package.json `webjs.doctor.gate` (#1257), which is what lets CI
       // gate on a chosen subset without `--strict` making every warning fatal.
       const { runDoctorChecks, readDoctorPolicy, applyDoctorPolicy, DOCTOR_CODES, DOCTOR_SEVERITIES } =
@@ -759,7 +760,8 @@ async function main() {
       const off = counts.off || 0;
       // `--strict` also fails the exit on warnings, so an agent can gate on a
       // fully-clean toolchain (drift / staleness / pin freshness) in a fix loop,
-      // not just on a hard toolchain break. Default keeps warnings non-fatal.
+      // not just on a hard toolchain break. Without it, a warn is fatal only
+      // where the app gated its code `error`, which folded into `fail` above.
       const failing = fail > 0 || (strict && warn > 0);
 
       // --json emits the raw DoctorResult[] (each carries a stable `code` and

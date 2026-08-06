@@ -46,7 +46,7 @@ webjs routes --json             # structured JSON (matches the MCP list_routes t
     <h3>webjs doctor</h3>
     <code-block>webjs doctor            # human-readable project-health checklist
 webjs doctor --json     # structured results (each with a stable code) + a summary
-webjs doctor --strict   # also fail the exit on warnings, not just hard failures</code-block>
+webjs doctor --strict   # also fail on EVERY remaining warning, not just hard failures and gated errors</code-block>
     <p>Per-check severity is <em>configuration</em>, not a flag. Declare it in <code>package.json</code> under <code>webjs.doctor.gate</code>, keyed by the stable code every result carries, on the same three-level scale ESLint uses. That is what lets CI gate on a chosen subset without <code>--strict</code> making every warning fatal, which is unusable on a runner (the git-hook, env-drift, vendor-pin, and framework-resolve checks are all environment-shaped and would fail a perfectly healthy build).</p>
     <code-block>&#123;
   "webjs": &#123;

@@ -44,7 +44,12 @@ lib/
                          check is unit-testable. `opts.nodeVersion` overrides the
                          running Node, `opts.vendor` injects the pin-freshness
                          `{ hasVendorPin, findOutdated }` pair (offline tests).
-                         The bin renders + owns the non-zero exit on a hard fail.
+                         `readDoctorPolicy(appDir)` + `applyDoctorPolicy(results,
+                         gate)` are the PURE severity-gate pair (#1257, over the
+                         `DOCTOR_SEVERITIES` scale); the checks stay unaware of
+                         policy and the bin composes them. The bin renders +
+                         owns the non-zero exit: a hard fail, or a check the app
+                         gated `error`.
                          Tests: `test/cli/doctor.test.mjs`.
   port.js                Port resolution for `webjs dev` / `start` (#447).
                          `loadAppEnv(appDir)` loads `<appDir>/.env` into
