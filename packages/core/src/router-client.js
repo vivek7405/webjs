@@ -301,6 +301,110 @@ let currentPageUrl = null;
  */
 let prevScrollRestoration = null;
 
+/**
+ * Hard ceiling on the restore window (#1310). The revalidation is a
+ * same-origin GET of a page the browser rendered moments ago, so this is
+ * generously past its p99. It exists only so a hung or never-settling fetch
+ * can never leave scroll anchoring suppressed for the life of the page.
+ */
+const ANCHOR_SUPPRESS_CEILING_MS = 2000;
+
+/**
+ * Inputs that mean the reader has taken over the viewport, so the restore is
+ * over and the browser's own anchoring should resume.
+ *
+ * NOT `scroll`. The router's own `scrollTo` and anchoring itself both fire
+ * `scroll`, so it cannot tell a reader apart from the restore it is guarding,
+ * and no threshold makes it able to. These are input events, so there is
+ * nothing to threshold out and the FIRST one closes the window. `keydown` is
+ * deliberately not narrowed to scrolling keys: any keypress means interaction,
+ * and closing early only restores the browser default, which is the safe
+ * direction to err in.
+ *
+ * @type {string[]}
+ */
+const ANCHOR_RELEASE_EVENTS = ['wheel', 'touchmove', 'keydown', 'pointerdown'];
+
+/**
+ * Closes the currently open restore window, or null when none is open.
+ * @type {(() => void) | null}
+ */
+let releaseScrollAnchor = null;
+
+/**
+ * Suppress the browser's scroll anchoring for the duration of a back/forward
+ * scroll restore (#1310).
+ *
+ * A snapshot's `scrollY` is recorded against the page at its SETTLED height.
+ * The restore replays that number onto a document that has only just been
+ * swapped in and is still shorter, because the components in the restored
+ * markup have not upgraded and re-rendered yet. When they do, content grows
+ * ABOVE the viewport, and scroll anchoring (`overflow-anchor: auto`, the UA
+ * default) holds the VISUAL position by adding that growth to `scrollY`. The
+ * offset is counted twice. On webjs.dev's `/ui/button` that lands the reader
+ * 763px too low, exactly the settled-minus-swapped height delta.
+ *
+ * Anchoring is right for a reader on a live page and wrong for exactly this
+ * window, where the restored number already accounts for the growth. So the
+ * window suppresses it rather than re-scrolling afterwards. A re-assert would
+ * have to fire on every growth, and a settling restore cannot be told apart
+ * from a `<webjs-suspense>` boundary streaming in (#471 / #473). Suppression
+ * never MOVES the viewport, it only withholds a correction, so it also cannot
+ * yank a reader who has already started scrolling.
+ *
+ * Chromium, Firefox, and WebKit all implement scroll anchoring and all three
+ * honour `overflow-anchor: none` on the root scroller, so there is no
+ * engine-specific path here.
+ *
+ * @returns {() => void} Idempotent release. Safe to call after the window has
+ *   already closed on user input or the ceiling.
+ */
+function suppressScrollAnchoring() {
+  if (typeof document === 'undefined' || !document.documentElement) return () => {};
+  // A second restore inside an open window supersedes the first.
+  if (releaseScrollAnchor) releaseScrollAnchor();
+  const root = document.documentElement;
+  // Save and restore the author's own inline value rather than blanking it,
+  // the same contract `prevScrollRestoration` keeps above.
+  const prev = root.style.getPropertyValue('overflow-anchor');
+  root.style.setProperty('overflow-anchor', 'none');
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let timer = null;
+  const release = () => {
+    // Only the window that installed this release may close it.
+    if (releaseScrollAnchor !== release) return;
+    releaseScrollAnchor = null;
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (typeof window !== 'undefined') {
+      for (const ev of ANCHOR_RELEASE_EVENTS) {
+        window.removeEventListener(ev, release, /** @type {any} */ ({ capture: true }));
+      }
+    }
+    if (prev) root.style.setProperty('overflow-anchor', prev);
+    else root.style.removeProperty('overflow-anchor');
+  };
+  releaseScrollAnchor = release;
+  timer = setTimeout(release, ANCHOR_SUPPRESS_CEILING_MS);
+  if (typeof window !== 'undefined') {
+    for (const ev of ANCHOR_RELEASE_EVENTS) {
+      window.addEventListener(ev, release, { capture: true, passive: true });
+    }
+  }
+  return release;
+}
+
+/**
+ * Run `fn` after two animation frames, so a just-applied DOM has laid out
+ * before it reads or acts. Falls back to a macrotask where
+ * `requestAnimationFrame` is absent (the linkedom-backed node test harness).
+ *
+ * @param {() => void} fn
+ */
+function afterTwoFrames(fn) {
+  if (typeof requestAnimationFrame !== 'function') { setTimeout(fn, 0); return; }
+  requestAnimationFrame(() => requestAnimationFrame(fn));
+}
+
 /** Enable the client router. Idempotent. */
 export function enableClientRouter() {
   if (enabled || typeof document === 'undefined') return;
@@ -371,6 +475,8 @@ export function disableClientRouter() {
     history.scrollRestoration = prevScrollRestoration;
     prevScrollRestoration = null;
   }
+  // Never leave a restore window open on <html> (#1310).
+  if (releaseScrollAnchor) releaseScrollAnchor();
   currentPageUrl = null;
 }
 
@@ -1369,14 +1475,28 @@ async function performNavigation(href, isPopState, frameId) {
           // Restore window scroll to where the user left it. Use
           // behavior:'instant' so an app-level `scroll-behavior: smooth`
           // stylesheet does not animate the restore (native nav jumps).
+          //
+          // `cached.scrollY` was recorded at the page's SETTLED height, and the
+          // DOM just swapped in is still shorter until its components upgrade
+          // and re-render. Suppress scroll anchoring across the restore, or the
+          // browser adds that late growth to the restored offset and the reader
+          // lands below where they left (#1310).
+          let releaseAnchor = () => {};
           if (typeof window !== 'undefined') {
+            releaseAnchor = suppressScrollAnchoring();
             window.scrollTo({ left: cached.scrollX, top: cached.scrollY, behavior: 'instant' });
           }
           // Fire-and-forget revalidation. Uses a fresh AbortController
           // since this background fetch is allowed to overlap with the
           // next foreground nav (it'll get aborted if a new nav lands).
+          //
+          // Closing the anchoring window on THIS revalidation's settle (plus two
+          // frames for the re-applied DOM to lay out) is what keeps the window
+          // tied to one restore. A height observer could not tell a settling
+          // restore from a streaming <webjs-suspense> boundary (#471 / #473).
           fetchAndApply(href, frameId, /* recordHistory */ false, optimisticState, 'GET', null, signal, myToken, /* revalidating */ true)
-            .catch(() => {});
+            .catch(() => {})
+            .then(() => afterTwoFrames(releaseAnchor));
           return;
         }
       }

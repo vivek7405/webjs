@@ -2047,6 +2047,107 @@ test('popstate cache restore scrolls instantly, not animated (#601)', async () =
   }
 });
 
+test('popstate cache restore suppresses scroll anchoring across the window (#1310)', async () => {
+  // The saved scrollY was recorded at the page's SETTLED height. The restored
+  // DOM lays out shorter until its components upgrade, and the browser's
+  // scroll anchoring then adds that late growth to the restored offset, so
+  // the reader lands below where they left. The restore suppresses anchoring
+  // for its duration instead of re-scrolling afterwards.
+  const origLoc = globalThis.location;
+  const origFetch = globalThis.fetch;
+  const prevPageUrl = _currentPageUrl();
+  const root = document.documentElement;
+  _snapshotCache.set('/anchor-here', {
+    html: '<!doctype html><html><head></head><body><!--wj:children:/:/-->cached<!--/wj:children:/--></body></html>',
+    scrollX: 0,
+    scrollY: 800,
+  });
+  globalThis.location = /** @type any */ ({
+    href: 'http://localhost/anchor-here',
+    pathname: '/anchor-here', origin: 'http://localhost', search: '', hash: '',
+  });
+  _setCurrentPageUrl('http://localhost/elsewhere');
+  globalThis.fetch = async () => new Response('<html></html>', {
+    status: 200, headers: { 'content-type': 'text/html' },
+  });
+  const origWinScrollTo = globalThis.window?.scrollTo;
+  const origGlobalScrollTo = globalThis.scrollTo;
+  globalThis.scrollTo = /** @type any */ (() => {});
+  if (globalThis.window) globalThis.window.scrollTo = /** @type any */ (() => {});
+  document.head.innerHTML = '';
+  document.body.innerHTML = '<!--wj:children:/:/-->before-pop<!--/wj:children:/-->';
+  try {
+    // The cache-hit popstate branch runs synchronously through the restore,
+    // so the window is already open when _onPopState returns.
+    _onPopState({});
+    assert.equal(root.style.getPropertyValue('overflow-anchor'), 'none',
+      'the restore opens the window, so the browser cannot add late growth ' +
+      'to the offset it just replayed');
+    // The window closes on THIS revalidation settling plus two frames.
+    await new Promise((r) => setTimeout(r, 20));
+    assert.ok(!root.style.getPropertyValue('overflow-anchor'),
+      'the window closes once the revalidation settles, leaving no residue ' +
+      'on <html>');
+  } finally {
+    _snapshotCache.delete('/anchor-here');
+    _setCurrentPageUrl(prevPageUrl);
+    globalThis.location = origLoc;
+    globalThis.fetch = origFetch;
+    globalThis.scrollTo = origGlobalScrollTo;
+    if (globalThis.window) globalThis.window.scrollTo = origWinScrollTo;
+    root.style.removeProperty('overflow-anchor');
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+  }
+});
+
+test('disableClientRouter closes an open scroll-anchor window (#1310)', async () => {
+  // The router must leave nothing of its own on <html> after it is disabled.
+  const origLoc = globalThis.location;
+  const origFetch = globalThis.fetch;
+  const prevPageUrl = _currentPageUrl();
+  const root = document.documentElement;
+  _snapshotCache.set('/anchor-disable', {
+    html: '<!doctype html><html><head></head><body><!--wj:children:/:/-->cached<!--/wj:children:/--></body></html>',
+    scrollX: 0,
+    scrollY: 800,
+  });
+  globalThis.location = /** @type any */ ({
+    href: 'http://localhost/anchor-disable',
+    pathname: '/anchor-disable', origin: 'http://localhost', search: '', hash: '',
+  });
+  _setCurrentPageUrl('http://localhost/elsewhere');
+  globalThis.fetch = async () => new Response('<html></html>', {
+    status: 200, headers: { 'content-type': 'text/html' },
+  });
+  const origWinScrollTo = globalThis.window?.scrollTo;
+  const origGlobalScrollTo = globalThis.scrollTo;
+  globalThis.scrollTo = /** @type any */ (() => {});
+  if (globalThis.window) globalThis.window.scrollTo = /** @type any */ (() => {});
+  document.head.innerHTML = '';
+  document.body.innerHTML = '<!--wj:children:/:/-->before-pop<!--/wj:children:/-->';
+  try {
+    _onPopState({});
+    assert.equal(root.style.getPropertyValue('overflow-anchor'), 'none');
+    disableClientRouter();
+    assert.ok(!root.style.getPropertyValue('overflow-anchor'),
+      'disabling the router closes any window it left open');
+    // Let the background revalidation settle (avoid an unhandled rejection).
+    await new Promise((r) => setTimeout(r, 20));
+  } finally {
+    _snapshotCache.delete('/anchor-disable');
+    _setCurrentPageUrl(prevPageUrl);
+    globalThis.location = origLoc;
+    globalThis.fetch = origFetch;
+    globalThis.scrollTo = origGlobalScrollTo;
+    if (globalThis.window) globalThis.window.scrollTo = origWinScrollTo;
+    root.style.removeProperty('overflow-anchor');
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+    enableClientRouter(); // re-enable for subsequent tests
+  }
+});
+
 test('navigate: forward-nav scroll-to-top is instant, not animated (#601)', async () => {
   document.body.innerHTML = '<!--wj:children:/:/-->before<!--/wj:children:/-->';
   const { restore } = installNavigationMocks({
