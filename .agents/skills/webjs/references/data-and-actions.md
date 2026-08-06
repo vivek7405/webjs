@@ -236,3 +236,55 @@ import { posts } from '#db/schema.server.ts';
 ```
 
 Keep the wire shape in a browser-safe `modules/<feature>/types.ts` with NO runtime import from a `.server.ts` file or from `db/`. Define a hand-written DTO, or a type-only derivation (`import type { Post } ...; export type PostFormatted = Omit<Post, 'createdAt'> & { createdAt: string }`). Never `export *` or a value re-export from a `.server.ts` in `types.ts`; that carries the runtime table bindings and breaks any component importing the types. Full reference at https://webjs.dev/docs.
+
+## SSR action seeding, and how to tell it is working
+
+When a shipping component's `async render()` awaits an action during SSR, WebJs serializes that result into the page and the generated RPC stub reads it on its FIRST client call. So `const u = await getUser(this.id)` runs once, on the server, and hydration reuses the result with no network round-trip.
+
+**You write nothing for this.** It is automatic, on by default, and there is no API to call. The only thing you can do is break it, so the section below is about noticing when you have.
+
+### The correctness boundary
+
+A seed hit returns the value the SSR render that produced this page computed for exactly this action, function, and argument list, so a hit cannot show the user something different from the HTML they are already looking at. On an HTML-cached page (`export const revalidate`) the seed rides inside the cached bytes, so it is exactly as fresh as the HTML it came with. A miss simply re-fetches.
+
+There is one shape where a hit can differ from the paint, and WebJs warns about it in dev: **an action that returns a DIFFERENT result for the SAME arguments twice in one render.** The seed carries the last result while the first component painted the first one. So keep an action deterministic for a given argument list. A counter, a `Math.random()`, a `new Date()` in the return value, or a read of mutable module state all break that rule, and dev prints:
+
+```
+[webjs] SSR action seeding: "getUser" returned two DIFFERENT results for the SAME arguments during one render. ...
+```
+
+The fix is to make the action deterministic, or to move the varying part into an argument so the two calls get different keys.
+
+### Reading the dev diagnostics
+
+A miss is invisible from the outside: the page still renders correctly, it just pays a round-trip per async component on every first load. Two channels make it visible in dev, and neither exists in production.
+
+**Server side, per request.** The `X-Webjs-Seed` response header, also folded into the dev access-log line as a `seed` field:
+
+| Value | What it means |
+|---|---|
+| `off` | Seeding is switched off (`"webjs": { "seed": false }` or `WEBJS_SEED=0`). Not a defect. |
+| `html-cache` | The #241 HTML response cache answered. The seeds rode inside the cached bytes. |
+| `collected=3, emitted=3` | Healthy. Three action results were captured and all three reached the page. |
+| `collected=3, emitted=0` | The serializer threw and dropped the whole block. Something in a returned value is not serializer-safe. |
+| `collected=3, emitted=0, streamed` | The page streams, so nothing could be emitted (see below). |
+
+Check it with `curl -sSI localhost:3000/` or in the network tab.
+
+**Browser side, per page view.** One `console.warn` at the first idle after hydration, and ONLY when a call missed. Silence means every call hit. The line names which of three causes applies:
+
+- *"This page streams"*, so no seeds could be emitted. Expected, not a bug (see below).
+- *"The page carried no seeds at all."* Usually the action is not reachable as an action: check the file is `*.server.{js,ts}` with `'use server'` on its first line, and that a component really awaited it during SSR rather than in `connectedCallback` or a `Task`.
+- *"The page carried seeds, but not for these calls."* The key is `hash(action file) / function name / serialized arguments`, so the client asked with an argument the SSR render never used. Common cause: the component computes its argument from browser-only state (a `localStorage` read, a `connectedCallback` assignment), which the server render could not have known.
+
+A miss AFTER hydration is correct and is not reported: the seed is consume-once, so a deliberate refetch or an argument change is supposed to go to the network.
+
+`seedStats()` from `@webjsdev/core` returns `{ ingested, replaced, hits, misses, pending }` if you want to assert this in a browser test or read it from the console. A non-zero `pending` at rest usually means the seeding component ELIDED, so its module never shipped and nothing on the client was ever going to consume the seed.
+
+### The streamed-page exception
+
+A page carrying a `Suspense` or `<webjs-suspense>` boundary emits NO seed block at all, not just none for the streamed region: a streamed render's deferred boundaries resolve after the first flush, so their results cannot ride the block. Every action call on that page goes to the network on hydration. That is a real trade, so make it deliberately: reach for a streaming boundary when a slow region would otherwise block the first byte, and leave a fast page buffered so it seeds.
+
+### Switching it off
+
+`"webjs": { "seed": false }` in `package.json`, or `WEBJS_SEED=0`. The client then re-fetches on hydration exactly as it did before the feature, and stale-while-revalidate hides the flicker. Turn it off only to isolate a problem; there is no reason to ship with it off.

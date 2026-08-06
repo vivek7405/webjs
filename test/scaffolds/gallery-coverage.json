@@ -263,6 +263,9 @@
     "scanSeeds": {
       "exempt": "internal: SSR action-seeding plumbing"
     },
+    "seedStats": {
+      "exempt": "internal: a dev-only seeding diagnostic, read from the console or a browser test rather than written against; the seeding docs live in the skill's data-and-actions reference"
+    },
     "serialize": {
       "exempt": "internal: wire serializer; app code round-trips via server actions"
     },
