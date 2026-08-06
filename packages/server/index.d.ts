@@ -478,7 +478,13 @@ export declare function primeComponentRegistry(
 ): Promise<{ count: number }>;
 /** Extract `{ className, tag }` pairs from a component module's source. */
 export declare function extractComponents(src: string): Array<{ className: string; tag: string }>;
-/** Find component classes that no page / component imports (orphans). */
+/**
+ * Find ORPHAN component classes: a `class X extends WebComponent` that its own
+ * file never registers with a LITERAL tag, either because there is no
+ * registration call or because the tag is computed. The scanner matches only a
+ * literal tag, so both shapes fail the same way: the element never upgrades and
+ * the module gets no elision verdict. Nothing here is about import reachability.
+ */
 export declare function findOrphanComponents(
   appDir: string,
 ): Promise<Array<{ className: string; file: string }>>;

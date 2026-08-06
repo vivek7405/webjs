@@ -986,10 +986,16 @@ export async function createRequestHandler(opts) {
             }
             t.elision = now() - m;
             if (dev) {
+              // An orphan is EITHER shape `findOrphanComponents` reports: no
+              // registration call at all, or one whose tag is computed. The
+              // scanner matches only a literal tag, so both fail identically
+              // and one message has to cover both (the doctor check and
+              // `webjs elision` say the same thing).
               for (const { className, file } of await findOrphanComponents(appDir)) {
                 logger.warn?.(
-                  `[webjs] ${className} extends WebComponent but has no customElements.define(...) call in ${file}. ` +
-                    `Add \`customElements.define('<tag-name>', ${className});\` or <${kebab(className)}> tags won't upgrade.`,
+                  `[webjs] ${className} extends WebComponent but is never registered with a literal tag in ${file} ` +
+                    `(either there is no registration call, or its tag is computed). ` +
+                    `Add \`${className}.register('<tag-name>');\` or <${kebab(className)}> tags won't upgrade.`,
                 );
               }
               // The elision summary (#1308), one server-console line. NOT a

@@ -93,7 +93,7 @@ const USAGE = `webjs commands:
   webjs elision [--json] [--verify]               Report which component modules are elided and why each shipped one ships;
                                                   --verify diffs SSR output with elision on vs off (exits non-zero on a divergence)
   webjs mcp                                       Start the read-only MCP server (routes / actions / components / elision / check)
-  webjs doctor [--json] [--strict]                Verify project health (Node, tsconfig, env, vendor pins, importmap coherence, @webjsdev versions, git hook, page/layout elision, un-versioned stylesheet links).
+  webjs doctor [--json] [--strict]                Verify project health (Node, tsconfig, env, vendor pins, importmap coherence, @webjsdev versions, git hook, page/layout elision, component elision, un-versioned stylesheet links).
                                                   --json emits the structured results (with stable codes). --strict additionally fails on every remaining warning.
                                                   Per-check severity is CONFIG: map a code to off/warn/error under "webjs": { "doctor": { "gate": {...} } }
                                                   in package.json, so CI gates on a chosen subset without every warning becoming fatal
