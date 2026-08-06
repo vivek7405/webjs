@@ -175,8 +175,8 @@ test('one miss inside the window logs one line naming the unmatched-keys cause',
     takeSeed('h', 'f', '[2]');
   });
   assert.equal(warns.length, 1);
-  assert.match(warns[0], /1 of 2 action call\(s\) in the hydration window cost a network round-trip/);
-  assert.match(warns[0], /under DIFFERENT arguments/);
+  assert.match(warns[0], /1 action call\(s\) in the hydration window asked for a key this page seeded under DIFFERENT arguments/);
+  assert.match(warns[0], /asked for a key this page seeded under DIFFERENT arguments/);
 });
 
 test('a page with NO seeds stays SILENT, because the client cannot tell why', async () => {
@@ -357,7 +357,7 @@ test('a scan whose seeds all REPLACE unconsumed ones still counts as seeds merge
   });
   assert.equal(first.warns.length, 1);
   assert.match(first.warns[0], /1 seed\(s\) on this page/);
-  assert.match(first.warns[0], /under DIFFERENT arguments/);
+  assert.match(first.warns[0], /asked for a key this page seeded/);
 
   const second = await withReporter(async () => {
     scanSeeds(root([el('script', payload, 'ok')]));
@@ -365,7 +365,7 @@ test('a scan whose seeds all REPLACE unconsumed ones still counts as seeds merge
   });
   assert.equal(second.warns.length, 1);
   assert.match(second.warns[0], /1 seed\(s\) on this page/, 'a replacement is still a seed on the page');
-  assert.match(second.warns[0], /under DIFFERENT arguments/, 'and the cause must not flip');
+  assert.match(second.warns[0], /asked for a key this page seeded/, 'and the cause must not flip');
 });
 
 test('the cause comes from the window\'s OWN marker, not a later scan\'s', async () => {
@@ -391,7 +391,7 @@ test('the cause comes from the window\'s OWN marker, not a later scan\'s', async
     console.warn = origWarn;
   }
   assert.equal(warns.length, 1);
-  assert.match(warns[0], /under DIFFERENT arguments/, 'the buffered page keeps its own cause');
+  assert.match(warns[0], /asked for a key this page seeded/, 'the buffered page keeps its own cause');
   assert.ok(warns[0].indexOf('This page streams') === -1, 'the later page\'s marker must not leak in');
 });
 
@@ -443,6 +443,6 @@ test('a HEALTHY page is not blamed for the next page\'s correct misses', async (
     takeSeed('h', 'g', '[2]');
   });
   assert.equal(warns.length, 1, 'page A silent, page B reported: one line, not two and not zero');
-  assert.match(warns[0], /2 of 2 action call\(s\) in the hydration window/, 'the line belongs to page B');
+  assert.match(warns[0], /2 of 2 action call\(s\) in the hydration window went to the network/, 'the line belongs to page B');
   assert.match(warns[0], /This page streams/, 'and names page B\'s own cause');
 });

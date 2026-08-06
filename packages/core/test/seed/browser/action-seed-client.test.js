@@ -101,8 +101,8 @@ suite('SSR action seeding, real DOM (#1309)', () => {
       takeSeed('h', 'f', '[2]');
     });
     assert.equal(warns.length, 1, 'exactly one line for the batch');
-    assert.ok(warns[0].indexOf('1 of 2 action call(s) in the hydration window') !== -1, warns[0]);
-    assert.ok(warns[0].indexOf('under DIFFERENT arguments') !== -1, warns[0]);
+    assert.ok(warns[0].indexOf('1 action call(s) in the hydration window asked for a key') !== -1, warns[0]);
+    
   });
 
   test('a stale block left in the live document cannot outrank a fresh soft-nav seed', async () => {
@@ -149,7 +149,7 @@ suite('SSR action seeding, real DOM (#1309)', () => {
       takeSeed('h', 'f', '[2]');                            // miss, worth reporting
     });
     assert.equal(warns.length, 1, 'the surrounding page still gets its own report');
-    assert.ok(warns[0].indexOf('1 of 2 action call(s) in the hydration window') !== -1, warns[0]);
+    assert.ok(warns[0].indexOf('1 action call(s) in the hydration window asked for a key') !== -1, warns[0]);
     assert.ok(
       warns[0].indexOf('1 seed(s) on this page') !== -1,
       `and its own seed is counted, not a cause read off the frame: ${warns[0]}`,

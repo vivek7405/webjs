@@ -122,8 +122,10 @@ export function scanSeeds(root, opts) {
   // failed in both directions in turn: treating it as a page killed the report
   // for the whole page the frame sits on, and attributing the window to the live
   // page made it report a CAUSE that is provably false, since none of the causes
-  // describes a frame response and there is no `X-Webjs-Seed` on it to
-  // cross-check against.
+  // describes a frame response. (The response's own `X-Webjs-Seed` is no help
+  // either: the isolable case returns before the header is set, and the three
+  // fallthrough shapes below carry the SURROUNDING page's header, which says
+  // nothing about the frame.)
   //
   // Discarding is right for every shape the fallthrough produces, and they are
   // not all the same shape:
@@ -365,14 +367,21 @@ function reportSeeds(w) {
       ? 'The page\'s seeds could not be serialized, so the whole block was dropped. Something an action returned is not serializer-safe; the server response reports collected above emitted.'
       : keyMisses === 0
         ? null
-        : 'The page seeded these actions under DIFFERENT arguments, so the key did not match. The key is the action file hash plus the function name plus the serialized arguments, and an argument the SSR render never used misses (a deliberate refetch after hydration misses too, and is expected).';
+        : 'The key is the action file hash plus the function name plus the serialized arguments, so an argument the SSR render never used misses (a deliberate refetch after hydration misses too, and is expected). A miss on an action this page never seeded is NOT counted here, because a mutation or a client-only read could never have been seeded.';
   if (cause === null) return;
-  // For a server-asserted cause every miss is explained by it; for a key
-  // mismatch only the provable subset is, and the sentence has to state the
-  // quantity it is actually reporting rather than the total.
-  const reported = (w.marker === 'streamed' || w.marker === 'drop') ? misses : keyMisses;
+  // The number and the predicate have to agree. For a server-asserted cause the
+  // marker explains EVERY miss, so the total is the right figure and "went to
+  // the network" is the right claim. For a key mismatch only the provable subset
+  // is explained, and calling that subset the round-trip count understates the
+  // traffic: a page mixing one key mismatch with one mutation had 2 calls go out
+  // while the line said 1. So that case reports its own count against its own
+  // claim, and never speaks for the misses it cannot account for.
+  const serverAsserted = w.marker === 'streamed' || w.marker === 'drop';
+  const headline = serverAsserted
+    ? `${misses} of ${hits + misses} action call(s) in the hydration window went to the network`
+    : `${keyMisses} action call(s) in the hydration window asked for a key this page seeded under DIFFERENT arguments`;
   console.warn(
-    `[webjs] SSR action seeding: ${reported} of ${hits + misses} action call(s) in the hydration window cost a network round-trip `
+    `[webjs] SSR action seeding: ${headline} `
     + `(${merged} seed(s) on this page, ${seeds.size} still unconsumed). ${cause} `
     + 'See https://webjs.dev/docs/data-fetching for the seeding reference.',
   );
