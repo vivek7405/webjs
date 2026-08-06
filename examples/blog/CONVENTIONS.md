@@ -18,8 +18,8 @@ agents), not a hard gate. Customize any of them; sections marked
 `<!-- OVERRIDE -->` are explicit customization points.
 
 `webjs check` is a separate, narrower tool: **correctness checks** that
-catch objectively broken code (a crash, a security leak, a build or
-type-strip failure). Those always run, there is no per-project
+catch objectively broken code (a crash, a security leak, a reactive prop
+that silently stops re-rendering, a build or type-strip failure). Those always run, there is no per-project
 disabling, and they are not listed here (run `webjs check --rules` to
 see them). The line between the two: *could a sensible app legitimately
 want this to pass?* If yes, it is a convention (this file); if no, it is

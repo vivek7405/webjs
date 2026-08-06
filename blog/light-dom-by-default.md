@@ -110,7 +110,7 @@ The argument for shadow DOM is usually scoping: your component's styles will not
 
 For most application code, this is not the problem you have. You control the page. You control the components. Your CSS is intentional. The "leakage" risk is mostly a thought experiment.
 
-Tailwind sidesteps the scoping question entirely: utility classes are atomic, intentional, and unique by construction. There is nothing to leak. If you author components with Tailwind utilities, scoping is a non-issue. The same applies to other naming-discipline approaches like BEM or scoped class prefixes; the framework's `webjs check` ships a `light-dom-css-prefix` rule that flags unprefixed class selectors in vanilla CSS for light-DOM components, so the linter helps you keep selectors uniquely scoped if you choose that route.
+Tailwind sidesteps the scoping question entirely: utility classes are atomic, intentional, and unique by construction. There is nothing to leak. If you author components with Tailwind utilities, scoping is a non-issue. The same applies to other naming-discipline approaches like BEM or scoped class prefixes. When a light-DOM component does author vanilla CSS, the convention is to prefix every class selector with the component's own tag name, which makes it as unique as a utility class would be. That one is a discipline you keep rather than something tooling checks for you, which is one more reason Tailwind stays the lower-effort default.
 
 WebJs's recommendation: use Tailwind (or your chosen styling story) in light DOM by default. If a specific component needs strict isolation (third-party embed, design-system component meant to drop into hostile pages), opt into shadow DOM for that one component:
 

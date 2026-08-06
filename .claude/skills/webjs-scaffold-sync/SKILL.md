@@ -199,19 +199,24 @@ Run the mandatory generate + boot + check verifications in PARALLEL when more th
    ```sh
    # generate (files only is enough for structure/typecheck; install to boot)
    node -e "import('packages/cli/lib/create.js').then(m => m.scaffoldApp('probe', '/tmp/x', { template: 'full-stack', install: false }))"
-   # then in the generated app: webjs check (only no-scaffold-placeholder should
-   # remain), webjs typecheck (clean), and boot it to hit the new route(s).
+   # then in the generated app: webjs check (clean), webjs typecheck (clean),
+   # and boot it to hit the new route(s).
    ```
    A scaffold change is NOT done until a freshly generated app of each affected
-   template BOOTS, serves the new/changed route, passes `webjs check` (only the
-   intended `no-scaffold-placeholder` markers), and `webjs typecheck` is clean.
+   template BOOTS, serves the new/changed route, passes `webjs check`, and
+   `webjs typecheck` is clean.
 5. Run the scaffold tests (`node --test 'test/scaffolds/*.test.js'`) and add/adjust
    assertions (a new demo in the FEATURES list, a per-template inclusion/exclusion
    test, the counterfactual).
 6. Respect the prose-punctuation invariant (#11) in every comment and doc, and
    keep each demo densely commented (a header stating the webjs concept + the
-   why, inline comments on the non-obvious idiom, a `webjs-scaffold-placeholder`
-   marker). The scaffold teaches by its comments; a thin demo is a bug.
+   why, and inline comments on the non-obvious idiom). Add a prune note where
+   removal is NOT obvious, which is what the demos that carry one do: a card
+   spanning several paths (the auth card names its route, its module, its api
+   routes and its schema column), or one that depends on another (the
+   server-actions card says to prune it with auth). A self-contained demo needs
+   none, since `npm run gallery:clear` sheds the lot. The scaffold teaches by its comments, and a thin demo is a
+   bug.
 
 ## Audit-mode procedure (sweep the scaffold for drift)
 

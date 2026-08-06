@@ -525,8 +525,9 @@ function importedValueNames(clause) {
 /**
  * Scan a WebJs app directory and report convention violations.
  *
- * Every rule is a correctness check (a crash, a security leak, or a
- * build/type-strip failure), so they all run unconditionally. There is no
+ * Every rule is a correctness check (a crash, a security leak, a reactive
+ * prop that silently stops re-rendering, or a build/type-strip failure), so
+ * they all run unconditionally. There is no
  * per-project disabling: project conventions (layout, style, process) live in
  * CONVENTIONS.md as guidance, not in this tool.
  *

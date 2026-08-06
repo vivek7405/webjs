@@ -75,7 +75,7 @@ See https://webjs.dev/docs/components.
 
 It names your class, shows the replacement, and links the reference. The failure it replaces is the silent kind, which is what makes it worth the code. Reactivity that quietly stops working looks like your own bug, and you will go looking for it in your own code first.
 
-The static counterpart is `webjs check`, which today runs 20 correctness rules and nothing else. The bar for a rule is deliberately narrow. It has to catch code that is wrong to ship, a crash or a security leak or a type-strip failure, and never a matter of preference. Preferences live in prose where they can be argued with. So a class field replacing a reactive accessor is a rule, and so is a server-only import reaching a module that genuinely ships to the browser. Where you put your files is not.
+The static counterpart is `webjs check`, which today runs 20 correctness rules and nothing else. The bar for a rule is deliberately narrow. It has to catch code that is wrong to ship, a crash or a security leak or a reactive prop that silently stops re-rendering or a type-strip failure, and never a matter of preference. Preferences live in prose where they can be argued with. So a class field replacing a reactive accessor is a rule, and so is a server-only import reaching a module that genuinely ships to the browser. Where you put your files is not.
 
 The pattern is that the divergences are the things that carry enforcement. Familiar surfaces need no guardrail, since being right by default is what makes them familiar. The exceptions are where the throws and the check rules go.
 

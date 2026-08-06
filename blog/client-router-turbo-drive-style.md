@@ -18,12 +18,12 @@ The fix is to intercept link clicks, fetch the next page over fetch(), and patch
 
 # The mechanism
 
-When the framework's client router is loaded (one ES module import in your root layout), every same-origin `<a>` click goes through this path. The docstring describes it in five steps:
+The client router turns itself on as soon as `@webjsdev/core` loads, which any page carrying a component already does, so there is nothing to import and nothing to opt into. Once it is live, every same-origin `<a>` click goes through this path. The docstring describes it in five steps:
 
-1. SSR injects `<!--wj:children:<segment-path>-->...<!--/wj:children-->` comment markers around each layout's `${children}` interpolation (one pair per layout in the chain).
+1. SSR injects `<!--wj:children:<segment-path>:<route-key>-->...<!--/wj:children:<segment-path>-->` comment markers around each layout's `${children}` interpolation, one pair per layout in the chain, plus one around the page itself (skipped when the page's segment would collide with the innermost layout's). The route key is the resolved path with param values filled in.
 2. On link click, walk both the live DOM and the incoming HTML for these markers and build a path-to-range map.
-3. Find the longest shared marker path. That is the deepest layout both pages have in common.
-4. Replace nodes between that marker pair in the live DOM with the equivalent range from the incoming HTML, using a keyed reconciler that preserves input values, scroll, popover state, and DOM identity where it can.
+3. Compare the two maps. A shared boundary whose route key CHANGED wins first, and the swap is anchored at the parent of the shallowest such change, which remounts that layout the way Next does. Only when no key changed does the deepest shared boundary become the target.
+4. Apply the swap. A replace tears the live range out and inserts the incoming nodes, which is a real remount, and only elements marked `data-webjs-permanent` are carried across. A morph instead reconciles the two ranges with a keyed reconciler that preserves DOM identity, input values, scroll, and popover state; it is the more expensive path and it exists precisely to keep that state. Morphing is chosen only when the target boundary is the leaf on both sides and no route key changed.
 5. Merge head tags, re-run scripts, upgrade custom elements, `history.pushState`.
 
 The whole loop runs in a microtask. The body never repaints between pages.
@@ -39,21 +39,23 @@ Web component state survives. A `<theme-toggle>` holding its theme as an instanc
 
 Scroll position is preserved on the parts of the page that did not change. If you have a sidenav with a scroll position, navigation within the sidenav's sub-section does not snap it back to the top.
 
-The naive alternative (full page reload) breaks all three. The slightly-less-naive alternative (fetch + replace `<body>`) breaks them too because the layout itself unmounts. Walking marker pairs and replacing only the innermost is what preserves them.
+The naive alternative (full page reload) breaks all three. The slightly-less-naive alternative (fetch + replace `<body>`) breaks them too because the layout itself unmounts. Swapping the narrowest range that actually changed is what preserves them, and the route key is what decides how narrow that is: a layout still showing the same resolved path is left alone, while one whose params changed is remounted on purpose.
 
 
 # How it knows what to swap
 
-The framework auto-emits the HTML comment markers at SSR time. You do not write them. The renderer detects `${children}` interpolations inside layout functions and emits `<!--wj:children:<segment-path>-->` before and `<!--/wj:children-->` after.
+The framework auto-emits the HTML comment markers at SSR time. You do not write them. The renderer detects `${children}` interpolations inside layout functions and emits `<!--wj:children:<segment-path>:<route-key>-->` before and `<!--/wj:children:<segment-path>-->` after. The page gets its own pair too, which is what makes a bare param change remount the page.
 
-The path encoding (`/<segment-path>`) lets the client distinguish between nested layouts. Root `/`, then `/dashboard`, then `/dashboard/settings`, each as its own marker pair. The deepest matching pair between the current and incoming DOM is where the swap happens.
+The path encoding (`/<segment-path>`) lets the client distinguish between nested layouts. Root `/`, then `/dashboard`, then `/dashboard/settings`, each as its own marker pair. Where no route key changed, the deepest matching pair between the current and incoming DOM is where the swap happens.
+
+The route key on the opening marker carries the resolved path with its param values, and it takes precedence over that deepest-pair rule. `/users/7` and `/users/9` share a segment path but not a route key, so the router replaces at the parent of that boundary rather than morphing one user's chrome into another's. Segment membership alone would have called those two the same layout.
 
 This is automatic. The user does not write the markers. The framework adds them at SSR time wherever a layout interpolates `${children}`. The router uses them as nav-stable swap points.
 
 
 # The X-Webjs-Have optimization
 
-A naive implementation would fetch the full HTML for every navigation. The client router does better. It sends an `X-Webjs-Have` header listing the marker paths it already has.
+A naive implementation would fetch the full HTML for every navigation. The client router does better. It sends an `X-Webjs-Have` header listing what it already holds, as `segment:route-key` entries rather than bare paths, so a dynamic layout it is holding for different params is re-rendered instead of wrongly short-circuited.
 
 The server reads this header in `packages/server/src/ssr.js`. It iterates the target page's layout chain from innermost to outermost. Layouts at-or-above the deepest match are skipped. The response wraps only the divergent fragment in the deepest shared marker pair.
 
@@ -73,13 +75,13 @@ Forms that already call `event.preventDefault()` in their `@submit` handler are 
 
 # What the router does not do
 
-Three explicit non-goals, called out in the source.
+Two explicit non-goals, plus one that used to be on this list and has since been built.
 
-No prefetching. The router does not warm `<a>` targets on hover or viewport entry. The platform is getting better at this (Speculation Rules API, Chrome's per-link prefetch hints), and we did not want to ship a heuristic we would have to tune. Apps that need it can layer it on.
+No view-transitions API by default. View Transitions are great when supported, but the spec is still evolving, so the default off-state matches what works in every browser. An app that wants them opts in with `<meta name="view-transition" content="same-origin">` in the root layout. The `content` value is load-bearing rather than decorative, since the router reads it and enables nothing unless it says `same-origin`.
 
-No view-transitions API by default. View Transitions are great when supported (Chromium-only as of writing), but the spec is still evolving. The default off-state matches what works in every browser.
+No nested-route data deduplication. `X-Webjs-Have` trims the HTML a navigation pays for, but that is markup, not data. The router does not keep "data we already have" and refetch only the diff. The HTTP cache and the framework's `cache()` query memoization handle that at a different layer.
 
-No nested-route data deduplication. Each navigation re-fetches the page from scratch. We do not try to keep "data we already have" and only refetch the diff. The HTTP cache and the framework's `cache()` query memoization handle this at a different layer.
+Prefetching was the one that changed. The router warms link targets on its own now, and it picks the strategy from the device rather than applying one everywhere: hover intent where there is a real pointer, and dwell-gated viewport entry on touch, where hover does not exist to hook. I wrote up how that choice gets made in [Device-adaptive link prefetch](/blog/device-adaptive-link-prefetch).
 
 
 # What happens on a rapid click
@@ -100,7 +102,7 @@ Hotwire's Turbo Drive is the closest precedent. Same DOM-swap philosophy, same s
 
 # Why I shipped this in core
 
-`@webjsdev/core` is small. Adding a 1400-line file to it (`router-client.js`) is meaningful weight. I added it anyway because the white flash is what makes pages feel slow. If you measure with Lighthouse, metrics look fine without a client router. But the perceived speed is noticeably worse. Users say "it feels weird" not "it took 100ms longer." The fix is the router.
+`@webjsdev/core` is small. Adding `router-client.js` to it is meaningful weight, and it has only grown since. I added it anyway because the white flash is what makes pages feel slow. If you measure with Lighthouse, metrics look fine without a client router. But the perceived speed is noticeably worse. Users say "it feels weird" not "it took 100ms longer." The fix is the router.
 
 The other reason it lives in core: the boundary-detection trick (HTML comments at `${children}` interpolation points) is too tightly coupled to the SSR renderer to make sense in a separate package. The renderer emits the markers. The router reads them. Splitting them across packages would require synchronizing two version trees.
 
