@@ -80,6 +80,11 @@ let windowEpoch = 0;
  * re-ingests stale data. Reads both the page-level `#__webjs-seeds` JSON block
  * and per-element `[data-webjs-seed]` carriers. Idempotent and fail-open: a
  * malformed payload is skipped, never thrown.
+ *
+ * Passing a DETACHED root (what the router's `applySwap` does) means "a new page
+ * is arriving", so the live document is drained FIRST. That ordering is what
+ * makes last-write-wins correct, and it is load-bearing rather than incidental:
+ * see the comment on the drain below.
  * @param {ParentNode & { querySelectorAll?: Function }} [root]
  */
 export function scanSeeds(root) {
@@ -91,12 +96,22 @@ export function scanSeeds(root) {
   // it after the ingest loops instead and this scan's seeds are already counted
   // into the window being closed, which is the whole defect.
   closeReportWindow();
-  // A scan of an EXPLICIT root is a new page arriving: the router's `applySwap`
-  // passes a detached parse, never the live document. The live document can
-  // still be holding the OUTGOING page's block, because the initial scan is lazy
-  // (it runs on the first `takeSeed`) and a page whose async components all
-  // elided never triggers it, while the block itself sits after the body content
-  // outside every boundary range, so no swap removes it either.
+  // Is this root the live document, or part of it? The router's `applySwap`
+  // passes a DETACHED parse, which is the "a new page is arriving" case. A live
+  // root (the lazy initial scan) or a live subtree is not, and must not trigger
+  // the drain below: draining would strip the very subtree being scanned.
+  const scopeIsLive = scope === live;
+  const scopeInLive = !!live && !scopeIsLive && typeof live.contains === 'function' && live.contains(scope);
+  const incomingPage = !!live && !scopeIsLive && !scopeInLive;
+
+  // Merged count before ANY of this, so a window attributed to the LIVE page
+  // below counts the live page's own seeds.
+  const mergedBeforeAll = stats.ingested + stats.replaced;
+
+  // The live document can still be holding the current page's block, because the
+  // initial scan is lazy (it runs on the first `takeSeed`) and a page whose async
+  // components all elided never triggers it, while the block itself sits after
+  // the body content outside every boundary range, so no swap removes it either.
   //
   // Drain it FIRST, in ingest order, which is what makes last-write-wins correct
   // here: the outgoing page's values go in before the incoming page's, so a key
@@ -106,22 +121,33 @@ export function scanSeeds(root) {
   // is looking at. Keeping the outgoing values rather than discarding them costs
   // nothing and still answers an in-flight `async render()` from the page being
   // navigated away from.
-  if (live && scope !== live) drainCarriers(live);
-  // Either way the live document has now been handled, so the lazy scan must not
-  // run again: a second pass finds nothing to ingest but would close the window
-  // this scan is about to open.
-  if (live) scannedInitial = true;
-  // Read BEFORE ingesting THIS page: the report distinguishes "the page carried
-  // no seeds at all" from "it carried seeds, but not for these calls", and that
-  // turns on how many THIS scan merged. Read after the drain above, so the
-  // outgoing page's leftovers are not counted as this page's. MERGED is
+  const liveMarker = incomingPage ? drainCarriers(live) : null;
+  // The lazy scan must not run again once the live document has been handled: a
+  // second pass finds nothing to ingest but would close the window this scan is
+  // about to open. Only when it HAS been handled, though. A live SUBTREE scan
+  // leaves the rest of the document unscanned, so the lazy pass still owes it.
+  if (scopeIsLive || incomingPage) scannedInitial = true;
+
+  // Read the baseline for THIS page after the drain, so the outgoing page's
+  // leftovers are not counted as the incoming page's. MERGED is
   // `ingested + replaced`, not `ingested`: a key already in the store counts as
   // a replacement, so a scan whose seeds all replace unconsumed ones (revisiting
   // a page whose seeding component elided, exactly the shape last-write-wins
   // exists for) would otherwise measure as zero and claim the page carried no
   // seeds while naming one.
   const mergedBefore = stats.ingested + stats.replaced;
-  startReportWindow(drainCarriers(scope), mergedBefore);
+  const scanMarker = drainCarriers(scope);
+
+  // Whose window is this? Normally the incoming root's. But a swap that is not a
+  // page navigation carries no marker of its own: a `<webjs-frame>` self-load
+  // routes its subtree through `applySwap` too, and `ssr.js` returns that subtree
+  // BEFORE the seed block is appended, so the parse has no block and no marker.
+  // Falling through to "no window" there would silently kill the report for the
+  // whole page the frame sits on, which is the exact silent failure this feature
+  // exists to remove. The drained live block belongs to that page, so attribute
+  // the window to it, counting its own seeds.
+  if (scanMarker !== null) startReportWindow(scanMarker, mergedBefore);
+  else startReportWindow(liveMarker, mergedBeforeAll);
 }
 
 /**
@@ -205,10 +231,12 @@ function readDevMarker(v) {
  */
 function startReportWindow(scanMarker, mergedBefore) {
   // The previous window was already closed at the top of the scan, before any
-  // ingest. No marker in THIS scan means there is nothing to report on. Production never
-  // has one, and a back/forward restore scans a snapshot carrying no seed block
-  // at all (the first scan removed it before the snapshot was serialized), so a
-  // marker inherited from the previous page would name a cause read off it.
+  // ingest. No marker at all means there is nothing to report on: production
+  // never emits one, and a back/forward restore of a page that WAS scanned
+  // carries no block, because it was stripped before the snapshot was
+  // serialized. A restore of a page that was NEVER scanned does carry one, and
+  // that block is that page's own, so ingesting it and reporting on it are both
+  // right.
   if (scanMarker === null) return;
   const epoch = ++windowEpoch;
   openWindow = { epoch, hits: stats.hits, misses: stats.misses, merged: mergedBefore, marker: scanMarker };
@@ -258,7 +286,9 @@ function reportSeeds(w) {
  * Look up and CONSUME the seed for an action call. Returns the seeded value
  * (removing it) on a hit, or `SEED_MISS` when there is none. The first call
  * lazily scans the initial document, so the boot path needs no wiring; the
- * router calls `scanSeeds(subtree)` for content that arrives later.
+ * router calls `scanSeeds(doc)` with the DETACHED parse of content that arrives
+ * later, which is also what tells this module a new page is replacing the one on
+ * screen.
  * @param {string} hash the action file's hash (the RPC endpoint hash)
  * @param {string} fnName the exported action name
  * @param {string} argsKey `stringify(args)`, computed by the stub with the same

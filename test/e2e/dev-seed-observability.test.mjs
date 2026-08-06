@@ -147,6 +147,58 @@ describe('E2E: dev observability for SSR action seeding (#1309)', {
     assert.deepEqual(warns, [], 'and a working page says nothing at all');
   });
 
+  test('a real client-router soft navigation seeds the incoming page, not the outgoing one', async () => {
+    // The path the stale-seed regression actually occurs on, driven through the
+    // router rather than by calling `scanSeeds` by hand. `/elided` carries a BARE
+    // async component, so it elides: nothing on the client ever calls the action,
+    // the lazy initial scan never fires, and its seed block is left sitting in the
+    // live document. Soft-navigating away from it is where the drain has to put
+    // the outgoing values in BEFORE the incoming ones, or the outgoing render wins
+    // the shared key and the hit contradicts the paint.
+    const page = await browser.newPage();
+    const rpcs = [];
+    const warns = [];
+    page.on('request', (r) => { if (r.url().includes('/__webjs/action/')) rpcs.push(r.url()); });
+    page.on('console', (m) => { if (m.text().includes(WARN_PREFIX)) warns.push(m.text()); });
+    try {
+      await page.goto(`${base}/elided`, { waitUntil: 'networkidle2' });
+      // The elided page really did leave its block behind: nothing consumed it.
+      assert.equal(
+        await page.evaluate(() => !!document.querySelector('#__webjs-seeds')),
+        true,
+        'the elided page leaves its seed block in the live document',
+      );
+      rpcs.length = 0;
+      warns.length = 0;
+
+      // A real soft navigation: click the router-intercepted link. The sentinel
+      // proves it: a full document load would wipe it, so without this the test
+      // passes on a plain page load and never exercises `applySwap` at all.
+      await page.evaluate(() => { window.__wjSoftNav = 1; document.querySelector('#to-home').click(); });
+      await page.waitForFunction(() => location.pathname === '/', { timeout: 10000 });
+      await page.waitForFunction(() => !!customElements.get('thing-card'), { timeout: 10000 });
+      await sleep(1600);
+
+      assert.equal(
+        await page.evaluate(() => window.__wjSoftNav), 1,
+        'it really was a soft navigation, not a document load',
+      );
+      assert.equal(
+        await page.evaluate(() => document.querySelectorAll('#__webjs-seeds').length),
+        0,
+        'both blocks are drained; none is left to be re-ingested later',
+      );
+      assert.deepEqual(rpcs, [], 'the incoming page hydrated from its own seed, with no round-trip');
+      assert.ok(
+        await page.evaluate(() => document.body.textContent.includes('thing-1')),
+        'and the paint is the incoming page\'s',
+      );
+      assert.deepEqual(warns, [], 'a healthy soft nav says nothing');
+    } finally {
+      await page.close();
+    }
+  });
+
   test('a page whose call the seed cannot cover logs exactly one line naming the cause', async () => {
     const { rpcs, warns } = await visit('/unseeded');
     assert.equal(rpcs.length, 1, 'the unmatched key really did cost a network round-trip');

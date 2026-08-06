@@ -128,6 +128,48 @@ suite('SSR action seeding, real DOM (#1309)', () => {
     assert.equal(takeSeed('h', 'getUser', '[1]'), 'PAGE-B-FRESH', 'the hit matches the paint');
   });
 
+  test('a MARKERLESS swap (a frame self-load) still reports for the page it lands on', async () => {
+    // `<webjs-frame src>` routes its subtree through the same `applySwap` and so
+    // through `scanSeeds`, but `ssr.js` returns a frame subtree BEFORE the seed
+    // block is appended, so that parse carries no block and no marker. If the
+    // swap simply opened no window, the report would be silently dead for the
+    // whole page the frame sits on, which is the exact silent failure this
+    // feature exists to remove. The drained live block belongs to that page, so
+    // the window is attributed to it.
+    const warns = await withIdle(async () => {
+      seedBlock(await stringify({ 'h/f/[1]': 1 }), 'ok');   // the page, never scanned
+      const frame = document.implementation.createHTMLDocument('');
+      frame.body.innerHTML = '<webjs-frame id="f"><p>frame body</p></webjs-frame>';
+      scanSeeds(frame);                                     // markerless: no block at all
+      takeSeed('h', 'f', '[1]');                            // hit, from the drained block
+      takeSeed('h', 'f', '[2]');                            // miss, worth reporting
+    });
+    assert.equal(warns.length, 1, 'the page still gets its report');
+    assert.ok(warns[0].indexOf('1 of 2 hydration action call(s) missed') !== -1, warns[0]);
+    assert.ok(warns[0].indexOf('1 seed(s) on this page') !== -1, `the page's own seed is counted: ${warns[0]}`);
+  });
+
+  test('scanning a LIVE subtree does not strip the rest of the document', async () => {
+    // `scanSeeds` is a public export. The drain fires only for a DETACHED root,
+    // because a live root or a live subtree is not "a new page arriving"; draining
+    // there would strip the very subtree being scanned before it was read.
+    const outside = seedBlock(await stringify({ 'h/outside/[1]': 'kept' }), 'ok');
+    const region = document.createElement('div');
+    const inside = document.createElement('div');
+    inside.setAttribute('data-webjs-seed', await stringify({ 'h/inside/[1]': 'read' }));
+    region.appendChild(inside);
+    document.body.appendChild(region);
+
+    scanSeeds(region);
+    assert.equal(outside.isConnected, true, 'the scan itself leaves the rest of the document alone');
+    assert.equal(takeSeed('h', 'inside', '[1]'), 'read', 'the subtree carrier is ingested');
+    // The lazy initial scan is still owed, so THIS is where the rest of the
+    // document is consumed, which is the pre-existing behaviour and correct: that
+    // block belongs to the page currently on screen.
+    assert.equal(takeSeed('h', 'outside', '[1]'), 'kept', 'the lazy scan still owes the document');
+    region.remove();
+  });
+
   test('an UNMARKED block (production) reports nothing at all', async () => {
     const warns = await withIdle(async () => {
       seedBlock(await stringify({ 'h/f/[1]': 1 }));
