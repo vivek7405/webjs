@@ -1869,6 +1869,43 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       'an observed display-only component module MUST be downloaded (forced to ship)');
   });
 
+  test('static interactive = true forces a display-only module onto the wire (#1308)', async () => {
+    // The OTHER route to a ship, on the same page as the observation probe.
+    // <forced-badge> is display-only in every respect (static markup, no
+    // events, no reactive props, no lifecycle hook, light DOM); the one thing
+    // keeping it on the wire is the author's `static interactive = true`.
+    // Until now that override's only coverage stopped at the analyser
+    // returning a boolean, and nothing proved the boot script honours it.
+    //
+    // build-stamp on the SAME run is the negative control: without it this
+    // assertion would also pass if elision had stopped working entirely.
+    /** @type {string[]} */
+    const requested = [];
+    const onRequest = (req) => requested.push(req.url());
+    page.on('request', onRequest);
+    try {
+      await page.setCacheEnabled(false);
+      await page.goto(`${baseUrl}/observed`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await sleep(3000);
+    } finally {
+      page.off('request', onRequest);
+      await page.setCacheEnabled(true);
+    }
+
+    const forcedFetched = requested.some((u) => /\/components\/forced-badge\.(ts|js)/.test(u));
+    const stampFetched = requested.some((u) => /\/components\/build-stamp\.(ts|js)/.test(u));
+    const forcedText = await page.evaluate(
+      () => document.querySelector('forced-badge')?.textContent?.trim() || '',
+    );
+
+    // The progressive-enhancement half: the markup is in the first paint.
+    assert.match(forcedText, /forced badge/i, 'forced-badge SSR content is present');
+    assert.equal(forcedFetched, true,
+      'static interactive = true MUST keep the module on the wire');
+    assert.equal(stampFetched, false,
+      'negative control: an unoverridden display-only module is still elided on this run');
+  });
+
   test('willUpdate-derived state and reflected props are in the SSR HTML before JS (#217)', async () => {
     // <ssr-derived-badge seed="42"> derives its text in willUpdate and flips a
     // reflect:true `ready` boolean there. The SSR walker now runs willUpdate
