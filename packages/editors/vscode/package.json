@@ -1,7 +1,7 @@
 {
   "name": "webjs",
   "displayName": "webjs",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "All-in-one webjs support: html/css template highlighting, language-service intelligence, snippets, and commands. No Lit extension required.",
   "publisher": "webjsdev",
   "private": true,

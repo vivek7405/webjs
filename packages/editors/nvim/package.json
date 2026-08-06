@@ -1,6 +1,6 @@
 {
   "name": "webjs.nvim",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "description": "Neovim editor support for webjs apps (html/css/svg template highlighting + in-template intelligence via the bundled @webjsdev/intellisense). NOT an npm package: ships to the webjsdev/webjs.nvim git repo via subtree split, installed by lazy.nvim. This manifest exists only as the version source for the unified changelog (changelog/nvim/<version>.md); see PUBLISHING.md."
 }

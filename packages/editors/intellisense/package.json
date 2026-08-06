@@ -1,6 +1,6 @@
 {
   "name": "@webjsdev/intellisense",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "type": "commonjs",
   "description": "The TypeScript language-service plugin for WebJs, a full-stack JavaScript framework built on web components with server-side rendering and no build step. Adds in-template intelligence with no Lit dependency: go-to-definition on tags, attributes, and CSS classes, binding-aware completions, value and binding diagnostics, and hover.",
   "main": "src/index.js",

@@ -1,6 +1,6 @@
 {
   "name": "@webjsdev/ui",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "type": "module",
   "description": "The AI-first component library for WebJs, a full-stack JavaScript framework built on web components with server-side rendering and no build step. Class-helper functions for visuals, custom elements only where state matters, source-copied into your repo so you own it.",
   "bin": {
