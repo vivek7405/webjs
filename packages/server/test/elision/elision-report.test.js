@@ -52,6 +52,44 @@ export class Counter extends WebComponent {
 Counter.register('my-counter');
 `;
 
+/**
+ * A badge whose own source is inert but whose IMPORT does client work.
+ *
+ * Fixture sources here are template literals, never plain strings: the
+ * scanner-fuzz corpus sweep reads every file under `test/elision` and compares
+ * its lexical class window against a real AST, and redaction blanks a template
+ * body while keeping a plain string verbatim. A class written in a plain string
+ * would therefore skew that differential.
+ */
+const BADGE_IMPORTING_SIGNAL = `
+import { WebComponent, html } from '@webjsdev/core';
+import { n } from '../lib/live.js';
+export class Badge extends WebComponent {
+  render() { return html\`<span>\${String(n)}</span>\`; }
+}
+Badge.register('my-badge');
+`;
+
+/** An interactive shell that renders the badge's tag. */
+const SHELL_RENDERING_BADGE = `
+import { WebComponent, html } from '@webjsdev/core';
+import '../components/badge.js';
+export class Shell extends WebComponent {
+  render() { return html\`<button @click=\${() => {}}><my-badge></my-badge></button>\`; }
+}
+Shell.register('my-shell');
+`;
+
+/** A badge registered with a COMPUTED tag, which the scanner never sees. */
+const BADGE_COMPUTED_TAG = `
+import { WebComponent, html } from '@webjsdev/core';
+const TAG = 'dyn-' + 'badge';
+export class DynBadge extends WebComponent {
+  render() { return html\`<span>x</span>\`; }
+}
+DynBadge.register(TAG);
+`;
+
 /** Every string value anywhere in the report, for the no-absolute-path sweep. */
 function allStrings(value, out = []) {
   if (typeof value === 'string') out.push(value);
@@ -142,7 +180,7 @@ test('evidence: observed', async () => {
 test('evidence: closure', async () => {
   await withApp({
     'lib/live.js': "import { signal } from '@webjsdev/core';\nexport const n = signal(0);",
-    'components/badge.js': "import { WebComponent, html } from '@webjsdev/core';\nimport { n } from '../lib/live.js';\nexport class Badge extends WebComponent {\n  render() { return html`<span>${String(n)}</span>`; }\n}\nBadge.register('my-badge');",
+    'components/badge.js': BADGE_IMPORTING_SIGNAL,
     'app/page.js': "import { html } from '@webjsdev/core';\nimport '../components/badge.js';\nexport default () => html`<my-badge></my-badge>`;",
   }, async (dir) => {
     const r = await analyzeAppElision(dir);
@@ -157,7 +195,7 @@ test('evidence: closure', async () => {
 test('evidence: render', async () => {
   await withApp({
     'components/badge.js': DISPLAY_ONLY,
-    'components/shell.js': "import { WebComponent, html } from '@webjsdev/core';\nimport '../components/badge.js';\nexport class Shell extends WebComponent {\n  render() { return html`<button @click=${() => {}}><my-badge></my-badge></button>`; }\n}\nShell.register('my-shell');",
+    'components/shell.js': SHELL_RENDERING_BADGE,
     'app/page.js': "import { html } from '@webjsdev/core';\nimport '../components/shell.js';\nexport default () => html`<my-shell></my-shell>`;",
   }, async (dir) => {
     const r = await analyzeAppElision(dir);
@@ -172,7 +210,7 @@ test('evidence: render', async () => {
 
 test('an orphan class is reported with no verdict', async () => {
   await withApp({
-    'components/dyn-badge.js': "import { WebComponent, html } from '@webjsdev/core';\nconst TAG = 'dyn-' + 'badge';\nexport class DynBadge extends WebComponent {\n  render() { return html`<span>x</span>`; }\n}\nDynBadge.register(TAG);",
+    'components/dyn-badge.js': BADGE_COMPUTED_TAG,
     'app/page.js': "import { html } from '@webjsdev/core';\nimport '../components/dyn-badge.js';\nexport default () => html`<p>hi</p>`;",
   }, async (dir) => {
     const r = await analyzeAppElision(dir);
