@@ -255,6 +255,10 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     // Covered separately because a test that only drives `navigate()` leaves
     // that second call site free to be deleted with every suite still green.
     await setup();
+    // Declared out here so the `finally` can release it whatever the assertion
+    // does. Everything else this file creates is released from `teardown()`,
+    // and a live form left attached to the body would outlast the whole run.
+    let holder = null;
     try {
       await goBack();
       assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), 'none',
@@ -262,14 +266,9 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       // Appended to the LIVE body, not to `container`: the restore swaps the
       // body wholesale, so `container` is detached by now and a form inside it
       // would never reach the router's document-level submit listener.
-      //
-      // The action must also not be this page's own url. The runner serves test
-      // files at a `.js` path, and the router skips a submission whose action
-      // carries a non-HTML extension, so that form would never reach
-      // `performSubmission` at all.
-      const holder = document.createElement('div');
+      holder = document.createElement('div');
       holder.innerHTML = '<form id="wj-anchor-form" method="post" '
-        + 'action="/wj-submit-target-1310"><button type="submit">go</button></form>';
+        + `action="${entryUrl('submit-target')}"><button type="submit">go</button></form>`;
       document.body.appendChild(holder);
       const form = holder.querySelector('#wj-anchor-form');
       // Well inside the floor. The router intercepts this and the nav guard
@@ -278,8 +277,10 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       await new Promise((r) => setTimeout(r, 0));
       assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
         'a submission ends the previous restore\'s window, same as a link nav');
-      holder.remove();
-    } finally { await teardown(); }
+    } finally {
+      if (holder) holder.remove();
+      await teardown();
+    }
   });
 
   test('anchoring WORKS again once the window has closed', async () => {
