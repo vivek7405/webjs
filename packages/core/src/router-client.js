@@ -310,6 +310,23 @@ let prevScrollRestoration = null;
 const ANCHOR_SUPPRESS_CEILING_MS = 2000;
 
 /**
+ * Floor on the restore window (#1310). The window's other closer is the
+ * revalidation settling, which is only long enough while the revalidation is
+ * SLOWER than the restored page's own upgrade-and-render. That holds on a
+ * deployed site (measured: growth ~65ms after the swap, the revalidation's swap
+ * ~300ms after that) but it is a property of one deployment, not a guarantee: a
+ * local server, a 304, or a warm cache answers in single-digit milliseconds and
+ * would otherwise close the window before the growth it exists to absorb.
+ *
+ * So the window lasts at least this long whatever the network does. The value
+ * clears the measured revalidation swap with margin and stays well under the
+ * ceiling. It is a floor, not a delay: a real user input still closes the
+ * window immediately, which is the case that actually matters for not holding
+ * anchoring off longer than a reader would want.
+ */
+const ANCHOR_SUPPRESS_FLOOR_MS = 500;
+
+/**
  * Inputs that mean the reader has taken over the viewport, so the restore is
  * over and the browser's own anchoring should resume.
  *
@@ -1494,9 +1511,16 @@ async function performNavigation(href, isPopState, frameId) {
           // frames for the re-applied DOM to lay out) is what keeps the window
           // tied to one restore. A height observer could not tell a settling
           // restore from a streaming <webjs-suspense> boundary (#471 / #473).
-          fetchAndApply(href, frameId, /* recordHistory */ false, optimisticState, 'GET', null, signal, myToken, /* revalidating */ true)
-            .catch(() => {})
-            .then(() => afterTwoFrames(releaseAnchor));
+          //
+          // The floor is what makes that safe. Waiting on the revalidation ALONE
+          // ties the window's length to network latency rather than to the
+          // growth it guards, so a server that answers faster than the restored
+          // page renders closes it early and the reader lands low again, which
+          // is the whole defect.
+          const revalidated = fetchAndApply(href, frameId, /* recordHistory */ false, optimisticState, 'GET', null, signal, myToken, /* revalidating */ true)
+            .catch(() => {});
+          const floor = new Promise((r) => setTimeout(r, ANCHOR_SUPPRESS_FLOOR_MS));
+          Promise.all([revalidated, floor]).then(() => afterTwoFrames(releaseAnchor));
           return;
         }
       }

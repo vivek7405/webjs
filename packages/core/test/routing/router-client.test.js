@@ -2083,10 +2083,16 @@ test('popstate cache restore suppresses scroll anchoring across the window (#131
     assert.equal(root.style.getPropertyValue('overflow-anchor'), 'none',
       'the restore opens the window, so the browser cannot add late growth ' +
       'to the offset it just replayed');
-    // The window closes on THIS revalidation settling plus two frames.
-    await new Promise((r) => setTimeout(r, 20));
+    // The revalidation settles immediately here, and that alone must NOT close
+    // the window: tying its length to network latency rather than to the growth
+    // it guards is what let a fast server close it early.
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(root.style.getPropertyValue('overflow-anchor'), 'none',
+      'an instant revalidation does not close the window on its own');
+    // The floor is the other half of the close.
+    await new Promise((r) => setTimeout(r, 700));
     assert.ok(!root.style.getPropertyValue('overflow-anchor'),
-      'the window closes once the revalidation settles, leaving no residue ' +
+      'the window closes once the restore is over, leaving no residue ' +
       'on <html>');
   } finally {
     _snapshotCache.delete('/anchor-here');

@@ -46,6 +46,28 @@ class GrowLate extends HTMLElement {
 }
 customElements.define('wj-grow-late-1310', GrowLate);
 
+/**
+ * The same grower, but slow enough that a revalidation answering instantly
+ * settles BEFORE it. On the deployed site the growth lands ~65ms after the swap
+ * and the revalidation's own swap ~300ms after that, so the revalidation is
+ * comfortably the slower of the two. That ordering is a property of one
+ * deployment, not a guarantee: a local server, a 304, or a warm cache can answer
+ * in single-digit milliseconds. This models the inverted case.
+ */
+class GrowVeryLate extends HTMLElement {
+  connectedCallback() {
+    this.style.display = 'block';
+    this.style.height = '0px';
+    let n = 0;
+    const tick = () => {
+      if (++n >= 8) { this.style.height = GROWTH + 'px'; return; }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+}
+customElements.define('wj-grow-very-late-1310', GrowVeryLate);
+
 const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
 /** Long enough for the grower to connect, lay out, and take its height. */
 async function afterGrowth() { for (let i = 0; i < 4; i++) await frame(); }
@@ -56,14 +78,19 @@ async function afterGrowth() { for (let i = 0; i < 4; i++) await frame(); }
  * sits entirely above the viewport at `RESTORED_Y`, which is where anchoring
  * acts.
  */
-const RESTORED_BODY =
-  '<!--wj:children:/:/anchor-restore-a-->'
-  + '<wj-grow-late-1310></wj-grow-late-1310>'
-  + '<div style="height:3000px">restored</div>'
-  + '<!--/wj:children:/-->';
+function restoredBody(tag) {
+  return '<!--wj:children:/:/anchor-restore-a-->'
+    + `<${tag}></${tag}>`
+    + '<div style="height:3000px">restored</div>'
+    + '<!--/wj:children:/-->';
+}
 
-const RESTORED_HTML =
-  '<!doctype html><html><head></head><body>' + RESTORED_BODY + '</body></html>';
+function restoredHtml(tag) {
+  return '<!doctype html><html><head></head><body>' + restoredBody(tag) + '</body></html>';
+}
+
+const RESTORED_HTML = restoredHtml('wj-grow-late-1310');
+const RESTORED_HTML_SLOW = restoredHtml('wj-grow-very-late-1310');
 
 /**
  * A same-document history entry for this test page, carrying one extra query
@@ -86,7 +113,15 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
   /** Resolves the in-flight revalidation, so a case controls the window's close. */
   let releaseFetch;
 
-  async function setup() {
+  /**
+   * @param {{ instantRevalidation?: boolean }} [opts] By default the
+   *   revalidation is held open so a case can assert inside the restore window.
+   *   `instantRevalidation` answers it immediately instead, which is the
+   *   ordering a fast server produces.
+   */
+  async function setup(opts) {
+    const instant = Boolean(opts && opts.instantRevalidation);
+    const html = instant ? RESTORED_HTML_SLOW : RESTORED_HTML;
     navGuard = installNavGuard();
     enableClientRouter();
     origScrollBehavior = document.documentElement.style.scrollBehavior;
@@ -109,11 +144,12 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     // restore window. Its response repeats the restored markup, which is what
     // the server would send.
     origFetch = window.fetch;
-    window.fetch = () => new Promise((resolve) => {
-      releaseFetch = () => resolve(new Response(RESTORED_HTML, {
-        headers: { 'content-type': 'text/html', 'x-webjs-build': '' },
-      }));
+    const respond = () => new Response(html, {
+      headers: { 'content-type': 'text/html', 'x-webjs-build': '' },
     });
+    window.fetch = instant
+      ? () => Promise.resolve(respond())
+      : () => new Promise((resolve) => { releaseFetch = () => resolve(respond()); });
 
     // Two real same-document history entries, so `history.back()` drives a REAL
     // popstate. Reassigning `location` is impossible in a browser, and a
@@ -123,7 +159,7 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     history.pushState(null, '', entryUrl('anchor-b'));
     entriesPushed = true;
     _snapshotCache.set(entryUrl('anchor-a'), {
-      html: RESTORED_HTML, scrollX: 0, scrollY: RESTORED_Y,
+      html, scrollX: 0, scrollY: RESTORED_Y,
     });
     _setCurrentPageUrl(location.href);
     // Start where the reader was, so the restore is a real scroll rather than
@@ -192,16 +228,43 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     } finally { await teardown(); }
   });
 
-  test('the window closes once the revalidation settles, leaving no residue', async () => {
+  test('a revalidation that answers before the growth still holds the reader', async () => {
+    // The window's close is scheduled off the revalidation, so its length is
+    // network latency plus two frames. That is only long enough because the
+    // revalidation is normally the slower of the two, which is a property of a
+    // deployment rather than a guarantee. Here the server answers instantly and
+    // the content grows several frames later, which is the ordering a local
+    // server, a 304, or a warm cache produces. The restore has to survive it.
+    await setup({ instantRevalidation: true });
+    try {
+      await goBack();
+      assert.ok(Math.abs(window.scrollY - RESTORED_Y) < 5,
+        `the restore lands on the recorded offset (got ${window.scrollY})`);
+      for (let i = 0; i < 14; i++) await frame();
+      const grown = document.querySelector('wj-grow-very-late-1310');
+      assert.ok(grown && grown.getBoundingClientRect().height > GROWTH - 5,
+        'the fixture actually grew, so the case is live');
+      assert.ok(Math.abs(window.scrollY - RESTORED_Y) < 5,
+        `growth landing after a fast revalidation must not move the reader `
+        + `(expected ~${RESTORED_Y}, got ${window.scrollY})`);
+    } finally { await teardown(); }
+  });
+
+  test('the window closes once the restore is over, leaving no residue', async () => {
     await setup();
     try {
       await goBack();
       assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), 'none');
       releaseFetch();
       releaseFetch = null;
-      // The close is the revalidation settling plus two frames for the
-      // re-applied DOM to lay out.
+      // The close is the LATER of the revalidation settling and the floor, plus
+      // two frames for the re-applied DOM to lay out. Answering the fetch alone
+      // is deliberately not enough: that coupling is what let a fast server
+      // close the window before the growth landed.
       for (let i = 0; i < 6; i++) await frame();
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), 'none',
+        'a revalidation answering early does not close the window on its own');
+      await new Promise((r) => setTimeout(r, 700));
       assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
         'the router leaves nothing of its own on <html> after the restore');
     } finally { await teardown(); }
