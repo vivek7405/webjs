@@ -140,10 +140,10 @@ test('seedStats reports ingested / replaced / hits / misses / pending', async ()
   const a = await stringify({ 'h/f/[1]': 'one', 'h/f/[2]': 'two' });
   const b = await stringify({ 'h/f/[1]': 'one-again' });
   scanSeeds(root([el('script', a), el('script', b)]));
-  assert.deepEqual(seedStats(), { ingested: 2, replaced: 1, hits: 0, misses: 0, pending: 2 });
+  assert.deepEqual(seedStats(), { ingested: 2, replaced: 1, hits: 0, misses: 0, keyMisses: 0, pending: 2 });
   takeSeed('h', 'f', '[1]');
   takeSeed('h', 'f', '[999]');
-  assert.deepEqual(seedStats(), { ingested: 2, replaced: 1, hits: 1, misses: 1, pending: 1 });
+  assert.deepEqual(seedStats(), { ingested: 2, replaced: 1, hits: 1, misses: 1, keyMisses: 1, pending: 1 });
 });
 
 test('a marked carrier schedules exactly one report; an unmarked one schedules none', async () => {
@@ -176,7 +176,7 @@ test('one miss inside the window logs one line naming the unmatched-keys cause',
   });
   assert.equal(warns.length, 1);
   assert.match(warns[0], /1 of 2 hydration action call\(s\) missed the seed/);
-  assert.match(warns[0], /carried seeds, but not for these calls/);
+  assert.match(warns[0], /under DIFFERENT arguments/);
 });
 
 test('a page with NO seeds stays SILENT, because the client cannot tell why', async () => {
@@ -201,6 +201,20 @@ test('a streamed page names streaming as the cause', async () => {
   });
   assert.equal(warns.length, 1);
   assert.match(warns[0], /This page streams/);
+});
+
+test('a miss on an action the page never seeded stays SILENT', async () => {
+  // The false alarm this branch had to lose. A mutation, a `Task` autorun and a
+  // `connectedCallback` read all route through the same lookup and could never
+  // have been seeded, so a miss on an action the page did not seed at all is not
+  // evidence of anything. Only a miss on an action the page DID seed, under
+  // other arguments, is a provable key mismatch.
+  const { warns } = await withReporter(async () => {
+    scanSeeds(root([el('script', await stringify({ 'h/getUser/[1]': 1 }), 'ok')]));
+    takeSeed('h', 'getUser', '[1]');    // hit
+    takeSeed('h', 'createTodo', '[{}]'); // a mutation: never seedable, must not warn
+  });
+  assert.deepEqual(warns, []);
 });
 
 test('a serializer DROP names that cause, not the unmatched-keys one', async () => {
@@ -326,7 +340,7 @@ test('an empty page after a seeded one does not inherit the seeded one\'s count'
   assert.deepEqual(warns, []);
   const second = await withReporter(async () => {
     scanSeeds(root([el('script', await stringify({}), 'ok')]));
-    takeSeed('h', 'f', '[9]');
+    takeSeed('h', 'unseeded', '[9]');
   });
   assert.deepEqual(second.warns, [], 'no inherited count, so no unmatched-keys claim');
 });
@@ -339,19 +353,19 @@ test('a scan whose seeds all REPLACE unconsumed ones still counts as seeds merge
   const payload = await stringify({ 'h/elided/[1]': 'never-consumed' });
   const first = await withReporter(async () => {
     scanSeeds(root([el('script', payload, 'ok')]));
-    takeSeed('h', 'other', '[1]');
+    takeSeed('h', 'elided', '[99]');
   });
   assert.equal(first.warns.length, 1);
   assert.match(first.warns[0], /1 seed\(s\) on this page/);
-  assert.match(first.warns[0], /carried seeds, but not for these calls/);
+  assert.match(first.warns[0], /under DIFFERENT arguments/);
 
   const second = await withReporter(async () => {
     scanSeeds(root([el('script', payload, 'ok')]));
-    takeSeed('h', 'other', '[1]');
+    takeSeed('h', 'elided', '[99]');
   });
   assert.equal(second.warns.length, 1);
   assert.match(second.warns[0], /1 seed\(s\) on this page/, 'a replacement is still a seed on the page');
-  assert.match(second.warns[0], /carried seeds, but not for these calls/, 'and the cause must not flip');
+  assert.match(second.warns[0], /under DIFFERENT arguments/, 'and the cause must not flip');
 });
 
 test('the cause comes from the window\'s OWN marker, not a later scan\'s', async () => {
@@ -377,7 +391,7 @@ test('the cause comes from the window\'s OWN marker, not a later scan\'s', async
     console.warn = origWarn;
   }
   assert.equal(warns.length, 1);
-  assert.match(warns[0], /carried seeds, but not for these calls/, 'the buffered page keeps its own cause');
+  assert.match(warns[0], /under DIFFERENT arguments/, 'the buffered page keeps its own cause');
   assert.ok(warns[0].indexOf('This page streams') === -1, 'the later page\'s marker must not leak in');
 });
 

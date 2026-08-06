@@ -275,7 +275,7 @@ Check it with `curl -sSI localhost:3000/` or in the network tab.
 
 - *"This page streams"*, so no seeds could be emitted. Expected, not a bug (see below).
 - *"The page's seeds could not be serialized."* Something an action returned is not serializer-safe, so the whole block was dropped. The response header shows `collected` above `emitted` for the same reason.
-- *"The page carried seeds, but not for these calls."* The key is `hash(action file) / function name / serialized arguments`, so the client asked with an argument the SSR render never used. Common cause: the component computes its argument from browser-only state (a `localStorage` read, a `connectedCallback` assignment), which the server render could not have known.
+- *"The page seeded these actions under DIFFERENT arguments."* The key is `hash(action file) / function name / serialized arguments`, so the client asked with an argument the SSR render never used. Common cause: the component computes its argument from browser-only state (a `localStorage` read, a `connectedCallback` assignment), which the server render could not have known. A miss on an action the page never seeded at all is NOT reported, because a mutation or a client-only read routes through the same lookup and could never have been seeded.
 
 A miss AFTER hydration is correct and is not reported: the seed is consume-once, so a deliberate refetch or an argument change is supposed to go to the network.
 

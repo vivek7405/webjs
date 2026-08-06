@@ -89,6 +89,7 @@ suite('SSR action seeding, real DOM (#1309)', () => {
     assert.equal(s.ingested, 2);
     assert.equal(s.hits, 1);
     assert.equal(s.misses, 1);
+    assert.equal(s.keyMisses, 1, 'the miss was on an action this page seeded, so it is provable');
     assert.equal(s.pending, 1, 'the unconsumed seed is still in the store');
   });
 
@@ -101,6 +102,7 @@ suite('SSR action seeding, real DOM (#1309)', () => {
     });
     assert.equal(warns.length, 1, 'exactly one line for the batch');
     assert.ok(warns[0].indexOf('1 of 2 hydration action call(s) missed') !== -1, warns[0]);
+    assert.ok(warns[0].indexOf('under DIFFERENT arguments') !== -1, warns[0]);
   });
 
   test('a stale block left in the live document cannot outrank a fresh soft-nav seed', async () => {

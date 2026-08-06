@@ -204,6 +204,6 @@ describe('E2E: dev observability for SSR action seeding (#1309)', {
     assert.equal(rpcs.length, 1, 'the unmatched key really did cost a network round-trip');
     assert.equal(warns.length, 1, 'exactly one line, not one per call');
     assert.match(warns[0], /1 of 1 hydration action call\(s\) missed the seed/);
-    assert.match(warns[0], /carried seeds, but not for these calls/);
+    assert.match(warns[0], /under DIFFERENT arguments/);
   });
 });

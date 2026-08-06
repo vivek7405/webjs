@@ -43,7 +43,23 @@ let scannedInitial = false;
  * `fetch`, so nothing is gated here; only the REPORTING is, by a server-emitted
  * marker (see `readDevMarker`).
  */
-const stats = { ingested: 0, replaced: 0, hits: 0, misses: 0 };
+const stats = { ingested: 0, replaced: 0, hits: 0, misses: 0, keyMisses: 0 };
+
+/**
+ * The `hash/fn` of every action this page SEEDED, whatever arguments it used.
+ *
+ * This is what makes a miss provable. A miss on its own is not evidence of
+ * anything: every action call routes through `takeSeed`, including ones that
+ * were never SSR-invoked and never could have been seeded (a mutation, a `Task`
+ * autorun, a `connectedCallback` read, an `optimistic()` call). But a miss on an
+ * action the server DID invoke during this render, under some other argument
+ * list, is a genuine key mismatch and nothing else: the action is reachable, it
+ * was seeded, and this call still asked for a key the page does not carry.
+ *
+ * Keyed on the first two segments, which is exact: the file hash and the export
+ * name are both `/`-free, and only the serialized argument list can contain one.
+ */
+const seedFns = new Set();
 
 /**
  * The open report window, or null. Each scan OPENS one and CLOSES the previous,
@@ -181,6 +197,7 @@ export function scanSeeds(root, opts) {
     // an in-flight `async render()` from the outgoing page a round-trip, never
     // wrong data.
     seeds.clear();
+    seedFns.clear();
   }
   // The lazy scan must not run again once the live document has been handled: a
   // second pass finds nothing to ingest but would close the window this scan is
@@ -253,6 +270,8 @@ function ingest(raw, el, cleanup) {
           if (seeds.has(k)) stats.replaced++;
           else stats.ingested++;
           seeds.set(k, obj[k]);
+          const cut = k.indexOf('/', k.indexOf('/') + 1);
+          if (cut > 0) seedFns.add(k.slice(0, cut));
         }
       }
     } catch {
@@ -294,7 +313,7 @@ function startReportWindow(scanMarker, mergedBefore) {
   // right.
   if (scanMarker === null) return;
   const epoch = ++windowEpoch;
-  openWindow = { epoch, hits: stats.hits, misses: stats.misses, merged: mergedBefore, marker: scanMarker };
+  openWindow = { epoch, hits: stats.hits, misses: stats.misses, keyMisses: stats.keyMisses, merged: mergedBefore, marker: scanMarker };
   const run = () => {
     if (!openWindow || openWindow.epoch !== epoch) return; // already closed; not ours
     closeReportWindow();
@@ -324,32 +343,32 @@ function reportSeeds(w) {
   const hits = stats.hits - w.hits;
   const misses = stats.misses - w.misses;
   const merged = (stats.ingested + stats.replaced) - w.merged;
+  const keyMisses = stats.keyMisses - w.keyMisses;
   if (misses === 0) return;
-  // Report ONLY a cause this side can be sure of. A miss is not evidence of a
-  // defect on its own: EVERY action call routes through `takeSeed`, including
-  // ones that were never SSR-invoked and never could have been seeded (a
-  // mutation, a `Task` autorun, a `connectedCallback` read, an `optimistic()`
-  // call). On a page that emitted no seeds those are indistinguishable from a
-  // broken seeding path, so claiming a defect there tells a developer whose code
-  // is correct to go check a `'use server'` directive that is already right, and
-  // does it on every page view with no way to silence it. That is exactly the
-  // false alarm the defect-only rule exists to prevent, so the ambiguous case is
-  // left to the SERVER, whose `X-Webjs-Seed` header states `collected=0`
-  // unambiguously and per request.
+  // Report ONLY a cause this side can prove. A miss is not evidence on its own:
+  // EVERY action call routes through `takeSeed`, including ones that were never
+  // SSR-invoked and never could have been seeded (a mutation, a `Task` autorun,
+  // a `connectedCallback` read, an `optimistic()` call). Warning on those tells
+  // a developer whose code is correct to go audit it, on every page view, with
+  // no way to silence it, which is the false alarm that trains people to filter
+  // the channel out.
   //
-  // Two cases remain certain. A `streamed` or `drop` marker is the server saying
-  // why no seed could ride the page. And a page that DID seed while some
-  // hydration call still missed is a genuine key mismatch.
+  // Two shapes are provable. A `streamed` or `drop` marker is the SERVER saying
+  // no seed could ride the page, so every miss on it is explained. And a miss on
+  // an action this page DID seed under other arguments (`seedFns`) is a genuine
+  // key mismatch, because the action is demonstrably reachable and seeded. A
+  // miss on an action that was never seeded at all is left alone: that is the
+  // ambiguous case, and the server's `X-Webjs-Seed` states it unambiguously.
   const cause = w.marker === 'streamed'
     ? 'This page streams (a Suspense or <webjs-suspense> boundary), and a streamed render emits no seeds, so every action call on it goes to the network.'
     : w.marker === 'drop'
       ? 'The page\'s seeds could not be serialized, so the whole block was dropped. Something an action returned is not serializer-safe; the server response reports collected above emitted.'
-      : merged === 0
+      : keyMisses === 0
         ? null
-        : 'The page carried seeds, but not for these calls. The key is the action file hash plus the function name plus the serialized arguments, so a different argument misses (a deliberate refetch after hydration misses too, and is expected).';
+        : 'The page seeded these actions under DIFFERENT arguments, so the key did not match. The key is the action file hash plus the function name plus the serialized arguments, and an argument the SSR render never used misses (a deliberate refetch after hydration misses too, and is expected).';
   if (cause === null) return;
   console.warn(
-    `[webjs] SSR action seeding: ${misses} of ${hits + misses} hydration action call(s) missed the seed and cost a network round-trip `
+    `[webjs] SSR action seeding: ${w.marker === 'streamed' || w.marker === 'drop' ? misses : keyMisses} of ${hits + misses} hydration action call(s) missed the seed and cost a network round-trip `
     + `(${merged} seed(s) on this page, ${seeds.size} still unconsumed). ${cause} `
     + 'See https://webjs.dev/docs/data-fetching for the seeding reference.',
   );
@@ -381,6 +400,9 @@ export function takeSeed(hash, fnName, argsKey) {
     return v;
   }
   stats.misses++;
+  // A miss on an action this page DID seed under other arguments is the only
+  // miss the client can call a defect; see `seedFns`.
+  if (seedFns.has(`${hash}/${fnName}`)) stats.keyMisses++;
   return SEED_MISS;
 }
 
@@ -404,6 +426,8 @@ export function __resetSeeds() {
   stats.replaced = 0;
   stats.hits = 0;
   stats.misses = 0;
+  stats.keyMisses = 0;
+  seedFns.clear();
   openWindow = null;   // drop it silently; a reset is not a page view
   windowEpoch++;       // and burn any in-flight callback rather than let it report
 }
