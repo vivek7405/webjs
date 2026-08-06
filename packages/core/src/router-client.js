@@ -437,7 +437,10 @@ let cancelScrollCatchUp = null;
 
 /**
  * Bumped wherever a restore is superseded (#1310), and read by the one restore
- * path that outlives the call scheduling it.
+ * path that outlives the call scheduling it. That means a PAGE navigation, a
+ * PAGE-level submission, and disabling the router. A frame-targeted nav or
+ * submission swaps one region and leaves the page, so it is excluded, exactly
+ * like the `loadFrame` case below.
  *
  * Deliberately NOT `currentNavigationToken`, which is the obvious choice and the
  * wrong one: `loadFrame` bumps that too, and its own contract says a frame
@@ -1592,7 +1595,13 @@ async function performNavigation(href, isPopState, frameId) {
   // entirely. Reopening for this navigation, if it earns one, happens below.
   // The clamped path's catch-up is cancelled for the same reason: it chases an
   // offset recorded for the page being navigated away from.
-  restoreGeneration += 1;
+  //
+  // A FRAME-targeted nav is excluded, for the same reason `loadFrame` is: it
+  // swaps one region and leaves the page, and so the restored scroll offset,
+  // intact. The codebase already treats a click-driven frame nav and a `src`
+  // self-load as the same thing, so exempting one and not the other would be
+  // the split this rule exists to avoid.
+  if (!frameId) restoreGeneration += 1;
   if (releaseScrollAnchor) releaseScrollAnchor();
   if (cancelScrollCatchUp) cancelScrollCatchUp();
 
@@ -1789,8 +1798,9 @@ async function performSubmission(href, method, body, frameId, form) {
   const myToken = ++currentNavigationToken;
   // Same reasoning as performNavigation: a submission is a navigation, so it
   // ends any restore window a recent Back left open (#1310), and cancels a
-  // clamped restore's catch-up.
-  restoreGeneration += 1;
+  // clamped restore's catch-up. Frame-targeted submissions are excluded on the
+  // same reasoning as the frame navs above.
+  if (!frameId) restoreGeneration += 1;
   if (releaseScrollAnchor) releaseScrollAnchor();
   if (cancelScrollCatchUp) cancelScrollCatchUp();
 

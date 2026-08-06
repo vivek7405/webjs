@@ -21,7 +21,7 @@
  * connected models the real cause: as raw parsed markup it is 0px tall, and it
  * reaches its real size only once its own render has run.
  */
-import { enableClientRouter, disableClientRouter, navigate, _snapshotCache, _setCurrentPageUrl } from '../../../src/router-client.js';
+import { enableClientRouter, disableClientRouter, navigate, _snapshotCache, _setCurrentPageUrl, _bumpNavToken } from '../../../src/router-client.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
 import { installNavGuard } from '../../../../../test/browser-nav-guard.js';
@@ -153,6 +153,8 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
   let navGuard, container, origFetch, origScrollBehavior, origUrl, entriesPushed;
   /** Resolves the in-flight revalidation, so a case controls the window's close. */
   let releaseFetch;
+  /** Frame self-loads seen, so a case can prove its fixture actually loaded. */
+  let frameLoads = 0;
 
   /**
    * @param {{ instantRevalidation?: boolean, restoredY?: number }} [opts] By
@@ -208,9 +210,11 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     const respond = () => new Response(html, {
       headers: { 'content-type': 'text/html', 'x-webjs-build': '' },
     });
+    frameLoads = 0;
+    const count = (u) => { if (String(u).includes('wj-frame-target')) frameLoads += 1; };
     window.fetch = instant
-      ? () => Promise.resolve(respond())
-      : () => new Promise((resolve) => { releaseFetch = () => resolve(respond()); });
+      ? (u) => { count(u); return Promise.resolve(respond()); }
+      : (u) => { count(u); return new Promise((resolve) => { releaseFetch = () => resolve(respond()); }); };
 
     // Two real same-document history entries, so `history.back()` drives a REAL
     // popstate. Reassigning `location` is impossible in a browser, and a
@@ -396,9 +400,42 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     try {
       await goBack();
       for (let i = 0; i < 6; i++) await frame();
+      assert.ok(frameLoads > 0,
+        'precondition: the frame actually self-loaded, so this is not silently '
+        + 'a duplicate of the plain restore case');
       assert.ok(Math.abs(window.scrollY - RESTORED_Y) < 5,
         'the restore still runs with a self-loading frame in the page '
         + `(expected ~${RESTORED_Y}, got ${window.scrollY})`);
+    } finally {
+      await teardown();
+      (/** @type any */ (document)).startViewTransition = origSVT;
+    }
+  });
+
+  test('a bare nav-token bump does not cancel a deferred restore', async () => {
+    // The counterfactual for keying the deferred restore to its own supersede
+    // counter rather than to `currentNavigationToken`. Every other case here
+    // supersedes with `navigate()`, which moves BOTH, so none of them can tell
+    // the two implementations apart. This moves only the nav token, which is
+    // what a frame self-load does: under the old keying the restore is dropped
+    // and the reader is left at the outgoing offset, under the current one it
+    // runs.
+    const origSVT = (/** @type any */ (document)).startViewTransition;
+    (/** @type any */ (document)).startViewTransition = (cb) => {
+      const done = new Promise((resolve) => {
+        requestAnimationFrame(() => { cb(); resolve(); });
+      });
+      return { updateCallbackDone: done, finished: done, ready: done, skipTransition() {} };
+    };
+    await setup({ viewTransition: true });
+    try {
+      await goBack();
+      // Inside the deferred frame, before the swap commits.
+      _bumpNavToken();
+      for (let i = 0; i < 6; i++) await frame();
+      assert.ok(Math.abs(window.scrollY - RESTORED_Y) < 5,
+        'a nav-token bump that is not a page navigation must not drop the '
+        + `restore (expected ~${RESTORED_Y}, got ${window.scrollY})`);
     } finally {
       await teardown();
       (/** @type any */ (document)).startViewTransition = origSVT;
