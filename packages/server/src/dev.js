@@ -1479,7 +1479,7 @@ export async function createRequestHandler(opts) {
       // Build all whole-app analysis on the first request (memoized), before
       // any SSR, module serve, gate check, action dispatch, or middleware runs.
       await ensureReady();
-      const next = () => handleCore(req, { state, appDir, coreDir, dev, logger, reportError, reportDevError, cspEnabled: cspConfig.enabled, allowedOrigins: allowedOriginsValue });
+      const next = () => handleCore(req, { state, appDir, coreDir, dev, logger, reportError, hasOnError, reportDevError, cspEnabled: cspConfig.enabled, allowedOrigins: allowedOriginsValue });
       if (state.middleware) {
         try {
           return await state.middleware(req, next);
@@ -1976,7 +1976,7 @@ async function tryServeFrameworkStatic(path, method, ctx) {
 }
 
 async function handleCore(req, ctx) {
-  const { state, appDir, coreDir, dev, logger, reportError, reportDevError, cspEnabled, allowedOrigins } = ctx;
+  const { state, appDir, coreDir, dev, logger, reportError, hasOnError, reportDevError, cspEnabled, allowedOrigins } = ctx;
   const url = new URL(req.url);
   // Decode percent-encoded characters so filesystem lookups match real
   // filenames. Dynamic route segments like `[slug]` and route groups like
@@ -2260,8 +2260,11 @@ async function handleCore(req, ctx) {
         // an error.
         reportFormSubmittedAsGet(
           url, req,
-          reportError ? (e) => reportError(e, req, 'action') : undefined,
-          logger, dev,
+          // Gated on hasOnError, not on `reportError`: that is always a
+          // function here and no-ops internally, so passing it would spend a
+          // dedupe slot on a report nobody receives.
+          hasOnError ? (e) => reportError(e, req, 'action') : undefined,
+          logger, dev, page.route,
         );
         // A successful render of URL U supersedes a RETAINED render error for
         // that same URL (#1047), so a reconnecting tab is not handed a frame the
@@ -2291,7 +2294,7 @@ async function handleCore(req, ctx) {
       const deps = {
         actionIndex: state.actionIndex,
         allowedOrigins,
-        onError: reportError ? (e) => reportError(e, req, 'action') : undefined,
+        onError: hasOnError ? (e) => reportError(e, req, 'action') : undefined,
         logger,
       };
       const handler = () => runFormAction(page.route, page.params, url, req, ssrOpts, deps);

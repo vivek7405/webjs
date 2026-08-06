@@ -6,6 +6,7 @@ import {
   classifyActionHole,
   matchClosingBrace,
   extractWebComponentClassBodies,
+  redactStringsAndTemplates,
 } from '../../src/js-scan.js';
 
 /**
@@ -18,15 +19,15 @@ import {
 test('a submitter reports the scope of its enclosing form', () => {
   assert.deepEqual(
     scanHtmlFormScopes('html`<form action=${save}><button formaction=${del}>x</button></form>`').submitters,
-    [{ tag: 'button', scope: 'bound' }],
+    [{ tag: 'button', scope: 'bound', delivers: null }],
   );
   assert.deepEqual(
     scanHtmlFormScopes('html`<form><button formaction=${del}>x</button></form>`').submitters,
-    [{ tag: 'button', scope: 'unbound' }],
+    [{ tag: 'button', scope: 'unbound', delivers: false }],
   );
   assert.deepEqual(
     scanHtmlFormScopes('html`<button formaction=${del}>x</button>`').submitters,
-    [{ tag: 'button', scope: 'none' }],
+    [{ tag: 'button', scope: 'none', delivers: null }],
   );
 });
 
@@ -35,34 +36,34 @@ test('a nested template inherits the enclosing form scope', () => {
   // `repeat`, and nested templates, so a per-row button in a bound form is
   // bound.
   const bound = 'html`<form action=${save}>${rows.map((r) => html`<button formaction=${del}>x</button>`)}</form>`';
-  assert.deepEqual(scanHtmlFormScopes(bound).submitters, [{ tag: 'button', scope: 'bound' }]);
+  assert.deepEqual(scanHtmlFormScopes(bound).submitters, [{ tag: 'button', scope: 'bound', delivers: null }]);
   const unbound = 'html`<form>${rows.map((r) => html`<button formaction=${del}>x</button>`)}</form>`';
-  assert.deepEqual(scanHtmlFormScopes(unbound).submitters, [{ tag: 'button', scope: 'unbound' }]);
+  assert.deepEqual(scanHtmlFormScopes(unbound).submitters, [{ tag: 'button', scope: 'unbound', delivers: false }]);
 });
 
 test('the scope closes at </form> and does not leak forward', () => {
   const src = 'html`<form action=${save}></form><button formaction=${del}>x</button>`';
-  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'none' }]);
+  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'none', delivers: null }]);
 });
 
 test('a start tag split across holes is still one tag', () => {
   const src = 'html`<form action=${save} class="a"><button class=${c} formaction=${del}>x</button></form>`';
-  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'bound' }]);
+  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'bound', delivers: null }]);
 });
 
 test('a `>` inside a quoted attribute value does not close the tag', () => {
   const src = 'html`<form action=${save}><div title="a>b"></div><button formaction=${del}>x</button></form>`';
-  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'bound' }]);
+  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'bound', delivers: null }]);
 });
 
 test('a custom-element start tag is reported, its close tag is not', () => {
   assert.deepEqual(
     scanHtmlFormScopes('html`<form action=${save}><row-btn></row-btn></form>`').tagUses,
-    [{ tag: 'row-btn', scope: 'bound' }],
+    [{ tag: 'row-btn', scope: 'bound', delivers: null }],
   );
   assert.deepEqual(
     scanHtmlFormScopes('html`<form><row-btn></row-btn></form>`').tagUses,
-    [{ tag: 'row-btn', scope: 'unbound' }],
+    [{ tag: 'row-btn', scope: 'unbound', delivers: false }],
   );
 });
 
@@ -70,15 +71,15 @@ test('only an html-tagged literal is read as markup', () => {
   // The carve-out the whole rule rests on: the framework's own website renders
   // `<form action=${fn}>` as a code SAMPLE.
   assert.deepEqual(scanHtmlFormScopes("const s = '<form><button formaction=x></button></form>';").submitters, []);
-  assert.deepEqual(scanHtmlFormScopes('css`.a { }` + html`<row-btn></row-btn>`').tagUses, [{ tag: 'row-btn', scope: 'none' }]);
+  assert.deepEqual(scanHtmlFormScopes('css`.a { }` + html`<row-btn></row-btn>`').tagUses, [{ tag: 'row-btn', scope: 'none', delivers: null }]);
   // A form written inside a plain string cannot open a scope for real markup.
   const mixed = "const s = '<form>'; export default () => html`<button formaction=${del}>x</button>`;";
-  assert.deepEqual(scanHtmlFormScopes(mixed).submitters, [{ tag: 'button', scope: 'none' }]);
+  assert.deepEqual(scanHtmlFormScopes(mixed).submitters, [{ tag: 'button', scope: 'none', delivers: null }]);
 });
 
 test('an HTML comment is not markup', () => {
   const src = 'html`<!-- <form> --><button formaction=${del}>x</button>`';
-  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'none' }]);
+  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'none', delivers: null }]);
 });
 
 test('classifyActionHole matches the tag and the attribute as a pair', () => {
@@ -115,5 +116,54 @@ test('a class body holding a template hole is extractable from RAW source', () =
   const bodies = extractWebComponentClassBodies(src);
   assert.equal(bodies.length, 1);
   assert.match(bodies[0].body, /formaction=\$\{del\}/);
-  assert.deepEqual(scanHtmlFormScopes(bodies[0].body).submitters, [{ tag: 'button', scope: 'none' }]);
+  assert.deepEqual(scanHtmlFormScopes(bodies[0].body).submitters, [{ tag: 'button', scope: 'none', delivers: null }]);
+});
+
+test('an unbound form reports whether it would still DELIVER the identity', () => {
+  // This is the bit that decides broken from working, and it is not boundness.
+  // A submitter's identity rides its OWN name/value pair, so an unbound form
+  // that still sends a parseable POST body delivers it and the action runs.
+  const sub = (formTag) => scanHtmlFormScopes(
+    'html`' + formTag + '<button formaction=${del}>x</button></form>`',
+  ).submitters[0];
+
+  assert.equal(sub('<form method="post">').delivers, true, 'a POST body carries the pair');
+  assert.equal(sub('<form method="POST">').delivers, true, 'the keyword folds case');
+  assert.equal(sub('<form method="post" enctype="multipart/form-data">').delivers, true);
+  assert.equal(sub('<form>').delivers, false, 'no method is a GET');
+  assert.equal(sub('<form method="get">').delivers, false);
+  // `method` is an enumerated attribute matched against exact keywords with no
+  // whitespace stripping, so a padded value falls to the GET default.
+  assert.equal(sub('<form method=" post ">').delivers, false);
+  assert.equal(sub('<form method="post" enctype="text/plain">').delivers, false, 'the server cannot parse it');
+  // A hole anywhere else in the start tag makes the answer dynamic.
+  assert.equal(sub('<form method=${m}>').delivers, null);
+  assert.equal(sub('<form enctype=${e} method="post">').delivers, null);
+});
+
+test('opensForm reports whether the source opens any form at all', () => {
+  assert.equal(scanHtmlFormScopes('html`<button formaction=${d}>x</button>`').opensForm, false);
+  assert.equal(scanHtmlFormScopes('html`<form action=${s}></form>`').opensForm, true);
+  // A form written only inside a plain string is not a form.
+  assert.equal(scanHtmlFormScopes("const s = '<form>';").opensForm, false);
+});
+
+test('class-body offsets index the RAW source identically to the mask', () => {
+  // How the rule gets a body with its templates intact without asking the brace
+  // matcher to lex raw source: locate in the position-preserving mask, slice
+  // from `content`. A regex literal holding a brace is the case that broke when
+  // raw source was passed directly.
+  const src = [
+    'class RowBtn extends WebComponent({}) {',
+    '  static re = /[{]/;',
+    '  render() { return html`<button formaction=${del}>x</button>`; }',
+    '}',
+  ].join('\n');
+  const masked = redactStringsAndTemplates(src);
+  assert.equal(masked.length, src.length, 'the mask is position-preserving');
+  const bodies = extractWebComponentClassBodies(masked);
+  assert.equal(bodies.length, 1, 'the masked view blanks the regex body, so the braces balance');
+  const body = src.slice(bodies[0].bodyStart, bodies[0].bodyEnd);
+  assert.match(body, /formaction=\$\{del\}/, 'the raw slice keeps the template intact');
+  assert.deepEqual(scanHtmlFormScopes(body).submitters, [{ tag: 'button', scope: 'none', delivers: null }]);
 });

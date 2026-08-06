@@ -1131,6 +1131,60 @@ test('#1307: a page GET carrying __webjs_action still renders 200 and reports', 
   assert.equal(seen.length, 1, 'a flood of crafted requests produces one report');
 });
 
+test('#1307: crafted requests to a dynamic route cannot exhaust the dedupe', async () => {
+  // The dedupe key is the matched ROUTE, not the request pathname. Keyed on the
+  // pathname a dynamic route yields unbounded distinct keys, so a few hundred
+  // crafted urls would fill the 256-entry cap and permanently silence BOTH
+  // diagnostics for the process, which is worse than the amplification the cap
+  // exists to stop.
+  resetFormReportDedupe();
+  const seen = [];
+  const app = await createRequestHandler({
+    appDir: makeApp({
+      'app/blog/[slug]/page.ts': `import { html } from ${CORE};\nexport default () => html\`<p>post</p>\`;\n`,
+      'app/info/page.ts': `import { html } from ${CORE};\nexport default () => html\`<p>read-only</p>\`;\n`,
+    }),
+    dev: false,
+    onError: (e) => seen.push(e),
+  });
+  await app.warmup();
+
+  for (let i = 0; i < 400; i++) {
+    const r = await app.handle(new Request(`http://x/blog/post-${i}?__webjs_action=x`));
+    assert.equal(r.status, 200);
+  }
+  assert.equal(seen.length, 1, '400 distinct paths on ONE route are one report');
+
+  // And the flood did not consume the budget for a different route.
+  await app.handle(new Request('http://x/info?__webjs_action=x'));
+  assert.equal(seen.length, 2, 'a genuinely different route still reports');
+
+  // Nor for the OTHER signal, which has its own key space.
+  const post = await app.handle(new Request('http://x/info', form({ a: '1' })));
+  assert.equal(post.status, 405);
+  assert.equal(seen.filter((e) => e.code === 'WEBJS_FORM_ACTION_MISSING').length, 1,
+    'one signal can never silence the other');
+});
+
+test('#1307: no onError and not dev spends no dedupe slot', async () => {
+  // A slot consumed with nothing to report would let a sink-less run quietly
+  // eat the cap for one that has a sink.
+  resetFormReportDedupe();
+  // The SAME app dir for both handlers, so the route key is identical and the
+  // assertion is discriminating: two different dirs would produce two different
+  // keys and the test would pass even if the slot HAD been spent.
+  const appDir = makeApp(READ_ONLY_APP);
+  const silent = await createRequestHandler({ appDir, dev: false });
+  await silent.warmup();
+  assert.equal((await silent.handle(new Request('http://x/info?__webjs_action=x'))).status, 200);
+
+  const seen = [];
+  const app = await createRequestHandler({ appDir, dev: false, onError: (e) => seen.push(e) });
+  await app.warmup();
+  await app.handle(new Request('http://x/info?__webjs_action=x'));
+  assert.equal(seen.length, 1, 'the slot was still free');
+});
+
 test('#1307: an ordinary page GET and a non-form POST report nothing', async () => {
   resetFormReportDedupe();
   const seen = [];

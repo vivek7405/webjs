@@ -46,6 +46,20 @@ class RowBtn extends WebComponent({}) {
 RowBtn.register('row-btn');
 ${extra}`;
 
+const TODO_LIST = `import { html, WebComponent } from '@webjsdev/core';
+class TodoList extends WebComponent({}) {
+  render() { return html\`<ul><todo-row></todo-row></ul>\`; }
+}
+TodoList.register('todo-list');
+`;
+const TODO_ROW = `import { html, WebComponent } from '@webjsdev/core';
+import { publishDraft } from '#modules/feedback/actions/publish.server.ts';
+class TodoRow extends WebComponent({}) {
+  render() { return html\`<li><button formaction=\${publishDraft}>Publish</button></li>\`; }
+}
+TodoRow.register('todo-row');
+`;
+
 test('the rule is registered', () => {
   assert.ok(RULES.some((r) => r.name === RULE), 'RULES lists submitter-needs-bound-form');
 });
@@ -90,6 +104,97 @@ export default () => html\`<form><row-btn></row-btn></form>\`;
 `,
   });
   assert.deepEqual(hits(await checkConventions(dir)), [], 'a mixed tag is indefinite');
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('silent when the unbound host form still DELIVERS the identity (method=post)', async () => {
+  // The distinction the rule turns on, and the one that is easy to get wrong.
+  // An unbound `<form method="post">` WORKS across a module boundary: the
+  // cannot-tell fallback binds the submitter, the submitter's own name/value
+  // pair carries `__webjs_action` into the POST body, and the dispatcher takes
+  // the last entry it finds. Flagging it would be a false positive on working
+  // code, with a diagnosis (a GET, a query string) that never happens.
+  const dir = await makeApp({
+    'components/row-btn.ts': rowBtn(),
+    'app/page.ts': `import { html } from '@webjsdev/core';
+export default () => html\`<form method="post"><row-btn></row-btn></form>\`;
+`,
+  });
+  assert.deepEqual(hits(await checkConventions(dir)), [], 'an unbound POST form delivers, so nothing is broken');
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('fires when the unbound host form cannot deliver (method=get, or a bad enctype)', async () => {
+  // The other side of the same coin: these really do lose the identity.
+  for (const form of ['<form method="get">', '<form method="post" enctype="text/plain">', '<form method=" post ">']) {
+    const dir = await makeApp({
+      'components/row-btn.ts': rowBtn(),
+      'app/page.ts': `import { html } from '@webjsdev/core';
+export default () => html\`${form}<row-btn></row-btn></form>\`;
+`,
+    });
+    const v = hits(await checkConventions(dir));
+    assert.equal(v.length, 1, `${form} cannot carry the identity`);
+    assert.match(v[0].message, /cannot carry the identity to the server/);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('silent when the host form method is a dynamic hole', async () => {
+  const dir = await makeApp({
+    'components/row-btn.ts': rowBtn(),
+    'app/page.ts': `import { html } from '@webjsdev/core';
+export default ({ m }) => html\`<form method=\${m}><row-btn></row-btn></form>\`;
+`,
+  });
+  assert.deepEqual(hits(await checkConventions(dir)), [], 'a dynamic method is unknowable');
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('silent when the component could splice a fragment into a form it opens itself', async () => {
+  // A fragment built into a local and spliced into a form the SAME file opens
+  // inherits the splice point's scope, not this component's call-site scope,
+  // and the two templates are separate scans. Same reasoning the submitter half
+  // already applies to a bare helper.
+  const dir = await makeApp({
+    'components/todo-list.ts': `import { html, WebComponent } from '@webjsdev/core';
+class TodoList extends WebComponent({}) {
+  render() {
+    const rows = html\`<todo-row></todo-row>\`;
+    return html\`<form action=\${save}>\${rows}</form>\`;
+  }
+}
+TodoList.register('todo-list');
+`,
+    'components/todo-row.ts': TODO_ROW,
+    'app/page.ts': `import { html } from '@webjsdev/core';
+export default () => html\`<form><todo-list></todo-list></form>\`;
+`,
+  });
+  assert.deepEqual(hits(await checkConventions(dir)), [], 'a file that opens its own form cannot attribute a none-scope use');
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('a regex literal in a component file does not silently disable the rule', async () => {
+  // The class body is located in the MASK and sliced out of the raw source at
+  // the same offsets, so the brace matcher never lexes raw source. Feeding it
+  // raw source made `static re = /[{]/` yield zero class bodies, which dropped
+  // the cross-module half for that file with no signal at all.
+  const dir = await makeApp({
+    'components/row-btn.ts': `import { html, WebComponent } from '@webjsdev/core';
+import { publishDraft } from '#modules/feedback/actions/publish.server.ts';
+class RowBtn extends WebComponent({}) {
+  static re = /[{]/;
+  render() { return html\`<button formaction=\${publishDraft}>Publish</button>\`; }
+}
+RowBtn.register('row-btn');
+`,
+    'app/page.ts': `import { html } from '@webjsdev/core';
+export default () => html\`<form><row-btn></row-btn></form>\`;
+`,
+  });
+  const v = hits(await checkConventions(dir));
+  assert.equal(v.length, 1, 'the rule still sees the class body');
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -153,23 +258,26 @@ export default () => html\`<form><button formaction=\${publishDraft}>Publish</bu
   const v = hits(await checkConventions(dir));
   assert.equal(v.length, 1);
   assert.match(v[0].file, /page\.ts/);
-  assert.match(v[0].message, /in the same template/);
+  // The same-scan case is a RENDER error, not the silent one, so it says so.
+  assert.match(v[0].message, /SAME template/);
+  assert.match(v[0].message, /renderer refuses this shape/);
   await rm(dir, { recursive: true, force: true });
 });
 
-const TODO_LIST = `import { html, WebComponent } from '@webjsdev/core';
-class TodoList extends WebComponent({}) {
-  render() { return html\`<ul><todo-row></todo-row></ul>\`; }
-}
-TodoList.register('todo-list');
-`;
-const TODO_ROW = `import { html, WebComponent } from '@webjsdev/core';
+test('the same-scan case is flagged even with method="post", because the renderer refuses it', async () => {
+  // Unlike the cross-module case, delivery is irrelevant here: the renderer
+  // sees both halves in one scan and throws, whatever the method.
+  const dir = await makeApp({
+    'app/page.ts': `import { html } from '@webjsdev/core';
 import { publishDraft } from '#modules/feedback/actions/publish.server.ts';
-class TodoRow extends WebComponent({}) {
-  render() { return html\`<li><button formaction=\${publishDraft}>Publish</button></li>\`; }
-}
-TodoRow.register('todo-row');
-`;
+export default () => html\`<form method="post"><button formaction=\${publishDraft}>P</button></form>\`;
+`,
+  });
+  const v = hits(await checkConventions(dir));
+  assert.equal(v.length, 1);
+  assert.match(v[0].message, /renderer refuses this shape/);
+  await rm(dir, { recursive: true, force: true });
+});
 
 test('transitive: silent when the outer page binds the form', async () => {
   const dir = await makeApp({

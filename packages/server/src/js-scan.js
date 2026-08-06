@@ -470,7 +470,13 @@ export function extractWebComponentClassBodies(content) {
         bodies.push({
           body: content.slice(bodyStart, end),
           factoryProps,
-          factoryArg
+          factoryArg,
+          // Offsets into `content`. Callers pass the position-preserving MASK,
+          // so these index the RAW source identically, which is how a caller
+          // that needs the body's real template text gets it without asking
+          // this lexer to handle raw source (#1307).
+          bodyStart,
+          bodyEnd: end,
         });
       }
     }
@@ -759,7 +765,65 @@ export function classifyActionHole(literalBefore) {
 }
 
 /**
- * @typedef {{ tag: string, scope: 'none'|'unbound'|'bound' }} FormScopeSite
+ * The two enctypes `parseFormBody` can read. Inlined rather than imported from
+ * `@webjsdev/core`'s `form-action.js`, which this lexer does not depend on;
+ * kept in sync by `packages/server/test/scanner/html-form-scopes.test.js`.
+ */
+const PARSEABLE_FORM_ENCTYPES = new Set(['multipart/form-data', 'application/x-www-form-urlencoded']);
+
+/**
+ * Read one attribute's literal value out of a start tag's accumulated text.
+ * Returns null when absent, and the raw value otherwise (quoted or bare).
+ *
+ * @param {string} tagText
+ * @param {string} name
+ * @returns {string | null}
+ */
+function startTagAttr(tagText, name) {
+  const re = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i');
+  const m = re.exec(tagText);
+  if (!m) return null;
+  return m[1] ?? m[2] ?? m[3] ?? '';
+}
+
+/**
+ * Would an UNBOUND `<form>` still deliver a submitter's action identity?
+ *
+ * This is the difference between a broken write path and a working one, and it
+ * is not intuitive. A submitter carries its identity in its OWN `name`/`value`
+ * pair, which a browser submits for the pressed button alone, so an unbound
+ * form that still sends a parseable POST body delivers it and the action RUNS
+ * (the dispatcher takes the last `__webjs_action` entry it finds). What breaks
+ * is a form that sends no body the server can read: no `method` at all or
+ * `method="get"` (a GET puts the identity in the query string and the page just
+ * re-renders), or an enctype `parseFormBody` cannot parse (a 405).
+ *
+ * `method` and `enctype` are enumerated attributes matched against exact
+ * keywords with no whitespace stripping, so a padded `method=" post "` falls to
+ * the invalid-value default and submits as a GET.
+ *
+ * @param {string} tagText the form's start tag, from `<form` to just before `>`
+ * @returns {boolean}
+ */
+function unboundFormDelivers(tagText) {
+  const method = startTagAttr(tagText, 'method');
+  if (method === null || method.toLowerCase() !== 'post') return false;
+  const enctype = startTagAttr(tagText, 'enctype');
+  if (enctype !== null && !PARSEABLE_FORM_ENCTYPES.has(enctype.toLowerCase())) return false;
+  return true;
+}
+
+/**
+ * @typedef {{
+ *   tag: string,
+ *   scope: 'none'|'unbound'|'bound',
+ *   delivers: boolean | null,
+ * }} FormScopeSite
+ *
+ * `delivers` is meaningful only when `scope` is `'unbound'`: true when that
+ * form would still carry a submitter's identity to the server, false when it
+ * would not, and null when a hole in its start tag makes the answer dynamic and
+ * therefore unknowable.
  */
 
 /**
@@ -777,8 +841,14 @@ export function classifyActionHole(literalBefore) {
  * at `'none'`, because it is its own scan there too. `</form>` returns to the
  * scope the scan started in, mirroring `handleTagEnd` in `render-server.js`.
  *
+ * `opensForm` reports whether ANY `<form` start tag was seen anywhere in `src`.
+ * A caller attributing a scope-`'none'` site to this file needs it: a fragment
+ * built into a local and spliced into a form the same file opens inherits the
+ * SPLICE point's scope, not the file's own call-site scope, so a file that
+ * opens a form cannot have its `'none'` sites attributed safely.
+ *
  * @param {string} src
- * @returns {{ submitters: FormScopeSite[], tagUses: FormScopeSite[] }}
+ * @returns {{ submitters: FormScopeSite[], tagUses: FormScopeSite[], opensForm: boolean }}
  */
 export function scanHtmlFormScopes(src) {
   const { redacted, literals } = redactToPlaceholders(src);
@@ -786,6 +856,7 @@ export function scanHtmlFormScopes(src) {
   const submitters = [];
   /** @type {FormScopeSite[]} */
   const tagUses = [];
+  let opensForm = false;
   const n = redacted.length;
   // Sticky, so matching a literal placeholder at the cursor costs no slice.
   const STR = /__STR_(\d+)__/y;
@@ -798,9 +869,10 @@ export function scanHtmlFormScopes(src) {
    * @param {number} i
    * @param {boolean} stopAtBrace return at the `}` closing the enclosing hole
    * @param {'none'|'unbound'|'bound'} scope inherited by any template found here
+   * @param {boolean | null} delivers inherited alongside `scope`
    * @returns {number}
    */
-  function walkCode(i, stopAtBrace, scope) {
+  function walkCode(i, stopAtBrace, scope, delivers) {
     let brace = 0;
     while (i < n) {
       const c = redacted[i];
@@ -816,7 +888,7 @@ export function scanHtmlFormScopes(src) {
       if (c === '`') {
         const before = redacted.slice(Math.max(0, i - 32), i);
         const tagged = /([A-Za-z_$][\w$]*)\s*$/.exec(before);
-        i = walkTemplate(i + 1, !!tagged && tagged[1] === 'html', scope);
+        i = walkTemplate(i + 1, !!tagged && tagged[1] === 'html', scope, delivers);
         continue;
       }
       i++;
@@ -830,16 +902,22 @@ export function scanHtmlFormScopes(src) {
    * @param {number} i
    * @param {boolean} isHtml whether its markup should be read
    * @param {'none'|'unbound'|'bound'} startScope
+   * @param {boolean | null} startDelivers
    * @returns {number} the index just past the closing backtick
    */
-  function walkTemplate(i, isHtml, startScope) {
+  function walkTemplate(i, isHtml, startScope, startDelivers) {
     /** @type {'none'|'unbound'|'bound'} */
     let scope = startScope;
+    /** @type {boolean | null} */
+    let delivers = startDelivers;
     /**
      * The start tag currently open. It persists across literal segments AND
      * across holes, because `<form action=${fn} class="x">` is one tag split
-     * into three pieces by the scan.
-     * @type {null | { name: string, isClose: boolean, quote: string | null, formHole: boolean, submitterHole: boolean }}
+     * into three pieces by the scan. `text` accumulates the tag's literal
+     * source so its attributes can be read at the `>`, and `dynamicAttrs`
+     * records that a hole other than the action binding landed in it, which
+     * makes those attributes unknowable.
+     * @type {null | { name: string, isClose: boolean, quote: string | null, formHole: boolean, submitterHole: boolean, text: string, dynamicAttrs: boolean }}
      */
     let tag = null;
     let inComment = false;
@@ -853,17 +931,21 @@ export function scanHtmlFormScopes(src) {
         // Back to the scope this scan STARTED in, not a flat 'none': a nested
         // template closing a form of its own learns nothing about the form its
         // caller may have opened.
-        if (t.name === 'form') scope = startScope;
+        if (t.name === 'form') { scope = startScope; delivers = startDelivers; }
         return;
       }
       if (t.name === 'form') {
+        opensForm = true;
         // A form that opened and bound NOTHING still opens a scope: a submitter
-        // inside it is a different answer from one with no form at all.
+        // inside it is a different answer from one with no form at all. Whether
+        // that unbound form would still DELIVER a submitter's identity is a
+        // separate question, and the one that decides if the shape is broken.
         scope = t.formHole ? 'bound' : 'unbound';
+        delivers = t.formHole ? null : (t.dynamicAttrs ? null : unboundFormDelivers(t.text));
         return;
       }
-      if (t.submitterHole) submitters.push({ tag: t.name, scope });
-      if (t.name.includes('-')) tagUses.push({ tag: t.name, scope });
+      if (t.submitterHole) submitters.push({ tag: t.name, scope, delivers });
+      if (t.name.includes('-')) tagUses.push({ tag: t.name, scope, delivers });
     };
 
     /** @param {string} text one literal segment, read as markup */
@@ -881,11 +963,13 @@ export function scanHtmlFormScopes(src) {
           const ch = text[p];
           if (tag.quote) {
             if (ch === tag.quote) tag.quote = null;
+            tag.text += ch;
             p++;
             continue;
           }
-          if (ch === '"' || ch === "'") { tag.quote = ch; p++; continue; }
+          if (ch === '"' || ch === "'") { tag.quote = ch; tag.text += ch; p++; continue; }
           if (ch === '>') { p++; closeTag(); continue; }
+          tag.text += ch;
           p++;
           continue;
         }
@@ -900,6 +984,8 @@ export function scanHtmlFormScopes(src) {
           quote: null,
           formHole: false,
           submitterHole: false,
+          text: m[0],
+          dynamicAttrs: false,
         };
         p = lt + m[0].length;
       }
@@ -913,11 +999,14 @@ export function scanHtmlFormScopes(src) {
           const attr = trailingActionAttr(lastLiteral);
           if (attr === 'action' && tag.name === 'form') tag.formHole = true;
           else if (attr === 'formaction' && (tag.name === 'button' || tag.name === 'input')) tag.submitterHole = true;
+          // Any OTHER hole in a form's start tag makes its `method` / `enctype`
+          // dynamic, so whether an unbound form would deliver becomes unknowable.
+          else if (tag.name === 'form') tag.dynamicAttrs = true;
         }
         // Only the segment IMMEDIATELY before a hole can commit an attribute,
         // so two adjacent holes leave nothing for the second to read.
         lastLiteral = '';
-        i = walkCode(i + 2, true, scope);
+        i = walkCode(i + 2, true, scope, delivers);
         if (i < n && redacted[i] === '}') i++;
         continue;
       }
@@ -935,7 +1024,7 @@ export function scanHtmlFormScopes(src) {
     return i;
   }
 
-  walkCode(0, false, 'none');
-  return { submitters, tagUses };
+  walkCode(0, false, 'none', null);
+  return { submitters, tagUses, opensForm };
 }
 
