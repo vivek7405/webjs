@@ -147,6 +147,35 @@ test('findOrphanComponents: ignores files with no WebComponent subclass', async 
   }
 });
 
+test('findOrphanComponents: a class in a CODE SAMPLE is not an orphan (#1308)', async () => {
+  // Every docs page writes `class X extends WebComponent` inside an `html`
+  // template to SHOW the reader what a component looks like. Scanning raw
+  // source counted each of those as a real unregistered class: the repo's own
+  // website reported 17 false orphans this way. Now that an orphan is a
+  // `webjs doctor` WARNING and not just dev-console noise, a false one is a
+  // check that cries wolf on a healthy app, so the scan redacts strings and
+  // templates exactly like `extractComponents` already did.
+  const dir = await scaffold({
+    'app/docs/page.ts':
+      `import { html } from '@webjsdev/core';\n` +
+      'export default () => html`\n' +
+      '  <pre>class Sample extends WebComponent {\n' +
+      '    render() { return html`<p>hi</p>`; }\n' +
+      '  }</pre>\n' +
+      '`;\n',
+    'lib/prose.ts': `export const doc = "class Quoted extends WebComponent {}";\n`,
+    // A REAL orphan in the same tree, so this cannot pass by the scan going blind.
+    'components/orphan.ts': `export class Orphan extends WebComponent {\n  render() {}\n}\n`,
+  });
+  try {
+    const orphans = await findOrphanComponents(dir);
+    assert.deepEqual(orphans.map((o) => o.className).sort(), ['Orphan'],
+      'only the real declaration is an orphan; the sample and the string are not');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('primeComponentRegistry: lookupModuleUrl returns URL after priming', async () => {
   const dir = await scaffold({
     'components/widget.ts':

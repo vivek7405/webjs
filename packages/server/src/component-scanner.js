@@ -167,22 +167,33 @@ export async function findOrphanComponents(appDir) {
   for await (const file of walk(appDir, filter)) {
     let src;
     try { src = await readFile(file, 'utf8'); } catch { continue; }
+    // Scan REDACTED source, the same way `extractComponents` above does. A
+    // `class X extends WebComponent` written inside an `html` template or a
+    // string is a CODE SAMPLE (every docs page is full of them), not a real
+    // declaration, and reporting it as an unregistered component is a false
+    // orphan. Redaction blanks string / template bodies and comments while
+    // preserving positions, so a genuine top-level declaration still matches
+    // and the registration's literal tag survives as a `__STR_<idx>__`
+    // placeholder.
+    const { redacted } = redactToPlaceholders(src);
     // Find every class that extends WebComponent (exact name: we trust
     // the framework convention).
     const classRe = /\b(?:export\s+)?(?:default\s+)?class\s+([A-Z][A-Za-z0-9_$]*)\s+extends\s+WebComponent\b/g;
     // A class counts as "registered" if either Class.register('tag') or
-    // customElements.define('tag', Class) appears in the file.
-    const registerRe = /\b([A-Z][A-Za-z0-9_$]*)\.register\s*\(\s*['"][^'"]+['"]\s*\)/g;
-    const defineRe = /\bcustomElements\.define\s*\(\s*['"][^'"]+['"]\s*,\s*([A-Z][A-Za-z0-9_$]*)\b/g;
+    // customElements.define('tag', Class) appears in the file. The tag is a
+    // placeholder after redaction; an orphan is about the CLASS, not the tag,
+    // so the placeholder is matched rather than read.
+    const registerRe = /\b([A-Z][A-Za-z0-9_$]*)\.register\s*\(\s*['"`][^'"`]+['"`]\s*\)/g;
+    const defineRe = /\bcustomElements\.define\s*\(\s*['"`][^'"`]+['"`]\s*,\s*([A-Z][A-Za-z0-9_$]*)\b/g;
 
     const declared = new Set();
     let m;
-    while ((m = classRe.exec(src)) !== null) declared.add(m[1]);
+    while ((m = classRe.exec(redacted)) !== null) declared.add(m[1]);
     if (declared.size === 0) continue;
 
     const registered = new Set();
-    while ((m = registerRe.exec(src)) !== null) registered.add(m[1]);
-    while ((m = defineRe.exec(src)) !== null) registered.add(m[1]);
+    while ((m = registerRe.exec(redacted)) !== null) registered.add(m[1]);
+    while ((m = defineRe.exec(redacted)) !== null) registered.add(m[1]);
 
     for (const cls of declared) {
       if (!registered.has(cls)) {

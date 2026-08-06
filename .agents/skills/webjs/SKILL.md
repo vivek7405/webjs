@@ -39,6 +39,7 @@ Classify the task first, then load the smallest useful reference set. Each refer
 | --------------------------------------------------------------------------- | --------------------------------------------- |
 | Pages, layouts, dynamic routes, route handlers, metadata, redirects, 404s   | `references/routing-and-pages.md`             |
 | Writing components: reactive props, signals, lifecycle, light vs shadow DOM  | `references/components.md`                     |
+| Why a component's JS was or was not downloaded, `webjs elision`, `static interactive = true` | `references/components.md`                     |
 | Server actions, mutations, queries, validation, the `ActionResult` envelope | `references/data-and-actions.md`              |
 | Sessions, login flows, route protection, `forbidden()` / `unauthorized()`   | `references/auth-and-sessions.md`             |
 | Tailwind, light-DOM tag-prefix rule, tokens, fixed headers, no-reflow layout | `references/styling.md`                        |

@@ -70,6 +70,10 @@ export default function ProgressiveEnhancement() {
     </p>
 
     <p>
+      Run <code>webjs elision</code> to see the verdict for every module in your app, and <code>webjs elision --verify</code> to prove elision changed nothing your app serves. See <a href="/docs/elision">Display-Only Elision</a> for the full signal list and the two escape hatches.
+    </p>
+
+    <p>
       The same applies to whole routes. A <code>page</code> or <code>layout</code> that does no client work, even transitively (no event, signal, client router, npm import, client global, or interactive component anywhere in its subtree), is dropped from the boot script entirely, so a fully-static route ships <em>zero</em> application JavaScript and is pure server-rendered HTML. It still navigates and submits forms via native browser behavior, which is exactly the progressive-enhancement baseline. A layout that only carries interactive components is import-only, so it drops too and the boot emits those components directly; the client router rides along automatically when any of them loads <code>@webjsdev/core</code>.
     </p>
     <p>
