@@ -146,7 +146,8 @@ export const CLIENT_METHOD_CALLS = ['addController', 'removeController', 'reques
  *     override that forces a component to ship even when the analyser would
  *     elide it. It is the escape hatch for interactivity the analyser cannot
  *     see statically (an OBSERVER that computes the tag it waits for, a
- *     `:defined` rule in an external stylesheet outside the module graph). It
+ *     `:defined` rule in an external stylesheet outside the module graph, a
+ *     consumer reaching the element through a string selector). It
  *     cannot rescue a component whose OWN registration tag is computed: the
  *     scanner requires a literal tag (invariant 3), so such a component is
  *     never in `components` at all and nothing consults this analyser for it.

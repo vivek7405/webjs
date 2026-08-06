@@ -473,7 +473,8 @@ and the reader key set never diverge (a counterfactual unknown key proves
    module observing a tag forces that component to ship. Verdict-safe (it
    only ever ships more). The residual caveat is the part static analysis
    cannot see (an OBSERVER that computes the tag it waits for, a
-   `:defined` rule in an external stylesheet outside the module graph),
+   `:defined` rule in an external stylesheet outside the module graph, a
+   consumer reaching the element through a string selector),
    documented in the skill's `references/components.md` and asserted in
    `test/elision/residual-contract.test.js`; for those, add an
    interactivity signal, in practice `static interactive = true`. A

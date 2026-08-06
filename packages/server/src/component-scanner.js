@@ -146,9 +146,10 @@ export async function primeComponentRegistry(appDir, components) {
 }
 
 /**
- * Find ORPHAN components: a `class X extends WebComponent` whose own file
- * never registers it with a LITERAL tag, via either `X.register('tag')` or
- * `customElements.define('tag', X)`.
+ * Find ORPHAN components: a `class X extends WebComponent` that NOTHING in the
+ * app registers with a LITERAL tag, via either `X.register('tag')` or
+ * `customElements.define('tag', X)`. The declaration is per-file, the
+ * registration cross-reference is app-wide.
  *
  * TWO shapes land here and they fail differently, so any message about this
  * must cover both:

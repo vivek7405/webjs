@@ -1,13 +1,14 @@
 /**
- * The two documented elision RESIDUALS, and the one case that looks like a
+ * The documented elision RESIDUALS, and the one case that looks like a
  * residual but is not (#1308).
  *
  * `packages/server/AGENTS.md` invariant 7 and the skill's
  * `references/components.md` both promise that `static interactive = true`
  * rescues the interactivity static analysis cannot see. Until now that promise
- * was prose: nothing asserted either residual, so a change in either direction
+ * was prose: nothing asserted any residual, so a change in either direction
  * (the analyser learning to see one, or the escape hatch quietly ceasing to
- * work) was invisible.
+ * work) was invisible. Every residual the docs name gets a case here, paired
+ * with its rescue, so the prose and the behaviour cannot drift apart.
  *
  * These tests build a REAL app on disk and drive `buildModuleGraph` +
  * `scanComponents` + `analyzeElision`, rather than the faked-graph helper the
@@ -177,6 +178,40 @@ test('residual (b) rescue: static interactive = true ships the badge and makes t
   assert.ok(!verdict.elidableComponents.has(badgeFile), 'the override must force the ship');
   assert.ok(!verdict.inertRouteModules.has(pageFile), 'a shipping component reclassifies the page');
   assert.deepEqual(verdict.importOnlyRouteModules.get(pageFile), [badgeFile]);
+});
+
+// ---------------------------------------------------------------------------
+// Residual (c): a consumer reaching the element through a STRING SELECTOR
+// ---------------------------------------------------------------------------
+
+/** A consumer that finds the element by selector rather than by tag reference. */
+const SELECTOR_CONSUMER = `
+document.querySelectorAll('my-badge').forEach((el) => el.setAttribute('data-seen', '1'));
+`;
+
+test('residual (c): a string-selector consumer leaves the badge elided', async () => {
+  // The analyser detects cross-module observation through `whenDefined`,
+  // `:defined`, and `instanceof`. A consumer that reaches the element with
+  // `document.querySelectorAll('my-badge')` matches none of the three, so the
+  // badge is elided, its module never loads, and the consumer finds an
+  // un-upgraded element. Asserted as the documented limitation.
+  const { verdict, badgeFile } = await analyseApp({
+    badgeSrc: badge(),
+    observerSrc: SELECTOR_CONSUMER,
+  });
+  assert.ok(verdict.elidableComponents.has(badgeFile),
+    'a string selector is not one of the three observation forms the analyser matches');
+});
+
+test('residual (c) rescue: static interactive = true ships the badge anyway', async () => {
+  const { verdict, badgeFile } = await analyseApp({
+    badgeSrc: badge('static interactive = true;'),
+    observerSrc: SELECTOR_CONSUMER,
+  });
+  assert.ok(!verdict.elidableComponents.has(badgeFile), 'the override must force the ship');
+  const row = verdict.componentVerdicts.get(badgeFile);
+  assert.equal(row.evidence, 'own');
+  assert.match(row.reason, /static interactive/);
 });
 
 // ---------------------------------------------------------------------------
