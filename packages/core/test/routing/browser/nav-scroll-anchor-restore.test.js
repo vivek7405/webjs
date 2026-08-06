@@ -227,6 +227,28 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     } finally { await teardown(); }
   });
 
+  test('a second navigation inside the window closes it', async () => {
+    // The window deliberately outlives its own restore (a floor, then a
+    // ceiling), so a navigation starting inside that span must end it. Without
+    // this, a Back that CLAMPS opens no window of its own and would run its
+    // whole growth under the PREVIOUS restore's suppression, freezing its
+    // clamp; a forward nav would carry the suppression onto another page.
+    await setup();
+    try {
+      await goBack();
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), 'none',
+        'precondition: a window is open');
+      // Well inside the floor, so nothing else could have closed it. NOT
+      // awaited: the close is the point and it happens as the navigation
+      // STARTS, while this setup holds the fetch open so the navigation itself
+      // never settles.
+      navigate(location.origin + entryUrl('second-nav')).catch(() => {});
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
+        'starting another navigation ends the previous restore\'s window');
+    } finally { await teardown(); }
+  });
+
   test('anchoring WORKS again once the window has closed', async () => {
     // The inverse of the headline, and the regression that would matter most if
     // this fix were wrong: suppression is temporary, so once the restore is over

@@ -369,9 +369,28 @@ let releaseScrollAnchor = null;
  * never MOVES the viewport, it only withholds a correction, so it also cannot
  * yank a reader who has already started scrolling.
  *
- * Chromium, Firefox, and WebKit all implement scroll anchoring and all three
- * honour `overflow-anchor: none` on the root scroller, so there is no
- * engine-specific path here.
+ * Chromium, Firefox, and WebKit all implement scroll anchoring, and all three
+ * honour `overflow-anchor: none` identically whether it sits on the root
+ * scroller or on `<body>`, so there is no engine-specific path here.
+ *
+ * It goes on the ROOT, and `<body>` is not an alternative even though it looks
+ * like the tidier one. Suppressing on `<body>` works identically on all three
+ * engines (the property excludes an element and its subtree from being chosen
+ * as the anchor, and every candidate lives under `<body>`), and it would avoid
+ * writing to the root at all, which is worth wanting: toggling something on the
+ * root re-runs global style resolution, and on WebKit that re-resolves
+ * `oklch()` token values and repaints them for a frame, which is the #610 flash
+ * that made `data-navigating` opt-in.
+ *
+ * It is disqualified by the RELEASE, not the suppression. On WebKit, anchoring
+ * never resumes once it has been suppressed on `<body>`: removing the property,
+ * setting it back to `auto`, and both in sequence were each measured, and after
+ * every one the next growth above the viewport still failed to move `scrollY`.
+ * Suppressing on the root resumes correctly on all three. Since the whole point
+ * is that suppression is TEMPORARY, a placement that cannot be undone would
+ * leave every WebKit reader, so every iOS browser, with scroll anchoring off
+ * for the life of the page after their first Back. That is a far worse trade
+ * than one repaint, so the root it is.
  *
  * @returns {() => void} Idempotent release. Safe to call after the window has
  *   already closed on user input or the ceiling.
@@ -1458,6 +1477,15 @@ async function performNavigation(href, isPopState, frameId) {
   // Bump nav generation. Captured below + by anything we await into.
   const myToken = ++currentNavigationToken;
 
+  // A new navigation ends any restore window still open from an earlier one
+  // (#1310). The window outlives its own restore by design (a floor, then a
+  // ceiling), so without this a second navigation inside that span inherits
+  // suppressed anchoring: a Back that CLAMPS opens no window of its own, so it
+  // would run the whole growth under the previous restore's suppression and
+  // freeze its clamp, and a forward nav would carry it onto a different page
+  // entirely. Reopening for this navigation, if it earns one, happens below.
+  if (releaseScrollAnchor) releaseScrollAnchor();
+
   // Snapshot the page the user is LEAVING (with its scroll position)
   // so back/forward navigation can restore it. We key under
   // `currentPageUrl` rather than `location.href` because on popstate
@@ -1511,10 +1539,21 @@ async function performNavigation(href, isPopState, frameId) {
             // freezes the clamp instead and strands them a full page-growth
             // ABOVE where they left, which is this bug's own mirror image.
             //
-            // So the two situations want opposite things and are told apart by
-            // the one question that separates them: did the scroll land. Reading
-            // it here is safe because nothing can grow between the write and the
-            // read, both being in this synchronous block.
+            // So the two situations want opposite things, and they are told
+            // apart by the one question that separates them: did the scroll
+            // land. Reading it here is safe because nothing can grow between
+            // the write and the read, both being in this synchronous block.
+            //
+            // The read MUST stay synchronous, and that is the subtle part.
+            // Deferring it even by a microtask breaks the fix outright: by then
+            // the restored components' renders have been applied, and reading
+            // `scrollY` forces the layout that flushes them, so anchoring runs
+            // DURING the read and hands back the already-shifted offset.
+            // Measured on /ui/button, the suppression then landed 19ms after
+            // the scroll with `scrollY` already 800 -> 1563, which is the bug
+            // it exists to prevent. What makes the synchronous read correct is
+            // not which document it sees but that it sees the SAME layout the
+            // scroll just landed in, so the two are consistent by construction.
             if (window.scrollY >= cached.scrollY - 1) {
               releaseAnchor = suppressScrollAnchoring();
             }
@@ -1536,7 +1575,9 @@ async function performNavigation(href, isPopState, frameId) {
           const revalidated = fetchAndApply(href, frameId, /* recordHistory */ false, optimisticState, 'GET', null, signal, myToken, /* revalidating */ true)
             .catch(() => {});
           const floor = new Promise((r) => setTimeout(r, ANCHOR_SUPPRESS_FLOOR_MS));
-          Promise.all([revalidated, floor]).then(() => afterTwoFrames(releaseAnchor));
+          // Read `releaseAnchor` when this fires, not now: the decision above is
+          // asynchronous, so capturing it here would always capture the no-op.
+          Promise.all([revalidated, floor]).then(() => afterTwoFrames(() => releaseAnchor()));
           return;
         }
       }
@@ -1602,6 +1643,9 @@ async function performSubmission(href, method, body, frameId, form) {
   activeAbortController = new AbortController();
   const signal = activeAbortController.signal;
   const myToken = ++currentNavigationToken;
+  // Same reasoning as performNavigation: a submission is a navigation, so it
+  // ends any restore window a recent Back left open (#1310).
+  if (releaseScrollAnchor) releaseScrollAnchor();
 
   const isSafe = method === 'get' || method === 'head';
   let url = new URL(href, location.href);
