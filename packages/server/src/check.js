@@ -1559,11 +1559,19 @@ function checkSubmitterNeedsBoundForm(files, violations, appDir) {
     let depth = 0;
     while (i < scan.length) {
       const c = scan[i];
-      if (c === ';') return -1;
+      // A `;` ENDS the declaration only at depth zero. TypeScript's canonical
+      // member separator is `;`, so an inline object type
+      // (`: ActionFn<{ id: string; title: string }>`) carries one INSIDE its
+      // brackets, and bailing there dropped the binding.
+      if (c === ';' && depth <= 0) return -1;
       if (c === '=' && scan[i + 1] === '>') { i += 2; continue; }   // arrow in the annotation
       if (c === '(' || c === '[' || c === '{' || c === '<') { depth++; i++; continue; }
       if (c === ')' || c === ']' || c === '}' || c === '>') { depth--; i++; continue; }
-      if (depth <= 0 && c === '=' && scan[i + 1] !== '=' && !'=!<>'.includes(scan[i - 1] || '')) return i + 1;
+      // Reject `==` and `!=`, but NOT a preceding `<` or `>`: in annotation
+      // position those are brackets this same loop already consumed as such, so
+      // reading `Promise<void>=` as a `>=` comparison classified one character
+      // two contradictory ways.
+      if (depth <= 0 && c === '=' && scan[i + 1] !== '=' && !'=!'.includes(scan[i - 1] || '')) return i + 1;
       i++;
     }
     return -1;
@@ -1597,12 +1605,28 @@ function checkSubmitterNeedsBoundForm(files, violations, appDir) {
       if (scan.startsWith('async', i) && /\s|\(/.test(scan[i + 5] || '')) { i += 5; skipWs(); }
       // `= [async] function ...`
       if (/^function\b/.test(scan.slice(i, i + 9))) return true;
-      // `= [async] (params) => ...`, which must actually reach the arrow.
+      // `= [async] (params)[: ReturnType] => ...`, which must actually reach the
+      // arrow. The return-type annotation is optional and can carry its own
+      // generics (`: Promise<ActionResult<Draft>>`), so it is walked with
+      // bracket depth rather than matched.
       if (scan[i] === '(') {
         const close = matchClosingParenthesis(scan, i + 1);
         if (close === -1) continue;
         i = close + 1;
         skipWs();
+        if (scan[i] === ':') {
+          let depth = 0;
+          i++;
+          while (i < scan.length) {
+            const c = scan[i];
+            if (c === ';' || c === ',') break;
+            if (c === '=' && scan[i + 1] === '>' && depth <= 0) break;
+            if (c === '(' || c === '[' || c === '{' || c === '<') depth++;
+            else if (c === ')' || c === ']' || c === '}' || c === '>') depth--;
+            i++;
+          }
+          skipWs();
+        }
         if (scan.startsWith('=>', i)) return true;
         continue;
       }

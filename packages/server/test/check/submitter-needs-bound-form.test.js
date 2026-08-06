@@ -377,8 +377,22 @@ test('the callable matrix: every url shape silent, every function shape flagged'
     ['export const publishDraft: (fd: FormData) => Promise<number> = async (fd) => 1;', true],
     ['export const publishDraft: (fd: FormData) => Promise<number> = async function (fd) { return 1; };', true],
     ['export const publishDraft: ActionFn = async (fd) => 1;', true],
+    // A RETURN-type annotation on the arrow, which is at least as common as the
+    // declaration-side one and was silent until it had its own rows.
+    ['export const publishDraft = async (fd: FormData): Promise<number> => 1;', true],
+    ['export const publishDraft = async (fd): Promise<number> => 1;', true],
+    ['export const publishDraft = (fd: FormData): number => 1;', true],
+    ['export const publishDraft = async (fd: FormData): Promise<ActionResult<Draft>> => 1;', true],
     // ...and the annotated NON-callable must still be silent.
     ["export const publishDraft: string = (process.env.X || '/api/x');", false],
+    ["export const publishDraft: string = '/api/x';", false],
+    // An inline object type carries TypeScript's canonical `;` member
+    // separator INSIDE the annotation's brackets, and a generic can close
+    // immediately before the `=`. Both were read as end-of-declaration.
+    ['export const publishDraft: ActionFn<{ id: string; title: string }> = async (input) => 1;', true],
+    ['export const publishDraft: { (fd: FormData): Promise<number>; } = async (fd) => 1;', true],
+    ['export const publishDraft: Promise<void>= async () => 1;', true],
+    ["export const publishDraft: { a: string; b: string }['a'] = '/api/x';", false],
   ];
   for (const [body, shouldFire] of cases) {
     const dir = await makeApp({
