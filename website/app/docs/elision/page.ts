@@ -73,7 +73,11 @@ Badge.register(TAG);          // invisible
 Badge.register('my-badge');</code-block>
 
     <p>
-      A custom-element tag must be a literal string anyway, but the consequence here is specific: the scanner never sees that component, so it gets no elision verdict at all, nothing consults the analyser for it, and the override has nothing to attach to. The registration itself still runs if the module reaches the browser, so what you always lose is the verdict, the tag-to-module registry entry, and the preload hint. Whether the element upgrades comes down to one thing: the importing module has to ship <strong>whole</strong>. An inert, import-only, or elided importer is dropped from the boot and takes the import with it, and then the element never registers at all. Import-only is the ordinary case, so assume it does not upgrade. <code>webjs dev</code> warns about this shape, and <code>webjs elision</code> and <code>webjs doctor</code> report it as an <strong>orphan</strong>.
+      A custom-element tag must be a literal string anyway, but the consequence here is specific: the scanner never sees that component, so it gets no elision verdict at all, nothing consults the analyser for it, and the override has nothing to attach to. The registration itself still runs if the module reaches the browser, so what you always lose is the verdict, the tag-to-module registry entry, and the preload hint. Whether the element upgrades comes down to one thing: the importing module has to ship <strong>whole</strong>. An inert, import-only, or elided importer is dropped from the boot and takes the import with it, and then the element never registers at all. A page rendering a real component alongside the orphan is import-only unless it also does its own client work, so shipping whole is the narrower case: assume the element does not upgrade.
+    </p>
+
+    <p>
+      <code>webjs dev</code> warns, and <code>webjs elision</code> and <code>webjs doctor</code> report it, as an <strong>orphan</strong>. That name covers <strong>two</strong> shapes and they fail differently. A computed tag is the case above. A class with no registration call at all is the plainer one, someone forgot to register it, and that element never upgrades under any circumstances. Both lose the verdict, the registry entry, and the preload hint.
     </p>
 
     <h2>Inspecting the verdict</h2>
