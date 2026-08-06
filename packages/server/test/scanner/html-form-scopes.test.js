@@ -176,11 +176,14 @@ test('class-body offsets index the RAW source identically to the mask', () => {
   assert.deepEqual(scanHtmlFormScopes(body).submitters, [{ tag: 'button', scope: 'none', delivers: null }]);
 });
 
-test('a template in a START-TAG hole does not inherit the lexical scope', () => {
-  // A hole inside a start tag is an attribute or property VALUE, so the template
-  // is handed to the receiving element and rendered in THAT component's own
-  // pass. Scoring it by lexical nesting reported a shape the renderer treats as
-  // cannot-tell (and therefore binds) as a conclusive 'unbound'.
+test('a template in an ordinary START-TAG hole is handed off, not inherited', () => {
+  // A hole inside a start tag is an attribute or property VALUE whose placement
+  // this scan cannot speak for: SSR never renders it in place (a serializable
+  // value applies at hydration, a function-carrying one is dropped outright), so
+  // the receiving element decides where it lands in the browser. Scoring it by
+  // lexical nesting reported a shape the renderer treats as cannot-tell (and
+  // therefore binds) as a conclusive 'unbound'. `<webjs-suspense .fallback>` is
+  // the one exception and has its own test below.
   const passed = 'html`<form method="post"><my-thing .tpl=${html`<button formaction=${del}>x</button>`}></my-thing></form>`';
   // 'handed', NOT 'none'. Both mean "no enclosing form in this scan", but only
   // 'none' is a cannot-tell the caller may attribute to this file's own
@@ -244,16 +247,36 @@ test('the start-tag-hole rule matches what the RENDERER actually does', async ()
     'the renderer really does refuse it, so the scanner must not be silent',
   );
 
-  // An ordinary property is handed off, and the renderer does NOT refuse it.
+  // The negative half, and it has to assert the MECHANISM rather than "it did
+  // not throw". A template carrying a function cannot serialize, so SSR drops
+  // the whole property binding and emits nothing for it: the submitter is never
+  // rendered and never judged here at all. Asserting only that the render
+  // succeeded would stay green for ANY scanner verdict, which is precisely the
+  // non-discriminating test this differential exists to avoid.
   const propSrc = 'html`<form><my-thing .tpl=${html`<button formaction=${p}>x</button>`}></my-thing></form>`';
   assert.deepEqual(scanHtmlFormScopes(propSrc).submitters,
     [{ tag: 'button', scope: 'handed', delivers: null }]);
+  const warns = [];
   const quiet = console.warn;
-  console.warn = () => {};
+  console.warn = (...a) => warns.push(a.join(' '));
+  let out;
   try {
-    await renderToString(
+    out = await renderToString(
       html`<form><my-thing .tpl=${html`<button formaction=${publish}>x</button>`}></my-thing></form>`,
       { ssr: true },
     );
   } finally { console.warn = quiet; }
+  assert.doesNotMatch(out, /<button/, 'SSR emits nothing for the dropped property');
+  assert.ok(warns.some((w) => /unserializable value during SSR/.test(w)),
+    'and it says so, which is the proof SSR never judged this submitter');
+
+  // The tag half of the same carve-out. A hyphenated tag in a fallback IS a real
+  // call site (rendered inline, inside the enclosing form); one in an ordinary
+  // property hole is not.
+  const fbTag = 'html`<form><webjs-suspense .fallback=${html`<todo-row></todo-row>`}></webjs-suspense></form>`';
+  assert.deepEqual(scanHtmlFormScopes(fbTag).tagUses.filter((u) => u.tag === 'todo-row'),
+    [{ tag: 'todo-row', scope: 'unbound', delivers: false }]);
+  const propTag = 'html`<form><my-shell .rows=${html`<todo-row></todo-row>`}></my-shell></form>`';
+  assert.deepEqual(scanHtmlFormScopes(propTag).tagUses.filter((u) => u.tag === 'todo-row'),
+    [{ tag: 'todo-row', scope: 'handed', delivers: null }]);
 });

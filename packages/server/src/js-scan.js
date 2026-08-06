@@ -885,11 +885,23 @@ function isInlineStartTagHole(tagName, literalBefore) {
  *
  * A template nested inside a CHILD-position hole INHERITS the enclosing scope,
  * because that is what the renderer does (`render` threads `formScope` through
- * arrays, `repeat`, and nested templates). One in a START-TAG hole is an
- * attribute or property value that some other element receives and places, so it
- * is `'handed'` instead, with the single exception of `<webjs-suspense
- * .fallback=${…}>`, which the renderer does render inline (see
- * `isInlineStartTagHole`). A separate top-level template starts fresh at
+ * arrays, `repeat`, and nested templates).
+ *
+ * One in a START-TAG hole is `'handed'`: an attribute or property value whose
+ * placement this scan cannot speak for. Worth being exact about why, because the
+ * obvious reason is not the operative one. SSR does NOT render such a template
+ * in place: a serializable value rides to the receiving element as
+ * `data-webjs-prop-*` and is applied at HYDRATION, and one carrying a function
+ * (a bound submitter, by definition) fails to serialize, so `render-server.js`
+ * DROPS the binding with a warning and emits nothing for it at all. Either way
+ * the element that receives the property decides where the content lands, in the
+ * browser, which is exactly what this scan cannot see.
+ *
+ * The single exception is `<webjs-suspense .fallback=${…}>`, which the renderer
+ * really does render inline with the enclosing scope (see
+ * `isInlineStartTagHole`), so that one inherits.
+ *
+ * A separate top-level template starts fresh at
  * `'none'`, because it is its own scan there too. `</form>` returns to the scope
  * the scan started in, mirroring `handleTagEnd` in `render-server.js`.
  *

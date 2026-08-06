@@ -287,6 +287,30 @@ export default () => html\`<form><todo-list></todo-list></form>\`;
   await rm(dir, { recursive: true, force: true });
 });
 
+test('a tag inside a suspense FALLBACK is a real call site, unlike an ordinary prop', async () => {
+  // The suspense carve-out changes the tag half too, and that half can create
+  // violations rather than only silence them, so it needs its own coverage. The
+  // fallback is rendered inline inside the enclosing form, so <todo-row> really
+  // does land there and the verdict is truthful.
+  const page = (host) => `import { html } from '@webjsdev/core';
+export default () => html\`<form>${host}</form>\`;
+`;
+  const fallback = await makeApp({
+    'components/todo-row.ts': TODO_ROW,
+    'app/page.ts': page('<webjs-suspense .fallback=\${html\`<todo-row></todo-row>\`}></webjs-suspense>'),
+  });
+  assert.equal(hits(await checkConventions(fallback)).length, 1, 'the fallback renders inline, so it is a call site');
+  await rm(fallback, { recursive: true, force: true });
+
+  // The same shape through an ordinary property is handed off and stays silent.
+  const handed = await makeApp({
+    'components/todo-row.ts': TODO_ROW,
+    'app/page.ts': page('<my-shell .rows=\${html\`<todo-row></todo-row>\`}></my-shell>'),
+  });
+  assert.deepEqual(hits(await checkConventions(handed)), [], 'my-shell decides where the row lands');
+  await rm(handed, { recursive: true, force: true });
+});
+
 test('silent when the tag has no call site anywhere in the app', async () => {
   const dir = await makeApp({
     'components/row-btn.ts': rowBtn(),
