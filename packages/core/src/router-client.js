@@ -479,13 +479,15 @@ let restoreGeneration = 0;
  * lives for `ANCHOR_SUPPRESS_FLOOR_MS` and no longer. That is SHORTER than the
  * suppression window beside it, which runs to the later of the floor and the
  * revalidation, capped by the ceiling; the two are not the same span and this
- * is deliberately the tighter of them, because this one WRITES scroll. Outside
- * it, late-resolving content cannot move a reader who is simply reading and
- * generating no input to cancel it.
+ * is deliberately the tighter of them, because this one WRITES scroll.
  *
- * The cost is the other side of that trade, and it is real: content settling
- * later than the floor leaves a clamped reader at the clamp rather than at the
- * offset they left. Both doc surfaces say so.
+ * Be precise about what the bound does and does not buy. It stops the ROUTER
+ * writing scroll after it expires. It does not stop the BROWSER: anchoring is
+ * deliberately left on for this path, so growth arriving after the window is
+ * still added to `scrollY` and still carries the reader down toward the bottom,
+ * which is main's behaviour. So the cost of a component that settles later than
+ * the window is that the reader drifts below the offset, NOT that they sit at
+ * the clamp.
  *
  * @param {number} targetY  The recorded offset to reach.
  * @param {number} targetX
@@ -509,8 +511,22 @@ function catchUpToRestoredScroll(targetY, targetX) {
     if (cancelScrollCatchUp !== stop) return;
     const maxY = document.documentElement.scrollHeight - window.innerHeight;
     if (maxY >= targetY) {
-      // Reachable at last. One write, then done.
+      // Reachable at last. Land the reader on the recorded offset.
       window.scrollTo({ left: targetX, top: targetY, behavior: 'instant' });
+      // And then protect it, because landing is not the end of the story. The
+      // growth that made the offset reachable is rarely all of it: the real
+      // cause is components upgrading one at a time, so more arrives after
+      // this. Anchoring is still on here, deliberately, so every later stage
+      // would be added on top of the offset just written and carry the reader
+      // below it again. Measured on a two-stage fixture, an offset of 4000
+      // ended at 5000.
+      //
+      // Once the reader IS on the recorded offset the situation is identical to
+      // a restore that landed on its first try, so it gets that case's
+      // protection for what remains: suppression, bounded by the same floor
+      // this chase runs under, and closing on the same inputs.
+      const releaseLanded = suppressScrollAnchoring();
+      setTimeout(releaseLanded, ANCHOR_SUPPRESS_FLOOR_MS);
       stop();
       return;
     }

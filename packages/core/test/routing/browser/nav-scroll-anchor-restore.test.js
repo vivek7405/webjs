@@ -577,6 +577,38 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     } finally { await teardown(); }
   });
 
+  test('a clamped restore survives growth that arrives in STAGES', async () => {
+    // The real cause of the growth is components upgrading and rendering one at
+    // a time, so it arrives in pieces. Every other clamped case grows in a
+    // single assignment, which is the easy shape: the catch-up writes the offset
+    // once and the page never moves again. With staged growth the page keeps
+    // growing after that write, and anchoring is deliberately left ON here, so
+    // each later stage is added on top of the offset and carries the reader
+    // below it.
+    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true });
+    try {
+      await goBack();
+      assert.ok(window.scrollY < CLAMPED_TARGET - 1, 'precondition: clamped');
+      const grower = document.querySelector('wj-grow-on-command-1310');
+      // Stage one makes the offset EXACTLY reachable, computed from the live
+      // viewport so it lands on the threshold rather than near it: the fixture
+      // filler is 3000px, so a grower of `target + innerHeight - 3000` puts the
+      // document's maximum scroll precisely at the target. That is the frame
+      // the catch-up writes and stops on. Stage two then adds more above the
+      // viewport, which is the growth that must not be counted on top.
+      const stageOne = CLAMPED_TARGET + window.innerHeight - 3000;
+      grower.style.height = stageOne + 'px';
+      for (let i = 0; i < 6; i++) await frame();
+      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
+        `precondition: stage one let the catch-up land (got ${window.scrollY})`);
+      grower.style.height = (stageOne + 1000) + 'px';
+      for (let i = 0; i < 12; i++) await frame();
+      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
+        'staged growth must still land on the recorded offset '
+        + `(expected ~${CLAMPED_TARGET}, got ${window.scrollY})`);
+    } finally { await teardown(); }
+  });
+
   test('the catch-up gives up after its window, and does not move a settled reader', async () => {
     // The bound is a live behaviour constant: past it a clamped restore stops
     // chasing. The other two catch-up cases grow the fixture immediately, so
