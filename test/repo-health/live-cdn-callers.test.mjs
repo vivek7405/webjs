@@ -10,9 +10,12 @@
  * Two mechanisms enforce that, and this file asserts both.
  *
  * The RUNTIME DENY (`test/fixtures/deny-live-hosts.mjs`) is loaded by both test
- * runners and answers 503 for jspm.io and registry.npmjs.org. That covers every
- * caller, including the app-boot tests that reach jspm transitively through
- * `resolveVendorImports` with no `fetch(` anywhere in their own source.
+ * runners and answers 503 for jspm.io and registry.npmjs.org. Inside the test
+ * process that covers every caller, including the app-boot tests that reach
+ * jspm transitively through `resolveVendorImports` with no `fetch(` anywhere in
+ * their own source. It does NOT reach a spawned child, which starts with its
+ * own `globalThis`; `test/vendor-cli/vendor-cli.test.mjs` passes its own
+ * preload and asserts a marker on every spawn for that reason.
  *
  * The FILENAME RULE keeps the genuinely-live tests out of a normal run: both
  * runners skip `*.live.test.*` unless `WEBJS_REQUIRE_NETWORK=1`, which is the
