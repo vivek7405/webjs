@@ -22,6 +22,10 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createRequestHandler } from '../../index.js';
+// The masker is SHARED with `webjs elision --verify` (#1308), so the app-facing
+// guard and this one can never disagree about what "the JS-loaded set" is. The
+// counterfactual at the bottom of this file therefore guards it for both.
+import { maskJsSet } from '../../src/elision-differential.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BLOG = resolve(HERE, '../../../../examples/blog');
@@ -33,41 +37,6 @@ const BLOG = resolve(HERE, '../../../../examples/blog');
 // bare async-render leaf whose module is elided yet whose SSR'd data is in the
 // first paint (#474, /async-leaf renders <inline-quote>).
 const ROUTES = ['/', '/static-info', '/observed', '/about', '/async-leaf'];
-
-/**
- * Mask the JS-loaded set so the diff sees only observable output. The
- * importmap, the boot module script, and the modulepreload hints are
- * REMOVED (not placeheld) because their COUNT differs on vs off, and the
- * build-id hash is derived from them; collapsing whitespace afterwards
- * means the differing-length preload block in the head leaves no trace. The
- * two responses come from the identical SSR template pipeline, so any
- * legitimate text/whitespace is the same on both sides regardless.
- */
-function maskJsSet(html) {
-  return html
-    .replace(/<script type="importmap"[\s\S]*?<\/script>/g, '')
-    .replace(/<script type="module"[\s\S]*?<\/script>/g, '')
-    .replace(/<link rel="modulepreload"[^>]*>/g, '')
-    // The auto vendor preconnect / dns-prefetch (#243) is a connection-warming
-    // HINT derived from the served vendor map, which legitimately differs on vs
-    // off (a vendor reachable only through an elided component is pruned on the
-    // ON side, so its preconnect drops too, exactly like its modulepreload). It
-    // is part of the same JS-loaded set, so mask it. The blog corpus declares
-    // no `metadata.preconnect` of its own, so every preconnect/dns-prefetch
-    // here is the auto vendor one.
-    .replace(/<link rel="preconnect"[^>]*>/g, '')
-    .replace(/<link rel="dns-prefetch"[^>]*>/g, '')
-    .replace(/ data-webjs-build="[^"]*"/g, '')
-    .replace(/ data-webjs-src="[^"]*"/g, '')
-    // Render-clock nondeterminism: the home page SSRs a live wall-clock time
-    // ("posts loaded · 3:10:10 AM"), which ticks between the on and off
-    // captures. This is unrelated to elision (elision never changes rendered
-    // text), so normalise it. The counterfactual below still fails because a
-    // removed element is a structural change, not a clock tick.
-    .replace(/\b\d{1,2}:\d{2}:\d{2}\s?[AP]M\b/gi, 'TIME')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 /**
  * The set of module URLs the page preloads (the JS-loaded set), keyed by

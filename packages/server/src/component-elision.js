@@ -904,12 +904,12 @@ export async function computeElidableComponents(components, moduleGraph, readFil
  * global (`window`, `document`, …), or a shipping component. Anything
  * ambiguous or unreadable keeps shipping.
  *
- * @param {Array<{ tag: string, file: string }>} components
+ * @param {Array<{ tag: string, file: string, className?: string }>} components
  * @param {string[]} routeModules  absolute paths of page + layout files
  * @param {import('./module-graph.js').ModuleGraph} moduleGraph
  * @param {(file: string) => Promise<string>} readFileFn
  * @param {string} [appDir]
- * @returns {Promise<{ elidableComponents: Set<string>, inertRouteModules: Set<string>, importOnlyRouteModules: Map<string, string[]>, shippedRouteModules: Map<string, { blocker: string|null, reason: string }> }>}
+ * @returns {Promise<{ elidableComponents: Set<string>, inertRouteModules: Set<string>, importOnlyRouteModules: Map<string, string[]>, shippedRouteModules: Map<string, { blocker: string|null, reason: string }>, componentVerdicts: Map<string, { tags: string[], className: string|null, shipped: boolean, evidence: string|null, by: string|null, reason: string|null }> }>}
  */
 export async function analyzeElision(components, routeModules, moduleGraph, readFileFn, appDir) {
   /** @type {Set<string>} */
@@ -926,6 +926,23 @@ export async function analyzeElision(components, routeModules, moduleGraph, read
 
   /** @type {Set<string>} */
   const mustShip = new Set();
+  /**
+   * WHY each shipping component ships (#1308), so the app-level report can name
+   * the evidence instead of only the verdict. Written alongside every
+   * `mustShip.add` of a COMPONENT file; FIRST write wins, matching the
+   * first-match convention the analyser uses everywhere else.
+   * @type {Map<string, { evidence: string, by: string|null, reason: string|null }>}
+   */
+  const shipEvidence = new Map();
+  /**
+   * @param {string} file      the component file that ships
+   * @param {string} evidence  one of own | observed | closure | render | import | unreadable
+   * @param {string|null} by   the module that forced it, where one exists
+   * @param {string|null} [reason]
+   */
+  const noteShip = (file, evidence, by, reason) => {
+    if (!shipEvidence.has(file)) shipEvidence.set(file, { evidence, by, reason: reason ?? null });
+  };
   /** @type {Map<string, Set<string>>} */
   const fileTags = new Map();
   /** @type {Set<string>} modules importing a reactive primitive from core */
@@ -939,6 +956,8 @@ export async function analyzeElision(components, routeModules, moduleGraph, read
   /** @type {Set<string>} component files forced to ship because some module
    * observes their registration (whenDefined / :defined / instanceof). */
   const observedComponentFiles = new Set();
+  /** @type {Map<string, string>} observed component file -> the module observing it (#1308) */
+  const observedBy = new Map();
 
   /** @type {Set<string>} */
   const allFiles = new Set(componentFiles);
@@ -957,7 +976,7 @@ export async function analyzeElision(components, routeModules, moduleGraph, read
     catch {
       // A component file we cannot read ships conservatively; a helper we
       // cannot read simply contributes no tags.
-      if (componentFiles.has(file)) mustShip.add(file);
+      if (componentFiles.has(file)) { mustShip.add(file); noteShip(file, 'unreadable', null, null); }
       continue;
     }
     if (typeof src !== 'string') continue;
@@ -989,8 +1008,9 @@ export async function analyzeElision(components, routeModules, moduleGraph, read
         hasModuleScopeSideEffect(redacted, literals)) {
       clientGlobalOrBareFiles.add(file);
     }
-    if (componentFiles.has(file) && analyzeComponentSource(masked).interactive) {
-      mustShip.add(file);
+    if (componentFiles.has(file)) {
+      const v = analyzeComponentSource(masked);
+      if (v.interactive) { mustShip.add(file); noteShip(file, 'own', null, v.reason); }
     }
     // Cross-module registration observation (#169): if THIS module observes
     // another component's tag, that component must register client-side, so
@@ -999,13 +1019,13 @@ export async function analyzeElision(components, routeModules, moduleGraph, read
     // (all components are known up front, but we collect here while we hold
     // each source). Verdict-safe: only ever forces MORE components to ship.
     for (const m of masked.matchAll(WHEN_DEFINED_RE)) {
-      const f = tagToFile.get(m[1]); if (f) observedComponentFiles.add(f);
+      const f = tagToFile.get(m[1]); if (f) { observedComponentFiles.add(f); if (!observedBy.has(f)) observedBy.set(f, file); }
     }
     for (const m of masked.matchAll(TAG_DEFINED_RE)) {
-      const f = tagToFile.get(m[1]); if (f) observedComponentFiles.add(f);
+      const f = tagToFile.get(m[1]); if (f) { observedComponentFiles.add(f); if (!observedBy.has(f)) observedBy.set(f, file); }
     }
     for (const m of masked.matchAll(INSTANCEOF_RE)) {
-      const f = classToFile.get(m[1]); if (f) observedComponentFiles.add(f);
+      const f = classToFile.get(m[1]); if (f) { observedComponentFiles.add(f); if (!observedBy.has(f)) observedBy.set(f, file); }
     }
   }
 
@@ -1013,7 +1033,7 @@ export async function analyzeElision(components, routeModules, moduleGraph, read
   // render/import rules propagate from it too. Dynamic tag strings and external
   // (non graph-reachable) stylesheets remain an author-facing caveat, since
   // static analysis cannot see them.
-  for (const f of observedComponentFiles) mustShip.add(f);
+  for (const f of observedComponentFiles) { mustShip.add(f); noteShip(f, 'observed', observedBy.get(f) ?? null, null); }
 
   // Reverse import edges (who imports each file), built once from the graph.
   // Drives both the closure-client-work reachability below and the fixpoint's
@@ -1065,7 +1085,7 @@ export async function analyzeElision(components, routeModules, moduleGraph, read
       if (!deps) continue;
       for (const dep of deps) {
         if (serverFiles.has(dep)) continue;
-        if (reachesClientWork.has(dep)) { mustShip.add(file); break; }
+        if (reachesClientWork.has(dep)) { mustShip.add(file); noteShip(file, 'closure', dep, null); break; }
       }
     }
   }
@@ -1108,14 +1128,14 @@ export async function analyzeElision(components, routeModules, moduleGraph, read
     if (tags) {
       for (const tag of tags) {
         const childFile = tagToFile.get(tag);
-        if (childFile && !mustShip.has(childFile)) { mustShip.add(childFile); queue.push(childFile); }
+        if (childFile && !mustShip.has(childFile)) { mustShip.add(childFile); noteShip(childFile, 'render', node, null); queue.push(childFile); }
       }
     }
     const importers = importersOf.get(node);
     if (importers) {
       for (const imp of importers) {
         if (!componentFiles.has(imp)) continue;  // import rule is component -> component
-        if (!mustShip.has(imp)) { mustShip.add(imp); queue.push(imp); }
+        if (!mustShip.has(imp)) { mustShip.add(imp); noteShip(imp, 'import', node, null); queue.push(imp); }
       }
     }
   }
@@ -1145,6 +1165,41 @@ export async function analyzeElision(components, routeModules, moduleGraph, read
     if (clientGlobalOrBareFiles.has(file)) return 'references a browser global at module scope, runs code at module scope, or has a bare side-effect import';
     return 'does client work';
   };
+
+  // Per-component verdict plus the evidence that produced it (#1308). Assembled
+  // ENTIRELY from what the passes above already computed: nothing is re-read and
+  // nothing is re-analysed, so this is a projection, not a second analysis. A
+  // file may register more than one tag, so rows are keyed by FILE with a
+  // sorted tag list.
+  /** @type {Map<string, { tags: string[], className: string|null, shipped: boolean, evidence: string|null, by: string|null, reason: string|null }>} */
+  const componentVerdicts = new Map();
+  for (const c of components) {
+    let row = componentVerdicts.get(c.file);
+    if (!row) {
+      const shipped = mustShip.has(c.file);
+      const ev = shipped ? shipEvidence.get(c.file) : undefined;
+      row = {
+        tags: [], className: c.className ?? null, shipped,
+        evidence: ev ? ev.evidence : null,
+        by: ev ? ev.by : null,
+        // An ELIDED component carries no reason on purpose: elision is the
+        // ABSENCE of every signal, so there is no positive fact to report.
+        // A shipping component with no evidence is only reachable if a future
+        // rule adds to `mustShip` without calling `noteShip`, so report null
+        // rather than a wrong claim (sigil-coverage guards against that drift).
+        reason: !shipped || !ev ? null
+          : ev.evidence === 'own' ? ev.reason
+          : ev.evidence === 'observed' ? `its registration is observed by ${ev.by}`
+          : ev.evidence === 'closure' ? `its import ${ev.by} ${clientEffectReason(/** @type {string} */ (ev.by))}`
+          : ev.evidence === 'render' ? `${ev.by} ships and can render its tag`
+          : ev.evidence === 'import' ? `${ev.by} ships and imports it`
+          : 'its source could not be read (ships conservatively)',
+      };
+      componentVerdicts.set(c.file, row);
+    }
+    if (!row.tags.includes(c.tag)) row.tags.push(c.tag);
+  }
+  for (const row of componentVerdicts.values()) row.tags.sort();
 
   // Route modules fall into three classes by their effective client closure
   // (skipping elided components and server stubs, which never load on the
@@ -1242,7 +1297,7 @@ export async function analyzeElision(components, routeModules, moduleGraph, read
     }
   }
 
-  return { elidableComponents, inertRouteModules, importOnlyRouteModules, shippedRouteModules };
+  return { elidableComponents, inertRouteModules, importOnlyRouteModules, shippedRouteModules, componentVerdicts };
 }
 
 /** Match a whole-line side-effect import: `import './x.js';` (no bindings). */
