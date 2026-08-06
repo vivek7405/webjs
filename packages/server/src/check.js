@@ -6,6 +6,7 @@ import {
   redactToPlaceholders,
   extractWebComponentClassBodies,
   matchClosingBrace,
+  matchClosingParenthesis,
   parsePropEntries,
   classifyActionHole,
   scanHtmlFormScopes,
@@ -1467,9 +1468,11 @@ export async function checkConventions(appDir) {
  * verdict is a fixed point over every template in the app rather than a
  * per-file scan.
  *
- * Unlike `checkServerImportInBrowserModule` this needs no `appDir`, no module
- * graph, and no second filesystem walk: the tag-to-owner map comes from
- * `extractComponents` over the `files` array the caller has already read.
+ * The tag-to-owner map comes from `extractComponents` over the `files` array the
+ * caller has already read, so there is no second directory walk. It does take
+ * `appDir`, because deciding whether a `formaction` hole is a real action
+ * binding means resolving the import to its target module and checking the
+ * export is callable; `resolveImport` needs the app root for that.
  *
  * @param {{ abs: string, rel: string, content: string, scan: string }[]} files
  * @param {Violation[]} violations appended to in place
@@ -1491,20 +1494,7 @@ function checkSubmitterNeedsBoundForm(files, violations, appDir) {
     && !/\.(test|spec)\.m?[jt]sx?$/.test(rel)
     && !/\.server\.m?[jt]s$/.test(rel);
 
-  /**
-   * Local names a file imports from a `.server.{js,ts}` module.
-   *
-   * This scan is LEXICAL, but the renderer binds only when the hole's value is a
-   * FUNCTION (`isBoundFormAction` in `form-action.js`), so `formaction=${'/api/'
-   * + id}` on a plain progressive-enhancement form is an ordinary url attribute
-   * that renders and ships perfectly well. Treating every `formaction` hole as a
-   * binding reported that working form as broken. Requiring the expression to be
-   * a bare identifier imported from a server module is the same discriminator
-   * `form-action-not-a-get-action` already applies one rule over.
-   *
-   * @param {string} content
-   * @returns {Set<string>}
-   */
+  /** Every scanned file by absolute path, for resolving an import's target. */
   const byAbs = new Map(files.map((f) => [f.abs, f]));
 
   /**
@@ -1525,10 +1515,72 @@ function checkSubmitterNeedsBoundForm(files, violations, appDir) {
    */
   const exportsCallable = (scan, name) => {
     const n = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // `export [async] function NAME`.
     if (new RegExp(`\\bexport\\s+(?:async\\s+)?function\\s+${n}\\b`).test(scan)) return true;
-    if (new RegExp(`\\bexport\\s+(?:const|let|var)\\s+${n}\\s*(?::(?:[^=]|=>)*?)?=\\s*(?:async\\s*)?(?:function\\b|\\()`).test(scan)) return true;
-    return false;
+    // A local declaration surfaced by a clause: `function NAME(){}; export { NAME }`.
+    // Only a clause with NO `from`, since a re-export would need another hop to
+    // the module that actually declares it.
+    const reClause = /\bexport\s*\{([^}]*)\}\s*(?!from)/g;
+    let cl;
+    while ((cl = reClause.exec(scan))) {
+      const exported = cl[1].split(',').some((part) => {
+        const m = /([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?/.exec(part.trim());
+        return !!m && (m[2] || m[1]) === name;
+      });
+      if (!exported) continue;
+      const local = cl[1].split(',').map((part) => /([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?/.exec(part.trim()))
+        .filter((m) => m && (m[2] || m[1]) === name).map((m) => m[1])[0];
+      if (local && declaresCallable(scan, local)) return true;
+    }
+    return declaresCallable(scan, name, true);
   };
+
+  /**
+   * Is `name` DECLARED as something provably callable in `scan`?
+   *
+   * The arrow case must see the `=>`. An earlier version accepted a bare `(`
+   * after the `=`, which proves a parenthesized EXPRESSION and not a callable,
+   * so `export const ARCHIVE_URL = ('/api/x')` and the ordinary env-fallback
+   * spelling `= (process.env.X || '/api/x')` were read as actions. That is the
+   * exact false positive this whole resolver exists to prevent.
+   *
+   * @param {string} scan
+   * @param {string} name
+   * @param {boolean} [exported] require the declaration to carry `export`
+   * @returns {boolean}
+   */
+  function declaresCallable(scan, name, exported = false) {
+    const n = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const lead = exported ? '\\bexport\\s+' : '\\b';
+    if (!exported && new RegExp(`\\bfunction\\s+${n}\\b`).test(scan)) return true;
+    const re = new RegExp(`${lead}(?:const|let|var)\\s+${n}\\s*(?::(?:[^=]|=>)*?)?=\\s*`, 'g');
+    let m;
+    while ((m = re.exec(scan))) {
+      let i = m.index + m[0].length;
+      const skipWs = () => { while (i < scan.length && /\s/.test(scan[i])) i++; };
+      skipWs();
+      if (scan.startsWith('async', i) && /\s|\(/.test(scan[i + 5] || '')) { i += 5; skipWs(); }
+      // `= [async] function ...`
+      if (/^function\b/.test(scan.slice(i, i + 9))) return true;
+      // `= [async] (params) => ...`, which must actually reach the arrow.
+      if (scan[i] === '(') {
+        const close = matchClosingParenthesis(scan, i + 1);
+        if (close === -1) continue;
+        i = close + 1;
+        skipWs();
+        if (scan.startsWith('=>', i)) return true;
+        continue;
+      }
+      // `= [async] param => ...`, the single-parameter arrow with no parens.
+      const id = /^[A-Za-z_$][\w$]*/.exec(scan.slice(i));
+      if (id) {
+        i += id[0].length;
+        skipWs();
+        if (scan.startsWith('=>', i)) return true;
+      }
+    }
+    return false;
+  }
 
   /**
    * Local names this file imports from a `.server.{js,ts}` module AND that the
