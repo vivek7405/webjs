@@ -447,8 +447,18 @@ test('the binding resolver across a broad sweep of TypeScript spellings', async 
     ['export let publishDraft = async (fd) => {};', true],
     ['const publishDraft = async (fd) => {};\nexport { publishDraft };', true],
     ['async function impl(fd) {}\nexport { impl as publishDraft };', true],
+    // BOTH separators, inside BOTH annotation positions. The previous sweep
+    // had neither, so it stayed green through a walk that broke on a comma or
+    // a `;` at any depth. `Promise<Record<string, string>>` is the fieldErrors
+    // shape the ActionResult envelope pushes authors toward.
+    ['export const publishDraft = async (fd): Promise<Record<string, string>> => ({});', true],
+    ['export const publishDraft = async (fd): Promise<ActionResult<Draft, Err>> => ({});', true],
+    ['export const publishDraft = async (fd): { ok: boolean; id: string } => ({});', true],
+    ['export const publishDraft = async (fd: Map<string, number>) => 1;', true],
+    ['export const publishDraft: Record<string, (fd: FormData) => void>[\'k\'] = async (fd) => 1;', true],
     // Non-callables that must stay SILENT.
     ["export const publishDraft = `/api/${'x'}`;", false],
+    ["export const publishDraft: { a: string; b: string }['a'] = '/api/x';", false],
     ['export const publishDraft = 42;', false],
     ["export const publishDraft = ['/a', '/b'].join('/');", false],
   ];

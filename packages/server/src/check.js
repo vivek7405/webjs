@@ -1619,7 +1619,12 @@ function checkSubmitterNeedsBoundForm(files, violations, appDir) {
           i++;
           while (i < scan.length) {
             const c = scan[i];
-            if (c === ';' || c === ',') break;
+            // Depth-guarded, exactly like the declaration-side walk. A return
+            // type carries both separators INSIDE its brackets:
+            // `Promise<Record<string, string>>` is the `fieldErrors` shape the
+            // ActionResult envelope pushes authors toward, and an inline object
+            // return type uses `;`.
+            if ((c === ';' || c === ',') && depth <= 0) break;
             if (c === '=' && scan[i + 1] === '>' && depth <= 0) break;
             if (c === '(' || c === '[' || c === '{' || c === '<') depth++;
             else if (c === ')' || c === ']' || c === '}' || c === '>') depth--;
