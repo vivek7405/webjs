@@ -431,6 +431,41 @@ export default () => html\`<form method="get"><button formaction=\${publishDraft
   await rm(dir, { recursive: true, force: true });
 });
 
+test('the binding resolver across a broad sweep of TypeScript spellings', async () => {
+  // Five review rounds each found one more spelling this resolver got wrong, so
+  // this sweeps the space instead of waiting to be told the next one. Every row
+  // is a way a real app might export an action, or a url constant.
+  const cases = [
+    // Callables that must FIRE.
+    ['export async function publishDraft(fd) {}', true],
+    ['export function publishDraft(fd) {}', true],
+    ['export async function publishDraft<T>(fd: T): Promise<void> {}', true],
+    ['export const publishDraft = async ({ id, title }: Input): Promise<void> => {};', true],
+    ['export const publishDraft = async (...args: unknown[]) => {};', true],
+    ['export const publishDraft = async (\n  fd: FormData,\n): Promise<void> => {};', true],
+    ['export const publishDraft = function publishDraft(fd) {};', true],
+    ['export let publishDraft = async (fd) => {};', true],
+    ['const publishDraft = async (fd) => {};\nexport { publishDraft };', true],
+    ['async function impl(fd) {}\nexport { impl as publishDraft };', true],
+    // Non-callables that must stay SILENT.
+    ["export const publishDraft = `/api/${'x'}`;", false],
+    ['export const publishDraft = 42;', false],
+    ["export const publishDraft = ['/a', '/b'].join('/');", false],
+  ];
+  for (const [body, shouldFire] of cases) {
+    const dir = await makeApp({
+      'modules/feedback/actions/publish.server.ts': `'use server';\n${body}\n`,
+      'app/page.ts': `import { html } from '@webjsdev/core';
+import { publishDraft } from '#modules/feedback/actions/publish.server.ts';
+export default () => html\`<form method="get"><button formaction=\${publishDraft}>P</button></form>\`;
+`,
+    });
+    assert.equal(hits(await checkConventions(dir)).length, shouldFire ? 1 : 0,
+      `${shouldFire ? 'should fire' : 'should be silent'}: ${body.replace(/\n/g, ' ')}`);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('silent on a url CONSTANT exported from a .server module', async () => {
   // "Imported from a `.server` module" is not enough: a server module exports
   // non-functions too, and the renderer binds only a FUNCTION. A url constant
