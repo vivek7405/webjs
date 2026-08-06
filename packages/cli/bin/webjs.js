@@ -1100,9 +1100,9 @@ async function main() {
           `webjs elision --verify: ${compared} route(s) identical with elision on vs off, ${skips.join(', ')}.\n` +
           (dropped.size
             ? `Elision dropped ${dropped.size} module(s) across that corpus, so the comparison was a real one.`
-            : 'Elision dropped NO modules across that corpus, so the two sides were identical by construction '
-              + 'and this run proves nothing about elision. Nothing on these routes was elidable; run '
-              + '`webjs elision` to see why.'),
+            : 'Elision dropped NO modules across that corpus: nothing on these routes was elidable, so '
+              + 'there was nothing for elision to change. The comparison holds, it just had no work to '
+              + 'do. Run `webjs elision` to see why every module here ships.'),
         );
         console.log(VERIFY_CAVEAT);
         break;

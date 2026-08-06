@@ -229,7 +229,13 @@ test('webjs elision --verify says so when elision dropped nothing', () => {
   const r = runCli(dir, ['--verify']);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /Elision dropped NO modules/);
-  assert.match(r.stdout, /proves nothing about elision/);
+  assert.match(r.stdout, /nothing on these routes was elidable/);
+  // Exit 0 is deliberate. The command's question is whether elision changed the
+  // bytes this app serves, and "it dropped nothing" answers that truthfully.
+  // That is NOT the zero-route vacuity above, where the question was never
+  // asked and the author has a remedy (--routes); failing here would put a
+  // permanent red on a legitimate app whose every module ships, with nothing
+  // its author could do but delete the command from CI.
 });
 
 test('webjs elision --verify FAILS when elision changes the served bytes', () => {

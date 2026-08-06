@@ -127,9 +127,12 @@ Root `app/layout.ts` exports `generateMetadata(ctx)` that derives an absolute `o
 The app carries display-only and inert-route fixtures so the network
 probes in `test/e2e/e2e.test.mjs` can assert that no dead JS ships.
 
-- `components/build-stamp.ts` (rendered on `/`): a display-only
-  component whose module is stripped from the served page source, so the
-  browser never downloads it.
+- `components/build-stamp.ts` (rendered on `/` AND on `/observed`): a
+  display-only component whose module is stripped from the served page
+  source, so the browser never downloads it. It is the NEGATIVE CONTROL on
+  both routes: a probe asserting some other module IS downloaded needs a
+  module that is still elided on the same run, or the probe would also pass
+  if elision had stopped working altogether.
 - `components/vendor-badge.ts` (rendered on `/`): a display-only
   component whose only non-core dependency is `dayjs` (a binding import,
   not an interactivity signal). Because the component is elided, the
@@ -145,6 +148,20 @@ probes in `test/e2e/e2e.test.mjs` can assert that no dead JS ships.
   The observation forces the badge to ship, so the probe asserts its module
   IS downloaded (the cross-module-registration fix, #169). The unobserved
   `build-stamp` is the negative control.
+- `components/forced-badge.ts` (rendered on `/observed`): display-only in
+  every respect (static markup, no events, no reactive props, no lifecycle
+  hook, light DOM) EXCEPT `static interactive = true`, the explicit author
+  override. It pins that override end to end (#1308): before it, the only
+  coverage stopped at the analyser returning a boolean, and nothing proved
+  the boot script actually keeps the module. The probe asserts its module is
+  downloaded on a run where `build-stamp` on the same page still is not.
+
+Two of these fixtures carry doc comments that deliberately AVOID writing a
+literal tag in angle brackets or a `whenDefined` call shape, because the
+elision analyser scans raw source including comments, so such prose would
+register as a real rendered tag or observation and the fixture would ship
+for the wrong reason (making its test pass vacuously). Keep that discipline
+when editing them.
 
 ### Client-router script reactivation (#1102)
 `app/script-swap/` exists ONLY as an e2e fixture. Its layout emits two inline
