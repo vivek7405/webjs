@@ -1178,7 +1178,9 @@ async function main() {
           console.log(`  ${o.className} in ${o.file} is never registered with a literal tag`);
         }
         console.log('  Either there is no registration call at all, or the tag is computed. The scanner matches');
-        console.log('  only a literal tag, so either way the element never upgrades and the module gets no verdict.');
+        console.log('  only a literal tag, so either way the module gets no verdict, no registry entry, and no');
+        console.log('  preload hint. With no registration call the element never upgrades at all; with a computed');
+        console.log('  tag it upgrades only while its module still reaches the browser through a shipping importer.');
         console.log('  Fix: register it with a literal tag, Class.register(\'my-tag\'), or delete the class.');
         console.log();
       }

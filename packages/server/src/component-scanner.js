@@ -7,15 +7,13 @@
  * renders a component tag, `lookupModuleUrl(tag)` already has the URL
  * ready for `<link rel="modulepreload">` hints.
  *
- * The convention WebJs uses is the web-standard one:
- *
- *     class Counter extends WebComponent { … }
- *     customElements.define('my-counter', Counter);
- *
- * The scanner looks for `customElements.define('<tag>', <ClassName>)`
- * calls: static text patterns that are cheap to regex-match without
- * a full TS parse. A full parse would be ~50× slower for no payoff;
- * we only need `{ tag, className, moduleUrl }` tuples.
+ * The idiomatic WebJs registration is `Class.register('my-counter')`; the
+ * web-standard `customElements.define('my-counter', Counter)` is equally
+ * supported. The scanner matches BOTH, as static text patterns that are cheap
+ * to regex-match without a full TS parse. A full parse would be ~50× slower
+ * for no payoff; we only need `{ tag, className, moduleUrl }` tuples. Either
+ * way the tag must be a LITERAL (invariant 3): a computed one is invisible
+ * here, which is what makes it an orphan (see `findOrphanComponents`).
  */
 
 import { readFile, stat } from 'node:fs/promises';
@@ -148,10 +146,23 @@ export async function primeComponentRegistry(appDir, components) {
 }
 
 /**
- * Find `class X extends WebComponent` (or its subclasses) declarations
- * that are NOT accompanied by a `customElements.define(tag, X)` call in
- * the same file. Lets the dev server warn authors early when they
- * forget the registration step.
+ * Find ORPHAN components: a `class X extends WebComponent` whose own file
+ * never registers it with a LITERAL tag, via either `X.register('tag')` or
+ * `customElements.define('tag', X)`.
+ *
+ * TWO shapes land here and they fail differently, so any message about this
+ * must cover both:
+ *
+ *   - No registration call at all (the forgot-to-register case). Nothing ever
+ *     registers the tag, so the element NEVER upgrades.
+ *   - A registration whose tag is COMPUTED (`X.register(TAG)`). The call does
+ *     run if the module reaches the browser, so the element may well upgrade.
+ *     What is lost is that the scanner cannot see it: no elision verdict, no
+ *     tag-to-module registry entry, no modulepreload hint, and if its importer
+ *     is elided or inert the import is dropped and it never upgrades either.
+ *
+ * Matches the literal `extends WebComponent` only, so a class extending a
+ * component SUBCLASS is not reported.
  *
  * @param {string} appDir
  * @returns {Promise<Array<{ className: string, file: string }>>}

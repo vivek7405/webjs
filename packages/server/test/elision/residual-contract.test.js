@@ -178,6 +178,45 @@ test('a computed Class.register(tag) is invisible to the SCANNER, so it gets no 
   assert.deepEqual(orphans, [{ className: 'Badge', file: badgeFile }], 'it surfaces as an ORPHAN instead');
 });
 
+test('a computed-tag component still REGISTERS when its importer ships (#1308)', async () => {
+  // The two orphan shapes fail differently, and the docs used to claim both
+  // "never upgrade". Not so: a computed tag is invisible to the SCANNER, but
+  // `Badge.register(TAG)` is ordinary code that runs whenever the module
+  // reaches the browser. Here the page ships whole for its own reason, so the
+  // page module is emitted AND keeps its import of the component, which means
+  // the element does upgrade. What is genuinely lost either way is the
+  // verdict, the registry entry, and the preload hint.
+  //
+  // The inert-page case (the test above) is the one where the claim holds,
+  // because the page is dropped and the import goes with it.
+  const dir = await mkdtemp(join(tmpdir(), 'webjs-residual-upgrade-'));
+  try {
+    await mkdir(join(dir, 'app'), { recursive: true });
+    await mkdir(join(dir, 'components'), { recursive: true });
+    await mkdir(join(dir, 'lib'), { recursive: true });
+    await writeFile(join(dir, 'components/badge.js'), badgeComputedRegistration());
+    // Client-effecting at module scope, so the PAGE ships whole.
+    await writeFile(join(dir, 'lib/track.js'),
+      "if (typeof window !== 'undefined') { window.__hits = 1; }\nexport const track = () => {};\n");
+    await writeFile(join(dir, 'app/page.js'),
+      "import { html } from '@webjsdev/core';\nimport '../components/badge.js';\n" +
+      "import { track } from '../lib/track.js';\nexport default () => html`<my-badge></my-badge>${String(track)}`;\n");
+
+    const graph = await buildModuleGraph(dir);
+    const components = await scanComponents(dir);
+    const pageFile = join(dir, 'app/page.js');
+    const verdict = await analyzeElision(
+      components, [pageFile], graph, (f) => import('node:fs/promises').then((m) => m.readFile(f, 'utf8')), dir,
+    );
+    assert.deepEqual(components, [], 'still invisible to the scanner');
+    assert.ok(!verdict.inertRouteModules.has(pageFile), 'the page is NOT inert here');
+    assert.ok(verdict.shippedRouteModules.has(pageFile),
+      'the page ships whole, so its import of the component survives and the registration runs');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('static interactive = true does NOT rescue a computed registration tag', async () => {
   // The measured finding the docs used to get wrong: the override is a
   // property the ANALYSER reads, and nothing consults the analyser for a

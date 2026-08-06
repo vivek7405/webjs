@@ -994,8 +994,10 @@ export async function createRequestHandler(opts) {
               for (const { className, file } of await findOrphanComponents(appDir)) {
                 logger.warn?.(
                   `[webjs] ${className} extends WebComponent but is never registered with a literal tag in ${file} ` +
-                    `(either there is no registration call, or its tag is computed). ` +
-                    `Add \`${className}.register('<tag-name>');\` or <${kebab(className)}> tags won't upgrade.`,
+                    `(either there is no registration call, or its tag is computed), so the scanner cannot see it: ` +
+                    `no elision verdict, no preload hint, and with no registration call at all ` +
+                    `<${kebab(className)}> tags never upgrade. ` +
+                    `Add \`${className}.register('<tag-name>');\` with a literal tag.`,
                 );
               }
               // The elision summary (#1308), one server-console line. NOT a

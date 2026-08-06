@@ -1080,8 +1080,10 @@ async function checkElisionComponents(elisionPromise) {
         `${report.orphans.length} component class(es) are dropped with NO elision verdict:\n` +
         lines.map((l) => `    ${l}`).join('\n') +
         '\n    Either it has no registration call at all, or it registers a computed tag. The component '
-        + 'scanner matches only a literal tag, so either way it never sees the class: the element never '
-        + 'upgrades, the module gets no elision verdict, and `static interactive = true` cannot rescue it.',
+        + 'scanner matches only a literal tag, so either way it never sees the class: no elision verdict, no '
+        + 'registry entry, no preload hint, and `static interactive = true` cannot rescue it. With no '
+        + 'registration call the element never upgrades at all; with a computed tag it upgrades only while '
+        + 'its module still reaches the browser through an importer that ships.',
       fix: 'Register it with a literal tag, Class.register(\'my-tag\') (invariant 3 already requires one), or delete the class if nothing uses it.',
     };
   }

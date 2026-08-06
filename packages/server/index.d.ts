@@ -482,8 +482,12 @@ export declare function extractComponents(src: string): Array<{ className: strin
  * Find ORPHAN component classes: a `class X extends WebComponent` that its own
  * file never registers with a LITERAL tag, either because there is no
  * registration call or because the tag is computed. The scanner matches only a
- * literal tag, so both shapes fail the same way: the element never upgrades and
- * the module gets no elision verdict. Nothing here is about import reachability.
+ * literal tag, so neither is visible to it. They fail DIFFERENTLY, though: with
+ * no registration call the element never upgrades at all, while a computed tag
+ * still registers if its module reaches the browser, and what is lost there is
+ * the verdict, the registry entry, and the preload hint (plus the upgrade
+ * itself, if its importer is elided or inert). Nothing here is about import
+ * reachability.
  */
 export declare function findOrphanComponents(
   appDir: string,
