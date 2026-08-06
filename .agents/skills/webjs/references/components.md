@@ -264,7 +264,53 @@ A component that does no client-side work renders the same SSR'd HTML with or wi
 - the dynamic slot READ surface (`slotchange`, `assignedNodes` / `assignedElements` / `assignedSlot`); merely RENDERING a `<slot>` does not ship (the SSR output carries the placed children, so a display-only slotted wrapper is byte-identical without its JS; native-write liveness is consumer-driven and the consumer's tag reference forces the ship)
 - being rendered by a component that itself ships
 
-A bare `async render()` (no other signal, light DOM) is elided too: the SSR'd data is the complete first paint. Force shipping with `static interactive = true` when interactivity is invisible to static analysis (a dynamically-built tag string, a `:defined` rule in an external stylesheet). `static shadow = true` always ships (Declarative Shadow DOM re-attaches only during parsing). Turn elision off app-wide with `{ "webjs": { "elide": false } }` or `WEBJS_ELIDE=0`.
+A bare `async render()` (no other signal, light DOM) is elided too: the SSR'd data is the complete first paint. Force shipping with `static interactive = true` when interactivity is invisible to static analysis. `static shadow = true` always ships (Declarative Shadow DOM re-attaches only during parsing). Turn elision off app-wide with `{ "webjs": { "elide": false } }` or `WEBJS_ELIDE=0`.
+
+### What `static interactive = true` does and does not rescue
+
+The analyser reads source lexically, so exactly two real shapes escape it, and the override covers both:
+
+- **An OBSERVER that computes the tag it waits for.** `customElements.whenDefined(TAG)` where `TAG` is a variable does not name a tag the analyser can resolve, so the observed component is elided, its `register` never runs, and the `await` never settles. Put `static interactive = true` on the OBSERVED component.
+- **A `:defined` rule in an external stylesheet.** `public/app.css` is not in the module graph, so a `my-badge:defined { … }` rule is invisible. Same fix, on the component the rule names.
+
+**It does NOT rescue a component whose OWN registration tag is computed.** `Badge.register(TAG)` is not a registration the scanner recognises (invariant 3 requires a literal tag), so that component is never in the component set at all: it gets no verdict, nothing consults the analyser for it, and the override has nothing to attach to. The module is dropped and the element silently never registers. Always pass a literal: `Badge.register('my-badge')`. `webjs dev` warns about this shape, and `webjs elision` / `webjs doctor` report it as an **orphan**.
+
+### Inspecting and proving the verdict
+
+Elision is the one thing WebJs decides about your code that you did not write down, so it is inspectable rather than something to reason about from the rules above.
+
+```sh
+webjs elision                      # per-module verdict, and the evidence behind every ship
+webjs elision --json               # the same object, for a tool or an agent
+webjs elision --verify             # prove elision changed nothing your app serves
+webjs elision --verify --routes /,/blog/hello   # add paths (the only way to cover a dynamic route)
+```
+
+**Reading the report.** Every component is `elided` or `shipped`. A shipped one carries the `evidence` that forced it, first match wins:
+
+| `evidence` | Means | `by` |
+|---|---|---|
+| `own` | its own source carries a signal; `reason` is the exact one | null |
+| `observed` | another module observes its registration (`whenDefined` / `:defined` / `instanceof`) | the observer |
+| `closure` | something it imports does client work | the import |
+| `render` | a shipping component can render its tag | that component |
+| `import` | a shipping component imports it | that component |
+| `unreadable` | its source could not be read, so it ships conservatively | null |
+
+An elided row carries no reason on purpose: elision is the ABSENCE of every signal, so there is no positive fact to report.
+
+**What to do with each verdict.** `elided` on a component you believe is interactive is the one result worth acting on: find the signal it is missing (the list above), and if the interactivity is genuinely invisible to static analysis, add `static interactive = true`. `shipped` with an `evidence` you did not expect is usually a `closure` row, and the fix is to move the client-effecting import out of that component's path. An `orphans` row is always a bug: give the class a literal registration tag.
+
+**What `--verify` proves.** It renders every static page route with elision on and off and diffs the bytes with the JS-loaded set masked out, which is the framework's own guard pointed at your app. So it proves elision did not change what your app SERVES. It does not prove post-hydration behaviour, because a wrongly dropped module shows up as a dead click, not as different bytes. Cover that half by running your own browser or e2e suite twice:
+
+```sh
+WEBJS_ELIDE=1 npm run test:e2e
+WEBJS_ELIDE=0 npm run test:e2e
+```
+
+It exits non-zero on a divergence AND on a corpus where nothing could be compared, so it is safe to put in CI. Dynamic routes are skipped by name (rendering one would mean inventing param values); pass real ones with `--routes`. A route whose two same-side renders already differ is reported as nondeterministic and excluded, since a differential over live data proves nothing.
+
+`webjs doctor` carries the same verdict as a one-line inventory, and warns only on an orphan.
 
 ## Members app code must not shadow
 
