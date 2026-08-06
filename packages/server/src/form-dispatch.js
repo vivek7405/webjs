@@ -436,10 +436,16 @@ export async function runFormAction(route, params, url, req, ssrOpts, deps) {
   const actions = formData.getAll(FORM_ACTION_FIELD);
   const id = actions.length ? actions[actions.length - 1] : null;
   // A form body carrying no identity: a hand-written `<form method="post">`
-  // that binds no action, or (#1307) a bound submitter whose host form was
-  // unbound and carried an enctype the server cannot parse. Nothing to run, and
-  // the page only renders. Reported before the 405 so the shape is not just an
-  // anonymous status in an access log.
+  // that binds no action. Nothing to run, and the page only renders. Reported
+  // before the 405 so the shape is not just an anonymous status in an access
+  // log.
+  //
+  // NOT the unparseable-enctype variant of #1307. An `enctype="text/plain"`
+  // submission arrives with that content type, so `looksLikeFormSubmission`
+  // answers it above, before the body is read and before this point. That is
+  // deliberate (buffering an attacker-chosen body to classify it is exactly what
+  // the early return avoids), and it means the text/plain variant is visible
+  // only as a bare 405. The dev-time client guard covers it instead.
   if (typeof id !== 'string' || !id) {
     reportFormActionMissing(url, req, formData, onError, logger, !!ssrOpts.dev, route);
     return methodNotAllowed();

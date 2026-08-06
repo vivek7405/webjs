@@ -24,7 +24,7 @@ import {
   SLOT_STATE, LIGHT_SLOT_ATTR, PROJECTION_ATTR, PROJECTION_ACTUAL,
   projectAuthored, keyOfName, isAuthoredContentSlot,
 } from './slot.js';
-import { FORM_ACTION_FIELD, PARSEABLE_ENCTYPES } from './form-action.js';
+import { FORM_ACTION_FIELD } from './form-action.js';
 
 /** The content type a content-negotiated stream-action response carries (#248). */
 const STREAM_MIME = 'text/vnd.webjs-stream.html';
@@ -1017,10 +1017,17 @@ function warnIfActionSubmissionCannotDeliver(form, submitter, method, body) {
   const enctype = (submitter && submitter.getAttribute('formenctype'))
     || form.getAttribute('enctype')
     || 'application/x-www-form-urlencoded';
-  if (!PARSEABLE_ENCTYPES.has(enctype.toLowerCase())) {
+  // `text/plain` ONLY, not the renderer's allowlist. `enctype` is an enumerated
+  // attribute whose missing AND invalid value defaults are both
+  // `application/x-www-form-urlencoded`, so `enctype="nonsense"` submits a
+  // parseable body and the action runs. Testing against the allowlist reported
+  // that working form as broken, which is the inversion `js-scan.js` documents
+  // and the check rule deliberately avoids; the two halves of one feature must
+  // not disagree on the same input.
+  if (enctype.toLowerCase() === 'text/plain') {
     warnOnce(
       `submit-nowhere:${path}:${enctype}`,
-      `[webjs] this form carries a bound server action but submits enctype="${enctype}", which the server parses as neither multipart/form-data nor application/x-www-form-urlencoded, so the submission is a 405. Drop the enctype and let the binding supply it.`,
+      `[webjs] this form carries a bound server action but declares enctype="${enctype}", which the server cannot parse. With JavaScript on the router posts FormData and the action still runs, so this breaks only the no-JS path, where the submission is a 405. Drop the enctype and let the binding supply it.`,
       'error',
     );
   }

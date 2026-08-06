@@ -20,15 +20,15 @@ import { PARSEABLE_ENCTYPES } from '../../../core/src/form-action.js';
 test('a submitter reports the scope of its enclosing form', () => {
   assert.deepEqual(
     scanHtmlFormScopes('html`<form action=${save}><button formaction=${del}>x</button></form>`').submitters,
-    [{ tag: 'button', scope: 'bound', delivers: null }],
+    [{ tag: 'button', scope: 'bound', delivers: null, expr: 'del' }],
   );
   assert.deepEqual(
     scanHtmlFormScopes('html`<form><button formaction=${del}>x</button></form>`').submitters,
-    [{ tag: 'button', scope: 'unbound', delivers: false }],
+    [{ tag: 'button', scope: 'unbound', delivers: false, expr: 'del' }],
   );
   assert.deepEqual(
     scanHtmlFormScopes('html`<button formaction=${del}>x</button>`').submitters,
-    [{ tag: 'button', scope: 'none', delivers: null }],
+    [{ tag: 'button', scope: 'none', delivers: null, expr: 'del' }],
   );
 });
 
@@ -37,34 +37,34 @@ test('a nested template inherits the enclosing form scope', () => {
   // `repeat`, and nested templates, so a per-row button in a bound form is
   // bound.
   const bound = 'html`<form action=${save}>${rows.map((r) => html`<button formaction=${del}>x</button>`)}</form>`';
-  assert.deepEqual(scanHtmlFormScopes(bound).submitters, [{ tag: 'button', scope: 'bound', delivers: null }]);
+  assert.deepEqual(scanHtmlFormScopes(bound).submitters, [{ tag: 'button', scope: 'bound', delivers: null, expr: 'del' }]);
   const unbound = 'html`<form>${rows.map((r) => html`<button formaction=${del}>x</button>`)}</form>`';
-  assert.deepEqual(scanHtmlFormScopes(unbound).submitters, [{ tag: 'button', scope: 'unbound', delivers: false }]);
+  assert.deepEqual(scanHtmlFormScopes(unbound).submitters, [{ tag: 'button', scope: 'unbound', delivers: false, expr: 'del' }]);
 });
 
 test('the scope closes at </form> and does not leak forward', () => {
   const src = 'html`<form action=${save}></form><button formaction=${del}>x</button>`';
-  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'none', delivers: null }]);
+  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'none', delivers: null, expr: 'del' }]);
 });
 
 test('a start tag split across holes is still one tag', () => {
   const src = 'html`<form action=${save} class="a"><button class=${c} formaction=${del}>x</button></form>`';
-  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'bound', delivers: null }]);
+  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'bound', delivers: null, expr: 'del' }]);
 });
 
 test('a `>` inside a quoted attribute value does not close the tag', () => {
   const src = 'html`<form action=${save}><div title="a>b"></div><button formaction=${del}>x</button></form>`';
-  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'bound', delivers: null }]);
+  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'bound', delivers: null, expr: 'del' }]);
 });
 
 test('a custom-element start tag is reported, its close tag is not', () => {
   assert.deepEqual(
     scanHtmlFormScopes('html`<form action=${save}><row-btn></row-btn></form>`').tagUses,
-    [{ tag: 'row-btn', scope: 'bound', delivers: null }],
+    [{ tag: 'row-btn', scope: 'bound', delivers: null, expr: null }],
   );
   assert.deepEqual(
     scanHtmlFormScopes('html`<form><row-btn></row-btn></form>`').tagUses,
-    [{ tag: 'row-btn', scope: 'unbound', delivers: false }],
+    [{ tag: 'row-btn', scope: 'unbound', delivers: false, expr: null }],
   );
 });
 
@@ -72,15 +72,15 @@ test('only an html-tagged literal is read as markup', () => {
   // The carve-out the whole rule rests on: the framework's own website renders
   // `<form action=${fn}>` as a code SAMPLE.
   assert.deepEqual(scanHtmlFormScopes("const s = '<form><button formaction=x></button></form>';").submitters, []);
-  assert.deepEqual(scanHtmlFormScopes('css`.a { }` + html`<row-btn></row-btn>`').tagUses, [{ tag: 'row-btn', scope: 'none', delivers: null }]);
+  assert.deepEqual(scanHtmlFormScopes('css`.a { }` + html`<row-btn></row-btn>`').tagUses, [{ tag: 'row-btn', scope: 'none', delivers: null, expr: null }]);
   // A form written inside a plain string cannot open a scope for real markup.
   const mixed = "const s = '<form>'; export default () => html`<button formaction=${del}>x</button>`;";
-  assert.deepEqual(scanHtmlFormScopes(mixed).submitters, [{ tag: 'button', scope: 'none', delivers: null }]);
+  assert.deepEqual(scanHtmlFormScopes(mixed).submitters, [{ tag: 'button', scope: 'none', delivers: null, expr: 'del' }]);
 });
 
 test('an HTML comment is not markup', () => {
   const src = 'html`<!-- <form> --><button formaction=${del}>x</button>`';
-  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'none', delivers: null }]);
+  assert.deepEqual(scanHtmlFormScopes(src).submitters, [{ tag: 'button', scope: 'none', delivers: null, expr: 'del' }]);
 });
 
 test('classifyActionHole matches the tag and the attribute as a pair', () => {
@@ -117,7 +117,7 @@ test('a class body holding a template hole is extractable from RAW source', () =
   const bodies = extractWebComponentClassBodies(src);
   assert.equal(bodies.length, 1);
   assert.match(bodies[0].body, /formaction=\$\{del\}/);
-  assert.deepEqual(scanHtmlFormScopes(bodies[0].body).submitters, [{ tag: 'button', scope: 'none', delivers: null }]);
+  assert.deepEqual(scanHtmlFormScopes(bodies[0].body).submitters, [{ tag: 'button', scope: 'none', delivers: null, expr: 'del' }]);
 });
 
 test('an unbound form reports whether it would still DELIVER the identity', () => {
@@ -173,7 +173,7 @@ test('class-body offsets index the RAW source identically to the mask', () => {
   assert.equal(bodies.length, 1, 'the masked view blanks the regex body, so the braces balance');
   const body = src.slice(bodies[0].bodyStart, bodies[0].bodyEnd);
   assert.match(body, /formaction=\$\{del\}/, 'the raw slice keeps the template intact');
-  assert.deepEqual(scanHtmlFormScopes(body).submitters, [{ tag: 'button', scope: 'none', delivers: null }]);
+  assert.deepEqual(scanHtmlFormScopes(body).submitters, [{ tag: 'button', scope: 'none', delivers: null, expr: 'del' }]);
 });
 
 test('a template in an ordinary START-TAG hole is handed off, not inherited', () => {
@@ -189,19 +189,19 @@ test('a template in an ordinary START-TAG hole is handed off, not inherited', ()
   // 'none' is a cannot-tell the caller may attribute to this file's own
   // component. A handed-off template belongs to whichever element received it,
   // so collapsing the two resolves it through the wrong call sites.
-  assert.deepEqual(scanHtmlFormScopes(passed).submitters, [{ tag: 'button', scope: 'handed', delivers: null }]);
+  assert.deepEqual(scanHtmlFormScopes(passed).submitters, [{ tag: 'button', scope: 'handed', delivers: null, expr: 'del' }]);
   // A hyphenated tag inside a property hole is placed by the receiving element
   // too, so it is not this file's call site either.
   const tagPassed = 'html`<my-shell .rows=${html`<todo-row></todo-row>`}></my-shell>`';
   assert.deepEqual(scanHtmlFormScopes(tagPassed).tagUses.filter((u) => u.tag === 'todo-row'),
-    [{ tag: 'todo-row', scope: 'handed', delivers: null }]);
+    [{ tag: 'todo-row', scope: 'handed', delivers: null, expr: null }]);
   // A form the handed-off template opens ITSELF is still its own scope.
   const ownForm = 'html`<my-thing .tpl=${html`<form action=${s}><button formaction=${del}>x</button></form>`}></my-thing>`';
-  assert.deepEqual(scanHtmlFormScopes(ownForm).submitters, [{ tag: 'button', scope: 'bound', delivers: null }]);
+  assert.deepEqual(scanHtmlFormScopes(ownForm).submitters, [{ tag: 'button', scope: 'bound', delivers: null, expr: 'del' }]);
   // A hole in CHILD position IS rendered inline by this scan, so it still
   // inherits. This is the pair that keeps the fix from being a blanket opt-out.
   const child = 'html`<form method="post">${html`<button formaction=${del}>x</button>`}</form>`';
-  assert.deepEqual(scanHtmlFormScopes(child).submitters, [{ tag: 'button', scope: 'unbound', delivers: true }]);
+  assert.deepEqual(scanHtmlFormScopes(child).submitters, [{ tag: 'button', scope: 'unbound', delivers: true, expr: 'del' }]);
 });
 
 test('the unparseable-enctype constant tracks the renderer\'s own set', () => {
@@ -237,7 +237,7 @@ test('the start-tag-hole rule matches what the RENDERER actually does', async ()
   // throws. The scanner must see the same thing.
   const fallbackSrc = 'html`<form><webjs-suspense .fallback=${html`<button formaction=${p}>x</button>`}></webjs-suspense></form>`';
   assert.deepEqual(scanHtmlFormScopes(fallbackSrc).submitters,
-    [{ tag: 'button', scope: 'unbound', delivers: false }]);
+    [{ tag: 'button', scope: 'unbound', delivers: false, expr: 'p' }]);
   await assert.rejects(
     () => renderToString(
       html`<form><webjs-suspense .fallback=${html`<button formaction=${publish}>x</button>`}></webjs-suspense></form>`,
@@ -255,7 +255,7 @@ test('the start-tag-hole rule matches what the RENDERER actually does', async ()
   // non-discriminating test this differential exists to avoid.
   const propSrc = 'html`<form><my-thing .tpl=${html`<button formaction=${p}>x</button>`}></my-thing></form>`';
   assert.deepEqual(scanHtmlFormScopes(propSrc).submitters,
-    [{ tag: 'button', scope: 'handed', delivers: null }]);
+    [{ tag: 'button', scope: 'handed', delivers: null, expr: 'p' }]);
   const warns = [];
   const quiet = console.warn;
   console.warn = (...a) => warns.push(a.join(' '));
@@ -275,10 +275,10 @@ test('the start-tag-hole rule matches what the RENDERER actually does', async ()
   // property hole is not.
   const fbTag = 'html`<form><webjs-suspense .fallback=${html`<todo-row></todo-row>`}></webjs-suspense></form>`';
   assert.deepEqual(scanHtmlFormScopes(fbTag).tagUses.filter((u) => u.tag === 'todo-row'),
-    [{ tag: 'todo-row', scope: 'unbound', delivers: false }]);
+    [{ tag: 'todo-row', scope: 'unbound', delivers: false, expr: null }]);
   const propTag = 'html`<form><my-shell .rows=${html`<todo-row></todo-row>`}></my-shell></form>`';
   assert.deepEqual(scanHtmlFormScopes(propTag).tagUses.filter((u) => u.tag === 'todo-row'),
-    [{ tag: 'todo-row', scope: 'handed', delivers: null }]);
+    [{ tag: 'todo-row', scope: 'handed', delivers: null, expr: null }]);
 });
 
 test('the enctype divergence from the renderer is deliberate, on both sides', async () => {

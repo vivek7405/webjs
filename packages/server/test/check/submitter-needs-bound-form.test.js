@@ -313,6 +313,36 @@ export default () => html\`<form>${host}</form>\`;
   await rm(handed, { recursive: true, force: true });
 });
 
+test('silent on a formaction hole that is a URL, not an action', async () => {
+  // The scan is lexical; the RENDERER binds only when the hole's value is a
+  // FUNCTION (`isBoundFormAction`). So an ordinary progressive-enhancement form
+  // whose buttons post to different `route.ts` endpoints is not a binding at
+  // all, and reporting it was a false positive on working code.
+  for (const hole of ["\\${'/api/items/' + id + '/archive'}", "\\${'/api/x'}", '\\${localUrl}']) {
+    const dir = await makeApp({
+      'app/items/page.ts': `import { html } from '@webjsdev/core';
+const localUrl = '/api/x';
+export default ({ id }) => html\`<form method="post" action="/api/items"><button formaction=${hole}>Archive</button></form>\`;
+`,
+    });
+    assert.deepEqual(hits(await checkConventions(dir)), [], `${hole} is a url, not an action`);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('still fires when the hole IS an imported server action', async () => {
+  // The counterfactual for the filter above: narrowing to real bindings must not
+  // silence the shape the rule exists for.
+  const dir = await makeApp({
+    'app/items/page.ts': `import { html } from '@webjsdev/core';
+import { publishDraft } from '#modules/feedback/actions/publish.server.ts';
+export default () => html\`<form><button formaction=\${publishDraft}>P</button></form>\`;
+`,
+  });
+  assert.equal(hits(await checkConventions(dir)).length, 1);
+  await rm(dir, { recursive: true, force: true });
+});
+
 test('silent when the tag has no call site anywhere in the app', async () => {
   const dir = await makeApp({
     'components/row-btn.ts': rowBtn(),

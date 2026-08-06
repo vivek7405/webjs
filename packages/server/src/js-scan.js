@@ -875,7 +875,14 @@ function isInlineStartTagHole(tagName, literalBefore) {
  *   tag: string,
  *   scope: FormScope,
  *   delivers: boolean | null,
+ *   expr: string | null,
  * }} FormScopeSite
+ *
+ * `expr` is the submitter hole's expression text, verbatim from the redacted
+ * source, and null for a tag use. A caller MUST look at it before treating the
+ * hole as an action binding: this scan is lexical, while the renderer binds only
+ * when the value is a FUNCTION (`isBoundFormAction`), so
+ * `formaction=${'/api/' + id}` is an ordinary url attribute that ships fine.
  *
  * `delivers` is meaningful only when `scope` is `'unbound'`: true when that
  * form would still carry a submitter's identity to the server, false when it
@@ -990,7 +997,7 @@ export function scanHtmlFormScopes(src) {
      * source so its attributes can be read at the `>`, and `dynamicAttrs`
      * records that a hole other than the action binding landed in it, which
      * makes those attributes unknowable.
-     * @type {null | { name: string, isClose: boolean, quote: string | null, formHole: boolean, submitterHole: boolean, text: string, dynamicAttrs: boolean }}
+     * @type {null | { name: string, isClose: boolean, quote: string | null, formHole: boolean, submitterHole: boolean, submitterExpr: string | null, text: string, dynamicAttrs: boolean }}
      */
     let tag = null;
     let inComment = false;
@@ -1017,8 +1024,8 @@ export function scanHtmlFormScopes(src) {
         delivers = t.formHole ? null : (t.dynamicAttrs ? null : unboundFormDelivers(t.text));
         return;
       }
-      if (t.submitterHole) submitters.push({ tag: t.name, scope, delivers });
-      if (t.name.includes('-')) tagUses.push({ tag: t.name, scope, delivers });
+      if (t.submitterHole) submitters.push({ tag: t.name, scope, delivers, expr: t.submitterExpr || null });
+      if (t.name.includes('-')) tagUses.push({ tag: t.name, scope, delivers, expr: null });
     };
 
     /** @param {string} text one literal segment, read as markup */
@@ -1057,6 +1064,7 @@ export function scanHtmlFormScopes(src) {
           quote: null,
           formHole: false,
           submitterHole: false,
+          submitterExpr: null,
           text: m[0],
           dynamicAttrs: false,
         };
@@ -1068,10 +1076,14 @@ export function scanHtmlFormScopes(src) {
       const c = redacted[i];
       if (c === '`') return i + 1;
       if (c === '$' && redacted[i + 1] === '{') {
+        let capturingSubmitter = false;
         if (isHtml && tag && !tag.isClose) {
           const attr = trailingActionAttr(lastLiteral);
           if (attr === 'action' && tag.name === 'form') tag.formHole = true;
-          else if (attr === 'formaction' && (tag.name === 'button' || tag.name === 'input')) tag.submitterHole = true;
+          else if (attr === 'formaction' && (tag.name === 'button' || tag.name === 'input')) {
+            tag.submitterHole = true;
+            capturingSubmitter = true;
+          }
           // Any OTHER hole in a form's start tag makes its `method` / `enctype`
           // dynamic, so whether an unbound form would deliver becomes unknowable.
           else if (tag.name === 'form') tag.dynamicAttrs = true;
@@ -1105,7 +1117,10 @@ export function scanHtmlFormScopes(src) {
         // Only the segment IMMEDIATELY before a hole can commit an attribute,
         // so two adjacent holes leave nothing for the second to read.
         lastLiteral = '';
+        const holeStart = i + 2;
         i = walkCode(i + 2, true, holeScope, holeDelivers);
+        // The hole's expression, so a caller can require a real action binding.
+        if (capturingSubmitter && tag) tag.submitterExpr = redacted.slice(holeStart, i).trim();
         if (i < n && redacted[i] === '}') i++;
         continue;
       }

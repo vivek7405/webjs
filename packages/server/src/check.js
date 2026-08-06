@@ -1490,6 +1490,36 @@ function checkSubmitterNeedsBoundForm(files, violations) {
     && !/\.(test|spec)\.m?[jt]sx?$/.test(rel)
     && !/\.server\.m?[jt]s$/.test(rel);
 
+  /**
+   * Local names a file imports from a `.server.{js,ts}` module.
+   *
+   * This scan is LEXICAL, but the renderer binds only when the hole's value is a
+   * FUNCTION (`isBoundFormAction` in `form-action.js`), so `formaction=${'/api/'
+   * + id}` on a plain progressive-enhancement form is an ordinary url attribute
+   * that renders and ships perfectly well. Treating every `formaction` hole as a
+   * binding reported that working form as broken. Requiring the expression to be
+   * a bare identifier imported from a server module is the same discriminator
+   * `form-action-not-a-get-action` already applies one rule over.
+   *
+   * @param {string} content
+   * @returns {Set<string>}
+   */
+  const serverImportedNames = (content) => {
+    /** @type {Set<string>} */
+    const names = new Set();
+    const { redacted, literals } = redactToPlaceholders(content);
+    const reImport = /\bimport\s+([^'";]*?)\bfrom\s*(['"])/g;
+    let im;
+    while ((im = reImport.exec(redacted))) {
+      const tok = /__STR_(\d+)__/.exec(redacted.slice(reImport.lastIndex, reImport.lastIndex + 24));
+      if (!tok) continue;
+      const spec = literals[Number(tok[1])] || '';
+      if (!/\.server\.m?[jt]s$/.test(spec)) continue;
+      for (const { local } of importedLocalNames(im[1])) names.add(local);
+    }
+    return names;
+  };
+
   /** @type {{ rel: string, fileSites: ReturnType<typeof scanHtmlFormScopes>, ownerTag: string | null, bodySites: ReturnType<typeof scanHtmlFormScopes> | null }[]} */
   const scanned = [];
   for (const { rel, content, scan } of files) {
@@ -1499,6 +1529,11 @@ function checkSubmitterNeedsBoundForm(files, violations) {
     if (!/formaction/i.test(content) && !/<[A-Za-z][A-Za-z0-9]*-/.test(content)) continue;
     const fileSites = scanHtmlFormScopes(content);
     if (!fileSites.submitters.length && !fileSites.tagUses.length) continue;
+    // Keep only the submitter holes that really bind an action. A `formaction`
+    // hole holding a url string is an ordinary attribute the renderer ships.
+    const bound = serverImportedNames(content);
+    const isActionBinding = (site) => !!site.expr && /^[A-Za-z_$][\w$]*$/.test(site.expr) && bound.has(site.expr);
+    fileSites.submitters = fileSites.submitters.filter(isActionBinding);
     // ATTRIBUTABLE: exactly one registered tag and exactly one WebComponent
     // class, so a cannot-tell submitter in that class body belongs to that tag
     // with no ambiguity. Anything else stays unknowable.
@@ -1518,6 +1553,7 @@ function checkSubmitterNeedsBoundForm(files, violations) {
     if (tags.size === 1 && bodies.length === 1) {
       ownerTag = /** @type {string} */ ([...tags][0]);
       bodySites = scanHtmlFormScopes(content.slice(bodies[0].bodyStart, bodies[0].bodyEnd));
+      bodySites.submitters = bodySites.submitters.filter(isActionBinding);
     }
     scanned.push({ rel, fileSites, ownerTag, bodySites });
   }
