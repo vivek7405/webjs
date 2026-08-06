@@ -77,6 +77,24 @@ if has '(work on|start work|pick up|tackle|begin).{0,24}#?[0-9]+' \
   add_match "webjs-start-work: the request is to begin a tracked issue. Invoke the webjs-start-work skill (it branches off main, moves the card to In progress, sets up the workspace) BEFORE starting the work."
 fi
 
+# --- webjs-ready-for-dev: plan a tracked issue into implementable shape --
+# Triggers: get #N ready for development, ready these issues for dev, prep
+# #N for development, make these todos implementation-ready, write the
+# implementation plans for these issues, scope out #N. The deliverable is a
+# verified implementation plan written INTO the issue body, not code, so
+# this precedes webjs-start-work rather than replacing it. Deliberately
+# narrow on the word "ready": "ready to merge" and "ready for review" are
+# about a PR and must NOT route here, which is why every pattern requires
+# dev / development / implementation adjacency or an explicit plan noun.
+if has 'ready.{0,16}for (dev|development|implementation|an implementer)' \
+   || has 'ready (these|those|the|them|it|this).{0,24}(for )?(dev|development)' \
+   || has 'implementation[- ]ready' \
+   || has '(prep|prepare|scope).{0,32}(for (dev|development)|out)?.{0,8}#[0-9]+' \
+   || has '(write|create|add|generate).{0,24}implementation plans?' \
+   || has 'get .{0,40}(issue|todo|item|#[0-9]+).{0,24}ready'; then
+  add_match "webjs-ready-for-dev: the request is to get tracked issues ready for development, meaning a verified implementation plan written INTO each issue body. Invoke the webjs-ready-for-dev skill. It runs ONE autonomous background agent per issue, all spawned in a single message so they run in parallel, each read-only on the repo (no git mutation, since the agents share the working tree), each rewriting its issue body to the cold-start standard and then moving the card to the Ready column. Do a conflict pass over the batch FIRST and queue any issue whose file surface another issue in the batch is about to rewrite. This skill writes no code and opens no PR; implementation is webjs-start-work, later."
+fi
+
 # --- webjs-list-todos: what is open / pending ---------------------------
 # Triggers: what's open, what's pending, list todos, current todo, what
 # should I work on, show open issues, what's in progress, on the board.

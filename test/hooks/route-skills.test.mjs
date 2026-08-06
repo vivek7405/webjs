@@ -116,6 +116,32 @@ test('webjs-research-record routes on research/design phrases', () => {
   }
 });
 
+test('webjs-ready-for-dev routes on issue-planning phrases', () => {
+  for (const p of [
+    'get #1253, #1258 and #1264 ready for development',
+    'ready these issues for dev: 1261, 1263',
+    'prep #1265 for development',
+    'make those todos implementation-ready',
+    'write the implementation plans for the low risk issues',
+    'scope out #1269 so an agent can pick it up',
+  ]) {
+    const { ctx } = run(p);
+    assert.ok(routed(ctx, 'webjs-ready-for-dev'), `expected ready-for-dev route for: ${p}`);
+  }
+});
+
+test('webjs-ready-for-dev stays quiet on PR-readiness phrases', () => {
+  // "ready" about a PR is a merge or review question, not issue planning.
+  for (const p of [
+    'is the PR ready to merge',
+    'mark it ready for review',
+    'the branch is ready, can we merge',
+  ]) {
+    const { ctx } = run(p);
+    assert.ok(!routed(ctx, 'webjs-ready-for-dev'), `PR-readiness prompt must not route: ${p}`);
+  }
+});
+
 test('webjs-blog-write routes on blog-writing phrases', () => {
   for (const p of [
     'write a blog post about streaming actions',
