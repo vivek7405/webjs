@@ -3,7 +3,7 @@ import { html } from '@webjsdev/core';
 export const metadata = {
   title: 'Display-Only Elision | WebJs',
   description:
-    'WebJs never downloads a component module that does no client work. Elision is automatic and biased toward shipping. Inspect the verdict per module with webjs, and prove it for your own app with webjs --verify.',
+    'WebJs never downloads a component module that does no client work. Elision is automatic and biased toward shipping. Inspect the verdict per module with `webjs elision`, and prove it for your own app with `webjs elision --verify`.',
 };
 
 export default function Elision() {
@@ -121,6 +121,10 @@ webjs elision --verify --routes /,/blog/hello</code-block>
 
     <code-block>WEBJS_ELIDE=1 npm run test:e2e
 WEBJS_ELIDE=0 npm run test:e2e</code-block>
+
+    <p>
+      The ON side is forced on with the environment override rather than left to your config, so <code>--verify</code> compares a real on-vs-off pair even in an app that has elision switched off. The run also reports how many modules elision actually dropped across the corpus, because a pass over a corpus where it dropped none is true but trivially so.
+    </p>
 
     <p>
       Dynamic routes are skipped by name, because rendering one would mean inventing param values; pass real ones with <code>--routes</code>. A route whose two same-side renders already differ is reported as nondeterministic and excluded, since a differential over live data proves nothing either way.

@@ -308,7 +308,7 @@ WEBJS_ELIDE=1 npm run test:e2e
 WEBJS_ELIDE=0 npm run test:e2e
 ```
 
-It exits non-zero on a divergence AND on a corpus where nothing could be compared, so it is safe to put in CI. Dynamic routes are skipped by name (rendering one would mean inventing param values); pass real ones with `--routes`. A route whose two same-side renders already differ is reported as nondeterministic and excluded, since a differential over live data proves nothing.
+It exits non-zero on a divergence AND on a corpus where nothing could be compared, so it is safe to put in CI. The ON side is forced on rather than read from your config, so the comparison is a real one even in an app that has elision switched off, and the run reports how many modules elision actually dropped so a trivially-true pass is visible. Dynamic routes are skipped by name (rendering one would mean inventing param values); pass real ones with `--routes`. A route whose two same-side renders already differ is reported as nondeterministic and excluded, since a differential over live data proves nothing.
 
 `webjs doctor` carries the same verdict as a one-line inventory, and warns only on an orphan.
 

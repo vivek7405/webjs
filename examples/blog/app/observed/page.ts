@@ -3,6 +3,11 @@ import '#components/observed-badge.ts';
 import '#components/observe-badge.ts';
 import '#components/ssr-derived-badge.ts';
 import '#components/forced-badge.ts';
+// The same-run NEGATIVE control for the forced-badge probe (#1308): display-only
+// with no override and nothing observing it, so it must stay elided on a run
+// where forced-badge ships. Without a control on THIS page the probe would also
+// pass if elision had stopped working altogether.
+import '#components/build-stamp.ts';
 
 export const metadata = {
   title: 'Observed badge · WebJs Blog',
@@ -32,6 +37,7 @@ export default function Observed() {
       </p>
       <observed-badge></observed-badge>
       <forced-badge></forced-badge>
+      <build-stamp></build-stamp>
       <ssr-derived-badge seed="42"></ssr-derived-badge>
     </section>
   `;

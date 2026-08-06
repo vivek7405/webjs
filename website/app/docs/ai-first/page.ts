@@ -48,6 +48,7 @@ export default function AIFirst() {
       <li><code>list_routes</code>: the live route table.</li>
       <li><code>list_actions</code>: server actions with their <code>/__webjs/action/&lt;hash&gt;/&lt;fn&gt;</code> RPC endpoints (the real hashes).</li>
       <li><code>list_components</code>: the registered custom-element tags.</li>
+      <li><code>list_elision</code>: the display-only elision verdict, which component modules the browser never downloads and the evidence behind each one that ships. See <a href="/docs/elision">Display-Only Elision</a>.</li>
       <li><code>check</code>: the structured <code>webjs check</code> violations.</li>
       <li><code>ui</code>: the <code>@webjsdev/ui</code> kit inventory, or one component's helper signatures, paste-ready example, and a11y header.</li>
     </ul>

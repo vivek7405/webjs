@@ -178,7 +178,7 @@ WebJs strips the JavaScript of every component that does no client work, so a wr
 webjs elision --verify
 ```
 
-renders every static page route with elision on and off and diffs the served bytes. It is the framework's own differential guard pointed at your route table, and it exits non-zero on a divergence AND on a corpus where nothing could be compared, so it belongs in CI. Dynamic routes are skipped by name; add real paths with `--routes /,/blog/hello`.
+renders every static page route with elision on and off and diffs the served bytes. It is the framework's own differential guard pointed at your route table, and it exits non-zero on a divergence AND on a corpus where nothing could be compared, so it belongs in CI. It forces the ON side on rather than reading your config, and reports how many modules elision actually dropped, so a pass that compared two identical renders is visible rather than silent. Dynamic routes are skipped by name; add real paths with `--routes /,/blog/hello`.
 
 That proves the bytes you SERVE did not change. It cannot prove post-hydration behaviour, because a wrongly dropped module shows up as a dead click, not as different bytes. Run your own browser or e2e suite twice for that half:
 

@@ -92,7 +92,7 @@ const USAGE = `webjs commands:
   webjs routes [--json|--table] [--no-headers]    Print the route table (path / owner file / methods). Default tree; --json matches the MCP list_routes shape; --no-headers drops the --table header
   webjs elision [--json] [--verify]               Report which component modules are elided and why each shipped one ships;
                                                   --verify diffs SSR output with elision on vs off (exits non-zero on a divergence)
-  webjs mcp                                       Start the read-only MCP server (routes / actions / components / check)
+  webjs mcp                                       Start the read-only MCP server (routes / actions / components / elision / check)
   webjs doctor [--json] [--strict]                Verify project health (Node, tsconfig, env, vendor pins, importmap coherence, @webjsdev versions, git hook, page/layout elision, un-versioned stylesheet links).
                                                   --json emits the structured results (with stable codes). --strict additionally fails on every remaining warning.
                                                   Per-check severity is CONFIG: map a code to off/warn/error under "webjs": { "doctor": { "gate": {...} } }
@@ -269,7 +269,7 @@ const HELP = {
   },
   mcp: {
     usage: 'webjs mcp',
-    summary: 'Start the read-only MCP server (routes / actions / components / check + a docs/source knowledge layer).',
+    summary: 'Start the read-only MCP server (routes / actions / components / elision / check + a docs/source knowledge layer).',
     examples: ['webjs mcp'],
   },
   version: {
@@ -991,14 +991,27 @@ async function main() {
           const resp = await h.handle(new Request('http://localhost' + r));
           return { status: resp.status, html: await resp.text() };
         };
+        // The module URLs a response preloads, with the content-hash query
+        // stripped. Comparing the two sides' sets is how the run reports what
+        // elision actually DROPPED, which is the only thing that distinguishes
+        // a real pass from two identical renders.
+        const preloadSet = (html) => new Set(
+          [...html.matchAll(/<link rel="modulepreload" href="([^"]+)"/g)].map((m) => m[1].split('?')[0]),
+        );
 
         const ORIG = process.env.WEBJS_ELIDE;
         /** @type {Record<string, {status:number, html:string}>} */
         const onA = {}, onB = {}, off = {};
         try {
-          // Elision ON (the default). Warm fully so the memoized verdict is
-          // locked before the env flips for the second handler.
-          delete process.env.WEBJS_ELIDE;
+          // Elision ON, FORCED. Deleting the override would only fall back to
+          // `webjs.elide`, so on an app that opts out this side would run with
+          // elision OFF too and the command would compare two identical renders
+          // and report them "identical with elision on vs off", which is false
+          // about a run where elision was never on. The env override wins over
+          // the config key, which is exactly what makes it the right seam here.
+          // Warm fully so the memoized verdict is locked before the env flips
+          // for the second handler.
+          process.env.WEBJS_ELIDE = '1';
           const hOn = await createRequestHandler({ appDir, dev: false, logger: quiet });
           if (hOn.warmup) await hOn.warmup();
           for (const r of routes) onA[r] = await capture(hOn, r);
@@ -1024,11 +1037,18 @@ async function main() {
         }
 
         const unrenderable = [], nondeterministic = [], diverged = [];
+        /** @type {Set<string>} modules the OFF side preloads and the ON side does not */
+        const dropped = new Set();
         let compared = 0;
         for (const r of routes) {
           if (onA[r].status >= 400) { unrenderable.push(`${r} (${onA[r].status})`); continue; }
           if (maskJsSet(onA[r].html) !== maskJsSet(onB[r].html)) { nondeterministic.push(r); continue; }
           compared++;
+          // What elision removed on this route. A pass over a corpus where this
+          // stays empty is TRUE but trivially so, and the author needs to see
+          // that rather than read it as proof elision was exercised.
+          const onSet = preloadSet(onA[r].html);
+          for (const u of preloadSet(off[r].html)) if (!onSet.has(u)) dropped.add(u);
           const a = maskJsSet(onA[r].html);
           const b = maskJsSet(off[r].html);
           if (onA[r].status !== off[r].status) {
@@ -1076,7 +1096,14 @@ async function main() {
           );
           process.exit(1);
         }
-        console.log(`webjs elision --verify: ${compared} route(s) identical with elision on vs off, ${skips.join(', ')}.`);
+        console.log(
+          `webjs elision --verify: ${compared} route(s) identical with elision on vs off, ${skips.join(', ')}.\n` +
+          (dropped.size
+            ? `Elision dropped ${dropped.size} module(s) across that corpus, so the comparison was a real one.`
+            : 'Elision dropped NO modules across that corpus, so the two sides were identical by construction '
+              + 'and this run proves nothing about elision. Nothing on these routes was elidable; run '
+              + '`webjs elision` to see why.'),
+        );
         console.log(VERIFY_CAVEAT);
         break;
       }

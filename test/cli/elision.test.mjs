@@ -196,6 +196,42 @@ test('webjs elision --verify FAILS on a --routes path that does not render', () 
   assert.match(r.stderr, /\/nope \(404\): a --routes path must render/);
 });
 
+test('webjs elision --verify forces elision ON, so an opted-out app still gets a real comparison', () => {
+  // Deleting WEBJS_ELIDE only falls back to `webjs.elide`, so on an app that
+  // opts out BOTH handlers would run with elision off, the two renders would be
+  // identical by construction, and the command would report the routes
+  // "identical with elision on vs off" and exit 0. That is a confident pass on a
+  // run where elision was never on, which is worse than the zero-route vacuity
+  // the exit code already guards. The env override wins over the config key,
+  // which is what makes it the right seam.
+  const dir = fixtureApp();
+  write(dir, 'package.json', JSON.stringify({ name: 'fx', type: 'module', webjs: { elide: false } }));
+  const r = runCli(dir, ['--verify']);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /2 route\(s\) identical/);
+  assert.match(r.stdout, /Elision dropped [1-9]\d* module\(s\)/,
+    'the ON side must really have elided something, or the comparison was two identical renders');
+});
+
+test('webjs elision --verify says so when elision dropped nothing', () => {
+  // A corpus where every component carries a client-work signal compares two
+  // identical renders. That is a true pass and it must not fail, but reading it
+  // as proof elision was exercised would be wrong, so the run says which it is.
+  // Both the component AND the page must ship: an interactive component alone
+  // still leaves the PAGE import-only, and dropping the page module from the
+  // boot is itself something elision removed from the wire.
+  const dir = tmpDir();
+  write(dir, 'package.json', JSON.stringify({ name: 'fx', type: 'module' }));
+  write(dir, 'components/counter.js', INTERACTIVE);
+  write(dir, 'lib/track.js', "if (typeof window !== 'undefined') { window.__hits = 1; }\nexport const track = () => {};");
+  write(dir, 'app/page.js', "import { html } from '@webjsdev/core';\nimport '../components/counter.js';\nimport { track } from '../lib/track.js';\nexport default () => html`<my-counter></my-counter><span>${String(track)}</span>`;");
+  linkFramework(dir);
+  const r = runCli(dir, ['--verify']);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Elision dropped NO modules/);
+  assert.match(r.stdout, /proves nothing about elision/);
+});
+
 test('webjs elision --verify FAILS when elision changes the served bytes', () => {
   // The divergence path, driven for real rather than stubbed. The page renders
   // a tag whose module is elided ON and shipped OFF, and the component's SSR
