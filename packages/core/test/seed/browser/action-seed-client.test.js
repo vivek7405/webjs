@@ -103,6 +103,31 @@ suite('SSR action seeding, real DOM (#1309)', () => {
     assert.ok(warns[0].indexOf('1 of 2 hydration action call(s) missed') !== -1, warns[0]);
   });
 
+  test('a stale block left in the live document cannot outrank a fresh soft-nav seed', async () => {
+    // The regression last-write-wins can cause, and the reason the scan drains
+    // the live document before ingesting an incoming page. Page A never called
+    // `takeSeed` (every async component on it elided), so the lazy initial scan
+    // never ran and its block is still in the live DOM; it sits after the body
+    // content, outside every boundary range, so no swap removes it either. When
+    // page B arrives, both renders share the key, and if A's block is ingested
+    // LAST it wins and the hit contradicts the HTML on screen.
+    const stale = seedBlock(await stringify({ 'h/getUser/[1]': 'PAGE-A-STALE' }), 'ok');
+    assert.equal(stale.isConnected, true, 'page A was never scanned');
+
+    // The soft nav: `applySwap` scans a DETACHED parse, never the live document.
+    const detached = document.implementation.createHTMLDocument('');
+    const fresh = detached.createElement('script');
+    fresh.type = 'application/json';
+    fresh.id = '__webjs-seeds';
+    fresh.setAttribute('data-webjs-dev', 'ok');
+    fresh.textContent = await stringify({ 'h/getUser/[1]': 'PAGE-B-FRESH' });
+    detached.body.appendChild(fresh);
+    scanSeeds(detached);
+
+    assert.equal(stale.isConnected, false, 'the outgoing page\'s block is drained, not left to reappear');
+    assert.equal(takeSeed('h', 'getUser', '[1]'), 'PAGE-B-FRESH', 'the hit matches the paint');
+  });
+
   test('an UNMARKED block (production) reports nothing at all', async () => {
     const warns = await withIdle(async () => {
       seedBlock(await stringify({ 'h/f/[1]': 1 }));

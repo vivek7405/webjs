@@ -340,8 +340,8 @@ test('a scan whose seeds all REPLACE unconsumed ones still counts as seeds merge
 });
 
 test('the cause comes from the window\'s OWN marker, not a later scan\'s', async () => {
-  // A soft nav landing inside a pending window early-returns without scheduling,
-  // so its marker must not reach the report for the window it did not measure.
+  // A soft nav CLOSES the window it lands in and opens its own, so the incoming
+  // page's marker must not reach the report for the window it did not measure.
   // Before the marker moved into the window, a buffered page's unmatched-key miss
   // was reported as "this page streams" whenever the next page happened to.
   const origIdle = globalThis.requestIdleCallback;

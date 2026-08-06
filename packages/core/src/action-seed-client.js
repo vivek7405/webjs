@@ -83,39 +83,68 @@ let windowEpoch = 0;
  * @param {ParentNode & { querySelectorAll?: Function }} [root]
  */
 export function scanSeeds(root) {
-  const scope = root || (typeof document !== 'undefined' ? document : null);
+  const live = typeof document !== 'undefined' ? document : null;
+  const scope = root || live;
   if (!scope || typeof scope.querySelectorAll !== 'function') return;
-  // An explicit whole-document scan IS the initial scan. Without this the lazy
-  // scan in `takeSeed` runs a second time over the same document, finds the
-  // carriers already removed, and closes the window this scan just opened.
-  if (typeof document !== 'undefined' && scope === document) scannedInitial = true;
   // Close the previous page's window BEFORE ingesting anything: the moment this
   // page's content arrives is exactly where the previous page's numbers stop. Do
   // it after the ingest loops instead and this scan's seeds are already counted
   // into the window being closed, which is the whole defect.
   closeReportWindow();
-  // Read BEFORE ingesting: the report distinguishes "the page carried no seeds
-  // at all" from "it carried seeds, but not for these calls", and that turns on
-  // how many THIS scan merged. MERGED is `ingested + replaced`, not `ingested`:
-  // a key already in the store counts as a replacement, so a scan whose seeds
-  // all replace unconsumed ones (revisiting a page whose seeding component
-  // elided, exactly the shape last-write-wins exists for) would otherwise
-  // measure as zero and claim the page carried no seeds while naming one.
+  // A scan of an EXPLICIT root is a new page arriving: the router's `applySwap`
+  // passes a detached parse, never the live document. The live document can
+  // still be holding the OUTGOING page's block, because the initial scan is lazy
+  // (it runs on the first `takeSeed`) and a page whose async components all
+  // elided never triggers it, while the block itself sits after the body content
+  // outside every boundary range, so no swap removes it either.
+  //
+  // Drain it FIRST, in ingest order, which is what makes last-write-wins correct
+  // here: the outgoing page's values go in before the incoming page's, so a key
+  // both renders share ends up holding the INCOMING one, the render whose paint
+  // is on screen. Leave the leftover for the lazy scan to find later and the
+  // order inverts, the stale value wins, and a hit contradicts the HTML the user
+  // is looking at. Keeping the outgoing values rather than discarding them costs
+  // nothing and still answers an in-flight `async render()` from the page being
+  // navigated away from.
+  if (live && scope !== live) drainCarriers(live);
+  // Either way the live document has now been handled, so the lazy scan must not
+  // run again: a second pass finds nothing to ingest but would close the window
+  // this scan is about to open.
+  if (live) scannedInitial = true;
+  // Read BEFORE ingesting THIS page: the report distinguishes "the page carried
+  // no seeds at all" from "it carried seeds, but not for these calls", and that
+  // turns on how many THIS scan merged. Read after the drain above, so the
+  // outgoing page's leftovers are not counted as this page's. MERGED is
+  // `ingested + replaced`, not `ingested`: a key already in the store counts as
+  // a replacement, so a scan whose seeds all replace unconsumed ones (revisiting
+  // a page whose seeding component elided, exactly the shape last-write-wins
+  // exists for) would otherwise measure as zero and claim the page carried no
+  // seeds while naming one.
   const mergedBefore = stats.ingested + stats.replaced;
+  startReportWindow(drainCarriers(scope), mergedBefore);
+}
+
+/**
+ * Ingest and strip every seed carrier under `scope`, returning the dev marker it
+ * carried (the page-level block's, the only carrier that has one) or null.
+ * @param {ParentNode & { querySelectorAll: Function }} scope
+ * @returns {string | null}
+ */
+function drainCarriers(scope) {
+  let marker = null;
   // Page-level JSON block(s). The dev marker rides this carrier only, and it is
   // THIS scan's marker that decides whether there is a report to make and what
   // cause it names.
-  let scanMarker = null;
   for (const el of scope.querySelectorAll('script[type="application/json"]#__webjs-seeds, script[type="application/json"][data-webjs-seeds]')) {
     const m = readDevMarker(el.getAttribute?.('data-webjs-dev'));
-    if (m !== null) scanMarker = m;
+    if (m !== null) marker = m;
     ingest(el.textContent, el);
   }
   // Per-element carriers (streamed boundaries / future per-component seeding).
   for (const el of scope.querySelectorAll('[data-webjs-seed]')) {
     ingest(el.getAttribute('data-webjs-seed'), el, () => el.removeAttribute('data-webjs-seed'));
   }
-  startReportWindow(scanMarker, mergedBefore);
+  return marker;
 }
 
 /**
