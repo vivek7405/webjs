@@ -344,6 +344,35 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     }
   });
 
+  test('a navigation during a deferred restore cancels it, not the other way round', async () => {
+    // The view-transition path is the one place the restore OUTLIVES the call
+    // that scheduled it, and every cancel site in this feature runs at the start
+    // of the next thing. So a navigation arriving inside the deferred frame
+    // would close the window and then have the stale restore reopen it, keyed to
+    // the previous history entry, scrolling a page it was never meant for.
+    const origSVT = (/** @type any */ (document)).startViewTransition;
+    (/** @type any */ (document)).startViewTransition = (cb) => {
+      const done = new Promise((resolve) => {
+        requestAnimationFrame(() => { cb(); resolve(); });
+      });
+      return { updateCallbackDone: done, finished: done, ready: done, skipTransition() {} };
+    };
+    await setup({ viewTransition: true, tallOutgoing: true });
+    try {
+      await goBack();
+      // Inside the deferred frame: the swap has not committed, so the restore
+      // is still pending. Not awaited, since the point is that it STARTS.
+      navigate(location.origin + entryUrl('during-deferred')).catch(() => {});
+      for (let i = 0; i < 6; i++) await frame();
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
+        'the superseded restore does not reopen a window on the page that '
+        + 'replaced it');
+    } finally {
+      await teardown();
+      (/** @type any */ (document)).startViewTransition = origSVT;
+    }
+  });
+
   test('a form SUBMISSION inside the window closes it too', async () => {
     // A submission is a navigation and runs its own pipeline
     // (`performSubmission`), so it needs the same close as `performNavigation`.
@@ -399,6 +428,28 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
         'the catch-up lands on the recorded offset once it is reachable '
         + `(expected ~${CLAMPED_TARGET}, got ${window.scrollY})`);
+    } finally { await teardown(); }
+  });
+
+  test('the catch-up gives up after its window, and does not move a settled reader', async () => {
+    // The bound is a live behaviour constant: past it a clamped restore stops
+    // chasing. The other two catch-up cases grow the fixture immediately, so
+    // they pass at any bound and none of them would notice it being widened
+    // back to the ceiling. This is the case that pins it, and it is the reason
+    // the bound exists: a reader who landed and started READING generates no
+    // input to cancel the chase, so late-arriving growth must not scroll them.
+    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true });
+    try {
+      await goBack();
+      const clamped = window.scrollY;
+      assert.ok(clamped < CLAMPED_TARGET - 1, 'precondition: the restore was clamped');
+      // Past the window, with no input at any point.
+      await new Promise((r) => setTimeout(r, 900));
+      document.querySelector('wj-grow-on-command-1310').style.height = COMMANDED_GROWTH + 'px';
+      for (let i = 0; i < 12; i++) await frame();
+      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) >= 5,
+        'growth arriving after the window must not scroll a reader who never '
+        + `asked (landed on ${CLAMPED_TARGET}, so the chase was still live)`);
     } finally { await teardown(); }
   });
 

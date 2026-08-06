@@ -417,7 +417,13 @@ jobs:
           # signals the whole group. `webjs dev` spawns a watcher which spawns
           # the listener, so killing only the npm pid leaves the port held; that
           # was measured, the step exited cleanly and :5001 stayed up.
-          trap 'kill -- -"$server_pid" 2>/dev/null || true' EXIT
+          # On any failure the server log goes BACK to the step log. This is a
+          # required check and the server runs the website's own before-tasks
+          # (registry copy, Tailwind build), so a boot failure, a build failure
+          # or a 500 on /ui/button must not fail the check with its cause in a
+          # file nobody reads. `$?` is captured first, since the trap body would
+          # otherwise clobber it.
+          trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "--- website dev server log ---"; tail -n 200 /tmp/website-dev.log || true; fi; kill -- -"$server_pid" 2>/dev/null || true; exit "$rc"' EXIT
           for i in $(seq 1 60); do
             curl -sf -o /dev/null http://localhost:5001/ui/button && break
             sleep 2

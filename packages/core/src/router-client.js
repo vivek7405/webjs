@@ -458,9 +458,16 @@ let cancelScrollCatchUp = null;
  * It does NOT escape the settling-versus-streaming question, and it is worth
  * being exact about that rather than claiming otherwise. It cannot tell the
  * restore settling apart from any other growth, so the guard is its WINDOW: it
- * lives only as long as the floor, the same span the restore's own suppression
- * covers. Outside that it is gone, so late-resolving content cannot move a
- * reader who is simply reading and generating no input to cancel it.
+ * lives for `ANCHOR_SUPPRESS_FLOOR_MS` and no longer. That is SHORTER than the
+ * suppression window beside it, which runs to the later of the floor and the
+ * revalidation, capped by the ceiling; the two are not the same span and this
+ * is deliberately the tighter of them, because this one WRITES scroll. Outside
+ * it, late-resolving content cannot move a reader who is simply reading and
+ * generating no input to cancel it.
+ *
+ * The cost is the other side of that trade, and it is real: content settling
+ * later than the floor leaves a clamped reader at the clamp rather than at the
+ * offset they left. Both doc surfaces say so.
  *
  * @param {number} targetY  The recorded offset to reach.
  * @param {number} targetX
@@ -1652,7 +1659,20 @@ async function performNavigation(href, isPopState, frameId) {
               // opened, and the restored page then clamped to 2416 with
               // anchoring held off, which is precisely the stranding the
               // conditional exists to prevent. Wait for the swap to commit.
-              _swapCommit.then(restoreScroll).catch(() => {});
+              //
+              // Token-guarded, because this is the one path where the restore
+              // outlives the call that scheduled it. Every cancel site in this
+              // feature (performNavigation, performSubmission,
+              // disableClientRouter) runs at the START of the next thing, so a
+              // navigation, submission, or disable arriving inside the deferred
+              // frame would close the window and then have this reopen it,
+              // scrolling a page it was never meant for to an offset recorded
+              // for the previous history entry. The synchronous branch below
+              // cannot outlive anything and so needs no guard.
+              _swapCommit.then(() => {
+                if (myToken !== currentNavigationToken || !enabled) return;
+                restoreScroll();
+              }).catch(() => {});
             } else {
               // The synchronous path, and the read must STAY synchronous here.
               // Deferring it even by a microtask breaks the fix outright: by
