@@ -14,7 +14,7 @@
  * the home pages worked, the component pages did not, and a home-route-only
  * smoke missed it.
  *
- * The gallery moved from the ui-website to the marketing site in #1099, so the
+ * The gallery moved from the old ui host to the marketing site in #1099, so the
  * bake moved with it; the failure mode it guards against is unchanged.
  *
  * This asserts the Dockerfile bakes the registry copy at build time, so removing

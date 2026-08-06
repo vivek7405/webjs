@@ -3,5 +3,5 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Source registry for @webjsdev/ui - component sources, themes, lib. Read on demand by @webjsdev/ui-website to compose registry JSON at request time."
+  "description": "Source registry for @webjsdev/ui - component sources, themes, lib. Read on demand by the website gallery to compose registry JSON at request time."
 }

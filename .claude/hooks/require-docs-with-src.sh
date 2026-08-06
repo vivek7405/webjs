@@ -66,10 +66,10 @@ if [ -z "$src_touched" ]; then exit 0; fi
 # and the scaffold templates. NOT every *.md, so a stray note cannot be
 # staged to slip the gate.
 #
-# `^docs/` is deliberately absent. That path used to BE the docs site, but
-# since #1098 it holds a three-file redirect-only host, so accepting it would
-# let a staged tsconfig satisfy the documentation gate. Its AGENTS.md still
-# counts, via the markdown alternative above.
+# `^docs/` is deliberately absent. That path used to BE the docs site until
+# #1098 moved it under website/, then carried a redirect-only host until that
+# became a Cloudflare rule. Nothing lives there now, and the docs site is
+# reached through `^website/` above.
 doc_staged=$(printf '%s\n' "$staged" | grep -E \
   '(^|/)(AGENTS|CLAUDE|CONVENTIONS|README)\.md$|^\.agents/skills/webjs/|^website/|^packages/cli/templates/' || true)
 if [ -n "$doc_staged" ]; then exit 0; fi

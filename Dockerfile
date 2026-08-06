@@ -1,6 +1,6 @@
 # Single image for the whole monorepo. Each Railway service runs the
 # same image with a different start command. Locally:
-# `docker compose up --build` runs all three via compose.yaml.
+# `docker compose up --build` runs both via compose.yaml.
 #
 # No build step for JS. webjs serves .ts directly by stripping types at the
 # runtime layer (position-preserving whitespace replacement, no sourcemap shipped
@@ -50,10 +50,8 @@ COPY packages/server/package.json                    ./packages/server/
 COPY packages/editors/intellisense/package.json         ./packages/editors/intellisense/
 COPY packages/ui/package.json                        ./packages/ui/
 COPY packages/ui/packages/registry/package.json      ./packages/ui/packages/registry/
-COPY packages/ui/packages/website/package.json       ./packages/ui/packages/website/
 COPY examples/blog/package.json                      ./examples/blog/
 COPY website/package.json                            ./website/
-COPY docs/package.json                               ./docs/
 
 # Copy the CLI's bin/ before install so npm can symlink it into
 # /app/node_modules/.bin/webjs. Without this, the bin target doesn't
@@ -67,7 +65,6 @@ RUN npm install --no-audit --no-fund
 COPY packages  ./packages
 COPY examples  ./examples
 COPY website   ./website
-COPY docs      ./docs
 # scripts/build-framework-dist.js is invoked by the step-3
 # `npm run build:dist --workspace=@webjsdev/core` line, so the
 # scripts tree has to be in the image before that step runs.
@@ -121,9 +118,7 @@ RUN npm run build:dist --workspace=@webjsdev/core
 RUN cd website && node scripts/copy-registry.mjs
 
 # Tailwind: compile per-app CSS (every app with a stylesheet uses the CLI, no
-# browser runtime). The `docs` and `ui-website` services are absent on purpose:
-# both render no HTML at all now, only redirects (to webjs.dev/docs and
-# webjs.dev/ui), so neither has a stylesheet.
+# browser runtime).
 # Each compose service's command invokes `webjs.js start` directly, which
 # bypasses the per-package `prestart: css:build` hook in npm; the CSS has
 # to be ready in the image. Keep this list in sync with the apps that

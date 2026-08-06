@@ -6,12 +6,12 @@ import { loadRegistryItem, loadRegistryIndex } from './local.js';
  * exact URL: it is the one registry whose sources ship inside the package.
  *
  * This moved from `https://ui.webjs.dev/registry` when the gallery merged into
- * the marketing site (#1099). The OLD URL still works and must keep working
- * forever, because every already-published version of this package carries it
- * and cannot be corrected: `ui.webjs.dev` now permanently redirects here, and
- * `fetch` follows redirects by default (verified against the real published
- * 0.3.1 and 0.3.8 tarballs before the move). Pointing new releases straight at
- * the destination just saves them the hop.
+ * the marketing site (#1099). That old URL no longer serves the registry: it
+ * now redirects to the gallery PAGE, so a fetch of it follows the redirect and
+ * gets HTML. Versions 0.3.1 through 0.3.8 hardcode it and hit the network, so
+ * `webjsui add` is broken on those and cannot be corrected after publish.
+ * Since 0.3.9 the kit resolves LOCAL-first, which is why the break stops
+ * there: `add` / `list` / `view` never reach the network on this URL.
  */
 export const HOSTED_REGISTRY_URL = 'https://webjs.dev/ui/registry';
 

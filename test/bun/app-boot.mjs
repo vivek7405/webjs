@@ -39,12 +39,9 @@ const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${p
  *  single entry, and it carries a gallery component detail page (`/ui/button`),
  *  the exact route class that 500'd in #526 when the registry copy was skipped.
  *
- *  The old `docs` and `ui-website` apps are gone from this list on purpose:
- *  both are redirect-only hosts now, and every route on them answers 301 with
- *  an empty body, which passes a status check while probing zero preloads.
- *  Leaving them here would have looked like coverage while providing none.
- *  Their redirect MAPPINGS are asserted in test/ui/ui-host-redirect.test.mjs
- *  and test/docs/docs-host-redirect.test.mjs instead. */
+ *  The old `docs` and `ui-website` apps used to be redirect-only hosts here.
+ *  Both are Cloudflare redirect rules now, with no origin in this repo, so
+ *  there is nothing left to boot for either. */
 const APPS = [
   { name: 'website', dir: 'website', routes: ['/', '/docs/no-build', '/docs/components', '/ui', '/ui/button'] },
 ];

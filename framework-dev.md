@@ -1,12 +1,12 @@
 # Framework development (editing WebJs itself)
 
-Read this only when editing the WebJs monorepo (this repo), not a scaffolded app. The repo is buildless: `packages/` is plain `.js` with JSDoc (never add `.ts` there); TypeScript is fine in `examples/`, `docs/`, `website/`. Each in-repo app (`website/`, which serves the docs at `/docs`, `examples/blog/`, `packages/ui/packages/website/`, plus the tiny redirect-only `docs/` host) is run from its OWN dir via `npm run dev` / `npm start`; as of #550 a bare `webjs dev` / `webjs start` is equivalent (each app's per-environment orchestration, the Tailwind watcher, `webjs db migrate`, the registry copy, moved into its `webjs.dev` / `webjs.start` tasks config, which `webjs dev`/`start` run). The sections below cover the repo-health git config, the changelog flow, and the dev error overlay.
+Read this only when editing the WebJs monorepo (this repo), not a scaffolded app. The repo is buildless: `packages/` is plain `.js` with JSDoc (never add `.ts` there); TypeScript is fine in `examples/` and `website/`. Each in-repo app (`website/`, which serves the docs at `/docs` and the gallery at `/ui`, plus `examples/blog/`) is run from its OWN dir via `npm run dev` / `npm start`; as of #550 a bare `webjs dev` / `webjs start` is equivalent (each app's per-environment orchestration, the Tailwind watcher, `webjs db migrate`, the registry copy, moved into its `webjs.dev` / `webjs.start` tasks config, which `webjs dev`/`start` run). The sections below cover the repo-health git config, the changelog flow, and the dev error overlay.
 
 ---
 
 ### Deploying the in-repo apps (Docker image + readiness gate)
 
-The four in-repo apps (`website`, which serves the documentation at `/docs` and the component gallery at `/ui`, the redirect-only `docs` host, `examples/blog`, and the redirect-only `packages/ui/packages/website` host) deploy from ONE image built by the root `Dockerfile`, each run as a separate service with its own `PORT` (compose sets it locally, the platform injects it in prod). `compose.yaml` is local parity for that setup; the platform never reads it.
+The two in-repo apps (`website`, which serves the documentation at `/docs` and the component gallery at `/ui`, and `examples/blog`) deploy from ONE image built by the root `Dockerfile`, each run as a separate service with its own `PORT` (compose sets it locally, the platform injects it in prod). `compose.yaml` is local parity for that setup; the platform never reads it.
 
 The readiness gate is the same `/__webjs/ready` endpoint the framework ships and documents (503 until fully warm, then 200, see the deployment docs page). Two seams carry it, because no single file configures every platform:
 
@@ -14,6 +14,30 @@ The readiness gate is the same `/__webjs/ready` endpoint the framework ships and
 - **Railway:** it IGNORES the Docker `HEALTHCHECK` and only honours its own `healthcheckPath`. `railway.json` declares `healthcheckPath: /__webjs/ready`, but a service only applies it if it is wired to read `railway.json` (config-as-code) AND built via the Dockerfile builder. A service left on the RAILPACK builder with no config-file path ignores `railway.json` entirely, so its `healthcheckPath` is null and deploys serve a cold-start window. Wire each service to `railway.json` rather than setting `healthcheckPath` by hand in the dashboard (dashboard values drift from the repo).
 
 Net: edit the `HEALTHCHECK` for the Docker contract, keep `railway.json` for the Railway contract, and never hand-set deploy config in a platform dashboard.
+
+---
+
+### docs.webjs.dev and ui.webjs.dev: Cloudflare redirect rules, not apps
+
+Both subdomains used to be redirect-only apps in this repo (`docs/` and `packages/ui/packages/website/`). They are two Cloudflare Redirect Rules now, on the `webjs.dev` zone, with no origin. Nothing here serves them, so this is the only in-repo record of what they do:
+
+| Rule | Expression | Action |
+|---|---|---|
+| docs | `http.host eq "docs.webjs.dev"` | 301 static to `https://webjs.dev/docs` |
+| ui | `http.host eq "ui.webjs.dev"` | 301 static to `https://webjs.dev/ui` |
+
+Both are static rather than path-preserving, which is a deliberate trade rather than an oversight: every path on each host collapses onto its hub page. That was measured before the apps came out. No third-party page links to either host, neither had recent traffic, neither is in the sitemap, and the destinations were already canonicalised and indexed, so there was no ranking signal left to preserve.
+
+**Keep both rules.** Already-published npm packages reach these hosts and can never be corrected. That is why the apps existed, and deleting the apps did not delete the reason. One consequence is already live: `ui.webjs.dev/registry/<name>.json` used to serve registry JSON and now redirects to an HTML page, so `webjsui add` is broken on the published `@webjsdev/ui` 0.3.1 through 0.3.8, which hardcode that URL and take the network path. 0.3.9 onward resolves local-first and never fetches it.
+
+CI cannot see any of this. The two tests that asserted the redirect mappings went with the apps, and a job that reds when Cloudflare has a bad minute would be worse than the gap, so the behaviour is verified by hand:
+
+```sh
+for u in https://docs.webjs.dev/ https://ui.webjs.dev/ ; do
+  printf '%-28s -> ' "$u"
+  curl -sSI -m 15 "$u" | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}'
+done
+```
 
 ---
 
@@ -35,7 +59,7 @@ Reading the deployment status rather than inferring it is the second design (#11
 | in progress, or no record yet | keep polling |
 | nothing terminal within 15 minutes | no purge, warning, run still GREEN. Use the manual run below |
 
-The purge is zone-wide rather than a path list: all four hostnames (`webjs.dev`, `example-blog.webjs.dev`, `docs.webjs.dev`, `ui.webjs.dev`) are proxied inside the one `webjs.dev` zone, so a single call covers them, and a zone purge cannot silently miss an asset the way a hand-maintained list does. Purging evicts only; nothing is deleted.
+The purge is zone-wide rather than a path list: both asset-serving hostnames (`webjs.dev`, `example-blog.webjs.dev`) are proxied inside the one `webjs.dev` zone, so a single call covers them (`docs.webjs.dev` and `ui.webjs.dev` sit in the same zone but are Cloudflare redirect rules serving no assets), and a zone purge cannot silently miss an asset the way a hand-maintained list does. Purging evicts only; nothing is deleted.
 
 - **Required secrets**, both REPOSITORY secrets. The job declares no `environment:`, so an environment-scoped secret arrives EMPTY and the step fails on the explicit "not set" branch:
   - `CLOUDFLARE_API_TOKEN`, scoped to **Zone / Cache Purge / Purge** on the `webjs.dev` zone only. Do not reuse a broad account-wide token.

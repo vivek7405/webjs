@@ -212,14 +212,14 @@ fi
 
 # --- verify: prove the change works by running the app ------------------
 # Triggers: verify/confirm the fix works, does it work, manually test it,
-# boot or dogfood the apps. webjs's standing rule is to boot the four
-# dogfood apps (blog e2e plus website, docs, ui-website) on every framework
-# PR. verify is a built-in Claude Code skill (no in-repo SKILL.md).
+# boot or dogfood the apps. The standing rule is to boot the two dogfood
+# apps (blog e2e plus website) on every framework PR. verify is a built-in
+# Claude Code skill (no in-repo SKILL.md).
 if has 'verify (the |this |that |it )?(change|fix|feature|pr|work|it works|behaviou?r)' \
    || has '(confirm|prove|make sure) .{0,30}(works|working|fixed|fixes it)' \
    || has '(manually|actually) (test|try|check) .{0,20}(it|the (fix|change|app|feature))' \
    || has '(boot|dogfood|smoke).{0,20}(app|apps|blog|website|docs)'; then
-  add_match "verify: the request is to confirm a change actually works. Invoke the verify skill (run the app and observe the behaviour). For a change to a shared runtime surface (core/server SSR, client router, importmap, dist, elision), boot the AFFECTED dogfood apps and report evidence. CI covers blog and website, so the manual gap is mainly docs and ui-website (until #627 automates the full sweep). A docs-only, test-only, or tooling change needs no app boot."
+  add_match "verify: the request is to confirm a change actually works. Invoke the verify skill (run the app and observe the behaviour). For a change to a shared runtime surface (core/server SSR, client router, importmap, dist, elision), boot the AFFECTED dogfood apps and report evidence. CI covers both in-repo apps (blog and website). A docs-only, test-only, or tooling change needs no app boot."
 fi
 
 # Assemble the additional context. The standing rule is always present; the

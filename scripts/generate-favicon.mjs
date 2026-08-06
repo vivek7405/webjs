@@ -27,9 +27,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 // The docs (#1098) and the component gallery (#1099) are served by the website,
-// so they share its favicon. The docs.webjs.dev and ui.webjs.dev hosts that
-// remain render no HTML at all, only redirects, so neither has a public/ to
-// write into (and writing to a directory that no longer exists throws).
+// so they share its favicon. docs.webjs.dev and ui.webjs.dev are Cloudflare
+// redirect rules with no app in this repo, so there is no public/ to write
+// into for either.
 const APPS = [
   resolve(root, 'website/public'),
   resolve(root, 'examples/blog/public'),

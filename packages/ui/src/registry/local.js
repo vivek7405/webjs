@@ -8,7 +8,7 @@
  * item shape the hosted registry serves, so a local read and a network fetch
  * are interchangeable for every consumer.
  *
- * It is the plain-JS twin of the ui-website composer
+ * It is the plain-JS twin of the website gallery composer
  * (`website/modules/ui/queries/registry.server.ts`): both read
  * `packages/registry/registry.json` + the `components/*.ts` sources and
  * synthesize the 6 non-neutral base-colour themes from `themes/base-colors.js`.

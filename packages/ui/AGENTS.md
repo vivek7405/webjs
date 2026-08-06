@@ -116,9 +116,6 @@ packages/ui/
       index.css                   @theme block + CSS variables (light + dark, neutral defaults)
       base-colors.js              per-base-colour overrides (stone/zinc/mauve/olive/mist/taupe) + mergeThemeCss
     registry.json                 manifest (item names + types + file paths + deps)
-
-  packages/website/               ui.webjs.dev, REDIRECT-ONLY since #1099 (internal)
-    middleware.ts                 301s every request to webjs.dev/ui (path-aware, see its AGENTS.md)
 ```
 
 The gallery and the registry API moved onto the marketing site in #1099. They
@@ -533,7 +530,6 @@ the overall layout.
 
 ```sh
 npm run dev --workspace=@webjsdev/website   # the gallery at localhost:5001/ui
-npm run ui:dev                              # the ui.webjs.dev redirect host on :5003
 ```
 
 **No registry build step.** Registry JSON is composed on demand by the route

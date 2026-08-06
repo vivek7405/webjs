@@ -255,7 +255,7 @@ customElements.define('app-widget', Widget2);
 });
 
 test('no-duplicate-tag: ignores a gitignored generated copy (no false positive)', async () => {
-  // ui-website gitignores its `webjs ui add`-regenerated `components/` dir.
+  // The website gitignores its `webjs ui add`-regenerated `components/` dir.
   // A generated copy colliding with the committed component must NOT fail
   // check; only committed source is policed.
   const appDir = await makeTempApp();
