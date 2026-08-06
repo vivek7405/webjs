@@ -50,9 +50,9 @@ const CONTROL_CHARS = /[\x00-\x1f\x7f-\x9f]/;
  * with webjs's own output, which is: nonce-signed inline `<script>` tags
  * (the boot script, the public-env shim, the importmap), nonce-signed
  * `<link rel="modulepreload">`, ES modules fetched same-origin and from
- * the configured vendor CDN, and inline style, both WebJs's own head rule
- * and the app's, which this policy nonces for scripts only (so inline
- * styles must be allowed outright; see the `style-src` note).
+ * the configured vendor CDN, and one inline `<style>` in the head. The
+ * nonce covers scripts only, so that rule and every app-authored style
+ * alike are admitted by `'unsafe-inline'` (see the `style-src` note).
  *
  * `script-src` uses `'strict-dynamic'` so a nonce-loaded module can pull
  * in its own dependencies (the importmap-driven per-file ESM graph)
