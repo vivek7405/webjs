@@ -1520,9 +1520,14 @@ function checkSubmitterNeedsBoundForm(files, violations, appDir) {
     // A local declaration surfaced by a clause: `function NAME(){}; export { NAME }`.
     // Only a clause with NO `from`, since a re-export would need another hop to
     // the module that actually declares it.
-    const reClause = /\bexport\s*\{([^}]*)\}\s*(?!from)/g;
+    const reClause = /\bexport\s*\{([^}]*)\}/g;
     let cl;
     while ((cl = reClause.exec(scan))) {
+      // A re-export needs another hop to the module that DECLARES the name, so
+      // it stays unknowable. Tested on the text after the clause rather than
+      // with a lookahead: `\s*(?!from)` can never reject, because `\s*`
+      // backtracks to zero width and the lookahead then reads the whitespace.
+      if (/^\s*from\b/.test(scan.slice(cl.index + cl[0].length))) continue;
       const exported = cl[1].split(',').some((part) => {
         const m = /([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?/.exec(part.trim());
         return !!m && (m[2] || m[1]) === name;
@@ -1534,6 +1539,35 @@ function checkSubmitterNeedsBoundForm(files, violations, appDir) {
     }
     return declaresCallable(scan, name, true);
   };
+
+  /**
+   * Index just past the assignment `=` that follows a `const NAME`, or -1.
+   *
+   * A TypeScript annotation can itself contain `=>`
+   * (`const publishDraft: (fd: FormData) => Promise<void> = async (fd) => …`),
+   * which is the idiomatic spelling this repo's derive-the-type rule pushes
+   * authors toward. Skipping the annotation with a lazy regex group stopped at
+   * the FIRST `=`, which is the one inside the annotation's own arrow, so the
+   * scan resumed on `>` and every branch failed. Walking it with bracket depth
+   * and stepping over `=>` finds the real assignment.
+   *
+   * @param {string} scan
+   * @param {number} i index just after the declared name
+   * @returns {number}
+   */
+  function assignmentAfter(scan, i) {
+    let depth = 0;
+    while (i < scan.length) {
+      const c = scan[i];
+      if (c === ';') return -1;
+      if (c === '=' && scan[i + 1] === '>') { i += 2; continue; }   // arrow in the annotation
+      if (c === '(' || c === '[' || c === '{' || c === '<') { depth++; i++; continue; }
+      if (c === ')' || c === ']' || c === '}' || c === '>') { depth--; i++; continue; }
+      if (depth <= 0 && c === '=' && scan[i + 1] !== '=' && !'=!<>'.includes(scan[i - 1] || '')) return i + 1;
+      i++;
+    }
+    return -1;
+  }
 
   /**
    * Is `name` DECLARED as something provably callable in `scan`?
@@ -1553,10 +1587,11 @@ function checkSubmitterNeedsBoundForm(files, violations, appDir) {
     const n = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const lead = exported ? '\\bexport\\s+' : '\\b';
     if (!exported && new RegExp(`\\bfunction\\s+${n}\\b`).test(scan)) return true;
-    const re = new RegExp(`${lead}(?:const|let|var)\\s+${n}\\s*(?::(?:[^=]|=>)*?)?=\\s*`, 'g');
+    const re = new RegExp(`${lead}(?:const|let|var)\\s+${n}\\b`, 'g');
     let m;
     while ((m = re.exec(scan))) {
-      let i = m.index + m[0].length;
+      let i = assignmentAfter(scan, m.index + m[0].length);
+      if (i === -1) continue;
       const skipWs = () => { while (i < scan.length && /\s/.test(scan[i])) i++; };
       skipWs();
       if (scan.startsWith('async', i) && /\s|\(/.test(scan[i + 5] || '')) { i += 5; skipWs(); }

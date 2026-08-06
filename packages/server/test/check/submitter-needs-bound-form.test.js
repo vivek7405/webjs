@@ -371,6 +371,14 @@ test('the callable matrix: every url shape silent, every function shape flagged'
     ['export const publishDraft = () => 1;', true],
     ['export const publishDraft = async function (fd) { return 1; };', true],
     ['async function publishDraft(fd) { return 1; }\nexport { publishDraft };', true],
+    // A TS annotation can contain its own `=>`, and this is the spelling the
+    // derive-the-type rule pushes authors toward. Skipping the annotation with a
+    // lazy regex stopped at the arrow's `=` and silently dropped the binding.
+    ['export const publishDraft: (fd: FormData) => Promise<number> = async (fd) => 1;', true],
+    ['export const publishDraft: (fd: FormData) => Promise<number> = async function (fd) { return 1; };', true],
+    ['export const publishDraft: ActionFn = async (fd) => 1;', true],
+    // ...and the annotated NON-callable must still be silent.
+    ["export const publishDraft: string = (process.env.X || '/api/x');", false],
   ];
   for (const [body, shouldFire] of cases) {
     const dir = await makeApp({
@@ -384,6 +392,29 @@ export default () => html\`<form method="get"><button formaction=\${publishDraft
       `${shouldFire ? 'should fire' : 'should be silent'}: ${body.split('\n')[0]}`);
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('a re-export clause is unknowable, even beside a same-named local function', async () => {
+  // The guard has to reject on the text AFTER the clause: a `\\s*(?!from)`
+  // lookahead can never reject, because `\\s*` backtracks to zero width and the
+  // lookahead then reads the whitespace. Without it, a module that re-exports a
+  // name AND declares a same-named local is read as exporting that local, which
+  // contradicts the barrel-re-export silence the docs promise.
+  const dir = await makeApp({
+    'modules/feedback/actions/other.server.ts': `'use server';
+export async function publishDraft() { return 1; }
+`,
+    'modules/feedback/actions/publish.server.ts': `'use server';
+function publishDraft() { return 1; }
+export { publishDraft } from './other.server.ts';
+`,
+    'app/page.ts': `import { html } from '@webjsdev/core';
+import { publishDraft } from '#modules/feedback/actions/publish.server.ts';
+export default () => html\`<form method="get"><button formaction=\${publishDraft}>P</button></form>\`;
+`,
+  });
+  assert.deepEqual(hits(await checkConventions(dir)), [], 'a re-export needs another hop, so it stays silent');
+  await rm(dir, { recursive: true, force: true });
 });
 
 test('silent on a url CONSTANT exported from a .server module', async () => {
