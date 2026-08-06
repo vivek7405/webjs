@@ -189,6 +189,7 @@ const HELP = {
       { flag: '--verify', description: 'Render every static page route with elision on and off and diff the observable SSR bytes. Exits non-zero on a divergence.' },
       { flag: '--routes <paths>', description: 'Comma-separated URL paths to add to the --verify corpus (the only way to cover a dynamic route).' },
     ],
+    notesTitle: 'What --verify proves',
     notes: [
       '--verify proves elision did not change the bytes your app serves. It does NOT',
       'prove post-hydration behaviour: a wrongly dropped module shows up as a dead',
@@ -308,9 +309,12 @@ function printCommandHelp(name) {
   console.log('Options:');
   for (const o of options) console.log(`  ${o.flag.padEnd(width)}  ${o.description}`);
   // Optional per-command prose for surface a flag table cannot carry (doctor's
-  // package.json severity gate is the one that needs it).
+  // package.json severity gate is the one that needs it). The heading defaults
+  // to `Config:` because that is what doctor's block is and what its help test
+  // pins; a command whose prose is not configuration names its own heading
+  // (`webjs elision`'s is a caveat about what --verify proves).
   if (h.notes) {
-    console.log('\nConfig:');
+    console.log(`\n${h.notesTitle || 'Config'}:`);
     for (const line of h.notes) console.log(`  ${line}`);
   }
   console.log('\nExamples:');
@@ -1104,22 +1108,25 @@ async function main() {
 
       const elided = report.components.filter((c) => c.verdict === 'elided');
       const shipped = report.components.filter((c) => c.verdict === 'shipped');
-      // Column width, capped so one outlier (a file registering five tags)
-      // does not push every other row off the terminal. An over-long cell just
-      // overflows its own row rather than widening the table.
-      const pad = (rows, col, cap = 34) => Math.min(cap, Math.max(0, ...rows.map((r) => r[col].length)));
+      // Column width, capped so one outlier does not push every other row off
+      // the terminal. An over-long cell overflows its own row rather than
+      // widening the table. The FILE column gets the generous cap because a
+      // module path is what a reader scans by; the tag column gets the tight
+      // one because a file registering five tags is the rare case.
+      const pad = (rows, col, cap) => Math.min(cap, Math.max(0, ...rows.map((r) => r[col].length)));
+      const FILE_W = 58, TAG_W = 30;
 
       if (elided.length) {
         console.log('Elided components (the browser never downloads these)');
         const rows = elided.map((c) => [c.file, c.tags.join(', ')]);
-        const w = pad(rows, 0);
+        const w = pad(rows, 0, FILE_W);
         for (const [file, tags] of rows) console.log(`  ${file.padEnd(w)}  ${tags}`.trimEnd());
         console.log();
       }
       if (shipped.length) {
         console.log('Shipped components (and the evidence that forced each one)');
         const rows = shipped.map((c) => [c.file, c.tags.join(', '), `${c.evidence || 'unknown'}: ${c.reason || 'no evidence recorded'}`]);
-        const w0 = pad(rows, 0), w1 = pad(rows, 1);
+        const w0 = pad(rows, 0, FILE_W), w1 = pad(rows, 1, TAG_W);
         for (const [file, tags, why] of rows) console.log(`  ${file.padEnd(w0)}  ${tags.padEnd(w1)}  ${why}`.trimEnd());
         console.log();
       }
@@ -1131,7 +1138,7 @@ async function main() {
             : r.verdict === 'shipped' ? (r.blocker ? `blocked by ${r.blocker}, which ${r.reason}` : `it ${r.reason}`)
             : '',
         ]);
-        const w0 = pad(rows, 0), w1 = pad(rows, 1);
+        const w0 = pad(rows, 0, 12), w1 = pad(rows, 1, FILE_W);
         for (const [verdict, file, note] of rows) {
           console.log(`  ${verdict.padEnd(w0)}  ${file.padEnd(w1)}${note ? '  ' + note : ''}`.trimEnd());
         }
