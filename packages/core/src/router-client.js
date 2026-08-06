@@ -2963,7 +2963,10 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
   // a soft-navigated async component resolves from the seed instead of
   // re-fetching. Scanning `doc` (the detached parse) also strips the seed
   // carriers, so the inert payload never lands in the live document.
-  try { scanSeeds(doc); } catch { /* seeding is best-effort */ }
+  // A frame swap is NOT a page navigation, so say so: the seed consumer must
+  // leave the surrounding page's state alone, and it cannot tell from the parse
+  // (a frame response carries no seed block at all).
+  try { scanSeeds(doc, { frame: !!frameId }); } catch { /* seeding is best-effort */ }
 
   // Every host in this parsed doc is FRAMEWORK-SERIALIZED markup (an SSR
   // fragment or a back/forward snapshot of post-hydration HTML), never

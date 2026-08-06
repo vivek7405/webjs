@@ -128,25 +128,51 @@ suite('SSR action seeding, real DOM (#1309)', () => {
     assert.equal(takeSeed('h', 'getUser', '[1]'), 'PAGE-B-FRESH', 'the hit matches the paint');
   });
 
-  test('a MARKERLESS swap (a frame self-load) still reports for the page it lands on', async () => {
-    // `<webjs-frame src>` routes its subtree through the same `applySwap` and so
-    // through `scanSeeds`, but `ssr.js` returns a frame subtree BEFORE the seed
-    // block is appended, so that parse carries no block and no marker. If the
-    // swap simply opened no window, the report would be silently dead for the
-    // whole page the frame sits on, which is the exact silent failure this
-    // feature exists to remove. The drained live block belongs to that page, so
-    // the window is attributed to it.
+  test('a FRAME swap leaves the surrounding page\'s state completely alone', async () => {
+    // `<webjs-frame>` routes its subtree through the same `applySwap`, but it is
+    // not a page navigation: the page around the frame is still on screen. The
+    // router flags it, because the parse cannot be recognised on its own (a frame
+    // response carries no seed block at all, which looks exactly like a page that
+    // seeded nothing). Guessing failed both ways in turn: treating it as a page
+    // killed the report for the whole surrounding page, and attributing the
+    // window to the live page made it print a cause that is provably false.
     const warns = await withIdle(async () => {
-      seedBlock(await stringify({ 'h/f/[1]': 1 }), 'ok');   // the page, never scanned
+      seedBlock(await stringify({ 'h/f/[1]': 1 }), 'ok');   // the page, not yet scanned
       const frame = document.implementation.createHTMLDocument('');
       frame.body.innerHTML = '<webjs-frame id="f"><p>frame body</p></webjs-frame>';
-      scanSeeds(frame);                                     // markerless: no block at all
-      takeSeed('h', 'f', '[1]');                            // hit, from the drained block
+      scanSeeds(frame, { frame: true });
+      // The page's own block is untouched, so the lazy scan still owes it and
+      // opens the page's own window on the first call below.
+      takeSeed('h', 'f', '[1]');                            // hit
       takeSeed('h', 'f', '[2]');                            // miss, worth reporting
     });
-    assert.equal(warns.length, 1, 'the page still gets its report');
+    assert.equal(warns.length, 1, 'the surrounding page still gets its own report');
     assert.ok(warns[0].indexOf('1 of 2 hydration action call(s) missed') !== -1, warns[0]);
-    assert.ok(warns[0].indexOf('1 seed(s) on this page') !== -1, `the page's own seed is counted: ${warns[0]}`);
+    assert.ok(
+      warns[0].indexOf('1 seed(s) on this page') !== -1,
+      `and its own seed is counted, not a cause read off the frame: ${warns[0]}`,
+    );
+  });
+
+  test('an outgoing page\'s unconsumed seeds are DISCARDED, not accumulated', async () => {
+    // The block a departed page leaves behind belongs to components that elided,
+    // so nothing will ever call `takeSeed` for those keys and nothing but a hit
+    // deletes one. Ingesting them would grow the store by a whole page payload
+    // per navigation, in production, and inflate the "still unconsumed" figure in
+    // the dev line with keys from pages the developer has already left.
+    seedBlock(await stringify({ 'h/gone/[1]': 1, 'h/gone/[2]': 2, 'h/gone/[3]': 3 }), 'ok');
+    const detached = document.implementation.createHTMLDocument('');
+    const fresh = detached.createElement('script');
+    fresh.type = 'application/json';
+    fresh.id = '__webjs-seeds';
+    fresh.setAttribute('data-webjs-dev', 'ok');
+    fresh.textContent = await stringify({ 'h/here/[1]': 'incoming' });
+    detached.body.appendChild(fresh);
+    scanSeeds(detached);
+
+    assert.equal(seedStats().pending, 1, 'only the incoming page\'s seed is held');
+    assert.equal(takeSeed('h', 'gone', '[1]'), SEED_MISS, 'a departed page\'s value is never served');
+    assert.equal(takeSeed('h', 'here', '[1]'), 'incoming');
   });
 
   test('scanning a LIVE subtree does not strip the rest of the document', async () => {

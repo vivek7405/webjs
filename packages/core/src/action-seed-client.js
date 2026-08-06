@@ -76,87 +76,100 @@ let windowEpoch = 0;
 
 /**
  * Merge any seeds found under `root` into the global store, then remove the
- * carriers so a re-scan (a streamed boundary, a soft navigation) never
- * re-ingests stale data. Reads both the page-level `#__webjs-seeds` JSON block
- * and per-element `[data-webjs-seed]` carriers. Idempotent and fail-open: a
- * malformed payload is skipped, never thrown.
+ * carriers so a re-scan never re-ingests stale data. Reads both the page-level
+ * `#__webjs-seeds` JSON block and per-element `[data-webjs-seed]` carriers.
+ * Idempotent and fail-open: a malformed payload is skipped, never thrown.
  *
- * Passing a DETACHED root (what the router's `applySwap` does) means "a new page
- * is arriving", so the live document is drained FIRST. That ordering is what
- * makes last-write-wins correct, and it is load-bearing rather than incidental:
- * see the comment on the drain below.
+ * A DETACHED root means a new PAGE is arriving (the router's `applySwap` passes
+ * one), which is what ends the outgoing page's report window and discards its
+ * leftovers. A `<webjs-frame>` swap goes through the same `applySwap` but is NOT
+ * a page navigation, so the router flags it and this leaves every bit of page
+ * state alone; see `opts.frame`.
  * @param {ParentNode & { querySelectorAll?: Function }} [root]
+ * @param {{ frame?: boolean }} [opts] `frame: true` marks a `<webjs-frame>`
+ *   subtree swap rather than a page navigation.
  */
-export function scanSeeds(root) {
+export function scanSeeds(root, opts) {
   const live = typeof document !== 'undefined' ? document : null;
   const scope = root || live;
   if (!scope || typeof scope.querySelectorAll !== 'function') return;
+
+  // A FRAME swap is not a page navigation: the page around the frame is still
+  // the page on screen. So ingest whatever carriers the subtree brings and touch
+  // nothing else, no window closed or opened and no lazy-scan suppression.
+  //
+  // Getting this from the router rather than inferring it is the point. A frame
+  // response cannot be recognised from its parse: `ssr.js` returns the subtree
+  // before the seed block is appended, so it arrives with no block and no
+  // marker, which is indistinguishable from a page that simply seeded nothing.
+  // Guessing produced both failure modes in turn. Treating it as a page killed
+  // the report for the whole page the frame sits on; attributing the window to
+  // the live page instead made it report a CAUSE that is provably false, since
+  // none of the three causes describes "a frame response carries no seed block",
+  // and the frame response carries no `X-Webjs-Seed` header to cross-check
+  // against either. A confident misdiagnosis is worse than silence, so the
+  // router says which it is.
+  if (opts && opts.frame === true) {
+    drainCarriers(scope);
+    return;
+  }
+
   // Close the previous page's window BEFORE ingesting anything: the moment this
   // page's content arrives is exactly where the previous page's numbers stop. Do
   // it after the ingest loops instead and this scan's seeds are already counted
   // into the window being closed, which is the whole defect.
   closeReportWindow();
-  // Is this root the live document, or part of it? The router's `applySwap`
-  // passes a DETACHED parse, which is the "a new page is arriving" case. A live
-  // root (the lazy initial scan) or a live subtree is not, and must not trigger
-  // the drain below: draining would strip the very subtree being scanned.
+
+  // Is this root the live document, or part of it? A live root (the lazy initial
+  // scan) or a live subtree is not an incoming page, and must not trigger the
+  // discard below: it would strip the very subtree being scanned.
   const scopeIsLive = scope === live;
   const scopeInLive = !!live && !scopeIsLive && typeof live.contains === 'function' && live.contains(scope);
   const incomingPage = !!live && !scopeIsLive && !scopeInLive;
 
-  // Merged count before ANY of this, so a window attributed to the LIVE page
-  // below counts the live page's own seeds.
-  const mergedBeforeAll = stats.ingested + stats.replaced;
-
-  // The live document can still be holding the current page's block, because the
-  // initial scan is lazy (it runs on the first `takeSeed`) and a page whose async
-  // components all elided never triggers it, while the block itself sits after
+  // The live document can still be holding the OUTGOING page's block, because
+  // the initial scan is lazy (it runs on the first `takeSeed`) and a page whose
+  // async components all elided never triggers it, while the block sits after
   // the body content outside every boundary range, so no swap removes it either.
   //
-  // Drain it FIRST, in ingest order, which is what makes last-write-wins correct
-  // here: the outgoing page's values go in before the incoming page's, so a key
-  // both renders share ends up holding the INCOMING one, the render whose paint
-  // is on screen. Leave the leftover for the lazy scan to find later and the
-  // order inverts, the stale value wins, and a hit contradicts the HTML the user
-  // is looking at. Keeping the outgoing values rather than discarding them costs
-  // nothing and still answers an in-flight `async render()` from the page being
-  // navigated away from.
-  const liveMarker = incomingPage ? drainCarriers(live) : null;
+  // Strip it WITHOUT ingesting. Those values belong to a page that is being
+  // replaced, so nothing on the incoming page should ever receive one: leaving
+  // them for the lazy scan to ingest LATER is what let a departed page's value
+  // win a key under last-write-wins and contradict the paint. Ingesting them
+  // HERE would order them correctly but keep them forever, because the very
+  // reason the block went unconsumed is that its components elided, so nothing
+  // will ever call `takeSeed` for those keys and nothing but a hit deletes one.
+  // That would grow the store by a whole page payload per navigation, in
+  // production, and inflate the "still unconsumed" figure in the dev line with
+  // keys from pages the developer has already left. The cost of discarding is
+  // that an in-flight `async render()` from the outgoing page misses and
+  // refetches, which is a round-trip rather than wrong data.
+  if (incomingPage) drainCarriers(live, true);
   // The lazy scan must not run again once the live document has been handled: a
   // second pass finds nothing to ingest but would close the window this scan is
   // about to open. Only when it HAS been handled, though. A live SUBTREE scan
   // leaves the rest of the document unscanned, so the lazy pass still owes it.
   if (scopeIsLive || incomingPage) scannedInitial = true;
 
-  // Read the baseline for THIS page after the drain, so the outgoing page's
-  // leftovers are not counted as the incoming page's. MERGED is
-  // `ingested + replaced`, not `ingested`: a key already in the store counts as
-  // a replacement, so a scan whose seeds all replace unconsumed ones (revisiting
-  // a page whose seeding component elided, exactly the shape last-write-wins
-  // exists for) would otherwise measure as zero and claim the page carried no
-  // seeds while naming one.
+  // MERGED is `ingested + replaced`, not `ingested`: a key already in the store
+  // counts as a replacement, so a scan whose seeds all replace unconsumed ones
+  // (revisiting a page whose seeding component elided, exactly the shape
+  // last-write-wins exists for) would otherwise measure as zero and claim the
+  // page carried no seeds while naming one.
   const mergedBefore = stats.ingested + stats.replaced;
-  const scanMarker = drainCarriers(scope);
-
-  // Whose window is this? Normally the incoming root's. But a swap that is not a
-  // page navigation carries no marker of its own: a `<webjs-frame>` self-load
-  // routes its subtree through `applySwap` too, and `ssr.js` returns that subtree
-  // BEFORE the seed block is appended, so the parse has no block and no marker.
-  // Falling through to "no window" there would silently kill the report for the
-  // whole page the frame sits on, which is the exact silent failure this feature
-  // exists to remove. The drained live block belongs to that page, so attribute
-  // the window to it, counting its own seeds.
-  if (scanMarker !== null) startReportWindow(scanMarker, mergedBefore);
-  else startReportWindow(liveMarker, mergedBeforeAll);
+  startReportWindow(drainCarriers(scope), mergedBefore);
 }
 
 /**
- * Ingest and strip every seed carrier under `scope`, returning the dev marker it
- * carried (the page-level block's, the only carrier that has one) or null.
+ * Strip every seed carrier under `scope`, returning the dev marker it carried
+ * (the page-level block's, the only carrier that has one) or null. Ingests the
+ * values unless `discard` is set, which is how an outgoing page's leftovers are
+ * removed without ever entering the store.
  * @param {ParentNode & { querySelectorAll: Function }} scope
+ * @param {boolean} [discard] strip the carriers but drop their values
  * @returns {string | null}
  */
-function drainCarriers(scope) {
+function drainCarriers(scope, discard) {
   let marker = null;
   // Page-level JSON block(s). The dev marker rides this carrier only, and it is
   // THIS scan's marker that decides whether there is a report to make and what
@@ -164,11 +177,11 @@ function drainCarriers(scope) {
   for (const el of scope.querySelectorAll('script[type="application/json"]#__webjs-seeds, script[type="application/json"][data-webjs-seeds]')) {
     const m = readDevMarker(el.getAttribute?.('data-webjs-dev'));
     if (m !== null) marker = m;
-    ingest(el.textContent, el);
+    ingest(discard ? null : el.textContent, el);
   }
   // Per-element carriers (streamed boundaries / future per-component seeding).
   for (const el of scope.querySelectorAll('[data-webjs-seed]')) {
-    ingest(el.getAttribute('data-webjs-seed'), el, () => el.removeAttribute('data-webjs-seed'));
+    ingest(discard ? null : el.getAttribute('data-webjs-seed'), el, () => el.removeAttribute('data-webjs-seed'));
   }
   return marker;
 }
