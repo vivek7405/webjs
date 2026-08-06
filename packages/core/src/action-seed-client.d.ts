@@ -33,5 +33,7 @@ export function seedStats(): {
   replaced: number;
   hits: number;
   misses: number;
+  /** The provable subset of `misses`: a call for an action this page seeded under other arguments. */
+  keyMisses: number;
   pending: number;
 };

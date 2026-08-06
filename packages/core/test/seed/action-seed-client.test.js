@@ -175,7 +175,7 @@ test('one miss inside the window logs one line naming the unmatched-keys cause',
     takeSeed('h', 'f', '[2]');
   });
   assert.equal(warns.length, 1);
-  assert.match(warns[0], /1 of 2 hydration action call\(s\) missed the seed/);
+  assert.match(warns[0], /1 of 2 action call\(s\) in the hydration window cost a network round-trip/);
   assert.match(warns[0], /under DIFFERENT arguments/);
 });
 
@@ -443,6 +443,6 @@ test('a HEALTHY page is not blamed for the next page\'s correct misses', async (
     takeSeed('h', 'g', '[2]');
   });
   assert.equal(warns.length, 1, 'page A silent, page B reported: one line, not two and not zero');
-  assert.match(warns[0], /2 of 2 hydration action call\(s\) missed/, 'the line belongs to page B');
+  assert.match(warns[0], /2 of 2 action call\(s\) in the hydration window/, 'the line belongs to page B');
   assert.match(warns[0], /This page streams/, 'and names page B\'s own cause');
 });

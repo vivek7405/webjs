@@ -84,7 +84,7 @@ const seedFns = new Set();
  * one; a window closed early (by the next scan, or by `__resetSeeds`) leaves a
  * callback behind that must be a no-op rather than report a window it does not
  * own.
- * @type {{ epoch: number, hits: number, misses: number, merged: number, marker: string } | null}
+ * @type {{ epoch: number, hits: number, misses: number, keyMisses: number, merged: number, marker: string } | null}
  */
 let openWindow = null;
 /** Monotonic window id, so a stale callback can recognise itself. */
@@ -367,8 +367,12 @@ function reportSeeds(w) {
         ? null
         : 'The page seeded these actions under DIFFERENT arguments, so the key did not match. The key is the action file hash plus the function name plus the serialized arguments, and an argument the SSR render never used misses (a deliberate refetch after hydration misses too, and is expected).';
   if (cause === null) return;
+  // For a server-asserted cause every miss is explained by it; for a key
+  // mismatch only the provable subset is, and the sentence has to state the
+  // quantity it is actually reporting rather than the total.
+  const reported = (w.marker === 'streamed' || w.marker === 'drop') ? misses : keyMisses;
   console.warn(
-    `[webjs] SSR action seeding: ${w.marker === 'streamed' || w.marker === 'drop' ? misses : keyMisses} of ${hits + misses} hydration action call(s) missed the seed and cost a network round-trip `
+    `[webjs] SSR action seeding: ${reported} of ${hits + misses} action call(s) in the hydration window cost a network round-trip `
     + `(${merged} seed(s) on this page, ${seeds.size} still unconsumed). ${cause} `
     + 'See https://webjs.dev/docs/data-fetching for the seeding reference.',
   );
@@ -412,7 +416,10 @@ export function takeSeed(hash, fnName, argsKey) {
  * generated RPC stubs asked for; `pending` is what is still in the store
  * unconsumed (a non-zero `pending` at rest usually means the seeding component
  * elided, so nothing on the client was ever going to call it).
- * @returns {{ ingested: number, replaced: number, hits: number, misses: number, pending: number }}
+ * `keyMisses` is the provable subset of `misses`: a call for an action this page
+ * DID seed under other arguments, which is the only miss the client can call a
+ * defect (see `seedFns`).
+ * @returns {{ ingested: number, replaced: number, hits: number, misses: number, keyMisses: number, pending: number }}
  */
 export function seedStats() {
   return { ...stats, pending: seeds.size };

@@ -279,7 +279,7 @@ Check it with `curl -sSI localhost:3000/` or in the network tab.
 
 A miss AFTER hydration is correct and is not reported: the seed is consume-once, so a deliberate refetch or an argument change is supposed to go to the network.
 
-`seedStats()` from `@webjsdev/core` returns `{ ingested, replaced, hits, misses, pending }` if you want to assert this in a browser test or read it from the console. A non-zero `pending` at rest usually means the seeding component ELIDED, so its module never shipped and nothing on the client was ever going to consume the seed. `pending` covers the page you are on: a page navigation evicts whatever the outgoing page left unconsumed, both the block still sitting in the DOM and anything already ingested from it, since those values belong to a render no longer on screen.
+`seedStats()` from `@webjsdev/core` returns `{ ingested, replaced, hits, misses, keyMisses, pending }` (`keyMisses` being the provable subset of `misses`, a call for an action the page seeded under other arguments) if you want to assert this in a browser test or read it from the console. A non-zero `pending` at rest usually means the seeding component ELIDED, so its module never shipped and nothing on the client was ever going to consume the seed. `pending` covers the page you are on: a page navigation evicts whatever the outgoing page left unconsumed, both the block still sitting in the DOM and anything already ingested from it, since those values belong to a render no longer on screen.
 
 ### The streamed-page exception
 
