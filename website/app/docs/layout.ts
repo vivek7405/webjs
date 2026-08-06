@@ -22,7 +22,7 @@ import '#components/code-block.ts';
  *
  * Doc page bodies are plain HTML with no component wrapper, so their
  * typography is styled through the shell's `.prose-docs` rules rather than
- * per-element utility classes across 45 pages.
+ * per-element utility classes across 43 pages.
  */
 const NAV_SECTIONS = [
   {
@@ -61,7 +61,7 @@ const NAV_SECTIONS = [
       { href: '/docs/api-routes', label: 'API Routes' },
       { href: '/docs/websockets', label: 'WebSockets' },
       { href: '/docs/database', label: 'Database (Drizzle)' },
-      { href: '/docs/authentication', label: 'Build your own authentication' },
+      { href: '/docs/authentication', label: 'Build Your Own Authentication' },
       { href: '/docs/backend-only', label: 'Backend-Only Mode' },
     ],
   },
@@ -71,7 +71,7 @@ const NAV_SECTIONS = [
       { href: '/docs/cache', label: 'Caching' },
       { href: '/docs/file-storage', label: 'File Storage' },
       { href: '/docs/sessions', label: 'Sessions' },
-      { href: '/docs/auth', label: 'Auth providers (createAuth)' },
+      { href: '/docs/auth', label: 'Auth Providers (createAuth)' },
       { href: '/docs/rate-limiting', label: 'Rate Limiting' },
       { href: '/docs/security', label: 'Security' },
       { href: '/docs/metadata-routes', label: 'Metadata Routes' },
@@ -114,7 +114,7 @@ const NAV_SECTIONS = [
  * one field each page sets.
  *
  * Without this the docs inherit the marketing pitch: the deleted docs root
- * layout carried its own title and description, so dropping it left all 45
+ * layout carried its own title and description, so dropping it left all 43
  * pages advertising "the web framework for AI agents" as their search snippet
  * and social card.
  *

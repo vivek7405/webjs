@@ -199,7 +199,7 @@ setStore(redisStore({ url: process.env.REDIS_URL }));</code-block>
     <h2>Next Steps</h2>
     <ul>
       <li><a href="/docs/sessions">Sessions</a>: session middleware built on the cache store</li>
-      <li><a href="/docs/auth">Auth providers (createAuth)</a>: NextAuth-style auth with providers</li>
+      <li><a href="/docs/auth">Auth Providers (createAuth)</a>: NextAuth-style auth with providers</li>
       <li><a href="/docs/middleware">Middleware</a>: rate limiting and other middleware that uses the cache</li>
     </ul>
   `;

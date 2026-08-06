@@ -38,7 +38,25 @@ website/
     docs/              /docs/<topic>, the reference documentation (#1098 moved
                        it here from docs.webjs.dev). layout.ts holds the nav
                        tree + docs-scoped metadata; the shell itself is shared,
-                       see lib/ui/docs-shell.ts.
+                       see lib/ui/docs-shell.ts. Nav labels and section titles
+                       are Title Case (the Next.js and Rails convention, not
+                       Tailwind's sentence case). A word whose casing is fixed
+                       by something other than prose keeps it, which covers
+                       code tokens (createAuth, @webjsdev/ui) and brands that
+                       start lowercase (macOS, npm). Recasing either one
+                       misspells it. Casing is the only thing pinned
+                       sidebar-wide: a nav label NEED NOT match the page's
+                       own h1, several deliberately do not, and those are
+                       correct as they stand. The one exception is the
+                       /docs/auth and /docs/authentication pair, where each
+                       page's h1 is held byte-equal to its OWN label after
+                       one of them once rendered a heading that named the
+                       other page (#1103).
+                       Do NOT generalise that pin to other pages. The /ui
+                       sidebar is exempt from all of the above, since its
+                       labels are component names from the live registry.
+                       Both rules are enforced in test/ssr/docs-links.test.ts,
+                       which carries the specifics and the current counts.
     ui/                /ui, the @webjsdev/ui component gallery (#1099 moved it
                        here from ui.webjs.dev). page.ts is the introduction,
                        [name]/page.ts one page per component, layout.ts the

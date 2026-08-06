@@ -37,7 +37,7 @@ before(async () => {
  *
  * Two sources, and the second is the one that matters most. Doc page prose
  * yields around 36 distinct slugs, but the SIDEBAR is the only surface that
- * links all 45, and its hrefs are single-quoted object literals rendered
+ * links all 43, and its hrefs are single-quoted object literals rendered
  * through a template hole, so a walk that only reads `href="..."` in page
  * files cannot see them. A typo there would ship a 404 in the primary
  * navigation of every docs page with this test green.
@@ -76,7 +76,7 @@ async function internalDocLinks(): Promise<{ from: string; href: string }[]> {
 
 test('every internal /docs link the docs publish resolves', async () => {
   const links = await internalDocLinks();
-  // The sidebar alone contributes 45, so a floor well above that proves both
+  // The sidebar alone contributes 43, so a floor well above that proves both
   // sources were actually read rather than one silently yielding nothing.
   assert.ok(links.length > 60, `sanity: expected many internal links, found ${links.length}`);
   assert.ok(
@@ -174,11 +174,22 @@ test('no two doc pages declare the same metadata title', async () => {
 });
 
 test('a doc page h1 matches its sidebar label', async () => {
-  // The pair above also disagreed with their own nav entries ('Auth
-  // (Providers)' and 'Authentication' over two <h1>Authentication</h1>s), so
-  // neither entry matched the heading a reader landed on. Scoped to the two
-  // pages the mismatch was found on rather than all of them, because the rest
-  // of the docs use a deliberately shorter nav label than their heading.
+  // Only one of the pair ever disagreed with its own nav entry. Both
+  // rendered <h1>Authentication</h1>. /docs/authentication was labelled
+  // 'Authentication', so it agreed with itself. /docs/auth was labelled
+  // 'Auth (Providers)' and rendered a heading byte-identical to its SIBLING's
+  // label, so clicking one nav entry landed the reader on a heading naming
+  // the other page. Both slugs are pinned rather than just /docs/auth because
+  // the collision was between one page's h1 and the OTHER's label, so pinning
+  // half of it would leave the other half free to drift back into it.
+  //
+  // Scoped to these two rather than every page, and NOT because the rest
+  // diverge. Most doc entries already read the same in both places. It is
+  // scoped because five of the 41 unpinned pages would fail a byte-equal
+  // check: getting-started, runtime, task and editor-setup deliberately use
+  // a label that differs from their heading, and conventions reads the same
+  // but escapes its ampersand in the h1, so it compares unequal. All five
+  // are correct as they stand, so widening this test reds on working pages.
   const layout = await readFile(resolve(DOCS_ROOT, 'layout.ts'), 'utf8');
   const labelFor = (href: string) => {
     const m = layout.match(new RegExp(`href:\\s*'${href}',\\s*label:\\s*'([^']+)'`));
@@ -192,6 +203,154 @@ test('a doc page h1 matches its sidebar label', async () => {
     const h1 = src.match(/<h1>([^<]+)<\/h1>/)?.[1];
     assert.equal(h1, labelFor(`/docs/${slug}`), `/docs/${slug}: <h1> and sidebar label must agree`);
   }
+});
+
+test('every docs sidebar label and section title is Title Case', async () => {
+  // Two labels drifted to sentence case ('Build your own authentication' and
+  // 'Auth providers (createAuth)') against 42 Title Case siblings, and nothing
+  // caught it because casing is not a link, a title, or an order. The rule is
+  // the one comparable docs sites converge on: PROSE takes the project's
+  // convention, and a word whose casing is fixed by something else is written
+  // verbatim and never recased. That second half covers code tokens
+  // ('createAuth', '@webjsdev/ui') and brands that start lowercase ('macOS',
+  // 'npm') alike, since recasing either one misspells it.
+  // Qwik ships both 'API Reference' and 'API reference' in one sidebar because
+  // neither half was ever written down.
+  //
+  // This is a FLOOR, not a Title Case parser. It asserts each word STARTS with
+  // a capital, so 'Build YOUR Own Authentication' passes. That is deliberate:
+  // the drift it exists to catch is sentence case, and a stricter rule is one
+  // people delete the first time it fires on something legitimate.
+
+  // Words a title-case scheme leaves lowercase after the first position.
+  // Generous on purpose, so this PERMITS both 'Deploying With Docker' and
+  // 'Deploying with Docker'. Only 'Migrating from Next.js' exercises it today.
+  // The rest are here so the first 'Deploying on Railway' does not red CI for a
+  // label that was never wrong.
+  //
+  // This list is matched case-INSENSITIVELY while FIXED_CASING is matched
+  // exact-case, so an entry here whose spelling collides with a fixed-casing
+  // word permits that word's DRIFTED form. The correctly-cased word is fine
+  // either way, since FIXED_CASING is checked first, but the drift is not:
+  // FIXED_CASING never matches 'vs', so with 'vs' in this list a slip from
+  // 'VS Code' to 'vs Code' reads as an ordinary minor word and passes. That
+  // is why 'vs' is absent. The assertion below enforces it rather than
+  // trusting this comment, because remedy 3 of the failure message sends the
+  // next person here to add exactly this kind of word.
+  const MINOR_WORDS = new Set([
+    'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'if', 'in', 'into',
+    'nor', 'of', 'off', 'on', 'onto', 'or', 'over', 'per', 'so', 'the', 'to',
+    'up', 'via', 'with', 'yet',
+  ]);
+
+  // Words whose casing is fixed by something other than prose, so recasing
+  // them would be WRONG rather than a correction. Two kinds qualify: a code
+  // token ('@webjsdev/ui', 'createAuth', 'webjs check', 'package.json') and a
+  // brand with non-prose capitalisation ('macOS', 'iOS', 'npm', and the VS of
+  // 'VS Code'). No structural rule
+  // can carry this: shape detects '@webjsdev/ui' and 'createAuth', but a
+  // future 'webjs check' label is two ordinary lowercase words,
+  // byte-indistinguishable from the slip this test hunts. So the exemption is
+  // a named list, and adding to it is the deliberate act that records "this
+  // spelling is correct, not a slip". Matched against the
+  // word with wrapping punctuation stripped, so it survives a rename to
+  // 'Auth Providers (createAuth API)'.
+  const FIXED_CASING = new Set(['createAuth', '@webjsdev/ui', 'VS']);
+
+  // The two sets must not collide, or the MINOR_WORDS entry permits the drifted
+  // spelling and the guard goes quiet on it. Asserted rather than left to the
+  // comment above, since 'vs' sat in MINOR_WORDS and let 'vs Code' pass until
+  // it was measured.
+  const collisions = [...FIXED_CASING].filter((w) => MINOR_WORDS.has(w.toLowerCase()));
+  assert.deepEqual(
+    collisions,
+    [],
+    `these words are in FIXED_CASING and also in MINOR_WORDS: ${collisions.join(', ')}. MINOR_WORDS is matched on the lowercased token, so it permits the drifted spelling of each one. Remove them from MINOR_WORDS`,
+  );
+
+  const layout = await readFile(resolve(DOCS_ROOT, 'layout.ts'), 'utf8');
+  // Slice to the NAV_SECTIONS literal. Outside it sit the docs-scoped metadata
+  // block (its own `title:` keys) and the shell call's aria labels
+  // ('Documentation', 'Documentation menu'), none of which are nav text and the
+  // last of which is legitimately sentence case.
+  const start = layout.indexOf('const NAV_SECTIONS');
+  const end = layout.indexOf('\n];', start);
+  assert.ok(start !== -1 && end > start, 'could not locate the NAV_SECTIONS literal in layout.ts');
+  const nav = layout.slice(start, end);
+  assert.ok(!nav.includes('generateMetadata'), 'the NAV_SECTIONS slice ran past the end of the literal');
+
+  // Three deliberate choices in this one regex, each closing a way an entry
+  // could go unread. Stated as what the pattern DOES, not as a promise about
+  // which assertion catches a given malformed entry: the parse degrades
+  // differently depending on which key is malformed and in what order the keys
+  // are written, so any such promise would be true for some shapes only.
+  //
+  // Each key is read on its own rather than anchored to a neighbour, since an
+  // `href:`-anchored pattern reads nothing from `{ label: '...', href: '...' }`.
+  // The quote character is captured and back-referenced rather than hard-coded,
+  // so both quote styles parse and a value may carry the other quote inside it.
+  // And it takes `+` rather than `*`, so an empty value does not quietly become
+  // an empty string that the has-a-letter test below then skips.
+  //
+  // The href count is a cross-check on the label count. It is a useful signal,
+  // not a guarantee: a malformed entry can also surface as a garbage row in the
+  // offender list instead, which is equally loud and names the entry.
+  const quoted = (key: string) => new RegExp(`\\b${key}:\\s*(['"])((?:\\\\.|(?!\\1).)+)\\1`, 'g');
+  const labels = [...nav.matchAll(quoted('label'))].map((m) => m[2]);
+  const titles = [...nav.matchAll(quoted('title'))].map((m) => m[2]);
+  const hrefs = [...nav.matchAll(quoted('href'))].map((m) => m[2]);
+  // Every section object carries exactly one `items:`, so this counts sections
+  // independently of their titles, the way hrefs count entries independently
+  // of their labels.
+  const sections = [...nav.matchAll(/\bitems:/g)].length;
+
+  assert.equal(
+    labels.length,
+    hrefs.length,
+    `parsed ${hrefs.length} hrefs but ${labels.length} labels: a nav entry did not parse, so it is not being checked. Usual causes are an empty value or a quoting style this regex does not read. Fix the nav entry if it is malformed; widen the regex only if the entry is legitimate`,
+  );
+  assert.equal(
+    titles.length,
+    sections,
+    `parsed ${sections} sections but ${titles.length} section titles: a section title did not parse, so it is not being checked. Same causes as above. Without this a section title could go empty and only drop the count, which the floor below would still clear`,
+  );
+  // Floors matching the sibling checks in this file, so a regex that stops
+  // matching fails here instead of passing empty.
+  assert.ok(labels.length > 40, `sanity: expected the full sidebar, parsed ${labels.length} labels`);
+  assert.ok(titles.length > 3, `sanity: expected every section, parsed ${titles.length} titles`);
+
+  const offenders: string[] = [];
+  for (const value of [...titles, ...labels]) {
+    value.split(/\s+/).forEach((token, i) => {
+      // 'Runtime (Node & Bun)', 'Editor Setup (Neovim, VS Code)', 'cache()'
+      const word = token.replace(/^\(+|[)(,.]+$/g, '');
+      if (!/[A-Za-z]/.test(word)) return; // the bare & in 'Streaming & Suspense'
+      if (FIXED_CASING.has(word)) return;
+      if (i > 0 && MINOR_WORDS.has(word.toLowerCase())) return;
+      if (!/^[A-Z]/.test(word)) offenders.push(`${value}  ->  '${word}'`);
+    });
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    'these docs sidebar entries are not Title Case (entry -> the lowercase word):\n  ' +
+      offenders.join('\n  ') +
+      '\n\nThe docs sidebar is Title Case throughout, section titles included. Pick the fix that matches the word:\n' +
+      '  1. ORDINARY WORD: recase it in app/docs/layout.ts. This is the fix nearly every\n' +
+      '     hit wants, and it is what the last two drifts needed.\n' +
+      '  2. A WORD WHOSE CASING IS NOT PROSE: add it to FIXED_CASING at the top of\n' +
+      '     this test, spelled EXACTLY as this message printed it above. Wrapping\n' +
+      "     brackets and trailing punctuation are stripped before the lookup, so a\n" +
+      "     'cache()' in a label is listed as 'cache'. Two kinds belong there: a code\n" +
+      "     token (a package like '@webjsdev/ui', an export like 'createAuth', a\n" +
+      "     command like 'webjs check', a filename like 'package.json') and a brand\n" +
+      "     that starts lowercase ('macOS', 'iOS', 'npm'). For both, recasing would\n" +
+      "     MISSPELL the word, so the label is right and this test is what needs\n" +
+      '     updating. Add each word of a multi-word command separately.\n' +
+      "  3. LOWERCASE-IN-TITLE WORD this list does not know yet ('amid', 'until'): add it\n" +
+      '     to MINOR_WORDS instead.',
+  );
 });
 
 test('the llms.txt index follows the sidebar order', async () => {

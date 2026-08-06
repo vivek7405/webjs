@@ -201,7 +201,7 @@ events[0].createdAt.toLocaleDateString(); // works</code-block>
     <code-block>const { auth } = createAuth&lt;AppUser&gt;({ secret, providers });
 const session = await auth();
 session?.user.role; // typed, no cast</code-block>
-    <p>Un-augmented and un-parameterised, <code>AuthUser</code> is empty and resolves back to <code>Record&lt;string, unknown&gt;</code>, so pre-existing untyped code keeps compiling. The declared fields should mirror what the callbacks write onto <code>session.user</code>. See <a href="/docs/auth">Auth providers (createAuth)</a>.</p>
+    <p>Un-augmented and un-parameterised, <code>AuthUser</code> is empty and resolves back to <code>Record&lt;string, unknown&gt;</code>, so pre-existing untyped code keeps compiling. The declared fields should mirror what the callbacks write onto <code>session.user</code>. See <a href="/docs/auth">Auth Providers (createAuth)</a>.</p>
 
     <h2>JSDoc Alternative</h2>
     <p>If you prefer <code>.js</code> files, you can achieve the same type safety using JSDoc annotations with <code>checkJs: true</code> in your tsconfig:</p>

@@ -152,7 +152,7 @@ const message = s.get('success');  // 'Post published!', only this request</code
     <h2>Next Steps</h2>
     <ul>
       <li><a href="/docs/cache">Caching</a>: the cache store that backs server-side sessions</li>
-      <li><a href="/docs/auth">Auth providers (createAuth)</a>: NextAuth-style auth built on top of sessions</li>
+      <li><a href="/docs/auth">Auth Providers (createAuth)</a>: NextAuth-style auth built on top of sessions</li>
       <li><a href="/docs/middleware">Middleware</a>: run session checks before route handlers</li>
     </ul>
   `;
