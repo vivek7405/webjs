@@ -1575,9 +1575,7 @@ async function performNavigation(href, isPopState, frameId) {
           const revalidated = fetchAndApply(href, frameId, /* recordHistory */ false, optimisticState, 'GET', null, signal, myToken, /* revalidating */ true)
             .catch(() => {});
           const floor = new Promise((r) => setTimeout(r, ANCHOR_SUPPRESS_FLOOR_MS));
-          // Read `releaseAnchor` when this fires, not now: the decision above is
-          // asynchronous, so capturing it here would always capture the no-op.
-          Promise.all([revalidated, floor]).then(() => afterTwoFrames(() => releaseAnchor()));
+          Promise.all([revalidated, floor]).then(() => afterTwoFrames(releaseAnchor));
           return;
         }
       }

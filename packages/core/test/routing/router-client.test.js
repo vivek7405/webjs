@@ -2114,6 +2114,62 @@ test('popstate cache restore suppresses scroll anchoring across the window (#131
   }
 });
 
+test('a second navigation closes an open scroll-anchor window (#1310)', async () => {
+  // The window outlives its own restore on purpose (a floor, then a ceiling),
+  // so a navigation starting inside that span has to end it. Otherwise a Back
+  // that CLAMPS, which opens no window of its own, would run its whole growth
+  // under the previous restore's suppression and freeze its clamp, and a
+  // forward nav would carry the suppression onto an unrelated page.
+  const origLoc = globalThis.location;
+  const origFetch = globalThis.fetch;
+  const prevPageUrl = _currentPageUrl();
+  const root = document.documentElement;
+  _snapshotCache.set('/anchor-second-nav', {
+    html: '<!doctype html><html><head></head><body><!--wj:children:/:/-->cached<!--/wj:children:/--></body></html>',
+    scrollX: 0,
+    scrollY: 800,
+  });
+  globalThis.location = /** @type any */ ({
+    href: 'http://localhost/anchor-second-nav',
+    pathname: '/anchor-second-nav', origin: 'http://localhost', search: '', hash: '',
+  });
+  _setCurrentPageUrl('http://localhost/elsewhere');
+  globalThis.fetch = async () => new Response('<html></html>', {
+    status: 200, headers: { 'content-type': 'text/html' },
+  });
+  const origWinScrollTo = globalThis.window?.scrollTo;
+  const origGlobalScrollTo = globalThis.scrollTo;
+  const origScrollY = globalThis.window?.scrollY;
+  const land = /** @type any */ ((o) => { if (globalThis.window) globalThis.window.scrollY = o && o.top; });
+  globalThis.scrollTo = land;
+  if (globalThis.window) globalThis.window.scrollTo = land;
+  document.head.innerHTML = '';
+  document.body.innerHTML = '<!--wj:children:/:/-->before-pop<!--/wj:children:/-->';
+  try {
+    _onPopState({});
+    assert.equal(root.style.getPropertyValue('overflow-anchor'), 'none',
+      'precondition: the restore opened a window');
+    // A forward navigation, started well inside the floor. Not awaited: the
+    // close happens as the navigation STARTS, and awaiting would also run the
+    // whole fetch-and-apply pipeline, which is not what this asserts.
+    navigate('http://localhost/somewhere-else').catch(() => {});
+    assert.ok(!root.style.getPropertyValue('overflow-anchor'),
+      'starting another navigation ends the previous restore\'s window');
+    await new Promise((r) => setTimeout(r, 20));
+  } finally {
+    _snapshotCache.delete('/anchor-second-nav');
+    _setCurrentPageUrl(prevPageUrl);
+    globalThis.location = origLoc;
+    globalThis.fetch = origFetch;
+    globalThis.scrollTo = origGlobalScrollTo;
+    if (globalThis.window) globalThis.window.scrollTo = origWinScrollTo;
+    if (globalThis.window) globalThis.window.scrollY = origScrollY;
+    root.style.removeProperty('overflow-anchor');
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+  }
+});
+
 test('disableClientRouter closes an open scroll-anchor window (#1310)', async () => {
   // The router must leave nothing of its own on <html> after it is disabled.
   const origLoc = globalThis.location;
