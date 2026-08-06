@@ -1456,7 +1456,7 @@ export async function checkConventions(appDir) {
   // re-renders with the action never having run. Neither renderer can see it
   // (each judges one template scan), so the whole-app scan is the only place
   // the answer exists.
-  checkSubmitterNeedsBoundForm(files, violations);
+  checkSubmitterNeedsBoundForm(files, violations, appDir);
 
   return violations;
 }
@@ -1473,8 +1473,9 @@ export async function checkConventions(appDir) {
  *
  * @param {{ abs: string, rel: string, content: string, scan: string }[]} files
  * @param {Violation[]} violations appended to in place
+ * @param {string} appDir
  */
-function checkSubmitterNeedsBoundForm(files, violations) {
+function checkSubmitterNeedsBoundForm(files, violations, appDir) {
   /**
    * The FIX line is identical for every shape this rule reports, so it is
    * written once.
@@ -1504,7 +1505,54 @@ function checkSubmitterNeedsBoundForm(files, violations) {
    * @param {string} content
    * @returns {Set<string>}
    */
-  const serverImportedNames = (content) => {
+  const byAbs = new Map(files.map((f) => [f.abs, f]));
+
+  /**
+   * Is `name` exported from `scan` as something PROVABLY callable?
+   *
+   * The bias is the opposite of the sibling `'use server'` rules, and
+   * deliberately so. Those tolerate a false NEGATIVE, so anything ambiguous
+   * counts as possibly-callable. Here an ambiguous export firing the rule is a
+   * false POSITIVE on working code, so only a shape that must be a function
+   * counts: a function declaration, or a const bound to an arrow or a function
+   * expression. `export const ARCHIVE_URL = '/api/x'` is NOT callable, and a
+   * factory (`export const go = cache(fn)`) is not PROVABLE, so both stay
+   * silent.
+   *
+   * @param {string} scan fully-blanked view of the target module
+   * @param {string} name
+   * @returns {boolean}
+   */
+  const exportsCallable = (scan, name) => {
+    const n = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`\\bexport\\s+(?:async\\s+)?function\\s+${n}\\b`).test(scan)) return true;
+    if (new RegExp(`\\bexport\\s+(?:const|let|var)\\s+${n}\\s*(?::(?:[^=]|=>)*?)?=\\s*(?:async\\s*)?(?:function\\b|\\()`).test(scan)) return true;
+    return false;
+  };
+
+  /**
+   * Local names this file imports from a `.server.{js,ts}` module AND that the
+   * target really exports as a callable.
+   *
+   * The scan is LEXICAL, but the renderer binds only when the hole's value is a
+   * FUNCTION (`isBoundFormAction` in `form-action.js`), so `formaction=${'/api/'
+   * + id}` on a plain progressive-enhancement form, and equally a url CONSTANT
+   * exported from a `.server.ts` module, are ordinary url attributes that render
+   * and ship fine. Treating either as a binding reports a working form as
+   * broken.
+   *
+   * Only a plain named import is resolved. A namespace import
+   * (`import * as acts`), a default import, a barrel re-export, and any
+   * non-identifier expression (a member access, `this.act`) are all left
+   * UNKNOWABLE and therefore silent: they are real bindings the rule then
+   * misses, which is the safe direction and is listed with the rule's other
+   * silences.
+   *
+   * @param {string} content
+   * @param {string} abs
+   * @returns {Set<string>}
+   */
+  const serverImportedNames = (content, abs) => {
     /** @type {Set<string>} */
     const names = new Set();
     const { redacted, literals } = redactToPlaceholders(content);
@@ -1515,14 +1563,20 @@ function checkSubmitterNeedsBoundForm(files, violations) {
       if (!tok) continue;
       const spec = literals[Number(tok[1])] || '';
       if (!/\.server\.m?[jt]s$/.test(spec)) continue;
-      for (const { local } of importedLocalNames(im[1])) names.add(local);
+      const target = resolveImport(spec, abs, appDir);
+      const targetFile = target ? byAbs.get(target) : null;
+      if (!targetFile) continue;   // unresolvable: unknowable, so silent
+      const targetScan = redactStringsAndTemplates(targetFile.content, true);
+      for (const { local, imported } of importedLocalNames(im[1])) {
+        if (exportsCallable(targetScan, imported)) names.add(local);
+      }
     }
     return names;
   };
 
   /** @type {{ rel: string, fileSites: ReturnType<typeof scanHtmlFormScopes>, ownerTag: string | null, bodySites: ReturnType<typeof scanHtmlFormScopes> | null }[]} */
   const scanned = [];
-  for (const { rel, content, scan } of files) {
+  for (const { abs, rel, content, scan } of files) {
     if (!isAppTemplateFile(rel)) continue;
     // Cheap bail: a file with neither a submitter binding nor a hyphenated tag
     // can contribute neither a violation nor a call site.
@@ -1531,7 +1585,7 @@ function checkSubmitterNeedsBoundForm(files, violations) {
     if (!fileSites.submitters.length && !fileSites.tagUses.length) continue;
     // Keep only the submitter holes that really bind an action. A `formaction`
     // hole holding a url string is an ordinary attribute the renderer ships.
-    const bound = serverImportedNames(content);
+    const bound = serverImportedNames(content, abs);
     const isActionBinding = (site) => !!site.expr && /^[A-Za-z_$][\w$]*$/.test(site.expr) && bound.has(site.expr);
     fileSites.submitters = fileSites.submitters.filter(isActionBinding);
     // ATTRIBUTABLE: exactly one registered tag and exactly one WebComponent

@@ -24,9 +24,28 @@ import { checkConventions, RULES } from '../../src/check.js';
  */
 const RULE = 'submitter-needs-bound-form';
 
+/**
+ * The action modules the fixtures import. Real files, because the rule resolves
+ * the binding to its target and requires a provably callable export: a hole
+ * naming a url CONSTANT is not a binding, so an unresolvable or non-callable
+ * import is correctly silent and a fixture without these would prove nothing.
+ */
+const ACTIONS = {
+  // The `#` root alias is Node's `package.json` "imports" field, so the rule
+  // cannot resolve a `#modules/...` specifier without it. A scaffolded app
+  // always ships this catch-all.
+  'package.json': JSON.stringify({ name: 'fixture', imports: { '#*': './*' } }),
+  'modules/feedback/actions/publish.server.ts': `'use server';
+export async function publishDraft(formData) { return { success: true, got: formData }; }
+`,
+  'modules/feedback/actions/save.server.ts': `'use server';
+export async function saveAll(formData) { return { success: true, got: formData }; }
+`,
+};
+
 async function makeApp(files) {
   const dir = await mkdtemp(join(tmpdir(), 'webjs-submitter-bound-'));
-  for (const [rel, contents] of Object.entries(files)) {
+  for (const [rel, contents] of Object.entries({ ...ACTIONS, ...files })) {
     const abs = join(dir, rel);
     await mkdir(abs.slice(0, abs.lastIndexOf('/')), { recursive: true });
     await writeFile(abs, contents);
@@ -326,6 +345,60 @@ export default ({ id }) => html\`<form method="post" action="/api/items"><button
 `,
     });
     assert.deepEqual(hits(await checkConventions(dir)), [], `${hole} is a url, not an action`);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('silent on a url CONSTANT exported from a .server module', async () => {
+  // "Imported from a `.server` module" is not enough: a server module exports
+  // non-functions too, and the renderer binds only a FUNCTION. A url constant
+  // renders as an ordinary attribute, so reporting it is the same false positive
+  // wearing a different hat.
+  const dir = await makeApp({
+    'lib/urls.server.ts': "export const ARCHIVE_URL = '/api/items/archive';\n",
+    'app/items/page.ts': `import { html } from '@webjsdev/core';
+import { ARCHIVE_URL } from '#lib/urls.server.ts';
+export default () => html\`<form method="get"><button formaction=\${ARCHIVE_URL}>Archive</button></form>\`;
+`,
+  });
+  assert.deepEqual(hits(await checkConventions(dir)), [], 'a url constant is not an action binding');
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('silent on an ambiguous factory-produced export', async () => {
+  // `export const go = cache(fn)` may well be callable, but it is not PROVABLY
+  // a function from the source, and an ambiguous export firing the rule is the
+  // false-positive direction.
+  const dir = await makeApp({
+    'modules/feedback/actions/factory.server.ts': `'use server';
+import { cache } from '@webjsdev/server';
+export const publishCached = cache(async () => ({ success: true }));
+`,
+    'app/items/page.ts': `import { html } from '@webjsdev/core';
+import { publishCached } from '#modules/feedback/actions/factory.server.ts';
+export default () => html\`<form method="get"><button formaction=\${publishCached}>P</button></form>\`;
+`,
+  });
+  assert.deepEqual(hits(await checkConventions(dir)), []);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('silent on binding shapes the resolver cannot follow', async () => {
+  // Real bindings the rule now MISSES rather than misreports: a namespace
+  // import, a default import, and a non-identifier expression. Silence is the
+  // safe direction, and these are named in the rule's silence list.
+  const shapes = {
+    'namespace import': `import * as acts from '#modules/feedback/actions/publish.server.ts';
+export default () => html\`<form method="get"><button formaction=\${acts.publishDraft}>P</button></form>\`;`,
+    'member expression': `import { publishDraft } from '#modules/feedback/actions/publish.server.ts';
+const bag = { publishDraft };
+export default () => html\`<form method="get"><button formaction=\${bag.publishDraft}>P</button></form>\`;`,
+  };
+  for (const [label, body] of Object.entries(shapes)) {
+    const dir = await makeApp({
+      'app/items/page.ts': `import { html } from '@webjsdev/core';\n${body}\n`,
+    });
+    assert.deepEqual(hits(await checkConventions(dir)), [], `${label} is unknowable, so silent`);
     await rm(dir, { recursive: true, force: true });
   }
 });

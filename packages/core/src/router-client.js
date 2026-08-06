@@ -981,8 +981,13 @@ function reportFallback(cause, href, willReload = true) {
 
 /**
  * Dev-only, fire-once hint: this submission carries a bound action's identity
- * but cannot deliver it, so the action will never run and nothing will say so
+ * but cannot deliver it on at least one path, and nothing else will say so
  * (#1307).
+ *
+ * The two branches differ in reach, so the messages do too. A non-POST method
+ * loses the identity to the query string on BOTH paths. An `enctype="text/plain"`
+ * breaks only the no-JS path, because with JS the router posts `FormData` and
+ * ignores the attribute entirely.
  *
  * Reachable through the cannot-tell fallback: a submitter bound inside a
  * component whose host form is unbound. The client cannot answer that at

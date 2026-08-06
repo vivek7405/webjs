@@ -9,6 +9,7 @@ import {
   redactStringsAndTemplates,
 } from '../../src/js-scan.js';
 import { PARSEABLE_ENCTYPES } from '../../../core/src/form-action.js';
+import { readFile } from 'node:fs/promises';
 
 /**
  * Unit tests for the lexical half of `submitter-needs-bound-form` (#1307):
@@ -204,7 +205,7 @@ test('a template in an ordinary START-TAG hole is handed off, not inherited', ()
   assert.deepEqual(scanHtmlFormScopes(child).submitters, [{ tag: 'button', scope: 'unbound', delivers: true, expr: 'del' }]);
 });
 
-test('the unparseable-enctype constant tracks the renderer\'s own set', () => {
+test('the unparseable-enctype constant tracks the renderer\'s own set', async () => {
   // The scanner states its enctype rule as a DENYLIST of one because of the
   // invalid-value default, while the renderer refuses the wider allowlist. This
   // pins the relationship rather than asserting the two are equal, so a change
@@ -217,6 +218,16 @@ test('the unparseable-enctype constant tracks the renderer\'s own set', () => {
   assert.deepEqual([...PARSEABLE_ENCTYPES].sort(),
     ['application/x-www-form-urlencoded', 'multipart/form-data'],
     'if core gains an enctype, revisit the scanner denylist');
+
+  // There are now THREE hardcoded copies of the denylist keyword: the scanner's
+  // `UNPARSEABLE_FORM_ENCTYPE`, the client guard in `router-client.js`, and this
+  // test. Pin the client one too, so the two halves of the feature cannot drift
+  // into disagreeing on the same input (which is what the allowlist did).
+  const clientSrc = await readFile(new URL('../../../core/src/router-client.js', import.meta.url), 'utf8');
+  assert.match(clientSrc, /enctype\.toLowerCase\(\) === 'text\/plain'/,
+    'the client guard uses the same one-keyword denylist, not the renderer allowlist');
+  assert.doesNotMatch(clientSrc, /PARSEABLE_ENCTYPES/,
+    'and does not reach for the renderer allowlist again');
 });
 
 test('the start-tag-hole rule matches what the RENDERER actually does', async () => {

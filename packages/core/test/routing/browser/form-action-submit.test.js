@@ -241,4 +241,48 @@ suite('Client router: bound form submissions (#1155)', () => {
       teardown();
     }
   });
+  /**
+   * #1307, the enctype branch. It is a one-keyword DENYLIST, not the renderer's
+   * allowlist: `enctype` is an enumerated attribute whose missing AND invalid
+   * value defaults are both `application/x-www-form-urlencoded`, so
+   * `enctype="nonsense"` submits a parseable body and the action runs. Warning
+   * there would report a working form as broken, which is the inversion the
+   * check rule deliberately avoids, and the two halves of one feature must not
+   * disagree on the same input.
+   */
+  test('the enctype warning fires for text/plain and NOT for an invalid value', async () => {
+    for (const [enctype, shouldWarn] of [['text/plain', true], ['nonsense', false], ['multipart/form-data', false]]) {
+      setup(() => new Response(
+        '<!--wj:children:/:/--><p>ok</p><!--/wj:children:/-->',
+        { status: 200, headers: { 'content-type': 'text/html', 'x-webjs-build': '' } },
+      ));
+      const errors = [];
+      const origError = console.error;
+      console.error = (...a) => { errors.push(a.join(' ')); };
+      const before = location.pathname + location.search;
+      try {
+        render(html`
+          <form method="post" enctype=${enctype}>
+            <button type="submit" name="__webjs_action" value="a1b2c3d4e5/publish">go</button>
+          </form>
+        `, container);
+        const btn = container.querySelector('button');
+        container.querySelector('form').dispatchEvent(
+          new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: btn }),
+        );
+        await tick();
+        const hit = errors.filter((e) => e.includes('enctype'));
+        assert.equal(hit.length, shouldWarn ? 1 : 0, `enctype="${enctype}" should ${shouldWarn ? '' : 'not '}warn`);
+        if (shouldWarn) {
+          // The message must not claim a 405 for the JS path, where the router
+          // posts FormData and the action still runs.
+          assert.ok(hit[0].includes('no-JS'), 'the message scopes the breakage to the no-JS path');
+        }
+      } finally {
+        console.error = origError;
+        history.replaceState(null, '', before);
+        teardown();
+      }
+    }
+  });
 });
