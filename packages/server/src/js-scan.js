@@ -775,9 +775,16 @@ export function classifyActionHole(literalBefore) {
  * keyword, `text/plain`, is a real loss. An allowlist inverts that and reports a
  * working form as broken, which this rule must never do.
  *
- * (`form-action.js`'s render-time `PARSEABLE_ENCTYPES` refuses the same wider
- * set, but there it is a loud throw on an attribute the author wrote
- * deliberately, not a silent verdict about someone else's form.)
+ * The renderer's `PARSEABLE_ENCTYPES` (`form-action.js`) refuses the wider set,
+ * and that divergence is deliberate on BOTH sides rather than an inconsistency
+ * to unify. The two ask different questions. This rule asks whether the
+ * identity ARRIVES, and under an invalid enctype it does. The renderer asks
+ * whether the form will do what the author wrote, and there an invalid value is
+ * the dangerous case: `enctype="multipart/form-dat"` falls back to urlencoded,
+ * which silently drops every FILE from the submission, so throwing at render is
+ * the only way the author finds out. Unifying them would either make the
+ * renderer accept a typo that loses uploads, or make this rule report a working
+ * form as broken.
  */
 const UNPARSEABLE_FORM_ENCTYPE = 'text/plain';
 

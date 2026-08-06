@@ -280,3 +280,39 @@ test('the start-tag-hole rule matches what the RENDERER actually does', async ()
   assert.deepEqual(scanHtmlFormScopes(propTag).tagUses.filter((u) => u.tag === 'todo-row'),
     [{ tag: 'todo-row', scope: 'handed', delivers: null }]);
 });
+
+test('the enctype divergence from the renderer is deliberate, on both sides', async () => {
+  // The scanner uses a one-keyword denylist and the renderer an allowlist, and
+  // it would be easy to "unify" them later. This pins WHY they differ, so that
+  // change breaks a test carrying its own reason.
+  //
+  // They ask different questions. This rule asks whether the identity ARRIVES,
+  // and an invalid enctype falls back to urlencoded, so it does. The renderer
+  // asks whether the form does what the author wrote, and an invalid value is
+  // the dangerous case: a typo'd `multipart/form-dat` falls back to urlencoded
+  // and silently drops every FILE from the submission.
+  const { html } = await import('../../../core/src/html.js');
+  const { renderToString } = await import('../../../core/src/render-server.js');
+  const { setFormActionResolver } = await import('../../../core/src/form-action.js');
+  setFormActionResolver(async () => 'abc1234567/save');
+  const save = async () => ({ success: true });
+
+  const sub = (formTag) => scanHtmlFormScopes(
+    'html`' + formTag + '<button formaction=${del}>x</button></form>`',
+  ).submitters[0];
+
+  // The scanner: an invalid enctype still delivers, so it is not a defect.
+  assert.equal(sub('<form method="post" enctype="multipart/form-dat">').delivers, true);
+  // The renderer: the same typo throws, because it would cost the author their
+  // file upload with no other signal.
+  await assert.rejects(
+    () => renderToString(html`<form action=${save} enctype=${'multipart/form-dat'}></form>`, { ssr: true }),
+    /cannot work|enctype/i,
+  );
+  // And both agree that text/plain is broken.
+  assert.equal(sub('<form method="post" enctype="text/plain">').delivers, false);
+  await assert.rejects(
+    () => renderToString(html`<form action=${save} enctype=${'text/plain'}></form>`, { ssr: true }),
+    /cannot work|enctype/i,
+  );
+});
