@@ -166,7 +166,7 @@ const TOOL_DEFS = [
   {
     name: 'list_elision',
     description:
-      'Report the display-only elision verdict: every component module with whether it is elided (the browser never downloads it) or shipped plus the evidence that produced the verdict, every page/layout route module as inert / import-only / shipped (with the first client-effecting blocker that pins it), and any orphan component class that registers with no literal tag and is therefore dropped with no verdict at all. Identical to `webjs elision --json`. Read-only.',
+      'Report the display-only elision verdict: every component module with whether it is elided (the browser never downloads it) or shipped plus the evidence that produced the verdict, every page/layout route module as inert / import-only / shipped (with the first client-effecting blocker that pins it), and any ORPHAN component class, one that either has no registration call at all or registers a computed tag, which the scanner cannot see either way, so it never upgrades and gets no verdict at all. Identical to `webjs elision --json`. Read-only.',
     inputSchema: APPDIR_SCHEMA,
   },
   {

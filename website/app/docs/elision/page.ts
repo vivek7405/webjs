@@ -73,7 +73,7 @@ Badge.register(TAG);          // invisible
 Badge.register('my-badge');</code-block>
 
     <p>
-      A custom-element tag must be a literal string anyway, but the consequence here is specific: the scanner never sees that component, so it gets no elision verdict at all, nothing consults the analyser for it, and the override has nothing to attach to. The module is dropped and the element silently never registers. <code>webjs dev</code> warns about this shape, and <code>webjs elision</code> and <code>webjs doctor</code> report it as an <strong>orphan</strong>.
+      A custom-element tag must be a literal string anyway, but the consequence here is specific: the scanner never sees that component, so it gets no elision verdict at all, nothing consults the analyser for it, and the override has nothing to attach to. The module is dropped and the element silently never registers. <code>webjs dev</code> warns about this shape, and <code>webjs elision</code> and <code>webjs doctor</code> report it as an <strong>orphan</strong>. An orphan is either of two things, and both fail identically: a class whose registration tag is computed, or a class with no registration call at all.
     </p>
 
     <h2>Inspecting the verdict</h2>

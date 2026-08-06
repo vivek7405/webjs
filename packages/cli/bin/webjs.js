@@ -1175,9 +1175,11 @@ async function main() {
       if (report.orphans.length) {
         console.log('Orphan components (dropped with NO verdict; `static interactive = true` cannot rescue these)');
         for (const o of report.orphans) {
-          console.log(`  ${o.className} in ${o.file} registers no literal tag, so the component scanner never sees it`);
+          console.log(`  ${o.className} in ${o.file} is never registered with a literal tag`);
         }
-        console.log('  Fix: pass a literal tag to Class.register(\'my-tag\') (invariant 3 already requires one).');
+        console.log('  Either there is no registration call at all, or the tag is computed. The scanner matches');
+        console.log('  only a literal tag, so either way the element never upgrades and the module gets no verdict.');
+        console.log('  Fix: register it with a literal tag, Class.register(\'my-tag\'), or delete the class.');
         console.log();
       }
       if (!report.components.length && !report.routeModules.length) {

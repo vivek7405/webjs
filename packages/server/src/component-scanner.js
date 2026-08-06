@@ -176,8 +176,11 @@ export async function findOrphanComponents(appDir) {
     // still matches while a sample inside a template does not. It does NOT
     // preserve offsets (a placeholder is a different length than the body it
     // replaces), which is fine here because an orphan is reported by class
-    // name and file, never by position. Reach for `redactStringsAndTemplates`
-    // instead if this scan ever needs to report a line or column.
+    // name and file, never by position. If this scan ever needs a line or
+    // column, reach for `redactStringsAndTemplates(src, true)`, WITH the
+    // blank-strings argument: the default form keeps plain-string bodies and
+    // single-line untagged templates verbatim, so a sample written either way
+    // would match again and the false orphan would be back.
     const { redacted } = redactToPlaceholders(src);
     // Find every class that extends WebComponent (exact name: we trust
     // the framework convention).

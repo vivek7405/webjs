@@ -1071,7 +1071,7 @@ async function checkElisionComponents(elisionPromise) {
   }
   if (report.orphans.length > 0) {
     const lines = report.orphans.map(({ file, className }) =>
-      `${className} in ${file} registers no literal tag, so the scanner never sees it`,
+      `${className} in ${file} is never registered with a literal tag`,
     );
     return {
       name,
@@ -1079,9 +1079,10 @@ async function checkElisionComponents(elisionPromise) {
       message:
         `${report.orphans.length} component class(es) are dropped with NO elision verdict:\n` +
         lines.map((l) => `    ${l}`).join('\n') +
-        '\n    A class registered with a computed tag is invisible to the component scanner, so its module ' +
-        'is dropped from the boot and `static interactive = true` cannot rescue it.',
-      fix: 'Pass a literal tag to Class.register(\'my-tag\') (invariant 3 already requires one), or delete the unregistered class.',
+        '\n    Either it has no registration call at all, or it registers a computed tag. The component '
+        + 'scanner matches only a literal tag, so either way it never sees the class: the element never '
+        + 'upgrades, the module gets no elision verdict, and `static interactive = true` cannot rescue it.',
+      fix: 'Register it with a literal tag, Class.register(\'my-tag\') (invariant 3 already requires one), or delete the class if nothing uses it.',
     };
   }
   const elided = report.components.filter((c) => c.verdict === 'elided');

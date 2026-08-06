@@ -1204,6 +1204,27 @@ test('an orphan class WARNS, names the class and file, and never fails', async (
   assert.ok(!results.some((x) => x.status === 'fail'), 'this check never hard-fails');
 });
 
+test('an orphan with NO registration call at all is reported the same way', async () => {
+  // `findOrphanComponents` reports TWO shapes under one name, and this is the
+  // ORIGINAL one the dev server has always warned about (a class someone
+  // forgot to register). The computed-tag shape is the other. The message must
+  // fit both, or a plain forgot-to-register class gets diagnosed with a cause
+  // it does not have.
+  const dir = tmpDir();
+  write(dir, 'package.json', JSON.stringify({ name: 'x', type: 'module' }));
+  write(dir, 'components/unreg.js',
+    `import { WebComponent, html } from '@webjsdev/core';\nexport class Unregistered extends WebComponent {\n  render() { return html\`<span>x</span>\`; }\n}\n`);
+  write(dir, 'app/page.js',
+    `import { html } from '@webjsdev/core';\nimport '../components/unreg.js';\nexport default () => html\`<p>hi</p>\`;\n`);
+
+  const r = byName(await runDoctorChecks(dir, baseOpts()), COMPONENT_CHECK);
+  assert.equal(r.status, 'warn');
+  assert.match(r.message, /Unregistered/);
+  assert.match(r.message, /no registration call at all/,
+    'the message must name this shape, not only the computed-tag one');
+  assert.match(r.fix, /Register it with a literal tag/);
+});
+
 test('elision disabled reports pass and names the switch', async () => {
   const r = byName(await runDoctorChecks(elidedComponentApp({ webjs: { elide: false } }), baseOpts()), COMPONENT_CHECK);
   assert.equal(r.status, 'pass');

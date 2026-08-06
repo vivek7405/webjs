@@ -483,7 +483,11 @@ and the reader key set never diverge (a counterfactual unknown key proves
    all, gets no verdict, and `static interactive = true` cannot rescue it
    (nothing consults the analyser for a component the scanner never saw).
    That shape surfaces as an `orphans` row in `analyzeAppElision` and a
-   `webjs doctor` warning, not as an elision verdict.
+   `webjs doctor` warning, not as an elision verdict. `findOrphanComponents`
+   reports TWO shapes under that one name, so any message about it must cover
+   both: a class with a computed registration tag, and a class with no
+   registration call at all (the original forgot-to-register case the dev
+   server has always warned about).
    `webjs elision` is the inspection surface for all of this: it prints
    the per-module verdict with the evidence behind each ship, and
    `webjs elision --verify` runs THIS differential over an arbitrary app's
