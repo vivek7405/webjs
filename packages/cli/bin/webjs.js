@@ -58,7 +58,7 @@ const USAGE = `webjs commands:
   webjs routes [--json|--table] [--no-headers]    Print the route table (path / owner file / methods). Default tree; --json matches the MCP list_routes shape; --no-headers drops the --table header
   webjs mcp                                       Start the read-only MCP server (routes / actions / components / check)
   webjs doctor [--json] [--strict]                Verify project health (Node, tsconfig, env, vendor pins, importmap coherence, @webjsdev versions, git hook, page/layout elision, un-versioned stylesheet links).
-                                                  --json emits the structured results (with stable codes). --strict also fails the exit on warnings.
+                                                  --json emits the structured results (with stable codes). --strict additionally fails on every remaining warning.
                                                   Per-check severity is CONFIG: map a code to off/warn/error under "webjs": { "doctor": { "gate": {...} } }
                                                   in package.json, so CI gates on a chosen subset without every warning becoming fatal
   webjs types                                     Generate .webjs/routes.d.ts (typed Route union + per-route params)
@@ -758,8 +758,8 @@ async function main() {
       const warn = counts.warn || 0;
       const fail = counts.error || 0;
       const off = counts.off || 0;
-      // `--strict` also fails the exit on warnings, so an agent can gate on a
-      // fully-clean toolchain (drift / staleness / pin freshness) in a fix loop,
+      // `--strict` additionally fails the exit on every REMAINING warning, so an
+      // agent can gate on a fully-clean toolchain (drift / staleness / pin freshness) in a fix loop,
       // not just on a hard toolchain break. Without it, a warn is fatal only
       // where the app gated its code `error`, which folded into `fail` above.
       const failing = fail > 0 || (strict && warn > 0);
