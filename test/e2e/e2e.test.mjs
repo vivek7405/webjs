@@ -3426,6 +3426,45 @@ describe('E2E: form actions (no-JS + enhanced)', { skip: !process.env.WEBJS_E2E 
     } finally { await p.close(); }
   });
 
+  test('JS DISABLED: a component-rendered submitter still carries its identity (#1307)', async () => {
+    // `/feedback/triage-split` is the CANNOT-TELL shape: the form is bound in
+    // the page and the submitter is bound one module over, inside a component
+    // that renders in its own pass with no view of the host page. SSR cannot
+    // resolve boundness there, so it binds on faith.
+    //
+    // This is the counterfactual for that decision. If the fallback were ever
+    // made to refuse, the component would render EMPTY (an SSR component error
+    // is isolated) and the button would not be in the DOM at all, so both
+    // assertions here would fail on a page that still returned 200.
+    const p = await paBrowser.newPage();
+    await p.setJavaScriptEnabled(false);
+    try {
+      await p.goto(`${paBase}/feedback/triage-split`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+      const shape = await p.evaluate(() => {
+        const publish = document.getElementById('publish');
+        return {
+          present: !!publish,
+          name: publish?.getAttribute('name') || null,
+          value: publish?.getAttribute('value') || null,
+          hasFormAction: publish ? publish.hasAttribute('formaction') : null,
+        };
+      });
+      assert.ok(shape.present, 'the component-rendered submitter must be in the served markup');
+      assert.equal(shape.name, '__webjs_action', 'the cannot-tell fallback binds, so the identity is emitted');
+      assert.ok(/^[0-9a-f]{10}\/publishDraft$/.test(shape.value || ''),
+        `the submitter value must name publishDraft, got ${shape.value}`);
+      assert.equal(shape.hasFormAction, false, 'no formaction url is emitted, so it posts to this page');
+
+      await p.type('#note', 'ship it');
+      await Promise.all([
+        p.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
+        p.click('#publish'),
+      ]);
+      const ran = await p.evaluate(() => document.getElementById('ran')?.textContent || '');
+      assert.equal(ran, 'publishDraft', `the component's action must run with JS off, got "${ran}"`);
+    } finally { await p.close(); }
+  });
+
   test('JS DISABLED: a failing submitter action re-renders THIS page at 422', async () => {
     // The per-button path has to reach the same 422 re-render as the form-level
     // one, or a validation failure on a submitter action would lose the page.

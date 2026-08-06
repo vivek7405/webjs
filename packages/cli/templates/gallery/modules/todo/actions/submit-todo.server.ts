@@ -19,6 +19,16 @@ import { deleteTodo } from './delete-todo.server.ts';
 // control's visible label), and a bound submitter cannot carry its own
 // `name`/`value`, which is exactly the channel `name="intent"` uses below.
 //
+// Third thing to know, and the one that fails silently: the enclosing <form>
+// has to be bound too, because `method="post"` and the enctype are supplied on
+// the form's start tag and a per-button action cannot retrofit them. The
+// renderer refuses an unbound form it can see, but a submitter inside a
+// COMPONENT is a cannot-tell (the component renders in its own pass with no
+// view of the host page) and binds anyway. An unbound host form then submits as
+// a GET, the identity rides the query string, and the action never runs while
+// the page returns 200. Run `webjs check`: `submitter-needs-bound-form` finds
+// these across modules.
+//
 // With JS the component intercepts the submit and calls the underlying action
 // directly for the optimistic path, so this runs only with JS off.
 export async function submitTodo(formData: FormData) {

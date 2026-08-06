@@ -698,6 +698,39 @@ test('an UNBOUND form is refused, which is a different answer from cannot-tell',
   );
 });
 
+test('the STREAMING renderer refuses both knowable submitter shapes too', async () => {
+  // The streamed state machine is a second implementation of the same scan, so
+  // the shapes both machines DO express have to be asserted through both entry
+  // points, or a change to one could pass on the other's coverage.
+  //
+  // Only the two knowable answers can be pinned here. A cannot-tell cannot even
+  // arise inside `streamTemplate`: the component pass that seeds 'unknown'
+  // lives in `injectDSD`, which is shared by both entry points and is not
+  // reached by `{ ssr: false }`.
+  withResolver();
+  await assert.rejects(
+    () => drain(renderToStream(html`<button formaction=${submitFeedback}>x</button>`, { ssr: false })),
+    /requires the enclosing <form> to also be bound/,
+    "'none': the scan can see there is no form at all",
+  );
+  await assert.rejects(
+    () => drain(renderToStream(
+      html`<form method="post"><button formaction=${submitFeedback}>x</button></form>`,
+      { ssr: false },
+    )),
+    /requires the enclosing <form> to also be bound/,
+    "'unbound': the form is right there and binds nothing",
+  );
+  // And the bound shape still streams, so the refusals above are discriminating
+  // rather than a blanket rejection of every submitter.
+  const ok = await drain(renderToStream(
+    html`<form action=${submitFeedback}><button formaction=${submitFeedback}>x</button></form>`,
+    { ssr: false },
+  ));
+  assert.equal((ok.match(/name="__webjs_action"/g) || []).length, 2,
+    'the form identity and the submitter identity both stream');
+});
+
 test("the 'unbound' state is what refuses inside a COMPONENT's own form", async () => {
   // The test above cannot observe the 'unbound' transition: a top-level scan
   // starts at 'none', so that template is refused either way, and deleting the
