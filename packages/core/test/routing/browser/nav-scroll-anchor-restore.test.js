@@ -103,21 +103,22 @@ async function afterGrowth() { for (let i = 0; i < 4; i++) await frame(); }
  * sits entirely above the viewport at `RESTORED_Y`, which is where anchoring
  * acts.
  */
-function restoredBody(tag) {
+function restoredBody(tag, extra) {
   // The wrapper id lets `teardown` remove the fixture: the restore REPLACES the
   // whole body and nothing puts the original back, so each case would otherwise
   // leave its markup in the document.
   return '<!--wj:children:/:/anchor-restore-a-->'
     + '<div id="wj-restored-1310">'
+    + (extra || '')
     + `<${tag}></${tag}>`
     + '<div style="height:3000px">restored</div>'
     + '</div>'
     + '<!--/wj:children:/-->';
 }
 
-function restoredHtml(tag, head) {
+function restoredHtml(tag, head, extra) {
   return `<!doctype html><html><head>${head || ''}</head><body>`
-    + restoredBody(tag) + '</body></html>';
+    + restoredBody(tag, extra) + '</body></html>';
 }
 
 /**
@@ -159,8 +160,9 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
    *   restore window. `instantRevalidation` answers it immediately instead,
    *   which is the ordering a fast server produces. `restoredY` overrides the
    *   recorded offset, so a case can force the clamped path, `manualGrowth`
-   *   swaps in a grower the test drives by hand, and `viewTransition` puts the
-   *   view-transition opt-in in the snapshot's head.
+   *   swaps in a grower the test drives by hand, `viewTransition` puts the
+   *   view-transition opt-in in the snapshot's head, and `withFrame` puts an
+   *   eager `<webjs-frame src>` in the restored page.
    */
   async function setup(opts) {
     const instant = Boolean(opts && opts.instantRevalidation);
@@ -169,7 +171,10 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     const html = restoredHtml(
       (opts && opts.manualGrowth) ? 'wj-grow-on-command-1310'
         : instant ? 'wj-grow-very-late-1310' : 'wj-grow-late-1310',
-      (opts && opts.viewTransition) ? VT_META : '');
+      (opts && opts.viewTransition) ? VT_META : '',
+      (opts && opts.withFrame)
+        ? '<webjs-frame id="wj-anchor-frame" src="/wj-frame-target-1310"></webjs-frame>'
+        : '');
     // Clear any fixture a previous case left in the document BEFORE starting.
     // Teardown removes it, but a revalidation swap can land after teardown has
     // run and put it back, and a leftover grower is already at full height, so
@@ -367,6 +372,33 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
         'the superseded restore does not reopen a window on the page that '
         + 'replaced it');
+    } finally {
+      await teardown();
+      (/** @type any */ (document)).startViewTransition = origSVT;
+    }
+  });
+
+  test('a frame self-load in the restored page does not cancel the restore', async () => {
+    // `loadFrame` shares the global navigation token, and an eager
+    // `<webjs-frame src>` inside a restored snapshot loads as part of the swap.
+    // Keying the deferred restore on that token therefore reads a routine frame
+    // load as a supersede and drops the restore entirely, leaving the reader at
+    // the outgoing page's offset, which is worse than the defect being fixed.
+    // The restore is keyed to its own supersede counter instead.
+    const origSVT = (/** @type any */ (document)).startViewTransition;
+    (/** @type any */ (document)).startViewTransition = (cb) => {
+      const done = new Promise((resolve) => {
+        requestAnimationFrame(() => { cb(); resolve(); });
+      });
+      return { updateCallbackDone: done, finished: done, ready: done, skipTransition() {} };
+    };
+    await setup({ viewTransition: true, withFrame: true });
+    try {
+      await goBack();
+      for (let i = 0; i < 6; i++) await frame();
+      assert.ok(Math.abs(window.scrollY - RESTORED_Y) < 5,
+        'the restore still runs with a self-loading frame in the page '
+        + `(expected ~${RESTORED_Y}, got ${window.scrollY})`);
     } finally {
       await teardown();
       (/** @type any */ (document)).startViewTransition = origSVT;

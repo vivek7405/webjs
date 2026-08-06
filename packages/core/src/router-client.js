@@ -436,6 +436,21 @@ function suppressScrollAnchoring() {
 let cancelScrollCatchUp = null;
 
 /**
+ * Bumped wherever a restore is superseded (#1310), and read by the one restore
+ * path that outlives the call scheduling it.
+ *
+ * Deliberately NOT `currentNavigationToken`, which is the obvious choice and the
+ * wrong one: `loadFrame` bumps that too, and its own contract says a frame
+ * self-load is not a page navigation. An eager `<webjs-frame src>` inside a
+ * RESTORED snapshot loads during the swap, so keying on the nav token would
+ * read a routine frame load as a supersede and drop the entire restore, leaving
+ * the reader at the outgoing page's offset. That is worse than the defect this
+ * whole change fixes. This counter moves only for the three things that really
+ * do end a restore.
+ */
+let restoreGeneration = 0;
+
+/**
  * Chase a restored scroll offset the document was too SHORT to reach (#1310).
  *
  * The sibling of `suppressScrollAnchoring`, for the case that one deliberately
@@ -601,6 +616,7 @@ export function disableClientRouter() {
   }
   // Never leave a restore window open on <html>, nor a catch-up chasing a
   // scroll offset after the router is gone (#1310).
+  restoreGeneration += 1;
   if (releaseScrollAnchor) releaseScrollAnchor();
   if (cancelScrollCatchUp) cancelScrollCatchUp();
   currentPageUrl = null;
@@ -1576,6 +1592,7 @@ async function performNavigation(href, isPopState, frameId) {
   // entirely. Reopening for this navigation, if it earns one, happens below.
   // The clamped path's catch-up is cancelled for the same reason: it chases an
   // offset recorded for the page being navigated away from.
+  restoreGeneration += 1;
   if (releaseScrollAnchor) releaseScrollAnchor();
   if (cancelScrollCatchUp) cancelScrollCatchUp();
 
@@ -1660,7 +1677,7 @@ async function performNavigation(href, isPopState, frameId) {
               // anchoring held off, which is precisely the stranding the
               // conditional exists to prevent. Wait for the swap to commit.
               //
-              // Token-guarded, because this is the one path where the restore
+              // Guarded, because this is the one path where the restore
               // outlives the call that scheduled it. Every cancel site in this
               // feature (performNavigation, performSubmission,
               // disableClientRouter) runs at the START of the next thing, so a
@@ -1669,8 +1686,9 @@ async function performNavigation(href, isPopState, frameId) {
               // scrolling a page it was never meant for to an offset recorded
               // for the previous history entry. The synchronous branch below
               // cannot outlive anything and so needs no guard.
+              const myRestore = restoreGeneration;
               _swapCommit.then(() => {
-                if (myToken !== currentNavigationToken || !enabled) return;
+                if (myRestore !== restoreGeneration || !enabled) return;
                 restoreScroll();
               }).catch(() => {});
             } else {
@@ -1772,6 +1790,7 @@ async function performSubmission(href, method, body, frameId, form) {
   // Same reasoning as performNavigation: a submission is a navigation, so it
   // ends any restore window a recent Back left open (#1310), and cancels a
   // clamped restore's catch-up.
+  restoreGeneration += 1;
   if (releaseScrollAnchor) releaseScrollAnchor();
   if (cancelScrollCatchUp) cancelScrollCatchUp();
 
