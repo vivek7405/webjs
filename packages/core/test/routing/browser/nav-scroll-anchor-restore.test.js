@@ -390,7 +390,9 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     // the outgoing page's offset, which is worse than the defect being fixed.
     // The restore is keyed to its own supersede counter instead.
     const origSVT = (/** @type any */ (document)).startViewTransition;
+    let transitions = 0;
     (/** @type any */ (document)).startViewTransition = (cb) => {
+      transitions += 1;
       const done = new Promise((resolve) => {
         requestAnimationFrame(() => { cb(); resolve(); });
       });
@@ -400,9 +402,10 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     try {
       await goBack();
       for (let i = 0; i < 6; i++) await frame();
-      assert.ok(frameLoads > 0,
-        'precondition: the frame actually self-loaded, so this is not silently '
-        + 'a duplicate of the plain restore case');
+      assert.ok(transitions > 0 && frameLoads > 0,
+        'precondition: the swap was deferred AND the frame actually '
+        + 'self-loaded, so this is not silently a duplicate of the plain '
+        + 'restore case');
       assert.ok(Math.abs(window.scrollY - RESTORED_Y) < 5,
         'the restore still runs with a self-loading frame in the page '
         + `(expected ~${RESTORED_Y}, got ${window.scrollY})`);
@@ -421,7 +424,9 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     // and the reader is left at the outgoing offset, under the current one it
     // runs.
     const origSVT = (/** @type any */ (document)).startViewTransition;
+    let transitions = 0;
     (/** @type any */ (document)).startViewTransition = (cb) => {
+      transitions += 1;
       const done = new Promise((resolve) => {
         requestAnimationFrame(() => { cb(); resolve(); });
       });
@@ -430,6 +435,9 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     await setup({ viewTransition: true });
     try {
       await goBack();
+      assert.ok(transitions > 0,
+        'precondition: the swap really was deferred, or the bump below lands '
+        + 'after the restore has already run and proves nothing');
       // Inside the deferred frame, before the swap commits.
       _bumpNavToken();
       for (let i = 0; i < 6; i++) await frame();
@@ -440,6 +448,31 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       await teardown();
       (/** @type any */ (document)).startViewTransition = origSVT;
     }
+  });
+
+  test('a FRAME-targeted navigation leaves an open window alone', async () => {
+    // A frame nav swaps one region and leaves the page, so it must not end a
+    // restore. The exemption has to cover all three of the counter, the
+    // suppression window and the catch-up: closing the window here would hand
+    // anchoring back mid-restore and bring the whole double-count back, and it
+    // needs no user input to happen (a component upgrading in the just-restored
+    // page can submit or navigate a frame on its own).
+    await setup();
+    try {
+      await goBack();
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), 'none',
+        'precondition: a window is open');
+      const holder = document.createElement('div');
+      holder.innerHTML = '<webjs-frame id="wj-target-frame-1310">'
+        + '<a id="wj-frame-link" href="/wj-frame-nav-1310">go</a></webjs-frame>';
+      document.body.appendChild(holder);
+      try {
+        holder.querySelector('#wj-frame-link').click();
+        await new Promise((r) => setTimeout(r, 0));
+        assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), 'none',
+          'a frame-targeted navigation must leave the restore window open');
+      } finally { holder.remove(); }
+    } finally { await teardown(); }
   });
 
   test('a form SUBMISSION inside the window closes it too', async () => {

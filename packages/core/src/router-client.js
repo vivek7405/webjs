@@ -1601,9 +1601,17 @@ async function performNavigation(href, isPopState, frameId) {
   // intact. The codebase already treats a click-driven frame nav and a `src`
   // self-load as the same thing, so exempting one and not the other would be
   // the split this rule exists to avoid.
-  if (!frameId) restoreGeneration += 1;
-  if (releaseScrollAnchor) releaseScrollAnchor();
-  if (cancelScrollCatchUp) cancelScrollCatchUp();
+  //
+  // All THREE move together. Exempting only the counter while still closing
+  // the window and aborting the catch-up would leave the split exactly where
+  // it was, one line further down: a form inside a frame, submitted by a
+  // component upgrading in the just-restored page, would hand anchoring back
+  // mid-restore and bring the whole double-count back.
+  if (!frameId) {
+    restoreGeneration += 1;
+    if (releaseScrollAnchor) releaseScrollAnchor();
+    if (cancelScrollCatchUp) cancelScrollCatchUp();
+  }
 
   // Snapshot the page the user is LEAVING (with its scroll position)
   // so back/forward navigation can restore it. We key under
@@ -1800,9 +1808,11 @@ async function performSubmission(href, method, body, frameId, form) {
   // ends any restore window a recent Back left open (#1310), and cancels a
   // clamped restore's catch-up. Frame-targeted submissions are excluded on the
   // same reasoning as the frame navs above.
-  if (!frameId) restoreGeneration += 1;
-  if (releaseScrollAnchor) releaseScrollAnchor();
-  if (cancelScrollCatchUp) cancelScrollCatchUp();
+  if (!frameId) {
+    restoreGeneration += 1;
+    if (releaseScrollAnchor) releaseScrollAnchor();
+    if (cancelScrollCatchUp) cancelScrollCatchUp();
+  }
 
   const isSafe = method === 'get' || method === 'head';
   let url = new URL(href, location.href);
