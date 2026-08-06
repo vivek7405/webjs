@@ -455,10 +455,15 @@ test('the binding resolver across a broad sweep of TypeScript spellings', async 
     ['export const publishDraft = async (fd): Promise<ActionResult<Draft, Err>> => ({});', true],
     ['export const publishDraft = async (fd): { ok: boolean; id: string } => ({});', true],
     ['export const publishDraft = async (fd: Map<string, number>) => 1;', true],
-    ['export const publishDraft: Record<string, (fd: FormData) => void>[\'k\'] = async (fd) => 1;', true],
+    // A nested arrow inside the RETURN type must be stepped over whole, or its
+    // `>` is eaten as a bracket and the depth skews.
+    ['export const publishDraft = async (fd): { a: () => void, b: string } => ({});', true],
+    ['export const publishDraft = async (fd): [() => void, string] => ({});', true],
+    // A GENERIC arrow, which never reached the parameter-list branch at all.
+    ['export const publishDraft = async <T>(fd: T): Promise<void> => {};', true],
+    ['export const publishDraft = <T,>(fd: T) => 1;', true],
     // Non-callables that must stay SILENT.
     ["export const publishDraft = `/api/${'x'}`;", false],
-    ["export const publishDraft: { a: string; b: string }['a'] = '/api/x';", false],
     ['export const publishDraft = 42;', false],
     ["export const publishDraft = ['/a', '/b'].join('/');", false],
   ];

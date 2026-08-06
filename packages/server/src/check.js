@@ -1571,6 +1571,11 @@ function checkSubmitterNeedsBoundForm(files, violations, appDir) {
       // position those are brackets this same loop already consumed as such, so
       // reading `Promise<void>=` as a `>=` comparison classified one character
       // two contradictory ways.
+      //
+      // Defensive rather than reachable. No valid TypeScript puts a comparison
+      // between a declared name and its assignment, so no test pins this and a
+      // mutation of it survives the suite; it is here because the input is a
+      // MASK of arbitrary source, which may be mid-edit and not valid at all.
       if (depth <= 0 && c === '=' && scan[i + 1] !== '=' && !'=!'.includes(scan[i - 1] || '')) return i + 1;
       i++;
     }
@@ -1605,10 +1610,21 @@ function checkSubmitterNeedsBoundForm(files, violations, appDir) {
       if (scan.startsWith('async', i) && /\s|\(/.test(scan[i + 5] || '')) { i += 5; skipWs(); }
       // `= [async] function ...`
       if (/^function\b/.test(scan.slice(i, i + 9))) return true;
-      // `= [async] (params)[: ReturnType] => ...`, which must actually reach the
-      // arrow. The return-type annotation is optional and can carry its own
-      // generics (`: Promise<ActionResult<Draft>>`), so it is walked with
-      // bracket depth rather than matched.
+      // `= [async] [<T>](params)[: ReturnType] => ...`, which must actually reach
+      // the arrow. Both the type-parameter list and the return type are optional
+      // and can carry their own brackets, so each is walked with depth rather
+      // than matched.
+      if (scan[i] === '<') {
+        let d2 = 0;
+        while (i < scan.length) {
+          const c = scan[i];
+          if (c === '=' && scan[i + 1] === '>') { i += 2; continue; }
+          if (c === '<') d2++;
+          else if (c === '>') { d2--; if (d2 <= 0) { i++; break; } }
+          i++;
+        }
+        skipWs();
+      }
       if (scan[i] === '(') {
         const close = matchClosingParenthesis(scan, i + 1);
         if (close === -1) continue;
@@ -1625,7 +1641,15 @@ function checkSubmitterNeedsBoundForm(files, violations, appDir) {
             // ActionResult envelope pushes authors toward, and an inline object
             // return type uses `;`.
             if ((c === ';' || c === ',') && depth <= 0) break;
-            if (c === '=' && scan[i + 1] === '>' && depth <= 0) break;
+            // An arrow at depth zero ENDS the return type; a nested one is part
+            // of it and must be stepped over whole, or its `>` is eaten by the
+            // closer branch below and the depth skews. That is the same
+            // any-depth step the declaration walk makes.
+            if (c === '=' && scan[i + 1] === '>') {
+              if (depth <= 0) break;
+              i += 2;
+              continue;
+            }
             if (c === '(' || c === '[' || c === '{' || c === '<') depth++;
             else if (c === ')' || c === ']' || c === '}' || c === '>') depth--;
             i++;
