@@ -1,0 +1,192 @@
+/**
+ * The two documented elision RESIDUALS, and the one case that looks like a
+ * residual but is not (#1308).
+ *
+ * `packages/server/AGENTS.md` invariant 7 and the skill's
+ * `references/components.md` both promise that `static interactive = true`
+ * rescues the interactivity static analysis cannot see. Until now that promise
+ * was prose: nothing asserted either residual, so a change in either direction
+ * (the analyser learning to see one, or the escape hatch quietly ceasing to
+ * work) was invisible.
+ *
+ * These tests build a REAL app on disk and drive `buildModuleGraph` +
+ * `scanComponents` + `analyzeElision`, rather than the faked-graph helper the
+ * sibling route-elision tests use. That is load-bearing for residual (b),
+ * which is precisely about a file that is NOT in the module graph: against a
+ * faked graph the assertion would be vacuous.
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { buildModuleGraph } from '../../src/module-graph.js';
+import { scanComponents, findOrphanComponents } from '../../src/component-scanner.js';
+import { analyzeElision } from '../../src/component-elision.js';
+
+/** A display-only badge: static markup, no events, no props, no hooks, light DOM. */
+const badge = (extra = '') => `
+import { WebComponent, html } from '@webjsdev/core';
+export class Badge extends WebComponent {
+  ${extra}
+  render() { return html\`<span class="badge">verified</span>\`; }
+}
+Badge.register('my-badge');
+`;
+
+/** The same badge with a COMPUTED registration tag (invariant 3 forbids this). */
+const badgeComputedRegistration = (extra = '') => `
+import { WebComponent, html } from '@webjsdev/core';
+const TAG = 'my-' + 'badge';
+export class Badge extends WebComponent {
+  ${extra}
+  render() { return html\`<span class="badge">verified</span>\`; }
+}
+Badge.register(TAG);
+`;
+
+const PAGE = `
+import { html } from '@webjsdev/core';
+import '../components/badge.js';
+export default () => html\`<my-badge></my-badge>\`;
+`;
+
+/**
+ * Write a throwaway app, run the real pipeline over it, and return the verdict
+ * plus the absolute paths the assertions key on.
+ * @param {{ badgeSrc: string, observerSrc?: string, css?: string }} spec
+ */
+async function analyseApp(spec) {
+  const dir = await mkdtemp(join(tmpdir(), 'webjs-residual-'));
+  try {
+    await mkdir(join(dir, 'app'), { recursive: true });
+    await mkdir(join(dir, 'components'), { recursive: true });
+    await writeFile(join(dir, 'components/badge.js'), spec.badgeSrc);
+    let page = PAGE;
+    if (spec.observerSrc) {
+      await writeFile(join(dir, 'components/observer.js'), spec.observerSrc);
+      page = page.replace("import '../components/badge.js';", "import '../components/badge.js';\nimport '../components/observer.js';");
+    }
+    if (spec.css) {
+      await mkdir(join(dir, 'public'), { recursive: true });
+      await writeFile(join(dir, 'public/app.css'), spec.css);
+    }
+    await writeFile(join(dir, 'app/page.js'), page);
+
+    const graph = await buildModuleGraph(dir);
+    const components = await scanComponents(dir);
+    const pageFile = join(dir, 'app/page.js');
+    const badgeFile = join(dir, 'components/badge.js');
+    const verdict = await analyzeElision(
+      components, [pageFile], graph, (f) => import('node:fs/promises').then((m) => m.readFile(f, 'utf8')), dir,
+    );
+    return { dir, components, verdict, pageFile, badgeFile, orphans: await findOrphanComponents(dir) };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Control: observation the analyser CAN see
+// ---------------------------------------------------------------------------
+
+test('control: a LITERAL whenDefined observer keeps the badge shipped', async () => {
+  const { verdict, badgeFile } = await analyseApp({
+    badgeSrc: badge(),
+    observerSrc: "customElements.whenDefined('my-badge').then(() => {});",
+  });
+  assert.ok(!verdict.elidableComponents.has(badgeFile), 'a literally-observed badge must ship');
+  assert.equal(verdict.componentVerdicts.get(badgeFile).evidence, 'observed');
+});
+
+// ---------------------------------------------------------------------------
+// Residual (a): the OBSERVER computes the tag it waits for
+// ---------------------------------------------------------------------------
+
+test('residual (a): a COMPUTED whenDefined tag leaves the badge elided', async () => {
+  // WHEN_DEFINED_RE reads a literal tag out of the observer's source. A
+  // variable does not match, so the observation is invisible and the badge is
+  // elided, which means its `register` never runs and the observer's await
+  // never settles. Asserted as the documented limitation, so a change in
+  // EITHER direction is visible rather than silent.
+  const { verdict, badgeFile } = await analyseApp({
+    badgeSrc: badge(),
+    observerSrc: "const TAG = 'my-' + 'badge';\ncustomElements.whenDefined(TAG).then(() => {});",
+  });
+  assert.ok(verdict.elidableComponents.has(badgeFile), 'the computed observation is invisible to the analyser');
+  const row = verdict.componentVerdicts.get(badgeFile);
+  assert.equal(row.shipped, false);
+  assert.equal(row.evidence, null, 'an elided component reports no evidence');
+  assert.equal(row.reason, null, 'elision is the absence of every signal, so there is no reason to give');
+});
+
+test('residual (a) rescue: static interactive = true ships the badge anyway', async () => {
+  const { verdict, badgeFile } = await analyseApp({
+    badgeSrc: badge('static interactive = true;'),
+    observerSrc: "const TAG = 'my-' + 'badge';\ncustomElements.whenDefined(TAG).then(() => {});",
+  });
+  assert.ok(!verdict.elidableComponents.has(badgeFile), 'the override must force the ship');
+  const row = verdict.componentVerdicts.get(badgeFile);
+  assert.equal(row.evidence, 'own');
+  assert.match(row.reason, /static interactive/);
+});
+
+// ---------------------------------------------------------------------------
+// Residual (b): a :defined rule in an EXTERNAL stylesheet
+// ---------------------------------------------------------------------------
+
+test('residual (b): an external-stylesheet :defined rule leaves the badge elided and the page inert', async () => {
+  // TAG_DEFINED_RE only scans graph-reachable MODULE source, and a
+  // `public/app.css` is not in the module graph at all, so the rule is
+  // invisible. The badge is elided AND the page becomes inert, which drops
+  // both modules from the boot entirely.
+  const { verdict, badgeFile, pageFile } = await analyseApp({
+    badgeSrc: badge(),
+    css: 'my-badge:defined { opacity: 1 }',
+  });
+  assert.ok(verdict.elidableComponents.has(badgeFile), 'an external stylesheet is outside the module graph');
+  assert.ok(verdict.inertRouteModules.has(pageFile), 'with its only component elided the page is inert');
+});
+
+test('residual (b) rescue: static interactive = true ships the badge and makes the page import-only', async () => {
+  const { verdict, badgeFile, pageFile } = await analyseApp({
+    badgeSrc: badge('static interactive = true;'),
+    css: 'my-badge:defined { opacity: 1 }',
+  });
+  assert.ok(!verdict.elidableComponents.has(badgeFile), 'the override must force the ship');
+  assert.ok(!verdict.inertRouteModules.has(pageFile), 'a shipping component reclassifies the page');
+  assert.deepEqual(verdict.importOnlyRouteModules.get(pageFile), [badgeFile]);
+});
+
+// ---------------------------------------------------------------------------
+// NOT a residual: a computed REGISTRATION tag, which the override cannot reach
+// ---------------------------------------------------------------------------
+
+test('a computed Class.register(tag) is invisible to the SCANNER, so it gets no verdict at all', async () => {
+  // `scanComponents` requires a literal tag (invariant 3 already does too), so
+  // this component never enters the component set. `analyzeComponentSource` is
+  // never consulted for it, the page sees only a `register(...)` call (which
+  // hasModuleScopeSideEffect explicitly exempts) and is classified INERT, so
+  // both modules are dropped and the element silently never registers.
+  const { components, verdict, pageFile, badgeFile, orphans } = await analyseApp({
+    badgeSrc: badgeComputedRegistration(),
+  });
+  assert.deepEqual(components, [], 'the scanner sees no component');
+  assert.equal(verdict.componentVerdicts.size, 0, 'no component means no verdict to report');
+  assert.ok(verdict.inertRouteModules.has(pageFile), 'the page is classified inert');
+  assert.deepEqual(orphans, [{ className: 'Badge', file: badgeFile }], 'it surfaces as an ORPHAN instead');
+});
+
+test('static interactive = true does NOT rescue a computed registration tag', async () => {
+  // The measured finding the docs used to get wrong: the override is a
+  // property the ANALYSER reads, and nothing consults the analyser for a
+  // component the scanner never saw. Adding it changes nothing.
+  const { components, verdict, pageFile, orphans } = await analyseApp({
+    badgeSrc: badgeComputedRegistration('static interactive = true;'),
+  });
+  assert.deepEqual(components, [], 'still invisible to the scanner');
+  assert.equal(verdict.componentVerdicts.size, 0, 'still no verdict');
+  assert.ok(verdict.inertRouteModules.has(pageFile), 'the page is still inert, so the module is still dropped');
+  assert.equal(orphans.length, 1, 'still an orphan');
+});

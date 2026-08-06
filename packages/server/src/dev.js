@@ -909,10 +909,14 @@ export async function createRequestHandler(opts) {
             // Client-router opt-out (#629): re-read each pass so toggling
             // `webjs.clientRouter` takes effect on rebuild without a restart.
             setClientRouterEnabled(await readClientRouterEnabled(appDir));
-            const r = (await readElideEnabled(appDir))
+            // Read the switch ONCE: the dev summary below reports it too, and
+            // calling readElideEnabled twice per warm re-reads package.json.
+            const elideOn = await readElideEnabled(appDir);
+            const r = elideOn
               ? await analyzeElision(components, collectRouteModules(state.routeTable),
                   state.moduleGraph, (f) => readFile(f, 'utf8'), appDir)
-              : { elidableComponents: new Set(), inertRouteModules: new Set(), importOnlyRouteModules: new Map() };
+              : { elidableComponents: new Set(), inertRouteModules: new Set(), importOnlyRouteModules: new Map(),
+                  shippedRouteModules: new Map(), componentVerdicts: new Map() };
             state.elidableComponents = r.elidableComponents;
             state.inertRouteModules = r.inertRouteModules;
             state.importOnlyRouteModules = r.importOnlyRouteModules;
@@ -988,6 +992,22 @@ export async function createRequestHandler(opts) {
                     `Add \`customElements.define('<tag-name>', ${className});\` or <${kebab(className)}> tags won't upgrade.`,
                 );
               }
+              // The elision summary (#1308), one server-console line. NOT a
+              // browser push: an inert route ships zero application JS, and the
+              // most useful manual check an author has is opening the network
+              // tab on that route and seeing nothing, which a dev-only boot
+              // script would corrupt on exactly the pages this proves. The fact
+              // is also app-wide while a browser channel is per-tab, and the
+              // per-page detail already has a home in `webjs elision`.
+              // Re-emitted after each fs.watch rebuild, because doRebuild sets
+              // analysisDone = false and this sits inside that stage.
+              logger.info?.(
+                elideOn
+                  ? `[webjs] elision: ${r.elidableComponents.size}/${new Set(components.map((c) => c.file)).size} components elided, ` +
+                    `${r.inertRouteModules.size} route modules inert, ${r.importOnlyRouteModules.size} import-only, ` +
+                    `${r.shippedRouteModules.size} ship whole. Run \`webjs elision\` for the per-module verdict.`
+                  : `[webjs] elision: disabled (WEBJS_ELIDE / webjs.elide), every module ships.`,
+              );
             }
             analysisDone = true;
             ranAnalysis = true;

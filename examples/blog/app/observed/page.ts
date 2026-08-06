@@ -2,6 +2,7 @@ import { html } from '@webjsdev/core';
 import '#components/observed-badge.ts';
 import '#components/observe-badge.ts';
 import '#components/ssr-derived-badge.ts';
+import '#components/forced-badge.ts';
 
 export const metadata = {
   title: 'Observed badge · WebJs Blog',
@@ -13,6 +14,10 @@ export const metadata = {
  * module that observes its registration via `whenDefined`. The observation
  * forces the otherwise-elidable badge to ship, so the e2e probe can assert
  * the browser actually downloads `observed-badge.ts`.
+ *
+ * It also renders `<forced-badge>`, the same shape forced by the explicit
+ * `static interactive = true` override instead of by observation, so one
+ * probe covers both routes to a ship (#1308).
  */
 export default function Observed() {
   return html`
@@ -26,6 +31,7 @@ export default function Observed() {
         markup.
       </p>
       <observed-badge></observed-badge>
+      <forced-badge></forced-badge>
       <ssr-derived-badge seed="42"></ssr-derived-badge>
     </section>
   `;
