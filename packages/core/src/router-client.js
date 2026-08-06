@@ -1500,8 +1500,24 @@ async function performNavigation(href, isPopState, frameId) {
           // lands below where they left (#1310).
           let releaseAnchor = () => {};
           if (typeof window !== 'undefined') {
-            releaseAnchor = suppressScrollAnchoring();
             window.scrollTo({ left: cached.scrollX, top: cached.scrollY, behavior: 'instant' });
+            // Suppress ONLY when the recorded offset was actually reached.
+            //
+            // A document that has not grown yet can be too SHORT to scroll that
+            // far, and the browser clamps to its current maximum. A reader at
+            // the bottom of the settled page is the clear case: the shortfall is
+            // then exactly the growth still to come, and anchoring ADDING that
+            // growth is what carries them back to the bottom. Suppressing there
+            // freezes the clamp instead and strands them a full page-growth
+            // ABOVE where they left, which is this bug's own mirror image.
+            //
+            // So the two situations want opposite things and are told apart by
+            // the one question that separates them: did the scroll land. Reading
+            // it here is safe because nothing can grow between the write and the
+            // read, both being in this synchronous block.
+            if (window.scrollY >= cached.scrollY - 1) {
+              releaseAnchor = suppressScrollAnchoring();
+            }
           }
           // Fire-and-forget revalidation. Uses a fresh AbortController
           // since this background fetch is allowed to overlap with the

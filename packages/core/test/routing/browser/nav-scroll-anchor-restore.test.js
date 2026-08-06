@@ -114,13 +114,15 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
   let releaseFetch;
 
   /**
-   * @param {{ instantRevalidation?: boolean }} [opts] By default the
-   *   revalidation is held open so a case can assert inside the restore window.
-   *   `instantRevalidation` answers it immediately instead, which is the
-   *   ordering a fast server produces.
+   * @param {{ instantRevalidation?: boolean, restoredY?: number }} [opts] By
+   *   default the revalidation is held open so a case can assert inside the
+   *   restore window. `instantRevalidation` answers it immediately instead,
+   *   which is the ordering a fast server produces. `restoredY` overrides the
+   *   recorded offset, so a case can force the clamped path.
    */
   async function setup(opts) {
     const instant = Boolean(opts && opts.instantRevalidation);
+    const restoredY = (opts && opts.restoredY) != null ? opts.restoredY : RESTORED_Y;
     const html = instant ? RESTORED_HTML_SLOW : RESTORED_HTML;
     navGuard = installNavGuard();
     enableClientRouter();
@@ -159,7 +161,7 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     history.pushState(null, '', entryUrl('anchor-b'));
     entriesPushed = true;
     _snapshotCache.set(entryUrl('anchor-a'), {
-      html, scrollX: 0, scrollY: RESTORED_Y,
+      html, scrollX: 0, scrollY: restoredY,
     });
     _setCurrentPageUrl(location.href);
     // Start where the reader was, so the restore is a real scroll rather than
@@ -200,6 +202,30 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     navGuard.remove();
     enableClientRouter();
   }
+
+  test('a CLAMPED restore is left alone, so the reader is not stranded high', async () => {
+    // The mirror image of this bug, and the reason suppression is conditional.
+    //
+    // A document that has not grown yet can be too short to scroll to the
+    // recorded offset at all, so the browser clamps to its current maximum. The
+    // shortfall is then the growth still to come, and anchoring adding that
+    // growth is what carries the reader back down. Suppressing there would
+    // freeze the clamp and strand them a full page-growth ABOVE where they
+    // left, measured at 763px on the reported page: the same error as the bug,
+    // pointing the other way.
+    //
+    // The recorded offset here is far past anything the un-grown document can
+    // reach, so the clamp is certain whatever the runner's viewport height is.
+    await setup({ restoredY: 50000 });
+    try {
+      await goBack();
+      assert.ok(window.scrollY < 50000,
+        'precondition: the restore was clamped, so this is the case under test');
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
+        'a clamped restore installs no window, leaving the browser to heal the '
+        + 'clamp as the page grows');
+    } finally { await teardown(); }
+  });
 
   test('anchoring WORKS again once the window has closed', async () => {
     // The inverse of the headline, and the regression that would matter most if
@@ -320,7 +346,14 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       // two frames for the re-applied DOM to lay out. Answering the fetch alone
       // is deliberately not enough: that coupling is what let a fast server
       // close the window before the growth landed.
-      for (let i = 0; i < 6; i++) await frame();
+      //
+      // Wall clock, not a frame count. This is the one assertion here that
+      // needs a wait SHORTER than the floor, and the runner puts test files in
+      // concurrent pages where a non-visible page has rAF throttled, so a fixed
+      // number of frames could outlast the floor and fail while nothing is
+      // broken. Every other wait in this file only wants "enough time", so
+      // slower frames make those assertions stronger rather than flakier.
+      await new Promise((r) => setTimeout(r, 100));
       assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), 'none',
         'a revalidation answering early does not close the window on its own');
       await new Promise((r) => setTimeout(r, 700));

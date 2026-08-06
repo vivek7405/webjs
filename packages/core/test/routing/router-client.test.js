@@ -2072,8 +2072,14 @@ test('popstate cache restore suppresses scroll anchoring across the window (#131
   });
   const origWinScrollTo = globalThis.window?.scrollTo;
   const origGlobalScrollTo = globalThis.scrollTo;
-  globalThis.scrollTo = /** @type any */ (() => {});
-  if (globalThis.window) globalThis.window.scrollTo = /** @type any */ (() => {});
+  const origScrollY = globalThis.window?.scrollY;
+  // linkedom has no layout, so the stub has to move `scrollY` itself. The
+  // restore READS it back to tell a landed scroll from one the browser clamped
+  // against a document that has not grown yet, and only the landed case
+  // suppresses anchoring.
+  const land = /** @type any */ ((o) => { if (globalThis.window) globalThis.window.scrollY = o && o.top; });
+  globalThis.scrollTo = land;
+  if (globalThis.window) globalThis.window.scrollTo = land;
   document.head.innerHTML = '';
   document.body.innerHTML = '<!--wj:children:/:/-->before-pop<!--/wj:children:/-->';
   try {
@@ -2101,6 +2107,7 @@ test('popstate cache restore suppresses scroll anchoring across the window (#131
     globalThis.fetch = origFetch;
     globalThis.scrollTo = origGlobalScrollTo;
     if (globalThis.window) globalThis.window.scrollTo = origWinScrollTo;
+    if (globalThis.window) globalThis.window.scrollY = origScrollY;
     root.style.removeProperty('overflow-anchor');
     document.head.innerHTML = '';
     document.body.innerHTML = '';
@@ -2128,8 +2135,14 @@ test('disableClientRouter closes an open scroll-anchor window (#1310)', async ()
   });
   const origWinScrollTo = globalThis.window?.scrollTo;
   const origGlobalScrollTo = globalThis.scrollTo;
-  globalThis.scrollTo = /** @type any */ (() => {});
-  if (globalThis.window) globalThis.window.scrollTo = /** @type any */ (() => {});
+  const origScrollY = globalThis.window?.scrollY;
+  // linkedom has no layout, so the stub has to move `scrollY` itself. The
+  // restore READS it back to tell a landed scroll from one the browser clamped
+  // against a document that has not grown yet, and only the landed case
+  // suppresses anchoring.
+  const land = /** @type any */ ((o) => { if (globalThis.window) globalThis.window.scrollY = o && o.top; });
+  globalThis.scrollTo = land;
+  if (globalThis.window) globalThis.window.scrollTo = land;
   document.head.innerHTML = '';
   document.body.innerHTML = '<!--wj:children:/:/-->before-pop<!--/wj:children:/-->';
   try {
@@ -2147,6 +2160,7 @@ test('disableClientRouter closes an open scroll-anchor window (#1310)', async ()
     globalThis.fetch = origFetch;
     globalThis.scrollTo = origGlobalScrollTo;
     if (globalThis.window) globalThis.window.scrollTo = origWinScrollTo;
+    if (globalThis.window) globalThis.window.scrollY = origScrollY;
     root.style.removeProperty('overflow-anchor');
     document.head.innerHTML = '';
     document.body.innerHTML = '';
