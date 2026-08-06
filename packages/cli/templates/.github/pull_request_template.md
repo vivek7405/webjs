@@ -7,6 +7,7 @@
 - [ ] Unit tests added/updated (`webjs test` passes)
 - [ ] E2E tests added/updated for user-facing changes (`webjs test --e2e` passes)
 - [ ] `webjs check` passes (no convention violations)
+- [ ] `webjs doctor` passes (project health; it fails on whatever `webjs.doctor.gate` marks `error`, plus the hard `NODE_VERSION` / `TSCONFIG_ERASABLE` checks)
 
 ## Definition of done
 

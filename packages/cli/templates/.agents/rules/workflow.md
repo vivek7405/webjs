@@ -50,7 +50,15 @@ Read `AGENTS.md` first. Full hosted docs are at https://webjs.dev/docs.
 2. Browser tests in `test/<feature>/browser/*.test.js` for hydration, DOM, slots,
    and the client router.
 3. Documentation stays in sync on the SAME PR as the code, never a follow-up.
-4. `npm run check` must pass.
+4. `npm run check` must pass (correctness), and so must `npm run doctor`
+   (project health). CI runs both. Doctor fails on whatever your `package.json`
+   `webjs.doctor.gate` marks `error`, which starts as the un-versioned
+   stylesheet link check, plus the two hard toolchain checks that default to
+   `error` with no gate entry at all: `NODE_VERSION` (the Node floor) and
+   `TSCONFIG_ERASABLE` (`erasableSyntaxOnly` missing from an existing
+   tsconfig), either of which would 500 the app at runtime. Everything else it
+   reports is a warning that cannot fail the build. Widen or narrow the gate in
+   `package.json` rather than in the workflow.
 5. Pre-merge self-review: before saying a PR is ready, run fresh-context review
    rounds until one round finds zero issues (minimum two rounds, rotate focus).
    Skip only for a one-line trivial change.

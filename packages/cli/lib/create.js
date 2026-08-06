@@ -398,10 +398,12 @@ export async function scaffoldApp(name, cwd, opts = {}) {
       'test:browser': 'webjs test --browser',
       check: 'webjs check',
       typecheck: 'webjs typecheck',
-      // Onboarding/setup-verify: a contributor runs `npm run doctor` after
-      // cloning to assert the toolchain (Node floor, tsconfig flag, env drift,
-      // vendor pins, @webjsdev versions, git hook). Local tool, NOT a CI gate
-      // (its env-drift + network pin-freshness checks would make CI flaky).
+      // Project health: a contributor runs `npm run doctor` after cloning to
+      // assert the toolchain (Node floor, tsconfig flag, env drift, vendor
+      // pins, @webjsdev versions, git hook), and CI runs the same script. Which
+      // findings are FATAL comes from the `webjs.doctor.gate` block below, so
+      // the environment-shaped checks (env drift, pin freshness over the
+      // network, the git hook) stay warns and cannot make CI flaky.
       doctor: 'webjs doctor',
       'db:generate': 'webjs db generate',
       'db:migrate': 'webjs db migrate',
@@ -491,6 +493,17 @@ export async function scaffoldApp(name, cwd, opts = {}) {
         }),
       },
       start: { before: isApi ? ['webjs db migrate'] : ['webjs db migrate', cssBuildCmd] },
+      // Which doctor findings are FATAL is the app's own call (#1257), declared
+      // here rather than in the CI workflow so `npm run doctor` locally and the
+      // workflow step agree about what fails. UNMARKED_ASSET_LINKS starts at
+      // error because an un-versioned /public url is a real deploy-staleness
+      // bug (it shipped a visible regression on webjs.dev) and the generated
+      // layout already writes asset(), so a fresh app is green on day one.
+      // Two checks are fatal with no entry here at all, NODE_VERSION and
+      // TSCONFIG_ERASABLE, because either would 500 the app at runtime;
+      // everything else keeps its default warn. Add a code with "off" to
+      // silence it, or "error" to make it fatal too.
+      doctor: { gate: { UNMARKED_ASSET_LINKS: 'error' } },
     },
   }, null, 2) + '\n');
 

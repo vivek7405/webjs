@@ -39,6 +39,22 @@ jobs:
             ( cd "$app" && node "$GITHUB_WORKSPACE/packages/cli/bin/webjs.js" check )
             echo "::endgroup::"
           done
+      # Project health on the same four apps (#1257). WHICH findings are fatal
+      # is each app's own call, declared in its package.json `webjs.doctor.gate`
+      # rather than here, so a local `webjs doctor` and this step agree. Today
+      # website + examples/blog gate UNMARKED_ASSET_LINKS to error. Two checks
+      # red with no gate entry at all, NODE_VERSION and TSCONFIG_ERASABLE,
+      # since either would 500 an app at runtime; everything else stays a warn
+      # and cannot red this job. Deliberately NOT --strict:
+      # the git-hook, env-drift, vendor-pin, and framework-resolve checks are
+      # environment-shaped and would fail a perfectly healthy runner.
+      - name: webjs doctor (blog, website, docs host, ui host)
+        run: |
+          for app in examples/blog website docs packages/ui/packages/website; do
+            echo "::group::webjs doctor $app"
+            ( cd "$app" && node "$GITHUB_WORKSPACE/packages/cli/bin/webjs.js" doctor )
+            echo "::endgroup::"
+          done
       - name: Framework runtime packages are buildless (no .ts source)
         run: |
           # Invariant: packages/{core,server,cli} and packages/editors/* are

@@ -287,6 +287,9 @@ test('vendor-pin WARNS (never fails) when the freshness check throws (network)',
   const pin = byName(results, 'vendor-pin');
   assert.equal(pin.status, 'warn', 'a network failure must be a warn, never a fail');
   assert.match(pin.message, /network|registry/i);
+  // And it is flagged best-effort, which is what stops a gate from escalating
+  // it (#1257). Without this the required CI job would red on an npm outage.
+  assert.equal(pin.bestEffort, true, 'a could-not-check result is bestEffort');
   // And critically, it did not throw out of runDoctorChecks.
 });
 
@@ -397,6 +400,20 @@ test('coherence degrades to could-not-verify when metadata is unavailable (no cr
   assert.equal(c.status, 'warn');
   assert.match(c.message, /[Cc]ould not verify/);
   assert.doesNotMatch(c.message, /Incoherent/, 'missing metadata must not be reported as a conflict');
+  // Best-effort, so a jspm outage cannot be escalated to a fatal by a gate
+  // (#1257). This is what makes it safe to run doctor in the required job.
+  assert.equal(c.bestEffort, true, 'a could-not-verify result is bestEffort');
+});
+
+test('a REAL coherence conflict is NOT bestEffort (it is a finding, so it is gateable)', async () => {
+  const dir = tmpDir();
+  const coherence = await coherenceInjection({
+    live: CM_LIVE, vendored: CM_VENDORED, getManifest: CM_SKEW_MANIFEST,
+  });
+  const results = await runDoctorChecks(dir, baseOpts({ nodeVersion: '24.0.0', coherence }));
+  const c = byName(results, 'importmap-coherence');
+  assert.equal(c.status, 'warn');
+  assert.ok(!c.bestEffort, 'a real conflict is a finding, not a could-not-check');
 });
 
 test('coherence never throws out of runDoctorChecks even if the check itself throws', async () => {
@@ -635,6 +652,335 @@ test('--strict with --json reports ok:false and exits 1 on a warning', () => {
   assert.equal(out.summary.ok, false);
   assert.ok(out.summary.warn > 0, 'a warning was present');
   assert.equal(out.summary.fail, 0, 'and it was a warn, not a hard fail');
+});
+
+// ---------------------------------------------------------------------------
+// Per-check severity gate (#1257): `webjs.doctor.gate` in package.json.
+// ---------------------------------------------------------------------------
+const { readDoctorPolicy, applyDoctorPolicy, DOCTOR_SEVERITIES } = await import(
+  resolve(CLI_LIB_DIR, 'doctor.js')
+);
+
+/** Shorthand for a fake result, so the policy tests stay readable. */
+function res(code, status, extra = {}) {
+  return { name: code.toLowerCase(), code, status, message: '', ...extra };
+}
+
+test('readDoctorPolicy returns an empty policy when the app declares nothing', () => {
+  const missingPkg = tmpDir();
+  const EMPTY = { gate: {}, unknownCodes: [], badSeverities: [], malformed: [], unknownKeys: [] };
+  assert.deepEqual(readDoctorPolicy(missingPkg), EMPTY);
+
+  const noBlock = tmpDir();
+  write(noBlock, 'package.json', JSON.stringify({ name: 'x', webjs: { dev: { before: [] } } }));
+  assert.deepEqual(readDoctorPolicy(noBlock).gate, {});
+
+  // Unparseable JSON is NOT a policy error: checkWebjsVersions already reports
+  // that condition, and doctor must never crash on a broken app file.
+  const broken = tmpDir();
+  write(broken, 'package.json', '{ not json');
+  assert.deepEqual(readDoctorPolicy(broken), EMPTY);
+});
+
+// A gate that FAILS OPEN is the one outcome this mechanism cannot afford: the
+// package.json looks gated, CI is not, and nobody goes looking. The per-entry
+// validation only covers what is INSIDE a well-formed object, so the container
+// shape needs its own check. The JSON Schema catches these in an editor, but it
+// is editor-only and never runs in CI, so it can never be the enforcement.
+test('readDoctorPolicy hard-errors on a malformed gate container rather than failing open', () => {
+  const cases = [
+    ['gate is a string', { gate: 'error' }, 'malformed', 'webjs.doctor.gate'],
+    ['gate is an array', { gate: ['UNMARKED_ASSET_LINKS'] }, 'malformed', 'webjs.doctor.gate'],
+    ['gate is null', { gate: null }, 'malformed', 'webjs.doctor.gate'],
+    ['doctor is a string', 'strict', 'malformed', 'webjs.doctor'],
+    ['doctor is an array', [], 'malformed', 'webjs.doctor'],
+  ];
+  for (const [label, doctor, bucket, path] of cases) {
+    const dir = tmpDir();
+    write(dir, 'package.json', JSON.stringify({ name: 'x', webjs: { doctor } }));
+    const p = readDoctorPolicy(dir);
+    assert.deepEqual(p.gate, {}, `${label}: nothing is gated`);
+    assert.deepEqual(p[bucket].map((m) => m.path), [path], `${label}: reported as ${bucket}`);
+  }
+
+  // A misspelled sibling of `gate` is the subtler one: the object is well
+  // formed, so only an explicit key check catches it.
+  const dir = tmpDir();
+  write(dir, 'package.json', JSON.stringify({
+    name: 'x',
+    webjs: { doctor: { gates: { UNMARKED_ASSET_LINKS: 'error' } } },
+  }));
+  const p = readDoctorPolicy(dir);
+  assert.deepEqual(p.gate, {});
+  assert.deepEqual(p.unknownKeys, ['webjs.doctor.gates']);
+});
+
+test('a malformed gate container exits 1 without running the checks', () => {
+  const dir = assetLinkFixture(null);
+  write(dir, 'package.json', JSON.stringify({ name: 'x', webjs: { doctor: { gate: 'error' } } }));
+  const r = runCliArgs(dir, []);
+  assert.equal(r.status, 1, 'a fail-open gate must be loud');
+  assert.match(r.stderr, /Expected an object at webjs\.doctor\.gate, got "error"/);
+  assert.doesNotMatch(r.stdout, /project-health checklist/, 'the checks did not run');
+
+  write(dir, 'package.json', JSON.stringify({ name: 'x', webjs: { doctor: { gates: {} } } }));
+  const typo = runCliArgs(dir, ['--json']);
+  assert.equal(typo.status, 1);
+  assert.deepEqual(JSON.parse(typo.stdout).configErrors, [
+    { kind: 'unknown-key', path: 'webjs.doctor.gates' },
+  ]);
+});
+
+// `--json` is the agent-loop contract, so the config-error path's `kind`
+// discriminants are a real API surface and not an implementation detail. Pin
+// the whole set here: broadening the trigger without documenting the new kinds
+// is exactly the drift this asserts against.
+test('the --json configErrors contract is the four documented kinds', () => {
+  const dir = assetLinkFixture(null);
+  /** @type {Array<[unknown, object]>} */
+  const cases = [
+    [{ gate: 'error' }, { kind: 'malformed', path: 'webjs.doctor.gate', value: 'error' }],
+    [{ gates: {} }, { kind: 'unknown-key', path: 'webjs.doctor.gates' }],
+    [{ gate: { NOPE: 'error' } }, { kind: 'unknown-code', code: 'NOPE' }],
+    [{ gate: { ENV_DRIFT: 'loud' } }, { kind: 'bad-severity', code: 'ENV_DRIFT', value: 'loud' }],
+  ];
+  for (const [doctor, expected] of cases) {
+    write(dir, 'package.json', JSON.stringify({ name: 'x', webjs: { doctor } }));
+    const r = runCliArgs(dir, ['--json']);
+    assert.equal(r.status, 1, `${JSON.stringify(doctor)} exits 1`);
+    const out = JSON.parse(r.stdout);
+    assert.deepEqual(out.results, [], 'no check ran');
+    assert.equal(out.summary.ok, false);
+    assert.deepEqual(out.configErrors, [expected]);
+  }
+});
+
+test('readDoctorPolicy keeps well-formed entries and reports the rest separately', () => {
+  const dir = tmpDir();
+  write(dir, 'package.json', JSON.stringify({
+    name: 'x',
+    webjs: {
+      doctor: {
+        gate: {
+          UNMARKED_ASSET_LINKS: 'error',
+          ELISION_CARRIERS: 'off',
+          NOT_A_REAL_CODE: 'error',
+          ENV_DRIFT: 'fatal',
+          NODE_VERSION: 3,
+        },
+      },
+    },
+  }));
+  const p = readDoctorPolicy(dir);
+  assert.deepEqual(p.gate, { UNMARKED_ASSET_LINKS: 'error', ELISION_CARRIERS: 'off' });
+  assert.deepEqual(p.unknownCodes, ['NOT_A_REAL_CODE']);
+  assert.deepEqual(
+    p.badSeverities.map((b) => b.code).sort(),
+    ['ENV_DRIFT', 'NODE_VERSION'],
+    'a non-severity string and a non-string both land in badSeverities',
+  );
+  // DOCTOR_SEVERITIES is the vocabulary the reader validates against.
+  assert.deepEqual(DOCTOR_SEVERITIES, ['off', 'warn', 'error']);
+});
+
+test('applyDoctorPolicy defaults severity from status when nothing is gated', () => {
+  const out = applyDoctorPolicy([
+    res('NODE_VERSION', 'fail'),
+    res('ENV_DRIFT', 'warn'),
+    res('GIT_HOOK', 'pass'),
+  ]);
+  assert.deepEqual(out.map((r) => r.severity), ['error', 'warn', 'pass']);
+});
+
+test('applyDoctorPolicy honours a gate entry in BOTH directions', () => {
+  const out = applyDoctorPolicy(
+    [res('ENV_DRIFT', 'warn'), res('NODE_VERSION', 'fail'), res('GIT_HOOK', 'warn')],
+    { ENV_DRIFT: 'error', NODE_VERSION: 'off', GIT_HOOK: 'off' },
+  );
+  assert.deepEqual(out.map((r) => r.severity), ['error', 'off', 'off']);
+});
+
+test('applyDoctorPolicy reports a PASSING check as pass even when its code is gated error', () => {
+  // The severity is the EFFECTIVE level, not the declared one, so the obvious
+  // `results.some(r => r.severity === 'error')` has no false positive.
+  const [r] = applyDoctorPolicy([res('UNMARKED_ASSET_LINKS', 'pass')], { UNMARKED_ASSET_LINKS: 'error' });
+  assert.equal(r.severity, 'pass');
+});
+
+test('applyDoctorPolicy CLAMPS a bestEffort result to warn under an error gate', () => {
+  const [clamped] = applyDoctorPolicy(
+    [res('VENDOR_PIN', 'warn', { bestEffort: true })],
+    { VENDOR_PIN: 'error' },
+  );
+  assert.equal(clamped.severity, 'warn', 'a could-not-check result can never be escalated');
+
+  // But `off` still applies: silencing is not an escalation.
+  const [silenced] = applyDoctorPolicy(
+    [res('VENDOR_PIN', 'warn', { bestEffort: true })],
+    { VENDOR_PIN: 'off' },
+  );
+  assert.equal(silenced.severity, 'off');
+});
+
+test('applyDoctorPolicy never mutates its input', () => {
+  const input = [res('ENV_DRIFT', 'warn')];
+  const out = applyDoctorPolicy(input, { ENV_DRIFT: 'error' });
+  assert.equal(input[0].severity, undefined, 'the caller\'s results are untouched');
+  assert.notEqual(out[0], input[0], 'each result is a fresh object');
+});
+
+/**
+ * A fixture whose ONLY non-pass finding is the unmarked stylesheet link, so a
+ * gate on UNMARKED_ASSET_LINKS is the sole thing that can flip the exit. `.env`
+ * matching `.env.example` keeps env-drift quiet, and the tsconfig flag keeps the
+ * hard check green.
+ */
+function assetLinkFixture(gate) {
+  const dir = tmpDir();
+  write(dir, 'package.json', JSON.stringify({
+    name: 'x',
+    ...(gate ? { webjs: { doctor: { gate } } } : {}),
+  }));
+  write(dir, 'tsconfig.json', JSON.stringify({ compilerOptions: { erasableSyntaxOnly: true } }));
+  write(dir, 'app/layout.ts', [
+    "import { html } from '@webjsdev/core';",
+    'export default function Layout({ children }) {',
+    '  return html`<html><head><link rel="stylesheet" href="/public/app.css"></head><body>${children}</body></html>`;',
+    '}',
+  ].join('\n'));
+  return dir;
+}
+
+// The counterfactual PAIR, mirroring the --strict pair above: the SAME fixture
+// exits 0 ungated and 1 gated, which is what proves the gate itself flips the
+// exit rather than some unrelated hard fail.
+test('a gated warning fails the exit; the same warning ungated does not', () => {
+  const ungated = runCliArgs(assetLinkFixture(null), []);
+  assert.equal(ungated.status, 0, `ungated, a warn does NOT fail: got ${ungated.status}\n${ungated.stdout}`);
+  assert.match(ungated.stdout, /\[warn\] .*UNMARKED_ASSET_LINKS/);
+
+  const gated = runCliArgs(assetLinkFixture({ UNMARKED_ASSET_LINKS: 'error' }), []);
+  assert.equal(gated.status, 1, 'gated to error, the same warn fails the exit');
+  assert.match(gated.stdout, /\[fail\] .*\(UNMARKED_ASSET_LINKS, gated: error\)/);
+  assert.match(gated.stderr, /webjs\.doctor\.gate/);
+});
+
+// The two hard toolchain checks fail the exit with NO gate entry, because
+// either would 500 the app at runtime. Easy to state the gate as "only what
+// you mark error is fatal", which is false and would have an agent misdiagnose
+// a red CI as impossible, so pin it.
+test('a hard toolchain check fails the exit with no gate entry naming it', () => {
+  const dir = tmpDir();
+  write(dir, 'package.json', JSON.stringify({
+    name: 'x',
+    webjs: { doctor: { gate: { UNMARKED_ASSET_LINKS: 'error' } } },
+  }));
+  write(dir, 'tsconfig.json', JSON.stringify({ compilerOptions: { strict: true } }));
+
+  const r = runCliArgs(dir, ['--json']);
+  assert.equal(r.status, 1, 'TSCONFIG_ERASABLE fails the exit though the gate never mentions it');
+  const out = JSON.parse(r.stdout);
+  const tsconfig = out.results.find((x) => x.code === 'TSCONFIG_ERASABLE');
+  assert.equal(tsconfig.status, 'fail');
+  assert.equal(tsconfig.severity, 'error', 'a fail defaults to error, gate entry or not');
+  assert.equal(out.summary.fail, 1);
+
+  // And it is silenceable like anything else, which is the uniform-`off` rule.
+  write(dir, 'package.json', JSON.stringify({
+    name: 'x',
+    webjs: { doctor: { gate: { TSCONFIG_ERASABLE: 'off' } } },
+  }));
+  const silenced = runCliArgs(dir, []);
+  assert.equal(silenced.status, 0, 'off silences a hard check too');
+});
+
+test('a gated `off` silences a warning even under --strict', () => {
+  // A tmp fixture also warns on the environment-shaped checks (it has no
+  // node_modules), so silence those too and `--strict` has nothing left to fail
+  // on. That is exactly the CI shape this feature exists for.
+  const env = { FRAMEWORK_RESOLVE: 'off', WEBJS_VERSIONS: 'off' };
+  const strict = runCliArgs(assetLinkFixture({ ...env, UNMARKED_ASSET_LINKS: 'off' }), ['--strict']);
+  assert.equal(strict.status, 0, `every warn silenced, so --strict passes\n${strict.stdout}\n${strict.stderr}`);
+  assert.match(strict.stdout, /\[off\] .*\(UNMARKED_ASSET_LINKS, gated: off\)/);
+  // Assert the OUTCOME (nothing left to warn about, and the summary says some
+  // were silenced), not an exact silenced count. How many of the
+  // environment-shaped checks warn in the first place is runtime-dependent:
+  // FRAMEWORK_RESOLVE passes under Bun from a tmp dir and warns under Node, so
+  // a hard-coded count reds the Bun matrix on a change that has nothing to do
+  // with it.
+  assert.match(strict.stdout, /0 warning\(s\)/);
+  assert.match(strict.stdout, /\d+ silenced/);
+
+  // `off` silences the FINDING too, not just its contribution to the exit.
+  // An app that turned a code off asked not to hear about it, so printing the
+  // message and a Fix line every run would be the noise it just silenced
+  // (ESLint's `off` drops the message as well). The [off] line and the
+  // silenced count keep it from being invisible.
+  const offBlock = strict.stdout.split('\n\n').find((b) => b.includes('UNMARKED_ASSET_LINKS'));
+  assert.ok(offBlock, 'the silenced check is still listed on the checklist');
+  assert.doesNotMatch(offBlock, /Fix:/, 'a silenced check prints no Fix line');
+  assert.doesNotMatch(offBlock, /un-versioned url/, 'a silenced check prints no finding');
+  // A NON-silenced finding still prints both, so the assertion above is about
+  // `off` and not about the renderer having stopped printing findings at all.
+  const warned = runCliArgs(assetLinkFixture(env), []);
+  assert.match(warned.stdout, /un-versioned url/);
+  assert.match(warned.stdout, /Fix: Wrap the path in asset\(\)/);
+
+  // The counterfactual: leave the asset-link warn ungated and --strict fails on
+  // it, so `off` is what silenced it and not the other two entries.
+  const stillWarns = runCliArgs(assetLinkFixture(env), ['--strict']);
+  assert.equal(stillWarns.status, 1, 'the un-silenced warn still fails under --strict');
+});
+
+test('an unknown gate code exits 1 naming it, WITHOUT running the checks', () => {
+  const dir = assetLinkFixture({ UNMARKD_ASSET_LINKS: 'error' });
+  const r = runCliArgs(dir, []);
+  assert.equal(r.status, 1, 'a typo must be loud, never silently un-gating CI');
+  assert.match(r.stderr, /Unknown check code: UNMARKD_ASSET_LINKS/);
+  assert.match(r.stderr, /Valid codes:.*UNMARKED_ASSET_LINKS/);
+  assert.doesNotMatch(r.stdout, /project-health checklist/, 'the checks did not run');
+});
+
+test('a bad gate severity exits 1 naming it, and --json carries configErrors', () => {
+  const dir = assetLinkFixture({ ENV_DRIFT: 'fatal' });
+  const plain = runCliArgs(dir, []);
+  assert.equal(plain.status, 1);
+  assert.match(plain.stderr, /Invalid severity for ENV_DRIFT: "fatal"/);
+  assert.match(plain.stderr, /Valid severities: off \/ warn \/ error/);
+
+  const json = runCliArgs(dir, ['--json']);
+  assert.equal(json.status, 1);
+  const out = JSON.parse(json.stdout);
+  assert.deepEqual(out.results, [], 'no checks ran');
+  assert.equal(out.summary.ok, false);
+  assert.deepEqual(out.configErrors, [{ kind: 'bad-severity', code: 'ENV_DRIFT', value: 'fatal' }]);
+});
+
+test('--json carries severity on every result plus off in the summary', () => {
+  const dir = assetLinkFixture({ UNMARKED_ASSET_LINKS: 'off' });
+  const r = runCliArgs(dir, ['--json']);
+  assert.equal(r.status, 0);
+  const out = JSON.parse(r.stdout);
+  assert.ok(out.results.every((x) => x.severity), 'every result carries a severity');
+  assert.ok(
+    out.results.every((x) => ['pass', 'off', 'warn', 'error'].includes(x.severity)),
+    'severity is one of the four effective levels',
+  );
+  assert.equal(out.results.find((x) => x.code === 'UNMARKED_ASSET_LINKS').severity, 'off');
+  assert.equal(out.summary.off, 1);
+});
+
+// An app with NO gate block must produce exactly today's numbers, which is the
+// whole back-compat promise of folding policy in at the summary layer.
+test('an app with no gate block gets status-derived counts, unchanged', () => {
+  const dir = assetLinkFixture(null);
+  const out = JSON.parse(runCliArgs(dir, ['--json']).stdout);
+  const byStatus = { pass: 0, warn: 0, fail: 0 };
+  for (const r of out.results) byStatus[r.status]++;
+  assert.equal(out.summary.pass, byStatus.pass);
+  assert.equal(out.summary.warn, byStatus.warn);
+  assert.equal(out.summary.fail, byStatus.fail);
+  assert.equal(out.summary.off, 0);
 });
 
 // Regression: the doctor pin check imports hasVendorPin from @webjsdev/server on

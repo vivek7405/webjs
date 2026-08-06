@@ -133,6 +133,19 @@ test('`webjs help doctor` documents --json and --strict', () => {
   assert.match(r.stdout, /webjs doctor --json/);
 });
 
+// Per-check severity is CONFIG, not a flag (#1257), so the usage line stays
+// exactly as it was and the gate is documented in its own Config section. An
+// agent reading only this help must be able to write a valid gate block.
+test('`webjs help doctor` documents the package.json severity gate', () => {
+  const r = help('doctor');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^Config:/m);
+  assert.match(r.stdout, /"webjs": \{ "doctor": \{ "gate"/);
+  assert.match(r.stdout, /"off" \| "warn" \| "error"/);
+  // The gate adds no flag, so the usage line is unchanged.
+  assert.match(r.stdout, /^Usage: webjs doctor \[--json\] \[--strict\]$/m);
+});
+
 test('`webjs help <unknown>` exits non-zero with an error (Remix CLI parity)', () => {
   const r = help('bogus');
   assert.equal(r.status, 1, 'an unknown help topic is an error, not a silent success');

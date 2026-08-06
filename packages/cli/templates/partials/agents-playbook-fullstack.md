@@ -98,6 +98,10 @@ accessor). Use the shorthand for primitives
 Run each of these and fix what it reports, in order:
 
 - `npm run check` (correctness: no browser-import or boundary violation).
+- `npm run doctor` (project health; CI runs it too). It fails on whatever
+  `package.json` `webjs.doctor.gate` marks `error`, plus the two hard toolchain
+  checks that are fatal with no gate entry, `NODE_VERSION` and
+  `TSCONFIG_ERASABLE`.
 - `npm run typecheck` (zero type errors).
 - `npm test` (unit and browser tests for the features you built).
 - `npm run css:build` (compile Tailwind).
@@ -118,6 +122,7 @@ npm test                     # unit + browser tests
 npm run typecheck
 npm run css:build            # compile Tailwind
 npm run check                # correctness checks
+npm run doctor               # project health (severity per check: webjs.doctor.gate)
 npx webjsdev ui add <name>   # copy a ui primitive into components/ui/
 npx webjsdev ui view <name>  # inspect a primitive's exact signature
 npm run db:generate && npm run db:migrate

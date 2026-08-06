@@ -7,22 +7,18 @@
  *     import type { WebjsConfig } from '@webjsdev/core';
  *     const config: WebjsConfig = { trailingSlash: 'never', csp: true };
  *
- * The server reads this object key by key. Without a type or schema a
- * typo'd key (e.g. `redirect` for `redirects`) was silently dropped and
- * the feature stayed at its default with no diagnostic. This type plus
- * the published JSON Schema close that gap.
+ * This object is read key by key, mostly by the server and for a few keys
+ * by the CLI. Without a type or schema a typo'd key (e.g. `redirect` for
+ * `redirects`) was silently dropped and the feature stayed at its default
+ * with no diagnostic. This type plus the published JSON Schema close that
+ * gap.
  *
  * LOCKSTEP: this file, the JSON Schema at
- * packages/server/webjs-config.schema.json, and the server reader
- * functions MUST stay in sync. The readers are: readElideEnabled
- * (dev.js, elide), readSeedEnabled (dev.js, seed), readClientRouterEnabled
- * (dev.js, clientRouter), compileHeaderRules (headers.js, headers),
- * compileRedirectRules / readTrailingSlashPolicy (redirects.js,
- * redirects / trailingSlash), readBasePath (base-path.js, basePath),
- * readCspConfig (csp.js, csp), and
- * readBodyLimits / computeServerTimeouts (body-limit.js, the byte caps
- * and timeouts). Adding a `webjs.*` key means updating all three places.
- * See packages/server/AGENTS.md for the one documented procedure.
+ * packages/server/webjs-config.schema.json, and the reader functions MUST
+ * stay in sync, so adding a `webjs.*` key means updating all three places
+ * (plus the KNOWN_KEYS drift test). The reader inventory is NOT repeated
+ * here on purpose: packages/server/AGENTS.md holds the one canonical list
+ * along with the procedure, and every copy of it that existed drifted.
  *
  * Every key is optional (the whole block is optional and every key has a
  * default). Zero runtime cost: nothing in this file ships to the browser.
@@ -91,18 +87,19 @@ export interface WebjsRegenerateRule {
   inputs?: string[];
 }
 
-/** Dev task orchestration in `webjs.dev` (#550). `before`/`parallel` read by the CLI, `regenerate` by the server. */
+/** Dev task orchestration in `webjs.dev` (#550). `before`/`parallel` read by the CLI, `regenerate` and `watch` by the server (each sub-key names its own reader below). */
 export interface WebjsDevTasks {
   /**
    * One-shot commands run sequentially to completion BEFORE the dev server
    * boots (the old `predev` hook: `webjs db migrate`, a registry copy). A
-   * non-zero exit aborts the boot.
+   * non-zero exit aborts the boot. Read by the CLI (`readAppTasks`).
    */
   before?: string[];
   /**
    * Long-lived commands run as child processes ALONGSIDE the dev server (the
    * old `concurrently` watchers). Spawned once in the parent and torn down on
-   * exit, so a watcher cannot leak past the server.
+   * exit, so a watcher cannot leak past the server. Read by the CLI
+   * (`readAppTasks`).
    */
   parallel?: string[];
   /**
@@ -134,6 +131,34 @@ export interface WebjsStartTasks {
    * aborts the boot.
    */
   before?: string[];
+}
+
+/**
+ * A severity a `webjs.doctor.gate` entry may declare, mirroring ESLint's
+ * three-level scale. `error` fails the `webjs doctor` exit, `warn` reports
+ * without failing, and `off` silences the check: its finding is not printed and
+ * it cannot fail the exit, including under `--strict`. A silenced check still
+ * appears on the checklist as `[off]` and in the summary's silenced count, and
+ * `--json` still carries its whole result.
+ */
+export type WebjsDoctorSeverity = 'off' | 'warn' | 'error';
+
+/** The object form of `webjs.doctor` (#1257). */
+export interface WebjsDoctorConfig {
+  /**
+   * Per-check severity, keyed by the stable doctor code (`NODE_VERSION`,
+   * `UNMARKED_ASSET_LINKS`, `ELISION_CARRIERS`, and so on; `webjs doctor --json`
+   * carries the code on every result). A code with no entry keeps its default:
+   * `error` for a hard toolchain failure, `warn` otherwise. This is how CI gates
+   * on a chosen subset without `--strict` making every warning fatal.
+   *
+   * A malformed gate is a hard error, so a typo cannot silently un-gate CI:
+   * that covers an unknown code, a bad severity, a wrong SHAPE (a non-object
+   * `doctor` or `gate`), and a misspelled sibling of `gate` such as `gates`.
+   * A result that could not check (a network or toolchain outage) is capped at
+   * `warn` and can never be escalated to `error`.
+   */
+  gate?: Record<string, WebjsDoctorSeverity>;
 }
 
 /** The object form of `webjs.csp` (the non-boolean shape). */
@@ -190,6 +215,13 @@ export interface WebjsConfig {
    */
   dev?: WebjsDevTasks;
   start?: WebjsStartTasks;
+
+  /**
+   * `webjs doctor` policy (#1257): which project-health checks the project
+   * treats as fatal. Read by the CLI (`packages/cli/lib/doctor.js`), NOT the
+   * server readers.
+   */
+  doctor?: WebjsDoctorConfig;
 
   /** Per-path response-header rules, shaped like Next's. */
   headers?: WebjsHeaderRule[];

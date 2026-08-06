@@ -29,13 +29,18 @@ const schemaPath = fileURLToPath(
 
 /**
  * The complete set of `webjs.*` config keys a reader accepts. Most are
- * consumed by a SERVER reader; `dev` / `start` are consumed by the CLI
- * (readAppTasks in packages/cli/lib/app-tasks.js, #550) rather than the
- * server, but they still live in the same `webjs` block and so must be in
- * the schema (or `additionalProperties:false` would flag a valid app's
- * tasks config). Hand-maintained alongside the readers (the lockstep
- * procedure in packages/server/AGENTS.md). The drift assertions below
- * cross-check this list against the schema in BOTH directions.
+ * consumed by a SERVER reader; a few are consumed by the CLI instead, and
+ * `dev` is SPLIT (its task sub-keys are CLI-read, `dev.regenerate` and
+ * `dev.watch` are server-read), so the CLI-vs-server question is per
+ * sub-key rather than per top-level key. Either way the key lives in the
+ * same `webjs` block and so must be in the schema, or
+ * `additionalProperties:false` would flag a valid app's config.
+ *
+ * The per-key reader annotations below are a convenience, NOT the
+ * inventory: packages/server/AGENTS.md holds the one canonical reader list
+ * and the lockstep procedure. Every duplicate of that list has drifted, so
+ * do not grow another one here. The drift assertions below cross-check
+ * this key list against the schema in BOTH directions.
  */
 const KNOWN_KEYS = [
   'elide', // readElideEnabled (dev.js)
@@ -52,8 +57,12 @@ const KNOWN_KEYS = [
   'requestTimeoutMs', // computeServerTimeouts (body-limit.js)
   'headersTimeoutMs', // computeServerTimeouts (body-limit.js)
   'keepAliveTimeoutMs', // computeServerTimeouts (body-limit.js)
-  'dev', // readAppTasks (cli/lib/app-tasks.js), CLI-read not server (#550)
-  'start', // readAppTasks (cli/lib/app-tasks.js), CLI-read not server (#550)
+  // SPLIT: dev.before / dev.parallel are readAppTasks (cli/lib/app-tasks.js,
+  // #550), dev.regenerate is readRegenerateRules (dev-regenerate.js, #967),
+  // dev.watch is readDevWatchPathsFromApp (dev.js, #894).
+  'dev',
+  'start', // readAppTasks (cli/lib/app-tasks.js), CLI-read (#550)
+  'doctor', // readDoctorPolicy (cli/lib/doctor.js), CLI-read (#1257)
 ];
 
 test('schema file is valid JSON and parses', () => {

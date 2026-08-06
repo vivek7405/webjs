@@ -31,22 +31,52 @@
  *     missing/non-executable git hook.
  *   - 'pass' is the green path.
  *
- * Every NETWORK touch (only the vendor-pin freshness check) is BEST-EFFORT: a
- * fetch failure is a WARN ("could not check, network"), never a hard fail and
- * never a throw that crashes the command. Network is flaky, and a doctor that
- * fails CI because npm was briefly unreachable is worse than useless.
+ * Every NETWORK touch (the vendor-pin freshness check, plus the live resolve in
+ * the importmap-coherence check) is BEST-EFFORT: a fetch failure is a WARN
+ * ("could not check, network"), never a hard fail and never a throw that
+ * crashes the command. Network is flaky, and a doctor that fails CI because npm
+ * was briefly unreachable is worse than useless. A result that reports "could
+ * not check" rather than a real finding carries `bestEffort: true`, and that
+ * flag is what the severity gate below reads to CLAMP it: an app may declare a
+ * code fatal, but an outage still cannot red its CI.
+ *
+ * SEVERITY POLICY (#1257) is CONFIG, not a flag, and lives one layer up. The
+ * checks below stay policy-unaware; `readDoctorPolicy(appDir)` reads the app's
+ * `webjs.doctor.gate` map out of package.json and `applyDoctorPolicy` folds it
+ * over the results, attaching the EFFECTIVE severity each one contributes. So a
+ * project declares which health signals it treats as fatal in ONE place that
+ * travels with the repo, and its CI workflow, its `npm run doctor`, and an
+ * agent's `--json` loop all read that one policy. `--strict` stays what it is:
+ * the blunt "every warning is fatal" switch, layered on top.
  */
 
-import { existsSync, statSync, readdirSync } from 'node:fs';
+import { existsSync, statSync, readdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { createRequire } from 'node:module';
 import { checkNodeInline } from './node-preflight.js';
 
 /**
+ * `status` is what the CHECK found and never depends on config. `severity` is
+ * the EFFECTIVE level the result contributes after the app's gate is applied,
+ * attached by `applyDoctorPolicy` (the checks never set it). `bestEffort` marks
+ * a result that reports "could not check" rather than a real finding, which is
+ * the one thing a gate can never escalate.
  * @typedef {'pass' | 'warn' | 'fail'} DoctorStatus
- * @typedef {{ name: string, code: string, status: DoctorStatus, message: string, fix?: string }} DoctorResult
+ * @typedef {'off' | 'warn' | 'error'} DoctorSeverity  a level a gate entry may DECLARE
+ * @typedef {'pass' | DoctorSeverity} DoctorLevel  the EFFECTIVE level of a result
+ * @typedef {{ name: string, code: string, status: DoctorStatus, message: string, fix?: string, bestEffort?: boolean, severity?: DoctorLevel }} DoctorResult
  */
+
+/**
+ * The severity levels a `webjs.doctor.gate` entry may name, mirroring ESLint's
+ * three-level scale (its `off` / `warn` / `error`, which Next.js's
+ * `eslint-plugin-next` uses verbatim as a rule-id-keyed map). `off` is uniform:
+ * it silences ANY code, the two hard-fail checks included, exactly as ESLint
+ * lets any rule be turned off.
+ * @type {DoctorSeverity[]}
+ */
+export const DOCTOR_SEVERITIES = ['off', 'warn', 'error'];
 
 /**
  * Stable machine-readable code per check (#975), so an agent consuming
@@ -86,6 +116,124 @@ export const DOCTOR_CODES = {
  */
 export function codeForName(name) {
   return DOCTOR_CODES[name] || name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+/**
+ * @typedef {{ gate: Record<string, DoctorSeverity>, unknownCodes: string[], badSeverities: Array<{ code: string, value: unknown }>, malformed: Array<{ path: string, value: unknown }>, unknownKeys: string[] }} DoctorPolicy
+ */
+
+/** A plain JSON object (not null, not an array), the only shape the gate accepts. */
+function isPlainObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
+/**
+ * Read the app's per-check severity policy out of `package.json`
+ * `webjs.doctor.gate` (#1257). PURE: it reads one file and returns data, and
+ * the caller (the CLI) decides what to do about a problem.
+ *
+ * `gate` keeps only WELL-FORMED entries, so a caller can fold it over the
+ * results without re-validating. Everything rejected is reported separately:
+ * a key that is not a value of `DOCTOR_CODES` lands in `unknownCodes`, a value
+ * outside `DOCTOR_SEVERITIES` in `badSeverities`, a wrong SHAPE (a non-object
+ * `doctor` or `gate`) in `malformed`, and a misspelled sibling of `gate` such
+ * as `gates` in `unknownKeys`. All four are surfaced as a hard error by the
+ * CLI rather than skipped.
+ *
+ * The shape check matters as much as the per-entry one, and is the easier half
+ * to leave out. A gate that FAILS OPEN is the one outcome this mechanism cannot
+ * afford: `"gate": "error"` or a misspelled `"gates": {...}` would leave CI
+ * un-gated while the package.json looks gated, which is strictly worse than
+ * having no gate at all, since nobody goes looking. The JSON Schema catches
+ * these in an editor, but it is editor-only, so it can never be the enforcement.
+ *
+ * A missing package.json, a missing block, or unparseable JSON is an EMPTY
+ * policy with no problems: an app that declares nothing behaves exactly as it
+ * did before the gate existed. Unparseable JSON in particular is deliberately
+ * not an error here, since `checkWebjsVersions` already reports that condition
+ * and doctor must never crash on a broken app file.
+ *
+ * @param {string} appDir
+ * @returns {DoctorPolicy}
+ */
+export function readDoctorPolicy(appDir) {
+  /** @type {DoctorPolicy} */
+  const empty = { gate: {}, unknownCodes: [], badSeverities: [], malformed: [], unknownKeys: [] };
+  let raw;
+  try {
+    raw = readFileSync(join(appDir, 'package.json'), 'utf8');
+  } catch {
+    return empty;
+  }
+  let pkg;
+  try {
+    pkg = JSON.parse(raw);
+  } catch {
+    return empty;
+  }
+  const doctor = pkg?.webjs?.doctor;
+  if (doctor === undefined) return empty;
+  if (!isPlainObject(doctor)) return { ...empty, malformed: [{ path: 'webjs.doctor', value: doctor }] };
+
+  /** @type {DoctorPolicy} */
+  const policy = { gate: {}, unknownCodes: [], badSeverities: [], malformed: [], unknownKeys: [] };
+  // A misspelled sibling (`gates`) would otherwise be dropped in silence, which
+  // is the fail-open case. `gate` is the only key this block accepts.
+  for (const key of Object.keys(doctor)) {
+    if (key !== 'gate') policy.unknownKeys.push(`webjs.doctor.${key}`);
+  }
+  const declared = doctor.gate;
+  if (declared !== undefined && !isPlainObject(declared)) {
+    policy.malformed.push({ path: 'webjs.doctor.gate', value: declared });
+  }
+  if (!isPlainObject(declared)) return policy;
+
+  const known = new Set(Object.values(DOCTOR_CODES));
+  for (const [code, value] of Object.entries(declared)) {
+    if (!known.has(code)) {
+      policy.unknownCodes.push(code);
+      continue;
+    }
+    if (typeof value !== 'string' || !DOCTOR_SEVERITIES.includes(/** @type {DoctorSeverity} */ (value))) {
+      policy.badSeverities.push({ code, value });
+      continue;
+    }
+    policy.gate[code] = /** @type {DoctorSeverity} */ (value);
+  }
+  return policy;
+}
+
+/**
+ * Fold a severity `gate` over check results, returning a NEW array whose
+ * results each carry the EFFECTIVE level they contribute (#1257). PURE: the
+ * input array and its results are never mutated.
+ *
+ * `severity` is the effective level, not the declared one, which is why a
+ * PASSING check reports `'pass'` even when its code is gated `error`. A rule
+ * that did not fire contributes nothing, the same way ESLint puts severity on a
+ * message rather than on a rule that stayed quiet. It also keeps the obvious
+ * one-liner honest: `results.some((r) => r.severity === 'error')` is exactly
+ * "something fatal was found", with no passing-check false positive.
+ *
+ * The gate's one hard limit is `bestEffort`: a result that could not check
+ * (a toolchain that would not load, a network that was unreachable) is CLAMPED
+ * to `warn` however loudly the gate declares its code. That is what lets this
+ * repo's required CI job run a check whose live resolve touches jspm without
+ * an outage there ever redding an unrelated pull request.
+ *
+ * @param {DoctorResult[]} results
+ * @param {Record<string, DoctorSeverity>} [gate]  well-formed entries only (see readDoctorPolicy)
+ * @returns {DoctorResult[]}
+ */
+export function applyDoctorPolicy(results, gate = {}) {
+  return results.map((r) => {
+    if (r.status === 'pass') return { ...r, severity: /** @type {DoctorLevel} */ ('pass') };
+    const declared = gate[r.code];
+    const fallback = r.status === 'fail' ? 'error' : 'warn';
+    let severity = /** @type {DoctorSeverity} */ (declared || fallback);
+    if (r.bestEffort && severity === 'error') severity = 'warn';
+    return { ...r, severity };
+  });
 }
 
 /**
@@ -323,6 +471,8 @@ async function checkVendorPin(appDir, opts) {
       return {
         name: 'vendor-pin',
         status: 'warn',
+        // "Could not check", not a finding: never escalatable by a gate.
+        bestEffort: true,
         message: 'Could not load the vendor toolchain to check pin freshness.',
         fix: 'Run `npm install` so @webjsdev/server is available, then re-run `webjs doctor`.',
       };
@@ -350,6 +500,7 @@ async function checkVendorPin(appDir, opts) {
     return {
       name: 'vendor-pin',
       status: 'warn',
+      bestEffort: true,
       message: 'Could not check pin freshness (network unreachable or registry error).',
       fix: 'Re-run `webjs doctor` when connectivity is back, or run `webjs vendor outdated`.',
     };
@@ -579,6 +730,7 @@ async function checkImportmapCoherence(appDir, opts) {
       return {
         name: 'importmap-coherence',
         status: 'warn',
+        bestEffort: true,
         message: 'Could not load the vendor toolchain to check importmap coherence.',
         fix: 'Run `npm install` so @webjsdev/server is available, then re-run `webjs doctor`.',
       };
@@ -672,6 +824,7 @@ async function checkImportmapCoherence(appDir, opts) {
     return {
       name: 'importmap-coherence',
       status: 'warn',
+      bestEffort: true,
       message: 'Could not verify importmap coherence (dependency metadata for the pinned packages was unavailable).',
       fix: 'Run `npm install` so the pinned packages are present in node_modules, then re-run `webjs doctor`.',
     };

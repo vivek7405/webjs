@@ -2,8 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://webjs.dev/schemas/webjs-config.schema.json",
   "title": "webjs config block",
-  "description": "Schema for the `webjs` object in a webjs app's package.json. Each key maps to a documented reader (a server reader, or for `dev`/`start` the CLI's readAppTasks). An unknown key is flagged (additionalProperties is false) so a typo no longer silently falls back to the default.",
-  "$comment": "Single source of truth lives in THREE co-located places that must stay in lockstep: this schema, the TS type at packages/core/src/webjs-config.d.ts, and the reader functions (readElideEnabled in dev.js, readSeedEnabled in dev.js, compileHeaderRules in headers.js, compileRedirectRules / readTrailingSlashPolicy in redirects.js, readBasePath in base-path.js, readCspConfig in csp.js, readBodyLimits / computeServerTimeouts in body-limit.js, and the CLI's readAppTasks in packages/cli/lib/app-tasks.js for dev/start, #550). Adding a webjs.* key means updating all three. See packages/server/AGENTS.md for the one documented procedure.",
+  "description": "Schema for the `webjs` object in a WebJs app's package.json. Each key maps to a documented reader, mostly a server reader and for a few keys a CLI one. An unknown key is flagged (additionalProperties is false) so a typo no longer silently falls back to the default.",
+  "$comment": "Single source of truth lives in THREE co-located places that must stay in lockstep: this schema, the TS type at packages/core/src/webjs-config.d.ts, and the reader functions. Adding a `webjs.*` key means updating all three (plus the KNOWN_KEYS drift test). The reader inventory is deliberately NOT repeated here: packages/server/AGENTS.md holds the one canonical list and the procedure, because every duplicate of that list drifted.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -160,7 +160,7 @@
       "default": 5000
     },
     "dev": {
-      "description": "Dev task orchestration (#550). `before`/`parallel` are read by the CLI (readAppTasks in packages/cli/lib/app-tasks.js); `regenerate` is read by the server (readRegenerateRules in dev-regenerate.js). webjs dev runs `before` (one-shot, e.g. webjs db migrate) to completion, then `parallel` (long-lived watchers) alongside the server. Replaces the old predev hook + concurrently watchers.",
+      "description": "Dev task orchestration (#550). Split per sub-key: `before`/`parallel` are read by the CLI (readAppTasks in packages/cli/lib/app-tasks.js), while `regenerate` (readRegenerateRules in dev-regenerate.js) and `watch` (readDevWatchPathsFromApp in dev.js) are read by the server. webjs dev runs `before` (one-shot, e.g. webjs db migrate) to completion, then `parallel` (long-lived watchers) alongside the server. Replaces the old predev hook + concurrently watchers.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -214,6 +214,22 @@
           "description": "One-shot commands run sequentially to completion before the prod server boots. A non-zero exit aborts the boot.",
           "type": "array",
           "items": { "type": "string" }
+        }
+      }
+    },
+    "doctor": {
+      "description": "`webjs doctor` policy (#1257). Read by the CLI (readDoctorPolicy in packages/cli/lib/doctor.js), NOT the server.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gate": {
+          "description": "Per-check severity, keyed by the stable DOCTOR_CODES code (NODE_VERSION, UNMARKED_ASSET_LINKS, ELISION_CARRIERS, ...). `error` fails the exit, `warn` reports without failing, `off` silences the check: its finding is not printed and it cannot fail the exit, including under --strict (it still appears on the checklist as [off], in the summary's silenced count, and in full under --json). A code with no entry keeps its default: error for a hard toolchain failure, warn otherwise. This is how CI gates on a chosen subset without --strict making every warning fatal. A malformed gate is a hard error, so a typo cannot silently un-gate CI: that covers an unknown code, a bad severity, a wrong SHAPE (a non-object `doctor` or `gate`), and a misspelled sibling of `gate` such as `gates`. A result that could not check (a network or toolchain outage) is capped at warn and can never be escalated to error.",
+          "type": "object",
+          "propertyNames": { "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["off", "warn", "error"]
+          }
         }
       }
     }
