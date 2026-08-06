@@ -2116,10 +2116,12 @@ test('popstate cache restore suppresses scroll anchoring across the window (#131
 
 test('a second navigation closes an open scroll-anchor window (#1310)', async () => {
   // The window outlives its own restore on purpose (a floor, then a ceiling),
-  // so a navigation starting inside that span has to end it. Otherwise a Back
-  // that CLAMPS, which opens no window of its own, would run its whole growth
-  // under the previous restore's suppression and freeze its clamp, and a
-  // forward nav would carry the suppression onto an unrelated page.
+  // so a PAGE navigation starting inside that span has to end it. Otherwise a
+  // Back that CLAMPS, which opens no window of its own, would run its whole
+  // growth under the previous restore's suppression and freeze its clamp, and a
+  // forward nav would carry the suppression onto an unrelated page. A
+  // frame-targeted navigation is exempt, since it swaps one region and leaves
+  // the restored offset meaningful; the browser suite covers that side.
   const origLoc = globalThis.location;
   const origFetch = globalThis.fetch;
   const prevPageUrl = _currentPageUrl();

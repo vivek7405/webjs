@@ -492,6 +492,33 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     } finally { await teardown(); }
   });
 
+  test('a FRAME-targeted submission leaves an open window alone', async () => {
+    // The submission half of the frame exemption. `performSubmission` has its
+    // own `!frameId` guard, and nothing exercised it: the page-level submission
+    // case below uses a bare form, and the frame case above uses a link, so
+    // deleting `frameId` from that guard left every suite green.
+    await setup();
+    try {
+      await goBack();
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), 'none',
+        'precondition: a window is open');
+      const holder = document.createElement('div');
+      holder.innerHTML = '<webjs-frame id="wj-target-frame-sub-1310">'
+        + '<form id="wj-frame-form" method="post" action="/wj-frame-nav-1310">'
+        + '<button type="submit">go</button></form></webjs-frame>';
+      document.body.appendChild(holder);
+      try {
+        const f = holder.querySelector('#wj-frame-form');
+        f.requestSubmit(f.querySelector('button'));
+        await new Promise((r) => setTimeout(r, 0));
+        assert.ok(frameNavs > 0,
+          'precondition: the submission reached the router as frame-targeted');
+        assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), 'none',
+          'a frame-targeted submission must leave the restore window open');
+      } finally { holder.remove(); }
+    } finally { await teardown(); }
+  });
+
   test('a form SUBMISSION inside the window closes it too', async () => {
     // A submission is a navigation and runs its own pipeline
     // (`performSubmission`), so it needs the same close as `performNavigation`.
