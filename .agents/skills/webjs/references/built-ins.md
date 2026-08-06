@@ -231,7 +231,7 @@ Two guarantees worth knowing. A result that could not check (a network or toolch
 
 Wired at the single response funnel, covering pages, routes, actions, and assets uniformly.
 
-- **Access log.** One structured `info` line per handled request (`method`, `path`, `status`, `durationMs`, `requestId`). Never logs bodies or secrets; framework `/__webjs/*` traffic is suppressed.
+- **Access log.** One structured `info` line per handled request (`method`, `path`, `status`, `durationMs`, `requestId`, plus a dev-only `seed` field on a page render carrying the SSR action-seeding counters, #1309). Never logs bodies or secrets; framework `/__webjs/*` traffic is suppressed.
 - **Request id.** Each request gets a `crypto.randomUUID()` correlation id, set as `X-Request-Id` (honoring a trusted inbound one) and readable server-side with `requestId()` from `@webjsdev/server` (returns `null` outside a request scope).
 - **`onError` hook.** Register via `createRequestHandler({ onError })` or `startServer({ onError })`. Called with `(error, { request, requestId, phase })` on any caught pipeline error, before the sanitized response is sent. Best-effort (a throwing hook is ignored), purely additive (the sanitized 500 / action digest is unchanged). Point it at Sentry or an APM.
 

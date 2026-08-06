@@ -388,6 +388,16 @@ jobs:
         env:
           WEBJS_E2E: '1'
         run: node --test test/e2e/dev-overlay-nav.test.mjs
+      # Dev observability for SSR action seeding (#1309): spawns `webjs dev`
+      # against a fixture app and drives a real browser, because the headline
+      # criterion is a browser fact. Whether a hydrating component re-issued the
+      # RPC is a network observation, and the console line fires on an idle
+      # callback after a real hydration pass; neither is reachable from a unit
+      # test.
+      - name: Run dev-seed-observability e2e (#1309)
+        env:
+          WEBJS_E2E: '1'
+        run: node --test test/e2e/dev-seed-observability.test.mjs
       # Touch-emulation e2e for interactive Tier-2 ui components (#745/#747):
       # boots the site serving the gallery and taps hover-card / dropdown-submenu / sonner
       # under a Chromium iPhone context (faithful touch events, no real device).

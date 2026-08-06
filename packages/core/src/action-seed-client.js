@@ -47,10 +47,27 @@ const stats = { ingested: 0, replaced: 0, hits: 0, misses: 0 };
 
 /** `null` in prod. In dev, the `data-webjs-dev` value the server stamped. */
 let devMarker = null;
-/** One scheduled report at a time; each report covers the delta since the last. */
+/** One scheduled report at a time. */
 let reportScheduled = false;
-/** Counter snapshot at the last report, so each report measures its own window. */
-let lastReport = { hits: 0, misses: 0, ingested: 0 };
+/**
+ * Generation of the pending report. A scheduled idle callback outlives the state
+ * it was scheduled against (`__resetSeeds` between tests is the reachable case),
+ * and once `windowStart` no longer moves at report time, a stale callback would
+ * re-report the CURRENT window a second time. Each schedule takes a token and a
+ * reset burns it, so a superseded callback is a no-op instead.
+ */
+let reportEpoch = 0;
+/**
+ * Counter snapshot at the START of the pending report's window, taken when the
+ * report is SCHEDULED rather than when it runs. That difference is the whole
+ * correctness of the metric: the window has to be the hydration window (scan to
+ * idle), because a miss AFTER it is correct behaviour (the seed is consume-once,
+ * so a deliberate refetch or an argument change is SUPPOSED to miss). Snapshot
+ * at report end instead and those legitimate misses bank up and get charged to
+ * the next page on the next soft navigation, which reports a defect on a page
+ * that has none.
+ */
+let windowStart = { hits: 0, misses: 0, ingested: 0 };
 
 /**
  * Merge any seeds found under `root` into the global store, then remove the
@@ -63,16 +80,22 @@ let lastReport = { hits: 0, misses: 0, ingested: 0 };
 export function scanSeeds(root) {
   const scope = root || (typeof document !== 'undefined' ? document : null);
   if (!scope || typeof scope.querySelectorAll !== 'function') return;
-  // Page-level JSON block(s). The dev marker rides this carrier only.
+  // Read BEFORE ingesting: the report distinguishes "the page carried no seeds
+  // at all" from "it carried seeds, but not for these calls", and that turns on
+  // how many THIS scan merged.
+  const ingestedBefore = stats.ingested;
+  // Page-level JSON block(s). The dev marker rides this carrier only, and
+  // whether THIS scan found one is what decides if there is a report to make.
+  let sawMarker = false;
   for (const el of scope.querySelectorAll('script[type="application/json"]#__webjs-seeds, script[type="application/json"][data-webjs-seeds]')) {
-    noteDevMarker(el.getAttribute?.('data-webjs-dev'));
+    if (noteDevMarker(el.getAttribute?.('data-webjs-dev'))) sawMarker = true;
     ingest(el.textContent, el);
   }
   // Per-element carriers (streamed boundaries / future per-component seeding).
   for (const el of scope.querySelectorAll('[data-webjs-seed]')) {
     ingest(el.getAttribute('data-webjs-seed'), el, () => el.removeAttribute('data-webjs-seed'));
   }
-  scheduleSeedReport();
+  scheduleSeedReport(sawMarker, ingestedBefore);
 }
 
 /**
@@ -115,9 +138,12 @@ function ingest(raw, el, cleanup) {
  * `process.env.NODE_ENV` comparison here is a compile-time constant, see
  * `stats`). Absent in production, so the reporting below never runs there.
  * @param {string | null | undefined} v the `data-webjs-dev` attribute value
+ * @returns {boolean} whether this carrier actually carried a marker
  */
 function noteDevMarker(v) {
-  if (typeof v === 'string') devMarker = v || 'ok';
+  if (typeof v !== 'string') return false;
+  devMarker = v || 'ok';
+  return true;
 }
 
 /**
@@ -127,11 +153,23 @@ function noteDevMarker(v) {
  * is consume-once, so a deliberate refetch or an argument change is supposed to
  * miss). A slow `async render()` whose call lands after idle is undercounted,
  * which is a false negative rather than a false alarm.
+ * @param {boolean} sawMarker whether THIS scan found a `data-webjs-dev` marker
+ * @param {number} ingestedBefore `stats.ingested` as it stood before this scan
  */
-function scheduleSeedReport() {
-  if (!devMarker || reportScheduled) return;
+function scheduleSeedReport(sawMarker, ingestedBefore) {
+  // Gated on THIS scan having found a marker, not on one ever having been seen.
+  // A back/forward restore scans a snapshot carrying no seed block at all (the
+  // first scan removed it before the snapshot was serialized), so a sticky
+  // marker would schedule a report whose cause is read off the PREVIOUS page:
+  // "the page carried no seeds at all, check the 'use server' head" is wrong
+  // advice for a back button, and a stale `streamed` marker is wrong the other
+  // way. No marker in this scan means nothing to report on.
+  if (!sawMarker || reportScheduled) return;
   reportScheduled = true;
+  const epoch = ++reportEpoch;
+  windowStart = { hits: stats.hits, misses: stats.misses, ingested: ingestedBefore };
   const run = () => {
+    if (epoch !== reportEpoch) return; // superseded; the newer generation owns the flag
     reportScheduled = false;
     try { reportSeeds(); } catch { /* diagnostics never break a page */ }
   };
@@ -149,10 +187,9 @@ function scheduleSeedReport() {
  * numbers are already on the server's access-log line for every request.
  */
 function reportSeeds() {
-  const hits = stats.hits - lastReport.hits;
-  const misses = stats.misses - lastReport.misses;
-  const ingested = stats.ingested - lastReport.ingested;
-  lastReport = { hits: stats.hits, misses: stats.misses, ingested: stats.ingested };
+  const hits = stats.hits - windowStart.hits;
+  const misses = stats.misses - windowStart.misses;
+  const ingested = stats.ingested - windowStart.ingested;
   if (misses === 0) return;
   const cause = devMarker === 'streamed'
     ? 'This page streams (a Suspense or <webjs-suspense> boundary), and a streamed render emits no seeds, so every action call on it goes to the network.'
@@ -215,5 +252,6 @@ export function __resetSeeds() {
   stats.misses = 0;
   devMarker = null;
   reportScheduled = false;
-  lastReport = { hits: 0, misses: 0, ingested: 0 };
+  reportEpoch++; // burn any in-flight callback rather than let it report a reset window
+  windowStart = { hits: 0, misses: 0, ingested: 0 };
 }

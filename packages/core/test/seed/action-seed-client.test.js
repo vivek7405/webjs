@@ -231,3 +231,86 @@ test('with no requestIdleCallback the report still runs, on the setTimeout fallb
   }
   assert.equal(warns.length, 1, 'the 250ms fallback fired');
 });
+
+test('a post-hydration miss is NOT charged to the next page (window starts at the scan)', async () => {
+  // The report window is the HYDRATION window, scan to idle. A miss after it is
+  // correct behaviour (consume-once, so a deliberate refetch is supposed to
+  // miss), so it must not bank up and be blamed on the next page.
+  const origIdle = globalThis.requestIdleCallback;
+  const origWarn = console.warn;
+  const warns = [];
+  let queued = [];
+  globalThis.requestIdleCallback = (fn) => { queued.push(fn); };
+  console.warn = (...a) => warns.push(a.join(' '));
+  try {
+    // Page A: one seed, one hit, clean.
+    scanSeeds(root([el('script', await stringify({ 'h/f/[1]': 1 }), 'ok')]));
+    takeSeed('h', 'f', '[1]');
+    queued.forEach((fn) => fn());
+    queued = [];
+    assert.deepEqual(warns, [], 'page A is clean');
+
+    // Still on page A, AFTER the report: three legitimate refetches.
+    takeSeed('h', 'f', '[1]');
+    takeSeed('h', 'f', '[1]');
+    takeSeed('h', 'f', '[1]');
+
+    // Page B (a soft nav): one seed, one hit, also clean.
+    scanSeeds(root([el('script', await stringify({ 'h/f/[2]': 2 }), 'ok')]));
+    takeSeed('h', 'f', '[2]');
+    queued.forEach((fn) => fn());
+  } finally {
+    if (origIdle === undefined) delete globalThis.requestIdleCallback;
+    else globalThis.requestIdleCallback = origIdle;
+    console.warn = origWarn;
+  }
+  assert.deepEqual(warns, [], 'page A\'s post-hydration refetches are not blamed on page B');
+});
+
+test('a scan with NO marker (a back/forward restore) schedules nothing', async () => {
+  // The restore path scans a snapshot carrying no seed block at all, because the
+  // first scan removed it before the snapshot was serialized. A sticky marker
+  // would schedule a report and read the cause off the PREVIOUS page.
+  const origIdle = globalThis.requestIdleCallback;
+  const origWarn = console.warn;
+  const warns = [];
+  const queued = [];
+  globalThis.requestIdleCallback = (fn) => { queued.push(fn); };
+  console.warn = (...a) => warns.push(a.join(' '));
+  try {
+    // A real dev page first, so a marker HAS been seen.
+    scanSeeds(root([el('script', await stringify({ 'h/f/[1]': 1 }), 'ok')]));
+    takeSeed('h', 'f', '[1]');
+    queued.splice(0).forEach((fn) => fn());
+
+    // Now the restore: a scan finding no carrier at all, then the restored
+    // components re-running their renders and missing (correctly).
+    scanSeeds(root([]));
+    takeSeed('h', 'f', '[1]');
+    takeSeed('h', 'f', '[2]');
+    assert.equal(queued.length, 0, 'no report is scheduled for a markerless scan');
+    queued.splice(0).forEach((fn) => fn());
+  } finally {
+    if (origIdle === undefined) delete globalThis.requestIdleCallback;
+    else globalThis.requestIdleCallback = origIdle;
+    console.warn = origWarn;
+  }
+  assert.deepEqual(warns, [], 'and no wrong-cause line is printed');
+});
+
+test('the cause still distinguishes an empty page after an earlier seeded one', async () => {
+  // `ingested` is measured from BEFORE this scan, so a second page that carried
+  // no seeds reports "carried no seeds at all" rather than inheriting page one's
+  // count and reporting the unmatched-keys cause.
+  const { warns } = await withReporter(async () => {
+    scanSeeds(root([el('script', await stringify({ 'h/f/[1]': 1 }), 'ok')]));
+    takeSeed('h', 'f', '[1]');
+  });
+  assert.deepEqual(warns, []);
+  const second = await withReporter(async () => {
+    scanSeeds(root([el('script', await stringify({}), 'ok')]));
+    takeSeed('h', 'f', '[9]');
+  });
+  assert.equal(second.warns.length, 1);
+  assert.match(second.warns[0], /carried no seeds at all/);
+});
