@@ -161,9 +161,14 @@ test('the preload actually arms the deny in a real process', () => {
   // on how THIS file was launched, and so both branches of the env switch can
   // be exercised in one test.
   //
-  // The probe goes in a temp FILE rather than `-e`, because `--input-type` is
-  // Node-only and `process.execPath` is the Bun binary when this file runs
-  // under `bun test`. Same reason the preload flag is runtime-selected.
+  // The probe goes in a temp FILE rather than `-e` so the argv means the same
+  // thing on both runtimes, since `process.execPath` is the Bun binary when
+  // this file runs under `bun test`. Not because the `-e` form was broken
+  // there: Bun ignores flags it does not recognise, so the Node-only
+  // `--input-type=module` was silently dropped and the old probe ran fine. A
+  // flag that is inert today is a poor thing to depend on, which is the same
+  // reason the preload flag below is chosen per runtime rather than relying on
+  // `bun --import` continuing to alias the Node spelling.
   //
   // CRUCIALLY the two branches run DIFFERENT probes. The first fetches,
   // because the whole point is that the deny answers it without a packet

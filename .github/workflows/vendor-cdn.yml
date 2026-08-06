@@ -91,7 +91,17 @@ jobs:
           # silent: the count reads 0 in exactly the runs that skipped. Both
           # live files print `[<file>] SKIP <reason>` from their own skip
           # helper, which is ours and does not move.
+          # `grep -c` on a MISSING file prints nothing, so a bare command
+          # substitution yields the empty string, not 0, and an inequality
+          # against "0" is then true. The step is `if: always()`, so that
+          # reported a jspm skip for runs where the live tests never ran at all
+          # (a failed checkout, npm ci, or a cancellation). Default explicitly.
+          if [ ! -f live.log ]; then
+            echo 'no live.log; the test step did not produce output'
+            exit 0
+          fi
           skipped=$(grep -c '] SKIP ' live.log || true)
+          skipped=${skipped:-0}
           if [ "${skipped}" != "0" ]; then
             echo "::warning title=Live jspm check skipped::jspm.io could not answer ${skipped} check(s). \
           Not a regression, but if this repeats for days the live coverage has stopped running. \
