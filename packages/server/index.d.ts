@@ -484,9 +484,10 @@ export declare function extractComponents(src: string): Array<{ className: strin
  * registration call or because the tag is computed. The scanner matches only a
  * literal tag, so neither is visible to it. They fail DIFFERENTLY, though: with
  * no registration call the element never upgrades at all, while a computed tag
- * still registers if its module reaches the browser, and what is lost there is
- * the verdict, the registry entry, and the preload hint (plus the upgrade
- * itself, if its importer is elided or inert). Nothing here is about import
+ * still registers IF its module reaches the browser, which requires its
+ * importer to ship WHOLE (an inert, import-only, or elided importer is dropped
+ * from the boot and takes the import with it). Either way the verdict, the
+ * registry entry, and the preload hint are lost. Nothing here is about import
  * reachability.
  */
 export declare function findOrphanComponents(

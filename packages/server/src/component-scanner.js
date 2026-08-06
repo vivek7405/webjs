@@ -156,10 +156,13 @@ export async function primeComponentRegistry(appDir, components) {
  *   - No registration call at all (the forgot-to-register case). Nothing ever
  *     registers the tag, so the element NEVER upgrades.
  *   - A registration whose tag is COMPUTED (`X.register(TAG)`). The call does
- *     run if the module reaches the browser, so the element may well upgrade.
- *     What is lost is that the scanner cannot see it: no elision verdict, no
- *     tag-to-module registry entry, no modulepreload hint, and if its importer
- *     is elided or inert the import is dropped and it never upgrades either.
+ *     run if the module reaches the browser, which requires its importer to
+ *     ship WHOLE: an inert, import-only, or elided importer is dropped from
+ *     the boot and takes the import with it, so the element does not upgrade
+ *     there either. Import-only is the ordinary case, since an orphan is not
+ *     in `componentFiles` and so never joins the emitted frontier. Lost in
+ *     every case: the elision verdict, the tag-to-module registry entry, and
+ *     the modulepreload hint.
  *
  * Matches the literal `extends WebComponent` only, so a class extending a
  * component SUBCLASS is not reported.

@@ -217,6 +217,43 @@ test('a computed-tag component still REGISTERS when its importer ships (#1308)',
   }
 });
 
+test('an IMPORT-ONLY importer drops the computed-tag orphan, the ordinary case (#1308)', async () => {
+  // The third importer verdict, and the one an author actually hits: a page
+  // mixing one interactive component with a computed-tag orphan. The orphan is
+  // not in `componentFiles`, so it never joins the import-only frontier, and
+  // the boot emits only the frontier in the page module's place. The page's
+  // import of the orphan goes with the dropped page module, so `register(TAG)`
+  // never runs.
+  //
+  // This is what makes "only when its importer ships WHOLE" the right rule:
+  // enumerating the losing verdicts is how import-only got missed.
+  const dir = await mkdtemp(join(tmpdir(), 'webjs-residual-importonly-'));
+  try {
+    await mkdir(join(dir, 'app'), { recursive: true });
+    await mkdir(join(dir, 'components'), { recursive: true });
+    await writeFile(join(dir, 'components/badge.js'), badgeComputedRegistration());
+    await writeFile(join(dir, 'components/counter.js'),
+      "import { WebComponent, html } from '@webjsdev/core';\nexport class Counter extends WebComponent {\n" +
+      "  render() { return html`<button @click=${() => {}}>+</button>`; }\n}\nCounter.register('my-counter');\n");
+    await writeFile(join(dir, 'app/page.js'),
+      "import { html } from '@webjsdev/core';\nimport '../components/counter.js';\n" +
+      "import '../components/badge.js';\nexport default () => html`<my-counter></my-counter><my-badge></my-badge>`;\n");
+
+    const graph = await buildModuleGraph(dir);
+    const components = await scanComponents(dir);
+    const pageFile = join(dir, 'app/page.js');
+    const verdict = await analyzeElision(
+      components, [pageFile], graph, (f) => import('node:fs/promises').then((m) => m.readFile(f, 'utf8')), dir,
+    );
+    const emits = verdict.importOnlyRouteModules.get(pageFile);
+    assert.ok(emits, 'the page is import-only, not shipped whole');
+    assert.deepEqual(emits, [join(dir, 'components/counter.js')],
+      'only the real component is emitted; the orphan is not in the frontier, so its import is dropped');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('static interactive = true does NOT rescue a computed registration tag', async () => {
   // The measured finding the docs used to get wrong: the override is a
   // property the ANALYSER reads, and nothing consults the analyser for a

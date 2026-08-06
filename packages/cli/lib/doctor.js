@@ -1077,7 +1077,7 @@ async function checkElisionComponents(elisionPromise) {
       name,
       status: 'warn',
       message:
-        `${report.orphans.length} component class(es) are dropped with NO elision verdict:\n` +
+        `${report.orphans.length} component class(es) get NO elision verdict:\n` +
         lines.map((l) => `    ${l}`).join('\n') +
         '\n    Either it has no registration call at all, or it registers a computed tag. The component '
         + 'scanner matches only a literal tag, so either way it never sees the class: no elision verdict, no '
