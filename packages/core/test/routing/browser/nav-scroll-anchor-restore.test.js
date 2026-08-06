@@ -68,6 +68,31 @@ class GrowVeryLate extends HTMLElement {
 }
 customElements.define('wj-grow-very-late-1310', GrowVeryLate);
 
+/**
+ * Never grows on its own; the test grows it. The clamped cases need the restored
+ * page to be SHORT at the moment of the restore and TALL a moment later, and
+ * driving that from the test removes every timing race from the precondition:
+ * whether a leftover element is reused no longer matters, since this one is 0px
+ * either way. The self-growing fixtures above still carry the headline cases,
+ * where late growth arriving on its own IS the thing under test.
+ */
+class GrowOnCommand extends HTMLElement {
+  connectedCallback() {
+    this.style.display = 'block';
+    this.style.height = '0px';
+  }
+}
+customElements.define('wj-grow-on-command-1310', GrowOnCommand);
+
+/**
+ * Offset the un-grown fixture cannot reach (its filler is 3000px, so its maximum
+ * is under that whatever the viewport) but the grown one can, once the test adds
+ * 3000px more.
+ */
+const CLAMPED_TARGET = 4000;
+/** How much the test grows the on-command fixture by. */
+const COMMANDED_GROWTH = 3000;
+
 const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
 /** Long enough for the grower to connect, lay out, and take its height. */
 async function afterGrowth() { for (let i = 0; i < 4; i++) await frame(); }
@@ -79,9 +104,14 @@ async function afterGrowth() { for (let i = 0; i < 4; i++) await frame(); }
  * acts.
  */
 function restoredBody(tag) {
+  // The wrapper id lets `teardown` remove the fixture: the restore REPLACES the
+  // whole body and nothing puts the original back, so each case would otherwise
+  // leave its markup in the document.
   return '<!--wj:children:/:/anchor-restore-a-->'
+    + '<div id="wj-restored-1310">'
     + `<${tag}></${tag}>`
     + '<div style="height:3000px">restored</div>'
+    + '</div>'
     + '<!--/wj:children:/-->';
 }
 
@@ -89,8 +119,7 @@ function restoredHtml(tag) {
   return '<!doctype html><html><head></head><body>' + restoredBody(tag) + '</body></html>';
 }
 
-const RESTORED_HTML = restoredHtml('wj-grow-late-1310');
-const RESTORED_HTML_SLOW = restoredHtml('wj-grow-very-late-1310');
+
 
 /**
  * A same-document history entry for this test page, carrying one extra query
@@ -118,12 +147,22 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
    *   default the revalidation is held open so a case can assert inside the
    *   restore window. `instantRevalidation` answers it immediately instead,
    *   which is the ordering a fast server produces. `restoredY` overrides the
-   *   recorded offset, so a case can force the clamped path.
+   *   recorded offset, so a case can force the clamped path, and `manualGrowth`
+   *   swaps in a grower the test drives by hand.
    */
   async function setup(opts) {
     const instant = Boolean(opts && opts.instantRevalidation);
     const restoredY = (opts && opts.restoredY) != null ? opts.restoredY : RESTORED_Y;
-    const html = instant ? RESTORED_HTML_SLOW : RESTORED_HTML;
+    const html = restoredHtml((opts && opts.manualGrowth) ? 'wj-grow-on-command-1310'
+      : instant ? 'wj-grow-very-late-1310' : 'wj-grow-late-1310');
+    // Clear any fixture a previous case left in the document BEFORE starting.
+    // Teardown removes it, but a revalidation swap can land after teardown has
+    // run and put it back, and a leftover grower is already at full height, so
+    // the swap reuses it and the next restore is no longer clamped. Removing it
+    // here as well is what makes the clamped precondition hold every time; on
+    // Firefox it failed roughly one run in three without this.
+    const stale = document.getElementById('wj-restored-1310');
+    if (stale) stale.remove();
     navGuard = installNavGuard();
     enableClientRouter();
     origScrollBehavior = document.documentElement.style.scrollBehavior;
@@ -196,6 +235,9 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       entriesPushed = false;
     }
     container.remove();
+    // The swapped-in restored page, which replaced the body wholesale.
+    const restored = document.getElementById('wj-restored-1310');
+    if (restored) restored.remove();
     document.documentElement.style.removeProperty('overflow-anchor');
     document.documentElement.style.scrollBehavior = origScrollBehavior;
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
@@ -290,19 +332,20 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     // far (1902 came back as 2002 on /ui/button). The catch-up re-asserts the
     // recorded offset the moment the page is tall enough to hold it.
     //
-    // The target is picked from the live viewport so it sits INSIDE the band
-    // that only the grown page can reach: past the un-grown document's maximum
-    // (3000px of fixture), and 300px into the 763px the grower adds.
-    const restoredY = Math.max(0, 3000 - window.innerHeight + 300);
-    await setup({ restoredY });
+    // The target sits inside the band only the grown page can reach, and the
+    // fixture grows by 3000px so that band does not depend on the runner's
+    // viewport height.
+    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true });
     try {
       await goBack();
-      assert.ok(window.scrollY < restoredY - 1,
-        `precondition: the restore was clamped (got ${window.scrollY} for ${restoredY})`);
+      assert.ok(window.scrollY < CLAMPED_TARGET - 1,
+        `precondition: the restore was clamped (got ${window.scrollY} for ${CLAMPED_TARGET})`);
+      // Now make the offset reachable, which is what the catch-up waits for.
+      document.querySelector('wj-grow-on-command-1310').style.height = COMMANDED_GROWTH + 'px';
       for (let i = 0; i < 12; i++) await frame();
-      assert.ok(Math.abs(window.scrollY - restoredY) < 5,
-        `the catch-up lands on the recorded offset once it is reachable `
-        + `(expected ~${restoredY}, got ${window.scrollY})`);
+      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
+        'the catch-up lands on the recorded offset once it is reachable '
+        + `(expected ~${CLAMPED_TARGET}, got ${window.scrollY})`);
     } finally { await teardown(); }
   });
 
@@ -310,21 +353,22 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     // The catch-up WRITES scroll, unlike suppression, so it is the one part of
     // this that could yank someone. It stops on the same inputs a suppression
     // window closes on, before the offset becomes reachable.
-    const restoredY = Math.max(0, 3000 - window.innerHeight + 300);
-    await setup({ restoredY });
+    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true });
     try {
       await goBack();
-      const clamped = window.scrollY;
-      assert.ok(clamped < restoredY - 1, 'precondition: the restore was clamped');
+      assert.ok(window.scrollY < CLAMPED_TARGET - 1,
+        'precondition: the restore was clamped');
+      // The reader takes over BEFORE the offset becomes reachable.
       window.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+      document.querySelector('wj-grow-on-command-1310').style.height = COMMANDED_GROWTH + 'px';
       for (let i = 0; i < 12; i++) await frame();
       // Asserted as "the catch-up never wrote", not as "nothing moved". The
       // clamped path deliberately leaves anchoring ON, so the browser still
       // carries the position as the page grows, exactly as it does on main.
       // What must not happen is this code adding a write of its own on top.
-      assert.ok(Math.abs(window.scrollY - restoredY) >= 5,
+      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) >= 5,
         'a reader who has taken over is never scrolled onto the recorded '
-        + `offset (landed exactly on ${restoredY}, so the catch-up wrote)`);
+        + `offset (landed exactly on ${CLAMPED_TARGET}, so the catch-up wrote)`);
     } finally { await teardown(); }
   });
 
