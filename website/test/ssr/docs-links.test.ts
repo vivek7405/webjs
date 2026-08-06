@@ -228,13 +228,15 @@ test('every docs sidebar label and section title is Title Case', async () => {
   // The rest are here so the first 'Deploying on Railway' does not red CI for a
   // label that was never wrong.
   //
-  // This list is matched case-INSENSITIVELY, so an entry here SHADOWS any
-  // fixed-casing word that lowercases to it, and the shadow wins because a
-  // minor word is checked against the lowercased token. 'vs' is deliberately
-  // absent for that reason: it would swallow the VS of 'Editor Setup (Neovim,
-  // VS Code)', and a drift to 'vs Code' would then read as an ordinary minor
-  // word and pass. Before adding a word here, check no label depends on its
-  // capitalised form; if one does, it belongs in FIXED_CASING instead.
+  // This list is matched case-INSENSITIVELY while FIXED_CASING is matched
+  // exact-case, so an entry here whose spelling collides with a fixed-casing
+  // word permits that word's DRIFTED form. The correctly-cased word is fine
+  // either way, since FIXED_CASING is checked first, but the drift is not:
+  // FIXED_CASING never matches 'vs', so with 'vs' in this list a slip from
+  // 'VS Code' to 'vs Code' reads as an ordinary minor word and passes. That
+  // is why 'vs' is absent. The assertion below enforces it rather than
+  // trusting this comment, because remedy 3 of the failure message sends the
+  // next person here to add exactly this kind of word.
   const MINOR_WORDS = new Set([
     'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'if', 'in', 'into',
     'nor', 'of', 'off', 'on', 'onto', 'or', 'over', 'per', 'so', 'the', 'to',
@@ -245,8 +247,7 @@ test('every docs sidebar label and section title is Title Case', async () => {
   // them would be WRONG rather than a correction. Two kinds qualify: a code
   // token ('@webjsdev/ui', 'createAuth', 'webjs check', 'package.json') and a
   // brand with non-prose capitalisation ('macOS', 'iOS', 'npm', and the VS of
-  // 'VS Code', which is here rather than left to MINOR_WORDS because 'vs'
-  // there would shadow it). No structural rule
+  // 'VS Code'). No structural rule
   // can carry this: shape detects '@webjsdev/ui' and 'createAuth', but a
   // future 'webjs check' label is two ordinary lowercase words,
   // byte-indistinguishable from the slip this test hunts. So the exemption is
@@ -255,6 +256,17 @@ test('every docs sidebar label and section title is Title Case', async () => {
   // word with wrapping punctuation stripped, so it survives a rename to
   // 'Auth Providers (createAuth API)'.
   const FIXED_CASING = new Set(['createAuth', '@webjsdev/ui', 'VS']);
+
+  // The two sets must not collide, or the MINOR_WORDS entry permits the drifted
+  // spelling and the guard goes quiet on it. Asserted rather than left to the
+  // comment above, since 'vs' sat in MINOR_WORDS and let 'vs Code' pass until
+  // it was measured.
+  const collisions = [...FIXED_CASING].filter((w) => MINOR_WORDS.has(w.toLowerCase()));
+  assert.deepEqual(
+    collisions,
+    [],
+    `these words are in FIXED_CASING and also in MINOR_WORDS: ${collisions.join(', ')}. MINOR_WORDS is matched on the lowercased token, so it permits the drifted spelling of each one. Remove them from MINOR_WORDS`,
+  );
 
   const layout = await readFile(resolve(DOCS_ROOT, 'layout.ts'), 'utf8');
   // Slice to the NAV_SECTIONS literal. Outside it sit the docs-scoped metadata
@@ -287,11 +299,20 @@ test('every docs sidebar label and section title is Title Case', async () => {
   const labels = [...nav.matchAll(quoted('label'))].map((m) => m[2]);
   const titles = [...nav.matchAll(quoted('title'))].map((m) => m[2]);
   const hrefs = [...nav.matchAll(quoted('href'))].map((m) => m[2]);
+  // Every section object carries exactly one `items:`, so this counts sections
+  // independently of their titles, the way hrefs count entries independently
+  // of their labels.
+  const sections = [...nav.matchAll(/\bitems:/g)].length;
 
   assert.equal(
     labels.length,
     hrefs.length,
     `parsed ${hrefs.length} hrefs but ${labels.length} labels: a nav entry did not parse, so it is not being checked. Usual causes are an empty value or a quoting style this regex does not read. Fix the nav entry if it is malformed; widen the regex only if the entry is legitimate`,
+  );
+  assert.equal(
+    titles.length,
+    sections,
+    `parsed ${sections} sections but ${titles.length} section titles: a section title did not parse, so it is not being checked. Same causes as above. Without this a section title could go empty and only drop the count, which the floor below would still clear`,
   );
   // Floors matching the sibling checks in this file, so a regex that stops
   // matching fails here instead of passing empty.
