@@ -65,8 +65,24 @@ const RESTORED_BODY =
 const RESTORED_HTML =
   '<!doctype html><html><head></head><body>' + RESTORED_BODY + '</body></html>';
 
+/**
+ * A same-document history entry for this test page, carrying one extra query
+ * param. Built from the LIVE url rather than `location.pathname`, because the
+ * test page's own query string identifies the web-test-runner session: dropping
+ * it here rewrites the page out of its session and takes down the whole run
+ * (with every test still passing, so it reads as an infrastructure blip).
+ *
+ * @param {string} tag
+ * @returns {string} pathname + search, which is also the router's cache key
+ */
+function entryUrl(tag) {
+  const u = new URL(location.href);
+  u.searchParams.set('wj', tag);
+  return u.pathname + u.search;
+}
+
 suite('Client router: a Back restore survives late layout growth (#1310)', () => {
-  let navGuard, container, origFetch, origScrollBehavior, entriesPushed;
+  let navGuard, container, origFetch, origScrollBehavior, origUrl, entriesPushed;
   /** Resolves the in-flight revalidation, so a case controls the window's close. */
   let releaseFetch;
 
@@ -102,13 +118,14 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     // Two real same-document history entries, so `history.back()` drives a REAL
     // popstate. Reassigning `location` is impossible in a browser, and a
     // synthetic popstate event would not exercise the browser's own restore.
-    history.pushState(null, '', location.pathname + '?wj=anchor-a');
-    history.pushState(null, '', location.pathname + '?wj=anchor-b');
+    origUrl = location.href;
+    history.pushState(null, '', entryUrl('anchor-a'));
+    history.pushState(null, '', entryUrl('anchor-b'));
     entriesPushed = true;
-    _snapshotCache.set(location.pathname + '?wj=anchor-a', {
+    _snapshotCache.set(entryUrl('anchor-a'), {
       html: RESTORED_HTML, scrollX: 0, scrollY: RESTORED_Y,
     });
-    _setCurrentPageUrl(location.origin + location.pathname + '?wj=anchor-b');
+    _setCurrentPageUrl(location.href);
     // Start where the reader was, so the restore is a real scroll rather than
     // a no-op from 0.
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
@@ -132,10 +149,12 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     // Let the released revalidation finish so it cannot swap during a later case.
     for (let i = 0; i < 6; i++) await frame();
     disableClientRouter();
-    _snapshotCache.delete(location.pathname + '?wj=anchor-a');
+    _snapshotCache.delete(entryUrl('anchor-a'));
     _setCurrentPageUrl(null);
     if (entriesPushed) {
-      history.replaceState(null, '', location.pathname);
+      // Restore the EXACT url the page was served at, session query string
+      // included.
+      history.replaceState(null, '', origUrl);
       entriesPushed = false;
     }
     container.remove();
