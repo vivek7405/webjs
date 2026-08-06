@@ -152,9 +152,9 @@ describe('E2E: dev observability for SSR action seeding (#1309)', {
     // router rather than by calling `scanSeeds` by hand. `/elided` carries a BARE
     // async component, so it elides: nothing on the client ever calls the action,
     // the lazy initial scan never fires, and its seed block is left sitting in the
-    // live document. Soft-navigating away from it is where the drain has to put
-    // the outgoing values in BEFORE the incoming ones, or the outgoing render wins
-    // the shared key and the hit contradicts the paint.
+    // live document. Soft-navigating away from it is where the outgoing page's
+    // leftovers have to be evicted, carrier and store alike, or a component on
+    // the incoming page can be handed a value from the render that just left.
     const page = await browser.newPage();
     const rpcs = [];
     const warns = [];

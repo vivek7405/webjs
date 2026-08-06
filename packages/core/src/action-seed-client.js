@@ -95,31 +95,39 @@ export function scanSeeds(root, opts) {
   if (!scope || typeof scope.querySelectorAll !== 'function') return;
 
   // A FRAME swap is not a page navigation: the page around the frame is still
-  // the page on screen. So ingest whatever carriers the subtree brings and touch
-  // nothing else, no window closed or opened and no lazy-scan suppression.
+  // the page on screen. So touch no page state at all, no window closed or
+  // opened and no lazy-scan suppression, and DISCARD whatever the parse carries.
   //
-  // Getting this from the router rather than inferring it is the point. A frame
-  // response cannot be recognised from its parse: `ssr.js` returns the subtree
-  // before the seed block is appended, so it arrives with no block and no
-  // marker, which is indistinguishable from a page that simply seeded nothing.
-  // Guessing produced both failure modes in turn. Treating it as a page killed
-  // the report for the whole page the frame sits on; attributing the window to
-  // the live page instead made it report a CAUSE that is provably false, since
-  // none of the three causes describes "a frame response carries no seed block",
-  // and the frame response carries no `X-Webjs-Seed` header to cross-check
-  // against either. A confident misdiagnosis is worse than silence, so the
-  // router says which it is.
+  // The router has to say which it is, because the parse cannot be recognised
+  // from its own shape. `ssr.js` slices out a bare frame subtree ONLY when the
+  // id was found and the render did not stream; in every other case it falls
+  // through and serves the WHOLE PAGE, seed block and all, so a frame response
+  // is not reliably distinguishable from a page that seeded nothing. Guessing
+  // failed in both directions in turn: treating it as a page killed the report
+  // for the whole page the frame sits on, and attributing the window to the live
+  // page made it report a CAUSE that is provably false, since none of the causes
+  // describes a frame response and there is no `X-Webjs-Seed` on it to
+  // cross-check against.
+  //
+  // Discarding is right for every shape the fallthrough produces, and they are
+  // not all the same shape:
+  //  - ISOLABLE (id found, buffered): the subtree was sliced before the block
+  //    was appended, so there is nothing to discard.
+  //  - STREAMED: the whole page is served and the frame IS in it, so the swap
+  //    SUCCEEDS. In dev the page carries a marker-only block, which holds no
+  //    seeds anyway.
+  //  - #241 HTML CACHE HIT: the cached page is returned before the slice, so the
+  //    parse carries a real, populated block, and the swap succeeds. Those seeds
+  //    describe the whole page, not the one region being swapped in, and the
+  //    page on screen already has its own.
+  //  - ID MISSING: the whole page is served, the router dispatches
+  //    `webjs:frame-missing`, and the response is thrown away entirely.
+  //
+  // Ingesting in the last three would put another response's seeds in the store,
+  // where last-write-wins hands them to a component on the page still on screen,
+  // which is the exact "a hit disagrees with the paint" class this feature
+  // promises cannot happen.
   if (opts && opts.frame === true) {
-    // DISCARD, never ingest. A frame parse is one of two things and neither
-    // belongs in the store. When the frame was isolable, `ssr.js` sliced the
-    // subtree out before the seed block was appended, so there is nothing to
-    // ingest anyway. When it was NOT (the id is missing, or the render streamed)
-    // `ssr.js` falls through and serves the WHOLE PAGE, block included, and the
-    // router then dispatches `webjs:frame-missing` and throws that response
-    // away. Ingesting there would put a discarded page's seeds in the store,
-    // where last-write-wins hands them to a component on the page still on
-    // screen, which is the exact "a hit disagrees with the paint" class this
-    // feature promises cannot happen.
     drainCarriers(scope, true);
     return;
   }
