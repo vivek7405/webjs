@@ -131,7 +131,7 @@ The first three attempts were a STATIC scan over test sources, and each went bli
 
 **A spawned child does not inherit the deny.** `test/vendor-cli/vendor-cli.test.mjs` runs the CLI in another process, so it passes its own preload and asserts a `[jspm-double] armed` marker on every spawn, which reds all ten of its tests if the flag is dropped. A new test that spawns a process and vendors needs the same treatment.
 
-**The nightly is what stops a permanent skip from hiding.** `.github/workflows/vendor-cdn.yml` runs the live files with `WEBJS_REQUIRE_NETWORK=1`, which both selects them AND promotes their upstream-trouble skip into a failure. Without that second half a permanently skipping test is indistinguishable from a passing one. A failure opens or comments on one fixed-title tracking issue, since GitHub notifies only the workflow file's last committer about a failed scheduled run.
+**The nightly is what stops a permanent skip from hiding.** `.github/workflows/vendor-cdn.yml` runs the live files with `WEBJS_REQUIRE_NETWORK=1`, which selects them and lifts the deny. It does NOT promote their upstream-trouble skip into a failure: a jspm outage is not a regression, and a job that reds on one is a job whose reds get ignored. `WEBJS_FAIL_ON_SKIP=1` promotes, by hand, and the nightly does not set it; a skip surfaces as a warning annotation instead. A genuine failure opens or comments on one fixed-title tracking issue, since GitHub notifies only the workflow file's last committer about a failed scheduled run.
 
 **Do not add a `pull_request` trigger to that workflow.** A live check on a PR is a live check whatever job it sits in; making it non-required would just produce a red somebody is told to ignore, which is how a real failure gets ignored too.
 

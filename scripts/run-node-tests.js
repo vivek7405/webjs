@@ -61,7 +61,8 @@ const e2eSeg = `${SEP}e2e${SEP}`;
 // opt-in (#1150). This job is REQUIRED, so a jspm or npm-registry outage must
 // not be able to red it; a documentation-only PR was blocked that way on
 // #1149. The nightly `vendor-cdn` workflow sets WEBJS_REQUIRE_NETWORK to run
-// them for real, where a skip is promoted to a failure.
+// them for real; a skip there is a warning, not a failure, since an outage is
+// not a regression (WEBJS_FAIL_ON_SKIP promotes it when you want that).
 const LIVE_MARKER = '.live.test.';
 const wantsNetwork = Boolean(process.env.WEBJS_REQUIRE_NETWORK);
 

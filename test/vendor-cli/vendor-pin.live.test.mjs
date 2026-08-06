@@ -8,7 +8,9 @@
  *
  * Both test runners skip `*.live.test.*` unless `WEBJS_REQUIRE_NETWORK=1`, so
  * this never runs in a required check. `.github/workflows/vendor-cdn.yml` runs
- * it nightly with that variable set, where a skip is promoted to a failure.
+ * it nightly with that variable set; a skip there is a warning rather than a
+ * failure, since an outage is not a regression. `WEBJS_FAIL_ON_SKIP=1`
+ * promotes it when you want to force the question.
  *
  * It asserts only what a live resolve is uniquely able to prove: that jspm
  * answers with a url of the shape the pin file expects, and that the bytes

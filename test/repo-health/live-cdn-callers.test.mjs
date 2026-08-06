@@ -32,6 +32,8 @@ import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 
 import { denyLiveHosts, DENIED_HOSTS, DENY_INSTALLED_FLAG } from '../fixtures/deny-live-hosts.mjs';
@@ -158,24 +160,53 @@ test('the preload actually arms the deny in a real process', () => {
   // Spawned rather than asserted on this process, so the check does not depend
   // on how THIS file was launched, and so both branches of the env switch can
   // be exercised in one test.
-  const fixture = pathToFileURL(join(ROOT, 'test/fixtures/deny-live-hosts.mjs')).href;
-  const probe = 'const r = await fetch("https://api.jspm.io/generate", { method: "POST" });'
-    + `console.log(JSON.stringify({ status: r.status, armed: Boolean(globalThis[${JSON.stringify(DENY_INSTALLED_FLAG)}]) }));`;
+  //
+  // The probe goes in a temp FILE rather than `-e`, because `--input-type` is
+  // Node-only and `process.execPath` is the Bun binary when this file runs
+  // under `bun test`. Same reason the preload flag is runtime-selected.
+  //
+  // CRUCIALLY the two branches run DIFFERENT probes. The first fetches,
+  // because the whole point is that the deny answers it without a packet
+  // leaving the process. The second must NOT fetch: with the deny lifted the
+  // call would go to the real CDN, which would make this file, whose entire
+  // job is to stop a required check reaching a third party, itself a live
+  // caller on every `npm test`. It reads the install flag instead.
+  const fixture = join(ROOT, 'test/fixtures/deny-live-hosts.mjs');
+  const flag = JSON.stringify(DENY_INSTALLED_FLAG);
+  const armed = `armed: Boolean(globalThis[${flag}])`;
 
-  const run = (env) => {
-    const r = spawnSync(process.execPath, ['--import', fixture, '--input-type=module', '-e', probe],
+  const run = (probe, env) => {
+    const file = join(mkdtempSync(join(tmpdir(), 'webjs-deny-probe-')), 'probe.mjs');
+    writeFileSync(file, probe);
+    const preload = process.versions.bun
+      ? ['--preload', fixture]
+      : ['--import', pathToFileURL(fixture).href];
+    const r = spawnSync(process.execPath, [...preload, file],
       { encoding: 'utf8', env: { ...process.env, ...env }, timeout: 30_000 });
-    return JSON.parse((r.stdout || '{}').trim() || '{}');
+    // A spawn that failed must NOT collapse into `{}`. An empty object
+    // satisfies a `notEqual(..., true)` assertion, so swallowing the error
+    // would make half this test pass unconditionally, including on a machine
+    // where the probe could never run at all.
+    assert.equal(r.status, 0, `probe exited ${r.status}: ${r.stderr || r.error || 'no output'}`);
+    const out = JSON.parse((r.stdout || '').trim());
+    assert.equal(out.ok, true, 'the probe must report that it ran to completion');
+    return out;
   };
 
-  const denied = run({ WEBJS_REQUIRE_NETWORK: '' });
+  const denied = run(
+    'const r = await fetch("https://api.jspm.io/generate", { method: "POST" });'
+    + `console.log(JSON.stringify({ ok: true, status: r.status, ${armed} }));`,
+    { WEBJS_REQUIRE_NETWORK: '' },
+  );
   assert.equal(denied.armed, true, 'the preload must install itself by default');
   assert.equal(denied.status, 503, 'a jspm call in a preloaded process must be denied, not sent');
 
-  // The opt-out has to actually opt out, or the nightly could never reach the
-  // real CDN. Asserting the flag rather than a live status keeps this offline.
-  const allowed = run({ WEBJS_REQUIRE_NETWORK: '1' });
-  assert.notEqual(allowed.armed, true, 'WEBJS_REQUIRE_NETWORK must lift the deny');
+  // No fetch here, deliberately. See above.
+  const allowed = run(
+    `console.log(JSON.stringify({ ok: true, ${armed} }));`,
+    { WEBJS_REQUIRE_NETWORK: '1' },
+  );
+  assert.equal(allowed.armed, false, 'WEBJS_REQUIRE_NETWORK must lift the deny');
 });
 
 test('every allowlisted live caller is a *.live.test.* file that exists', () => {

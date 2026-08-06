@@ -85,12 +85,18 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          skipped=$(grep -c '^# SKIP\|^ℹ skipped' live.log 2>/dev/null || true)
-          if grep -q 'SKIP ' live.log 2>/dev/null; then
-            echo "::warning title=Live jspm check skipped::jspm.io could not answer at least one check. \
+          # Counted from the markers the tests print THEMSELVES, not from the
+          # reporter. Which reporter `node --test` picks depends on the Node
+          # version and on whether stdout is a TTY, and guessing wrong here is
+          # silent: the count reads 0 in exactly the runs that skipped. Both
+          # live files print `[<file>] SKIP <reason>` from their own skip
+          # helper, which is ours and does not move.
+          skipped=$(grep -c '] SKIP ' live.log || true)
+          if [ "${skipped}" != "0" ]; then
+            echo "::warning title=Live jspm check skipped::jspm.io could not answer ${skipped} check(s). \
           Not a regression, but if this repeats for days the live coverage has stopped running. \
           Re-run with WEBJS_FAIL_ON_SKIP=1 to force it to fail instead."
-            grep 'SKIP ' live.log || true
+            grep '] SKIP ' live.log || true
           fi
           echo "skip markers: ${skipped}"
 
