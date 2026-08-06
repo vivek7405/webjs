@@ -632,28 +632,46 @@ export function matchClosingParenthesis(s, start) {
  * `}` inside `'…'`, `"…"`, or backtick templates don't decrement depth.
  * Returns -1 if no balanced brace is found.
  *
+ * A template hole is a CODE context nested inside a template, not a brace in
+ * the enclosing block, so it gets its own frame on the stack: `${` pushes,
+ * and the `}` that returns that frame to depth zero pops back into the
+ * template rather than counting toward the block being matched. An earlier
+ * version incremented the outer depth at `${` and then never decremented it
+ * (the closing `}` arrived while still in template state), so depth could
+ * never return to zero and a class body holding `` html`…${x}…` `` was
+ * unmatchable. Every caller passed a masked source in which holes are already
+ * blanked, so the bug was invisible until one passed raw source (#1307).
+ *
  * @param {string} s
  * @param {number} start
  */
 export function matchClosingBrace(s, start) {
-  let depth = 1;
+  // Innermost first. `tpl` frames are template literals (no brace counting);
+  // `!tpl` frames are code, each with its own depth.
+  /** @type {Array<{ tpl: boolean, depth: number }>} */
+  const stack = [{ tpl: false, depth: 1 }];
   let i = start;
-  let str = ''; // '', "'", '"', or backtick
   while (i < s.length) {
+    const top = stack[stack.length - 1];
     const c = s[i];
-    if (str) {
+    if (top.tpl) {
       if (c === '\\') { i += 2; continue; }
-      if (c === str) str = '';
-      else if (str === '`' && c === '$' && s[i + 1] === '{') {
-        // template hole, count its closing `}` toward our brace depth.
-        depth++;
-        i += 2;
-        continue;
-      }
+      if (c === '`') { stack.pop(); i++; continue; }
+      if (c === '$' && s[i + 1] === '{') { stack.push({ tpl: false, depth: 1 }); i += 2; continue; }
       i++;
       continue;
     }
-    if (c === "'" || c === '"' || c === '`') { str = c; i++; continue; }
+    if (c === "'" || c === '"') {
+      i++;
+      while (i < s.length) {
+        if (s[i] === '\\') { i += 2; continue; }
+        const d = s[i];
+        i++;
+        if (d === c || d === '\n') break;   // closed, or unterminated at EOL
+      }
+      continue;
+    }
+    if (c === '`') { stack.push({ tpl: true, depth: 0 }); i++; continue; }
     if (c === '/' && s[i + 1] === '/') { // line comment
       while (i < s.length && s[i] !== '\n') i++;
       continue;
@@ -664,8 +682,18 @@ export function matchClosingBrace(s, start) {
       i += 2;
       continue;
     }
-    if (c === '{') depth++;
-    else if (c === '}') { depth--; if (depth === 0) return i; }
+    if (c === '{') { top.depth++; i++; continue; }
+    if (c === '}') {
+      top.depth--;
+      // Depth zero closes this frame: the outermost one is the answer, an inner
+      // one is a template hole ending and hands control back to its template.
+      if (top.depth === 0) {
+        if (stack.length === 1) return i;
+        stack.pop();
+      }
+      i++;
+      continue;
+    }
     i++;
   }
   return -1;
@@ -687,5 +715,227 @@ export function matchClosingBrace(s, start) {
 export function redactToPlaceholders(src) {
   const { out, literals } = scanLiterals(src, { placeholder: true });
   return { redacted: out, literals };
+}
+
+/**
+ * The attribute position a template hole commits to, read from the literal
+ * segment immediately before it. Returns the attribute NAME only; a caller
+ * pairs it with the tag the hole sits in.
+ *
+ * @param {string} literalBefore
+ * @returns {'action' | 'formaction' | null}
+ */
+function trailingActionAttr(literalBefore) {
+  if (/\sformaction=$/i.test(literalBefore)) return 'formaction';
+  if (/\saction=$/i.test(literalBefore)) return 'action';
+  return null;
+}
+
+/**
+ * Classify a template hole by the start tag and attribute it commits: `'form'`
+ * for `<form action=` (#1155), `'submitter'` for `<button|input formaction=`
+ * (#1207), and `null` for anything else.
+ *
+ * Reading the segment immediately before the hole rather than the whole
+ * template is what keeps `<div action=${x}>` out. The tag and the attribute are
+ * matched as a PAIR, so `<form formaction=${x}>` and `<button action=${x}>`
+ * stay out too: both are refused at render time, and neither is a binding.
+ *
+ * @param {string} literalBefore the literal segment immediately before the hole
+ * @returns {'form' | 'submitter' | null}
+ */
+export function classifyActionHole(literalBefore) {
+  const attr = trailingActionAttr(literalBefore);
+  if (!attr) return null;
+  // The last `<` opens the tag the hole sits in. Requiring no `>` after it
+  // keeps the match inside that one start tag.
+  const tagAt = literalBefore.lastIndexOf('<');
+  if (tagAt < 0) return null;
+  const tag = literalBefore.slice(tagAt);
+  if (tag.includes('>')) return null;
+  if (attr === 'action' && /^<form\b/i.test(tag)) return 'form';
+  if (attr === 'formaction' && /^<(?:button|input)\b/i.test(tag)) return 'submitter';
+  return null;
+}
+
+/**
+ * @typedef {{ tag: string, scope: 'none'|'unbound'|'bound' }} FormScopeSite
+ */
+
+/**
+ * Walk every `` html`...` `` template literal in `src` and report, for each
+ * submitter action hole (`<button|input formaction=${...}>`) and each
+ * custom-element start tag, the enclosing `<form>` scope at that point (#1307).
+ *
+ * Only an `html`-tagged literal is entered, so `const s = '<form>'` and a `css`
+ * or `sql` template are never read as markup. That carve-out matters: the
+ * framework's own website renders `<form action=${fn}>` as a code SAMPLE.
+ *
+ * A template nested inside a hole INHERITS the enclosing scope, because that is
+ * what the renderer does (`render` threads `formScope` through arrays,
+ * `repeat`, and nested templates). A separate top-level template starts fresh
+ * at `'none'`, because it is its own scan there too. `</form>` returns to the
+ * scope the scan started in, mirroring `handleTagEnd` in `render-server.js`.
+ *
+ * @param {string} src
+ * @returns {{ submitters: FormScopeSite[], tagUses: FormScopeSite[] }}
+ */
+export function scanHtmlFormScopes(src) {
+  const { redacted, literals } = redactToPlaceholders(src);
+  /** @type {FormScopeSite[]} */
+  const submitters = [];
+  /** @type {FormScopeSite[]} */
+  const tagUses = [];
+  const n = redacted.length;
+  // Sticky, so matching a literal placeholder at the cursor costs no slice.
+  const STR = /__STR_(\d+)__/y;
+
+  /**
+   * Walk code. In placeholder mode a comment body and a regex body are already
+   * blanked to spaces and a string body is one opaque token, so the only
+   * structure left to track is braces, quote delimiters, and backticks.
+   *
+   * @param {number} i
+   * @param {boolean} stopAtBrace return at the `}` closing the enclosing hole
+   * @param {'none'|'unbound'|'bound'} scope inherited by any template found here
+   * @returns {number}
+   */
+  function walkCode(i, stopAtBrace, scope) {
+    let brace = 0;
+    while (i < n) {
+      const c = redacted[i];
+      if (stopAtBrace && c === '}' && brace === 0) return i;
+      if (c === '{') { brace++; i++; continue; }
+      if (c === '}') { brace--; i++; continue; }
+      if (c === "'" || c === '"') {
+        i++;
+        while (i < n && redacted[i] !== c && redacted[i] !== '\n') i++;
+        if (i < n) i++;
+        continue;
+      }
+      if (c === '`') {
+        const before = redacted.slice(Math.max(0, i - 32), i);
+        const tagged = /([A-Za-z_$][\w$]*)\s*$/.exec(before);
+        i = walkTemplate(i + 1, !!tagged && tagged[1] === 'html', scope);
+        continue;
+      }
+      i++;
+    }
+    return i;
+  }
+
+  /**
+   * Walk one template literal from just after its opening backtick.
+   *
+   * @param {number} i
+   * @param {boolean} isHtml whether its markup should be read
+   * @param {'none'|'unbound'|'bound'} startScope
+   * @returns {number} the index just past the closing backtick
+   */
+  function walkTemplate(i, isHtml, startScope) {
+    /** @type {'none'|'unbound'|'bound'} */
+    let scope = startScope;
+    /**
+     * The start tag currently open. It persists across literal segments AND
+     * across holes, because `<form action=${fn} class="x">` is one tag split
+     * into three pieces by the scan.
+     * @type {null | { name: string, isClose: boolean, quote: string | null, formHole: boolean, submitterHole: boolean }}
+     */
+    let tag = null;
+    let inComment = false;
+    let lastLiteral = '';
+
+    const closeTag = () => {
+      const t = tag;
+      tag = null;
+      if (!t) return;
+      if (t.isClose) {
+        // Back to the scope this scan STARTED in, not a flat 'none': a nested
+        // template closing a form of its own learns nothing about the form its
+        // caller may have opened.
+        if (t.name === 'form') scope = startScope;
+        return;
+      }
+      if (t.name === 'form') {
+        // A form that opened and bound NOTHING still opens a scope: a submitter
+        // inside it is a different answer from one with no form at all.
+        scope = t.formHole ? 'bound' : 'unbound';
+        return;
+      }
+      if (t.submitterHole) submitters.push({ tag: t.name, scope });
+      if (t.name.includes('-')) tagUses.push({ tag: t.name, scope });
+    };
+
+    /** @param {string} text one literal segment, read as markup */
+    const consumeMarkup = (text) => {
+      let p = 0;
+      while (p < text.length) {
+        if (inComment) {
+          const end = text.indexOf('-->', p);
+          if (end < 0) return;
+          inComment = false;
+          p = end + 3;
+          continue;
+        }
+        if (tag) {
+          const ch = text[p];
+          if (tag.quote) {
+            if (ch === tag.quote) tag.quote = null;
+            p++;
+            continue;
+          }
+          if (ch === '"' || ch === "'") { tag.quote = ch; p++; continue; }
+          if (ch === '>') { p++; closeTag(); continue; }
+          p++;
+          continue;
+        }
+        const lt = text.indexOf('<', p);
+        if (lt < 0) return;
+        if (text.startsWith('<!--', lt)) { inComment = true; p = lt + 4; continue; }
+        const m = /^<(\/?)([A-Za-z][A-Za-z0-9-]*)/.exec(text.slice(lt));
+        if (!m) { p = lt + 1; continue; }
+        tag = {
+          name: m[2].toLowerCase(),
+          isClose: m[1] === '/',
+          quote: null,
+          formHole: false,
+          submitterHole: false,
+        };
+        p = lt + m[0].length;
+      }
+    };
+
+    while (i < n) {
+      const c = redacted[i];
+      if (c === '`') return i + 1;
+      if (c === '$' && redacted[i + 1] === '{') {
+        if (isHtml && tag && !tag.isClose) {
+          const attr = trailingActionAttr(lastLiteral);
+          if (attr === 'action' && tag.name === 'form') tag.formHole = true;
+          else if (attr === 'formaction' && (tag.name === 'button' || tag.name === 'input')) tag.submitterHole = true;
+        }
+        // Only the segment IMMEDIATELY before a hole can commit an attribute,
+        // so two adjacent holes leave nothing for the second to read.
+        lastLiteral = '';
+        i = walkCode(i + 2, true, scope);
+        if (i < n && redacted[i] === '}') i++;
+        continue;
+      }
+      STR.lastIndex = i;
+      const m = STR.exec(redacted);
+      if (m) {
+        const text = literals[Number(m[1])] || '';
+        lastLiteral = text;
+        if (isHtml) consumeMarkup(text);
+        i = STR.lastIndex;
+        continue;
+      }
+      i++;
+    }
+    return i;
+  }
+
+  walkCode(0, false, 'none');
+  return { submitters, tagUses };
 }
 

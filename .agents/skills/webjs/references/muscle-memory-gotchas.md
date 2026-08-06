@@ -96,7 +96,8 @@ The bound, refused, and allowed shapes in full. Every "no" row is a binding that
 | `action=${fn}` on any other tag | yes | `action` submits nothing off a `<form>`, so it is an ordinary attribute and the function would be stringified |
 | `action="${fn}"`, or a mixed `action="/x/${fn}"` | yes | quoting turns a binding hole back into a plain attribute |
 | `formaction=${fn}` unquoted, on a submitter inside a bound form | **no, it BINDS** | the second supported shape (#1207). The identity rides the button's own `name`/`value` pair, the one channel a browser submits for the pressed button alone, so no `formaction` url is emitted and the server takes the LAST `__webjs_action` entry |
-| `formaction=${fn}` inside an UNBOUND `<form>` | yes | `method="post"` and the enctype are forced on the FORM's start tag, which SSR has already emitted by the time it reaches the button, so a per-button action cannot retrofit them |
+| `formaction=${fn}` inside an UNBOUND `<form>` **the renderer can see** | yes | `method="post"` and the enctype are forced on the FORM's start tag, which SSR has already emitted by the time it reaches the button, so a per-button action cannot retrofit them |
+| `formaction=${fn}` inside an unbound form the renderer CANNOT see (the button is in a component, the form is in the page) | **no, it BINDS** | a component renders its own template in a separate pass with no view of the host page, so boundness is a cannot-tell there and cannot-tell has to bind. `webjs check`'s `submitter-needs-bound-form` is what catches this one, and it is silent at runtime otherwise: see the section below |
 | `formaction=${fn}` on a submitter carrying its own `name` or `value` | yes | the identity IS that name/value pair, so both halves are already spoken for. Bind one action on the form and dispatch on `name="intent"` if you need the button's own value |
 | `formaction=${fn}` on a non-submit control, or `<input type="image">` | yes | `formaction` is inert on anything that does not submit, and an image submitter sends `name.x` / `name.y` coordinates instead of `name=value`, so the identity would never arrive |
 | `formaction=${fn}` on a submitter with `form="other"` | yes | it re-points the submitter at a form other than the bound one it sits in, so the boundness just checked was about the wrong element |
@@ -119,6 +120,26 @@ The bound, refused, and allowed shapes in full. Every "no" row is a binding that
 That last row is the one to remember: quoting a binding hole turns it back into a plain attribute, which is why invariant 4 requires `@`, `.` and `?` holes to be unquoted.
 
 `.action=${fn}` on a native form is refused during SSR too, even though the property is dropped there and nothing could leak, so a page cannot render clean on the server and then throw on hydration.
+
+**A submitter in a component whose host form is unbound is the one failure the renderers cannot throw on.** It is the shape to check by hand whenever you split a form across modules:
+
+```ts
+// components/publish-button.ts   <- the submitter lives here
+class PublishButton extends WebComponent({}) {
+  render() { return html`<button formaction=${publishDraft}>Publish</button>`; }
+}
+PublishButton.register('publish-button');
+
+// app/triage/page.ts             <- the form lives here
+// WRONG: the form binds nothing, and NOTHING throws.
+html`<form><publish-button></publish-button></form>`;
+// RIGHT: bind the enclosing form too.
+html`<form action=${saveAll}><publish-button></publish-button></form>`;
+```
+
+The component renders its own template in a separate pass with no view of the host page, so the renderer sees a cannot-tell and binds anyway (refusing would drop an isolated component from a page that still returned 200, which is worse). What ships is a button carrying the reserved `__webjs_action` identity inside a form with no `method`, so the browser submits it as a GET and the identity rides the QUERY STRING. The action never runs, the page re-renders, the status is 200, and there is no throw, no log, and no 405. A silent write path is the whole failure mode, so treat the address bar growing a `?__webjs_action=` as the fingerprint.
+
+**Run `webjs check` and it catches this for you.** The `submitter-needs-bound-form` rule reads every template in the app at once, which neither renderer can do, so it resolves the enclosing form across module boundaries and transitively through intermediate components (a page's form around `<todo-list>` around `<todo-row>` around the button). It is conservative by design and says nothing when it cannot be sure: a tag rendered in a bound form somewhere and an unbound one elsewhere, a tag with no call site in the app, a submitter in a bare `html` helper rather than a component class body, a file registering more than one tag, or a reference cycle. Silence from the rule is therefore not proof the form is bound; a green check plus the shape above still deserves a look.
 
 **Inside a component you may never see the error.** Per-component SSR error isolation contains the throw, so development shows an error box in place of the component and production renders it empty with the page still returning 200. A form that has silently vanished in production is this bug wearing a disguise; the message is in the server log. Nothing leaks either way.
 

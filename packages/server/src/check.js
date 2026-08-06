@@ -7,9 +7,11 @@ import {
   extractWebComponentClassBodies,
   matchClosingBrace,
   parsePropEntries,
+  classifyActionHole,
+  scanHtmlFormScopes,
 } from './js-scan.js';
 import { buildModuleGraph, transitiveDeps, resolveImport } from './module-graph.js';
-import { scanComponents } from './component-scanner.js';
+import { scanComponents, extractComponents } from './component-scanner.js';
 import { buildRouteTable } from './router.js';
 import { analyzeElision } from './component-elision.js';
 import { RESERVED_CONFIG } from './action-config.js';
@@ -139,6 +141,11 @@ export const RULES = [
     name: 'form-action-not-a-get-action',
     description:
       'Flags `<form action=${someAction}>` bound to a `\'use server\'` action whose file declares `export const method = \'GET\'` (#488). A GET action is a READ: it is CSRF-exempt and rides its arguments in the url, while a form submission is a CSRF-checked POST carrying a body, so the two contracts contradict each other and the submission is answered with a 405 at runtime. The rule reads the imported action\'s own file, so it only fires when the binding really does resolve to a GET-declared action. Fix by dropping the `method` export (an action with no `method` is a POST, which is what a form wants) or by binding a different action; if the form really is a read, use a plain `<form method="get" action="/search">` with no bound action.',
+  },
+  {
+    name: 'submitter-needs-bound-form',
+    description:
+      'Flags a `<button formaction=${action}>` submitter (#1207) that a whole-app scan proves sits in a `<form>` carrying no `action=${action}` binding. An unbound form defaults to GET, so the submission rides the reserved `__webjs_action` field in the QUERY STRING and the page simply re-renders: the action never runs, and nothing anywhere reports it. The renderers cannot catch this alone. SSR reads one template at a time and a COMPONENT renders its own template in a separate pass with no view of the host page, so a submitter in a component inside an unbound form is a cannot-tell, and cannot-tell has to bind (refusing there would drop an isolated component from a page that still returned 200). This rule has neither limit: it reads every template in the app at once. Deliberately conservative so it can never false-positive. A submitter whose enclosing form is bound in the same scan is fine; one whose enclosing form is UNBOUND in the same scan is flagged (the renderer refuses that shape too, but only if the branch renders). A submitter with no enclosing form in its own scan is attributed to a component only when its file registers exactly one tag, declares exactly one WebComponent class, and holds the submitter inside that class body; every other shape (a bare `html` helper, a multi-component file) is UNKNOWABLE and never flagged, because a fragment is rendered inside the CALLER\'s scan and inherits the caller\'s form scope. An attributed tag is then resolved across every call site, recursively and memoized: any call site that is bound, unknowable, or part of a cycle makes the verdict unknowable, and a tag with no call site at all is unknowable too. The rule fires only when at least one call site exists and EVERY one places the tag in an unbound form. Fix by binding the enclosing form (`<form action=${formAction}>`), which is what supplies `method="post"` and the enctype at form start, too late to add from the button.',
   },
   {
     name: 'no-redirect-in-api-route',
@@ -1396,26 +1403,15 @@ export async function checkConventions(appDir) {
         // with no hole in it. That distinction is the whole carve-out: the
         // framework's own website renders this exact shape as a code sample.
         const { redacted, literals } = redactToPlaceholders(content);
-        // A hole binds an action when the literal segment IMMEDIATELY before it
-        // ends inside a start tag at the attribute that tag can really bind:
-        // `action=` on a `<form>` (#1155), or `formaction=` on a `<button>` /
-        // `<input>` submitter (#1207). Reading the segment rather than the whole
-        // template is what keeps `<div action=${x}>` out. The tag and the
-        // attribute are matched as a PAIR, so `<form formaction=${x}>` and
-        // `<button action=${x}>` stay out too: both are refused at render time,
-        // and neither is this rule's failure mode.
+        // Both binding shapes count the same here: `action=` on a `<form>`
+        // (#1155) and `formaction=` on a `<button>` / `<input>` submitter
+        // (#1207) each put the named action behind a form submission, and a
+        // GET-declared action cannot serve either. `classifyActionHole` owns
+        // the tag-and-attribute pairing (js-scan.js), shared with
+        // `submitter-needs-bound-form`.
         const bound = new Set();
         for (const m of redacted.matchAll(/__STR_(\d+)__\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g)) {
-          const before = literals[Number(m[1])] || '';
-          // The last `<` opens the tag the hole sits in. Requiring no `>`
-          // after it keeps the match inside that one start tag.
-          const tagAt = before.lastIndexOf('<');
-          if (tagAt < 0) continue;
-          const tag = before.slice(tagAt);
-          if (tag.includes('>')) continue;
-          const bindsForm = /^<form\b/i.test(tag) && /\saction=$/i.test(tag);
-          const bindsSubmitter = /^<(?:button|input)\b/i.test(tag) && /\sformaction=$/i.test(tag);
-          if (!bindsForm && !bindsSubmitter) continue;
+          if (!classifyActionHole(literals[Number(m[1])] || '')) continue;
           bound.add(m[2]);
         }
         if (!bound.size) continue;
@@ -1454,7 +1450,164 @@ export async function checkConventions(appDir) {
     }
   }
 
+  // --- Rule: submitter-needs-bound-form (#1307) ---
+  // A submitter bound in a component whose host form is unbound posts nowhere:
+  // the form defaults to GET, the identity rides the query string, and the page
+  // re-renders with the action never having run. Neither renderer can see it
+  // (each judges one template scan), so the whole-app scan is the only place
+  // the answer exists.
+  checkSubmitterNeedsBoundForm(files, violations);
+
   return violations;
+}
+
+/**
+ * Implements `submitter-needs-bound-form` (#1307). Factored out because it is
+ * whole-app: a submitter's enclosing form can live in a different module, so the
+ * verdict is a fixed point over every template in the app rather than a
+ * per-file scan.
+ *
+ * Unlike `checkServerImportInBrowserModule` this needs no `appDir`, no module
+ * graph, and no second filesystem walk: the tag-to-owner map comes from
+ * `extractComponents` over the `files` array the caller has already read.
+ *
+ * @param {{ abs: string, rel: string, content: string, scan: string }[]} files
+ * @param {Violation[]} violations appended to in place
+ */
+function checkSubmitterNeedsBoundForm(files, violations) {
+  /**
+   * Mirrors `scanComponents`'s own filter: a fixture or a spec in an app tree
+   * must not claim a tag, and a `.server.` module never renders to a browser.
+   * @param {string} rel
+   */
+  const isAppTemplateFile = (rel) =>
+    /\.m?[jt]sx?$/.test(rel)
+    && !/\.(test|spec)\.m?[jt]sx?$/.test(rel)
+    && !/\.server\.m?[jt]s$/.test(rel);
+
+  /** @type {{ rel: string, fileSites: ReturnType<typeof scanHtmlFormScopes>, ownerTag: string | null, bodySites: ReturnType<typeof scanHtmlFormScopes> | null }[]} */
+  const scanned = [];
+  for (const { rel, content } of files) {
+    if (!isAppTemplateFile(rel)) continue;
+    // Cheap bail: a file with neither a submitter binding nor a hyphenated tag
+    // can contribute neither a violation nor a call site.
+    if (!/formaction/i.test(content) && !/<[A-Za-z][A-Za-z0-9]*-/.test(content)) continue;
+    const fileSites = scanHtmlFormScopes(content);
+    if (!fileSites.submitters.length && !fileSites.tagUses.length) continue;
+    // ATTRIBUTABLE: exactly one registered tag and exactly one WebComponent
+    // class, so a cannot-tell submitter in that class body belongs to that tag
+    // with no ambiguity. Anything else stays unknowable.
+    const tags = new Set(extractComponents(content).map((c) => c.tag));
+    const bodies = extractWebComponentClassBodies(content);
+    let ownerTag = null;
+    /** @type {ReturnType<typeof scanHtmlFormScopes> | null} */
+    let bodySites = null;
+    if (tags.size === 1 && bodies.length === 1) {
+      ownerTag = /** @type {string} */ ([...tags][0]);
+      bodySites = scanHtmlFormScopes(bodies[0].body);
+    }
+    scanned.push({ rel, fileSites, ownerTag, bodySites });
+  }
+  if (!scanned.length) return;
+
+  // Every call site of every tag, as a scope. A 'none' site needs attribution
+  // before it means anything, so it is recorded with the component that renders
+  // it (or as unknowable when no single component owns it).
+  /** @type {Map<string, Array<{ scope: 'none'|'unbound'|'bound', via: string | null }>>} */
+  const callSites = new Map();
+  for (const { fileSites, ownerTag, bodySites } of scanned) {
+    // A 'none' use is attributed to this file's component ONLY when the
+    // class-body scan saw it too. One found only in the whole-file scan came
+    // from a bare `html` helper, which is rendered inside the CALLER's scan and
+    // inherits the caller's form scope, so it is unknowable.
+    /** @type {Map<string, number>} */
+    const bodyNoneByTag = new Map();
+    for (const u of bodySites ? bodySites.tagUses : []) {
+      if (u.scope !== 'none') continue;
+      bodyNoneByTag.set(u.tag, (bodyNoneByTag.get(u.tag) || 0) + 1);
+    }
+    for (const u of fileSites.tagUses) {
+      let via = null;
+      if (u.scope === 'none') {
+        const left = bodyNoneByTag.get(u.tag) || 0;
+        if (ownerTag && left > 0) {
+          bodyNoneByTag.set(u.tag, left - 1);
+          via = ownerTag;
+        }
+      }
+      const list = callSites.get(u.tag) || [];
+      list.push({ scope: u.scope, via });
+      callSites.set(u.tag, list);
+    }
+  }
+
+  /** @type {Map<string, 'unbound' | 'unknowable'>} */
+  const verdicts = new Map();
+  /** @type {Set<string>} */
+  const inProgress = new Set();
+  /**
+   * Does EVERY place this tag is rendered put it in an unbound form?
+   *
+   * One bound call site, one unknowable call site, a cycle, or no call site at
+   * all all answer `'unknowable'`, which is silent. Only an all-unbound tag with
+   * at least one call site is a verdict the rule may fire on.
+   *
+   * @param {string} tag
+   * @returns {'unbound' | 'unknowable'}
+   */
+  function resolveTagScope(tag) {
+    const memo = verdicts.get(tag);
+    if (memo) return memo;
+    // A cycle teaches nothing about the host page, so it cannot be a verdict.
+    // Not memoized: the same tag may resolve conclusively on another path.
+    if (inProgress.has(tag)) return 'unknowable';
+    const sites = callSites.get(tag) || [];
+    if (!sites.length) {
+      // A tag no app template renders may still be rendered by markup this scan
+      // cannot see.
+      verdicts.set(tag, 'unknowable');
+      return 'unknowable';
+    }
+    inProgress.add(tag);
+    /** @type {'unbound' | 'unknowable'} */
+    let verdict = 'unbound';
+    for (const site of sites) {
+      if (site.scope === 'unbound') continue;
+      if (site.scope === 'none' && site.via && resolveTagScope(site.via) === 'unbound') continue;
+      verdict = 'unknowable';
+      break;
+    }
+    inProgress.delete(tag);
+    verdicts.set(tag, verdict);
+    return verdict;
+  }
+
+  for (const { rel, fileSites, ownerTag, bodySites } of scanned) {
+    // The same-scan case: the form and the submitter are both in this template,
+    // so the answer needs no cross-module step. The renderer refuses this shape
+    // too, but only if that branch actually renders.
+    for (const s of fileSites.submitters) {
+      if (s.scope !== 'unbound') continue;
+      violations.push({
+        rule: 'submitter-needs-bound-form',
+        file: rel,
+        message: `Binds an action with \`formaction=\${…}\` on a <${s.tag}>, but the enclosing <form> in the same template carries no \`action=\${action}\` binding. An unbound form submits as a GET, so the identity rides the query string, the action never runs, and the page simply re-renders.`,
+        fix: `Bind the enclosing <form> too (\`<form action=\${formAction}>\`), which is what supplies method="post" and the enctype at form start. A per-button action cannot retrofit them.`,
+      });
+    }
+    if (!ownerTag || !bodySites) continue;
+    const cannotTell = bodySites.submitters.filter((s) => s.scope === 'none');
+    if (!cannotTell.length) continue;
+    if (resolveTagScope(ownerTag) !== 'unbound') continue;
+    for (const s of cannotTell) {
+      violations.push({
+        rule: 'submitter-needs-bound-form',
+        file: rel,
+        message: `Binds an action with \`formaction=\${…}\` on a <${s.tag}>, but every place <${ownerTag}> is rendered puts it in a <form> with no \`action=\${action}\` binding. An unbound form submits as a GET, so the identity rides the query string, the action never runs, and the page simply re-renders.`,
+        fix: `Bind the enclosing <form> too (\`<form action=\${formAction}>\`), which is what supplies method="post" and the enctype at form start. A per-button action cannot retrofit them.`,
+      });
+    }
+  }
 }
 
 /**
