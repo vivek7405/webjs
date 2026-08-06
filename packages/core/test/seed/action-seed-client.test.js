@@ -203,6 +203,20 @@ test('a streamed page names streaming as the cause', async () => {
   assert.match(warns[0], /This page streams/);
 });
 
+test('a serializer DROP names that cause, not the unmatched-keys one', async () => {
+  // The marker the server emits when `stringify` threw and the whole payload was
+  // dropped. Its block is empty by construction, so without this branch the
+  // report would fall to the silent `merged === 0` case and the one failure the
+  // counts exist to expose would say nothing in the browser at all.
+  const { warns } = await withReporter(async () => {
+    scanSeeds(root([el('script', await stringify({}), 'drop')]));
+    takeSeed('h', 'f', '[1]');
+  });
+  assert.equal(warns.length, 1);
+  assert.match(warns[0], /could not be serialized/);
+  assert.match(warns[0], /collected above emitted/, 'and points at the header that confirms it');
+});
+
 test('fault injection: a throwing console.warn never propagates into takeSeed', async () => {
   const origIdle = globalThis.requestIdleCallback;
   const origWarn = console.warn;

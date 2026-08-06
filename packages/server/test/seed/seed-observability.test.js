@@ -175,8 +175,13 @@ test('DEV, a serializer DROP: emitted is 0 and the block carries only the drop m
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('x-webjs-seed'), 'collected=1, emitted=0');
   const html = await res.text();
-  assert.match(html, /id="__webjs-seeds" data-webjs-dev="drop"/, 'dev names the drop');
-  assert.ok(!html.includes('thing-1"'), 'and no seed payload rode along');
+  const block = html.match(/<script type="application\/json" id="__webjs-seeds"([^>]*)>([\s\S]*?)<\/script>/);
+  assert.ok(block, 'dev still emits a block so the browser can name the cause');
+  assert.match(block[1], /data-webjs-dev="drop"/);
+  // Assert the BLOCK's own body is empty. The previous form checked the whole
+  // document for a payload string the fixture never renders, so it could not
+  // fail either way.
+  assert.equal(block[2], '{}', 'and it carries no seeds at all');
 });
 
 test('PROD, a serializer DROP: no block at all, unchanged from before #1309', async () => {

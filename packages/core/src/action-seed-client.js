@@ -110,7 +110,17 @@ export function scanSeeds(root, opts) {
   // against either. A confident misdiagnosis is worse than silence, so the
   // router says which it is.
   if (opts && opts.frame === true) {
-    drainCarriers(scope);
+    // DISCARD, never ingest. A frame parse is one of two things and neither
+    // belongs in the store. When the frame was isolable, `ssr.js` sliced the
+    // subtree out before the seed block was appended, so there is nothing to
+    // ingest anyway. When it was NOT (the id is missing, or the render streamed)
+    // `ssr.js` falls through and serves the WHOLE PAGE, block included, and the
+    // router then dispatches `webjs:frame-missing` and throws that response
+    // away. Ingesting there would put a discarded page's seeds in the store,
+    // where last-write-wins hands them to a component on the page still on
+    // screen, which is the exact "a hit disagrees with the paint" class this
+    // feature promises cannot happen.
+    drainCarriers(scope, true);
     return;
   }
 

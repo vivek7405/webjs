@@ -223,6 +223,42 @@ suite('SSR action seeding, real DOM (#1309)', () => {
   });
 
 
+  test('a frame swap that fell through to a FULL page discards it, never ingests', async () => {
+    // `ssr.js` slices out a frame subtree only when the id was found and the
+    // render did not stream. Otherwise it serves the WHOLE page, seed block and
+    // all, and the router dispatches `webjs:frame-missing` and throws that
+    // response away. Ingesting there would put a discarded page's seeds in the
+    // store, where last-write-wins hands them to a component on the page still
+    // on screen.
+    seedBlock(await stringify({ 'h/getUser/[1]': 'LIVE-PAGE' }), 'ok');
+    takeSeed('h', 'used', '[0]');   // fire the lazy scan so the live block is in the store
+
+    const fullPage = document.implementation.createHTMLDocument('');
+    const discarded = fullPage.createElement('script');
+    discarded.type = 'application/json';
+    discarded.id = '__webjs-seeds';
+    discarded.setAttribute('data-webjs-dev', 'ok');
+    discarded.textContent = await stringify({ 'h/getUser/[1]': 'DISCARDED-RESPONSE' });
+    fullPage.body.appendChild(discarded);
+    scanSeeds(fullPage, { frame: true });
+
+    assert.equal(
+      takeSeed('h', 'getUser', '[1]'), 'LIVE-PAGE',
+      'the page on screen keeps its own seed; the discarded response never overrides it',
+    );
+  });
+
+  test('the drop marker names its cause in a real browser', async () => {
+    const warns = await withIdle(async () => {
+      seedBlock(await stringify({}), 'drop');
+      scanSeeds(document);
+      takeSeed('h', 'f', '[1]');
+    });
+    assert.equal(warns.length, 1, 'an empty block with a drop marker still reports');
+    assert.ok(warns[0].indexOf('could not be serialized') !== -1, warns[0]);
+  });
+
+
   test('an UNMARKED block (production) reports nothing at all', async () => {
     const warns = await withIdle(async () => {
       seedBlock(await stringify({ 'h/f/[1]': 1 }));
