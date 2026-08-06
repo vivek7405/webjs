@@ -827,6 +827,29 @@ function unboundFormDelivers(tagText) {
 }
 
 /**
+ * The ONE start-tag hole the renderer renders INLINE, in the enclosing scan and
+ * with the enclosing form scope, rather than handing to the receiving element:
+ * `<webjs-suspense .fallback=${html`…`}>` (#471).
+ *
+ * A `TemplateResult` is not serializer-safe and a normal custom-element property
+ * applies only at hydration, too late for a streaming placeholder, so
+ * `render-server.js` renders the fallback right there and carries the HTML as
+ * `data-webjs-fallback`. That means a submitter in a fallback IS judged against
+ * the enclosing form, and the renderer really does throw for an unbound one.
+ * Treating it as handed off would make the same-scan half blind to the one shape
+ * it exists to pre-warn about.
+ *
+ * @param {string} tagName lowercased
+ * @param {string} literalBefore the literal segment immediately before the hole
+ * @returns {boolean}
+ */
+function isInlineStartTagHole(tagName, literalBefore) {
+  // The property name is a JS identifier, so it is case-SENSITIVE, unlike an
+  // attribute name.
+  return tagName === 'webjs-suspense' && /\.fallback=$/.test(literalBefore);
+}
+
+/**
  * @typedef {'none'|'unbound'|'bound'|'handed'} FormScope
  *
  * `'none'` and `'handed'` are BOTH "no enclosing form in this scan", and they
@@ -860,11 +883,15 @@ function unboundFormDelivers(tagText) {
  * or `sql` template are never read as markup. That carve-out matters: the
  * framework's own website renders `<form action=${fn}>` as a code SAMPLE.
  *
- * A template nested inside a hole INHERITS the enclosing scope, because that is
- * what the renderer does (`render` threads `formScope` through arrays,
- * `repeat`, and nested templates). A separate top-level template starts fresh
- * at `'none'`, because it is its own scan there too. `</form>` returns to the
- * scope the scan started in, mirroring `handleTagEnd` in `render-server.js`.
+ * A template nested inside a CHILD-position hole INHERITS the enclosing scope,
+ * because that is what the renderer does (`render` threads `formScope` through
+ * arrays, `repeat`, and nested templates). One in a START-TAG hole is an
+ * attribute or property value that some other element receives and places, so it
+ * is `'handed'` instead, with the single exception of `<webjs-suspense
+ * .fallback=${…}>`, which the renderer does render inline (see
+ * `isInlineStartTagHole`). A separate top-level template starts fresh at
+ * `'none'`, because it is its own scan there too. `</form>` returns to the scope
+ * the scan started in, mirroring `handleTagEnd` in `render-server.js`.
  *
  * `opensForm` reports whether ANY `<form` start tag was seen anywhere in `src`.
  * A caller attributing a scope-`'none'` site to this file needs it: a fragment
@@ -1028,11 +1055,12 @@ export function scanHtmlFormScopes(src) {
           // dynamic, so whether an unbound form would deliver becomes unknowable.
           else if (tag.name === 'form') tag.dynamicAttrs = true;
         }
-        // A hole inside a START TAG is an attribute or property VALUE, so a
-        // template in it is handed to the receiving element and rendered in
-        // THAT component's own pass, not inline here. It therefore starts at
-        // 'handed' rather than inheriting this scan's scope. A hole in CHILD
-        // position is rendered inline by this scan and does inherit.
+        // A hole inside a START TAG is USUALLY an attribute or property VALUE,
+        // so a template in it is handed to the receiving element and rendered in
+        // THAT component's own pass rather than inline here. Those start at
+        // 'handed' instead of inheriting this scan's scope. A hole in CHILD
+        // position is rendered inline by this scan and does inherit, and so does
+        // the one start-tag hole the renderer also renders inline (below).
         //
         // Without the split, `<form method="post"><my-thing .tpl=${html`<button
         // formaction=${del}>x</button>`}></my-thing></form>` scored the button
@@ -1044,8 +1072,10 @@ export function scanHtmlFormScopes(src) {
         // resolves against ITS call sites, and a handed-off template belongs to
         // whichever element received it instead. Using 'none' here silences the
         // false positive on a page and recreates it in a component file.
-        const holeScope = tag && !tag.isClose ? 'handed' : scope;
-        const holeDelivers = tag && !tag.isClose ? null : delivers;
+        const inlineHole = tag && !tag.isClose && isInlineStartTagHole(tag.name, lastLiteral);
+        const handOff = tag && !tag.isClose && !inlineHole;
+        const holeScope = handOff ? 'handed' : scope;
+        const holeDelivers = handOff ? null : delivers;
         // Only the segment IMMEDIATELY before a hole can commit an attribute,
         // so two adjacent holes leave nothing for the second to read.
         lastLiteral = '';

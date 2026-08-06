@@ -215,3 +215,45 @@ test('the unparseable-enctype constant tracks the renderer\'s own set', () => {
     ['application/x-www-form-urlencoded', 'multipart/form-data'],
     'if core gains an enctype, revisit the scanner denylist');
 });
+
+test('the start-tag-hole rule matches what the RENDERER actually does', async () => {
+  // A differential rather than an assertion about the scanner alone, because the
+  // whole 'handed' state is a claim about the renderer's behaviour. Most
+  // start-tag holes are values the receiving element places, but
+  // `<webjs-suspense .fallback=${…}>` is rendered INLINE with the enclosing form
+  // scope (#471: a TemplateResult is not serializer-safe and a hydration-time
+  // property is too late for a streaming placeholder). Treating that one as
+  // handed off would blind the same-scan half to a real render-time throw.
+  const { html } = await import('../../../core/src/html.js');
+  const { renderToString } = await import('../../../core/src/render-server.js');
+  const { setFormActionResolver } = await import('../../../core/src/form-action.js');
+  setFormActionResolver(async () => 'abc1234567/publish');
+  const publish = async () => ({ success: true });
+
+  // Rendered inline, so the renderer judges it against the unbound form and
+  // throws. The scanner must see the same thing.
+  const fallbackSrc = 'html`<form><webjs-suspense .fallback=${html`<button formaction=${p}>x</button>`}></webjs-suspense></form>`';
+  assert.deepEqual(scanHtmlFormScopes(fallbackSrc).submitters,
+    [{ tag: 'button', scope: 'unbound', delivers: false }]);
+  await assert.rejects(
+    () => renderToString(
+      html`<form><webjs-suspense .fallback=${html`<button formaction=${publish}>x</button>`}></webjs-suspense></form>`,
+      { ssr: true },
+    ),
+    /requires the enclosing <form> to also be bound/,
+    'the renderer really does refuse it, so the scanner must not be silent',
+  );
+
+  // An ordinary property is handed off, and the renderer does NOT refuse it.
+  const propSrc = 'html`<form><my-thing .tpl=${html`<button formaction=${p}>x</button>`}></my-thing></form>`';
+  assert.deepEqual(scanHtmlFormScopes(propSrc).submitters,
+    [{ tag: 'button', scope: 'handed', delivers: null }]);
+  const quiet = console.warn;
+  console.warn = () => {};
+  try {
+    await renderToString(
+      html`<form><my-thing .tpl=${html`<button formaction=${publish}>x</button>`}></my-thing></form>`,
+      { ssr: true },
+    );
+  } finally { console.warn = quiet; }
+});
