@@ -19,9 +19,14 @@
  *     blocker that pins it (a non-component on a component-free path from the
  *     module, #963, or its own signal when the module itself is the cause).
  *   - `orphans`: a `class X extends WebComponent` with no literal-tag
- *     registration. The scanner never sees it (invariant 3 requires a literal
- *     tag), so it gets NO verdict at all and `static interactive = true`
- *     cannot rescue it. It is the one shape that is dropped silently.
+ *     registration, either because there is no registration call or because
+ *     the tag is computed. The scanner never sees it (invariant 3 requires a
+ *     literal tag), so it always loses its elision verdict, its tag-to-module
+ *     registry entry, and its preload hint, and `static interactive = true`
+ *     cannot rescue it. Whether the ELEMENT still upgrades differs by shape:
+ *     with no registration call it never does, while a computed tag registers
+ *     fine as long as its module reaches the browser. It is the one shape the
+ *     verdict cannot speak for.
  *
  * Consumed by `webjs elision` (the CLI report + `--json`), the MCP
  * `list_elision` tool, and `webjs doctor`'s two elision checks, which share

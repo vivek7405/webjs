@@ -1173,7 +1173,7 @@ async function main() {
         console.log();
       }
       if (report.orphans.length) {
-        console.log('Orphan components (dropped with NO verdict; `static interactive = true` cannot rescue these)');
+        console.log('Orphan components (no elision verdict; `static interactive = true` cannot rescue these)');
         for (const o of report.orphans) {
           console.log(`  ${o.className} in ${o.file} is never registered with a literal tag`);
         }

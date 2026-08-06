@@ -1185,7 +1185,7 @@ test('a healthy app PASSES and the message carries the elided inventory', async 
 
 test('an orphan class WARNS, names the class and file, and never fails', async () => {
   // The one always-wrong condition: a class registered with a computed tag is
-  // invisible to the scanner, so its module is dropped with no verdict at all
+  // invisible to the scanner, so it gets no elision verdict at all
   // and `static interactive = true` cannot rescue it.
   const dir = tmpDir();
   write(dir, 'package.json', JSON.stringify({ name: 'x', type: 'module' }));

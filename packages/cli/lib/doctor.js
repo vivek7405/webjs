@@ -1050,9 +1050,9 @@ async function checkElisionCarriers(elisionPromise) {
  * inventory instead, which makes it the discovery surface, while `webjs
  * elision` is the detail surface. The one always-wrong condition is an ORPHAN:
  * a `class X extends WebComponent` with no literal-tag registration is
- * invisible to the scanner, so it gets no verdict at all, its module is
- * dropped, and `static interactive = true` cannot rescue it (nothing consults
- * the component analyser for a component the scanner never saw). Never `fail`:
+ * invisible to the scanner, so it gets no verdict at all and `static
+ * interactive = true` cannot rescue it (nothing consults the component
+ * analyser for a component the scanner never saw). Never `fail`:
  * an app that wants an orphan to break CI gates `ELISION_COMPONENTS` to
  * `error` via `webjs.doctor.gate`.
  *

@@ -988,9 +988,11 @@ export async function createRequestHandler(opts) {
             if (dev) {
               // An orphan is EITHER shape `findOrphanComponents` reports: no
               // registration call at all, or one whose tag is computed. The
-              // scanner matches only a literal tag, so both fail identically
-              // and one message has to cover both (the doctor check and
-              // `webjs elision` say the same thing).
+              // scanner matches only a literal tag, so it sees neither, but
+              // they fail DIFFERENTLY (no call never upgrades; a computed tag
+              // still registers when its module reaches the browser), so one
+              // message has to distinguish them. The doctor check and
+              // `webjs elision` say the same thing.
               for (const { className, file } of await findOrphanComponents(appDir)) {
                 logger.warn?.(
                   `[webjs] ${className} extends WebComponent but is never registered with a literal tag in ${file} ` +
