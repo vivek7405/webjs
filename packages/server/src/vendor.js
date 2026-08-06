@@ -338,6 +338,27 @@ let lastLiveResolveFailed = false;
 
 const JSPM_GENERATE_ENDPOINT = 'https://api.jspm.io/generate';
 const JSPM_GENERATE_TIMEOUT_MS = 10_000;
+// Bounds a single bundle GET during the SERVER's warmup live-integrity pass
+// (`fetchLiveIntegrity`). Short on purpose: that pass gates readiness, so a
+// stalled CDN must not hold the first request, and it is additionally capped
+// by INTEGRITY_TOTAL_BUDGET_MS across all URLs.
+const INTEGRITY_FETCH_TIMEOUT_MS = 10_000;
+
+// Bounds a single bundle GET made by the pin command, which either writes the
+// bytes to disk (`downloadBundle`) or fetches them to hash
+// (`fetchIntegrity`). Deliberately six times the warmup budget, because the
+// two are not the same situation: a pin is a one-shot command a person ran and
+// is waiting on, with a whole multi-megabyte package to transfer, while the
+// warmup is a server holding a request. Ten seconds is generous for the
+// latter and tight for the former on a slow link.
+//
+// 60s matches what importmap-rails effectively allows. It sets no timeout at
+// all, but Ruby's Net::HTTP defaults open_timeout and read_timeout to 60s, so
+// a Rails pin is bounded at a minute without asking. JavaScript's fetch() has
+// no default whatsoever, which is why this has to be explicit: without it a
+// CDN that accepts the connection and then stalls hangs the pin forever, with
+// no ambient deadline on a CLI run to cut it short.
+const PIN_BUNDLE_TIMEOUT_MS = 60_000;
 
 /**
  * Provider names accepted by `webjs vendor pin --from <provider>`.
@@ -387,12 +408,15 @@ export function normalizeProvider(name) {
  *
  * @param {Array<string>} installs  e.g. ['dayjs@1.11.13', '@codemirror/lint@6.9.6']
  * @param {string} provider  one of SUPPORTED_PROVIDERS
+ * @param {number} [timeoutMs]  defaults to the SERVER budget; a CLI caller
+ *   passes the longer one, since it is a command someone is waiting on rather
+ *   than a request being held open.
  * @returns {Promise<JspmCallResult>}
  */
-async function jspmCall(installs, provider) {
+async function jspmCall(installs, provider, timeoutMs = JSPM_GENERATE_TIMEOUT_MS) {
   const label = installs.length === 1 ? `'${installs[0]}'` : `${installs.length} packages`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), JSPM_GENERATE_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(JSPM_GENERATE_ENDPOINT, {
       method: 'POST',
@@ -440,7 +464,7 @@ async function jspmCall(installs, provider) {
     return { ok: true, imports, transient: false };
   } catch (e) {
     const msg = e && e.name === 'AbortError'
-      ? `timed out after ${JSPM_GENERATE_TIMEOUT_MS}ms`
+      ? `timed out after ${timeoutMs}ms`
       : `${e && e.message}`;
     console.error(`[webjs] could not vendor ${label} via ${provider}: ${msg}`);
     return { ok: false, imports: {}, transient: true };
@@ -466,8 +490,8 @@ async function jspmCall(installs, provider) {
  * @param {string} [provider]  one of SUPPORTED_PROVIDERS; defaults to 'jspm'
  * @returns {Promise<Record<string, string>>}
  */
-async function jspmResolveOne(install, provider = 'jspm') {
-  const { ok, imports, transient } = await jspmProbeOne(install, provider);
+async function jspmResolveOne(install, provider = 'jspm', timeoutMs) {
+  const { ok, imports, transient } = await jspmProbeOne(install, provider, timeoutMs);
   // Preserve the public contract: an empty map on any failure, and the
   // module-global retry flag set ONLY on a transient one (a permanent 401
   // for an unresolvable private/server-only dep is tolerated).
@@ -492,13 +516,13 @@ async function jspmResolveOne(install, provider = 'jspm') {
  * @param {string} provider
  * @returns {Promise<JspmCallResult>}
  */
-function jspmProbeOne(install, provider) {
+function jspmProbeOne(install, provider, timeoutMs) {
   const cacheKey = `${provider}::probe::${install}`;
   const existing = jspmCache.get(cacheKey);
   if (existing) return existing;
 
   const promise = (async () => {
-    const result = await jspmCall([install], provider);
+    const result = await jspmCall([install], provider, timeoutMs);
     // Do not cache a failure: a transient one must be re-attempted on the
     // next resolve, and a permanent one is cheap to re-confirm and must not
     // pin a stale "unresolvable" verdict across a dependency change.
@@ -543,14 +567,18 @@ function jspmProbeOne(install, provider) {
  *
  * @param {Array<string>} installs  e.g. ['dayjs@1.11.13', 'clsx@2.1.1']
  * @param {string} [provider]  one of SUPPORTED_PROVIDERS; defaults to 'jspm'
+ * @param {number} [timeoutMs]  per-call budget. Defaults to the SERVER one,
+ *   because this runs on a cold first request as well as from the CLI; the two
+ *   pin commands pass PIN_BUNDLE_TIMEOUT_MS instead. importmap-rails only ever
+ *   resolves from the CLI, so its flat 60s has no request path to slow down.
  * @returns {Promise<Record<string, string>>}
  */
-export async function jspmGenerate(installs, provider = 'jspm') {
+export async function jspmGenerate(installs, provider = 'jspm', timeoutMs) {
   if (installs.length === 0) return {};
 
   // A single install has no cross-package graph to reconcile, so the
   // isolated path IS the coherent path; reuse the per-install cache.
-  if (installs.length === 1) return jspmResolveOne(installs[0], provider);
+  if (installs.length === 1) return jspmResolveOne(installs[0], provider, timeoutMs);
 
   // Stable key regardless of scan order so the same dep set hits cache.
   const unifiedKey = `${provider}::unified::${[...installs].sort().join('\n')}`;
@@ -558,7 +586,7 @@ export async function jspmGenerate(installs, provider = 'jspm') {
   if (cached) return cached;
 
   const promise = (async () => {
-    const unified = await jspmCall(installs, provider);
+    const unified = await jspmCall(installs, provider, timeoutMs);
     if (unified.ok) return unified.imports;
 
     // The unified call failed. Drop the cached failure so a later retry
@@ -570,14 +598,14 @@ export async function jspmGenerate(installs, provider = 'jspm') {
       // per-install fragments (each may still be cached / reachable) so we
       // serve whatever we can, and flag the transient failure for retry.
       lastLiveResolveFailed = true;
-      return mergePerInstall(await Promise.all(installs.map(i => jspmResolveOne(i, provider))));
+      return mergePerInstall(await Promise.all(installs.map(i => jspmResolveOne(i, provider, timeoutMs))));
     }
 
     // Permanent failure: at least one install is unresolvable. Probe each
     // in isolation to learn which ones jspm can resolve, then re-run the
     // unified call over only those so the survivors form one consistent
     // graph (restores #446 coherence for the resolvable subset).
-    const probes = await Promise.all(installs.map(i => jspmProbeOne(i, provider)));
+    const probes = await Promise.all(installs.map(i => jspmProbeOne(i, provider, timeoutMs)));
 
     // A GOOD package whose isolated probe failed TRANSIENTLY (a network blip
     // mid-probe) must NOT be classified as unresolvable and dropped. Only a
@@ -612,11 +640,11 @@ export async function jspmGenerate(installs, provider = 'jspm') {
       return mergePerInstall(probes.map(p => p.imports));
     }
     if (resolvable.length === 0) return {};
-    if (resolvable.length === 1) return jspmResolveOne(resolvable[0], provider);
+    if (resolvable.length === 1) return jspmResolveOne(resolvable[0], provider, timeoutMs);
 
     // Re-run unified over the resolvable subset. If even that fails (a
     // conflict among the survivors), fall back to their merged fragments.
-    const retry = await jspmCall(resolvable, provider);
+    const retry = await jspmCall(resolvable, provider, timeoutMs);
     if (retry.ok) return retry.imports;
     return mergePerInstall(resolvable.map(i => probes[installs.indexOf(i)].imports));
   })();
@@ -679,6 +707,12 @@ export async function vendorImportMapEntries(bareImports, appDir) {
 export function clearVendorCache() {
   jspmCache.clear();
   liveIntegrityCache.clear();
+  // Deliberately does NOT touch `lastLiveResolveFailed`, which looks like an
+  // omission and is not. `resolveVendorImports` is the flag's only reader and
+  // it resets the flag on entry, while the pinned short-circuit above that
+  // returns `ok: true` outright, so a value left behind by an earlier
+  // `pinAll` or `vendorImportMapEntries` can never be observed. Clearing it
+  // here would be a change nothing could write a failing test for (#1150).
 }
 
 /**
@@ -1071,14 +1105,21 @@ async function writePinFile(appDir, imports, integrity, provider) {
  * success or null on failure. The integrity hash is computed from the
  * downloaded bytes so it's always consistent with what's on disk.
  *
+ * Bounded by PIN_BUNDLE_TIMEOUT_MS. `pinAll(dir, { download: true })`
+ * runs this once per resolved URL on a CLI run with no ambient
+ * deadline, so a CDN that accepts the connection and then stalls would
+ * otherwise hang the pin with nothing to interrupt it (#1150).
+ *
  * @param {string} url
  * @param {string} appDir
  * @param {string} filename
  * @returns {Promise<{ bytes: number, integrity: string } | null>}
  */
 async function downloadBundle(url, appDir, filename) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PIN_BUNDLE_TIMEOUT_MS);
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) {
       console.error(`[webjs] download ${url} returned ${response.status}`);
       return null;
@@ -1094,8 +1135,13 @@ async function downloadBundle(url, appDir, filename) {
     await writeFile(join(pinDir(appDir), filename), buf);
     return { bytes: buf.byteLength, integrity: await sha384Integrity(buf) };
   } catch (e) {
-    console.error(`[webjs] download ${url} failed: ${e && e.message}`);
+    const why = e && e.name === 'AbortError'
+      ? `timed out after ${PIN_BUNDLE_TIMEOUT_MS}ms`
+      : e && e.message;
+    console.error(`[webjs] download ${url} failed: ${why}`);
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -1105,12 +1151,21 @@ async function downloadBundle(url, appDir, filename) {
  * so the importmap can carry SRI hashes even when bundles aren't
  * locally vendored.
  *
+ * Bounded by PIN_BUNDLE_TIMEOUT_MS, the same budget `downloadBundle`
+ * gets, since it transfers the same bytes and differs only in whether
+ * they are written to disk. Default-mode `pinAll` runs this once per
+ * resolved URL, so a CDN that accepts the connection and then stalls
+ * would otherwise hang the pin with nothing to interrupt it: there is
+ * no ambient deadline on a CLI run (#1150).
+ *
  * @param {string} url
  * @returns {Promise<string | null>}  the integrity string, or null on failure
  */
 async function fetchIntegrity(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PIN_BUNDLE_TIMEOUT_MS);
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) {
       console.error(`[webjs] hash ${url} returned ${response.status}`);
       return null;
@@ -1121,8 +1176,13 @@ async function fetchIntegrity(url) {
     const buf = new Uint8Array(await response.arrayBuffer());
     return await sha384Integrity(buf);
   } catch (e) {
-    console.error(`[webjs] hash ${url} failed: ${e && e.message}`);
+    const why = e && e.name === 'AbortError'
+      ? `timed out after ${PIN_BUNDLE_TIMEOUT_MS}ms`
+      : e && e.message;
+    console.error(`[webjs] hash ${url} failed: ${why}`);
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -1254,7 +1314,7 @@ export async function pinAll(appDir, opts = {}) {
     installs.push(install);
     partsByInstall.set(spec, { pkg, version, subpath });
   }
-  const resolved = await jspmGenerate(installs, from);
+  const resolved = await jspmGenerate(installs, from, PIN_BUNDLE_TIMEOUT_MS);
 
   /** @type {Record<string, string>} */
   const importmap = {};
@@ -1496,7 +1556,11 @@ export async function listPinned(appDir) {
 // ---------------------------------------------------------------------------
 
 const NPM_REGISTRY = 'https://registry.npmjs.org';
-const NPM_TIMEOUT_MS = 10_000;
+// The npm registry is reached only by `audit`, `outdated`, and `update`,
+// all CLI commands, so it takes the same generous budget the pin bundle
+// fetch does rather than the server's. importmap-rails makes these same two
+// calls with Ruby's 60s Net::HTTP default.
+const NPM_TIMEOUT_MS = 60_000;
 
 /**
  * Fetch one URL from registry.npmjs.org with a small timeout. Returns
@@ -1696,7 +1760,7 @@ export async function updatePinned(appDir, opts = {}) {
       if (specPkg !== pkg) continue;
       const subpath = spec.slice(specPkg.length);
       const install = `${pkg}@${latest}${subpath}`;
-      const resolved = await jspmGenerate([install], from);
+      const resolved = await jspmGenerate([install], from, PIN_BUNDLE_TIMEOUT_MS);
       const newUrl = resolved[spec];
       if (!newUrl) continue;
       newImports[spec] = newUrl;
@@ -2169,7 +2233,6 @@ export async function checkImportmapCoherence(imports, opts) {
  */
 const liveIntegrityCache = new Map();
 
-const INTEGRITY_FETCH_TIMEOUT_MS = 10_000;
 // Cap concurrent bundle fetches so a large dep set does not open dozens of
 // sockets at once during warmup. Matches the bounded posture of the rest of
 // vendor.js (the jspm resolve is per-package but the network is the shared

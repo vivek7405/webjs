@@ -15,7 +15,7 @@ import { spawn } from 'node:child_process';
 import { readdirSync, statSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -57,10 +57,19 @@ for (const pkg of readdirSync(packagesDir, { withFileTypes: true })) {
 const SEP = sep;
 const browserSeg = `${SEP}browser${SEP}`;
 const e2eSeg = `${SEP}e2e${SEP}`;
+// Live third-party calls live only in `*.live.test.*` files, and those are
+// opt-in (#1150). This job is REQUIRED, so a jspm or npm-registry outage must
+// not be able to red it; a documentation-only PR was blocked that way on
+// #1149. The nightly `vendor-cdn` workflow sets WEBJS_REQUIRE_NETWORK to run
+// them for real; a skip there is a warning, not a failure, since an outage is
+// not a regression (WEBJS_FAIL_ON_SKIP promotes it when you want that).
+const LIVE_MARKER = '.live.test.';
+const wantsNetwork = Boolean(process.env.WEBJS_REQUIRE_NETWORK);
 
 const files = all
   .filter((f) => !f.includes(browserSeg))
-  .filter((f) => !f.includes(e2eSeg));
+  .filter((f) => !f.includes(e2eSeg))
+  .filter((f) => wantsNetwork || !f.includes(LIVE_MARKER));
 
 if (!files.length) {
   console.log('[run-node-tests] no test files matched.');
@@ -81,6 +90,16 @@ const coverageArgs = process.env.WEBJS_COVERAGE
     ]
   : [];
 
-const args = ['--test', ...coverageArgs, ...files];
+// Deny outbound calls to jspm.io / registry.npmjs.org for the whole run, so
+// this REQUIRED job cannot be redded by a third-party outage (#1150). Off when
+// the caller explicitly asked for the network, which is the same switch that
+// selects the *.live.test.* files above. Passed as argv rather than
+// NODE_OPTIONS because Bun ignores that variable and the sibling bun runner
+// uses the same fixture.
+const denyArgs = wantsNetwork
+  ? []
+  : ['--import', pathToFileURL(resolve(ROOT, 'test', 'fixtures', 'deny-live-hosts.mjs')).href];
+
+const args = ['--test', ...denyArgs, ...coverageArgs, ...files];
 const child = spawn(process.execPath, args, { stdio: 'inherit' });
 child.on('exit', (code) => process.exit(code ?? 1));

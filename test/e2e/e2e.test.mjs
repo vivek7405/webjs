@@ -75,10 +75,14 @@ function blogRuntimeExec() {
 
 /**
  * Runtime flags that load `file` into the SERVER process before it boots, in
- * whichever runtime `blogRuntimeExec` picked. Node spells this `--import`, Bun
- * spells it `--preload`, and neither honours the other's flag, so a fixture
- * wired through only one of them would silently do nothing on the Bun e2e job.
- * Passed as argv rather than NODE_OPTIONS for the same reason (Bun ignores it).
+ * whichever runtime `blogRuntimeExec` picked. Passed as argv rather than
+ * NODE_OPTIONS because Bun ignores that variable outright, so a fixture wired
+ * through it would silently do nothing on the Bun e2e job.
+ *
+ * The two flags are not symmetric, so do not reason from the Node side:
+ * `node --preload` is a hard `bad option` error, while `bun --import`
+ * currently works as an alias. Selecting per runtime anyway is what keeps this
+ * from depending on Bun continuing to accept a Node spelling.
  * @param {string} file  absolute path to an ES module
  * @returns {string[]}
  */
