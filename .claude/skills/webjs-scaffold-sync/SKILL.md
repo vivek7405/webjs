@@ -210,10 +210,14 @@ Run the mandatory generate + boot + check verifications in PARALLEL when more th
    test, the counterfactual).
 6. Respect the prose-punctuation invariant (#11) in every comment and doc, and
    keep each demo densely commented (a header stating the webjs concept + the
-   why, and inline comments on the non-obvious idiom). Do NOT add a per-demo
-   prune line: `npm run gallery:clear` sheds the whole gallery in one step, so
-   the full-stack demos deliberately carry no such comment. The scaffold teaches
-   by its comments, and a thin demo is a bug.
+   why, and inline comments on the non-obvious idiom). Add a prune note where
+   removal is NOT obvious, which is what the demos that carry one do: a card
+   spanning several paths, or one that another card depends on (the auth and
+   server-actions cards name each other). A self-contained demo needs none,
+   since `AGENTS.md` tells the app-building agent to delete the
+   `app/features/<x>` route and its `modules/<x>` and `npm run gallery:clear`
+   sheds the lot. The scaffold teaches by its comments, and a thin demo is a
+   bug.
 
 ## Audit-mode procedure (sweep the scaffold for drift)
 

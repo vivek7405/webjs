@@ -101,7 +101,7 @@ export default function GlobalError({ error }: { error: Error }) {
   ${'`'};
 }</code-block>
 
-    <p>Keep <code>global-error.ts</code> static (no components / hydration): it is returned verbatim with no importmap or boot script, so it must not depend on the module system that may have just failed. Under an opt-in CSP, give any inline <code>&lt;style&gt;</code> the <code>cspNonce()</code>.</p>
+    <p>Keep <code>global-error.ts</code> static (no components / hydration): it is returned verbatim with no importmap or boot script, so it must not depend on the module system that may have just failed. Under an opt-in CSP, give any inline <code>&lt;script&gt;</code> the <code>cspNonce()</code>. An inline <code>&lt;style&gt;</code> needs one only if you tighten <code>style-src</code>, since the default policy allows inline style outright.</p>
 
     <p><code>global-not-found.ts</code> renders for a URL that matches nothing anywhere, when no <code>not-found.ts</code> applies.</p>
 
