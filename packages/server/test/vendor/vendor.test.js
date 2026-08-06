@@ -2395,6 +2395,47 @@ test('pinAll: a bundle fetch that hangs is abandoned, not waited on forever', as
   }
 });
 
+test('the generate call gets the CLI budget from a pin and the server budget from a resolve', async () => {
+  // importmap-rails sets no timeout and inherits Ruby's 60s Net::HTTP default
+  // on every jspm call. Matching that flatly would be wrong here, because
+  // importmap-rails only ever resolves from the CLI (its importmap is a static
+  // config file), while WebJs also resolves on a cold first request. A 60s
+  // budget on the request path would let one stalled CDN hold a request for a
+  // minute, so the budget is per-caller: 60s from `pinAll`, 10s from a live
+  // resolve.
+  //
+  // Counterfactual: drop the `timeoutMs` argument at either call site and the
+  // matching half of this fails, since both numbers are asserted.
+  const budgets = [];
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = /** @type any */ ((fn, ms, ...rest) => {
+    if (typeof ms === 'number' && ms >= 1000) budgets.push(ms);
+    return realSetTimeout(fn, ms, ...rest);
+  });
+  const dir = await makeTempAppWithSource({ 'app/page.ts': `import pico from 'picocolors';` });
+  try {
+    const mock = async (url) => (String(url).includes('api.jspm.io')
+      ? jspmResponse({ picocolors: 'https://ga.jspm.io/npm:picocolors@1.1.1/index.js' })
+      : bundleResponse(new TextEncoder().encode('export default 1;')));
+
+    budgets.length = 0;
+    await withMockedFetch(mock, async () => { clearVendorCache(); await pinAll(dir); });
+    assert.ok(budgets.includes(60_000), `a pin's generate call must get 60s, saw ${budgets}`);
+    assert.ok(!budgets.includes(10_000), `a pin must not fall back to the server budget, saw ${budgets}`);
+
+    budgets.length = 0;
+    await withMockedFetch(mock, async () => {
+      clearVendorCache();
+      await vendorImportMapEntries(new Set(['picocolors']), process.cwd());
+    });
+    assert.ok(budgets.includes(10_000), `a live resolve must keep the 10s server budget, saw ${budgets}`);
+    assert.ok(!budgets.includes(60_000), `a live resolve must not take the CLI budget, saw ${budgets}`);
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('resolveVendorImports: PINNED path is unchanged (live-hash path not taken)', async () => {
   // Counterfactual that the pin path did not regress: a pin file with its own
   // integrity returns verbatim, and NO bundle fetch fires for it.
