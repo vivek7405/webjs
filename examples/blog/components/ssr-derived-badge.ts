@@ -10,8 +10,9 @@ import { WebComponent, html, prop } from '@webjsdev/core';
  * assert that, then loads it in a real browser to assert hydration does
  * not change either (no flash).
  *
- * The doc comment avoids literal tag-in-angle-brackets so the elision
- * analyser does not read this prose as a rendered tag.
+ * The doc prose avoids literal tag-in-angle-brackets, which is a habit from
+ * before #179: comments are masked before every signal scan now, so prose
+ * naming a tag registers as nothing.
  */
 export class SsrDerivedBadge extends WebComponent({
   seed: String,

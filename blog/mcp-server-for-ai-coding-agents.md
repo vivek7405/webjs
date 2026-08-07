@@ -21,11 +21,12 @@ Think of it as a plug. On one side is your AI assistant. On the other is anythin
 
 # What the WebJs MCP server exposes
 
-The server is intentionally small and gives the agent four tools plus a knowledge layer.
+The server is intentionally small and gives the agent five tools plus a knowledge layer.
 
 - `list_routes` returns every route your app actually serves, derived from the `app/` file tree the same way the router derives it.
 - `list_actions` returns your server actions, including the RPC hash each one is called through and its per-action config (the HTTP verb, the cache settings). This is the big one, more on it below.
 - `list_components` returns the custom elements your app registers.
+- `list_elision` returns which of your component modules the browser never downloads, because WebJs strips the JavaScript of anything that does no client-side work. For each module that does ship, it also returns the evidence that forced it, so the agent can see when a component turned out interactive by accident.
 - `check` runs the `webjs check` correctness validator and hands back the violations as structured data.
 
 On top of those, there is a knowledge layer that serves the WebJs docs, the recipes, and the framework source. So the agent can look up how a feature is meant to be used, straight from the authoritative reference, without you pasting docs into the chat.

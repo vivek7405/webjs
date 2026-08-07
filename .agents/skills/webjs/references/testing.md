@@ -170,6 +170,25 @@ A cross-runtime proof is often a plain assert script rather than a test file, so
 - **Assert the exit code, never the logs.** These scripts conventionally pass a `quiet` logger, so anything that only logs is invisible. If your script catches its own failure, report it with an explicit `process.exit(1)` rather than a `console.error` alone, guarded as `if (import.meta.main) process.exit(1); else throw failure;`. The guard matters when a `.test.mjs` wrapper imports the script under `node --test`: an unguarded exit kills the whole single-process run and hides every other file's results, while the throw lets the harness report one failed test.
 - **Prove the script can FAIL before you trust it passing.** Break one assertion on purpose and confirm the run exits non-zero. A proof that cannot go red is worse than no proof: it reports success forever.
 
+## Proving display-only elision did not break anything
+
+WebJs strips the JavaScript of every component that does no client work, so a wrong verdict costs an app real interactivity and does it silently. Two commands cover the two halves, and you need both.
+
+```sh
+webjs elision --verify
+```
+
+renders every static page route with elision on and off and diffs the served bytes. It is the framework's own differential guard pointed at your route table, and it exits non-zero on a divergence AND on a corpus where nothing could be compared, so it belongs in CI. It forces the ON side on rather than reading your config, and reports how many modules elision actually dropped, so a pass that compared two identical renders is visible rather than silent. Dynamic routes are skipped by name; add real paths with `--routes /,/blog/hello`.
+
+That proves the bytes you SERVE did not change. It cannot prove post-hydration behaviour, because a wrongly dropped module shows up as a dead click, not as different bytes. Run your own browser or e2e suite twice for that half:
+
+```sh
+WEBJS_ELIDE=1 npm run test:e2e
+WEBJS_ELIDE=0 npm run test:e2e
+```
+
+A test that passes under one and fails under the other is a wrong verdict, and `webjs elision` tells you which module and on what evidence. If the component's interactivity is genuinely invisible to static analysis, the fix is `static interactive = true` on it; see `components.md` for what that override does and does not rescue.
+
 ## Convention validation (`webjs check`)
 
 `npm run check` is the correctness validator. Every rule catches code that is wrong to ship, a crash, a security leak, a reactive prop that silently stops re-rendering, or a type-strip failure. Run it and fix every violation before considering the change done (`npm run check -- --json` for an agent loop, `npm run check -- --rules` to list the rules). It is separate from `CONVENTIONS.md`, which carries the customizable project conventions you follow by judgment.

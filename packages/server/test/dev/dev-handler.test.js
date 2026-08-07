@@ -682,6 +682,40 @@ test('handle: orphan component warning fires in dev', async () => {
   );
 });
 
+test('handle: the orphan warning covers BOTH shapes and names Class.register (#1308)', async () => {
+  // `findOrphanComponents` reports two shapes: a class with no registration
+  // call, and one whose registration tag is COMPUTED. The warning used to
+  // describe only the first ("has no customElements.define(...) call"), so an
+  // author with a computed tag was told they had not registered at all, and
+  // was pointed at `customElements.define` rather than the idiomatic
+  // `Class.register`. Nothing asserted this message, so it could regress
+  // silently while the doctor and CLI siblings stayed correct.
+  const warns = [];
+  const logger = { info: () => {}, warn: (m) => warns.push(m), error: () => {} };
+  const appDir = makeApp({
+    'app/page.js':
+      `import { html } from ${JSON.stringify(HTML_URL)};\n` +
+      `export default function P() { return html\`<p>x</p>\`; }\n`,
+    // Registered, but with a COMPUTED tag, so the scanner cannot see it.
+    'components/dyn.ts':
+      `import { WebComponent } from '@webjsdev/core';\n` +
+      `const TAG = 'dyn-' + 'badge';\n` +
+      `export class DynBadge extends WebComponent {}\n` +
+      `DynBadge.register(TAG);\n`,
+  });
+  const app = await createRequestHandler({ appDir, dev: true, logger });
+  await app.handle(new Request('http://x/'));
+
+  const warning = warns.find((m) => /DynBadge/.test(m));
+  assert.ok(warning, `expected a warning for DynBadge; got: ${warns.join('\n')}`);
+  assert.match(warning, /never registered with a literal tag/,
+    'must not claim there is no registration call, since there is one');
+  assert.match(warning, /its tag is computed/, 'must name the computed-tag shape');
+  assert.match(warning, /DynBadge\.register\(/, 'must point at Class.register, the idiomatic form');
+  assert.doesNotMatch(warning, /Add `customElements\.define/,
+    'the fix line should lead with Class.register, not the native API');
+});
+
 /* ------------ metadata routes (sitemap.xml / robots.txt) ------------ */
 
 test('handle: metadata route returns string body with inferred content-type', async () => {
