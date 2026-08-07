@@ -615,13 +615,20 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true });
     try {
       await goBack();
-      await new Promise((r) => setTimeout(r, 380));
+      // Late enough that the two clocks diverge, early enough to keep real
+      // margin on both sides. The chase's deadline is 500ms from the restore,
+      // so growing at ~250ms leaves ~250ms for the tick that lands it, and the
+      // sample below sits ~120ms past the restore deadline and ~135ms short of
+      // where a fresh floor started at landing would expire. An earlier draft
+      // grew at 380ms and left only ~115ms for that tick, which is the shape
+      // that produced the one-in-three Firefox flake recorded above.
+      await new Promise((r) => setTimeout(r, 250));
       document.querySelector('wj-grow-on-command-1310').style.height = COMMANDED_GROWTH + 'px';
       for (let i = 0; i < 4; i++) await frame();
       assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
         `precondition: the chase landed late but did land (got ${window.scrollY})`);
       // Past the restore's deadline, well short of landing plus a fresh floor.
-      await new Promise((r) => setTimeout(r, 260));
+      await new Promise((r) => setTimeout(r, 350));
       assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
         'the landed window rides the deadline that started at the RESTORE, so '
         + 'it is shut by now; on its own floor it would still be open');
