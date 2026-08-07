@@ -185,4 +185,117 @@ suite('Client router: bound form submissions (#1155)', () => {
       teardown();
     }
   });
+
+  // -------------------------------------------------------------------------
+  // #1307: the router honours the DECLARED enctype.
+  //
+  // It used to build a `FormData` for every submission and send it with no
+  // explicit content type, so `fetch` always derived `multipart/form-data` and
+  // the authored `enctype` was never read at all. A plain `<form method="post">`
+  // MEANS `application/x-www-form-urlencoded` in HTML, so the same form sent a
+  // urlencoded body with JS off and a multipart body with JS on. Two different
+  // requests from one template is exactly what progressive enhancement rules
+  // out, and it is why these assertions read the real RequestInit rather than
+  // trusting the resolver in isolation.
+  // -------------------------------------------------------------------------
+
+  const okHtml = () => new Response(
+    '<!--wj:children:/:/--><p>ok</p><!--/wj:children:/-->',
+    { headers: { 'content-type': 'text/html', 'x-webjs-build': '' } },
+  );
+
+  test('a form declaring no enctype sends URLENCODED, the HTML default (#1307)', async () => {
+    setup(okHtml);
+    try {
+      render(html`
+        <form method="post">
+          <input name="email" value="a@b.com">
+          <button type="submit">go</button>
+        </form>
+      `, container);
+      container.querySelector('button').click();
+      await tick();
+      const post = calls[0];
+      assert.ok(post, 'router issued the submission fetch');
+      assert.ok(post.init.body instanceof URLSearchParams,
+        'a form with no enctype must NOT be sent as multipart');
+      assert.equal(post.init.body.get('email'), 'a@b.com', 'and the field survives the encoding');
+      // COUNTERFACTUAL: revert `encodeSubmitBody` to return the FormData
+      // unconditionally and this goes red, which is what pins the fix.
+    } finally { teardown(); }
+  });
+
+  test('a form declaring multipart still sends FormData', async () => {
+    setup(okHtml);
+    try {
+      render(html`
+        <form method="post" enctype="multipart/form-data">
+          <input name="email" value="a@b.com">
+          <button type="submit">go</button>
+        </form>
+      `, container);
+      container.querySelector('button').click();
+      await tick();
+      assert.ok(calls[0].init.body instanceof FormData, 'multipart is still FormData');
+    } finally { teardown(); }
+  });
+
+  test("a submitter's formenctype overrides the form's, as native precedence says", async () => {
+    setup(okHtml);
+    try {
+      render(html`
+        <form method="post" enctype="multipart/form-data">
+          <input name="email" value="a@b.com">
+          <button type="submit" formenctype="application/x-www-form-urlencoded">go</button>
+        </form>
+      `, container);
+      container.querySelector('button').click();
+      await tick();
+      assert.ok(calls[0].init.body instanceof URLSearchParams,
+        "the button's own formenctype decides the encoding");
+    } finally { teardown(); }
+  });
+
+  test('an invalid enctype is urlencoded, not passed through or treated as text/plain', async () => {
+    // `enctype` is an enumerated attribute whose invalid-value default is
+    // urlencoded, so a browser sends urlencoded for this and so must the router.
+    setup(okHtml);
+    try {
+      render(html`
+        <form method="post" enctype="nonsense">
+          <input name="email" value="a@b.com">
+          <button type="submit">go</button>
+        </form>
+      `, container);
+      container.querySelector('button').click();
+      await tick();
+      assert.ok(calls[0], 'the submission was still routed, not bailed');
+      assert.ok(calls[0].init.body instanceof URLSearchParams);
+    } finally { teardown(); }
+  });
+
+  test('a text/plain POST is NOT routed, so both paths do the same native thing', async () => {
+    // The server parses multipart and urlencoded only, so there is no honest
+    // way to send this over fetch. Bailing means the browser performs exactly
+    // the submission it would have without JS. The nav guard would catch the
+    // real navigation, so what is asserted is simply that no fetch was issued.
+    setup(okHtml);
+    try {
+      render(html`
+        <form method="post" enctype="text/plain" action="/never">
+          <button type="submit">go</button>
+        </form>
+      `, container);
+      const btn = container.querySelector('button');
+      // Stop the native submission the bail deliberately allows, so the test
+      // page is not navigated away. The router runs on the BUBBLE phase, so a
+      // capture-phase listener here would pre-empt what is being measured.
+      const stop = (e) => e.preventDefault();
+      container.addEventListener('submit', stop);
+      btn.click();
+      await tick();
+      container.removeEventListener('submit', stop);
+      assert.equal(calls.length, 0, 'the router did not take it');
+    } finally { teardown(); }
+  });
 });

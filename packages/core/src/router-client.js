@@ -866,6 +866,18 @@ function onSubmit(e) {
   const method = getSubmitMethod(form, submitter);
   if (method === 'dialog') return;
 
+  // #1307: `text/plain` is a legal native encoding the server cannot parse
+  // (`looksLikeFormSubmission` accepts multipart and urlencoded only), and
+  // there is no honest way to send it over `fetch` and have the response mean
+  // anything. Bail to the browser so BOTH paths do the same thing, rather than
+  // silently sending multipart, which is what made the same form behave one way
+  // with JS and another way without it. Turbo enumerates this encoding and then
+  // sends FormData anyway, which is the divergence being avoided here. A safe
+  // method ignores the enctype entirely, per the form-submission algorithm.
+  const enctype = getSubmitEnctype(form, submitter);
+  const isSafeMethod = method === 'get' || method === 'head';
+  if (!isSafeMethod && enctype === 'text/plain') return;
+
   const action = getSubmitAction(form, submitter);
   /** @type {URL} */ let url;
   try { url = new URL(action, location.href); }
@@ -873,7 +885,7 @@ function onSubmit(e) {
   if (url.origin !== location.origin) return;
   if (NON_HTML_EXTENSIONS.test(url.pathname)) return;
 
-  const body = buildSubmitFormData(form, submitter);
+  const body = encodeSubmitBody(buildSubmitFormData(form, submitter), enctype);
 
   e.preventDefault();
   // Resolve the target frame for the submit, same precedence as a link:
@@ -909,6 +921,76 @@ function getSubmitAction(form, submitter) {
     return submitter.getAttribute('formaction') || '';
   }
   return form.getAttribute('action') || form.action || location.href;
+}
+
+/**
+ * The three `enctype` keywords, plus the normalization a browser applies.
+ *
+ * Both the missing-value AND the invalid-value default of the `enctype`
+ * enumerated attribute are `application/x-www-form-urlencoded`, so
+ * `enctype="nonsense"` really does mean urlencoded and has to be sent as such.
+ * Only an exact, ASCII-case-insensitive match on one of the other two keywords
+ * means anything else.
+ *
+ * @param {string | null | undefined} raw
+ * @returns {'application/x-www-form-urlencoded' | 'multipart/form-data' | 'text/plain'}
+ */
+function normalizeEnctype(raw) {
+  // Compared UNTRIMMED, the same rule `assertSubmittableForm` applies in
+  // `form-action.js`. An enumerated attribute is matched against exact
+  // keywords with no whitespace stripping, so `enctype=" multipart/form-data "`
+  // falls to the invalid-value default and a BROWSER sends urlencoded for it.
+  // Trimming here would send multipart, so the router would disagree with the
+  // no-JS path on exactly the shape this function exists to keep in step.
+  const v = String(raw || '').toLowerCase();
+  if (v === 'multipart/form-data') return 'multipart/form-data';
+  if (v === 'text/plain') return 'text/plain';
+  return 'application/x-www-form-urlencoded';
+}
+
+/**
+ * Enctype resolution: the submitter's `formenctype` wins over the form's
+ * `enctype`, exactly as `getSubmitMethod` resolves the method (#1307). Turbo
+ * resolves it the same way, in `core/drive/form_submission.js`.
+ *
+ * @param {HTMLFormElement} form
+ * @param {HTMLElement | null} submitter
+ */
+function getSubmitEnctype(form, submitter) {
+  return normalizeEnctype(
+    (submitter && submitter.getAttribute('formenctype')) || form.getAttribute('enctype'),
+  );
+}
+
+/**
+ * Encode a submission body the way the DECLARED enctype says to (#1307).
+ *
+ * The router used to build a `FormData` and send it with no explicit content
+ * type, so `fetch` always derived `multipart/form-data` and the authored
+ * `enctype` was never read at all. An author writing
+ * `enctype="application/x-www-form-urlencoded"`, which is also the HTML
+ * DEFAULT and therefore what a plain `<form method="post">` means, got
+ * urlencoded with JS off and multipart with JS on. Same form, two different
+ * request bodies, which is exactly what progressive enhancement rules out.
+ *
+ * A `File` entry serializes as its NAME under urlencoded, which is what the
+ * platform's own urlencoded serializer does. (Turbo drops file entries here
+ * entirely, in `http/fetch_request.js`, which loses a field the no-JS path
+ * sends.)
+ *
+ * A bound form is unaffected: it carries an explicit
+ * `enctype="multipart/form-data"`, and since #1307 a bound submitter carries
+ * `formenctype="multipart/form-data"`, so both resolve to multipart as before.
+ *
+ * @param {FormData} formData
+ * @param {'application/x-www-form-urlencoded' | 'multipart/form-data' | 'text/plain'} enctype
+ * @returns {FormData | URLSearchParams}
+ */
+function encodeSubmitBody(formData, enctype) {
+  if (enctype === 'multipart/form-data') return formData;
+  const params = new URLSearchParams();
+  for (const [k, v] of formData) params.append(k, typeof v === 'string' ? v : v.name);
+  return params;
 }
 
 /**
@@ -1827,7 +1909,11 @@ async function performNavigation(href, isPopState, frameId) {
  *
  * @param {string} href     Absolute target URL.
  * @param {string} method   Lowercased HTTP verb.
- * @param {FormData} body
+ * @param {FormData | URLSearchParams} body  Encoded per the declared enctype
+ *   (#1307): `FormData` for multipart, `URLSearchParams` for urlencoded. Both
+ *   iterate as `[name, value]` pairs, which is all the safe-method query-string
+ *   promotion below needs, and `fetch` derives the right content type from
+ *   either without an explicit header.
  * @param {string | null} frameId
  * @param {HTMLFormElement | null} [form]  The submitted form, for busy + events.
  */
@@ -5116,6 +5202,8 @@ export {
   getSubmitMethod as _getSubmitMethod,
   getSubmitAction as _getSubmitAction,
   buildSubmitFormData as _buildSubmitFormData,
+  getSubmitEnctype as _getSubmitEnctype,
+  encodeSubmitBody as _encodeSubmitBody,
   restoreOptimistic as _restoreOptimistic,
   eligibleAnchorHref as _eligibleAnchorHref,
   viewTransitionsEnabled as _viewTransitionsEnabled,

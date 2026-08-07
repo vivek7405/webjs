@@ -135,7 +135,7 @@ import { createPost } from '#modules/posts/actions/create-post.server.ts';
 html`<form action=${createPost}><input name="title"></form>`;
 ```
 
-The renderer omits the `action` attribute so the form posts to the page's own url, supplies `method="post"` and an enctype, and emits a hidden `__webjs_action` field carrying the action's `<hash>/<fn>` identity, the same identity the RPC endpoint resolves. Nothing about the action's source reaches the browser. With JS off this is an ordinary HTML submission; with JS the client router posts the same body to the same url, so the two paths are identical by construction.
+The renderer omits the `action` attribute so the form posts to the page's own url, supplies `method="post"` and an enctype, and emits a hidden `__webjs_action` field carrying the action's `<hash>/<fn>` identity, the same identity the RPC endpoint resolves. Nothing about the action's source reaches the browser. With JS off this is an ordinary HTML submission; with JS the client router posts the same body to the same url, encoded per the declared `enctype` (#1307: multipart stays `FormData`, urlencoded, which is the HTML default, is sent as `URLSearchParams`), so the two paths are identical by construction.
 
 **A form-bound action always receives the `FormData`**, which is where it differs from the same function called over RPC (rich arguments) or server-to-server. `validate` is the typing seam: it takes the `FormData` and its transform-return becomes the action's typed input.
 

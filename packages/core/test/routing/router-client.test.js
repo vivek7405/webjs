@@ -30,6 +30,7 @@ let _collect, _plan, _keyOf, _diffEl, _reconcile,
   _applySwap, _prefetchCache,
   _snapshotCache, _LIVE_ATTRS, _blurOutgoingFocus,
   _onSubmit, _getSubmitMethod, _getSubmitAction, _buildSubmitFormData,
+  _getSubmitEnctype, _encodeSubmitBody,
   _restoreOptimistic, _navToken, _bumpNavToken,
   _currentPageUrl, _setCurrentPageUrl, _resetWarnOnce,
   _eligibleAnchorHref, _prefetchSuppressed, _prefetchMode, _prefetchHasHoverPointer, _prefetch, _prefetchTake, _prefetchAnchor,
@@ -101,6 +102,8 @@ before(async () => {
     _getSubmitMethod,
     _getSubmitAction,
     _buildSubmitFormData,
+    _getSubmitEnctype,
+    _encodeSubmitBody,
     _restoreOptimistic,
     _navToken,
     _bumpNavToken,
@@ -3006,6 +3009,66 @@ test('getSubmitMethod: tolerates null submitter (programmatic submit)', () => {
   assert.equal(_getSubmitMethod(form, null), 'post');
 });
 
+test('getSubmitEnctype: submitter formenctype overrides form enctype', () => {
+  // Native precedence, the same rule `getSubmitMethod` follows one line up.
+  const form = formFrom('<form enctype="application/x-www-form-urlencoded"><button formenctype="multipart/form-data">x</button></form>');
+  assert.equal(_getSubmitEnctype(form, form.querySelector('button')), 'multipart/form-data');
+});
+
+test('getSubmitEnctype: the missing-value default is urlencoded, per HTML', () => {
+  // This is the case that mattered (#1307). A plain `<form method="post">`
+  // MEANS urlencoded, and the router used to send multipart for it, so the
+  // same form produced a different request body with JS on than with JS off.
+  const form = formFrom('<form method="post"><button>x</button></form>');
+  assert.equal(_getSubmitEnctype(form, form.querySelector('button')), 'application/x-www-form-urlencoded');
+});
+
+test('getSubmitEnctype: an INVALID value is urlencoded too, not passed through', () => {
+  // `enctype` is an enumerated attribute whose invalid-value default is also
+  // urlencoded, so `nonsense` really does mean urlencoded. Treating an
+  // unrecognised value as text/plain would bail a form that submits perfectly.
+  for (const raw of ['nonsense', 'TEXT/HTML', '', ' multipart/form-data ']) {
+    const form = formFrom(`<form method="post" enctype="${raw}"><button>x</button></form>`);
+    assert.equal(
+      _getSubmitEnctype(form, form.querySelector('button')),
+      'application/x-www-form-urlencoded',
+      `${raw || '(empty)'} normalizes to the invalid-value default`,
+    );
+  }
+});
+
+test('getSubmitEnctype: the two other keywords are matched case-insensitively', () => {
+  for (const [raw, want] of [
+    ['MULTIPART/FORM-DATA', 'multipart/form-data'],
+    ['Text/Plain', 'text/plain'],
+  ]) {
+    const form = formFrom(`<form method="post" enctype="${raw}"><button>x</button></form>`);
+    assert.equal(_getSubmitEnctype(form, form.querySelector('button')), want);
+  }
+});
+
+test('encodeSubmitBody: urlencoded sends URLSearchParams, multipart sends FormData', () => {
+  const fd = new FormData();
+  fd.append('email', 'a@b.com');
+  fd.append('note', 'hi there');
+  const params = _encodeSubmitBody(fd, 'application/x-www-form-urlencoded');
+  assert.ok(params instanceof URLSearchParams, 'urlencoded must not send FormData');
+  assert.equal(params.get('email'), 'a@b.com');
+  assert.equal(params.get('note'), 'hi there');
+  assert.equal(_encodeSubmitBody(fd, 'multipart/form-data'), fd, 'multipart passes the FormData through');
+});
+
+test('encodeSubmitBody: a File under urlencoded is sent as its NAME, matching the platform', () => {
+  // The platform's urlencoded serializer writes the file's name. Turbo drops
+  // file entries entirely here, which loses a field the no-JS path sends.
+  const fd = new FormData();
+  fd.append('avatar', new File(['x'], 'portrait.png', { type: 'image/png' }));
+  fd.append('email', 'a@b.com');
+  const params = _encodeSubmitBody(fd, 'application/x-www-form-urlencoded');
+  assert.equal(params.get('avatar'), 'portrait.png');
+  assert.equal(params.get('email'), 'a@b.com', 'and the sibling text field survives');
+});
+
 test('getSubmitAction: submitter formaction overrides form action', () => {
   const form = formFrom('<form action="/a"><button formaction="/b">x</button></form>');
   const submitter = form.querySelector('button');
@@ -3068,6 +3131,36 @@ test('onSubmit: ignores submissions with method="dialog"', () => {
   const e = fakeSubmitEvent(form);
   _onSubmit(e);
   assert.equal(e._wasPrevented(), false, 'native dialog dismissal not routed');
+});
+
+// NOTE on these two bail tests, and on every `onSubmit: ignores ...` test
+// around them: this harness is linkedom, where `new FormData(formElement)`
+// throws, so `onSubmit` cannot be driven all the way to `preventDefault()`
+// here. A bail assertion therefore proves that the submission was NOT routed,
+// but cannot prove it bailed for the stated REASON. The positive control (an
+// ordinary POST still being intercepted, and the body actually encoded per the
+// declared enctype) lives in the browser suite, in
+// `packages/core/test/routing/browser/form-action-submit.test.js`, against a
+// real DOM and a stubbed fetch.
+test('onSubmit: an unsafe text/plain submission bails to the browser (#1307)', () => {
+  // The server parses multipart and urlencoded only, so there is no honest way
+  // to send text/plain over fetch and have the response mean anything. Bailing
+  // makes the JS-on and JS-off paths do the SAME thing (both a native
+  // text/plain POST, both answered the same way), which is the requirement.
+  const form = formFrom('<form action="/x" method="post" enctype="text/plain"></form>');
+  const e = fakeSubmitEvent(form);
+  _onSubmit(e);
+  assert.equal(e._wasPrevented(), false, 'the browser performs the submission');
+});
+
+test('onSubmit: a submitter formenctype="text/plain" bails too', () => {
+  // Native precedence: the submitter's override decides the encoding, so the
+  // bail has to read it there as well or a per-button text/plain would be sent
+  // as multipart under JS and natively without it.
+  const form = formFrom('<form action="/x" method="post"><button formenctype="text/plain">x</button></form>');
+  const e = fakeSubmitEvent(form, form.querySelector('button'));
+  _onSubmit(e);
+  assert.equal(e._wasPrevented(), false);
 });
 
 test('onSubmit: ignores cross-origin actions', () => {
