@@ -147,6 +147,33 @@ test('findOrphanComponents: ignores files with no WebComponent subclass', async 
   }
 });
 
+test('findOrphanComponents: a COMPUTED template-literal tag is an orphan (#1308)', async () => {
+  // The two scans in this file must agree on what a literal tag is. When the
+  // orphan scan used its own looser pattern, a redacted interpolated template
+  // (`A.register(`${p}__STR_1__`)`) satisfied it but NOT `extractComponents`,
+  // so the class was neither a component nor an orphan and disappeared from
+  // every surface: the dev warning, the elision report, the CLI section, and
+  // the doctor check. An interpolated template is the most idiomatic way to
+  // write a computed tag, so this is the shape the report most needs to catch.
+  //
+  // A LITERAL backtick tag is the counterpart and must NOT be an orphan;
+  // both are asserted here so a fix in either direction cannot pass silently.
+  const dir = await scaffold({
+    'components/computed.ts': `const p = 'my';\nexport class Computed extends WebComponent {\n  render() {}\n}\nComputed.register(\`\${p}-badge\`);\n`,
+    'components/literal.ts': `export class Literal extends WebComponent {\n  render() {}\n}\nLiteral.register(\`ok-badge\`);\n`,
+  });
+  try {
+    const orphans = await findOrphanComponents(dir);
+    assert.deepEqual(orphans.map((o) => o.className).sort(), ['Computed'],
+      'the interpolated tag is an orphan; the literal backtick tag is a real registration');
+    const comps = await scanComponents(dir);
+    assert.deepEqual(comps.map((c) => c.tag).sort(), ['ok-badge'],
+      'and the two scans agree: exactly the one the orphan scan did NOT flag is the component');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('findOrphanComponents: a SIBLING-registered class is not an orphan (#1308)', async () => {
   // Registration is an APP-WIDE fact; the declaration is per-file. A class
   // declared in one module and registered by a sibling is a legitimate pattern

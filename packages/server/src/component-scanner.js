@@ -226,18 +226,18 @@ export async function findOrphanComponents(appDir) {
     // Find every class that extends WebComponent (exact name: we trust
     // the framework convention).
     const classRe = /\b(?:export\s+)?(?:default\s+)?class\s+([A-Z][A-Za-z0-9_$]*)\s+extends\s+WebComponent\b/g;
-    // A class counts as "registered" if either Class.register('tag') or
-    // customElements.define('tag', Class) appears in the file. The tag is a
-    // placeholder after redaction; an orphan is about the CLASS, not the tag,
-    // so the placeholder is matched rather than read.
-    const registerRe = /\b([A-Z][A-Za-z0-9_$]*)\.register\s*\(\s*['"`][^'"`]+['"`]\s*\)/g;
-    const defineRe = /\bcustomElements\.define\s*\(\s*['"`][^'"`]+['"`]\s*,\s*([A-Z][A-Za-z0-9_$]*)\b/g;
-
     const declared = new Set();
     let m;
     while ((m = classRe.exec(redacted)) !== null) declared.add(m[1]);
-    while ((m = registerRe.exec(redacted)) !== null) registeredAnywhere.add(m[1]);
-    while ((m = defineRe.exec(redacted)) !== null) registeredAnywhere.add(m[1]);
+
+    // "Registered" is whatever `extractComponents` accepts, reused rather than
+    // re-expressed. The two scans MUST agree on what a literal tag is: when
+    // this used its own looser pattern, a redacted interpolated template
+    // (`Class.register(\`${p}__STR_1__\`)`) satisfied the orphan scan but not
+    // `extractComponents`, so a computed template-literal tag was neither a
+    // component NOR an orphan and vanished from every surface, which is the
+    // exact shape the orphan report exists to catch.
+    for (const c of extractComponents(src)) registeredAnywhere.add(c.className);
     if (declared.size) declaredPerFile.push({ file, declared });
   }
 
