@@ -160,9 +160,13 @@ interface WebComponentStatics {
   /**
    * Force this component to ship (hydrate) even when the elision analyser would
    * drop it as display-only. The escape hatch for interactivity the analyser
-   * cannot see statically: a dynamically-computed tag string, or a `:defined`
-   * rule in an external stylesheet outside the module graph. Leave unset for
-   * the automatic verdict.
+   * cannot see statically: an OBSERVER that computes the tag it waits for, a
+   * `:defined` rule in an external stylesheet outside the module graph, or a
+   * consumer reaching the element through a string selector. It
+   * cannot rescue a component whose OWN registration tag is computed, since
+   * the scanner requires a literal tag (invariant 3) and never sees that
+   * component at all. Leave unset for the automatic verdict; inspect it with
+   * `webjs elision`.
    */
   interactive?: boolean;
   register(tag: string): void;

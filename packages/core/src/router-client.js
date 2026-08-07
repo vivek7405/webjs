@@ -2958,12 +2958,28 @@ function upgradeCustomElementsInRange(range) {
 let _swapCommit = Promise.resolve();
 
 function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc) {
-  // SSR action seeding (#472): ingest any seed payload the incoming page
-  // carries BEFORE its components are grafted into the live DOM and upgrade, so
-  // a soft-navigated async component resolves from the seed instead of
-  // re-fetching. Scanning `doc` (the detached parse) also strips the seed
-  // carriers, so the inert payload never lands in the live document.
-  try { scanSeeds(doc); } catch { /* seeding is best-effort */ }
+  // SSR action seeding (#472): ingest the incoming page's seed payload BEFORE
+  // its components are grafted into the live DOM and upgrade, so a
+  // soft-navigated async component resolves from the seed instead of
+  // re-fetching. Scanning `doc` (the detached parse) also strips the carriers,
+  // so the inert payload never lands in the live document.
+  //
+  // Called at each COMMIT point rather than once up front, because this function
+  // can still decide to throw the response away after parsing it (a hard
+  // navigate, or a background revalidation with no trustworthy boundary plan).
+  // Scanning eagerly would clear the visible page's own unconsumed seeds and
+  // ingest a render that is never painted, so the next `async render()` would
+  // hit on data that disagrees with the HTML on screen. That is the same hole
+  // the frame ID-MISSING case closes, reached through a different discard.
+  //
+  // A frame swap is NOT a page navigation, so say so: the consumer must leave
+  // the surrounding page's state alone (see `scanSeeds`).
+  let seedsScanned = false;
+  const ingestSeeds = () => {
+    if (seedsScanned) return;
+    seedsScanned = true;
+    try { scanSeeds(doc, { frame: !!frameId }); } catch { /* seeding is best-effort */ }
+  };
 
   // Every host in this parsed doc is FRAMEWORK-SERIALIZED markup (an SSR
   // fragment or a back/forward snapshot of post-hydration HTML), never
@@ -3123,6 +3139,9 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
 
   // 1. webjs-frame escape hatch.
   if (frameId) {
+    // Both outcomes here (a successful subtree swap, or frame-missing) discard
+    // whatever the parse carried, so this is safe wherever it lands.
+    ingestSeeds();
     const target = document.querySelector(`webjs-frame#${CSS.escape(frameId)}`);
     const source = doc.querySelector(`webjs-frame#${CSS.escape(frameId)}`);
     if (target && source) {
@@ -3178,6 +3197,9 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
   const plan = here && there ? planBoundarySwap(here, there) : null;
 
   if (plan) {
+    // Committed: this response is being applied, so its seeds are the ones the
+    // user is about to look at.
+    ingestSeeds();
     const { mode, live, incoming } = plan;
     // ADD-ONLY head merge: the outer layout stays mounted, so its head-bound
     // runtime state (Tailwind injection, etc.) must not be invalidated.
@@ -3240,6 +3262,7 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
   // because the user is already viewing the page). Full head merge;
   // `mergeHead` PRESERVES stylesheets and `<style>` unconditionally
   // (#936) so the swap can never leave the page unstyled.
+  ingestSeeds();   // committed: past both discard branches above
   mergeHead(doc.head);
   // Persist permanent elements by node identity across the full-body
   // swap: move each live [data-webjs-permanent][id] node into the matching

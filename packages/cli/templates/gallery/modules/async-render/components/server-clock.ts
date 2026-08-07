@@ -16,8 +16,9 @@ export class ServerClock extends WebComponent {
   // serves it with ZERO JavaScript and skips the redundant on-hydration
   // re-fetch. This is the common fetch-and-display leaf shape. If you ever need
   // to force a component to ship when the analyser would elide it (for
-  // interactivity static analysis cannot see, like a dynamically-computed tag
-  // string), declare `static interactive = true`.
+  // interactivity static analysis cannot see, like an observer that computes
+  // the tag it waits for), declare `static interactive = true`. Run
+  // `webjs elision` to see the verdict for every component in this app.
   async render() {
     const info = await serverGreeting();
     return html`<p class="font-mono text-sm">server rendered this at

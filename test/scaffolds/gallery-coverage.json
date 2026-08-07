@@ -263,6 +263,9 @@
     "scanSeeds": {
       "exempt": "internal: SSR action-seeding plumbing"
     },
+    "seedStats": {
+      "exempt": "internal: a dev-only seeding diagnostic, read from the console or a browser test rather than written against; the seeding docs live in the skill's data-and-actions reference"
+    },
     "serialize": {
       "exempt": "internal: wire serializer; app code round-trips via server actions"
     },
@@ -530,6 +533,9 @@
     "loginAndGetCookies": {
       "demoed": true
     },
+    "maskJsSet": {
+      "exempt": "internal: the differential comparator behind `webjs elision --verify`, exported so an app can diff its own two captures with the framework comparator instead of a copy"
+    },
     "matchApi": {
       "demoed": true
     },
@@ -662,8 +668,8 @@
     "startServer": {
       "demoed": true
     },
-    "submitForm": {
-      "demoed": true
+    "staticPageRoutes": {
+      "exempt": "internal: the `webjs elision --verify` render corpus, exported alongside maskJsSet for the same reason"
     },
     "storeSession": {
       "demoed": true
@@ -675,6 +681,9 @@
       "demoed": true
     },
     "streamResponse": {
+      "demoed": true
+    },
+    "submitForm": {
       "demoed": true
     },
     "testRequest": {

@@ -7,15 +7,13 @@
  * renders a component tag, `lookupModuleUrl(tag)` already has the URL
  * ready for `<link rel="modulepreload">` hints.
  *
- * The convention WebJs uses is the web-standard one:
- *
- *     class Counter extends WebComponent { … }
- *     customElements.define('my-counter', Counter);
- *
- * The scanner looks for `customElements.define('<tag>', <ClassName>)`
- * calls: static text patterns that are cheap to regex-match without
- * a full TS parse. A full parse would be ~50× slower for no payoff;
- * we only need `{ tag, className, moduleUrl }` tuples.
+ * The idiomatic WebJs registration is `Class.register('my-counter')`; the
+ * web-standard `customElements.define('my-counter', Counter)` is equally
+ * supported. The scanner matches BOTH, as static text patterns that are cheap
+ * to regex-match without a full TS parse. A full parse would be ~50× slower
+ * for no payoff; we only need `{ tag, className, moduleUrl }` tuples. Either
+ * way the tag must be a LITERAL (invariant 3): a computed one is invisible
+ * here, which is what makes it an orphan (see `findOrphanComponents`).
  */
 
 import { readFile, stat } from 'node:fs/promises';
@@ -148,10 +146,36 @@ export async function primeComponentRegistry(appDir, components) {
 }
 
 /**
- * Find `class X extends WebComponent` (or its subclasses) declarations
- * that are NOT accompanied by a `customElements.define(tag, X)` call in
- * the same file. Lets the dev server warn authors early when they
- * forget the registration step.
+ * Find ORPHAN components: a `class X extends WebComponent` that NOTHING in the
+ * app registers with a LITERAL tag, via either `X.register('tag')` or
+ * `customElements.define('tag', X)`. The declaration is per-file, the
+ * registration cross-reference is app-wide.
+ *
+ * TWO shapes land here and they fail differently, so any message about this
+ * must cover both:
+ *
+ *   - No registration call ANYWHERE in the app (the forgot-to-register case).
+ *     Nothing ever registers the tag, so the element NEVER upgrades. The
+ *     cross-reference is app-wide precisely so a class registered by a sibling
+ *     module is not accused of this.
+ *   - A registration whose tag is COMPUTED (`X.register(TAG)`). That call is
+ *     ordinary code, so it runs IF the module reaches the browser, which
+ *     requires the importing module to ship WHOLE. An inert, import-only, or
+ *     elided importer is dropped from the boot and takes the import with it,
+ *     and then the element does not upgrade either. Assume it does not. An
+ *     orphan is not in `componentFiles`, so it never joins the frontier an
+ *     import-only page emits in its place, and a page that renders a real
+ *     component alongside the orphan is import-only unless it ALSO does its
+ *     own client work (which ships it whole, #963). Shipping whole is the
+ *     narrower case, so treat the upgrade as lost until proven otherwise.
+ *
+ * Lost in EVERY case, whichever shape: the elision verdict, the tag-to-module
+ * registry entry, and the modulepreload hint. That, not the upgrade, is the
+ * part that is always true, and it is what every message about this should
+ * lead with.
+ *
+ * Matches the literal `extends WebComponent` only, so a class extending a
+ * component SUBCLASS is not reported.
  *
  * @param {string} appDir
  * @returns {Promise<Array<{ className: string, file: string }>>}
@@ -164,30 +188,62 @@ export async function findOrphanComponents(appDir) {
     !/\.(test|spec)\.m?[jt]sx?$/.test(p) &&
     !/\.server\.m?[jt]s$/.test(p);
 
+  // TWO passes, because registration is an APP-WIDE fact while the declaration
+  // is per-file. A class may legitimately be declared in one module and
+  // registered by a sibling (`customElements.define('my-badge', Badge)` in a
+  // separate file), which the scanner header calls equally supported and which
+  // `extractComponents` already picks up as a real component. Reporting it as
+  // an orphan is a FALSE positive, and a false warning on a legitimate pattern
+  // is exactly what makes an author stop reading the warnings.
+  //
+  // Trade-off, deliberate: the cross-reference is by class NAME, so two
+  // same-named classes in different files, one registered and one genuinely
+  // orphaned, hide the real orphan. That is rarer than the sibling-registration
+  // pattern and errs toward silence rather than toward a wrong accusation.
+  /** @type {Array<{ file: string, declared: Set<string> }>} */
+  const declaredPerFile = [];
+  /** @type {Set<string>} every class name registered ANYWHERE in the app */
+  const registeredAnywhere = new Set();
+
   for await (const file of walk(appDir, filter)) {
     let src;
     try { src = await readFile(file, 'utf8'); } catch { continue; }
+    // Scan REDACTED source, the same way `extractComponents` above does. A
+    // `class X extends WebComponent` written inside an `html` template or a
+    // string is a CODE SAMPLE (every docs page is full of them), not a real
+    // declaration, and reporting it as an unregistered component is a false
+    // orphan. Redaction blanks comments and swaps each string / template body
+    // for a `__STR_<idx>__` placeholder, so a genuine top-level declaration
+    // still matches while a sample inside a template does not. It does NOT
+    // preserve offsets (a placeholder is a different length than the body it
+    // replaces), which is fine here because an orphan is reported by class
+    // name and file, never by position. If this scan ever needs a line or
+    // column, reach for `redactStringsAndTemplates(src, true)`, WITH the
+    // blank-strings argument: the default form keeps plain-string bodies and
+    // single-line untagged templates verbatim, so a sample written either way
+    // would match again and the false orphan would be back.
+    const { redacted } = redactToPlaceholders(src);
     // Find every class that extends WebComponent (exact name: we trust
     // the framework convention).
     const classRe = /\b(?:export\s+)?(?:default\s+)?class\s+([A-Z][A-Za-z0-9_$]*)\s+extends\s+WebComponent\b/g;
-    // A class counts as "registered" if either Class.register('tag') or
-    // customElements.define('tag', Class) appears in the file.
-    const registerRe = /\b([A-Z][A-Za-z0-9_$]*)\.register\s*\(\s*['"][^'"]+['"]\s*\)/g;
-    const defineRe = /\bcustomElements\.define\s*\(\s*['"][^'"]+['"]\s*,\s*([A-Z][A-Za-z0-9_$]*)\b/g;
-
     const declared = new Set();
     let m;
-    while ((m = classRe.exec(src)) !== null) declared.add(m[1]);
-    if (declared.size === 0) continue;
+    while ((m = classRe.exec(redacted)) !== null) declared.add(m[1]);
 
-    const registered = new Set();
-    while ((m = registerRe.exec(src)) !== null) registered.add(m[1]);
-    while ((m = defineRe.exec(src)) !== null) registered.add(m[1]);
+    // "Registered" is whatever `extractComponents` accepts, reused rather than
+    // re-expressed. The two scans MUST agree on what a literal tag is: when
+    // this used its own looser pattern, a redacted interpolated template
+    // (`Class.register(\`${p}__STR_1__\`)`) satisfied the orphan scan but not
+    // `extractComponents`, so a computed template-literal tag was neither a
+    // component NOR an orphan and vanished from every surface, which is the
+    // exact shape the orphan report exists to catch.
+    for (const c of extractComponents(src)) registeredAnywhere.add(c.className);
+    if (declared.size) declaredPerFile.push({ file, declared });
+  }
 
+  for (const { file, declared } of declaredPerFile) {
     for (const cls of declared) {
-      if (!registered.has(cls)) {
-        orphans.push({ className: cls, file });
-      }
+      if (!registeredAnywhere.has(cls)) orphans.push({ className: cls, file });
     }
   }
   return orphans;

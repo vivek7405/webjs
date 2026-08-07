@@ -4525,3 +4525,52 @@ test('#1118: the report is once per DOCUMENT, not once per enable', () => {
     globalThis.sessionStorage.clear();
   }
 });
+
+test('applySwap: a DISCARDED background revalidation never ingests its seeds (#1309)', async () => {
+  // The scan used to run as applySwap's first statement, before this function
+  // can still decide to throw the response away. That cleared the visible
+  // page's own unconsumed seeds and ingested a render that is never painted,
+  // keyed for the same actions and args the visible page uses (it is a
+  // revalidation of that same URL), so the next `async render()` on the page
+  // still on screen hit on data disagreeing with the HTML.
+  const { takeSeed, scanSeeds, SEED_MISS, __resetSeeds } = await import('../../src/action-seed-client.js');
+  const { stringify } = await import('../../src/serialize.js');
+  const savedBody = globalThis.document.body.innerHTML;
+  const savedHead = globalThis.document.head.innerHTML;
+  const savedLocation = globalThis.location;
+  try {
+    __resetSeeds();
+    globalThis.document.head.innerHTML = '';
+    globalThis.location = /** @type any */ ({ get href() { return 'http://x/current'; }, set href(v) {} });
+    globalThis.sessionStorage.clear();
+    globalThis.document.body.innerHTML =
+      '<!--wj:children:/:/--><main id="fb-seed">old</main><!--/wj:children:/-->';
+
+    // The page on screen holds a seed the user's next render will ask for.
+    const liveBlock = globalThis.document.createElement('script');
+    liveBlock.setAttribute('type', 'application/json');
+    liveBlock.setAttribute('id', '__webjs-seeds');
+    liveBlock.textContent = await stringify({ 'h/getUser/[1]': 'ON-SCREEN' });
+    globalThis.document.body.appendChild(liveBlock);
+    scanSeeds(globalThis.document);
+
+    // A background revalidation whose boundaries do not line up, so applySwap
+    // discards it. Its payload names the SAME key with a different value.
+    const incoming = new globalThis.DOMParser().parseFromString(
+      '<!doctype html><html><head></head><body><!--wj:children:/:/--><main>new</main>'
+      + `<script type="application/json" id="__webjs-seeds">${await stringify({ 'h/getUser/[1]': 'NEVER-PAINTED' })}</script>`
+      + '</body></html>', 'text/html');
+    const outcome = _applySwap(incoming, null, true, 'http://x/blog');
+    assert.equal(outcome, 'discard', 'precondition: this response really was thrown away');
+
+    assert.equal(
+      takeSeed('h', 'getUser', '[1]'), 'ON-SCREEN',
+      'the page still on screen keeps its own seed; a discarded response never supplies one',
+    );
+    assert.equal(takeSeed('h', 'getUser', '[1]'), SEED_MISS, 'and it was consumed once, as always');
+  } finally {
+    globalThis.location = savedLocation;
+    globalThis.document.head.innerHTML = savedHead;
+    globalThis.document.body.innerHTML = savedBody;
+  }
+});
