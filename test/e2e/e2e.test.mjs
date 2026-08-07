@@ -3463,6 +3463,79 @@ describe('E2E: form actions (no-JS + enhanced)', { skip: !process.env.WEBJS_E2E 
     } finally { await p.close(); }
   });
 
+  test('JS DISABLED: a bound submitter runs its action inside a COMPLETELY UNBOUND form (#1307)', async () => {
+    // THE headline assertion of #1307, and the one-line proof the whole change
+    // works. `/feedback/triage-split` renders a `<form>` with NO action and NO
+    // method, so a browser defaults it to GET. Both of its buttons bind their
+    // own action, and "Publish" is rendered by a COMPONENT, which SSR renders
+    // in a separate pass that cannot see this page at all.
+    //
+    // Before the change this submitted as a GET: the identity rode the query
+    // string, the page re-rendered, and nothing ran. A 200 with no log, which
+    // is exactly why detection was the original plan and making it WORK is the
+    // better one.
+    //
+    // COUNTERFACTUAL: delete the `formmethod` / `formenctype` injection from
+    // `bindSubmitterStartTag` and this test goes red, because the button falls
+    // back to the form's GET default and the action never runs.
+    const p = await paBrowser.newPage();
+    await p.setJavaScriptEnabled(false);
+    try {
+      await p.goto(`${paBase}/feedback/triage-split`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+
+      // The served markup carries the whole submission on the button itself.
+      const shape = await p.evaluate(() => {
+        const btn = document.getElementById('publish');
+        const form = btn.closest('form');
+        return {
+          formMethodAttr: form.getAttribute('method'),
+          formActionAttr: form.getAttribute('action'),
+          name: btn.getAttribute('name'),
+          value: btn.getAttribute('value'),
+          formmethod: btn.getAttribute('formmethod'),
+          formenctype: btn.getAttribute('formenctype'),
+          formaction: btn.getAttribute('formaction'),
+        };
+      });
+      assert.equal(shape.formMethodAttr, null, 'the host form declares no method');
+      assert.equal(shape.formActionAttr, null, 'and binds no action');
+      assert.equal(shape.name, '__webjs_action', 'the component-rendered button carries the identity');
+      assert.ok(/\/publishDraft$/.test(shape.value || ''), `identity value, got "${shape.value}"`);
+      assert.equal(shape.formmethod, 'post', 'and supplies its own method');
+      assert.equal(shape.formenctype, 'multipart/form-data', 'and its own enctype');
+      assert.equal(shape.formaction, null, 'no formaction url is emitted');
+
+      // And it actually RUNS, which is the part markup alone cannot prove.
+      await p.type('#note', 'ship it');
+      await Promise.all([
+        p.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
+        p.click('#publish'),
+      ]);
+      const ran = await p.evaluate(() => document.getElementById('ran')?.textContent || '');
+      assert.equal(ran, 'publishDraft',
+        `the action must RUN from an unbound form, got "${ran}"`);
+    } finally { await p.close(); }
+  });
+
+  test('JS DISABLED: the INLINE bound submitter in the same unbound form runs too', async () => {
+    // The sibling path. "Save draft" is written inline in the page template, so
+    // SSR sees it in the same scan as the form and knew that form was unbound.
+    // That is the case the renderer used to REFUSE outright, as distinct from
+    // the component case it bound anyway. Both now bind and both work.
+    const p = await paBrowser.newPage();
+    await p.setJavaScriptEnabled(false);
+    try {
+      await p.goto(`${paBase}/feedback/triage-split`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+      await p.type('#note', 'later');
+      await Promise.all([
+        p.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
+        p.click('#save'),
+      ]);
+      const ran = await p.evaluate(() => document.getElementById('ran')?.textContent || '');
+      assert.equal(ran, 'saveDraft', `the inline submitter's action must run, got "${ran}"`);
+    } finally { await p.close(); }
+  });
+
   test('JS DISABLED: a failing submitter action re-renders THIS page at 422', async () => {
     // The per-button path has to reach the same 422 re-render as the form-level
     // one, or a validation failure on a submitter action would lose the page.

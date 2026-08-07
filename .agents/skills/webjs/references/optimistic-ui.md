@@ -104,7 +104,7 @@ render() {
 
 `method` and the enctype are supplied by the renderer, and the hidden identity field is re-inserted as the form's first child on every client render, so there is nothing to manage by hand.
 
-When a page owns SEVERAL mutations (create, toggle, delete), give each form its OWN binding (`action=${createTodo}` / `action=${toggleTodo}` / `action=${deleteTodo}`), or use per-button submitter server action bindings via `formaction=${action}` on submitter buttons inside a bound form (#1207). Alternatively, a form that dispatches dynamically can bind ONE action and inspect a submit button's `name="intent"`.
+When a page owns SEVERAL mutations (create, toggle, delete), give each form its OWN binding (`action=${createTodo}` / `action=${toggleTodo}` / `action=${deleteTodo}`), or use per-button submitter server action bindings via `formaction=${action}` on submitter buttons (#1207, #1307: a bound submitter carries its own submission, so the enclosing form need not be bound). Alternatively, a form that dispatches dynamically can bind ONE action and inspect a submit button's `name="intent"`.
 
 ## Seed the list from the server for SSR plus optimistic
 

@@ -632,28 +632,46 @@ export function matchClosingParenthesis(s, start) {
  * `}` inside `'…'`, `"…"`, or backtick templates don't decrement depth.
  * Returns -1 if no balanced brace is found.
  *
+ * A template hole is a CODE context nested inside a template, not a brace in
+ * the enclosing block, so it gets its own frame on the stack: `${` pushes,
+ * and the `}` that returns that frame to depth zero pops back into the
+ * template rather than counting toward the block being matched. An earlier
+ * version incremented the outer depth at `${` and then never decremented it
+ * (the closing `}` arrived while still in template state), so depth could
+ * never return to zero and a class body holding `` html`…${x}…` `` was
+ * unmatchable. Every caller passes a masked source in which holes are already
+ * blanked, so the bug is invisible until one passes raw source.
+ *
  * @param {string} s
  * @param {number} start
  */
 export function matchClosingBrace(s, start) {
-  let depth = 1;
+  // Innermost first. `tpl` frames are template literals (no brace counting);
+  // `!tpl` frames are code, each with its own depth.
+  /** @type {Array<{ tpl: boolean, depth: number }>} */
+  const stack = [{ tpl: false, depth: 1 }];
   let i = start;
-  let str = ''; // '', "'", '"', or backtick
   while (i < s.length) {
+    const top = stack[stack.length - 1];
     const c = s[i];
-    if (str) {
+    if (top.tpl) {
       if (c === '\\') { i += 2; continue; }
-      if (c === str) str = '';
-      else if (str === '`' && c === '$' && s[i + 1] === '{') {
-        // template hole, count its closing `}` toward our brace depth.
-        depth++;
-        i += 2;
-        continue;
-      }
+      if (c === '`') { stack.pop(); i++; continue; }
+      if (c === '$' && s[i + 1] === '{') { stack.push({ tpl: false, depth: 1 }); i += 2; continue; }
       i++;
       continue;
     }
-    if (c === "'" || c === '"' || c === '`') { str = c; i++; continue; }
+    if (c === "'" || c === '"') {
+      i++;
+      while (i < s.length) {
+        if (s[i] === '\\') { i += 2; continue; }
+        const d = s[i];
+        i++;
+        if (d === c || d === '\n') break;   // closed, or unterminated at EOL
+      }
+      continue;
+    }
+    if (c === '`') { stack.push({ tpl: true, depth: 0 }); i++; continue; }
     if (c === '/' && s[i + 1] === '/') { // line comment
       while (i < s.length && s[i] !== '\n') i++;
       continue;
@@ -664,8 +682,18 @@ export function matchClosingBrace(s, start) {
       i += 2;
       continue;
     }
-    if (c === '{') depth++;
-    else if (c === '}') { depth--; if (depth === 0) return i; }
+    if (c === '{') { top.depth++; i++; continue; }
+    if (c === '}') {
+      top.depth--;
+      // Depth zero closes this frame: the outermost one is the answer, an inner
+      // one is a template hole ending and hands control back to its template.
+      if (top.depth === 0) {
+        if (stack.length === 1) return i;
+        stack.pop();
+      }
+      i++;
+      continue;
+    }
     i++;
   }
   return -1;

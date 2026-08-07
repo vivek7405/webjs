@@ -179,7 +179,7 @@ Three responses that are not the happy path:
 
 The submission is Origin-verified (the same `Sec-Fetch-Site` / `Origin` check the RPC endpoint applies), so a no-JS form needs no CSRF token field.
 
-Refusals worth knowing: `formaction=${fn}` is supported only on a `<button>` inside a bound form, and that button may not carry `name`, `value`, `form`, or a static `formaction` attribute (`<input type="submit">` is refused, because the identity needs its `value`, which is also its label). A bound form may not declare `method="get"`, and a function bound to `action=` that is not a `'use server'` export throws at render rather than producing a form that posts nowhere. See `muscle-memory-gotchas.md` for the full table.
+Refusals worth knowing: `formaction=${fn}` is supported on a `<button>` anywhere, bound form or not (#1307: the renderer gives the button its own `formmethod` and `formenctype`), and that button may not carry `name`, `value`, `form`, or a static `formaction` attribute (`<input type="submit">` is refused, because the identity needs its `value`, which is also its label). A bound form may not declare `method="get"`, and a function bound to `action=` that is not a `'use server'` export throws at render rather than producing a form that posts nowhere. See `muscle-memory-gotchas.md` for the full table.
 
 ## Error, loading, and 404 boundaries
 

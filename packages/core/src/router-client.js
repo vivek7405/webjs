@@ -8,6 +8,7 @@ import './webjs-frame.js';
 // live-channel `connectWS` handler.
 import './webjs-stream.js';
 import { renderStream } from './webjs-stream.js';
+import { FORM_ACTION_FIELD } from './form-action.js';
 // Register <webjs-suspense> (the element-level streaming boundary, #471) so it
 // is layout-neutral and available for the progressive soft-nav streaming apply.
 import './webjs-suspense.js';
@@ -866,6 +867,9 @@ function onSubmit(e) {
   const method = getSubmitMethod(form, submitter);
   if (method === 'dialog') return;
 
+  const enctype = getSubmitEnctype(form, submitter);
+  const isSafeMethod = method === 'get' || method === 'head';
+
   const action = getSubmitAction(form, submitter);
   /** @type {URL} */ let url;
   try { url = new URL(action, location.href); }
@@ -873,7 +877,27 @@ function onSubmit(e) {
   if (url.origin !== location.origin) return;
   if (NON_HTML_EXTENSIONS.test(url.pathname)) return;
 
-  const body = buildSubmitFormData(form, submitter);
+  // Built once, after the cheap bails (a submission the router ignores should
+  // not pay for a FormData) and BEFORE the text/plain bail below. That order
+  // matters for the dev report: `text/plain` is precisely the case where the
+  // router declines the submission, so reporting after the bail would be dead
+  // code for the one shape that most needs it, since both paths are then
+  // answered with a 405 and the author gets no other signal.
+  const rawBody = buildSubmitFormData(form, submitter);
+  // Observational, and silent in production. Runs before `preventDefault`.
+  warnIfActionSubmissionCannotDeliver(form, submitter, method, rawBody);
+
+  // #1307: `text/plain` is a legal native encoding the server cannot parse
+  // (`looksLikeFormSubmission` accepts multipart and urlencoded only), and
+  // there is no honest way to send it over `fetch` and have the response mean
+  // anything. Bail to the browser so BOTH paths do the same thing, rather than
+  // silently sending multipart, which is what made the same form behave one
+  // way with JS and another way without it. Turbo enumerates this encoding and
+  // then sends FormData anyway, which is the divergence being avoided here. A
+  // safe method ignores the enctype entirely, per the submission algorithm.
+  if (!isSafeMethod && enctype === 'text/plain') return;
+
+  const body = encodeSubmitBody(rawBody, enctype);
 
   e.preventDefault();
   // Resolve the target frame for the submit, same precedence as a link:
@@ -909,6 +933,76 @@ function getSubmitAction(form, submitter) {
     return submitter.getAttribute('formaction') || '';
   }
   return form.getAttribute('action') || form.action || location.href;
+}
+
+/**
+ * The three `enctype` keywords, plus the normalization a browser applies.
+ *
+ * Both the missing-value AND the invalid-value default of the `enctype`
+ * enumerated attribute are `application/x-www-form-urlencoded`, so
+ * `enctype="nonsense"` really does mean urlencoded and has to be sent as such.
+ * Only an exact, ASCII-case-insensitive match on one of the other two keywords
+ * means anything else.
+ *
+ * @param {string | null | undefined} raw
+ * @returns {'application/x-www-form-urlencoded' | 'multipart/form-data' | 'text/plain'}
+ */
+function normalizeEnctype(raw) {
+  // Compared UNTRIMMED, the same rule `assertSubmittableForm` applies in
+  // `form-action.js`. An enumerated attribute is matched against exact
+  // keywords with no whitespace stripping, so `enctype=" multipart/form-data "`
+  // falls to the invalid-value default and a BROWSER sends urlencoded for it.
+  // Trimming here would send multipart, so the router would disagree with the
+  // no-JS path on exactly the shape this function exists to keep in step.
+  const v = String(raw || '').toLowerCase();
+  if (v === 'multipart/form-data') return 'multipart/form-data';
+  if (v === 'text/plain') return 'text/plain';
+  return 'application/x-www-form-urlencoded';
+}
+
+/**
+ * Enctype resolution: the submitter's `formenctype` wins over the form's
+ * `enctype`, exactly as `getSubmitMethod` resolves the method (#1307). Turbo
+ * resolves it the same way, in `core/drive/form_submission.js`.
+ *
+ * @param {HTMLFormElement} form
+ * @param {HTMLElement | null} submitter
+ */
+function getSubmitEnctype(form, submitter) {
+  return normalizeEnctype(
+    (submitter && submitter.getAttribute('formenctype')) || form.getAttribute('enctype'),
+  );
+}
+
+/**
+ * Encode a submission body the way the DECLARED enctype says to (#1307).
+ *
+ * The router used to build a `FormData` and send it with no explicit content
+ * type, so `fetch` always derived `multipart/form-data` and the authored
+ * `enctype` was never read at all. An author writing
+ * `enctype="application/x-www-form-urlencoded"`, which is also the HTML
+ * DEFAULT and therefore what a plain `<form method="post">` means, got
+ * urlencoded with JS off and multipart with JS on. Same form, two different
+ * request bodies, which is exactly what progressive enhancement rules out.
+ *
+ * A `File` entry serializes as its NAME under urlencoded, which is what the
+ * platform's own urlencoded serializer does. (Turbo drops file entries here
+ * entirely, in `http/fetch_request.js`, which loses a field the no-JS path
+ * sends.)
+ *
+ * A bound form is unaffected: it carries an explicit
+ * `enctype="multipart/form-data"`, and since #1307 a bound submitter carries
+ * `formenctype="multipart/form-data"`, so both resolve to multipart as before.
+ *
+ * @param {FormData} formData
+ * @param {'application/x-www-form-urlencoded' | 'multipart/form-data' | 'text/plain'} enctype
+ * @returns {FormData | URLSearchParams}
+ */
+function encodeSubmitBody(formData, enctype) {
+  if (enctype === 'multipart/form-data') return formData;
+  const params = new URLSearchParams();
+  for (const [k, v] of formData) params.append(k, typeof v === 'string' ? v : v.name);
+  return params;
 }
 
 /**
@@ -1052,10 +1146,89 @@ function resolveTargetFrameId(trigger) {
  */
 const warnedKeys = new Set();
 /** @param {string} key @param {string} message */
-function warnOnce(key, message) {
+function warnOnce(key, message, level = 'warn') {
   if (warnedKeys.has(key)) return;
   warnedKeys.add(key);
-  if (typeof console !== 'undefined' && console.warn) console.warn(message);
+  if (typeof console === 'undefined') return;
+  const fn = level === 'error' ? console.error : console.warn;
+  if (fn) fn.call(console, message);
+}
+
+/**
+ * DEV-ONLY: report at submit time when a submission is carrying a bound
+ * action's identity it cannot actually deliver (#1307).
+ *
+ * This is the backstop for the shapes the renderer deliberately stopped
+ * refusing. A PLAIN `<button formmethod="get">` inside a bound form is a legal
+ * native override, so it renders, and the form's action then simply does not
+ * run. That is what the author asked for, but it is also what a mistake looks
+ * like, and submit time is the only moment the whole picture (the resolved
+ * method, the resolved enctype, and whether a bound identity is actually in
+ * the body) exists in one place.
+ *
+ * Observational: it runs BEFORE `preventDefault` and changes nothing about the
+ * submission. Silent in production, where a console error would be noise the
+ * visitor cannot act on; the server-side `onError` telemetry covers that side.
+ *
+ * @param {HTMLFormElement} form
+ * @param {HTMLElement | null} submitter
+ * @param {string} method lowercased, already resolved with native precedence
+ * @param {FormData} body
+ */
+function warnIfActionSubmissionCannotDeliver(form, submitter, method, body) {
+  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production') return;
+  // No identity in the body: an ordinary form with nothing to deliver.
+  if (!body.has(FORM_ACTION_FIELD)) return;
+  let path = '';
+  try { path = new URL(form.getAttribute('action') || location.href, location.href).pathname; }
+  catch { path = location.pathname; }
+  if (method !== 'post') {
+    warnOnce(
+      `submit-nowhere:${path}:${method}`,
+      `[webjs] this submission carries a bound server action's identity but submits as ${method.toUpperCase()}, which sends no body, so the identity rides the query string and the action never runs. A submitter's own formmethod overrides the form's, and WebJs honours it rather than refusing it, so check for a formmethod on the button that was pressed.`,
+      'error',
+    );
+    return;
+  }
+  const enctype = (submitter && submitter.getAttribute('formenctype'))
+    || form.getAttribute('enctype')
+    || 'application/x-www-form-urlencoded';
+  // `text/plain` ONLY, not the renderer's parseable-enctype allowlist.
+  // `enctype` is an enumerated attribute whose missing AND invalid value
+  // defaults are both `application/x-www-form-urlencoded`, so
+  // `enctype="nonsense"` submits a perfectly parseable body and the action
+  // runs. Testing against the allowlist would report that working form as
+  // broken.
+  if (enctype.toLowerCase() === 'text/plain') {
+    warnOnce(
+      `submit-nowhere:${path}:${enctype}`,
+      `[webjs] this submission carries a bound server action's identity but declares enctype="${enctype}", which the server cannot parse. The router declines to send it so both paths behave the same way, and both are answered with a 405. Drop the enctype and let the binding supply it.`,
+      'error',
+    );
+    return;
+  }
+  // The identity is going somewhere OTHER than this page (#1307). A bound
+  // submitter emits no `formaction` url, so the submission targets whatever the
+  // FORM targets, and a form declaring its own `action="/x"` sends its buttons
+  // to `/x` by ordinary native precedence.
+  //
+  // This is the one shape the redesign left both unrefused and, until here,
+  // unreported. The renderer used to throw for it, but only where it could SEE
+  // the form, which is exactly the cross-element judgement that could not be
+  // made from inside a component. So it is reported at submit time instead,
+  // where the resolved target is a fact rather than an inference.
+  //
+  // A warning rather than an error, because it is not necessarily wrong: if
+  // `/x` is a PAGE route the action really does run there, and the 422
+  // re-render simply lands on that page. It is only dead if `/x` is a
+  // `route.ts`, another origin, or nothing at all, and the client cannot tell
+  // which from here.
+  if (path && path !== location.pathname) {
+    warnOnce(
+      `submit-elsewhere:${path}`,
+      `[webjs] this submission carries a bound server action's identity but posts to "${path}" rather than this page, because the enclosing <form> declares its own action. A bound submitter emits no formaction, so the form's target wins, which is what native HTML does. The action runs only if "${path}" is a page route; against a route.ts or another origin the identity is ignored and nothing runs. Drop the form's action attribute to keep the submission on this page.`,
+    );
+  }
 }
 
 /**
@@ -1827,7 +2000,11 @@ async function performNavigation(href, isPopState, frameId) {
  *
  * @param {string} href     Absolute target URL.
  * @param {string} method   Lowercased HTTP verb.
- * @param {FormData} body
+ * @param {FormData | URLSearchParams} body  Encoded per the declared enctype
+ *   (#1307): `FormData` for multipart, `URLSearchParams` for urlencoded. Both
+ *   iterate as `[name, value]` pairs, which is all the safe-method query-string
+ *   promotion below needs, and `fetch` derives the right content type from
+ *   either without an explicit header.
  * @param {string | null} frameId
  * @param {HTMLFormElement | null} [form]  The submitted form, for busy + events.
  */
@@ -5116,6 +5293,8 @@ export {
   getSubmitMethod as _getSubmitMethod,
   getSubmitAction as _getSubmitAction,
   buildSubmitFormData as _buildSubmitFormData,
+  getSubmitEnctype as _getSubmitEnctype,
+  encodeSubmitBody as _encodeSubmitBody,
   restoreOptimistic as _restoreOptimistic,
   eligibleAnchorHref as _eligibleAnchorHref,
   viewTransitionsEnabled as _viewTransitionsEnabled,
