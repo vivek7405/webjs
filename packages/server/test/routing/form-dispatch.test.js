@@ -30,6 +30,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { createRequestHandler } from '../../src/dev.js';
 import { hashFile } from '../../src/actions.js';
+import { resetFormReportDedupe } from '../../src/form-dispatch.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // A tmpdir app fixture cannot resolve the bare `@webjsdev/core` specifier
@@ -1068,4 +1069,140 @@ export default ({ actionData }) => html\`<form action=\${updatePost}><p>\${actio
     assert.match(await resp.text(), /searchPosts needs a q/,
       'and it failed with a message written for a DIFFERENT action');
   } finally { console.warn = quiet; }
+});
+
+/**
+ * #1307 telemetry. Both fingerprints of a form that posts nowhere reach the
+ * `onError` sink with a code an app can group on, and neither changes the
+ * response: the GET keeps its 200 and the bind-nothing submission keeps its
+ * 405. Answering a GET differently because of a query parameter would hand any
+ * visitor a way to turn any page into an error.
+ */
+const READ_ONLY_APP = {
+  'app/info/page.ts': `import { html } from ${CORE};\nexport default () => html\`<p>read-only</p>\`;\n`,
+};
+
+test('#1307: a form body carrying no identity reports WEBJS_FORM_ACTION_MISSING', async () => {
+  resetFormReportDedupe();
+  const seen = [];
+  const app = await createRequestHandler({
+    appDir: makeApp(READ_ONLY_APP),
+    dev: false,
+    onError: (e) => seen.push(e),
+  });
+  await app.warmup();
+
+  const post = await app.handle(new Request('http://x/info', form({ email: 'a@b.c', note: 'secret text' })));
+  assert.equal(post.status, 405, 'the response is unchanged');
+
+  assert.equal(seen.length, 1, 'exactly one report');
+  assert.equal(seen[0].code, 'WEBJS_FORM_ACTION_MISSING');
+  assert.equal(seen[0].pathname, '/info');
+  assert.equal(seen[0].method, 'POST');
+  // Field NAMES identify WHICH form posted nowhere and are template constants.
+  assert.deepEqual(seen[0].fields, ['email', 'note']);
+  // Field VALUES are user data and must never ride the report.
+  assert.doesNotMatch(JSON.stringify(seen[0].fields) + seen[0].message, /secret text|a@b\.c/);
+});
+
+test('#1307: a page GET carrying __webjs_action still renders 200 and reports', async () => {
+  resetFormReportDedupe();
+  const seen = [];
+  const app = await createRequestHandler({
+    appDir: makeApp(READ_ONLY_APP),
+    dev: false,
+    onError: (e) => seen.push(e),
+  });
+  await app.warmup();
+
+  const resp = await app.handle(new Request('http://x/info?__webjs_action=abc%2FdoThing'));
+  assert.equal(resp.status, 200, 'detect only: the page still renders');
+  assert.match(await resp.text(), /read-only/);
+
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].code, 'WEBJS_FORM_SUBMITTED_AS_GET');
+  assert.equal(seen[0].pathname, '/info');
+
+  // Deduplicated per process on method + pathname: either fingerprint is
+  // reachable by an unauthenticated attacker, so an unbounded report would be a
+  // free amplifier into a paid APM sink.
+  await app.handle(new Request('http://x/info?__webjs_action=abc%2FdoThing'));
+  await app.handle(new Request('http://x/info?__webjs_action=other'));
+  assert.equal(seen.length, 1, 'a flood of crafted requests produces one report');
+});
+
+test('#1307: crafted requests to a dynamic route cannot exhaust the dedupe', async () => {
+  // The dedupe key is the matched ROUTE, not the request pathname. Keyed on the
+  // pathname a dynamic route yields unbounded distinct keys, so a few hundred
+  // crafted urls would fill the 256-entry cap and permanently silence BOTH
+  // diagnostics for the process, which is worse than the amplification the cap
+  // exists to stop.
+  resetFormReportDedupe();
+  const seen = [];
+  const app = await createRequestHandler({
+    appDir: makeApp({
+      'app/blog/[slug]/page.ts': `import { html } from ${CORE};\nexport default () => html\`<p>post</p>\`;\n`,
+      'app/info/page.ts': `import { html } from ${CORE};\nexport default () => html\`<p>read-only</p>\`;\n`,
+    }),
+    dev: false,
+    onError: (e) => seen.push(e),
+  });
+  await app.warmup();
+
+  for (let i = 0; i < 400; i++) {
+    const r = await app.handle(new Request(`http://x/blog/post-${i}?__webjs_action=x`));
+    assert.equal(r.status, 200);
+  }
+  assert.equal(seen.length, 1, '400 distinct paths on ONE route are one report');
+
+  // And the flood did not consume the budget for a different route.
+  await app.handle(new Request('http://x/info?__webjs_action=x'));
+  assert.equal(seen.length, 2, 'a genuinely different route still reports');
+
+  // Nor for the OTHER signal, which has its own key space.
+  const post = await app.handle(new Request('http://x/info', form({ a: '1' })));
+  assert.equal(post.status, 405);
+  assert.equal(seen.filter((e) => e.code === 'WEBJS_FORM_ACTION_MISSING').length, 1,
+    'one signal can never silence the other');
+});
+
+test('#1307: no onError and not dev spends no dedupe slot', async () => {
+  // A slot consumed with nothing to report would let a sink-less run quietly
+  // eat the cap for one that has a sink.
+  resetFormReportDedupe();
+  // The SAME app dir for both handlers, so the route key is identical and the
+  // assertion is discriminating: two different dirs would produce two different
+  // keys and the test would pass even if the slot HAD been spent.
+  const appDir = makeApp(READ_ONLY_APP);
+  const silent = await createRequestHandler({ appDir, dev: false });
+  await silent.warmup();
+  assert.equal((await silent.handle(new Request('http://x/info?__webjs_action=x'))).status, 200);
+
+  const seen = [];
+  const app = await createRequestHandler({ appDir, dev: false, onError: (e) => seen.push(e) });
+  await app.warmup();
+  await app.handle(new Request('http://x/info?__webjs_action=x'));
+  assert.equal(seen.length, 1, 'the slot was still free');
+});
+
+test('#1307: an ordinary page GET and a non-form POST report nothing', async () => {
+  resetFormReportDedupe();
+  const seen = [];
+  const app = await createRequestHandler({
+    appDir: makeApp(READ_ONLY_APP),
+    dev: false,
+    onError: (e) => seen.push(e),
+  });
+  await app.warmup();
+
+  assert.equal((await app.handle(new Request('http://x/info'))).status, 200);
+  // The 405 answered before the body is read: a stray JSON POST or a probe is
+  // not an app bug, and it is the cheapest thing on the file to flood.
+  const probe = await app.handle(new Request('http://x/info', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  }));
+  assert.equal(probe.status, 405);
+  assert.deepEqual(seen, []);
 });
