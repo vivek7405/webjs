@@ -170,9 +170,9 @@ test('CI is read only at the merge gate, never at the end of the cycle', () => {
   // The cost it accepts must stay stated, or the next reader takes the
   // removal for an oversight and restores the read to "fix" it. It is stated
   // as an open CLASS derived from ci.yml, never a written-down membership.
-  // Three attempts at listing it were wrong in both directions (inflated by
-  // jobs the local suites do cover, then closed while omitting one they do
-  // not), so the instruction not to enumerate is itself load-bearing.
+  // Three attempts at writing that membership down were each wrong, in one
+  // direction or the other, so the instruction not to enumerate is itself
+  // the load-bearing part and is pinned alongside the class phrasing.
   assert.match(skill, /Every `ci\.yml` job with no counterpart in the deferred local suites/);
   assert.match(skill, /That is a CLASS, not a list/);
   assert.match(skill, /Do NOT write the membership down here/);
