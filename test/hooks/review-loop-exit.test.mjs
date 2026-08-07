@@ -162,6 +162,32 @@ test('the removed machinery stays removed, with the reason recorded', () => {
   }
 });
 
+test('CI is read only at the merge gate, never at the end of the cycle', () => {
+  // The third removal in this section, pinned the same way as the fleet and
+  // the two-review floor above: the note that records WHY it went, plus the
+  // counterfactual that the read itself has not crept back.
+  assert.match(skill, /\*\*This is the ONLY place CI is read, on purpose\. Do not add one back to the end of the review cycle\.\*\*/);
+  // The cost it accepts must stay stated, or the next reader takes the
+  // removal for an oversight and restores the read to "fix" it.
+  assert.match(skill, /Two failures surface at merge instead of before the ready signal/);
+
+  // The three instructions that USED to make the cycle wait on CI. Each is
+  // gone, and a revert of the hunk that removed it puts its phrasing back.
+  for (const [label, re] of [
+    ['the ready-to-merge condition', /suites it deferred have run AND CI has been read green/],
+    ['the keep-the-cycle-fast rule', /Never wait on CI between rounds/],
+    ['the end-of-cycle batch', /and only now read CI|plus a background CI watch/],
+    ['the report preamble', /the deferred suites, and the CI read, report exactly/],
+  ]) {
+    assert.ok(!re.test(skill), `${label} tells the cycle to read CI again`);
+  }
+
+  // The gate the removal leans on has to stay strict, since it is now the
+  // only CI checkpoint there is.
+  assert.match(skill, /\*\*Merge is gated on green CI, enforced at the branch level, not by trust\.\*\*/);
+  assert.match(skill, /\*\*NEVER use `gh pr merge --admin` to bypass a FAILING check\.\*\*/);
+});
+
 test('the cycle keeps the guarantees the trim was not allowed to touch', () => {
   // A fix is never the end: the delta round after a fix is what the whole
   // cycle exists to force.
