@@ -602,6 +602,32 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
     } finally { await teardown(); }
   });
 
+  test('the landed window ends on the RESTORE deadline, not its own', async () => {
+    // The discriminating case for whose clock the landed window runs on. Both a
+    // shared deadline and a fresh one suppress at landing and are shut by the
+    // time the page has settled, so a case that lands early and looks late
+    // cannot tell them apart, which is what the first attempt at this did.
+    //
+    // Landing LATE separates them. The chase is bounded from the restore, so a
+    // landing at ~380ms leaves roughly 120ms of window; a window starting its
+    // own floor at landing would instead run to ~880ms. Observing in between is
+    // the only place the two differ.
+    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true });
+    try {
+      await goBack();
+      await new Promise((r) => setTimeout(r, 380));
+      document.querySelector('wj-grow-on-command-1310').style.height = COMMANDED_GROWTH + 'px';
+      for (let i = 0; i < 4; i++) await frame();
+      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
+        `precondition: the chase landed late but did land (got ${window.scrollY})`);
+      // Past the restore's deadline, well short of landing plus a fresh floor.
+      await new Promise((r) => setTimeout(r, 260));
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
+        'the landed window rides the deadline that started at the RESTORE, so '
+        + 'it is shut by now; on its own floor it would still be open');
+    } finally { await teardown(); }
+  });
+
   test('a clamped restore survives growth that arrives in STAGES', async () => {
     // The real cause of the growth is components upgrading and rendering one at
     // a time, so it arrives in pieces. Every other clamped case grows in a

@@ -476,10 +476,13 @@ let restoreGeneration = 0;
  * It does NOT escape the settling-versus-streaming question, and it is worth
  * being exact about that rather than claiming otherwise. It cannot tell the
  * restore settling apart from any other growth, so the guard is its WINDOW: it
- * lives for `ANCHOR_SUPPRESS_FLOOR_MS` and no longer. That is SHORTER than the
- * suppression window beside it, which runs to the later of the floor and the
- * revalidation, capped by the ceiling; the two are not the same span and this
- * is deliberately the tighter of them, because this one WRITES scroll.
+ * lives for `ANCHOR_SUPPRESS_FLOOR_MS` from the RESTORE and no longer. That is
+ * tighter than the window a landed restore gets, which runs to the later of the
+ * floor and the revalidation and is capped by the ceiling, and deliberately so,
+ * because this path WRITES scroll. The suppression this path installs once the
+ * chase lands is part of the same window, not a second one: it shares this
+ * deadline, so the whole clamped path is bounded by one floor measured from the
+ * restore however late the landing happens.
  *
  * Be precise about what the bound does and does not buy, since it is easy to
  * overclaim in both directions. WHILE the window is open the reader is
