@@ -118,7 +118,7 @@ test('form GET: body is promoted to query string and response is applied', async
   }
 });
 
-test('form POST: FormData body is sent, response applied, snapshot cache cleared', async () => {
+test('form POST: an urlencoded body is sent, response applied, snapshot cache cleared', async () => {
   await ensureServer();
   const browser = await chromium.launch();
   const page = await (await browser.newContext()).newPage();
@@ -176,15 +176,71 @@ test('form POST: FormData body is sent, response applied, snapshot cache cleared
     assert.equal(r.method, 'POST');
     assert.ok(r.postData && r.postData.length > 0,
       'POST request carries a body');
-    // FormData is sent multipart by default in browsers; the boundary
-    // varies but the body must contain the field name + value.
-    assert.match(r.postData, /title/,
-      'FormData body contains the input name');
-    assert.match(r.postData, /Hello World/,
-      'FormData body contains the input value');
+    // URLENCODED, because this form declares no `enctype` and the HTML
+    // missing-value default for that attribute is
+    // `application/x-www-form-urlencoded` (#1307). The comment here used to say
+    // "FormData is sent multipart by default in browsers", which is backwards:
+    // a BROWSER defaults to urlencoded, and multipart is what `fetch` derives
+    // from a `FormData` object. The router used to build a FormData for every
+    // submission regardless, so this same form sent urlencoded with JS off and
+    // multipart with JS on. Asserting the urlencoded shape is what pins the two
+    // paths together.
+    assert.match(r.postData, /title/, 'body carries the input name');
+    assert.match(r.postData, /title=Hello\+World|title=Hello%20World/,
+      `body must be urlencoded, matching what the browser sends with JS off; got: ${r.postData}`);
+    assert.doesNotMatch(r.postData, /Content-Disposition/,
+      'an undeclared enctype must NOT be promoted to multipart');
 
     const probe = await page.locator('#probe').textContent();
     assert.equal(probe, 'arrived-from-post');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('form POST: a DECLARED multipart enctype is still sent as multipart (#1307)', async () => {
+  // The other half of the encoding rule, and the reason the test above is not
+  // simply "always urlencoded". The router honours what the form DECLARES, so a
+  // form that asks for multipart gets multipart. Without this row, someone
+  // could make the previous test pass by hardcoding urlencoded and break every
+  // file upload on the no-JS path.
+  await ensureServer();
+  const browser = await chromium.launch();
+  const page = await (await browser.newContext()).newPage();
+  try {
+    /** @type {{ postData: string | null }[]} */
+    const requests = [];
+    await page.route('**/test-form-multipart', (route) => {
+      requests.push({ postData: route.request().postData() });
+      route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+        body: mockResponseBody('arrived-multipart'),
+      });
+    });
+
+    await page.goto(`${BASE}/ui/button`);
+    await page.waitForLoadState('domcontentloaded');
+    await page.evaluate(() => {
+      const f = document.createElement('form');
+      f.action = '/test-form-multipart';
+      f.method = 'POST';
+      f.enctype = 'multipart/form-data';
+      f.id = 'mform';
+      f.innerHTML =
+        '<input name="title" value="Hello World">' +
+        '<button type="submit">Save</button>';
+      document.body.appendChild(f);
+    });
+    await page.locator('#mform button').click();
+    await page.waitForFunction(() => !!document.getElementById('probe'), { timeout: 4000 });
+
+    const r = requests[0];
+    assert.ok(r, 'router intercepted the submit and fetched');
+    assert.match(r.postData || '', /Content-Disposition: form-data; name="title"/,
+      `a declared multipart enctype must stay multipart; got: ${r.postData}`);
+    assert.match(r.postData || '', /Hello World/,
+      'and multipart carries the value unescaped');
   } finally {
     await browser.close();
   }
