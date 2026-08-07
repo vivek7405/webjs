@@ -650,7 +650,7 @@ export async function createRequestHandler(opts) {
   // `webjs.seed` switch. Action identity (#1155) rides the same hook, and it is
   // what a bound `<form action=${action}>` resolves through, so gating the hook
   // on seeding would mean `webjs.seed: false` silently broke every no-JS form.
-  await registerActionHooks({ seed: await readSeedEnabled(appDir) });
+  await registerActionHooks({ seed: await readSeedEnabled(appDir), dev });
 
 
   // When an app commits a vendor pin (.webjs/vendor/importmap.json) it carries a
@@ -1316,12 +1316,18 @@ export async function createRequestHandler(opts) {
       // root-mounted `/__webjs/*`. The logged `path` stays the RAW client URL.
       if (shouldAccessLog(headerPathname)) {
         try {
+          // #1309: fold the dev-only seeding counters into the ONE access-log
+          // line rather than adding a second one. Present only on a response
+          // that carried the header, so only page renders gain the field and
+          // production is unchanged.
+          const seed = dev ? conditioned.headers.get('x-webjs-seed') : null;
           logger.info?.('request', {
             requestId: reqId,
             method: req.method,
             path: pathname,
             status: conditioned.status,
             durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
+            ...(seed ? { seed } : {}),
           });
         } catch { /* never let logging crash the response */ }
       }

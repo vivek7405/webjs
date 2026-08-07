@@ -6,7 +6,7 @@ import { withBasePath } from './base-path.js';
 import { withAssetHash } from './asset-hash.js';
 import { jsonForScriptTag } from './script-tag-json.js';
 import { transitiveDeps, bareImports } from './module-graph.js';
-import { seedingEnabled, collectSeeds, buildSeedScript } from './action-seed.js';
+import { seedingEnabled, collectSeeds, buildSeedScript, SEED_DROP_BLOCK } from './action-seed.js';
 import { BUFFERED_MARKER, STREAM_MARKER } from './conditional-get.js';
 import {
   readRevalidate,
@@ -57,7 +57,15 @@ export async function ssrPage(route, params, url, opts) {
       revalidateSeconds = readRevalidate(pageMod);
       if (revalidateSeconds !== null) {
         const hit = await readHtmlCache(url);
-        if (hit) return cachedHtmlResponse(hit, opts.req, url);
+        if (hit) {
+          const cached = cachedHtmlResponse(hit, opts.req, url);
+          // A cache hit returns before any seed work runs, so it would otherwise
+          // report nothing at all, which reads as "seeding is broken" when it is
+          // really the cache answering (#1309). The seed block rides INSIDE the
+          // cached bytes, so the seeds are exactly as fresh as the HTML.
+          if (opts.dev) cached.headers.set('X-Webjs-Seed', 'html-cache');
+          return cached;
+        }
       }
     } catch {
       // A load / store failure falls through to a normal fresh render: the
@@ -288,9 +296,33 @@ export async function ssrPage(route, params, url, opts) {
     // block (those slow regions keep the stale-while-revalidate refetch). An
     // empty collector yields '' so the output stays byte-identical.
     let outBody = streamBody;
-    if (seedCollector && suspenseCtx.pending.length === 0) {
-      const seedScript = await buildSeedScript(seedCollector);
+    // Dev-only seeding diagnostics (#1309). `off` (seeding disabled) is kept
+    // DISTINCT from `collected=0` on purpose: the counting lives with the
+    // collector rather than behind the seed gate, so a seeding-DISABLED app
+    // never looks like a seeding-BROKEN one.
+    let seedHeader = 'off';
+    const streamed = suspenseCtx.pending.length > 0;
+    if (seedCollector && streamed) {
+      // A streamed render's deferred boundaries resolve AFTER the first flush,
+      // so their results cannot ride this block and none is emitted in prod. In
+      // DEV emit the marker alone, so the client reports the CAUSE instead of
+      // leaving the developer to guess why every action call went to the network.
+      seedHeader = `collected=${seedCollector.size}, emitted=0, streamed`;
+      if (opts.dev) {
+        const marker = await buildSeedScript(null, { dev: true, reason: 'streamed' });
+        if (marker) outBody = streamBody + marker;
+      }
+    } else if (seedCollector) {
+      const seedScript = await buildSeedScript(seedCollector, { dev: opts.dev });
       if (seedScript) outBody = streamBody + seedScript;
+      // `emitted` differs from `collected` exactly when the serializer threw and
+      // dropped the whole block, which is otherwise a completely invisible
+      // failure. In DEV that throw still emits a marker-only block, so the
+      // browser can name the cause; it carries no seeds, so it must NOT count as
+      // emitted or the header would report a total success on the very failure
+      // it exists to expose.
+      const dropped = seedScript === SEED_DROP_BLOCK;
+      seedHeader = `collected=${seedCollector.size}, emitted=${seedScript && !dropped ? seedCollector.size : 0}`;
     }
     const res = streamingHtmlResponse(
       prefix,
@@ -307,6 +339,11 @@ export async function ssrPage(route, params, url, opts) {
       nonce,
       opts.dev,
     );
+    // Dev-only seeding diagnostics (#1309). A miss is indistinguishable from a
+    // hit from the outside, so an app whose seeding silently broke looks exactly
+    // like one where it works. Dev only: a production header would publish how
+    // many server calls a page made, for no benefit.
+    if (opts.dev) res.headers.set('X-Webjs-Seed', seedHeader);
     // REDUCED response (#1009): the X-Webjs-Have short-circuit omitted the
     // outer-layout chrome, so these bytes are only valid for a request that
     // sent a matching `have`. Left shared-cacheable, a CDN edge could store the

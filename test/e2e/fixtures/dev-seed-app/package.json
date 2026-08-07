@@ -1,0 +1,1 @@
+{ "name": "dev-seed-fixture-app", "private": true, "type": "module", "imports": { "#*": "./*" }, "webjs": {} }

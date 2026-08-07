@@ -95,7 +95,10 @@ test('the SSR HTML carries the seed payload, keyed exactly as the stub looks it 
   assert.match(html, /data-y="2020"/, 'rich Date resolved server-side');
 
   // The seed script is present and keyed by hashFile(actionPath)/getUser/[1].
-  const m = html.match(/<script type="application\/json" id="__webjs-seeds">([\s\S]*?)<\/script>/);
+  // The handler is `dev: true`, so the block also carries the #1309
+  // `data-webjs-dev` marker; the attribute list is tolerated here and asserted
+  // exactly in seed-observability.test.js.
+  const m = html.match(/<script type="application\/json" id="__webjs-seeds"[^>]*>([\s\S]*?)<\/script>/);
   assert.ok(m, 'a __webjs-seeds script is emitted');
   const hash = await hashFile(actionPath);
   const key = `${hash}/getUser/${await stringify([1])}`;
@@ -108,6 +111,13 @@ test('the SSR HTML carries the seed payload, keyed exactly as the stub looks it 
   assert.ok(Object.prototype.hasOwnProperty.call(obj, key), `payload has the exact stub key ${key}`);
   assert.equal(obj[key].name, 'User 1');
   assert.ok(obj[key].joined instanceof Date);
+});
+
+test('a dev render reports its counts on X-Webjs-Seed and marks the block (#1309)', async () => {
+  const res = await handle(new Request('http://localhost/'));
+  assert.equal(res.headers.get('x-webjs-seed'), 'collected=1, emitted=1');
+  const html = await res.text();
+  assert.match(html, /id="__webjs-seeds" data-webjs-dev="ok"/, 'the client dev gate rides the block');
 });
 
 test('the action ran exactly once at SSR (one rendered component, no double-call)', async () => {
