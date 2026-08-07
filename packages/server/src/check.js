@@ -1572,13 +1572,17 @@ function checkSubmitterNeedsBoundForm(files, violations, appDir) {
       // reading `Promise<void>=` as a `>=` comparison classified one character
       // two contradictory ways.
       //
-      // Defensive rather than reachable, and the ONLY guard in this resolver a
-      // mutation can survive: no valid TypeScript puts a comparison between a
-      // declared name and its assignment, so no test can pin it. It is here
-      // because the input is a MASK of arbitrary source, which may be mid-edit
-      // and not valid at all. Every other guard here is mutation-pinned by the
-      // tables in `submitter-needs-bound-form.test.js`; if you add one, add the
-      // row that kills it too.
+      // Defensive rather than reachable: no valid TypeScript puts a comparison
+      // between a declared name and its assignment, so no test can pin this. It
+      // is here because the input is a MASK of arbitrary source, which may be
+      // mid-edit and not valid at all.
+      //
+      // Do NOT restate here how many guards in this resolver are pinned. Two
+      // successive commits asserted an exact count and both were wrong within
+      // one commit of being written, because the count decays the moment
+      // anyone adds a guard. The durable statement is the rule, not the
+      // tally: a new guard needs a row in `submitter-needs-bound-form.test.js`
+      // that FAILS when the guard is broken, verified by breaking it.
       if (depth <= 0 && c === '=' && scan[i + 1] !== '=' && !'=!'.includes(scan[i - 1] || '')) return i + 1;
       i++;
     }

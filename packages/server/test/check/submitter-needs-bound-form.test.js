@@ -455,8 +455,11 @@ test('the binding resolver across a broad sweep of TypeScript spellings', async 
     ['export const publishDraft = async (fd): Promise<ActionResult<Draft, Err>> => ({});', true],
     ['export const publishDraft = async (fd): { ok: boolean; id: string } => ({});', true],
     ['export const publishDraft = async (fd: Map<string, number>) => 1;', true],
-    // A nested arrow inside the RETURN type must be stepped over whole, or its
-    // `>` is eaten as a bracket and the depth skews.
+    // These pin the depth guard on `;` / `,` inside a return type. They do NOT
+    // pin the arrow step beside it: a mutant that breaks at any arrow answers
+    // true on these by accident, and no input distinguishes it, because
+    // reaching that walk needs a `(…)` group followed by `:`, which in
+    // expression position only ever precedes an arrow's return type.
     ['export const publishDraft = async (fd): { a: () => void, b: string } => ({});', true],
     ['export const publishDraft = async (fd): [() => void, string] => ({});', true],
     // A GENERIC arrow, which never reached the parameter-list branch at all.
@@ -469,6 +472,13 @@ test('the binding resolver across a broad sweep of TypeScript spellings', async 
     // `async` with no space before the type parameters, which is valid and was
     // unreachable because the async skip required whitespace or a paren.
     ['export const publishDraft = async<T>(fd: T) => 1;', true],
+    // A constraint carrying its own type ARGUMENTS. Without the depth condition
+    // on the type-parameter walk's `>`, the inner `>` closes the list early and
+    // the parameter branch is never reached. `Record<string, …>` is the shape
+    // the ActionResult envelope pushes authors toward.
+    ['export const publishDraft = <T extends Array<string>>(fd: T) => 1;', true],
+    ['export const publishDraft = async <T extends Record<string, unknown>>(fd: T) => 1;', true],
+    ['export const publishDraft = <A, B extends Map<A, string>>(fd: A) => 1;', true],
     // Non-callables that must stay SILENT.
     ["export const publishDraft = `/api/${'x'}`;", false],
     ['export const publishDraft = 42;', false],
