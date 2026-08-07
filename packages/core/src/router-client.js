@@ -867,26 +867,8 @@ function onSubmit(e) {
   const method = getSubmitMethod(form, submitter);
   if (method === 'dialog') return;
 
-  // #1307: `text/plain` is a legal native encoding the server cannot parse
-  // (`looksLikeFormSubmission` accepts multipart and urlencoded only), and
-  // there is no honest way to send it over `fetch` and have the response mean
-  // anything. Bail to the browser so BOTH paths do the same thing, rather than
-  // silently sending multipart, which is what made the same form behave one way
-  // with JS and another way without it. Turbo enumerates this encoding and then
-  // sends FormData anyway, which is the divergence being avoided here. A safe
-  // method ignores the enctype entirely, per the form-submission algorithm.
   const enctype = getSubmitEnctype(form, submitter);
   const isSafeMethod = method === 'get' || method === 'head';
-
-  // The dev report runs BEFORE the bail below, not after it. `text/plain` is
-  // precisely the case where the router declines the submission, so a guard
-  // placed after the bail would be dead code for the one shape that most needs
-  // reporting: both paths are then answered with a 405 and the author gets no
-  // other signal. Observational, and silent in production.
-  const rawBody = buildSubmitFormData(form, submitter);
-  warnIfActionSubmissionCannotDeliver(form, submitter, method, rawBody);
-
-  if (!isSafeMethod && enctype === 'text/plain') return;
 
   const action = getSubmitAction(form, submitter);
   /** @type {URL} */ let url;
@@ -894,6 +876,26 @@ function onSubmit(e) {
   catch { return; }
   if (url.origin !== location.origin) return;
   if (NON_HTML_EXTENSIONS.test(url.pathname)) return;
+
+  // Built once, after the cheap bails (a submission the router ignores should
+  // not pay for a FormData) and BEFORE the text/plain bail below. That order
+  // matters for the dev report: `text/plain` is precisely the case where the
+  // router declines the submission, so reporting after the bail would be dead
+  // code for the one shape that most needs it, since both paths are then
+  // answered with a 405 and the author gets no other signal.
+  const rawBody = buildSubmitFormData(form, submitter);
+  // Observational, and silent in production. Runs before `preventDefault`.
+  warnIfActionSubmissionCannotDeliver(form, submitter, method, rawBody);
+
+  // #1307: `text/plain` is a legal native encoding the server cannot parse
+  // (`looksLikeFormSubmission` accepts multipart and urlencoded only), and
+  // there is no honest way to send it over `fetch` and have the response mean
+  // anything. Bail to the browser so BOTH paths do the same thing, rather than
+  // silently sending multipart, which is what made the same form behave one
+  // way with JS and another way without it. Turbo enumerates this encoding and
+  // then sends FormData anyway, which is the divergence being avoided here. A
+  // safe method ignores the enctype entirely, per the submission algorithm.
+  if (!isSafeMethod && enctype === 'text/plain') return;
 
   const body = encodeSubmitBody(rawBody, enctype);
 
