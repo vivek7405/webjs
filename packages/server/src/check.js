@@ -1572,10 +1572,13 @@ function checkSubmitterNeedsBoundForm(files, violations, appDir) {
       // reading `Promise<void>=` as a `>=` comparison classified one character
       // two contradictory ways.
       //
-      // Defensive rather than reachable. No valid TypeScript puts a comparison
-      // between a declared name and its assignment, so no test pins this and a
-      // mutation of it survives the suite; it is here because the input is a
-      // MASK of arbitrary source, which may be mid-edit and not valid at all.
+      // Defensive rather than reachable, and the ONLY guard in this resolver a
+      // mutation can survive: no valid TypeScript puts a comparison between a
+      // declared name and its assignment, so no test can pin it. It is here
+      // because the input is a MASK of arbitrary source, which may be mid-edit
+      // and not valid at all. Every other guard here is mutation-pinned by the
+      // tables in `submitter-needs-bound-form.test.js`; if you add one, add the
+      // row that kills it too.
       if (depth <= 0 && c === '=' && scan[i + 1] !== '=' && !'=!'.includes(scan[i - 1] || '')) return i + 1;
       i++;
     }
@@ -1607,7 +1610,7 @@ function checkSubmitterNeedsBoundForm(files, violations, appDir) {
       if (i === -1) continue;
       const skipWs = () => { while (i < scan.length && /\s/.test(scan[i])) i++; };
       skipWs();
-      if (scan.startsWith('async', i) && /\s|\(/.test(scan[i + 5] || '')) { i += 5; skipWs(); }
+      if (scan.startsWith('async', i) && /[\s(<]/.test(scan[i + 5] || '')) { i += 5; skipWs(); }
       // `= [async] function ...`
       if (/^function\b/.test(scan.slice(i, i + 9))) return true;
       // `= [async] [<T>](params)[: ReturnType] => ...`, which must actually reach

@@ -462,6 +462,13 @@ test('the binding resolver across a broad sweep of TypeScript spellings', async 
     // A GENERIC arrow, which never reached the parameter-list branch at all.
     ['export const publishDraft = async <T>(fd: T): Promise<void> => {};', true],
     ['export const publishDraft = <T,>(fd: T) => 1;', true],
+    // A generic CONSTRAINT containing its own arrow: without the arrow step in
+    // the type-parameter walk, that `>` closes the list early and the parameter
+    // branch is never reached. Nothing pinned this guard until this row.
+    ['export const publishDraft = <T extends (fd: FormData) => void>(fd: T) => 1;', true],
+    // `async` with no space before the type parameters, which is valid and was
+    // unreachable because the async skip required whitespace or a paren.
+    ['export const publishDraft = async<T>(fd: T) => 1;', true],
     // Non-callables that must stay SILENT.
     ["export const publishDraft = `/api/${'x'}`;", false],
     ['export const publishDraft = 42;', false],
