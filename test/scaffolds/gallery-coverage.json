@@ -533,6 +533,9 @@
     "loginAndGetCookies": {
       "demoed": true
     },
+    "maskJsSet": {
+      "exempt": "internal: the differential comparator behind `webjs elision --verify`, exported so an app can diff its own two captures with the framework comparator instead of a copy"
+    },
     "matchApi": {
       "demoed": true
     },
@@ -665,8 +668,8 @@
     "startServer": {
       "demoed": true
     },
-    "submitForm": {
-      "demoed": true
+    "staticPageRoutes": {
+      "exempt": "internal: the `webjs elision --verify` render corpus, exported alongside maskJsSet for the same reason"
     },
     "storeSession": {
       "demoed": true
@@ -678,6 +681,9 @@
       "demoed": true
     },
     "streamResponse": {
+      "demoed": true
+    },
+    "submitForm": {
       "demoed": true
     },
     "testRequest": {

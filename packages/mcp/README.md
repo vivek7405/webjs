@@ -28,6 +28,10 @@ subcommand) delegates to this same server, so both routes run identical code.
   `list_actions` (RPC endpoints plus the full data contract: HTTP verb, cache
   config, and boolean flags for tags/invalidates/validate/middleware; reserved
   config exports are excluded from the callable-action list), `list_components`,
+  `list_elision` (the display-only elision verdict: which component modules the
+  browser never downloads, the evidence behind each one that ships, every
+  page/layout as inert / import-only / shipped, and any orphan class that gets
+  no verdict at all; identical to `webjs elision --json`),
   `check` (the structured `webjs check` violations). Each projects an existing
   `@webjsdev/server` data function and mutates nothing.
 - **Knowledge layer**: an `init` mental-model primer, a `docs` retrieval tool,

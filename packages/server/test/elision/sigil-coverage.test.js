@@ -23,6 +23,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+
+/** The closed evidence set the report contract promises (#1308). */
+const EVIDENCE = ['own', 'observed', 'closure', 'render', 'import', 'unreadable'];
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
@@ -36,6 +39,8 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const coreSrc = resolve(here, '../../../core/src');
+/** The in-repo app that exercises every ship rule (#1308 evidence guard). */
+const BLOG = resolve(here, '../../../../examples/blog');
 
 /**
  * Pure partition check, reused so the counterfactual can prove it is sensitive:
@@ -148,4 +153,31 @@ test('the interactivity static-field registry is the known set (change-detector)
   // the skill's references/components.md. If this assertion fails because you added a real
   // convention, update both, then update this expected set.
   assert.deepEqual([...INTERACTIVITY_STATIC_FIELDS].sort(), ['interactive', 'shadow']);
+});
+
+test('every shipping component carries the evidence that forced it (#1308)', async () => {
+  // The report names WHY each component ships, and that evidence is recorded
+  // alongside every `mustShip.add` of a component file rather than derived
+  // afterwards. A future rule that adds to `mustShip` without calling
+  // `noteShip` would emit `evidence: null` for a real ship, which reads to a
+  // consumer as "shipped, no idea why" and is exactly the kind of silent
+  // diagnostics gap this file exists to make loud.
+  //
+  // Asserted over the blog corpus, which exercises every rule (own, observed,
+  // closure, render, import) rather than a synthetic fixture that would only
+  // cover the rules it was written for.
+  const { analyzeAppElision } = await import('../../src/elision-report.js');
+  const report = await analyzeAppElision(BLOG);
+  assert.ok(report.analysed, 'precondition: the blog corpus is analysable');
+  const shipped = report.components.filter((c) => c.verdict === 'shipped');
+  assert.ok(shipped.length > 5, `precondition: the corpus ships components (got ${shipped.length})`);
+  for (const c of shipped) {
+    assert.ok(EVIDENCE.includes(c.evidence),
+      `${c.file} ships with evidence ${JSON.stringify(c.evidence)}; every mustShip write must call noteShip with one of ${EVIDENCE.join(' / ')}`);
+    assert.equal(typeof c.reason, 'string', `${c.file} ships with no reason string`);
+    assert.ok(c.reason.length > 0, `${c.file} ships with an empty reason`);
+  }
+  // And the rules the corpus actually reaches must be more than one, so this
+  // cannot pass by covering only the `own` case.
+  assert.ok(new Set(shipped.map((c) => c.evidence)).size > 1, 'the corpus must exercise more than one ship rule');
 });

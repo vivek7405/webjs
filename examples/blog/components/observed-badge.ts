@@ -14,11 +14,10 @@ import { WebComponent, html } from '@webjsdev/core';
  * counterpart, an unobserved display-only component that is never
  * downloaded.
  *
- * The doc comments here deliberately avoid literal tag-in-angle-brackets
- * and whenDefined-call syntax, because the elision analyser scans raw
- * source (comments included), so such prose would be read as a real
- * rendered tag or observation and skew the verdict. See observe-badge.ts
- * for the actual observer code.
+ * The doc prose here avoids literal tag-in-angle-brackets and whenDefined
+ * syntax, which is a habit from before #179: comments are masked before
+ * every signal scan now, so such prose registers as nothing. See
+ * observe-badge.ts for the actual observer code.
  */
 export class ObservedBadge extends WebComponent {
   render() {
