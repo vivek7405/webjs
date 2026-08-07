@@ -431,6 +431,15 @@ suite('SSR/client parity: form actions (#1155)', () => {
     'bound submitter with a HOLE-provided formmethod': () => html`<button formaction=${boundAction()} formmethod=${'post'}>Save</button>`,
     'bound submitter with a HOLE-provided formenctype': () => html`<button formaction=${boundAction()} formenctype=${'application/x-www-form-urlencoded'}>Save</button>`,
     'bound submitter with BOTH provided by holes': () => html`<button formaction=${boundAction()} formmethod=${'post'} formenctype=${'multipart/form-data'}>Save</button>`,
+    // The awkward hole KINDS, which resolve through different commit branches
+    // than a plain `attr` hole. An `attr-mixed` value is assembled from statics
+    // plus values, and a FALSY boolean hole emits nothing at all, so the
+    // framework supplies the attribute exactly as if the template were silent.
+    // Each is a separate path through `effectiveFormAttr`, and a plain `attr`
+    // row does not exercise any of them.
+    'bound submitter with an attr-mixed formmethod': () => html`<button formaction=${boundAction()} formmethod="${'po'}${'st'}">Save</button>`,
+    'bound submitter with a FALSY boolean formmethod hole': () => html`<button formaction=${boundAction()} ?formmethod=${false}>Save</button>`,
+    'bound submitter with a FALSY boolean formenctype hole': () => html`<button formaction=${boundAction()} ?formenctype=${false}>Save</button>`,
     // #1307 reverses #1207's Part B: a PLAIN button's own override is a legal
     // native instruction, so both renderers leave it exactly as written.
     'plain submitter formmethod=get inside a bound form': () => html`<form action=${boundAction()}><button formmethod="get">Save</button></form>`,
@@ -481,6 +490,14 @@ suite('SSR/client parity: form actions (#1155)', () => {
     'dialog method on a BOUND submitter': [
       () => html`<button formaction=${boundAction()} formmethod="dialog"></button>`,
       /formmethod="dialog"/,
+    ],
+    // A TRUTHY boolean hole emits `formmethod=""`, an empty enumerated value
+    // that cannot submit, so it must refuse rather than be treated as absent
+    // and quietly supplied. This is the submitter twin of the form-level
+    // `?enctype=${true}` row above.
+    'truthy boolean formmethod hole on a BOUND submitter': [
+      () => html`<button formaction=${boundAction()} ?formmethod=${true}></button>`,
+      /cannot work/,
     ],
     'padded formmethod on a BOUND submitter': [
       () => html`<button formaction=${boundAction()} formmethod=${' post '}></button>`,
