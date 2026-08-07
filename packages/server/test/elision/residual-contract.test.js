@@ -8,7 +8,10 @@
  * was prose: nothing asserted any residual, so a change in either direction
  * (the analyser learning to see one, or the escape hatch quietly ceasing to
  * work) was invisible. Every residual the docs name gets a case here, paired
- * with its rescue, so the prose and the behaviour cannot drift apart.
+ * with its rescue, and the LAST test in this file enforces that link
+ * mechanically: it fails when a surface that enumerates the residuals stops
+ * naming one. Without it the claim would be an assertion about my own
+ * diligence, which is exactly how a residual got documented without a case.
  *
  * These tests build a REAL app on disk and drive `buildModuleGraph` +
  * `scanComponents` + `analyzeElision`, rather than the faked-graph helper the
@@ -318,4 +321,45 @@ test('static interactive = true does NOT rescue a computed registration tag', as
   assert.equal(verdict.componentVerdicts.size, 0, 'still no verdict');
   assert.ok(verdict.inertRouteModules.has(pageFile), 'the page is still inert, so the module is still dropped');
   assert.equal(orphans.length, 1, 'still an orphan');
+});
+
+// ---------------------------------------------------------------------------
+// The docs-to-behaviour link, enforced rather than promised
+// ---------------------------------------------------------------------------
+
+test('every surface that enumerates the residuals names all three', async () => {
+  // The residual list is repeated across the framework docs, the agent skill,
+  // the docs site, and two hover-doc type declarations, and it drifted
+  // repeatedly while this feature was built: a third residual was added and
+  // six of eight surfaces were updated, twice, in different combinations.
+  //
+  // Enumerating them by eye does not work, so this asserts it. Each surface is
+  // matched from its OBSERVER clause forward, which is the phrase every copy of
+  // the list opens with; the window is wide enough for the bullet-list forms.
+  // A surface that stops naming one, or a NEW surface that copies the list and
+  // is not added here, is the drift this catches.
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const repo = fileURLToPath(new URL('../../../../', import.meta.url));
+  const SURFACES = [
+    'AGENTS.md',
+    'packages/server/AGENTS.md',
+    'packages/server/src/component-elision.js',
+    'packages/core/src/component.d.ts',
+    '.agents/skills/webjs/references/components.md',
+    'website/app/docs/elision/page.ts',
+    'website/app/docs/data-fetching/page.ts',
+    'website/app/docs/progressive-enhancement/page.ts',
+  ];
+  const missing = [];
+  for (const rel of SURFACES) {
+    const flat = (await readFile(repo + rel, 'utf8')).replace(/\s+/g, ' ');
+    const at = flat.indexOf('computes the tag it waits for');
+    if (at < 0) { missing.push(`${rel}: no residual list found at all`); continue; }
+    const win = flat.slice(at, at + 900);
+    if (!win.includes('external stylesheet')) missing.push(`${rel}: omits the external-stylesheet residual`);
+    if (!/string selector|querySelector/.test(win)) missing.push(`${rel}: omits the string-selector residual`);
+  }
+  assert.deepEqual(missing, [],
+    `these surfaces enumerate the elision residuals but not all three:\n  ${missing.join('\n  ')}`);
 });
