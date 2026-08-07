@@ -375,24 +375,12 @@ test('scroll restoration: back-button restores window scroll position', async ()
   const browser = await chromium.launch();
   const page = await (await browser.newContext()).newPage();
   try {
-    // This one block runs against /docs rather than /ui, and the reason is a
-    // real finding rather than convenience. The router restores window scroll
-    // correctly on /docs/* (set 800, back returns 800), but on a /ui/<name>
-    // gallery page it consistently lands on 1563 instead, reproducibly and
-    // independently of timing. That is a live website behaviour, unrelated to
-    // the router assertion this test exists to make, so the test makes its
-    // assertion on the page where nothing else is moving the scroll.
-    await page.goto(`${BASE}/docs/routing`);
+    // A /ui/<name> gallery page is the harder case on purpose: its component
+    // previews settle taller AFTER the swap, which is what used to carry the
+    // restore 763px past where the reader left (#1310). A /docs page does not
+    // grow, so asserting there proves much less.
+    await page.goto(`${BASE}/ui/button`);
     await page.waitForLoadState('domcontentloaded');
-    // Make sure the page is tall enough to actually scroll.
-    await page.evaluate(() => {
-      // The docs pages are typically tall; nudge with a spacer if not.
-      if (document.documentElement.scrollHeight < window.innerHeight + 500) {
-        const sp = document.createElement('div');
-        sp.style.height = '2000px';
-        document.body.appendChild(sp);
-      }
-    });
 
     // Scroll partway down.
     await page.evaluate(() => window.scrollTo(0, 800));
@@ -406,17 +394,20 @@ test('scroll restoration: back-button restores window scroll position', async ()
     // so a link below the fold would move the window before the router
     // recorded its position, and the router would then be asserted against a
     // scroll it restored correctly.
-    await page.locator('.docs-sidebar a:has-text("Components")').first()
+    await page.locator('a[href="/ui/card"]').first()
       .evaluate((el) => /** @type {HTMLElement} */ (el).click());
-    await page.waitForFunction(() => location.pathname.endsWith('/components'),
+    await page.waitForFunction(() => location.pathname.endsWith('/ui/card'),
       { timeout: 4000 });
 
     // Back. Scroll should restore.
     await page.goBack();
-    await page.waitForFunction(() => location.pathname.endsWith('/routing'),
+    await page.waitForFunction(() => location.pathname.endsWith('/ui/button'),
       { timeout: 4000 });
-    // Give the cached-restore path a frame to run.
-    await page.waitForTimeout(80);
+    // Let the restored page finish growing AND revalidating. A frame is not
+    // enough: the growth lands ~65ms after the swap and the revalidation's own
+    // swap ~300ms after it, and a restore that is correct at 80ms and wrong at
+    // 1200ms is exactly the defect (#1310).
+    await page.waitForTimeout(1200);
 
     const afterBackScroll = await page.evaluate(() => window.scrollY);
     // Allow a small tolerance: browser may round, sub-pixel layout etc.

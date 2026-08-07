@@ -170,6 +170,12 @@ The file stays `middleware.ts`, NOT Next 16's renamed `proxy.ts`. WebJs middlewa
 
 Navigation is automatic. The client router auto-enables when `@webjsdev/core` loads (any page with a component), so a plain `<a href>` gets soft navigation for free. There is no `<Link>` to import and no `useRouter`. For programmatic navigation import `navigate()` / `revalidate()` from `@webjsdev/core`. There is no `next/image`, `next/font`, `next/script`, or `next/dynamic`. WebJs is no-build: use a plain `<img>`, a `<link>` / `@font-face`, a component's `static lazy = true` for viewport lazy-loading, and a dynamic `import()` where code should load lazily.
 
+### No `<ScrollRestoration>`, and no scroll restore of your own
+
+Remix ships a `<ScrollRestoration />` component, Next has a `scrollRestoration` flag and a pile of community `useEffect` + `scrollTo` recipes, and every one of them is a thing to NOT port. WebJs restores scroll on Back/Forward automatically: the router sets `history.scrollRestoration = 'manual'` on boot and is the sole authority on scroll for the whole navigation. There is no component to render and no option to enable. An app-level `popstate` listener that calls `scrollTo`, a remembered offset in `sessionStorage`, or a `scrollIntoView` on a saved element all race the router and win sometimes, which is worse than losing consistently.
+
+This includes the case that most tempts a hand-rolled fix: Back landing BELOW where the reader left, on a page whose components size themselves after they render. The router already handles it, by suppressing the browser's scroll anchoring across the restore so late growth above the viewport is not added to the offset it just replayed (see `client-router-and-streaming.md`). If a restore still lands wrong, report it rather than patching around it in app code.
+
 ### Server-only code: the `.server.ts` boundary, not a `server-only` package
 
 Next poisons a client-imported module with the `server-only` package. WebJs uses the file extension: `*.server.ts` is the path-level boundary (the file router refuses to serve the source). A `'use server'` file's exports are RPC-callable; a `.server.ts` file WITHOUT `'use server'` is a server-only utility whose browser import throws at load. Reach a no-`'use server'` utility through a `'use server'` action, `route.ts`, or `middleware`, never by direct import into a shipping page or component.

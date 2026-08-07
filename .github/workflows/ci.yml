@@ -398,6 +398,49 @@ jobs:
         env:
           WEBJS_E2E: '1'
         run: node --test test/e2e/dev-seed-observability.test.mjs
+      # Form-submission, concurrent-nav and scroll-restoration e2e (#1310). This
+      # one runs against the WEBSITE rather than the blog, because the scroll
+      # case needs a page whose content settles taller after the swap, which is
+      # what a /ui/<name> gallery page does and a blog page does not. It was
+      # outside CI entirely until now, so the one assertion covering a Back
+      # restore on a real growing page never ran on a PR.
+      #
+      # `webjs dev` runs the website's own `webjs.dev.before` tasks (the registry
+      # copy and the Tailwind build), so no extra setup step is needed here.
+      - name: Run form-submission + scroll-restoration e2e (#1310)
+        env:
+          WEBJS_E2E: '1'
+        run: |
+          # Redirected to a FILE, not left on the step's stdout. A background
+          # child that keeps the log pipe open outlives the script and stalls
+          # the step: run locally, the identical script hung for ten minutes
+          # after the tests had already passed, with the server still listening.
+          setsid npm run dev --workspace=@webjsdev/website > /tmp/website-dev.log 2>&1 &
+          server_pid=$!
+          # Stop the server however this step ends. `trap ... EXIT` keeps the
+          # test's exit code, which a trailing `kill` would not: the step runs
+          # under `bash -e`, so a failing test aborts the script before any
+          # cleanup line placed after it could run. The pid is captured into a
+          # variable rather than read as `$!` inside the trap, which would
+          # resolve at FIRE time against whatever job was most recent then.
+          # `setsid` puts the server in its own process GROUP and the trap
+          # signals the whole group. `webjs dev` spawns a watcher which spawns
+          # the listener, so killing only the npm pid leaves the port held; that
+          # was measured, the step exited cleanly and :5001 stayed up.
+          # On any failure the server log goes BACK to the step log. This is a
+          # required check and the server runs the website's own before-tasks
+          # (registry copy, Tailwind build), so a boot failure, a build failure
+          # or a 500 on /ui/button must not fail the check with its cause in a
+          # file nobody reads. `$?` is captured first, since the trap body would
+          # otherwise clobber it.
+          trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "--- website dev server log ---"; tail -n 200 /tmp/website-dev.log || true; fi; kill -- -"$server_pid" 2>/dev/null || true; exit "$rc"' EXIT
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:5001/ui/button && break
+            sleep 2
+          done
+          curl -sf -o /dev/null http://localhost:5001/ui/button \
+            || { echo "website dev server never came up"; exit 1; }
+          node --test test/e2e/form-submission-and-race.test.mjs
       # Touch-emulation e2e for interactive Tier-2 ui components (#745/#747):
       # boots the site serving the gallery and taps hover-card / dropdown-submenu / sonner
       # under a Chromium iPhone context (faithful touch events, no real device).
