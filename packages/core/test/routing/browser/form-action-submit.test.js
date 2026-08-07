@@ -312,6 +312,13 @@ suite('Client router: bound form submissions (#1155)', () => {
   // nothing about the submission.
   // -------------------------------------------------------------------------
 
+  function captureWarnings(fn) {
+    const orig = console.warn;
+    const seen = [];
+    console.warn = (...a) => { seen.push(a.join(' ')); };
+    try { return fn(seen); } finally { console.warn = orig; }
+  }
+
   function captureErrors(fn) {
     const orig = console.error;
     const seen = [];
@@ -335,6 +342,53 @@ suite('Client router: bound form submissions (#1155)', () => {
           seen.some((m) => /never runs/.test(m)),
           `expected a submit-time console.error, saw: ${JSON.stringify(seen)}`,
         );
+      });
+    } finally { teardown(); }
+  });
+
+  test('a bound identity posting to ANOTHER url is reported (#1307)', async () => {
+    // The one shape the redesign left unrefused. A bound submitter emits no
+    // `formaction`, so a form declaring its own action sends the identity
+    // there by native precedence. The renderer used to throw, but only where
+    // it could SEE the form, which is the cross-element judgement it cannot
+    // make from inside a component. Reported here, where the resolved target
+    // is a fact rather than an inference.
+    setup(okHtml);
+    try {
+      await captureWarnings(async (seen) => {
+        render(html`
+          <form method="post" action="/somewhere-else">
+            <input type="hidden" name="__webjs_action" value="a1b2c3d4e5/act">
+            <button type="submit">go</button>
+          </form>
+        `, container);
+        container.querySelector('button').click();
+        await tick();
+        assert.ok(
+          seen.some((m) => /posts to "\/somewhere-else"/.test(m)),
+          `expected the submit-elsewhere report, saw: ${JSON.stringify(seen)}`,
+        );
+      });
+    } finally { teardown(); }
+  });
+
+  test('the submit-elsewhere guard stays silent for a form posting to its own page', async () => {
+    // The counterfactual. A bound FORM has its action stripped by the renderer,
+    // so it always posts to the page and must never trip this. Without this
+    // row the guard could be written to fire on every submission and the test
+    // above would still pass.
+    setup(okHtml);
+    try {
+      await captureWarnings(async (seen) => {
+        render(html`
+          <form method="post">
+            <input type="hidden" name="__webjs_action" value="a1b2c3d4e5/act">
+            <button type="submit">go</button>
+          </form>
+        `, container);
+        container.querySelector('button').click();
+        await tick();
+        assert.equal(seen.length, 0, `expected silence, saw: ${JSON.stringify(seen)}`);
       });
     } finally { teardown(); }
   });

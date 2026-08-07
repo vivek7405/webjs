@@ -76,7 +76,7 @@ html`<form>
 </form>`;
 ```
 
-One consequence worth knowing rather than discovering: no `formaction` url is emitted (an empty one is an HTML conformance error), so the submission targets whatever the FORM targets. A form declaring its own `action="/x"` sends its buttons to `/x`, which is native precedence and still runs the action, because the identity travels in the body. Leaving the form's `action` off, the ordinary shape, keeps the submission on the current page.
+One consequence worth knowing rather than discovering: no `formaction` url is emitted (an empty one is an HTML conformance error), so the submission targets whatever the FORM targets. A form declaring its own `action="/x"` sends its buttons to `/x`, which is native precedence. The action still runs if `/x` is a PAGE route, because the identity travels in the body, but against a `route.ts` or another origin the identity is ignored and nothing runs. In dev the client logs a warning at submit time naming the url. Leaving the form's `action` off, the ordinary shape, keeps the submission on the current page.
 
 The submitter must be a `<button>` and cannot carry its own `name`, `value`, or `form` attribute, because the identity already occupies that pair. `<input type="submit">` is refused for the binding: the identity has to occupy its `value`, which on that control is also the visible caption, so the button would render captioned with the action id and could never be labelled. A `<button>` has no such conflict, since its label is its children.
 

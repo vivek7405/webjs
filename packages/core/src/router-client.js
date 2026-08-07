@@ -1205,6 +1205,29 @@ function warnIfActionSubmissionCannotDeliver(form, submitter, method, body) {
       `[webjs] this submission carries a bound server action's identity but declares enctype="${enctype}", which the server cannot parse. The router declines to send it so both paths behave the same way, and both are answered with a 405. Drop the enctype and let the binding supply it.`,
       'error',
     );
+    return;
+  }
+  // The identity is going somewhere OTHER than this page (#1307). A bound
+  // submitter emits no `formaction` url, so the submission targets whatever the
+  // FORM targets, and a form declaring its own `action="/x"` sends its buttons
+  // to `/x` by ordinary native precedence.
+  //
+  // This is the one shape the redesign left both unrefused and, until here,
+  // unreported. The renderer used to throw for it, but only where it could SEE
+  // the form, which is exactly the cross-element judgement that could not be
+  // made from inside a component. So it is reported at submit time instead,
+  // where the resolved target is a fact rather than an inference.
+  //
+  // A warning rather than an error, because it is not necessarily wrong: if
+  // `/x` is a PAGE route the action really does run there, and the 422
+  // re-render simply lands on that page. It is only dead if `/x` is a
+  // `route.ts`, another origin, or nothing at all, and the client cannot tell
+  // which from here.
+  if (path && path !== location.pathname) {
+    warnOnce(
+      `submit-elsewhere:${path}`,
+      `[webjs] this submission carries a bound server action's identity but posts to "${path}" rather than this page, because the enclosing <form> declares its own action. A bound submitter emits no formaction, so the form's target wins, which is what native HTML does. The action runs only if "${path}" is a page route; against a route.ts or another origin the identity is ignored and nothing runs. Drop the form's action attribute to keep the submission on this page.`,
+    );
   }
 }
 
