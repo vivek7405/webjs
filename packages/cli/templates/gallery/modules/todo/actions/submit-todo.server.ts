@@ -12,9 +12,11 @@ import { deleteTodo } from './delete-todo.server.ts';
 // action: this form carries the todo's `id` on a hidden input and needs the
 // SAME id for whichever mutation runs, so one action reading both fields is the
 // simpler shape. When the buttons need no shared payload, bind each one
-// directly instead, with `formaction=${action}` on a <button> inside the bound
-// form. The identity then rides that button's own name/value pair, so it works
-// with JS off too. Two things to know: it must be a <button> (on an
+// directly instead, with `formaction=${action}` on a <button>. The enclosing
+// <form> does NOT have to be bound: a bound submitter carries its own
+// `formmethod` and enctype, so it works in any form or none. The identity rides
+// that button's own name/value pair, so it works with JS off too. Two things to
+// know: it must be a <button> (on an
 // <input type="submit"> the identity would occupy `value`, which is also that
 // control's visible label), and a bound submitter cannot carry its own
 // `name`/`value`, which is exactly the channel `name="intent"` uses below.
