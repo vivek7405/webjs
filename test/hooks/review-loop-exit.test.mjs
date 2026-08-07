@@ -188,6 +188,13 @@ test('CI is read only at the merge gate, never at the end of the cycle', () => {
     assert.ok(!re.test(skill), `${label} tells the cycle to read CI again`);
   }
 
+  // The gate leans on reading every check, NOT on branch protection alone,
+  // which mechanically covers only the required subset. Overstating that was
+  // the removal's original justification and it was false for exactly the
+  // jobs it was justifying the cost of.
+  assert.match(skill, /Branch protection MECHANICALLY refuses the merge for the required contexts only/);
+  assert.match(skill, /a green REQUIRED set is not the same as green CI/);
+
   // The gate the removal leans on has to stay strict, since it is now the
   // only CI checkpoint there is.
   assert.match(skill, /\*\*Merge is gated on green CI, enforced at the branch level, not by trust\.\*\*/);
