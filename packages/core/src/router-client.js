@@ -8,6 +8,7 @@ import './webjs-frame.js';
 // live-channel `connectWS` handler.
 import './webjs-stream.js';
 import { renderStream } from './webjs-stream.js';
+import { FORM_ACTION_FIELD } from './form-action.js';
 // Register <webjs-suspense> (the element-level streaming boundary, #471) so it
 // is layout-neutral and available for the progressive soft-nav streaming apply.
 import './webjs-suspense.js';
@@ -876,6 +877,15 @@ function onSubmit(e) {
   // method ignores the enctype entirely, per the form-submission algorithm.
   const enctype = getSubmitEnctype(form, submitter);
   const isSafeMethod = method === 'get' || method === 'head';
+
+  // The dev report runs BEFORE the bail below, not after it. `text/plain` is
+  // precisely the case where the router declines the submission, so a guard
+  // placed after the bail would be dead code for the one shape that most needs
+  // reporting: both paths are then answered with a 405 and the author gets no
+  // other signal. Observational, and silent in production.
+  const rawBody = buildSubmitFormData(form, submitter);
+  warnIfActionSubmissionCannotDeliver(form, submitter, method, rawBody);
+
   if (!isSafeMethod && enctype === 'text/plain') return;
 
   const action = getSubmitAction(form, submitter);
@@ -885,7 +895,7 @@ function onSubmit(e) {
   if (url.origin !== location.origin) return;
   if (NON_HTML_EXTENSIONS.test(url.pathname)) return;
 
-  const body = encodeSubmitBody(buildSubmitFormData(form, submitter), enctype);
+  const body = encodeSubmitBody(rawBody, enctype);
 
   e.preventDefault();
   // Resolve the target frame for the submit, same precedence as a link:
@@ -1134,10 +1144,66 @@ function resolveTargetFrameId(trigger) {
  */
 const warnedKeys = new Set();
 /** @param {string} key @param {string} message */
-function warnOnce(key, message) {
+function warnOnce(key, message, level = 'warn') {
   if (warnedKeys.has(key)) return;
   warnedKeys.add(key);
-  if (typeof console !== 'undefined' && console.warn) console.warn(message);
+  if (typeof console === 'undefined') return;
+  const fn = level === 'error' ? console.error : console.warn;
+  if (fn) fn.call(console, message);
+}
+
+/**
+ * DEV-ONLY: report at submit time when a submission is carrying a bound
+ * action's identity it cannot actually deliver (#1307).
+ *
+ * This is the backstop for the shapes the renderer deliberately stopped
+ * refusing. A PLAIN `<button formmethod="get">` inside a bound form is a legal
+ * native override, so it renders, and the form's action then simply does not
+ * run. That is what the author asked for, but it is also what a mistake looks
+ * like, and submit time is the only moment the whole picture (the resolved
+ * method, the resolved enctype, and whether a bound identity is actually in
+ * the body) exists in one place.
+ *
+ * Observational: it runs BEFORE `preventDefault` and changes nothing about the
+ * submission. Silent in production, where a console error would be noise the
+ * visitor cannot act on; the server-side `onError` telemetry covers that side.
+ *
+ * @param {HTMLFormElement} form
+ * @param {HTMLElement | null} submitter
+ * @param {string} method lowercased, already resolved with native precedence
+ * @param {FormData} body
+ */
+function warnIfActionSubmissionCannotDeliver(form, submitter, method, body) {
+  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production') return;
+  // No identity in the body: an ordinary form with nothing to deliver.
+  if (!body.has(FORM_ACTION_FIELD)) return;
+  let path = '';
+  try { path = new URL(form.getAttribute('action') || location.href, location.href).pathname; }
+  catch { path = location.pathname; }
+  if (method !== 'post') {
+    warnOnce(
+      `submit-nowhere:${path}:${method}`,
+      `[webjs] this submission carries a bound server action's identity but submits as ${method.toUpperCase()}, which sends no body, so the identity rides the query string and the action never runs. A submitter's own formmethod overrides the form's, and WebJs honours it rather than refusing it, so check for a formmethod on the button that was pressed.`,
+      'error',
+    );
+    return;
+  }
+  const enctype = (submitter && submitter.getAttribute('formenctype'))
+    || form.getAttribute('enctype')
+    || 'application/x-www-form-urlencoded';
+  // `text/plain` ONLY, not the renderer's parseable-enctype allowlist.
+  // `enctype` is an enumerated attribute whose missing AND invalid value
+  // defaults are both `application/x-www-form-urlencoded`, so
+  // `enctype="nonsense"` submits a perfectly parseable body and the action
+  // runs. Testing against the allowlist would report that working form as
+  // broken.
+  if (enctype.toLowerCase() === 'text/plain') {
+    warnOnce(
+      `submit-nowhere:${path}:${enctype}`,
+      `[webjs] this submission carries a bound server action's identity but declares enctype="${enctype}", which the server cannot parse. The router declines to send it so both paths behave the same way, and both are answered with a 405. Drop the enctype and let the binding supply it.`,
+      'error',
+    );
+  }
 }
 
 /**

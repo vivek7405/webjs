@@ -286,16 +286,114 @@ suite('Client router: bound form submissions (#1155)', () => {
           <button type="submit">go</button>
         </form>
       `, container);
-      const btn = container.querySelector('button');
-      // Stop the native submission the bail deliberately allows, so the test
-      // page is not navigated away. The router runs on the BUBBLE phase, so a
-      // capture-phase listener here would pre-empt what is being measured.
-      const stop = (e) => e.preventDefault();
-      container.addEventListener('submit', stop);
-      btn.click();
+      // The native submission this bail deliberately allows is cancelled by
+      // the suite's nav guard, which listens on WINDOW bubble, i.e. after the
+      // router's own document-bubble listener. A listener on `container` would
+      // run BEFORE the router and set `defaultPrevented`, so `onSubmit` would
+      // return at its first line and this test would pass without the router
+      // ever making the decision it claims to measure.
+      container.querySelector('button').click();
       await tick();
-      container.removeEventListener('submit', stop);
       assert.equal(calls.length, 0, 'the router did not take it');
+    } finally { teardown(); }
+  });
+
+  // -------------------------------------------------------------------------
+  // #1307: the dev-time submit guard.
+  //
+  // The renderer deliberately stopped refusing a PLAIN submitter's own
+  // `formmethod` / `formenctype`, because native HTML defines what those mean
+  // and the author wrote them on purpose. That leaves one honest gap: the
+  // shape is also what a mistake looks like. Submit time is the only moment
+  // the resolved method, the resolved enctype, and whether a bound identity is
+  // actually in the body all exist together, so the report happens there.
+  //
+  // Observational by construction: it runs before `preventDefault` and changes
+  // nothing about the submission.
+  // -------------------------------------------------------------------------
+
+  function captureErrors(fn) {
+    const orig = console.error;
+    const seen = [];
+    console.error = (...a) => { seen.push(a.join(' ')); };
+    try { return fn(seen); } finally { console.error = orig; }
+  }
+
+  test('a bound identity submitted as GET logs once, and still submits', async () => {
+    setup(okHtml);
+    try {
+      await captureErrors(async (seen) => {
+        render(html`
+          <form method="post">
+            <input type="hidden" name="__webjs_action" value="a1b2c3d4e5/act">
+            <button type="submit" formmethod="get">go</button>
+          </form>
+        `, container);
+        container.querySelector('button').click();
+        await tick();
+        assert.ok(
+          seen.some((m) => /never runs/.test(m)),
+          `expected a submit-time console.error, saw: ${JSON.stringify(seen)}`,
+        );
+      });
+    } finally { teardown(); }
+  });
+
+  test('the guard stays silent for a form carrying no bound identity', async () => {
+    // An ordinary hand-written form is not this feature's business, and a
+    // console error on every plain GET form would be pure noise.
+    setup(okHtml);
+    try {
+      await captureErrors(async (seen) => {
+        render(html`
+          <form method="get" action="/search">
+            <input name="q" value="x">
+            <button type="submit">go</button>
+          </form>
+        `, container);
+        container.querySelector('button').click();
+        await tick();
+        assert.equal(seen.length, 0, `expected silence, saw: ${JSON.stringify(seen)}`);
+      });
+    } finally { teardown(); }
+  });
+
+  test('the guard fires for text/plain but NOT for an invalid enctype', async () => {
+    // `enctype` is an enumerated attribute whose invalid-value default is
+    // urlencoded, so `nonsense` submits a perfectly parseable body and the
+    // action runs. Testing against the renderer's parseable-enctype allowlist
+    // instead of `text/plain` alone would report that working form as broken.
+    setup(okHtml);
+    try {
+      await captureErrors(async (seen) => {
+        render(html`
+          <form method="post" enctype="nonsense">
+            <input type="hidden" name="__webjs_action" value="a1b2c3d4e5/act">
+            <button type="submit">go</button>
+          </form>
+        `, container);
+        container.querySelector('button').click();
+        await tick();
+        assert.equal(seen.length, 0, `an invalid enctype is urlencoded and works, saw: ${JSON.stringify(seen)}`);
+      });
+    } finally { teardown(); }
+
+    setup(okHtml);
+    try {
+      await captureErrors(async (seen) => {
+        render(html`
+          <form method="post" enctype="text/plain" action="/never">
+            <input type="hidden" name="__webjs_action" value="a1b2c3d4e5/act">
+            <button type="submit">go</button>
+          </form>
+        `, container);
+        container.querySelector('button').click();
+        await tick();
+        assert.ok(
+          seen.some((m) => /cannot parse/.test(m)),
+          `expected the text/plain report, saw: ${JSON.stringify(seen)}`,
+        );
+      });
     } finally { teardown(); }
   });
 });
