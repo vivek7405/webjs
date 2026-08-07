@@ -9,9 +9,11 @@
  * (the analyser learning to see one, or the escape hatch quietly ceasing to
  * work) was invisible. Every residual the docs name gets a case here, paired
  * with its rescue, and the LAST test in this file enforces that link
- * mechanically: it fails when a surface that enumerates the residuals stops
- * naming one. Without it the claim would be an assertion about my own
- * diligence, which is exactly how a residual got documented without a case.
+ * mechanically, in both directions: a registered surface that stops naming a
+ * residual fails, and so does a NEW file that copies the list without being
+ * registered. Both halves matter, and completeness is the one that actually
+ * drifted. Without it the claim would be an assertion about my own diligence,
+ * which is exactly how a residual got documented without a case.
  *
  * These tests build a REAL app on disk and drive `buildModuleGraph` +
  * `scanComponents` + `analyzeElision`, rather than the faked-graph helper the
@@ -333,14 +335,17 @@ test('every surface that enumerates the residuals names all three', async () => 
   // repeatedly while this feature was built: a third residual was added and
   // six of eight surfaces were updated, twice, in different combinations.
   //
-  // Enumerating them by eye does not work, so this asserts it. Each surface is
-  // matched from its OBSERVER clause forward, which is the phrase every copy of
-  // the list opens with; the window is wide enough for the bullet-list forms.
-  // A surface that stops naming one, or a NEW surface that copies the list and
-  // is not added here, is the drift this catches.
+  // Enumerating them by eye does not work, so this asserts it, in two halves.
+  // The CONTENT half checks each registered surface names all three residuals.
+  // The COMPLETENESS half discovers every file carrying the list and fails when
+  // one is not registered, because completeness is the half that actually
+  // drifted and a hardcoded list cannot police itself.
   const { readFile } = await import('node:fs/promises');
   const { fileURLToPath } = await import('node:url');
   const repo = fileURLToPath(new URL('../../../../', import.meta.url));
+
+  /** The phrase every copy of the list opens with. */
+  const ANCHOR = 'computes the tag it waits for';
   const SURFACES = [
     'AGENTS.md',
     'packages/server/AGENTS.md',
@@ -351,15 +356,41 @@ test('every surface that enumerates the residuals names all three', async () => 
     'website/app/docs/data-fetching/page.ts',
     'website/app/docs/progressive-enhancement/page.ts',
   ];
-  const missing = [];
+
+  const problems = [];
   for (const rel of SURFACES) {
-    const flat = (await readFile(repo + rel, 'utf8')).replace(/\s+/g, ' ');
-    const at = flat.indexOf('computes the tag it waits for');
-    if (at < 0) { missing.push(`${rel}: no residual list found at all`); continue; }
+    let src;
+    // A renamed or deleted surface (a docs-site restructure) must be reported
+    // as the contract breaking, not thrown as a filesystem path that aborts
+    // the loop and leaves every later surface unchecked.
+    try { src = await readFile(repo + rel, 'utf8'); }
+    catch { problems.push(`${rel}: registered surface is missing (renamed or deleted?)`); continue; }
+    const flat = src.replace(/\s+/g, ' ');
+    const at = flat.indexOf(ANCHOR);
+    if (at < 0) { problems.push(`${rel}: no residual list found at all`); continue; }
+    // Wide enough for the bullet-list forms, which span ~600 chars.
     const win = flat.slice(at, at + 900);
-    if (!win.includes('external stylesheet')) missing.push(`${rel}: omits the external-stylesheet residual`);
-    if (!/string selector|querySelector/.test(win)) missing.push(`${rel}: omits the string-selector residual`);
+    if (!win.includes('external stylesheet')) problems.push(`${rel}: omits the external-stylesheet residual`);
+    if (!/string selector|querySelector/.test(win)) problems.push(`${rel}: omits the string-selector residual`);
   }
-  assert.deepEqual(missing, [],
-    `these surfaces enumerate the elision residuals but not all three:\n  ${missing.join('\n  ')}`);
+
+  // Completeness: discover the list wherever it lives. This file carries the
+  // anchor in its own source, so it is the one expected non-surface.
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  // `--untracked` matters: a surface being ADDED is not staged yet when this
+  // runs, and without it the completeness half silently checks nothing new,
+  // which is the failure this half exists to prevent. (.gitignore is still
+  // respected, so node_modules and build output stay out.)
+  const found = await promisify(execFile)('git', ['grep', '-l', '--untracked', '--', ANCHOR], { cwd: repo })
+    .then((r) => r.stdout.split('\n').filter(Boolean))
+    .catch(() => { problems.push('could not run git grep to check surface completeness'); return []; });
+  const SELF = 'packages/server/test/elision/residual-contract.test.js';
+  for (const f of found) {
+    if (f === SELF || SURFACES.includes(f)) continue;
+    problems.push(`${f}: carries the residual list but is not in SURFACES (add it, so its content is checked)`);
+  }
+
+  assert.deepEqual(problems, [],
+    `the elision residual list has drifted:\n  ${problems.join('\n  ')}`);
 });
