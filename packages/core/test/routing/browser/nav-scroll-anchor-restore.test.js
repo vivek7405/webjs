@@ -296,8 +296,8 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       assert.ok(window.scrollY < 50000,
         'precondition: the restore was clamped, so this is the case under test');
       assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
-        'a clamped restore installs no window, leaving the browser to heal the '
-        + 'clamp as the page grows');
+        'a clamped restore installs no window while the offset is out of '
+        + 'reach, leaving the browser to heal the clamp as the page grows');
     } finally { await teardown(); }
   });
 
@@ -574,6 +574,31 @@ suite('Client router: a Back restore survives late layout growth (#1310)', () =>
       assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
         'the catch-up lands on the recorded offset once it is reachable '
         + `(expected ~${CLAMPED_TARGET}, got ${window.scrollY})`);
+    } finally { await teardown(); }
+  });
+
+  test('landing on the offset opens a window, which closes on the chase deadline', async () => {
+    // The landed suppression had no assertion on it at all: every clamped case
+    // reads `scrollY` only, and the one that reads `overflow-anchor` uses an
+    // offset that never becomes reachable, so it never lands. Deleting the
+    // suppression left every suite green apart from the staged-growth case.
+    await setup({ restoredY: CLAMPED_TARGET, manualGrowth: true });
+    try {
+      await goBack();
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
+        'precondition: a clamped restore opens no window while the offset is '
+        + 'still out of reach');
+      document.querySelector('wj-grow-on-command-1310').style.height = COMMANDED_GROWTH + 'px';
+      for (let i = 0; i < 6; i++) await frame();
+      assert.ok(Math.abs(window.scrollY - CLAMPED_TARGET) < 5,
+        'precondition: the chase landed');
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), 'none',
+        'landing on the recorded offset protects it, since the growth that '
+        + 'made it reachable is rarely all of it');
+      // The window rides the chase's own deadline, measured from the restore.
+      await new Promise((r) => setTimeout(r, 900));
+      assert.equal(document.documentElement.style.getPropertyValue('overflow-anchor'), '',
+        'and it closes on that deadline, leaving no residue');
     } finally { await teardown(); }
   });
 

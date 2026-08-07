@@ -481,13 +481,16 @@ let restoreGeneration = 0;
  * revalidation, capped by the ceiling; the two are not the same span and this
  * is deliberately the tighter of them, because this one WRITES scroll.
  *
- * Be precise about what the bound does and does not buy. It stops the ROUTER
- * writing scroll after it expires. It does not stop the BROWSER: anchoring is
- * deliberately left on for this path, so growth arriving after the window is
- * still added to `scrollY` and still carries the reader down toward the bottom,
- * which is main's behaviour. So the cost of a component that settles later than
- * the window is that the reader drifts below the offset, NOT that they sit at
- * the clamp.
+ * Be precise about what the bound does and does not buy, since it is easy to
+ * overclaim in both directions. WHILE the window is open the reader is
+ * protected: until the offset is reachable there is nothing to protect, and
+ * from the moment the chase lands on it, suppression holds it against the rest
+ * of the growth. AFTER the window closes, both halves stop: the router writes
+ * no more scroll, and anchoring is back on, so any growth still arriving is
+ * added to `scrollY` and carries the reader down toward the bottom, which is
+ * main's behaviour. So the cost of a component that settles later than the
+ * window is that the reader drifts below the offset, not that they sit at the
+ * clamp.
  *
  * @param {number} targetY  The recorded offset to reach.
  * @param {number} targetX
@@ -498,11 +501,14 @@ function catchUpToRestoredScroll(targetY, targetX) {
   let rafId = 0;
   /** @type {ReturnType<typeof setTimeout> | null} */
   let timer = null;
+  /** Release for the suppression installed once the offset is reached. */
+  let releaseLanded = null;
   const stop = () => {
     if (cancelScrollCatchUp !== stop) return;
     cancelScrollCatchUp = null;
     if (rafId) cancelAnimationFrame(rafId);
     if (timer) { clearTimeout(timer); timer = null; }
+    if (releaseLanded) { releaseLanded(); releaseLanded = null; }
     for (const ev of ANCHOR_RELEASE_EVENTS) {
       window.removeEventListener(ev, stop, /** @type {any} */ ({ capture: true }));
     }
@@ -523,11 +529,18 @@ function catchUpToRestoredScroll(targetY, targetX) {
       //
       // Once the reader IS on the recorded offset the situation is identical to
       // a restore that landed on its first try, so it gets that case's
-      // protection for what remains: suppression, bounded by the same floor
-      // this chase runs under, and closing on the same inputs.
-      const releaseLanded = suppressScrollAnchoring();
-      setTimeout(releaseLanded, ANCHOR_SUPPRESS_FLOOR_MS);
-      stop();
+      // protection for what remains.
+      //
+      // It shares THIS chase's deadline rather than starting one of its own,
+      // which matters: a fresh floor-length timer here would start at landing
+      // rather than at the restore, so the clamped path could hold anchoring
+      // off for nearly twice the floor and stop being the tighter of the two
+      // windows, which is the whole reason for the bound. `stop` owns the
+      // release, so the existing timer and the input listeners close it.
+      releaseLanded = suppressScrollAnchoring();
+      // Deliberately NOT `stop()`: the window has to outlive the landing, up to
+      // the deadline already running.
+      if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
       return;
     }
     rafId = requestAnimationFrame(tick);
