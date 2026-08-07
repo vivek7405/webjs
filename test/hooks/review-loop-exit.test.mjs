@@ -169,12 +169,13 @@ test('CI is read only at the merge gate, never at the end of the cycle', () => {
   assert.match(skill, /\*\*This is the ONLY place CI is read, on purpose\. Do not add one back to the end of the review cycle\.\*\*/);
   // The cost it accepts must stay stated, or the next reader takes the
   // removal for an oversight and restores the read to "fix" it. It is stated
-  // as an open CLASS pointing at ci.yml, never a closed list: the list form
-  // has already been wrong in both directions on this paragraph, once
-  // inflated by an item the local suites do cover, once closed at two while
-  // omitting a REQUIRED check the paragraph above it names.
+  // as an open CLASS derived from ci.yml, never a written-down membership.
+  // Three attempts at listing it were wrong in both directions (inflated by
+  // jobs the local suites do cover, then closed while omitting one they do
+  // not), so the instruction not to enumerate is itself load-bearing.
   assert.match(skill, /Every `ci\.yml` job with no counterpart in the deferred local suites/);
   assert.match(skill, /That is a CLASS, not a list/);
+  assert.match(skill, /Do NOT write the membership down here/);
 
   // The four instructions that USED to make the cycle wait on CI. Each is
   // gone, and a revert of the hunk that removed it puts its phrasing back.
