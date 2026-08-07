@@ -707,7 +707,14 @@ function buildFormActionRecord(el, onEl, parts) {
     // pieces have to travel with the record; reading the anchor's value alone
     // is right only when the statics are empty.
     if (p.kind === 'attr-mixed') { entry.statics = d.statics || []; entry.group = d.group || []; }
-    (name === 'method' ? methodParts : enctypeParts).push(entry);
+    // Compared against `methodAttr`, NOT the literal 'method'. On a submitter
+    // the pair is `formmethod` / `formenctype`, so a literal comparison sent
+    // every hole-provided `formmethod` into `enctypeParts`: the client then
+    // resolved it as the enctype, refused `formenctype="post"`, and threw on
+    // hydration for a template SSR renders happily. That is the
+    // render-on-the-server, crash-in-the-browser direction this module treats
+    // as the one unacceptable failure.
+    (name === methodAttr ? methodParts : enctypeParts).push(entry);
   }
 
   return {

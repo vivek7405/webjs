@@ -423,6 +423,14 @@ suite('SSR/client parity: form actions (#1155)', () => {
     // injected. Both renderers make that call through `resolveBoundSubmitterAttrs`.
     'bound submitter supplying its own formmethod': () => html`<button formaction=${boundAction()} formmethod="post">Save</button>`,
     'bound submitter supplying its own formenctype': () => html`<button formaction=${boundAction()} formenctype="application/x-www-form-urlencoded">Save</button>`,
+    // HOLE-provided, not static. These are the rows that catch a client record
+    // which files a submitter's `formmethod` hole under the wrong attribute:
+    // SSR reads the emitted start tag and is unaffected, so only a DIFFERENTIAL
+    // row sees it. The first spelling shipped broken and threw
+    // `formenctype="post"` on hydration for a template SSR renders happily.
+    'bound submitter with a HOLE-provided formmethod': () => html`<button formaction=${boundAction()} formmethod=${'post'}>Save</button>`,
+    'bound submitter with a HOLE-provided formenctype': () => html`<button formaction=${boundAction()} formenctype=${'application/x-www-form-urlencoded'}>Save</button>`,
+    'bound submitter with BOTH provided by holes': () => html`<button formaction=${boundAction()} formmethod=${'post'} formenctype=${'multipart/form-data'}>Save</button>`,
     // #1307 reverses #1207's Part B: a PLAIN button's own override is a legal
     // native instruction, so both renderers leave it exactly as written.
     'plain submitter formmethod=get inside a bound form': () => html`<form action=${boundAction()}><button formmethod="get">Save</button></form>`,
