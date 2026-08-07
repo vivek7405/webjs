@@ -84,10 +84,6 @@ const refused = {
   'reflecting prop .formAction=${fn} on a button': () => html`<button .formAction=${leaky}></button>`,
 };
 
-const refusedUnboundSubmitter = {
-  'formaction=${fn}': () => html`<button type="submit" formaction=${leaky}></button>`,
-  'camelCase formAction=${fn}': () => html`<button type="submit" formAction=${leaky}></button>`,
-};
 
 /**
  * The two shapes #1155 turned into a BINDING rather than a stringify:
@@ -99,6 +95,12 @@ const refusedAsUnidentified = {
   'action=${fn}': () => html`<form action=${leaky}></form>`,
   'upper-case ACTION=${fn}': () => html`<form ACTION=${leaky}></form>`,
   'formaction=${fn} inside bound form': () => html`<form action=${leaky}><button formaction=${leaky}></button></form>`,
+  // #1307: a bound submitter no longer asks anything of its enclosing form, so
+  // these two moved here from their own table. They still refuse, because
+  // `leaky` has no identity to bind, which is the leak guard this file exists
+  // for. The enclosing form has nothing to do with it either way.
+  'formaction=${fn} with no bound form': () => html`<button type="submit" formaction=${leaky}></button>`,
+  'camelCase formAction=${fn} with no bound form': () => html`<button type="submit" formAction=${leaky}></button>`,
 };
 
 for (const [name, mk] of Object.entries(refused)) {
@@ -121,18 +123,6 @@ for (const [name, mk] of Object.entries(refused)) {
     `[${runtime}] streaming must refuse ${name} for the RIGHT reason`);
   assert.ok(!streamThrew.message.includes('BUN_PARITY_SECRET'),
     `[${runtime}] streaming refusal must not carry the source (${name})`);
-}
-
-for (const [name, mk] of Object.entries(refusedUnboundSubmitter)) {
-  let threw = null;
-  try { await renderToString(mk(), { ssr: true }); } catch (e) { threw = e; }
-  assert.ok(threw, `[${runtime}] buffered SSR must refuse ${name}`);
-  assert.match(threw.message, /requires the enclosing <form> to also be bound/, `[${runtime}] ${name} message`);
-
-  let streamThrew = null;
-  try { await drain(renderToStream(mk(), { ssr: false })); } catch (e) { streamThrew = e; }
-  assert.ok(streamThrew, `[${runtime}] streaming SSR must refuse ${name}`);
-  assert.match(streamThrew.message, /requires the enclosing <form> to also be bound/, `[${runtime}] ${name} message`);
 }
 
 for (const [name, mk] of Object.entries(refusedAsUnidentified)) {

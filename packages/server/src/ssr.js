@@ -2109,7 +2109,7 @@ function reachedVendorSpecifiers(graph, entryFiles, componentUrls, appDir, elida
  * @param {string} prefix
  * @param {string} bodyHtml
  * @param {string} closer
- * @param {{ pending: {id: string, promise: Promise<unknown>, formScope?: 'none'|'unbound'|'bound'|'unknown'}[], nextId: number }} ctx
+ * @param {{ pending: {id: string, promise: Promise<unknown>}[], nextId: number }} ctx
  * @param {number} status
  * @param {Request | undefined} req
  * @param {URL | undefined} url
@@ -2165,15 +2165,14 @@ function streamingHtmlResponse(prefix, bodyHtml, closer, ctx, status, req, url, 
               try {
                 const resolved = await p.promise;
                 const sub = { pending: [], nextId: ctx.nextId, dev: ctx.dev };
-                // Carry the boundary's form scope (#1207). This is a fresh scan
-                // that cannot see the shell the boundary sits in, so without it
-                // a `<button formaction=${fn}>` inside a bound form's boundary
-                // reads as form-less and is refused, and the catch below turns
-                // that into an empty boundary on a 200 in production. 'unknown'
-                // when the entry predates the field: defer rather than refuse.
-                const html = await renderToString(resolved, {
-                  ssr: true, suspenseCtx: sub, formScope: p.formScope || 'unknown',
-                });
+                // A fresh scan that cannot see the shell the boundary sits in.
+                // That used to require carrying the boundary's form scope
+                // (#1207), or a `<button formaction=${fn}>` inside a bound
+                // form's boundary read as form-less, was refused, and the catch
+                // below turned it into an empty boundary on a 200 in
+                // production. #1307 made a bound submitter self-sufficient, so
+                // there is nothing left to carry.
+                const html = await renderToString(resolved, { ssr: true, suspenseCtx: sub });
                 ctx.nextId = sub.nextId;
                 for (const n of sub.pending) ctx.pending.push(n);
                 return { id: p.id, html };

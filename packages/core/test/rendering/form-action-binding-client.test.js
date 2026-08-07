@@ -646,33 +646,50 @@ test('a detached submitter still refuses what the template alone decides', () =>
   );
 });
 
-test('a submitter whose enclosing form is resolvable and UNBOUND is still refused', () => {
-  // The skip is narrow: it applies when there is no form to ask, not when the
-  // answer is no. An inline submitter can always reach its form.
+test('a submitter whose enclosing form is UNBOUND now binds, carrying its own submission', () => {
+  // The client used to ask "is my enclosing form bound" and refuse when it could
+  // reach the form and the answer was no. #1307 removed the question: the button
+  // supplies `formmethod` / `formenctype` itself, so the form is irrelevant.
   const rowAction = HOISTED();
   const host = document.createElement('div');
-  assert.throws(
-    () => render(html`<form method="post"><button formaction=${rowAction}>x</button></form>`, host),
-    /requires the enclosing <form> to also be bound/,
-  );
+  render(html`<form method="post"><button formaction=${rowAction}>x</button></form>`, host);
+  const btn = host.querySelector('button');
+  assert.equal(btn.getAttribute('name'), '__webjs_action');
+  assert.equal(btn.getAttribute('formmethod'), 'post');
+  assert.equal(btn.getAttribute('formenctype'), 'multipart/form-data');
+  assert.equal(btn.hasAttribute('formaction'), false, 'no url is emitted');
 });
 
 // ---------------------------------------------------------------------------
-// #1207 Part B on the client, so a component-only page (never SSR'd) gets the
-// same answer the server would have given.
+// The same-element rule on the client, so a component-only page (never SSR'd)
+// gets the same answer the server would have given.
 // ---------------------------------------------------------------------------
 
-test('the client refuses an unparseable submitter enctype inside a bound form', () => {
-  const formAction = HOISTED();
+test('the client refuses a BOUND submitter contradicting its own binding', () => {
+  const rowAction = HOISTED();
   const host = document.createElement('div');
   assert.throws(
-    () => render(html`<form action=${formAction}><button formenctype="text/plain">Save</button></form>`, host),
+    () => render(html`<button formaction=${rowAction} formenctype="text/plain">Save</button>`, host),
     /formenctype=/,
   );
   assert.throws(
-    () => render(html`<form action=${formAction}><button formmethod="get">Save</button></form>`, host),
+    () => render(html`<button formaction=${rowAction} formmethod="get">Save</button>`, host),
     /formmethod=/,
   );
+});
+
+test('the client leaves a PLAIN submitter\'s own override alone, matching SSR', () => {
+  // #1207's Part B refused these on both renderers. #1307 allows them on both,
+  // which is the half that keeps the two in step.
+  const formAction = HOISTED();
+  const host = document.createElement('div');
+  render(
+    html`<form action=${formAction}><button formenctype="text/plain">a</button><button formmethod="get">b</button></form>`,
+    host,
+  );
+  const [a, b] = host.querySelectorAll('button');
+  assert.equal(a.getAttribute('formenctype'), 'text/plain');
+  assert.equal(b.getAttribute('formmethod'), 'get');
 });
 
 test('the client leaves dialog and retargeted submitters alone', () => {
