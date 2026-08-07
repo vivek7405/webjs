@@ -1572,10 +1572,16 @@ function checkSubmitterNeedsBoundForm(files, violations, appDir) {
       // reading `Promise<void>=` as a `>=` comparison classified one character
       // two contradictory ways.
       //
-      // Defensive rather than reachable: no valid TypeScript puts a comparison
-      // between a declared name and its assignment, so no test can pin this. It
-      // is here because the input is a MASK of arbitrary source, which may be
-      // mid-edit and not valid at all.
+      // Two separate guards share this line, and only one of them is
+      // unpinnable. `depth <= 0` is live and reachable: a DEFAULT type
+      // parameter (`: <T = FormData>(fd: T) => …`) puts a bare `=` inside the
+      // annotation's brackets, and without the depth check that `=` is returned
+      // as the assignment. A row pins it.
+      //
+      // The `==` / `!=` rejection is the unpinnable half: no valid TypeScript
+      // puts a comparison between a declared name and its assignment, so no
+      // test can reach it. It is here because the input is a MASK of arbitrary
+      // source, which may be mid-edit and not valid at all.
       //
       // Do NOT restate here how many guards in this resolver are pinned. Two
       // successive commits asserted an exact count and both were wrong within

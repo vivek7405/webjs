@@ -479,6 +479,13 @@ test('the binding resolver across a broad sweep of TypeScript spellings', async 
     ['export const publishDraft = <T extends Array<string>>(fd: T) => 1;', true],
     ['export const publishDraft = async <T extends Record<string, unknown>>(fd: T) => 1;', true],
     ['export const publishDraft = <A, B extends Map<A, string>>(fd: A) => 1;', true],
+    // A DEFAULT type parameter puts a bare `=` inside the annotation's
+    // brackets, which is the only thing keeping the depth condition on the
+    // assignment scan honest.
+    ['export const publishDraft: <T = FormData>(fd: T) => Promise<void> = async (fd) => 1;', true],
+    // Whitespace between the type-parameter list and the parameter list, which
+    // is what the trailing skip after that walk exists for.
+    ['export const publishDraft = <T> (fd: T) => 1;', true],
     // Non-callables that must stay SILENT.
     ["export const publishDraft = `/api/${'x'}`;", false],
     ['export const publishDraft = 42;', false],
