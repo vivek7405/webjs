@@ -22,6 +22,12 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const DOCTRINE = join(ROOT, '.claude/gh-budget.md');
 const IDS = join(ROOT, '.claude/gh-ids.env');
 
+// Every entry below was checked with `GH_DEBUG=api` and observed to issue
+// POST /graphql. Do not add a command here on the assumption that a whole family
+// routes one way: `gh label create` looks like it belongs and does NOT, since it
+// issues a plain POST /repos/{o}/{r}/labels, so banning it would forbid a
+// working REST command for no benefit.
+
 /** Porcelain reads that spend the GraphQL point budget. Each has a REST form. */
 const BANNED_READS = [
   'gh issue view',
@@ -31,20 +37,19 @@ const BANNED_READS = [
   'gh pr diff',
   'gh pr status',
   'gh search',
+  'gh label list',
 ];
 
-// Mutations go through GraphQL too. They are lower volume than the reads, but a
-// skill whose whole deliverable is a write (filing an issue, writing a plan into
-// an issue body, recording a research note) is BLOCKED outright when the budget
-// is spent, which is the failure this doctrine exists to prevent. `gh project *`
-// is absent on purpose: Projects V2 has no REST API at all.
+// Mutations that also route to GraphQL. Lower volume than the reads, but a skill
+// whose whole deliverable is a write (filing an issue, writing a plan into an
+// issue body, recording a research note) is BLOCKED outright when the budget is
+// spent, which is the failure this doctrine exists to prevent. `gh project *` is
+// absent on purpose: Projects V2 has no REST API at all.
 const BANNED_WRITES = [
   'gh issue create',
   'gh issue edit',
   'gh issue close',
   'gh issue comment',
-  'gh label create',
-  'gh label list',
 ];
 
 const BANNED = [...BANNED_READS, ...BANNED_WRITES];
@@ -177,6 +182,49 @@ test('every reference to the doctrine file resolves', () => {
   }
   assert.ok(found >= 3, `expected several files to link the doctrine, found ${found}`);
   assert.ok(existsSync(DOCTRINE), 'and the file they link must exist');
+});
+
+test('the doctrine documents everything the guard enforces', () => {
+  // The guard forbidding more than the doctrine explains is the same drift this
+  // whole file exists to stop, one level up: an agent blocked on a command would
+  // be sent to a rule that never mentions it. AGENTS.md matters most here, since
+  // it is the cross-agent surface and non-Claude tools never read `.claude/`.
+  const doctrine = readFileSync(DOCTRINE, 'utf8');
+  const agents = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8');
+
+  const undocumented = BANNED.filter((c) => !doctrine.includes(c));
+  assert.deepEqual(
+    undocumented,
+    [],
+    `banned by the guard but absent from .claude/gh-budget.md: ${undocumented.join(', ')}`,
+  );
+
+  const unannounced = BANNED.filter((c) => !agents.includes(c));
+  assert.deepEqual(
+    unannounced,
+    [],
+    `banned by the guard but absent from AGENTS.md: ${unannounced.join(', ')}`,
+  );
+});
+
+test('a shell block that sources gh-ids.env also USES it in the same block', () => {
+  // Environment variables do not survive between tool calls, so a `source` in
+  // its own fenced block leaves every id empty in the next one and the command
+  // runs with blank flags. Keep source and consumer in one block.
+  const offenders = [];
+  for (const file of skillFiles()) {
+    for (const block of codeBlocks(readFileSync(file, 'utf8'))) {
+      if (!block.includes('source .claude/gh-ids.env')) continue;
+      if (!/\$\{?(PROJECT_ID|STATUS_[A-Z_]+)/.test(block)) {
+        offenders.push(relative(ROOT, file));
+      }
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `these source gh-ids.env in a block that never reads it:\n  ${offenders.join('\n  ')}`,
+  );
 });
 
 test('the doctrine names its own exceptions, so they are not "fixed" later', () => {

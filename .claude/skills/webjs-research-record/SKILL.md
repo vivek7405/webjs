@@ -65,9 +65,14 @@ blocks. See `.claude/gh-budget.md`. Build every body payload with
    ```sh
    gh api "repos/webjsdev/webjs/labels?per_page=100" --jq '[.[].name] | index("research")'
    # if that prints null:
-   gh api -X POST repos/webjsdev/webjs/labels -f name=research -f color=5319e7 \
-     -f 'description=Research/design/decision record (no code); filter these to read design history'
+   gh label create research --repo webjsdev/webjs --color 5319e7 \
+     --description "Research/design/decision record (no code); filter these to read design history"
    ```
+
+   The read is REST because `gh label list` goes through GraphQL. The create
+   stays on the porcelain because `gh label create` does NOT: it issues a plain
+   `POST /repos/{owner}/{repo}/labels`, so there is nothing to save by rewriting
+   it and the shorter form is easier to read.
 2. **Find or create the issue.** If a backlog `research` issue already exists for this question, use it. Otherwise create one:
    ```sh
    jq -n --rawfile b /tmp/research-record.md \

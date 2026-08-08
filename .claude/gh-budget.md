@@ -21,14 +21,24 @@ of points, so a handful of careless calls exhausts the hour while the request
 COUNT still looks tiny.
 
 **Every `gh` porcelain command below issues `POST /graphql` and nothing else**,
-verified with `GH_DEBUG=api`:
+each verified with `GH_DEBUG=api`:
 
-`gh issue view` `gh issue list` `gh pr view` `gh pr list` `gh pr diff`
-`gh pr checks` `gh pr status` `gh search issues`
+Reads: `gh issue view` `gh issue list` `gh pr view` `gh pr list` `gh pr diff`
+`gh pr checks` `gh pr status` `gh search issues` `gh label list`
 
-That is essentially the whole read surface an agent uses. Left alone, an agent
+Writes: `gh issue create` `gh issue edit` `gh issue close` `gh issue comment`
+
+The reads are essentially the whole read surface an agent uses, so left alone a
 session spends its entire GitHub budget on the small expensive pool and never
-touches the large cheap one.
+touches the large cheap one. The writes are lower volume, but a skill whose whole
+deliverable IS a write (filing an issue, writing a plan into an issue body,
+recording a research note) is blocked outright once the budget is gone, which is
+worse than being slow.
+
+**Do not extend this list by assuming a family routes one way.** `gh label
+create` looks like it belongs next to `gh label list` and does not: it issues a
+plain `POST /repos/{owner}/{repo}/labels`. Measure with `GH_DEBUG=api` before
+adding a command, or you will forbid a working REST call for no benefit.
 
 ## The rule
 
@@ -53,7 +63,18 @@ Only these genuinely require GraphQL:
 | `gh pr list --state merged --head BR` | `gh api "repos/{owner}/{repo}/pulls?state=closed&head={owner}:BR"` then filter `merged_at != null` |
 | `gh pr diff N` | `gh api repos/{owner}/{repo}/pulls/N -H "Accept: application/vnd.github.diff"` |
 | `gh search issues ...` | `gh api "search/issues?q=..."` |
+| `gh label list` | `gh api "repos/{owner}/{repo}/labels?per_page=100"` |
 | `gh issue create` | `gh api -X POST repos/{owner}/{repo}/issues --input body.json` |
+| `gh issue edit N --body-file F` | `jq -n --rawfile b F '{body:$b}' > p.json` then `gh api -X PATCH repos/{owner}/{repo}/issues/N --input p.json` |
+| `gh issue edit N --add-label X` | `gh api -X POST repos/{owner}/{repo}/issues/N/labels -f 'labels[]=X'` |
+| `gh issue edit N --add-assignee U` | `gh api -X POST repos/{owner}/{repo}/issues/N/assignees -f 'assignees[]=U'` |
+| `gh issue comment N --body-file F` | `jq -n --rawfile b F '{body:$b}' > c.json` then `gh api -X POST repos/{owner}/{repo}/issues/N/comments --input c.json` |
+| `gh issue close N --reason completed` | `gh api -X PATCH repos/{owner}/{repo}/issues/N -f state=closed -f state_reason=completed` |
+
+Build every body payload with `jq -n --rawfile` and send it with `--input`. An
+issue body is full of backticks and `$`, and interpolating it into a shell string
+runs them as command substitution, which has already silently eaten every code
+reference out of a posted review in this repo.
 
 `{owner}` and `{repo}` expand from the current repository, in the path AND in a
 query string, and resolve to nothing when there is no remote, so a call in a

@@ -201,21 +201,17 @@ Seven means the contract is met. Anything less means the agent has not written
 yet, or wrote a partial body, and the card stays where it is.
 
 Then move the card. The board carries a **Ready** column between Todo and In
-progress. The ids are stable, and they live in ONE place, so source them rather
-than copying them here:
+progress. The board ids are stable and live in ONE place, `.claude/gh-ids.env`,
+so source them rather than copying them here. A second copy of a constant drifts
+exactly the way a second copy of a rule does, which this skill has already
+demonstrated once (see the GraphQL budget section below).
+
+The one id you must fetch is each issue's project-item id. Fetch them ONCE for
+the whole batch, in a single aliased query, and cache the result to the
+scratchpad. **Run the whole thing as ONE block**, per the note below it:
 
 ```sh
-source .claude/gh-ids.env    # PROJECT_ID, STATUS_FIELD_ID, STATUS_READY
-```
-
-A second copy of a constant drifts exactly the way a second copy of a rule does,
-which this skill has already demonstrated once (see the GraphQL budget section
-below). `.claude/gh-ids.env` carries the refresh command in its header.
-
-The one thing you must fetch is each issue's project-item id. Fetch them ONCE for
-the whole batch, in a single aliased query, and cache the result in the scratchpad:
-
-```sh
+# 1. Cache the item ids for the batch (one aliased query, one request).
 gh api graphql -f query='
 query {
   r: repository(owner: "webjsdev", name: "webjs") {
@@ -224,23 +220,32 @@ query {
   }
 }' --jq '.data.r | to_entries[]
   | "\(.key|ltrimstr("i"))=\(.value.projectItems.nodes[] | select(.project.number == 1) | .id)"' \
-  | grep -E '^[0-9]+=PVTI_'
-```
+  | grep -E '^[0-9]+=PVTI_' > <scratchpad>/item-ids.env
 
-Note the `--jq` and the shape filter, rather than piping into a separate `jq`.
-A `gh` wrapper on PATH may print a banner to stdout, and a downstream `jq` then
-fails to parse the whole response and returns NOTHING, silently, so every item
-id comes back empty. `--jq` runs inside `gh` on the response itself, and the
-`grep` drops any wrapper line that survives.
-
-Then each move is one small mutation against the cached id:
-
-```sh
+# 2. Move one card. ITEM comes from the cache above, the rest from gh-ids.env.
+source .claude/gh-ids.env                    # PROJECT_ID, STATUS_FIELD_ID, STATUS_READY
+ITEM=$(grep -E "^<N>=" <scratchpad>/item-ids.env | cut -d= -f2)
+[ -n "$ITEM" ] || { echo "no item id cached for <N>"; exit 1; }
 gh project item-edit --id "$ITEM" \
   --project-id "$PROJECT_ID" \
   --field-id "$STATUS_FIELD_ID" \
   --single-select-option-id "$STATUS_READY"
 ```
+
+**Keep `source`, the `ITEM` lookup, and `item-edit` in the SAME shell invocation.**
+Environment variables do not survive between separate tool calls, so a `source`
+run as its own step leaves `$PROJECT_ID`, `$STATUS_FIELD_ID`, and `$STATUS_READY`
+empty in the next one, and `item-edit` is then called with three empty flags. It
+fails rather than corrupting anything, but it fails for a reason nothing in the
+output names. The `[ -n "$ITEM" ]` guard catches the same class for the id that
+is fetched rather than sourced. `webjs-start-work` step 5 keeps its equivalent in
+one block for exactly this reason.
+
+The query uses `--jq` and a shape filter rather than piping into a separate `jq`.
+A `gh` wrapper on PATH may print a banner to stdout, and a downstream `jq` then
+fails to parse the whole response and returns NOTHING, silently, so every item
+id comes back empty. `--jq` runs inside `gh` on the response itself, and the
+`grep` drops any wrapper line that survives.
 
 Move the card ONLY after the body edit is confirmed. A card in Ready is a promise
 that the plan in the body is implementable, so a card moved on a failed edit is
