@@ -20,7 +20,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { bodyToMarkdown, getDocPage, getDocPages } from '#lib/docs-llms.server.ts';
+import { bodyToMarkdown, getDocPage, getDocPages, plainText } from '#lib/docs-llms.server.ts';
 
 const fenceCount = (md: string) => (md.match(/^```/gm) ?? []).length / 2;
 
@@ -55,53 +55,20 @@ test('a fenced sample keeps the interpolation holes and indentation the prose pi
   assert.match(layout, /\n {2,}\S/, 'indentation survives inside the fence');
 });
 
-/**
- * The one page whose samples do NOT all reach the corpus, pinned at its exact
- * counts rather than merely named. A bare name would exempt the page from
- * every check, which is the failure this set exists to avoid: skipped by name
- * is still skipped, and the page could then lose its remaining samples
- * unnoticed. The counts are asserted below in both directions, so further loss
- * fails and so does a repair, the latter forcing this entry to be removed
- * instead of quietly outliving the bug.
- *
- * Cause, verified rather than assumed: `oneLine()` decodes `&lt;` to a bare
- * `<` while rewriting a `<p>`, and the generic tag strip that runs afterwards
- * (`lib/docs-llms.server.ts`, `.replace(/<[^>]+>/g, ' ')`) then matches from
- * that stray `<` to the next `>`, swallowing whatever lies between. On this
- * page that is 5 of its 9 code-block sentinels plus the paragraphs among
- * them. Removing the angle-bracket decode from `oneLine()` restores all 9,
- * which is how the cause was pinned down; that is not the fix, because the
- * decode is what makes prose about markup readable in the corpus, and the
- * real repair reorders the pipeline for all 43 pages. Pre-existing: the
- * generated corpus is byte-identical on main, so this PR neither causes it
- * nor fixes it.
- */
-const KNOWN_TRUNCATED = new Map([['/docs/metadata-routes', { authored: 9, fenced: 4 }]]);
-
-test('the truncation exemption still describes reality', async () => {
-  // An exemption nobody rechecks is a blind spot. This is what keeps the
-  // entry above honest: it fails if the page loses more samples, and it fails
-  // if the pipeline is repaired, which is the signal to delete the entry.
-  for (const [path, expected] of KNOWN_TRUNCATED) {
-    const page = (await getDocPages()).find((p) => p.path === path);
-    assert.ok(page, `${path} is exempted but no longer exists, so remove the entry`);
-    const src = await readFile(new URL(`../../app${path}/page.ts`, import.meta.url), 'utf8');
-    assert.equal((src.match(/<code-block(?=[\s>])/g) ?? []).length, expected.authored, `${path} authors a different number of samples now`);
-    assert.equal(fenceCount(page.markdown), expected.fenced, `${path} reaches the corpus with a different number of samples now: if it is ${expected.authored}, the pipeline was repaired, so delete its KNOWN_TRUNCATED entry`);
-  }
-});
-
 test('every sample a page authors reaches the corpus', async () => {
   // Stronger than the fence test above, which only asks for one fence per
   // page: this asks for ALL of them. A regression that drops or merges blocks
-  // changes this count, and the named exemption is what stops such a
-  // regression from being waved through as "already known".
+  // changes this count. There is no exemption: /docs/metadata-routes used to
+  // carry one, pinned at 9 authored and 4 fenced, because a decoded `<` in its
+  // prose let the generic tag strip eat 5 of its sentinels. The extractor now
+  // decodes exactly once, at the end, so every page reaches parity and an
+  // exemption would only hide the next such loss.
   const off: string[] = [];
   let checked = 0;
   for (const page of await getDocPages()) {
     const src = await readFile(new URL(`../../app${page.path}/page.ts`, import.meta.url), 'utf8');
     const authored = (src.match(/<code-block(?=[\s>])/g) ?? []).length;
-    if (!authored || KNOWN_TRUNCATED.has(page.path)) continue;
+    if (!authored) continue;
     checked++;
     const fenced = fenceCount(page.markdown);
     if (fenced !== authored) off.push(`${page.path}: ${authored} authored, ${fenced} fenced`);
@@ -172,6 +139,43 @@ test('a sample teaching escaped markup keeps it', () => {
   // decoded tags out of a sample whose whole point was showing them.
   const md = bodyToMarkdown('html`<code-block>use &lt;code&gt;x&lt;/code&gt; inline</code-block>`');
   assert.match(md, /```\nuse <code>x<\/code> inline\n```/);
+});
+
+test('a paragraph teaching a lone escaped angle bracket does not eat the rest of the page', () => {
+  // The exact shape of /docs/metadata-routes: a lone `&lt;` in one paragraph,
+  // a sample, then a later paragraph whose own escaped tag supplies the `>`
+  // that closed the runaway match. A PAIRED `&lt;code&gt;` does not reproduce
+  // it, because that decodes into a complete tag the strip removes locally.
+  const md = bodyToMarkdown(
+    'html`<p>a value with <code>&lt;</code> cannot break the document</p>' +
+      '<code-block>const x = 1;</code-block>' +
+      '<p>injects <code>&lt;title&gt;</code> tags</p>`'
+  );
+  assert.match(md, /a value with < cannot break the document/);
+  assert.match(md, /```\nconst x = 1;\n```/);
+  assert.match(md, /injects <title> tags/);
+});
+
+test('an escaped tag in prose survives to the corpus', () => {
+  // oneLine used to decode &lt;code&gt; to a real <code> tag mid-pipeline and
+  // the generic strip deleted it, so the sentence lost the very thing it was
+  // written to show. This is the site-wide half of the same bug.
+  const md = bodyToMarkdown('html`<p>a value with &lt;code&gt; here</p>`');
+  assert.equal(md, 'a value with <code> here');
+});
+
+test('plainText strips tags before it decodes entities', () => {
+  assert.equal(plainText('a value with &lt;code&gt; here'), 'a value with <code> here');
+  assert.match(plainText('intercepts same-origin &lt;a&gt; clicks'), /same-origin <a> clicks/);
+});
+
+test('a page description keeps the escaped tags it teaches', async () => {
+  // extractPage used to run oneLine(decodeEntities(...)), decoding first and
+  // stripping second, so a description teaching a tag lost it. This is the
+  // counterfactual for the plainText fixture above, which passes on its own.
+  const page = await getDocPage('client-router');
+  assert.ok(page, 'the client-router page is in the corpus');
+  assert.match(page.description, /same-origin <a> clicks and <form> submissions/);
 });
 
 test('a sample is fenced whether it is authored as code-block or pre', () => {

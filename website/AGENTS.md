@@ -121,7 +121,15 @@ website/
                        path `webjs ui add` writes them to in a real app
     links.ts           cross-app URLs + in-app paths for the header and footer
     samples.ts         the code samples shown on the marketing pages
-    docs-llms.server.ts  enumerates the doc pages on disk (sitemap, llms.txt)
+    docs-llms.server.ts  enumerates the doc pages on disk (sitemap, llms.txt).
+                       Strips tags at every stage and decodes entities exactly
+                       ONCE, at the end. Decoding earlier puts a bare `<` in
+                       front of a later tag strip, which then matches to the
+                       next `>` anywhere in the document and deletes
+                       everything between the two. That once cost
+                       `/docs/metadata-routes` 5 of its 9 code samples and
+                       deleted an escaped tag from 253 prose lines across the
+                       corpus.
   modules/
     ui/components/     GITIGNORED mirror of the @webjsdev/ui registry sources,
                        written by scripts/copy-registry.mjs. NEVER hand-write

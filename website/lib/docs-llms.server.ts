@@ -117,19 +117,33 @@ function metadataBlock(raw: string): string {
   return raw.slice(startIdx, end);
 }
 
-/** Collapse a fragment to a single trimmed line of plain text. */
+/**
+ * Collapse a fragment to a single trimmed line of plain text.
+ *
+ * Deliberately does NOT decode entities. Entities are decoded exactly once,
+ * at the END of the pipeline (`decodeEntities(body)`), because a decoded `<`
+ * re-entering a later tag strip matches from there to the next `>` anywhere
+ * in the document and deletes everything between the two. That is what cost
+ * /docs/metadata-routes 5 of its 9 samples: one 935-character match that ran
+ * from a decoded `&lt;` in one paragraph to a decoded `&lt;title&gt;` sixty
+ * lines further down. Decoding belongs after every strip, never before one.
+ */
 function oneLine(s: string): string {
   return s
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&#123;/g, '{')
-    .replace(/&#125;/g, '}')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&quot;/g, '"')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * `oneLine` plus the decode, in the one order that is safe: strip, THEN
+ * decode. Exported for the same reason `bodyToMarkdown` is, so a unit test
+ * can drive it on a fixture instead of planting scaffolding in a real docs
+ * page. The whitespace collapse is re-run after decoding because `&nbsp;`
+ * and `&hellip;` only become whitespace-relevant once decoded.
+ */
+export function plainText(s: string): string {
+  return decodeEntities(oneLine(s)).replace(/\s+/g, ' ').trim();
 }
 
 /** Truncate at a word boundary, appending an ellipsis when cut. */
@@ -190,16 +204,11 @@ export function bodyToMarkdown(raw: string): string {
   // had the decoded tags deleted out of it, silently, in the one pipeline
   // whose silent losses this function exists to avoid.
   //
-  // A related loss is still live and is NOT fixed here: oneLine() below
-  // decodes `&lt;` to a bare `<` while rewriting a <p>, and the generic tag
-  // strip further down then matches from that stray `<` to the next `>` and
-  // swallows what lies between, including these sentinels. On
-  // /docs/metadata-routes that costs 5 of its 9 samples and the paragraphs
-  // among them. Not fixed here: the repair reorders this pipeline for every
-  // page, and the decode is what makes prose about markup readable, so it
-  // needs its own before-and-after across all 43. test/ssr/docs-llms.test.ts
-  // pins that page at its exact counts, so it cannot decay further and a
-  // repair fails the test rather than passing unnoticed.
+  // The pipeline invariant, and the reason the stages are ordered this way:
+  // tags are stripped at EVERY stage, entities are decoded exactly ONCE, at
+  // the end. A captured sample decodes on its own path below; prose decodes
+  // at `decodeEntities(body)` after the generic strip. Decoding earlier puts
+  // a bare `<` in front of a strip that then eats to the next `>`.
   const codeBlocks: string[] = [];
   body = body.replace(/<(?:pre|code-block)(?=[\s>])[^>]*>([\s\S]*?)<\/(?:pre|code-block)>/g, (_m, code) => {
     codeBlocks.push(decodeEntities(String(code)).replace(/\n+$/, ''));
@@ -221,8 +230,11 @@ export function bodyToMarkdown(raw: string): string {
     .replace(/<\/?(ul|ol)[^>]*>/g, '\n')
     // Strip every remaining tag
     .replace(/<[^>]+>/g, ' ')
-    // Drop template-interpolation holes
-    .replace(/\$\{[^}]*\}/g, '');
+    // Drop template-interpolation holes. Brace-aware: `[^}]*` stops at the
+    // FIRST `}`, so a nested hole like ${"${createPost}"} (docs/architecture
+    // authors one) left `"}` behind as debris in the prose. Invisible until
+    // the decode ordering above was fixed, and reader-visible after.
+    .replace(/\$\{(?:[^{}]|\{[^}]*\})*\}/g, '');
 
   body = decodeEntities(body);
 
@@ -287,11 +299,11 @@ async function extractPage(file: string): Promise<DocPage> {
   let description = '';
   const descMatch = meta.match(/description:\s*(?:'((?:\\.|[^'\\])*)'|"((?:\\.|[^"\\])*)"|`((?:\\.|[^`\\])*)`)/);
   if (descMatch) {
-    description = oneLine(decodeEntities(unescapeJs(descMatch[1] ?? descMatch[2] ?? descMatch[3] ?? '')));
+    description = plainText(unescapeJs(descMatch[1] ?? descMatch[2] ?? descMatch[3] ?? ''));
   }
   if (!description) {
     const pMatch = raw.match(/<p[^>]*>([\s\S]*?)<\/p>/);
-    if (pMatch) description = oneLine(decodeEntities(pMatch[1]));
+    if (pMatch) description = plainText(pMatch[1]);
   }
   description = truncate(description, 200);
 
