@@ -52,7 +52,7 @@
 
 import { existsSync, statSync, readdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { createRequire } from 'node:module';
 import { checkNodeInline } from './node-preflight.js';
 
@@ -838,12 +838,86 @@ async function checkImportmapCoherence(appDir, opts) {
 }
 
 /**
+ * Read a dependency's INSTALLED version as resolved FROM `appDir`, or null when
+ * it does not resolve there at all.
+ *
+ * Node's own resolver is the ground truth here, not a directory read. The check
+ * this serves asks "would this app resolve this dependency at runtime, and at
+ * what version", and Node's resolution algorithm IS that question's definition,
+ * so anything re-implementing it can only be a worse approximation. Asking Node
+ * handles workspace hoisting (the bug this fixes: under npm workspaces the
+ * `@webjsdev/*` deps hoist to the ROOT node_modules, so an app subdirectory has
+ * no local copy and a per-app `node_modules/<dep>/package.json` read reported
+ * every declared dep missing on a healthy install), symlinked workspace links,
+ * nested non-hoisted trees, and `package.json` `imports`, for free and for ever.
+ *
+ * The direct `<dep>/package.json` resolve is attempted FIRST because a package
+ * may declare no main entry at all: `@webjsdev/cli` is bin-only (no `main`, no
+ * `exports`), so `require.resolve('@webjsdev/cli')` throws MODULE_NOT_FOUND.
+ * The ERR_PACKAGE_PATH_NOT_EXPORTED fallback exists because a package may lock
+ * its manifest out of its `exports` map: `@webjsdev/server` exports only `.`,
+ * `./check`, `./testing`, and `./webjs-config.schema.json`, so the direct
+ * manifest resolve is refused and the main entry plus a bounded walk up to the
+ * package root is the way in. Neither strategy alone resolves all four
+ * `@webjsdev/*` packages; both halves are required.
+ *
+ * Local rather than `getPackageVersion` from `@webjsdev/server` for two reasons.
+ * Doctor must stay usable when the framework does not resolve from the app dir
+ * at all, which is the #954 fresh-worktree case doctor exists to diagnose, so
+ * this check cannot import the server (the same argument `frameworkResolves`
+ * below already follows). And `getPackageVersion` resolves the main entry only,
+ * so it returns null for a bin-only package, which would leave `@webjsdev/cli`
+ * reported missing: the same false positive with more machinery.
+ *
+ * Pinned by the workspace, bin-only, and exports-locked fixtures in
+ * `test/cli/doctor.test.mjs`.
+ * @param {string} dep package name, e.g. `@webjsdev/server`
+ * @param {string} appDir directory to anchor resolution at
+ * @returns {Promise<string|null>} the installed version, or null when unresolvable
+ */
+async function readInstalledVersion(dep, appDir) {
+  // The base file need not exist; createRequire only uses it to anchor the
+  // node_modules lookup at appDir.
+  const require = createRequire(join(appDir, '__webjs_resolve_probe__.js'));
+  let manifestPath = null;
+  try {
+    manifestPath = require.resolve(dep + '/package.json');
+  } catch (err) {
+    if (err?.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') return null;
+    let entry;
+    try {
+      entry = require.resolve(dep);
+    } catch {
+      return null;
+    }
+    let dir = dirname(entry);
+    for (let i = 0; i < 12; i++) {
+      const candidate = join(dir, 'package.json');
+      if (existsSync(candidate)) {
+        manifestPath = candidate;
+        break;
+      }
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    if (!manifestPath) return null;
+  }
+  try {
+    return JSON.parse(await readFile(manifestPath, 'utf8')).version || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * CHECK 5, @webjsdev/* version coherence. WARN-level only (a version drift is
  * not a crash). Reads the app package.json `@webjsdev/*` ranges across
- * dependencies + devDependencies, then for each reads the INSTALLED version from
- * `node_modules/@webjsdev/<pkg>/package.json` and checks it satisfies the
- * declared range. PASS when every @webjsdev dep is present + satisfied; WARN on
- * a missing install or a range drift.
+ * dependencies + devDependencies, then for each resolves the INSTALLED version
+ * through Node's own resolver anchored at the app dir (see
+ * `readInstalledVersion`, which is why a workspace-hoisted install resolves)
+ * and checks it satisfies the declared range. PASS when every @webjsdev dep is
+ * present + satisfied; WARN on a missing install or a range drift.
  * @param {string} appDir
  * @returns {Promise<DoctorResult>}
  */
@@ -881,15 +955,8 @@ async function checkWebjsVersions(appDir) {
   const missing = [];
   const drift = [];
   for (const dep of webjsDeps) {
-    const installedPkg = join(appDir, 'node_modules', dep, 'package.json');
-    if (!existsSync(installedPkg)) {
-      missing.push(dep);
-      continue;
-    }
-    let installedVersion = '';
-    try {
-      installedVersion = JSON.parse(await readFile(installedPkg, 'utf8')).version || '';
-    } catch {
+    const installedVersion = await readInstalledVersion(dep, appDir);
+    if (!installedVersion) {
       missing.push(dep);
       continue;
     }
