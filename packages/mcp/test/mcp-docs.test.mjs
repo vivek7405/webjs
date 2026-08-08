@@ -6,7 +6,7 @@
  */
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -24,7 +24,7 @@ const {
   PROMPTS,
   resolveDocsLocation,
 } = await import(resolve(REPO, 'packages', 'mcp', 'src', 'mcp-docs.js'));
-const { bundleDocs } = await import(resolve(REPO, 'packages', 'mcp', 'scripts', 'copy-mcp-resources.js'));
+const { bundleDocs, readGitSha } = await import(resolve(REPO, 'packages', 'mcp', 'scripts', 'copy-mcp-resources.js'));
 const { cleanBundle } = await import(resolve(REPO, 'packages', 'mcp', 'scripts', 'clean-mcp-resources.js'));
 
 const _cleanup = [];
@@ -189,6 +189,118 @@ test('bundleDocs + cleanBundle: copy bundles references + SKILL + AGENTS, clean 
 
   cleanBundle(destRoot);
   assert.ok(!existsSync(destRoot), 'cleanBundle removed the transient bundle');
+});
+
+/** The throwaway source layout the stamp tests bundle from. Never the real package. */
+function bundleFixture() {
+  const root = mkdtempSync(join(tmpdir(), 'mcp-stamp-'));
+  _cleanup.push(root);
+  const srcRefs = join(root, 'src', 'references');
+  mkdirSync(srcRefs, { recursive: true });
+  writeFileSync(join(srcRefs, 'components.md'), '# Components\n');
+  const srcAgents = join(root, 'src', 'AGENTS.md');
+  const srcSkill = join(root, 'src', 'SKILL.md');
+  writeFileSync(srcAgents, '# AGENTS\n');
+  writeFileSync(srcSkill, '# SKILL\n');
+  return { srcRefs, srcAgents, srcSkill, destRoot: join(root, 'pkg', 'resources') };
+}
+
+test('bundleDocs: a stamp is written as parseable JSON beside AGENTS.md, and omitted when none is passed', () => {
+  const paths = bundleFixture();
+  const stamp = {
+    package: '@webjsdev/mcp',
+    version: '9.9.9',
+    sha: 'a'.repeat(40),
+    copiedAt: '2026-08-08T00:00:00.000Z',
+  };
+
+  bundleDocs({ ...paths, stamp });
+  const stampPath = join(paths.destRoot, 'corpus.json');
+  assert.ok(existsSync(stampPath), 'corpus.json written');
+  const parsed = JSON.parse(readFileSync(stampPath, 'utf8'));
+  assert.deepEqual(parsed, stamp, 'round-trips through JSON unchanged');
+  assert.equal(typeof parsed.package, 'string');
+  assert.equal(typeof parsed.version, 'string');
+  assert.equal(typeof parsed.sha, 'string');
+  assert.equal(typeof parsed.copiedAt, 'string');
+  // Build metadata, not a doc: it sits beside AGENTS.md so `catalogue()` (which
+  // lists only *.md under references/) can never surface it as a readable doc.
+  assert.ok(!existsSync(join(paths.destRoot, 'references', 'corpus.json')));
+
+  // Every pre-existing caller passes no stamp, so that branch must stay a no-op.
+  bundleDocs(paths);
+  assert.ok(!existsSync(stampPath), 'no stamp written when none is passed');
+});
+
+test('cleanBundle: the stamp goes with the tree, no separate unlink owed', () => {
+  const paths = bundleFixture();
+  bundleDocs({ ...paths, stamp: { package: '@webjsdev/mcp', version: '9.9.9', sha: null, copiedAt: 'x' } });
+  const stampPath = join(paths.destRoot, 'corpus.json');
+  assert.ok(existsSync(stampPath));
+
+  cleanBundle(paths.destRoot);
+  assert.ok(!existsSync(stampPath), 'stamp removed');
+  assert.ok(!existsSync(paths.destRoot), 'bundle removed');
+});
+
+test('readGitSha: answers for a checkout root only, against the real git binary', () => {
+  // The repo root IS its own git toplevel, which is the shape prepack runs in.
+  const sha = readGitSha(REPO);
+  assert.match(sha, /^[0-9a-f]{40}$/, 'resolves HEAD at a checkout root');
+
+  // A fresh temp dir is outside any checkout (git either errors, or on a machine
+  // with no git at all spawnSync returns an error object). Either way: null.
+  const outside = mkdtempSync(join(tmpdir(), 'mcp-nogit-'));
+  _cleanup.push(outside);
+  assert.equal(readGitSha(outside), null, 'no SHA outside a checkout, and no throw');
+
+  // The guard that a temp dir cannot prove: `rev-parse` walks UP, so a directory
+  // that merely SITS inside a checkout gets an answer from its ancestor. A
+  // subdirectory of this repo stands in for an extracted tarball unpacked inside
+  // an unrelated checkout, whose HEAD is not the commit these docs came from.
+  assert.equal(readGitSha(join(REPO, 'packages')), null, 'a nested dir does not borrow its ancestor HEAD');
+});
+
+test('readGitSha: each guard is exercised on its own, through the injected spawn', () => {
+  // The real binary reaches only some of these branches, so the rest would be
+  // lines no test can red. `--show-toplevel HEAD` prints the root then the SHA.
+  const spawnOf = (result) => () => {
+    if (result instanceof Error) throw result;
+    return result;
+  };
+  const ok = 'b'.repeat(40);
+  const at = (top, sha) => ({ status: 0, stdout: `${top}\n${sha}\n` });
+  const root = mkdtempSync(join(tmpdir(), 'mcp-top-'));
+  _cleanup.push(root);
+
+  assert.equal(readGitSha(root, spawnOf(at(root, ok))), ok, 'trims a clean SHA at a matching toplevel');
+  assert.equal(readGitSha(root, spawnOf({ status: 128, stdout: `${root}\n${ok}\n` })), null, 'non-zero status wins over parseable output');
+  assert.equal(readGitSha(root, spawnOf(at(root, 'fatal: not a git repository'))), null, 'exit 0 with prose is not a SHA');
+  assert.equal(readGitSha(root, spawnOf(at(root, ok.slice(0, 7)))), null, 'an abbreviated SHA is rejected');
+  assert.equal(readGitSha(root, spawnOf(at(root, 'B'.repeat(40)))), null, 'uppercase is not the git output shape');
+  assert.equal(readGitSha(root, spawnOf(at(join(root, '..'), ok))), null, 'an ancestor toplevel is rejected, SHA shape notwithstanding');
+  assert.equal(readGitSha(root, spawnOf({ status: 0, stdout: ok + '\n' })), null, 'a lone SHA with no toplevel line is rejected');
+  assert.equal(readGitSha(root, spawnOf({ status: 0, stdout: undefined })), null, 'no stdout, e.g. a spawn error object');
+  assert.equal(readGitSha(root, spawnOf(null)), null, 'a spawn that returns nothing');
+  assert.equal(readGitSha(root, spawnOf(new Error('spawn EACCES'))), null, 'a throwing spawn is swallowed');
+});
+
+test('the stamp lands inside the published files allowlist', () => {
+  // Asserted by inspection rather than by packing: `npm pack` would run prepack
+  // against the REAL packages/mcp/resources in a repo several agents share, and
+  // postpack does not run when a pack fails, so a failed run leaves a stale
+  // bundle shadowing the live repo-root skill (clean-mcp-resources.js:4-8).
+  const pkg = JSON.parse(readFileSync(join(REPO, 'packages', 'mcp', 'package.json'), 'utf8'));
+  assert.ok(pkg.files.includes('resources'), 'resources/ is published');
+
+  // The other half: the stamp is written INTO that directory. `main()` sets
+  // destRoot to join(pkgRoot, 'resources'), and bundleDocs writes corpus.json at
+  // destRoot's top level, which the two assertions below pin together.
+  const paths = bundleFixture();
+  bundleDocs({ ...paths, stamp: { package: '@webjsdev/mcp', version: '9.9.9', sha: null, copiedAt: 'x' } });
+  assert.ok(existsSync(join(paths.destRoot, 'corpus.json')), 'written at the destRoot top level');
+  const script = readFileSync(join(REPO, 'packages', 'mcp', 'scripts', 'copy-mcp-resources.js'), 'utf8');
+  assert.match(script, /destRoot: join\(pkgRoot, 'resources'\)/, "main() bundles into the package's resources/");
 });
 
 test('getPrompt: every listed prompt resolves to a user message; unknown throws', () => {
