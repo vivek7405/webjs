@@ -98,6 +98,15 @@ red build onto `main` is not worth optimizing.
    and take the last line, rather than capturing JSON and parsing it. JSON with
    a line in front of it does not parse at all, so this fails loudly in tests
    and silently in a hook.
+
+   **The banner is emitted INCONSISTENTLY**, only when the wrapper re-resolves
+   its tool, so it is present on one call and absent on the next within a single
+   session. Never strip it by POSITION. `tail -n +2` on multi-line output
+   silently deletes the first real line whenever the banner did not appear, and
+   on an issue-body round trip that means the body comes back a line short with
+   no error anywhere. Strip it by PATTERN (`sed '1{/^mise /d}'`) or, better,
+   avoid the problem: send bodies with `--input <file>` and read them back to a
+   file, so no multi-line payload ever rides a shell capture.
 4. **`gh api rate_limit` is free.** It does not consume budget, so a step about
    to do heavy board work can check first and degrade or report honestly rather
    than failing mid-run.

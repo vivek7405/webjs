@@ -47,13 +47,13 @@ If the user's description is very thin (e.g. "track adding dark mode as a todo")
 
 2. **Create the issue AND assign it to vivek7405.** Every WebJs issue is assigned to the owner (vivek7405) at creation so the project board shows ownership at a glance.
 
-   Write the grounded body to a scratch file first, then pass it with
-   `--body-file`. Do NOT pass it as `--body "..."`: an issue body is full of
-   backticks and `$` characters, and an unquoted shell string runs them as
-   command substitution, silently eating whatever they contained. This has
-   already bitten this repo through a sibling flag: a review posted with
-   `gh api -f body=` lost every code reference in it and had to be deleted
-   and reposted. Same mechanism, different flag.
+   Write the grounded body to a scratch file first, then read it into the
+   request with `jq -n --rawfile` so it never passes through the shell at all.
+   Do NOT interpolate it into a shell string: an issue body is full of backticks
+   and `$` characters, and an unquoted string runs them as command substitution,
+   silently eating whatever they contained. This has already bitten this repo:
+   a review posted with `gh api -f body=` lost every code reference in it and
+   had to be deleted and reposted.
 
    ```sh
    # write the body to a scratch path first (any disposable location), then

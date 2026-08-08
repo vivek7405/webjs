@@ -127,15 +127,19 @@ HARD CONSTRAINTS
 - Scratch files and repro scripts go ONLY in <scratchpad>. Running a read-only
   node script or an existing test command to verify a repro is encouraged.
 - Do NOT open a PR, branch, comment, or new issue, and do not change labels,
-  assignees, or status. Your ONLY mutation is `gh issue edit`.
+  assignees, or status. Your ONLY mutation is the issue-body PATCH below.
 
 DELIVERABLE
 Rewrite the ENTIRE issue body so a cold AI agent with zero access to this
 conversation can implement it end to end with no discovery phase. Write it to
-<scratchpad>/issue-<N>-body.md and apply it with:
-  gh issue edit <N> --repo webjsdev/webjs --body-file <scratchpad>/issue-<N>-body.md
-Never pass `--body "..."`, because backticks and `$` get shell-expanded and
-silently eat whatever they contained.
+<scratchpad>/issue-<N>-body.md and apply it over REST:
+  jq -n --rawfile b <scratchpad>/issue-<N>-body.md '{body:$b}' > <scratchpad>/patch-<N>.json
+  gh api -X PATCH repos/webjsdev/webjs/issues/<N> --input <scratchpad>/patch-<N>.json --jq .number
+Use exactly that REST call. The porcelain equivalent goes through GraphQL, whose
+budget is scored in points and is routinely spent here, and writing the plan into
+the issue is this whole job, so it must not be the thing a spent budget blocks.
+Build the payload with `jq --rawfile` and never pass the body as a shell string,
+because backticks and `$` get expanded and silently eat whatever they contained.
 
 BODY SHAPE (exact section order)
 ## Problem  (keep the existing statement's substance; verify every claim and line
@@ -176,8 +180,8 @@ PROJECT RULES YOU MUST OBEY IN YOUR OWN PROSE AND ENCODE IN THE PLAN
   anchors are dated.
 
 When finished, report: the decisions you settled, any measurement you took,
-anything stale you found in the existing body, and confirmation the
-`gh issue edit` applied.
+anything stale you found in the existing body, and confirmation the body PATCH
+applied.
 ````
 
 ### 5. Verify each plan and move the card to Ready
@@ -197,13 +201,16 @@ Seven means the contract is met. Anything less means the agent has not written
 yet, or wrote a partial body, and the card stays where it is.
 
 Then move the card. The board carries a **Ready** column between Todo and In
-progress. These ids are stable, so hard-code them rather than looking them up:
+progress. The ids are stable, and they live in ONE place, so source them rather
+than copying them here:
 
-| Thing | Id |
-|---|---|
-| Project | `PVT_kwDOERfAXc4BZDhV` |
-| Status field | `PVTSSF_lADOERfAXc4BZDhVzhUE7nE` |
-| Ready option | `ad471dd5` |
+```sh
+source .claude/gh-ids.env    # PROJECT_ID, STATUS_FIELD_ID, STATUS_READY
+```
+
+A second copy of a constant drifts exactly the way a second copy of a rule does,
+which this skill has already demonstrated once (see the GraphQL budget section
+below). `.claude/gh-ids.env` carries the refresh command in its header.
 
 The one thing you must fetch is each issue's project-item id. Fetch them ONCE for
 the whole batch, in a single aliased query, and cache the result in the scratchpad:
@@ -215,17 +222,24 @@ query {
     i1253: issue(number: 1253) { projectItems(first: 5) { nodes { id project { number } } } }
     i1264: issue(number: 1264) { projectItems(first: 5) { nodes { id project { number } } } }
   }
-}' | jq -r '.data.r | to_entries[]
-  | "\(.key|ltrimstr("i"))=\(.value.projectItems.nodes[] | select(.project.number == 1) | .id)"'
+}' --jq '.data.r | to_entries[]
+  | "\(.key|ltrimstr("i"))=\(.value.projectItems.nodes[] | select(.project.number == 1) | .id)"' \
+  | grep -E '^[0-9]+=PVTI_'
 ```
+
+Note the `--jq` and the shape filter, rather than piping into a separate `jq`.
+A `gh` wrapper on PATH may print a banner to stdout, and a downstream `jq` then
+fails to parse the whole response and returns NOTHING, silently, so every item
+id comes back empty. `--jq` runs inside `gh` on the response itself, and the
+`grep` drops any wrapper line that survives.
 
 Then each move is one small mutation against the cached id:
 
 ```sh
 gh project item-edit --id "$ITEM" \
-  --project-id PVT_kwDOERfAXc4BZDhV \
-  --field-id PVTSSF_lADOERfAXc4BZDhVzhUE7nE \
-  --single-select-option-id ad471dd5
+  --project-id "$PROJECT_ID" \
+  --field-id "$STATUS_FIELD_ID" \
+  --single-select-option-id "$STATUS_READY"
 ```
 
 Move the card ONLY after the body edit is confirmed. A card in Ready is a promise
@@ -275,8 +289,8 @@ Concrete failure signs, any one of which means the plan is not ready:
 - **An agent reports it could not settle a call.** That is a prompt failure, not
   a user question. Re-run that one agent with the constraint that decides it
   named explicitly (the invariant, the prior art, or the measurement to take).
-- **`gh issue edit` fails.** Usually the body file path or an auth scope. Surface
-  the error, keep the drafted body in the scratchpad, and retry.
+- **The issue-body PATCH fails.** Usually the body file path or an auth scope.
+  Surface the error, keep the drafted body in the scratchpad, and retry.
 - **An agent's plan contradicts the issue's existing decision.** Keep the new one
   only if the agent produced EVIDENCE (code that moved, a measurement, prior art).
   A preference is not evidence, and re-litigating a settled call wastes the next
