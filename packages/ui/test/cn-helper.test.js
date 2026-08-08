@@ -339,10 +339,21 @@ test('cn: box-shadow size and box-shadow colour are SEPARATE groups (#1265)', ()
   assert.equal(cn('shadow-[var(--shadow)]', 'shadow-red-500'), 'shadow-[var(--shadow)] shadow-red-500');
   assert.equal(cn('shadow-red-500', 'shadow-[var(--x)]'), 'shadow-red-500 shadow-[var(--x)]');
   // The v4 `(--x)` variable shorthand is the same value in a shorter spelling,
-  // so it classifies the same way. `hintedGroup()` never sees it (it reads only
-  // the `-[hint:` form), so the GROUPS table is the only thing that can.
+  // so it classifies the same way. `hintedGroup()` never sees it, since that
+  // reads only the `-[hint:` form, so GROUPS is what classifies it.
   assert.equal(cn('shadow-lg', 'shadow-(--shadow-glow)'), 'shadow-(--shadow-glow)');
   assert.equal(cn('shadow-(--shadow-glow)', 'shadow-red-500'), 'shadow-(--shadow-glow) shadow-red-500');
+  // Its HINTED sibling `shadow-(color:--x)` is a different matter, and nothing
+  // here classifies it: `variantPrefix` tracks only `[` / `]` depth, so the
+  // colon inside the parentheses reads as a variant separator and the matcher
+  // is handed the fragment `--x)`, which matches no pattern. So the token stays
+  // ungrouped and never evicts, which is the safe direction, but two of them
+  // also fail to collapse against each other. That blindness is older than the
+  // shadow split and covers every paren-hinted spelling (`bg-(image:--g)` the
+  // same way); fixing it means changing `variantPrefix`, which is out of scope
+  // here. Asserted so the current behaviour is pinned rather than assumed.
+  assert.equal(cn('shadow-red-500', 'shadow-(color:--x)'), 'shadow-red-500 shadow-(color:--x)');
+  assert.equal(cn('shadow-(color:--x)', 'shadow-(color:--y)'), 'shadow-(color:--x) shadow-(color:--y)');
   // Conflicts stay scoped to their variant.
   assert.equal(cn('hover:shadow-lg', 'hover:shadow-red-500'), 'hover:shadow-lg hover:shadow-red-500');
 });

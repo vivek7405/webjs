@@ -487,11 +487,17 @@ names mechanically:
     and it is the price of a table that cannot read the project's theme.
     Prefer the arbitrary form (`shadow-[var(--shadow-card)]`), which the table
     does classify correctly.
-  When you DO add a group, split it by property from the start (a prefix-keyed
+- When you DO add a group, split it by property from the start (a prefix-keyed
   group is the #1265 defect), and pick the catch-all's direction from what the
   prefix's values actually look like in real code rather than by analogy with
   another prefix: `border-[var(--x)]` is usually a colour, `shadow-[var(--x)]`
   is usually a shadow, so the same shape resolves opposite ways.
+- A PAREN-hinted arbitrary value (`shadow-(color:--x)`, `bg-(image:--g)`)
+  reaches neither `hintedGroup()` nor GROUPS: `variantPrefix` tracks only
+  `[` / `]` depth, so the colon inside the parentheses reads as a variant
+  separator and the matcher gets a fragment that matches nothing. The token
+  stays ungrouped, so it never evicts, but two of them do not collapse against
+  each other either. Fixing it means teaching `variantPrefix` paren depth.
 
 ## Layout + typography helpers (the design system)
 
