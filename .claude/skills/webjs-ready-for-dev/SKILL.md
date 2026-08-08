@@ -44,9 +44,16 @@ Nothing here writes code. The deliverable is the issue body.
 ### 1. Read the board and the issue bodies
 
 ```sh
-gh project item-list 1 --owner webjsdev --format json --limit 20000
-gh issue view <N> --repo webjsdev/webjs --comments
+# The issue body and its comments, over REST.
+gh api "repos/webjsdev/webjs/issues/<N>" --jq '.title, .body'
+gh api "repos/webjsdev/webjs/issues/<N>/comments?per_page=100" --jq '.[].body'
 ```
+
+Read the ISSUES, not the board. This skill is handed the issue numbers it is
+readying, so it needs their bodies, and a whole-board dump answers a question
+nobody asked at several hundred points of the GraphQL budget. When a card's
+Status or item id is genuinely needed, take it from the issue node (step 5), not
+from a dump. See `.claude/gh-budget.md` for the rule and the substitution table.
 
 Most WebJs issues already carry a partial `## Implementation plan` written when
 they were filed. That is a starting point, not a finished plan. The agent's job
@@ -99,8 +106,10 @@ WebJs framework monorepo at <repo path>, and writing it into the issue body. You
 are FULLY AUTONOMOUS: never ask a question, settle every open call yourself using
 industry standard practice and prior art, and state what settled each decision.
 
-ISSUE: #<N> "<title>" (webjsdev/webjs). Start with
-`gh issue view <N> --repo webjsdev/webjs --comments`.
+ISSUE: #<N> "<title>" (webjsdev/webjs). Start by reading the issue and its
+comments over REST, which does not spend the GraphQL budget this repo runs out of:
+`gh api repos/webjsdev/webjs/issues/<N> --jq '.title, .body'` then
+`gh api "repos/webjsdev/webjs/issues/<N>/comments?per_page=100" --jq '.[].body'`.
 
 SPECIFIC GROUND TO COVER
 <the per-issue block: real paths and line anchors to verify, the decisions that
@@ -118,15 +127,19 @@ HARD CONSTRAINTS
 - Scratch files and repro scripts go ONLY in <scratchpad>. Running a read-only
   node script or an existing test command to verify a repro is encouraged.
 - Do NOT open a PR, branch, comment, or new issue, and do not change labels,
-  assignees, or status. Your ONLY mutation is `gh issue edit`.
+  assignees, or status. Your ONLY mutation is the issue-body PATCH below.
 
 DELIVERABLE
 Rewrite the ENTIRE issue body so a cold AI agent with zero access to this
 conversation can implement it end to end with no discovery phase. Write it to
-<scratchpad>/issue-<N>-body.md and apply it with:
-  gh issue edit <N> --repo webjsdev/webjs --body-file <scratchpad>/issue-<N>-body.md
-Never pass `--body "..."`, because backticks and `$` get shell-expanded and
-silently eat whatever they contained.
+<scratchpad>/issue-<N>-body.md and apply it over REST:
+  jq -n --rawfile b <scratchpad>/issue-<N>-body.md '{body:$b}' > <scratchpad>/patch-<N>.json
+  gh api -X PATCH repos/webjsdev/webjs/issues/<N> --input <scratchpad>/patch-<N>.json --jq .number
+Use exactly that REST call. The porcelain equivalent goes through GraphQL, whose
+budget is scored in points and is routinely spent here, and writing the plan into
+the issue is this whole job, so it must not be the thing a spent budget blocks.
+Build the payload with `jq --rawfile` and never pass the body as a shell string,
+because backticks and `$` get expanded and silently eat whatever they contained.
 
 BODY SHAPE (exact section order)
 ## Problem  (keep the existing statement's substance; verify every claim and line
@@ -167,8 +180,8 @@ PROJECT RULES YOU MUST OBEY IN YOUR OWN PROSE AND ENCODE IN THE PLAN
   anchors are dated.
 
 When finished, report: the decisions you settled, any measurement you took,
-anything stale you found in the existing body, and confirmation the
-`gh issue edit` applied.
+anything stale you found in the existing body, and confirmation the body PATCH
+applied.
 ````
 
 ### 5. Verify each plan and move the card to Ready
@@ -188,36 +201,54 @@ Seven means the contract is met. Anything less means the agent has not written
 yet, or wrote a partial body, and the card stays where it is.
 
 Then move the card. The board carries a **Ready** column between Todo and In
-progress. These ids are stable, so hard-code them rather than looking them up:
+progress. The board ids are stable and live in ONE place, `.claude/gh-ids.env`,
+so source them rather than copying them here. A second copy of a constant drifts
+exactly the way a second copy of a rule does, which this skill has already
+demonstrated once (see the GraphQL budget section below).
 
-| Thing | Id |
-|---|---|
-| Project | `PVT_kwDOERfAXc4BZDhV` |
-| Status field | `PVTSSF_lADOERfAXc4BZDhVzhUE7nE` |
-| Ready option | `ad471dd5` |
-
-The one thing you must fetch is each issue's project-item id. Fetch them ONCE for
-the whole batch, in a single aliased query, and cache the result in the scratchpad:
+The one id you must fetch is each issue's project-item id. Step 1 below runs
+ONCE for the whole batch and caches the result; step 2 runs per card, reading
+that cache. **Step 2 must be one shell invocation**, per the note under it. Do
+not re-run step 1 per card, which would spend a whole query to re-fetch ids you
+already have.
 
 ```sh
+# 1. Cache the item ids for the batch (one aliased query, one request).
 gh api graphql -f query='
 query {
   r: repository(owner: "webjsdev", name: "webjs") {
     i1253: issue(number: 1253) { projectItems(first: 5) { nodes { id project { number } } } }
     i1264: issue(number: 1264) { projectItems(first: 5) { nodes { id project { number } } } }
   }
-}' | jq -r '.data.r | to_entries[]
-  | "\(.key|ltrimstr("i"))=\(.value.projectItems.nodes[] | select(.project.number == 1) | .id)"'
-```
+}' --jq '.data.r | to_entries[]
+  | "\(.key|ltrimstr("i"))=\(.value.projectItems.nodes[] | select(.project.number == 1) | .id)"' \
+  | grep -E '^[0-9]+=PVTI_' > <scratchpad>/item-ids.env
 
-Then each move is one small mutation against the cached id:
-
-```sh
+# 2. Move one card. ITEM comes from the cache above, the rest from gh-ids.env.
+source .claude/gh-ids.env                    # PROJECT_ID, STATUS_FIELD_ID, STATUS_READY
+ITEM=$(grep -E "^<N>=" <scratchpad>/item-ids.env | cut -d= -f2)
+[ -n "$ITEM" ] || { echo "no item id cached for <N>"; exit 1; }
 gh project item-edit --id "$ITEM" \
-  --project-id PVT_kwDOERfAXc4BZDhV \
-  --field-id PVTSSF_lADOERfAXc4BZDhVzhUE7nE \
-  --single-select-option-id ad471dd5
+  --project-id "$PROJECT_ID" \
+  --field-id "$STATUS_FIELD_ID" \
+  --single-select-option-id "$STATUS_READY"
 ```
+
+**Keep step 2's `source`, `ITEM` lookup, and `item-edit` in the SAME shell
+invocation.** Step 1 is separate and runs once for the batch.
+Environment variables do not survive between separate tool calls, so a `source`
+run as its own step leaves `$PROJECT_ID`, `$STATUS_FIELD_ID`, and `$STATUS_READY`
+empty in the next one, and `item-edit` is then called with three empty flags. It
+fails rather than corrupting anything, but it fails for a reason nothing in the
+output names. The `[ -n "$ITEM" ]` guard catches the same class for the id that
+is fetched rather than sourced. `webjs-start-work` step 5 keeps its equivalent in
+one block for exactly this reason.
+
+The query uses `--jq` and a shape filter rather than piping into a separate `jq`.
+A `gh` wrapper on PATH may print a banner to stdout, and a downstream `jq` then
+fails to parse the whole response and returns NOTHING, silently, so every item
+id comes back empty. `--jq` runs inside `gh` on the response itself, and the
+`grep` drops any wrapper line that survives.
 
 Move the card ONLY after the body edit is confirmed. A card in Ready is a promise
 that the plan in the body is implementable, so a card moved on a failed edit is
@@ -225,21 +256,20 @@ worse than one left in Todo.
 
 ### GraphQL budget
 
-The GitHub Projects V2 API is **GraphQL only**, and it rate-limits on a point
-budget rather than a request count, so a few careless calls exhaust it for the
-session. Two rules keep this skill inside it.
+**The rule and the full substitution table live in `.claude/gh-budget.md`. Read
+it; do not restate it here.**
 
-**Never call `gh project item-list 1 --owner webjsdev --limit 20000` in a loop.**
-That query paginates every item on the board (well past 500 today) to find one
-id. Reach the item id from the ISSUE node instead, as above: it is a single node
-lookup, it aliases so a whole batch costs one request, and the result is stable
-enough to cache for the session.
+It used to be restated here, and this skill then broke its own rule a hundred
+lines above where the rule was written, opening step 1 with the whole-board dump
+this section forbids. That is what a second copy does, so there is now one copy
+and this is a pointer to it.
 
-**Keep polling off GraphQL entirely.** Waiting on N background agents means
-repeated reads, and those belong on the issues REST endpoint
-(`gh api repos/webjsdev/webjs/issues/<N>`), which has its own separate budget.
-Reserve GraphQL for the two things only it can do: the one batched item-id fetch,
-and the per-card status mutation.
+The two consequences that bind this skill in particular:
+
+- Reach a card's item id from the ISSUE node, never from a board dump. This
+  skill is handed issue numbers, so it never needs the whole board.
+- Keep polling off GraphQL. Waiting on N background agents means repeated reads,
+  and those go to `gh api repos/webjsdev/webjs/issues/<N>`.
 
 ### 6. Report
 
@@ -267,8 +297,8 @@ Concrete failure signs, any one of which means the plan is not ready:
 - **An agent reports it could not settle a call.** That is a prompt failure, not
   a user question. Re-run that one agent with the constraint that decides it
   named explicitly (the invariant, the prior art, or the measurement to take).
-- **`gh issue edit` fails.** Usually the body file path or an auth scope. Surface
-  the error, keep the drafted body in the scratchpad, and retry.
+- **The issue-body PATCH fails.** Usually the body file path or an auth scope.
+  Surface the error, keep the drafted body in the scratchpad, and retry.
 - **An agent's plan contradicts the issue's existing decision.** Keep the new one
   only if the agent produced EVIDENCE (code that moved, a measurement, prior art).
   A preference is not evidence, and re-litigating a settled call wastes the next

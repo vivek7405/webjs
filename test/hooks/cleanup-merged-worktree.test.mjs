@@ -13,9 +13,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, existsSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname, resolve } from 'node:path';
+import { join, dirname, resolve, delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HOOK = resolve(
@@ -46,14 +46,50 @@ function addWorktree({ git, dir, main }, name, { merged, dirty } = {}) {
   return path;
 }
 
+/**
+ * A fake `gh` on PATH emulating the REST call the hook makes for squash merges,
+ * `gh api "repos/{owner}/{repo}/pulls?...&head={owner}:<branch>&..." --jq ...`.
+ * It prints a PR number when `<branch>` is in `mergedBranches`, and nothing
+ * otherwise. `bannerLine`, when set, is printed to STDOUT first, reproducing a
+ * PATH wrapper (a mise shim does this locally) that would otherwise land inside
+ * the hook's `$(gh ...)` capture.
+ */
+function fakeGhDir(mergedBranches, bannerLine = '') {
+  const dir = mkdtempSync(join(tmpdir(), 'webjs-wtgh-'));
+  const gh = join(dir, 'gh');
+  writeFileSync(
+    gh,
+    [
+      '#!/usr/bin/env bash',
+      bannerLine ? `echo ${JSON.stringify(bannerLine)}` : '',
+      'for a in "$@"; do',
+      '  case "$a" in',
+      '    *head=*)',
+      '      br="${a##*:}"; br="${br%%&*}"',
+      `      for m in ${mergedBranches.map((b) => `'${b}'`).join(' ')}; do`,
+      '        if [ "$br" = "$m" ]; then echo 4242; exit 0; fi',
+      '      done ;;',
+      '  esac',
+      'done',
+      '',
+    ].join('\n'),
+  );
+  chmodSync(gh, 0o755);
+  return dir;
+}
+
 /** Run the hook with a given command, from a given cwd. Returns {code, out}. */
-function runHook(command, cwd) {
+function runHook(command, cwd, { mergedBranches = null, bannerLine = '' } = {}) {
+  // Default: no stub, so the no-remote temp repo makes gh a harmless no-op
+  // regardless of host auth, and only the ancestor-of-base signal fires.
+  const ghDir = mergedBranches ? fakeGhDir(mergedBranches, bannerLine) : null;
+  const env = { ...process.env, GH_NO_UPDATE_NOTIFIER: '1' };
+  if (ghDir) env.PATH = `${ghDir}${delimiter}${process.env.PATH}`;
   const r = spawnSync('bash', [HOOK], {
     cwd,
     input: JSON.stringify({ tool_input: { command } }),
     encoding: 'utf8',
-    // Force the no-remote temp repo to make gh a harmless no-op regardless of host auth.
-    env: { ...process.env, GH_NO_UPDATE_NOTIFIER: '1' },
+    env,
   });
   return { code: r.status, out: (r.stdout || '') + (r.stderr || '') };
 }
@@ -71,6 +107,52 @@ test('removes a merged + clean worktree, keeps dirty and unmerged ones', () => {
   assert.ok(existsSync(dirty), 'merged but dirty worktree is kept');
   assert.ok(existsSync(unmerged), 'unmerged worktree is kept');
   assert.ok(existsSync(repo.main), 'primary checkout is never removed');
+});
+
+// A squash merge leaves the branch NOT an ancestor of base, so the git signal
+// cannot see it and the REST lookup is the only thing that can. This is the path
+// that silently stopped working while it went through GraphQL: an exhausted
+// point budget returned nothing, every squash-merged branch read as unmerged,
+// and its worktree leaked, which is the failure the hook exists to prevent.
+test('removes a squash-merged worktree that git alone cannot see as merged', () => {
+  const repo = makeRepo();
+  const squashed = addWorktree(repo, 'feat-squashed', {});
+  const unmerged = addWorktree(repo, 'feat-really-unmerged', {});
+
+  // Neither branch is an ancestor of main; only `feat-squashed` has a merged PR.
+  const { code } = runHook('gh pr merge 1 --squash', repo.main, {
+    mergedBranches: ['feat-squashed'],
+  });
+
+  assert.equal(code, 0);
+  assert.ok(!existsSync(squashed), 'a squash-merged branch is detected over REST and removed');
+  assert.ok(existsSync(unmerged), 'a branch with no merged PR is still kept');
+});
+
+test('squash-merge detection survives a `gh` wrapper that banners to stdout', () => {
+  const repo = makeRepo();
+  const squashed = addWorktree(repo, 'feat-squashed', {});
+
+  const { code } = runHook('gh pr merge 1 --squash', repo.main, {
+    mergedBranches: ['feat-squashed'],
+    bannerLine: 'mise ~/.config/mise/config.toml tools: gh@2.97.0',
+  });
+
+  assert.equal(code, 0);
+  assert.ok(!existsSync(squashed), 'a stdout banner must not hide the PR number');
+});
+
+test('a banner with no PR number does not make an unmerged branch look merged', () => {
+  const repo = makeRepo();
+  const unmerged = addWorktree(repo, 'feat-unmerged', {});
+
+  const { code } = runHook('gh pr merge 1 --squash', repo.main, {
+    mergedBranches: [],
+    bannerLine: 'mise ~/.config/mise/config.toml tools: gh@2.97.0',
+  });
+
+  assert.equal(code, 0);
+  assert.ok(existsSync(unmerged), 'banner text must never be read as a PR number');
 });
 
 test('does nothing on a command that is not `gh pr merge`', () => {

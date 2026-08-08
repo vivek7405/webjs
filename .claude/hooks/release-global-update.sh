@@ -39,16 +39,23 @@ command -v gh >/dev/null 2>&1 || exit 0
 num=$(printf '%s' "$cmd" | grep -oE 'gh pr merge[[:space:]]+#?[0-9]+' | grep -oE '[0-9]+' | head -1)
 if [ -z "$num" ]; then exit 0; fi
 
-info=$(gh pr view "$num" --json headRefName,title 2>/dev/null || true)
-if [ -z "$info" ]; then exit 0; fi
-head=$(printf '%s' "$info" | jq -r '.headRefName // ""' 2>/dev/null || true)
-title=$(printf '%s' "$info" | jq -r '.title // ""' 2>/dev/null || true)
+# REST, not `gh pr view`. Every `gh pr *` porcelain command goes through the
+# GraphQL API, whose budget is scored in POINTS and which agent sessions here
+# routinely exhaust; when it is spent this fetch returns nothing and the reminder
+# silently never fires. The REST pulls endpoint is a separate budget.
+#
+# Ask for the ONE field this hook reads and take the LAST line, rather than
+# capturing JSON and parsing it here. A `gh` earlier on PATH may be a wrapper
+# that prints a banner to STDOUT before exec'ing the real binary; prepended to
+# JSON that breaks the parse outright, while a scalar survives `tail -n1`.
+title=$(gh api "repos/{owner}/{repo}/pulls/$num" --jq '.title // empty' 2>/dev/null | tail -n1)
+if [ -z "$title" ]; then exit 0; fi
 
 # A real release PR carries the canonical "chore: release <pkgs>" title (the
 # release process always titles it exactly that). Match the TITLE, not the
 # branch prefix: a `chore/release-*` branch that is NOT a package release (a hook
 # tweak, a doc change) would otherwise fire a false reminder with nothing to
-# publish. `head` is unused now but kept in the fetch for future signals.
+# publish.
 if ! printf '%s' "$title" | grep -qiE '^chore: release '; then exit 0; fi
 
 read -r -d '' MSG <<'EOF' || true

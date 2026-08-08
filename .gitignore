@@ -69,6 +69,8 @@ Thumbs.db
 # every contributor / agent gets the same PreToolUse rules.
 .claude/*
 !.claude/settings.json
+!.claude/gh-budget.md
+!.claude/gh-ids.env
 !.claude/hooks/
 !.claude/hooks/**
 !.claude/skills/

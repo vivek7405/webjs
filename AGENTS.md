@@ -75,6 +75,20 @@ Git enforces one-branch-per-worktree, so separate worktrees make the collision i
 
 A Skill is model-invoked, so it fires only when the model judges a match. The `.claude/hooks/route-skills.sh` `UserPromptSubmit` hook makes routing deterministic: it keyword-matches each prompt against every skill's documented triggers and injects a directive to invoke the matched skill before other work. Check the available skills and invoke a matching one before starting. The skills themselves are committed under `.claude/skills/` (alongside the hooks), so a fresh clone has both the router and the skills it routes to (no machine-local dependency). Tests in `test/hooks/route-skills.test.mjs`, which also asserts every skill the hook references is committed in-repo.
 
+### Talking to GitHub: `gh api` over REST, never the porcelain
+
+GitHub scores two independent budgets, and `gh` routes to them in a way the command names hide. **Most `gh` porcelain commands issue `POST /graphql`**, whose 5000/hour budget is scored in **points** rather than requests, so one query walking a large connection can cost hundreds. Sessions here exhaust it routinely, and when it is gone the project board becomes unreachable and two PostToolUse hooks fail silently. The REST budget (`gh api <path>`, 5000 requests/hour) sits idle meanwhile.
+
+Convert these, which is the whole high-volume surface. Reads: `gh issue view` / `gh issue list` / `gh pr view` / `gh pr list` / `gh pr diff` / `gh pr status` / `gh search issues` / `gh label list`. Writes: `gh issue create` / `gh issue edit` / `gh issue close` / `gh issue comment`. The writes are lower volume, but a task whose whole deliverable is a write is blocked outright once the budget is gone.
+
+So: **go through `gh api` over REST, and reserve GraphQL for the two things only it can do**, Projects V2 (which has no REST API) and `resolveReviewThread`.
+
+**Leave these on the porcelain**, even though they do route to GraphQL. `gh pr merge`, because two PostToolUse hooks detect a merge by matching that literal string. `gh pr create`, which resolves base and head from local git state. And `gh pr checks`, which is the merge gate: it folds check-runs and legacy commit statuses into one verdict, and the obvious REST replacement reports a green PR as pending, so a miss there lets a red build onto `main`. All three run once per PR, so converting them buys nothing and risks a lot.
+
+Do NOT extend either list by assuming a command family routes one way. `gh label create` looks like it belongs beside `gh label list` and does not, since it issues a plain `POST /repos/{owner}/{repo}/labels`, so it needs no conversion. Measure with `GH_DEBUG=api` first.
+
+The full substitution table, the traps in each replacement, and the reasoning behind every exception live in **`.claude/gh-budget.md`**. That file is the single source; skills and hooks link to it rather than restating it, because an earlier copy inside one skill drifted from the rule it stated.
+
 ### Autonomous mode (sandbox / bypass permissions)
 
 When interactive approval is disabled, never block on questions. Auto-decide: cut the task's worktree from `origin/main` (auto-create `<prefix>/<task-slug>` per the label scheme); auto-rebase if the parent moved; auto-merge when ready; **delete** feature/fix branches after merge but **keep** long-lived ones (dev, staging, release/*); auto-generate meaningful commit messages; fix failing tests / convention violations rather than asking. Autonomous mode is MORE disciplined, not less, with the same quality bar.

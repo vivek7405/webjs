@@ -61,9 +61,25 @@ is_merged() {
   if git merge-base --is-ancestor "refs/heads/$br" "$base" 2>/dev/null; then return 0; fi
   # A merged GitHub PR for this head branch (squash merges, which are NOT an
   # ancestor of base). Network; skipped when gh is absent or unauthenticated.
+  #
+  # REST, not `gh pr list`. Every `gh pr *` porcelain command goes through the
+  # GraphQL API, whose budget is scored in POINTS and which agent sessions here
+  # routinely exhaust; when it is spent this lookup returns nothing, the branch
+  # reads as unmerged, and the worktree leaks, which is the exact failure this
+  # hook exists to prevent. The REST pulls endpoint is a separate budget.
+  # `{owner}`/`{repo}` expand from the current repo, and resolve to nothing when
+  # there is no remote (the test harness), so the call fails closed to the
+  # ancestor check above rather than erroring.
+  #
+  # Read the number through `grep -E '^[0-9]+$'` rather than trusting the whole
+  # capture: a `gh` earlier on PATH may be a wrapper that prints a banner to
+  # STDOUT before exec'ing the real binary, which would otherwise land inside
+  # this variable.
   if command -v gh >/dev/null 2>&1; then
     local n
-    n=$(gh pr list --state merged --head "$br" --json number --jq '.[0].number' 2>/dev/null | grep -E '^[0-9]+$' || true)
+    n=$(gh api "repos/{owner}/{repo}/pulls?state=closed&head={owner}:$br&per_page=100" \
+      --jq '[.[] | select(.merged_at != null)] | .[0].number // empty' 2>/dev/null \
+      | grep -E '^[0-9]+$' || true)
     [ -n "$n" ] && return 0
   fi
   return 1
