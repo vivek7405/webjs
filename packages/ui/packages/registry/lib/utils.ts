@@ -5,8 +5,10 @@
  * - Concatenates truthy arguments separated by spaces.
  * - Later Tailwind utilities win when they target the same property, mimicking
  *   `tailwind-merge`'s behaviour for the cases components actually hit
- *   (background colour, text colour, padding, margin, width, height, border,
- *   rounded, opacity, display).
+ *   (background colour, image, clip, origin, blend mode, position, size,
+ *   repeat, attachment; text colour, size, alignment, wrapping, overflow;
+ *   box-shadow and text-shadow, each split into size and colour; padding,
+ *   margin, width, height, border, rounded, opacity, display).
  *
  * For projects that want the full tailwind-merge behaviour, install
  * `clsx` + `tailwind-merge` and replace this file:
@@ -60,12 +62,39 @@ const GROUPS: Array<[RegExp, string]> = [
   [/^bg-(no-repeat|repeat|repeat-x|repeat-y|repeat-round|repeat-space)$/, 'bg-repeat'],
   [/^bg-(fixed|local|scroll)$/, 'bg-attach'],
   [/^bg-(auto|cover|contain)$/, 'bg-size'],
-  [/^bg-(bottom|center|left|right|top)$/, 'bg-position'],
+  [/^bg-size-/, 'bg-size'],
+  // Two entries rather than one alternation: the first covers the live v4
+  // compounds (`bg-top-left`), the second the bare keywords plus the v4.1
+  // deprecated reversed compounds (`bg-left-top`), which tailwind-merge still
+  // carries. An unmatched `bg-*` token falls into the colour catch-all below and
+  // evicts a real colour, so admitting a dead spelling is the safe direction.
+  [/^bg-(top|bottom)(-(left|right))?$/, 'bg-position'],
+  [/^bg-(left|right|center)(-(top|bottom))?$/, 'bg-position'],
+  [/^bg-position-/, 'bg-position'],
+  // Clip, origin, and blend mode are three more properties under the same
+  // prefix. Each sat in `bg-color` before, so `bg-clip-text` evicted a real
+  // background colour (the gradient-text idiom lost its clip silently).
+  [/^bg-clip-(border|padding|content|text)$/, 'bg-clip'],
+  [/^bg-origin-(border|padding|content)$/, 'bg-origin'],
+  [/^bg-blend-(normal|multiply|screen|overlay|darken|lighten|color-dodge|color-burn|hard-light|soft-light|difference|exclusion|hue|saturation|color|luminosity)$/, 'bg-blend'],
   [/^bg-/, 'bg-color'],
+  // text-shadow is its own property, and its size scale and its colour are two
+  // properties again. All three entries precede the text- patterns below, which
+  // is what keeps a `text-shadow-*` token out of `text-size` and `text-color`.
+  [/^text-shadow(-(2xs|xs|sm|md|lg|none))?(\/([\d.]+|\[[^\]]*\]))?$/, 'text-shadow'],
+  [/^text-shadow-(\[(inset|-|\.|\d|var\()|\(--)/, 'text-shadow'],
+  [/^text-shadow-/, 'text-shadow-color'],
   // Font size: explicit list of Tailwind size scale.
   [/^text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)$/, 'text-size'],
-  // Text color: anything else starting with text- that isn't alignment / wrap / overflow.
-  [/^text-(?!align-|left$|right$|center$|justify$|start$|end$|wrap$|nowrap$|balance$|pretty$|clip$|ellipsis$|xs$|sm$|base$|lg$|xl$|\d?xl$)/, 'text-color'],
+  // Alignment, wrapping, and overflow are three more properties under the same
+  // prefix. Each was previously excluded from text-color by a lookahead and then
+  // matched nothing at all, so two alignments never collapsed.
+  [/^text-(left|center|right|justify|start|end)$/, 'text-align'],
+  [/^text-(wrap|nowrap|balance|pretty)$/, 'text-wrap'],
+  [/^text-(ellipsis|clip)$/, 'text-overflow'],
+  // Text color: anything else under the prefix. The specific groups above are
+  // the whole carve-out, so no negative lookahead is needed here as well.
+  [/^text-/, 'text-color'],
   // Border sub-properties that are neither a width nor a colour. These come
   // FIRST so the width / colour classifier below never sees them.
   [/^border-(collapse|separate)$/, 'border-collapse'],
@@ -76,7 +105,27 @@ const GROUPS: Array<[RegExp, string]> = [
   [/^rounded-/, 'rounded'],
   [/^opacity-/, 'opacity'],
   [/^font-(thin|light|normal|medium|semibold|bold|black|extralight|extrabold)$/, 'font-weight'],
-  [/^shadow(-|$)/, 'shadow'],
+  // Box-shadow SIZE and box-shadow COLOUR are two properties (`box-shadow` and
+  // `--tw-shadow-color`), so they need two groups. `shadow-none` is a size,
+  // `shadow-inherit` / `shadow-initial` are colours, and Tailwind accepts an
+  // alpha modifier on a size as well as on a colour, so `shadow-lg/25` has to
+  // stay on the size side. An unhinted arbitrary value is a SIZE when it opens
+  // with `inset`, a sign, a dot, or a digit (a shadow offset list) and also
+  // when it is a bare `var()` or the `(--x)` variable shorthand: Tailwind
+  // itself resolves an ambiguous arbitrary shadow to `box-shadow` unless the
+  // value is provably a colour, and `shadow-[var(--shadow-glow)]` is the normal
+  // way to write a design-token shadow. This is the one place the
+  // `borderGroups()` convention inverts, because a bare `border-[var(--x)]` is
+  // far more often a colour while a bare `shadow-[var(--x)]` is far more often
+  // a shadow. The size entries must precede the colour catch-all, or every
+  // size lands in the colour group and the bug inverts rather than being fixed.
+  [/^shadow(-(2xs|xs|sm|md|lg|xl|2xl|inner|none))?(\/([\d.]+|\[[^\]]*\]))?$/, 'shadow'],
+  [/^shadow-(\[(inset|-|\.|\d|var\()|\(--)/, 'shadow'],
+  // A bare name the size scale does not list reads as a colour, because
+  // `shadow-primary` is overwhelmingly more common than a `@theme`-extended
+  // `--shadow-card`. A project that adds a custom shadow NAME is the residual
+  // gap, and the docs say so rather than claiming the split is total.
+  [/^shadow-/, 'shadow-color'],
   [/^z-/, 'z'],
   // A bare `flex` / `grid` is a DISPLAY value, not a member of the flex / grid
   // sub-property groups below, so it must never dedupe against them: an element
@@ -165,6 +214,12 @@ const HINTED_GROUPS: Record<string, string> = {
   'bg:length': 'bg-size',
   'text:color': '',
   'text:length': 'text-size',
+  // Both shadow prefixes carry a colour that is a DIFFERENT property from the
+  // prefix's own default (the size), so the hint has a named group to point at
+  // and must, or `shadow-[color:red]` keeps an isolated bucket and stops
+  // deduping against `shadow-red-500`, which sets the identical property.
+  'shadow:color': 'shadow-color',
+  'text-shadow:color': 'text-shadow-color',
 };
 
 /**

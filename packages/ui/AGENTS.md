@@ -457,7 +457,10 @@ names mechanically:
   `^flex(-|$)` lumped the `flex` DISPLAY value in with `flex-1` / `flex-row` /
   `flex-wrap` and dropped `display:flex` (#1072), and border colour had no
   group at all, so an override's winner was decided by compiled stylesheet
-  order rather than class order (#1065). When a value can mean two properties
+  order rather than class order (#1065). `bg-`, `shadow-` and `text-shadow-`
+  then repeated it: `bg-clip-*` / `bg-origin-*` / `bg-blend-*` sat in
+  `bg-color`, and a shadow size shared one group with its colour, so each pair
+  evicted the other (#1265). When a value can mean two properties
   under one prefix, classify by parsing the VALUE (`border-[3px]` is a width,
   `border-[#fff]` is a colour), and give each side its own group with the
   shorthand subsumption declared in `CONFLICTS`, the way padding does.
@@ -491,10 +494,33 @@ names mechanically:
   identical prefix and never with the prefix's default, which is the safe
   direction to fail (an extra class renders, a dropped one does not).
 - The merger is coarse by design and does NOT claim full `tailwind-merge`
-  fidelity. Some prefixes are still grouped by prefix alone (`bg-clip-*` and
-  `bg-origin-*` sit in `bg-color`; `shadow-lg` and `shadow-red-500` share
-  `shadow`), so a less common pair can still collide. Say that plainly in any
-  doc you write about it rather than stating the property rule as absolute.
+  fidelity, in two distinct ways, and BOTH belong in any doc you write about
+  it rather than stating the property rule as absolute.
+  - A neighbouring prefix it does not enumerate (`inset-shadow-*`,
+    `drop-shadow-*`, `ring-*`, `inset-ring-*`, `mix-blend-*`) has no group at
+    all, so both classes are emitted and the winner is left to compiled
+    stylesheet order. That is the SAFE direction to fail: ungrouped never
+    evicts.
+  - Where one prefix carries two properties, the value is read against
+    Tailwind's DEFAULT scales, so a `@theme`-extended name is invisible to it
+    and can be misread. A custom `--shadow-card` makes `shadow-card` a
+    box-shadow, but the table sees an unfamiliar bare name under a prefix
+    whose bare names are usually colours and routes it to `shadow-color`, so
+    it evicts a colour and is evicted by one. That is the UNSAFE direction,
+    and it is the price of a table that cannot read the project's theme.
+    Prefer the arbitrary form (`shadow-[var(--shadow-card)]`), which the table
+    does classify correctly.
+- When you DO add a group, split it by property from the start (a prefix-keyed
+  group is the #1265 defect), and pick the catch-all's direction from what the
+  prefix's values actually look like in real code rather than by analogy with
+  another prefix: `border-[var(--x)]` is usually a colour, `shadow-[var(--x)]`
+  is usually a shadow, so the same shape resolves opposite ways.
+- A PAREN-hinted arbitrary value (`shadow-(color:--x)`, `bg-(image:--g)`)
+  reaches neither `hintedGroup()` nor GROUPS: `variantPrefix` tracks only
+  `[` / `]` depth, so the colon inside the parentheses reads as a variant
+  separator and the matcher gets a fragment that matches nothing. The token
+  stays ungrouped, so it never evicts, but two of them do not collapse against
+  each other either. Fixing it means teaching `variantPrefix` paren depth.
 
 ## Layout + typography helpers (the design system)
 
