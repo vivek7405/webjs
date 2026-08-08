@@ -122,6 +122,25 @@ function defaultPrimary() {
 }
 
 /**
+ * Where the blog's SQLite file lives, resolved the way the blog itself resolves
+ * it.
+ *
+ * `examples/blog/db/connection.server.ts` and `examples/blog/drizzle.config.ts`
+ * both read `DATABASE_URL` and fall back to `db/dev.db`, and `db:migrate` /
+ * `db:seed` inherit this process's env, so probing a hardcoded `db/dev.db`
+ * would check a different file than the one those commands write whenever
+ * `DATABASE_URL` is set. The probe would then always miss, and the
+ * already-seeded fast path below could never fire.
+ *
+ * @param {string} blogDir absolute path to `examples/blog`
+ * @returns {string} absolute path of the database file
+ */
+function blogDbPath(blogDir) {
+  const fromEnv = process.env.DATABASE_URL?.replace(/^file:/, '');
+  return resolve(blogDir, fromEnv || join('db', 'dev.db'));
+}
+
+/**
  * How many rows the blog's `posts` table has, or `null` when the table or the
  * database file is not there yet.
  *
@@ -178,7 +197,7 @@ async function seedBlogDatabase(blogDir) {
   // would a future repo layout that moved it. Nothing to do either way.
   if (!existsSync(join(blogDir, 'package.json'))) return;
 
-  const posts = await countBlogPosts(join(blogDir, 'db', 'dev.db'));
+  const posts = await countBlogPosts(blogDbPath(blogDir));
   if (posts !== null && posts > 0) {
     console.log(`[link-worktree-deps] blog database already has ${posts} posts, leaving it alone.`);
     return;
@@ -186,9 +205,16 @@ async function seedBlogDatabase(blogDir) {
 
   console.log('[link-worktree-deps] seeding the blog database (examples/blog)...');
   for (const script of ['db:migrate', 'db:seed']) {
-    const r = spawnSync('npm', ['run', script], { cwd: blogDir, stdio: 'inherit' });
+    // `shell` on Windows, where npm is `npm.cmd` and Node has refused to spawn
+    // a `.cmd` without one since the CVE-2024-27980 fix. Both arguments are
+    // literals from the array above, so there is nothing for a shell to expand.
+    const r = spawnSync('npm', ['run', script], {
+      cwd: blogDir,
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    });
     if (r.status === 0) continue;
-    const why = r.error ? r.error.message : `exit ${r.status ?? `signal ${r.signal}`}`;
+    const why = r.error ? r.error.message : (r.status === null ? `signal ${r.signal}` : `exit ${r.status}`);
     console.error(`[link-worktree-deps] WARNING: npm run ${script} failed in examples/blog (${why}).`);
     console.error('[link-worktree-deps] Linking succeeded. Three blog tests and their enclosing suite will fail until you run, from examples/blog, npm run db:migrate then npm run db:seed.');
     return;
@@ -230,10 +256,14 @@ console.log(`[link-worktree-deps] ${linked} linked, ${skipped} already present.`
 
 // LAST, after the links: `npm run db:migrate` resolves the `webjs` bin through
 // the root `node_modules/.bin` the loops above just linked, so this cannot run
-// earlier. It is also below the `primary === here` guard at the top, which is
-// load-bearing: `test/repo-health/link-worktree-deps.test.mjs` runs this script
-// against the REAL checkout on every `npm test`, and a seed step above that
-// guard would migrate and seed the shared database every time the suite ran.
+// earlier. Being below the `primary === here` guard keeps it out of the primary
+// checkout, but that guard is NOT what keeps it out of the test suite: the
+// `defaultPrimary()` test in `test/repo-health/link-worktree-deps.test.mjs`
+// runs this script bare against its own cwd, and from a linked worktree (the
+// mandated workflow) that cwd is a worktree, so the guard does not fire. That
+// test sets `WEBJS_NO_WORKTREE_SEED=1` for exactly this reason. Without it,
+// `npm test` would migrate and seed the blog database as a side effect, racing
+// `test/integration/blog-http.test.mjs`, which reads the same file in parallel.
 if (process.env.WEBJS_NO_WORKTREE_SEED === '1') {
   console.log('[link-worktree-deps] blog database seeding skipped (WEBJS_NO_WORKTREE_SEED=1).');
 } else {

@@ -60,9 +60,30 @@ function makeWorktree({ blog = false } = {}) {
   return root;
 }
 
+/**
+ * The ambient env, minus the two variables that would make these tests report
+ * on the developer's shell rather than on the script.
+ *
+ * `WEBJS_NO_WORKTREE_SEED=1` is documented in AGENTS.md and framework-dev.md as
+ * the supported opt-out, so a developer or agent may well have it exported. The
+ * seed tests below assert that seeding HAPPENS, and would silently invert into
+ * failures for that person. Only the test that opts in passes it explicitly.
+ *
+ * `DATABASE_URL` is stripped for the same reason: the script now resolves the
+ * database path the way the blog does, so an exported value would point the
+ * probe outside the synthetic worktree these tests build.
+ *
+ * @param {Record<string, string>} [env] overrides, applied after the strip
+ * @returns {NodeJS.ProcessEnv}
+ */
+function cleanEnv(env = {}) {
+  const { WEBJS_NO_WORKTREE_SEED: _seed, DATABASE_URL: _db, ...rest } = process.env;
+  return { ...rest, ...env };
+}
+
 /** @returns {string} combined stdout of the script run inside `cwd` */
 function run(cwd, primary) {
-  return execFileSync(process.execPath, [SCRIPT, primary], { cwd, encoding: 'utf8' });
+  return execFileSync(process.execPath, [SCRIPT, primary], { cwd, encoding: 'utf8', env: cleanEnv() });
 }
 
 /** @returns {{ status: number|null, stdout: string, stderr: string }} */
@@ -70,7 +91,7 @@ function runWithResult(cwd, primary, env = {}) {
   const r = spawnSync(process.execPath, [SCRIPT, primary], {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, ...env },
+    env: cleanEnv(env),
   });
   return { status: r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
 }
@@ -154,8 +175,17 @@ describe('link-worktree-deps (#1287)', () => {
   test('defaultPrimary() resolves the real primary from this checkout', () => {
     // Every other test passes `primary` as argv[2], so without this the
     // git-derived default branch never executes at all.
+    //
+    // This is the ONE test that runs the script against a real checkout, so it
+    // must not seed. Run from the primary the `primary === here` guard stops it,
+    // but run from a linked worktree (the mandated workflow) that guard does not
+    // fire, and the script would migrate and seed that worktree's blog database
+    // as a side effect of `npm test`, concurrently with `blog-http.test.mjs`
+    // reading the same file. The escape hatch is what actually keeps it out.
     const out = execFileSync(process.execPath, [SCRIPT], {
-      cwd: process.cwd(), encoding: 'utf8',
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      env: { ...process.env, WEBJS_NO_WORKTREE_SEED: '1' },
     });
     // Run from the repo itself, so it must recognise the primary and no-op
     // rather than linking anything.
@@ -270,6 +300,28 @@ describe('link-worktree-deps (#1287)', () => {
       assert.match(res.stdout, /blog database seeding skipped \(WEBJS_NO_WORKTREE_SEED=1\)/);
       assert.equal(existsSync(join(wt, 'examples/blog/db/dev.db')), false);
       assert.equal(existsSync(join(wt, 'examples/blog/db/ran.log')), false);
+    } finally {
+      rmSync(primary, { recursive: true, force: true });
+      rmSync(wt, { recursive: true, force: true });
+    }
+  });
+
+  test('probes the DATABASE_URL path, not a hardcoded db/dev.db (#1323)', () => {
+    // `db:migrate` and `db:seed` inherit this env var and the blog resolves it,
+    // so a probe of a hardcoded `db/dev.db` would miss every time it is set and
+    // the already-seeded fast path could never fire.
+    const primary = makePrimary();
+    const wt = makeWorktree({ blog: true });
+    try {
+      const dbPath = join(wt, 'examples/blog/db/custom.db');
+      const db = new DatabaseSync(dbPath);
+      db.exec('create table posts (id integer primary key, title text)');
+      db.exec("insert into posts (title) values ('hello')");
+      db.close();
+      const res = runWithResult(wt, primary, { DATABASE_URL: 'file:./db/custom.db' });
+      assert.equal(res.status, 0);
+      assert.match(res.stdout, /already has 1 posts, leaving it alone/);
+      assert.equal(existsSync(join(wt, 'examples/blog/db/ran.log')), false, 'no reseed');
     } finally {
       rmSync(primary, { recursive: true, force: true });
       rmSync(wt, { recursive: true, force: true });

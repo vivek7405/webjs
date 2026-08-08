@@ -17,9 +17,13 @@
  */
 export function assertBlogSeeded(homeHtml) {
   if (/<a[^>]+href=["']\/blog\/[^"']+["']/.test(homeHtml)) return;
+  // The `db:migrate` / `db:seed` pair leads because it is the remedy that works
+  // everywhere. `npm run worktree:link` exits at its `primary === here` guard
+  // in the primary checkout, printing a success line without seeding anything,
+  // so naming it first sends anyone running the suite there in a circle.
   throw new Error(
     'The blog database has no posts, so these tests cannot pass. '
-    + 'Run `npm run worktree:link` from this worktree, or run `npm run db:migrate` '
-    + 'then `npm run db:seed` inside examples/blog.',
+    + 'Run `npm run db:migrate` then `npm run db:seed` inside examples/blog. '
+    + 'In a linked worktree, `npm run worktree:link` does both for you.',
   );
 }
