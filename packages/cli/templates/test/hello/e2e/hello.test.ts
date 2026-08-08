@@ -20,6 +20,13 @@ import { createServer } from 'node:net';
 // minimal structural types keep the file typed in the meantime; swap them for
 // the real imports once puppeteer-core is in package.json. Reaching for `any`
 // here would silently un-type every call below.
+//
+// They also stay in force when the package IS present, which is the case a
+// generated app usually hits, since @web/test-runner pulls puppeteer-core in
+// transitively. The real Page / Browser are far richer than these, so letting
+// them flow in would fail against the narrow shapes here for the goto return
+// type and the event-handler signature. The single import below is the one
+// boundary where that is resolved, and it is the only suppressed line.
 type Page = {
   // goto resolves an HTTPResponse this file never reads, and modelling that
   // type would mean re-declaring puppeteer's. Returning void is the honest
@@ -30,6 +37,10 @@ type Page = {
   removeAllListeners(event: string): void;
 };
 type Browser = { newPage(): Promise<Page>; close(): Promise<void> };
+// The module's own default export, narrowed to the one call this file makes.
+type Puppeteer = {
+  launch(opts: { executablePath?: string; headless?: boolean; args?: string[] }): Promise<Browser>;
+};
 
 let browser: Browser, page: Page, serverProcess: ChildProcess, baseUrl: string;
 
@@ -46,9 +57,17 @@ function freePort(): Promise<number> {
 }
 
 before(async () => {
-  let puppeteer;
+  let puppeteer: Puppeteer | undefined;
+  // @ts-ignore This one line is where the optional dependency enters, and it
+  // is unresolved OR richer than the structural types above depending on
+  // whether puppeteer-core is installed. Suppressing it here keeps the rest
+  // of the file typed against the shapes declared above in both states.
+  // @ts-expect-error is the wrong directive precisely because the error is
+  // conditional: it would itself become an unused-directive error whenever
+  // the package IS present.
   try { puppeteer = (await import('puppeteer-core')).default; }
   catch { console.log('# Skipping: puppeteer-core not installed'); return; }
+  if (!puppeteer) return;
 
   const port = await freePort();
   baseUrl = `http://localhost:${port}`;
