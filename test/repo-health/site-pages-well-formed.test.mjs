@@ -317,11 +317,19 @@ describe('site pages produce balanced container tags (router-safe HTML)', () => 
 });
 
 describe('the template extractor', () => {
+  // Both truncation fixtures put the desynchronizing hole inside a NESTED
+  // template, which is the shape components/doc-search.ts holds (L94-101) and
+  // the shape that actually reproduces. A block-bodied arrow at the outer
+  // level leaves the flat counter one short but with no later backtick to
+  // stop at, so it survives by luck; a nested template supplies exactly that
+  // backtick, and the old scan ends there with the outer </div> dropped.
   test('a hole holding a block-bodied arrow does not truncate the literal', () => {
     const src = [
       'const t = html`',
       '  <div>',
-      "    <a @click=${(e) => { e.preventDefault(); go(); }}>x</a>",
+      '    ${rows.map((r) => html`',
+      '      <a @click=${(e) => { e.preventDefault(); go(); }}>x</a>',
+      '    `)}',
       '  </div>',
       '`;',
     ].join('\n');
@@ -333,8 +341,10 @@ describe('the template extractor', () => {
   test('a hole holding a bare object literal does not truncate the literal', () => {
     const src = [
       'const t = html`',
-      '  <div class=${cls({ variant: "outline" })}>',
-      '    <ul><li>x</li></ul>',
+      '  <div>',
+      '    ${rows.map((r) => html`',
+      '      <ul class=${cls({ variant: "outline" })}><li>x</li></ul>',
+      '    `)}',
       '  </div>',
       '`;',
     ].join('\n');
