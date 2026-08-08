@@ -216,6 +216,13 @@ export function bodyToMarkdown(raw: string): string {
     return `\uE000CODE${codeBlocks.length - 1}\uE000`;
   });
 
+  // Prose template holes that survive rather than being dropped, parked
+  // behind a sentinel while the dynamic-hole strip runs. Same U+E001
+  // escape-not-literal rule as the code-block sentinel above, so the
+  // file stays diffable text.
+  const heldHoles: string[] = [];
+  const keepHole = (text: string) => `\uE001HOLE${heldHoles.push(text) - 1}\uE001`;
+
   body = body
     // Headings -> markdown
     .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/g, (_m, t) => `\n# ${oneLine(t)}\n`)
@@ -231,11 +238,33 @@ export function bodyToMarkdown(raw: string): string {
     .replace(/<\/?(ul|ol)[^>]*>/g, '\n')
     // Strip every remaining tag
     .replace(/<[^>]+>/g, ' ')
-    // Drop template-interpolation holes. Brace-aware: `[^}]*` stops at the
-    // FIRST `}`, so a nested hole like ${"${createPost}"} (docs/architecture
-    // authors one) left `"}` behind as debris in the prose. Invisible until
-    // the decode ordering above was fixed, and reader-visible after.
+    // Template holes in prose. Three shapes, and only one is dynamic:
+    //
+    //   \${x}      an ESCAPED hole. The `\$` means the page is not
+    //              interpolating at all, so the reader sees the literal text
+    //              `${x}`. Keep it, minus the escape.
+    //   ${"lit"}   a hole whose value is a string literal, so the reader sees
+    //              that literal. Keep the literal.
+    //   ${x}       a real hole. What it renders is known only at render time,
+    //              so there is nothing to put in the corpus. Drop it.
+    //
+    // All three used to be dropped alike, which deleted the binding out of
+    // every sentence teaching `<form action=${action}>` and stranded the
+    // escape backslash. On main that damage was hidden, because the runaway
+    // strip had already eaten those fragments whole; restoring them exposed
+    // 12 corpus lines reading `<form action=\>`, in the one surface whose
+    // reader is an LLM and about the exact shape invariant 12 governs.
+    //
+    // The kept text is parked behind a sentinel so the dynamic-hole strip
+    // below cannot eat what these two just preserved, and it is restored
+    // before `decodeEntities` so entities inside it decode like any prose.
+    .replace(/\\\$\{((?:[^{}]|\{[^}]*\})*)\}/g, (_m, inner) => keepHole('${' + inner + '}'))
+    .replace(/\$\{"((?:[^"\\]|\\.)*)"\}/g, (_m, lit) => keepHole(lit))
+    // Brace-aware: `[^}]*` would stop at the FIRST `}`, leaving `"}` debris
+    // behind a nested hole.
     .replace(/\$\{(?:[^{}]|\{[^}]*\})*\}/g, '');
+
+  body = body.replace(/\uE001HOLE(\d+)\uE001/g, (_m, i) => heldHoles[Number(i)]);
 
   body = decodeEntities(body);
 

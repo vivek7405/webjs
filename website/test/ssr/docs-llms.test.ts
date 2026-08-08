@@ -164,14 +164,30 @@ test('an escaped tag in prose survives to the corpus', () => {
   assert.equal(md, 'a value with <code> here');
 });
 
-test('a nested template hole leaves no debris behind', () => {
-  // The hole strip used to be `\$\{[^}]*\}`, which stops at the FIRST `}`, so
-  // the nested hole /docs/architecture authors left `"}` in the prose. It was
-  // invisible while the runaway strip above deleted the whole fragment, and
-  // reader-visible once the decode ordering was fixed, which is why the two
-  // ship together.
+test('a hole whose value is a string literal keeps the value', () => {
+  // /docs/architecture authors this shape. The outer hole interpolates a
+  // string literal, so a reader of the rendered page sees the inner text, and
+  // the corpus has to show the same thing. Dropping it printed
+  // `<form action=>`, a form-binding sentence with the binding deleted, in
+  // the one surface whose reader is an LLM.
   const md = bodyToMarkdown('html`<p>a <code>&lt;form action=${"${createPost}"}&gt;</code> posts</p>`');
-  assert.equal(md, 'a <form action=> posts');
+  assert.equal(md, 'a <form action=${createPost}> posts');
+});
+
+test('an escaped hole is literal text, not an interpolation to drop', () => {
+  // `\${x}` in the source is NOT a hole: the escape means the page renders the
+  // literal `${x}`. Dropping it as if it were dynamic deleted the binding and
+  // stranded the escape backslash, which is what put `@submit=\` and
+  // `<form action=\>` in the corpus.
+  const md = bodyToMarkdown('html`<p>handlers (<code>@submit=\\${e =&gt; { e.preventDefault(); }}</code>) are untouched</p>`');
+  assert.equal(md, 'handlers ( @submit=${e => { e.preventDefault(); }} ) are untouched');
+});
+
+test('a genuinely dynamic hole is still dropped', () => {
+  // The counterpart to the two above: a hole referencing a variable renders
+  // something known only at render time, so there is nothing to put in the
+  // corpus and it must still go.
+  assert.equal(bodyToMarkdown('html`<p>text ${children} here</p>`'), 'text here');
 });
 
 test('plainText strips tags before it decodes entities', () => {
