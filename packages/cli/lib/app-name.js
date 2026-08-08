@@ -206,3 +206,66 @@ export function assertValidAppName(name) {
   }
   return /** @type {string} */ (name);
 }
+
+/**
+ * PostgreSQL's hard cap on an identifier, `NAMEDATALEN - 1` bytes. An
+ * over-length `CREATE DATABASE` name is silently truncated to this with only a
+ * NOTICE, which would reproduce the same name mismatch in a new guise, so the
+ * derivation caps it here instead.
+ */
+export const DB_NAME_MAX_LENGTH = 63;
+
+/**
+ * Derive the PostgreSQL database name the scaffold writes into the generated
+ * `.env.example` `DATABASE_URL`. The APP NAME itself is never touched by this:
+ * the directory, the `package.json` `name`, the `{{APP_NAME}}` substitution and
+ * `metadata.title` all keep the name exactly as typed. Only the database
+ * segment of that one URL is normalized.
+ *
+ * The point is a QUOTING-INVARIANT name. A result in `[a-z_][a-z0-9_]*` under
+ * 63 bytes folds to itself under `CREATE DATABASE <name>;` AND is passed
+ * through unquoted by `createdb` (which builds its statement through `fmtId`),
+ * so the emitted URL names the same database whichever route the user takes.
+ * A case-preserving name does not have that property: `CREATE DATABASE MyApp;`
+ * creates `myapp` while `createdb MyApp` creates `MyApp`.
+ *
+ * Three sub-rules, in this order, and the order is load-bearing:
+ *
+ *   1. Fold with `toLowerCase()`, NOT `toLocaleLowerCase()`. The latter is
+ *      locale-dependent, so a Turkish-locale machine would fold `I` to the
+ *      dotless `ı`, which the class below then turns into `_`, making the
+ *      generated file machine-dependent.
+ *   2. Map every remaining character outside `[a-z0-9_]` to `_`, one for one.
+ *      No run-collapsing, no trimming: both are legal identifier characters,
+ *      and a 1:1 fold is one a reader can apply by eye. `checkAppName` already
+ *      restricts the input to `[A-Za-z0-9._-]`, so in practice this only ever
+ *      rewrites `.` and `-`.
+ *   3. Prefix a single `_` when the first character is a digit, BEFORE the
+ *      slice so the cap governs the final string. `ALLOWED_FIRST_CHAR` admits
+ *      a leading digit, and an unquoted PostgreSQL identifier may not start
+ *      with one.
+ *
+ * Slicing LAST is what makes the byte cap correct: after the fold every
+ * surviving character is one ASCII byte, so a code-unit slice is a byte slice,
+ * and there is no surrogate pair or percent-escape for it to bisect (every
+ * character is unreserved under RFC 3986, so the segment needs no encoding).
+ *
+ * Precondition: `name` has passed `checkAppName`. `scaffoldApp` asserts that
+ * before any file is written. That is what guarantees a non-empty result (a
+ * validated name's first character is `[A-Za-z0-9]`, which folds into the
+ * class and survives), so there is no empty-result fallback branch here.
+ *
+ * Collisions are accepted and NOT detected. `My-App` and `my_app` both fold to
+ * `my_app`. This is a placeholder in `.env.example`, not a provisioned
+ * resource: the scaffold contacts no server and cannot know what exists, and a
+ * uniquifying suffix would make the name untraceable to the app name. Rails
+ * takes the same position in `railties/lib/rails/generators/app_name.rb`.
+ *
+ * @param {string} name  an app name that has passed `checkAppName`
+ * @returns {string}     a fold-stable, unquoted-safe PostgreSQL database name
+ */
+export function toDatabaseName(name) {
+  const folded = name.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  const prefixed = /^[0-9]/.test(folded) ? `_${folded}` : folded;
+  return prefixed.slice(0, DB_NAME_MAX_LENGTH);
+}
