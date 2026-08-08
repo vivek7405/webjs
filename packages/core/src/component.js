@@ -1166,16 +1166,21 @@ class WebComponentBase extends Base {
       v = value != null && value !== 'false';
     } else if (def.type === Object || def.type === Array) {
       // An attribute that is not parseable JSON is treated exactly like an
-      // ABSENT one (#1253), which is what closes the round trip. Reflection
-      // REMOVES the attribute for a value it cannot serialize, so "valid JSON"
-      // and "no attribute" are the only two states the writer can produce, and
-      // an absent attribute already reads back as `null` through the
-      // `value == null` arm on this same line. Handing back the raw STRING
-      // invented a third state neither the writer nor an unset property can
-      // produce, and put a string into a property declared `Object`. lit's
-      // `defaultConverter.fromAttribute` lands on the same `null`, for the
-      // reason its own comment gives: an element does not complain about being
-      // mis-configured.
+      // ABSENT one (#1253). The reason is not that the writer can only ever
+      // produce valid JSON: `JSON.stringify` RETURNS `undefined` without
+      // throwing for a `Symbol` and for a `toJSON()` that returns nothing, and
+      // `setAttribute` writes that as the literal string, so `cfg="undefined"`
+      // is still reachable and is deliberately left alone as a separate defect.
+      // The reason is that a STRING is never a valid value for a property the
+      // author declared `Object` or `Array`, whatever put it there. `null` is
+      // what an unset property holds and what an absent attribute already
+      // yields through the `value == null` arm on this same line, so it is the
+      // one answer that does not invent a value. `applyAttrsToInstance` in
+      // `render-server.js` is the SSR half of this same contract and falls back
+      // identically; the two must agree or an element SSRs holding one value
+      // and re-renders holding another. lit's `defaultConverter.fromAttribute`
+      // lands on the same `null`, for the reason its own comment gives: an
+      // element does not complain about being mis-configured.
       try { v = value == null ? null : JSON.parse(value); } catch { v = null; }
     } else {
       v = value;

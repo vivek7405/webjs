@@ -1729,7 +1729,16 @@ function applyAttrsToInstance(instance, attrs, Cls) {
       // before JSON.parse. A JSON attribute carries `&quot;` for every `"`;
       // parsing it raw throws and would silently fall back to the string,
       // leaving an Object/Array prop holding a string at SSR.
-      try { instance[propName] = JSON.parse(unescapeAttr(raw)); } catch { instance[propName] = raw; }
+      //
+      // An unparseable attribute falls back to `null`, NOT to the raw string
+      // (#1253). This reader and `attributeChangedCallback` in `component.js`
+      // are the two halves of one contract and must agree, or the same
+      // `<my-el cfg="oops">` SSRs holding a string and re-renders holding
+      // something else the moment the element upgrades. `null` is the right
+      // half to agree on: a string is never a valid value for a property the
+      // author declared `Object` or `Array`, and an ABSENT attribute already
+      // reads back as `null` on both sides.
+      try { instance[propName] = JSON.parse(unescapeAttr(raw)); } catch { instance[propName] = null; }
     } else instance[propName] = raw;
   }
 }

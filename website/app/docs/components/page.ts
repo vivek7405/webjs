@@ -123,7 +123,7 @@ UserCard.register('user-card');</code-block>
       <li><strong>String</strong>: passed through as-is.</li>
       <li><strong>Number</strong>: converted via <code>Number(value)</code>. Null attributes become <code>null</code>.</li>
       <li><strong>Boolean</strong>: the attribute is <code>true</code> if present and not <code>"false"</code>. Removing the attribute sets <code>false</code>.</li>
-      <li><strong>Object / Array</strong>: parsed via <code>JSON.parse()</code>. If parsing fails, the raw string is used.</li>
+      <li><strong>Object / Array</strong>: parsed via <code>JSON.parse()</code>. If parsing fails the property reads back as <code>null</code>, exactly as an absent attribute does, since a string is never a valid value for a property declared <code>Object</code> or <code>Array</code>.</li>
     </ul>
 
     <p>Property names are automatically converted between camelCase (JavaScript) and kebab-case (HTML). A property named <code>userName</code> observes the attribute <code>user-name</code>.</p>

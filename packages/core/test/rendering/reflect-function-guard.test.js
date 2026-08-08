@@ -514,4 +514,23 @@ describe('reflect:true drops an unserializable JSON value (#1253)', () => {
     );
     assert.equal(warnings.length, 0, `a serializable value must not warn: ${warnings.join(' | ')}`);
   });
+
+  test('the SSR reader falls back to null too, so it cannot disagree with the client (#1253)', async () => {
+    // `applyAttrsToInstance` (render-server.js) and `attributeChangedCallback`
+    // (component.js) are the two halves of one contract. If only one of them
+    // falls back to `null`, the same `<my-el cfg="oops">` SSRs holding a string
+    // and re-renders holding something else the moment the element upgrades,
+    // which is a hydration divergence rather than a fixed round trip.
+    class Reader extends WebComponent({ cfg: prop(Object) }) {
+      render() {
+        return html`<i>val=${JSON.stringify(this.cfg)}</i>`;
+      }
+    }
+    Reader.register('reflect-unser-reader');
+
+    const out = await renderToString(html`<reflect-unser-reader cfg="not-json"></reflect-unser-reader>`);
+
+    assert.ok(out.includes('val=null'), `the SSR reader kept the raw string: ${out}`);
+    assert.ok(!out.includes('val=&quot;not-json&quot;') && !out.includes('val="not-json"'), out);
+  });
 });
