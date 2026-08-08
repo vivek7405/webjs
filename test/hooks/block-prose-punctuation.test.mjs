@@ -25,6 +25,98 @@ test('blocks em-dash anywhere', () => {
   assert.equal(runContent(`foo ${emDash} bar`).status, 2);
 });
 
+// --- Rule 2 / 3 prose contexts: JSON prose values and YAML front matter ---
+
+test('blocks a pause-hyphen in a JSON description / title / displayName value', () => {
+  const r = runContent('  "description": "A library - for things",');
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /pause-hyphen/);
+  assert.equal(runContent('  "title": "Neutral - the default palette",').status, 2);
+  assert.equal(runContent('  "displayName": "Editor - all in one",').status, 2);
+  // Deeply nested, the way the config JSON Schema indents its field docs.
+  assert.equal(runContent('            "description": "A library - for things",').status, 2);
+  // The string that sat in the repo root manifest before this rule existed.
+  assert.equal(
+    runContent('  "description": "WebJs - AI-first, web-components-first framework.",').status,
+    2,
+  );
+});
+
+test('blocks a pause-semicolon in a JSON description value', () => {
+  const r = runContent('  "description": "Forms work ; links work too.",');
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /pause-semicolon/);
+});
+
+test('blocks a pause-hyphen in column-0 YAML front matter', () => {
+  assert.equal(runContent('description: A framework - for the web.').status, 2);
+  assert.equal(runContent('title: Signals - the default state primitive').status, 2);
+});
+
+test('the four original prose contexts still block (unchanged)', () => {
+  assert.equal(runContent('# A library - for things').status, 2);
+  assert.equal(runContent('> A library - for things').status, 2);
+  assert.equal(runContent('// A library - for things').status, 2);
+  // Assembled so this source file does not itself carry the HTML prose shape.
+  assert.equal(runContent('<li>A library ' + '- for things</li>').status, 2);
+});
+
+// --- Rule 2 / 3 allow: every code-shaped JSON value lives under another key ---
+
+test('allows code-shaped JSON values, which sit under keys the rule ignores', () => {
+  const allowed = [
+    '    "drizzle-orm": "1.2.3 - 2.3.4",',
+    '    "node": ">=24.0.0-alpha - 25",',
+    '    "test:e2e": "node scripts/run.js --filter - --bail",',
+    '    "command": ".claude/hooks/require-docs - src.sh"',
+    '  "name": "@webjsdev/ui-registry",',
+    '    "basePath": "/app - v2",',
+    '  "main": "./src/index.js",',
+    '      "default": "(cast((julianday(a) - 2440587.5)*86400 as integer))",',
+  ];
+  for (const line of allowed) {
+    assert.equal(runContent(line).status, 0, `should allow: ${line}`);
+  }
+});
+
+test('allows compound words and an ordinary semicolon inside a scanned value', () => {
+  // Proves the shared character-class core was reused rather than reinvented:
+  // a compound word has no surrounding spaces, so it cannot match.
+  assert.equal(
+    runContent('  "description": "An AI-first, web-components-first framework.",').status,
+    0,
+  );
+  // Only the space-surrounded semicolon is banned.
+  assert.equal(
+    runContent('  "description": "Returns the envelope; the import becomes a stub.",').status,
+    0,
+  );
+});
+
+test('allows an INDENTED YAML description (a workflow input, not front matter)', () => {
+  // The column-0 anchor is what confines the front-matter rule to front matter.
+  assert.equal(runContent('        description: Republish every changelog - one time').status, 0);
+});
+
+// --- The SIGPIPE fix: rules 1 through 4 must survive a large payload ---
+
+test('blocks reliably on a 200 KB payload (no SIGPIPE skip)', () => {
+  const filler = '\n' + 'x'.repeat(200_000);
+  const emDash = String.fromCharCode(0x2014);
+  const cases = [
+    ['markdown heading', '# A library - for things' + filler],
+    ['JSON description', '  "description": "A library - for things",' + filler],
+    ['em-dash', `foo ${emDash} bar` + filler],
+  ];
+  // Loop: the pre-fix bug was a race on the pipe buffer, so a single run could
+  // pass against the broken hook.
+  for (const [label, content] of cases) {
+    for (let i = 0; i < 5; i++) {
+      assert.equal(runContent(content).status, 2, `${label}, run ${i + 1}`);
+    }
+  }
+});
+
 // --- The brand rule blocks (lowercase "webjs" naming the brand in prose) ---
 
 test('blocks lowercase brand at a line start', () => {
@@ -161,6 +253,53 @@ test('known false-negatives: EOL / parenthesized brand are allowed (FN bias)', (
   // biases toward not blocking rather than risk a code false-positive.
   assert.equal(runContent(`Built with ${B}`).status, 0);
   assert.equal(runContent(`(built on ${B})`).status, 0);
+});
+
+// --- Drift guard: the tracked tree itself must pass the prose-key rules ---
+
+const REPO_ROOT = resolve(HERE, '../..');
+
+/** The four prose-key patterns, read out of the live hook so nothing is duplicated. */
+function proseKeyPatterns() {
+  const hookSrc = readFileSync(HOOK, 'utf8');
+  const pats = [...hookSrc.matchAll(/^if grep -qE '(.*)' <<< "\$new_content"; then$/gm)]
+    .map((m) => m[1])
+    .filter((p) => p.includes('(description|title|displayName)'));
+  assert.equal(pats.length, 4, 'hook carries the four prose-key patterns');
+  return pats;
+}
+
+test('no tracked JSON or front-matter prose value carries a banned pause', () => {
+  for (const pattern of proseKeyPatterns()) {
+    const r = spawnSync('git', ['grep', '-nE', pattern, '--', '*.json', '*.md'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    });
+    // git grep exits 1 when nothing matches, which is the passing case.
+    assert.equal(r.status, 1, `pause found in a prose value:\n${r.stdout}`);
+  }
+});
+
+// --- Drift guard: all three copies of the hook stay in step ---
+
+test('the scaffold and dogfood hook copies carry the same rules', () => {
+  const scaffold = resolve(REPO_ROOT, 'packages/cli/templates/.claude/hooks/block-prose-punctuation.sh');
+  const blog = resolve(REPO_ROOT, 'examples/blog/.claude/hooks/block-prose-punctuation.sh');
+  const scaffoldSrc = readFileSync(scaffold, 'utf8');
+  assert.equal(scaffoldSrc, readFileSync(blog, 'utf8'), 'the two copies are byte-identical');
+
+  for (const pattern of proseKeyPatterns()) {
+    assert.ok(scaffoldSrc.includes(pattern), `copy is missing a prose-key pattern: ${pattern}`);
+  }
+  // The SIGPIPE fix must hold in every copy: a `grep -q` behind a pipe silently
+  // skips its rule once the payload outgrows the pipe buffer.
+  for (const [label, src] of [['repo', readFileSync(HOOK, 'utf8')], ['scaffold', scaffoldSrc]]) {
+    assert.equal(
+      /^if printf .*\| grep -q/m.test(src),
+      false,
+      `${label} copy still pipes into grep -q`,
+    );
+  }
 });
 
 // --- Drift guard: the hook CLI list must cover the real CLI subcommands ---

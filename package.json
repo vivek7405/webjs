@@ -2,7 +2,7 @@
   "name": "webjs-monorepo",
   "private": true,
   "version": "0.1.0",
-  "description": "WebJs - AI-first, web-components-first framework.",
+  "description": "WebJs is an AI-first, web-components-first framework.",
   "license": "MIT",
   "type": "module",
   "workspaces": [
