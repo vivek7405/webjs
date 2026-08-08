@@ -206,9 +206,11 @@ so source them rather than copying them here. A second copy of a constant drifts
 exactly the way a second copy of a rule does, which this skill has already
 demonstrated once (see the GraphQL budget section below).
 
-The one id you must fetch is each issue's project-item id. Fetch them ONCE for
-the whole batch, in a single aliased query, and cache the result to the
-scratchpad. **Run the whole thing as ONE block**, per the note below it:
+The one id you must fetch is each issue's project-item id. Step 1 below runs
+ONCE for the whole batch and caches the result; step 2 runs per card, reading
+that cache. **Step 2 must be one shell invocation**, per the note under it. Do
+not re-run step 1 per card, which would spend a whole query to re-fetch ids you
+already have.
 
 ```sh
 # 1. Cache the item ids for the batch (one aliased query, one request).
@@ -232,7 +234,8 @@ gh project item-edit --id "$ITEM" \
   --single-select-option-id "$STATUS_READY"
 ```
 
-**Keep `source`, the `ITEM` lookup, and `item-edit` in the SAME shell invocation.**
+**Keep step 2's `source`, `ITEM` lookup, and `item-edit` in the SAME shell
+invocation.** Step 1 is separate and runs once for the batch.
 Environment variables do not survive between separate tool calls, so a `source`
 run as its own step leaves `$PROJECT_ID`, `$STATUS_FIELD_ID`, and `$STATUS_READY`
 empty in the next one, and `item-edit` is then called with three empty flags. It

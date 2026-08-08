@@ -54,6 +54,10 @@ const BANNED_WRITES = [
 
 const BANNED = [...BANNED_READS, ...BANNED_WRITES];
 
+// These route to GraphQL and stay there anyway, for reasons in the doctrine.
+// They run once per PR, so the cost is noise against what converting them risks.
+const PORCELAIN_EXCEPTIONS = ['gh pr merge', 'gh pr create', 'gh pr checks'];
+
 /** Board ids belong in .claude/gh-ids.env, never copied into a skill. */
 const ID_LITERALS = [/PVT_[A-Za-z0-9_]+/, /PVTSSF_[A-Za-z0-9_]+/];
 
@@ -229,7 +233,27 @@ test('a shell block that sources gh-ids.env also USES it in the same block', () 
 
 test('the doctrine names its own exceptions, so they are not "fixed" later', () => {
   const src = readFileSync(DOCTRINE, 'utf8');
-  for (const cmd of ['gh pr merge', 'gh pr create', 'gh pr checks']) {
+  for (const cmd of PORCELAIN_EXCEPTIONS) {
     assert.ok(src.includes(cmd), `the doctrine must explain why ${cmd} stays on the porcelain`);
   }
+});
+
+test('AGENTS.md never tells an agent to convert a porcelain exception', () => {
+  // The converse of the assertion above, and the direction that actually broke:
+  // `gh pr checks` was listed among the commands to convert, on the one surface
+  // non-Claude agents read, while the doctrine warned that converting it lets a
+  // red build onto `main`. Both directions have to hold or the two disagree.
+  const agents = readFileSync(join(ROOT, 'AGENTS.md'), 'utf8');
+  const section = agents.slice(agents.indexOf('Talking to GitHub'));
+  const convert = section.slice(0, section.indexOf('Leave these on the porcelain'));
+  const wrong = PORCELAIN_EXCEPTIONS.filter((c) => convert.includes(c));
+  assert.deepEqual(
+    wrong,
+    [],
+    `AGENTS.md lists these as convert-to-REST, but they are documented exceptions: ${wrong.join(', ')}`,
+  );
+  // And each exception must actually be named as one on that surface.
+  const kept = agents.slice(agents.indexOf('Leave these on the porcelain'));
+  const unexplained = PORCELAIN_EXCEPTIONS.filter((c) => !kept.includes(c));
+  assert.deepEqual(unexplained, [], `not named as exceptions in AGENTS.md: ${unexplained.join(', ')}`);
 });

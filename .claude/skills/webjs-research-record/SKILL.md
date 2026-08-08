@@ -55,11 +55,13 @@ Extract from the user's request:
 
 ## Steps
 
-Every call below is REST (`gh api`). The `gh issue *` porcelain goes through
-GraphQL, whose point budget is routinely spent here, and writing the record IS
-this skill's whole deliverable, so it must not be the thing a spent budget
-blocks. See `.claude/gh-budget.md`. Build every body payload with
-`jq -n --rawfile` so backticks and `$` in the prose never reach the shell.
+Every `gh issue *` call below is REST (`gh api`), because that porcelain goes
+through GraphQL, whose point budget is routinely spent here, and writing the
+record IS this skill's whole deliverable, so it must not be the thing a spent
+budget blocks. The one porcelain call kept is `gh label create` in step 1, which
+is already REST underneath (see the note there). See `.claude/gh-budget.md`.
+Build every body payload with `jq -n --rawfile` so backticks and `$` in the prose
+never reach the shell.
 
 1. **Ensure the `research` label exists** (one-time):
    ```sh

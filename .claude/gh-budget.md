@@ -80,10 +80,15 @@ reference out of a posted review in this repo.
 query string, and resolve to nothing when there is no remote, so a call in a
 test harness fails closed rather than erroring.
 
-## Three commands that deliberately stay on GraphQL
+## Commands that deliberately stay on the porcelain
 
-These run ONCE per PR, so their cost is noise, and each has a specific reason
-that outweighs it. Do not "finish the job" by converting them.
+`gh pr merge`, `gh pr create`, and `gh pr checks` all route to GraphQL and stay
+that way. They run ONCE per PR, so their cost is noise, and each has a specific
+reason that outweighs it. Do not "finish the job" by converting them.
+
+(`gh label create` is on the porcelain too, but for a different reason: it is
+already REST underneath, so there is nothing to convert. See the measurement
+warning above.)
 
 **`gh pr merge`.** Two PostToolUse hooks detect a merge by matching the literal
 string `gh pr merge` in the command. Rewriting it to `gh api -X PUT .../merge`

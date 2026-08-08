@@ -79,13 +79,15 @@ A Skill is model-invoked, so it fires only when the model judges a match. The `.
 
 GitHub scores two independent budgets, and `gh` routes to them in a way the command names hide. **Most `gh` porcelain commands issue `POST /graphql`**, whose 5000/hour budget is scored in **points** rather than requests, so one query walking a large connection can cost hundreds. Sessions here exhaust it routinely, and when it is gone the project board becomes unreachable and two PostToolUse hooks fail silently. The REST budget (`gh api <path>`, 5000 requests/hour) sits idle meanwhile.
 
-This covers the **reads** (`gh issue view` / `gh issue list` / `gh pr view` / `gh pr list` / `gh pr diff` / `gh pr checks` / `gh pr status` / `gh search issues` / `gh label list`) AND the **writes** (`gh issue create` / `gh issue edit` / `gh issue close` / `gh issue comment`). The writes are lower volume, but a task whose whole deliverable is a write is blocked outright once the budget is gone.
+Convert these, which is the whole high-volume surface. Reads: `gh issue view` / `gh issue list` / `gh pr view` / `gh pr list` / `gh pr diff` / `gh pr status` / `gh search issues` / `gh label list`. Writes: `gh issue create` / `gh issue edit` / `gh issue close` / `gh issue comment`. The writes are lower volume, but a task whose whole deliverable is a write is blocked outright once the budget is gone.
 
 So: **go through `gh api` over REST, and reserve GraphQL for the two things only it can do**, Projects V2 (which has no REST API) and `resolveReviewThread`.
 
-Do NOT extend that list by assuming a command family routes one way. `gh label create` looks like it belongs beside `gh label list` and does not, since it issues a plain `POST /repos/{owner}/{repo}/labels`. Measure with `GH_DEBUG=api` first.
+**Leave these on the porcelain**, even though they do route to GraphQL. `gh pr merge`, because two PostToolUse hooks detect a merge by matching that literal string. `gh pr create`, which resolves base and head from local git state. And `gh pr checks`, which is the merge gate: it folds check-runs and legacy commit statuses into one verdict, and the obvious REST replacement reports a green PR as pending, so a miss there lets a red build onto `main`. All three run once per PR, so converting them buys nothing and risks a lot.
 
-The full substitution table, the traps in each replacement, and the three commands that deliberately stay on the porcelain live in **`.claude/gh-budget.md`**. That file is the single source; skills and hooks link to it rather than restating it, because an earlier copy inside one skill drifted from the rule it stated.
+Do NOT extend either list by assuming a command family routes one way. `gh label create` looks like it belongs beside `gh label list` and does not, since it issues a plain `POST /repos/{owner}/{repo}/labels`, so it needs no conversion. Measure with `GH_DEBUG=api` first.
+
+The full substitution table, the traps in each replacement, and the reasoning behind every exception live in **`.claude/gh-budget.md`**. That file is the single source; skills and hooks link to it rather than restating it, because an earlier copy inside one skill drifted from the rule it stated.
 
 ### Autonomous mode (sandbox / bypass permissions)
 
