@@ -69,11 +69,24 @@ Prefer explicit `.ts` extensions in imports. A `.js` specifier pointing at a `.t
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "erasableSyntaxOnly": true
-  }
+  },
+  "include": [
+    "app/**/*",
+    "components/**/*",
+    "modules/**/*",
+    "lib/**/*",
+    "test/**/*",
+    "middleware.js",
+    "middleware.ts",
+    ".webjs/routes.d.ts"
+  ],
+  "exclude": ["node_modules", ".webjs/vendor", "db/migrations"]
 }
 ```
 
 `erasableSyntaxOnly: true` is the non-negotiable line. It aligns the compiler's accepted syntax with the stripper's, so violations surface as diagnostics instead of a runtime 500.
+
+`test/**/*` is in the `include` on purpose (#1299), the way Next / Remix / Astro's generated configs cover the whole tree. Leave it there. A test file outside the `include` is a file `webjs typecheck` never opens, so an implicitly-`any` parameter or a wrong argument shape in a test survives until somebody reads the line, which is exactly how one reached review here. Do not add a second `tsconfig.test.json` either: a config nobody remembers to run reproduces the same gap in a new place.
 
 ## Full-stack type safety
 

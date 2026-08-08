@@ -189,6 +189,14 @@ WEBJS_ELIDE=0 npm run test:e2e
 
 A test that passes under one and fails under the other is a wrong verdict, and `webjs elision` tells you which module and on what evidence. If the component's interactivity is genuinely invisible to static analysis, the fix is `static interactive = true` on it; see `components.md` for what that override does and does not rescue.
 
+## Type-checking your tests (`webjs typecheck`)
+
+Your tests are inside the tsconfig `include`, so `npm run typecheck` reads them (#1299). Treat a type error in a test as a failed gate, not a review catch: the checker sees a wrong argument shape or an unannotated parameter in a test the same way it sees one in `app/`.
+
+Write them to the same bar as app code, then. No `any`, no blanket `@ts-expect-error`. When a test needs a complete props object the framework would normally build, put a small typed helper in `test/helpers/` and import it rather than reaching for a cast; a cast in a test silences the one thing that would have told you the call was wrong.
+
+`.js` test files follow whatever `checkJs` says. With it off they are parsed and not checked, which is the usual setup for browser tests a real browser runs.
+
 ## Convention validation (`webjs check`)
 
 `npm run check` is the correctness validator. Every rule catches code that is wrong to ship, a crash, a security leak, a reactive prop that silently stops re-rendering, or a type-strip failure. Run it and fix every violation before considering the change done (`npm run check -- --json` for an agent loop, `npm run check -- --rules` to list the rules). It is separate from `CONVENTIONS.md`, which carries the customizable project conventions you follow by judgment.

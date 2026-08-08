@@ -38,7 +38,10 @@ export default function TypeScript() {
     "components/**/*",
     "modules/**/*",
     "lib/**/*",
-    "middleware.ts"
+    "test/**/*",
+    "middleware.js",
+    "middleware.ts",
+    ".webjs/routes.d.ts"
   ],
   "exclude": ["node_modules", ".webjs", "db/migrations"]
 }</code-block>
@@ -302,10 +305,10 @@ import '#components/footer.js';</code-block>
   "scripts": {
     "dev": "webjs dev",
     "start": "webjs start",
-    "typecheck": "tsc --noEmit",
-    "typecheck:watch": "tsc --noEmit --watch"
+    "typecheck": "webjs typecheck"
   }
 }</code-block>
-    <p>Run <code>npm run typecheck</code> in CI or as a pre-commit hook. The dev server stays fast because it only strips types. Full type analysis is a separate, parallelizable step.</p>
+    <p><code>webjs typecheck</code> is the project's own <code>tsc --noEmit</code>, and it is what a scaffolded app ships. Run <code>npm run typecheck</code> in CI or as a pre-commit hook. The dev server stays fast because it only strips types. Full type analysis is a separate, parallelizable step.</p>
+    <p>It reads whatever the <code>include</code> above names, which covers <code>test/</code> as well as your app source. A type error in a test is a failed check rather than something a reviewer has to catch by eye.</p>
   `;
 }
