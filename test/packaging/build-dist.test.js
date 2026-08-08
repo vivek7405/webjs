@@ -64,11 +64,14 @@ test('core dist build: the browser bundle actually exports the folded surface', 
   // router, so each `import { ... } from '@webjsdev/core/<subpath>'` can pick
   // its named exports from the one bundle. Confirm they are present.
   const mod = await import(pathToFileURL(join(DIST, 'webjs-core-browser.js')).href);
-  for (const name of ['html', 'render', 'WebComponent', 'enableClientRouter', 'navigate', 'repeat', 'unsafeHTML', 'createContext', 'Task', 'signal']) {
+  // `loadFrame` is here deliberately: `@webjsdev/core/client-router` resolves to
+  // THIS bundle in dist mode, so a router function missing from it is undefined
+  // in production while working in dev (#1291).
+  for (const name of ['html', 'render', 'WebComponent', 'enableClientRouter', 'navigate', 'loadFrame', 'repeat', 'unsafeHTML', 'createContext', 'Task', 'signal']) {
     assert.ok(name in mod, `webjs-core-browser.js must export ${name}`);
   }
   // Server-only symbols stay OUT of the browser bundle (the #128 split).
-  for (const serverOnly of ['renderToString', 'renderToStream', 'setCspNonceProvider']) {
+  for (const serverOnly of ['renderToString', 'renderToStream', 'setCspNonceProvider', 'setAssetUrlProvider', 'setFormActionResolver']) {
     assert.ok(!(serverOnly in mod), `webjs-core-browser.js must NOT export server-only ${serverOnly}`);
   }
 });

@@ -66,8 +66,9 @@ stays on disk so AI agents can grep it directly.
 The bare `@webjsdev/core` specifier resolves to a BROWSER-only
 entry (`dist/webjs-core-browser.js` in production, `index-browser.js`
 in source-mode dev). The browser entry drops the server-only
-`render-server.js` (~1.1k lines) and the
-`setCspNonceProvider` setter so server bytes never ride the wire.
+`render-server.js` (~1.1k lines) and the three server-side setters
+(`setCspNonceProvider`, `setAssetUrlProvider`, `setFormActionResolver`)
+so server bytes never ride the wire.
 Node-side consumers resolve via the package's `default` condition
 and land on `index.js`, which keeps the full surface for the SSR
 pipeline and unit tests. `renderToString` and `renderToStream` are

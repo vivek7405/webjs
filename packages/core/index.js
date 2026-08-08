@@ -28,7 +28,7 @@ export {
   stringify, parse,
   serialize, deserialize,
 } from './src/serialize.js';
-export { enableClientRouter, disableClientRouter, navigate, revalidate } from './src/router-client.js';
+export { enableClientRouter, disableClientRouter, navigate, revalidate, loadFrame } from './src/router-client.js';
 export { WebjsFrame } from './src/webjs-frame.js';
 export { WebjsStream, renderStream } from './src/webjs-stream.js';
 

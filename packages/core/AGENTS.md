@@ -135,8 +135,9 @@ them per app.
    `webjs-core-lazy-loader.js`, and the test-only `webjs-core-testing.js`.
    Only `@webjsdev/core` has this dual-layout. Other framework packages
    stay source-only. `index-browser.js` (and its `dist/webjs-core-browser.js`
-   build) strip `render-server.js` and
-   `setCspNonceProvider` from the public surface. `packages/server/src/importmap.js` routes the
+   build) strip `render-server.js` and the three server-side setters
+   (`setCspNonceProvider`, `setAssetUrlProvider`, `setFormActionResolver`)
+   from the public surface. `packages/server/src/importmap.js` routes the
    bare specifier `@webjsdev/core` to that browser entry on the
    client side; Node-side consumers (SSR pipeline, framework
    internals, unit tests) keep landing on `index.js` via the
