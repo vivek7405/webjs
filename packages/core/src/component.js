@@ -158,6 +158,42 @@ function warnFunctionReflection(host, propName, attrName) {
 }
 
 /**
+ * Warn that a value with no JSON representation was dropped rather than
+ * reflected (#1253).
+ *
+ * `JSON.stringify` throws for three reasons an app hits in practice: a cycle,
+ * a `BigInt`, and an author `toJSON()` that throws. All three mean the same
+ * thing here, that there is no string to put in the attribute, so all three
+ * get the same answer as a function does.
+ *
+ * The caught message IS included, unlike `warnFunctionReflection`, which
+ * withholds its value on purpose. A function's string form is its source,
+ * which is the leak that guard exists to prevent; `JSON.stringify`'s own
+ * message names the property path rather than a value, and the sibling
+ * `.prop=${val}` SSR drop in `render-server.js` already ends the same way.
+ *
+ * UNCONDITIONAL, for the reason recorded on `warnFunctionReflection` above: a
+ * `NODE_ENV` gate is folded to a constant by the dist build, which would make
+ * the SSR half unreachable in every published build, and the SSR half is where
+ * the component silently vanishes.
+ *
+ * @param {{ constructor: unknown, tagName?: string }} host
+ * @param {string} propName
+ * @param {string} attrName
+ * @param {string} [detail] the message `JSON.stringify` threw
+ */
+function warnUnserializableReflection(host, propName, attrName, detail) {
+  if (typeof console === 'undefined' || !console.warn) return;
+  const tag = tagOf(/** @type any */ (host.constructor)) || host.tagName?.toLowerCase() || 'unknown';
+  console.warn(
+    `[webjs] reflect:true property "${propName}" on <${tag}> holds a value `
+    + `JSON.stringify cannot serialize (a cycle, a BigInt, or a throwing `
+    + `toJSON), so it has no HTML attribute representation. Removing `
+    + `"${attrName}" instead. Detail: ${detail}`
+  );
+}
+
+/**
  * A minimal base for HTML Custom Elements that mirrors Lit's ergonomics
  * while staying JSDoc-only and no-build.
  *
@@ -745,12 +781,38 @@ class WebComponentBase extends Base {
       } else if (value == null) {
         this.removeAttribute(attrName);
       } else if (decl.type === Object || decl.type === Array) {
+        // One rule about an unserializable reflected value, in two halves.
+        //
         // A JSON-typed prop CARRYING a function is safe and stays whole:
         // `JSON.stringify` drops a function to `null` in an array and omits
         // the key in an object, so `[1, 2, fn]` serializes to `[1,2,null]`
         // with no source and no data loss. Refusing here would discard the
         // `1` and the `2` on a path that never leaked.
-        this.setAttribute(attrName, JSON.stringify(value));
+        //
+        // A value `JSON.stringify` cannot serialize AT ALL is the other half
+        // (#1253): a cycle, a `BigInt`, or an author `toJSON()` that throws.
+        // The throw used to escape reflection entirely, so a property
+        // assignment threw from the setter, a client upgrade threw out of
+        // `connectedCallback` before the first render, and an SSR render was
+        // swallowed by per-component isolation and emitted the component
+        // EMPTY at a 200. There is no string to put in the attribute, so the
+        // attribute goes, exactly as it does for a function. The `catch` IS
+        // the detection: `JSON.stringify` already walks the value, so its own
+        // failure covers all three causes, where a cycle-only pre-walk would
+        // miss the other two and pay a full traversal per reflection.
+        let serialized;
+        let serializable = true;
+        try {
+          serialized = JSON.stringify(value);
+        } catch (e) {
+          serializable = false;
+          this.removeAttribute(attrName);
+          warnUnserializableReflection(this, propName, attrName, e && e.message);
+        }
+        // Outside the `try` on purpose, so a genuine `setAttribute` failure
+        // (an invalid attribute name) still surfaces instead of being folded
+        // into the unserializable path.
+        if (serializable) this.setAttribute(attrName, serialized);
       } else if (carriesFunction(value)) {
         // The string fall-through is the one place a CARRIED function still
         // leaks. `String([fn])` is `Array.prototype.join`, which runs
@@ -1103,7 +1165,18 @@ class WebComponentBase extends Base {
     } else if (def.type === Boolean) {
       v = value != null && value !== 'false';
     } else if (def.type === Object || def.type === Array) {
-      try { v = value == null ? null : JSON.parse(value); } catch { v = value; }
+      // An attribute that is not parseable JSON is treated exactly like an
+      // ABSENT one (#1253), which is what closes the round trip. Reflection
+      // REMOVES the attribute for a value it cannot serialize, so "valid JSON"
+      // and "no attribute" are the only two states the writer can produce, and
+      // an absent attribute already reads back as `null` through the
+      // `value == null` arm on this same line. Handing back the raw STRING
+      // invented a third state neither the writer nor an unset property can
+      // produce, and put a string into a property declared `Object`. lit's
+      // `defaultConverter.fromAttribute` lands on the same `null`, for the
+      // reason its own comment gives: an element does not complain about being
+      // mis-configured.
+      try { v = value == null ? null : JSON.parse(value); } catch { v = null; }
     } else {
       v = value;
     }

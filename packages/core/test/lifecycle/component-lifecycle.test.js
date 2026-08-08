@@ -68,12 +68,18 @@ test('attributeChangedCallback coerces String / Number / Boolean / Object / Arra
   assert.deepEqual(el.a, [1, 2]);
 });
 
-test('attributeChangedCallback falls back to raw string on malformed JSON', () => {
+test('attributeChangedCallback treats malformed JSON exactly like an absent attribute (#1253)', () => {
+  // Not the raw string. Reflection removes the attribute for a value it cannot
+  // serialize, so "no attribute" is the only failure state the writer produces
+  // and the reader must not invent a second one. Matches lit's
+  // defaultConverter.fromAttribute.
   class C extends WebComponent({ o: Object }) {}
   C.register('malformed-json');
   const el = document.createElement('malformed-json');
   el.attributeChangedCallback('o', null, 'not-json');
-  assert.equal(el.o, 'not-json');
+  assert.equal(el.o, null);
+  el.attributeChangedCallback('o', 'not-json', null);
+  assert.equal(el.o, null, 'and an absent attribute reads back the same way');
 });
 
 test('custom converter.fromAttribute overrides type-based coercion', () => {

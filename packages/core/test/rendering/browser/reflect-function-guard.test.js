@@ -53,6 +53,34 @@ class ConverterProbe extends WebComponent({
 }
 ConverterProbe.register('reflect-fn-converter-probe');
 
+class UnserializableProbe extends WebComponent({
+  cfg: prop(Object, { reflect: true }),
+  tokenCfg: prop(Object, { reflect: true, attribute: 'data-cfg' }),
+}) {
+  render() {
+    return html`<span>probe</span>`;
+  }
+}
+UnserializableProbe.register('reflect-unser-probe');
+
+// Assigns in the CONSTRUCTOR on purpose: `_activate` reflects declared
+// attributes before the render root is set up, so this is the upgrade path
+// rather than the setter path.
+class UnserializableCtorProbe extends WebComponent({
+  cfg: prop(Object, { reflect: true }),
+}) {
+  constructor() {
+    super();
+    const o = { a: 1 };
+    o.self = o;
+    this.cfg = o;
+  }
+  render() {
+    return html`<span>ctor-probe-content</span>`;
+  }
+}
+UnserializableCtorProbe.register('reflect-unser-ctor-probe');
+
 const mounted = [];
 /**
  * A probe attached to the live document. Reflection runs from `_activate`,
@@ -186,5 +214,83 @@ suite('reflect:true never stringifies a function, in a real browser', () => {
 
     assert.equal(el.getAttribute('label'), 'custom:function', 'the author override runs first and wins');
     assert.ok(!document.body.innerHTML.includes('BROWSER_REFLECT_MARKER'), 'and it did not stringify the source');
+  });
+});
+
+suite('reflect:true drops an unserializable JSON value, in a real browser (#1253)', () => {
+  // The client halves the node file structurally cannot reach: the property
+  // setter against a live element, and `_activate`, which reflects BEFORE it
+  // sets up the render root. Without the guard the first throws out of the
+  // author's assignment and the second throws out of `connectedCallback`, so
+  // the element never renders at all.
+
+  function cyclic() {
+    const o = { a: 1 };
+    o.self = o;
+    return o;
+  }
+
+  test('assigning a cyclic value does not throw, and writes no attribute', async () => {
+    const el = mount('reflect-unser-probe');
+    await el.updateComplete;
+
+    const value = cyclic();
+    el.cfg = value;
+    await el.updateComplete;
+
+    assert.equal(el.getAttribute('cfg'), null, 'the attribute must be absent');
+    assert.equal(el.cfg, value, 'the property still holds it: the guard governs the ATTRIBUTE only');
+  });
+
+  test('a component whose constructor sets a cyclic value still upgrades and RENDERS', async () => {
+    // A different failure from the setter one: without the guard the throw
+    // lands inside `_activate` before the render root exists, so the element
+    // never renders.
+    const el = mount('reflect-unser-ctor-probe');
+    await el.updateComplete;
+
+    assert.ok(el.textContent.includes('ctor-probe-content'), `rendered empty: ${el.innerHTML}`);
+    assert.equal(el.getAttribute('cfg'), null, 'and the attribute is absent');
+  });
+
+  test('a later clean assignment still reflects, so __reflectingAttribute is not stuck', async () => {
+    const el = mount('reflect-unser-probe');
+    await el.updateComplete;
+
+    el.cfg = cyclic();
+    await el.updateComplete;
+    el.cfg = { ok: 1 };
+    await el.updateComplete;
+    assert.equal(el.getAttribute('cfg'), '{"ok":1}');
+
+    el.cfg = { ok: 2 };
+    await el.updateComplete;
+    assert.equal(el.getAttribute('cfg'), '{"ok":2}', 'and again, not just once');
+  });
+
+  test('a stale attribute is CLEARED rather than left holding the previous JSON', async () => {
+    const el = mount('reflect-unser-probe');
+    el.cfg = { was: 'here' };
+    await el.updateComplete;
+    assert.equal(el.getAttribute('cfg'), '{"was":"here"}');
+
+    el.cfg = cyclic();
+    await el.updateComplete;
+    assert.equal(el.getAttribute('cfg'), null, 'the previous JSON must not survive');
+  });
+
+  test('the drop warns once, naming the property, the tag, and the attribute', async () => {
+    const el = mount('reflect-unser-probe');
+    await el.updateComplete;
+    warnings.length = 0;
+
+    el.tokenCfg = cyclic();
+    await el.updateComplete;
+
+    assert.equal(warnings.length, 1, `expected one warning, got ${warnings.length}: ${warnings.join(' | ')}`);
+    const [message] = warnings;
+    assert.ok(message.includes('tokenCfg'), message);
+    assert.ok(message.includes('reflect-unser-probe'), message);
+    assert.ok(message.includes('data-cfg'), message);
   });
 });

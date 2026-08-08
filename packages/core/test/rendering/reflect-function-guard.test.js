@@ -1,5 +1,17 @@
-// A `reflect: true` property holding a function must never write that function
-// into its HTML attribute (#1169).
+// Two guards on the same branch chain, kept in one file because the BOUNDARY
+// between them is the thing that is easy to get wrong.
+//
+// #1169: a `reflect: true` property holding a function must never write that
+// function into its HTML attribute.
+//
+// #1253: a JSON-typed `reflect: true` property holding a value
+// `JSON.stringify` cannot serialize at all (a cycle, a `BigInt`, a throwing
+// `toJSON`) must drop its attribute rather than throw out of reflection.
+//
+// A wrong implementation makes exactly one of two neighbouring assertions red:
+// `[1, 2, fn]` still reflecting as `[1,2,null]` versus a cyclic value dropping.
+// Reading them together is what shows where the line sits, and #1169 had to
+// revert precisely that boundary once.
 //
 // The fall-through branch of `_reflectAttribute` used to run `String(value)`,
 // and `String(fn)` is the function's SOURCE. So assigning an imported
@@ -322,5 +334,184 @@ describe('reflect:true never stringifies a function (#1169)', () => {
       !message.includes('REFLECT_LEAK_MARKER'),
       `the warning leaked the source it refused to write: ${message}`
     );
+  });
+});
+
+describe('reflect:true drops an unserializable JSON value (#1253)', () => {
+  // These render through `renderToString`, so they ARE the SSR-path proof. The
+  // failure mode without the guard is not a thrown render: per-component error
+  // isolation catches the `TypeError` and emits the component EMPTY at a 200,
+  // so every case here asserts on the rendered CONTENT. A tag-only assertion
+  // passes against the bug.
+  //
+  // Nothing here asserts on the engine's own `JSON.stringify` message. V8 says
+  // "Converting circular structure to JSON" and JavaScriptCore says something
+  // else, so a message assertion would pass on Node and fail on Bun. The
+  // assertions are on the property, tag, and attribute names the framework
+  // itself writes.
+
+  test('a self-referential object drops the attribute and still renders', async () => {
+    const cyc = { a: 1 };
+    cyc.self = cyc;
+
+    class SelfObj extends WebComponent({
+      cfg: prop(Object, { reflect: true }),
+    }) {
+      constructor() {
+        super();
+        this.cfg = cyc;
+      }
+      render() {
+        return html`<i>ok-content-obj</i>`;
+      }
+    }
+    SelfObj.register('reflect-cyc-object');
+
+    const { out, warnings } = await renderCapturingWarnings(
+      html`<reflect-cyc-object></reflect-cyc-object>`
+    );
+
+    assert.ok(out.includes('reflect-cyc-object'), out);
+    assert.ok(out.includes('ok-content-obj'), `the component rendered empty: ${out}`);
+    assert.ok(!out.includes('cfg='), `expected no cfg attribute: ${out}`);
+    assert.equal(warnings.length, 1, `expected one warning, got ${warnings.length}`);
+    assert.match(warnings[0], /cfg/);
+    assert.match(warnings[0], /reflect-cyc-object/);
+  });
+
+  test('a self-referential array drops the same way', async () => {
+    const cyc = ['a'];
+    cyc.push(cyc);
+
+    class SelfArr extends WebComponent({
+      items: prop(Array, { reflect: true }),
+    }) {
+      constructor() {
+        super();
+        this.items = cyc;
+      }
+      render() {
+        return html`<i>ok-content-arr</i>`;
+      }
+    }
+    SelfArr.register('reflect-cyc-array');
+
+    const { out, warnings } = await renderCapturingWarnings(
+      html`<reflect-cyc-array></reflect-cyc-array>`
+    );
+
+    assert.ok(out.includes('ok-content-arr'), `the component rendered empty: ${out}`);
+    assert.ok(!out.includes('items='), `expected no items attribute: ${out}`);
+    assert.equal(warnings.length, 1, warnings.join(' | '));
+    assert.match(warnings[0], /items/);
+  });
+
+  test('a MUTUAL cycle between two objects drops too, so the guard is not shaped around self-reference', async () => {
+    const a = { name: 'a' };
+    const b = { name: 'b' };
+    a.b = b;
+    b.a = a;
+
+    class Mutual extends WebComponent({
+      graph: prop(Object, { reflect: true }),
+    }) {
+      constructor() {
+        super();
+        this.graph = a;
+      }
+      render() {
+        return html`<i>ok-content-mutual</i>`;
+      }
+    }
+    Mutual.register('reflect-cyc-mutual');
+
+    const { out, warnings } = await renderCapturingWarnings(
+      html`<reflect-cyc-mutual></reflect-cyc-mutual>`
+    );
+
+    assert.ok(out.includes('ok-content-mutual'), `the component rendered empty: ${out}`);
+    assert.ok(!out.includes('graph='), `expected no graph attribute: ${out}`);
+    assert.equal(warnings.length, 1, warnings.join(' | '));
+  });
+
+  test('a BigInt drops too, which a cycle-only pre-walk would have missed', async () => {
+    class Big extends WebComponent({
+      cfg: prop(Object, { reflect: true }),
+    }) {
+      constructor() {
+        super();
+        this.cfg = { n: 1n };
+      }
+      render() {
+        return html`<i>ok-content-bigint</i>`;
+      }
+    }
+    Big.register('reflect-unser-bigint');
+
+    const { out, warnings } = await renderCapturingWarnings(
+      html`<reflect-unser-bigint></reflect-unser-bigint>`
+    );
+
+    assert.ok(out.includes('ok-content-bigint'), `the component rendered empty: ${out}`);
+    assert.ok(!out.includes('cfg='), `expected no cfg attribute: ${out}`);
+    assert.equal(warnings.length, 1, warnings.join(' | '));
+    assert.match(warnings[0], /reflect-unser-bigint/);
+  });
+
+  test("an author toJSON() that throws drops too", async () => {
+    class ThrowingToJson extends WebComponent({
+      cfg: prop(Object, { reflect: true }),
+    }) {
+      constructor() {
+        super();
+        this.cfg = { toJSON() { throw new Error('boom-from-tojson'); } };
+      }
+      render() {
+        return html`<i>ok-content-tojson</i>`;
+      }
+    }
+    ThrowingToJson.register('reflect-unser-tojson');
+
+    const { out, warnings } = await renderCapturingWarnings(
+      html`<reflect-unser-tojson></reflect-unser-tojson>`
+    );
+
+    assert.ok(out.includes('ok-content-tojson'), `the component rendered empty: ${out}`);
+    assert.ok(!out.includes('cfg='), `expected no cfg attribute: ${out}`);
+    assert.equal(warnings.length, 1, warnings.join(' | '));
+  });
+
+  test('a serializable Object and Array still reflect byte-identically and warn zero times', async () => {
+    // This is the regression the #1169 revert exists to prevent: a guard that
+    // over-refuses on this branch discards real data.
+    class Clean extends WebComponent({
+      cfg: prop(Object, { reflect: true }),
+      items: prop(Array, { reflect: true }),
+    }) {
+      constructor() {
+        super();
+        this.cfg = { a: 1, nested: { b: 2 } };
+        this.items = [1, 'two', null];
+      }
+      render() {
+        return html`<i>ok</i>`;
+      }
+    }
+    Clean.register('reflect-unser-clean');
+
+    const { out, warnings } = await renderCapturingWarnings(
+      html`<reflect-unser-clean></reflect-unser-clean>`
+    );
+
+    assert.ok(
+      out.includes('cfg="{&quot;a&quot;:1,&quot;nested&quot;:{&quot;b&quot;:2}}"')
+      || out.includes('cfg="{"a":1,"nested":{"b":2}}"'),
+      out
+    );
+    assert.ok(
+      out.includes('items="[1,&quot;two&quot;,null]"') || out.includes('items="[1,"two",null]"'),
+      out
+    );
+    assert.equal(warnings.length, 0, `a serializable value must not warn: ${warnings.join(' | ')}`);
   });
 });
