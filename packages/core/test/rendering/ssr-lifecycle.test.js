@@ -182,8 +182,10 @@ test('the server element shim mirrors lit: attributes getter, toggleAttribute, d
 
 test('an Object/Array attribute carrying JSON is entity-decoded before parse at SSR', async () => {
   // A JSON value in an attribute is escaped to `&quot;` by the renderer. The
-  // SSR walker must decode those entities before JSON.parse, or the prop ends
-  // up holding the raw string and render() sees the wrong type. Regression for
+  // SSR walker must decode those entities before JSON.parse, or the parse
+  // throws and the prop falls to the unparseable-attribute value (`null` since
+  // #1253, the raw string before it) instead of the author's array, so
+  // render() sees the wrong type either way. Regression for
   // applyAttrsToInstance.
   let seenType = 'unset';
   class JsonAttr extends WebComponent({ data: Object }) {
@@ -198,7 +200,7 @@ test('an Object/Array attribute carrying JSON is entity-decoded before parse at 
 
   const payload = [{ label: 'has "quotes" & <ammp>' }];
   const out = await renderToString(html`<ssr-json-attr data=${JSON.stringify(payload)}></ssr-json-attr>`);
-  assert.equal(seenType, 'array', 'the Object attribute parsed to an array, not a string');
+  assert.equal(seenType, 'array', 'the Object attribute parsed to an array, not the null an unparseable one yields');
   // In text content, `&` and `<`/`>` are escaped but quotes stay literal.
   assert.match(out, /<p>has "quotes" &amp; &lt;ammp&gt;<\/p>/, 'the decoded value rendered correctly');
 });

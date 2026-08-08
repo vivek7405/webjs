@@ -1727,8 +1727,8 @@ function applyAttrsToInstance(instance, attrs, Cls) {
       // `raw` is the entity-encoded attribute text (parseAttrs returns the
       // literal characters between the quotes), so decode the HTML entities
       // before JSON.parse. A JSON attribute carries `&quot;` for every `"`;
-      // parsing it raw throws and would silently fall back to the string,
-      // leaving an Object/Array prop holding a string at SSR.
+      // parsing it raw throws, and the prop then falls to the failure value
+      // below rather than to the object the author wrote.
       //
       // An unparseable attribute falls back to `null`, NOT to the raw string
       // (#1253), matching this branch's counterpart in
