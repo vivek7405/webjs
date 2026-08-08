@@ -33,7 +33,7 @@ Three of the rules below restate widely held component-model advice. Lit's base 
 - Write the string explicitly for a tri-state ARIA attribute. A plain-attribute hole holding `false` serves `aria-expanded="false"` from the server and hydrates to NO attribute, because the client removes an attribute for `null` / `undefined` / `false` while the server stringifies it. `?attr=${bool}` is not a substitute, since a boolean binding omits the attribute in BOTH renderers.
 - A hole commits on the next render, one microtask later. The one place a direct write is still correct is a synchronous snapshot read such as `webjs:before-cache`, where the router reads `outerHTML` in the same task. That is a documented exception, not the normal path.
 
-**5. Behaviour needs an importable surface, or its test is a copy of it.** An inline `<script>` in a layout has no module identity, so a browser test cannot import it. It can only transcribe the listener into the test file and assert against the transcription, which then needs a SECOND test to grep the original for drift. Two tests, neither running shipping code. A component is importable, so its browser test mounts the real element and drives real events. A page or layout may still carry an inline `<script>`, but only for pre-paint boot work no module can do: reading a stored theme before first paint so the wrong palette never flashes, or measuring the header height into a CSS custom property. It must not be interactivity. It runs once per full page load and never again, because a soft navigation does not re-execute it, which is why script-driven enhancement grows `MutationObserver` workarounds that a custom element never needs. Under an opt-in CSP it also needs the nonce from `cspNonce()`.
+**5. Behaviour needs an importable surface, or its test is a copy of it.** An inline `<script>` in a layout has no module identity, so a browser test cannot import it. It can only transcribe the listener into the test file and assert against the transcription, which then needs a SECOND test to grep the original for drift. Two tests, neither running shipping code. A component is importable, so its browser test mounts the real element and drives real events. A page or layout may still carry an inline `<script>`, but only for pre-paint boot work no module can do: reading a stored theme before first paint so the wrong palette never flashes, or measuring the header height into a CSS custom property. It must not be interactivity, and WHERE it sits decides how often it runs. The ROOT layout is never swapped, so a script there runs once per full page load and never again, which is what makes it the right home for boot work and the wrong home for anything that has to respond to a later navigation. A page or a NESTED layout sits inside the swap range instead, so its script re-executes on every navigation that swaps that range (#1102), which means it has to be idempotent or guard on a flag it sets the first time. Neither shape gives you a listener that simply works, which is what a custom element is for. Under an opt-in CSP the script also needs the nonce from `cspNonce()`. `client-router-and-streaming.md` carries the full re-execution rule.
 
 **6. Listening on `document` is legitimate. Querying `document` usually is not.** An outside-click dismissal or an Escape handler has no choice, because the event happens outside the element, so the listener has to be global. What decides whether that is ownership or a reach across the app is what the handler then READS. `this.contains(e.target)` is a decision about the component's own subtree. `document.querySelector('.other-thing')` is a decision about someone else's markup. Add the listener in `connectedCallback`, remove it in `disconnectedCallback`, and store the handler in a field so `removeEventListener` gets the same reference back (a function created inline at add time can never be removed).
 
@@ -65,16 +65,26 @@ class NavDrawer extends WebComponent({ open: prop(Boolean, { reflect: true }) })
   private onDocClick = (e: MouseEvent) => {
     if (!this.contains(e.target as Node)) this.open = false;   // reads its OWN subtree
   };
+  private onDocKeydown = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape' || !this.open) return;
+    this.open = false;
+    // The ref lands after the FIRST client commit, and `ref()` is a no-op at
+    // SSR, so read `.value` from a handler or `firstUpdated`, never from the
+    // constructor. This is the reach a selector would otherwise have done.
+    this.toggleRef.value?.focus();
+  };
 
   constructor() { super(); this.open = false; }                // SSR runs the constructor
 
   connectedCallback() {
     super.connectedCallback();
     document.addEventListener('click', this.onDocClick);       // listening globally is fine
+    document.addEventListener('keydown', this.onDocKeydown);
   }
   disconnectedCallback() {
     super.disconnectedCallback();
     document.removeEventListener('click', this.onDocClick);    // the state dies with the element
+    document.removeEventListener('keydown', this.onDocKeydown);
   }
 
   render() {
