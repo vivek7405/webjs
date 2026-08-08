@@ -1537,7 +1537,7 @@ function setNavigating(on) {
  * @returns {Map<string, { routeKey: string, start: Comment, end: Comment }> | null}
  *   The boundary map, or null when the tree's boundaries are malformed.
  */
-export function collectBoundaries(root) {
+function collectBoundaries(root) {
   /** @type {Map<string, { routeKey: string, start: Comment, end: Comment }>} */
   const out = new Map();
   /** @type {{ segment: string, routeKey: string, start: Comment }[]} */
@@ -1654,7 +1654,7 @@ export function collectBoundaries(root) {
  *   live: { routeKey: string, start: Comment, end: Comment },
  *   incoming: { routeKey: string, start: Comment, end: Comment } } | null}
  */
-export function planBoundarySwap(here, there) {
+function planBoundarySwap(here, there) {
   // Shared segments, shallowest first (a nested path prefix is shorter).
   const shared = [...here.keys()].filter((s) => there.has(s)).sort((a, b) => a.length - b.length);
   if (shared.length === 0) return null;
