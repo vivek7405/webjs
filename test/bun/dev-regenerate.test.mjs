@@ -1,10 +1,11 @@
 /**
  * Run the cross-runtime on-request-regeneration proof (#967) under WHICHEVER
  * runtime executes the suite. Picked up by the root `node --test` runner (so
- * `npm test` exercises the Node path); CI also runs `bun test/bun/dev-regenerate.mjs`
- * for the Bun path. The proof is a plain assert script (`dev-regenerate.mjs`,
- * not `*.test.mjs`, so the runner does not double-run it); importing it runs it
- * and throws on any failure.
+ * `npm test` exercises the Node path); CI reaches the Bun path through `node
+ * scripts/run-bun-tests.js`, which auto-discovers `test/bun/*.test.mjs` and
+ * re-runs them under `bun`, rather than through a per-file step. The proof is
+ * a plain assert script (`dev-regenerate.mjs`, not `*.test.mjs`, so the runner
+ * does not double-run it); importing it runs it and throws on any failure.
  */
 import { test } from 'node:test';
 
