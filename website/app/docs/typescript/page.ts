@@ -23,34 +23,33 @@ export default function TypeScript() {
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
     "strict": true,
     "noEmit": true,
-    "checkJs": true,
-    "allowJs": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": false,
-    "erasableSyntaxOnly": true
+    "erasableSyntaxOnly": true,
+    "plugins": [{ "name": "@webjsdev/intellisense" }]
   },
   "include": [
     "app/**/*",
     "components/**/*",
     "modules/**/*",
     "lib/**/*",
-    "middleware.ts"
+    "test/**/*",
+    "middleware.js",
+    "middleware.ts",
+    ".webjs/routes.d.ts"
   ],
-  "exclude": ["node_modules", ".webjs", "db/migrations"]
+  "exclude": ["node_modules", ".webjs/vendor", "db/migrations"]
 }</code-block>
     <p>Key settings explained:</p>
     <ul>
       <li><strong>erasableSyntaxOnly: true</strong>: rejects non-erasable TypeScript syntax (<code>enum</code>, <code>namespace</code> with values, constructor parameter properties, legacy decorators, <code>import = require</code>) at compile time. Required because Node's built-in stripper only supports erasable TypeScript. Violations surface as red squiggles in the editor. See <strong>TypeScript Feature Support</strong> below for the erasable equivalents.</li>
       <li><strong>noEmit: true</strong>: WebJs never compiles TypeScript to JavaScript on disk. The TypeScript compiler is used only for type-checking (<code>tsc --noEmit</code>). Node runs your <code>.ts</code> files directly via its built-in stripper.</li>
       <li><strong>allowImportingTsExtensions: true</strong>: lets you write <code>import { foo } from './bar.ts'</code> with the explicit <code>.ts</code> extension. This is the WebJs convention (see below).</li>
-      <li><strong>checkJs: true</strong>: type-check your <code>.js</code> files too, using JSDoc annotations. Enables a mixed codebase where both <code>.ts</code> and <code>.js</code> files participate in the same type graph.</li>
-      <li><strong>allowJs: true</strong>: include <code>.js</code> files in the project. Required alongside <code>checkJs</code>.</li>
+      <li><strong>include covers test/</strong>: <code>npm run typecheck</code> reads the tests you write, so a type error there is a failed check rather than something a reviewer has to spot. Note what is NOT here: <code>checkJs</code>, which turns on checking of your <code>.js</code> files too (and implies <code>allowJs</code>). That is a real option for a JSDoc-typed codebase, covered under <strong>JSDoc Alternative</strong> below, but it is not the default here, because a browser test written as <code>.js</code> is served to a real browser and has none of the test-runner globals in scope, so each one would report an unresolved name.</li>
       <li><strong>module / moduleResolution: NodeNext</strong>: matches how Node resolves ESM imports, including <code>.ts</code> extensions.</li>
-      <li><strong>isolatedModules: true</strong>: ensures every file can be transpiled independently, matching the per-file transform model of Node's stripper.</li>
     </ul>
 
     <h2>Import Convention: the # root alias and explicit .ts extensions</h2>
@@ -302,10 +301,10 @@ import '#components/footer.js';</code-block>
   "scripts": {
     "dev": "webjs dev",
     "start": "webjs start",
-    "typecheck": "tsc --noEmit",
-    "typecheck:watch": "tsc --noEmit --watch"
+    "typecheck": "webjs typecheck"
   }
 }</code-block>
-    <p>Run <code>npm run typecheck</code> in CI or as a pre-commit hook. The dev server stays fast because it only strips types. Full type analysis is a separate, parallelizable step.</p>
+    <p><code>webjs typecheck</code> is the project's own <code>tsc --noEmit</code>, and it is what a scaffolded app ships. Run <code>npm run typecheck</code> in CI or as a pre-commit hook. The dev server stays fast because it only strips types. Full type analysis is a separate, parallelizable step.</p>
+    <p>It reads whatever the <code>include</code> above names, which covers <code>test/</code> as well as your app source. A type error in a test is a failed check rather than something a reviewer has to catch by eye.</p>
   `;
 }

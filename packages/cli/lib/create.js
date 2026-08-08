@@ -541,6 +541,11 @@ export async function scaffoldApp(name, cwd, opts = {}) {
         { name: '@webjsdev/intellisense' },
       ],
     },
+    // `test/**/*` is in so `webjs typecheck` reads the tests you write, the
+    // same way Next / Remix / Astro's generated configs do (#1299). A type
+    // error in a test is then a gate failure rather than something a reviewer
+    // has to catch by eye, and it needs no second config to remember to run.
+    //
     // `.webjs/routes.d.ts` is the OPT-IN generated route-types overlay (#258):
     // run `webjs types` (or `webjs dev`, which emits it) to narrow the
     // @webjsdev/core `Route` href union + per-route `params`. Listed in
@@ -552,6 +557,7 @@ export async function scaffoldApp(name, cwd, opts = {}) {
       'components/**/*',
       'modules/**/*',
       'lib/**/*',
+      'test/**/*',
       'middleware.js',
       'middleware.ts',
       '.webjs/routes.d.ts',

@@ -420,16 +420,30 @@ script, so a type break reds the build instead of riding onto `main` unnoticed
 (#1260).
 
 What it covers is exactly the tsconfig `include`: `app/`, `components/`,
-`lib/`, and `modules/`. **`test/` is deliberately outside it.** Adding
-`test/**/*` surfaces 17 pre-existing errors across 5 of its 25 TypeScript
-files (a `never` argument in the sitemap test, `LayoutProps` calls missing
-`params` / `searchParams` / `url`, and an `unknown` not assignable to
-`TemplateResult` in the determinism test), so including it would red the gate
-on day one. Fixing those is its own task.
+`lib/`, `modules/`, and **`test/`** (#1299). A type error in a test file is a
+gate failure here, not something a reviewer has to catch by eye, which is how
+an implicitly-`any` parameter once reached review in `test/ssr/docs-links.test.ts`.
 
-Across apps the gate covers `website/` only, which is a SCOPE decision rather
-than a claim about the other. Measured: `examples/blog` is genuinely red (13
-errors), so gating it is a small, separate change and not a blocked one.
+Two things about the test half are worth knowing before you edit it.
+
+The `.js` files under `test/` enter the include **parsed but not checked**,
+because this app sets `checkJs: false`. There are 9 of them: the 8 browser
+tests under `test/components/browser/`, plus the `test/fixtures/` markup
+fixture. That is the status quo for every other `.js` file here, so including
+`test/` did not widen into them. The rationale lives in this file rather than in the config, because
+`tsconfig.json` is strict JSON that the scaffold emits with `JSON.stringify`
+and the scaffold tests read back with `JSON.parse`, so it cannot carry a
+comment at all.
+
+And a test that renders the root layout calls `RootLayout(layoutProps(children))`,
+not `RootLayout({ children })`. `LayoutProps` requires `params`,
+`searchParams`, and `url` because the server really does pass all four, so
+`test/helpers/layout-props.ts` builds a complete props object. Do not reach for
+the other fix and make those fields optional on the public type: a layout that
+forgets to accept them would stop being an error for every WebJs app.
+
+Both in-repo apps are gated. `examples/blog` has its own `npm run typecheck`
+and its own CI step alongside this one.
 
 `npm run dev` and `webjs dev` behave identically (#550): `webjs.dev.before`
 mirrors the kit sources in and compiles `public/tailwind.css`, and

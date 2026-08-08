@@ -538,14 +538,16 @@ jobs:
       # Nothing in the pipeline typechecked the website before, so a type
       # break landed on main and every branch cut from it inherited a red
       # tsc (#1260). It runs before the tests so a type break names itself
-      # rather than surfacing as a test failure. Two deliberate limits. It
-      # covers the website's tsconfig include (app, components, lib, modules)
-      # and NOT test/, which would add 17 pre-existing errors across 5 of its
-      # 25 .ts files. And it gates website/ only, which is a scope call rather
-      # than a claim about the other: examples/blog is genuinely red today, so
-      # adding it is a small separate change of its own.
+      # rather than surfacing as a test failure. Both apps are gated, and both
+      # tsconfig includes now cover test/ as well as app / components / lib /
+      # modules (#1299), so a type error in a test file fails here instead of
+      # waiting for a reviewer to read the line. The website's .js files under
+      # test/ enter its include parsed-but-unchecked, since that app sets
+      # checkJs: false; see website/AGENTS.md.
       - name: website typecheck
         run: npm run typecheck --workspace=@webjsdev/website
+      - name: blog typecheck
+        run: npm run typecheck --workspace=@webjsdev/example-blog
       - name: website tests (node + browser)
         run: npm test --workspace=@webjsdev/website
       - name: blog tests (node)

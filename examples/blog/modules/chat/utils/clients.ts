@@ -2,7 +2,7 @@
  * Shared chat client Set. Lives on globalThis so dev-mode re-imports share
  * the same connections across WebSocket handler reloads.
  */
-import type { WebSocket } from 'ws';
+import type WebSocket from 'ws';
 
 declare global {
   var __webjs_chat_clients: Set<WebSocket> | undefined;

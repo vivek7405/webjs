@@ -9,6 +9,12 @@ import type { CommentFormatted } from '#modules/comments/types.ts';
 
 type Subscriber = (comment: CommentFormatted) => void;
 
+// The subscriber map is parked on globalThis so a dev-server module reload
+// keeps the live connections. `declare` is erasable, so invariant 10 holds.
+declare global {
+  var __commentSubs: Map<number, Set<Subscriber>> | undefined;
+}
+
 const subs = globalThis.__commentSubs ?? (globalThis.__commentSubs = new Map<number, Set<Subscriber>>());
 
 export function subscribe(postId: number, fn: Subscriber): () => void {

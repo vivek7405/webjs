@@ -24,10 +24,11 @@ import { renderToString } from '@webjsdev/core/server';
 import RootLayout from '#app/layout.ts';
 import Sitemap from '#app/sitemap.ts';
 import { siteFooter } from '#lib/ui/site-footer.ts';
+import { layoutProps } from '#test/helpers/layout-props.ts';
 
 const WEBSITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-const renderLayout = () => renderToString(RootLayout({ children: html`<main>x</main>` }));
+const renderLayout = () => renderToString(RootLayout(layoutProps(html`<main>x</main>`)));
 
 test('the header nav no longer carries Why WebJs', async () => {
   const out = await renderLayout();

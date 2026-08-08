@@ -30,6 +30,7 @@
     "components/**/*",
     "modules/**/*",
     "lib/**/*",
+    "test/**/*",
     "middleware.js",
     "middleware.ts"
   ],

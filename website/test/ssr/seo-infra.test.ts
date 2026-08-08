@@ -27,6 +27,7 @@ import { html } from '@webjsdev/core';
 import { renderToString } from '@webjsdev/core/server';
 import RootLayout, { generateMetadata } from '#app/layout.ts';
 import Robots from '#app/robots.ts';
+import { layoutProps } from '#test/helpers/layout-props.ts';
 
 const WEBSITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -37,7 +38,7 @@ function pngSize(path: string): { width: number; height: number } {
 }
 
 test('the declared favicon size matches the real asset and clears Google 48px floor', async () => {
-  const out = await renderToString(RootLayout({ children: html`<main>x</main>` }));
+  const out = await renderToString(RootLayout(layoutProps(html`<main>x</main>`)));
   const match = out.match(/<link rel="icon" href="\/public\/([\w.-]+\.png)"[^>]*sizes="(\d+)x(\d+)"/);
   assert.ok(match, 'declares a PNG icon with an explicit sizes attribute');
 
@@ -56,7 +57,7 @@ test('the declared favicon size matches the real asset and clears Google 48px fl
 });
 
 test('the apple-touch icon points at a correctly sized asset', async () => {
-  const out = await renderToString(RootLayout({ children: html`<main>x</main>` }));
+  const out = await renderToString(RootLayout(layoutProps(html`<main>x</main>`)));
   const match = out.match(/<link rel="apple-touch-icon" sizes="(\d+)x\d+" href="\/public\/([\w.-]+\.png)"/);
   assert.ok(match, 'declares an apple-touch-icon with a size');
   const { width } = pngSize(resolve(WEBSITE_ROOT, 'public', match![2]));
@@ -66,7 +67,7 @@ test('the apple-touch icon points at a correctly sized asset', async () => {
 test('the raster icon is declared before the SVG', async () => {
   // Google's favicon crawler takes the first usable icon. The SVG led before,
   // and raster is the format search results reliably render.
-  const out = await renderToString(RootLayout({ children: html`<main>x</main>` }));
+  const out = await renderToString(RootLayout(layoutProps(html`<main>x</main>`)));
   const png = out.indexOf('type="image/png"');
   const svg = out.indexOf('href="/public/favicon.svg"');
   assert.ok(png > -1 && svg > -1, 'both icons are declared');

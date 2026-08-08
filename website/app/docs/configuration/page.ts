@@ -81,21 +81,32 @@ webjs routes --help     # one command's help (flag form)</code-block>
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
     "strict": true,
     "noEmit": true,
-    "checkJs": true,
-    "allowJs": true,
     "allowImportingTsExtensions": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "erasableSyntaxOnly": true,
+    "plugins": [{ "name": "@webjsdev/intellisense" }]
   },
-  "include": ["app/**/*", "components/**/*", "modules/**/*", "lib/**/*"],
-  "exclude": ["node_modules", ".webjs"]
+  "include": [
+    "app/**/*",
+    "components/**/*",
+    "modules/**/*",
+    "lib/**/*",
+    "test/**/*",
+    "middleware.js",
+    "middleware.ts",
+    ".webjs/routes.d.ts"
+  ],
+  "exclude": ["node_modules", ".webjs/vendor", "db/migrations"]
 }</code-block>
     <p>Key settings:</p>
     <ul>
       <li><code>noEmit</code>: type-check only, no compiled output (preserves no-build)</li>
       <li><code>allowImportingTsExtensions</code>: needed for explicit <code>.ts</code> in imports</li>
-      <li><code>checkJs</code>: type-check <code>.js</code> files too (for mixed codebases)</li>
+      <li><code>erasableSyntaxOnly</code>: rejects the TypeScript syntax Node's built-in stripper cannot erase</li>
+      <li><code>include</code> covers <code>test/</code>, so <code>npm run typecheck</code> reads the tests you write and a type error there fails the same one command</li>
     </ul>
 
     <h2>webjs check: correctness, not config</h2>

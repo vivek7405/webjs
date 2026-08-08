@@ -2,7 +2,7 @@
  * /api/chat: global broadcast chat.
  * GET returns a status snapshot; WS upgrades to a live connection.
  */
-import type { WebSocket } from 'ws';
+import type WebSocket from 'ws';
 import { clients, broadcast } from '#modules/chat/utils/clients.ts';
 
 export async function GET() {
