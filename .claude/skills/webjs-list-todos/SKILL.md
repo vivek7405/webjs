@@ -25,6 +25,23 @@ The webjsdev/webjs project tracks work on the GitHub Project at https://github.c
    gh project item-list 1 --owner webjsdev --format json --limit 20000
    ```
 
+   **This is the ONE place a whole-board dump is legitimate**, because this skill
+   renders every card. Everywhere else, reach a single card from its issue node
+   instead; see `.claude/gh-budget.md`.
+
+   The dump is expensive even so. It paginates the entire board (past 500 items)
+   at 100 per page, and the GraphQL budget is scored in points rather than
+   requests, so it is worth several hundred points of the hourly 5000. Two rules
+   follow, and neither is optional:
+
+   - **Call it ONCE per invocation and reuse the result.** Never in a loop, and
+     never a second time to answer a follow-up about one card.
+   - **Do not re-run it to check one issue.** If the user asks about a specific
+     number after this ran, use the single-node lookup in `.claude/gh-budget.md`.
+
+   `--limit 20000` is load-bearing, not defensive: the default page is 30, so
+   without it the board silently truncates and buckets come back wrong.
+
 2. **Bucket by Status** (Todo, In progress, Done) and pretty-print each bucket with issue numbers and titles. If the user explicitly asked for only one bucket (e.g. "what's in progress"), filter accordingly.
 
 3. **Default presentation.** Show Todo and In progress always. Show Done only if the user asks for it, or if both Todo and In progress are empty.

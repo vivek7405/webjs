@@ -91,5 +91,11 @@ The actual implementation that the research points to is **separate tracked work
 
 ```sh
 # All research records, filterable by the label:
-gh issue list --repo webjsdev/webjs --label research --state all
+gh api "repos/webjsdev/webjs/issues?labels=research&state=all&per_page=100" \
+  --jq '.[] | select(has("pull_request") | not) | "#\(.number) \(.title)"'
 ```
+
+REST rather than `gh issue list`, which goes through GraphQL. See
+`.claude/gh-budget.md` for the rule and the full substitution table. The
+`pull_request` filter is not optional: the REST issues endpoint returns PRs
+alongside issues.

@@ -28,9 +28,13 @@ This skill picks up from an EXISTING issue. Before running any step below, confi
 If you are unsure whether an issue already exists, search before filing:
 
 ```sh
-gh issue list --repo webjsdev/webjs --search "<keywords>" --state all
-gh project item-list 1 --owner webjsdev --format json --limit 20000
+gh api "search/issues?q=repo:webjsdev/webjs+is:issue+<keywords>&per_page=20" \
+  --jq '.items[] | "#\(.number) [\(.state)] \(.title)"'
 ```
+
+Search the ISSUES over REST rather than dumping the board. It matches bodies as
+well as titles, so it is the better duplicate check, and it costs nothing from
+the GraphQL budget. See `.claude/gh-budget.md`.
 
 When in doubt, file it. A duplicate is cheap to close; untracked work is the expensive failure. Only once an issue number exists do you continue to Inputs below.
 
@@ -39,29 +43,46 @@ When in doubt, file it. A duplicate is cheap to close; untracked work is the exp
 The user's request typically names an issue by number (e.g. `#112`) or by description (e.g. "the dist issue"). Resolve the number first:
 
 - If the user said `#N` explicitly, use N.
-- If they described the issue by topic, run `gh project item-list 1 --owner webjsdev --format json --limit 20000` and match against item titles. If multiple match, ask the user to disambiguate.
+- If they described the issue by topic, search the issues over REST and match against titles. If multiple match, ask the user to disambiguate.
+
+  ```sh
+  gh api "search/issues?q=repo:webjsdev/webjs+is:issue+is:open+<topic>&per_page=20" \
+    --jq '.items[] | "#\(.number) \(.title)"'
+  ```
+
+  Do not dump the board for this. Searching issues costs nothing from the GraphQL budget and matches bodies too, so it resolves a vague description better than a title scan would.
 
 ## Steps
 
 1. **Verify the issue exists and is open. Assign it to vivek7405 if not already.**
 
    ```sh
-   gh issue view <N> --repo webjsdev/webjs --json title,number,state,labels,assignees
+   gh api repos/webjsdev/webjs/issues/<N> \
+     --jq '{number,state,title,labels:[.labels[].name],assignees:[.assignees[].login]}'
    ```
 
-   If `state` is CLOSED, ask the user whether to reopen it or pick a different one. Otherwise note the title for the branch slug. If `assignees` is empty (an issue filed by drive-by contributor), assign to vivek7405:
+   REST rather than `gh issue view`, which goes through GraphQL. See `.claude/gh-budget.md`.
+
+   If `state` is CLOSED, ask the user whether to reopen it or pick a different one. Otherwise note the title for the branch slug, and the labels for the branch prefix. If `assignees` is empty (an issue filed by drive-by contributor), assign to vivek7405:
 
    ```sh
-   gh issue edit <N> --repo webjsdev/webjs --add-assignee vivek7405
+   gh api -X POST repos/webjsdev/webjs/issues/<N>/assignees -f 'assignees[]=vivek7405'
    ```
 
-2. **Confirm the issue is on the project board.**
+2. **Confirm the issue is on the project board, and get its item id.**
+
+   Ask the ISSUE, not the board. This is a single node lookup that also returns the id step 5 needs and the card's current Status, so one call replaces both the membership check here and the id hunt later:
 
    ```sh
-   gh project item-list 1 --owner webjsdev --format json --limit 20000 --jq ".items[] | select(.content.number == <N>)"
+   gh api graphql -f query='query($n:Int!){repository(owner:"webjsdev",name:"webjs"){
+     issue(number:$n){projectItems(first:5){nodes{id project{number}
+     fieldValueByName(name:"Status"){...on ProjectV2ItemFieldSingleSelectValue{name}}}}}}}' \
+     -F n=<N> --jq '.data.repository.issue.projectItems.nodes[] | select(.project.number == 1)'
    ```
 
-   If not present, add it: `gh project item-add 1 --owner webjsdev --url https://github.com/webjsdev/webjs/issues/<N>`.
+   An empty result means the issue is not on the board. Add it with `gh project item-add 1 --owner webjsdev --url https://github.com/webjsdev/webjs/issues/<N>`, then re-run the lookup to get the new item id.
+
+   **Do NOT dump the whole board to answer this.** That query paginates every item (past 500 today) with nested field values, costing several hundred points of the 5000-point hourly GraphQL budget, to find one id this call returns directly. Projects V2 is GraphQL-only, so these points are the ones genuinely worth protecting.
 
 3. **Fetch, and leave the primary checkout alone.** `git fetch origin`. The task's worktree cuts from `origin/main`, so a dirty or mid-something primary checkout neither blocks starting nor gets "fixed"; it is never edited at all (enforced by `.claude/hooks/require-worktree-for-edits.sh`, which blocks tracked-file edits in a primary checkout).
 
@@ -74,18 +95,18 @@ The user's request typically names an issue by number (e.g. `#112`) or by descri
 
    ALL work for the task happens inside that worktree, by absolute path when the session's cwd resets. A fresh worktree has NO `node_modules`; see AGENTS.md for the symlink remedy (#954). Cleanup after merge is automatic (`cleanup-merged-worktree.sh`). After this step, ALSO push after every subsequent commit (`git push` is cheap and is the safety net against losing work). Do not batch multiple commits before pushing.
 
-5. **Move the project card from Todo to In progress.** Resolve the four IDs and call `item-edit`:
+5. **Move the project card from Todo to In progress.** The item id came from step 2; the other three ids are constants, so source them instead of rediscovering them:
 
    ```sh
-   N=<issue-number>
-   PROJECT_ID=$(gh project view 1 --owner webjsdev --format json --jq '.id')
-   ITEM_ID=$(gh project item-list 1 --owner webjsdev --format json --limit 20000 --jq ".items[] | select(.content.number == $N) | .id")
-   STATUS_FIELD_ID=$(gh project field-list 1 --owner webjsdev --format json --jq '.fields[] | select(.name == "Status") | .id')
-   IN_PROGRESS_OPT_ID=$(gh project field-list 1 --owner webjsdev --format json --jq '.fields[] | select(.name == "Status") | .options[] | select(.name == "In progress") | .id')
-   gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" --field-id "$STATUS_FIELD_ID" --single-select-option-id "$IN_PROGRESS_OPT_ID"
+   source .claude/gh-ids.env    # PROJECT_ID, STATUS_FIELD_ID, STATUS_IN_PROGRESS
+   ITEM_ID=<the id step 2 returned>
+   gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" \
+     --field-id "$STATUS_FIELD_ID" --single-select-option-id "$STATUS_IN_PROGRESS"
    ```
 
-   The `--limit 20000` on `item-list` is load-bearing, not defensive. The board is well past 200 items and the default page is 30, so without it the `select(.content.number == $N)` filter matches nothing for almost every issue, `ITEM_ID` comes back empty, and `item-edit` fails on an empty `--id`. The same truncation makes step 2 report a card as missing when it is already on the board.
+   The project id, the Status field id, and its option ids never change, so re-resolving them cost three GraphQL round trips per run for constants. `.claude/gh-ids.env` carries them, with the refresh command in its header for the rare case the board schema moves.
+
+   If `ITEM_ID` is empty, step 2 did not find the card. Go back and add it rather than passing an empty `--id`, which fails.
 
 6. **Open a DRAFT PR immediately, BEFORE writing any code.** This is the single most important ordering rule and it is NOT optional: the PR is opened at the START of the work, not the end. The whole point of the PR is to be the durable, append-only record of the change AS IT HAPPENS: every per-logical-unit commit lands on it, every design-rationale / decision / follow-up context comment is posted to it the moment that discussion happens, and every review round is posted to it. NONE of that is possible if the PR does not exist yet, which is exactly the failure a late `gh pr create` causes. So open it now, empty branch and all (the branch was already pushed in step 4).
 
@@ -409,17 +430,19 @@ The class is real and not small, and what it costs is the same work done later r
 
 ### Subagent prompt template
 
+**The template fetches the diff and metadata over REST on purpose.** The porcelain equivalents go through GraphQL, and this template is pasted into EVERY reviewer in every round, so it was the single largest consumer of that budget in this skill. REST is a separate budget and returns the same bytes. Both are reads, so the read-only git constraint in the template is unaffected. See `.claude/gh-budget.md`.
+
 One template serves every reviewer in the cycle: round 1, each delta round, the final whole-diff review, the final review's fix-check, and a refuter. Only the question in its numbered step 5 changes.
 
 ```
 Review PR #<N> (branch `<branch>`) at https://github.com/webjsdev/webjs/pull/<N> for anything genuinely wrong with it, judged against the project's AGENTS.md and CONVENTIONS.md (root + per-package).
 
-HARD CONSTRAINT, read first: you are running against a repository the main session is actively using, and every worktree of it shares ONE `.git` directory, so a git write here reaches the main session's checkout even from an isolated worktree. You are a READ-ONLY reviewer. Do NOT run any command that changes git branch, HEAD, the index, or the working tree: no `git checkout`, `git switch`, `git reset`, `git restore`, `git stash`, `git pull`, `git fetch` that moves refs, `git merge`, `git rebase`, `git clean`, `git branch -f`, or `git worktree`. Any of these silently corrupts the main session's checkout (it moved HEAD off the branch and looked like lost work, and a stray worktree op once flipped the shared repo's `core.bare` to `true`). You do NOT need to switch branches to review. Use `gh pr diff <N>` and `gh pr view <N>` for the diff and metadata, and read any file at its PR-branch state with `gh api repos/<owner>/<repo>/contents/<path>?ref=<branch> --jq .content | base64 -d`. All of those read from GitHub, so they work whether or not the branch exists locally, which matters because a PR you were asked to review may not be checked out here at all. If the branch does happen to be the one checked out, reading files in place is fine too. The only git you may run is read-only inspection (`git log`, `git show`, `git diff` WITHOUT changing state, `git status`, `git blame`). If you think you need to change git state to do the review, you are wrong; report what you found instead.
+HARD CONSTRAINT, read first: you are running against a repository the main session is actively using, and every worktree of it shares ONE `.git` directory, so a git write here reaches the main session's checkout even from an isolated worktree. You are a READ-ONLY reviewer. Do NOT run any command that changes git branch, HEAD, the index, or the working tree: no `git checkout`, `git switch`, `git reset`, `git restore`, `git stash`, `git pull`, `git fetch` that moves refs, `git merge`, `git rebase`, `git clean`, `git branch -f`, or `git worktree`. Any of these silently corrupts the main session's checkout (it moved HEAD off the branch and looked like lost work, and a stray worktree op once flipped the shared repo's `core.bare` to `true`). You do NOT need to switch branches to review. Use `gh api repos/<owner>/<repo>/pulls/<N> -H "Accept: application/vnd.github.diff"` for the diff and `gh api repos/<owner>/<repo>/pulls/<N>` for metadata, and read any file at its PR-branch state with `gh api repos/<owner>/<repo>/contents/<path>?ref=<branch> --jq .content | base64 -d`. All of those read from GitHub, so they work whether or not the branch exists locally, which matters because a PR you were asked to review may not be checked out here at all. If the branch does happen to be the one checked out, reading files in place is fine too. The only git you may run is read-only inspection (`git log`, `git show`, `git diff` WITHOUT changing state, `git status`, `git blame`). If you think you need to change git state to do the review, you are wrong; report what you found instead.
 
 You start with no prior context on this PR. Steps:
 
-1. Run `gh pr diff <N> --repo webjsdev/webjs` to see the full diff.
-2. Run `gh pr view <N> --repo webjsdev/webjs --json title,body` to see what the author claims it does.
+1. Run `gh api repos/webjsdev/webjs/pulls/<N> -H "Accept: application/vnd.github.diff"` to see the full diff.
+2. Run `gh api repos/webjsdev/webjs/pulls/<N> --jq '.title, .body'` to see what the author claims it does.
 3. Read every file the diff touches in its current state (not just the diff hunks) so you see edits in context.
 4. Read root AGENTS.md, the per-package AGENTS.md for each touched package, and CONVENTIONS.md if a scaffolded template was touched.
 5. The question for this round is a SCOPE, not a checklist: <Round 1 and the final review: the whole diff. A delta round or a fix-check: the fix commits' diff, and trace their blast radius, grepping every symbol, rule, or concept the fix touches across the whole PR surface and comparing each other occurrence, since a small fix can break something far from its own hunk. A refuter: DISPROVE this claim, <the finding>.> Review it as a whole and report whatever is actually wrong.

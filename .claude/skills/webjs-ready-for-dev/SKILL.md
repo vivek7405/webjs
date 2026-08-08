@@ -44,9 +44,16 @@ Nothing here writes code. The deliverable is the issue body.
 ### 1. Read the board and the issue bodies
 
 ```sh
-gh project item-list 1 --owner webjsdev --format json --limit 20000
-gh issue view <N> --repo webjsdev/webjs --comments
+# The issue body and its comments, over REST.
+gh api "repos/webjsdev/webjs/issues/<N>" --jq '.title, .body'
+gh api "repos/webjsdev/webjs/issues/<N>/comments?per_page=100" --jq '.[].body'
 ```
+
+Read the ISSUES, not the board. This skill is handed the issue numbers it is
+readying, so it needs their bodies, and a whole-board dump answers a question
+nobody asked at several hundred points of the GraphQL budget. When a card's
+Status or item id is genuinely needed, take it from the issue node (step 5), not
+from a dump. See `.claude/gh-budget.md` for the rule and the substitution table.
 
 Most WebJs issues already carry a partial `## Implementation plan` written when
 they were filed. That is a starting point, not a finished plan. The agent's job
@@ -99,8 +106,10 @@ WebJs framework monorepo at <repo path>, and writing it into the issue body. You
 are FULLY AUTONOMOUS: never ask a question, settle every open call yourself using
 industry standard practice and prior art, and state what settled each decision.
 
-ISSUE: #<N> "<title>" (webjsdev/webjs). Start with
-`gh issue view <N> --repo webjsdev/webjs --comments`.
+ISSUE: #<N> "<title>" (webjsdev/webjs). Start by reading the issue and its
+comments over REST, which does not spend the GraphQL budget this repo runs out of:
+`gh api repos/webjsdev/webjs/issues/<N> --jq '.title, .body'` then
+`gh api "repos/webjsdev/webjs/issues/<N>/comments?per_page=100" --jq '.[].body'`.
 
 SPECIFIC GROUND TO COVER
 <the per-issue block: real paths and line anchors to verify, the decisions that
@@ -225,21 +234,20 @@ worse than one left in Todo.
 
 ### GraphQL budget
 
-The GitHub Projects V2 API is **GraphQL only**, and it rate-limits on a point
-budget rather than a request count, so a few careless calls exhaust it for the
-session. Two rules keep this skill inside it.
+**The rule and the full substitution table live in `.claude/gh-budget.md`. Read
+it; do not restate it here.**
 
-**Never call `gh project item-list 1 --owner webjsdev --limit 20000` in a loop.**
-That query paginates every item on the board (well past 500 today) to find one
-id. Reach the item id from the ISSUE node instead, as above: it is a single node
-lookup, it aliases so a whole batch costs one request, and the result is stable
-enough to cache for the session.
+It used to be restated here, and this skill then broke its own rule a hundred
+lines above where the rule was written, opening step 1 with the whole-board dump
+this section forbids. That is what a second copy does, so there is now one copy
+and this is a pointer to it.
 
-**Keep polling off GraphQL entirely.** Waiting on N background agents means
-repeated reads, and those belong on the issues REST endpoint
-(`gh api repos/webjsdev/webjs/issues/<N>`), which has its own separate budget.
-Reserve GraphQL for the two things only it can do: the one batched item-id fetch,
-and the per-card status mutation.
+The two consequences that bind this skill in particular:
+
+- Reach a card's item id from the ISSUE node, never from a board dump. This
+  skill is handed issue numbers, so it never needs the whole board.
+- Keep polling off GraphQL. Waiting on N background agents means repeated reads,
+  and those go to `gh api repos/webjsdev/webjs/issues/<N>`.
 
 ### 6. Report
 
