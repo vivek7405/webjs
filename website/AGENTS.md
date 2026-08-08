@@ -426,10 +426,11 @@ an implicitly-`any` parameter once reached review in `test/ssr/docs-links.test.t
 
 Two things about the test half are worth knowing before you edit it.
 
-The 9 `.js` browser tests under `test/components/browser/` enter the include
-**parsed but not checked**, because this app sets `checkJs: false`. That is the
-status quo for every other `.js` file here, so including `test/` did not widen
-into them. The rationale lives in this file rather than in the config, because
+The `.js` files under `test/` enter the include **parsed but not checked**,
+because this app sets `checkJs: false`. There are 9 of them: the 8 browser
+tests under `test/components/browser/`, plus the `test/fixtures/` markup
+fixture. That is the status quo for every other `.js` file here, so including
+`test/` did not widen into them. The rationale lives in this file rather than in the config, because
 `tsconfig.json` is strict JSON that the scaffold emits with `JSON.stringify`
 and the scaffold tests read back with `JSON.parse`, so it cannot carry a
 comment at all.

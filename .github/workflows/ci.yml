@@ -541,8 +541,8 @@ jobs:
       # rather than surfacing as a test failure. Both apps are gated, and both
       # tsconfig includes now cover test/ as well as app / components / lib /
       # modules (#1299), so a type error in a test file fails here instead of
-      # waiting for a reviewer to read the line. The website's 9 .js browser
-      # tests enter its include parsed-but-unchecked, since that app sets
+      # waiting for a reviewer to read the line. The website's .js files under
+      # test/ enter its include parsed-but-unchecked, since that app sets
       # checkJs: false; see website/AGENTS.md.
       - name: website typecheck
         run: npm run typecheck --workspace=@webjsdev/website

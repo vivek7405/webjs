@@ -23,15 +23,13 @@ export default function TypeScript() {
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
     "strict": true,
     "noEmit": true,
-    "checkJs": true,
-    "allowJs": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": false,
-    "erasableSyntaxOnly": true
+    "erasableSyntaxOnly": true,
+    "plugins": [{ "name": "@webjsdev/intellisense" }]
   },
   "include": [
     "app/**/*",
@@ -43,15 +41,14 @@ export default function TypeScript() {
     "middleware.ts",
     ".webjs/routes.d.ts"
   ],
-  "exclude": ["node_modules", ".webjs", "db/migrations"]
+  "exclude": ["node_modules", ".webjs/vendor", "db/migrations"]
 }</code-block>
     <p>Key settings explained:</p>
     <ul>
       <li><strong>erasableSyntaxOnly: true</strong>: rejects non-erasable TypeScript syntax (<code>enum</code>, <code>namespace</code> with values, constructor parameter properties, legacy decorators, <code>import = require</code>) at compile time. Required because Node's built-in stripper only supports erasable TypeScript. Violations surface as red squiggles in the editor. See <strong>TypeScript Feature Support</strong> below for the erasable equivalents.</li>
       <li><strong>noEmit: true</strong>: WebJs never compiles TypeScript to JavaScript on disk. The TypeScript compiler is used only for type-checking (<code>tsc --noEmit</code>). Node runs your <code>.ts</code> files directly via its built-in stripper.</li>
       <li><strong>allowImportingTsExtensions: true</strong>: lets you write <code>import { foo } from './bar.ts'</code> with the explicit <code>.ts</code> extension. This is the WebJs convention (see below).</li>
-      <li><strong>checkJs: true</strong>: type-check your <code>.js</code> files too, using JSDoc annotations. Enables a mixed codebase where both <code>.ts</code> and <code>.js</code> files participate in the same type graph.</li>
-      <li><strong>allowJs: true</strong>: include <code>.js</code> files in the project. Required alongside <code>checkJs</code>.</li>
+      <li><strong>include covers test/</strong>: <code>npm run typecheck</code> reads the tests you write, so a type error there is a failed check rather than something a reviewer has to spot. Note what is NOT here: <code>allowJs</code> and <code>checkJs</code>. Turn them on and <code>tsc</code> starts checking your <code>.js</code> files too, which is a real option for a JSDoc-typed codebase (see below) but not the default, because a browser test written as <code>.js</code> is served to a real browser and has no <code>node:test</code> globals in scope.</li>
       <li><strong>module / moduleResolution: NodeNext</strong>: matches how Node resolves ESM imports, including <code>.ts</code> extensions.</li>
       <li><strong>isolatedModules: true</strong>: ensures every file can be transpiled independently, matching the per-file transform model of Node's stripper.</li>
     </ul>

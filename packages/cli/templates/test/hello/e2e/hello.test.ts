@@ -58,13 +58,19 @@ function freePort(): Promise<number> {
 
 before(async () => {
   let puppeteer: Puppeteer | undefined;
-  // @ts-ignore This one line is where the optional dependency enters, and it
-  // is unresolved OR richer than the structural types above depending on
-  // whether puppeteer-core is installed. Suppressing it here keeps the rest
-  // of the file typed against the shapes declared above in both states.
-  // @ts-expect-error is the wrong directive precisely because the error is
-  // conditional: it would itself become an unused-directive error whenever
-  // the package IS present.
+  // The next line is where the optional dependency enters, and what it reports
+  // depends on whether puppeteer-core is installed: an unresolved specifier
+  // when it is absent, a type mismatch against the structural shapes above
+  // when it is present. Suppressing it keeps the rest of the file checked
+  // against those shapes either way.
+  //
+  // It is deliberately ts-ignore rather than the expect-error directive, whose
+  // name is spelled out here rather than written, because a comment line
+  // starting with that token IS a live directive to tsc even inside prose. The
+  // expect-error form is wrong on its own merits too: it errors when there is
+  // nothing to suppress, so it would break whenever the package resolves
+  // cleanly.
+  // @ts-ignore
   try { puppeteer = (await import('puppeteer-core')).default; }
   catch { console.log('# Skipping: puppeteer-core not installed'); return; }
   if (!puppeteer) return;
