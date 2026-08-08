@@ -1179,13 +1179,15 @@ class WebComponentBase extends Base {
       // an attribute that was never there does not reach either reader, so
       // such a prop simply keeps its constructor value.
       //
-      // One case where the two still part company, unchanged by #1253 and not
-      // claimed to be fixed by it: the SSR side decodes attribute text with
-      // `unescapeAttr`, which reverses only `&lt;`, `&quot;` and `&amp;`, while
-      // a browser decodes the full entity set. So a hand-written
-      // `cfg="&#123;&quot;a&quot;:1&#125;"` is unparseable at SSR and parses in
-      // the browser. `escapeAttr` never emits those entities, so only an author
-      // literal reaches it.
+      // That agreement is about this FALLBACK, not a guarantee that the two
+      // readers see the same attributes in the first place. They reach an
+      // attribute by different routes (this one via `observedAttributes` and
+      // the browser's own name-lowercasing, the SSR one by walking the parsed
+      // source tag), and hand-written markup can land in the gaps between
+      // those routes, so an author literal can still be read by one and not
+      // the other. Those gaps predate #1253 and it neither causes nor closes
+      // any of them; no attempt is made here to enumerate them, because every
+      // attempt so far has been incomplete.
       //
       // Scoped to the default converter. A prop supplying its own
       // `converter.fromAttribute` is handled by the arm above and the SSR
