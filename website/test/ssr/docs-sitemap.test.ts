@@ -31,7 +31,7 @@ async function docTopics(): Promise<string[]> {
   const out: string[] = [];
   for (const d of dirents) {
     if (!d.isDirectory() || d.name.startsWith('.') || d.name.startsWith('_') || d.name.startsWith('[')) continue;
-    const files = await readdir(resolve(root, d.name)).catch(() => []);
+    const files = await readdir(resolve(root, d.name)).catch((): string[] => []);
     if (files.includes('page.ts') || files.includes('page.js')) out.push(d.name);
   }
   return out;

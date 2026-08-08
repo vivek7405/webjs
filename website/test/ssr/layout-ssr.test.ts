@@ -18,9 +18,10 @@ import RootLayout from '#app/layout.ts';
 import LandingPage from '#app/page.ts';
 import NotFound from '#app/not-found.ts';
 import ErrorBoundary from '#app/error.ts';
+import { layoutProps } from '#test/helpers/layout-props.ts';
 
 test('the root layout SSR emits no phantom copy-cmd element or copy button', async () => {
-  const out = await renderToString(RootLayout({ children: html`<main>content</main>` }));
+  const out = await renderToString(RootLayout(layoutProps(html`<main>content</main>`)));
   // cursor-copy is the copy button's class, present only if a copy-cmd rendered.
   assert.ok(!out.includes('cursor-copy'), 'no phantom copy button rendered from the layout');
   // An actual <copy-cmd ...> tag (not the CSS selector text "copy-cmd {").
@@ -30,7 +31,7 @@ test('the root layout SSR emits no phantom copy-cmd element or copy button', asy
 test('warms the analytics origin with a connection hint', async () => {
   // The async gtag script is the one cross-origin runtime dependency; a
   // preconnect lets its handshake overlap head parse instead of starting cold.
-  const out = await renderToString(RootLayout({ children: html`<main>x</main>` }));
+  const out = await renderToString(RootLayout(layoutProps(html`<main>x</main>`)));
   assert.ok(out.includes('rel="preconnect" href="https://www.googletagmanager.com"'), 'preconnects the gtag origin');
 });
 
@@ -40,7 +41,7 @@ test('every nav landmark carries a distinguishing aria-label', async () => {
   // tell them apart. Assert no <nav> ships without an aria-label, and that
   // the header and footer names are distinct (both can sit in the a11y tree
   // on a mobile viewport at once).
-  const out = await renderToString(RootLayout({ children: LandingPage() }));
+  const out = await renderToString(RootLayout(layoutProps(LandingPage())));
   const navs = out.match(/<nav\b[^>]*>/g) || [];
   assert.ok(navs.length >= 2, 'the composed document renders multiple nav landmarks');
   const labels = navs.map((tag) => (tag.match(/aria-label="([^"]+)"/) || [])[1]);
@@ -59,14 +60,14 @@ test('the root layout renders the site footer around a bare child (every page ge
   // one footer. Compose the layout around a minimal child and assert the footer
   // nav is present and appears once. Guards against the footer regressing back
   // into individual pages (where blog/compare/changelog silently lost it).
-  const out = await renderToString(RootLayout({ children: html`<main>content</main>` }));
+  const out = await renderToString(RootLayout(layoutProps(html`<main>content</main>`)));
   const footers = (out.match(/<footer\b/g) || []).length;
   assert.equal(footers, 1, 'the layout renders exactly one footer around any page');
   assert.ok(out.includes('aria-label="Footer"'), 'the layout-rendered footer nav is labeled Footer');
 });
 
 test('external new-tab links announce the context change and hide decorative glyphs', async () => {
-  const out = await renderToString(RootLayout({ children: LandingPage() }));
+  const out = await renderToString(RootLayout(layoutProps(LandingPage())));
   // Every target="_blank" link carries a visually-hidden new-tab cue.
   assert.ok(out.includes('class="sr-only"> (opens in a new tab)'), 'external links carry an sr-only new-tab cue');
   // The cue rides multiple external links (nav + CTAs + footer), not a single one.
@@ -76,7 +77,7 @@ test('external new-tab links announce the context change and hide decorative gly
 
 test('no nav or footer link points at the example-blog demo', async () => {
   // Demo was removed from the site deliberately (owner call, 2026-07-30).
-  const out = await renderToString(RootLayout({ children: html`<main>x</main>` }));
+  const out = await renderToString(RootLayout(layoutProps(html`<main>x</main>`)));
   assert.ok(!out.includes('>Demo<'), 'no Demo nav link is rendered');
   assert.ok(!out.includes('example-blog'), 'nothing links at the example-blog app');
 });
@@ -91,7 +92,7 @@ test('the header menu is a component, not a delegated listener in the layout', a
   // test/components/browser/site-nav-menu.test.js against the real element.
   // What is left to check from SSR is the wiring, plus the fact that the old
   // mechanism is really gone rather than merely duplicated.
-  const out = await renderToString(RootLayout({ children: html`<main>x</main>` }));
+  const out = await renderToString(RootLayout(layoutProps(html`<main>x</main>`)));
   assert.ok(/<site-nav-menu[\s>]/.test(out), 'the layout renders the menu component');
   assert.ok(/<details\s+class="mobile-menu/.test(out), 'the native details still SSRs, so it works with JS off');
 
@@ -156,7 +157,7 @@ test('the skip-to-content link resolves on the 404 and error pages too', async (
   // error-boundary pages must also expose a #main target, not just the landing
   // page. Compose the layout around each and assert the fragment resolves.
   for (const [name, page] of [['not-found', NotFound()], ['error', ErrorBoundary({ error: new Error('boom') })]] as const) {
-    const out = await renderToString(RootLayout({ children: page }));
+    const out = await renderToString(RootLayout(layoutProps(page)));
     const m = out.match(/href="#([\w-]+)"[^>]*>\s*Skip to content/);
     assert.ok(m, `${name}: a skip-to-content link is rendered`);
     assert.ok(out.includes(`<main id="${m[1]}" tabindex="-1"`), `${name}: the #${m[1]} target is a focusable main landmark`);
@@ -166,7 +167,7 @@ test('the skip-to-content link resolves on the 404 and error pages too', async (
 test('the skip-to-content link targets the page main landmark (paired)', async () => {
   // Compose the layout around the real page, the way the SSR pipeline does,
   // so the skip-link href and the landmark id are checked as a matching pair.
-  const out = await renderToString(RootLayout({ children: LandingPage() }));
+  const out = await renderToString(RootLayout(layoutProps(LandingPage())));
   const m = out.match(/href="#([\w-]+)"[^>]*>\s*Skip to content/);
   assert.ok(m, 'a skip-to-content link with an href fragment is rendered');
   // The target must be programmatically focusable (tabindex="-1") or activating
