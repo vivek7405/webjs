@@ -536,4 +536,68 @@ describe('reflect:true drops an unserializable JSON value (#1253)', () => {
     assert.ok(out.includes('val=null'), `the SSR reader kept the raw string: ${out}`);
     assert.ok(!out.includes('val=&quot;not-json&quot;') && !out.includes('val="not-json"'), out);
   });
+
+  // The two tests below pin SSR-ONLY paths: attributes `applyAttrsToInstance`
+  // consumes that the client reader never sees at all, so the `null` fallback
+  // reaches them too. They are here because the fallback change is observable
+  // on these paths and nothing else in this PR covers them, not because the
+  // values agree across the two sides. They do NOT agree, and that divergence
+  // predates #1253 and is tracked in #1341; what is pinned here is only that
+  // the SSR side stops putting a raw STRING into a prop declared `Object`.
+  //
+  // Both were measured against `origin/main`, where each rendered
+  // `val="oops"`. If #1341 changes which attributes SSR reads, these two
+  // become the tests that notice.
+
+  test('a state:true prop is read by SSR only, and gets the same null fallback (#1253)', async () => {
+    // `observedAttributes` filters state props out, so the browser never calls
+    // `attributeChangedCallback` for this attribute and the upgraded element
+    // keeps its constructor value.
+    class StateProp extends WebComponent({ cfg: prop(Object, { state: true }) }) {
+      constructor() {
+        super();
+        this.cfg = { fromCtor: true };
+      }
+      render() {
+        return html`<i>val=${JSON.stringify(this.cfg)}</i>`;
+      }
+    }
+    StateProp.register('reflect-unser-state');
+
+    const out = await renderToString(html`<reflect-unser-state cfg="oops"></reflect-unser-state>`);
+
+    assert.ok(out.includes('val=null'), `expected the null fallback, got: ${out}`);
+    // Scoped to the RENDERED value, not the whole output: SSR echoes the source
+    // attribute back into the emitted tag, so `oops` legitimately appears there.
+    assert.ok(
+      !out.includes('val=&quot;oops&quot;') && !out.includes('val="oops"'),
+      `a raw string reached an Object-typed prop: ${out}`
+    );
+  });
+
+  test('a camelCase source attribute is read by SSR only, and gets the same null fallback (#1253)', async () => {
+    // The HTML parser lowercases this to `cfgdata`, which never matches the
+    // `cfg-data` entry in `observedAttributes`, so the client never reads it.
+    // The SSR resolver matches the source-case name directly and does.
+    class CamelAttr extends WebComponent({ cfgData: prop(Object) }) {
+      constructor() {
+        super();
+        this.cfgData = { fromCtor: true };
+      }
+      render() {
+        return html`<i>val=${JSON.stringify(this.cfgData)}</i>`;
+      }
+    }
+    CamelAttr.register('reflect-unser-camel');
+
+    const out = await renderToString(html`<reflect-unser-camel cfgData="oops"></reflect-unser-camel>`);
+
+    assert.ok(out.includes('val=null'), `expected the null fallback, got: ${out}`);
+    // Scoped to the RENDERED value, not the whole output: SSR echoes the source
+    // attribute back into the emitted tag, so `oops` legitimately appears there.
+    assert.ok(
+      !out.includes('val=&quot;oops&quot;') && !out.includes('val="oops"'),
+      `a raw string reached an Object-typed prop: ${out}`
+    );
+  });
 });
