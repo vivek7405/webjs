@@ -68,12 +68,34 @@ test('attributeChangedCallback coerces String / Number / Boolean / Object / Arra
   assert.deepEqual(el.a, [1, 2]);
 });
 
-test('attributeChangedCallback falls back to raw string on malformed JSON', () => {
+test('attributeChangedCallback resolves malformed JSON to null, not the raw string (#1253)', () => {
+  // A string is never a valid value for a property declared Object, whatever
+  // put it there, so the reader hands back null. Matches lit's
+  // defaultConverter.fromAttribute.
+  //
+  // The second half is a REMOVAL, not an absence. Removing an attribute fires
+  // this callback with a null value; an attribute that was never there fires
+  // nothing at all and leaves the property at its constructor value. Only the
+  // removal is assertable here, and the two are worth keeping distinct because
+  // a doc surface once said otherwise.
+  //
+  // What this asserts is the observable CONTRACT (a removal reads back as
+  // null), not which line produces it. Nothing can assert the latter: the
+  // branch's `value == null` arm is unobservable here, because `JSON.parse`
+  // coerces `null` to the string "null" and returns null anyway, so deleting
+  // that arm changes no result on this path. Starting the removal from a
+  // PARSED value at least makes the transition real rather than null -> null,
+  // which the setter would skip on inequality.
   class C extends WebComponent({ o: Object }) {}
   C.register('malformed-json');
   const el = document.createElement('malformed-json');
   el.attributeChangedCallback('o', null, 'not-json');
-  assert.equal(el.o, 'not-json');
+  assert.equal(el.o, null);
+
+  el.attributeChangedCallback('o', 'not-json', '{"a":1}');
+  assert.deepEqual(el.o, { a: 1 }, 'a parseable value still round-trips');
+  el.attributeChangedCallback('o', '{"a":1}', null);
+  assert.equal(el.o, null, 'and REMOVING the attribute resets it to null');
 });
 
 test('custom converter.fromAttribute overrides type-based coercion', () => {

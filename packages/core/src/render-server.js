@@ -1727,9 +1727,37 @@ function applyAttrsToInstance(instance, attrs, Cls) {
       // `raw` is the entity-encoded attribute text (parseAttrs returns the
       // literal characters between the quotes), so decode the HTML entities
       // before JSON.parse. A JSON attribute carries `&quot;` for every `"`;
-      // parsing it raw throws and would silently fall back to the string,
-      // leaving an Object/Array prop holding a string at SSR.
-      try { instance[propName] = JSON.parse(unescapeAttr(raw)); } catch { instance[propName] = raw; }
+      // parsing it raw throws, and the prop then falls to the failure value
+      // below rather than to the object the author wrote.
+      //
+      // An unparseable attribute falls back to `null`, NOT to the raw string
+      // (#1253), matching this branch's counterpart in
+      // `attributeChangedCallback`. They have to agree, or the same
+      // `<my-el cfg="oops">` SSRs holding a string and re-renders holding
+      // something else the moment the element upgrades. `null` is the right
+      // value to agree on: a string is never a valid value for a property the
+      // author declared `Object` or `Array`. This function iterates the
+      // attributes PRESENT on the source tag, so an absent one is not read here
+      // at all and its property keeps whatever the constructor gave it; the
+      // agreement being asserted is about a present, unparseable attribute.
+      //
+      // That agreement is about this FALLBACK, not a guarantee that the two
+      // readers see the same attributes in the first place. This function
+      // walks the parsed source tag while the client goes through
+      // `observedAttributes` and the browser's own name-lowercasing, and
+      // hand-written markup can land in the gaps between those routes (the
+      // entity decoding just below is one, since it reverses far less than a
+      // browser does). Those gaps predate #1253 and it neither causes nor
+      // closes any of them; no attempt is made here to enumerate them,
+      // because every attempt so far has been incomplete.
+      //
+      // Scoped to the DEFAULT converter, which is all this branch is. The
+      // client reader tries `converter.fromAttribute` FIRST and only falls
+      // through to here when there is none, while this function has no
+      // converter arm at all, so a prop declaring one is read differently by
+      // the two sides regardless of what this line does. That gap predates
+      // #1253 and is left alone rather than widened.
+      try { instance[propName] = JSON.parse(unescapeAttr(raw)); } catch { instance[propName] = null; }
     } else instance[propName] = raw;
   }
 }

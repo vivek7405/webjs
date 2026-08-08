@@ -1,5 +1,17 @@
-// A `reflect: true` property holding a function must never write that function
-// into its HTML attribute (#1169).
+// Two guards on the same branch chain, kept in one file because the BOUNDARY
+// between them is the thing that is easy to get wrong.
+//
+// #1169: a `reflect: true` property holding a function must never write that
+// function into its HTML attribute.
+//
+// #1253: a JSON-typed `reflect: true` property holding a value
+// `JSON.stringify` cannot serialize at all (a cycle, a `BigInt`, a throwing
+// `toJSON`) must drop its attribute rather than throw out of reflection.
+//
+// A wrong implementation makes exactly one of two neighbouring assertions red:
+// `[1, 2, fn]` still reflecting as `[1,2,null]` versus a cyclic value dropping.
+// Reading them together is what shows where the line sits, and #1169 had to
+// revert precisely that boundary once.
 //
 // The fall-through branch of `_reflectAttribute` used to run `String(value)`,
 // and `String(fn)` is the function's SOURCE. So assigning an imported
@@ -321,6 +333,273 @@ describe('reflect:true never stringifies a function (#1169)', () => {
     assert.ok(
       !message.includes('REFLECT_LEAK_MARKER'),
       `the warning leaked the source it refused to write: ${message}`
+    );
+  });
+});
+
+describe('reflect:true drops an unserializable JSON value (#1253)', () => {
+  // These render through `renderToString`, so they ARE the SSR-path proof. The
+  // failure mode without the guard is not a thrown render: per-component error
+  // isolation catches the `TypeError`. These tests run with NODE_ENV unset, so
+  // that surfaces a red error box carrying the tag; in PRODUCTION it emits the
+  // component EMPTY at a 200 instead. Either way the CONTENT is gone,
+  // so every case here asserts on the rendered CONTENT. A tag-only assertion
+  // passes against the bug.
+  //
+  // Nothing here asserts on the engine's own `JSON.stringify` message. V8 says
+  // "Converting circular structure to JSON" and JavaScriptCore says something
+  // else, so a message assertion would pass on Node and fail on Bun. The
+  // assertions are on the property, tag, and attribute names the framework
+  // itself writes.
+
+  test('a self-referential object drops the attribute and still renders', async () => {
+    const cyc = { a: 1 };
+    cyc.self = cyc;
+
+    class SelfObj extends WebComponent({
+      cfg: prop(Object, { reflect: true }),
+    }) {
+      constructor() {
+        super();
+        this.cfg = cyc;
+      }
+      render() {
+        return html`<i>ok-content-obj</i>`;
+      }
+    }
+    SelfObj.register('reflect-cyc-object');
+
+    const { out, warnings } = await renderCapturingWarnings(
+      html`<reflect-cyc-object></reflect-cyc-object>`
+    );
+
+    assert.ok(out.includes('reflect-cyc-object'), out);
+    assert.ok(out.includes('ok-content-obj'), `the component rendered empty: ${out}`);
+    assert.ok(!out.includes('cfg='), `expected no cfg attribute: ${out}`);
+    assert.equal(warnings.length, 1, `expected one warning, got ${warnings.length}`);
+    assert.match(warnings[0], /cfg/);
+    assert.match(warnings[0], /reflect-cyc-object/);
+  });
+
+  test('a self-referential array drops the same way', async () => {
+    const cyc = ['a'];
+    cyc.push(cyc);
+
+    class SelfArr extends WebComponent({
+      items: prop(Array, { reflect: true }),
+    }) {
+      constructor() {
+        super();
+        this.items = cyc;
+      }
+      render() {
+        return html`<i>ok-content-arr</i>`;
+      }
+    }
+    SelfArr.register('reflect-cyc-array');
+
+    const { out, warnings } = await renderCapturingWarnings(
+      html`<reflect-cyc-array></reflect-cyc-array>`
+    );
+
+    assert.ok(out.includes('ok-content-arr'), `the component rendered empty: ${out}`);
+    assert.ok(!out.includes('items='), `expected no items attribute: ${out}`);
+    assert.equal(warnings.length, 1, warnings.join(' | '));
+    assert.match(warnings[0], /items/);
+  });
+
+  test('a MUTUAL cycle between two objects drops too, so the guard is not shaped around self-reference', async () => {
+    const a = { name: 'a' };
+    const b = { name: 'b' };
+    a.b = b;
+    b.a = a;
+
+    class Mutual extends WebComponent({
+      graph: prop(Object, { reflect: true }),
+    }) {
+      constructor() {
+        super();
+        this.graph = a;
+      }
+      render() {
+        return html`<i>ok-content-mutual</i>`;
+      }
+    }
+    Mutual.register('reflect-cyc-mutual');
+
+    const { out, warnings } = await renderCapturingWarnings(
+      html`<reflect-cyc-mutual></reflect-cyc-mutual>`
+    );
+
+    assert.ok(out.includes('ok-content-mutual'), `the component rendered empty: ${out}`);
+    assert.ok(!out.includes('graph='), `expected no graph attribute: ${out}`);
+    assert.equal(warnings.length, 1, warnings.join(' | '));
+  });
+
+  test('a BigInt drops too, which a cycle-only pre-walk would have missed', async () => {
+    class Big extends WebComponent({
+      cfg: prop(Object, { reflect: true }),
+    }) {
+      constructor() {
+        super();
+        this.cfg = { n: 1n };
+      }
+      render() {
+        return html`<i>ok-content-bigint</i>`;
+      }
+    }
+    Big.register('reflect-unser-bigint');
+
+    const { out, warnings } = await renderCapturingWarnings(
+      html`<reflect-unser-bigint></reflect-unser-bigint>`
+    );
+
+    assert.ok(out.includes('ok-content-bigint'), `the component rendered empty: ${out}`);
+    assert.ok(!out.includes('cfg='), `expected no cfg attribute: ${out}`);
+    assert.equal(warnings.length, 1, warnings.join(' | '));
+    assert.match(warnings[0], /reflect-unser-bigint/);
+  });
+
+  test("an author toJSON() that throws drops too", async () => {
+    class ThrowingToJson extends WebComponent({
+      cfg: prop(Object, { reflect: true }),
+    }) {
+      constructor() {
+        super();
+        this.cfg = { toJSON() { throw new Error('boom-from-tojson'); } };
+      }
+      render() {
+        return html`<i>ok-content-tojson</i>`;
+      }
+    }
+    ThrowingToJson.register('reflect-unser-tojson');
+
+    const { out, warnings } = await renderCapturingWarnings(
+      html`<reflect-unser-tojson></reflect-unser-tojson>`
+    );
+
+    assert.ok(out.includes('ok-content-tojson'), `the component rendered empty: ${out}`);
+    assert.ok(!out.includes('cfg='), `expected no cfg attribute: ${out}`);
+    assert.equal(warnings.length, 1, warnings.join(' | '));
+  });
+
+  test('a serializable Object and Array still reflect byte-identically and warn zero times', async () => {
+    // This is the regression the #1169 revert exists to prevent: a guard that
+    // over-refuses on this branch discards real data.
+    class Clean extends WebComponent({
+      cfg: prop(Object, { reflect: true }),
+      items: prop(Array, { reflect: true }),
+    }) {
+      constructor() {
+        super();
+        this.cfg = { a: 1, nested: { b: 2 } };
+        this.items = [1, 'two', null];
+      }
+      render() {
+        return html`<i>ok</i>`;
+      }
+    }
+    Clean.register('reflect-unser-clean');
+
+    const { out, warnings } = await renderCapturingWarnings(
+      html`<reflect-unser-clean></reflect-unser-clean>`
+    );
+
+    assert.ok(
+      out.includes('cfg="{&quot;a&quot;:1,&quot;nested&quot;:{&quot;b&quot;:2}}"')
+      || out.includes('cfg="{"a":1,"nested":{"b":2}}"'),
+      out
+    );
+    assert.ok(
+      out.includes('items="[1,&quot;two&quot;,null]"') || out.includes('items="[1,"two",null]"'),
+      out
+    );
+    assert.equal(warnings.length, 0, `a serializable value must not warn: ${warnings.join(' | ')}`);
+  });
+
+  test('the SSR reader falls back to null too, so it cannot disagree with the client (#1253)', async () => {
+    // `applyAttrsToInstance` (render-server.js) and the JSON branch of
+    // `attributeChangedCallback` (component.js) must resolve a PRESENT,
+    // unparseable attribute the same way. If only one of them falls back to
+    // `null`, the same `<my-el cfg="oops">` SSRs holding a string and
+    // re-renders holding something else the moment the element upgrades, which
+    // is a hydration divergence rather than a fixed round trip. This is the
+    // default-converter path only: the SSR reader has no `fromAttribute` arm,
+    // so a prop declaring a converter is already read differently either way.
+    class Reader extends WebComponent({ cfg: prop(Object) }) {
+      render() {
+        return html`<i>val=${JSON.stringify(this.cfg)}</i>`;
+      }
+    }
+    Reader.register('reflect-unser-reader');
+
+    const out = await renderToString(html`<reflect-unser-reader cfg="not-json"></reflect-unser-reader>`);
+
+    assert.ok(out.includes('val=null'), `the SSR reader kept the raw string: ${out}`);
+    assert.ok(!out.includes('val=&quot;not-json&quot;') && !out.includes('val="not-json"'), out);
+  });
+
+  // The two tests below pin SSR-ONLY paths: attributes `applyAttrsToInstance`
+  // consumes that the client reader never sees at all, so the `null` fallback
+  // reaches them too. They are here because the fallback change is observable
+  // on these paths and nothing else in this PR covers them, not because the
+  // values agree across the two sides. They do NOT agree, and that divergence
+  // predates #1253 and is tracked in #1341; what is pinned here is only that
+  // the SSR side stops putting a raw STRING into a prop declared `Object`.
+  //
+  // Both were measured against `origin/main`, where each rendered
+  // `val="oops"`. If #1341 changes which attributes SSR reads, these two
+  // become the tests that notice.
+
+  test('a state:true prop is read by SSR only, and gets the same null fallback (#1253)', async () => {
+    // `observedAttributes` filters state props out, so the browser never calls
+    // `attributeChangedCallback` for this attribute and the upgraded element
+    // keeps its constructor value.
+    class StateProp extends WebComponent({ cfg: prop(Object, { state: true }) }) {
+      constructor() {
+        super();
+        this.cfg = { fromCtor: true };
+      }
+      render() {
+        return html`<i>val=${JSON.stringify(this.cfg)}</i>`;
+      }
+    }
+    StateProp.register('reflect-unser-state');
+
+    const out = await renderToString(html`<reflect-unser-state cfg="oops"></reflect-unser-state>`);
+
+    assert.ok(out.includes('val=null'), `expected the null fallback, got: ${out}`);
+    // Scoped to the RENDERED value, not the whole output: SSR echoes the source
+    // attribute back into the emitted tag, so `oops` legitimately appears there.
+    assert.ok(
+      !out.includes('val=&quot;oops&quot;') && !out.includes('val="oops"'),
+      `a raw string reached an Object-typed prop: ${out}`
+    );
+  });
+
+  test('a camelCase source attribute is read by SSR only, and gets the same null fallback (#1253)', async () => {
+    // The HTML parser lowercases this to `cfgdata`, which never matches the
+    // `cfg-data` entry in `observedAttributes`, so the client never reads it.
+    // The SSR resolver matches the source-case name directly and does.
+    class CamelAttr extends WebComponent({ cfgData: prop(Object) }) {
+      constructor() {
+        super();
+        this.cfgData = { fromCtor: true };
+      }
+      render() {
+        return html`<i>val=${JSON.stringify(this.cfgData)}</i>`;
+      }
+    }
+    CamelAttr.register('reflect-unser-camel');
+
+    const out = await renderToString(html`<reflect-unser-camel cfgData="oops"></reflect-unser-camel>`);
+
+    assert.ok(out.includes('val=null'), `expected the null fallback, got: ${out}`);
+    // Scoped to the RENDERED value, not the whole output: SSR echoes the source
+    // attribute back into the emitted tag, so `oops` legitimately appears there.
+    assert.ok(
+      !out.includes('val=&quot;oops&quot;') && !out.includes('val="oops"'),
+      `a raw string reached an Object-typed prop: ${out}`
     );
   });
 });
