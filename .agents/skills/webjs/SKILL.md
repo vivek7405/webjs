@@ -244,4 +244,4 @@ Success is a 303 (PRG); failure re-renders the page at 422 with the result on `a
 - A browser global (`window`, `document`, `localStorage`) in the constructor or `render()`. It throws at SSR; do browser-only work in `connectedCallback`.
 - Interpolating into a component's `<style>` / `<script>` body. Use `static styles` or Tailwind.
 - Driving a component's markup from a delegated `document` listener in a page or layout, coupled by a class selector. The markup, the state, and the listener belong in one component.
-- Parking UI state on `<body>` or `<html>`. The router's swap range never covers the document shell, so the flag outlives the markup it described.
+- Parking one component's UI state on `<body>` or `<html>`. The router's swap range never covers the document shell, so the flag outlives the markup it described. A document-wide SETTING such as the theme is the exception, and a transient effect such as a scroll lock is released in `disconnectedCallback`.
