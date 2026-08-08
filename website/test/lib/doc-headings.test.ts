@@ -14,6 +14,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { extractHeadings } from '#lib/utils/doc-headings.ts';
 import { getDocPages, type DocPage } from '#lib/docs-llms.server.ts';
 
@@ -38,7 +39,9 @@ const FIXTURE = [
   '#### package.json',
   '',
   '  ```',
-  '  # indented fence, still a fence',
+  // Column 0 inside an INDENTED fence. Drop trimStart() from the predicate
+  // and the fence stops toggling, so this line becomes a heading.
+  '#not a heading either, the fence around it is indented',
   '  ```',
   '',
   '## Next Steps',
@@ -52,6 +55,19 @@ test('a hash line inside a fence is not a heading, at any nesting', () => {
     'package.json',
     'Next Steps',
   ]);
+});
+
+test('both fence scans use the same predicate, so they cannot drift apart', () => {
+  // This helper stays import-free: lib/utils is the browser-safe shelf and
+  // docs-llms.server.ts is server-only, so the predicate is a hand-kept
+  // duplicate rather than a shared export. That is only safe if something
+  // pins the two copies together, which is this test. Editing one scan's
+  // idea of where a fence starts and not the other's reds here.
+  const PREDICATE = "line.trimStart().startsWith('```')";
+  for (const rel of ['../../lib/utils/doc-headings.ts', '../../lib/docs-llms.server.ts']) {
+    const src = readFileSync(new URL(rel, import.meta.url), 'utf8');
+    assert.ok(src.includes(PREDICATE), `${rel} no longer uses the shared fence predicate`);
+  }
 });
 
 test('the real corpus keeps its headings and drops the shell comments', async () => {

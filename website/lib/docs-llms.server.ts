@@ -197,9 +197,11 @@ export function bodyToMarkdown(raw: string): string {
   // a sample apart from prose. It recovers its headings from this markdown
   // through lib/utils/doc-headings.ts, which tracks fences with the SAME
   // predicate the whitespace normalisation below uses, so a line-leading
-  // "# " shell comment inside a sample is not scored as a heading. Two
-  // passes over this output that disagreed about where a fence starts would
-  // drift silently, which is why they share the rule.
+  // "# " shell comment inside a sample is not scored as a heading. That
+  // helper keeps its own copy of the predicate (it is import-free and this
+  // module is server-only), and two passes over this output that disagreed
+  // about where a fence starts would drift silently, so
+  // test/lib/doc-headings.test.ts pins the two copies equal.
   //
   // Nothing strips a <code> wrapper out of the captured text any more. That
   // strip existed for the `<pre><code>` shape docs pages used to author, and

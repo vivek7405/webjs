@@ -11,9 +11,12 @@
  * query for `localhost` once ranked /docs/backend-only at 16.
  *
  * The fence predicate is byte-identical to the one bodyToMarkdown runs in
- * its normalisation pass (lib/docs-llms.server.ts). Two passes over the
- * same corpus that disagree about where a fence starts would drift
- * silently, so they share the rule rather than each having their own.
+ * its normalisation pass (lib/docs-llms.server.ts). It is a hand-kept
+ * duplicate rather than a shared import, because this file stays a pure
+ * browser-safe helper with no imports and that module is server-only. Two
+ * passes over the same corpus that disagreed about where a fence starts
+ * would drift silently, so `test/lib/doc-headings.test.ts` pins the two
+ * copies equal: change one and it reds.
  */
 export function extractHeadings(markdown: string): string[] {
   const headings: string[] = [];
