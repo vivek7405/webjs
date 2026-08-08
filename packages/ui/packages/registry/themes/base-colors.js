@@ -165,7 +165,7 @@ export const BASE_OVERRIDES = {
  * the original file's formatting + comments verbatim: only the values
  * change.
  *
- * @param {string} neutralCss - verbatim contents of `themes/index.css`
+ * @param {string} neutralCss Verbatim contents of `themes/index.css`
  * @param {{ light: Record<string,string>, dark: Record<string,string> }} overrides
  */
 export function mergeThemeCss(neutralCss, overrides) {

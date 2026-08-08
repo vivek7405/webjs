@@ -190,7 +190,7 @@ function isServerActionFile(filePath, content) {
 /**
  * Check whether a file resides under a components/ directory (shared or
  * module-scoped).
- * @param {string} relPath - path relative to appDir
+ * @param {string} relPath Path relative to appDir
  * @returns {boolean}
  */
 function isComponentFile(relPath) {
