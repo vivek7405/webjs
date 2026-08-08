@@ -21,8 +21,8 @@
  * The check is intentionally text-only (count opens vs closes for the
  * container tags whose HTML parsing is most sensitive to unbalance).
  * Running this on the source template rather than a render is the right
- * unit of work: the three in-repo apps have different dependency trees, and
- * a source-text check is what caught the original bug.
+ * unit of work: the in-repo apps have different dependency trees, and a
+ * source-text check is what caught the original bug.
  */
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
