@@ -15,7 +15,7 @@ export const diff = new Command()
   .action(async (name, opts) => {
     const config = getConfig(opts.cwd);
     if (!config) {
-      logger.error('No components.json. Run `webjsui init` first.');
+      logger.error('No components.json. Run `npx @webjsdev/ui init` first.');
       process.exit(1);
     }
 
@@ -52,5 +52,5 @@ export const diff = new Command()
     }
 
     if (changed === 0) logger.success('All local components match the registry.');
-    else logger.info(`\n${changed} file${changed === 1 ? '' : 's'} differ. Re-add with ${logger.cyan('webjsui add <name> -o')} to overwrite.`);
+    else logger.info(`\n${changed} file${changed === 1 ? '' : 's'} differ. Re-add with ${logger.cyan('npx @webjsdev/ui add <name> -o')} to overwrite.`);
   });

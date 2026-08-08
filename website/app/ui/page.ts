@@ -121,7 +121,7 @@ webjs ui add button card dialog input label</code-block>
         <code>@webjsdev/ui</code> package, so an install is deterministic and works offline. Only
         <code>diff</code> and an explicit custom <code>--registry</code> go to the network. A Tier-1
         component's worked structural example is served on demand by
-        <code>webjsui view &lt;name&gt;</code> and by the read-only MCP <code>ui</code> tool, rather
+        <code>webjs ui view &lt;name&gt;</code> and by the read-only MCP <code>ui</code> tool, rather
         than copied into your file.
       </p>
 

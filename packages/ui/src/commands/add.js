@@ -25,13 +25,13 @@ export const add = new Command()
     const config = getConfig(cwd);
     if (!config) {
       logger.error(`No ${logger.cyan('components.json')} found in ${cwd}.`);
-      logger.info(`Run ${logger.cyan('npx webjsui init')} first.`);
+      logger.info(`Run ${logger.cyan('npx @webjsdev/ui init')} first.`);
       process.exit(1);
     }
 
     if (!components || components.length === 0) {
       logger.error('No components specified.');
-      logger.info(`Try ${logger.cyan('npx webjsui add button')} or ${logger.cyan('npx webjsui list')}.`);
+      logger.info(`Try ${logger.cyan('npx @webjsdev/ui add button')} or ${logger.cyan('npx @webjsdev/ui list')}.`);
       process.exit(1);
     }
 

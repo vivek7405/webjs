@@ -333,7 +333,7 @@ when the caller passes an explicit custom `--registry <url>`.
   lives in its module-JSDoc `@example` block. That worked example is build-time
   guidance, so `add` STRIPS it from the copied file and leaves a one-line pointer
   (`example.js` `pointerLine`, the explicit `npx @webjsdev/ui view <name>` form
-  so it resolves whether or not the bin is a direct dep); the full snippet is
+  every printed hint uses, per invariant 8); the full snippet is
   served on demand by `webjsui view` and the MCP `ui` tool. Tier-2
   custom-element files are left whole (the element IS the component). A
   version-skew note: local-first pins `add`/`view` to the INSTALLED ui version,
@@ -409,6 +409,29 @@ when the caller passes an explicit custom `--registry <url>`.
    `detectProject()` in any form. A switch that picks paths per framework buys
    about thirty lines of defaults in exchange for a cross-framework promise
    the rest of the package does not keep.
+
+8. **A command a reader is told to RUN names `npx @webjsdev/ui <cmd>`, never a
+   bare `webjsui <cmd>` (#1264).** `webjsui` is a bin declared inside this
+   package, not a published package name, and the registry 404s on it, so `npx
+   webjsui` resolves through a `node_modules/.bin/webjsui` link or not at all.
+   Whether that link is where npx looks depends on the reader's tree, and the
+   layouts vary (a global-only install with nothing local, a nested layout
+   where the kit sits under `@webjsdev/cli`'s own `node_modules`). Do not try
+   to enumerate them, which is how this invariant was wrong twice. The point is
+   that a printed hint cannot know, while `npx @webjsdev/ui <cmd>` names a real
+   published package and resolves either way. Every hint `init`, `add`, `diff`,
+   `info`, and the registry fetcher print does this, asserted one per site in
+   `init-command.test.js`, `add-command.test.js`, `diff-command.test.js`,
+   `list-view-info.test.js`, and `local-registry.test.js`.
+
+   The rule reaches an instruction, not a mention, so a line that NAMES the
+   binary without telling anyone to type it keeps the bare form:
+   `.name('webjsui')` in `index.js`, which is the bin's real identifier and
+   what the commander banner echoes, the command tables here and in
+   `README.md`, and prose describing what a command does. An instruction
+   directly under an install that supplies the bin is the one place the bare
+   form is still an instruction and still correct, as in `README.md`'s Option B
+   and the root `README.md`'s UI bullet.
 
 ## Component tag convention (Tier 2)
 
