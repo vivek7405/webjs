@@ -57,7 +57,15 @@ suite('Client router: bound form submissions (#1155)', () => {
       return Promise.resolve(responder(String(url), init || {}));
     };
   }
-  function teardown() {
+  async function teardown() {
+    // Settle before dismantling. A routed submission's swap is async, so
+    // pulling the boundary comments out from under one still in flight makes
+    // it degrade AFTER `navGuard.remove()` has restored the real hard-navigate
+    // seam, and that is a genuine page reload, which aborts the whole
+    // web-test-runner session. It surfaced on Firefox once the `text/plain`
+    // bail moved out to the ladder file (#1322), because that test's own tick
+    // had been acting as an accidental buffer between the two neighbours.
+    await tick();
     navGuard.remove();
     window.fetch = origFetch;
     container.remove();
@@ -92,7 +100,7 @@ suite('Client router: bound form submissions (#1155)', () => {
       assert.equal(post.init.body.get('email'), 'a@b.com', 'FormData carries the field');
       assert.equal(post.init.body.get('__webjs_action'), 'a1b2c3d4e5/signup',
         'and the identity, without which the server has nothing to dispatch on');
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test("a submit button's own name/value rides along with the identity", async () => {
@@ -114,7 +122,7 @@ suite('Client router: bound form submissions (#1155)', () => {
       const body = calls[0].init.body;
       assert.equal(body.get('intent'), 'publish', "the submitter's name/value is submitted");
       assert.equal(body.get('__webjs_action'), 'a1b2c3d4e5/act', 'alongside the identity');
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test('a 422 HTML response is applied in place, not via a full reload', async () => {
@@ -152,7 +160,7 @@ suite('Client router: bound form submissions (#1155)', () => {
       // The 422 body was actually applied to the live DOM (the field error is
       // now present), which a full reload would never achieve from a fetch stub.
       assert.ok(document.getElementById(marker), 'the 422 re-render body was applied in place');
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test('a 303-redirected success records the FINAL url in history (PRG)', async () => {
@@ -182,7 +190,7 @@ suite('Client router: bound form submissions (#1155)', () => {
     } finally {
       // Restore history so later tests start clean.
       history.replaceState(null, '', before);
-      teardown();
+      await teardown();
     }
   });
 
@@ -222,7 +230,7 @@ suite('Client router: bound form submissions (#1155)', () => {
       assert.equal(post.init.body.get('email'), 'a@b.com', 'and the field survives the encoding');
       // COUNTERFACTUAL: revert `encodeSubmitBody` to return the FormData
       // unconditionally and this goes red, which is what pins the fix.
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test('a form declaring multipart still sends FormData', async () => {
@@ -237,7 +245,7 @@ suite('Client router: bound form submissions (#1155)', () => {
       container.querySelector('button').click();
       await tick();
       assert.ok(calls[0].init.body instanceof FormData, 'multipart is still FormData');
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test("a submitter's formenctype overrides the form's, as native precedence says", async () => {
@@ -253,7 +261,7 @@ suite('Client router: bound form submissions (#1155)', () => {
       await tick();
       assert.ok(calls[0].init.body instanceof URLSearchParams,
         "the button's own formenctype decides the encoding");
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test('an invalid enctype is urlencoded, not passed through or treated as text/plain', async () => {
@@ -271,32 +279,15 @@ suite('Client router: bound form submissions (#1155)', () => {
       await tick();
       assert.ok(calls[0], 'the submission was still routed, not bailed');
       assert.ok(calls[0].init.body instanceof URLSearchParams);
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
-  test('a text/plain POST is NOT routed, so both paths do the same native thing', async () => {
-    // The server parses multipart and urlencoded only, so there is no honest
-    // way to send this over fetch. Bailing means the browser performs exactly
-    // the submission it would have without JS. The nav guard would catch the
-    // real navigation, so what is asserted is simply that no fetch was issued.
-    setup(okHtml);
-    try {
-      render(html`
-        <form method="post" enctype="text/plain" action="/never">
-          <button type="submit">go</button>
-        </form>
-      `, container);
-      // The native submission this bail deliberately allows is cancelled by
-      // the suite's nav guard, which listens on WINDOW bubble, i.e. after the
-      // router's own document-bubble listener. A listener on `container` would
-      // run BEFORE the router and set `defaultPrevented`, so `onSubmit` would
-      // return at its first line and this test would pass without the router
-      // ever making the decision it claims to measure.
-      container.querySelector('button').click();
-      await tick();
-      assert.equal(calls.length, 0, 'the router did not take it');
-    } finally { teardown(); }
-  });
+  // The `text/plain` BAIL that used to sit here moved to
+  // `submit-bail-ladder.test.js` (#1322), where it is one rung of the ladder
+  // and is paired with a near-miss control. On its own it asserted only that no
+  // fetch was issued, which cannot tell a bail apart from a submission that
+  // never happened. The tests above are about ENCODING, which is this file's
+  // subject, and they stay.
 
   // -------------------------------------------------------------------------
   // #1307: the dev-time submit guard.
@@ -343,7 +334,7 @@ suite('Client router: bound form submissions (#1155)', () => {
           `expected a submit-time console.error, saw: ${JSON.stringify(seen)}`,
         );
       });
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test('a bound identity posting to ANOTHER url is reported (#1307)', async () => {
@@ -369,7 +360,7 @@ suite('Client router: bound form submissions (#1155)', () => {
           `expected the submit-elsewhere report, saw: ${JSON.stringify(seen)}`,
         );
       });
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test('the submit-elsewhere guard stays silent for a form posting to its own page', async () => {
@@ -390,7 +381,7 @@ suite('Client router: bound form submissions (#1155)', () => {
         await tick();
         assert.equal(seen.length, 0, `expected silence, saw: ${JSON.stringify(seen)}`);
       });
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test('the guard stays silent for a form carrying no bound identity', async () => {
@@ -409,7 +400,7 @@ suite('Client router: bound form submissions (#1155)', () => {
         await tick();
         assert.equal(seen.length, 0, `expected silence, saw: ${JSON.stringify(seen)}`);
       });
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test('the guard fires for text/plain but NOT for an invalid enctype', async () => {
@@ -430,7 +421,7 @@ suite('Client router: bound form submissions (#1155)', () => {
         await tick();
         assert.equal(seen.length, 0, `an invalid enctype is urlencoded and works, saw: ${JSON.stringify(seen)}`);
       });
-    } finally { teardown(); }
+    } finally { await teardown(); }
 
     setup(okHtml);
     try {
@@ -448,6 +439,6 @@ suite('Client router: bound form submissions (#1155)', () => {
           `expected the text/plain report, saw: ${JSON.stringify(seen)}`,
         );
       });
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 });

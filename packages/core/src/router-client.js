@@ -859,9 +859,13 @@ function onSubmit(e) {
   const submitter = /** @type {HTMLElement | null} */ (e.submitter ?? null);
   if (submitter && submitter.hasAttribute('data-no-router')) return;
 
-  const target = (submitter && submitter.getAttribute('formtarget'))
-    || form.getAttribute('target')
-    || '';
+  // Presence, not truthiness, exactly as `getSubmitAction` resolves the action
+  // (#1322). The form-submission algorithm asks whether the submitter HAS a
+  // `formtarget`, so a present-but-empty one overrides the form and then means
+  // the current browsing context, per the rules for choosing a navigable.
+  const target = (submitter && submitter.hasAttribute('formtarget'))
+    ? (submitter.getAttribute('formtarget') || '')
+    : (form.getAttribute('target') || '');
   if (target && target !== '_self') return;
 
   const method = getSubmitMethod(form, submitter);
@@ -911,14 +915,21 @@ function onSubmit(e) {
  * Method resolution: submitter's `formmethod` wins over form's `method`.
  * Returns lowercase.
  *
+ * Resolved on PRESENCE, not truthiness (#1322), the same way `getSubmitAction`
+ * below resolves the action. The form-submission algorithm reads the
+ * submitter's `formmethod` if the submitter HAS one, so a present-but-empty
+ * `formmethod=""` overrides the form and then falls to its own invalid-value
+ * default, GET. Resolving with `||` instead sent a multipart POST for a button
+ * every engine submits as `GET`, which is a JS-on versus JS-off divergence.
+ *
  * @param {HTMLFormElement} form
  * @param {HTMLElement | null} submitter
  */
 function getSubmitMethod(form, submitter) {
-  const v = (submitter && submitter.getAttribute('formmethod'))
-    || form.getAttribute('method')
-    || 'get';
-  return v.toLowerCase();
+  const v = (submitter && submitter.hasAttribute('formmethod'))
+    ? (submitter.getAttribute('formmethod') || '')
+    : (form.getAttribute('method') || '');
+  return (v || 'get').toLowerCase();
 }
 
 /**
@@ -965,12 +976,19 @@ function normalizeEnctype(raw) {
  * `enctype`, exactly as `getSubmitMethod` resolves the method (#1307). Turbo
  * resolves it the same way, in `core/drive/form_submission.js`.
  *
+ * On PRESENCE, not truthiness (#1322), for the reason spelled out on
+ * `getSubmitMethod`: a present-but-empty `formenctype=""` overrides the form
+ * and normalizes to urlencoded, its own invalid-value default, so a button on
+ * a multipart form sends urlencoded with JS on exactly as it does with JS off.
+ *
  * @param {HTMLFormElement} form
  * @param {HTMLElement | null} submitter
  */
 function getSubmitEnctype(form, submitter) {
   return normalizeEnctype(
-    (submitter && submitter.getAttribute('formenctype')) || form.getAttribute('enctype'),
+    (submitter && submitter.hasAttribute('formenctype'))
+      ? submitter.getAttribute('formenctype')
+      : form.getAttribute('enctype'),
   );
 }
 
