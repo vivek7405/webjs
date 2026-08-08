@@ -34,15 +34,23 @@ import { fileURLToPath } from 'node:url';
  * be absent entirely, so this never throws and never fails the publish. Copying
  * markdown is this script's job; a missing SHA costs a diagnostic, not a release.
  * `spawnSync` over `execSync` so an absent binary is a returned error object
- * rather than a throw. Anything that is not a 40-hex string is treated as absent.
+ * rather than a throw. Anything that is not a 40-hex string is treated as absent,
+ * which is a SEPARATE guard from the exit status: a git that exits 0 while
+ * printing something else (a wrapper on PATH, a future porcelain change) must not
+ * put that text into a published tarball as if it were a commit.
+ *
+ * `spawn` is injectable so each of those guards is testable independently. The
+ * real `git` in a temp dir exits non-zero, so it can only ever exercise the
+ * status branch, which would leave the other two proven by nothing.
  *
  * @param {string} cwd  the directory to resolve HEAD from
+ * @param {typeof spawnSync} [spawn]  seam for tests; defaults to the real spawnSync
  * @returns {string | null}
  */
-export function readGitSha(cwd) {
+export function readGitSha(cwd, spawn = spawnSync) {
   try {
-    const out = spawnSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' });
-    if (out.status !== 0 || typeof out.stdout !== 'string') return null;
+    const out = spawn('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' });
+    if (!out || out.status !== 0 || typeof out.stdout !== 'string') return null;
     const sha = out.stdout.trim();
     return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
   } catch {

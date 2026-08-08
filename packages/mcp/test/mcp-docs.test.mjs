@@ -244,7 +244,8 @@ test('cleanBundle: the stamp goes with the tree, no separate unlink owed', () =>
 });
 
 test('readGitSha: a real checkout yields 40 hex, a non-checkout yields null and never throws', () => {
-  // The repo itself is a checkout, so this proves the happy path without mocking git.
+  // The repo itself is a checkout, so this proves the happy path against the real
+  // git binary, seam and all.
   const sha = readGitSha(REPO);
   assert.match(sha, /^[0-9a-f]{40}$/, 'resolves HEAD in a checkout');
 
@@ -253,6 +254,26 @@ test('readGitSha: a real checkout yields 40 hex, a non-checkout yields null and 
   const outside = mkdtempSync(join(tmpdir(), 'mcp-nogit-'));
   _cleanup.push(outside);
   assert.equal(readGitSha(outside), null, 'no SHA outside a checkout, and no throw');
+});
+
+test('readGitSha: each guard is exercised on its own, through the injected spawn', () => {
+  // The real binary in a temp dir exits non-zero, so it can only ever reach the
+  // status branch. These drive the other guards directly, so none of them is a
+  // line no test can red.
+  const spawnOf = (result) => () => {
+    if (result instanceof Error) throw result;
+    return result;
+  };
+  const ok = 'b'.repeat(40);
+
+  assert.equal(readGitSha('/x', spawnOf({ status: 0, stdout: ok + '\n' })), ok, 'trims a clean SHA');
+  assert.equal(readGitSha('/x', spawnOf({ status: 128, stdout: ok })), null, 'non-zero status wins over parseable output');
+  assert.equal(readGitSha('/x', spawnOf({ status: 0, stdout: 'fatal: not a git repository\n' })), null, 'exit 0 with prose is not a SHA');
+  assert.equal(readGitSha('/x', spawnOf({ status: 0, stdout: ok.slice(0, 7) })), null, 'an abbreviated SHA is rejected');
+  assert.equal(readGitSha('/x', spawnOf({ status: 0, stdout: 'B'.repeat(40) })), null, 'uppercase is not the git output shape');
+  assert.equal(readGitSha('/x', spawnOf({ status: 0, stdout: undefined })), null, 'no stdout, e.g. a spawn error object');
+  assert.equal(readGitSha('/x', spawnOf(null)), null, 'a spawn that returns nothing');
+  assert.equal(readGitSha('/x', spawnOf(new Error('spawn EACCES'))), null, 'a throwing spawn is swallowed');
 });
 
 test('the stamp lands inside the published files allowlist', () => {
