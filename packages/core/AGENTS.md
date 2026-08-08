@@ -258,6 +258,22 @@ than aborting the whole session. `setHardNavigate` is TEST-ONLY and is
 deliberately not re-exported from `index.js` / `index-browser.js`; tests reach
 it through the same direct `src/router-client.js` import they already use.
 
+There is exactly ONE sanctioned exception to the MUST above, and it holds only
+when BOTH halves are true: the submission being measured cannot navigate at
+all, AND the test is measuring a native default action that the guard's own
+`preventDefault()` would cancel. Rung 7 of the submit bail ladder
+(`test/routing/browser/submit-bail-ladder.test.js`) is the case it was written
+for: a `method="dialog"` submission dismisses its `<dialog>` instead of
+navigating, and asserting `dialog.open === false` is the whole point of the
+test, so a guard there would cancel the very effect under test. A test taking
+the exception owes the second channel separately, because the exception buys
+out only the `preventDefault` half: that file holds a `setHardNavigate`
+recorder for its whole lifetime and re-arms it after each guard is removed,
+since an async swap from a NEIGHBOURING test can degrade during the unguarded
+one and a real page load there aborts the session. It did, on Firefox, before
+the recorder was added. If either half of the condition fails, install the
+guard.
+
 Cross-package tests that exercise core through the SSR pipeline
 or scaffolds live at the repo root in `test/ssr/`,
 `test/scaffolds/`, etc. See [`references/testing.md`](../../.agents/skills/webjs/references/testing.md).
