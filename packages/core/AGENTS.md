@@ -63,13 +63,24 @@ See the [package.json `exports` field](./package.json) for subpaths:
 re-exports. Keep this list in sync if you add or remove a barrel
 export.
 
-**The `index.d.ts` overlay must declare every runtime named export** (it
+**Every overlay behind a published `exports` entry must declare every
+runtime named export of its sibling module** (the `index.d.ts` overlay
 drifted badly once, #388: 35 missing). This is now enforced:
-`test/types/dts-export-coverage.test.mjs` reads each package's runtime
-exports dynamically and tsc-checks that the `.d.ts` declares them all, so a
-new `export` in `index.js` without a matching declaration fails CI. When you
-add a runtime export, add its declaration (re-export from the source module's
-`.d.ts`, creating that `.d.ts` if absent).
+`test/types/dts-export-coverage.test.mjs` reads the entry list from this
+package's own `exports`, imports each overlay's sibling `.js` for its real
+runtime export names, and tsc-checks that the `.d.ts` declares them all, so
+a new `export` in `index.js` OR in any subpath module (`src/directives.js`,
+`src/signal.js`, the rest) without a matching declaration fails CI. It used
+to check only three entry points, so twelve subpaths could drift freely
+(#1291). When you add a runtime export, add its declaration (re-export from
+the source module's `.d.ts`, creating that `.d.ts` if absent).
+
+**Prefix a test-only export with `_`.** A leading underscore marks a seam
+that unit tests reach but the published API does not carry, and the coverage
+guard exempts it, so it needs no declaration and never shows up in a
+consumer's autocomplete. `src/router-client.js` keeps 63 of them in its
+`Internal exports for unit testing` block. Without the prefix the guard
+demands a declaration, and adding one publishes the seam as API.
 
 **Type-only exports.** `index.d.ts` (the overlay) re-exports the
 type-only public surface alongside the runtime exports. The component
