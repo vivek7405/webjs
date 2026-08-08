@@ -434,7 +434,10 @@ names mechanically:
   `^flex(-|$)` lumped the `flex` DISPLAY value in with `flex-1` / `flex-row` /
   `flex-wrap` and dropped `display:flex` (#1072), and border colour had no
   group at all, so an override's winner was decided by compiled stylesheet
-  order rather than class order (#1065). When a value can mean two properties
+  order rather than class order (#1065). `bg-`, `shadow-` and `text-shadow-`
+  then repeated it: `bg-clip-*` / `bg-origin-*` / `bg-blend-*` sat in
+  `bg-color`, and a shadow size shared one group with its colour, so each pair
+  evicted the other (#1265). When a value can mean two properties
   under one prefix, classify by parsing the VALUE (`border-[3px]` is a width,
   `border-[#fff]` is a colour), and give each side its own group with the
   shorthand subsumption declared in `CONFLICTS`, the way padding does.
@@ -468,10 +471,14 @@ names mechanically:
   identical prefix and never with the prefix's default, which is the safe
   direction to fail (an extra class renders, a dropped one does not).
 - The merger is coarse by design and does NOT claim full `tailwind-merge`
-  fidelity. Some prefixes are still grouped by prefix alone (`bg-clip-*` and
-  `bg-origin-*` sit in `bg-color`; `shadow-lg` and `shadow-red-500` share
-  `shadow`), so a less common pair can still collide. Say that plainly in any
-  doc you write about it rather than stating the property rule as absolute.
+  fidelity. It knows the property splits inside the families it enumerates and
+  nothing outside them, so a neighbouring prefix (`inset-shadow-*`,
+  `drop-shadow-*`, `ring-*`, `inset-ring-*`, `mix-blend-*`) has no group at all
+  and both classes are emitted, leaving the winner to compiled stylesheet
+  order. That is the safe direction to fail: ungrouped never evicts. Say that
+  plainly in any doc you write about it rather than stating the property rule
+  as absolute, and when you DO add a group, split it by property from the
+  start (a prefix-keyed group is the #1265 defect).
 
 ## Layout + typography helpers (the design system)
 
