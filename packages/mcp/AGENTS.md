@@ -87,7 +87,11 @@ src/
 scripts/
   copy-mcp-resources.js  prepack: bundle the repo-root skill (references + SKILL.md) + AGENTS.md
                          into resources/ (in `files`) so npx is self-contained.
-                         Exports the reusable bundleDocs(...).
+                         Also emits resources/corpus.json, the build stamp naming
+                         the package, version, commit SHA, and copy time the
+                         bundle froze (#1319). Exports bundleDocs(...) (whose
+                         `stamp` is optional) + readGitSha(...), which returns
+                         null rather than throwing outside a git checkout.
   clean-mcp-resources.js postpack: remove the transient resources/ bundle so dev
                          always reads the live repo-root docs. Exports
                          cleanBundle(...).
@@ -102,9 +106,14 @@ scripts/
    function (or reads source/docs) and mutates nothing. No app module is loaded
    (export names are extracted lexically) so there are no DB-init side effects.
 3. **The docs bundle is transient.** `resources/` exists only inside the
-   published tarball (prepack writes it, postpack removes it). In the monorepo
-   it is absent and `resolveDocsLocation` falls back to the live repo-root docs,
-   so source stays single.
+   published tarball (prepack writes it, postpack removes it). That covers the
+   whole tree, `corpus.json` build stamp included; postpack removes the
+   directory recursively, so nothing added to the bundle needs its own cleanup.
+   In the monorepo the tree is absent and `resolveDocsLocation` falls back to
+   the live repo-root docs, so source stays single. The stamp is build metadata,
+   not a doc, which is why it sits beside `AGENTS.md` rather than inside
+   `references/`: `catalogue()` lists only `*.md` under the references dir, so a
+   stamp there would surface to agents as readable guidance.
 
 ## Tests
 

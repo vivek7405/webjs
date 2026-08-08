@@ -47,4 +47,22 @@ subcommand) delegates to this same server, so both routes run identical code.
 The docs corpus is bundled into the package at `prepack`, so `npx @webjsdev/mcp`
 is self-contained; in the monorepo it falls back to the live repo-root docs.
 
+That bundle is a snapshot frozen at publish time, so a published tarball keeps
+serving the docs as they read on the day it was cut. `prepack` stamps it with
+`resources/corpus.json` so the snapshot can say which docs it holds:
+
+```json
+{
+  "package": "@webjsdev/mcp",
+  "version": "0.1.12",
+  "sha": "e5806e2400000000000000000000000000000000",
+  "copiedAt": "2026-08-08T09:14:22.031Z"
+}
+```
+
+`sha` is the full commit the docs were copied from, so it resolves straight to a
+GitHub diff, and it is `null` when `prepack` runs outside a git checkout (a
+missing SHA never fails the publish). A dev checkout has no bundle and so no
+stamp.
+
 STDOUT is the JSON-RPC channel; every diagnostic goes to stderr.
