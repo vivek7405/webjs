@@ -140,7 +140,8 @@ function oneLine(s: string): string {
  * decode. Exported for the same reason `bodyToMarkdown` is, so a unit test
  * can drive it on a fixture instead of planting scaffolding in a real docs
  * page. The whitespace collapse is re-run after decoding because `&nbsp;`
- * and `&hellip;` only become whitespace-relevant once decoded.
+ * decodes to a literal space, so a run of them is only collapsible once the
+ * decode has happened.
  */
 export function plainText(s: string): string {
   return decodeEntities(oneLine(s)).replace(/\s+/g, ' ').trim();

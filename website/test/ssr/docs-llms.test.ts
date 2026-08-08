@@ -164,6 +164,16 @@ test('an escaped tag in prose survives to the corpus', () => {
   assert.equal(md, 'a value with <code> here');
 });
 
+test('a nested template hole leaves no debris behind', () => {
+  // The hole strip used to be `\$\{[^}]*\}`, which stops at the FIRST `}`, so
+  // the nested hole /docs/architecture authors left `"}` in the prose. It was
+  // invisible while the runaway strip above deleted the whole fragment, and
+  // reader-visible once the decode ordering was fixed, which is why the two
+  // ship together.
+  const md = bodyToMarkdown('html`<p>a <code>&lt;form action=${"${createPost}"}&gt;</code> posts</p>`');
+  assert.equal(md, 'a <form action=> posts');
+});
+
 test('plainText strips tags before it decodes entities', () => {
   assert.equal(plainText('a value with &lt;code&gt; here'), 'a value with <code> here');
   assert.match(plainText('intercepts same-origin &lt;a&gt; clicks'), /same-origin <a> clicks/);
