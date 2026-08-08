@@ -11,8 +11,18 @@
  * anchors its file reads to import.meta.url rather than process.cwd(), which
  * is what makes this work identically under `webjs start`, in the
  * createRequestHandler test harness, and in a deployed app.
+ *
+ * Fenced code samples stay in the `text` match corpus at the flat body
+ * weight, deliberately. Roughly three thousand tokens in this corpus appear
+ * only inside a sample and nowhere in their page's prose, and they are
+ * exactly what a reader searches for: a flag, an env var, a header name, an
+ * import specifier. Dropping them would trade a ranking bug for a
+ * zero-results bug, and would empty the snippet for a code-only match. What
+ * code must NOT do is reach the heading tier, which is why the heading scan
+ * tracks fences (lib/utils/doc-headings.ts).
  */
 import { getDocPages } from '#lib/docs-llms.server.ts';
+import { extractHeadings } from '#lib/utils/doc-headings.ts';
 
 type SearchEntry = {
   path: string;
@@ -33,10 +43,10 @@ async function buildIndex(): Promise<SearchEntry[]> {
     title: page.title,
     // The markdown rendering already turned headings into leading-hash
     // lines, so they are recoverable without a second parse of the source.
-    headings: page.markdown
-      .split('\n')
-      .filter((line) => line.startsWith('#'))
-      .map((line) => line.replace(/^#+\s*/, '').trim()),
+    // Lines inside a ``` fence are skipped: a sample's `# ` shell comment
+    // is not a section title, and scoring it as one put 53 phantom
+    // headings into this index across 9 pages.
+    headings: extractHeadings(page.markdown),
     text: (page.title + '\n' + page.description + '\n' + page.markdown).toLowerCase(),
   }));
   return index;
