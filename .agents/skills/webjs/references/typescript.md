@@ -87,7 +87,7 @@ Prefer explicit `.ts` extensions in imports. A `.js` specifier pointing at a `.t
 
 `test/**/*` is in the `include` on purpose (#1299), the way Next / Remix / Astro's generated configs cover the whole tree. Leave it there. A test file outside the `include` is a file `webjs typecheck` never opens, so an implicitly-`any` parameter or a wrong argument shape in a test survives until somebody reads the line, which is exactly how one reached review here. Do not add a second `tsconfig.test.json` either: a config nobody remembers to run reproduces the same gap in a new place.
 
-Note what is absent: `allowJs` / `checkJs`. Adding them makes `tsc` read your `.js` files, which is the right call for a JSDoc-typed codebase, but it also pulls in browser tests written as `.js`. Those run in a real browser through web-test-runner, so their test globals are not in scope for `tsc` and each one reports a `Cannot find name 'test'`. Turn the pair on deliberately, and give the browser tests a `types` entry or their own exclude when you do.
+Note what is absent: `checkJs`, the flag mentioned at the top of this file for a JSDoc-typed codebase (it implies `allowJs`, so it is the only one you add). Turning it on makes `tsc` read your `.js` files, which is the point, but it also pulls in browser tests written as `.js`. Those run in a real browser through web-test-runner, so their test globals are not in scope for `tsc` and each one reports a `Cannot find name 'test'`. Turn it on deliberately, and give the browser tests a `types` entry or their own exclude when you do.
 
 ## Full-stack type safety
 
