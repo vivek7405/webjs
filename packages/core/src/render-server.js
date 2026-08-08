@@ -1741,6 +1741,12 @@ function applyAttrsToInstance(instance, attrs, Cls) {
       // at all and its property keeps whatever the constructor gave it; the
       // agreement being asserted is about a present, unparseable attribute.
       //
+      // With one known exception, unchanged by #1253: `unescapeAttr` above
+      // reverses only `&lt;`, `&quot;` and `&amp;`, while a browser decodes
+      // every entity, so a hand-written `cfg="&#123;&quot;a&quot;:1&#125;"`
+      // is unparseable here and parses there. `escapeAttr` never emits those
+      // entities, so only an author literal reaches it.
+      //
       // Scoped to the DEFAULT converter, which is all this branch is. The
       // client reader tries `converter.fromAttribute` FIRST and only falls
       // through to here when there is none, while this function has no

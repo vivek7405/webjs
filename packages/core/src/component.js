@@ -1175,10 +1175,17 @@ class WebComponentBase extends Base {
       // `applyAttrsToInstance` in `render-server.js` is the SSR counterpart of
       // THIS branch and yields `null` for the same input. They have to agree,
       // or an element SSRs holding one value and re-renders holding another.
-      // The agreement is about an attribute that is PRESENT and unparseable,
-      // which is the only case both readers see; an attribute that was never
-      // there does not reach either one, so such a prop simply keeps its
-      // constructor value.
+      // The agreement is about an attribute that is PRESENT and unparseable;
+      // an attribute that was never there does not reach either reader, so
+      // such a prop simply keeps its constructor value.
+      //
+      // One case where the two still part company, unchanged by #1253 and not
+      // claimed to be fixed by it: the SSR side decodes attribute text with
+      // `unescapeAttr`, which reverses only `&lt;`, `&quot;` and `&amp;`, while
+      // a browser decodes the full entity set. So a hand-written
+      // `cfg="&#123;&quot;a&quot;:1&#125;"` is unparseable at SSR and parses in
+      // the browser. `escapeAttr` never emits those entities, so only an author
+      // literal reaches it.
       //
       // Scoped to the default converter. A prop supplying its own
       // `converter.fromAttribute` is handled by the arm above and the SSR
