@@ -1,23 +1,25 @@
 /**
  * `scripts/link-worktree-deps.mjs` links a fresh worktree's dependencies to the
- * primary checkout's (#1287).
+ * primary checkout's (#1287) and seeds the blog database in a fresh worktree (#1323).
  *
  * The behaviours asserted here are the ones whose absence produced real
  * breakage while the script was written: linking only the ROOT `node_modules`
- * leaves a ws version skew that fails hundreds of assertions elsewhere, and a
+ * leaves a ws version skew that fails hundreds of assertions elsewhere, a
  * naive implementation clobbered a git-tracked directory that happened to be
- * named `node_modules`.
+ * named `node_modules`, and an unseeded worktree leaves four blog tests failing
+ * locally without naming the database.
  *
  * These drive the script as a subprocess against a synthetic "primary" and
  * "worktree" pair in a temp dir, so nothing touches the real checkout.
  */
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, lstatSync, readlinkSync, existsSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync, lstatSync, readlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { DatabaseSync } from 'node:sqlite';
 
 const SCRIPT = fileURLToPath(new URL('../../scripts/link-worktree-deps.mjs', import.meta.url));
 
@@ -38,16 +40,39 @@ function makePrimary() {
   return root;
 }
 
-function makeWorktree() {
+function makeWorktree({ blog = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'wjworktree-'));
   writeFileSync(join(root, 'package.json'), '{"name":"fake-worktree"}');
   mkdirSync(join(root, 'packages/server'), { recursive: true });
+  if (blog) {
+    mkdirSync(join(root, 'examples/blog/db'), { recursive: true });
+    writeFileSync(
+      join(root, 'examples/blog/package.json'),
+      JSON.stringify({
+        name: 'fake-blog',
+        scripts: {
+          'db:migrate': 'node -e "require(\'fs\').appendFileSync(\'db/ran.log\', \'migrate\\n\')"',
+          'db:seed': 'node -e "require(\'fs\').appendFileSync(\'db/ran.log\', \'seed\\n\')"',
+        },
+      }),
+    );
+  }
   return root;
 }
 
 /** @returns {string} combined stdout of the script run inside `cwd` */
 function run(cwd, primary) {
   return execFileSync(process.execPath, [SCRIPT, primary], { cwd, encoding: 'utf8' });
+}
+
+/** @returns {{ status: number|null, stdout: string, stderr: string }} */
+function runWithResult(cwd, primary, env = {}) {
+  const r = spawnSync(process.execPath, [SCRIPT, primary], {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, ...env },
+  });
+  return { status: r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
 }
 
 describe('link-worktree-deps (#1287)', () => {
@@ -156,4 +181,121 @@ describe('link-worktree-deps (#1287)', () => {
       assert.ok(!existsSync(join(wt, 'node_modules/node_modules')), 'no link nested inside the existing one');
     } finally { rmSync(primary, { recursive: true, force: true }); rmSync(wt, { recursive: true, force: true }); }
   });
+
+  test('seeds the blog database when the worktree has no posts (#1323)', () => {
+    const primary = makePrimary();
+    const wt = makeWorktree({ blog: true });
+    try {
+      const out = run(wt, primary);
+      assert.match(out, /seeding the blog database/);
+      assert.match(out, /blog database seeded/);
+      assert.equal(
+        readFileSync(join(wt, 'examples/blog/db/ran.log'), 'utf8'),
+        'migrate\nseed\n',
+      );
+    } finally {
+      rmSync(primary, { recursive: true, force: true });
+      rmSync(wt, { recursive: true, force: true });
+    }
+  });
+
+  test('seeds a migrated-but-empty database, not just a missing file (#1323)', () => {
+    const primary = makePrimary();
+    const wt = makeWorktree({ blog: true });
+    try {
+      const dbPath = join(wt, 'examples/blog/db/dev.db');
+      const db = new DatabaseSync(dbPath);
+      db.exec('create table posts (id integer primary key)');
+      db.close();
+      const out = run(wt, primary);
+      assert.match(out, /seeding the blog database/);
+      assert.equal(
+        readFileSync(join(wt, 'examples/blog/db/ran.log'), 'utf8'),
+        'migrate\nseed\n',
+      );
+    } finally {
+      rmSync(primary, { recursive: true, force: true });
+      rmSync(wt, { recursive: true, force: true });
+    }
+  });
+
+  test('leaves a database that already has posts alone (#1323)', () => {
+    const primary = makePrimary();
+    const wt = makeWorktree({ blog: true });
+    try {
+      const dbPath = join(wt, 'examples/blog/db/dev.db');
+      const db = new DatabaseSync(dbPath);
+      db.exec('create table posts (id integer primary key, title text)');
+      db.exec("insert into posts (title) values ('hello')");
+      db.close();
+      const out = run(wt, primary);
+      assert.match(out, /already has 1 posts, leaving it alone/);
+      assert.equal(existsSync(join(wt, 'examples/blog/db/ran.log')), false);
+    } finally {
+      rmSync(primary, { recursive: true, force: true });
+      rmSync(wt, { recursive: true, force: true });
+    }
+  });
+
+  test('warns and still exits 0 when seeding fails (#1323)', () => {
+    const primary = makePrimary();
+    const wt = makeWorktree({ blog: true });
+    writeFileSync(
+      join(wt, 'examples/blog/package.json'),
+      JSON.stringify({
+        name: 'fake-blog',
+        scripts: {
+          'db:migrate': 'node -e "process.exit(3)"',
+          'db:seed': 'node -e "process.exit(0)"',
+        },
+      }),
+    );
+    try {
+      const res = runWithResult(wt, primary);
+      assert.equal(res.status, 0, 'link script exits 0 on seed warning');
+      assert.match(res.stderr, /WARNING: npm run db:migrate failed in examples\/blog/);
+      assert.match(res.stderr, /npm run db:migrate then npm run db:seed/);
+    } finally {
+      rmSync(primary, { recursive: true, force: true });
+      rmSync(wt, { recursive: true, force: true });
+    }
+  });
+
+  test('WEBJS_NO_WORKTREE_SEED=1 skips the seed step entirely (#1323)', () => {
+    const primary = makePrimary();
+    const wt = makeWorktree({ blog: true });
+    try {
+      const res = runWithResult(wt, primary, { WEBJS_NO_WORKTREE_SEED: '1' });
+      assert.equal(res.status, 0);
+      assert.match(res.stdout, /blog database seeding skipped \(WEBJS_NO_WORKTREE_SEED=1\)/);
+      assert.equal(existsSync(join(wt, 'examples/blog/db/dev.db')), false);
+      assert.equal(existsSync(join(wt, 'examples/blog/db/ran.log')), false);
+    } finally {
+      rmSync(primary, { recursive: true, force: true });
+      rmSync(wt, { recursive: true, force: true });
+    }
+  });
+
+  test('never seeds in the primary checkout (#1323)', () => {
+    const primary = makePrimary();
+    mkdirSync(join(primary, 'examples/blog/db'), { recursive: true });
+    writeFileSync(
+      join(primary, 'examples/blog/package.json'),
+      JSON.stringify({
+        name: 'fake-blog-primary',
+        scripts: {
+          'db:migrate': 'node -e "require(\'fs\').appendFileSync(\'db/ran.log\', \'migrate\\n\')"',
+          'db:seed': 'node -e "require(\'fs\').appendFileSync(\'db/ran.log\', \'seed\\n\')"',
+        },
+      }),
+    );
+    try {
+      const out = run(primary, primary);
+      assert.match(out, /this IS the primary checkout/);
+      assert.equal(existsSync(join(primary, 'examples/blog/db/ran.log')), false);
+    } finally {
+      rmSync(primary, { recursive: true, force: true });
+    }
+  });
 });
+
