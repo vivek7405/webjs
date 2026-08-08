@@ -9,7 +9,8 @@
  *   - the WRITE side. A `reflect: true` prop declared `Object` or `Array`
  *     whose value cannot pass through `JSON.stringify` drops its attribute and
  *     renders normally, instead of throwing into per-component error isolation
- *     and emitting an EMPTY component at a 200.
+ *     and (in production) emitting an EMPTY component at a 200, or a red
+ *     error box in dev. Either way the rendered CONTENT is gone.
  *   - the READ side. `applyAttrsToInstance` resolves an unparseable JSON
  *     attribute to `null`, matching what `attributeChangedCallback` does in the
  *     browser. The two must resolve a PRESENT, unparseable attribute the same

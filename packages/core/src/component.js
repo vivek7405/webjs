@@ -794,8 +794,10 @@ class WebComponentBase extends Base {
         // The throw used to escape reflection entirely, so a property
         // assignment threw from the setter, a client upgrade threw out of
         // `connectedCallback` before the first render, and an SSR render was
-        // swallowed by per-component isolation and emitted the component
-        // EMPTY at a 200. There is no string to put in the attribute, so the
+        // swallowed by per-component isolation, which surfaces an error box in
+        // dev and emits the component EMPTY at a 200 in PRODUCTION, where the
+        // cause is only in the server log. There is no string to put in the
+        // attribute, so the
         // attribute goes, exactly as it does for a function. The `catch` IS
         // the detection: `JSON.stringify` already walks the value, so its own
         // failure covers all three causes, where a cycle-only pre-walk would

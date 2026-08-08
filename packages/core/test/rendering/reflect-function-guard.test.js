@@ -340,7 +340,9 @@ describe('reflect:true never stringifies a function (#1169)', () => {
 describe('reflect:true drops an unserializable JSON value (#1253)', () => {
   // These render through `renderToString`, so they ARE the SSR-path proof. The
   // failure mode without the guard is not a thrown render: per-component error
-  // isolation catches the `TypeError` and emits the component EMPTY at a 200,
+  // isolation catches the `TypeError`. These tests run with NODE_ENV unset, so
+  // that surfaces a red error box carrying the tag; in PRODUCTION it emits the
+  // component EMPTY at a 200 instead. Either way the CONTENT is gone,
   // so every case here asserts on the rendered CONTENT. A tag-only assertion
   // passes against the bug.
   //
