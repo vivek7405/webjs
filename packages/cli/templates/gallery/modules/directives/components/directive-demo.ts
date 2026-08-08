@@ -31,7 +31,10 @@ export class DirectiveDemo extends WebComponent {
   // A controlled value (for `live`) and a key (for `keyed`).
   private text = signal('type here');
   private variant = signal(0);
-  // A handle to the input node, attached by `ref` in the browser.
+  // A handle to the input node, attached by `ref` in the browser. A ref rather
+  // than a `querySelector` because the template already owns the node, so the
+  // handle flows out of `render()` instead of being re-found by a selector that
+  // could match someone else's markup (or nothing at all after a rename).
   private inputRef = createRef<HTMLInputElement>();
   // Created ONCE (not per render), so `until` keeps the resolved value across
   // re-renders instead of flashing back to the fallback each time.

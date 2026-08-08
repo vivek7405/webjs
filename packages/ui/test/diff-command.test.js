@@ -70,6 +70,9 @@ test('diff: flags differing local copy', async () => {
     );
     assert.match(output, /differ/);
     assert.match(output, /button/);
+    // #1264: the overwrite command it suggests has to resolve for the reader.
+    assert.match(output, /npx @webjsdev\/ui add <name> -o/);
+    assert.doesNotMatch(output, /(?<!\/)\bwebjsui add/);
   } finally {
     globalThis.fetch = origFetch;
     rmSync(d, { recursive: true });

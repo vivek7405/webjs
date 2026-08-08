@@ -117,19 +117,34 @@ function metadataBlock(raw: string): string {
   return raw.slice(startIdx, end);
 }
 
-/** Collapse a fragment to a single trimmed line of plain text. */
+/**
+ * Collapse a fragment to a single trimmed line of plain text.
+ *
+ * Deliberately does NOT decode entities. Entities are decoded exactly once,
+ * at the END of the pipeline (`decodeEntities(body)`), because a decoded `<`
+ * re-entering a later tag strip matches from there to the next `>` anywhere
+ * in the document and deletes everything between the two. That is what cost
+ * /docs/metadata-routes 5 of its 9 samples: one 935-character match that ran
+ * from a decoded `&lt;` in one paragraph to a decoded `&lt;title&gt;` sixty
+ * lines further down. Decoding belongs after every strip, never before one.
+ */
 function oneLine(s: string): string {
   return s
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&#123;/g, '{')
-    .replace(/&#125;/g, '}')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&quot;/g, '"')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * `oneLine` plus the decode, in the one order that is safe: strip, THEN
+ * decode. Exported for the same reason `bodyToMarkdown` is, so a unit test
+ * can drive it on a fixture instead of planting scaffolding in a real docs
+ * page. The whitespace collapse is re-run after decoding because `&nbsp;`
+ * decodes to a literal space, so a run of them is only collapsible once the
+ * decode has happened.
+ */
+export function plainText(s: string): string {
+  return decodeEntities(oneLine(s)).replace(/\s+/g, ' ').trim();
 }
 
 /** Truncate at a word boundary, appending an ellipsis when cut. */
@@ -190,21 +205,23 @@ export function bodyToMarkdown(raw: string): string {
   // had the decoded tags deleted out of it, silently, in the one pipeline
   // whose silent losses this function exists to avoid.
   //
-  // A related loss is still live and is NOT fixed here: oneLine() below
-  // decodes `&lt;` to a bare `<` while rewriting a <p>, and the generic tag
-  // strip further down then matches from that stray `<` to the next `>` and
-  // swallows what lies between, including these sentinels. On
-  // /docs/metadata-routes that costs 5 of its 9 samples and the paragraphs
-  // among them. Not fixed here: the repair reorders this pipeline for every
-  // page, and the decode is what makes prose about markup readable, so it
-  // needs its own before-and-after across all 43. test/ssr/docs-llms.test.ts
-  // pins that page at its exact counts, so it cannot decay further and a
-  // repair fails the test rather than passing unnoticed.
+  // The pipeline invariant, and the reason the stages are ordered this way:
+  // tags are stripped at EVERY stage, entities are decoded exactly ONCE, at
+  // the end. A captured sample decodes on its own path below; prose decodes
+  // at `decodeEntities(body)` after the generic strip. Decoding earlier puts
+  // a bare `<` in front of a strip that then eats to the next `>`.
   const codeBlocks: string[] = [];
   body = body.replace(/<(?:pre|code-block)(?=[\s>])[^>]*>([\s\S]*?)<\/(?:pre|code-block)>/g, (_m, code) => {
     codeBlocks.push(decodeEntities(String(code)).replace(/\n+$/, ''));
     return `\uE000CODE${codeBlocks.length - 1}\uE000`;
   });
+
+  // Prose template holes that survive rather than being dropped, parked
+  // behind a sentinel while the dynamic-hole strip runs. Same U+E001
+  // escape-not-literal rule as the code-block sentinel above, so the
+  // file stays diffable text.
+  const heldHoles: string[] = [];
+  const keepHole = (text: string) => `\uE001HOLE${heldHoles.push(text) - 1}\uE001`;
 
   body = body
     // Headings -> markdown
@@ -221,8 +238,41 @@ export function bodyToMarkdown(raw: string): string {
     .replace(/<\/?(ul|ol)[^>]*>/g, '\n')
     // Strip every remaining tag
     .replace(/<[^>]+>/g, ' ')
-    // Drop template-interpolation holes
-    .replace(/\$\{[^}]*\}/g, '');
+    // Template holes in prose. Three shapes, and only one is dynamic:
+    //
+    //   \${x}      an ESCAPED hole. The `\$` means the page is not
+    //              interpolating at all, so the reader sees the literal text
+    //              `${x}`. Keep it, minus the escape.
+    //   ${"lit"}   a hole whose value is a string literal, so the reader sees
+    //              that literal. Keep the literal.
+    //   ${x}       a real hole. What it renders is known only at render time,
+    //              so there is nothing to put in the corpus. Drop it.
+    //
+    // All three used to be dropped alike, which deleted the binding out of
+    // every sentence teaching `<form action=${action}>` and stranded the
+    // escape backslash. On main that damage was hidden, because the runaway
+    // strip had already eaten those fragments whole; restoring them exposed
+    // 12 corpus lines reading `<form action=\>`, in the one surface whose
+    // reader is an LLM and about the exact shape invariant 12 governs.
+    //
+    // The kept text is parked behind a sentinel so the dynamic-hole strip
+    // below cannot eat what these two just preserved, and it is restored
+    // before `decodeEntities` so entities inside it decode like any prose.
+    .replace(/\\\$\{((?:[^{}]|\{[^}]*\})*)\}/g, (_m, inner) => keepHole('${' + unescapeJs(inner) + '}'))
+    .replace(/\$\{"((?:[^"\\]|\\.)*)"\}/g, (_m, lit) => keepHole(unescapeJs(lit)))
+    // Brace-aware: `[^}]*` would stop at the FIRST `}`, leaving `"}` debris
+    // behind a nested hole.
+    .replace(/\$\{(?:[^{}]|\{[^}]*\})*\}/g, '');
+
+  // Restore kept holes. A kept hole can itself contain a parked sentinel (an
+  // escaped hole nested inside a string-literal one), so this repeats until
+  // none is left. Replacing once emitted the inner sentinel verbatim, which
+  // would ship a private-use codepoint in a text/plain response and into the
+  // search index. Bounded: a hole can only contain sentinels parked before
+  // it, so each pass resolves at least one.
+  for (let pass = 0; pass <= heldHoles.length && /\uE001HOLE\d+\uE001/.test(body); pass++) {
+    body = body.replace(/\uE001HOLE(\d+)\uE001/g, (_m, i) => heldHoles[Number(i)]);
+  }
 
   body = decodeEntities(body);
 
@@ -287,11 +337,11 @@ async function extractPage(file: string): Promise<DocPage> {
   let description = '';
   const descMatch = meta.match(/description:\s*(?:'((?:\\.|[^'\\])*)'|"((?:\\.|[^"\\])*)"|`((?:\\.|[^`\\])*)`)/);
   if (descMatch) {
-    description = oneLine(decodeEntities(unescapeJs(descMatch[1] ?? descMatch[2] ?? descMatch[3] ?? '')));
+    description = plainText(unescapeJs(descMatch[1] ?? descMatch[2] ?? descMatch[3] ?? ''));
   }
   if (!description) {
     const pMatch = raw.match(/<p[^>]*>([\s\S]*?)<\/p>/);
-    if (pMatch) description = oneLine(decodeEntities(pMatch[1]));
+    if (pMatch) description = plainText(pMatch[1]);
   }
   description = truncate(description, 200);
 

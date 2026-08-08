@@ -6,6 +6,11 @@
 // active item from location.pathname, so the highlight follows soft-nav. SSR is
 // still correct: `render()` reads the `current` prop (the pathname the layout
 // passes) for the first paint, and the client takes over from location after.
+// The document LISTENER below is the legitimate case, not a reach across the
+// app: the router has no element to dispatch from, and the handler reads only
+// location.pathname and writes only this module's own signal, so it queries
+// nothing outside itself. Querying the document for another file's markup is
+// the shape to avoid.
 import { WebComponent, prop, html, signal } from '@webjsdev/core';
 import { FEATURE_GROUPS } from '#modules/gallery/nav.ts';
 

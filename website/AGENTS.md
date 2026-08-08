@@ -121,7 +121,22 @@ website/
                        path `webjs ui add` writes them to in a real app
     links.ts           cross-app URLs + in-app paths for the header and footer
     samples.ts         the code samples shown on the marketing pages
-    docs-llms.server.ts  enumerates the doc pages on disk (sitemap, llms.txt)
+    docs-llms.server.ts  enumerates the doc pages on disk (sitemap, llms.txt).
+                       Strips tags at every stage and decodes entities exactly
+                       ONCE, at the end. Decoding earlier puts a bare `<` in
+                       front of a later tag strip, which then matches to the
+                       next `>` anywhere in the document and deletes
+                       everything between the two. That once cost
+                       `/docs/metadata-routes` 5 of its 9 code samples and
+                       deleted an escaped tag from 253 prose lines across the
+                       corpus. It also keeps the template holes a reader
+                       actually sees: `\${x}` is ESCAPED (literal text, not an
+                       interpolation) and `${"lit"}` interpolates a known
+                       literal, so both are preserved, while only a bare
+                       `${x}` is render-time and gets dropped. Treating all
+                       three alike printed `<form action=\>` on 12 corpus
+                       lines, teaching an LLM the one shape invariant 12
+                       exists to rule out.
   modules/
     ui/components/     GITIGNORED mirror of the @webjsdev/ui registry sources,
                        written by scripts/copy-registry.mjs. NEVER hand-write
@@ -379,6 +394,16 @@ calling an action), re-enable it and delete the assertion in
   template text with `&lt;` and `&#123;` escapes and so give the server no
   string to tokenize. There used to be a second ES5 copy served out of
   `public/`, kept in sync by hand, and it drifted. Do not add another.
+- **Container tags must balance in every source file that authors markup.**
+  `test/repo-health/site-pages-well-formed.test.mjs` counts opens against
+  closes for `<pre>`, `<code-block>`, `<div>`, `<ul>`, `<ol>`, and `<table>`
+  across all of `website/`, not just `app/docs/`, so the shared chrome under
+  `lib/ui/`, `components/`, and `lib/design/` is covered too (every page
+  renders through it). The generated mirrors under `modules/ui/components/`
+  and `components/ui/`, plus `test/` and `scripts/`, are deliberately outside
+  it. An unbalanced container swallows the client router's
+  `<!--/wj:children-->` marker into the unclosed tag, and the next navigation
+  throws `NotFoundError` from `insertBefore`.
 
 ## Run
 

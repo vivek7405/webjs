@@ -18,7 +18,7 @@ import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { bunifyProse, bunifyDockerfile, bunifyCompose, bunifyCi } from './runtime-rewrite.js';
-import { assertValidAppName } from './app-name.js';
+import { assertValidAppName, toDatabaseName } from './app-name.js';
 
 /**
  * Detect which package manager invoked us. Reads `npm_config_user_agent`,
@@ -877,9 +877,14 @@ export default defineConfig({
 `);
 
   // Env vars: append DATABASE_URL to the .env.example the template already
-  // copied (if present), idempotently.
+  // copied (if present), idempotently. The database segment is the app name
+  // normalized to a fold-stable PostgreSQL identifier, so the emitted URL
+  // names the same database whether the user runs `createdb` or types
+  // `CREATE DATABASE`. Hoisted because the post-scaffold guidance below names
+  // the same value, and the two must not be able to drift.
+  const dbName = toDatabaseName(name);
   const dbUrlLine = dialect === 'postgres'
-    ? 'DATABASE_URL=postgres://user:password@localhost:5432/' + name.replace(/[^a-z0-9_]/gi, '_')
+    ? 'DATABASE_URL=postgres://user:password@localhost:5432/' + dbName
     : 'DATABASE_URL=file:./db/dev.db';
   const envExample = join(appDir, '.env.example');
   if (existsSync(envExample)) {
@@ -1596,7 +1601,7 @@ ThemeToggle.register('theme-toggle');
   // local file with no .env). Point it at a running database; `dev` / `start`
   // then apply pending migrations via webjs.*.before.
   const pgNote = dialect === 'postgres'
-    ? `\nPostgres: copy .env.example to .env and set DATABASE_URL to a running database before \`${pm} run dev\`.\n`
+    ? `\nPostgres: copy .env.example to .env and set DATABASE_URL to a running database before \`${pm} run dev\`.\nThe example URL names the database \`${dbName}\`. Create that database or edit the URL.\n`
     : '';
   // Use `npx webjsdev ui ...` here, not `npx webjs ui ...`. The bare
   // `webjs` npm name is owned by an unrelated package; `npx webjs

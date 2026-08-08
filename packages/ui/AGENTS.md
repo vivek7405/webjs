@@ -333,7 +333,7 @@ when the caller passes an explicit custom `--registry <url>`.
   lives in its module-JSDoc `@example` block. That worked example is build-time
   guidance, so `add` STRIPS it from the copied file and leaves a one-line pointer
   (`example.js` `pointerLine`, the explicit `npx @webjsdev/ui view <name>` form
-  so it resolves whether or not the bin is a direct dep); the full snippet is
+  every printed hint uses, per invariant 8); the full snippet is
   served on demand by `webjsui view` and the MCP `ui` tool. Tier-2
   custom-element files are left whole (the element IS the component). A
   version-skew note: local-first pins `add`/`view` to the INSTALLED ui version,
@@ -410,6 +410,29 @@ when the caller passes an explicit custom `--registry <url>`.
    about thirty lines of defaults in exchange for a cross-framework promise
    the rest of the package does not keep.
 
+8. **A command a reader is told to RUN names `npx @webjsdev/ui <cmd>`, never a
+   bare `webjsui <cmd>` (#1264).** `webjsui` is a bin declared inside this
+   package, not a published package name, and the registry 404s on it, so `npx
+   webjsui` resolves through a `node_modules/.bin/webjsui` link or not at all.
+   Whether that link is where npx looks depends on the reader's tree, and the
+   layouts vary (a global-only install with nothing local, a nested layout
+   where the kit sits under `@webjsdev/cli`'s own `node_modules`). Do not try
+   to enumerate them, which is how this invariant was wrong twice. The point is
+   that a printed hint cannot know, while `npx @webjsdev/ui <cmd>` names a real
+   published package and resolves either way. Every hint `init`, `add`, `diff`,
+   `info`, and the registry fetcher print does this, asserted one per site in
+   `init-command.test.js`, `add-command.test.js`, `diff-command.test.js`,
+   `list-view-info.test.js`, and `local-registry.test.js`.
+
+   The rule reaches an instruction, not a mention, so a line that NAMES the
+   binary without telling anyone to type it keeps the bare form:
+   `.name('webjsui')` in `index.js`, which is the bin's real identifier and
+   what the commander banner echoes, the command tables here and in
+   `README.md`, and prose describing what a command does. An instruction
+   directly under an install that supplies the bin is the one place the bare
+   form is still an instruction and still correct, as in `README.md`'s Option B
+   and the root `README.md`'s UI bullet.
+
 ## Component tag convention (Tier 2)
 
 Single `ui-` prefix; sub-components hyphenated. Matches shadcn's React tag
@@ -434,7 +457,10 @@ names mechanically:
   `^flex(-|$)` lumped the `flex` DISPLAY value in with `flex-1` / `flex-row` /
   `flex-wrap` and dropped `display:flex` (#1072), and border colour had no
   group at all, so an override's winner was decided by compiled stylesheet
-  order rather than class order (#1065). When a value can mean two properties
+  order rather than class order (#1065). `bg-`, `shadow-` and `text-shadow-`
+  then repeated it: `bg-clip-*` / `bg-origin-*` / `bg-blend-*` sat in
+  `bg-color`, and a shadow size shared one group with its colour, so each pair
+  evicted the other (#1265). When a value can mean two properties
   under one prefix, classify by parsing the VALUE (`border-[3px]` is a width,
   `border-[#fff]` is a colour), and give each side its own group with the
   shorthand subsumption declared in `CONFLICTS`, the way padding does.
@@ -468,10 +494,33 @@ names mechanically:
   identical prefix and never with the prefix's default, which is the safe
   direction to fail (an extra class renders, a dropped one does not).
 - The merger is coarse by design and does NOT claim full `tailwind-merge`
-  fidelity. Some prefixes are still grouped by prefix alone (`bg-clip-*` and
-  `bg-origin-*` sit in `bg-color`; `shadow-lg` and `shadow-red-500` share
-  `shadow`), so a less common pair can still collide. Say that plainly in any
-  doc you write about it rather than stating the property rule as absolute.
+  fidelity, in two distinct ways, and BOTH belong in any doc you write about
+  it rather than stating the property rule as absolute.
+  - A neighbouring prefix it does not enumerate (`inset-shadow-*`,
+    `drop-shadow-*`, `ring-*`, `inset-ring-*`, `mix-blend-*`) has no group at
+    all, so both classes are emitted and the winner is left to compiled
+    stylesheet order. That is the SAFE direction to fail: ungrouped never
+    evicts.
+  - Where one prefix carries two properties, the value is read against
+    Tailwind's DEFAULT scales, so a `@theme`-extended name is invisible to it
+    and can be misread. A custom `--shadow-card` makes `shadow-card` a
+    box-shadow, but the table sees an unfamiliar bare name under a prefix
+    whose bare names are usually colours and routes it to `shadow-color`, so
+    it evicts a colour and is evicted by one. That is the UNSAFE direction,
+    and it is the price of a table that cannot read the project's theme.
+    Prefer the arbitrary form (`shadow-[var(--shadow-card)]`), which the table
+    does classify correctly.
+- When you DO add a group, split it by property from the start (a prefix-keyed
+  group is the #1265 defect), and pick the catch-all's direction from what the
+  prefix's values actually look like in real code rather than by analogy with
+  another prefix: `border-[var(--x)]` is usually a colour, `shadow-[var(--x)]`
+  is usually a shadow, so the same shape resolves opposite ways.
+- A PAREN-hinted arbitrary value (`shadow-(color:--x)`, `bg-(image:--g)`)
+  reaches neither `hintedGroup()` nor GROUPS: `variantPrefix` tracks only
+  `[` / `]` depth, so the colon inside the parentheses reads as a variant
+  separator and the matcher gets a fragment that matches nothing. The token
+  stays ungrouped, so it never evicts, but two of them do not collapse against
+  each other either. Fixing it means teaching `variantPrefix` paren depth.
 
 ## Layout + typography helpers (the design system)
 
