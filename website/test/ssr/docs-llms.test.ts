@@ -11,11 +11,12 @@
  * is exactly the failure a test has to catch instead of a reader.
  *
  * The docs search index is built from this same markdown
- * (`app/api/search/route.ts`), so it inherits whatever this produces. Note
- * that its heading extraction is a plain `line.startsWith('#')` with no fence
- * tracking, so a line-leading `# ` shell comment inside a sample scores as a
- * heading whether or not the fence is there. That is a separate pre-existing
- * problem, not one these tests cover.
+ * (`app/api/search/route.ts`), so it inherits whatever this produces. Its
+ * heading extraction now tracks fences (`lib/utils/doc-headings.ts`), using
+ * the same fence predicate this module's normalisation pass uses, so a
+ * line-leading `# ` shell comment inside a sample is not scored as a
+ * heading. That behaviour is covered by `test/lib/doc-headings.test.ts` and
+ * `test/ssr/docs-search.test.ts`, not here.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';

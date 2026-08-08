@@ -193,10 +193,15 @@ export function bodyToMarkdown(raw: string): string {
   // and teaches code nobody can run. `(?=[\s>])` keeps <pre from matching
   // <preview-tabs.
   //
-  // Separately, and NOT something fencing fixes: the docs search index
-  // (app/api/search/route.ts) picks its headings with a plain
-  // `line.startsWith('#')` and does no fence tracking, so a line-leading
-  // "# " shell comment inside a sample is scored as a heading either way.
+  // The fencing done here is what the docs search index depends on to tell
+  // a sample apart from prose. It recovers its headings from this markdown
+  // through lib/utils/doc-headings.ts, which tracks fences with the SAME
+  // predicate the whitespace normalisation below uses, so a line-leading
+  // "# " shell comment inside a sample is not scored as a heading. That
+  // helper keeps its own copy of the predicate (it is import-free and this
+  // module is server-only), and two passes over this output that disagreed
+  // about where a fence starts would drift silently, so
+  // test/lib/doc-headings.test.ts pins the two copies equal.
   //
   // Nothing strips a <code> wrapper out of the captured text any more. That
   // strip existed for the `<pre><code>` shape docs pages used to author, and
