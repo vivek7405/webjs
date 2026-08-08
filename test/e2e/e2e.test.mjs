@@ -26,6 +26,7 @@ import { spawn } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:net';
+import { assertBlogSeeded } from '../fixtures/blog-seeded.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..', '..');
@@ -140,6 +141,10 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     const port = await freePort();
     baseUrl = `http://localhost:${port}`;
     serverProcess = await startBlog(port);
+    // Before launching Chromium, so an unseeded worktree fails in a second
+    // with the remedy rather than after a browser launch on three assertions
+    // that never mention the database (#1323).
+    assertBlogSeeded(await (await fetch(`${baseUrl}/`)).text());
 
     browser = await puppeteer.launch({
       executablePath: chromium,

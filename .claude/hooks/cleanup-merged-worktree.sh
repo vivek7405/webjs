@@ -63,7 +63,7 @@ is_merged() {
   # ancestor of base). Network; skipped when gh is absent or unauthenticated.
   if command -v gh >/dev/null 2>&1; then
     local n
-    n=$(gh pr list --state merged --head "$br" --json number --jq '.[0].number' 2>/dev/null || true)
+    n=$(gh pr list --state merged --head "$br" --json number --jq '.[0].number' 2>/dev/null | grep -E '^[0-9]+$' || true)
     [ -n "$n" ] && return 0
   fi
   return 1

@@ -95,6 +95,16 @@ This repo uses git worktrees (the review subagents spawn throwaway ones under `.
 
 Because the pin lives in the main worktree's `config.worktree`, `git worktree add` copies it into each linked worktree, so a commit made inside a throwaway review worktree also runs the framework `.hooks/pre-commit`. That is harmless (the hook only blocks main and auto-generates a changelog on a version bump), and review subagents are read-only so they do not commit; the inheritance is noted here only so the behavior is not surprising.
 
+### Fresh worktree bootstrap seeds the blog database (#1323)
+
+`npm run worktree:link` (`scripts/link-worktree-deps.mjs`) links the dependency trees AGENTS.md describes, and as its last step brings `examples/blog`'s SQLite database up to a usable state. `db/dev.db` is gitignored, so a worktree starts with none, and an empty `posts` table fails three blog tests plus their enclosing progressive-enhancement suite with nothing in the output naming the cause. CI never sees this because all four jobs that boot the blog run `db:migrate` + `db:seed` first.
+
+The guard is the row count, not the file. `examples/blog/package.json` runs `webjs db migrate` as a `dev.before` and a `start.before` step, so booting the blog once creates the file with an empty table and a file-existence check would skip forever after. The probe is a read-only `node:sqlite` open, which needs nothing installed. Rails' `db:prepare` has the same shape (seed an uninitialized database, leave an initialized one alone) and differs only in the probe, because there nothing but `db:prepare` creates the file.
+
+It costs about two and a half seconds on a cold worktree and nothing once there are rows. The database path is resolved the way the blog resolves it (`DATABASE_URL`, falling back to `db/dev.db`), so the probe and the two commands always agree on which file they mean. A failure WARNS and leaves the link successful. Escape hatch: `WEBJS_NO_WORKTREE_SEED=1`. Regression test: `test/repo-health/link-worktree-deps.test.mjs`.
+
+It runs below the primary-checkout guard, so `worktree:link` in the primary stays a no-op. That guard is not what keeps seeding out of the test suite, though. The `defaultPrimary()` repo-health test runs the script bare against its own cwd, and from a linked worktree (the mandated workflow) the guard does not fire, so the script would seed that worktree's blog database as a side effect of `npm test`, racing `test/integration/blog-http.test.mjs` reading the same file in parallel. That test therefore sets `WEBJS_NO_WORKTREE_SEED=1` explicitly, and the helpers in that file strip the variable from the ambient env so an exported opt-out cannot invert the seed assertions.
+
 ### Merged worktrees are auto-removed (`cleanup-merged-worktree.sh`)
 
 Per-task worktrees pile up when a session merges its PR but never runs `git worktree remove` (a skipped step, or a crash mid-task). The `.claude/hooks/cleanup-merged-worktree.sh` PostToolUse hook (matcher `Bash`, wired in `.claude/settings.json`) closes that gap: after any `gh pr merge`, it sweeps every linked worktree and removes the ones that are safe to drop, so cleanup is deterministic rather than a thing an agent has to remember.

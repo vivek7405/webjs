@@ -16,7 +16,7 @@
  *
  * Needs the blog's seeded SQLite DB (the `/api/posts` + dynamic-slug cases read
  * real rows): CI's `unit` job runs `db:migrate` + `db:seed` in examples/blog
- * before this, the same setup the e2e job uses. It is DENYLISTED from the Bun
+ * before this, the same setup the e2e job uses. Locally `npm run worktree:link` does the same for a fresh worktree, and `before()` fails with the remedy if neither ran. It is DENYLISTED from the Bun
  * test matrix (a cold blog boot + jspm vendor resolution exceeds `bun test`'s 5s
  * per-test timeout; the Bun listener path is covered by test/bun/listener.mjs).
  */
@@ -25,6 +25,7 @@ import assert from 'node:assert/strict';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequestHandler } from '@webjsdev/server';
+import { assertBlogSeeded } from '../fixtures/blog-seeded.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BLOG_DIR = resolve(__dirname, '..', '..', 'examples', 'blog');
@@ -50,6 +51,9 @@ describe('Blog HTTP integration (non-browser assertions, #777)', () => {
   before(async () => {
     handler = await createRequestHandler({ appDir: BLOG_DIR, dev: false });
     if (handler.warmup) await handler.warmup();
+    // Fail once, naming the database, instead of leaving the slug test to fail
+    // on a missing anchor in a fresh worktree (#1323).
+    assertBlogSeeded(await (await req('/')).text());
   });
   after(async () => { if (handler && handler.close) await handler.close(); });
 
