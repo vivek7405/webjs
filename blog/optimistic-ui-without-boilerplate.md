@@ -175,7 +175,7 @@ This is deliberate. The point of the API is to remove the bookkeeping, and bookk
 
 If you are building your first full-stack app, optimistic UI is one of those things that separates a prototype from a product. A prototype shows a spinner and waits. A product shows the result immediately and corrects itself if wrong. The difference in perceived speed is enormous, and it is the kind of polish that makes users trust an app.
 
-But the boilerplate cost is high enough that many developers skip it entirely, especially when they are learning. The old pattern required understanding temp IDs, state caching, try-catch reconciliation, and concurrent update handling. That is a lot of concepts to hold in your head when you are just trying to make a todo app work.
+But the boilerplate cost is high enough that many developers skip it entirely, especially when they are learning. The old pattern required understanding temp-id reconciliation, state caching, try-catch reverts, and concurrent update handling. That is a lot of concepts to hold in your head when you are just trying to make a todo app work.
 
 The new API reduces it to three steps: declare the reducer, call `.add()`, reconcile on success. The concepts are the same (optimistic update, server call, reconciliation), but the code is small enough that you can see the whole thing at once. That is the difference between "I understand this pattern" and "I copied this pattern and hope it works."
 
