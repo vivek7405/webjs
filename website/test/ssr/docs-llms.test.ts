@@ -191,11 +191,16 @@ test('a genuinely dynamic hole is still dropped', () => {
 });
 
 test('a dynamic hole containing braces is dropped whole', () => {
-  // This is what makes the dynamic strip brace-aware. A naive `[^}]*` stops at
-  // the FIRST `}`, so the nested object literal leaves `)}` behind as debris.
-  // The kept-hole shapes above no longer reach this strip, so without this
-  // fixture nothing pins its brace-awareness at all.
+  // A naive `[^}]*` stops at the FIRST `}`, so the nested object literal
+  // leaves `)}` behind as debris. The kept-hole shapes above no longer reach
+  // this strip, so without this fixture nothing pins it at all.
+  //
+  // ONE level of nesting is all the regex handles, which is what the docs
+  // actually author: `${fn({a:{b:1}})}` still leaves `)}`, and no page writes
+  // that (checked across all 44). Arbitrary depth is not a regex's job, so the
+  // limit is stated rather than papered over.
   assert.equal(bodyToMarkdown('html`<p>text ${fn({a: 1})} here</p>`'), 'text here');
+  assert.equal(bodyToMarkdown('html`<p>a ${fn({a:{b:1}})} b</p>`'), 'a )} b');
 });
 
 test('a kept hole is unescaped, since the source is a template literal', () => {
@@ -205,6 +210,11 @@ test('a kept hole is unescaped, since the source is a template literal', () => {
   // where the page shows `.fallback=${html`…`}`.
   const md = bodyToMarkdown('html`<p>x <code>.fallback=\\${html\\`hi\\`}</code> y</p>`');
   assert.equal(md, 'x .fallback=${html`hi`} y');
+
+  // The string-literal pass copies from source too, so it needs the same fold.
+  // No docs page carries an escape inside one today, so only a fixture can
+  // hold that half of the rule.
+  assert.equal(bodyToMarkdown('html`<p>x ${"a\\`b"} y</p>`'), 'x a`b y');
 });
 
 test('a kept hole nested inside another leaves no sentinel in the output', () => {
