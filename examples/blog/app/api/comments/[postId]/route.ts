@@ -1,4 +1,4 @@
-import type { WebSocket } from 'ws';
+import type WebSocket from 'ws';
 import { listComments } from '#modules/comments/queries/list-comments.server.ts';
 import { createComment } from '#modules/comments/actions/create-comment.server.ts';
 import { subscribe } from '#modules/comments/utils/bus.ts';

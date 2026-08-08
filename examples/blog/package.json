@@ -13,6 +13,7 @@
     "db:generate": "webjs db generate",
     "db:migrate": "webjs db migrate",
     "db:seed": "webjs db seed",
+    "typecheck": "webjs typecheck",
     "test": "webjs test --server"
   },
   "webjs": {

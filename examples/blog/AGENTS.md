@@ -251,6 +251,13 @@ e2e job does. The separate root-level `test/e2e/e2e.test.mjs` exercises the blog
 in a real browser (the framework's `e2e` CI job), and `test/examples/blog/`
 holds its smoke + browser probes.
 
+`npm run typecheck` is the other gate, and the same CI job runs it (#1299). Its
+tsconfig `include` covers `test/` alongside `app/`, `components/`, `lib/`, and
+`modules/`, so a type error in a test reds the build. This app sets
+`checkJs: true` and has no `.js` of its own, so the flag reaches framework
+source through the workspace symlink; keep the JSDoc there honest rather than
+turning the flag off.
+
 ## Conventions
 
 - **One exported function per action/query file.** Name the file after the function.
