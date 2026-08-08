@@ -129,7 +129,14 @@ website/
                        everything between the two. That once cost
                        `/docs/metadata-routes` 5 of its 9 code samples and
                        deleted an escaped tag from 253 prose lines across the
-                       corpus.
+                       corpus. It also keeps the template holes a reader
+                       actually sees: `\${x}` is ESCAPED (literal text, not an
+                       interpolation) and `${"lit"}` interpolates a known
+                       literal, so both are preserved, while only a bare
+                       `${x}` is render-time and gets dropped. Treating all
+                       three alike printed `<form action=\>` on 12 corpus
+                       lines, teaching an LLM the one shape invariant 12
+                       exists to rule out.
   modules/
     ui/components/     GITIGNORED mirror of the @webjsdev/ui registry sources,
                        written by scripts/copy-registry.mjs. NEVER hand-write
