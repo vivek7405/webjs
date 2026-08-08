@@ -410,21 +410,30 @@ when the caller passes an explicit custom `--registry <url>`.
    about thirty lines of defaults in exchange for a cross-framework promise
    the rest of the package does not keep.
 
-8. **A command hint printed to a user names `npx @webjsdev/ui <cmd>`, never a
-   bare `webjsui <cmd>` (#1264).** `webjsui` is a bin declared inside this
-   package, not a published package name, so `npx webjsui` resolves only where
-   the kit is already a direct dependency. It is not one for the most common
-   caller: a user who arrived through `webjs ui <cmd>` has the kit resolved
-   from the CLI's own install, and the scaffold leaves `@webjsdev/ui` unpinned
-   on purpose. So every hint `init`, `add`, `diff`, `info`, and the registry
-   fetcher print uses the explicit form, and `init-command.test.js` /
-   `add-command.test.js` assert it. Two things are NOT hints and keep the bare
-   name: `.name('webjsui')` in `index.js`, which is the bin's real identifier
-   and what the commander banner echoes, and the command table in this file
-   plus the one in `README.md`, which name the binary rather than telling a
-   reader what to type. `README.md`'s Option B is the third exception, since
-   its `npx webjsui` lines sit under the two `npm install` commands that make
-   the bin resolve.
+8. **A hint that tells a reader what to type names `npx @webjsdev/ui <cmd>`,
+   never a bare `webjsui <cmd>` (#1264).** `webjsui` is a bin declared inside
+   this package, not a published package name, and the registry 404s on it. So
+   `npx webjsui` resolves through `node_modules/.bin/webjsui` or not at all.
+   That link exists wherever the kit is anywhere in the local tree, including
+   transitively, since npm links the bins of hoisted packages too: an app that
+   lists `@webjsdev/cli` in its dependencies gets one, which covers a
+   scaffolded app. It is missing wherever the tree has no copy at all, which is
+   a global-only `npm i -g webjsdev` driving a project that never installed
+   either package. A printed hint cannot tell which of those its reader is in,
+   so it names the explicit form, which resolves both ways: the local link when
+   there is one, the registry when there is not. Every hint `init`, `add`,
+   `diff`, `info`, and the registry fetcher print does this, asserted in
+   `init-command.test.js`, `add-command.test.js`, `diff-command.test.js`,
+   `list-view-info.test.js`, and `local-registry.test.js`, one per site.
+
+   The rule governs a command a reader is being told to RUN, so two things are
+   outside it and keep the bare name. A reference that NAMES the binary rather
+   than instructing anyone (`.name('webjsui')` in `index.js`, which is the
+   bin's real identifier and what the commander banner echoes; the command
+   tables here and in `README.md`; prose describing what a command does). And
+   an instruction that sits under an install which makes the bin resolve, as in
+   `README.md`'s Option B and the root `README.md`'s UI bullet, both of which
+   put `npm install -D @webjsdev/ui` ahead of the `npx webjsui` lines.
 
 ## Component tag convention (Tier 2)
 
