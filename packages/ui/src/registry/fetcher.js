@@ -55,7 +55,7 @@ export async function getRegistryItem(name, registryUrl) {
     const item = loadRegistryItem(name);
     if (!item) {
       throw new Error(
-        `Unknown registry item "${name}". Run \`webjsui list\` to see the available components.`,
+        `Unknown registry item "${name}". Run \`npx @webjsdev/ui list\` to see the available components.`,
       );
     }
     return item;

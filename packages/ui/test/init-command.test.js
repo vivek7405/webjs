@@ -388,3 +388,26 @@ test('init: a partial alias map is filled from the defaults, not left undefined'
     rmSync(d, { recursive: true });
   }
 });
+
+// The printed hint has to name a command the reader can actually run. `npx
+// webjsui` resolves the PACKAGE name `webjsui`, which is not published (it is a
+// bin declared inside `@webjsdev/ui`), so it only works where the kit is already
+// a direct dep. It is not one for a `webjs ui init` caller, since the scaffold
+// leaves `@webjsdev/ui` unpinned.
+test('init: the success hint prints a command that resolves without a prior install (#1264)', async () => {
+  stubFetch();
+  const d = tmp();
+  const origLog = console.log;
+  const out = [];
+  console.log = (...args) => out.push(args.join(' '));
+  try {
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+  } finally {
+    console.log = origLog;
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+  const text = out.join('\n');
+  assert.match(text, /npx @webjsdev\/ui add/);
+  assert.doesNotMatch(text, /npx webjsui/, 'the bare bin name does not resolve for a `webjs ui` caller');
+});

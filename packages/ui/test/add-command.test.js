@@ -430,3 +430,60 @@ test('add: --overwrite does replace it', async () => {
     rmSync(d, { recursive: true });
   }
 });
+
+// Same contract as the init hint (#1264): a printed command has to resolve for
+// whoever is reading it, and the bare `webjsui` bin name does not.
+test('add: the missing-config hint prints a resolvable command (#1264)', async () => {
+  stubFetch();
+  const d = mkdtempSync(join(tmpdir(), 'webjsui-add-hint-'));
+  const origExit = process.exit;
+  const origError = console.error;
+  const origLog = console.log;
+  const out = [];
+  process.exit = ((c) => { throw new Error('exit:' + c); });
+  console.error = (...args) => out.push(args.join(' '));
+  console.log = (...args) => out.push(args.join(' '));
+  try {
+    await assert.rejects(
+      () => add.parseAsync(['button', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' }),
+      /exit:1/,
+    );
+  } finally {
+    process.exit = origExit;
+    console.error = origError;
+    console.log = origLog;
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+  const text = out.join('\n');
+  assert.match(text, /npx @webjsdev\/ui init/);
+  assert.doesNotMatch(text, /npx webjsui/);
+});
+
+test('add: the no-components hint prints resolvable commands (#1264)', async () => {
+  stubFetch();
+  const d = tmp();
+  const origExit = process.exit;
+  const origError = console.error;
+  const origLog = console.log;
+  const out = [];
+  process.exit = ((c) => { throw new Error('exit:' + c); });
+  console.error = (...args) => out.push(args.join(' '));
+  console.log = (...args) => out.push(args.join(' '));
+  try {
+    await assert.rejects(
+      () => add.parseAsync(['--cwd', d, '--registry', 'http://test/r'], { from: 'user' }),
+      /exit:1/,
+    );
+  } finally {
+    process.exit = origExit;
+    console.error = origError;
+    console.log = origLog;
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+  const text = out.join('\n');
+  assert.match(text, /npx @webjsdev\/ui add button/);
+  assert.match(text, /npx @webjsdev\/ui list/);
+  assert.doesNotMatch(text, /npx webjsui/);
+});
