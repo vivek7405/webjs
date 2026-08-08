@@ -231,7 +231,7 @@ test('version check PASSES when installed satisfies the declared range', async (
 // openly contradicted each other before this).
 //
 // COUNTERFACTUAL: restore the `join(appDir, 'node_modules', dep, 'package.json')`
-// read and the three fixtures below all red with "N @webjsdev/* dependency not
+// read and all six fixtures below red with "N @webjsdev/* dependency not
 // installed", which is the measured before-state on examples/blog and website.
 // ---------------------------------------------------------------------------
 
@@ -239,15 +239,22 @@ test('version check PASSES when installed satisfies the declared range', async (
  * A workspace-shaped tree: deps installed ONLY in the root node_modules, plus an
  * app subdirectory with its own package.json and no node_modules of its own.
  * Returns the app dir.
+ *
+ * An entry file is written ONLY for a manifest that declares `main` or
+ * `exports`, so a bin-only manifest models a real bin-only package. Writing one
+ * unconditionally would be the difference between a fixture and a prop: CJS
+ * resolution falls back to `index.js`, so `require.resolve('<dep>')` would
+ * succeed for a package with no main entry and the bin-only case would stop
+ * pinning the resolve ORDER it exists to pin.
  */
 function workspaceFixture(installs, ranges) {
   const root = tmpDir();
   write(root, 'package.json', JSON.stringify({ name: 'root', workspaces: ['apps/*'] }));
   for (const [name, manifest] of Object.entries(installs)) {
     write(root, `node_modules/${name}/package.json`, JSON.stringify(manifest));
-    // Every fixture package carries a real entry file, so the exports-map
-    // fallback has something to resolve.
-    write(root, `node_modules/${name}/index.js`, 'export const x = 1;\n');
+    if (manifest.main || manifest.exports) {
+      write(root, `node_modules/${name}/index.js`, 'export const x = 1;\n');
+    }
   }
   write(root, 'apps/web/package.json', JSON.stringify({ name: 'web', dependencies: ranges }));
   return join(root, 'apps/web');
@@ -269,8 +276,9 @@ test('version check PASSES for a workspace app whose deps hoist to the root node
 
 test('version check resolves a BIN-ONLY package (no main, no exports), like @webjsdev/cli', async () => {
   // require.resolve('<dep>') throws MODULE_NOT_FOUND for a package with no main
-  // entry, which is why the direct `<dep>/package.json` resolve is attempted
-  // FIRST rather than as a fallback.
+  // entry and no index.js to fall back to, which is why the direct
+  // `<dep>/package.json` resolve is attempted FIRST rather than as a fallback.
+  // Reorder the two attempts in readInstalledVersion and this case reds.
   const appDir = workspaceFixture(
     { '@webjsdev/cli': { name: '@webjsdev/cli', version: '0.10.52', bin: { webjs: 'bin/webjs.js' } } },
     { '@webjsdev/cli': '^0.10.0' }
