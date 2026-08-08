@@ -197,6 +197,9 @@
     "live": {
       "demo": "modules/directives/components/directive-demo.ts"
     },
+    "loadFrame": {
+      "exempt": "internal: the <webjs-frame src> self-load seam; app uses the tag, not the function"
+    },
     "lookup": {
       "exempt": "internal: component-registry plumbing"
     },
