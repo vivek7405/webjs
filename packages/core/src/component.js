@@ -1176,9 +1176,13 @@ class WebComponentBase extends Base {
       // what an unset property holds and what an absent attribute already
       // yields through the `value == null` arm on this same line, so it is the
       // one answer that does not invent a value. `applyAttrsToInstance` in
-      // `render-server.js` is the SSR half of this same contract and falls back
+      // `render-server.js` is the SSR counterpart of THIS branch and falls back
       // identically; the two must agree or an element SSRs holding one value
-      // and re-renders holding another. lit's `defaultConverter.fromAttribute`
+      // and re-renders holding another. That pairing covers the default
+      // converter only: a prop supplying its own `converter.fromAttribute` is
+      // handled by the arm above, and the SSR reader has no converter arm at
+      // all, so the two sides already read such a prop differently. That gap
+      // predates #1253. lit's `defaultConverter.fromAttribute`
       // lands on the same `null`, for the reason its own comment gives: an
       // element does not complain about being mis-configured.
       try { v = value == null ? null : JSON.parse(value); } catch { v = null; }

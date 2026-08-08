@@ -20,6 +20,7 @@
 
 import { html } from '../../../src/html.js';
 import { WebComponent, prop } from '../../../src/component.js';
+import { renderToString } from '../../../src/render-server.js';
 
 import { assert } from '../../../../../test/browser-assert.js';
 
@@ -80,6 +81,15 @@ class UnserializableCtorProbe extends WebComponent({
   }
 }
 UnserializableCtorProbe.register('reflect-unser-ctor-probe');
+
+// Renders its own prop value, so the READ side is observable in the DOM rather
+// than only through the property.
+class UnserializableReaderProbe extends WebComponent({ cfg: prop(Object) }) {
+  render() {
+    return html`<i>val=${JSON.stringify(this.cfg)}</i>`;
+  }
+}
+UnserializableReaderProbe.register('reflect-unser-reader');
 
 const mounted = [];
 /**
@@ -292,5 +302,34 @@ suite('reflect:true drops an unserializable JSON value, in a real browser (#1253
     assert.ok(message.includes('tokenCfg'), message);
     assert.ok(message.includes('reflect-unser-probe'), message);
     assert.ok(message.includes('data-cfg'), message);
+  });
+
+  test('an unparseable JSON attribute reads back as null through a REAL element upgrade, matching SSR (#1253)', async () => {
+    // The headline of the read-side change is that the two readers agree, and
+    // that can only be proven where the browser calls
+    // `attributeChangedCallback` ITSELF. A node test invoking that callback by
+    // hand exercises the branch but not the path the divergence lived on: the
+    // upgrade. So parse real markup, let the browser upgrade it, and compare
+    // against what the SSR reader (`applyAttrsToInstance`) makes of the same
+    // markup.
+    const host = document.createElement('div');
+    host.innerHTML = '<reflect-unser-reader cfg="not-json"></reflect-unser-reader>';
+    document.body.appendChild(host);
+    mounted.push(host);
+
+    const el = host.firstElementChild;
+    await customElements.whenDefined('reflect-unser-reader');
+    await el.updateComplete;
+
+    assert.equal(el.cfg, null, 'the upgraded element must not hold the raw string');
+    assert.ok(
+      el.textContent.includes('val=null'),
+      `and it must RENDER that value: ${el.innerHTML}`
+    );
+
+    // The same markup through the SSR reader, so a future change that moves one
+    // side without the other fails here rather than in production.
+    const ssr = await renderToString(html`<reflect-unser-reader cfg="not-json"></reflect-unser-reader>`);
+    assert.ok(ssr.includes('val=null'), `the SSR reader disagreed with the client: ${ssr}`);
   });
 });
