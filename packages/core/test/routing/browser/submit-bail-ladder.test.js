@@ -30,6 +30,14 @@
  * fixture carries the triggering attribute. A rung that fires too eagerly reds
  * every control, which is a broad break reported broadly.
  *
+ * Two rungs are pinned from BOTH sides, and their counterfactual reads
+ * differently on purpose. Rungs 3 and 8 are the ones a later line depends on
+ * (`new FormData(x)` needs a real form; `url` needs to have parsed), so
+ * deleting either turns `onSubmit` into a throw rather than a wrong decision.
+ * That surfaces as an UNCAUGHT page error, which web-test-runner reports across
+ * the file rather than against the one test. Wide blast radius is the honest
+ * signal there: the rung is not a preference, it is load-bearing.
+ *
  * Turbo tests the same ladder the same way, in a real browser
  * (`src/tests/functional/form_submission_tests.js`), pairing each bail with a
  * positive observation of the native effect it exists to allow. WebJs cannot
@@ -141,10 +149,19 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
     origPath = location.pathname + location.search;
   }
 
-  function teardown() {
+  async function teardown() {
+    // Let any router work THIS test started settle before the DOM it operates
+    // on is dismantled. A routed submission's swap is async, so tearing the
+    // boundary comments out from under one in flight makes it land during the
+    // NEXT test, where it rips out that test's container and turns a clean
+    // per-rung failure into a cascade across every test after it. That only
+    // shows up under a counterfactual (a broken rung routes a submission this
+    // file did not expect), which is exactly when a readable failure matters
+    // most.
+    await tick();
     // `navGuard.remove()` clears the seam, so re-arm the file-wide recorder
-    // behind it: a swap still in flight from THIS test degrades after this
-    // line, and without the seam that is a real page load.
+    // behind it: a swap still in flight after the settle above degrades after
+    // this line, and without the seam that is a real page load.
     if (navGuard) navGuard.remove();
     armStraySeam();
     navGuard = null;
@@ -211,7 +228,7 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       assert.equal(calls.length, 1, 'issuing exactly one fetch');
       assert.equal(new URL(calls[0].url).pathname, '/x', 'to the form action');
       assert.equal((calls[0].init.method || 'GET').toUpperCase(), 'POST');
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   // -------------------------------------------------------------------------
@@ -249,7 +266,7 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       control.querySelector('button').click();
       await tick();
       assertRouted(1);
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   // -------------------------------------------------------------------------
@@ -261,6 +278,11 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
     // differs between the two halves. A synthetic dispatch is the only way to
     // aim a `submit` event at a non-form, and it is exactly what a stray
     // `dispatchEvent` in app code looks like.
+    //
+    // This rung is load-bearing rather than tidy: without it the handler runs
+    // on to `new FormData(div)`, which throws
+    // `Failed to construct 'FormData': parameter 1 is not of type
+    // 'HTMLFormElement'`, so a stray dispatch would take out the page.
     setup(okHtml);
     try {
       render(html`
@@ -279,7 +301,7 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       control.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
       await tick();
       assertRouted(1);
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   // -------------------------------------------------------------------------
@@ -306,7 +328,7 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       control.querySelector('button').click();
       await tick();
       assertRouted(1);
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   // -------------------------------------------------------------------------
@@ -333,7 +355,7 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       control.querySelector('button').click();
       await tick();
       assertRouted(1);
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   // -------------------------------------------------------------------------
@@ -370,7 +392,7 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       control.querySelector('button').click();
       await tick();
       assertRouted(2);
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   // -------------------------------------------------------------------------
@@ -402,7 +424,7 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       assertBailed(form);
       assert.equal(dialog.open, false,
         'the browser performed the dialog dismissal the bail exists to allow');
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test('rung 7 control: the same dialog with method="post" IS routed', async () => {
@@ -424,7 +446,7 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       await tick();
       assertRouted(0);
       assert.equal(dialog.open, true, 'and the dialog was not dismissed');
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   // -------------------------------------------------------------------------
@@ -459,7 +481,7 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       control.querySelector('button').click();
       await tick();
       assertRouted(1);
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   // -------------------------------------------------------------------------
@@ -488,7 +510,7 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       control.querySelector('button').click();
       await tick();
       assertRouted(1);
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   // -------------------------------------------------------------------------
@@ -517,7 +539,7 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       control.querySelector('button').click();
       await tick();
       assertRouted(1);
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   // -------------------------------------------------------------------------
@@ -555,7 +577,7 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       assertRouted(1);
       assert.ok(calls[0].init.body instanceof URLSearchParams,
         'and the invalid enctype was sent as urlencoded, its invalid-value default');
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test('rung 11: a submitter formenctype="text/plain" bails too', async () => {
@@ -585,7 +607,7 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       assertRouted(1);
       assert.ok(calls[0].init.body instanceof FormData,
         "and the control's own formenctype decided its encoding");
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   // -------------------------------------------------------------------------
@@ -630,7 +652,7 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       assert.equal(new URL(calls[0].url).searchParams.get('a'), '1',
         'and the fields are promoted to the query string, as a GET submission does');
       assert.equal(calls[0].init.body, undefined, 'with no body');
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test('an empty formenctype overrides the form and falls to urlencoded', async () => {
@@ -653,7 +675,7 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       assert.ok(calls[0].init.body instanceof URLSearchParams,
         "the button's present-but-empty formenctype wins over the form's multipart");
       assert.equal(calls[0].init.body.get('a'), '1', 'and the field survives the encoding');
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test('an empty formtarget overrides the form and means the current context', async () => {
@@ -676,6 +698,6 @@ suite('Client router: the onSubmit bail ladder (#1322)', () => {
       container.querySelector('button').click();
       await tick();
       assertRouted(0);
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 });
