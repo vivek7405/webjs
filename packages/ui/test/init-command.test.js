@@ -389,11 +389,10 @@ test('init: a partial alias map is filled from the defaults, not left undefined'
   }
 });
 
-// The printed hint has to name a command the reader can actually run. `npx
-// webjsui` resolves the PACKAGE name `webjsui`, which is not published (it is a
-// bin declared inside `@webjsdev/ui`), so it only works where the kit is already
-// a direct dep. It is not one for a `webjs ui init` caller, since the scaffold
-// leaves `@webjsdev/ui` unpinned.
+// The printed hint has to name a command the reader can actually run. `webjsui`
+// is a bin declared inside `@webjsdev/ui`, not a published package, so `npx
+// webjsui` resolves through a local `.bin` link or not at all, and the hint
+// cannot know the reader's tree. See invariant 8 in packages/ui/AGENTS.md.
 test('init: the success hint prints a command that resolves without a prior install (#1264)', async () => {
   stubFetch();
   const d = tmp();
@@ -409,5 +408,5 @@ test('init: the success hint prints a command that resolves without a prior inst
   }
   const text = out.join('\n');
   assert.match(text, /npx @webjsdev\/ui add/);
-  assert.doesNotMatch(text, /npx webjsui/, 'the bare bin name does not resolve for a `webjs ui` caller');
+  assert.doesNotMatch(text, /npx webjsui/, 'the bare bin name is not resolvable from every reader tree');
 });

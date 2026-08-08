@@ -432,7 +432,8 @@ test('add: --overwrite does replace it', async () => {
 });
 
 // Same contract as the init hint (#1264): a printed command has to resolve for
-// whoever is reading it, and the bare `webjsui` bin name does not.
+// whoever is reading it, and the bare `webjsui` bin name is not resolvable from
+// every reader tree. See invariant 8 in packages/ui/AGENTS.md.
 test('add: the missing-config hint prints a resolvable command (#1264)', async () => {
   stubFetch();
   const d = mkdtempSync(join(tmpdir(), 'webjsui-add-hint-'));
