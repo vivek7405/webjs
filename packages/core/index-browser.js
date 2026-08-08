@@ -52,7 +52,13 @@ export {
 // the re-export still also evaluates the module, so the two are belt-and-
 // suspenders, not a double-enable (ESM evaluates once, enable is idempotent).
 import './src/router-client.js';
-export { enableClientRouter, disableClientRouter, navigate, revalidate } from './src/router-client.js';
+// `loadFrame` rides along because `@webjsdev/core/client-router`'s `default`
+// condition points at THIS bundle, so in dist mode the subpath resolves here
+// while its published `types` (`src/router-client.d.ts`) declare all five
+// public router functions. Without it, `import { loadFrame } from
+// '@webjsdev/core/client-router'` type-checks, works in dev (where the subpath
+// maps to `src/router-client.js`) and is `undefined` in production.
+export { enableClientRouter, disableClientRouter, navigate, revalidate, loadFrame } from './src/router-client.js';
 export { WebjsFrame } from './src/webjs-frame.js';
 export { WebjsStream, renderStream } from './src/webjs-stream.js';
 

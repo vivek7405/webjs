@@ -57,11 +57,13 @@ the same output in all three.
 
 ## Public exports (re-exported from `index.js`)
 
-See the [package.json `exports` field](./package.json) for subpaths:
-`@webjsdev/core/client`, `/server`, `/component`, `/registry`,
-`/client-router`. Everything else is exposed via the main `index.js`
-re-exports. Keep this list in sync if you add or remove a barrel
-export.
+Twelve entries in the [package.json `exports` field](./package.json) carry a
+hand-written `.d.ts` overlay: the root `.` plus `/directives`, `/context`,
+`/task`, `/client-router`, `/lazy-loader`, `/testing`, `/client`, `/server`,
+`/component`, `/registry` and `/signals`. Everything else is exposed via the
+main `index.js` re-exports. `exports` is the source of truth and the guard
+below reads it directly, so a new subpath needs no edit here; keep the list
+above readable when you add one.
 
 **Every overlay behind a published `exports` entry must declare every
 runtime named export of its sibling module** (the `index.d.ts` overlay
@@ -71,9 +73,10 @@ package's own `exports`, imports each overlay's sibling `.js` for its real
 runtime export names, and tsc-checks that the `.d.ts` declares them all, so
 a new `export` in `index.js` OR in any subpath module (`src/directives.js`,
 `src/signal.js`, the rest) without a matching declaration fails CI. It used
-to check only three entry points, so twelve subpaths could drift freely
-(#1291). When you add a runtime export, add its declaration (re-export from
-the source module's `.d.ts`, creating that `.d.ts` if absent).
+to check `@webjsdev/core` and two `@webjsdev/server` entries only, so all
+eleven core subpaths could drift freely (#1291). When you add a runtime
+export, add its declaration (re-export from the source module's `.d.ts`,
+creating that `.d.ts` if absent).
 
 **Prefix a test-only export with `_`.** A leading underscore marks a seam
 that unit tests reach but the published API does not carry, and the coverage

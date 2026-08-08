@@ -159,9 +159,16 @@ for (const { name, dir, minEntries, minNames } of PACKAGES) {
       // names instead of its own module's surface. That is not a stricter check,
       // it is a different and wrong one. Reading the source sibling also keeps
       // the guard runnable in a fresh worktree, where `packages/core/dist` is not
-      // built. The source export set is a superset of any bundle's, so it is also
-      // the strictest FORWARD surface available (the browser surface matters only
-      // in the reverse direction, which #1035 covers).
+      // built. The source export set is a superset of any bundle's, so it is
+      // also the strictest FORWARD surface available.
+      //
+      // What that leaves uncovered, stated precisely so nobody reads the line
+      // above as a coverage claim: a value the overlay declares that the BROWSER
+      // bundle drops is a reverse-direction question, and the reverse guard's
+      // `BROWSER_SURFACES` checks exactly ONE overlay, `@webjsdev/core`'s `.`
+      // (#1035). The four subpaths named above resolve to the browser bundle in
+      // dist mode and have no browser check in either direction. That is a real
+      // gap, not a covered one.
       const implPath = join(ROOT, dir, impl);
       const mod = await import(pathToFileURL(implPath).href);
       const names = checkedNames(mod);
