@@ -1736,8 +1736,10 @@ function applyAttrsToInstance(instance, attrs, Cls) {
       // `<my-el cfg="oops">` SSRs holding a string and re-renders holding
       // something else the moment the element upgrades. `null` is the right
       // value to agree on: a string is never a valid value for a property the
-      // author declared `Object` or `Array`, and an ABSENT attribute already
-      // reads back as `null` on both sides.
+      // author declared `Object` or `Array`. This function iterates the
+      // attributes PRESENT on the source tag, so an absent one is not read here
+      // at all and its property keeps whatever the constructor gave it; the
+      // agreement being asserted is about a present, unparseable attribute.
       //
       // Scoped to the DEFAULT converter, which is all this branch is. The
       // client reader tries `converter.fromAttribute` FIRST and only falls

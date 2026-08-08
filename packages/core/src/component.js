@@ -1165,26 +1165,25 @@ class WebComponentBase extends Base {
     } else if (def.type === Boolean) {
       v = value != null && value !== 'false';
     } else if (def.type === Object || def.type === Array) {
-      // An attribute that is not parseable JSON is treated exactly like an
-      // ABSENT one (#1253). The reason is not that the writer can only ever
-      // produce valid JSON: `JSON.stringify` RETURNS `undefined` without
-      // throwing for a `Symbol` and for a `toJSON()` that returns nothing, and
-      // `setAttribute` writes that as the literal string, so `cfg="undefined"`
-      // is still reachable and is deliberately left alone as a separate defect.
-      // The reason is that a STRING is never a valid value for a property the
-      // author declared `Object` or `Array`, whatever put it there. `null` is
-      // what an unset property holds and what an absent attribute already
-      // yields through the `value == null` arm on this same line, so it is the
-      // one answer that does not invent a value. `applyAttrsToInstance` in
-      // `render-server.js` is the SSR counterpart of THIS branch and falls back
-      // identically; the two must agree or an element SSRs holding one value
-      // and re-renders holding another. That pairing covers the default
-      // converter only: a prop supplying its own `converter.fromAttribute` is
-      // handled by the arm above, and the SSR reader has no converter arm at
-      // all, so the two sides already read such a prop differently. That gap
-      // predates #1253. lit's `defaultConverter.fromAttribute`
-      // lands on the same `null`, for the reason its own comment gives: an
-      // element does not complain about being mis-configured.
+      // An attribute that is not parseable JSON yields `null` rather than the
+      // raw string (#1253), because a STRING is never a valid value for a
+      // property the author declared `Object` or `Array`, whatever put it
+      // there. lit's `defaultConverter.fromAttribute` lands on the same `null`,
+      // for the reason its own comment gives: an element does not complain
+      // about being mis-configured.
+      //
+      // `applyAttrsToInstance` in `render-server.js` is the SSR counterpart of
+      // THIS branch and yields `null` for the same input. They have to agree,
+      // or an element SSRs holding one value and re-renders holding another.
+      // The agreement is about an attribute that is PRESENT and unparseable,
+      // which is the only case both readers see; an attribute that was never
+      // there does not reach either one, so such a prop simply keeps its
+      // constructor value.
+      //
+      // Scoped to the default converter. A prop supplying its own
+      // `converter.fromAttribute` is handled by the arm above and the SSR
+      // reader has no converter arm at all, so the two sides already read such
+      // a prop differently. That gap predates #1253 and is left alone.
       try { v = value == null ? null : JSON.parse(value); } catch { v = null; }
     } else {
       v = value;

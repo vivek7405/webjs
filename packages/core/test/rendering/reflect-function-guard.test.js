@@ -516,11 +516,14 @@ describe('reflect:true drops an unserializable JSON value (#1253)', () => {
   });
 
   test('the SSR reader falls back to null too, so it cannot disagree with the client (#1253)', async () => {
-    // `applyAttrsToInstance` (render-server.js) and `attributeChangedCallback`
-    // (component.js) are the two halves of one contract. If only one of them
-    // falls back to `null`, the same `<my-el cfg="oops">` SSRs holding a string
-    // and re-renders holding something else the moment the element upgrades,
-    // which is a hydration divergence rather than a fixed round trip.
+    // `applyAttrsToInstance` (render-server.js) and the JSON branch of
+    // `attributeChangedCallback` (component.js) must resolve a PRESENT,
+    // unparseable attribute the same way. If only one of them falls back to
+    // `null`, the same `<my-el cfg="oops">` SSRs holding a string and
+    // re-renders holding something else the moment the element upgrades, which
+    // is a hydration divergence rather than a fixed round trip. This is the
+    // default-converter path only: the SSR reader has no `fromAttribute` arm,
+    // so a prop declaring a converter is already read differently either way.
     class Reader extends WebComponent({ cfg: prop(Object) }) {
       render() {
         return html`<i>val=${JSON.stringify(this.cfg)}</i>`;

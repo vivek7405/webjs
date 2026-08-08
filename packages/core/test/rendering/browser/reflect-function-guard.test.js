@@ -16,6 +16,12 @@
  * `attributeChangedCallback`. A guard that returned early in the wrong place
  * would leave that flag stuck and silently kill all later reflection, which is
  * a failure only a live DOM can show.
+ *
+ * The same argument brought two more suites here (#1253): the unserializable
+ * WRITE-side drop, which reaches the guard by those same client routes, and the
+ * unparseable-attribute READ side, which is a different mechanism (no `reflect`
+ * involved) that needs a browser for the same underlying reason, since only a
+ * browser calls `attributeChangedCallback` on upgrade.
  */
 
 import { html } from '../../../src/html.js';
@@ -304,14 +310,18 @@ suite('reflect:true drops an unserializable JSON value, in a real browser (#1253
     assert.ok(message.includes('data-cfg'), message);
   });
 
-  test('an unparseable JSON attribute reads back as null through a REAL element upgrade, matching SSR (#1253)', async () => {
-    // The headline of the read-side change is that the two readers agree, and
-    // that can only be proven where the browser calls
-    // `attributeChangedCallback` ITSELF. A node test invoking that callback by
-    // hand exercises the branch but not the path the divergence lived on: the
-    // upgrade. So parse real markup, let the browser upgrade it, and compare
-    // against what the SSR reader (`applyAttrsToInstance`) makes of the same
-    // markup.
+});
+
+suite('an unparseable JSON attribute reads back as null, in a real browser (#1253)', () => {
+  // The READ half of #1253, which is a different mechanism from the reflection
+  // drop above and does not involve `reflect` at all: this probe declares a
+  // plain `prop(Object)`. It earns a browser test because the agreement being
+  // claimed is between the SSR reader and what the browser does on UPGRADE, and
+  // only a browser calls `attributeChangedCallback` itself. A node test invoking
+  // that callback by hand exercises the branch but not the path the divergence
+  // lived on.
+
+  test('through a REAL element upgrade, matching what the SSR reader makes of the same markup', async () => {
     const host = document.createElement('div');
     host.innerHTML = '<reflect-unser-reader cfg="not-json"></reflect-unser-reader>';
     document.body.appendChild(host);

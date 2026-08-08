@@ -12,8 +12,9 @@
  *     and emitting an EMPTY component at a 200.
  *   - the READ side. `applyAttrsToInstance` resolves an unparseable JSON
  *     attribute to `null`, matching what `attributeChangedCallback` does in the
- *     browser. These are the two halves of one contract and a divergence is a
- *     hydration bug, so the SSR half is worth pinning per runtime.
+ *     browser. The two must resolve a PRESENT, unparseable attribute the same
+ *     way or hydration diverges, so the SSR half is worth pinning per runtime.
+ *     Default-converter path only: the SSR reader has no `fromAttribute` arm.
  *
  * Nothing here asserts on the ENGINE's own `JSON.stringify` message. V8 and
  * JavaScriptCore word it differently, and that difference is not the behaviour
