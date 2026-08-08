@@ -61,8 +61,15 @@ serving the docs as they read on the day it was cut. `prepack` stamps it with
 ```
 
 `sha` is the full commit the docs were copied from, so it resolves straight to a
-GitHub diff, and it is `null` when `prepack` runs outside a git checkout (a
-missing SHA never fails the publish). A dev checkout has no bundle and so no
-stamp.
+GitHub diff. Every field is `null` rather than a plausible-looking default when
+it cannot be established, so a consumer can always tell a real answer from no
+answer: `sha` when the source tree is not itself a git checkout root, and
+`package` / `version` when the manifest cannot be read. None of those fails the
+publish. A dev checkout has no bundle and so no stamp.
+
+The SHA is deliberately refused when the tree merely SITS inside some other
+checkout, because `git rev-parse` walks up to an ancestor and would otherwise
+report an unrelated repository's HEAD as the commit these docs came from. That
+answer is a well-formed SHA, so nothing downstream could catch it.
 
 STDOUT is the JSON-RPC channel; every diagnostic goes to stderr.

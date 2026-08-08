@@ -243,37 +243,46 @@ test('cleanBundle: the stamp goes with the tree, no separate unlink owed', () =>
   assert.ok(!existsSync(paths.destRoot), 'bundle removed');
 });
 
-test('readGitSha: a real checkout yields 40 hex, a non-checkout yields null and never throws', () => {
-  // The repo itself is a checkout, so this proves the happy path against the real
-  // git binary, seam and all.
+test('readGitSha: answers for a checkout root only, against the real git binary', () => {
+  // The repo root IS its own git toplevel, which is the shape prepack runs in.
   const sha = readGitSha(REPO);
-  assert.match(sha, /^[0-9a-f]{40}$/, 'resolves HEAD in a checkout');
+  assert.match(sha, /^[0-9a-f]{40}$/, 'resolves HEAD at a checkout root');
 
   // A fresh temp dir is outside any checkout (git either errors, or on a machine
   // with no git at all spawnSync returns an error object). Either way: null.
   const outside = mkdtempSync(join(tmpdir(), 'mcp-nogit-'));
   _cleanup.push(outside);
   assert.equal(readGitSha(outside), null, 'no SHA outside a checkout, and no throw');
+
+  // The guard that a temp dir cannot prove: `rev-parse` walks UP, so a directory
+  // that merely SITS inside a checkout gets an answer from its ancestor. A
+  // subdirectory of this repo stands in for an extracted tarball unpacked inside
+  // an unrelated checkout, whose HEAD is not the commit these docs came from.
+  assert.equal(readGitSha(join(REPO, 'packages')), null, 'a nested dir does not borrow its ancestor HEAD');
 });
 
 test('readGitSha: each guard is exercised on its own, through the injected spawn', () => {
-  // The real binary in a temp dir exits non-zero, so it can only ever reach the
-  // status branch. These drive the other guards directly, so none of them is a
-  // line no test can red.
+  // The real binary reaches only some of these branches, so the rest would be
+  // lines no test can red. `--show-toplevel HEAD` prints the root then the SHA.
   const spawnOf = (result) => () => {
     if (result instanceof Error) throw result;
     return result;
   };
   const ok = 'b'.repeat(40);
+  const at = (top, sha) => ({ status: 0, stdout: `${top}\n${sha}\n` });
+  const root = mkdtempSync(join(tmpdir(), 'mcp-top-'));
+  _cleanup.push(root);
 
-  assert.equal(readGitSha('/x', spawnOf({ status: 0, stdout: ok + '\n' })), ok, 'trims a clean SHA');
-  assert.equal(readGitSha('/x', spawnOf({ status: 128, stdout: ok })), null, 'non-zero status wins over parseable output');
-  assert.equal(readGitSha('/x', spawnOf({ status: 0, stdout: 'fatal: not a git repository\n' })), null, 'exit 0 with prose is not a SHA');
-  assert.equal(readGitSha('/x', spawnOf({ status: 0, stdout: ok.slice(0, 7) })), null, 'an abbreviated SHA is rejected');
-  assert.equal(readGitSha('/x', spawnOf({ status: 0, stdout: 'B'.repeat(40) })), null, 'uppercase is not the git output shape');
-  assert.equal(readGitSha('/x', spawnOf({ status: 0, stdout: undefined })), null, 'no stdout, e.g. a spawn error object');
-  assert.equal(readGitSha('/x', spawnOf(null)), null, 'a spawn that returns nothing');
-  assert.equal(readGitSha('/x', spawnOf(new Error('spawn EACCES'))), null, 'a throwing spawn is swallowed');
+  assert.equal(readGitSha(root, spawnOf(at(root, ok))), ok, 'trims a clean SHA at a matching toplevel');
+  assert.equal(readGitSha(root, spawnOf({ status: 128, stdout: `${root}\n${ok}\n` })), null, 'non-zero status wins over parseable output');
+  assert.equal(readGitSha(root, spawnOf(at(root, 'fatal: not a git repository'))), null, 'exit 0 with prose is not a SHA');
+  assert.equal(readGitSha(root, spawnOf(at(root, ok.slice(0, 7)))), null, 'an abbreviated SHA is rejected');
+  assert.equal(readGitSha(root, spawnOf(at(root, 'B'.repeat(40)))), null, 'uppercase is not the git output shape');
+  assert.equal(readGitSha(root, spawnOf(at(join(root, '..'), ok))), null, 'an ancestor toplevel is rejected, SHA shape notwithstanding');
+  assert.equal(readGitSha(root, spawnOf({ status: 0, stdout: ok + '\n' })), null, 'a lone SHA with no toplevel line is rejected');
+  assert.equal(readGitSha(root, spawnOf({ status: 0, stdout: undefined })), null, 'no stdout, e.g. a spawn error object');
+  assert.equal(readGitSha(root, spawnOf(null)), null, 'a spawn that returns nothing');
+  assert.equal(readGitSha(root, spawnOf(new Error('spawn EACCES'))), null, 'a throwing spawn is swallowed');
 });
 
 test('the stamp lands inside the published files allowlist', () => {

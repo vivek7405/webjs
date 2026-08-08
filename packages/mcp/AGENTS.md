@@ -90,8 +90,13 @@ scripts/
                          Also emits resources/corpus.json, the build stamp naming
                          the package, version, commit SHA, and copy time the
                          bundle froze (#1319). Exports bundleDocs(...) (whose
-                         `stamp` is optional) + readGitSha(...), which returns
-                         null rather than throwing outside a git checkout.
+                         `stamp` is optional) + readGitSha(...), which answers
+                         only for a checkout ROOT (rev-parse walks up, so a tree
+                         nested in an unrelated repo would otherwise stamp that
+                         repo's HEAD) and returns null rather than throwing.
+                         Every stamp field is null when unknown, never a
+                         plausible default, so no answer stays distinguishable
+                         from a real one.
   clean-mcp-resources.js postpack: remove the transient resources/ bundle so dev
                          always reads the live repo-root docs. Exports
                          cleanBundle(...).
