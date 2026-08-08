@@ -99,8 +99,21 @@ lib/
                          by `bin/webjs.js`, `scaffoldApp()`, and the
                          `create-webjs` wrapper (`npm create webjs` /
                          `bun create webjs`), so all three state one rule.
-                         Tests: `test/app-name/` + `test/scaffolds/
-                         scaffold-template-validation.test.js`.
+                         `toDatabaseName(name)` derives the Postgres database
+                         name the scaffold writes into `.env.example`
+                         (lowercased, every non-`[a-z0-9_]` character folded to
+                         `_`, a leading digit `_`-prefixed, capped at
+                         `DB_NAME_MAX_LENGTH` = 63): the app name itself is
+                         never normalized, only that one URL segment, so the
+                         emitted name is quoting-invariant and names the same
+                         database through `createdb` and through an unquoted
+                         `CREATE DATABASE` (#1255).
+                         Tests: `test/app-name/` (the derivation table, the 63
+                         cap, idempotence, the shape property over the valid
+                         corpus) + `test/scaffolds/
+                         scaffold-template-validation.test.js` +
+                         `test/scaffolds/scaffold-integration.test.js` (the
+                         emitted `.env.example` line).
   create.js              `webjs create <name>` scaffold logic. Copies
                          `templates/` into the new app, writes
                          package.json + tsconfig + Drizzle db layer,

@@ -47,6 +47,28 @@ function muteConsole() {
   };
 }
 
+/**
+ * Like `muteConsole`, but keeps what was printed so a test can assert on the
+ * post-scaffold guidance. A sibling rather than a flag on `muteConsole` so
+ * every existing caller stays untouched.
+ * @returns {{ restore: () => void, output: () => string }}
+ */
+function captureConsole() {
+  const origLog = console.log;
+  const origError = console.error;
+  /** @type {string[]} */
+  const lines = [];
+  console.log = (...args) => { lines.push(args.join(' ')); };
+  console.error = (...args) => { lines.push(args.join(' ')); };
+  return {
+    restore: () => {
+      console.log = origLog;
+      console.error = origError;
+    },
+    output: () => lines.join('\n'),
+  };
+}
+
 test('scaffoldApp full-stack: writes the canonical full-stack app layout', async () => {
   const cwd = await tempCwd();
   const restore = muteConsole();
@@ -649,6 +671,48 @@ test('scaffoldApp --db postgres: json<T>() helper maps to jsonb, one schema both
       'postgres json<T>() maps to jsonb().$type<T>() (counterfactual: fails if the helper is sqlite-only)');
     const schema = readFileSync(join(appDir, 'db', 'schema.server.ts'), 'utf8');
     assert.match(schema, /json<\{[^}]*\}>\(\)/, 'the one shared schema demonstrates json<T>() on postgres too');
+  } finally {
+    restore();
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('scaffoldApp --db postgres: the DATABASE_URL names a fold-stable database', async () => {
+  const cwd = await tempCwd();
+  const cap = captureConsole();
+  try {
+    // A mixed-case name used to keep its capitals in the emitted URL, while
+    // `CREATE DATABASE MyPgApp;` folds to `mypgapp`, so the URL named a
+    // database that did not exist. Anchored and exact: a loose /mypgapp/ would
+    // still pass on a URL that carried the capitals somewhere else.
+    await scaffoldApp('MyPgApp', cwd, { template: 'full-stack', db: 'postgres' });
+    const envExample = readFileSync(join(cwd, 'MyPgApp', '.env.example'), 'utf8');
+    assert.match(
+      envExample,
+      /^DATABASE_URL=postgres:\/\/user:password@localhost:5432\/mypgapp$/m,
+      'the postgres DATABASE_URL names the lowercased database',
+    );
+    // The user has to create that database, so the guidance has to name it.
+    assert.match(cap.output(), /mypgapp/, 'the post-scaffold guidance names the derived database');
+  } finally {
+    cap.restore();
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('scaffoldApp --db postgres: an already-lowercase name is unchanged', async () => {
+  const cwd = await tempCwd();
+  const restore = muteConsole();
+  try {
+    // Byte-identical to the output before the fold landed: the no-regression
+    // half of the counterfactual.
+    await scaffoldApp('my-pg', cwd, { template: 'full-stack', db: 'postgres' });
+    const envExample = readFileSync(join(cwd, 'my-pg', '.env.example'), 'utf8');
+    assert.match(
+      envExample,
+      /^DATABASE_URL=postgres:\/\/user:password@localhost:5432\/my_pg$/m,
+      'a lowercase name still emits the same URL it always did',
+    );
   } finally {
     restore();
     await rm(cwd, { recursive: true, force: true });

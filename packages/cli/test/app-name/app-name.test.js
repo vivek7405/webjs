@@ -16,25 +16,33 @@ import {
   appNameErrorMessage,
   APP_NAME_MAX_LENGTH,
   APP_NAME_SHAPE,
+  toDatabaseName,
+  DB_NAME_MAX_LENGTH,
 } from '../../lib/app-name.js';
 
+/**
+ * The names the accept-list above declares valid, hoisted so the database-name
+ * shape property can run over exactly that corpus.
+ */
+const VALID_NAMES = [
+  'my-app',
+  'myapp',
+  'my_app',
+  'my.app',
+  'app2',
+  '2app',
+  'a',
+  'a'.repeat(APP_NAME_MAX_LENGTH),
+  'MyApp',
+  'TaskFlow',
+  'My_App.v2',
+];
+
+// Uppercase is deliberately allowed in `VALID_NAMES`. It never broke a
+// generated file, the scaffold's package.json is private so the name is never
+// published, and `webjs create MyApp` worked before this guard existed.
 test('accepts every name the rule allows', () => {
-  for (const name of [
-    'my-app',
-    'myapp',
-    'my_app',
-    'my.app',
-    'app2',
-    '2app',
-    'a',
-    'a'.repeat(APP_NAME_MAX_LENGTH),
-    // Uppercase is deliberately allowed. It never broke a generated file, the
-    // scaffold's package.json is private so the name is never published, and
-    // `webjs create MyApp` worked before this guard existed.
-    'MyApp',
-    'TaskFlow',
-    'My_App.v2',
-  ]) {
+  for (const name of VALID_NAMES) {
     assert.equal(checkAppName(name).ok, true, `${name} should be accepted`);
     assert.equal(assertValidAppName(name), name);
   }
@@ -229,4 +237,53 @@ test('an offending quote is not printed as an unreadable triple quote', () => {
   assert.match(checkAppName("bad'name").reason, /"'" is not allowed/);
   assert.match(checkAppName('bad"name').reason, /'"' is not allowed/);
   assert.match(checkAppName('bad name').reason, /a space is not allowed/);
+});
+
+test('derives a fold-stable postgres database name from the app name', () => {
+  // `MyApp` is the headline bug: the emitted URL used to keep the capitals,
+  // while `CREATE DATABASE MyApp;` folds to `myapp`, so the URL named a
+  // database that did not exist.
+  for (const [input, expected] of [
+    ['MyApp', 'myapp'],
+    // No camel split. Rails splits here, but the goal is the name PostgreSQL
+    // itself folds to, and a separator PostgreSQL would not insert is a
+    // mismatch in the opposite direction.
+    ['TaskFlow', 'taskflow'],
+    ['My.App-2', 'my_app_2'],
+    ['My_App.v2', 'my_app_v2'],
+    ['my_app', 'my_app'],
+    // Byte-identical to the output before the fix: the no-regression case.
+    ['my-pg', 'my_pg'],
+    // An unquoted PostgreSQL identifier may not start with a digit.
+    ['2app', '_2app'],
+  ]) {
+    assert.equal(toDatabaseName(input), expected, `${input} should derive ${expected}`);
+  }
+});
+
+test('caps the derived database name at the postgres identifier limit', () => {
+  assert.equal(DB_NAME_MAX_LENGTH, 63);
+  assert.equal(toDatabaseName('a'.repeat(APP_NAME_MAX_LENGTH)).length, DB_NAME_MAX_LENGTH);
+  // The fold runs BEFORE the slice, so every character reaching the cap is one
+  // ASCII byte and a code-unit slice is a byte slice.
+  const upper = toDatabaseName('A'.repeat(APP_NAME_MAX_LENGTH));
+  assert.equal(upper.length, DB_NAME_MAX_LENGTH);
+  assert.equal(upper, 'a'.repeat(DB_NAME_MAX_LENGTH));
+  // The digit prefix is applied BEFORE the slice, so the cap governs the final
+  // string rather than being exceeded by one.
+  const prefixed = toDatabaseName('2' + 'a'.repeat(APP_NAME_MAX_LENGTH - 1));
+  assert.equal(prefixed.length, DB_NAME_MAX_LENGTH);
+  assert.ok(prefixed.startsWith('_2'));
+});
+
+test('the derived database name is idempotent and always a legal identifier', () => {
+  for (const name of [...VALID_NAMES, 'My.App-2', 'MyApp', '2app']) {
+    const derived = toDatabaseName(name);
+    assert.equal(toDatabaseName(derived), derived, `${name} should be idempotent`);
+    // The executable form of the "an empty result is unreachable" argument: a
+    // validated name's first character is [A-Za-z0-9], which folds into the
+    // class and survives, so there is no empty-result fallback branch.
+    assert.ok(derived.length > 0, `${name} should derive a non-empty name`);
+    assert.match(derived, /^[a-z_][a-z0-9_]*$/);
+  }
 });
