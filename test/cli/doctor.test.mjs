@@ -191,6 +191,7 @@ test('version check WARNS on a missing @webjsdev install', async () => {
   const v = byName(results, 'webjs-versions');
   assert.equal(v.status, 'warn');
   assert.match(v.message, /not installed/);
+  assert.match(v.message, /@webjsdev\/core/, 'the message must name the dep that is missing');
   assert.match(v.fix, /npm install/);
 });
 
@@ -216,6 +217,128 @@ test('version check PASSES when installed satisfies the declared range', async (
   write(dir, 'node_modules/@webjsdev/core/package.json', JSON.stringify({ version: '0.7.4' }));
   write(dir, 'node_modules/@webjsdev/cli/package.json', JSON.stringify({ version: '0.10.1' }));
   const results = await runDoctorChecks(dir, baseOpts({ nodeVersion: '24.0.0' }));
+  assert.equal(byName(results, 'webjs-versions').status, 'pass');
+});
+
+// ---------------------------------------------------------------------------
+// Resolution, not a per-app directory read (#1300 part 3).
+//
+// The check used to read `<appDir>/node_modules/<dep>/package.json` directly.
+// Under npm workspaces the `@webjsdev/*` deps hoist to the ROOT node_modules, so
+// an app subdirectory has no local copy and every declared dep was reported
+// missing on a healthy install. It now asks Node's resolver instead, anchored at
+// the app dir, which is the same question `framework-resolve` asks (the two
+// openly contradicted each other before this).
+//
+// COUNTERFACTUAL: restore the `join(appDir, 'node_modules', dep, 'package.json')`
+// read and all six fixtures below red with "N @webjsdev/* dependency not
+// installed", which is the measured before-state on examples/blog and website.
+// ---------------------------------------------------------------------------
+
+/**
+ * A workspace-shaped tree: deps installed ONLY in the root node_modules, plus an
+ * app subdirectory with its own package.json and no node_modules of its own.
+ * Returns the app dir.
+ *
+ * An entry file is written ONLY for a manifest that declares `main` or
+ * `exports`, so a bin-only manifest models a real bin-only package. Writing one
+ * unconditionally would be the difference between a fixture and a prop: CJS
+ * resolution falls back to `index.js`, so `require.resolve('<dep>')` would
+ * succeed for a package with no main entry and the bin-only case would stop
+ * pinning the resolve ORDER it exists to pin.
+ */
+function workspaceFixture(installs, ranges) {
+  const root = tmpDir();
+  write(root, 'package.json', JSON.stringify({ name: 'root', workspaces: ['apps/*'] }));
+  for (const [name, manifest] of Object.entries(installs)) {
+    write(root, `node_modules/${name}/package.json`, JSON.stringify(manifest));
+    if (manifest.main || manifest.exports) {
+      write(root, `node_modules/${name}/index.js`, 'export const x = 1;\n');
+    }
+  }
+  write(root, 'apps/web/package.json', JSON.stringify({ name: 'web', dependencies: ranges }));
+  return join(root, 'apps/web');
+}
+
+test('version check PASSES for a workspace app whose deps hoist to the root node_modules', async () => {
+  const appDir = workspaceFixture(
+    {
+      '@webjsdev/core': { name: '@webjsdev/core', version: '0.7.48', main: 'index.js' },
+      '@webjsdev/server': { name: '@webjsdev/server', version: '0.8.60', main: 'index.js' },
+    },
+    { '@webjsdev/core': '^0.7.0', '@webjsdev/server': '^0.8.0' }
+  );
+  const results = await runDoctorChecks(appDir, baseOpts({ nodeVersion: '24.0.0' }));
+  const v = byName(results, 'webjs-versions');
+  assert.equal(v.status, 'pass', v.message);
+  assert.match(v.message, /All 2 @webjsdev\/\* dependency/);
+});
+
+test('version check resolves a BIN-ONLY package (no main, no exports), like @webjsdev/cli', async () => {
+  // require.resolve('<dep>') throws MODULE_NOT_FOUND for a package with no main
+  // entry and no index.js to fall back to, which is why the direct
+  // `<dep>/package.json` resolve is attempted FIRST rather than as a fallback.
+  // Reorder the two attempts in readInstalledVersion and this case reds.
+  const appDir = workspaceFixture(
+    { '@webjsdev/cli': { name: '@webjsdev/cli', version: '0.10.52', bin: { webjs: 'bin/webjs.js' } } },
+    { '@webjsdev/cli': '^0.10.0' }
+  );
+  const results = await runDoctorChecks(appDir, baseOpts({ nodeVersion: '24.0.0' }));
+  const v = byName(results, 'webjs-versions');
+  assert.equal(v.status, 'pass', v.message);
+});
+
+test('version check resolves an EXPORTS-LOCKED package whose map omits ./package.json', async () => {
+  // @webjsdev/server's exports map has no './package.json' entry, so the direct
+  // manifest resolve is refused with ERR_PACKAGE_PATH_NOT_EXPORTED and the main
+  // entry plus a walk to the package root is the only way in.
+  const appDir = workspaceFixture(
+    {
+      '@webjsdev/server': {
+        name: '@webjsdev/server',
+        version: '0.8.60',
+        exports: { '.': './index.js', './check': './check.js' },
+      },
+    },
+    { '@webjsdev/server': '^0.8.0' }
+  );
+  const results = await runDoctorChecks(appDir, baseOpts({ nodeVersion: '24.0.0' }));
+  const v = byName(results, 'webjs-versions');
+  assert.equal(v.status, 'pass', v.message);
+});
+
+test('version check still reports drift for a hoisted install, so the resolved version is real', async () => {
+  // An undefined version could never produce a drift message, so this doubles as
+  // the proof that the resolved version is the manifest's own string.
+  const appDir = workspaceFixture(
+    { '@webjsdev/core': { name: '@webjsdev/core', version: '0.8.0', main: 'index.js' } },
+    { '@webjsdev/core': '^0.7.0' }
+  );
+  const results = await runDoctorChecks(appDir, baseOpts({ nodeVersion: '24.0.0' }));
+  const v = byName(results, 'webjs-versions');
+  assert.equal(v.status, 'warn');
+  assert.match(v.message, /drift/);
+  assert.match(v.message, /@webjsdev\/core@0\.8\.0/, 'the real installed version must appear');
+});
+
+test('version check WARNS for a workspace app declaring a dep nothing installed', async () => {
+  // The regression guard: resolving through Node must not make the check vacuous.
+  const appDir = workspaceFixture(
+    { '@webjsdev/core': { name: '@webjsdev/core', version: '0.7.48', main: 'index.js' } },
+    { '@webjsdev/core': '^0.7.0', '@webjsdev/server': '^0.8.0' }
+  );
+  const results = await runDoctorChecks(appDir, baseOpts({ nodeVersion: '24.0.0' }));
+  const v = byName(results, 'webjs-versions');
+  assert.equal(v.status, 'warn');
+  assert.match(v.message, /not installed: @webjsdev\/server/);
+});
+
+test('version check does NOT warn on a range shape it cannot statically verify', async () => {
+  const appDir = workspaceFixture(
+    { '@webjsdev/core': { name: '@webjsdev/core', version: '0.7.48', main: 'index.js' } },
+    { '@webjsdev/core': 'github:webjsdev/webjs#main' }
+  );
+  const results = await runDoctorChecks(appDir, baseOpts({ nodeVersion: '24.0.0' }));
   assert.equal(byName(results, 'webjs-versions').status, 'pass');
 });
 
