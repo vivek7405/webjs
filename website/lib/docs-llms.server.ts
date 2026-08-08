@@ -258,13 +258,21 @@ export function bodyToMarkdown(raw: string): string {
     // The kept text is parked behind a sentinel so the dynamic-hole strip
     // below cannot eat what these two just preserved, and it is restored
     // before `decodeEntities` so entities inside it decode like any prose.
-    .replace(/\\\$\{((?:[^{}]|\{[^}]*\})*)\}/g, (_m, inner) => keepHole('${' + inner + '}'))
-    .replace(/\$\{"((?:[^"\\]|\\.)*)"\}/g, (_m, lit) => keepHole(lit))
+    .replace(/\\\$\{((?:[^{}]|\{[^}]*\})*)\}/g, (_m, inner) => keepHole('${' + unescapeJs(inner) + '}'))
+    .replace(/\$\{"((?:[^"\\]|\\.)*)"\}/g, (_m, lit) => keepHole(unescapeJs(lit)))
     // Brace-aware: `[^}]*` would stop at the FIRST `}`, leaving `"}` debris
     // behind a nested hole.
     .replace(/\$\{(?:[^{}]|\{[^}]*\})*\}/g, '');
 
-  body = body.replace(/\uE001HOLE(\d+)\uE001/g, (_m, i) => heldHoles[Number(i)]);
+  // Restore kept holes. A kept hole can itself contain a parked sentinel (an
+  // escaped hole nested inside a string-literal one), so this repeats until
+  // none is left. Replacing once emitted the inner sentinel verbatim, which
+  // would ship a private-use codepoint in a text/plain response and into the
+  // search index. Bounded: a hole can only contain sentinels parked before
+  // it, so each pass resolves at least one.
+  for (let pass = 0; pass <= heldHoles.length && /\uE001HOLE\d+\uE001/.test(body); pass++) {
+    body = body.replace(/\uE001HOLE(\d+)\uE001/g, (_m, i) => heldHoles[Number(i)]);
+  }
 
   body = decodeEntities(body);
 

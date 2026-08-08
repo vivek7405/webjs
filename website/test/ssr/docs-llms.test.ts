@@ -190,6 +190,33 @@ test('a genuinely dynamic hole is still dropped', () => {
   assert.equal(bodyToMarkdown('html`<p>text ${children} here</p>`'), 'text here');
 });
 
+test('a dynamic hole containing braces is dropped whole', () => {
+  // This is what makes the dynamic strip brace-aware. A naive `[^}]*` stops at
+  // the FIRST `}`, so the nested object literal leaves `)}` behind as debris.
+  // The kept-hole shapes above no longer reach this strip, so without this
+  // fixture nothing pins its brace-awareness at all.
+  assert.equal(bodyToMarkdown('html`<p>text ${fn({a: 1})} here</p>`'), 'text here');
+});
+
+test('a kept hole is unescaped, since the source is a template literal', () => {
+  // The hole text is copied out of page SOURCE, where a backtick has to be
+  // written `\\``. Keeping it verbatim moved the escape debris from in front
+  // of the hole to inside it: /docs/components rendered `.fallback=${html\`…\`}`
+  // where the page shows `.fallback=${html`…`}`.
+  const md = bodyToMarkdown('html`<p>x <code>.fallback=\\${html\\`hi\\`}</code> y</p>`');
+  assert.equal(md, 'x .fallback=${html`hi`} y');
+});
+
+test('a kept hole nested inside another leaves no sentinel in the output', () => {
+  // The two keep passes run in sequence, so a string-literal hole can park
+  // text that already contains an escaped hole's sentinel. Restoring once
+  // emitted the inner sentinel verbatim, shipping a private-use codepoint into
+  // a text/plain response and the search index.
+  const md = bodyToMarkdown('html`<p>a ${"\\${x}"} b</p>`');
+  assert.equal(md, 'a ${x} b');
+  assert.ok(!/[\uE000-\uF8FF]/.test(md), 'no private-use sentinel survives into the output');
+});
+
 test('plainText strips tags before it decodes entities', () => {
   assert.equal(plainText('a value with &lt;code&gt; here'), 'a value with <code> here');
   assert.match(plainText('intercepts same-origin &lt;a&gt; clicks'), /same-origin <a> clicks/);
