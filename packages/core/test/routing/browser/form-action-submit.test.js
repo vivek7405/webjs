@@ -274,29 +274,12 @@ suite('Client router: bound form submissions (#1155)', () => {
     } finally { teardown(); }
   });
 
-  test('a text/plain POST is NOT routed, so both paths do the same native thing', async () => {
-    // The server parses multipart and urlencoded only, so there is no honest
-    // way to send this over fetch. Bailing means the browser performs exactly
-    // the submission it would have without JS. The nav guard would catch the
-    // real navigation, so what is asserted is simply that no fetch was issued.
-    setup(okHtml);
-    try {
-      render(html`
-        <form method="post" enctype="text/plain" action="/never">
-          <button type="submit">go</button>
-        </form>
-      `, container);
-      // The native submission this bail deliberately allows is cancelled by
-      // the suite's nav guard, which listens on WINDOW bubble, i.e. after the
-      // router's own document-bubble listener. A listener on `container` would
-      // run BEFORE the router and set `defaultPrevented`, so `onSubmit` would
-      // return at its first line and this test would pass without the router
-      // ever making the decision it claims to measure.
-      container.querySelector('button').click();
-      await tick();
-      assert.equal(calls.length, 0, 'the router did not take it');
-    } finally { teardown(); }
-  });
+  // The `text/plain` BAIL that used to sit here moved to
+  // `submit-bail-ladder.test.js` (#1322), where it is one rung of the ladder
+  // and is paired with a near-miss control. On its own it asserted only that no
+  // fetch was issued, which cannot tell a bail apart from a submission that
+  // never happened. The tests above are about ENCODING, which is this file's
+  // subject, and they stay.
 
   // -------------------------------------------------------------------------
   // #1307: the dev-time submit guard.

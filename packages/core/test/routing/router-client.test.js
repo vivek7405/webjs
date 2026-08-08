@@ -2977,7 +2977,26 @@ test('blurOutgoingFocus: no-op when active element has no blur() method', () => 
 });
 
 /* ====================================================================
- * Form submission: getSubmitMethod / getSubmitAction
+ * Form submission: the RESOLVERS only.
+ *
+ * The `onSubmit` BAIL LADDER is deliberately not tested in this file. It
+ * lives in `packages/core/test/routing/browser/submit-bail-ladder.test.js`,
+ * against a real browser (#1322).
+ *
+ * Why it cannot live here: this harness is linkedom with no `location`
+ * global, so `onSubmit` throws a ReferenceError at its `new URL(action,
+ * location.href)` line and the bare `catch` swallows it, returning before any
+ * later rung is reached. Stub `location` and the next wall is
+ * `new FormData(formElement)`, which throws under linkedom because the
+ * constructor's WebIDL brand check rejects a linkedom element. Either way
+ * `preventDefault()` is unreachable, so an ordinary same-origin POST that the
+ * router DOES intercept looks exactly like a bail, there is no possible
+ * positive control, and no change to any rung could red a test here. Nine
+ * tests that claimed to pin a bail used to sit below; deleting the
+ * `data-no-router` rung outright left every one of them green.
+ *
+ * The resolvers below are pure functions over attributes, so they are
+ * genuinely unit-testable and stay.
  * ==================================================================== */
 
 /** Build a form element in the test document for inspection. */
@@ -3007,6 +3026,26 @@ test('getSubmitMethod: defaults to get when neither has a method', () => {
 test('getSubmitMethod: tolerates null submitter (programmatic submit)', () => {
   const form = formFrom('<form method="post"></form>');
   assert.equal(_getSubmitMethod(form, null), 'post');
+});
+
+test('getSubmitMethod: a PRESENT-but-empty formmethod wins, and means GET (#1322)', () => {
+  // The form-submission algorithm asks whether the submitter HAS a
+  // `formmethod`, never whether the value is truthy, and `formmethod` is an
+  // enumerated attribute whose invalid-value default is GET. So this button
+  // submits as a GET on every engine, while the old `||` chain resolved it to
+  // the form's `post`: same template, two different requests with JS on and
+  // off, which is the divergence #1307 exists to rule out.
+  const form = formFrom('<form method="post"><button formmethod="">x</button></form>');
+  assert.equal(_getSubmitMethod(form, form.querySelector('button')), 'get');
+});
+
+test('getSubmitEnctype: a PRESENT-but-empty formenctype wins, and means urlencoded (#1322)', () => {
+  // Same presence rule, landing on `enctype`'s own invalid-value default.
+  const form = formFrom('<form method="post" enctype="multipart/form-data"><button formenctype="">x</button></form>');
+  assert.equal(
+    _getSubmitEnctype(form, form.querySelector('button')),
+    'application/x-www-form-urlencoded',
+  );
 });
 
 test('getSubmitEnctype: submitter formenctype overrides form enctype', () => {
@@ -3088,110 +3127,6 @@ test('getSubmitAction: empty submitter formaction is honored (means submit-to-se
   const form = formFrom('<form action="/elsewhere"><button formaction="">x</button></form>');
   const submitter = form.querySelector('button');
   assert.equal(_getSubmitAction(form, submitter), '');
-});
-
-/* ====================================================================
- * Form submission: onSubmit filter rules
- * ==================================================================== */
-
-/**
- * Construct a fake SubmitEvent for the given form. We can't use a real
- * SubmitEvent in linkedom (it's undefined there), but onSubmit only
- * reads `defaultPrevented`, `target`, `submitter`, and `preventDefault`
- * - easy to fake.
- */
-function fakeSubmitEvent(form, submitter) {
-  let prevented = false;
-  return {
-    defaultPrevented: false,
-    target: form,
-    submitter: submitter || null,
-    preventDefault() { prevented = true; this.defaultPrevented = true; },
-    _wasPrevented() { return prevented; },
-  };
-}
-
-test('onSubmit: ignores forms with data-no-router (lets browser submit)', () => {
-  const form = formFrom('<form action="/x" method="post" data-no-router></form>');
-  const e = fakeSubmitEvent(form);
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false,
-    "data-no-router form is NOT intercepted; browser handles it natively");
-});
-
-test('onSubmit: ignores forms with target=_blank (popup)', () => {
-  const form = formFrom('<form action="/x" method="post" target="_blank"></form>');
-  const e = fakeSubmitEvent(form);
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false, 'popup target left to browser');
-});
-
-test('onSubmit: ignores submissions with method="dialog"', () => {
-  const form = formFrom('<form action="/x" method="dialog"></form>');
-  const e = fakeSubmitEvent(form);
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false, 'native dialog dismissal not routed');
-});
-
-// NOTE on these two bail tests, and on every `onSubmit: ignores ...` test
-// around them: this harness is linkedom, where `new FormData(formElement)`
-// throws, so `onSubmit` cannot be driven all the way to `preventDefault()`
-// here. A bail assertion therefore proves that the submission was NOT routed,
-// but cannot prove it bailed for the stated REASON. The positive control (an
-// ordinary POST still being intercepted, and the body actually encoded per the
-// declared enctype) lives in the browser suite, in
-// `packages/core/test/routing/browser/form-action-submit.test.js`, against a
-// real DOM and a stubbed fetch.
-test('onSubmit: an unsafe text/plain submission bails to the browser (#1307)', () => {
-  // The server parses multipart and urlencoded only, so there is no honest way
-  // to send text/plain over fetch and have the response mean anything. Bailing
-  // makes the JS-on and JS-off paths do the SAME thing (both a native
-  // text/plain POST, both answered the same way), which is the requirement.
-  const form = formFrom('<form action="/x" method="post" enctype="text/plain"></form>');
-  const e = fakeSubmitEvent(form);
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false, 'the browser performs the submission');
-});
-
-test('onSubmit: a submitter formenctype="text/plain" bails too', () => {
-  // Native precedence: the submitter's override decides the encoding, so the
-  // bail has to read it there as well or a per-button text/plain would be sent
-  // as multipart under JS and natively without it.
-  const form = formFrom('<form action="/x" method="post"><button formenctype="text/plain">x</button></form>');
-  const e = fakeSubmitEvent(form, form.querySelector('button'));
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false);
-});
-
-test('onSubmit: ignores cross-origin actions', () => {
-  const form = formFrom('<form action="https://other.example.com/x" method="post"></form>');
-  const e = fakeSubmitEvent(form);
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false, 'cross-origin → full browser submit');
-});
-
-test('onSubmit: ignores file-download actions (non-HTML extensions)', () => {
-  const form = formFrom('<form action="/data.pdf" method="get"></form>');
-  const e = fakeSubmitEvent(form);
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false, 'PDF action → browser handles download');
-});
-
-test('onSubmit: ignores already-prevented events (server-action RPC stub got first)', () => {
-  const form = formFrom('<form action="/x" method="post"></form>');
-  const e = fakeSubmitEvent(form);
-  e.defaultPrevented = true; // simulate a user @submit handler already running
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false,
-    "router does not double-prevent: user handler owns the event");
-});
-
-test('onSubmit: ignores submitter with data-no-router (per-button escape)', () => {
-  const form = formFrom('<form action="/x" method="post"><button data-no-router>x</button></form>');
-  const submitter = form.querySelector('button');
-  const e = fakeSubmitEvent(form, submitter);
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false, 'submitter-level opt-out');
 });
 
 /* ====================================================================
