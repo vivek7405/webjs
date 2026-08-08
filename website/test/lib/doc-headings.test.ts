@@ -27,9 +27,10 @@ const FIXTURE = [
   '```',
   '# not a heading',
   'npm create webjs@latest my-app',
-  'class Themed {',
-  '  #field = 1;',
-  '}',
+  // Column 0, the shape the real corpus has: /docs/context and /docs/task
+  // both open a sample on a private field, dedented out of its class body.
+  '#theme = new ContextConsumer(this, {',
+  '## nor is this a heading',
   '```',
   '',
   '### Manual setup',
