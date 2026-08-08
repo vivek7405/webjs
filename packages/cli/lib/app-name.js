@@ -229,6 +229,16 @@ export const DB_NAME_MAX_LENGTH = 63;
  * A case-preserving name does not have that property: `CREATE DATABASE MyApp;`
  * creates `myapp` while `createdb MyApp` creates `MyApp`.
  *
+ * One qualification on that property. A name that folds to a PostgreSQL
+ * KEYWORD (`order`, `user`, `table`, `group`, `check`, `window`, `limit`) is
+ * still not quoting-invariant: `CREATE DATABASE order;` is a syntax error
+ * rather than a fold, while `createdb order` succeeds because `fmtId` quotes a
+ * keyword. That is deliberately not detected here. The keyword list is
+ * version-dependent and roughly 470 entries, which is disproportionate in a
+ * helper whose whole point is being pure and dependency-free, and the failure
+ * is a loud syntax error on a placeholder line the user is editing anyway,
+ * not the silent wrong-database mismatch this function exists to remove.
+ *
  * Three sub-rules, in this order, and the order is load-bearing:
  *
  *   1. Fold with `toLowerCase()`, NOT `toLocaleLowerCase()`. The latter is
