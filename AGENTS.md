@@ -13,7 +13,7 @@ to these `references/`:
 | Reference | Topic |
 |---|---|
 | `references/routing-and-pages.md` | Pages, layouts, dynamic routes, route handlers, metadata, redirects, 404s |
-| `references/components.md` | Writing components: reactive props, signals, lifecycle, light vs shadow DOM, inherited members not to shadow |
+| `references/components.md` | Writing components: what a component owns, reactive props, signals, lifecycle, light vs shadow DOM, inherited members not to shadow |
 | `references/data-and-actions.md` | Server actions, mutations, queries, validation, the `ActionResult` envelope, Drizzle surface, where server-derived types live |
 | `references/auth-and-sessions.md` | Sessions, login flows, route protection, `forbidden()` / `unauthorized()` |
 | `references/styling.md` | Tailwind, light-DOM tag-prefix rule, tokens, fixed headers, no-reflow layout |

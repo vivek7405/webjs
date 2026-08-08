@@ -7,6 +7,18 @@ export default function Components() {
     <h1>Components</h1>
     <p>WebJs components are <strong>standard HTML custom elements</strong> built on a thin base class called <code>WebComponent</code>. If you are coming from React, think of <code>WebComponent</code> as a class component whose render method returns a tagged template instead of JSX. The browser owns the component lifecycle. There is no virtual DOM, no reconciler, and no framework-specific component model to learn.</p>
 
+    <h2>What belongs in a component</h2>
+    <p>A component owns four things together: its markup, its state, its listeners, and its styling. When one of them lives in another file, the feature stops being readable, testable, or deletable as a unit. These are conventions, not <code>webjs check</code> rules.</p>
+    <ul>
+      <li><strong>Markup and the code that drives it live in the same component.</strong> A class selector is not an interface. <code>document.querySelector('.nav-toggle')</code> keeps type-checking after someone renames the class in the other file, and starts returning <code>null</code> at runtime.</li>
+      <li><strong>Reach your own rendered node with a ref.</strong> <code>render()</code> already owns the node, so let the handle flow out of the template with <code>ref()</code> and <code>createRef()</code>. A ref cannot match another component's node, and it goes undefined once the node is no longer rendered.</li>
+      <li><strong>State lives on the component, never on the document shell.</strong> The client router's swap range never covers <code>&lt;body&gt;</code>, so an open flag parked there survives the navigation that removed the markup it described. A reactive property or a signal dies with the element.</li>
+      <li><strong>ARIA state is a hole in <code>render()</code>.</strong> An <code>aria-expanded</code> bound to the same state that drives behaviour cannot drift. A second function calling <code>setAttribute</code> can. Write the string explicitly for a tri-state attribute, since a plain-attribute hole holding <code>false</code> serves <code>false</code> from the server and no attribute at all on the client.</li>
+      <li><strong>Behaviour needs an importable surface.</strong> A browser test can import a component and drive the real element. An inline script in a layout has no module identity, so its test can only transcribe it and assert against the copy.</li>
+      <li><strong>Listening on the document is fine. Querying it usually is not.</strong> An outside-click handler has to listen globally, then reads its own subtree with <code>this.contains(event.target)</code>. Add the listener in <code>connectedCallback</code> and remove it in <code>disconnectedCallback</code>.</li>
+      <li><strong>Talk to an ancestor with a bubbling event, and to a stranger with a module-scope signal.</strong> A made-up event name on <code>document</code> is a global variable with extra steps.</li>
+    </ul>
+
     <h2>The WebComponent Base Class</h2>
     <p>Every interactive component extends <code>WebComponent</code>, declares its <strong>property map</strong> by passing a shape into the base-class factory (<code>extends WebComponent({ ... })</code>, and optionally <code>static styles</code> for shadow-DOM components), implements <code>render()</code>, and registers itself by passing a hyphenated tag name to <code>ClassName.register('tag-name')</code>. The tag name is an argument to <code>.register()</code>, not a static field.</p>
 

@@ -2,6 +2,7 @@
 
 ## What This Covers
 
+- What a component owns (markup, state, listeners, styling), and the rules that follow from it: refs over selectors, no state on `<body>`, ARIA derived in `render()`
 - Declaring reactive properties through the `WebComponent({ ... })` factory and `prop()`, with options (`reflect`, `state`, `attribute`, `default`, `converter`, `hasChanged`)
 - Signals as the default state primitive for component-local and shared state, plus `effect` / `batch`
 - The Lit-aligned lifecycle and exactly which hooks SSR runs versus skips
@@ -14,6 +15,81 @@
 - Inherited members app code must NOT shadow (`title`, `remove`, `render`, ...)
 
 Read this when you are authoring or reviewing a `WebComponent`. For styling a component (Tailwind, the tag-prefix rule, host sizing) see `styling.md`. For streaming a slow region or programmatic navigation see `client-router-and-streaming.md`. For Lit habits that break WebJs see `muscle-memory-gotchas.md`.
+
+## Ownership: what a component owns
+
+A component owns four things together: its markup, its state, its listeners, and its styling. The moment one of them lives in a different file from the rest, the feature can no longer be read, tested, or deleted as a unit, and the parts drift apart. These are CONVENTIONS, judged by a reader. `webjs check` has no rule for any of them, and adding one would be wrong, because a sensible app can legitimately want a delegated listener to pass.
+
+Three of the rules below restate widely held component-model advice. Lit's base class exists to hold reactive state, scoped styles, and a declarative template TOGETHER (the `lit` package README), and Lit documents a ref's value as `undefined` once the node "is no longer rendered", which is precisely the signal a selector lookup cannot give you. React frames the same two ideas as lifting state to the closest common owner (react.dev, "Sharing State Between Components") and treating a ref as an escape hatch rather than the normal way to reach a node (react.dev, "Escape Hatches"). The other four are not imported habits at all. They follow from the WebJs execution model: a page or layout never hydrates, and the client router's swap range never covers `<body>` or `<html>`.
+
+**1. Markup and the code that drives it live in the same component.** A class selector is not an interface. `document.querySelector('.nav-toggle')` keeps compiling, keeps type-checking, and keeps passing `webjs check` after someone renames the class in the other file. It just starts returning `null` at runtime. If you are writing a selector to find markup that another file rendered, write the component that renders it instead. Where a value genuinely has to exist in two places (a layout's pre-paint inline script cannot import), the second place READS the first declaration rather than restating it.
+
+**2. Reach your own rendered node with a ref, never with a selector.** `render()` already owns the node, so let the handle flow out of the template with `ref()` / `createRef()` from `@webjsdev/core/directives` (the directives table below carries the one-line summary). A ref is scoped to the component, so it cannot match a node some other component rendered, and it goes `undefined` when the node stops being rendered, which makes a stale handle visible instead of silent. Two reads a ref cannot express stay vanilla: `this.closest('parent-tag')` for compound-component ancestor lookup, and `assignedNodes()` for slotted content.
+
+**3. State lives on the component, never on `<body>` or `<html>`.** The client router swaps a range INSIDE the document, so the document shell sits outside every swap. An open flag parked on `<body>` therefore survives a navigation that removed the markup it described, and it re-opens a panel over the next page or leaves scrolling locked on a page with nothing open. State held in a reactive property or a signal dies with the element, which is the behaviour you wanted in the first place. The carve-out is a document-level EFFECT rather than state, a scroll lock being the usual one, and it must be released in `disconnectedCallback`.
+
+**4. ARIA state is a hole in `render()`, derived from the same state that drives behaviour.** `aria-expanded=${this.open ? 'true' : 'false'}` cannot disagree with `this.open`. A second function that re-finds the button and calls `setAttribute` can, and does, the first time someone adds a close path that forgets to call it. The same holds for `class`, `?disabled`, and any `.prop`. Two caveats ride this rule:
+
+- Write the string explicitly for a tri-state ARIA attribute. A plain-attribute hole holding `false` serves `aria-expanded="false"` from the server and hydrates to NO attribute, because the client removes an attribute for `null` / `undefined` / `false` while the server stringifies it. `?attr=${bool}` is not a substitute, since a boolean binding omits the attribute in BOTH renderers.
+- A hole commits on the next render, one microtask later. The one place a direct write is still correct is a synchronous snapshot read such as `webjs:before-cache`, where the router reads `outerHTML` in the same task. That is a documented exception, not the normal path.
+
+**5. Behaviour needs an importable surface, or its test is a copy of it.** An inline `<script>` in a layout has no module identity, so a browser test cannot import it. It can only transcribe the listener into the test file and assert against the transcription, which then needs a SECOND test to grep the original for drift. Two tests, neither running shipping code. A component is importable, so its browser test mounts the real element and drives real events. A page or layout may still carry an inline `<script>`, but only for pre-paint boot work no module can do: reading a stored theme before first paint so the wrong palette never flashes, or measuring the header height into a CSS custom property. It must not be interactivity. It runs once per full page load and never again, because a soft navigation does not re-execute it, which is why script-driven enhancement grows `MutationObserver` workarounds that a custom element never needs. Under an opt-in CSP it also needs the nonce from `cspNonce()`.
+
+**6. Listening on `document` is legitimate. Querying `document` usually is not.** An outside-click dismissal or an Escape handler has no choice, because the event happens outside the element, so the listener has to be global. What decides whether that is ownership or a reach across the app is what the handler then READS. `this.contains(e.target)` is a decision about the component's own subtree. `document.querySelector('.other-thing')` is a decision about someone else's markup. Add the listener in `connectedCallback`, remove it in `disconnectedCallback`, and store the handler in a field so `removeEventListener` gets the same reference back (a function created inline at add time can never be removed).
+
+**7. Talk to an ancestor with an event, and to a stranger with a module-scope signal.** A child telling its own ancestor something dispatches a `CustomEvent` with `bubbles: true`, and the ancestor binds `@my-event=${...}` in the template that rendered it. Add `composed: true` as well when the component sets `static shadow = true`, or the event stops at the shadow boundary. Two components with NO ancestor relationship share a module-scope `signal` that both import, which is typed, greppable, and owned by a module. What neither case is: a made-up event name on `document` used as a global bus, which is a global variable with extra steps. Framework events such as `webjs:navigate` ride `document` because the router has no element to dispatch from, and that is not a licence to add your own.
+
+The shape to fix, all four pieces in different places:
+
+```js
+// In a layout's inline script, driving markup that another file rendered.
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.nav-toggle')) document.body.toggleAttribute('data-nav-open');
+});
+function syncNav() {
+  const btn = document.querySelector('.nav-toggle');   // another file's markup
+  const open = document.body.hasAttribute('data-nav-open');  // outlives the markup
+  if (btn) btn.setAttribute('aria-expanded', String(open));  // a second home for the state
+}
+```
+
+The shape to write, one component owning all four:
+
+```ts
+import { WebComponent, prop, html } from '@webjsdev/core';
+import { createRef, ref } from '@webjsdev/core/directives';
+
+class NavDrawer extends WebComponent({ open: prop(Boolean, { reflect: true }) }) {
+  private toggleRef = createRef<HTMLButtonElement>();
+  // Stored in a field, so removeEventListener gets the same reference back.
+  private onDocClick = (e: MouseEvent) => {
+    if (!this.contains(e.target as Node)) this.open = false;   // reads its OWN subtree
+  };
+
+  constructor() { super(); this.open = false; }                // SSR runs the constructor
+
+  connectedCallback() {
+    super.connectedCallback();
+    document.addEventListener('click', this.onDocClick);       // listening globally is fine
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    document.removeEventListener('click', this.onDocClick);    // the state dies with the element
+  }
+
+  render() {
+    return html`
+      <button ${ref(this.toggleRef)}
+        aria-expanded=${this.open ? 'true' : 'false'}
+        @click=${() => { this.open = !this.open; }}>Menu</button>
+      <nav ?hidden=${!this.open}><slot></slot></nav>
+    `;
+  }
+}
+NavDrawer.register('nav-drawer');
+```
+
+This repo's own website is the worked example. Before commit `b80de906` the docs drawer and the header menu were exactly the first shape, and every accessibility bug their tests now pin came out of the split. `website/components/docs-drawer.ts` and `website/components/site-nav-menu.ts` are the second shape, and `website/AGENTS.md` records the app-level version of these rules under "What stays inline script in the root layout".
 
 ## Reactive properties: the base-class factory
 
