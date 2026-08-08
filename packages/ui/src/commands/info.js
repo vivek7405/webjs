@@ -15,7 +15,7 @@ export const info = new Command()
 
     logger.info(`${logger.bold('cwd')}          ${cwd}`);
     logger.info(`${logger.bold('Registry')}     ${DEFAULT_REGISTRY_URL}`);
-    logger.info(`${logger.bold('Config')}       ${config ? 'components.json ✔' : 'components.json ✖ (run `webjsui init`)'}`);
+    logger.info(`${logger.bold('Config')}       ${config ? 'components.json ✔' : 'components.json ✖ (run `npx @webjsdev/ui init`)'}`);
     if (config) {
       logger.info(`${logger.bold('Base color')}   ${config.tailwind.baseColor}`);
       logger.info(`${logger.bold('Tailwind CSS')} ${config.tailwind.css}`);

@@ -64,7 +64,9 @@ so on. Follow that block and the markup is fully accessible.
 
 Nothing to install. `@webjsdev/ui` is a hard dependency of `@webjsdev/cli`,
 so a global webjs install already includes it. Apps scaffolded with
-`webjs create` also have it pre-listed in `devDependencies`.
+`webjs create` reach it the same way. The scaffold deliberately does not pin
+it, because the kit copies source into your project rather than being
+imported at runtime, so the CLI resolves it from its own install.
 
 ```sh
 webjs ui init
@@ -105,7 +107,8 @@ configured alias). Resolves transitive deps via `registryDependencies` and
 auto-installs npm deps like `@floating-ui/dom` for popover-style components. For
 a Tier-1 class-helper component it copies the helpers plus a lean header and a
 one-line pointer, and leaves the worked structural example OUT of the file (get
-it on demand with `webjsui view <name>`). It also self-heals the theme tokens if
+it on demand with `npx @webjsdev/ui view <name>`, which is what the pointer it
+leaves behind says too). It also self-heals the theme tokens if
 they are missing.
 
 Resolution is LOCAL-FIRST: `init` / `add` / `list` / `view` read the registry

@@ -86,6 +86,8 @@ test('getRegistryItem: throws a helpful error for an unknown local item', async 
   noNetwork();
   try {
     await assert.rejects(() => getRegistryItem('does-not-exist'), /Unknown registry item/);
+    // #1264: and the command it points at has to resolve for the reader.
+    await assert.rejects(() => getRegistryItem('does-not-exist'), /Run `npx @webjsdev\/ui list`/);
   } finally {
     globalThis.fetch = origFetch;
   }

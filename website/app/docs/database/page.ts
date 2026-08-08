@@ -120,7 +120,7 @@ export default async function Home() {
     <h2>Switching to Postgres</h2>
     <p>Scaffold with the dialect you want:</p>
     <code-block>webjs create my-app --db postgres</code-block>
-    <p>That writes the Postgres variants of <code>db/columns.server.ts</code> and <code>db/connection.server.ts</code> (and the <code>pg</code> driver). Your <code>schema.server.ts</code>, queries, and actions are unchanged. To move an existing app, swap those two files for the Postgres variants and point <code>DATABASE_URL</code> at your Postgres instance. Migrations are generated per dialect, and runtime behaviour differs (case-sensitivity, constraints), so run your tests against the production engine before relying on a dev-SQLite / prod-Postgres setup.</p>
+    <p>That writes the Postgres variants of <code>db/columns.server.ts</code> and <code>db/connection.server.ts</code> (and the <code>pg</code> driver). Your <code>schema.server.ts</code>, queries, and actions are unchanged. To move an existing app, swap those two files for the Postgres variants and point <code>DATABASE_URL</code> at your Postgres instance. Migrations are generated per dialect, and runtime behaviour differs (case-sensitivity, constraints), so run your tests against the production engine before relying on a dev-SQLite / prod-Postgres setup. The generated <code>DATABASE_URL</code> names a lowercased, separator-folded form of the app name, so <code>MyApp</code> gets <code>myapp</code>, which is the same name Postgres folds an unquoted <code>CREATE DATABASE MyApp</code> to.</p>
 
     <h2>CLI</h2>
     <code-block>webjs db generate    # schema -> SQL migration (drizzle-kit generate)

@@ -162,7 +162,7 @@ export const init = new Command()
     logger.break();
     logger.success('Done.');
     logger.info('');
-    logger.info(`Add components with:  ${logger.cyan('npx webjsui add button card dialog')}`);
+    logger.info(`Add components with:  ${logger.cyan('npx @webjsdev/ui add button card dialog')}`);
   });
 
 /**

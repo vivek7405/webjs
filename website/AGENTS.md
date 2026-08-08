@@ -379,6 +379,16 @@ calling an action), re-enable it and delete the assertion in
   template text with `&lt;` and `&#123;` escapes and so give the server no
   string to tokenize. There used to be a second ES5 copy served out of
   `public/`, kept in sync by hand, and it drifted. Do not add another.
+- **Container tags must balance in every source file that authors markup.**
+  `test/repo-health/site-pages-well-formed.test.mjs` counts opens against
+  closes for `<pre>`, `<code-block>`, `<div>`, `<ul>`, `<ol>`, and `<table>`
+  across all of `website/`, not just `app/docs/`, so the shared chrome under
+  `lib/ui/`, `components/`, and `lib/design/` is covered too (every page
+  renders through it). The generated mirrors under `modules/ui/components/`
+  and `components/ui/`, plus `test/` and `scripts/`, are deliberately outside
+  it. An unbalanced container swallows the client router's
+  `<!--/wj:children-->` marker into the unclosed tag, and the next navigation
+  throws `NotFoundError` from `insertBefore`.
 
 ## Run
 

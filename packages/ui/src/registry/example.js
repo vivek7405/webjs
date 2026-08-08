@@ -79,10 +79,13 @@ export function extractExample(src) {
 
 /**
  * The one-line pointer left in place of a stripped example. Uses the EXPLICIT
- * `npx @webjsdev/ui view` form (not the bare `webjsui` bin name, which npx would
- * resolve to an unrelated `webjsui` package when it is not a direct dep, e.g. in
- * a scaffolded app where `@webjsdev/ui` is only transitive). Works in a WebJs
- * app and a standalone project alike.
+ * `npx @webjsdev/ui view` form, not the bare `webjsui` bin name. `webjsui` is a
+ * bin declared INSIDE `@webjsdev/ui` and is not a published package name (the
+ * registry 404s on it), so `npx webjsui` resolves through a local
+ * `node_modules/.bin` link or not at all. This pointer is written into a file
+ * the user keeps, and it cannot know whether the project reading it later has
+ * the kit in its tree. The explicit form resolves either way. See invariant 8
+ * in this package's AGENTS.md for the rule every printed hint follows (#1264).
  */
 export function pointerLine(name) {
   return `Full usage example: npx @webjsdev/ui view ${name}  (or the MCP tool: ui ${name})`;
