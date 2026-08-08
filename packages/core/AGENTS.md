@@ -57,19 +57,33 @@ the same output in all three.
 
 ## Public exports (re-exported from `index.js`)
 
-See the [package.json `exports` field](./package.json) for subpaths:
-`@webjsdev/core/client`, `/server`, `/component`, `/registry`,
-`/client-router`. Everything else is exposed via the main `index.js`
-re-exports. Keep this list in sync if you add or remove a barrel
-export.
+Twelve entries in the [package.json `exports` field](./package.json) carry a
+hand-written `.d.ts` overlay: the root `.` plus `/directives`, `/context`,
+`/task`, `/client-router`, `/lazy-loader`, `/testing`, `/client`, `/server`,
+`/component`, `/registry` and `/signals`. Everything else is exposed via the
+main `index.js` re-exports. `exports` is the source of truth and the guard
+below reads it directly, so a new subpath needs no edit here; keep the list
+above readable when you add one.
 
-**The `index.d.ts` overlay must declare every runtime named export** (it
+**Every overlay behind a published `exports` entry must declare every
+runtime named export of its sibling module** (the `index.d.ts` overlay
 drifted badly once, #388: 35 missing). This is now enforced:
-`test/types/dts-export-coverage.test.mjs` reads each package's runtime
-exports dynamically and tsc-checks that the `.d.ts` declares them all, so a
-new `export` in `index.js` without a matching declaration fails CI. When you
-add a runtime export, add its declaration (re-export from the source module's
-`.d.ts`, creating that `.d.ts` if absent).
+`test/types/dts-export-coverage.test.mjs` reads the entry list from this
+package's own `exports`, imports each overlay's sibling `.js` for its real
+runtime export names, and tsc-checks that the `.d.ts` declares them all, so
+a new `export` in `index.js` OR in any subpath module (`src/directives.js`,
+`src/signal.js`, the rest) without a matching declaration fails CI. It used
+to check `@webjsdev/core` and two `@webjsdev/server` entries only, so all
+eleven core subpaths could drift freely (#1291). When you add a runtime
+export, add its declaration (re-export from the source module's `.d.ts`,
+creating that `.d.ts` if absent).
+
+**Prefix a test-only export with `_`.** A leading underscore marks a seam
+that unit tests reach but the published API does not carry, and the coverage
+guard exempts it, so it needs no declaration and never shows up in a
+consumer's autocomplete. `src/router-client.js` keeps 63 of them in its
+`Internal exports for unit testing` block. Without the prefix the guard
+demands a declaration, and adding one publishes the seam as API.
 
 **Type-only exports.** `index.d.ts` (the overlay) re-exports the
 type-only public surface alongside the runtime exports. The component
@@ -121,8 +135,9 @@ them per app.
    `webjs-core-lazy-loader.js`, and the test-only `webjs-core-testing.js`.
    Only `@webjsdev/core` has this dual-layout. Other framework packages
    stay source-only. `index-browser.js` (and its `dist/webjs-core-browser.js`
-   build) strip `render-server.js` and
-   `setCspNonceProvider` from the public surface. `packages/server/src/importmap.js` routes the
+   build) strip `render-server.js` and the three server-side setters
+   (`setCspNonceProvider`, `setAssetUrlProvider`, `setFormActionResolver`)
+   from the public surface. `packages/server/src/importmap.js` routes the
    bare specifier `@webjsdev/core` to that browser entry on the
    client side; Node-side consumers (SSR pipeline, framework
    internals, unit tests) keep landing on `index.js` via the

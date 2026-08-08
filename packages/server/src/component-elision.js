@@ -238,8 +238,13 @@ const SERVER_FILE_RE = /\.server\.m?[jt]s$/;
 
 /** Side-effect or named import of the client router subpath. */
 const CLIENT_ROUTER_SUBPATH_RE = /['"]@webjsdev\/core\/client-router['"]/;
-/** Client-only named APIs from the `@webjsdev/core` main entry. */
-const CLIENT_ROUTER_IMPORTS = ['navigate', 'enableClientRouter', 'disableClientRouter', 'revalidate'];
+/**
+ * Client-only named APIs from the `@webjsdev/core` main entry. Exported so
+ * `test/elision/lifecycle-coverage.test.js` can guard it the way it guards
+ * REACTIVE_IMPORTS: a router function the barrel re-exports but this list omits
+ * is not recognized as client work, so a component using it is wrongly elided.
+ */
+export const CLIENT_ROUTER_IMPORTS = ['navigate', 'enableClientRouter', 'disableClientRouter', 'revalidate', 'loadFrame'];
 
 /** Identifiers that only exist in a browser; their presence means client work. */
 const CLIENT_GLOBAL_RE = /\b(?:window|document|navigator|localStorage|sessionStorage|customElements|matchMedia|addEventListener)\b/;
