@@ -84,8 +84,10 @@ export function extractExample(src) {
  * registry 404s on it), so `npx webjsui` resolves only where the kit is already
  * a direct dep. It is not one in a scaffolded app, where `@webjsdev/ui` is
  * intentionally unpinned (packages/cli/lib/create.js). The explicit form works
- * in a WebJs app and a standalone project alike, and every user-facing hint
- * printed by this package's commands uses it for the same reason (#1264).
+ * in a WebJs app and a standalone project alike, and every command hint this
+ * package prints uses it for the same reason (#1264). The commander banner is
+ * the one exception, since `.name('webjsui')` in index.js is the bin's real
+ * identifier rather than a command being suggested to a reader.
  */
 export function pointerLine(name) {
   return `Full usage example: npx @webjsdev/ui view ${name}  (or the MCP tool: ui ${name})`;

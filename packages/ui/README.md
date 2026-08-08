@@ -64,7 +64,9 @@ so on. Follow that block and the markup is fully accessible.
 
 Nothing to install. `@webjsdev/ui` is a hard dependency of `@webjsdev/cli`,
 so a global webjs install already includes it. Apps scaffolded with
-`webjs create` also have it pre-listed in `devDependencies`.
+`webjs create` reach it the same way. The scaffold deliberately does not pin
+it, because the kit copies source into your project rather than being
+imported at runtime, so the CLI resolves it from its own install.
 
 ```sh
 webjs ui init

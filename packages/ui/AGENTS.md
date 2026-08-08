@@ -333,7 +333,7 @@ when the caller passes an explicit custom `--registry <url>`.
   lives in its module-JSDoc `@example` block. That worked example is build-time
   guidance, so `add` STRIPS it from the copied file and leaves a one-line pointer
   (`example.js` `pointerLine`, the explicit `npx @webjsdev/ui view <name>` form
-  so it resolves whether or not the bin is a direct dep); the full snippet is
+  every printed hint uses, per invariant 8); the full snippet is
   served on demand by `webjsui view` and the MCP `ui` tool. Tier-2
   custom-element files are left whole (the element IS the component). A
   version-skew note: local-first pins `add`/`view` to the INSTALLED ui version,
@@ -409,6 +409,22 @@ when the caller passes an explicit custom `--registry <url>`.
    `detectProject()` in any form. A switch that picks paths per framework buys
    about thirty lines of defaults in exchange for a cross-framework promise
    the rest of the package does not keep.
+
+8. **A command hint printed to a user names `npx @webjsdev/ui <cmd>`, never a
+   bare `webjsui <cmd>` (#1264).** `webjsui` is a bin declared inside this
+   package, not a published package name, so `npx webjsui` resolves only where
+   the kit is already a direct dependency. It is not one for the most common
+   caller: a user who arrived through `webjs ui <cmd>` has the kit resolved
+   from the CLI's own install, and the scaffold leaves `@webjsdev/ui` unpinned
+   on purpose. So every hint `init`, `add`, `diff`, `info`, and the registry
+   fetcher print uses the explicit form, and `init-command.test.js` /
+   `add-command.test.js` assert it. Two things are NOT hints and keep the bare
+   name: `.name('webjsui')` in `index.js`, which is the bin's real identifier
+   and what the commander banner echoes, and the command table in this file
+   plus the one in `README.md`, which name the binary rather than telling a
+   reader what to type. `README.md`'s Option B is the third exception, since
+   its `npx webjsui` lines sit under the two `npm install` commands that make
+   the bin resolve.
 
 ## Component tag convention (Tier 2)
 

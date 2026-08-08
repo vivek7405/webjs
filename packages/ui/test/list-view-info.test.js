@@ -84,6 +84,9 @@ test('info: reports missing config, and no longer prints a project type', async 
     assert.match(output, /components\.json/);
     // #1129: the project-type line is gone along with the detection it read.
     assert.doesNotMatch(output, /Project/);
+    // #1264: the repair command it points at has to resolve for the reader.
+    assert.match(output, /npx @webjsdev\/ui init/);
+    assert.doesNotMatch(output, /`webjsui init`/);
   } finally { rmSync(d, { recursive: true }); }
 });
 
