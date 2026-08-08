@@ -82,7 +82,7 @@ const GROUPS: Array<[RegExp, string]> = [
   // properties again. All three entries precede the text- patterns below, which
   // is what keeps a `text-shadow-*` token out of `text-size` and `text-color`.
   [/^text-shadow(-(2xs|xs|sm|md|lg|none))?(\/([\d.]+|\[[^\]]*\]))?$/, 'text-shadow'],
-  [/^text-shadow-\[(inset|-|\.|\d)/, 'text-shadow'],
+  [/^text-shadow-(\[(inset|-|\.|\d|var\()|\(--)/, 'text-shadow'],
   [/^text-shadow-/, 'text-shadow-color'],
   // Font size: explicit list of Tailwind size scale.
   [/^text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)$/, 'text-size'],
@@ -109,13 +109,22 @@ const GROUPS: Array<[RegExp, string]> = [
   // `--tw-shadow-color`), so they need two groups. `shadow-none` is a size,
   // `shadow-inherit` / `shadow-initial` are colours, and Tailwind accepts an
   // alpha modifier on a size as well as on a colour, so `shadow-lg/25` has to
-  // stay on the size side. An unhinted arbitrary value opening with `inset`, a
-  // sign, a dot, or a digit is a shadow offset list; everything else after the
-  // prefix is a colour, `shadow-[var(--x)]` included (the same convention
-  // `borderGroups()` documents). Both size entries must precede the colour
-  // catch-all, or every size lands in the colour group and the bug inverts.
+  // stay on the size side. An unhinted arbitrary value is a SIZE when it opens
+  // with `inset`, a sign, a dot, or a digit (a shadow offset list) and also
+  // when it is a bare `var()` or the `(--x)` variable shorthand: Tailwind
+  // itself resolves an ambiguous arbitrary shadow to `box-shadow` unless the
+  // value is provably a colour, and `shadow-[var(--shadow-glow)]` is the normal
+  // way to write a design-token shadow. This is the one place the
+  // `borderGroups()` convention inverts, because a bare `border-[var(--x)]` is
+  // far more often a colour while a bare `shadow-[var(--x)]` is far more often
+  // a shadow. The size entries must precede the colour catch-all, or every
+  // size lands in the colour group and the bug inverts rather than being fixed.
   [/^shadow(-(2xs|xs|sm|md|lg|xl|2xl|inner|none))?(\/([\d.]+|\[[^\]]*\]))?$/, 'shadow'],
-  [/^shadow-\[(inset|-|\.|\d)/, 'shadow'],
+  [/^shadow-(\[(inset|-|\.|\d|var\()|\(--)/, 'shadow'],
+  // A bare name the size scale does not list reads as a colour, because
+  // `shadow-primary` is overwhelmingly more common than a `@theme`-extended
+  // `--shadow-card`. A project that adds a custom shadow NAME is the residual
+  // gap, and the docs say so rather than claiming the split is total.
   [/^shadow-/, 'shadow-color'],
   [/^z-/, 'z'],
   // A bare `flex` / `grid` is a DISPLAY value, not a member of the flex / grid

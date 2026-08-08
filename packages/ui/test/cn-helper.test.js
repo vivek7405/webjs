@@ -321,13 +321,28 @@ test('cn: box-shadow size and box-shadow colour are SEPARATE groups (#1265)', ()
   assert.equal(cn('shadow-red-500', 'shadow-current'), 'shadow-current');
   assert.equal(cn('shadow-red-500', 'shadow-transparent'), 'shadow-transparent');
   assert.equal(cn('shadow-red-500', 'shadow-[#fff]'), 'shadow-[#fff]');
-  assert.equal(cn('shadow-red-500', 'shadow-[var(--x)]'), 'shadow-[var(--x)]');
   assert.equal(cn('shadow-red-500/50', 'shadow-primary'), 'shadow-primary');
   assert.equal(cn('shadow-red-500', 'shadow-[color:red]'), 'shadow-[color:red]');
   assert.equal(cn('shadow-[color:red]', 'shadow-blue-500'), 'shadow-blue-500');
   // A hinted colour still never evicts a size.
   assert.equal(cn('shadow-lg', 'shadow-[color:red]'), 'shadow-lg shadow-[color:red]');
   assert.equal(cn('shadow-[color:red]', 'shadow-lg'), 'shadow-[color:red] shadow-lg');
+  // An unhinted `var()` shadow is a SIZE, not a colour. Tailwind resolves an
+  // ambiguous arbitrary shadow to box-shadow unless the value is provably a
+  // colour, and this is how a design-token shadow is written: every
+  // `shadow-[var(...)]` in this repo names a `--shadow*` token. Routing it to
+  // colour made `cn('shadow-lg', 'shadow-[var(--shadow-glow)]')` emit both and
+  // hand the winner to stylesheet order, which is a regression on the single
+  // coarse `shadow` group this change replaced.
+  assert.equal(cn('shadow-lg', 'shadow-[var(--shadow-glow)]'), 'shadow-[var(--shadow-glow)]');
+  assert.equal(cn('shadow-[var(--shadow-sm)]', 'shadow-xl'), 'shadow-xl');
+  assert.equal(cn('shadow-[var(--shadow)]', 'shadow-red-500'), 'shadow-[var(--shadow)] shadow-red-500');
+  assert.equal(cn('shadow-red-500', 'shadow-[var(--x)]'), 'shadow-red-500 shadow-[var(--x)]');
+  // The v4 `(--x)` variable shorthand is the same value in a shorter spelling,
+  // so it classifies the same way. `hintedGroup()` never sees it (it reads only
+  // the `-[hint:` form), so the GROUPS table is the only thing that can.
+  assert.equal(cn('shadow-lg', 'shadow-(--shadow-glow)'), 'shadow-(--shadow-glow)');
+  assert.equal(cn('shadow-(--shadow-glow)', 'shadow-red-500'), 'shadow-(--shadow-glow) shadow-red-500');
   // Conflicts stay scoped to their variant.
   assert.equal(cn('hover:shadow-lg', 'hover:shadow-red-500'), 'hover:shadow-lg hover:shadow-red-500');
 });
@@ -354,6 +369,9 @@ test('cn: text-shadow, alignment, wrapping and overflow are their own properties
   assert.equal(cn('text-shadow-red-500', 'text-shadow-inherit'), 'text-shadow-inherit');
   assert.equal(cn('text-shadow-red-500', 'text-shadow-[#fff]'), 'text-shadow-[#fff]');
   assert.equal(cn('text-shadow-red-500', 'text-shadow-[color:red]'), 'text-shadow-[color:red]');
+  assert.equal(cn('text-shadow-lg', 'text-shadow-[var(--x)]'), 'text-shadow-[var(--x)]');
+  assert.equal(cn('text-shadow-lg', 'text-shadow-(--x)'), 'text-shadow-(--x)');
+  assert.equal(cn('text-shadow-[var(--x)]', 'text-shadow-red-500'), 'text-shadow-[var(--x)] text-shadow-red-500');
   // Alignment, wrapping, and overflow had no group at all, so both classes were
   // emitted and the winner was decided by compiled stylesheet order.
   assert.equal(cn('text-left', 'text-center'), 'text-center');

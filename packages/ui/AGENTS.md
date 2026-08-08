@@ -471,14 +471,27 @@ names mechanically:
   identical prefix and never with the prefix's default, which is the safe
   direction to fail (an extra class renders, a dropped one does not).
 - The merger is coarse by design and does NOT claim full `tailwind-merge`
-  fidelity. It knows the property splits inside the families it enumerates and
-  nothing outside them, so a neighbouring prefix (`inset-shadow-*`,
-  `drop-shadow-*`, `ring-*`, `inset-ring-*`, `mix-blend-*`) has no group at all
-  and both classes are emitted, leaving the winner to compiled stylesheet
-  order. That is the safe direction to fail: ungrouped never evicts. Say that
-  plainly in any doc you write about it rather than stating the property rule
-  as absolute, and when you DO add a group, split it by property from the
-  start (a prefix-keyed group is the #1265 defect).
+  fidelity, in two distinct ways, and BOTH belong in any doc you write about
+  it rather than stating the property rule as absolute.
+  - A neighbouring prefix it does not enumerate (`inset-shadow-*`,
+    `drop-shadow-*`, `ring-*`, `inset-ring-*`, `mix-blend-*`) has no group at
+    all, so both classes are emitted and the winner is left to compiled
+    stylesheet order. That is the SAFE direction to fail: ungrouped never
+    evicts.
+  - Where one prefix carries two properties, the value is read against
+    Tailwind's DEFAULT scales, so a `@theme`-extended name is invisible to it
+    and can be misread. A custom `--shadow-card` makes `shadow-card` a
+    box-shadow, but the table sees an unfamiliar bare name under a prefix
+    whose bare names are usually colours and routes it to `shadow-color`, so
+    it evicts a colour and is evicted by one. That is the UNSAFE direction,
+    and it is the price of a table that cannot read the project's theme.
+    Prefer the arbitrary form (`shadow-[var(--shadow-card)]`), which the table
+    does classify correctly.
+  When you DO add a group, split it by property from the start (a prefix-keyed
+  group is the #1265 defect), and pick the catch-all's direction from what the
+  prefix's values actually look like in real code rather than by analogy with
+  another prefix: `border-[var(--x)]` is usually a colour, `shadow-[var(--x)]`
+  is usually a shadow, so the same shape resolves opposite ways.
 
 ## Layout + typography helpers (the design system)
 

@@ -78,6 +78,7 @@ const TOKENS = [
   'text-left', 'text-nowrap', 'text-ellipsis',
   'shadow', 'shadow-none', 'shadow-inner', 'shadow-lg/25', 'shadow-red-500',
   'shadow-red-500/50', 'shadow-inherit', 'shadow-[#fff]',
+  'shadow-[var(--shadow-glow)]', 'shadow-(--shadow-glow)', 'text-shadow-[var(--x)]',
   'text-shadow-lg', 'text-shadow-none', 'text-shadow-red-500',
 ];
 
