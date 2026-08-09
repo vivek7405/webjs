@@ -50,25 +50,46 @@ const RESERVED_CONFIG = new Set(['method', 'cache', 'tags', 'invalidates', 'vali
  * into an agent-friendly shape. Descriptions are crisp so a model picks the
  * right tool without reading source.
  */
+/**
+ * The `appDir` property, shared by every tool that is scoped to one app.
+ *
+ * `init` and `docs` carry it too, not just the introspection tools: the docs
+ * corpus is resolved from the app being asked about (#1319), so a tool that did
+ * not ADVERTISE `appDir` could never receive one from a conforming client, and
+ * the app-corpus rung would be reachable only from hand-written JSON-RPC.
+ */
+const APPDIR_PROP = {
+  type: 'string',
+  description: 'App directory to introspect. Defaults to the server cwd.',
+};
+
 /** The shared input schema for the introspection tools: an optional appDir override. */
 const APPDIR_SCHEMA = {
   type: 'object',
+  properties: { appDir: { ...APPDIR_PROP } },
+  required: [],
+};
+
+/** `init` takes only the optional appDir, which selects whose docs corpus it reports. */
+const INIT_SCHEMA = {
+  type: 'object',
   properties: {
     appDir: {
-      type: 'string',
-      description: 'App directory to introspect. Defaults to the server cwd.',
+      ...APPDIR_PROP,
+      description: "App directory whose docs corpus to read. Defaults to the server cwd.",
     },
   },
   required: [],
 };
 
-/** `init` takes no input. */
-const INIT_SCHEMA = { type: 'object', properties: {}, required: [] };
-
-/** `docs` takes an optional topic OR a free-text query. */
+/** `docs` takes an optional topic OR a free-text query, plus the optional appDir. */
 const DOCS_SCHEMA = {
   type: 'object',
   properties: {
+    appDir: {
+      ...APPDIR_PROP,
+      description: "App directory whose docs corpus to read. Defaults to the server cwd.",
+    },
     topic: {
       type: 'string',
       description: 'A doc name (e.g. components, recipes, lit-muscle-memory-gotchas, AGENTS). Returns the full doc.',
@@ -531,6 +552,7 @@ export async function runMcpServer(opts) {
         agentsPath: loc.agentsPath,
         skillPath: loc.skillPath,
         corpusPath: loc.corpusPath,
+        corpusSource: loc.corpusSource,
         appDir: key,
         serverVersion: version,
         ...docsFs,

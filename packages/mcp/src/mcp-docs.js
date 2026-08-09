@@ -33,13 +33,14 @@ import { fileURLToPath } from 'node:url';
 /** The URI scheme for a framework-docs resource: `webjs-docs://<name>`. */
 const DOCS_SCHEME = 'webjs-docs://';
 
-/** The paths of one bundled corpus root (`<something>/resources`). */
-function bundleAt(root) {
+/** The paths of one bundled corpus root (`<something>/resources`), tagged with which rung it is. */
+function bundleAt(root, corpusSource) {
   return {
     docsDir: join(root, 'references'),
     agentsPath: join(root, 'AGENTS.md'),
     skillPath: join(root, 'SKILL.md'),
     corpusPath: join(root, 'corpus.json'),
+    corpusSource,
   };
 }
 
@@ -78,10 +79,10 @@ export function resolveDocsLocation(moduleUrl, appDir) {
 
   if (typeof appDir === 'string' && appDir) {
     const appRoot = join(appDir, 'node_modules', '@webjsdev', 'mcp', 'resources');
-    if (existsSync(join(appRoot, 'references'))) return bundleAt(appRoot);
+    if (existsSync(join(appRoot, 'references'))) return bundleAt(appRoot, 'app');
   }
   const bundledRoot = join(pkgRoot, 'resources');
-  if (existsSync(join(bundledRoot, 'references'))) return bundleAt(bundledRoot);
+  if (existsSync(join(bundledRoot, 'references'))) return bundleAt(bundledRoot, 'bundled');
 
   const skill = join(repoRoot, '.agents', 'skills', 'webjs');
   return {
@@ -89,6 +90,7 @@ export function resolveDocsLocation(moduleUrl, appDir) {
     agentsPath: join(repoRoot, 'AGENTS.md'),
     skillPath: join(skill, 'SKILL.md'),
     corpusPath: null,
+    corpusSource: 'repo',
   };
 }
 
@@ -178,12 +180,26 @@ async function corpusLine(deps) {
  * The staleness warning, or `null` when there is nothing to warn about.
  *
  * Fires only when the app's installed `@webjsdev/mcp` is strictly NEWER than the
- * running server's. Equal or lower is silent: a newer global server reading an
- * older app is the ordinary shape and is not a defect. It warns rather than
- * failing, because by the time it fires the corpus rungs above have already
- * pointed the server at the app's own docs, so the text below the warning is
- * already right; what the warning is actually for is telling the human to update
- * the global install so the TOOLS match too.
+ * running server's. Equal or lower is silent: a newer server reading an older app
+ * is the ordinary shape and is not a defect. It warns rather than failing,
+ * because a read-only knowledge tool that refuses to answer sends the agent back
+ * to its training data, which is the thing the caveat exists to correct.
+ *
+ * Two things the wording is careful about, because the obvious phrasings are both
+ * wrong:
+ *
+ * - It does NOT name a global install as the thing to update. Nothing here can
+ *   observe how the server was started, and the shipped configurations are an
+ *   `npx @webjsdev/mcp` (whose staleness is a package cache) and `webjs mcp`
+ *   (whose staleness is `@webjsdev/cli`'s own dependency), neither of which a
+ *   `npm i -g` would fix.
+ * - It does NOT promise the docs below are the app's. The warning's probe is the
+ *   app's `package.json`, while the corpus rung's probe is that install's
+ *   `resources/references`, and the two can disagree: a workspace-linked or
+ *   otherwise resources-less install has a manifest to read but no corpus to
+ *   serve, so the corpus falls through to the server's older snapshot. That case
+ *   gets an extra clause naming what was actually served, rather than a claim
+ *   that contradicts the corpus line printed directly beneath it.
  *
  * @param {object} deps
  * @returns {Promise<string | null>}
@@ -195,10 +211,16 @@ async function staleWarning(deps) {
   if (!server || server === '0.0.0') return null;
   const app = await readAppMcpVersion(deps.appDir, deps);
   if (!app || compareVersions(app, server) <= 0) return null;
+  const served =
+    deps.corpusSource === 'app'
+      ? "The docs below come from this app's own copy, so they match it; update the server so its TOOLS match too."
+      : 'The docs below are the server\'s own older snapshot, not this app\'s copy.';
   return (
-    `Warning: this MCP server is @webjsdev/mcp@${server}, but this app has @webjsdev/mcp@${app}. ` +
-    "The server's own docs and tools may be stale. Update the global install with " +
-    'npm i -g @webjsdev/mcp@latest, or bun add -g @webjsdev/mcp.'
+    `Warning: this MCP server is @webjsdev/mcp@${server}, but this app has @webjsdev/mcp@${app}, ` +
+    `so the server may be stale. ${served} ` +
+    'Update whichever copy runs this server: a global install (npm i -g @webjsdev/mcp@latest, ' +
+    'or bun add -g @webjsdev/mcp), the package cache behind npx @webjsdev/mcp, ' +
+    'or @webjsdev/cli when the server is started as webjs mcp.'
   );
 }
 

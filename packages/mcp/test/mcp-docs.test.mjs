@@ -310,7 +310,7 @@ test('the stamp lands inside the published files allowlist', () => {
  * version pair. `corpus` is the raw corpus.json TEXT (so a malformed stamp is
  * expressible), `undefined` meaning the file is absent and throws ENOENT.
  */
-function stampFixture({ corpusPath = '/corpus.json', corpus, appMcp, serverVersion, appDir = '/app' } = {}) {
+function stampFixture({ corpusPath = '/corpus.json', corpus, appMcp, serverVersion, appDir = '/app', corpusSource = 'app' } = {}) {
   const base = fixture();
   const files = {};
   if (corpus !== undefined) files[corpusPath] = corpus;
@@ -319,6 +319,7 @@ function stampFixture({ corpusPath = '/corpus.json', corpus, appMcp, serverVersi
   return {
     ...base,
     corpusPath,
+    corpusSource,
     appDir,
     serverVersion,
     exists: (p) => base.exists(p) || p in files,
@@ -367,12 +368,18 @@ test('initText: a stamp with no sha keeps the version and date, and claims no co
 
 test('initText: warns only when the app has a strictly newer @webjsdev/mcp than the server', async () => {
   const run = (appMcp, serverVersion) => initText(stampFixture({ corpus: STAMP(), appMcp, serverVersion }));
-  const warned = /Warning: this MCP server is @webjsdev\/mcp@0\.1\.4, but this app has @webjsdev\/mcp@0\.1\.12\./;
+  const warned = /Warning: this MCP server is @webjsdev\/mcp@0\.1\.4, but this app has @webjsdev\/mcp@0\.1\.12, so the server may be stale\./;
 
   const out = await run('{"version":"0.1.12"}', '0.1.4');
   assert.match(out, warned, 'a newer app copy is the stale-server case this exists for');
-  assert.match(out, /npm i -g @webjsdev\/mcp@latest/, 'says how to fix it');
   assert.ok(out.indexOf('Warning:') < out.indexOf('Docs corpus:'), 'the warning sits above the corpus line');
+
+  // The remedy names every way this server can be started, because nothing here
+  // can observe which one it was. A global-only remedy would be wrong for both
+  // shipped configurations (an `npx` invocation and the CLI subcommand).
+  assert.match(out, /npm i -g @webjsdev\/mcp@latest/, 'the global install');
+  assert.match(out, /the package cache behind npx @webjsdev\/mcp/, 'the npx package cache');
+  assert.match(out, /@webjsdev\/cli when the server is started/, 'the CLI dependency');
 
   for (const [appMcp, server, why] of [
     ['{"version":"0.1.4"}', '0.1.4', 'equal versions are not a defect'],
@@ -385,6 +392,24 @@ test('initText: warns only when the app has a strictly newer @webjsdev/mcp than 
   ]) {
     assert.ok(!/Warning:/.test(await run(appMcp, server)), why);
   }
+});
+
+test('initText: the warning says which corpus was actually served, never a claim the corpus line contradicts', async () => {
+  // The warning's probe is the app's package.json; the corpus rung's probe is
+  // that install's resources/references. They can disagree: a workspace-linked
+  // install has a manifest but no bundled corpus, so the docs fall through to
+  // the server's own older snapshot while the version compare still fires.
+  const served = (corpusSource) =>
+    initText(stampFixture({ corpus: STAMP({ version: '0.1.4' }), appMcp: '{"version":"0.1.12"}', serverVersion: '0.1.4', corpusSource }));
+
+  const fellThrough = await served('bundled');
+  assert.match(fellThrough, /Warning: this MCP server is @webjsdev\/mcp@0\.1\.4/);
+  assert.match(fellThrough, /The docs below are the server's own older snapshot, not this app's copy\./);
+  assert.ok(!/come from this app's own copy/.test(fellThrough), 'never claims the app corpus it did not serve');
+
+  const fromApp = await served('app');
+  assert.match(fromApp, /The docs below come from this app's own copy, so they match it/);
+  assert.ok(!/older snapshot/.test(fromApp), 'and does not disown a corpus it did serve');
 });
 
 test('compareVersions: coarse by design, and total over the shapes npm produces', () => {
@@ -437,17 +462,20 @@ test('resolveDocsLocation: the app corpus outranks the bundled snapshot and the 
   // no stamp to name.
   assert.equal(resolveDocsLocation(moduleUrl, appDir).docsDir, join(skill, 'references'));
   assert.equal(resolveDocsLocation(moduleUrl, appDir).corpusPath, null, 'a live checkout claims no provenance');
+  assert.equal(resolveDocsLocation(moduleUrl, appDir).corpusSource, 'repo');
 
   // A bundle but still no app install: the server's own snapshot, which does.
   mkdirSync(bundled, { recursive: true });
   let loc = resolveDocsLocation(moduleUrl, appDir);
   assert.equal(loc.docsDir, bundled, 'falls back to the bundled snapshot');
   assert.equal(loc.corpusPath, join(root, 'packages', 'mcp', 'resources', 'corpus.json'));
+  assert.equal(loc.corpusSource, 'bundled');
 
   // The app's own copy now exists and outranks both.
   mkdirSync(join(appRoot, 'references'), { recursive: true });
   loc = resolveDocsLocation(moduleUrl, appDir);
   assert.equal(loc.docsDir, join(appRoot, 'references'), 'the app corpus wins');
+  assert.equal(loc.corpusSource, 'app');
   assert.equal(loc.agentsPath, join(appRoot, 'AGENTS.md'));
   assert.equal(loc.skillPath, join(appRoot, 'SKILL.md'));
   assert.equal(loc.corpusPath, join(appRoot, 'corpus.json'));

@@ -117,10 +117,11 @@ test('mcp: tools/list returns the introspection + knowledge tools with inputSche
     assert.equal(typeof t.description, 'string');
     assert.equal(t.inputSchema.type, 'object');
   }
-  // The introspection tools take appDir; init takes nothing; docs takes topic/query.
+  // The introspection tools take appDir, and so do init + docs, whose corpus is
+  // resolved from the app being asked about; docs also takes topic/query.
   const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
   assert.ok(byName.list_routes.inputSchema.properties.appDir, 'introspection tool declares appDir');
-  assert.deepEqual(byName.init.inputSchema.properties, {}, 'init takes no args');
+  assert.deepEqual(Object.keys(byName.init.inputSchema.properties), ['appDir'], 'init takes only appDir');
   assert.ok(byName.docs.inputSchema.properties.topic && byName.docs.inputSchema.properties.query, 'docs takes topic/query');
   assert.ok(byName.source.inputSchema.properties.path && byName.source.inputSchema.properties.query, 'source takes path/query/package');
   assert.ok(byName.ui.inputSchema.properties.name, 'ui takes an optional component name');
@@ -538,6 +539,23 @@ function appWithCorpus(sentinel, version) {
   return dir;
 }
 
+test('mcp: every app-scoped tool ADVERTISES appDir, so a conforming client can actually send one', async () => {
+  // The corpus follows appDir, so a tool whose inputSchema omits it could never
+  // receive one from a model driving tools/call, and the app-corpus rung would
+  // be reachable only from hand-written JSON-RPC.
+  const { frames } = await driveMcp(tmpDir(), [{ jsonrpc: '2.0', id: 87, method: 'tools/list' }]);
+  const byName = Object.fromEntries(frames[0].result.tools.map((t) => [t.name, t]));
+  for (const name of ['init', 'docs', 'list_routes', 'list_actions', 'list_components', 'list_elision', 'check']) {
+    assert.ok(byName[name], `${name} is advertised`);
+    assert.equal(typeof byName[name].inputSchema.properties.appDir, 'object', `${name} advertises appDir`);
+    assert.equal(byName[name].inputSchema.properties.appDir.type, 'string', `${name}'s appDir is a string`);
+  }
+  // `ui` is kit-scoped and `source` resolves from the server cwd, so neither takes one.
+  for (const name of ['ui', 'source']) {
+    assert.ok(!byName[name].inputSchema.properties.appDir, `${name} is not app-scoped`);
+  }
+});
+
 test("mcp: the docs corpus follows appDir, so an app's own installed copy wins over the server's", async () => {
   // The #1319 incident: a global server keeps serving the snapshot it was
   // published with, and contradicts the corpus sitting in the app's own
@@ -579,7 +597,7 @@ test('mcp: init warns when the app has a newer @webjsdev/mcp than the running se
     { jsonrpc: '2.0', id: 84, method: 'tools/call', params: { name: 'init', arguments: {} } },
   ]);
   const primer = frames[0].result.content[0].text;
-  assert.match(primer, /Warning: this MCP server is @webjsdev\/mcp@9\.9\.9, but this app has @webjsdev\/mcp@10\.0\.0\./);
+  assert.match(primer, /Warning: this MCP server is @webjsdev\/mcp@9\.9\.9, but this app has @webjsdev\/mcp@10\.0\.0, so the server may be stale\./);
   assert.match(primer, /npm i -g @webjsdev\/mcp@latest/, 'says how to fix the stale install');
   // Advisory, never a refusal: the corpus rung already pointed at the app's docs.
   assert.match(primer, /SENTINEL_NEWER/, 'still answers, with the app corpus');

@@ -133,7 +133,11 @@ scripts/
    the MCP protocol, so they resolve from `cwd`, which is what a `tools/call`
    with no `appDir` argument defaults to; the surfaces diverge only when a
    caller deliberately asks about a different app. An injected `opts.docsDeps`
-   wins for every `appDir`, which is the seam the tests drive.
+   wins for every `appDir`, which is the seam the tests drive. Because the corpus
+   follows `appDir`, `init` and `docs` must ADVERTISE `appDir` in their
+   `inputSchema` alongside the introspection tools: a tool that does not declare
+   it can never be sent one by a conforming client, which would leave the
+   app-corpus rung reachable only from hand-written JSON-RPC.
 
 ## Tests
 

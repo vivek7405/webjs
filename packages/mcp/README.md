@@ -74,17 +74,29 @@ defaults to, so in the ordinary case every surface reads one corpus.
 the app's installed `@webjsdev/mcp` is strictly newer than the running server's:
 
 ```
-Warning: this MCP server is @webjsdev/mcp@0.1.4, but this app has @webjsdev/mcp@0.1.12.
-The server's own docs and tools may be stale. Update the global install with
-npm i -g @webjsdev/mcp@latest, or bun add -g @webjsdev/mcp.
+Warning: this MCP server is @webjsdev/mcp@0.1.4, but this app has @webjsdev/mcp@0.1.12,
+so the server may be stale. The docs below come from this app's own copy, so they
+match it; update the server so its TOOLS match too. Update whichever copy runs this
+server: a global install (npm i -g @webjsdev/mcp@latest, or bun add -g @webjsdev/mcp),
+the package cache behind npx @webjsdev/mcp, or @webjsdev/cli when the server is
+started as `webjs mcp`.
 Docs corpus: @webjsdev/mcp@0.1.12, copied from webjsdev/webjs e5806e2 on 2026-08-08.
 ```
 
-It warns rather than refusing to answer. By the time it fires the corpus rungs
-have already pointed at the app's own docs, so the text below it is right; what
-the warning is for is telling you to update the global install so the TOOLS
-match too. Equal versions, an older app, and an unreadable app manifest are all
+It warns rather than refusing to answer, because a knowledge tool that declines
+sends the agent back to its training data, which is what the caveat exists to
+correct. Equal versions, an older app, and an unreadable app manifest are all
 silent.
+
+Two details the wording is deliberate about. It does not name a global install as
+the thing to fix, because nothing observes how the server was started and the two
+shipped configurations are an `npx` invocation (whose staleness is a package
+cache) and `webjs mcp` (whose staleness is the CLI's own dependency). And it does
+not promise the docs below came from the app: the warning reads the app's
+`package.json` while the corpus rung probes that install's `resources/`, so a
+workspace-linked install can have a manifest to compare and no corpus to serve.
+In that case the corpus falls through to the server's snapshot and the warning
+says so, rather than contradicting the corpus line printed under it.
 
 ## The build stamp
 
