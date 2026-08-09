@@ -69,20 +69,6 @@ const HSTS_VALUE = 'max-age=63072000; includeSubDomains';
  * @param {unknown} pkg parsed package.json (or any object)
  * @returns {Array<{ pattern: URLPattern, directives: Array<{ key: string, value: string | null }> }>}
  */
-/**
- * One line per dropped rule or directive, matching `redirects.js`'s warnDrop
- * verbatim in shape. Every drop branch in `compileHeaderRules` goes through
- * this: a config typo that silently does nothing is the failure this whole
- * config-validation surface exists to end, and a `source` misspelled as
- * `sources` used to vanish here with no diagnostic at all.
- *
- * @param {string} reason @param {unknown} entry
- */
-function warnDrop(reason, entry) {
-  // eslint-disable-next-line no-console
-  console.warn(`[webjs] dropping invalid webjs.headers entry (${reason}):`, entry);
-}
-
 export function compileHeaderRules(pkg) {
   const raw =
     pkg &&
@@ -149,9 +135,38 @@ export function compileHeaderRules(pkg) {
       }
       directives.push({ key, value });
     }
-    if (directives.length) rules.push({ pattern, directives });
+    // A rule with nothing left to apply is dropped, and SAYS so. Two ways to
+    // get here and both were silent: an authored `"headers": []`, which the
+    // schema permits (no `minItems`) and the boot config check never sees
+    // (it does not descend into `headers`), and a rule whose every directive
+    // was just dropped, where the per-directive warnings above name the
+    // directives but never say the rule itself went with them.
+    if (!directives.length) {
+      warnDrop(`no valid directives left on "${source}"`, entry);
+      continue;
+    }
+    rules.push({ pattern, directives });
   }
   return rules;
+}
+
+/**
+ * One line per dropped rule or directive, matching `redirects.js`'s warnDrop
+ * verbatim in shape. Every drop branch in `compileHeaderRules` goes through
+ * this: a config typo that silently does nothing is the failure this whole
+ * config-validation surface exists to end, and a `source` misspelled as
+ * `sources` used to vanish here with no diagnostic at all.
+ *
+ * Defined BELOW `compileHeaderRules`, like the one in `redirects.js`. Putting
+ * it above wedged this docblock between that function's JSDoc and its
+ * declaration, so the JSDoc bound to the helper instead and the reader lost
+ * its `@param` / `@returns` entirely.
+ *
+ * @param {string} reason @param {unknown} entry
+ */
+function warnDrop(reason, entry) {
+  // eslint-disable-next-line no-console
+  console.warn(`[webjs] dropping invalid webjs.headers entry (${reason}):`, entry);
 }
 
 /**
