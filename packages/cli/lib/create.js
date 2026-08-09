@@ -573,6 +573,7 @@ export async function scaffoldApp(name, cwd, opts = {}) {
     'AGENTS.md',
     'CONVENTIONS.md',
     '.agents/rules/workflow.md',
+    'CLAUDE.md',
     // Claude Code config + the protective enforcement hooks (no design ceremony).
     '.claude.json',
     '.claude/settings.json',
@@ -614,7 +615,7 @@ export async function scaffoldApp(name, cwd, opts = {}) {
   // rewrites; the three infra files get their file-specific transform. On Node,
   // every file is copied byte-identical (the map is empty).
   const PROSE_REWRITE = new Set([
-    'AGENTS.md', 'CONVENTIONS.md',
+    'AGENTS.md', 'CLAUDE.md', 'CONVENTIONS.md',
     '.agents/rules/workflow.md',
     'test/hello/browser/hello.test.js', 'test/hello/e2e/hello.test.ts',
   ]);

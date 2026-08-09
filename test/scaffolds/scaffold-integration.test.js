@@ -87,16 +87,16 @@ test('scaffoldApp full-stack: writes the canonical full-stack app layout', async
     assert.ok(existsSync(join(appDir, 'tsconfig.json')));
 
     // Single cross-agent source (AGENTS.md + the one skill + the .agents workflow
-    // rules), CONVENTIONS.md, and Claude protective hooks.
-    for (const f of ['AGENTS.md', '.agents/skills/webjs/SKILL.md', '.agents/rules/workflow.md', 'CONVENTIONS.md', '.claude/settings.json', '.editorconfig']) {
+    // rules), CONVENTIONS.md, CLAUDE.md bridge, and Claude protective hooks.
+    for (const f of ['AGENTS.md', '.agents/skills/webjs/SKILL.md', '.agents/rules/workflow.md', 'CLAUDE.md', 'CONVENTIONS.md', '.claude/settings.json', '.editorconfig']) {
       assert.ok(existsSync(join(appDir, f)), `${f} should exist`);
     }
     // Per-agent files and design-distinctness ceremony removed.
-    for (const f of ['CLAUDE.md', 'GEMINI.md', '.github/copilot-instructions.md', '.cursorrules', 'LAYOUT-REFERENCE.md', '.claude/hooks/design-review-before-stop.sh', '.claude/skills/webjs-design-review']) {
+    for (const f of ['GEMINI.md', '.github/copilot-instructions.md', '.cursorrules', 'LAYOUT-REFERENCE.md', '.claude/hooks/design-review-before-stop.sh', '.claude/skills/webjs-design-review']) {
       assert.ok(!existsSync(join(appDir, f)), `${f} should NOT exist in the scaffold`);
     }
-    // CONVENTIONS.md points at the skill.
-    for (const f of ['CONVENTIONS.md']) {
+    // Thin bridges (pointers to AGENTS.md / the skill).
+    for (const f of ['CLAUDE.md', 'CONVENTIONS.md']) {
       const src = readFileSync(join(appDir, f), 'utf8');
       assert.ok(src.length < 2200, `${f} is a thin bridge, not a full rule duplicate`);
       assert.match(src, /AGENTS\.md|\.agents\/skills\/webjs/, `${f} points at AGENTS.md or the skill`);
@@ -244,8 +244,12 @@ test('scaffoldApp full-stack: writes the canonical full-stack app layout', async
       'settings.json wires the require-tests hook into PreToolUse',
     );
 
-    // Commit enforcement for Claude Code: a Stop hook backstops end-of-turn, and a
+    // Commit enforcement for Claude Code: CLAUDE.md overrides Claude Code's
+    // never-commit default, a Stop hook backstops end-of-turn, and a
     // PostToolUse hook removes merged worktrees after `gh pr merge`.
+    const claudeMd = readFileSync(join(appDir, 'CLAUDE.md'), 'utf8');
+    assert.match(claudeMd, /OVERRIDES Claude Code/i,
+      'CLAUDE.md overrides Claude Code\'s never-commit default');
     for (const h of ['commit-before-stop.sh', 'cleanup-merged-worktree.sh']) {
       assert.ok(existsSync(join(appDir, '.claude/hooks', h)), `${h} is scaffolded`);
     }
