@@ -138,6 +138,8 @@ UserCard.register('user-card');</code-block>
       <li><strong>Object / Array</strong>: parsed via <code>JSON.parse()</code>. If parsing fails the property reads back as <code>null</code>, since a string is never a valid value for a property declared <code>Object</code> or <code>Array</code>. An attribute that was never there is a different case: it is not read at all, so the property keeps whatever the constructor gave it.</li>
     </ul>
 
+    <p>A property supplying its own <code>converter.fromAttribute</code> bypasses that list entirely. The converter runs first, ahead of any type-based coercion, and whatever it returns IS the property value, so a <code>prop(Object)</code> with a converter never reaches the <code>JSON.parse()</code> step above. It runs on <strong>both</strong> attribute readers, the browser one and the server one, so it executes during SSR as well as on the client upgrade. Two consequences worth planning for. Keep a converter free of browser globals (<code>document</code>, <code>window</code>, <code>navigator</code>): SSR has no DOM, so touching one throws server-side and the component renders its error state instead of its content. And a converter that throws is not caught on either side, because an author who writes one owns the conversion; at SSR the throw is isolated to that component (an error box in dev, an empty element at a 200 in production, with the cause in the server log) while its siblings still render.</p>
+
     <p>Property names are automatically converted between camelCase (JavaScript) and kebab-case (HTML). A property named <code>userName</code> observes the attribute <code>user-name</code>.</p>
 
     <h3>Reflecting a function is refused</h3>

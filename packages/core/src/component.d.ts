@@ -213,3 +213,14 @@ export declare function prop<T>(
 export declare function prop<T = string>(
   opts?: PropertyDeclaration<T>
 ): PropertyDeclaration<T>;
+
+/**
+ * THE attribute reader, shared by `attributeChangedCallback` and the SSR
+ * `applyAttrsToInstance` (#1340). An internal seam between two framework
+ * modules, deliberately not re-exported from the package root.
+ */
+export declare function readAttributeValue(
+  def: PropertyDeclaration,
+  value: string | null,
+  decode?: (s: string) => string,
+): unknown;

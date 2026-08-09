@@ -97,6 +97,17 @@ class UnserializableReaderProbe extends WebComponent({ cfg: prop(Object) }) {
 }
 UnserializableReaderProbe.register('reflect-unser-reader');
 
+// Same shape, one arm earlier in the reader: this one declares a custom
+// `converter.fromAttribute` and renders what the reader made of the attribute.
+class ConverterReaderProbe extends WebComponent({
+  mode: prop(String, { converter: { fromAttribute: (v) => String(v).toUpperCase() } }),
+}) {
+  render() {
+    return html`<i>mode=${this.mode}</i>`;
+  }
+}
+ConverterReaderProbe.register('converter-read-probe');
+
 const mounted = [];
 /**
  * A probe attached to the live document. Reflection runs from `_activate`,
@@ -341,5 +352,35 @@ suite('an unparseable JSON attribute reads back as null, in a real browser (#125
     // side without the other fails here rather than in production.
     const ssr = await renderToString(html`<reflect-unser-reader cfg="not-json"></reflect-unser-reader>`);
     assert.ok(ssr.includes('val=null'), `the SSR reader disagreed with the client: ${ssr}`);
+  });
+});
+
+suite('converter.fromAttribute reads identically at SSR and through a real upgrade (#1340)', () => {
+  // The same argument as the suite above, one arm earlier in the reader. The
+  // SSR reader used to dispatch on `def.type` alone, so a prop declaring a
+  // converter was read one way server-side and another way on upgrade. Only a
+  // browser calls `attributeChangedCallback` itself, so a node test invoking it
+  // by hand would exercise the branch but not the path the divergence lived on.
+
+  test('through a REAL element upgrade, matching what the SSR reader makes of the same markup', async () => {
+    const host = document.createElement('div');
+    host.innerHTML = '<converter-read-probe mode="a"></converter-read-probe>';
+    document.body.appendChild(host);
+    mounted.push(host);
+
+    const el = host.firstElementChild;
+    await customElements.whenDefined('converter-read-probe');
+    await el.updateComplete;
+
+    assert.equal(el.mode, 'A', 'the upgraded element must hold what the converter returned');
+    assert.ok(
+      el.textContent.includes('mode=A'),
+      `and it must RENDER that value: ${el.innerHTML}`
+    );
+
+    // The agreement assertion, and the one that reds on a revert: the same
+    // markup through the SSR reader has to make the same value of it.
+    const ssr = await renderToString(html`<converter-read-probe mode="a"></converter-read-probe>`);
+    assert.ok(ssr.includes('mode=A'), `the SSR reader disagreed with the client: ${ssr}`);
   });
 });

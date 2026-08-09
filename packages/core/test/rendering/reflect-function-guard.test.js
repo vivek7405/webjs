@@ -523,9 +523,10 @@ describe('reflect:true drops an unserializable JSON value (#1253)', () => {
     // unparseable attribute the same way. If only one of them falls back to
     // `null`, the same `<my-el cfg="oops">` SSRs holding a string and
     // re-renders holding something else the moment the element upgrades, which
-    // is a hydration divergence rather than a fixed round trip. This is the
-    // default-converter path only: the SSR reader has no `fromAttribute` arm,
-    // so a prop declaring a converter is already read differently either way.
+    // is a hydration divergence rather than a fixed round trip. Both readers
+    // now call one shared `readAttributeValue` (#1340), so this fallback is
+    // shared rather than mirrored; the converter arm sits ahead of it and is
+    // covered separately in `ssr-prop-options.test.js`.
     class Reader extends WebComponent({ cfg: prop(Object) }) {
       render() {
         return html`<i>val=${JSON.stringify(this.cfg)}</i>`;
