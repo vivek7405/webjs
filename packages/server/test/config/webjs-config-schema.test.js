@@ -22,6 +22,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+// The validator used to be defined right here. It was promoted to the source
+// tree in #1300 so the boot path could run it too, and these assertions run
+// byte-identically against the imported copy, which is what proves the move
+// was faithful.
+import { validateWebjsBlock } from '../../src/webjs-config-validate.js';
 
 const schemaPath = fileURLToPath(
   new URL('../../webjs-config.schema.json', import.meta.url),
@@ -205,41 +210,6 @@ test('webjs.dev.regenerate is declared in both the schema and the WebjsConfig ty
   assert.match(src, /interface WebjsRegenerateRule/, 'the type declares WebjsRegenerateRule');
   assert.match(src, /regenerate\?:\s*WebjsRegenerateRule\[\]/, 'WebjsDevTasks carries regenerate');
 });
-
-/**
- * A tiny structural validator standing in for ajv (which the repo does not
- * ship). It only checks the constraints this schema relies on: known-key
- * membership, `additionalProperties: false`, a top-level `type`, and the
- * `enum` on a scalar leaf. Enough to prove a few example configs pass and a
- * typo'd / bad-enum config fails, without adding a dependency.
- *
- * @param {Record<string, unknown>} schema the webjs-block schema
- * @param {Record<string, unknown>} value a candidate `webjs` object
- * @returns {string[]} a list of validation errors (empty = valid)
- */
-function validateWebjsBlock(schema, value) {
-  /** @type {string[]} */
-  const errors = [];
-  const props = schema.properties || {};
-  for (const [key, raw] of Object.entries(value)) {
-    if (schema.additionalProperties === false && !(key in props)) {
-      errors.push(`unknown key "${key}"`);
-      continue;
-    }
-    const def = /** @type {any} */ (props[key]);
-    if (!def) continue;
-    if (def.enum && !def.enum.includes(raw)) {
-      errors.push(`"${key}" must be one of ${JSON.stringify(def.enum)}`);
-    }
-    if (def.type === 'boolean' && typeof raw !== 'boolean') {
-      errors.push(`"${key}" must be a boolean`);
-    }
-    if (def.type === 'integer' && !Number.isInteger(raw)) {
-      errors.push(`"${key}" must be an integer`);
-    }
-  }
-  return errors;
-}
 
 test('representative valid configs pass the structural validator', () => {
   const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));

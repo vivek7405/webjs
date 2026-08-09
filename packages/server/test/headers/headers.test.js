@@ -282,6 +282,41 @@ test('precedence: app middleware wins over the per-path config too', async () =>
 
 /* ------------ unit: compileHeaderRules + applySecurityHeaders + webRequestIsHttps ------------ */
 
+test('compileHeaderRules: every dropped rule and directive warns', () => {
+  // These branches all used to `continue` in silence, so a `source` misspelled
+  // as `sources` produced no rule and no diagnostic, which is the same typo
+  // class the boot config check exists to report. The valid sibling must still
+  // compile, since dropping rather than throwing is the whole posture here.
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (...args) => warnings.push(args[0]);
+  let rules;
+  try {
+    rules = compileHeaderRules({
+      webjs: {
+        headers: [
+          'not-an-object',
+          { sources: '/typo', headers: [{ key: 'X', value: '1' }] },
+          { source: '/bad-list', headers: 'nope' },
+          { source: '/a/(', headers: [{ key: 'X', value: '1' }] },
+          { source: '/bad-dir', headers: ['nope', { key: '' }, { key: 'X\nY', value: '1' }] },
+          { source: '/ok', headers: [{ key: 'X-Ok', value: '1' }] },
+        ],
+      },
+    });
+  } finally {
+    console.warn = realWarn;
+  }
+
+  assert.equal(rules.length, 1, 'only the valid rule compiles');
+  assert.ok(rules[0].pattern.test({ pathname: '/ok' }));
+  // Four bad rules plus three bad directives inside /bad-dir.
+  assert.equal(warnings.length, 7, `expected 7 warnings, got ${warnings.length}`);
+  for (const w of warnings) {
+    assert.match(w, /dropping invalid webjs\.headers entry/);
+  }
+});
+
 test('compileHeaderRules: ignores a malformed config without throwing', () => {
   assert.deepEqual(compileHeaderRules(null), []);
   assert.deepEqual(compileHeaderRules({}), []);

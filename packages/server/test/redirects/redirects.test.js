@@ -212,6 +212,33 @@ test('compileRedirectRules: an invalid source pattern drops the entry', () => {
   assert.equal(rules.length, 0);
 });
 
+test('compileRedirectRules: a non-object entry is dropped AND warned about', () => {
+  // This branch used to `continue` in silence while every other drop warned,
+  // so a `["/old"]` entry (the shape you write when you forget the object
+  // wrapper) vanished with nothing said, and three doc surfaces plus this
+  // function's own docblock all promised a warning. The valid sibling next to
+  // it must still compile, which is the point of dropping rather than throwing.
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  let rules;
+  try {
+    rules = compileRedirectRules({
+      webjs: { redirects: ['/old', null, 42, { source: '/a', destination: '/b' }] },
+    });
+  } finally {
+    console.warn = realWarn;
+  }
+
+  assert.equal(rules.length, 1, 'the one valid entry still compiles');
+  assert.equal(rules[0].destination, '/b');
+  assert.equal(warnings.length, 3, 'each of the three bad entries warned');
+  for (const w of warnings) {
+    assert.match(w, /dropping invalid webjs\.redirects entry/);
+    assert.match(w, /entry must be an object/);
+  }
+});
+
 test('applyRedirects: returns null with no rules (pass-through)', () => {
   assert.equal(applyRedirects(new Request('http://x/old'), []), null);
 });

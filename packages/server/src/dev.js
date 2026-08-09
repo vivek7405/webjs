@@ -91,6 +91,7 @@ function shouldAccessLog(pathname) {
 }
 import { setVendorEntries, setCoreInstall, publishBuildId, setAppSourceId, setBasePath, basePath, setImportAliasEntries, importAliasBrowserEntries } from './importmap.js';
 import { readBasePath, stripBasePath, withBasePath } from './base-path.js';
+import { validateAppWebjsConfig } from './webjs-config-validate.js';
 import { propagateTrustedRemoteIp } from './rate-limit.js';
 import { readAllowedOrigins } from './csrf.js';
 import { setAssetUrlProvider, setFormActionResolver } from '@webjsdev/core';
@@ -371,6 +372,34 @@ export async function readBasePathFromApp(appDir) {
 }
 
 /**
+ * Read the app package.json and warn once about anything wrong with its `webjs`
+ * block (#1300). One aggregated warning, listing every problem, so a config with
+ * three typos does not produce three log lines.
+ *
+ * Never throws and never exits. See `webjs-config-validate.js` for why warning
+ * is the ruling and why this does not replace the CLI's `doctor.gate` check.
+ *
+ * @param {string} appDir
+ * @param {{ warn?: (...args: any[]) => void }} logger
+ * @returns {Promise<void>}
+ */
+export async function warnOnInvalidWebjsConfig(appDir, logger) {
+  let problems;
+  try {
+    const pkg = JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8'));
+    problems = validateAppWebjsConfig(pkg);
+  } catch {
+    return;
+  }
+  if (!problems.length) return;
+  logger?.warn?.(
+    `[webjs] the "webjs" block in package.json has ${problems.length} problem(s), ` +
+      `each ignored at its default: ${problems.join('; ')}. ` +
+      `See https://webjs.dev/docs/configuration`,
+  );
+}
+
+/**
  * Read the cross-origin allowlist (`webjs.allowedOrigins`) from the app's
  * package.json. These hosts / origins are accepted by the action CSRF check
  * even when cross-site (reverse-proxy / multi-domain setups). A missing or
@@ -532,6 +561,17 @@ export async function createRequestHandler(opts) {
   await applyEnvValidation(appDir, { dev: !!opts.dev });
   const dev = !!opts.dev;
   const logger = opts.logger || defaultLogger({ dev });
+  // Boot-time `webjs` config validation (#1300). The published JSON Schema used
+  // to reach users only through the scaffold's .vscode `$ref`, so a typo'd key
+  // was caught in an editor and nowhere else: the key was dropped, the feature
+  // stayed at its default, and nothing said so. This runs it once per boot, from
+  // the one entry point dev, prod, and an embedded host all share.
+  //
+  // It WARNS and continues, never throws. A typo costs one feature sitting at
+  // its default; a hard boot failure over a schema quibble costs the whole app.
+  // A missing / unreadable / unparseable package.json is a silent no-op, like
+  // every other `webjs.*` reader in this file.
+  await warnOnInvalidWebjsConfig(appDir, logger);
   // Boot-time instrumentation hook (#848): run the optional app-root
   // instrumentation.{js,ts} register() ONCE, after env validation and before
   // the route table / action index are built, so observability plumbing starts

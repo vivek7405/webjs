@@ -240,7 +240,10 @@ export function compileRedirectRules(pkg) {
   /** @type {Array<{ pattern: URLPattern, destination: string, status: number }>} */
   const rules = [];
   for (const entry of raw) {
-    if (!entry || typeof entry !== 'object') continue;
+    if (!entry || typeof entry !== 'object') {
+      warnDrop('entry must be an object', entry);
+      continue;
+    }
     const source = /** @type {any} */ (entry).source;
     const destination = /** @type {any} */ (entry).destination;
     if (typeof source !== 'string' || !source) {

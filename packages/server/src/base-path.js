@@ -54,6 +54,16 @@
  * or a hostile value fails safe to "no base path" rather than poisoning
  * every emitted URL.
  *
+ * This function is PORTED into the CLI, as `readAppBasePath`
+ * (`packages/cli/lib/doctor.js`), because doctor must run when
+ * `@webjsdev/server` does not resolve from the app dir at all (#954). The port
+ * is deliberate, so the two are kept honest by
+ * `test/cli/base-path-parity.test.mjs`, which runs one input table through both
+ * and asserts they agree. Edit this body and that test reds until the port
+ * follows. The ordering below matters most: the `//host` rejection sits BEFORE
+ * the leading-slash collapse, and reordering it on either side is an origin
+ * escape the parity table catches.
+ *
  * @param {unknown} raw the configured value
  * @returns {string} `''` or `/segment[/segment...]`
  */

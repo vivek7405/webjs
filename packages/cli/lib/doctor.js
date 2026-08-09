@@ -1396,11 +1396,19 @@ function unmarkedStylesheetHref(tag, basePath = '') {
  * Ported rather than imported because that helper is not on `@webjsdev/server`'s
  * public surface, and because doctor must stay usable when the framework does
  * not resolve from the app dir at all (the #954 fresh-worktree case this same
- * command exists to diagnose). `test/cli/doctor.test.mjs` pins the forms.
+ * command exists to diagnose). The port is intentional and stays. What makes it
+ * safe is that the drift is tested rather than trusted.
+ *
+ * `test/cli/base-path-parity.test.mjs` feeds one input table through BOTH this
+ * function and the server's `readBasePath`, asserting they agree with each other
+ * and with the expected value. Change either side without the other and it reds.
+ * So edit this body only alongside `packages/server/src/base-path.js`, and run
+ * that test. (`test/cli/doctor.test.mjs` covers the check that consumes this,
+ * not the normalization forms themselves.)
  * @param {string} appDir
  * @returns {Promise<string>}
  */
-async function readAppBasePath(appDir) {
+export async function readAppBasePath(appDir) {
   let raw;
   try {
     const pkg = JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8'));

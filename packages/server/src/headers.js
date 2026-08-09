@@ -53,7 +53,10 @@ const HSTS_VALUE = 'max-age=63072000; includeSubDomains';
  * (`webjs.headers`). Returns a normalized array of compiled rules, each
  * pairing a URLPattern against the configured header directives. A
  * malformed or absent config yields an empty array (no per-path rules),
- * never a throw: a broken config must not take the app down.
+ * never a throw: a broken config must not take the app down. Each malformed
+ * rule or directive is DROPPED with a one-line warning, matching
+ * `redirects.js`, so a single typo neither disables the valid rules around it
+ * nor disappears without a word.
  *
  * Shape consumed:
  *   "webjs": { "headers": [ { "source": "/embed/:path*",
@@ -66,6 +69,20 @@ const HSTS_VALUE = 'max-age=63072000; includeSubDomains';
  * @param {unknown} pkg parsed package.json (or any object)
  * @returns {Array<{ pattern: URLPattern, directives: Array<{ key: string, value: string | null }> }>}
  */
+/**
+ * One line per dropped rule or directive, matching `redirects.js`'s warnDrop
+ * verbatim in shape. Every drop branch in `compileHeaderRules` goes through
+ * this: a config typo that silently does nothing is the failure this whole
+ * config-validation surface exists to end, and a `source` misspelled as
+ * `sources` used to vanish here with no diagnostic at all.
+ *
+ * @param {string} reason @param {unknown} entry
+ */
+function warnDrop(reason, entry) {
+  // eslint-disable-next-line no-console
+  console.warn(`[webjs] dropping invalid webjs.headers entry (${reason}):`, entry);
+}
+
 export function compileHeaderRules(pkg) {
   const raw =
     pkg &&
@@ -76,24 +93,42 @@ export function compileHeaderRules(pkg) {
   /** @type {Array<{ pattern: URLPattern, directives: Array<{ key: string, value: string | null }> }>} */
   const rules = [];
   for (const entry of raw) {
-    if (!entry || typeof entry !== 'object') continue;
+    if (!entry || typeof entry !== 'object') {
+      warnDrop('entry must be an object', entry);
+      continue;
+    }
     const source = /** @type {any} */ (entry).source;
     const list = /** @type {any} */ (entry).headers;
-    if (typeof source !== 'string' || !Array.isArray(list)) continue;
+    if (typeof source !== 'string' || !source) {
+      warnDrop('source must be a non-empty string', entry);
+      continue;
+    }
+    if (!Array.isArray(list)) {
+      warnDrop(`headers must be an array on "${source}"`, entry);
+      continue;
+    }
     let pattern;
     try {
       // Match on the pathname only. A bare path string is the common
       // Next-style usage; URLPattern treats it as the pathname component.
       pattern = new URLPattern({ pathname: source });
     } catch {
-      continue; // skip an invalid pattern rather than crash the request
+      // Skip an invalid pattern rather than crash the request.
+      warnDrop(`invalid source pattern "${source}"`, entry);
+      continue;
     }
     /** @type {Array<{ key: string, value: string | null }>} */
     const directives = [];
     for (const d of list) {
-      if (!d || typeof d !== 'object') continue;
+      if (!d || typeof d !== 'object') {
+        warnDrop(`directive must be an object on "${source}"`, d);
+        continue;
+      }
       const key = /** @type {any} */ (d).key;
-      if (typeof key !== 'string' || !key) continue;
+      if (typeof key !== 'string' || !key) {
+        warnDrop(`directive key must be a non-empty string on "${source}"`, d);
+        continue;
+      }
       const v = /** @type {any} */ (d).value;
       // null / undefined / false means REMOVE the header on a match.
       const value = v === null || v === undefined || v === false ? null : String(v);
@@ -109,8 +144,7 @@ export function compileHeaderRules(pkg) {
       try {
         new Headers().set(key, value === null ? 'x' : value);
       } catch {
-        // eslint-disable-next-line no-console
-        console.warn(`[webjs] dropping invalid webjs.headers directive for key "${key}"`);
+        warnDrop(`invalid header name or value for key "${key}"`, d);
         continue;
       }
       directives.push({ key, value });
