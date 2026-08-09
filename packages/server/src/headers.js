@@ -70,17 +70,20 @@ const HSTS_VALUE = 'max-age=63072000; includeSubDomains';
  * @returns {Array<{ pattern: URLPattern, directives: Array<{ key: string, value: string | null }> }>}
  */
 export function compileHeaderRules(pkg) {
-  const raw =
-    pkg &&
-    typeof pkg === 'object' &&
-    /** @type {any} */ (pkg).webjs &&
-    /** @type {any} */ (pkg).webjs.headers;
+  // Read the block explicitly rather than off an `&&` chain. A chain SHORT-
+  // CIRCUITS, so its value is whatever link failed (a non-object `pkg` yields
+  // the boolean `false` from the `typeof` test), and deciding "the key is
+  // present" from that residue warns about a `headers` nobody wrote and prints
+  // a value that is not in their config.
+  const block = pkg && typeof pkg === 'object' ? /** @type {any} */ (pkg).webjs : undefined;
+  const hasBlock = !!block && typeof block === 'object' && !Array.isArray(block);
+  const raw = hasBlock ? block.headers : undefined;
   if (!Array.isArray(raw)) {
-    // An ABSENT key is the default and says nothing. A PRESENT one of the
-    // wrong type discards the whole config, so it says so: the schema types
-    // this key `array` but the boot config check only inspects boolean /
-    // integer / enum leaves, so `"headers": {…}` is caught by nothing else.
-    if (raw !== undefined && raw !== null) warnDrop('headers must be an array', raw);
+    // An ABSENT key is the default and says nothing. A PRESENT one of the wrong
+    // type discards the whole config, so it says so: the schema types this key
+    // `array` but the boot config check only inspects boolean / integer / enum
+    // leaves, so `"headers": {…}` is caught by nothing else.
+    if (hasBlock && 'headers' in block) warnDrop('headers must be an array', raw);
     return [];
   }
   /** @type {Array<{ pattern: URLPattern, directives: Array<{ key: string, value: string | null }> }>} */
@@ -177,7 +180,7 @@ export function compileHeaderRules(pkg) {
  */
 function warnDrop(reason, entry) {
   // eslint-disable-next-line no-console
-  console.warn(`[webjs] dropping invalid webjs.headers entry (${reason}):`, entry);
+  console.warn(`[webjs] dropping invalid webjs.headers config (${reason}):`, entry);
 }
 
 /**

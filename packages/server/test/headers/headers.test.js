@@ -318,7 +318,7 @@ test('compileHeaderRules: every dropped rule and directive warns', () => {
     'a rule that loses every directive says the RULE was dropped, not just the directives',
   );
   for (const w of warnings) {
-    assert.match(w, /dropping invalid webjs\.headers entry/);
+    assert.match(w, /dropping invalid webjs\.headers config/);
   }
 });
 
@@ -338,10 +338,24 @@ test('compileHeaderRules: a wrong-typed headers key warns, an absent one does no
     assert.match(seen[0], /headers must be an array/);
 
     seen.length = 0;
-    assert.deepEqual(compileHeaderRules({ webjs: {} }), []);
-    assert.deepEqual(compileHeaderRules({}), []);
-    assert.deepEqual(compileHeaderRules(null), []);
-    assert.deepEqual(seen, [], 'an absent key is the default and says nothing');
+    // Every shape where the key is NOT present. The non-object ones matter
+    // most: reading `raw` off an `&&` chain made these warn about a `headers`
+    // nobody wrote, because the chain short-circuits to whatever link failed
+    // rather than to the key's value. Only `null` was covered before, which is
+    // the one value that happens to pass through the chain unchanged, so the
+    // bug sat under a green test.
+    for (const shape of [
+      { webjs: {} }, {}, null, undefined, 'a-string', 42, 0, false, '', [],
+      { webjs: false }, { webjs: 0 }, { webjs: '' }, { webjs: null }, { webjs: 'nope' },
+      { webjs: [] },
+    ]) {
+      assert.deepEqual(compileHeaderRules(shape), [], `${JSON.stringify(shape)} compiles to no rules`);
+    }
+    assert.deepEqual(seen, [], `no shape without a headers key may warn, got ${JSON.stringify(seen)}`);
+
+    // Present-but-null IS a key the author wrote, so it does warn.
+    assert.deepEqual(compileHeaderRules({ webjs: { headers: null } }), []);
+    assert.equal(seen.length, 1, 'an explicit null is present, so it warns');
   } finally {
     console.warn = realWarn;
   }
