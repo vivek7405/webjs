@@ -152,8 +152,15 @@ PostForm.register('post-form');</code-block>
     <p>A server action is a POST by default, but it can declare richer HTTP semantics through reserved sibling exports the framework reads statically, the same way a page declares <code>export const revalidate</code>. The call site never changes (you still write <code>await getUser(7)</code>); only the transport does. WebJs needs this where React and Next do not: WebJs has no server/client component split, so both reads and writes flow through the one action mechanism.</p>
     <p><strong>One callable function per configured file.</strong> A <code>.server.ts</code> file that declares any of these config exports must export exactly one callable. A second callable in the same file is a <code>webjs check</code> error.</p>
 
-    <h3>Choosing the verb</h3>
+    <h3>Choosing the verb & Decision Guide</h3>
     <p><code>export const method</code> selects the HTTP verb (absent means POST, so existing actions are unchanged):</p>
+
+    <ul>
+      <li><strong>Form-Bound Actions (<code>&lt;form action=\${fn}&gt;</code>):</strong> MUST be POST (default, no <code>method</code> export or <code>export const method = 'POST'</code>). Never export <code>export const method = 'GET'</code> for a form action (triggers a 405 error and <code>webjs check</code> violation).</li>
+      <li><strong>Programmatic / RPC Read Actions (Queries):</strong> Read-only calls (<code>await getTodos()</code>) SHOULD export <code>export const method = 'GET'</code>. Args ride URL query params (with POST fallback over 4KB). CSRF-exempt, supports ETags, 304 revalidation, and <code>export const cache</code>.</li>
+      <li><strong>Programmatic / RPC Write Actions (Mutations):</strong> Data-modifying calls SHOULD use <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, or <code>DELETE</code>. Pair with <code>export const invalidates = (args...) => ['tag']</code> to evict cached reads.</li>
+    </ul>
+
     <code-block>// modules/users/queries/get-user.server.ts
 'use server';
 export const method = 'GET';
