@@ -1,0 +1,63 @@
+{
+  "name": "@webjsdev/gallery",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "imports": {
+    "#*": "./*"
+  },
+  "scripts": {
+    "dev": "webjs dev --port ${PORT:-5005}",
+    "start": "webjs start",
+    "css:build": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify",
+    "db:generate": "webjs db generate",
+    "db:migrate": "webjs db migrate",
+    "db:seed": "webjs db seed",
+    "typecheck": "webjs typecheck",
+    "test": "webjs test --server",
+    "test:browser": "wtr"
+  },
+  "webjs": {
+    "dev": {
+      "before": [
+        "webjs db migrate",
+        "npm run css:build"
+      ],
+      "regenerate": [
+        {
+          "output": "public/tailwind.css",
+          "command": "tailwindcss -i ./public/input.css -o ./public/tailwind.css --minify",
+          "inputs": [
+            "app",
+            "components",
+            "lib",
+            "modules",
+            "public/input.css"
+          ]
+        }
+      ]
+    },
+    "start": {
+      "before": [
+        "webjs db migrate",
+        "npm run css:build"
+      ]
+    }
+  },
+  "dependencies": {
+    "@webjsdev/cli": "^0.10.0",
+    "@webjsdev/core": "^0.7.0",
+    "@webjsdev/server": "^0.8.0",
+    "@webjsdev/ui": "^0.3.1",
+    "drizzle-orm": "^1.0.0-rc.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@webjsdev/intellisense": "^0.5.0",
+    "drizzle-kit": "^1.0.0-rc.3",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

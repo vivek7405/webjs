@@ -11,7 +11,8 @@
     "packages/wrappers/*",
     "packages/ui/packages/*",
     "examples/*",
-    "website"
+    "website",
+    "gallery"
   ],
   "engines": {
     "node": ">=24.0.0"

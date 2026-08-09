@@ -122,7 +122,9 @@ const UI_REGISTRY_ROOT = resolveUiRegistryRoot();
  * @param {string} appDir
  */
 async function copyGallery(appDir) {
-  const galleryDir = join(TEMPLATES, 'gallery');
+  const bundledGallery = join(TEMPLATES, 'gallery');
+  const repoRootGallery = resolve(__dirname, '..', '..', '..', 'gallery');
+  const galleryDir = existsSync(bundledGallery) ? bundledGallery : repoRootGallery;
   // `test` carries the auth card's real request-pipeline test (test/auth); it
   // ships with the gallery and is pruned by gallery:clear alongside the card.
   // `components` carries the gallery's EXAMPLE design system (components/ui/ class
@@ -135,7 +137,10 @@ async function copyGallery(appDir) {
   // the ui bootstrap's cn.ts/dom.ts (written earlier); gallery:clear removes just
   // ui.ts. cp is recursive-merge, so the pre-written lib/utils/ files are kept.
   for (const sub of ['app', 'modules', 'test', 'components', 'lib']) {
-    await cp(join(galleryDir, sub), join(appDir, sub), { recursive: true });
+    const srcSub = join(galleryDir, sub);
+    if (existsSync(srcSub)) {
+      await cp(srcSub, join(appDir, sub), { recursive: true });
+    }
   }
 }
 

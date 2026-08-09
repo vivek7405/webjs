@@ -1,0 +1,73 @@
+/* Tailwind CSS v4 input file, compiled to public/tailwind.css by the
+ * `css:build` npm script (and recompiled on request in dev via
+ * webjs.dev.regenerate). Authors shouldn't edit public/tailwind.css
+ * directly; it's generated and gitignored. */
+@import "tailwindcss";
+
+/* Scan the shadcn-style component sources so their utility classes make it
+ * into the generated bundle. (Tailwind v4 already scans the project tree by
+ * default; this @source is belt-and-braces.) */
+@source "../components/ui/*.ts";
+
+/* @theme maps the shadcn design-token CSS custom properties (defined on :root
+ * in app/layout.ts for light/dark switching) into Tailwind's palette, so
+ * utility classes like `text-foreground`, `bg-card`, `bg-primary`,
+ * `text-muted-foreground`, `border-border`, `text-display`, `font-serif`,
+ * `duration-fast` resolve. Same shadcn vocabulary the scaffold and the
+ * @webjsdev/ui kit use, so the ui-* components read one source of truth. */
+@theme {
+  --color-background:             var(--background);
+  --color-foreground:             var(--foreground);
+  --color-card:                   var(--card);
+  --color-card-foreground:        var(--card-foreground);
+  --color-popover:                var(--popover);
+  --color-popover-foreground:     var(--popover-foreground);
+  --color-primary:                var(--primary);
+  --color-primary-foreground:     var(--primary-foreground);
+  --color-secondary:              var(--secondary);
+  --color-secondary-foreground:   var(--secondary-foreground);
+  --color-muted:                  var(--muted);
+  --color-muted-foreground:       var(--muted-foreground);
+  --color-accent:                 var(--accent);
+  --color-accent-foreground:      var(--accent-foreground);
+  --color-destructive:            var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border:                 var(--border);
+  --color-input:                  var(--input);
+  --color-ring:                   var(--ring);
+
+  /* A translucent brand tint derived from --primary (the same pattern the
+     scaffold's --primary-tint uses), for focus rings and the logo glow. */
+  --color-primary-tint:           var(--primary-tint);
+
+  /* One extra semantic shadcn does not ship: success (a couple of status
+     affordances use it). Added the canonical @theme way, not a parallel
+     vocabulary. */
+  --color-success:                var(--success);
+
+  --font-display: var(--font-display);
+  --font-sans:  var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-mono:  var(--font-mono);
+
+  /* Fluid type scale (text-display, text-h1, text-h2, text-lede). */
+  --text-display: clamp(2.6rem, 1.6rem + 3.2vw, 4.25rem);
+  --text-h1:      clamp(2rem, 1.5rem + 1.6vw, 2.85rem);
+  --text-h2:      clamp(1.35rem, 1.15rem + 0.7vw, 1.7rem);
+  --text-lede:    clamp(1.05rem, 0.95rem + 0.3vw, 1.2rem);
+
+  /* Custom motion durations (duration-fast / duration-slow). */
+  --duration-fast: 140ms;
+  --duration-slow: 380ms;
+}
+
+/*
+ * Self-hosted fonts (latin subset woff2 in public/fonts/). One VARIABLE file
+ * per family covers its whole weight range, so a font-weight range here means
+ * every used weight resolves from a single download. No Google Fonts CDN: no
+ * render-blocking third-party stylesheet and no third-party request.
+ * font-display:swap paints immediately with the fallback, then swaps.
+ */
+@font-face{font-family:'Inter Tight';font-style:normal;font-weight:100 900;font-display:swap;src:url('/public/fonts/inter-tight.woff2') format('woff2');}
+@font-face{font-family:'Inter';font-style:normal;font-weight:100 900;font-display:swap;src:url('/public/fonts/inter.woff2') format('woff2');}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:100 800;font-display:swap;src:url('/public/fonts/jetbrains-mono.woff2') format('woff2');}

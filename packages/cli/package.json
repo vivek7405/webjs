@@ -7,8 +7,8 @@
     "webjs": "bin/webjs.js"
   },
   "scripts": {
-    "prepack": "node ../../scripts/sync-scaffold-skill.mjs",
-    "postpack": "node ../../scripts/sync-scaffold-skill.mjs --clean"
+    "prepack": "node ../../scripts/sync-scaffold-skill.mjs && node ../../scripts/sync-scaffold-gallery.mjs",
+    "postpack": "node ../../scripts/sync-scaffold-skill.mjs --clean && node ../../scripts/sync-scaffold-gallery.mjs --clean"
   },
   "files": [
     "bin",
