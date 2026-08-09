@@ -166,7 +166,7 @@ tracked source, the standard shadcn "you own it" pattern.
 | 1a | `checkbox` | `checkboxClass`, native `<input type="checkbox">` with SVG check on `:checked`. REQUIRES `data-slot="checkbox"` on the input for the check to render. |
 | 1a | `radio-group` | `radioGroupClass`, `radioClass`, native `<input type="radio">`. REQUIRES `data-slot="radio"` on the input for the dot to render. |
 | 1a | `switch` | `switchInputClass`, `switchTrackClass({ size })`, hidden native checkbox + visible track |
-| 1a | `native-select` | `nativeSelectWrapperClass`, `nativeSelectClass`, `nativeSelectIconClass`, `nativeSelectOptionClass`, `nativeSelectOptGroupClass` |
+| 1a | `native-select` | `nativeSelectWrapperClass`, `nativeSelectClass`, `nativeSelectIconClass`, `nativeSelectOptionClass`, `nativeSelectOptGroupClass`. The `<option>` / `<optgroup>` colours come from the theme block's `select option, select optgroup` rule, NOT from importing the module (#1320), so they are in the first paint and hold with JavaScript off. |
 | 1a | `avatar` | `avatarClass`, `avatarImageClass`, `avatarFallbackClass`, `avatarBadgeClass`, `avatarGroupClass`, `avatarGroupCountClass` |
 | 1a | `separator` | `separatorClass({ orientation })` |
 | 1a | `skeleton` | `skeletonClass` |
@@ -263,7 +263,8 @@ obligations:
 - `pagination` / `breadcrumb`: a labelled `<nav>`, `aria-current="page"`, and hidden separators / icon-only control names.
 - `progress`: an `aria-label` (the native element supplies the role + value).
 - **form controls** (`input` / `textarea` / `native-select` / `checkbox` / `radio-group` / `switch`): a real `<label for>` (or a wrapping `<label>`) is the accessible name, and a `placeholder` is not one. On failure, `aria-invalid="true"` plus an `aria-describedby` pointing at error text that EXISTS on the page. A standalone switch needs `aria-label`, since its visible track is a `<span>` and the real input is `sr-only`. Group radios by a shared `name` and NAME the group (`aria-labelledby` on the `role="radiogroup"`, or `<fieldset>` + `<legend>`).
-- **`checkbox` / `radio-group` also need `data-slot`** on the input (`data-slot="checkbox"` / `data-slot="radio"`). The injected stylesheet keys the checkmark and the radio dot on it, and neither class carries a fallback fill, so without it the checked state reads as colour alone (WCAG 1.4.1). Source tests assert the examples keep the pairing.
+- **`checkbox` / `radio-group` also need `data-slot`** on the input (`data-slot="checkbox"` / `data-slot="radio"`). The injected stylesheet keys the checkmark and the radio dot on it, and neither class carries a fallback fill, so without it the checked state reads as colour alone (WCAG 1.4.1). Source tests assert the examples keep the pairing. Those two are the last stylesheets the kit still injects from JavaScript, so their indicators are the one part of the kit that needs JavaScript to render.
+- **`native-select`'s `<option>` colours come from the theme block**, not from importing the module (#1320). A bare `<option>` paints transparent over the browser popup, so in dark mode the unselected options disappear, and the `select option, select optgroup` rule in `@layer base` forces Canvas / CanvasText back. An app whose theme block predates that rule keeps the browser default until it re-runs `init` or adds the rule by hand, since `ensureTheme` never rewrites an existing block. It is two ELEMENT selectors (specificity 0,0,2) with no wrapper requirement, so a bare `<select class=${nativeSelectClass()}>` is covered and any single class overrides it.
 - `popover`: the biggest Tier-1 obligation, because the panel is a bare `<div popover>` with no role and no name. Supply `role="dialog"` + `aria-labelledby` to the `popoverTitleClass()` heading, `aria-haspopup="dialog"` + a `toggle`-event-synced `aria-expanded` on the trigger, and prefer `popover` (auto) over `popover="manual"` so the platform still gives you light-dismiss, Escape, and focus restoration.
 - `card`: use a REAL heading for `cardTitleClass()`, at the level the surrounding document wants, and never wrap a whole card in one `<a>`.
 - `kbd`: a symbol-only key (`⌘`) needs a spoken name, but NOT via `aria-label` on the `<kbd>`: that maps to `role=generic`, where a name is prohibited and ignored. Hide the glyph (`aria-hidden`) and put the spoken form in an `sr-only` sibling. For a chord, wrap the group in `role="img"` + `aria-label`, which supports a name AND makes children presentational, so it is announced once.
@@ -451,6 +452,35 @@ names mechanically:
 - All `.ts` files in `components/` export named functions. No default exports.
 - Use `cn()` from `'../lib/utils.ts'` to merge a helper's output with
   user-supplied classes when needed: `<button class=${cn(buttonClass(), 'rounded-full')}>`.
+- **A registry module does NO work at module scope.** Not a call, not a `new`,
+  not a `document` reference. The elision analyser reads any of those as client
+  work, so the module pins every page that reaches it on a component-free path,
+  and a Tier-1 helper registers no element, so the path-aware carve-out (#963)
+  cannot save it. Because `cn` sits under essentially every helper, one such
+  line costs page elision in every app that runs `webjsui init`. Two shapes
+  caused it (#1320). A `...borderGroups()` spread inside a module-scope table is
+  a real top-level call, fixed by memoising the table behind a function
+  (`let _groups; function GROUPS() { return (_groups ??= [...]) }`). An
+  `if (typeof document !== 'undefined') installFooStyles()` stylesheet
+  injection is both a call and a browser-global reference, fixed by putting the
+  CSS in the theme block instead, which also puts it in the first paint and
+  makes it work with JavaScript off. `packages/ui/test/utils-purity.test.js`
+  pins the flagged set as an EQUALITY, so a new offender fails immediately and
+  the remaining entries can only be removed deliberately.
+- **The kit is copy-on-add, so fixing the registry does not fix an app.** An
+  existing app holds its own copy of every component and of `lib/utils/cn.ts`,
+  and `npx @webjsdev/ui diff` is the discovery channel for the drift. The theme
+  block is worse: `ensureTheme` keys the whole block on its `@webjsdev/ui theme`
+  marker and returns early when it is present, so a later `add`, and even
+  `init --overwrite` (whose overwrite flag reaches only `writeLibUtils`), leaves
+  an existing block exactly as it was. An app that already ran `init` therefore
+  does NOT receive a rule added to the theme, and the only routes are editing
+  its stylesheet by hand or deleting the marker line and re-running `init`. A
+  freshly scaffolded app is fine, since `webjs create` copies `themes/index.css`
+  verbatim. Weigh that gap before moving CSS into the theme block: for the
+  native `<option>` colours the app degrades to the browser default, which is a
+  worse read rather than a broken control, and that asymmetry is why the
+  checkbox and radio-group injections were left where they are.
 - **A `cn()` conflict group is one CSS PROPERTY, never one class prefix.**
   Utilities that merely share a prefix must land in different groups, or the
   merger silently drops one of them. Two defects came from getting this wrong:

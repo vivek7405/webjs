@@ -7,13 +7,15 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, readFile, stat } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, stat, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { scaffoldApp } from '../../packages/cli/lib/create.js';
 import { DEFAULT_ALIASES, DEFAULT_TAILWIND_CSS } from '../../packages/ui/src/commands/init.js';
+import { add } from '../../packages/ui/src/commands/add.js';
+import { analyzeAppElision } from '../../packages/server/src/elision-report.js';
 
 async function tempCwd() {
   return mkdtemp(join(tmpdir(), 'webjs-scaffold-ui-'));
@@ -143,6 +145,69 @@ test('lib/utils/cn.ts ships the pure cn() helper; onBeforeCache is in lib/utils/
     assert.ok(!/export\s+function\s+defineElement\b/.test(utils), 'defineElement removed from cn.ts');
     const dom = await readFile(join(cwd, 'demo', 'lib', 'utils', 'dom.ts'), 'utf8');
     assert.match(dom, /export function onBeforeCache\b/, 'onBeforeCache is shipped in lib/utils/dom.ts');
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('kit helpers do not pin a page to the browser (#1320)', async () => {
+  // The end-to-end property #1320 is about: a page whose only client-facing
+  // imports are Tier-1 class helpers must still be elided. Both defects that
+  // broke it were module-scope work (`...borderGroups()` in cn.ts, a stylesheet
+  // injection in native-select.ts), and either one made this page ship whole.
+  //
+  // Asserted on the elision REPORT rather than on byte size: size moves with
+  // every unrelated kit change, so it would be a maintenance tax carrying no
+  // extra signal.
+  const cwd = await tempCwd();
+  try {
+    await scaffoldApp('demo', cwd, { template: 'full-stack' });
+    const appDir = join(cwd, 'demo');
+
+    // Local-first registry resolution, so no network. `--no-deps` skips the npm
+    // install the app does not need to be analysed.
+    await add.parseAsync(
+      ['button', 'card', 'input', 'native-select', '--cwd', appDir, '--overwrite', '--yes', '--no-deps'],
+      { from: 'user' },
+    );
+
+    await mkdir(join(appDir, 'app', 'kit'), { recursive: true });
+    await writeFile(join(appDir, 'app', 'kit', 'page.ts'), [
+      `import { html } from '@webjsdev/core';`,
+      `import { buttonClass } from '#components/ui/button.ts';`,
+      `import { cardClass } from '#components/ui/card.ts';`,
+      `import { inputClass } from '#components/ui/input.ts';`,
+      `import { nativeSelectClass, nativeSelectWrapperClass } from '#components/ui/native-select.ts';`,
+      ``,
+      `export default function Kit() {`,
+      `  return html\`<div class=\${cardClass()}>`,
+      `    <input class=\${inputClass()} name="q">`,
+      `    <div class=\${nativeSelectWrapperClass()}>`,
+      `      <select class=\${nativeSelectClass()} name="plan"><option value="a">A</option></select>`,
+      `    </div>`,
+      `    <button class=\${buttonClass()}>Go</button>`,
+      `  </div>\`;`,
+      `}`,
+    ].join('\n'));
+
+    const report = await analyzeAppElision(appDir);
+    assert.ok(report.analysed, `elision analysis ran (skipped: ${report.skipped})`);
+
+    const kit = report.routeModules.find((r) => r.file === join('app', 'kit', 'page.ts'));
+    assert.ok(kit, 'the kit page has a verdict');
+    // It imports only Tier-1 helpers, which register no element, so there is
+    // nothing for it to carry into the browser.
+    assert.equal(kit.verdict, 'inert', `kit page ships, blocked by ${kit.blocker}`);
+
+    // And no OTHER route module is pinned by the two modules this fixed, which
+    // is the assertion that fails if either regression comes back anywhere in
+    // the scaffold.
+    const pinned = report.routeModules.filter(
+      (r) => r.verdict === 'shipped'
+        && (r.blocker?.endsWith(join('lib', 'utils', 'cn.ts'))
+          || r.blocker?.endsWith(join('components', 'ui', 'native-select.ts'))),
+    );
+    assert.deepEqual(pinned, [], 'no route module is pinned by cn.ts or native-select.ts');
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

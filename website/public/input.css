@@ -188,6 +188,18 @@
      Tailwind color utility on the element still wins (utilities are layered
      after base regardless of specificity). */
   .ui-preview, .ui-preview * { border-color: var(--border); }
+  /* Same reason: another rule the kit's theme block carries and this site never
+     receives, because it writes its own stylesheet instead of running
+     `webjs ui init`. A native <option> paints transparent over the browser
+     popup when no rule applies, so in dark mode the /ui/native-select preview's
+     options disappear. Canvas / CanvasText are the system colours the browser
+     would have painted anyway. Two ELEMENT selectors (specificity 0,0,2) and no
+     wrapper requirement, matching the kit rule exactly. */
+  select option,
+  select optgroup {
+    background-color: Canvas;
+    color: CanvasText;
+  }
 }
 
 /*

@@ -87,3 +87,32 @@ test('mergeThemeCss preserves @theme block, custom variants, keyframes, @layer',
   assert.match(merged, /@keyframes accordion-down/);
   assert.match(merged, /@layer base/);
 });
+
+// The <option> colour rule moved out of `native-select.ts`'s module-scope style
+// injection and into the theme block (#1320), so it must survive the per-colour
+// synthesis. `mergeThemeCss` only rewrites variable VALUES inside `:root` and
+// `.dark`, so a rule in `@layer base` should flow through untouched, and that
+// is exactly the property worth pinning.
+test('the <option> colour rule ships in every base colour, inside @layer base (#1320)', { skip }, async () => {
+  const { mergeThemeCss, BASE_COLORS, BASE_OVERRIDES } = await import(BASE_COLORS_PATH);
+  const neutral = readFileSync(NEUTRAL_CSS_PATH, 'utf8');
+  for (const name of BASE_COLORS) {
+    const css = name === 'neutral' ? neutral : mergeThemeCss(neutral, BASE_OVERRIDES[name]);
+    const open = css.indexOf('@layer base {');
+    assert.ok(open !== -1, `${name}: no @layer base block`);
+    // Slice to the block's closing brace so placement is asserted, not just
+    // presence: an unlayered copy of the rule would beat every layered one and
+    // silently take the override path away from a Tailwind utility.
+    let depth = 0;
+    let end = -1;
+    for (let i = css.indexOf('{', open); i < css.length; i++) {
+      if (css[i] === '{') depth++;
+      else if (css[i] === '}' && --depth === 0) { end = i; break; }
+    }
+    assert.ok(end !== -1, `${name}: unbalanced @layer base block`);
+    const layer = css.slice(open, end);
+    assert.match(layer, /select option,\s*\n\s*select optgroup \{/, name);
+    assert.match(layer, /background-color: Canvas;/, name);
+    assert.match(layer, /color: CanvasText;/, name);
+  }
+});

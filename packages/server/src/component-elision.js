@@ -318,7 +318,7 @@ const PURE_DATA_CONSTRUCTORS = new Set([
   'BigInt64Array', 'BigUint64Array',
 ]);
 
-function hasModuleScopeSideEffect(src, literals) {
+export function hasModuleScopeSideEffect(src, literals) {
   let redacted = src;
   if (!literals) {
     const r = redactToPlaceholders(src);
