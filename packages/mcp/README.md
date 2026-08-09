@@ -53,10 +53,11 @@ The corpus is resolved in three rungs, highest first:
 1. `<appDir>/node_modules/@webjsdev/mcp/resources`, the app's own installed copy.
 2. `<pkg>/resources`, this server's bundled snapshot, so `npx @webjsdev/mcp` is
    self-contained.
-3. The repo-root docs, which is the monorepo dev path. This rung is an
-   unconditional fallback rather than a checkout probe, so a published install
-   whose `resources/` bundle is missing lands here too, with an empty corpus.
-   That is why neither the corpus line nor the warning asserts a checkout.
+3. Whatever the server resolves locally, which is the repo-root skill on the
+   monorepo dev path. This rung is an unconditional fallback rather than a
+   checkout probe, so a published install whose `resources/` bundle is missing
+   lands here too, with an empty corpus. That is why neither the corpus line nor
+   the warning asserts a checkout.
 
 The app's copy wins because it is version-matched to the framework you are
 editing, and so is the only corpus that can be correct about that app. This

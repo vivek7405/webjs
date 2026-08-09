@@ -166,7 +166,7 @@ async function corpusLine(deps) {
   // Rung 3 has no stamp, and it is a FALLBACK rather than a checkout probe, so
   // this must not claim a checkout: a published install whose `resources/` is
   // missing lands here too, with an empty corpus and no checkout to name.
-  if (!deps.corpusPath) return 'Docs corpus: not a bundled snapshot; this server resolved the repo-root docs locally.';
+  if (!deps.corpusPath) return 'Docs corpus: no bundled snapshot; serving whatever docs this server resolved locally.';
   const unstamped = 'Docs corpus: an unstamped @webjsdev/mcp bundled snapshot.';
   try {
     const stamp = JSON.parse(await deps.readFile(deps.corpusPath, 'utf8'));

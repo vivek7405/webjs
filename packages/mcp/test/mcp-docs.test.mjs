@@ -346,10 +346,10 @@ test('initText: a stamped corpus is reported with its version, short sha, and da
   assert.ok(out.indexOf('Docs corpus:') < out.indexOf('You are about to write'), 'corpus line precedes the router');
 });
 
-test('initText: a dev checkout says so rather than claiming a snapshot it does not have', async () => {
+test('initText: an unbundled server says so rather than claiming a snapshot it does not have', async () => {
   const out = await initText(stampFixture({ corpusPath: null }));
-  assert.match(out, /Docs corpus: not a bundled snapshot; this server resolved the repo-root docs locally\./);
-  assert.ok(!/@webjsdev\/mcp@/.test(out), 'no version is claimed for an unstamped live checkout');
+  assert.match(out, /Docs corpus: no bundled snapshot; serving whatever docs this server resolved locally\./);
+  assert.ok(!/@webjsdev\/mcp@/.test(out), 'no version is claimed when nothing was stamped');
 });
 
 test('initText: an absent, malformed, or versionless stamp degrades and never throws', async () => {
@@ -411,15 +411,14 @@ test('initText: the warning says which corpus was actually served, never a claim
   assert.match(fromApp, /The docs below come from this app's own copy, so they match it/);
   assert.ok(!/older snapshot/.test(fromApp), 'and does not disown a corpus it did serve');
 
-  // The dev rung is the third value, and it needs its own clause: a monorepo
-  // server pointed at an app with a newer mcp is serving LIVE repo-root docs,
-  // which the corpus line calls a checkout, so calling them a server snapshot
-  // here would reintroduce the contradiction one rung over.
+  // The third rung needs its own clause: a server that fell through to it is not
+  // serving its own bundled snapshot, so the bundled wording would be wrong. It is
+  // also not necessarily a checkout, which is why neither line claims one.
   const fromRepo = await initText(
     stampFixture({ corpusPath: null, appMcp: '{"version":"0.1.12"}', serverVersion: '0.1.4', corpusSource: 'repo' }),
   );
   assert.match(fromRepo, /The docs below are whatever this server resolved locally, not this app's copy\./);
-  assert.match(fromRepo, /Docs corpus: not a bundled snapshot/, 'and the corpus line agrees with it');
+  assert.match(fromRepo, /Docs corpus: no bundled snapshot/, 'and the corpus line agrees with it');
   assert.ok(!/older snapshot/.test(fromRepo), 'an unbundled resolve is not the server\'s stale snapshot');
   // Rung 3 is a fallback, not a checkout probe, so neither line may assert that a
   // checkout IS what was served: a published install with no bundled resources/
@@ -493,7 +492,7 @@ test('resolveDocsLocation: the app corpus outranks the bundled snapshot and the 
   // No app install and no bundle: the dev rung, which froze nothing and so has
   // no stamp to name.
   assert.equal(resolveDocsLocation(moduleUrl, appDir).docsDir, join(skill, 'references'));
-  assert.equal(resolveDocsLocation(moduleUrl, appDir).corpusPath, null, 'a live checkout claims no provenance');
+  assert.equal(resolveDocsLocation(moduleUrl, appDir).corpusPath, null, 'the fallback rung claims no provenance');
   assert.equal(resolveDocsLocation(moduleUrl, appDir).corpusSource, 'repo');
 
   // A bundle but still no app install: the server's own snapshot, which does.
