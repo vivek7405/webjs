@@ -33,7 +33,14 @@ import { fileURLToPath } from 'node:url';
 /** The URI scheme for a framework-docs resource: `webjs-docs://<name>`. */
 const DOCS_SCHEME = 'webjs-docs://';
 
-/** The paths of one bundled corpus root (`<something>/resources`), tagged with which rung it is. */
+/**
+ * The paths of one bundled corpus root (`<something>/resources`), tagged with
+ * which rung it is so a caller can say WHOSE docs it ended up serving.
+ *
+ * @param {string} root  the `resources` directory
+ * @param {'app' | 'bundled'} corpusSource  which rung this root is
+ * @returns {{ docsDir: string, agentsPath: string, skillPath: string, corpusPath: string, corpusSource: string }}
+ */
 function bundleAt(root, corpusSource) {
   return {
     docsDir: join(root, 'references'),
@@ -70,7 +77,7 @@ function bundleAt(root, corpusSource) {
  *
  * @param {string} [moduleUrl]  `import.meta.url` of the caller (defaults to this module)
  * @param {string} [appDir]  the app being asked about; enables the rung-1 probe
- * @returns {{ docsDir: string, agentsPath: string, skillPath: string, corpusPath: string | null }}
+ * @returns {{ docsDir: string, agentsPath: string, skillPath: string, corpusPath: string | null, corpusSource: 'app' | 'bundled' | 'repo' }}
  */
 export function resolveDocsLocation(moduleUrl, appDir) {
   const here = dirname(fileURLToPath(moduleUrl || import.meta.url));
@@ -211,10 +218,15 @@ async function staleWarning(deps) {
   if (!server || server === '0.0.0') return null;
   const app = await readAppMcpVersion(deps.appDir, deps);
   if (!app || compareVersions(app, server) <= 0) return null;
-  const served =
-    deps.corpusSource === 'app'
-      ? "The docs below come from this app's own copy, so they match it; update the server so its TOOLS match too."
-      : 'The docs below are the server\'s own older snapshot, not this app\'s copy.';
+  // One clause per rung, because the corpus line printed directly beneath names
+  // the rung too. A binary app-or-not ternary would call the DEV rung a "server
+  // snapshot" while that line calls it a live checkout, which is the same
+  // self-contradiction this clause exists to prevent, just moved one rung over.
+  const served = {
+    app: "The docs below come from this app's own copy, so they match it; update the server so its TOOLS match too.",
+    bundled: "The docs below are the server's own older snapshot, not this app's copy.",
+    repo: "The docs below are this checkout's live repo-root docs, not this app's copy.",
+  }[deps.corpusSource] || "The docs below may not be this app's copy.";
   return (
     `Warning: this MCP server is @webjsdev/mcp@${server}, but this app has @webjsdev/mcp@${app}, ` +
     `so the server may be stale. ${served} ` +

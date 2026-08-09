@@ -410,6 +410,17 @@ test('initText: the warning says which corpus was actually served, never a claim
   const fromApp = await served('app');
   assert.match(fromApp, /The docs below come from this app's own copy, so they match it/);
   assert.ok(!/older snapshot/.test(fromApp), 'and does not disown a corpus it did serve');
+
+  // The dev rung is the third value, and it needs its own clause: a monorepo
+  // server pointed at an app with a newer mcp is serving LIVE repo-root docs,
+  // which the corpus line calls a checkout, so calling them a server snapshot
+  // here would reintroduce the contradiction one rung over.
+  const fromRepo = await initText(
+    stampFixture({ corpusPath: null, appMcp: '{"version":"0.1.12"}', serverVersion: '0.1.4', corpusSource: 'repo' }),
+  );
+  assert.match(fromRepo, /The docs below are this checkout's live repo-root docs, not this app's copy\./);
+  assert.match(fromRepo, /Docs corpus: the live repo-root docs in this checkout/, 'and the corpus line agrees with it');
+  assert.ok(!/older snapshot/.test(fromRepo), 'a live checkout is not a stale snapshot');
 });
 
 test('compareVersions: coarse by design, and total over the shapes npm produces', () => {

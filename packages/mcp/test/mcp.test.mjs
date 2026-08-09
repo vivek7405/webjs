@@ -599,6 +599,11 @@ test('mcp: init warns when the app has a newer @webjsdev/mcp than the running se
   const primer = frames[0].result.content[0].text;
   assert.match(primer, /Warning: this MCP server is @webjsdev\/mcp@9\.9\.9, but this app has @webjsdev\/mcp@10\.0\.0, so the server may be stale\./);
   assert.match(primer, /npm i -g @webjsdev\/mcp@latest/, 'says how to fix the stale install');
+  // This app HAS its own resources/, so rung 1 served them and the warning must
+  // say so. Asserting the served clause end to end is what makes the
+  // `corpusSource` hand-off from resolveDocsLocation to the warning testable:
+  // drop it in mcp.js and the clause degrades, reddening this line.
+  assert.match(primer, /The docs below come from this app's own copy, so they match it/, 'names the corpus it actually served');
   // Advisory, never a refusal: the corpus rung already pointed at the app's docs.
   assert.match(primer, /SENTINEL_NEWER/, 'still answers, with the app corpus');
 });

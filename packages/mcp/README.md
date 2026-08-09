@@ -79,7 +79,7 @@ so the server may be stale. The docs below come from this app's own copy, so the
 match it; update the server so its TOOLS match too. Update whichever copy runs this
 server: a global install (npm i -g @webjsdev/mcp@latest, or bun add -g @webjsdev/mcp),
 the package cache behind npx @webjsdev/mcp, or @webjsdev/cli when the server is
-started as `webjs mcp`.
+started as webjs mcp.
 Docs corpus: @webjsdev/mcp@0.1.12, copied from webjsdev/webjs e5806e2 on 2026-08-08.
 ```
 
