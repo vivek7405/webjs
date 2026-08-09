@@ -32,9 +32,9 @@ jobs:
           cache: npm
       - run: npm ci
       # Dogfood the framework's own correctness checks on the in-repo apps.
-      - name: webjs check (blog, website)
+      - name: webjs check (blog, gallery, website)
         run: |
-          for app in examples/blog website; do
+          for app in examples/blog gallery website; do
             echo "::group::webjs check $app"
             ( cd "$app" && node "$GITHUB_WORKSPACE/packages/cli/bin/webjs.js" check )
             echo "::endgroup::"
@@ -50,7 +50,7 @@ jobs:
       # environment-shaped and would fail a perfectly healthy runner.
       - name: webjs doctor (blog, website)
         run: |
-          for app in examples/blog website; do
+          for app in examples/blog gallery website; do
             echo "::group::webjs doctor $app"
             ( cd "$app" && node "$GITHUB_WORKSPACE/packages/cli/bin/webjs.js" doctor )
             echo "::endgroup::"
