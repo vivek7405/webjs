@@ -116,6 +116,8 @@ So the command now refuses in any directory with no `app/`, exits 1, and names t
 ( cd website && npx webjs check )
 ```
 
+Under `--json` the refusal is emitted as JSON rather than prose, `{ error: { code: 'NOT_AN_APP', message, cwd, apps } }`, so an agent's parser does not choke. It carries neither `violations` nor `summary` on purpose: a consumer that ignores the exit code and reads `report.violations.length` should throw rather than be told a workspace is clean.
+
 That is what `.github/workflows/ci.yml` has always done (it `cd`s per app), which is why CI was green while the root-level run looked catastrophic. `test/cli/check-target.test.mjs` pins the two together: it parses the app list out of the `for app in ...; do` loop in the `webjs check` step and asserts set equality with the list the refusal derives from the root `package.json` `workspaces` globs. A third app added to CI is picked up automatically; one dropped from CI reds the test. That drift guard is what a `--workspaces` flag was rejected in favour of.
 
 `webjs doctor` is deliberately NOT gated the same way. It already degrades correctly at the root (the elision and asset checks report "no app to analyse") and its toolchain checks are meaningful in a workspace.
