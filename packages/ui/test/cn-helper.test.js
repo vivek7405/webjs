@@ -423,3 +423,31 @@ test('Base and defineElement are no longer exported (removed in #819)', async ()
   assert.equal(utils.Base, undefined, 'Base was removed');
   assert.equal(utils.defineElement, undefined, 'defineElement was removed');
 });
+
+// The conflict table is built on FIRST CALL rather than at module load (#1320),
+// so the order-dependent behaviour is worth pinning explicitly: a memo that
+// rebuilt per call, or one that captured a half-built table, would show up here
+// as a directional case flipping.
+test('cn: directional conflicts survive the memoised table (#1320)', () => {
+  for (const [args, expected] of [
+    [['px-4', 'py-2', 'p-0'], 'p-0'],                              // shorthand subsumes both axes
+    [['p-2', 'px-4'], 'p-2 px-4'],                                 // an axis only refines: both survive
+    [['p-2', 'px-4', 'p-0'], 'p-0'],
+    [['w-8', 'h-9', 'size-4'], 'size-4'],                          // size vs width/height
+    [['border-2', 'border-primary'], 'border-2 border-primary'],   // width vs colour
+    [['border-border', 'border-accent'], 'border-accent'],         // later colour wins
+    [['flex', 'flex-1'], 'flex flex-1'],                           // display vs grow
+    [['text-sm', 'text-primary'], 'text-sm text-primary'],         // size vs colour
+    [['bg-clip-text', 'bg-primary'], 'bg-clip-text bg-primary'],
+  ]) {
+    assert.equal(cn(...args), expected, JSON.stringify(args));
+  }
+});
+
+test('cn: the memoised table is built once (#1320)', () => {
+  // `??=` is what makes the table build once, and it is also what keeps the
+  // module free of module-scope work, so pin the shape as well as the result.
+  assert.match(readFileSync(UTILS_SRC, 'utf8'), /_groups \?\?= \[/);
+  assert.equal(cn('p-2', 'px-4'), cn('p-2', 'px-4'));
+  assert.equal(cn('border-border', 'border-accent'), cn('border-border', 'border-accent'));
+});

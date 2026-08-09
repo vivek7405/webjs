@@ -9,14 +9,16 @@
  *   NativeSelect wrapper     → nativeSelectWrapperClass()
  *   NativeSelect chevron     → nativeSelectIconClass()
  *   NativeSelect option      → bare <option> (or nativeSelectOptionClass()
- *                              for explicit overrides; the installed
+ *                              for explicit overrides, since the theme
  *                              stylesheet sets Canvas / CanvasText on
  *                              every <option> automatically)
  *
- * Importing this module installs a stylesheet that forces Canvas /
- * CanvasText on every <option> inside the wrapper so the dropdown reads
- * in both light and dark themes regardless of OS preference; advanced
- * overrides use `nativeSelectOptionClass()` / `nativeSelectOptGroupClass()`.
+ * The theme stylesheet forces Canvas / CanvasText on every <option> so the
+ * dropdown reads in both light and dark themes regardless of OS preference.
+ * It arrives with the design tokens (`npx @webjsdev/ui init`, or `add`, which
+ * writes the block when it is missing), so it is in the first paint and works
+ * with JavaScript off. Advanced overrides use `nativeSelectOptionClass()` and
+ * `nativeSelectOptGroupClass()`.
  *
  * Design tokens used: --input, --background, --primary, --primary-foreground,
  * --muted-foreground, --ring, --destructive.
@@ -58,61 +60,17 @@ import { cn } from '../lib/utils.ts';
 
 export type NativeSelectSize = 'default' | 'sm';
 
-// Auto-apply Canvas/CanvasText to every <option> on the page. Without
-// this, an <option> with no explicit bg paints transparent on top of
-// the browser-popup background; in dark mode (when color-scheme: dark
-// is set on <html>) Chrome's popup is dark, the option's transparent
-// bg lets the popup colour through, and the inherited text colour
-// from the <select> matches that dark popup: the option disappears,
-// only the focused/selected one stays visible because the browser
-// overlays its own highlight on it.
+// The <option> / <optgroup> colour rule is NOT injected from here. It lives in
+// the theme stylesheet the kit installs, so it is in the first paint, works
+// with JavaScript off, and does not make this module client-effecting (a
+// module-scope call pins every page that imports it, #1320). See the
+// `select option, select optgroup` rule in the theme block.
 //
-// Original selector required the option to be inside a
-// `.group/native-select` wrapper, on the assumption every user would
-// follow the documented Usage block above. But it's easy to write a
-// bare <select class=${nativeSelectClass()}> without the wrapper
-// (legitimate when you don't need the chevron icon: the popover and
-// hover-card docs examples both do this), in which case the rule
-// never matched and the dropdown reverted to invisible-options.
-// Broadening to `select option, select optgroup` makes the fix work
-// everywhere the user has imported native-select, with no required
-// wrapper. The Canvas/CanvasText pair is a safe default: they ARE
-// the system colours the browser would have painted anyway when no
-// rule applied; we just stop relying on inheritance to pull through.
-// Selector specificity is 0,0,2 (two elements), so any user who
-// genuinely needs custom <option> colours can override with a single
-// class anywhere in their cascade (e.g. `.my-select option { ... }`
-// at 0,1,2 wins).
-//
-// `nativeSelectOptionClass()` and `nativeSelectOptGroupClass()` stay
-// exported for users who want to opt into the same colours via the
-// class helper instead of the global rule. They emit the same
-// `bg-[Canvas] text-[CanvasText]` Tailwind utilities: redundant if
-// this stylesheet is installed, but harmless and matches the broader
-// shadcn convention of "every part has a class helper".
-const STYLES = `
-select option,
-select optgroup {
-  background-color: Canvas;
-  color: CanvasText;
-}
-`;
-
-let installed = false;
-export function installNativeSelectStyles(): void {
-  if (installed || typeof document === 'undefined') return;
-  if (document.getElementById('ui-native-select-styles')) {
-    installed = true;
-    return;
-  }
-  const style = document.createElement('style');
-  style.id = 'ui-native-select-styles';
-  style.textContent = STYLES;
-  document.head.appendChild(style);
-  installed = true;
-}
-
-if (typeof document !== 'undefined') installNativeSelectStyles();
+// `nativeSelectOptionClass()` and `nativeSelectOptGroupClass()` stay exported
+// for users who want to opt into the same colours via a class helper. They
+// emit the same `bg-[Canvas] text-[CanvasText]` utilities: redundant when the
+// theme block is present, harmless, and they match the broader shadcn
+// convention that every part has a class helper.
 
 export const nativeSelectWrapperClass = (): string =>
   'group/native-select relative w-fit has-[select:disabled]:opacity-50';

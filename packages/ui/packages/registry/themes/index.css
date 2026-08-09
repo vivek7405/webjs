@@ -149,4 +149,17 @@
     outline: 2px solid color-mix(in oklab, var(--color-ring) 50%, transparent);
     outline-offset: 2px;
   }
+  /* Native <select> options paint transparent over the browser popup when no
+     rule applies, so in dark mode Chrome's dark popup plus the inherited text
+     colour makes every unselected option disappear. Canvas / CanvasText are
+     the system colours the browser would have painted anyway, so this stops
+     relying on inheritance to pull them through. Two ELEMENT selectors
+     (specificity 0,0,2) and no wrapper requirement on purpose: a bare
+     <select class=${nativeSelectClass()}> with no wrapper is legitimate, and
+     any single class overrides this. */
+  select option,
+  select optgroup {
+    background-color: Canvas;
+    color: CanvasText;
+  }
 }
