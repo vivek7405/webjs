@@ -23,6 +23,8 @@ const {
   getPrompt,
   PROMPTS,
   resolveDocsLocation,
+  compareVersions,
+  readAppMcpVersion,
 } = await import(resolve(REPO, 'packages', 'mcp', 'src', 'mcp-docs.js'));
 const { bundleDocs, readGitSha } = await import(resolve(REPO, 'packages', 'mcp', 'scripts', 'copy-mcp-resources.js'));
 const { cleanBundle } = await import(resolve(REPO, 'packages', 'mcp', 'scripts', 'clean-mcp-resources.js'));
@@ -301,6 +303,159 @@ test('the stamp lands inside the published files allowlist', () => {
   assert.ok(existsSync(join(paths.destRoot, 'corpus.json')), 'written at the destRoot top level');
   const script = readFileSync(join(REPO, 'packages', 'mcp', 'scripts', 'copy-mcp-resources.js'), 'utf8');
   assert.match(script, /destRoot: join\(pkgRoot, 'resources'\)/, "main() bundles into the package's resources/");
+});
+
+/**
+ * A fixture whose `init` output can be driven over the corpus stamp and the
+ * version pair. `corpus` is the raw corpus.json TEXT (so a malformed stamp is
+ * expressible), `undefined` meaning the file is absent and throws ENOENT.
+ */
+function stampFixture({ corpusPath = '/corpus.json', corpus, appMcp, serverVersion, appDir = '/app' } = {}) {
+  const base = fixture();
+  const files = {};
+  if (corpus !== undefined) files[corpusPath] = corpus;
+  const manifest = join(appDir, 'node_modules', '@webjsdev', 'mcp', 'package.json');
+  if (appMcp !== undefined) files[manifest] = appMcp;
+  return {
+    ...base,
+    corpusPath,
+    appDir,
+    serverVersion,
+    exists: (p) => base.exists(p) || p in files,
+    readFile: async (p) => {
+      if (p in files) return files[p];
+      return base.readFile(p, 'utf8');
+    },
+  };
+}
+
+const STAMP = (over = {}) =>
+  JSON.stringify({
+    package: '@webjsdev/mcp',
+    version: '0.1.12',
+    sha: 'e5806e24' + '0'.repeat(32),
+    copiedAt: '2026-08-08T09:14:22.031Z',
+    ...over,
+  });
+
+test('initText: a stamped corpus is reported with its version, short sha, and date', async () => {
+  const out = await initText(stampFixture({ corpus: STAMP() }));
+  assert.match(out, /Docs corpus: @webjsdev\/mcp@0\.1\.12, copied from webjsdev\/webjs e5806e2 on 2026-08-08\./);
+  // Provenance sits above the orientation, so it is read before the docs are.
+  assert.ok(out.indexOf('Docs corpus:') < out.indexOf('You are about to write'), 'corpus line precedes the router');
+});
+
+test('initText: a dev checkout says so rather than claiming a snapshot it does not have', async () => {
+  const out = await initText(stampFixture({ corpusPath: null }));
+  assert.match(out, /Docs corpus: the live repo-root docs in this checkout, not a bundled snapshot\./);
+  assert.ok(!/@webjsdev\/mcp@/.test(out), 'no version is claimed for an unstamped live checkout');
+});
+
+test('initText: an absent, malformed, or versionless stamp degrades and never throws', async () => {
+  for (const corpus of [undefined, 'not json at all', '{"package":"@webjsdev/mcp"}']) {
+    const out = await initText(stampFixture({ corpus }));
+    assert.match(out, /Docs corpus: an unstamped @webjsdev\/mcp bundled snapshot\./, `degraded for ${String(corpus)}`);
+    assert.match(out, /## Invariants/, 'the rest of the primer still renders');
+  }
+});
+
+test('initText: a stamp with no sha keeps the version and date, and claims no commit', async () => {
+  const out = await initText(stampFixture({ corpus: STAMP({ sha: null }) }));
+  assert.match(out, /Docs corpus: @webjsdev\/mcp@0\.1\.12, copied on 2026-08-08\./);
+  assert.ok(!/copied from/.test(out), 'no commit is claimed when none was captured');
+});
+
+test('initText: warns only when the app has a strictly newer @webjsdev/mcp than the server', async () => {
+  const run = (appMcp, serverVersion) => initText(stampFixture({ corpus: STAMP(), appMcp, serverVersion }));
+  const warned = /Warning: this MCP server is @webjsdev\/mcp@0\.1\.4, but this app has @webjsdev\/mcp@0\.1\.12\./;
+
+  const out = await run('{"version":"0.1.12"}', '0.1.4');
+  assert.match(out, warned, 'a newer app copy is the stale-server case this exists for');
+  assert.match(out, /npm i -g @webjsdev\/mcp@latest/, 'says how to fix it');
+  assert.ok(out.indexOf('Warning:') < out.indexOf('Docs corpus:'), 'the warning sits above the corpus line');
+
+  for (const [appMcp, server, why] of [
+    ['{"version":"0.1.4"}', '0.1.4', 'equal versions are not a defect'],
+    ['{"version":"0.1.4"}', '0.1.12', 'a newer global server reading an older app is the normal dev shape'],
+    [undefined, '0.1.4', 'no app install to compare'],
+    ['{ not json', '0.1.4', 'an unparseable app manifest'],
+    ['{"name":"@webjsdev/mcp"}', '0.1.4', 'an app manifest with no version'],
+    ['{"version":"0.1.12"}', undefined, 'no server version to compare'],
+    ['{"version":"0.1.12"}', '0.0.0', 'the unknown-version sentinel is not "older than everything"'],
+  ]) {
+    assert.ok(!/Warning:/.test(await run(appMcp, server)), why);
+  }
+});
+
+test('compareVersions: coarse by design, and total over the shapes npm produces', () => {
+  assert.equal(compareVersions('1.2.3', '1.2.3'), 0);
+  assert.equal(compareVersions('0.1.12', '0.1.4'), 1, 'numeric, not lexicographic');
+  assert.equal(compareVersions('0.1.4', '0.1.12'), -1);
+  assert.equal(compareVersions('1.0.0', '0.9.9'), 1);
+  assert.equal(compareVersions('1.2.3-beta.1', '1.2.3'), 0, 'a prerelease suffix is stripped, not ranked');
+  assert.equal(compareVersions('1.2.3+build.5', '1.2.3'), 0, 'build metadata is stripped too');
+  assert.equal(compareVersions('1.2', '1.2.0'), 0, 'a missing segment reads as 0');
+  assert.equal(compareVersions('1.2.x', '1.2.0'), 0, 'a non-numeric segment reads as 0');
+  assert.equal(compareVersions('', ''), 0);
+  assert.equal(compareVersions(null, undefined), 0, 'never throws on a missing version');
+});
+
+test('readAppMcpVersion: reads the app copy, and answers null for every absence', async () => {
+  const deps = (files) => ({
+    exists: (p) => p in files,
+    readFile: async (p) => {
+      if (!(p in files)) throw new Error('ENOENT ' + p);
+      return files[p];
+    },
+  });
+  const manifest = join('/app', 'node_modules', '@webjsdev', 'mcp', 'package.json');
+  assert.equal(await readAppMcpVersion('/app', deps({ [manifest]: '{"version":"0.1.12"}' })), '0.1.12');
+  assert.equal(await readAppMcpVersion('/app', deps({})), null, 'no install');
+  assert.equal(await readAppMcpVersion('', deps({})), null, 'no app dir');
+  assert.equal(await readAppMcpVersion(undefined, deps({})), null, 'appDir omitted');
+  assert.equal(await readAppMcpVersion('/app', deps({ [manifest]: '{' })), null, 'unparseable');
+  assert.equal(await readAppMcpVersion('/app', deps({ [manifest]: '{"version":42}' })), null, 'a non-string version');
+});
+
+test('resolveDocsLocation: the app corpus outranks the bundled snapshot and the repo-root skill', () => {
+  // Same fake package layout the two-rung test builds, plus a third: an app with
+  // its own installed @webjsdev/mcp.
+  const root = mkdtempSync(join(tmpdir(), 'mcp-appdir-'));
+  _cleanup.push(root);
+  const srcDir = join(root, 'packages', 'mcp', 'src');
+  const bundled = join(root, 'packages', 'mcp', 'resources', 'references');
+  const skill = join(root, '.agents', 'skills', 'webjs');
+  mkdirSync(srcDir, { recursive: true });
+  mkdirSync(join(skill, 'references'), { recursive: true });
+  writeFileSync(join(root, 'AGENTS.md'), '# root\n');
+  const moduleUrl = pathToFileURL(join(srcDir, 'mcp-docs.js')).href;
+
+  const appDir = join(root, 'app');
+  const appRoot = join(appDir, 'node_modules', '@webjsdev', 'mcp', 'resources');
+
+  // No app install and no bundle: the dev rung, which froze nothing and so has
+  // no stamp to name.
+  assert.equal(resolveDocsLocation(moduleUrl, appDir).docsDir, join(skill, 'references'));
+  assert.equal(resolveDocsLocation(moduleUrl, appDir).corpusPath, null, 'a live checkout claims no provenance');
+
+  // A bundle but still no app install: the server's own snapshot, which does.
+  mkdirSync(bundled, { recursive: true });
+  let loc = resolveDocsLocation(moduleUrl, appDir);
+  assert.equal(loc.docsDir, bundled, 'falls back to the bundled snapshot');
+  assert.equal(loc.corpusPath, join(root, 'packages', 'mcp', 'resources', 'corpus.json'));
+
+  // The app's own copy now exists and outranks both.
+  mkdirSync(join(appRoot, 'references'), { recursive: true });
+  loc = resolveDocsLocation(moduleUrl, appDir);
+  assert.equal(loc.docsDir, join(appRoot, 'references'), 'the app corpus wins');
+  assert.equal(loc.agentsPath, join(appRoot, 'AGENTS.md'));
+  assert.equal(loc.skillPath, join(appRoot, 'SKILL.md'));
+  assert.equal(loc.corpusPath, join(appRoot, 'corpus.json'));
+
+  // An omitted or nonexistent appDir does not throw and lands on the same rung.
+  assert.equal(resolveDocsLocation(moduleUrl).docsDir, bundled, 'appDir omitted');
+  assert.equal(resolveDocsLocation(moduleUrl, join(root, 'nope')).docsDir, bundled, 'appDir does not exist');
+  assert.equal(resolveDocsLocation(moduleUrl, '').docsDir, bundled, 'empty appDir');
 });
 
 test('getPrompt: every listed prompt resolves to a user message; unknown throws', () => {

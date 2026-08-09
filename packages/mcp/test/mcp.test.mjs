@@ -526,6 +526,95 @@ test('mcp: resources/list + resources/read serve the framework docs; unknown uri
   assert.ok(frames[1].result.resources, 'the loop kept serving after the error');
 });
 
+/** An app dir carrying its own installed @webjsdev/mcp corpus, stamped and seeded. */
+function appWithCorpus(sentinel, version) {
+  const dir = tmpDir();
+  const res = join('node_modules', '@webjsdev', 'mcp', 'resources');
+  write(dir, join(res, 'references', 'components.md'), `# Components\n\n${sentinel}\n`);
+  write(dir, join(res, 'AGENTS.md'), `# AGENTS\n\n## Execution model\n\n${sentinel}\n\n## Invariants\n\n1. ${sentinel}\n`);
+  write(dir, join(res, 'SKILL.md'), `# SKILL\n\n${sentinel}\n`);
+  write(dir, join(res, 'corpus.json'), JSON.stringify({ package: '@webjsdev/mcp', version, sha: null, copiedAt: '2026-08-08T00:00:00.000Z' }));
+  write(dir, join('node_modules', '@webjsdev', 'mcp', 'package.json'), JSON.stringify({ name: '@webjsdev/mcp', version }));
+  return dir;
+}
+
+test("mcp: the docs corpus follows appDir, so an app's own installed copy wins over the server's", async () => {
+  // The #1319 incident: a global server keeps serving the snapshot it was
+  // published with, and contradicts the corpus sitting in the app's own
+  // node_modules. The app's copy is version-matched to the framework the agent
+  // is editing, so it is the one that can be right about that app.
+  const other = appWithCorpus('SENTINEL_OTHER_APP', '9.9.9');
+  const here = appWithCorpus('SENTINEL_CWD_APP', '9.9.9');
+
+  let { frames } = await driveMcp(here, [
+    { jsonrpc: '2.0', id: 80, method: 'tools/call', params: { name: 'docs', arguments: { topic: 'components', appDir: other } } },
+    { jsonrpc: '2.0', id: 81, method: 'tools/call', params: { name: 'docs', arguments: { topic: 'components' } } },
+  ]);
+  assert.match(frames[0].result.content[0].text, /SENTINEL_OTHER_APP/, 'an explicit appDir reads that app');
+  assert.match(frames[1].result.content[0].text, /SENTINEL_CWD_APP/, 'no appDir defaults to cwd');
+
+  // resources/* carry no appDir in the MCP protocol, so they resolve from cwd,
+  // which is exactly what a no-appDir tools/call defaults to. The two surfaces
+  // therefore agree whenever appDir does.
+  ({ frames } = await driveMcp(here, [
+    { jsonrpc: '2.0', id: 82, method: 'resources/read', params: { uri: 'webjs-docs://components' } },
+  ]));
+  assert.match(frames[0].result.contents[0].text, /SENTINEL_CWD_APP/, 'resources/read reads the cwd corpus');
+
+  // init reports which corpus it served, and its body comes from that same one.
+  ({ frames } = await driveMcp(here, [
+    { jsonrpc: '2.0', id: 83, method: 'tools/call', params: { name: 'init', arguments: {} } },
+  ]));
+  const primer = frames[0].result.content[0].text;
+  assert.match(primer, /Docs corpus: @webjsdev\/mcp@9\.9\.9, copied on 2026-08-08\./, 'names the corpus it served');
+  assert.match(primer, /SENTINEL_CWD_APP/, 'and the primer body came from that same corpus');
+  // App and server are both 9.9.9 here, so there is nothing to warn about.
+  assert.ok(!/Warning:/.test(primer), 'equal versions stay silent');
+});
+
+test('mcp: init warns when the app has a newer @webjsdev/mcp than the running server', async () => {
+  // driveMcp pins the server at 9.9.9, so an app on 10.0.0 is the stale-server case.
+  const newer = appWithCorpus('SENTINEL_NEWER', '10.0.0');
+  const { frames } = await driveMcp(newer, [
+    { jsonrpc: '2.0', id: 84, method: 'tools/call', params: { name: 'init', arguments: {} } },
+  ]);
+  const primer = frames[0].result.content[0].text;
+  assert.match(primer, /Warning: this MCP server is @webjsdev\/mcp@9\.9\.9, but this app has @webjsdev\/mcp@10\.0\.0\./);
+  assert.match(primer, /npm i -g @webjsdev\/mcp@latest/, 'says how to fix the stale install');
+  // Advisory, never a refusal: the corpus rung already pointed at the app's docs.
+  assert.match(primer, /SENTINEL_NEWER/, 'still answers, with the app corpus');
+});
+
+test('mcp: an injected docsDeps still wins for every appDir', async () => {
+  // The seam every pre-existing knowledge-layer test relies on: injection must
+  // short-circuit the per-appDir resolution entirely.
+  const stdin = new PassThrough();
+  const stdout = new PassThrough();
+  const stderr = new PassThrough();
+  let out = '';
+  stdout.on('data', (c) => { out += c.toString(); });
+  const docsDeps = {
+    docsDir: '/docs',
+    agentsPath: '/AGENTS.md',
+    skillPath: '/SKILL.md',
+    corpusPath: null,
+    listDir: (d) => (d === '/docs' ? ['components.md'] : []),
+    exists: (p) => p === '/AGENTS.md' || p === '/docs',
+    readFile: async () => '# injected\n\nSENTINEL_INJECTED\n',
+  };
+  const app = appWithCorpus('SENTINEL_ON_DISK', '10.0.0');
+  const done = runMcpServer({ stdin, stdout, stderr, cwd: app, version: '9.9.9', docsDeps });
+  stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 85, method: 'tools/call', params: { name: 'docs', arguments: { topic: 'components', appDir: app } } }) + '\n');
+  stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 86, method: 'resources/read', params: { uri: 'webjs-docs://components' } }) + '\n');
+  stdin.end();
+  await done;
+
+  const frames = out.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
+  assert.match(frames[0].result.content[0].text, /SENTINEL_INJECTED/, 'injection beats an explicit appDir');
+  assert.match(frames[1].result.contents[0].text, /SENTINEL_INJECTED/, 'and beats the cwd resolution too');
+  assert.ok(!/SENTINEL_ON_DISK/.test(out), 'the on-disk corpus was never consulted');
+});
+
 test('mcp: prompts/list + prompts/get serve the recipe workflows; unknown prompt errors cleanly', async () => {
   const dir = tmpDir();
   let { frames } = await driveMcp(dir, [

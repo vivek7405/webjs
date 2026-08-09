@@ -14,11 +14,14 @@
  * given its injected `{ docsDir, agentsPath, readFile }` deps, so it is testable
  * in-process without booting a server or touching the real filesystem.
  *
- * Docs resolution (so `npx @webjsdev/cli mcp` is self-contained): a published
- * install reads the corpus bundled under `<cli>/resources/references` (copied
- * at `prepack`, see `scripts/copy-mcp-resources.js`); a monorepo dev run falls
- * back to the repo-root skill. {@link resolveDocsLocation} encodes that
- * two-path lookup so source stays single (no committed duplicate docs).
+ * Docs resolution (so `npx @webjsdev/mcp` is self-contained): the APP's own
+ * installed `@webjsdev/mcp` corpus wins, then the running server's snapshot
+ * bundled under `<pkg>/resources/references` (copied at `prepack`, see
+ * `scripts/copy-mcp-resources.js`), then the repo-root skill for a monorepo dev
+ * run. {@link resolveDocsLocation} encodes that lookup so source stays single
+ * (no committed duplicate docs). `init` reports which of the three it served,
+ * from the `corpus.json` build stamp, and warns when the app's installed mcp is
+ * newer than the running server (#1319).
  *
  * @module mcp-docs
  */
@@ -30,36 +33,173 @@ import { fileURLToPath } from 'node:url';
 /** The URI scheme for a framework-docs resource: `webjs-docs://<name>`. */
 const DOCS_SCHEME = 'webjs-docs://';
 
+/** The paths of one bundled corpus root (`<something>/resources`). */
+function bundleAt(root) {
+  return {
+    docsDir: join(root, 'references'),
+    agentsPath: join(root, 'AGENTS.md'),
+    skillPath: join(root, 'SKILL.md'),
+    corpusPath: join(root, 'corpus.json'),
+  };
+}
+
 /**
  * Resolve where the framework-docs corpus lives, plus the `AGENTS.md` contract
- * path. Tries the BUNDLED location first (a published `@webjsdev/mcp` ships
- * `resources/references/` + `resources/SKILL.md` + `resources/AGENTS.md` via `prepack`), then falls
- * back to the monorepo-root skill layout used in dev and
- * tests. Returns `{ docsDir, agentsPath }`; either path may not exist, callers
- * fail soft (an empty corpus is valid, never a crash).
+ * and build-stamp paths. Three rungs, highest first:
+ *
+ * 1. `<appDir>/node_modules/@webjsdev/mcp/resources`, the APP's own installed
+ *    copy. It wins because it is version-matched to the framework the agent is
+ *    editing, and so is the only corpus that can be correct about that app. A
+ *    globally installed server otherwise serves a snapshot frozen at whatever
+ *    it was published from, which taught reverted guidance for months (#1319).
+ * 2. `<pkgRoot>/resources`, the running server's own bundled snapshot (copied
+ *    at `prepack`, see `scripts/copy-mcp-resources.js`).
+ * 3. The monorepo-root skill, the dev/test path, which has no stamp because a
+ *    live checkout froze nothing; `corpusPath` is `null` there.
+ *
+ * The rung-1 probe is a plain `existsSync` on the references directory rather
+ * than `require.resolve('@webjsdev/mcp')` from `appDir`, because what this needs
+ * is "a directory of markdown at a known path" and nothing more. Resolving the
+ * package would go through its `exports` map, and in this monorepo that lands on
+ * the workspace symlink back to `packages/mcp`, whose `resources/` does not
+ * exist in a checkout, so the resolve would fall to rung 3 anyway.
+ *
+ * Any returned path may not exist; callers fail soft (an empty corpus is valid,
+ * never a crash).
  *
  * @param {string} [moduleUrl]  `import.meta.url` of the caller (defaults to this module)
- * @returns {{ docsDir: string, agentsPath: string }}
+ * @param {string} [appDir]  the app being asked about; enables the rung-1 probe
+ * @returns {{ docsDir: string, agentsPath: string, skillPath: string, corpusPath: string | null }}
  */
-export function resolveDocsLocation(moduleUrl) {
+export function resolveDocsLocation(moduleUrl, appDir) {
   const here = dirname(fileURLToPath(moduleUrl || import.meta.url));
   const pkgRoot = resolve(here, '..'); // packages/mcp/src -> packages/mcp
   const repoRoot = resolve(here, '..', '..', '..'); // -> monorepo root
 
-  const bundledRefs = join(pkgRoot, 'resources', 'references');
-  if (existsSync(bundledRefs)) {
-    return {
-      docsDir: bundledRefs,
-      agentsPath: join(pkgRoot, 'resources', 'AGENTS.md'),
-      skillPath: join(pkgRoot, 'resources', 'SKILL.md'),
-    };
+  if (typeof appDir === 'string' && appDir) {
+    const appRoot = join(appDir, 'node_modules', '@webjsdev', 'mcp', 'resources');
+    if (existsSync(join(appRoot, 'references'))) return bundleAt(appRoot);
   }
+  const bundledRoot = join(pkgRoot, 'resources');
+  if (existsSync(join(bundledRoot, 'references'))) return bundleAt(bundledRoot);
+
   const skill = join(repoRoot, '.agents', 'skills', 'webjs');
   return {
     docsDir: join(skill, 'references'),
     agentsPath: join(repoRoot, 'AGENTS.md'),
     skillPath: join(skill, 'SKILL.md'),
+    corpusPath: null,
   };
+}
+
+/**
+ * Compare two `major.minor.patch` versions, returning `-1` / `0` / `1`.
+ *
+ * Dependency-free by design (this package ships zero dependencies), and
+ * deliberately coarse: any prerelease or build suffix is stripped before
+ * comparing, a missing segment reads as `0`, and a non-numeric segment reads as
+ * `0`. Its only consumer is the staleness warning, where the question is "is the
+ * app's copy meaningfully newer", so ranking two prereleases of one patch is not
+ * a case that needs an answer.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {-1 | 0 | 1}
+ */
+export function compareVersions(a, b) {
+  const parts = (v) => String(v == null ? '' : v).trim().split(/[-+]/)[0].split('.');
+  const pa = parts(a);
+  const pb = parts(b);
+  for (let i = 0; i < 3; i++) {
+    const x = Number(pa[i]);
+    const y = Number(pb[i]);
+    const nx = Number.isFinite(x) ? x : 0;
+    const ny = Number.isFinite(y) ? y : 0;
+    if (nx !== ny) return nx < ny ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * The `@webjsdev/mcp` version installed in `appDir`, or `null` when that cannot
+ * be known (no app dir, no install, an unreadable or unparseable manifest, no
+ * `version` field). Only mcp's own version is read: the corpus ships INSIDE this
+ * package, so mcp's version is the only one that bounds the docs, and reading
+ * the other `@webjsdev/*` manifests would multiply the failure modes without
+ * adding signal.
+ *
+ * @param {string} [appDir]
+ * @param {{ exists?: (p: string) => boolean, readFile: (p: string, enc: string) => Promise<string> }} deps
+ * @returns {Promise<string | null>}
+ */
+export async function readAppMcpVersion(appDir, deps) {
+  if (typeof appDir !== 'string' || !appDir) return null;
+  const manifest = join(appDir, 'node_modules', '@webjsdev', 'mcp', 'package.json');
+  try {
+    if (deps.exists && !deps.exists(manifest)) return null;
+    const version = JSON.parse(await deps.readFile(manifest, 'utf8')).version;
+    return typeof version === 'string' && version ? version : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The one line naming WHICH docs corpus `init` is serving, so an agent reading a
+ * stale global install can see that it is stale (#1319). Never throws: a
+ * missing, unreadable, or malformed stamp degrades to the unstamped wording,
+ * because refusing to answer is strictly worse than answering with a caveat.
+ *
+ * @param {object} deps
+ * @returns {Promise<string>}
+ */
+async function corpusLine(deps) {
+  if (!deps.corpusPath) return 'Docs corpus: the live repo-root docs in this checkout, not a bundled snapshot.';
+  const unstamped = 'Docs corpus: an unstamped @webjsdev/mcp bundled snapshot.';
+  try {
+    const stamp = JSON.parse(await deps.readFile(deps.corpusPath, 'utf8'));
+    if (!stamp || !stamp.version) return unstamped;
+    const pkg = stamp.package || '@webjsdev/mcp';
+    const date = typeof stamp.copiedAt === 'string' && stamp.copiedAt ? stamp.copiedAt.slice(0, 10) : 'an unknown date';
+    // A SHA the stamp could not capture drops the clause rather than printing a
+    // placeholder: the point of a provenance line is that no answer reads as no
+    // answer. Same reason the shape is checked, since only a real commit id
+    // resolves to a diff.
+    const sha = typeof stamp.sha === 'string' && /^[0-9a-f]{40}$/.test(stamp.sha) ? stamp.sha.slice(0, 7) : null;
+    return sha
+      ? `Docs corpus: ${pkg}@${stamp.version}, copied from webjsdev/webjs ${sha} on ${date}.`
+      : `Docs corpus: ${pkg}@${stamp.version}, copied on ${date}.`;
+  } catch {
+    return unstamped;
+  }
+}
+
+/**
+ * The staleness warning, or `null` when there is nothing to warn about.
+ *
+ * Fires only when the app's installed `@webjsdev/mcp` is strictly NEWER than the
+ * running server's. Equal or lower is silent: a newer global server reading an
+ * older app is the ordinary shape and is not a defect. It warns rather than
+ * failing, because by the time it fires the corpus rungs above have already
+ * pointed the server at the app's own docs, so the text below the warning is
+ * already right; what the warning is actually for is telling the human to update
+ * the global install so the TOOLS match too.
+ *
+ * @param {object} deps
+ * @returns {Promise<string | null>}
+ */
+async function staleWarning(deps) {
+  const server = deps.serverVersion;
+  // '0.0.0' is the sentinel both entry points fall back to when they cannot read
+  // their own manifest, so it means "unknown", not "older than everything".
+  if (!server || server === '0.0.0') return null;
+  const app = await readAppMcpVersion(deps.appDir, deps);
+  if (!app || compareVersions(app, server) <= 0) return null;
+  return (
+    `Warning: this MCP server is @webjsdev/mcp@${server}, but this app has @webjsdev/mcp@${app}. ` +
+    "The server's own docs and tools may be stale. Update the global install with " +
+    'npm i -g @webjsdev/mcp@latest, or bun add -g @webjsdev/mcp.'
+  );
 }
 
 /**
@@ -191,6 +331,8 @@ export function sectionByHeading(md, headingRe) {
 export async function initText(deps) {
   let agents = '';
   try { agents = await deps.readFile(deps.agentsPath, 'utf8'); } catch { agents = ''; }
+  const corpus = await corpusLine(deps);
+  const warning = await staleWarning(deps);
   const execModel = sectionByHeading(agents, /^##\s+Execution model/im);
   const invariants = sectionByHeading(agents, /^##\s+Invariants/im);
 
@@ -216,6 +358,11 @@ export async function initText(deps) {
 
   const parts = [
     '# webjs: read first',
+    '',
+    // Provenance first, so an agent reading a months-old global install sees
+    // which docs it is holding before it reads a word of them (#1319).
+    ...(warning ? [warning, ''] : []),
+    corpus,
     '',
     router,
     '',
