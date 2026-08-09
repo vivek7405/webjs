@@ -212,6 +212,44 @@ test('compileRedirectRules: an invalid source pattern drops the entry', () => {
   assert.equal(rules.length, 0);
 });
 
+test('compileRedirectRules: a wrong-typed redirects key warns, an absent one does not', () => {
+  // The config LEVEL, matching headers.js. `"redirects": "nope"` discards the
+  // whole config; the schema types the key `array` and the boot check inspects
+  // only scalar leaves, so nothing else reports it. An ABSENT key is the
+  // default and must stay silent, or every app without redirects warns on boot.
+  const seen = [];
+  const realWarn = console.warn;
+  console.warn = (...args) => seen.push(args[0]);
+  try {
+    assert.deepEqual(compileRedirectRules({ webjs: { redirects: 'nope' } }), []);
+    assert.deepEqual(compileRedirectRules({ webjs: { redirects: {} } }), []);
+    assert.equal(seen.length, 2, `a wrong-typed key warns, got ${seen.length}`);
+    assert.match(seen[0], /redirects must be an array/);
+
+    seen.length = 0;
+    // Every shape where the key is NOT present. The non-object ones matter
+    // most: reading `raw` off an `&&` chain made these warn about a `redirects`
+    // nobody wrote, because the chain short-circuits to whatever link failed
+    // rather than to the key's value. Only `null` was covered before, which is
+    // the one value that happens to pass through the chain unchanged, so the
+    // bug sat under a green test.
+    for (const shape of [
+      { webjs: {} }, {}, null, undefined, 'a-string', 42, 0, false, '', [],
+      { webjs: false }, { webjs: 0 }, { webjs: '' }, { webjs: null }, { webjs: 'nope' },
+      { webjs: [] },
+    ]) {
+      assert.deepEqual(compileRedirectRules(shape), [], `${JSON.stringify(shape)} compiles to no rules`);
+    }
+    assert.deepEqual(seen, [], `no shape without a redirects key may warn, got ${JSON.stringify(seen)}`);
+
+    // Present-but-null IS a key the author wrote, so it does warn.
+    assert.deepEqual(compileRedirectRules({ webjs: { redirects: null } }), []);
+    assert.equal(seen.length, 1, 'an explicit null is present, so it warns');
+  } finally {
+    console.warn = realWarn;
+  }
+});
+
 test('compileRedirectRules: a non-object entry is dropped AND warned about', () => {
   // This branch used to `continue` in silence while every other drop warned,
   // so a `["/old"]` entry (the shape you write when you forget the object
@@ -234,7 +272,7 @@ test('compileRedirectRules: a non-object entry is dropped AND warned about', () 
   assert.equal(rules[0].destination, '/b');
   assert.equal(warnings.length, 3, 'each of the three bad entries warned');
   for (const w of warnings) {
-    assert.match(w, /dropping invalid webjs\.redirects entry/);
+    assert.match(w, /dropping invalid webjs\.redirects config/);
     assert.match(w, /entry must be an object/);
   }
 });
