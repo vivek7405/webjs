@@ -105,6 +105,23 @@ It costs about two and a half seconds on a cold worktree and nothing once there 
 
 It runs below the primary-checkout guard, so `worktree:link` in the primary stays a no-op. That guard is not what keeps seeding out of the test suite, though. The `defaultPrimary()` repo-health test runs the script bare against its own cwd, and from a linked worktree (the mandated workflow) the guard does not fire, so the script would seed that worktree's blog database as a side effect of `npm test`, racing `test/integration/blog-http.test.mjs` reading the same file in parallel. That test therefore sets `WEBJS_NO_WORKTREE_SEED=1` explicitly, and the helpers in that file strip the variable from the ambient env so an exported opt-out cannot invert the seed assertions.
 
+### `webjs check` runs per app, and the repo root refuses (#1301)
+
+`webjs check` is an APP-level tool: every rule assumes one application, meaning one module graph, one custom-element registry, one runtime. This repo's root is none of those, it is a workspace holding two apps plus every package's test suite plus editor fixtures plus the scaffold templates, so a root-level run used to walk all of it and report 67 collisions that no single runtime ever sees. `my-counter`, for instance, was reported as duplicated across a blog component, an editor-plugin fixture, two unit tests, and a type fixture, five files that never load together.
+
+So the command now refuses in any directory with no `app/`, exits 1, and names the member apps to run instead. The two in-repo apps are `examples/blog` and `website`:
+
+```sh
+( cd examples/blog && npx webjs check )
+( cd website && npx webjs check )
+```
+
+Under `--json` the refusal is emitted as JSON rather than prose, `{ error: { code: 'NOT_AN_APP', message, cwd, apps } }`, so an agent's parser does not choke. It carries neither `violations` nor `summary` on purpose: a consumer that ignores the exit code and reads `report.violations.length` should throw rather than be told a workspace is clean.
+
+That is what `.github/workflows/ci.yml` has always done (it `cd`s per app), which is why CI was green while the root-level run looked catastrophic. `test/cli/check-target.test.mjs` pins the two together: it parses the app list out of the `for app in ...; do` loop in the `webjs check` step and asserts set equality with the list the refusal derives from the root `package.json` `workspaces` globs. A third app added to CI is picked up automatically; one dropped from CI reds the test. That drift guard is what a `--workspaces` flag was rejected in favour of.
+
+`webjs doctor` is deliberately NOT gated the same way. It already degrades correctly at the root (the elision and asset checks report "no app to analyse") and its toolchain checks are meaningful in a workspace.
+
 ### Merged worktrees are auto-removed (`cleanup-merged-worktree.sh`)
 
 Per-task worktrees pile up when a session merges its PR but never runs `git worktree remove` (a skipped step, or a crash mid-task). The `.claude/hooks/cleanup-merged-worktree.sh` PostToolUse hook (matcher `Bash`, wired in `.claude/settings.json`) closes that gap: after any `gh pr merge`, it sweeps every linked worktree and removes the ones that are safe to drop, so cleanup is deterministic rather than a thing an agent has to remember.

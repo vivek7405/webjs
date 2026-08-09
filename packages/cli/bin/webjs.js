@@ -9,6 +9,7 @@ import { checkNodeInline, nodeInlineMessage } from '../lib/node-preflight.js';
 import { loadAppEnv, resolvePort } from '../lib/port.js';
 import { planDevSupervisor } from '../lib/dev-supervisor.js';
 import { checkAppName, appNameErrorMessage } from '../lib/app-name.js';
+import { findCheckTarget, notAnAppMessage, notAnAppJson } from '../lib/check-target.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const [cmd, ...rest] = process.argv.slice(2);
@@ -720,6 +721,22 @@ async function main() {
           console.log(`  ${r.name.padEnd(30)} ${r.description}`);
         }
         break;
+      }
+
+      // #1301: `webjs check` is an APP-level tool. At a workspace root it
+      // walks every package's tests and every app at once and reports
+      // cross-app collisions that no single runtime ever sees (67 false
+      // findings at this repo's root). Refuse instead, naming the member
+      // apps to run it in. Exit 1: an agent gates on the exit status, and
+      // 0 would read as "clean", the exact false signal this fixes.
+      const target = await findCheckTarget(process.cwd());
+      if (!target.isApp) {
+        if (rest.includes('--json')) {
+          console.log(JSON.stringify(notAnAppJson(process.cwd(), target.workspaceApps)));
+        } else {
+          console.error(notAnAppMessage(process.cwd(), target.workspaceApps));
+        }
+        process.exit(1);
       }
 
       const violations = await checkConventions(process.cwd());

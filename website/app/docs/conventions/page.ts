@@ -42,6 +42,8 @@ webjs check
 # List the correctness checks and their descriptions
 webjs check --rules</code-block>
 
+    <p>Run it from the <strong>app root</strong>, the directory holding <code>app/</code>. Every rule assumes one application, meaning one module graph, one custom-element registry, one runtime, so in a monorepo the workspace root has no application to check. Run there, the command refuses with a non-zero exit and names the member apps to run it in, rather than reporting cross-app collisions that no single runtime ever sees. <code>webjs check --rules</code> is documentation, so it works from anywhere.</p>
+
     <h3>Workflow for AI agents</h3>
     <ol>
       <li>Read the skill (<code>.agents/skills/webjs/SKILL.md</code>) and <code>AGENTS.md</code> for the project conventions and follow them by judgment.</li>

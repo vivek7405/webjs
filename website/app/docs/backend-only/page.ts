@@ -333,7 +333,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const { title, body, authorId } = await req.json();
   const [post] = await db.insert(posts).values({
-    title, body, slug: title.toLowerCase().replace(/\s+/g, '-'), authorId,
+    title, body, slug: title.toLowerCase().replace(/\\s+/g, '-'), authorId,
   }).returning();
   return json(post, { status: 201 });
 }</code-block>

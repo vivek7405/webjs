@@ -136,7 +136,44 @@ website/
                        `${x}` is render-time and gets dropped. Treating all
                        three alike printed `<form action=\>` on 12 corpus
                        lines, teaching an LLM the one shape invariant 12
-                       exists to rule out.
+                       exists to rule out. Everything it takes from a docs
+                       page is copied out of page SOURCE, which is a JS
+                       template literal, so all four paths fold their
+                       backslash escapes: a fenced sample at capture, a kept
+                       hole as it parks, ordinary prose in one pass once the
+                       hole passes have run, and a description inside
+                       `plainText` (which is where it belongs rather than at
+                       a call site, because only 8 of 44 pages declare
+                       `metadata.description` and the other 36 fall back to
+                       their first `<p>`, so both sites need it). Those three
+                       all fold BEFORE their single entity decode, which is
+                       the browser's own order, since JS cooks the literal
+                       first and the HTML parser only ever sees cooked text.
+                       A title is the exception that proves it: it folds at
+                       its call site because it never passes through
+                       `plainText`, and it decodes nothing at all, since it
+                       is read from a quoted metadata string rather than out
+                       of markup. The prose fold runs AFTER the hole passes
+                       because those are what tell `\${x}` (literal text)
+                       from `${x}` (render-time, and dropped), so folding
+                       first would drop the literal. Fold exactly once per
+                       path: a second fold eats an authored `\\`, which is
+                       why no `plainText` call site folds and a test reads
+                       the call sites to keep it that way. Only the hole
+                       half existed, which is why the corpus printed
+                       `<form action=\${createPost}>` on 5 lines and
+                       ``html\`...\` `` on 23 more, where the rendered page
+                       shows `<form action=${createPost}>` and a plain
+                       backtick. A backslash now surviving out of a DOCS PAGE
+                       is one an author WROTE as `\\`, so a page escaping a
+                       letter (`/\s+/g`, which cooks to `/s+/g` and rendered
+                       that way live on two pages) is a page bug, guarded by
+                       a test rather than by convention. That says nothing
+                       about the rest of /llms-full.txt: `renderLlmsFull`
+                       appends the repo-root skill markdown verbatim, never
+                       through `bodyToMarkdown`, and those `.md` files are
+                       not template literals, so their single `\` is correct
+                       at source and reaches the corpus unfolded.
   modules/
     ui/components/     GITIGNORED mirror of the @webjsdev/ui registry sources,
                        written by scripts/copy-registry.mjs. NEVER hand-write

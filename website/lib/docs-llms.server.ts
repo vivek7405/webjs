@@ -136,15 +136,24 @@ function oneLine(s: string): string {
 }
 
 /**
- * `oneLine` plus the decode, in the one order that is safe: strip, THEN
- * decode. Exported for the same reason `bodyToMarkdown` is, so a unit test
- * can drive it on a fixture instead of planting scaffolding in a real docs
- * page. The whitespace collapse is re-run after decoding because `&nbsp;`
- * decodes to a literal space, so a run of them is only collapsible once the
- * decode has happened.
+ * `oneLine` plus the fold and the decode, in the one order that is safe:
+ * strip, fold, THEN decode. Exported for the same reason `bodyToMarkdown` is,
+ * so a unit test can drive it on a fixture instead of planting scaffolding in
+ * a real docs page. The whitespace collapse is re-run after decoding because
+ * `&nbsp;` decodes to a literal space, so a run of them is only collapsible
+ * once the decode has happened.
+ *
+ * The fold lives HERE rather than at the two call sites because both of them
+ * copy out of page source and so both need it, and one of them is the
+ * majority path: only 8 of 44 pages declare `metadata.description`, and the
+ * other 36 fall back to their first `<p>`. That fallback did not fold, so a
+ * paragraph reached /llms-full.txt cooked and the same paragraph reached
+ * /llms.txt and the search index with its escape debris intact. Folding once
+ * here is what makes "every path that copies source folds" true rather than
+ * nearly true.
  */
 export function plainText(s: string): string {
-  return decodeEntities(oneLine(s)).replace(/\s+/g, ' ').trim();
+  return decodeEntities(unescapeJs(oneLine(s))).replace(/\s+/g, ' ').trim();
 }
 
 /** Truncate at a word boundary, appending an ellipsis when cut. */
@@ -217,7 +226,21 @@ export function bodyToMarkdown(raw: string): string {
   // a bare `<` in front of a strip that then eats to the next `>`.
   const codeBlocks: string[] = [];
   body = body.replace(/<(?:pre|code-block)(?=[\s>])[^>]*>([\s\S]*?)<\/(?:pre|code-block)>/g, (_m, code) => {
-    codeBlocks.push(decodeEntities(String(code)).replace(/\n+$/, ''));
+    // A sample is copied out of page SOURCE, which is a JS template literal,
+    // so a backtick in it is written `\`` and a literal hole `\${`. Without
+    // this fold the corpus taught `<form action=\${createPost}>` where the
+    // rendered page shows `<form action=${createPost}>`, on the exact shape
+    // invariant 12 governs, in the one surface whose reader is an LLM.
+    //
+    // Escapes fold BEFORE entities decode, which is the order the browser
+    // applies them: JS cooks the literal first, and the HTML parser sees only
+    // the cooked text. The two orders agree on every sample in the repo and
+    // differ on one shape, an escape splitting an entity, where `&am\p;`
+    // cooks to `&amp;` and the parser then shows `&`. The reverse order can
+    // never help, because the entity table below yields no backslash, so
+    // decoding cannot manufacture an escape for this fold to eat. Same order
+    // the prose keep-passes use below.
+    codeBlocks.push(decodeEntities(unescapeJs(String(code))).replace(/\n+$/, ''));
     return `\uE000CODE${codeBlocks.length - 1}\uE000`;
   });
 
@@ -268,6 +291,20 @@ export function bodyToMarkdown(raw: string): string {
     // Brace-aware: `[^}]*` would stop at the FIRST `}`, leaving `"}` debris
     // behind a nested hole.
     .replace(/\$\{(?:[^{}]|\{[^}]*\})*\}/g, '');
+
+  // Prose is copied out of the same JS template literal as a hole or a
+  // sample, so it folds its escapes too. Without this the corpus taught
+  // ``export a function returning html\`...\` `` on 23 lines across 8 pages,
+  // where the rendered page shows a plain backtick, which is the same
+  // disagreement the two hole passes above and the sample capture were
+  // written to remove.
+  //
+  // AFTER those hole passes, never before: the escaped-hole pass is what
+  // tells `\${x}` (literal text a reader sees) apart from `${x}` (render-time
+  // and dropped), so folding first would erase the distinction and drop the
+  // literal. BEFORE the restore below, so the text those passes already
+  // folded cannot fold a second time. The single decode still comes last.
+  body = unescapeJs(body);
 
   // Restore kept holes. A kept hole can itself contain a parked sentinel (an
   // escaped hole nested inside a string-literal one), so this repeats until
@@ -333,7 +370,10 @@ async function extractPage(file: string): Promise<DocPage> {
   // description like 'SSR\'d to real HTML...' otherwise truncates at the
   // backslash, and that garbage fragment ships verbatim in /llms.txt and the
   // search index. `(?:\\.|[^'\\])*` consumes any escaped character as a
-  // unit; unescapeJs() then folds the backslashes back out of the capture.
+  // unit; the fold then takes the backslashes back out of the capture. The
+  // title folds here because it never passes through plainText; both
+  // descriptions fold inside plainText instead, so neither folds twice (a
+  // second fold is destructive, since it would eat an authored `\\`).
   const titleMatch = meta.match(/title:\s*(?:'((?:\\.|[^'\\])*)'|"((?:\\.|[^"\\])*)"|`((?:\\.|[^`\\])*)`)/);
   const rawTitle = unescapeJs(titleMatch?.[1] ?? titleMatch?.[2] ?? titleMatch?.[3] ?? '') || slug;
   const title = rawTitle.replace(/\s*\|\s*webjs\s*$/i, '').trim();
@@ -342,7 +382,7 @@ async function extractPage(file: string): Promise<DocPage> {
   let description = '';
   const descMatch = meta.match(/description:\s*(?:'((?:\\.|[^'\\])*)'|"((?:\\.|[^"\\])*)"|`((?:\\.|[^`\\])*)`)/);
   if (descMatch) {
-    description = plainText(unescapeJs(descMatch[1] ?? descMatch[2] ?? descMatch[3] ?? ''));
+    description = plainText(descMatch[1] ?? descMatch[2] ?? descMatch[3] ?? '');
   }
   if (!description) {
     const pMatch = raw.match(/<p[^>]*>([\s\S]*?)<\/p>/);
