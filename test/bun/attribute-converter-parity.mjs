@@ -3,13 +3,14 @@
  * (#1340).
  *
  * Both attribute readers now go through one shared `readAttributeValue` in
- * `packages/core/src/component.js`: the client `attributeChangedCallback` and
- * the SSR `applyAttrsToInstance` in `render-server.js`. The SSR half is the
- * runtime-sensitive one, because `render-server.js` is on the SSR dispatch path
- * that Node and Bun reach through different listener shells, so the value the
- * server paints is worth pinning per runtime rather than on Node alone.
+ * `packages/core/src/attribute-reader.js`: the client `attributeChangedCallback`
+ * in `component.js` and the SSR `applyAttrsToInstance` in `render-server.js`.
+ * The SSR half is the runtime-sensitive one, because `render-server.js` is on
+ * the SSR dispatch path that Node and Bun reach through different listener
+ * shells, so the value the server paints is worth pinning per runtime rather
+ * than on Node alone.
  *
- * Three assertions, in order of what they protect:
+ * Four assertions, in order of what they protect:
  *
  *   - the converter RUNS at SSR at all, which is the reported bug. Before this,
  *     the SSR reader dispatched on `def.type` alone and painted the raw
@@ -18,6 +19,10 @@
  *     `prop(Object)`, whose default branch would `JSON.parse` the attribute,
  *     throw, and fall back to `null`, so a precedence regression is visible as
  *     `null` rather than as a subtly different string.
+ *   - the converter is handed DECODED text. The client's value comes out of the
+ *     DOM, which decoded it, while the SSR reader walks the raw source tag, so
+ *     without a decode the two sides read the same attribute differently and a
+ *     parsing converter throws on markup `escapeAttr` itself produced.
  *   - a THROWING converter is not caught by the reader, so it lands in the
  *     per-component error isolation and its SIBLING in the same render still
  *     renders. That interaction between the reader and the isolation `catch` is

@@ -38,8 +38,9 @@ test('custom attribute SSR counterfactual: absent attribute leaves the prop fals
 // The SSR reader used to dispatch on `def.type` alone, so a prop declaring a
 // `converter` was read one way server-side and another way the moment the
 // element upgraded. Both readers now go through the one `readAttributeValue`
-// in `component.js`, so the converter runs on both sides, ahead of type
-// coercion. The browser half of the agreement (a REAL element upgrade against
+// in `packages/core/src/attribute-reader.js`, so the converter runs on both
+// sides, ahead of type coercion, and is handed decoded text on both.
+// The browser half of the agreement (a REAL element upgrade against
 // this same markup) lives in
 // `packages/core/test/rendering/browser/reflect-function-guard.test.js`.
 
