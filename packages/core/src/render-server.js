@@ -1850,14 +1850,12 @@ function decodeAttrEntities(s) {
  * stays literal either way, verified against the three engines, though note it
  * gets there by not being a legacy name rather than by the carve-out.
  *
- * That same greediness means the ALPHANUMERIC half of the carve-out below
- * cannot fire: whatever follows the match is by construction not `[a-zA-Z0-9]`,
- * or the capture would have eaten it. It is written out anyway, because the
- * rule the spec states has two halves and a reader who knows the spec should
- * find both. Keeping it also means this function stays correct on its own terms
- * instead of silently depending on `CHAR_REF` staying greedy. `&nbspx` is
- * therefore literal because `nbspx` is not a legacy name, NOT because of the
- * lookahead; `&nbsp=x` is the shape the lookahead actually decides.
+ * That same greediness means an ASCII alphanumeric character can never follow
+ * the match: whatever follows is by construction not `[a-zA-Z0-9]`, or the
+ * capture would have eaten it. So only the `=` check is needed for the
+ * attribute carve-out. `&nbspx` is literal because `nbspx` is not a legacy
+ * name, NOT because of the lookahead; `&nbsp=x` is the shape the lookahead
+ * actually decides.
  *
  * @param {string} match  the whole matched reference, returned unchanged when nothing decodes
  * @param {string} name   the name, with no `&` and no `;`
@@ -1873,9 +1871,10 @@ function decodeNamed(match, name, hadSemi, nextChar) {
   if (!LEGACY.has(name)) return match;
   // The attribute carve-out: a legacy name decodes only when what follows is
   // neither `=` nor an ASCII alphanumeric. Nothing following at all (the end of
-  // the value) decodes, which is the common `s="&nbsp"` shape. Only the `=`
-  // half can actually fire here; see the docblock for why the other is kept.
-  if (nextChar === '=' || (nextChar !== undefined && /[0-9A-Za-z]/.test(nextChar))) return match;
+  // the value) decodes, which is the common `s="&nbsp"` shape. Because CHAR_REF
+  // captures greedily, what follows is never an ASCII alphanumeric, so only `=`
+  // needs to be checked here.
+  if (nextChar === '=') return match;
   // Every legacy name is in the table under the same name, asserted by a test
   // rather than left to trust, so this cannot miss.
   return codePointsToString(NAMED.get(name));
