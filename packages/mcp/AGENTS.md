@@ -60,12 +60,17 @@ src/
                          output.
                          `deps` / `docsDeps` / `sourceDeps` / `uiDeps` are
                          injectable for in-process tests.
-  mcp-docs.js            KNOWLEDGE layer (#376): resolveDocsLocation (bundled
-                         resources/ first, repo-root skill fallback in
-                         dev), the init primer (sources the AGENTS.md
-                         execution-model + invariants so it cannot drift), the
-                         docs tool, resources (the skill references + SKILL.md + AGENTS.md
+  mcp-docs.js            KNOWLEDGE layer (#376): resolveDocsLocation (the app's
+                         own installed corpus first, then the server's bundled
+                         resources/, then the repo-root skill in dev; also
+                         returns corpusPath, null on the dev rung), the init
+                         primer (sources the AGENTS.md execution-model +
+                         invariants so it cannot drift, and reports which corpus
+                         it served plus a warning when the app's @webjsdev/mcp
+                         is newer than the server's, #1319), the docs tool,
+                         resources (the skill references + SKILL.md + AGENTS.md
                          as webjs-docs://*), and the recipe PROMPTS.
+                         compareVersions / readAppMcpVersion back that warning.
   mcp-source.js          SOURCE tool (#378): reads the framework's own no-build
                          source from node_modules/@webjsdev/*/src (read-only,
                          traversal-guarded via realpath, loads no module).
@@ -119,6 +124,16 @@ scripts/
    not a doc, which is why it sits beside `AGENTS.md` rather than inside
    `references/`: `catalogue()` lists only `*.md` under the references dir, so a
    stamp there would surface to agents as readable guidance.
+4. **The corpus is a pure function of `appDir`.** `resolveDocsLocation` prefers
+   the corpus installed in the app being asked about, because that copy is
+   version-matched to the framework the agent is editing and the server's own
+   snapshot may be years older (#1319). So the docs deps are built per call and
+   memoized by `appDir`, never once at boot, which would pin the corpus to the
+   launch directory. `resources/list` and `resources/read` carry no `appDir` in
+   the MCP protocol, so they resolve from `cwd`, which is what a `tools/call`
+   with no `appDir` argument defaults to; the surfaces diverge only when a
+   caller deliberately asks about a different app. An injected `opts.docsDeps`
+   wins for every `appDir`, which is the seam the tests drive.
 
 ## Tests
 
