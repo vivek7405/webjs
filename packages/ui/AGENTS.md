@@ -478,11 +478,16 @@ names mechanically:
   cover. Which sources a given generator reads, and when it goes to the
   network, is the registry-resolution question, answered by the LOCAL-FIRST
   section above, so do not restate it here.
-- A variant prefix is split on the last colon OUTSIDE square brackets, because
-  an arbitrary value carries colons of its own (`border-[length:2px]`,
-  `bg-[url(https://x/y.png)]`). Splitting on the last colon anywhere hands the
-  group matcher a fragment like `2px]`, so the utility silently stops deduping.
-- Once a bracketed value reaches the matcher, its TYPE HINT names the property
+- A variant prefix is split on the last colon at TOP LEVEL, meaning outside
+  both square brackets and parentheses, because an arbitrary value carries
+  colons of its own in either delimiter (`border-[length:2px]`,
+  `bg-[url(https://x/y.png)]`, `shadow-(color:--x)`). Splitting on the last
+  colon anywhere hands the group matcher a fragment like `2px]` or `--x)`, so
+  the utility silently stops deduping. The two delimiters get SEPARATE
+  counters; see the paren-spelling bullet below for why one shared counter is
+  wrong.
+- Once an arbitrary value reaches the matcher, in either spelling, its TYPE
+  HINT names the property
   and picks the group, since the prefix alone cannot: `text-[length:14px]` is a
   font size and `bg-[url(...)]` is an image, so routing either by prefix would
   collapse it against a colour. That lives in `hintedGroup()` and the

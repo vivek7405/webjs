@@ -120,9 +120,10 @@ test('cn: every display keyword shares one group, so a repeated one collapses', 
 });
 
 test('cn: an arbitrary value may contain a colon without losing its group', () => {
-  // variantPrefix() splits on the last colon OUTSIDE brackets. Splitting on the
-  // last colon anywhere hands the matcher a fragment like `2px]`, which matches
-  // nothing, so the utility silently stops deduping against its own property.
+  // variantPrefix() splits on the last colon OUTSIDE brackets AND parentheses.
+  // Splitting on the last colon anywhere hands the matcher a fragment like
+  // `2px]`, which matches nothing, so the utility silently stops deduping
+  // against its own property. The paren half is covered by the #1338 test.
   assert.equal(cn('border-[length:2px]', 'border-4'), 'border-4');
   assert.equal(cn('border-2', 'border-[length:var(--w)]'), 'border-[length:var(--w)]');
   assert.equal(cn('border-[length:2px]', 'border-primary'), 'border-[length:2px] border-primary');
@@ -138,7 +139,8 @@ test('cn: an arbitrary value may contain a colon without losing its group', () =
 });
 
 test('cn: an arbitrary value type hint names the property, so it picks the group', () => {
-  // Once a bracketed value reaches the matcher, the prefix alone is not enough
+  // Once an arbitrary value reaches the matcher, in either the bracket or the
+  // v4 paren spelling, the prefix alone is not enough
   // to say which property it sets: `text-[length:14px]` is a font SIZE, not a
   // colour, and `bg-[url(...)]` is an image, not a background colour. Routing
   // by prefix would collapse a size against a colour, which is the exact

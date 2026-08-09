@@ -322,8 +322,9 @@ function variantPrefix(token: string): string {
   // stops deduping against its own property.
   //
   // TWO counters, both required to be zero, rather than one shared counter.
-  // Tailwind's own top-level splitter (`segment()` in
-  // packages/tailwindcss/src/utils/segment.ts) is a MATCHED-PAIR stack, so a
+  // Tailwind's own top-level splitter (`segment()`, in the upstream
+  // tailwindlabs/tailwindcss repo at packages/tailwindcss/src/utils/segment.ts,
+  // NOT a path in this repo) is a MATCHED-PAIR stack, so a
   // stray closer never cancels a live opener of the other kind. A single
   // shared counter would let `)` cancel `[` and read `x-[y)-z:w` as having a
   // top-level colon, which is the fragment bug above wearing a different hat.
