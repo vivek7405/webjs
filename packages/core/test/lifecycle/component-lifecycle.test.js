@@ -122,6 +122,37 @@ test('a throwing converter.fromAttribute propagates out of attributeChangedCallb
   assert.throws(() => el.attributeChangedCallback('v', null, 'abc'), /converter blew up/);
 });
 
+test('attributeChangedCallback ignores a state:true prop (#1341)', () => {
+  // The client-visible consequence of routing both readers through the one
+  // `resolveAttributeProperty`: it skips `state: true` props, so a HAND-CALLED
+  // `attributeChangedCallback` for one is now a no-op. The browser would never
+  // make that call, because `observedAttributes` excludes the name (asserted
+  // above), so this only removes a way to reach the reader that the platform
+  // never had. It is what makes the SSR skip a shared rule rather than a second
+  // copy of one.
+  class C extends WebComponent({ cfg: prop(Object, { state: true }) }) {
+    constructor() { super(); this.cfg = { fromCtor: true }; }
+  }
+  C.register('state-attr-noop');
+  const el = document.createElement('state-attr-noop');
+  el.attributeChangedCallback('cfg', null, 'oops');
+  assert.deepEqual(el.cfg, { fromCtor: true }, 'a state prop was populated from an attribute');
+});
+
+test('attributeChangedCallback ignores an attribute matching no property (#1341)', () => {
+  // The parity target the SSR reader now matches: an unmapped attribute is
+  // IGNORED, never assigned as an instance property.
+  class C extends WebComponent({ known: String }) {}
+  C.register('unmapped-attr');
+  const el = document.createElement('unmapped-attr');
+  el.attributeChangedCallback('nothing-declares-this', null, 'x');
+  assert.ok(
+    !Object.prototype.hasOwnProperty.call(el, 'nothingDeclaresThis'),
+    'an unmapped attribute became an own property',
+  );
+  assert.equal(el.nothingDeclaresThis, undefined);
+});
+
 test('attributeChangedCallback sets property when called with new value', () => {
   // The browser itself guards against calling this with the same value;
   // when it fires, the framework trusts the value and sets the property.

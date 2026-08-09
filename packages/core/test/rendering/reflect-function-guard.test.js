@@ -540,22 +540,20 @@ describe('reflect:true drops an unserializable JSON value (#1253)', () => {
     assert.ok(!out.includes('val=&quot;not-json&quot;') && !out.includes('val="not-json"'), out);
   });
 
-  // The two tests below pin SSR-ONLY paths: attributes `applyAttrsToInstance`
-  // consumes that the client reader never sees at all, so the `null` fallback
-  // reaches them too. They are here because the fallback change is observable
-  // on these paths and nothing else in this PR covers them, not because the
-  // values agree across the two sides. They do NOT agree, and that divergence
-  // predates #1253 and is tracked in #1341; what is pinned here is only that
-  // the SSR side stops putting a raw STRING into a prop declared `Object`.
-  //
-  // Both were measured against `origin/main`, where each rendered
-  // `val="oops"`. If #1341 changes which attributes SSR reads, these two
-  // become the tests that notice.
+  // The two tests below used to pin SSR-ONLY paths: attributes
+  // `applyAttrsToInstance` consumed that the client reader never saw at all, so
+  // the #1253 `null` fallback reached them too. They were written against a
+  // divergence, with a note that #1341 would be the change that made them
+  // notice, and it is. There is no SSR-only path here any more: SSR now skips a
+  // `state: true` prop and a camelCase source name exactly as the browser does,
+  // so neither attribute reaches the reader and neither prop reaches the
+  // fallback. What they pin now is that agreement.
 
-  test('a state:true prop is read by SSR only, and gets the same null fallback (#1253)', async () => {
+  test('a state:true prop is not read from a source attribute at SSR (#1341)', async () => {
     // `observedAttributes` filters state props out, so the browser never calls
     // `attributeChangedCallback` for this attribute and the upgraded element
-    // keeps its constructor value.
+    // keeps its constructor value. SSR does the same, through the shared
+    // `resolveAttributeProperty`, so the first paint holds the same value.
     class StateProp extends WebComponent({ cfg: prop(Object, { state: true }) }) {
       constructor() {
         super();
@@ -569,19 +567,21 @@ describe('reflect:true drops an unserializable JSON value (#1253)', () => {
 
     const out = await renderToString(html`<reflect-unser-state cfg="oops"></reflect-unser-state>`);
 
-    assert.ok(out.includes('val=null'), `expected the null fallback, got: ${out}`);
+    assert.ok(out.includes('val={"fromCtor":true}'), `the attribute was read: ${out}`);
     // Scoped to the RENDERED value, not the whole output: SSR echoes the source
     // attribute back into the emitted tag, so `oops` legitimately appears there.
     assert.ok(
       !out.includes('val=&quot;oops&quot;') && !out.includes('val="oops"'),
       `a raw string reached an Object-typed prop: ${out}`
     );
+    assert.ok(!out.includes('val=null'), `the attribute reached the reader: ${out}`);
   });
 
-  test('a camelCase source attribute is read by SSR only, and gets the same null fallback (#1253)', async () => {
+  test('a camelCase source attribute is not read at SSR either (#1341)', async () => {
     // The HTML parser lowercases this to `cfgdata`, which never matches the
     // `cfg-data` entry in `observedAttributes`, so the client never reads it.
-    // The SSR resolver matches the source-case name directly and does.
+    // The SSR reader lowercases the source name before resolving for exactly
+    // that reason, so it does not read it either.
     class CamelAttr extends WebComponent({ cfgData: prop(Object) }) {
       constructor() {
         super();
@@ -595,12 +595,13 @@ describe('reflect:true drops an unserializable JSON value (#1253)', () => {
 
     const out = await renderToString(html`<reflect-unser-camel cfgData="oops"></reflect-unser-camel>`);
 
-    assert.ok(out.includes('val=null'), `expected the null fallback, got: ${out}`);
+    assert.ok(out.includes('val={"fromCtor":true}'), `the attribute was read: ${out}`);
     // Scoped to the RENDERED value, not the whole output: SSR echoes the source
     // attribute back into the emitted tag, so `oops` legitimately appears there.
     assert.ok(
       !out.includes('val=&quot;oops&quot;') && !out.includes('val="oops"'),
       `a raw string reached an Object-typed prop: ${out}`
     );
+    assert.ok(!out.includes('val=null'), `the attribute reached the reader: ${out}`);
   });
 });

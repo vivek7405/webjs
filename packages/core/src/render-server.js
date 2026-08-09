@@ -16,7 +16,8 @@ import { isSuspense } from './suspense.js';
 import { unsafeHTML, isUnsafeHTML, isLive, isKeyed, isGuard, isTemplateContent, isRef, isCache, isUntil, isAsyncAppend, isAsyncReplace, isWatch } from './directives.js';
 import { stringify, parse } from './serialize.js';
 import { cspNonce } from './csp-nonce.js';
-import { readAttributeValue } from './attribute-reader.js';
+import { readAttributeValue, resolveAttributeProperty } from './attribute-reader.js';
+import NAMED_ENTITIES, { LEGACY_NAMES } from './html-entities.js';
 
 /**
  * Render a TemplateResult (or any renderable value) to an HTML string.
@@ -1280,7 +1281,7 @@ async function processSuspenseElements(html, ctx, ancestors = [], dev) {
     result += rest.slice(0, openStart);
     const attrs = m[1] || '';
     const fbMatch = /data-webjs-fallback="([^"]*)"/i.exec(attrs);
-    const fallbackHtml = fbMatch ? unescapeAttr(fbMatch[1]) : '';
+    const fallbackHtml = fbMatch ? decodeAttrEntities(fbMatch[1]) : '';
 
     // Pass the FULL-input ranges shifted into `rest` coordinates rather than
     // letting the helper re-tokenize the suffix. `rest` can begin mid-comment
@@ -1651,7 +1652,7 @@ function parseAttrs(attrStr) {
 function seedServerAttrs(instance, attrs) {
   if (!instance || typeof instance.setAttribute !== 'function') return;
   for (const [name, raw] of Object.entries(attrs)) {
-    instance.setAttribute(name, unescapeAttr(raw));
+    instance.setAttribute(name, decodeAttrEntities(raw));
   }
 }
 
@@ -1702,59 +1703,47 @@ function appendReflectedAttrs(opening, instance, presentAttrNames) {
  * based on its static `properties` declaration.
  */
 function applyAttrsToInstance(instance, attrs, Cls) {
-  const props = Cls.properties || {};
-  for (const [key, raw] of Object.entries(attrs)) {
-    // Resolve the source attribute name to its property: a custom `attribute`
-    // option wins, else the kebab-cased property name, else the camelCase of
-    // the attribute (the common case). Mirrors the client attributeChangedCallback
-    // so a custom-attribute prop gets the right value in the SSR'd first paint.
-    let propName, rawDef;
-    for (const [k, decl] of Object.entries(props)) {
-      const d = typeof decl === 'object' ? decl : { type: decl };
-      if ((d.attribute || hyphenate(k)) === key) { propName = k; rawDef = decl; break; }
-    }
-    if (rawDef === undefined) {
-      rawDef = props[key] || props[camelCase(key)];
-      propName = props[key] ? key : camelCase(key);
-    }
-    if (!rawDef) {
-      instance[propName] = raw;
-      continue;
-    }
-    // The factory accepts a bare constructor shorthand (`{ expanded: Boolean }`)
-    // alongside the long form (`{ expanded: { type: Boolean } }`); normalize so
-    // the type-based coercion below sees a `{ type }` object either way.
-    const def = typeof rawDef === 'object' ? rawDef : { type: rawDef };
-    // One reader for both sides (#1340): `readAttributeValue` in
-    // `attribute-reader.js` is the same function `attributeChangedCallback`
-    // in `component.js` calls, so a custom
-    // `converter.fromAttribute` now runs here too, ahead of type coercion, and
-    // the #1253 unparseable-JSON fallback is shared rather than mirrored.
+  for (const [sourceName, sourceValue] of Object.entries(attrs)) {
+    // The browser LOWERCASES every attribute name while parsing an HTML
+    // document, so `cfgData="x"` reaches the client reader as `cfgdata` and a
+    // camelCase name can never match anything in `observedAttributes`.
+    // Resolving the source case here made SSR read a name the platform cannot
+    // deliver, which is the divergence, not the fix (#1341).
+    const resolved = resolveAttributeProperty(Cls, sourceName.toLowerCase());
+    // An attribute mapping to no attribute-backed property is IGNORED, exactly
+    // as `attributeChangedCallback` ignores it and as lit's reader does. This
+    // used to assign it as an instance property (`instance[propName] = raw`),
+    // which no browser upgrade ever reproduces, and which on a real
+    // HTMLElement could mutate DOM state through `id` / `hidden` / `slot`.
+    // `seedServerAttrs` has already applied every source attribute properly,
+    // so nothing needs the copy (#1341).
+    if (resolved === undefined) continue;
+    const { propName, def } = resolved;
+    // A browser decodes every character reference BEFORE any reader sees the
+    // value, so decode once here, for every branch, and hand the shared reader
+    // an already-decoded string exactly as the DOM hands the client one. It
+    // used to be a `decode` argument the reader applied on the JSON and
+    // converter branches alone, which left a `String`-typed prop holding the
+    // raw source text while `getAttribute()` on the client returned the decoded
+    // one (#1341).
     //
-    // `raw` is the entity-encoded attribute text (`parseAttrs` returns the
-    // literal characters between the quotes), so the JSON branch needs the
-    // entities decoded before `JSON.parse`: a JSON attribute carries `&quot;`
-    // for every `"`, and parsing it raw throws. The client needs no decode,
-    // because the DOM already did it. `unescapeAttr` reverses far less than a
-    // browser does, and whether it should be full, and whether it belongs on
-    // every branch rather than only this one, are #1341's questions.
+    // One reader for both sides (#1340): `readAttributeValue` in
+    // `attribute-reader.js` is the same function `attributeChangedCallback` in
+    // `component.js` calls, so a custom `converter.fromAttribute` runs here
+    // too, ahead of type coercion, and the #1253 unparseable-JSON fallback is
+    // shared rather than mirrored.
     //
     // A converter that THROWS is not caught here. It lands in the
     // per-component error isolation below, which is deliberate: an author who
     // supplies a converter owns the read, the same rule `_reflectAttribute`
     // states for `toAttribute`. See the comment on `readAttributeValue`.
-    instance[propName] = readAttributeValue(def, raw, unescapeAttr);
+    instance[propName] = readAttributeValue(def, decodeAttrEntities(sourceValue));
   }
 }
 
 /** @param {string} s */
 function camelCase(s) {
   return s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-}
-
-/** Kebab-case a property name for its default HTML attribute (matches component.js). @param {string} s */
-function hyphenate(s) {
-  return s.replace(/([A-Z])/g, '-$1').toLowerCase();
 }
 
 /**
@@ -1769,20 +1758,143 @@ function kebabCase(s) {
   return s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 }
 
+/** windows-1252 mappings the HTML tokenizer applies to the C1 range. */
+const C1_REPLACEMENTS = {
+  0x80: 0x20ac, 0x82: 0x201a, 0x83: 0x0192, 0x84: 0x201e, 0x85: 0x2026,
+  0x86: 0x2020, 0x87: 0x2021, 0x88: 0x02c6, 0x89: 0x2030, 0x8a: 0x0160,
+  0x8b: 0x2039, 0x8c: 0x0152, 0x8e: 0x017d, 0x91: 0x2018, 0x92: 0x2019,
+  0x93: 0x201c, 0x94: 0x201d, 0x95: 0x2022, 0x96: 0x2013, 0x97: 0x2014,
+  0x98: 0x02dc, 0x99: 0x2122, 0x9a: 0x0161, 0x9b: 0x203a, 0x9c: 0x0153,
+  0x9e: 0x017e, 0x9f: 0x0178,
+};
+
+// The trailing `;` is OPTIONAL on the named arm, because a browser decodes a
+// legacy semicolon-less reference too. The callback decides which of the two
+// forms it has; see `decodeNamed`.
+const CHAR_REF = /&(?:#(\d+);?|#[xX]([0-9a-fA-F]+);?|([a-zA-Z][a-zA-Z0-9]*)(;?))/g;
+
+// A Map, not the imported object, so a name that collides with something on
+// `Object.prototype` misses instead of returning a function. See `decodeNamed`.
+const NAMED = new Map(Object.entries(NAMED_ENTITIES));
+const LEGACY = new Set(LEGACY_NAMES);
+
 /**
- * Reverse `escapeAttr` on a server-side attribute value. Needed
- * because `parseAttrs` returns the literal characters between the
- * quote marks; HTML entities are not decoded by the regex. The
- * browser handles this automatically, so client-side reads via
- * `getAttribute()` do not need the same step.
+ * Decode HTML character references in an attribute value.
+ *
+ * `parseAttrs` hands back the literal characters between the quote marks, so
+ * nothing has decoded them yet, while a browser decodes EVERY reference before
+ * any reader sees the value. This closes that gap (#1341): the full WHATWG
+ * named table plus decimal and hexadecimal numeric references, with the
+ * tokenizer's own numeric fix-ups (null, a surrogate, and anything past
+ * U+10FFFF become U+FFFD; the C1 range maps through windows-1252). It replaced
+ * a three-entity `unescapeAttr`, which left a `String`-typed prop undecoded
+ * entirely and turned `&lt;script&gt;` into the half-decoded `<script&gt;`.
+ *
+ * SINGLE PASS on purpose. A replacement is never rescanned, so `&amp;lt;`
+ * decodes to the literal `&lt;` and never to `<`. The old function got that
+ * from replacing `&amp;` last, which does not generalise past three entities.
+ *
+ * The 106 legacy semicolon-LESS names are covered too, because a browser really
+ * does decode them and measurably: Chromium, Firefox, and WebKit all hand a
+ * reader U+00A0 for `s="&nbsp"`. Leaving them literal would have been a value
+ * divergence of exactly the kind this function exists to remove, not a
+ * harmless non-goal. The rule that governs them, in an ATTRIBUTE value, is a
+ * one-character LOOKAHEAD rather than deep tokenizer state, which is why it is
+ * implementable here. `decodeNamed` carries the rule and the reason it takes
+ * the shape it does; the short version is that `&nbsp` at the end of a value
+ * decodes while `&nbspx`, `&nbsp=x`, and `&notin` stay literal, all three
+ * verified against the three engines.
+ *
+ * The same function also decodes `data-webjs-fallback`, which is MARKUP, where
+ * the tokenizer applies no such carve-out. Using the attribute rule there is
+ * deliberate and strictly conservative: that payload is written by
+ * `escapeAttr`, which emits only `&amp;` / `&quot;` / `&lt;`, so every
+ * reference in it is semicolon-terminated and never reaches this path.
  *
  * @param {string} s
+ * @returns {string}
  */
-function unescapeAttr(s) {
-  return s
-    .replace(/&lt;/g, '<')
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, '&');
+function decodeAttrEntities(s) {
+  // Load bearing, not a micro-optimisation: skipping the scan for the common
+  // no-`&` value is what makes this cheaper per attribute than the three
+  // chained `replace` calls it replaced, which paid for three passes always.
+  if (s.indexOf('&') === -1) return s;
+  return s.replace(CHAR_REF, (match, dec, hex, name, semi, offset) => {
+    if (dec !== undefined) return fromCodePoint(parseInt(dec, 10));
+    if (hex !== undefined) return fromCodePoint(parseInt(hex, 16));
+    return decodeNamed(match, name, semi === ';', s[offset + match.length]);
+  });
+}
+
+/**
+ * Resolve one named reference, semicolon-terminated or legacy.
+ *
+ * The table is read through a `Map` rather than by indexing the imported
+ * object. An object-literal lookup resolves through `Object.prototype`, so
+ * `&constructor;` / `&toString;` / `&hasOwnProperty;` and four more returned a
+ * FUNCTION instead of `undefined` and threw on the spread in
+ * `codePointsToString`, a path `seedServerAttrs` reaches for every attribute of
+ * every custom element, which rendered the whole component as an SSR error box.
+ * A browser leaves those literal, since they are not named references, so the
+ * throw was a divergence of exactly the kind this file exists to remove. A
+ * `Map` has no prototype chain to fall through, which closes the shape rather
+ * than guarding one call site.
+ *
+ * WHY THERE IS NO LONGEST-PREFIX LOOP. The tokenizer consumes the longest name
+ * in the table, so `&notin` is `&not` followed by `in`. Here that always
+ * collapses to the whole name: `CHAR_REF` captures `[a-zA-Z][a-zA-Z0-9]*`, so a
+ * prefix SHORTER than the name is by construction followed by an ASCII
+ * alphanumeric, which is precisely when the attribute carve-out declines to
+ * decode. A loop over shorter prefixes could therefore only ever return
+ * `match`, which is what falling through to the end already does. `&notin`
+ * stays literal either way, verified against the three engines, though note it
+ * gets there by not being a legacy name rather than by the carve-out.
+ *
+ * That same greediness means the ALPHANUMERIC half of the carve-out below
+ * cannot fire: whatever follows the match is by construction not `[a-zA-Z0-9]`,
+ * or the capture would have eaten it. It is written out anyway, because the
+ * rule the spec states has two halves and a reader who knows the spec should
+ * find both. Keeping it also means this function stays correct on its own terms
+ * instead of silently depending on `CHAR_REF` staying greedy. `&nbspx` is
+ * therefore literal because `nbspx` is not a legacy name, NOT because of the
+ * lookahead; `&nbsp=x` is the shape the lookahead actually decides.
+ *
+ * @param {string} match  the whole matched reference, returned unchanged when nothing decodes
+ * @param {string} name   the name, with no `&` and no `;`
+ * @param {boolean} hadSemi
+ * @param {string|undefined} nextChar  the character after the match, if any
+ * @returns {string}
+ */
+function decodeNamed(match, name, hadSemi, nextChar) {
+  if (hadSemi) {
+    const cp = NAMED.get(name);
+    return cp === undefined ? match : codePointsToString(cp);
+  }
+  if (!LEGACY.has(name)) return match;
+  // The attribute carve-out: a legacy name decodes only when what follows is
+  // neither `=` nor an ASCII alphanumeric. Nothing following at all (the end of
+  // the value) decodes, which is the common `s="&nbsp"` shape. Only the `=`
+  // half can actually fire here; see the docblock for why the other is kept.
+  if (nextChar === '=' || (nextChar !== undefined && /[0-9A-Za-z]/.test(nextChar))) return match;
+  // Every legacy name is in the table under the same name, asserted by a test
+  // rather than left to trust, so this cannot miss.
+  return codePointsToString(NAMED.get(name));
+}
+
+/** @param {number|number[]} cp */
+function codePointsToString(cp) {
+  return typeof cp === 'number' ? String.fromCodePoint(cp) : String.fromCodePoint(...cp);
+}
+
+/**
+ * The tokenizer's numeric character reference fix-ups.
+ * @param {number} n
+ * @returns {string}
+ */
+function fromCodePoint(n) {
+  if (n === 0 || n > 0x10ffff || (n >= 0xd800 && n <= 0xdfff)) return '\uFFFD';
+  if (C1_REPLACEMENTS[n] !== undefined) return String.fromCodePoint(C1_REPLACEMENTS[n]);
+  return String.fromCodePoint(n);
 }
 
 /**
@@ -1801,7 +1913,7 @@ function consumePropAttrs(attrs) {
     if (!key.startsWith('data-webjs-prop-')) continue;
     const propName = camelCase(key.slice('data-webjs-prop-'.length));
     try {
-      props[propName] = parse(unescapeAttr(attrs[key]));
+      props[propName] = parse(decodeAttrEntities(attrs[key]));
     } catch {
       // Malformed payload. Skip silently so the rest of the component
       // can still render. The client-side hydration will also try and
