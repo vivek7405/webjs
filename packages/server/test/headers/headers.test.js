@@ -282,6 +282,113 @@ test('precedence: app middleware wins over the per-path config too', async () =>
 
 /* ------------ unit: compileHeaderRules + applySecurityHeaders + webRequestIsHttps ------------ */
 
+test('compileHeaderRules: every dropped rule and directive warns', () => {
+  // These branches all used to `continue` in silence, so a `source` misspelled
+  // as `sources` produced no rule and no diagnostic, which is the same typo
+  // class the boot config check exists to report. The valid sibling must still
+  // compile, since dropping rather than throwing is the whole posture here.
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (...args) => warnings.push(args[0]);
+  let rules;
+  try {
+    rules = compileHeaderRules({
+      webjs: {
+        headers: [
+          'not-an-object',
+          { sources: '/typo', headers: [{ key: 'X', value: '1' }] },
+          { source: '/bad-list', headers: 'nope' },
+          { source: '/a/(', headers: [{ key: 'X', value: '1' }] },
+          { source: '/bad-dir', headers: ['nope', { key: '' }, { key: 'X\nY', value: '1' }] },
+          { source: '/ok', headers: [{ key: 'X-Ok', value: '1' }] },
+        ],
+      },
+    });
+  } finally {
+    console.warn = realWarn;
+  }
+
+  assert.equal(rules.length, 1, 'only the valid rule compiles');
+  assert.ok(rules[0].pattern.test({ pathname: '/ok' }));
+  // Four bad rules, three bad directives inside /bad-dir, and one more for
+  // /bad-dir itself, which is dropped once nothing survives its directives.
+  assert.equal(warnings.length, 8, `expected 8 warnings, got ${warnings.length}`);
+  assert.ok(
+    warnings.some((w) => w.includes('no valid directives left on "/bad-dir"')),
+    'a rule that loses every directive says the RULE was dropped, not just the directives',
+  );
+  for (const w of warnings) {
+    assert.match(w, /dropping invalid webjs\.headers config/);
+  }
+});
+
+test('compileHeaderRules: a wrong-typed headers key warns, an absent one does not', () => {
+  // The config LEVEL, above the rule and directive levels the other cases
+  // cover. `"headers": {}` discards the whole config, and the schema types the
+  // key `array` while the boot check inspects only scalar leaves, so nothing
+  // else reports it either. An ABSENT key is the default, not a mistake, and
+  // must stay silent or every app without the key warns on every boot.
+  const seen = [];
+  const realWarn = console.warn;
+  console.warn = (...args) => seen.push(args[0]);
+  try {
+    assert.deepEqual(compileHeaderRules({ webjs: { headers: 'nope' } }), []);
+    assert.deepEqual(compileHeaderRules({ webjs: { headers: {} } }), []);
+    assert.equal(seen.length, 2, `a wrong-typed key warns, got ${seen.length}`);
+    assert.match(seen[0], /headers must be an array/);
+
+    seen.length = 0;
+    // Every shape where the key is NOT present. The non-object ones matter
+    // most: reading `raw` off an `&&` chain made these warn about a `headers`
+    // nobody wrote, because the chain short-circuits to whatever link failed
+    // rather than to the key's value. Only `null` was covered before, which is
+    // the one value that happens to pass through the chain unchanged, so the
+    // bug sat under a green test.
+    for (const shape of [
+      { webjs: {} }, {}, null, undefined, 'a-string', 42, 0, false, '', [],
+      { webjs: false }, { webjs: 0 }, { webjs: '' }, { webjs: null }, { webjs: 'nope' },
+      { webjs: [] },
+    ]) {
+      assert.deepEqual(compileHeaderRules(shape), [], `${JSON.stringify(shape)} compiles to no rules`);
+    }
+    assert.deepEqual(seen, [], `no shape without a headers key may warn, got ${JSON.stringify(seen)}`);
+
+    // Present-but-null IS a key the author wrote, so it does warn.
+    assert.deepEqual(compileHeaderRules({ webjs: { headers: null } }), []);
+    assert.equal(seen.length, 1, 'an explicit null is present, so it warns');
+  } finally {
+    console.warn = realWarn;
+  }
+});
+
+test('compileHeaderRules: an empty headers array is dropped AND warned about', () => {
+  // The gap this file missed the first time. `{ source, headers: [] }` is
+  // SCHEMA-VALID (webjs-config.schema.json puts no minItems on headers) and the
+  // boot config check never sees it (that check does not descend into headers),
+  // so before this warning the rule was dropped with nothing anywhere saying so,
+  // which is the exact silent-config failure the warnings exist to end.
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (...args) => warnings.push(args[0]);
+  let rules;
+  try {
+    rules = compileHeaderRules({
+      webjs: {
+        headers: [
+          { source: '/empty', headers: [] },
+          { source: '/ok', headers: [{ key: 'X-Ok', value: '1' }] },
+        ],
+      },
+    });
+  } finally {
+    console.warn = realWarn;
+  }
+
+  assert.equal(rules.length, 1, 'the valid sibling still compiles');
+  assert.equal(warnings.length, 1, `expected one warning, got ${warnings.length}`);
+  assert.match(warnings[0], /no valid directives left on "\/empty"/);
+});
+
 test('compileHeaderRules: ignores a malformed config without throwing', () => {
   assert.deepEqual(compileHeaderRules(null), []);
   assert.deepEqual(compileHeaderRules({}), []);

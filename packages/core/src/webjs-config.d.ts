@@ -10,8 +10,19 @@
  * This object is read key by key, mostly by the server and for a few keys
  * by the CLI. Without a type or schema a typo'd key (e.g. `redirect` for
  * `redirects`) was silently dropped and the feature stayed at its default
- * with no diagnostic. This type plus the published JSON Schema close that
- * gap.
+ * with no diagnostic. Three things close that gap now, at three different
+ * moments: this type while an agent or a human authors the block, the
+ * published JSON Schema in an editor via the scaffold's `.vscode` `$ref`,
+ * and `webjs-config-validate.js` at BOOT (#1300), which runs that same
+ * schema from `createRequestHandler` and warns once, naming every unknown
+ * top-level key, every bad `enum` value, and every wrong-typed `boolean` /
+ * `integer` (9 of the 17 keys). It does NOT type-check the other 8
+ * (`headers`, `redirects`, `basePath`, `allowedOrigins`, `csp`, `dev`,
+ * `start`, `doctor`), and it does not descend into a nested object, so a
+ * misspelling inside `dev` or `start` is not reported either. Whether
+ * anything else notices what this check passes over is up to the
+ * individual reader. The boot check warns and never throws, so a typo
+ * costs one feature its setting rather than the whole app its boot.
  *
  * LOCKSTEP: this file, the JSON Schema at
  * packages/server/webjs-config.schema.json, and the reader functions MUST

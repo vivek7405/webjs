@@ -53,7 +53,10 @@ const HSTS_VALUE = 'max-age=63072000; includeSubDomains';
  * (`webjs.headers`). Returns a normalized array of compiled rules, each
  * pairing a URLPattern against the configured header directives. A
  * malformed or absent config yields an empty array (no per-path rules),
- * never a throw: a broken config must not take the app down.
+ * never a throw: a broken config must not take the app down. Each malformed
+ * rule or directive is DROPPED with a one-line warning, matching
+ * `redirects.js`, so a single typo neither disables the valid rules around it
+ * nor disappears without a word.
  *
  * Shape consumed:
  *   "webjs": { "headers": [ { "source": "/embed/:path*",
@@ -67,33 +70,61 @@ const HSTS_VALUE = 'max-age=63072000; includeSubDomains';
  * @returns {Array<{ pattern: URLPattern, directives: Array<{ key: string, value: string | null }> }>}
  */
 export function compileHeaderRules(pkg) {
-  const raw =
-    pkg &&
-    typeof pkg === 'object' &&
-    /** @type {any} */ (pkg).webjs &&
-    /** @type {any} */ (pkg).webjs.headers;
-  if (!Array.isArray(raw)) return [];
+  // Read the block explicitly rather than off an `&&` chain. A chain SHORT-
+  // CIRCUITS, so its value is whatever link failed (a non-object `pkg` yields
+  // the boolean `false` from the `typeof` test), and deciding "the key is
+  // present" from that residue warns about a `headers` nobody wrote and prints
+  // a value that is not in their config.
+  const block = pkg && typeof pkg === 'object' ? /** @type {any} */ (pkg).webjs : undefined;
+  const hasBlock = !!block && typeof block === 'object' && !Array.isArray(block);
+  const raw = hasBlock ? block.headers : undefined;
+  if (!Array.isArray(raw)) {
+    // An ABSENT key is the default and says nothing. A PRESENT one of the wrong
+    // type discards the whole config, so it says so: the schema types this key
+    // `array` but the boot config check only inspects boolean / integer / enum
+    // leaves, so `"headers": {…}` is caught by nothing else.
+    if (hasBlock && 'headers' in block) warnDrop('headers must be an array', raw);
+    return [];
+  }
   /** @type {Array<{ pattern: URLPattern, directives: Array<{ key: string, value: string | null }> }>} */
   const rules = [];
   for (const entry of raw) {
-    if (!entry || typeof entry !== 'object') continue;
+    if (!entry || typeof entry !== 'object') {
+      warnDrop('entry must be an object', entry);
+      continue;
+    }
     const source = /** @type {any} */ (entry).source;
     const list = /** @type {any} */ (entry).headers;
-    if (typeof source !== 'string' || !Array.isArray(list)) continue;
+    if (typeof source !== 'string' || !source) {
+      warnDrop('source must be a non-empty string', entry);
+      continue;
+    }
+    if (!Array.isArray(list)) {
+      warnDrop(`headers must be an array on "${source}"`, entry);
+      continue;
+    }
     let pattern;
     try {
       // Match on the pathname only. A bare path string is the common
       // Next-style usage; URLPattern treats it as the pathname component.
       pattern = new URLPattern({ pathname: source });
     } catch {
-      continue; // skip an invalid pattern rather than crash the request
+      // Skip an invalid pattern rather than crash the request.
+      warnDrop(`invalid source pattern "${source}"`, entry);
+      continue;
     }
     /** @type {Array<{ key: string, value: string | null }>} */
     const directives = [];
     for (const d of list) {
-      if (!d || typeof d !== 'object') continue;
+      if (!d || typeof d !== 'object') {
+        warnDrop(`directive must be an object on "${source}"`, d);
+        continue;
+      }
       const key = /** @type {any} */ (d).key;
-      if (typeof key !== 'string' || !key) continue;
+      if (typeof key !== 'string' || !key) {
+        warnDrop(`directive key must be a non-empty string on "${source}"`, d);
+        continue;
+      }
       const v = /** @type {any} */ (d).value;
       // null / undefined / false means REMOVE the header on a match.
       const value = v === null || v === undefined || v === false ? null : String(v);
@@ -109,15 +140,47 @@ export function compileHeaderRules(pkg) {
       try {
         new Headers().set(key, value === null ? 'x' : value);
       } catch {
-        // eslint-disable-next-line no-console
-        console.warn(`[webjs] dropping invalid webjs.headers directive for key "${key}"`);
+        warnDrop(`invalid header name or value for key "${key}"`, d);
         continue;
       }
       directives.push({ key, value });
     }
-    if (directives.length) rules.push({ pattern, directives });
+    // A rule with nothing left to apply is dropped, and SAYS so. Two ways to
+    // get here and both were silent: an authored `"headers": []`, which the
+    // schema permits (no `minItems`) and the boot config check never sees
+    // (it does not descend into `headers`), and a rule whose every directive
+    // was just dropped, where the per-directive warnings above name the
+    // directives but never say the rule itself went with them.
+    if (!directives.length) {
+      warnDrop(`no valid directives left on "${source}"`, entry);
+      continue;
+    }
+    rules.push({ pattern, directives });
   }
   return rules;
+}
+
+/**
+ * One line per dropped config, rule, or directive, matching `redirects.js`'s
+ * warnDrop verbatim in shape. Every drop in `compileHeaderRules` goes through
+ * this, at all three levels: a wrong-typed `webjs.headers` key, a rule, and a
+ * directive. A config typo that silently does nothing is the failure this whole
+ * surface exists to end, and a `source` misspelled as `sources` used to vanish
+ * here with no diagnostic at all.
+ *
+ * The one thing that does NOT warn is an ABSENT `webjs.headers`, which is the
+ * default rather than a mistake.
+ *
+ * Defined BELOW `compileHeaderRules`, like the one in `redirects.js`. Putting
+ * it above wedged this docblock between that function's JSDoc and its
+ * declaration, so the JSDoc bound to the helper instead and the reader lost
+ * its `@param` / `@returns` entirely.
+ *
+ * @param {string} reason @param {unknown} entry
+ */
+function warnDrop(reason, entry) {
+  // eslint-disable-next-line no-console
+  console.warn(`[webjs] dropping invalid webjs.headers config (${reason}):`, entry);
 }
 
 /**
