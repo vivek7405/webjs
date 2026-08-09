@@ -77,7 +77,7 @@ export function WS(ws: WebSocket, req: Request) {
 
 function parseCookies(header: string): Record&lt;string, string&gt; {
   const out: Record&lt;string, string&gt; = {};
-  for (const part of header.split(/;\s*/)) {
+  for (const part of header.split(/;\\s*/)) {
     const eq = part.indexOf('=');
     if (eq &gt; 0) out[part.slice(0, eq)] = decodeURIComponent(part.slice(eq + 1));
   }

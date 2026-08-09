@@ -102,13 +102,23 @@ test('a sample that reaches the corpus reaches it whole', async () => {
       // what it says is only known at render time.
       if (m[1].includes('${')) continue;
       compared++;
-      const text = decodeEntities(m[1]).replace(/\n+$/, '');
+      const text = decodeEntities(unescapeJs(m[1])).replace(/\n+$/, '');
       if (!page.markdown.includes(text)) mangled.push(`${page.path}: ${JSON.stringify(text.slice(0, 70))}`);
     }
   }
   assert.ok(compared > 300, `only ${compared} samples compared, so this proves little`);
   assert.deepEqual(mangled.slice(0, 5), [], `${mangled.length} samples arrived in the corpus with characters missing`);
 });
+
+/**
+ * Mirrors the extractor's own source-escape fold, which is module-private. A
+ * sample is copied out of page SOURCE, where it is a JS template literal, so
+ * the corpus carries it cooked and a comparison against the raw source has to
+ * cook it the same way.
+ */
+function unescapeJs(s: string): string {
+  return s.replace(/\\(.)/g, '$1');
+}
 
 /** Mirrors the extractor's own entity decoding, which is module-private. */
 function decodeEntities(s: string): string {
@@ -216,6 +226,23 @@ test('a kept hole is unescaped, since the source is a template literal', () => {
   // No docs page carries an escape inside one today, so only a fixture can
   // hold that half of the rule.
   assert.equal(bodyToMarkdown('html`<p>x ${"a\\`b"} y</p>`'), 'x a`b y');
+});
+
+test('a fenced sample is unescaped, since the source is a template literal', () => {
+  // The prose half of this rule is pinned above. The fenced half was left out,
+  // so the corpus taught `<form action=\${createPost}>` on 5 lines while the
+  // rendered docs page showed `<form action=${createPost}>`, disagreeing with
+  // itself about the one shape invariant 12 governs.
+  const md = bodyToMarkdown('html`<code-block>html\\`&lt;form action=\\${createPost}&gt;&lt;/form&gt;\\`</code-block>`');
+  assert.equal(md, '```\nhtml`<form action=${createPost}></form>`\n```');
+});
+
+test('a fenced sample folds its escapes before it decodes its entities', () => {
+  // Order matters on exactly one shape, and the browser settles it: JS cooks
+  // the template literal first, so `&am\p;` reaches the HTML parser as
+  // `&amp;`, which it decodes to `&`. Decoding first would ship `&amp;`.
+  // No docs page carries this shape, so only a fixture can hold the rule.
+  assert.equal(bodyToMarkdown('html`<code-block>a &am\\p; b</code-block>`'), '```\na & b\n```');
 });
 
 test('a kept hole nested inside another leaves no sentinel in the output', () => {

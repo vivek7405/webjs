@@ -217,7 +217,21 @@ export function bodyToMarkdown(raw: string): string {
   // a bare `<` in front of a strip that then eats to the next `>`.
   const codeBlocks: string[] = [];
   body = body.replace(/<(?:pre|code-block)(?=[\s>])[^>]*>([\s\S]*?)<\/(?:pre|code-block)>/g, (_m, code) => {
-    codeBlocks.push(decodeEntities(String(code)).replace(/\n+$/, ''));
+    // A sample is copied out of page SOURCE, which is a JS template literal,
+    // so a backtick in it is written `\`` and a literal hole `\${`. Without
+    // this fold the corpus taught `<form action=\${createPost}>` where the
+    // rendered page shows `<form action=${createPost}>`, on the exact shape
+    // invariant 12 governs, in the one surface whose reader is an LLM.
+    //
+    // Escapes fold BEFORE entities decode, which is the order the browser
+    // applies them: JS cooks the literal first, and the HTML parser sees only
+    // the cooked text. The two orders agree on every sample in the repo and
+    // differ on one shape, an escape splitting an entity, where `&am\p;`
+    // cooks to `&amp;` and the parser then shows `&`. The reverse order can
+    // never help, because the entity table below yields no backslash, so
+    // decoding cannot manufacture an escape for this fold to eat. Same order
+    // the prose keep-passes use below.
+    codeBlocks.push(decodeEntities(unescapeJs(String(code))).replace(/\n+$/, ''));
     return `\uE000CODE${codeBlocks.length - 1}\uE000`;
   });
 

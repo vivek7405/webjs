@@ -136,7 +136,15 @@ website/
                        `${x}` is render-time and gets dropped. Treating all
                        three alike printed `<form action=\>` on 12 corpus
                        lines, teaching an LLM the one shape invariant 12
-                       exists to rule out.
+                       exists to rule out. A fenced sample and a kept prose
+                       hole are both copied out of page SOURCE, which is a JS
+                       template literal, so both fold their backslash escapes
+                       BEFORE that single entity decode. That order is the
+                       browser's own: JS cooks the literal first and the HTML
+                       parser only ever sees cooked text. The fenced half was
+                       missing, which is why the corpus printed
+                       `<form action=\${createPost}>` on 5 lines while the
+                       rendered page showed `<form action=${createPost}>`.
   modules/
     ui/components/     GITIGNORED mirror of the @webjsdev/ui registry sources,
                        written by scripts/copy-registry.mjs. NEVER hand-write
