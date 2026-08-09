@@ -36,10 +36,21 @@ import { fileURLToPath } from 'node:url';
 
 /**
  * A tiny structural validator standing in for ajv (which the repo does not
- * ship). It only checks the constraints this schema relies on: known-key
- * membership, `additionalProperties: false`, a top-level `type`, and the
- * `enum` on a scalar leaf. Enough to prove a few example configs pass and a
- * typo'd / bad-enum config fails, without adding a dependency.
+ * ship). It checks exactly three things and no others: key membership under
+ * `additionalProperties: false`, `enum` membership, and the `boolean` /
+ * `integer` leaf types.
+ *
+ * So a value whose schema `type` is `array`, `string`, or `object`, and a `csp`
+ * whose schema is a `oneOf` with no `type` at all, are NOT type-checked. Today
+ * that is 8 of the 18 top-level keys (`headers`, `redirects`, `allowedOrigins`,
+ * `basePath`, `csp`, `dev`, `start`, `doctor`), each of which passes here
+ * whatever it holds. Say so wherever this is described, since the reason to
+ * stop short is a real trade rather than an oversight: the shapes left
+ * unchecked are the free-form ones, where a naive check starts refusing
+ * configs that work.
+ *
+ * That is enough for the case this exists to close, which is a typo'd key
+ * silently dropped, plus the two leaf kinds a schema can decide unambiguously.
  *
  * @param {Record<string, unknown>} schema the webjs-block schema
  * @param {Record<string, unknown>} value a candidate `webjs` object

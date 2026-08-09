@@ -15,8 +15,13 @@
  * published JSON Schema in an editor via the scaffold's `.vscode` `$ref`,
  * and `webjs-config-validate.js` at BOOT (#1300), which runs that same
  * schema from `createRequestHandler` and warns once, naming every unknown
- * key and bad value. The boot check warns and never throws, so a typo
- * costs one feature its setting rather than the whole app its boot.
+ * top-level key, every bad `enum` value, and every wrong-typed `boolean` /
+ * `integer`. It does NOT type-check the array, string, and object-valued
+ * keys, so a wrong-shaped `headers` / `redirects` / `allowedOrigins` /
+ * `basePath` / `csp` / `dev` / `start` / `doctor` still passes it silently
+ * and is dropped by its reader as before. The boot check warns and never
+ * throws, so a typo costs one feature its setting rather than the whole
+ * app its boot.
  *
  * LOCKSTEP: this file, the JSON Schema at
  * packages/server/webjs-config.schema.json, and the reader functions MUST
