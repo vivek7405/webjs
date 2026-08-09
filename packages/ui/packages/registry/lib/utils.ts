@@ -155,9 +155,11 @@ const GROUPS: Array<[RegExp, string]> = [
  * Classification, after an optional side / axis segment: a bare or numeric
  * value is a width (`border`, `border-2`, `border-t-4`), an arbitrary value
  * that opens with a digit, a dot, or `length:` is a width (`border-[3px]`,
- * `border-[length:var(--w)]`), and everything else is a colour
+ * `border-[length:var(--w)]`, and the v4 paren spelling
+ * `border-(length:--w)`), and everything else is a colour
  * (`border-primary`, `border-red-500/50`, `border-[#fff]`). An ambiguous
- * `border-[var(--x)]` falls to colour, which is the far more common intent.
+ * `border-[var(--x)]`, or its paren spelling `border-(--x)`, falls to colour,
+ * which is the far more common intent.
  *
  * Each side is its own group so a per-side utility only overrides its own side,
  * and the shorthand / axis subsumption is declared in CONFLICTS below, exactly
@@ -167,7 +169,7 @@ const GROUPS: Array<[RegExp, string]> = [
  * the writing direction, so an axis override there would be a guess.
  */
 function borderGroups(): Array<[RegExp, string]> {
-  const width = '(\\d+(\\.\\d+)?|\\[(length:|\\d|\\.)[^\\]]*\\])';
+  const width = '(\\d+(\\.\\d+)?|\\[(length:|\\d|\\.)[^\\]]*\\]|\\(length:[^)]*\\))';
   const out: Array<[RegExp, string]> = [];
   // Sides before the bare form: `border-t-primary` must match the `t` colour
   // group, not be swallowed by the side-less `^border-` colour pattern.
@@ -185,7 +187,8 @@ function borderGroups(): Array<[RegExp, string]> {
 
 /**
  * An arbitrary value may carry a Tailwind TYPE HINT: `bg-[image:var(--g)]`,
- * `text-[length:14px]`, `shadow-[color:red]`. The hint exists precisely because
+ * `text-[length:14px]`, `shadow-[color:red]`, and in the v4 paren shorthand
+ * `bg-(image:--g)`, `shadow-(color:--x)`. The hint exists precisely because
  * the utility prefix is ambiguous, so the PREFIX cannot decide the group and
  * the hint must. Letting a hinted value fall into the prefix's default group
  * evicts a class that sets an entirely different property (`shadow-[color:red]`
@@ -204,7 +207,13 @@ function borderGroups(): Array<[RegExp, string]> {
  * while `bg-` and `text-` were correct.
  *
  * These reach the matcher at all only because `variantPrefix` splits on the
- * last colon OUTSIDE brackets; see the comment there.
+ * last colon OUTSIDE brackets AND parentheses; see the comment there.
+ *
+ * Both spellings of one hint produce the identical `<prefix>:<hint>` key, so
+ * the map needs no paren-specific entries. The closing delimiter is
+ * deliberately not validated: the hint names the CSS property, and how the
+ * value terminates cannot change which property that is (the bracket branch
+ * has never validated its own close either).
  */
 const HINTED_GROUPS: Record<string, string> = {
   'bg:color': '',
@@ -227,7 +236,7 @@ const HINTED_GROUPS: Record<string, string> = {
  * should decide it, `undefined` when the token carries no hint at all.
  */
 function hintedGroup(bare: string): string | null | undefined {
-  const m = /^([a-z][a-z-]*)-\[([a-z][a-z-]*):/.exec(bare);
+  const m = /^([a-z][a-z-]*)-[\[(]([a-z][a-z-]*):/.exec(bare);
   if (!m) return undefined;
   const prefix = m[1];
   const hint = m[2];
@@ -303,19 +312,31 @@ function dedupeUtilities(input: string): string {
 
 function variantPrefix(token: string): string {
   // Capture leading variants like `hover:`, `dark:`, `md:`: overrides only
-  // conflict within the same variant set. The split is the last colon OUTSIDE
-  // square brackets, because an arbitrary value can contain one of its own
-  // (`border-[length:2px]`, `bg-[url(https://x/y.png)]`, `text-[color:var(--c)]`).
+  // conflict within the same variant set. The split is the last colon at top
+  // level, meaning outside BOTH square brackets and parentheses, because an
+  // arbitrary value can contain a colon of its own in either delimiter
+  // (`border-[length:2px]`, `bg-[url(https://x/y.png)]`, `text-[color:var(--c)]`,
+  // and the v4 paren spelling `shadow-(color:--x)`, `bg-(image:--g)`).
   // Splitting on the last colon anywhere hands the group matcher a fragment
-  // like `2px]`, which matches nothing, so the utility silently stops
-  // deduping against its own property.
-  let depth = 0;
+  // like `2px]` or `--x)`, which matches nothing, so the utility silently
+  // stops deduping against its own property.
+  //
+  // TWO counters, both required to be zero, rather than one shared counter.
+  // Tailwind's own top-level splitter (`segment()` in
+  // packages/tailwindcss/src/utils/segment.ts) is a MATCHED-PAIR stack, so a
+  // stray closer never cancels a live opener of the other kind. A single
+  // shared counter would let `)` cancel `[` and read `x-[y)-z:w` as having a
+  // top-level colon, which is the fragment bug above wearing a different hat.
+  let bracketDepth = 0;
+  let parenDepth = 0;
   let i = -1;
   for (let n = 0; n < token.length; n += 1) {
     const c = token[n];
-    if (c === '[') depth += 1;
-    else if (c === ']') depth -= 1;
-    else if (c === ':' && depth === 0) i = n;
+    if (c === '[') bracketDepth += 1;
+    else if (c === ']') bracketDepth -= 1;
+    else if (c === '(') parenDepth += 1;
+    else if (c === ')') parenDepth -= 1;
+    else if (c === ':' && bracketDepth === 0 && parenDepth === 0) i = n;
   }
   return i === -1 ? '' : token.slice(0, i + 1);
 }

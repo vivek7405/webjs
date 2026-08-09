@@ -515,12 +515,23 @@ names mechanically:
   prefix's values actually look like in real code rather than by analogy with
   another prefix: `border-[var(--x)]` is usually a colour, `shadow-[var(--x)]`
   is usually a shadow, so the same shape resolves opposite ways.
-- A PAREN-hinted arbitrary value (`shadow-(color:--x)`, `bg-(image:--g)`)
-  reaches neither `hintedGroup()` nor GROUPS: `variantPrefix` tracks only
-  `[` / `]` depth, so the colon inside the parentheses reads as a variant
-  separator and the matcher gets a fragment that matches nothing. The token
-  stays ungrouped, so it never evicts, but two of them do not collapse against
-  each other either. Fixing it means teaching `variantPrefix` paren depth.
+- A PAREN-hinted arbitrary value (`shadow-(color:--x)`, `bg-(image:--g)`, the
+  Tailwind v4 shorthand for the bracket form) classifies exactly like its
+  bracket sibling (#1338), because both spellings produce the identical
+  `<prefix>:<hint>` key that `HINTED_GROUPS` is keyed on, so the map carries
+  no paren-specific entries. Three pieces make that work, and all three are
+  load-bearing. `variantPrefix` counts brackets and parens in SEPARATE
+  counters and splits only where both are zero, never one shared counter: a
+  shared one lets a stray `)` cancel a live `[` and reads `x-[y)-z:w` as
+  having a top-level colon, which is the fragment bug it exists to prevent.
+  `hintedGroup()`'s regex accepts `-(` alongside `-[`. And `borderGroups()`'s
+  width fragment reads the length hint in both spellings. Teaching
+  `variantPrefix` paren depth ALONE is actively harmful rather than a partial
+  win: it hands an intact `bg-(image:--g)` to a matcher that cannot read the
+  hint, which falls through to the `^bg-` catch-all and evicts a real
+  background colour, the #1065 defect class. The closing delimiter is not
+  validated, in either spelling, because the hint names the property and how
+  the value terminates cannot change which property that is.
 
 ## Layout + typography helpers (the design system)
 

@@ -79,6 +79,10 @@ const TOKENS = [
   'shadow', 'shadow-none', 'shadow-inner', 'shadow-lg/25', 'shadow-red-500',
   'shadow-red-500/50', 'shadow-inherit', 'shadow-[#fff]',
   'shadow-[var(--shadow-glow)]', 'shadow-(--shadow-glow)', 'text-shadow-[var(--x)]',
+  'shadow-(color:--x)', 'bg-(image:--g)', 'bg-(color:--c)', 'bg-(size:--s)',
+  'text-(length:--s)', 'text-(color:--c)', 'text-shadow-(color:--x)',
+  'border-(length:--w)', 'border-(color:--c)', 'border-t-(length:--w)',
+  'border-(--x)', 'hover:shadow-(color:--x)', 'supports-(--foo):flex',
   'text-shadow-lg', 'text-shadow-none', 'text-shadow-red-500',
 ];
 
@@ -100,7 +104,7 @@ test('cn: the registry and blog copies merge every pair identically', () => {
   );
 });
 
-test('cn: the blog copy carries the conflict-group fixes (#1065, #1072, #1265)', () => {
+test('cn: the blog copy carries the conflict-group fixes (#1065, #1072, #1265, #1338)', () => {
   // A drift guard alone would stay green if BOTH copies regressed together, so
   // assert the headline behaviour directly on the blog copy too.
   assert.equal(blogCn('flex', 'flex-1'), 'flex flex-1');
@@ -119,4 +123,8 @@ test('cn: the blog copy carries the conflict-group fixes (#1065, #1072, #1265)',
   assert.equal(blogCn('text-shadow-sm', 'text-primary'), 'text-shadow-sm text-primary');
   assert.equal(blogCn('text-left', 'text-center'), 'text-center');
   assert.equal(blogCn('text-ellipsis', 'text-clip'), 'text-clip');
+  assert.equal(blogCn('bg-(image:--g)', 'bg-primary'), 'bg-(image:--g) bg-primary');
+  assert.equal(blogCn('bg-(image:--g)', 'bg-(image:--h)'), 'bg-(image:--h)');
+  assert.equal(blogCn('shadow-(color:--x)', 'shadow-lg'), 'shadow-(color:--x) shadow-lg');
+  assert.equal(blogCn('border-(length:--w)', 'border-primary'), 'border-(length:--w) border-primary');
 });
