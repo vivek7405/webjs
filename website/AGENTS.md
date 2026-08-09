@@ -139,21 +139,28 @@ website/
                        exists to rule out. Everything it takes from a docs
                        page is copied out of page SOURCE, which is a JS
                        template literal, so all four paths fold their
-                       backslash escapes BEFORE that single entity decode: a
-                       fenced sample at capture, a kept hole as it parks,
-                       ordinary prose in one pass once the hole passes have
-                       run, and a title or description in `extractPage`
-                       (where the fold sits inside `plainText`, since only 8
-                       of 44 pages declare `metadata.description` and the
-                       other 36 fall back to their first `<p>`). That order
-                       is the browser's own, since JS cooks the literal first
-                       and the HTML parser only ever sees cooked text. The
-                       prose fold runs AFTER the hole passes because those
-                       are what tell `\${x}` (literal text) from `${x}`
-                       (render-time, and dropped), so folding first would
-                       drop the literal. Fold exactly once per path: a second
-                       fold eats an authored `\\`. Only the hole half
-                       existed, which is why the corpus printed
+                       backslash escapes: a fenced sample at capture, a kept
+                       hole as it parks, ordinary prose in one pass once the
+                       hole passes have run, and a description inside
+                       `plainText` (which is where it belongs rather than at
+                       a call site, because only 8 of 44 pages declare
+                       `metadata.description` and the other 36 fall back to
+                       their first `<p>`, so both sites need it). Those three
+                       all fold BEFORE their single entity decode, which is
+                       the browser's own order, since JS cooks the literal
+                       first and the HTML parser only ever sees cooked text.
+                       A title is the exception that proves it: it folds at
+                       its call site because it never passes through
+                       `plainText`, and it decodes nothing at all, since it
+                       is read from a quoted metadata string rather than out
+                       of markup. The prose fold runs AFTER the hole passes
+                       because those are what tell `\${x}` (literal text)
+                       from `${x}` (render-time, and dropped), so folding
+                       first would drop the literal. Fold exactly once per
+                       path: a second fold eats an authored `\\`, which is
+                       why no `plainText` call site folds and a test reads
+                       the call sites to keep it that way. Only the hole
+                       half existed, which is why the corpus printed
                        `<form action=\${createPost}>` on 5 lines and
                        ``html\`...\` `` on 23 more, where the rendered page
                        shows `<form action=${createPost}>` and a plain

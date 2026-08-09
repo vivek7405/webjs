@@ -305,10 +305,25 @@ test('a description folds its escapes, on the fallback path 36 pages take', () =
   // escape debris intact.
   assert.equal(plainText('a function returning html\\`...\\` today'), 'a function returning html`...` today');
 
-  // Folding once, not twice. The metadata path used to fold at its call site
-  // and now folds here instead; doing both would eat a backslash an author
-  // deliberately wrote as `\\`.
+  // plainText folds ONCE. This says nothing about a caller that folds too,
+  // which is a different shape and is asserted separately below.
   assert.equal(plainText('a literal \\\\n stays'), 'a literal \\n stays');
+});
+
+test('no plainText call site folds, since plainText already does', async () => {
+  // The metadata description used to fold at its call site and now folds
+  // inside plainText instead. Doing BOTH is destructive, because a second
+  // fold eats a backslash an author deliberately wrote as `\\`.
+  //
+  // Nothing else can see that. The fixture above drives plainText alone, so
+  // it cannot observe a fold that happens across two functions, and no docs
+  // page carries a backslash in its description, so the corpus walks have
+  // nothing to compare. `extractPage` is module-private and reads a real
+  // file, so there is no fixture to hand it either. That leaves the call
+  // sites themselves, which is what this reads.
+  const src = await readFile(new URL('../../lib/docs-llms.server.ts', import.meta.url), 'utf8');
+  const doubled = [...src.matchAll(/plainText\(\s*unescapeJs\(/g)].length;
+  assert.equal(doubled, 0, 'a plainText call site folds as well, so that value folds twice');
 });
 
 test('a page description keeps the escaped tags it teaches', async () => {
