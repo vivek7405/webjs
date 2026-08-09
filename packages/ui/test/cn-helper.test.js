@@ -120,9 +120,10 @@ test('cn: every display keyword shares one group, so a repeated one collapses', 
 });
 
 test('cn: an arbitrary value may contain a colon without losing its group', () => {
-  // variantPrefix() splits on the last colon OUTSIDE brackets. Splitting on the
-  // last colon anywhere hands the matcher a fragment like `2px]`, which matches
-  // nothing, so the utility silently stops deduping against its own property.
+  // variantPrefix() splits on the last colon OUTSIDE brackets AND parentheses.
+  // Splitting on the last colon anywhere hands the matcher a fragment like
+  // `2px]`, which matches nothing, so the utility silently stops deduping
+  // against its own property. The paren half is covered by the #1338 test.
   assert.equal(cn('border-[length:2px]', 'border-4'), 'border-4');
   assert.equal(cn('border-2', 'border-[length:var(--w)]'), 'border-[length:var(--w)]');
   assert.equal(cn('border-[length:2px]', 'border-primary'), 'border-[length:2px] border-primary');
@@ -138,7 +139,8 @@ test('cn: an arbitrary value may contain a colon without losing its group', () =
 });
 
 test('cn: an arbitrary value type hint names the property, so it picks the group', () => {
-  // Once a bracketed value reaches the matcher, the prefix alone is not enough
+  // Once an arbitrary value reaches the matcher, in either the bracket or the
+  // v4 paren spelling, the prefix alone is not enough
   // to say which property it sets: `text-[length:14px]` is a font SIZE, not a
   // colour, and `bg-[url(...)]` is an image, not a background colour. Routing
   // by prefix would collapse a size against a colour, which is the exact
@@ -343,17 +345,12 @@ test('cn: box-shadow size and box-shadow colour are SEPARATE groups (#1265)', ()
   // reads only the `-[hint:` form, so GROUPS is what classifies it.
   assert.equal(cn('shadow-lg', 'shadow-(--shadow-glow)'), 'shadow-(--shadow-glow)');
   assert.equal(cn('shadow-(--shadow-glow)', 'shadow-red-500'), 'shadow-(--shadow-glow) shadow-red-500');
-  // Its HINTED sibling `shadow-(color:--x)` is a different matter, and nothing
-  // here classifies it: `variantPrefix` tracks only `[` / `]` depth, so the
-  // colon inside the parentheses reads as a variant separator and the matcher
-  // is handed the fragment `--x)`, which matches no pattern. So the token stays
-  // ungrouped and never evicts, which is the safe direction, but two of them
-  // also fail to collapse against each other. That blindness is older than the
-  // shadow split and covers every paren-hinted spelling (`bg-(image:--g)` the
-  // same way); fixing it means changing `variantPrefix`, which is out of scope
-  // here. Asserted so the current behaviour is pinned rather than assumed.
-  assert.equal(cn('shadow-red-500', 'shadow-(color:--x)'), 'shadow-red-500 shadow-(color:--x)');
-  assert.equal(cn('shadow-(color:--x)', 'shadow-(color:--y)'), 'shadow-(color:--x) shadow-(color:--y)');
+  // Its HINTED sibling `shadow-(color:--x)` classifies identically now that
+  // `variantPrefix` counts parens as well as brackets and `hintedGroup()`
+  // reads both spellings, so the v4 paren hint joins the same group its
+  // bracket form has always landed in.
+  assert.equal(cn('shadow-red-500', 'shadow-(color:--x)'), 'shadow-(color:--x)');
+  assert.equal(cn('shadow-(color:--x)', 'shadow-(color:--y)'), 'shadow-(color:--y)');
   // Conflicts stay scoped to their variant.
   assert.equal(cn('hover:shadow-lg', 'hover:shadow-red-500'), 'hover:shadow-lg hover:shadow-red-500');
 });
@@ -411,6 +408,60 @@ test('cn: the neighbouring shadow and ring prefixes stay ungrouped (#1265)', () 
   assert.equal(cn('drop-shadow-lg', 'drop-shadow-red-500'), 'drop-shadow-lg drop-shadow-red-500');
   assert.equal(cn('ring-2', 'ring-red-500'), 'ring-2 ring-red-500');
   assert.equal(cn('inset-ring-2', 'inset-ring-red-500'), 'inset-ring-2 inset-ring-red-500');
+});
+
+test('cn: the v4 paren type hint classifies like its bracket sibling (#1338)', () => {
+  // Same hint under the same prefix collapses.
+  assert.equal(cn('bg-(image:--g)', 'bg-(image:--h)'), 'bg-(image:--h)');
+  assert.equal(cn('text-(length:--a)', 'text-(length:--b)'), 'text-(length:--b)');
+  assert.equal(cn('text-shadow-(color:--x)', 'text-shadow-(color:--y)'), 'text-shadow-(color:--y)');
+  // The two spellings share one group, in both orders.
+  assert.equal(cn('bg-[image:var(--g)]', 'bg-(image:--h)'), 'bg-(image:--h)');
+  assert.equal(cn('bg-(image:--g)', 'bg-[image:var(--h)]'), 'bg-[image:var(--h)]');
+  assert.equal(cn('shadow-[color:red]', 'shadow-(color:--x)'), 'shadow-(color:--x)');
+  // The hint keeps it OUT of the prefix's default group, which is what a
+  // variantPrefix-only fix got wrong (#1065 class: it dropped these).
+  assert.equal(cn('bg-(image:--g)', 'bg-primary'), 'bg-(image:--g) bg-primary');
+  assert.equal(cn('bg-primary', 'bg-(image:--g)'), 'bg-primary bg-(image:--g)');
+  assert.equal(cn('text-(length:--s)', 'text-primary'), 'text-(length:--s) text-primary');
+  assert.equal(cn('text-primary', 'text-(length:--s)'), 'text-primary text-(length:--s)');
+  assert.equal(cn('shadow-(color:--x)', 'shadow-lg'), 'shadow-(color:--x) shadow-lg');
+  assert.equal(cn('shadow-lg', 'shadow-(color:--x)'), 'shadow-lg shadow-(color:--x)');
+  // A hint naming the prefix's OWN default property falls through to GROUPS
+  // and collapses against a plain value, exactly as the bracket form does.
+  assert.equal(cn('bg-primary', 'bg-(color:--c)'), 'bg-(color:--c)');
+  assert.equal(cn('text-primary', 'text-(color:--c)'), 'text-(color:--c)');
+  assert.equal(cn('bg-cover', 'bg-(size:--s)'), 'bg-(size:--s)');
+  // Border delegates to borderGroups()'s value parser, which reads the length
+  // hint in both spellings. Without the width-fragment half, the first two
+  // lines DROP the width.
+  assert.equal(cn('border-(length:--w)', 'border-primary'), 'border-(length:--w) border-primary');
+  assert.equal(cn('border-t-(length:--w)', 'border-t-primary'), 'border-t-(length:--w) border-t-primary');
+  assert.equal(cn('border-(length:--w)', 'border-2'), 'border-2');
+  assert.equal(cn('border-2', 'border-(length:--w)'), 'border-(length:--w)');
+  assert.equal(cn('border-(color:--c)', 'border-2'), 'border-(color:--c) border-2');
+  assert.equal(cn('border-primary', 'border-(color:--c)'), 'border-(color:--c)');
+  // A bare paren variable carries no hint, so it stays ambiguous and resolves
+  // the way the prefix's convention says (colour for border, size for shadow).
+  assert.equal(cn('border-(--x)', 'border-primary'), 'border-primary');
+  assert.equal(cn('shadow-(--shadow-glow)', 'shadow-lg'), 'shadow-lg');
+  // A real variant still splits, and a paren inside a variant is untouched.
+  assert.equal(cn('hover:shadow-(color:--x)', 'shadow-(color:--y)'),
+    'hover:shadow-(color:--x) shadow-(color:--y)');
+  assert.equal(cn('hover:bg-primary', 'hover:bg-accent'), 'hover:bg-accent');
+  assert.equal(cn('supports-(--foo):flex', 'supports-(--foo):grid'), 'supports-(--foo):grid');
+  // The URL token stays protected: its parens are nested inside brackets, so
+  // both depths are non-zero at the `://` colon.
+  assert.equal(cn('bg-[url(https://x/y.png)]', 'bg-primary'),
+    'bg-[url(https://x/y.png)] bg-primary');
+  assert.equal(cn('bg-[url(https://x/y.png)]', 'bg-[linear-gradient(red,blue)]'),
+    'bg-[linear-gradient(red,blue)]');
+  // A paren that is not a hint must not be read as one.
+  assert.equal(cn('grid-cols-[repeat(2,minmax(0,1fr))]', 'grid-cols-3'), 'grid-cols-3');
+  assert.equal(cn('w-[calc(100%-1rem)]', 'w-8'), 'w-8');
+  // An unlisted <prefix>:<hint> pair still gets its own bucket, so it can only
+  // ever collide with itself. Safe direction, unchanged by this issue.
+  assert.equal(cn('mask-(image:--m)', 'mask-none'), 'mask-(image:--m) mask-none');
 });
 
 // The old `Base` / `defineElement` HTMLElement-era helpers were removed in #819

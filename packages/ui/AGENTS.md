@@ -513,11 +513,16 @@ names mechanically:
   cover. Which sources a given generator reads, and when it goes to the
   network, is the registry-resolution question, answered by the LOCAL-FIRST
   section above, so do not restate it here.
-- A variant prefix is split on the last colon OUTSIDE square brackets, because
-  an arbitrary value carries colons of its own (`border-[length:2px]`,
-  `bg-[url(https://x/y.png)]`). Splitting on the last colon anywhere hands the
-  group matcher a fragment like `2px]`, so the utility silently stops deduping.
-- Once a bracketed value reaches the matcher, its TYPE HINT names the property
+- A variant prefix is split on the last colon at TOP LEVEL, meaning outside
+  both square brackets and parentheses, because an arbitrary value carries
+  colons of its own in either delimiter (`border-[length:2px]`,
+  `bg-[url(https://x/y.png)]`, `shadow-(color:--x)`). Splitting on the last
+  colon anywhere hands the group matcher a fragment like `2px]` or `--x)`, so
+  the utility silently stops deduping. The two delimiters get SEPARATE
+  counters; see the paren-spelling bullet below for why one shared counter is
+  wrong.
+- Once an arbitrary value reaches the matcher, in either spelling, its TYPE
+  HINT names the property
   and picks the group, since the prefix alone cannot: `text-[length:14px]` is a
   font size and `bg-[url(...)]` is an image, so routing either by prefix would
   collapse it against a colour. That lives in `hintedGroup()` and the
@@ -550,12 +555,23 @@ names mechanically:
   prefix's values actually look like in real code rather than by analogy with
   another prefix: `border-[var(--x)]` is usually a colour, `shadow-[var(--x)]`
   is usually a shadow, so the same shape resolves opposite ways.
-- A PAREN-hinted arbitrary value (`shadow-(color:--x)`, `bg-(image:--g)`)
-  reaches neither `hintedGroup()` nor GROUPS: `variantPrefix` tracks only
-  `[` / `]` depth, so the colon inside the parentheses reads as a variant
-  separator and the matcher gets a fragment that matches nothing. The token
-  stays ungrouped, so it never evicts, but two of them do not collapse against
-  each other either. Fixing it means teaching `variantPrefix` paren depth.
+- A PAREN-hinted arbitrary value (`shadow-(color:--x)`, `bg-(image:--g)`, the
+  Tailwind v4 shorthand for the bracket form) classifies exactly like its
+  bracket sibling (#1338), because both spellings produce the identical
+  `<prefix>:<hint>` key that `HINTED_GROUPS` is keyed on, so the map carries
+  no paren-specific entries. Three pieces make that work, and all three are
+  load-bearing. `variantPrefix` counts brackets and parens in SEPARATE
+  counters and splits only where both are zero, never one shared counter: a
+  shared one lets a stray `)` cancel a live `[` and reads `x-[y)-z:w` as
+  having a top-level colon, which is the fragment bug it exists to prevent.
+  `hintedGroup()`'s regex accepts `-(` alongside `-[`. And `borderGroups()`'s
+  width fragment reads the length hint in both spellings. Teaching
+  `variantPrefix` paren depth ALONE is actively harmful rather than a partial
+  win: it hands an intact `bg-(image:--g)` to a matcher that cannot read the
+  hint, which falls through to the `^bg-` catch-all and evicts a real
+  background colour, the #1065 defect class. The closing delimiter is not
+  validated, in either spelling, because the hint names the property and how
+  the value terminates cannot change which property that is.
 
 ## Layout + typography helpers (the design system)
 
