@@ -6,6 +6,7 @@ import { isCSS, adoptStyles } from './css.js';
 import { register, tagOf } from './registry.js';
 import { parse as deserializeProp } from './serialize.js';
 import { Signal } from './signal.js';
+import { resolveAttributeProperty } from './attribute-reader.js';
 import {
   captureAuthoredChildren,
   adoptSSRAssignments,
@@ -1147,30 +1148,21 @@ class WebComponentBase extends Base {
     // resulting attributeChangedCallback to avoid infinite loops.
     if (this.__reflectingAttribute) return;
 
-    const Ctor = /** @type any */ (this.constructor);
-    const allProps = (Ctor.properties || {});
-    // Resolve the incoming attribute name to its property. A custom
-    // `attribute` option wins; otherwise the kebab-cased property name. Falls
-    // back to the camelCase of the attribute for the common (kebab) case.
-    let propName, raw;
-    for (const [k, decl] of Object.entries(allProps)) {
-      const d = typeof decl === 'object' ? decl : { type: decl };
-      if ((d.attribute || hyphenate(k)) === name) { propName = k; raw = decl; break; }
-    }
-    if (raw === undefined) { propName = camelCase(name); raw = allProps[propName] || allProps[name]; }
-    if (raw === undefined) return;
-    // A declaration is either a full descriptor (`{ type: Number, … }`) or the
-    // bare-constructor shorthand the factory accepts (`count: Number`), in which
-    // case the value IS the type. Normalise so type-based coercion fires either
-    // way (matches `_initializeProperties`).
-    const def = typeof raw === 'object' ? raw : { type: raw };
+    // One name resolver for both sides (#1341). The browser only calls this for
+    // a name in `observedAttributes`, and it has already lowercased that name
+    // while parsing, so it passes straight through; the SSR caller lowercases
+    // its source name first. `resolveAttributeProperty` also normalises the
+    // declaration, so a bare-constructor shorthand (`count: Number`) and the
+    // long form (`{ type: Number, … }`) both arrive here as `{ type, … }`.
+    const resolved = resolveAttributeProperty(this.constructor, name);
+    if (resolved === undefined) return;
+    const { propName, def } = resolved;
 
-    // One reader for both sides (#1340), in `attribute-reader.js`.
-    // `applyAttrsToInstance` in `render-server.js` calls the same function,
-    // which is why that module exists rather than the chain living here, so
-    // precedence and every
-    // fallback are shared rather than mirrored. The client is handed a value
-    // the DOM already decoded, so it passes no `decode`.
+    // One reader for both sides, in `attribute-reader.js`: this and
+    // `applyAttrsToInstance` in `render-server.js` call the same function, so
+    // precedence and every fallback are shared rather than mirrored (#1340).
+    // It takes an already-decoded value, which the DOM has done here and
+    // `decodeAttrEntities` does at the SSR call site (#1341).
     const v = readAttributeValue(def, value);
 
     if (this[propName] !== v) {

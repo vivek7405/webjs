@@ -577,3 +577,207 @@ suite('SSR/client parity: form actions (#1155)', () => {
     assert.notEqual(a, b, 'differing method must be visible to the comparison');
   });
 });
+
+// ---------------------------------------------------------------------------
+// The SSR and client attribute readers see the same attribute SET (#1341).
+//
+// The suites above compare RENDER output for inputs both readers agree on.
+// These four cases are the ones they did NOT agree on: for each, one reader
+// consumed an attribute the other never saw, so the SSR'd first paint held one
+// value and the upgraded element held another with nothing erroring.
+//
+// Each test goes through a REAL element upgrade rather than a hand-called
+// `attributeChangedCallback`, because the divergence lives on the platform's
+// own path: the HTML parser lowercases every attribute name and decodes every
+// character reference before any reader is called, and `observedAttributes`
+// filters which names are delivered at all. A hand-called reader reproduces
+// none of that. The same markup then goes through `renderToString` and the two
+// values are compared, so a future change that moves one side without the other
+// fails here.
+
+/** Mount source markup, wait for the upgrade, and return the live element. */
+async function upgrade(tag, markup, keep) {
+  const host = document.createElement('div');
+  host.innerHTML = markup;
+  document.body.appendChild(host);
+  keep.push(host);
+  const el = host.firstElementChild;
+  await customElements.whenDefined(tag);
+  await el.updateComplete;
+  return el;
+}
+
+suite('the SSR and client attribute readers see the same attribute set (#1341)', () => {
+  const mounted = [];
+  teardown(() => {
+    for (const host of mounted.splice(0)) host.remove();
+  });
+
+  class EntEl extends WebComponent({ cfg: prop(Object) }) {
+    constructor() { super(); this.cfg = null; }
+    render() { return html`<i>val=${JSON.stringify(this.cfg)}</i>`; }
+  }
+  EntEl.register('parity-ent-el');
+
+  class StateObj extends WebComponent({ cfg: prop(Object, { state: true }) }) {
+    constructor() { super(); this.cfg = { fromCtor: true }; }
+    render() { return html`<i>val=${JSON.stringify(this.cfg)}</i>`; }
+  }
+  StateObj.register('parity-state-obj');
+
+  class CamelEl extends WebComponent({ cfgData: prop(String) }) {
+    constructor() { super(); this.cfgData = 'CTOR'; }
+    render() { return html`<i>val=${String(this.cfgData)}</i>`; }
+  }
+  CamelEl.register('parity-camel-el');
+
+  class StrEl extends WebComponent({ s: prop(String) }) {
+    constructor() { super(); this.s = ''; }
+    render() { return html`<i>val=${String(this.s)}</i>`; }
+  }
+  StrEl.register('parity-str-el');
+
+  test('an entity-encoded JSON attribute parses to the same object on both sides', async () => {
+    // The browser decodes `&#123;&quot;a&quot;:1&#125;` before the reader sees
+    // it, so it always parsed. SSR reversed three entities and got `null`.
+    const markup = '<parity-ent-el cfg="&#123;&quot;a&quot;:1&#125;"></parity-ent-el>';
+    const el = await upgrade('parity-ent-el', markup, mounted);
+
+    assert.deepEqual(el.cfg, { a: 1 }, 'the platform decodes this before any reader runs');
+    const ssr = await renderToString(html([markup]));
+    assert.ok(ssr.includes('val={"a":1}'), `the SSR reader disagreed with the client: ${ssr}`);
+  });
+
+  test('a state:true attribute leaves the constructor value on both sides', async () => {
+    // `observedAttributes` excludes state props, so the browser never calls the
+    // reader for this name at all. SSR had no such filter and read it.
+    const markup = '<parity-state-obj cfg="oops"></parity-state-obj>';
+    const el = await upgrade('parity-state-obj', markup, mounted);
+
+    assert.ok(
+      !StateObj.observedAttributes.includes('cfg'),
+      'the platform fact this rests on: a state prop is not observed',
+    );
+    assert.deepEqual(el.cfg, { fromCtor: true }, 'the browser never delivered the attribute');
+    const ssr = await renderToString(html([markup]));
+    assert.ok(ssr.includes('val={"fromCtor":true}'), `the SSR reader disagreed with the client: ${ssr}`);
+  });
+
+  test('a camelCase attribute name resolves to nothing on both sides', async () => {
+    // The parser lowercases the name, so it can never match `cfg-data` in
+    // `observedAttributes`. SSR matched the SOURCE case and did read it.
+    const markup = '<parity-camel-el cfgData="oops"></parity-camel-el>';
+    const el = await upgrade('parity-camel-el', markup, mounted);
+
+    const names = el.getAttributeNames();
+    assert.ok(names.includes('cfgdata'), `the parser lowercased the name: ${names.join(', ')}`);
+    assert.ok(!names.includes('cfgData'), `the source case did not survive parsing: ${names.join(', ')}`);
+    assert.equal(el.cfgData, 'CTOR', 'the browser resolved the lowercased name to nothing');
+
+    const ssr = await renderToString(html([markup]));
+    assert.ok(ssr.includes('val=CTOR'), `the SSR reader disagreed with the client: ${ssr}`);
+  });
+
+  test('a named character reference in a String attribute decodes on both sides', async () => {
+    // The most reachable case of the four: every hand-written entity in a plain
+    // string attribute hit it, because SSR decoded only on the JSON branch.
+    const markup = '<parity-str-el s="a&hellip;b"></parity-str-el>';
+    const el = await upgrade('parity-str-el', markup, mounted);
+
+    assert.equal(el.getAttribute('s'), 'a…b', 'the platform decodes before any reader runs');
+    assert.equal(el.s, 'a…b');
+
+    const ssr = await renderToString(html([markup]));
+    assert.ok(ssr.includes('val=a…b'), `the SSR reader disagreed with the client: ${ssr}`);
+  });
+
+  test('a legacy semicolon-less reference decodes on both sides, with the carve-out', async () => {
+    // Not a non-goal: a browser really does decode `&nbsp` in an attribute
+    // value, and the rule that governs it is a one-character lookahead, so it
+    // is reproducible. The three literal rows below are what keeps the rule a
+    // rule rather than "decode a legacy name wherever you see one", though they
+    // do not all get there the same way: `&nbsp=x` is the lookahead, while
+    // `&nbspx` and `&notin` are simply not legacy names once the whole
+    // alphanumeric run is taken. A browser reaches the same answers by longest
+    // match plus the same lookahead, which is the agreement being pinned.
+    for (const [source, expected] of [
+      ['&nbsp', ' '],
+      ['&copy', '©'],
+      ['&nbspx', '&nbspx'],
+      ['&nbsp=x', '&nbsp=x'],
+      ['&notin', '&notin'],
+    ]) {
+      const markup = `<parity-str-el s="${source}"></parity-str-el>`;
+      const el = await upgrade('parity-str-el', markup, mounted);
+      assert.equal(el.getAttribute('s'), expected, `the platform's own answer for ${source}`);
+
+      const out = await renderToString(html([markup]));
+      const m = /val=([^<]*)</.exec(out);
+      const rendered = m[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      assert.equal(rendered, expected, `the SSR reader disagreed with the client for ${source}`);
+    }
+  });
+
+  test('a name colliding with Object.prototype is literal on both sides', async () => {
+    // These are not named references, so a browser leaves them alone. The SSR
+    // decoder read its table by indexing an object literal, which resolves
+    // through `Object.prototype`, so each of these returned a function and threw
+    // out of the decoder instead. Measured here rather than reasoned about,
+    // because every other entity claim in this suite is measured.
+    for (const name of [
+      'constructor', 'toString', 'valueOf', 'hasOwnProperty',
+      'isPrototypeOf', 'propertyIsEnumerable', 'toLocaleString', '__proto__',
+    ]) {
+      const markup = `<parity-str-el s="&${name};"></parity-str-el>`;
+      const el = await upgrade('parity-str-el', markup, mounted);
+      assert.equal(el.getAttribute('s'), `&${name};`, `the platform's own answer for &${name};`);
+
+      const out = await renderToString(html([markup]));
+      assert.ok(!out.includes('data-webjs-error'), `the SSR decoder threw on &${name};: ${out}`);
+      const m = /val=([^<]*)</.exec(out);
+      const rendered = m[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      assert.equal(rendered, `&${name};`, `the SSR reader disagreed with the client for &${name};`);
+    }
+  });
+
+  test('a custom-attribute prop answers to its declared name and nothing else', async () => {
+    // `observedAttributes` holds the DECLARED attribute alone, so a browser
+    // never delivers the property name to any reader. A `props[name]` fallback
+    // in the resolver used to make SSR read it anyway, which SSR'd `true` and
+    // upgraded to the constructor value.
+    class CustomAttr extends WebComponent({ open: prop(Boolean, { attribute: 'is-open' }) }) {
+      constructor() { super(); this.open = false; }
+      render() { return html`<i>open=${String(this.open)}</i>`; }
+    }
+    CustomAttr.register('parity-custom-attr');
+
+    assert.deepEqual(CustomAttr.observedAttributes, ['is-open'], 'the platform fact this rests on');
+
+    const byProp = await upgrade('parity-custom-attr', '<parity-custom-attr open></parity-custom-attr>', mounted);
+    assert.equal(byProp.open, false, 'the browser never delivered the property name');
+    const ssrByProp = await renderToString(html(['<parity-custom-attr open></parity-custom-attr>']));
+    assert.ok(ssrByProp.includes('open=false'), `the SSR reader disagreed with the client: ${ssrByProp}`);
+
+    const byAttr = await upgrade('parity-custom-attr', '<parity-custom-attr is-open></parity-custom-attr>', mounted);
+    assert.equal(byAttr.open, true, 'the declared attribute must still resolve');
+    const ssrByAttr = await renderToString(html(['<parity-custom-attr is-open></parity-custom-attr>']));
+    assert.ok(ssrByAttr.includes('open=true'), `the declared attribute stopped resolving at SSR: ${ssrByAttr}`);
+  });
+
+  test('and the SSR instance getAttribute() returns the same decoded string', async () => {
+    // `seedServerAttrs` shares the decoder, so a `this.getAttribute(name)` read
+    // during SSR returns what the browser's own getAttribute returns above.
+    class SeedProbe extends WebComponent({ s: prop(String) }) {
+      constructor() { super(); this.s = ''; }
+      render() { return html`<i>attr=${String(this.getAttribute('s'))}</i>`; }
+    }
+    SeedProbe.register('parity-seed-probe');
+
+    const markup = '<parity-seed-probe s="a&hellip;b"></parity-seed-probe>';
+    const el = await upgrade('parity-seed-probe', markup, mounted);
+    assert.equal(el.getAttribute('s'), 'a…b');
+
+    const ssr = await renderToString(html([markup]));
+    assert.ok(ssr.includes('attr=a…b'), `the SSR element shim disagreed with the browser: ${ssr}`);
+  });
+});

@@ -213,3 +213,13 @@ export declare function prop<T>(
 export declare function prop<T = string>(
   opts?: PropertyDeclaration<T>
 ): PropertyDeclaration<T>;
+
+// The shared attribute reader (`resolveAttributeProperty`, #1341) is NOT here,
+// and nothing about it belongs here. It lives in `src/attribute-reader.js`,
+// which has no `exports` entry, because two guards bracket every mapped entry
+// and `./component` is one: #388 forces every runtime named export of
+// `component.js` to be declared in this file, and #1031 forces every
+// declaration reachable from `index.d.ts` (which re-exports this file with
+// `export *`) to exist on `index.js` at runtime. Together they leave no way to
+// add an INTERNAL named export to `component.js`. That module's header carries
+// the full reasoning.
