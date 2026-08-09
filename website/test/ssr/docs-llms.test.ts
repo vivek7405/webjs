@@ -247,7 +247,7 @@ test('a fenced sample folds its escapes before it decodes its entities', () => {
 
 test('prose is unescaped too, since it comes out of the same template literal', () => {
   // A hole and a sample were folded before prose was, so the corpus still
-  // taught ``returning html\`...\` `` on 50 lines across 8 pages where the
+  // taught ``returning html\`...\` `` on 23 lines across 8 pages where the
   // rendered page shows a plain backtick.
   assert.equal(bodyToMarkdown('html`<p>returning <code>html\\`...\\`</code></p>`'), 'returning html`...`');
 
@@ -294,6 +294,21 @@ test('a kept hole nested inside another leaves no sentinel in the output', () =>
 test('plainText strips tags before it decodes entities', () => {
   assert.equal(plainText('a value with &lt;code&gt; here'), 'a value with <code> here');
   assert.match(plainText('intercepts same-origin &lt;a&gt; clicks'), /same-origin <a> clicks/);
+});
+
+test('a description folds its escapes, on the fallback path 36 pages take', () => {
+  // The fourth path that copies out of page source. It matters more than its
+  // 8-page metadata sibling, not less: only 8 of 44 pages declare
+  // `metadata.description`, so the other 36 fall back to their first `<p>`,
+  // and that fallback did not fold. A paragraph reached /llms-full.txt cooked
+  // while the SAME paragraph reached /llms.txt and the search index with its
+  // escape debris intact.
+  assert.equal(plainText('a function returning html\\`...\\` today'), 'a function returning html`...` today');
+
+  // Folding once, not twice. The metadata path used to fold at its call site
+  // and now folds here instead; doing both would eat a backslash an author
+  // deliberately wrote as `\\`.
+  assert.equal(plainText('a literal \\\\n stays'), 'a literal \\n stays');
 });
 
 test('a page description keeps the escaped tags it teaches', async () => {
