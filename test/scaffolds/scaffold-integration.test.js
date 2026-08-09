@@ -87,19 +87,16 @@ test('scaffoldApp full-stack: writes the canonical full-stack app layout', async
     assert.ok(existsSync(join(appDir, 'tsconfig.json')));
 
     // Single cross-agent source (AGENTS.md + the one skill + the .agents workflow
-    // rules), with a per-agent file for each tool: thin bridges for the ones that
-    // do not read AGENTS.md natively (CLAUDE.md, GEMINI.md, copilot), a .cursorrules
-    // bridge, CONVENTIONS.md, and a commit-nudge hook for Cursor / Gemini / opencode.
-    for (const f of ['AGENTS.md', '.agents/skills/webjs/SKILL.md', '.agents/rules/workflow.md', 'CLAUDE.md', 'GEMINI.md', '.github/copilot-instructions.md', 'CONVENTIONS.md', '.cursorrules', '.cursor/hooks/nudge-uncommitted.sh', '.gemini/hooks/nudge-uncommitted.sh', '.opencode/plugins/nudge-uncommitted.ts', '.claude/settings.json', '.editorconfig']) {
+    // rules), CONVENTIONS.md, CLAUDE.md bridge, and Claude protective hooks.
+    for (const f of ['AGENTS.md', '.agents/skills/webjs/SKILL.md', '.agents/rules/workflow.md', 'CLAUDE.md', 'CONVENTIONS.md', '.claude/settings.json', '.editorconfig']) {
       assert.ok(existsSync(join(appDir, f)), `${f} should exist`);
     }
-    // No design-distinctness ceremony (retired: gallery:clear does the reset job).
-    for (const f of ['LAYOUT-REFERENCE.md', '.claude/hooks/design-review-before-stop.sh', '.claude/skills/webjs-design-review']) {
+    // Per-agent files and design-distinctness ceremony removed.
+    for (const f of ['GEMINI.md', '.github/copilot-instructions.md', '.cursorrules', 'LAYOUT-REFERENCE.md', '.claude/hooks/design-review-before-stop.sh', '.claude/skills/webjs-design-review']) {
       assert.ok(!existsSync(join(appDir, f)), `${f} should NOT exist in the scaffold`);
     }
-    // The rule bridges are THIN (pointers to AGENTS.md / the skill), not full
-    // duplicates. .cursorrules + CONVENTIONS.md point at the skill.
-    for (const f of ['CLAUDE.md', 'GEMINI.md', '.github/copilot-instructions.md', '.cursorrules', 'CONVENTIONS.md']) {
+    // Thin bridges (pointers to AGENTS.md / the skill).
+    for (const f of ['CLAUDE.md', 'CONVENTIONS.md']) {
       const src = readFileSync(join(appDir, f), 'utf8');
       assert.ok(src.length < 2200, `${f} is a thin bridge, not a full rule duplicate`);
       assert.match(src, /AGENTS\.md|\.agents\/skills\/webjs/, `${f} points at AGENTS.md or the skill`);
@@ -781,8 +778,7 @@ test('scaffoldApp: AGENTS.md build playbook is template-specific (#1076)', async
     // and they must acknowledge the api showcase rather than only the UI gallery.
     const apiConv = readFileSync(join(cwd, 'api-app', 'CONVENTIONS.md'), 'utf8');
     const apiFlow = readFileSync(join(cwd, 'api-app', '.agents/rules/workflow.md'), 'utf8');
-    const apiCursor = readFileSync(join(cwd, 'api-app', '.cursorrules'), 'utf8');
-    for (const [label, md] of [['CONVENTIONS.md', apiConv], ['workflow.md', apiFlow], ['.cursorrules', apiCursor]]) {
+    for (const [label, md] of [['CONVENTIONS.md', apiConv], ['workflow.md', apiFlow]]) {
       assert.doesNotMatch(md, /only while exploring|do not have to read|only (if|when) a task needs/i,
         `api ${label}: no opt-out phrasing`);
     }

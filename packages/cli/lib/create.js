@@ -568,26 +568,12 @@ export async function scaffoldApp(name, cwd, opts = {}) {
   // --- Templates (AGENTS.md, CONVENTIONS.md, CLAUDE.md, test files, Claude hooks) ---
 
   const templateFiles = [
-    // Single cross-agent source: a thin AGENTS.md points at the skill; the
+    // Single cross-agent source: AGENTS.md points at .agents/skills/webjs/; the
     // .agents/rules workflow rules and the Claude enforcement hooks back it up.
     'AGENTS.md',
     'CONVENTIONS.md',
     '.agents/rules/workflow.md',
-    // Per-agent files. Content is single-source (AGENTS.md + the skill); these
-    // are thin bridges plus each tool's own config and commit-nudge hook. Claude
-    // Code (CLAUDE.md @-imports AGENTS.md), Gemini CLI (GEMINI.md), Copilot in VS
-    // Code (copilot-instructions.md). Cursor / opencode / Antigravity read
-    // AGENTS.md natively; Cursor also gets a .cursorrules bridge, and each of
-    // Cursor / Gemini / opencode ships a "commit often" nudge hook.
     'CLAUDE.md',
-    'GEMINI.md',
-    '.github/copilot-instructions.md',
-    '.cursorrules',
-    '.cursor/hooks.json',
-    '.cursor/hooks/nudge-uncommitted.sh',
-    '.gemini/settings.json',
-    '.gemini/hooks/nudge-uncommitted.sh',
-    '.opencode/plugins/nudge-uncommitted.ts',
     // Claude Code config + the protective enforcement hooks (no design ceremony).
     '.claude.json',
     '.claude/settings.json',
@@ -629,7 +615,7 @@ export async function scaffoldApp(name, cwd, opts = {}) {
   // rewrites; the three infra files get their file-specific transform. On Node,
   // every file is copied byte-identical (the map is empty).
   const PROSE_REWRITE = new Set([
-    'AGENTS.md', 'CLAUDE.md', 'CONVENTIONS.md', '.cursorrules',
+    'AGENTS.md', 'CLAUDE.md', 'CONVENTIONS.md',
     '.agents/rules/workflow.md',
     'test/hello/browser/hello.test.js', 'test/hello/e2e/hello.test.ts',
   ]);
