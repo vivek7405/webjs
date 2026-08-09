@@ -212,6 +212,30 @@ test('compileRedirectRules: an invalid source pattern drops the entry', () => {
   assert.equal(rules.length, 0);
 });
 
+test('compileRedirectRules: a wrong-typed redirects key warns, an absent one does not', () => {
+  // The config LEVEL, matching headers.js. `"redirects": "nope"` discards the
+  // whole config; the schema types the key `array` and the boot check inspects
+  // only scalar leaves, so nothing else reports it. An ABSENT key is the
+  // default and must stay silent, or every app without redirects warns on boot.
+  const seen = [];
+  const realWarn = console.warn;
+  console.warn = (...args) => seen.push(args[0]);
+  try {
+    assert.deepEqual(compileRedirectRules({ webjs: { redirects: 'nope' } }), []);
+    assert.deepEqual(compileRedirectRules({ webjs: { redirects: {} } }), []);
+    assert.equal(seen.length, 2, `a wrong-typed key warns, got ${seen.length}`);
+    assert.match(seen[0], /redirects must be an array/);
+
+    seen.length = 0;
+    assert.deepEqual(compileRedirectRules({ webjs: {} }), []);
+    assert.deepEqual(compileRedirectRules({}), []);
+    assert.deepEqual(compileRedirectRules(null), []);
+    assert.deepEqual(seen, [], 'an absent key is the default and says nothing');
+  } finally {
+    console.warn = realWarn;
+  }
+});
+
 test('compileRedirectRules: a non-object entry is dropped AND warned about', () => {
   // This branch used to `continue` in silence while every other drop warned,
   // so a `["/old"]` entry (the shape you write when you forget the object

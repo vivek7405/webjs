@@ -75,7 +75,14 @@ export function compileHeaderRules(pkg) {
     typeof pkg === 'object' &&
     /** @type {any} */ (pkg).webjs &&
     /** @type {any} */ (pkg).webjs.headers;
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) {
+    // An ABSENT key is the default and says nothing. A PRESENT one of the
+    // wrong type discards the whole config, so it says so: the schema types
+    // this key `array` but the boot config check only inspects boolean /
+    // integer / enum leaves, so `"headers": {…}` is caught by nothing else.
+    if (raw !== undefined && raw !== null) warnDrop('headers must be an array', raw);
+    return [];
+  }
   /** @type {Array<{ pattern: URLPattern, directives: Array<{ key: string, value: string | null }> }>} */
   const rules = [];
   for (const entry of raw) {
@@ -151,11 +158,15 @@ export function compileHeaderRules(pkg) {
 }
 
 /**
- * One line per dropped rule or directive, matching `redirects.js`'s warnDrop
- * verbatim in shape. Every drop branch in `compileHeaderRules` goes through
- * this: a config typo that silently does nothing is the failure this whole
- * config-validation surface exists to end, and a `source` misspelled as
- * `sources` used to vanish here with no diagnostic at all.
+ * One line per dropped config, rule, or directive, matching `redirects.js`'s
+ * warnDrop verbatim in shape. Every drop in `compileHeaderRules` goes through
+ * this, at all three levels: a wrong-typed `webjs.headers` key, a rule, and a
+ * directive. A config typo that silently does nothing is the failure this whole
+ * surface exists to end, and a `source` misspelled as `sources` used to vanish
+ * here with no diagnostic at all.
+ *
+ * The one thing that does NOT warn is an ABSENT `webjs.headers`, which is the
+ * default rather than a mistake.
  *
  * Defined BELOW `compileHeaderRules`, like the one in `redirects.js`. Putting
  * it above wedged this docblock between that function's JSDoc and its

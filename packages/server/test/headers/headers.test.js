@@ -322,6 +322,31 @@ test('compileHeaderRules: every dropped rule and directive warns', () => {
   }
 });
 
+test('compileHeaderRules: a wrong-typed headers key warns, an absent one does not', () => {
+  // The config LEVEL, above the rule and directive levels the other cases
+  // cover. `"headers": {}` discards the whole config, and the schema types the
+  // key `array` while the boot check inspects only scalar leaves, so nothing
+  // else reports it either. An ABSENT key is the default, not a mistake, and
+  // must stay silent or every app without the key warns on every boot.
+  const seen = [];
+  const realWarn = console.warn;
+  console.warn = (...args) => seen.push(args[0]);
+  try {
+    assert.deepEqual(compileHeaderRules({ webjs: { headers: 'nope' } }), []);
+    assert.deepEqual(compileHeaderRules({ webjs: { headers: {} } }), []);
+    assert.equal(seen.length, 2, `a wrong-typed key warns, got ${seen.length}`);
+    assert.match(seen[0], /headers must be an array/);
+
+    seen.length = 0;
+    assert.deepEqual(compileHeaderRules({ webjs: {} }), []);
+    assert.deepEqual(compileHeaderRules({}), []);
+    assert.deepEqual(compileHeaderRules(null), []);
+    assert.deepEqual(seen, [], 'an absent key is the default and says nothing');
+  } finally {
+    console.warn = realWarn;
+  }
+});
+
 test('compileHeaderRules: an empty headers array is dropped AND warned about', () => {
   // The gap this file missed the first time. `{ source, headers: [] }` is
   // SCHEMA-VALID (webjs-config.schema.json puts no minItems on headers) and the

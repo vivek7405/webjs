@@ -236,7 +236,14 @@ export function compileRedirectRules(pkg) {
     typeof pkg === 'object' &&
     /** @type {any} */ (pkg).webjs &&
     /** @type {any} */ (pkg).webjs.redirects;
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) {
+    // An ABSENT key is the default and says nothing. A PRESENT one of the
+    // wrong type discards the whole config, so it says so, matching
+    // `headers.js`. Nothing else reports it: the schema types this key
+    // `array` and the boot config check inspects only scalar leaves.
+    if (raw !== undefined && raw !== null) warnDrop('redirects must be an array', raw);
+    return [];
+  }
   /** @type {Array<{ pattern: URLPattern, destination: string, status: number }>} */
   const rules = [];
   for (const entry of raw) {
