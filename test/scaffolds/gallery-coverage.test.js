@@ -37,7 +37,9 @@ import { scaffoldApp } from '../../packages/cli/lib/create.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO = join(__dirname, '..', '..');
-const GALLERY = join(REPO, 'packages', 'cli', 'templates', 'gallery');
+const GALLERY = existsSync(join(REPO, 'packages', 'cli', 'templates', 'gallery'))
+  ? join(REPO, 'packages', 'cli', 'templates', 'gallery')
+  : join(REPO, 'gallery');
 const MANIFEST_PATH = join(__dirname, 'gallery-coverage.json');
 const ROUTER_SRC = join(REPO, 'packages', 'server', 'src', 'router.js');
 
