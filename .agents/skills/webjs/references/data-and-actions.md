@@ -151,9 +151,34 @@ The response drives the page: a success is a `303` PRG (to `result.redirect` whe
 
 A streamed return (#489) is refused from a form-bound action: the RPC stub decodes frames, but a submission is answered with a redirect or a page, and with JS off there is no consumer at all. Stream from a programmatic call instead.
 
-## HTTP-verb config exports
+## HTTP-verb config exports & decision guide
 
 A `'use server'` action is a POST by default. Reserved sibling exports, read statically (the same way a page reads `export const revalidate`), change its HTTP semantics WITHOUT changing the call site (you still write `await getUser(7)`).
+
+### HTTP Verbs Decision Guide
+
+| Action Kind | Target Verb | Example Declaration | HTTP Semantics & Features |
+|---|---|---|---|
+| **Form-Bound Action** (`<form action=${fn}>`) | **POST** (default) | *(no export or `export const method = 'POST'`) | Standard HTML form submission. Enforces `POST` + `multipart/form-data` or `urlencoded`. **Never export `method = 'GET'`** (triggers 405 refusal & `webjs check` violation). |
+| **RPC Read Action (Query)** | **GET** | `export const method = 'GET'` | Read-only RPC calls (`await getTodos()`). Args ride URL query params (with POST fallback over 4KB). CSRF-exempt, supports ETags, 304 revalidation, and `export const cache`. |
+| **RPC Write Action (Mutation)** | **POST** / **PUT** / **PATCH** / **DELETE** | Default or `export const method = 'DELETE'` | Data-modifying RPC calls (`await deleteUser(4)`). Carries CSRF protection, serialized payload body, and evicts cached query tags via `export const invalidates`. |
+
+### Choosing the right HTTP verb
+
+1. **Form-Bound Actions (`<form action=${fn}>` / `<button formaction=${fn}>`):**
+   - **MUST be POST.** Leave unannotated (default) or export `export const method = 'POST'`.
+   - **NEVER export `export const method = 'GET'` for form actions.** The HTML renderer automatically emits `method="post"` and `formenctype` for form actions. Binding a `method = 'GET'` action to a form returns a `405 Method Not Allowed` at runtime and triggers a `webjs check` error (`form-action-not-a-get-action`).
+   - **NEVER add `method="get"` to a bound `<form action=${fn}>`.** WebJs manages form submission semantics automatically; adding `method="get"` causes a `WEBJS_FORM_SUBMITTED_AS_GET` diagnostic warning.
+
+2. **Programmatic / RPC Read Actions (Queries):**
+   - **ALWAYS export `export const method = 'GET'` for read-only queries.**
+   - When an action only fetches data (`await getUser(id)`), exporting `method = 'GET'` instructs the client RPC stub to issue an HTTP GET request with arguments encoded in query parameters.
+   - Enables browser/CDN caching, weak ETags (returning 304 Not Modified on cache hit), and HTTP `Cache-Control` header generation when paired with `export const cache = ...`.
+
+3. **Programmatic / RPC Write Actions (Mutations):**
+   - **Use POST, PUT, PATCH, or DELETE for writes.**
+   - Use default `POST` or explicitly export `PUT`/`PATCH`/`DELETE` for RESTful RPC calls (`await removeUser(id)`).
+   - Pair mutating actions with `export const invalidates = (args...) => ['tag']` to evict cached reads matching those tags upon completion.
 
 ```ts
 // modules/users/queries/get-user.server.ts: a cached, tagged GET read
@@ -165,8 +190,9 @@ export async function getUser(id: number) { return db.query.users.findFirst({ wh
 ```
 
 ```ts
-// a mutation evicts the tags it touches
+// modules/users/actions/update-user.server.ts: a mutation evicting matching tags
 'use server';
+export const method = 'PATCH';                     // explicit verb
 export const invalidates = (id: number) => ['user:' + id];
 export const middleware = [requireAuth];           // async (ctx, next) => result; read ctx via actionContext()
 export async function updateUser(id: number, patch: Partial<User>) { /* ... */ }
