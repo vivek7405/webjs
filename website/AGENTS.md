@@ -136,15 +136,26 @@ website/
                        `${x}` is render-time and gets dropped. Treating all
                        three alike printed `<form action=\>` on 12 corpus
                        lines, teaching an LLM the one shape invariant 12
-                       exists to rule out. A fenced sample and a kept prose
-                       hole are both copied out of page SOURCE, which is a JS
-                       template literal, so both fold their backslash escapes
-                       BEFORE that single entity decode. That order is the
-                       browser's own: JS cooks the literal first and the HTML
-                       parser only ever sees cooked text. The fenced half was
-                       missing, which is why the corpus printed
-                       `<form action=\${createPost}>` on 5 lines while the
-                       rendered page showed `<form action=${createPost}>`.
+                       exists to rule out. EVERYTHING it emits is copied out
+                       of page SOURCE, which is a JS template literal, so
+                       every path folds its backslash escapes BEFORE that
+                       single entity decode: a fenced sample at capture, a
+                       kept hole as it parks, and ordinary prose in one pass
+                       once the hole passes have run. That order is the
+                       browser's own, since JS cooks the literal first and the
+                       HTML parser only ever sees cooked text. The prose fold
+                       runs AFTER the hole passes because those are what tell
+                       `\${x}` (literal text) from `${x}` (render-time, and
+                       dropped), so folding first would drop the literal.
+                       Only the hole half existed, which is why the corpus
+                       printed `<form action=\${createPost}>` on 5 lines and
+                       ``html\`...\` `` on 50 more, where the rendered page
+                       shows `<form action=${createPost}>` and a plain
+                       backtick. A backslash surviving into the corpus is now
+                       one an author WROTE as `\\`, so a page that escapes a
+                       letter (`/\s+/g`, which cooks to `/s+/g` and rendered
+                       that way live on two pages) is a page bug, guarded by
+                       a test rather than by convention.
   modules/
     ui/components/     GITIGNORED mirror of the @webjsdev/ui registry sources,
                        written by scripts/copy-registry.mjs. NEVER hand-write

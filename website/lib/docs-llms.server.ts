@@ -283,6 +283,20 @@ export function bodyToMarkdown(raw: string): string {
     // behind a nested hole.
     .replace(/\$\{(?:[^{}]|\{[^}]*\})*\}/g, '');
 
+  // Prose is copied out of the same JS template literal as a hole or a
+  // sample, so it folds its escapes too. Without this the corpus taught
+  // ``export a function returning html\`...\` `` on 50 lines across 8 pages,
+  // where the rendered page shows a plain backtick, which is the same
+  // disagreement the two hole passes above and the sample capture were
+  // written to remove.
+  //
+  // AFTER those hole passes, never before: the escaped-hole pass is what
+  // tells `\${x}` (literal text a reader sees) apart from `${x}` (render-time
+  // and dropped), so folding first would erase the distinction and drop the
+  // literal. BEFORE the restore below, so the text those passes already
+  // folded cannot fold a second time. The single decode still comes last.
+  body = unescapeJs(body);
+
   // Restore kept holes. A kept hole can itself contain a parked sentinel (an
   // escaped hole nested inside a string-literal one), so this repeats until
   // none is left. Replacing once emitted the inner sentinel verbatim, which

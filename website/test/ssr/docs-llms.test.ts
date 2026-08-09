@@ -245,6 +245,42 @@ test('a fenced sample folds its escapes before it decodes its entities', () => {
   assert.equal(bodyToMarkdown('html`<code-block>a &am\\p; b</code-block>`'), '```\na & b\n```');
 });
 
+test('prose is unescaped too, since it comes out of the same template literal', () => {
+  // A hole and a sample were folded before prose was, so the corpus still
+  // taught ``returning html\`...\` `` on 50 lines across 8 pages where the
+  // rendered page shows a plain backtick.
+  assert.equal(bodyToMarkdown('html`<p>returning <code>html\\`...\\`</code></p>`'), 'returning html`...`');
+
+  // The fold runs AFTER the hole passes, never before. Folding first would
+  // turn `\${x}` into `${x}`, which the dynamic-hole pass then drops, losing
+  // the literal text a reader actually sees.
+  assert.equal(bodyToMarkdown('html`<p>a \\${x} b ${y} c</p>`'), 'a ${x} b c');
+});
+
+test('no docs page escapes a letter, which the extractor would fold away', async () => {
+  // A page body is a JS template literal, so `\s` cooks to a bare `s`: the
+  // LIVE page rendered `replace(/s+/g, '-')` on /docs/backend-only and
+  // `/;s*/` on /docs/websockets until those two were corrected to `\\s`.
+  // The extractor is faithful, so it copies that damage into the corpus as a
+  // teaching sample, and the corpus's only reader is an LLM.
+  //
+  // Escaping a letter or a digit is never meaningful here. `\``, `\$` and
+  // `\\` are the escapes a template literal genuinely needs, and punctuation
+  // escapes are at worst redundant. So a letter or digit after a backslash
+  // is always the mistake above, and this is the only thing that would
+  // notice the next one.
+  const offenders: string[] = [];
+  for (const page of await getDocPages()) {
+    const src = await readFile(new URL(`../../app${page.path}/page.ts`, import.meta.url), 'utf8');
+    // Pair-consuming, so the `\\` in a correctly authored `\\s` is eaten as
+    // one escape and its `s` is never read as escaped.
+    for (const m of src.matchAll(/\\([\s\S])/g)) {
+      if (/[A-Za-z0-9]/.test(m[1])) offenders.push(`${page.path}: \\${m[1]} in ${JSON.stringify(src.slice(Math.max(0, m.index - 30), m.index + 30))}`);
+    }
+  }
+  assert.deepEqual(offenders.slice(0, 5), [], `${offenders.length} docs-page escapes fold to a bare letter`);
+});
+
 test('a kept hole nested inside another leaves no sentinel in the output', () => {
   // The two keep passes run in sequence, so a string-literal hole can park
   // text that already contains an escaped hole's sentinel. Restoring once
