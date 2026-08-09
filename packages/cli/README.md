@@ -68,8 +68,8 @@ the CLI gives you `webjs ui` automatically. See
 
 The scaffold seeds opinionated defaults so AI agents produce consistent code:
 
-- `AGENTS.md` + `CONVENTIONS.md` (the machine-readable contract)
-- `.claude/`, `.cursorrules`, `.agents/rules/workflow.md` (Antigravity), `.github/copilot-instructions.md`
+- `AGENTS.md` + `CONVENTIONS.md` + `.agents/skills/webjs/` (single cross-agent source of truth)
+- `.agents/rules/workflow.md` & `.claude/` protective hooks
 - `test/<feature>/` (with optional `browser/` / `e2e/` subfolders per kind) with example tests
 - Tailwind CSS via CLI (no browser runtime at build time)
 - TypeScript, `.editorconfig`, `.gitignore`

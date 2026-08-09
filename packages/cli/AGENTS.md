@@ -237,8 +237,7 @@ verbatim.
    Apps must NEVER use JSON files for persistence. This is a project
    convention (documented in the scaffold's CONVENTIONS.md).
 4. **Template files are verbatim copies** with `{{APP_NAME}}` substitution.
-   When editing `templates/AGENTS.md`, `templates/CLAUDE.md`,
-   `templates/CONVENTIONS.md`, `.cursorrules`, etc., remember they ship
+   When editing `templates/AGENTS.md`, `templates/CONVENTIONS.md`, or `.agents/skills/webjs/`, remember they ship
    into every scaffolded app. Write for the audience of an AI agent
    working inside a freshly-scaffolded WebJs project. `templates/AGENTS.md`
    is the one exception to "verbatim": it carries a `{{PLAYBOOK}}` marker
