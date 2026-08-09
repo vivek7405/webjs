@@ -18,8 +18,7 @@
  * top-level key, every bad `enum` value, and every wrong-typed `boolean` /
  * `integer` (9 of the 17 keys). It does NOT type-check the other 8
  * (`headers`, `redirects`, `basePath`, `allowedOrigins`, `csp`, `dev`,
- * `start`, `doctor`), whose schema types are the free-form array, string,
- * and object shapes, and it does not descend into a nested object, so a
+ * `start`, `doctor`), and it does not descend into a nested object, so a
  * misspelling inside `dev` or `start` is not reported either. Whether
  * anything else notices what this check passes over is up to the
  * individual reader. The boot check warns and never throws, so a typo

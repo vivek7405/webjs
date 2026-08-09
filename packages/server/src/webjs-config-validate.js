@@ -40,26 +40,18 @@ import { fileURLToPath } from 'node:url';
  * `additionalProperties: false`, `enum` membership, and the `boolean` /
  * `integer` leaf types.
  *
- * So a value whose schema `type` is `array`, `string`, or `object`, and a `csp`
- * whose schema is a `oneOf` with no `type` at all, are NOT type-checked. Today
- * that is 8 of the 17 top-level keys (`headers`, `redirects`, `allowedOrigins`,
- * `basePath`, `csp`, `dev`, `start`, `doctor`), each of which passes here
- * whatever it holds. Say so wherever this is described, since the reason to
- * stop short is a real trade rather than an oversight: the shapes left
- * unchecked are the free-form ones, where a naive check starts refusing
- * configs that work.
- *
- * That is enough for the case this exists to close, which is a typo'd top-level
- * key silently dropped, plus the two leaf kinds a schema can decide
+ * So a value is type-checked only when its schema declares `type: "boolean"` or
+ * `type: "integer"`, or an `enum`. Today that is 9 of the 17 top-level keys; the
+ * other 8 (`headers`, `redirects`, `allowedOrigins`, `basePath`, `csp`, `dev`,
+ * `start`, `doctor`) pass whatever they hold, `csp` because its schema is a
+ * `oneOf` with no `type` at all and the rest because theirs is `array`,
+ * `string`, or `object`. That is enough for the case this exists to close, a
+ * typo'd top-level key silently dropped, plus the leaf kinds a schema can decide
  * unambiguously.
  *
- * Describe this by what IT checks, never by what each reader does when the
- * check stays quiet. Whether a given reader warns on a value it rejects varies
- * per reader and per branch within one reader, so a summary of it is wrong
- * somewhere almost immediately, and three review rounds on this PR were spent
- * proving exactly that. `webjs.doctor` is the sharpest example: the server never
- * reads that key at all, and `webjs doctor` exits 1 on a bad shape rather than
- * dropping it.
+ * Describe this by what it checks. Do not describe it by what a reader does
+ * with a value this passes over, which varies per reader and per branch within
+ * one reader and is wrong somewhere as soon as it is summarized.
  *
  * @param {Record<string, unknown>} schema the webjs-block schema
  * @param {Record<string, unknown>} value a candidate `webjs` object
