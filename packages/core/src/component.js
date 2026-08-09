@@ -1,4 +1,5 @@
 import { render as clientRender } from './render-client.js';
+import { readAttributeValue } from './attribute-reader.js';
 import { setActiveActionSignal } from './action-abort-client.js';
 import { carriesFunction } from './form-action.js';
 import { isCSS, adoptStyles } from './css.js';
@@ -86,7 +87,8 @@ const isBrowser = typeof window !== 'undefined' && typeof HTMLElement !== 'undef
  * @property {{ fromAttribute: (value: string|null, type?: Function) => unknown, toAttribute: (value: unknown, type?: Function) => string|null }} [converter]
  *   Custom serialization/deserialization pair for the HTML attribute.
  *   `fromAttribute` is called by BOTH attribute readers through the shared
- *   `readAttributeValue`: the client `attributeChangedCallback` and the SSR
+ *   `readAttributeValue` in `attribute-reader.js`: the client
+ *   `attributeChangedCallback` and the SSR
  *   `applyAttrsToInstance` in `render-server.js` (#1340). So it runs
  *   server-side too, and must not touch browser globals.
  *   `toAttribute` is called when reflecting back to the attribute.
@@ -103,81 +105,6 @@ function defaultHasChanged(a, b) {
   return a !== b;
 }
 
-/**
- * Read one attribute string into its declared property value.
- *
- * THE attribute reader, singular. `attributeChangedCallback` below and
- * `applyAttrsToInstance` in `render-server.js` are both thin callers of this
- * function, so the client and the SSR pass cannot drift on precedence or on a
- * fallback again. They had drifted twice before this existed: the
- * unparseable-JSON fallback (#1253) and a missing converter arm (#1340).
- *
- * lit is built the same way. `@lit-labs/ssr`'s LitElementRenderer forwards its
- * `attributeChangedCallback` into the element's own `_$attributeToProperty`
- * through `lit-element/private-ssr-support.js`, so its server pass runs the
- * browser's reader rather than a copy of it.
- *
- * The caller owns NAME resolution (which attribute maps to which property) and
- * declaration normalisation; this function owns only the value. That split is
- * deliberate: the two callers reach an attribute by different routes and do NOT
- * see the same attribute set, which is a separate problem tracked in #1341.
- *
- * @param {PropertyDeclaration} def normalised declaration (`{ type, … }`)
- * @param {string|null} value the attribute text
- * @param {(s: string) => string} [decode] applied to the JSON branch's input
- *   only. The client is handed a value the DOM already decoded and passes
- *   nothing; the SSR reader walks the raw source tag and passes `unescapeAttr`.
- *   Applied only where the SSR reader applied it before this function existed,
- *   so the extraction changes no behaviour. Whether the decode belongs on every
- *   branch, and whether three entities is enough, are #1341's questions.
- * @returns {unknown}
- */
-export function readAttributeValue(def, value, decode) {
-  if (def.converter && def.converter.fromAttribute) {
-    // Deliberately UNGUARDED, and deliberately first (#1340). An author who
-    // supplies a converter owns the whole read, which is the same rule
-    // `_reflectAttribute` already states for `toAttribute`: its guards sit
-    // AFTER the converter branch because a custom converter is
-    // author-controlled. So a converter that throws throws, on both sides. At
-    // SSR that lands in per-component error isolation (render-server.js), which
-    // surfaces an error box in dev and an empty element at a 200 in prod with
-    // the cause in the server log; on the client it escapes
-    // attributeChangedCallback during upgrade. Catching on one side only would
-    // manufacture a fresh divergence (an SSR paint holding a fallback against a
-    // browser holding the constructor value), which is worse than both sides
-    // failing. lit propagates too (reactive-element `_$attributeToProperty`).
-    //
-    // A converter RETURN that SSR cannot serialise needs no guard here either.
-    // Unreflected it is only a property, and a function in a text hole renders
-    // as nothing. Reflected, the #1169 function guard and the #1253
-    // unserializable guard in `_reflectAttribute` already run on the SSR side
-    // and cover whatever the converter produced.
-    return def.converter.fromAttribute(value, def.type);
-  }
-  if (def.type === Number) return value == null ? null : Number(value);
-  if (def.type === Boolean) return value != null && value !== 'false';
-  if (def.type === Object || def.type === Array) {
-    // An attribute that is not parseable JSON yields `null` rather than the raw
-    // string (#1253), because a STRING is never a valid value for a property
-    // the author declared `Object` or `Array`, whatever put it there. lit's
-    // `defaultConverter.fromAttribute` lands on the same `null`, for the reason
-    // its own comment gives: an element does not complain about being
-    // mis-configured. Both readers reach this line, so they cannot disagree.
-    //
-    // An attribute that was never PRESENT does not reach either reader, so such
-    // a prop simply keeps its constructor value.
-    //
-    // This is about the FALLBACK, not a guarantee that the two readers see the
-    // same attributes in the first place. They reach an attribute by different
-    // routes (the client via `observedAttributes` and the browser's own name
-    // lowercasing, the SSR one by walking the parsed source tag), and
-    // hand-written markup can land in the gaps between those routes. Those gaps
-    // are tracked in #1341 and are not enumerated here.
-    if (value == null) return null;
-    try { return JSON.parse(decode ? decode(value) : value); } catch { return null; }
-  }
-  return value;
-}
 
 /**
  * `String(v)` that cannot itself throw.
@@ -1238,8 +1165,10 @@ class WebComponentBase extends Base {
     // way (matches `_initializeProperties`).
     const def = typeof raw === 'object' ? raw : { type: raw };
 
-    // One reader for both sides (#1340). `applyAttrsToInstance` in
-    // `render-server.js` calls the same function, so precedence and every
+    // One reader for both sides (#1340), in `attribute-reader.js`.
+    // `applyAttrsToInstance` in `render-server.js` calls the same function,
+    // which is why that module exists rather than the chain living here, so
+    // precedence and every
     // fallback are shared rather than mirrored. The client is handed a value
     // the DOM already decoded, so it passes no `decode`.
     const v = readAttributeValue(def, value);

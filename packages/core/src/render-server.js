@@ -16,7 +16,7 @@ import { isSuspense } from './suspense.js';
 import { unsafeHTML, isUnsafeHTML, isLive, isKeyed, isGuard, isTemplateContent, isRef, isCache, isUntil, isAsyncAppend, isAsyncReplace, isWatch } from './directives.js';
 import { stringify, parse } from './serialize.js';
 import { cspNonce } from './csp-nonce.js';
-import { readAttributeValue } from './component.js';
+import { readAttributeValue } from './attribute-reader.js';
 
 /**
  * Render a TemplateResult (or any renderable value) to an HTML string.
@@ -1725,8 +1725,9 @@ function applyAttrsToInstance(instance, attrs, Cls) {
     // alongside the long form (`{ expanded: { type: Boolean } }`); normalize so
     // the type-based coercion below sees a `{ type }` object either way.
     const def = typeof rawDef === 'object' ? rawDef : { type: rawDef };
-    // One reader for both sides (#1340): `readAttributeValue` in `component.js`
-    // is the same function `attributeChangedCallback` calls, so a custom
+    // One reader for both sides (#1340): `readAttributeValue` in
+    // `attribute-reader.js` is the same function `attributeChangedCallback`
+    // in `component.js` calls, so a custom
     // `converter.fromAttribute` now runs here too, ahead of type coercion, and
     // the #1253 unparseable-JSON fallback is shared rather than mirrored.
     //

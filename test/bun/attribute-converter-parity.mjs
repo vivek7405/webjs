@@ -79,6 +79,31 @@ ObjProbe.register('bun-conv-obj');
   assert.ok(!out.includes('>null<'), `[${runtime}] the JSON fallback ran instead of the converter: ${out}`);
 }
 
+// --- the converter is handed decoded text -----------------------------------
+
+class EntityProbe extends WebComponent({
+  cfg: prop(Object, { converter: { fromAttribute: (v) => JSON.parse(v) } }),
+}) {
+  render() {
+    return html`<i>${JSON.stringify(this.cfg)}</i>`;
+  }
+}
+EntityProbe.register('bun-conv-entities');
+
+{
+  const { out } = await render(
+    html`<bun-conv-entities cfg="{&quot;a&quot;:1,&quot;b&quot;:&quot;x&amp;y&quot;}"></bun-conv-entities>`,
+  );
+  // The client's value comes out of the DOM already decoded, so the SSR reader
+  // has to decode before handing it over or the two sides read the same
+  // attribute differently. Undecoded, this `JSON.parse` throws and the
+  // component renders empty instead.
+  assert.ok(
+    out.includes('{"a":1,"b":"x&amp;y"}'),
+    `[${runtime}] the converter was handed entity-encoded text: ${out}`,
+  );
+}
+
 // --- a throwing converter is isolated, not caught by the reader --------------
 
 class ThrowProbe extends WebComponent({

@@ -99,6 +99,28 @@ test('the converter wins over the declared type at SSR, matching the client', as
   assert.doesNotMatch(out, />null</, 'the type-based JSON fallback did not run');
 });
 
+test('the converter is handed DECODED text at SSR, matching what the DOM hands the client', async () => {
+  // The SSR reader walks the raw source tag, so `raw` is the literal characters
+  // between the quotes, while the client's value came out of the DOM already
+  // decoded. Handing the encoded text to a converter would read the SAME
+  // attribute differently on the two sides for anything carrying a quote or an
+  // ampersand, and a JSON-parsing converter (the documented reason to write
+  // one) would throw server-side on markup `escapeAttr` itself produced.
+  const seen = [];
+  class Probe extends WebComponent({
+    cfg: prop(Object, {
+      converter: { fromAttribute: (v) => { seen.push(v); return JSON.parse(v); } },
+    }),
+  }) {
+    render() { return html`<i>${JSON.stringify(this.cfg)}</i>`; }
+  }
+  Probe.register('ssr-converter-entities');
+
+  const out = await renderToString(html`<ssr-converter-entities cfg="{&quot;a&quot;:1,&quot;b&quot;:&quot;x&amp;y&quot;}"></ssr-converter-entities>`);
+  assert.deepEqual(seen, ['{"a":1,"b":"x&y"}'], 'the converter must receive decoded text');
+  assert.match(out, /\{"a":1,"b":"x&amp;y"\}/, 'and the parsed value renders');
+});
+
 test('a throwing converter is not caught by the reader, so the component renders its SSR error state', async () => {
   // Decision recorded on `readAttributeValue`: an author who supplies a
   // converter owns the read, so a throw propagates on BOTH sides rather than

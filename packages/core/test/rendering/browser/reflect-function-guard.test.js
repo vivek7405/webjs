@@ -108,6 +108,19 @@ class ConverterReaderProbe extends WebComponent({
 }
 ConverterReaderProbe.register('converter-read-probe');
 
+// The same read, against an attribute carrying the entities `escapeAttr` emits.
+// The browser hands `attributeChangedCallback` text the DOM already decoded, so
+// this is the probe that shows whether the SSR reader decodes before handing the
+// converter its input.
+class ConverterEntityProbe extends WebComponent({
+  cfg: prop(Object, { converter: { fromAttribute: (v) => JSON.parse(v) } }),
+}) {
+  render() {
+    return html`<i>cfg=${JSON.stringify(this.cfg)}</i>`;
+  }
+}
+ConverterEntityProbe.register('converter-entity-probe');
+
 const mounted = [];
 /**
  * A probe attached to the live document. Reflection runs from `_activate`,
@@ -382,5 +395,41 @@ suite('converter.fromAttribute reads identically at SSR and through a real upgra
     // markup through the SSR reader has to make the same value of it.
     const ssr = await renderToString(html`<converter-read-probe mode="a"></converter-read-probe>`);
     assert.ok(ssr.includes('mode=A'), `the SSR reader disagreed with the client: ${ssr}`);
+  });
+
+  test('and on an ENTITY-ENCODED attribute, where the two readers get their text from different places', async () => {
+    // The client's value came out of the DOM, which decoded it; the SSR reader
+    // walks the raw source tag and gets the literal characters between the
+    // quotes. `escapeAttr` encodes every `"`, so a converter that parses its
+    // input (the documented reason to write one) sees valid JSON on one side
+    // and an entity soup on the other unless the SSR reader decodes first.
+    const markup = '<converter-entity-probe cfg="{&quot;a&quot;:1,&quot;b&quot;:&quot;x&amp;y&quot;}"></converter-entity-probe>';
+    const host = document.createElement('div');
+    host.innerHTML = markup;
+    document.body.appendChild(host);
+    mounted.push(host);
+
+    const el = host.firstElementChild;
+    await customElements.whenDefined('converter-entity-probe');
+    await el.updateComplete;
+
+    assert.deepEqual(el.cfg, { a: 1, b: 'x&y' }, 'the upgraded element parsed the decoded text');
+
+    assert.ok(
+      el.textContent.includes('cfg={"a":1,"b":"x&y"}'),
+      `and it must RENDER that value: ${el.innerHTML}`
+    );
+
+    // Assert on the rendered VALUE rather than on the markup, the way the
+    // sibling suite above does. The client's `innerHTML` carries the hydration
+    // marker comments that the SSR string has no counterpart for, and the SSR
+    // text is escaped for a text node (`&` is `&amp;`) while `textContent`
+    // reads back decoded, so a markup comparison never matches by construction
+    // even when the two readers agree exactly.
+    const ssr = await renderToString(html`<converter-entity-probe cfg="{&quot;a&quot;:1,&quot;b&quot;:&quot;x&amp;y&quot;}"></converter-entity-probe>`);
+    assert.ok(
+      ssr.includes('cfg={"a":1,"b":"x&amp;y"}'),
+      `the SSR reader disagreed with the client: ${ssr}`
+    );
   });
 });
