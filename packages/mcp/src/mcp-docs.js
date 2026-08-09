@@ -39,7 +39,7 @@ const DOCS_SCHEME = 'webjs-docs://';
  *
  * @param {string} root  the `resources` directory
  * @param {'app' | 'bundled'} corpusSource  which rung this root is
- * @returns {{ docsDir: string, agentsPath: string, skillPath: string, corpusPath: string, corpusSource: string }}
+ * @returns {{ docsDir: string, agentsPath: string, skillPath: string, corpusPath: string, corpusSource: 'app' | 'bundled' }}
  */
 function bundleAt(root, corpusSource) {
   return {
@@ -163,7 +163,10 @@ export async function readAppMcpVersion(appDir, deps) {
  * @returns {Promise<string>}
  */
 async function corpusLine(deps) {
-  if (!deps.corpusPath) return 'Docs corpus: the live repo-root docs in this checkout, not a bundled snapshot.';
+  // Rung 3 has no stamp, and it is a FALLBACK rather than a checkout probe, so
+  // this must not claim a checkout: a published install whose `resources/` is
+  // missing lands here too, with an empty corpus and no checkout to name.
+  if (!deps.corpusPath) return 'Docs corpus: not a bundled snapshot; this server resolved the repo-root docs locally.';
   const unstamped = 'Docs corpus: an unstamped @webjsdev/mcp bundled snapshot.';
   try {
     const stamp = JSON.parse(await deps.readFile(deps.corpusPath, 'utf8'));
@@ -182,6 +185,28 @@ async function corpusLine(deps) {
     return unstamped;
   }
 }
+
+/**
+ * What the warning says about WHOSE docs it just served, one clause per rung.
+ *
+ * A `Map` rather than an object literal, for the reason `docsDepsCache` is one:
+ * an object literal inherits `Object.prototype`, so a lookup keyed on an
+ * unexpected value like `constructor` or `toString` returns a truthy FUNCTION,
+ * the `||` fallback never fires, and the warning splices native-code source into
+ * its own text. A `Map` has no prototype keys, so the fallback covers every value
+ * that is not one of these three.
+ *
+ * The `repo` clause deliberately does NOT claim a live checkout. Rung 3 is an
+ * unconditional fallback rather than a checkout probe (see
+ * {@link resolveDocsLocation}), so it is also where a published install with no
+ * bundled `resources/` lands, and there the "checkout" does not exist and the
+ * corpus is empty.
+ */
+const SERVED_CLAUSE = new Map([
+  ['app', "The docs below come from this app's own copy, so they match it; update the server so its TOOLS match too."],
+  ['bundled', "The docs below are the server's own older snapshot, not this app's copy."],
+  ['repo', "The docs below are whatever this server resolved locally, not this app's copy."],
+]);
 
 /**
  * The staleness warning, or `null` when there is nothing to warn about.
@@ -218,21 +243,13 @@ async function staleWarning(deps) {
   if (!server || server === '0.0.0') return null;
   const app = await readAppMcpVersion(deps.appDir, deps);
   if (!app || compareVersions(app, server) <= 0) return null;
-  // One clause per rung, because the corpus line printed directly beneath names
-  // the rung too. A binary app-or-not ternary would call the DEV rung a "server
-  // snapshot" while that line calls it a live checkout, which is the same
-  // self-contradiction this clause exists to prevent, just moved one rung over.
-  const served = {
-    app: "The docs below come from this app's own copy, so they match it; update the server so its TOOLS match too.",
-    bundled: "The docs below are the server's own older snapshot, not this app's copy.",
-    repo: "The docs below are this checkout's live repo-root docs, not this app's copy.",
-  }[deps.corpusSource] || "The docs below may not be this app's copy.";
+  const served = SERVED_CLAUSE.get(deps.corpusSource) || "The docs below may not be this app's copy.";
   return (
     `Warning: this MCP server is @webjsdev/mcp@${server}, but this app has @webjsdev/mcp@${app}, ` +
     `so the server may be stale. ${served} ` +
     'Update whichever copy runs this server: a global install (npm i -g @webjsdev/mcp@latest, ' +
     'or bun add -g @webjsdev/mcp), the package cache behind npx @webjsdev/mcp, ' +
-    'or @webjsdev/cli when the server is started as webjs mcp.'
+    '@webjsdev/cli when the server is started as webjs mcp, or the checkout it runs from.'
   );
 }
 

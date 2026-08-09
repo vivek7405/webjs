@@ -53,7 +53,10 @@ The corpus is resolved in three rungs, highest first:
 1. `<appDir>/node_modules/@webjsdev/mcp/resources`, the app's own installed copy.
 2. `<pkg>/resources`, this server's bundled snapshot, so `npx @webjsdev/mcp` is
    self-contained.
-3. The live repo-root docs, in a monorepo checkout.
+3. The repo-root docs, which is the monorepo dev path. This rung is an
+   unconditional fallback rather than a checkout probe, so a published install
+   whose `resources/` bundle is missing lands here too, with an empty corpus.
+   That is why neither the corpus line nor the warning asserts a checkout.
 
 The app's copy wins because it is version-matched to the framework you are
 editing, and so is the only corpus that can be correct about that app. This
@@ -78,8 +81,8 @@ Warning: this MCP server is @webjsdev/mcp@0.1.4, but this app has @webjsdev/mcp@
 so the server may be stale. The docs below come from this app's own copy, so they
 match it; update the server so its TOOLS match too. Update whichever copy runs this
 server: a global install (npm i -g @webjsdev/mcp@latest, or bun add -g @webjsdev/mcp),
-the package cache behind npx @webjsdev/mcp, or @webjsdev/cli when the server is
-started as webjs mcp.
+the package cache behind npx @webjsdev/mcp, @webjsdev/cli when the server is started
+as webjs mcp, or the checkout it runs from.
 Docs corpus: @webjsdev/mcp@0.1.12, copied from webjsdev/webjs e5806e2 on 2026-08-08.
 ```
 

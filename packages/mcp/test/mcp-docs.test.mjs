@@ -348,7 +348,7 @@ test('initText: a stamped corpus is reported with its version, short sha, and da
 
 test('initText: a dev checkout says so rather than claiming a snapshot it does not have', async () => {
   const out = await initText(stampFixture({ corpusPath: null }));
-  assert.match(out, /Docs corpus: the live repo-root docs in this checkout, not a bundled snapshot\./);
+  assert.match(out, /Docs corpus: not a bundled snapshot; this server resolved the repo-root docs locally\./);
   assert.ok(!/@webjsdev\/mcp@/.test(out), 'no version is claimed for an unstamped live checkout');
 });
 
@@ -418,9 +418,30 @@ test('initText: the warning says which corpus was actually served, never a claim
   const fromRepo = await initText(
     stampFixture({ corpusPath: null, appMcp: '{"version":"0.1.12"}', serverVersion: '0.1.4', corpusSource: 'repo' }),
   );
-  assert.match(fromRepo, /The docs below are this checkout's live repo-root docs, not this app's copy\./);
-  assert.match(fromRepo, /Docs corpus: the live repo-root docs in this checkout/, 'and the corpus line agrees with it');
-  assert.ok(!/older snapshot/.test(fromRepo), 'a live checkout is not a stale snapshot');
+  assert.match(fromRepo, /The docs below are whatever this server resolved locally, not this app's copy\./);
+  assert.match(fromRepo, /Docs corpus: not a bundled snapshot/, 'and the corpus line agrees with it');
+  assert.ok(!/older snapshot/.test(fromRepo), 'an unbundled resolve is not the server\'s stale snapshot');
+  // Rung 3 is a fallback, not a checkout probe, so neither line may assert that a
+  // checkout IS what was served: a published install with no bundled resources/
+  // lands here too, with no checkout and an empty corpus. Offering the checkout
+  // as one of four places to update is fine, since that is a suggestion.
+  assert.ok(!/this checkout's/.test(fromRepo), 'the served clause claims no checkout');
+  assert.ok(!/in this checkout/.test(fromRepo), 'and neither does the corpus line');
+  assert.match(fromRepo, /or the checkout it runs from\./, 'but the remedy still offers it');
+
+  // An unexpected corpusSource must reach the fallback, INCLUDING one that
+  // collides with an Object.prototype member. Keyed on an object literal those
+  // resolve to a truthy function, so the fallback never fires and the warning
+  // splices native-code source into its own text.
+  // `null` rather than `undefined` for the absent case, since the fixture's own
+  // destructuring default would swallow `undefined` and hand back 'app'.
+  for (const bogus of [null, '', 'nonsense', 'constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__']) {
+    const out = await initText(
+      stampFixture({ corpus: STAMP(), appMcp: '{"version":"0.1.12"}', serverVersion: '0.1.4', corpusSource: bogus }),
+    );
+    assert.match(out, /The docs below may not be this app's copy\./, `fallback for ${String(bogus)}`);
+    assert.ok(!/native code|function /.test(out), `no prototype member leaked for ${String(bogus)}`);
+  }
 });
 
 test('compareVersions: coarse by design, and total over the shapes npm produces', () => {
