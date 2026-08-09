@@ -49,16 +49,17 @@ import { fileURLToPath } from 'node:url';
  * unchecked are the free-form ones, where a naive check starts refusing
  * configs that work.
  *
- * What that actually leaves unreported is narrower than the list looks, and
- * worth stating precisely so nobody widens this on a wrong premise. It is the
- * KEY-level type only (`"headers": "x"`, which the reader then ignores in
- * silence). A malformed ENTRY inside a well-shaped `headers` / `redirects`
- * array already warns from the reader itself, and a wrong-shaped `doctor` is
- * not a silent drop at all: the server never reads that key, and `webjs doctor`
- * exits 1 on it (`readDoctorPolicy`).
+ * That is enough for the case this exists to close, which is a typo'd top-level
+ * key silently dropped, plus the two leaf kinds a schema can decide
+ * unambiguously.
  *
- * That is enough for the case this exists to close, which is a typo'd key
- * silently dropped, plus the two leaf kinds a schema can decide unambiguously.
+ * Describe this by what IT checks, never by what each reader does when the
+ * check stays quiet. Whether a given reader warns on a value it rejects varies
+ * per reader and per branch within one reader, so a summary of it is wrong
+ * somewhere almost immediately, and three review rounds on this PR were spent
+ * proving exactly that. `webjs.doctor` is the sharpest example: the server never
+ * reads that key at all, and `webjs doctor` exits 1 on a bad shape rather than
+ * dropping it.
  *
  * @param {Record<string, unknown>} schema the webjs-block schema
  * @param {Record<string, unknown>} value a candidate `webjs` object

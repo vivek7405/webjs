@@ -18,14 +18,12 @@
  * top-level key, every bad `enum` value, and every wrong-typed `boolean` /
  * `integer` (9 of the 17 keys). It does NOT type-check the other 8
  * (`headers`, `redirects`, `basePath`, `allowedOrigins`, `csp`, `dev`,
- * `start`, `doctor`), so giving one of THOSE the wrong type outright
- * (`"headers": "x"`) passes the boot check and its reader then falls back
- * to the default without a word. Only that key-level case is unreported: a
- * malformed ENTRY inside a well-shaped `headers` / `redirects` array
- * already warns from the reader, and a bad `doctor` shape exits
- * `webjs doctor` non-zero rather than being dropped. The boot check warns
- * and never throws, so a typo costs one feature its setting rather than
- * the whole app its boot.
+ * `start`, `doctor`), whose schema types are the free-form array, string,
+ * and object shapes, and it does not descend into a nested object, so a
+ * misspelling inside `dev` or `start` is not reported either. Whether
+ * anything else notices what this check passes over is up to the
+ * individual reader. The boot check warns and never throws, so a typo
+ * costs one feature its setting rather than the whole app its boot.
  *
  * LOCKSTEP: this file, the JSON Schema at
  * packages/server/webjs-config.schema.json, and the reader functions MUST
