@@ -1173,6 +1173,15 @@ ${uiThemeRaw}
     // or shed the whole gallery at once with `gallery:clear`.
     await copyGallery(appDir);
 
+    const pagePath = join(appDir, 'app', 'page.ts');
+    if (existsSync(pagePath)) {
+      const src = await readFile(pagePath, 'utf8');
+      if (src.includes("title: 'WebJs Gallery'")) {
+        await writeFile(pagePath, src.replace("title: 'WebJs Gallery'", `title: '${displayName}'`));
+      }
+    }
+
+    if (!existsSync(join(appDir, 'app', 'layout.ts'))) {
   await writeFile(join(appDir, 'app', 'layout.ts'), `import { html, cspNonce, asset } from '@webjsdev/core';
 import type { LayoutProps } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
@@ -1506,6 +1515,7 @@ const ICONS = {
 
 ThemeToggle.register('theme-toggle');
 `);
+    } // end fallback layout writing
   } // end if (!isApi)
 
   // AGENTS.md is already in place via the shared `templateFiles` loop
