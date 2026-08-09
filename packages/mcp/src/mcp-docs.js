@@ -17,8 +17,9 @@
  * Docs resolution (so `npx @webjsdev/mcp` is self-contained): the APP's own
  * installed `@webjsdev/mcp` corpus wins, then the running server's snapshot
  * bundled under `<pkg>/resources/references` (copied at `prepack`, see
- * `scripts/copy-mcp-resources.js`), then the repo-root skill for a monorepo dev
- * run. {@link resolveDocsLocation} encodes that lookup so source stays single
+ * `scripts/copy-mcp-resources.js`), then a repo-root-relative fallback, which is
+ * the skill on a monorepo dev run. {@link resolveDocsLocation} encodes that
+ * lookup so source stays single
  * (no committed duplicate docs). `init` reports which of the three it served,
  * from the `corpus.json` build stamp, and warns when the app's installed mcp is
  * newer than the running server (#1319).
@@ -62,8 +63,12 @@ function bundleAt(root, corpusSource) {
  *    it was published from, which taught reverted guidance for months (#1319).
  * 2. `<pkgRoot>/resources`, the running server's own bundled snapshot (copied
  *    at `prepack`, see `scripts/copy-mcp-resources.js`).
- * 3. The monorepo-root skill, the dev/test path, which has no stamp because a
- *    live checkout froze nothing; `corpusPath` is `null` there.
+ * 3. A repo-root-relative path, which is the monorepo skill on a dev/test run.
+ *    This rung is an unconditional FALLBACK, not a checkout probe, so a
+ *    published install whose `resources/` bundle is missing lands here too,
+ *    with `repoRoot` inside `node_modules` and an empty corpus. `corpusPath` is
+ *    `null` because no bundle was found, which is why nothing downstream may
+ *    assert a checkout on this rung.
  *
  * The rung-1 probe is a plain `existsSync` on the references directory rather
  * than `require.resolve('@webjsdev/mcp')` from `appDir`, because what this needs

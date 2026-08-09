@@ -62,8 +62,10 @@ src/
                          injectable for in-process tests.
   mcp-docs.js            KNOWLEDGE layer (#376): resolveDocsLocation (the app's
                          own installed corpus first, then the server's bundled
-                         resources/, then the repo-root skill in dev; also
-                         returns corpusPath, null on the dev rung), the init
+                         resources/, then a repo-root-relative fallback, the
+                         skill in dev; also returns corpusPath, null on that
+                         fallback, which a bundle-less published install reaches
+                         too, so it is not the dev rung alone), the init
                          primer (sources the AGENTS.md execution-model +
                          invariants so it cannot drift, and reports which corpus
                          it served plus a warning when the app's @webjsdev/mcp

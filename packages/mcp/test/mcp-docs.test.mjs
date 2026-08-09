@@ -489,8 +489,8 @@ test('resolveDocsLocation: the app corpus outranks the bundled snapshot and the 
   const appDir = join(root, 'app');
   const appRoot = join(appDir, 'node_modules', '@webjsdev', 'mcp', 'resources');
 
-  // No app install and no bundle: the dev rung, which froze nothing and so has
-  // no stamp to name.
+  // No app install and no bundle: the fallback rung, which found no bundle and
+  // so has no stamp to name.
   assert.equal(resolveDocsLocation(moduleUrl, appDir).docsDir, join(skill, 'references'));
   assert.equal(resolveDocsLocation(moduleUrl, appDir).corpusPath, null, 'the fallback rung claims no provenance');
   assert.equal(resolveDocsLocation(moduleUrl, appDir).corpusSource, 'repo');
