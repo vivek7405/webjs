@@ -272,6 +272,14 @@ jobs:
       # needs its own step rather than riding the Node suite.
       - name: Root middleware resolution on Bun
         run: bun test/bun/root-middleware.mjs
+      # Boot-time config validation on Bun (#1300). It runs inside
+      # createRequestHandler, the boot path both the node:http shell and the
+      # Bun.serve shell go through, and it reads the packaged JSON Schema off
+      # disk relative to import.meta.url. This asserts a typo'd key warns exactly
+      # once and the app still boots and serves, so a runtime difference cannot
+      # turn a warning into a dead app.
+      - name: Config validation warns and boots on Bun
+        run: bun test/bun/webjs-config-validate.mjs
       # Light-DOM slot SSR projection on Bun (#1021): slot substitution
       # (injectDSD / substituteSlotsInRender) is on the SSR hot path, so the
       # projection must be byte-consistent across runtimes: authored children
