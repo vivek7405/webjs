@@ -15,7 +15,8 @@
  *     attribute to `null`, matching what `attributeChangedCallback` does in the
  *     browser. The two must resolve a PRESENT, unparseable attribute the same
  *     way or hydration diverges, so the SSR half is worth pinning per runtime.
- *     Default-converter path only: the SSR reader has no `fromAttribute` arm.
+ *     Default-converter path only; the converter arm both readers now share
+ *     (#1340) is covered by `test/bun/attribute-converter-parity.mjs`.
  *
  * Nothing here asserts on the ENGINE's own `JSON.stringify` message. V8 and
  * JavaScriptCore word it differently, and that difference is not the behaviour

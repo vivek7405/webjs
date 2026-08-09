@@ -108,6 +108,20 @@ test('custom converter.fromAttribute overrides type-based coercion', () => {
   assert.deepEqual(el.v, { raw: 'abc' });
 });
 
+test('a throwing converter.fromAttribute propagates out of attributeChangedCallback', () => {
+  // Pins the client half of the #1340 decision: an author who supplies a
+  // converter owns the read, so neither reader catches a throw from it. The SSR
+  // half is pinned in `packages/core/test/rendering/ssr-prop-options.test.js`.
+  // A well-meaning try/catch added to either side reds one of the two rather
+  // than silently making the sides disagree.
+  class C extends WebComponent({
+    v: prop(String, { converter: { fromAttribute: () => { throw new Error('converter blew up'); } } }),
+  }) {}
+  C.register('custom-from-throws');
+  const el = document.createElement('custom-from-throws');
+  assert.throws(() => el.attributeChangedCallback('v', null, 'abc'), /converter blew up/);
+});
+
 test('attributeChangedCallback sets property when called with new value', () => {
   // The browser itself guards against calling this with the same value;
   // when it fires, the framework trusts the value and sets the property.
