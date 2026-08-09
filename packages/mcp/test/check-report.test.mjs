@@ -77,6 +77,9 @@ test('check --json: clean app emits parseable JSON and exits 0', async () => {
 
 test('check --json: app with a violation emits the violation and exits non-zero', async () => {
   const dir = tmpDir();
+  // The fixture needs an `app/` directory to BE an app: `webjs check` refuses
+  // outside one (#1301), the same way its clean-app sibling above is shaped.
+  write(dir, 'app/page.ts', `import { html } from '@webjsdev/core';\nexport default function Home() { return html\`<h1>Hi</h1>\`; }\n`);
   // A component that defines a WebComponent subclass but never registers it
   // trips `components-have-register`.
   write(
