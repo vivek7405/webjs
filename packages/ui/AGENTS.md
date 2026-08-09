@@ -263,7 +263,7 @@ obligations:
 - `pagination` / `breadcrumb`: a labelled `<nav>`, `aria-current="page"`, and hidden separators / icon-only control names.
 - `progress`: an `aria-label` (the native element supplies the role + value).
 - **form controls** (`input` / `textarea` / `native-select` / `checkbox` / `radio-group` / `switch`): a real `<label for>` (or a wrapping `<label>`) is the accessible name, and a `placeholder` is not one. On failure, `aria-invalid="true"` plus an `aria-describedby` pointing at error text that EXISTS on the page. A standalone switch needs `aria-label`, since its visible track is a `<span>` and the real input is `sr-only`. Group radios by a shared `name` and NAME the group (`aria-labelledby` on the `role="radiogroup"`, or `<fieldset>` + `<legend>`).
-- **`checkbox` / `radio-group` also need `data-slot`** on the input (`data-slot="checkbox"` / `data-slot="radio"`). The injected stylesheet keys the checkmark and the radio dot on it, and neither class carries a fallback fill, so without it the checked state reads as colour alone (WCAG 1.4.1). Source tests assert the examples keep the pairing. Those two are the last stylesheets the kit still injects from JavaScript, so their indicators are the one part of the kit that needs JavaScript to render.
+- **`checkbox` / `radio-group` also need `data-slot`** on the input (`data-slot="checkbox"` / `data-slot="radio"`). The injected stylesheet keys the checkmark and the radio dot on it, and neither class carries a fallback fill, so without it the checked state reads as colour alone (WCAG 1.4.1). Source tests assert the examples keep the pairing. These two are the only Tier-1 parts whose appearance needs JavaScript, because they are the only ones whose stylesheet is injected rather than shipped in the theme block. `dialog` and `alert-dialog` inject one too, but from a lifecycle hook on a Tier-2 element that needs JavaScript regardless.
 - **`native-select`'s `<option>` colours come from the theme block**, not from importing the module (#1320). A bare `<option>` paints transparent over the browser popup, so in dark mode the unselected options disappear, and the `select option, select optgroup` rule in `@layer base` forces Canvas / CanvasText back. An app whose theme block predates that rule keeps the browser default until it re-runs `init` or adds the rule by hand, since `ensureTheme` never rewrites an existing block. It is two ELEMENT selectors (specificity 0,0,2) with no wrapper requirement, so a bare `<select class=${nativeSelectClass()}>` is covered and any single class overrides it.
 - `popover`: the biggest Tier-1 obligation, because the panel is a bare `<div popover>` with no role and no name. Supply `role="dialog"` + `aria-labelledby` to the `popoverTitleClass()` heading, `aria-haspopup="dialog"` + a `toggle`-event-synced `aria-expanded` on the trigger, and prefer `popover` (auto) over `popover="manual"` so the platform still gives you light-dismiss, Escape, and focus restoration.
 - `card`: use a REAL heading for `cardTitleClass()`, at the level the surrounding document wants, and never wrap a whole card in one `<a>`.
@@ -466,7 +466,12 @@ names mechanically:
   CSS in the theme block instead, which also puts it in the first paint and
   makes it work with JavaScript off. `packages/ui/test/utils-purity.test.js`
   pins the flagged set as an EQUALITY, so a new offender fails immediately and
-  the remaining entries can only be removed deliberately.
+  the remaining entries can only be removed deliberately. Six are still on that
+  list and DO pin an importing page today: `checkbox` and `radio-group` inject a
+  stylesheet for real, and `pagination`, `progress`, `sonner` and `tabs` are an
+  analyser precision gap, since an arrow with an expression body puts its call
+  at brace depth 0 and reads as a top-level statement. The page ships either
+  way, so do not treat the second group as harmless.
 - **The kit is copy-on-add, so fixing the registry does not fix an app.** An
   existing app holds its own copy of every component and of `lib/utils/cn.ts`,
   and `npx @webjsdev/ui diff` is the discovery channel for the drift. The theme

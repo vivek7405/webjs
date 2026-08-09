@@ -72,12 +72,16 @@ dropdown-menu, hover-card, sonner, tabs, tooltip, plus toggle and toggle-group
   the tokens are missing (re-run `npx webjsdev ui init` or let `add` self-heal them).
 - Custom elements are display-only-safe at SSR and hydrate in the browser, the
   standard WebJs component model (`references/components.md`).
-- A registry module does no work at module scope, so importing `cn` or any
-  Tier-1 helper never pins a page to the browser (#1320). A page whose only
-  client-facing imports are class helpers still elides. If you EDIT your copy of
-  one, keep it that way: a module-scope call or a `document` reference reads as
-  client work, and the page ships whole from then on. `npx webjsdev elision`
-  names the blocker when it happens.
+- A registry module should do no work at module scope, because the elision
+  analyser reads a module-scope call or a `document` reference as client work
+  and then the page that imports it ships whole (#1320). `cn` itself is clean,
+  so importing it never pins a page. Six modules still trip the analyser and DO
+  pin an importing page: `checkbox`, `radio-group`, `pagination`, `progress`,
+  `sonner`, `tabs`. The first two inject a stylesheet for real; the other four
+  are an analyser precision gap (an arrow with an expression body puts its call
+  at brace depth 0). Either way the page ships, so treat the list as fact rather
+  than as a technicality. Keep your own copies clean when you edit them, and run
+  `npx webjsdev elision`, which names the blocker whenever a page ships.
 - `native-select`'s `<option>` colours ride the design tokens, not the module.
   An app with no theme block gets the browser default `<option>` colours along
   with everything else unstyled, fixed the same way (re-run `init`, or let `add`
