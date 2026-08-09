@@ -1,0 +1,36 @@
+# deps
+node_modules/
+
+# webjs / framework caches.
+# `.webjs/vendor/` is the EXCEPTION: holds the committed importmap
+# manifest + optional downloaded bundles for `webjs vendor pin`.
+# DO NOT collapse to `.webjs/`: parent exclusion blocks child
+# negations and silently breaks `webjs vendor pin`. The
+# `gitignore-vendor-not-ignored` lint rule guards this.
+# `**/.webjs/*` (not `.webjs/*`) so the dir is ignored at any depth: a
+# slash-bearing `.webjs/*` anchors to this file's dir and would miss a
+# nested app. The negations still re-include vendor at each depth.
+**/.webjs/*
+!**/.webjs/vendor/
+!**/.webjs/vendor/**
+
+# generated Tailwind CSS, built from public/input.css via npm run dev / start
+public/tailwind.css
+
+# env (the example reads from .env.example fallbacks in dev; never commit the real .env)
+.env
+.env.*
+!.env.example
+
+# sqlite dev database
+db/dev.db
+db/dev.db-journal
+db/dev.db-*
+
+# logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db

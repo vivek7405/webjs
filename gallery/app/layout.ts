@@ -1,5 +1,5 @@
 import { html, asset } from '@webjsdev/core';
-import '#components/ui/theme-toggle.ts';
+import '#components/theme-toggle.ts';
 
 export const metadata = {
   title: 'WebJs Gallery',
