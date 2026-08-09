@@ -42,12 +42,20 @@ import { fileURLToPath } from 'node:url';
  *
  * So a value whose schema `type` is `array`, `string`, or `object`, and a `csp`
  * whose schema is a `oneOf` with no `type` at all, are NOT type-checked. Today
- * that is 8 of the 18 top-level keys (`headers`, `redirects`, `allowedOrigins`,
+ * that is 8 of the 17 top-level keys (`headers`, `redirects`, `allowedOrigins`,
  * `basePath`, `csp`, `dev`, `start`, `doctor`), each of which passes here
  * whatever it holds. Say so wherever this is described, since the reason to
  * stop short is a real trade rather than an oversight: the shapes left
  * unchecked are the free-form ones, where a naive check starts refusing
  * configs that work.
+ *
+ * What that actually leaves unreported is narrower than the list looks, and
+ * worth stating precisely so nobody widens this on a wrong premise. It is the
+ * KEY-level type only (`"headers": "x"`, which the reader then ignores in
+ * silence). A malformed ENTRY inside a well-shaped `headers` / `redirects`
+ * array already warns from the reader itself, and a wrong-shaped `doctor` is
+ * not a silent drop at all: the server never reads that key, and `webjs doctor`
+ * exits 1 on it (`readDoctorPolicy`).
  *
  * That is enough for the case this exists to close, which is a typo'd key
  * silently dropped, plus the two leaf kinds a schema can decide unambiguously.

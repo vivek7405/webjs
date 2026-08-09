@@ -16,12 +16,16 @@
  * and `webjs-config-validate.js` at BOOT (#1300), which runs that same
  * schema from `createRequestHandler` and warns once, naming every unknown
  * top-level key, every bad `enum` value, and every wrong-typed `boolean` /
- * `integer`. It does NOT type-check the array, string, and object-valued
- * keys, so a wrong-shaped `headers` / `redirects` / `allowedOrigins` /
- * `basePath` / `csp` / `dev` / `start` / `doctor` still passes it silently
- * and is dropped by its reader as before. The boot check warns and never
- * throws, so a typo costs one feature its setting rather than the whole
- * app its boot.
+ * `integer` (9 of the 17 keys). It does NOT type-check the other 8
+ * (`headers`, `redirects`, `basePath`, `allowedOrigins`, `csp`, `dev`,
+ * `start`, `doctor`), so giving one of THOSE the wrong type outright
+ * (`"headers": "x"`) passes the boot check and its reader then falls back
+ * to the default without a word. Only that key-level case is unreported: a
+ * malformed ENTRY inside a well-shaped `headers` / `redirects` array
+ * already warns from the reader, and a bad `doctor` shape exits
+ * `webjs doctor` non-zero rather than being dropped. The boot check warns
+ * and never throws, so a typo costs one feature its setting rather than
+ * the whole app its boot.
  *
  * LOCKSTEP: this file, the JSON Schema at
  * packages/server/webjs-config.schema.json, and the reader functions MUST
