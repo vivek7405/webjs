@@ -12,13 +12,14 @@
  */
 
 import { mkdir, writeFile, readFile, cp } from 'node:fs/promises';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { bunifyProse, bunifyDockerfile, bunifyCompose, bunifyCi } from './runtime-rewrite.js';
 import { assertValidAppName, toDatabaseName } from './app-name.js';
+import { isGalleryAppShellFile } from './gallery-shell-files.js';
 
 /**
  * Detect which package manager invoked us. Reads `npm_config_user_agent`,
@@ -116,8 +117,13 @@ const UI_REGISTRY_ROOT = resolveUiRegistryRoot();
  * Ships verbatim (no `{{APP_NAME}}` substitution): the examples are self-
  * contained and reference only `@webjsdev/*`, drizzle, `#db/*`, and each other.
  * The scaffold's own `app/page.ts` / `app/layout.ts` are written AFTER this and
- * the gallery ships neither, so there is no clobber. `cp` merges into existing
- * `app/` and `modules/` dirs rather than replacing them.
+ * are filtered out of the copy here (see GALLERY_APP_SHELL_FILES), so there is
+ * no clobber. `cp` merges into existing `app/` and `modules/` dirs rather than
+ * replacing them.
+ *
+ * The source is the canonical repo-root `gallery/` app in monorepo dev, and the
+ * `templates/gallery/` copy `prepack` bundles into the tarball when installed
+ * from npm. Both are filtered identically, so the two modes emit the same app.
  *
  * @param {string} appDir
  */
@@ -138,9 +144,14 @@ async function copyGallery(appDir) {
   // ui.ts. cp is recursive-merge, so the pre-written lib/utils/ files are kept.
   for (const sub of ['app', 'modules', 'test', 'components', 'lib']) {
     const srcSub = join(galleryDir, sub);
-    if (existsSync(srcSub)) {
-      await cp(srcSub, join(appDir, sub), { recursive: true });
-    }
+    if (!existsSync(srcSub)) continue;
+    await cp(srcSub, join(appDir, sub), {
+      recursive: true,
+      // Skip the gallery's own app shell (root layout, home page, theme toggle,
+      // cn.ts). Those exist because gallery/ is a live app; the scaffold writes
+      // its own, with the app's displayName and the ui-registry cn.ts.
+      filter: (src) => !isGalleryAppShellFile(relative(galleryDir, src)),
+    });
   }
 }
 
@@ -1173,15 +1184,6 @@ ${uiThemeRaw}
     // or shed the whole gallery at once with `gallery:clear`.
     await copyGallery(appDir);
 
-    const pagePath = join(appDir, 'app', 'page.ts');
-    if (existsSync(pagePath)) {
-      const src = await readFile(pagePath, 'utf8');
-      if (src.includes("title: 'WebJs Gallery'")) {
-        await writeFile(pagePath, src.replace("title: 'WebJs Gallery'", `title: '${displayName}'`));
-      }
-    }
-
-    if (!existsSync(join(appDir, 'app', 'layout.ts'))) {
   await writeFile(join(appDir, 'app', 'layout.ts'), `import { html, cspNonce, asset } from '@webjsdev/core';
 import type { LayoutProps } from '@webjsdev/core';
 import '#components/theme-toggle.ts';
@@ -1515,7 +1517,6 @@ const ICONS = {
 
 ThemeToggle.register('theme-toggle');
 `);
-    } // end fallback layout writing
   } // end if (!isApi)
 
   // AGENTS.md is already in place via the shared `templateFiles` loop

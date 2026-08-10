@@ -1,6 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
 import { mkdtemp, rm, readdir, readFile } from 'node:fs/promises';
 import { join, sep } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -250,7 +249,6 @@ test('no scaffold template ships a conformance-error action="" or formaction=""'
   const offenders = [];
   let scanned = 0;
   async function walk(dir) {
-    if (!existsSync(dir)) return;
     for (const entry of await readdir(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
       if (entry.isDirectory()) {

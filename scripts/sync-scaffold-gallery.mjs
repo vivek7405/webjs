@@ -12,8 +12,9 @@
 // repo-root canonical when the bundle is absent (monorepo dev).
 import { rm, cp, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isGalleryAppShellFile } from '../packages/cli/lib/gallery-shell-files.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const src = join(repoRoot, 'gallery');
@@ -28,9 +29,14 @@ if (process.argv.includes('--clean')) {
   await mkdir(dest, { recursive: true });
   for (const sub of ['app', 'modules', 'components', 'lib', 'test']) {
     const subSrc = join(src, sub);
-    if (existsSync(subSrc)) {
-      await cp(subSrc, join(dest, sub), { recursive: true });
-    }
+    if (!existsSync(subSrc)) continue;
+    // The gallery's own app shell (root layout, home page, theme toggle, cn.ts)
+    // exists because gallery/ is a live app. The scaffold writes its own, so
+    // those four are not payload and never enter the tarball.
+    await cp(subSrc, join(dest, sub), {
+      recursive: true,
+      filter: (from) => !isGalleryAppShellFile(relative(src, from)),
+    });
   }
   console.error(`[webjs] bundled the scaffold gallery into ${dest}`);
 }

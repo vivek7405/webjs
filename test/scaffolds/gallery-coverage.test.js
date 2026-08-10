@@ -37,9 +37,10 @@ import { scaffoldApp } from '../../packages/cli/lib/create.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO = join(__dirname, '..', '..');
-const GALLERY = existsSync(join(REPO, 'packages', 'cli', 'templates', 'gallery'))
-  ? join(REPO, 'packages', 'cli', 'templates', 'gallery')
-  : join(REPO, 'gallery');
+// The canonical gallery, always. `packages/cli/templates/gallery/` exists only
+// transiently between prepack and postpack, and gating a stale bundle instead of
+// the source is exactly the drift this test exists to catch.
+const GALLERY = join(REPO, 'gallery');
 const MANIFEST_PATH = join(__dirname, 'gallery-coverage.json');
 const ROUTER_SRC = join(REPO, 'packages', 'server', 'src', 'router.js');
 
