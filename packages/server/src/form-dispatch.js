@@ -359,7 +359,7 @@ export function reportFormSubmittedAsGet(url, req, onError, logger, dev, route) 
   }
   if (!willReport) return;
   const err = new Error(
-    `A form submission reached ${url.pathname} as a GET with the \`${FORM_ACTION_FIELD}\` identity in the query string, so no server action ran. A bound submitter carries its own formmethod="post", so look for a formmethod="get" on the button that was pressed, or a method="get" on its form: a submitter's own formmethod wins by native precedence and WebJs honours it rather than refusing it.`,
+    `A form submission reached ${url.pathname} as a GET with the \`${FORM_ACTION_FIELD}\` identity in the query string, so no server action ran. A BOUND submitter carries its own formmethod="post" and a bound form is refused a method="get" outright, so look instead for a PLAIN submitter's formmethod="get", or a hand-authored form carrying the reserved field: a plain submitter's own formmethod wins by native precedence and WebJs honours it rather than refusing it.`,
   );
   /** @type {any} */ (err).code = 'WEBJS_FORM_SUBMITTED_AS_GET';
   /** @type {any} */ (err).method = req.method;

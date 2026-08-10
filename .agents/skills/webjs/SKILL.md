@@ -240,7 +240,7 @@ Success is a 303 (PRG); failure re-renders the page at 422 with the result on `a
 - Writing `formmethod="get"` or `formenctype="text/plain"` on a button that BINDS an action. Neither can carry that action's body, so the pair contradicts itself and throws. On a button that binds nothing it is a legal native override and is honoured.
 - Binding an action whose file declares `export const method = 'GET'`. Form-bound actions strictly require POST (default). Binding a GET action to a form is a 405 at runtime and a `webjs check` error (`form-action-not-a-get-action`).
 - Leaving read-only RPC server query actions as default `POST`. Always export `export const method = 'GET'` for RPC data queries so arguments ride URL params, ETags/304 caching work, and CSRF is safely bypassed.
-- Writing `method="get"` on a bound `<form action=${fn}>`. WebJs supplies `method="post"` and `formenctype` automatically; manually setting `method="get"` triggers a `WEBJS_FORM_SUBMITTED_AS_GET` diagnostic warning.
+- Writing `method="get"` on a bound `<form action=${fn}>`. WebJs supplies `method="post"` and `formenctype` automatically, and a bound form declaring `method="get"` is REFUSED at render (a thrown error, not a warning), because a GET sends no body for the action to read.
 - Throwing `redirect()` / `notFound()` inside a `route.ts` handler (uncaught 500). Return a `Response` there.
 - A placeholder first paint that fetches in `connectedCallback`. SSR does not call `connectedCallback`; put first-paint data in the constructor (server-known inputs) or use `async render()`.
 - A browser global (`window`, `document`, `localStorage`) in the constructor or `render()`. It throws at SSR; do browser-only work in `connectedCallback`.

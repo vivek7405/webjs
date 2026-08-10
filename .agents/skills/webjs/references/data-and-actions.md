@@ -169,7 +169,7 @@ A `'use server'` action is a POST by default. Reserved sibling exports, read sta
 1. **Form-Bound Actions (`<form action=${fn}>` / `<button formaction=${fn}>`):**
    - **MUST be POST.** Leave unannotated (default) or export `export const method = 'POST'`.
    - **NEVER export `export const method = 'GET'` for form actions.** The HTML renderer automatically emits `method="post"` and `formenctype` for form actions. Binding a `method = 'GET'` action to a form returns a `405 Method Not Allowed` at runtime and triggers a `webjs check` error (`form-action-not-a-get-action`).
-   - **NEVER add `method="get"` to a bound `<form action=${fn}>`.** WebJs manages form submission semantics automatically; adding `method="get"` causes a `WEBJS_FORM_SUBMITTED_AS_GET` diagnostic warning.
+   - **NEVER add `method="get"` to a bound `<form action=${fn}>`.** WebJs manages form submission semantics automatically, and a bound form declaring `method="get"` is REFUSED at render (a thrown error, not a warning), because a GET sends no body for the action to read.
 
 2. **Programmatic / RPC Read Actions (Queries):**
    - **ALWAYS export `export const method = 'GET'` for read-only queries.**

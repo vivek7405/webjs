@@ -468,14 +468,13 @@ async function renderTemplate(tr, ctx) {
             // #1207: the submitter binding. The identity replaces the
             // `formaction=` hole IN PLACE with the button's own name/value
             // pair, the one channel a browser submits for the pressed button
-            // alone. No `formaction` url is emitted, so the submission still
-            // targets the page and the form-level identity is simply overridden
-            // by this later entry.
+            // alone. No `formaction` url is emitted, so the submission targets
+            // whatever the FORM targets, and a form-level identity is simply
+            // overridden by this later entry.
             //
             // Refused here rather than at the `>` only where the answer cannot
-            // change later: boundness of the ENCLOSING form is already decided
-            // (its start tag is emitted), and an attribute written BEFORE the
-            // hole is already in `out`. Everything else waits for the close,
+            // change later: an attribute written BEFORE the hole is already in
+            // `out`. Everything else waits for the close,
             // where `assertSubmitterStartTag` sees the whole tag.
             // A second binding hole on this same tag, refused here so the
             // author gets the duplicate message rather than a confusing
@@ -2083,8 +2082,6 @@ async function streamTemplate(tr, ctx, controller) {
   let pendingSubmitterProps = [];
   /** @type {string | null} */
   let pendingSubmitterTag = null;  // tag of a bound submitter, until it closes
-  // See the buffered machine: seeded from the caller so a nested template
-  // rendered into a bound form's children knows it is inside one.
   let isCloseTag = false;
 
   // See the buffered machine for why this runs at the `>` rather than at the
