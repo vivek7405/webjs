@@ -15,7 +15,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -95,10 +95,19 @@ test('the watched middleware extensions match the ones the server loads', () => 
   // the dev server when edited, which is the quiet half of the bug where a
   // root `middleware.ts` was loaded by neither. Read from the server source
   // rather than restated, so the two cannot drift apart silently.
-  const src = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), '../../../server/src/dev.js'),
-    'utf8',
-  );
+  // `dev.js` is a barrel over `dev/` now, so read the barrel AND every module
+  // beneath it. Reading only the barrel would leave this guard unable to find
+  // the declaration at all, which is a silent pass into a vacuous assertion
+  // rather than the drift check it is meant to be.
+  const serverSrc = join(dirname(fileURLToPath(import.meta.url)), '../../../server/src');
+  const devDir = join(serverSrc, 'dev');
+  const files = [join(serverSrc, 'dev.js')];
+  if (existsSync(devDir)) {
+    for (const e of readdirSync(devDir, { withFileTypes: true })) {
+      if (e.isFile() && e.name.endsWith('.js')) files.push(join(devDir, e.name));
+    }
+  }
+  const src = files.map((f) => readFileSync(f, 'utf8')).join('\n');
   const m = src.match(/const ROOT_MIDDLEWARE_FILES = \[([^\]]+)\]/);
   assert.ok(m, 'the server declares its root-middleware candidates in one place');
   const serverExts = m[1].match(/'([^']+)'/g).map((q) => q.slice(1, -1));
