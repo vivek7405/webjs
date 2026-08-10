@@ -18,7 +18,7 @@ import {
   hashFile,
 } from '../actions.js';
 import { registerActionHooks } from '../action-seed.js';
-import { readRegenerateRules, maybeRegenerate } from '../dev-regenerate.js';
+import { readRegenerateRules, maybeRegenerate, isRegenerateOutputPath } from '../dev-regenerate.js';
 import { stripTypeScript, ensureStripper } from '../ts-strip.js';
 import { defaultLogger } from '../logger.js';
 import { assertNodeVersion } from '../node-version.js';

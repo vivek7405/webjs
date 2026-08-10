@@ -1,4 +1,5 @@
-import { existsSync, watch as fsWatch } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { watch as fsWatch } from 'node:fs/promises';
 import { relative, sep } from 'node:path';
 import { createServer as createHttp1Server } from 'node:http';
 import { createRequestHandler } from './handler.js';
@@ -7,7 +8,6 @@ import { defaultLogger } from '../logger.js';
 import { SseHub, makeShutdown, installProcessHandlers, DEV_BOOT_ID, serverRuntime } from '../listener-core.js';
 import { urlFromRequest } from '../forwarded.js';
 import { propagateTrustedRemoteIp } from '../rate-limit.js';
-import { isRegenerateOutputPath } from '../dev-regenerate.js';
 import { stripBasePath } from '../base-path.js';
 import { basePath } from '../importmap.js';
 import { attachWebSocket } from '../websocket.js';
