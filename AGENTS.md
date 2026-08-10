@@ -33,7 +33,7 @@ itself): commands, repo-health git config, changelog flow, dev error overlay.
 
 ## AI-driven development: guardrails for all agents
 
-**WebJs is AI-first. These rules apply to ALL agents (Claude, Cursor, Copilot, Antigravity, Gemini, opencode) through a SINGLE cross-agent source the scaffold ships**: `AGENTS.md` (the open standard Cursor / opencode / Antigravity / the Copilot coding agent read natively) plus the skill at `.agents/skills/webjs/` and the workflow rules at `.agents/rules/workflow.md`. Tools that do not read `AGENTS.md` natively get a THIN bridge pointing at it (`CLAUDE.md` for Claude Code, `GEMINI.md` for Gemini CLI, `.github/copilot-instructions.md` for Copilot in VS Code), never a duplicated rule set. Claude Code additionally ships the protective enforcement hooks (`.claude/`, `.hooks/pre-commit`).
+**WebJs is AI-first. These rules apply to ALL agents (Claude, Cursor, Copilot, Antigravity, Gemini, opencode) through a SINGLE cross-agent source the scaffold ships**: `AGENTS.md` (the open standard Cursor / opencode / Antigravity / the Copilot coding agent read natively) plus the skill at `.agents/skills/webjs/` and the workflow rules at `.agents/rules/workflow.md`. Tools that do not read `AGENTS.md` natively get a THIN bridge pointing at it (`CLAUDE.md` for Claude Code), never a duplicated rule set. The scaffold shipped `GEMINI.md` and `.github/copilot-instructions.md` as further bridges until #1368 removed them, so `CLAUDE.md` is the only one today. Claude Code additionally ships the protective enforcement hooks (`.claude/`, `.hooks/pre-commit`).
 
 ### Before starting ANY work: verify and sync the branch
 

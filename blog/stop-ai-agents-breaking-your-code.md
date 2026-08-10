@@ -15,18 +15,17 @@ I wrote about the philosophy of this in an earlier post ("AI-first is plumbing, 
 
 # The rules go where the agent will actually read them
 
-An agent reads whichever instruction file matches its tool. So WebJs ships all of them, and they all say the same thing.
+An agent reads whichever instruction file matches its tool. Most of them now agree on one, so WebJs writes the contract once and bridges only where a tool still needs it.
 
 ```
 AGENTS.md                        the contract (source of truth)
 CONVENTIONS.md                   project conventions, overridable
 CLAUDE.md                        Claude Code (imports AGENTS.md)
-.cursorrules                     Cursor
-.agents/rules/workflow.md        Antigravity
-.github/copilot-instructions.md  GitHub Copilot
+.agents/rules/workflow.md        Antigravity workspace rules
+.agents/skills/webjs/            the teaching skill, loaded on demand
 ```
 
-Plus a `.claude/settings.json` wiring up hooks, a PR template, and an `.editorconfig`. The point is not the file count. The point is that whichever agent you happen to be driving, it lands in the project and finds the same conventions in its own native format. There is no "the agent didn't know" excuse, because the knowledge is in the file the agent reads first.
+Plus a `.claude/settings.json` wiring up hooks, a PR template, and an `.editorconfig`. The point is not the file count, and the count has gone down: Cursor, opencode, and Copilot's coding agent all read AGENTS.md directly, so the separate rule files they each used to need are gone. The point is that whichever agent you happen to be driving, it lands in the project and finds the same conventions. There is no "the agent didn't know" excuse, because the knowledge is in the file the agent reads first.
 
 But a document is advisory. An agent can read a rule and still forget it three tool-calls later. That is why the load-bearing enforcement is not the docs. It is the hooks.
 

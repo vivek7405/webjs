@@ -21,14 +21,13 @@ Every scaffolded WebJs app (the starter project `webjs create` generates for you
 AGENTS.md                                  agent contract (this is the load-bearing one)
 CONVENTIONS.md                             project-specific overridable conventions
 CLAUDE.md                                  Claude Code import file (points at AGENTS.md)
-.cursorrules                               Cursor rules (same content, different format)
+.agents/skills/webjs/                      the teaching skill, loaded on demand
 .agents/rules/workflow.md                  Antigravity (Google) workspace rules
-.github/copilot-instructions.md            GitHub Copilot
 .github/pull_request_template.md           PR template (also AI-readable)
 .editorconfig                              text-tool consistency
 ```
 
-The trick is that all of them say the same thing. AGENTS.md is the source of truth; CLAUDE.md is just `@AGENTS.md` (Claude Code's import syntax). Cursor and Antigravity (formerly Windsurf) use their own formats that load equivalent content. The PR template carries the convention checklist into every code review.
+The trick is that all of them say the same thing, and that there are fewer of them than there used to be. AGENTS.md is the source of truth. CLAUDE.md is just `@AGENTS.md` (Claude Code's import syntax), and it is the only bridge file left, because Cursor, opencode, Antigravity, and the Copilot coding agent all read AGENTS.md natively now. The PR template carries the convention checklist into every code review.
 
 Most agents read whichever file matches their tool first. AGENTS.md is the cross-tool standard ([emerging spec, FYI](https://agents.md/)). Every WebJs scaffold ships it.
 
@@ -68,13 +67,12 @@ The lint is intentionally narrow. Every rule catches something that is wrong to 
 - `.claude/hooks/block-prose-punctuation.sh` (blocks em-dashes, pause-semicolons, and other patterns that come from training data but don't fit our docs)
 - `.claude/hooks/guard-branch-context.sh` (intercepts Edit/Write when the agent is on main, forces a feature branch)
 - `.claude/hooks/nudge-uncommitted.sh` (reminds the agent to commit when uncommitted-file count crosses a threshold)
-- `.gemini/hooks/nudge-uncommitted.sh` (same threshold logic, Gemini CLI format)
-- `.cursor/hooks/nudge-uncommitted.sh` (same, Cursor 1.7+ format)
-- `.opencode/plugins/nudge-uncommitted.ts` (same, OpenCode plugin format)
+- `.claude/hooks/require-tests-with-src.sh` (warns when source is staged with no test beside it)
+- `.claude/hooks/check-server-imports.sh` (catches a server-only import reaching a module that ships to the browser)
 
-Each hook is a small shell script (or TS plugin for OpenCode). They fire on the agent's tool-call events. They are advisory for everything except the branch-guard, which actively blocks edits when on main.
+Each hook is a small shell script. They fire on the agent's tool-call events. They are advisory for everything except the branch-guard, which actively blocks edits when on main.
 
-The interesting bit is that the framework ships hooks for multiple agents in the same scaffold. The agent picks the one matching its tool; the others are inert.
+These are Claude-only, and that is now a deliberate choice rather than an accident of what got written first. The scaffold used to carry the same nudge logic in Gemini, Cursor, and opencode formats too. Keeping four copies of one rule in four config dialects turned out to cost more than it bought, so the scaffold dropped them and kept the two enforcement layers that bind every agent regardless of tool: the pre-commit hook above, and CI.
 
 # WEBJS_PUBLIC_* environment shim
 
@@ -106,7 +104,9 @@ What is exciting is watching an agent take the framework as a given. No "where d
 
 # What I am still figuring out
 
-The hooks fragment across tools. Every new agent CLI (Cline, Codex, Factory Droid, Aider, etc.) wants its own hook format. We can ship the same content in each format via the scaffold, but maintaining six near-identical files is brittle. The longer-term answer is for AGENTS.md to become the universal contract (which is happening, slowly) and the per-tool hooks to read from it.
+The hooks fragment across tools. Every new agent CLI (Cline, Codex, Factory Droid, Aider, etc.) wants its own hook format, and for a while the scaffold tried to keep up by shipping the same content in each one. That was a mistake, and I have since deleted those copies. Six near-identical files drift, and a drifted rule file is worse than a missing one, because an agent reads it and believes it. The bet now is that AGENTS.md becomes the universal contract, which is largely how it has played out, and that anything genuinely protective lives at a layer every tool has to pass through anyway. A pre-commit hook and a CI job do not care which agent wrote the code.
+
+What I have not solved is enforcement for a tool that is not Claude Code. The blocking tool-call gates only fire there, so an agent in another editor gets the contract and the commit-time gates but not the live ones that catch a mistake as it is typed.
 
 The other thing is the AGENTS.md size budget. We are at ~40k characters and growing. Each new feature adds a recipe, an invariant, or a doc-link. Agents have token windows that get pricey above ~50k. We are about to need a "load this section on demand" mechanism. The skill at `.agents/skills/webjs/` (SKILL.md plus its `references/`) is the start of that pattern: detail references that load only when relevant.
 
