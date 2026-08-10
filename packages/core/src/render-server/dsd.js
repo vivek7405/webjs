@@ -1312,6 +1312,7 @@ export function fromCodePoint(n) {
  * @returns {Record<string, unknown>}
  */
 export function consumePropAttrs(attrs) {
+  /** @type {Record<string, unknown>} */
   const props = {};
   for (const key of Object.keys(attrs)) {
     if (!key.startsWith('data-webjs-prop-')) continue;

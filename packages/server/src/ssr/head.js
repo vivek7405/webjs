@@ -158,6 +158,7 @@ function escapeAttr(s) {
     .replace(/>/g, '&gt;');
 }
 
+/** @param {string} s */
 function escapeHtml(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -214,6 +215,17 @@ export function collectHoistedHeadTags(bodyHtml) {
   return { tags, body };
 }
 
+/**
+ * Produce the `<!doctype…><body>` prefix. If `streaming` is true, injects
+ * the tiny client-side resolver that swaps Suspense fallback nodes for
+ * streamed-in real content.
+ *
+ * Also emits `<link rel="modulepreload">` for every component that rendered
+ * (breaks the ES-module waterfall without a bundler) and any user-declared
+ * `metadata.preload` entries.
+ *
+ * @param {{ metadata: Record<string,any>, moduleUrls: string[], dev: boolean, streaming: boolean, preloads?: string[], lazyComponents?: Record<string, string>, nonce?: string }} opts
+ */
 /**
  * Extract leading `<script>`, `<style>`, and `<link>` tags from the body
  * HTML and hoist them into `<head>`. Ensures blocking scripts (e.g.
@@ -309,6 +321,7 @@ export function wrapHead(opts) {
   const scriptTags = [];
 
   const base = typeof m.metadataBase === 'string' ? m.metadataBase : '';
+  /** @param {unknown} v */
   const absUrl = (v) => {
     const s = String(v);
     if (!base) return s;
@@ -505,13 +518,17 @@ export function wrapHead(opts) {
     }
   }
 
+  /** @type {Set<string>} the origins the author already declared a preconnect to */
   const declaredPreconnectOrigins = new Set();
+  /** @param {unknown} h @returns {{ url: string, crossorigin?: string|boolean } | null} */
   const normalizeHint = (h) => {
-    if (!h) return null;
-    if (typeof h === 'string') return { url: h };
-    if (typeof h === 'object' && h.url) return h;
+    if (typeof h === 'string') return h ? { url: h } : null;
+    if (h && typeof h === 'object' && typeof (/** @type {any} */ (h).url) === 'string') {
+      return /** @type {any} */ (h);
+    }
     return null;
   };
+  /** @param {unknown} value @returns {Array<{ url: string, crossorigin?: string|boolean }>} */
   const toHints = (value) => {
     if (value == null) return [];
     const list = Array.isArray(value) ? value : [value];
@@ -522,6 +539,7 @@ export function wrapHead(opts) {
     }
     return out;
   };
+  /** @param {string|boolean|undefined} co @returns {string} */
   const crossoriginAttr = (co) => {
     if (co === undefined || co === false) return '';
     if (co === true || co === '') return ' crossorigin';
@@ -554,6 +572,7 @@ export function wrapHead(opts) {
     const buckets = typeof declaredOrRouteIcons === 'string' || Array.isArray(declaredOrRouteIcons)
       ? { icon: declaredOrRouteIcons }
       : declaredOrRouteIcons;
+    /** @param {string} rel @param {unknown} entry */
     const pushIcon = (rel, entry) => {
       if (!entry) return;
       const items = Array.isArray(entry) ? entry : [entry];

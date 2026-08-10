@@ -203,10 +203,14 @@ export async function renderTemplate(tr, ctx) {
   let currentTag = '';
   let rawTail = '';
   let tagStart = -1;
+  /** @type {string | null} */
   let pendingActionId = null;
+  /** @type {string | null} */
   let pendingSubmitterTag = null;
   let pendingActionCount = 0;
+  /** @type {string[]} */
   let pendingPropAttrs = [];
+  /** @type {string[]} */
   let pendingSubmitterProps = [];
 
   const closeBoundFormTag = () => {
@@ -541,10 +545,14 @@ export async function streamTemplate(tr, ctx, controller) {
   let rawTail = '';
   let buf = '';
   let tagStart = -1;
+  /** @type {string | null} */
   let pendingActionId = null;
   let pendingActionCount = 0;
+  /** @type {string[]} */
   let pendingPropAttrs = [];
+  /** @type {string[]} */
   let pendingSubmitterProps = [];
+  /** @type {string | null} */
   let pendingSubmitterTag = null;
 
   const closeBoundFormTag = () => {

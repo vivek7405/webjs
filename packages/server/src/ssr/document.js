@@ -330,6 +330,7 @@ export function publicEnvShim(opts) {
     + `</script>`;
 }
 
+/** @param {string} s */
 function escapeAttr(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;')

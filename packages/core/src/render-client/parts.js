@@ -327,6 +327,14 @@ export function isInShadowRootEl(el) {
 }
 
 /**
+ * Child (text-position) part. Replace the marker's surrounding nodes with the
+ * new value's rendered form. Nested TemplateResults get an instance with its
+ * own parts; we reuse on `strings` identity.
+ *
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {unknown} value
+ */
+/**
  * Apply a value at an element-position part (`<tag ${expr}>`). The
  * sole supported directive here is `ref(refOrCallback)` and
  * `createRef()`. Other values are ignored so a stray non-ref hole
@@ -506,7 +514,7 @@ export function applyChildInnerRaw(part, value, reconcileFormActionsCb) {
       teardownAsyncStream(c);
       part.child = undefined;
     } else if ('strings' in /** @type any */ (part.child)) {
-      const inst = /** @type any */ (part.child);
+      const inst = /** @type TemplateInstance */ (part.child);
       if (isTemplate(value) && inst.strings === /** @type any */ (value).strings) {
         updateInstance(inst, /** @type any */ (value).values, reconcileFormActionsCb);
         return;
@@ -663,6 +671,7 @@ export function buildDetached(tr, reconcileFormActionsCb) {
   };
 }
 
+/** @param {TemplateInstance} inst */
 export function disposeInstance(inst) {
   for (const p of inst.bound) {
     if (p.kind === 'event') p.el.removeEventListener(p.name, p.dispatcher);
@@ -719,7 +728,7 @@ function reconcileRepeat(part, value, reconcileFormActionsCb) {
   const marker = part.marker;
   const parent = marker.parentNode;
   if (!parent) return;
-  const state = /** @type {{ kind: 'repeat', map: Map<any, any> }} */ (part.child);
+  const state = /** @type {{ kind: 'repeat', map: Map<any, TemplateInstance> }} */ (part.child);
   const { items, keyFn, templateFn } = value;
   const newMap = new Map();
 
@@ -835,6 +844,7 @@ function applyArrayFresh(marker, state, value, reconcileFormActionsCb) {
   const parent = marker.parentNode;
   if (!parent) return;
   const bulk = document.createDocumentFragment();
+  /** @type {ArrayItem[]} */
   const items = [];
   for (const v of value) {
     const { item, frag } = buildArrayItem(v, reconcileFormActionsCb);
@@ -858,8 +868,9 @@ function reconcileArray(part, value, reconcileFormActionsCb) {
   const marker = part.marker;
   const parent = marker.parentNode;
   if (!parent) return;
-  const state = /** @type {{ kind: 'array', items: any[] }} */ (part.child);
+  const state = /** @type {{ kind: 'array', items: ArrayItem[] }} */ (part.child);
   const old = state.items;
+  /** @type {ArrayItem[]} */
   const next = [];
   let consumed = 0;
 
@@ -967,6 +978,7 @@ function shallowEqualArray(a, b) {
   return true;
 }
 
+/** @param {Extract<BoundPart, {kind:'child'}>} part */
 export function teardownChild(part) {
   const partAny = /** @type any */ (part);
   if (partAny.__untilState) {
@@ -986,7 +998,7 @@ export function teardownChild(part) {
   } else if (c.kind === 'async-stream') {
     teardownAsyncStream(c);
   } else if ('strings' in c) {
-    const inst = /** @type any */ (part.child);
+    const inst = /** @type TemplateInstance */ (part.child);
     disposeInstance(inst);
     removeBetween(inst.startNode, inst.endNode);
   } else {
@@ -1052,6 +1064,7 @@ export function clearStaleDirectiveState(part, value) {
 function applyCache(part, inner, reconcileFormActionsCb) {
   const marker = part.marker;
   const partAny = /** @type any */ (part);
+  /** @type {Map<TemplateStringsArray, { inst: TemplateInstance, holder: DocumentFragment }>} */
   let cacheMap = partAny.__cacheMap;
   if (!cacheMap) {
     cacheMap = new Map();
@@ -1062,7 +1075,7 @@ function applyCache(part, inner, reconcileFormActionsCb) {
   const currentIsInstance = currentChild && 'strings' in currentChild;
 
   if (currentIsInstance) {
-    const currentInst = /** @type any */ (currentChild);
+    const currentInst = /** @type TemplateInstance */ (currentChild);
     if (isTemplate(inner) && currentInst.strings === /** @type any */ (inner).strings) {
       updateInstance(currentInst, /** @type any */ (inner).values, reconcileFormActionsCb);
       return;
@@ -1144,6 +1157,7 @@ function applyUntil(part, args, reconcileFormActionsCb) {
   if (prevState) prevState.aborted = true;
   partAny.__untilArgs = args.slice();
 
+  /** @type {{aborted:boolean, highestResolved:number}} */
   const state = { aborted: false, highestResolved: carriedHighest };
   partAny.__untilState = state;
 
@@ -1330,13 +1344,14 @@ function applyAsyncAppend(part, dir, reconcileFormActionsCb) {
   const iterator = /** @type AsyncIterator<unknown> */ (
     dir.iterable[Symbol.asyncIterator]()
   );
+  /** @type {AsyncStreamState} */
   const state = {
     kind: 'async-stream',
     mode: 'append',
     aborted: false,
     iterable: dir.iterable,
     iterator,
-    nodes: [],
+    /** @type {ChildNode[]} */ nodes: [],
   };
   part.child = state;
 
@@ -1365,19 +1380,30 @@ function applyAsyncReplace(part, dir, reconcileFormActionsCb) {
   const iterator = /** @type AsyncIterator<unknown> */ (
     dir.iterable[Symbol.asyncIterator]()
   );
+  /** @type {AsyncStreamState} */
   const state = {
     kind: 'async-stream',
     mode: 'replace',
     aborted: false,
     iterable: dir.iterable,
     iterator,
-    nodes: [],
+    /** @type {ChildNode[]} */ nodes: [],
   };
   part.child = state;
 
   consumeAsyncStream(state, part, dir, reconcileFormActionsCb);
 }
 
+/**
+ * @typedef {{
+ *   kind: 'async-stream',
+ *   mode: 'append' | 'replace',
+ *   aborted: boolean,
+ *   iterable: AsyncIterable<unknown>,
+ *   iterator: AsyncIterator<unknown>,
+ *   nodes: ChildNode[],
+ * }} AsyncStreamState
+ */
 /**
  * Consume an AsyncIterable for `asyncAppend` / `asyncReplace`. Drives
  * the iterator with an explicit `.next()` loop (rather than `for await`)
@@ -1411,7 +1437,9 @@ async function consumeAsyncStream(state, part, dir, reconcileFormActionsCb) {
   const marker = part.marker;
   let i = 0;
   while (!state.aborted) {
+    /** @type {IteratorResult<unknown>} */
     let result;
+    /** @type {unknown} */
     let mapped;
     try {
       result = await state.iterator.next();

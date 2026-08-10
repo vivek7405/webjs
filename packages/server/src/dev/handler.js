@@ -101,6 +101,7 @@ async function fileByteHash(abs) {
   }
 }
 
+/** @type {string | null} memoized `@webjsdev/server` version, folded into the app-source signal (#899). */
 let cachedServerVersion = null;
 /**
  * The installed `@webjsdev/server` version (this package). Folded into the
@@ -209,6 +210,7 @@ export async function createRequestHandler(opts) {
   // file takes effect without a restart.
   setMetadataIconRoutes(routeTable.metadataRoutes);
 
+  /** @returns {Promise<void>} */
   async function emitRouteTypes() {
     try {
       const { mkdir, writeFile, rename } = await import('node:fs/promises');
@@ -277,7 +279,9 @@ export async function createRequestHandler(opts) {
   let vendorAttemptedOnce = false;
   let vendorGen = 0;
   let readyDone = false;
+  /** @type {unknown} */
   let readyError = null;
+  /** @type {Promise<void> | null} */
   let readyInFlight = null;
 
   async function ensureReady() {
@@ -402,6 +406,7 @@ export async function createRequestHandler(opts) {
     await readyInFlight;
   }
 
+  /** @type {Promise<boolean> | null} */
   let vendorResolveInFlight = null;
   function resolveAndApplyVendor() {
     if (vendorResolveInFlight) return vendorResolveInFlight;
@@ -477,6 +482,7 @@ export async function createRequestHandler(opts) {
     opts.onReload?.();
   }
 
+  /** @param {Request} req */
   function handle(req) {
     return withRequest(req, async () => {
       const reqId = resolveRequestId(req);
@@ -559,6 +565,7 @@ export async function createRequestHandler(opts) {
     });
   }
 
+  /** @param {Request} req */
   async function produce(req) {
     const rawUrl = new URL(req.url);
 
@@ -761,6 +768,7 @@ export async function createRequestHandler(opts) {
      * @returns {Promise<void>}
      */
     warmup: () => ensureReady().catch((e) => logger.error?.(`[webjs] background warm-up failed (will retry on the next request):`, e)),
+    /** current route table getter: used by the WebSocket subsystem */
     getRouteTable: () => state.routeTable,
     /** Current unresolved dev error frame (#264), or null. Replayed by
      * startServer to a freshly-connected SSE client so the overlay shows even

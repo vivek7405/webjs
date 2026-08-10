@@ -334,9 +334,10 @@ function discoverSlots(root, parts) {
 function assignPaths(root, parts) {
   /** @type {number[]} */
   const path = [];
-  /** @type {any[]} */
+  /** @type {FormActionRecord[]} */
   const formActions = [];
 
+  /** @param {Node} node */
   function visit(node) {
     for (let i = 0; i < node.childNodes.length; i++) {
       const child = node.childNodes[i];
@@ -352,6 +353,8 @@ function assignPaths(root, parts) {
       } else if (child.nodeType === 1) {
         const el = /** @type Element */ (child);
         const toRemove = [];
+        /** Every part bound to THIS element, which only this walk can see. */
+        /** @type {{ idx: number, kind: string, name: string }[]} */
         const onEl = [];
         for (const attr of el.attributes) {
           if (attr.name.startsWith(`data-${MARKER}`)) {

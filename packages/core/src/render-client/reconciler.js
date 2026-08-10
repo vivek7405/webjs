@@ -327,6 +327,10 @@ function createInstance(tr, container) {
 
 const MARKER = 'wjm-';
 
+/**
+ * @param {TemplateInstance} inst
+ * @param {unknown[]} values
+ */
 function updateInstance(inst, values) {
   for (let i = 0; i < values.length; i++) {
     const next = values[i];

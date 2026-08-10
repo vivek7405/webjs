@@ -198,6 +198,11 @@ function startNodeListener(ctx) {
 }
 
 /**
+ * The core request → response pipeline, minus middleware.
+ * @param {Request} req
+ * @param {{state: any, appDir: string, coreDir: string, dev: boolean}} ctx
+ */
+/**
  * @param {{
  *   appDir: string,
  *   port?: number,
