@@ -47,6 +47,27 @@ scaffolded app.
 
 Everything else in those five directories IS payload and ships verbatim.
 
+**`public/` is gallery-only too, and is the other half of the boundary.** Both
+copiers iterate `app`, `modules`, `test`, `components` and `lib`, so nothing
+under `public/` is ever read. That is where this app's brand assets live (the
+lockup SVGs in `public/brand/`, the self-hosted woff2 files in `public/fonts/`,
+and the hand-written `public/input.css`), and it is why they can exist at all
+without reaching a generated app.
+
+**A brand helper belongs INLINE in a shell file, never in a new module.** The
+reflex is to mirror the website, which keeps its logo in
+`website/lib/design/brand.ts` and its footer in `website/lib/ui/site-footer.ts`.
+Both of those paths are payload here, so either one would ship the WebJs mark
+into every generated app. The header lockup and the footer are written inline in
+`app/layout.ts` for exactly that reason.
+
+The boundary is now GUARDED rather than only documented, by
+`test/repo-health/gallery-payload-boundary.test.mjs`. Note what actually holds
+it: the generator writes its own `app/layout.ts`, `app/page.ts` and
+`components/theme-toggle.ts` AFTER `copyGallery()` runs, so those overwrite
+whatever the copy left. The shell-file filter is defence-in-depth on top of
+that write order, not the mechanism itself.
+
 ## Rules for a demo
 
 - **One concept per card.** A demo under `app/features/<name>/` shows a single
