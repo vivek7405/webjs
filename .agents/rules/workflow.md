@@ -32,8 +32,9 @@ These project-level rules govern all operations inside this workspace. Antigravi
 - **Imperative-mood commit subjects under 72 chars.** The body explains the reason for the change, not the diff.
 - **Run tests before committing** when the project has them. Respect pre-commit hooks, do not pass `--no-verify`.
 
-## Concurrent Agent Worktree Isolation
-- **One task per git worktree when agents may run concurrently.** If more than one agent (or more than one in-flight task) might touch a repo at the same time, do NOT share one working directory.
+## One Task Per Git Worktree
+- **One task per git worktree, ALWAYS.** There is no lone-agent exception: this repo is worked by multiple agents at once, and "no other agent is active right now" is unverifiable mid-task, since another session can start any minute. Never share one working directory across tasks.
+- Two agents in one checkout collide: a `git checkout` in one moves `HEAD` under the other, so the next commit lands on the WRONG branch. Git enforces one branch per worktree, which is what makes the collision impossible.
 - Give each task its own worktree:
   ```sh
   git worktree add -b <branch> ../<repo>-<slug> origin/main
@@ -43,7 +44,8 @@ These project-level rules govern all operations inside this workspace. Antigravi
   ```sh
   git worktree remove ../<repo>-<slug>
   ```
-- Before committing in a shared checkout, confirm `git branch --show-current` is still the branch you created. If it moved, switch to a worktree.
+- Before every commit, confirm `git branch --show-current` is still the branch you created. If it moved, you are colliding with another session, so stop and move the work into its own worktree.
+- The primary checkout stays an untouched mirror of `main`. Do all work in the task's worktree, never there.
 
 ## Custom Skills Usage
 - These skills are symlinked into `.agents/skills/` from `.claude/skills/`, so both engines load one copy. Every entry here must have a matching symlink, and every symlink must have an entry here; `test/repo-health/agent-skill-parity.test.mjs` enforces both directions.
@@ -62,9 +64,9 @@ These project-level rules govern all operations inside this workspace. Antigravi
 
 ## Enforcement gates
 
-The protective `PreToolUse` hooks under `.claude/hooks/` fire only inside Claude Code. Two gates bind every agent regardless of engine, and neither is optional.
+Everything under `.claude/hooks/` fires only inside Claude Code, and that is more than the blocking gates: seven `PreToolUse` hooks that can refuse a tool call, one `UserPromptSubmit` skill router, and three `PostToolUse` hooks. None of it runs here. Two gates bind every agent regardless of engine, and neither is optional.
 
 - `.hooks/pre-commit` runs on every commit. It blocks a direct commit to `main` or `master` and blocks a published-library version bump on any branch that is not `chore/release-*`. Never pass `git commit --no-verify`.
-- `.github/workflows/ci.yml` is the test gate (`conventions`, `unit`, and the Bun matrix), and branch protection blocks a merge until it is green. `.hooks/pre-commit` deliberately does not run the suite because CI does.
+- `.github/workflows/ci.yml` is the test gate. Branch protection blocks a merge until the five REQUIRED checks pass: `Conventions (webjs check)`, `Unit + integration (node --test)`, `Browser (web-test-runner / Playwright)`, `E2E (Puppeteer against the blog example)`, and `Build (@webjsdev/core dist)`. The workflow defines more jobs than those five, the Bun matrix among them, so a green required set is not the same as green CI. Read every check rather than trusting the merge button to have judged for you. `.hooks/pre-commit` deliberately does not run the suite because CI does.
 
-Because the pre-tool gates do not fire here, self-check what they would have caught before every commit: stage tests alongside any `packages/*/src` change, stage the doc surfaces that change with it, keep the work inside its own worktree, and obey invariant 11 on prose punctuation and `WebJs` brand casing.
+Because the tool-call gates do not fire here, self-check what they would have caught before every commit. Staging anything under `packages/*/src` or `packages/cli/lib` trips four of them at once, so that change needs all four alongside it: the tests for every layer it touches, the doc surfaces that change with it, a scaffold surface when the feature changes what `webjs create` generates, and a `test/bun/**` cross-runtime assertion when the surface is runtime-sensitive (the serializer, the listener and request path, SSR, action or CSRF dispatch, streams, `node:crypto`, the TypeScript stripper, auth, session, or cors). The remaining three bind any edit at all: keep the work inside its own worktree, extend `WebComponent(...)` rather than raw `HTMLElement` in a custom element, and obey invariant 11 on prose punctuation and `WebJs` brand casing.
