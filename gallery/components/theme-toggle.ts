@@ -3,7 +3,7 @@ import { WebComponent, html, signal } from '@webjsdev/core';
 /**
  * `<theme-toggle>`: three-state theme switcher: system → light → dark → system.
  *
- * State is mirrored to localStorage (`webjs_theme`) and reflected as
+ * State is mirrored to localStorage (`theme`) and reflected as
  * `<html data-theme>`. The initial theme is set by the synchronous bootstrap
  * script in layout.js so there's no FOUC on page load.
  */
@@ -15,7 +15,7 @@ export class ThemeToggle extends WebComponent {
   connectedCallback() {
     super.connectedCallback();
     let saved: string | null = null;
-    try { saved = localStorage.getItem('webjs_theme'); } catch {}
+    try { saved = localStorage.getItem('theme'); } catch {}
     this.theme.set(saved === 'light' || saved === 'dark' ? saved : 'system');
   }
 
@@ -26,8 +26,8 @@ export class ThemeToggle extends WebComponent {
       : t === 'light' ? 'dark' : 'system';
     this.theme.set(next);
     try {
-      if (next === 'system') localStorage.removeItem('webjs_theme');
-      else localStorage.setItem('webjs_theme', next);
+      if (next === 'system') localStorage.removeItem('theme');
+      else localStorage.setItem('theme', next);
     } catch {}
     if (next === 'system') delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = next;
@@ -45,7 +45,7 @@ export class ThemeToggle extends WebComponent {
     const icon = t === 'light' ? ICONS.sun : t === 'dark' ? ICONS.moon : ICONS.system;
     return html`
       <button
-        class="inline-flex items-center justify-center w-9 h-9 p-0 border border-border rounded-full bg-card text-muted-foreground cursor-pointer transition-all duration-150 hover:text-foreground hover:border-border active:scale-[0.94] focus-visible:outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-primary-tint"
+        class="inline-flex items-center justify-center w-9 h-9 p-0 border border-border rounded-full bg-card text-muted-foreground cursor-pointer transition-all duration-150 hover:text-foreground hover:border-border-strong active:scale-[0.94] focus-visible:outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-primary-tint"
         @click=${() => this.cycle()}
         aria-label="Cycle theme (currently ${label})"
         title="Theme: ${label.toLowerCase()}"

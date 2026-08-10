@@ -9,6 +9,22 @@
  * default; this @source is belt-and-braces.) */
 @source "../components/ui/*.ts";
 
+/* The header logo swaps two files with dark:block / dark:hidden, so `dark:`
+   has to mean the PAGE theme rather than the OS preference alone. Keyed off
+   [data-theme], the same signal the bootstrap script in app/layout.ts writes,
+   with a prefers-color-scheme half so the right variant still shows with
+   JavaScript off. Copied verbatim from website/public/input.css so the two
+   sites resolve the variant identically. The kit's `&:is(.dark *)` form is
+   deliberately NOT used: no script means no .dark class, so it would resolve
+   to light for a reader on a dark OS and put the dark-ground mark on a light
+   page. */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme='light']) *) { @slot; }
+  }
+  &:where(:root[data-theme='dark'] *) { @slot; }
+}
+
 /* @theme maps the shadcn design-token CSS custom properties (defined on :root
  * in app/layout.ts for light/dark switching) into Tailwind's palette, so
  * utility classes like `text-foreground`, `bg-card`, `bg-primary`,
@@ -45,6 +61,15 @@
      scaffold's --primary-tint uses), for focus rings and the logo glow. */
   --color-primary-tint:           var(--primary-tint);
 
+  /* Brand tokens the gallery shell uses and the shadcn set has no name for.
+     Plain @theme, like everything above it, because the shadow-DOM demo in
+     modules/components/ reads var(--color-*) from inside its shadow root and
+     Tailwind cannot see a component's static styles, so these have to exist as
+     real custom properties on :root for that tree to inherit them. */
+  --color-accent-tint:            var(--accent-tint);
+  --color-hover-surface:          var(--hover-surface);
+  --color-glow-a:                 var(--glow-a);
+
   /* One extra semantic shadcn does not ship: success (a couple of status
      affordances use it). Added the canonical @theme way, not a parallel
      vocabulary. */
@@ -67,11 +92,16 @@
 }
 
 /*
- * Self-hosted fonts (latin subset woff2 in public/fonts/). One VARIABLE file
- * per family covers its whole weight range, so a font-weight range here means
- * every used weight resolves from a single download. No Google Fonts CDN: no
- * render-blocking third-party stylesheet and no third-party request.
+ * Self-hosted fonts (latin subset woff2 in public/fonts/, copied from
+ * website/public/fonts/ so both origins render the same faces). One VARIABLE
+ * file per family covers its whole weight range, so a font-weight range here
+ * means every used weight resolves from a single download. No Google Fonts
+ * CDN: no render-blocking third-party stylesheet and no third-party request.
  * font-display:swap paints immediately with the fallback, then swaps.
+ * app/layout.ts preloads the two critical faces with BARE paths and never
+ * wraps them in asset(), because these bytes are fetched by the url() below,
+ * so a hashed preload could not match the request and the file would download
+ * twice.
  */
 @font-face{font-family:'Inter Tight';font-style:normal;font-weight:100 900;font-display:swap;src:url('/public/fonts/inter-tight.woff2') format('woff2');}
 @font-face{font-family:'Inter';font-style:normal;font-weight:100 900;font-display:swap;src:url('/public/fonts/inter.woff2') format('woff2');}

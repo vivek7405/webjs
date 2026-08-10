@@ -24,7 +24,7 @@ export default function Home() {
     <div class="py-8 flex flex-col items-center gap-16">
       <!-- Hero -->
       <section class="flex flex-col items-center text-center gap-5">
-        <h1 class="text-5xl sm:text-6xl font-bold tracking-tight leading-none m-0 break-words bg-gradient-to-b from-foreground to-muted-foreground bg-clip-text text-transparent" style="font-family: var(--font-display); letter-spacing: -0.02em;">
+        <h1 class="text-5xl sm:text-6xl font-bold tracking-tight leading-none m-0 break-words bg-gradient-to-b from-foreground to-[var(--ring)] bg-clip-text text-transparent" style="font-family: var(--font-display); letter-spacing: -0.02em;">
           Explore the gallery
         </h1>
         <p class="text-base sm:text-lg text-muted-foreground max-w-lg leading-relaxed m-0">
