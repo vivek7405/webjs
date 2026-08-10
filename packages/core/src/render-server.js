@@ -5,8 +5,8 @@ import {
   assertNotFunctionActionAttr, assertNotFunctionReflectedActionProp,
   assertIdentifiableAction, bindFormActionStartTag, isBoundFormAction, resolveFormActionId,
   assertConvergentBoundForm, assertSubmitterHasNoName, assertSubmitterHasNoValue,
-  assertSubmitterFormIsBound, assertSubmitterHasNoFormAttribute,
-  assertSingleSubmitterAction, assertSubmitterStartTag, parseStartTagAttrs,
+  assertSubmitterHasNoFormAttribute,
+  assertSingleSubmitterAction, bindSubmitterStartTag, parseStartTagAttrs,
   isSubmitterReflectedProp, FORM_ACTION_FIELD,
 } from './form-action.js';
 import { lookup, lookupModuleUrl, allTags } from './registry.js';
@@ -16,6 +16,8 @@ import { isSuspense } from './suspense.js';
 import { unsafeHTML, isUnsafeHTML, isLive, isKeyed, isGuard, isTemplateContent, isRef, isCache, isUntil, isAsyncAppend, isAsyncReplace, isWatch } from './directives.js';
 import { stringify, parse } from './serialize.js';
 import { cspNonce } from './csp-nonce.js';
+import { readAttributeValue, resolveAttributeProperty } from './attribute-reader.js';
+import NAMED_ENTITIES, { LEGACY_NAMES } from './html-entities.js';
 
 /**
  * Render a TemplateResult (or any renderable value) to an HTML string.
@@ -31,19 +33,18 @@ import { cspNonce } from './csp-nonce.js';
  * Suspense still works but we fall back to emitting only the fallback
  * (the promise is dropped: appropriate for static pre-render).
  *
- * @typedef {{ pending: {id: string, promise: Promise<unknown>, formScope?: 'none'|'unbound'|'bound'|'unknown'}[], nextId: number }} SuspenseCtx
+ * @typedef {{ pending: {id: string, promise: Promise<unknown>}[], nextId: number }} SuspenseCtx
  *
- * `formScope` (#1207) is how a caller that resolves a Suspense boundary ITSELF
- * tells this render what the boundary's surroundings were. The page pipeline in
- * `@webjsdev/server` drains `ctx.pending` and re-renders each resolved child
- * through here, which is a fresh scan with no view of the shell it belongs to,
- * so without the recorded scope a `<button formaction=${fn}>` inside a bound
- * form's Suspense boundary reads as form-less and is refused. That refusal is
- * caught and replaced by the empty string in production, so the whole boundary
- * would silently disappear from a page that still returned 200.
+ * A boundary's enclosing form scope used to be recorded here and threaded back
+ * in (#1207), because the page pipeline in `@webjsdev/server` drains
+ * `ctx.pending` and re-renders each resolved child through a FRESH scan with no
+ * view of the shell it belongs to, so a `<button formaction=${fn}>` inside a
+ * bound form's Suspense boundary read as form-less and was refused. Gone with
+ * #1307: a bound submitter carries its own `formmethod` and enctype, so no
+ * renderer needs to know what encloses it and there is nothing left to thread.
  *
  * @param {unknown} value
- * @param {{ ssr?: boolean, suspenseCtx?: SuspenseCtx, dev?: boolean, formScope?: 'none'|'unbound'|'bound'|'unknown' }} [opts]
+ * @param {{ ssr?: boolean, suspenseCtx?: SuspenseCtx, dev?: boolean }} [opts]
  * @returns {Promise<string>}
  */
 export async function renderToString(value, opts = { ssr: true }) {
@@ -54,23 +55,20 @@ export async function renderToString(value, opts = { ssr: true }) {
   // sharing it see the same flag. Undefined stays undefined (NODE_ENV fallback).
   const dev = opts && opts.dev !== undefined ? opts.dev : ctx && ctx.dev;
   if (ctx && ctx.dev === undefined && dev !== undefined) ctx.dev = dev;
-  // A caller that knows the scope passes it. Absent, this is a top-level render
-  // and 'none' is the honest answer: there is conclusively no enclosing form.
-  const html = await render(value, ctx, (opts && opts.formScope) || 'none');
+  const html = await render(value, ctx);
   return opts && opts.ssr === false ? html : await injectDSD(html, ctx, [], dev);
 }
 
 /**
  * @param {unknown} value
  * @param {SuspenseCtx} [ctx]
- * @param {'none'|'unbound'|'bound'|'unknown'} [formScope] enclosing form scope, as seen from THIS scan
  * @returns {Promise<string>}
  */
-async function render(value, ctx, formScope = 'none') {
+async function render(value, ctx) {
   if (value == null || value === false || value === true) return '';
   if (value && typeof /** @type any */ (value).then === 'function') {
     value = await value;
-    return render(value, ctx, formScope);
+    return render(value, ctx);
   }
   // unsafeHTML: inject raw HTML string without escaping.
   if (isUnsafeHTML(value)) {
@@ -78,21 +76,21 @@ async function render(value, ctx, formScope = 'none') {
   }
   // live() on the server just unwraps and renders the inner value.
   if (isLive(value)) {
-    return render(/** @type any */ (value).value, ctx, formScope);
+    return render(/** @type any */ (value).value, ctx);
   }
   // watch() on the server reads the signal once and inlines the
   // result. Subscription is a client-only concern; the SSR HTML
   // freezes a snapshot of the current value.
   if (isWatch(value)) {
-    return render(/** @type any */ (value).signal.get(), ctx, formScope);
+    return render(/** @type any */ (value).signal.get(), ctx);
   }
   // keyed() on the server: render the wrapped template; key is client-only.
   if (isKeyed(value)) {
-    return render(/** @type any */ (value).value, ctx, formScope);
+    return render(/** @type any */ (value).value, ctx);
   }
   // guard() on the server: always invoke the value function (no cache on SSR).
   if (isGuard(value)) {
-    return render(/** @type any */ (value).fn(), ctx, formScope);
+    return render(/** @type any */ (value).fn(), ctx);
   }
   // templateContent() on the server: emit the template's innerHTML verbatim.
   if (isTemplateContent(value)) {
@@ -105,7 +103,7 @@ async function render(value, ctx, formScope = 'none') {
   }
   // cache() on the server: pass-through to the inner value.
   if (isCache(value)) {
-    return render(/** @type any */ (value).value, ctx, formScope);
+    return render(/** @type any */ (value).value, ctx);
   }
   // until() on the server: render the first synchronous candidate, or
   // await the first Promise to settle when all candidates are Promises.
@@ -115,13 +113,13 @@ async function render(value, ctx, formScope = 'none') {
     const args = /** @type any */ (value).args;
     for (const a of args) {
       if (!a || typeof (/** @type any */ (a).then) !== 'function') {
-        return render(a, ctx, formScope);
+        return render(a, ctx);
       }
     }
     if (args.length > 0) {
       try {
         const winner = await Promise.race(args.map((p) => Promise.resolve(p).catch(() => undefined)));
-        return render(winner, ctx, formScope);
+        return render(winner, ctx);
       } catch {
         return '';
       }
@@ -134,35 +132,34 @@ async function render(value, ctx, formScope = 'none') {
     return '';
   }
   if (Array.isArray(value)) {
-    const parts = await Promise.all(value.map((v) => render(v, ctx, formScope)));
+    const parts = await Promise.all(value.map((v) => render(v, ctx)));
     return parts.join('');
   }
   if (isRepeat(value)) {
     const r = /** @type any */ (value);
-    const parts = await Promise.all(r.items.map((it, i) => render(r.templateFn(it, i), ctx, formScope)));
+    const parts = await Promise.all(r.items.map((it, i) => render(r.templateFn(it, i), ctx)));
     return parts.join('');
   }
   if (isSuspense(value)) {
     const s = /** @type any */ (value);
-    const fallback = await render(s.fallback, ctx, formScope);
+    const fallback = await render(s.fallback, ctx);
     if (ctx) {
       const id = `s${ctx.nextId++}`;
-      ctx.pending.push({ id, promise: Promise.resolve(s.children), formScope });
+      ctx.pending.push({ id, promise: Promise.resolve(s.children) });
       return `<webjs-boundary id="${id}">${fallback}</webjs-boundary>`;
     }
     return fallback;
   }
-  if (isTemplate(value)) return renderTemplate(/** @type any */ (value), ctx, formScope);
+  if (isTemplate(value)) return renderTemplate(/** @type any */ (value), ctx);
   return escapeText(String(value));
 }
 
 /**
  * @param {import('./html.js').TemplateResult} tr
  * @param {SuspenseCtx} [ctx]
- * @param {'none'|'unbound'|'bound'|'unknown'} [formScopeAtStart]
  * @returns {Promise<string>}
  */
-async function renderTemplate(tr, ctx, formScopeAtStart = 'none') {
+async function renderTemplate(tr, ctx) {
   const { strings, values } = tr;
   let out = '';
   let state = 'text';
@@ -202,9 +199,6 @@ async function renderTemplate(tr, ctx, formScopeAtStart = 'none') {
   // and for the same reason. A top-level scan that simply contains no form
   // stays 'none' and is still refused, because there the answer IS known.
   //
-  // Seeded from the caller so a nested template rendered into a form's children
-  // inherits the scope, since each template is its own scan.
-  let formScope = formScopeAtStart;
   let isCloseTag = false;
 
   // A bound `action=${fn}` is committed at its hole, but the edits it implies
@@ -229,21 +223,15 @@ async function renderTemplate(tr, ctx, formScopeAtStart = 'none') {
       const bound = bindFormActionStartTag(out.slice(tagStart), pendingActionId);
       out = out.slice(0, tagStart) + bound.tag + bound.hidden;
       pendingActionId = null;
-      formScope = 'bound';
     }
-    // A form that opened and bound NOTHING still opens a scope: a submitter
-    // inside it must be refused, which is a different answer from 'none'.
-    if (!isCloseTag && currentTag === 'form' && formScope !== 'bound') formScope = 'unbound';
     if (submitterTag != null) {
-      assertSubmitterStartTag(out.slice(tagStart), submitterTag, { bound: true, duplicateAction, propAttrs: submitterProps });
-    } else if (formScope === 'bound' && !isCloseTag && (currentTag === 'button' || currentTag === 'input')) {
-      // Part B (#1207): an ordinary submitter inside a bound form, whose own
-      // `formmethod` / `formenctype` can defeat the binding without carrying an
-      // action of its own. Neither renderer used to look at those. Gated on
-      // 'bound' because that is the only scope in which the sweep has anything
-      // to protect: under 'unknown' the enclosing form is not this scan's to
-      // judge, and under 'none' / 'unbound' there is no binding to defeat.
-      assertSubmitterStartTag(out.slice(tagStart), currentTag, { bound: false, propAttrs: submitterProps });
+      // #1307: a bound submitter carries its WHOLE submission, so `formmethod`
+      // and the enctype are injected onto the button here rather than inherited
+      // from a form this scan may not even be able to see. That is what removed
+      // the enclosing-form question, and with it the four-state scope tracking
+      // that could never answer it for a button inside a component.
+      out = out.slice(0, tagStart)
+        + bindSubmitterStartTag(out.slice(tagStart), submitterTag, { duplicateAction, propAttrs: submitterProps });
     }
   };
   // #1155: a `.method` / `.enctype` / `.encoding` prop on a form is dropped
@@ -275,8 +263,7 @@ async function renderTemplate(tr, ctx, formScopeAtStart = 'none') {
   };
 
   // Every `>` in a tag state funnels through here, so the bound-form bookkeeping
-  // stays in one place rather than at five call sites. `</form>` closes the form
-  // scope: a submitter after it is outside.
+  // stays in one place rather than at five call sites.
   //
   // `allowRawtext` is NOT a preference. Only two of those five call sites ever
   // entered rawtext: the `tag-name` and `in-tag` exits. The three attribute
@@ -289,14 +276,6 @@ async function renderTemplate(tr, ctx, formScopeAtStart = 'none') {
   // question from #1207; this preserves it exactly.
   const handleTagEnd = (allowRawtext) => {
     closeBoundFormTag();
-    if (isCloseTag && currentTag === 'form') {
-      // Back to the scope this scan STARTED in, not a flat 'none'. Under an
-      // 'unknown' seed (the component pass) the scan never learned whether the
-      // host page has a bound form, and closing a form of its own teaches it
-      // nothing about that, so asserting 'none' here would downgrade a
-      // cannot-tell into a conclusive refusal.
-      formScope = formScopeAtStart === 'unknown' ? 'unknown' : 'none';
-    }
     isCloseTag = false;
     state = allowRawtext && isRawtextTag(currentTag) ? 'rawtext' : 'text';
     if (state === 'rawtext') rawTail = '';
@@ -401,7 +380,7 @@ async function renderTemplate(tr, ctx, formScopeAtStart = 'none') {
         out += String(val ?? '');
         rawTail = '';
       } else if (state === 'text') {
-        out += await render(val, ctx, formScope);
+        out += await render(val, ctx);
       } else if (state === 'after-eq') {
         const prefix = attrName[0];
         const name = attrName.slice(1);
@@ -423,16 +402,17 @@ async function renderTemplate(tr, ctx, formScopeAtStart = 'none') {
           // page-level `.prop` on a native element could have set the
           // property to begin with.
           out = out.slice(0, attrStart);
-          // `<webjs-suspense .fallback=${html`...`}>` (#471). A custom-element
-          // prop applies only at HYDRATION, far too late for a placeholder that
-          // has to be in the first flushed bytes. So render the fallback to HTML
-          // now and carry it as data-webjs-fallback, which the injectDSD
-          // streaming pre-pass reads as the boundary placeholder. (Timing is the
-          // whole reason. A plain TemplateResult serializes fine and would ride
-          // the normal data-webjs-prop-* path; only one carrying a function
-          // fails, and that is a separate case handled below.)
+          // `<webjs-suspense .fallback=${html`...`}>` (#471). This element is
+          // defined only in the browser, so the injectDSD walk skips it
+          // (`lookup(tag)` finds no class) and no server-side instance runs
+          // consumePropAttrs. A normal data-webjs-prop-* binding would then
+          // land at connectedCallback, too late for the streaming placeholder.
+          // So render the fallback to HTML now and carry it as
+          // data-webjs-fallback, which the injectDSD streaming pre-pass reads
+          // as the boundary placeholder. (The value itself would serialize
+          // fine: a TemplateResult is a plain {strings, values} object.)
           if (currentTag === 'webjs-suspense' && name === 'fallback') {
-            const fbHtml = await render(val, ctx, formScope);
+            const fbHtml = await render(val, ctx);
             out += `data-webjs-fallback="${escapeAttr(fbHtml)}"`;
             state = 'in-tag';
             attrName = '';
@@ -518,11 +498,6 @@ async function renderTemplate(tr, ctx, formScopeAtStart = 'none') {
             // author gets the duplicate message rather than a confusing
             // complaint about the `name` the FIRST hole just injected.
             assertSingleSubmitterAction(pendingSubmitterTag != null, currentTag);
-            // Only 'unknown' defers: a component renders its own template in a
-            // separate pass that cannot see the enclosing form, so the question
-            // is not this scan's to answer. 'none' and 'unbound' are known
-            // answers and are still refused.
-            if (formScope !== 'unknown') assertSubmitterFormIsBound(formScope === 'bound', currentTag);
             const attrs = parseStartTagAttrs(out.slice(tagStart));
             if (attrs.has('name')) assertSubmitterHasNoName(attrs.get('name') || '', currentTag, false);
             if (attrs.has('value')) assertSubmitterHasNoValue(currentTag);
@@ -1306,7 +1281,7 @@ async function processSuspenseElements(html, ctx, ancestors = [], dev) {
     result += rest.slice(0, openStart);
     const attrs = m[1] || '';
     const fbMatch = /data-webjs-fallback="([^"]*)"/i.exec(attrs);
-    const fallbackHtml = fbMatch ? unescapeAttr(fbMatch[1]) : '';
+    const fallbackHtml = fbMatch ? decodeAttrEntities(fbMatch[1]) : '';
 
     // Pass the FULL-input ranges shifted into `rest` coordinates rather than
     // letting the helper re-tokenize the suffix. `rest` can begin mid-comment
@@ -1677,7 +1652,7 @@ function parseAttrs(attrStr) {
 function seedServerAttrs(instance, attrs) {
   if (!instance || typeof instance.setAttribute !== 'function') return;
   for (const [name, raw] of Object.entries(attrs)) {
-    instance.setAttribute(name, unescapeAttr(raw));
+    instance.setAttribute(name, decodeAttrEntities(raw));
   }
 }
 
@@ -1728,50 +1703,47 @@ function appendReflectedAttrs(opening, instance, presentAttrNames) {
  * based on its static `properties` declaration.
  */
 function applyAttrsToInstance(instance, attrs, Cls) {
-  const props = Cls.properties || {};
-  for (const [key, raw] of Object.entries(attrs)) {
-    // Resolve the source attribute name to its property: a custom `attribute`
-    // option wins, else the kebab-cased property name, else the camelCase of
-    // the attribute (the common case). Mirrors the client attributeChangedCallback
-    // so a custom-attribute prop gets the right value in the SSR'd first paint.
-    let propName, rawDef;
-    for (const [k, decl] of Object.entries(props)) {
-      const d = typeof decl === 'object' ? decl : { type: decl };
-      if ((d.attribute || hyphenate(k)) === key) { propName = k; rawDef = decl; break; }
-    }
-    if (rawDef === undefined) {
-      rawDef = props[key] || props[camelCase(key)];
-      propName = props[key] ? key : camelCase(key);
-    }
-    if (!rawDef) {
-      instance[propName] = raw;
-      continue;
-    }
-    // The factory accepts a bare constructor shorthand (`{ expanded: Boolean }`)
-    // alongside the long form (`{ expanded: { type: Boolean } }`); normalize so
-    // the type-based coercion below sees a `{ type }` object either way.
-    const def = typeof rawDef === 'object' ? rawDef : { type: rawDef };
-    if (def.type === Number) instance[propName] = Number(raw);
-    else if (def.type === Boolean) instance[propName] = raw !== 'false';
-    else if (def.type === Object || def.type === Array) {
-      // `raw` is the entity-encoded attribute text (parseAttrs returns the
-      // literal characters between the quotes), so decode the HTML entities
-      // before JSON.parse. A JSON attribute carries `&quot;` for every `"`;
-      // parsing it raw throws and would silently fall back to the string,
-      // leaving an Object/Array prop holding a string at SSR.
-      try { instance[propName] = JSON.parse(unescapeAttr(raw)); } catch { instance[propName] = raw; }
-    } else instance[propName] = raw;
+  for (const [sourceName, sourceValue] of Object.entries(attrs)) {
+    // The browser LOWERCASES every attribute name while parsing an HTML
+    // document, so `cfgData="x"` reaches the client reader as `cfgdata` and a
+    // camelCase name can never match anything in `observedAttributes`.
+    // Resolving the source case here made SSR read a name the platform cannot
+    // deliver, which is the divergence, not the fix (#1341).
+    const resolved = resolveAttributeProperty(Cls, sourceName.toLowerCase());
+    // An attribute mapping to no attribute-backed property is IGNORED, exactly
+    // as `attributeChangedCallback` ignores it and as lit's reader does. This
+    // used to assign it as an instance property (`instance[propName] = raw`),
+    // which no browser upgrade ever reproduces, and which on a real
+    // HTMLElement could mutate DOM state through `id` / `hidden` / `slot`.
+    // `seedServerAttrs` has already applied every source attribute properly,
+    // so nothing needs the copy (#1341).
+    if (resolved === undefined) continue;
+    const { propName, def } = resolved;
+    // A browser decodes every character reference BEFORE any reader sees the
+    // value, so decode once here, for every branch, and hand the shared reader
+    // an already-decoded string exactly as the DOM hands the client one. It
+    // used to be a `decode` argument the reader applied on the JSON and
+    // converter branches alone, which left a `String`-typed prop holding the
+    // raw source text while `getAttribute()` on the client returned the decoded
+    // one (#1341).
+    //
+    // One reader for both sides (#1340): `readAttributeValue` in
+    // `attribute-reader.js` is the same function `attributeChangedCallback` in
+    // `component.js` calls, so a custom `converter.fromAttribute` runs here
+    // too, ahead of type coercion, and the #1253 unparseable-JSON fallback is
+    // shared rather than mirrored.
+    //
+    // A converter that THROWS is not caught here. It lands in the
+    // per-component error isolation below, which is deliberate: an author who
+    // supplies a converter owns the read, the same rule `_reflectAttribute`
+    // states for `toAttribute`. See the comment on `readAttributeValue`.
+    instance[propName] = readAttributeValue(def, decodeAttrEntities(sourceValue));
   }
 }
 
 /** @param {string} s */
 function camelCase(s) {
   return s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-}
-
-/** Kebab-case a property name for its default HTML attribute (matches component.js). @param {string} s */
-function hyphenate(s) {
-  return s.replace(/([A-Z])/g, '-$1').toLowerCase();
 }
 
 /**
@@ -1786,20 +1758,142 @@ function kebabCase(s) {
   return s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 }
 
+/** windows-1252 mappings the HTML tokenizer applies to the C1 range. */
+const C1_REPLACEMENTS = {
+  0x80: 0x20ac, 0x82: 0x201a, 0x83: 0x0192, 0x84: 0x201e, 0x85: 0x2026,
+  0x86: 0x2020, 0x87: 0x2021, 0x88: 0x02c6, 0x89: 0x2030, 0x8a: 0x0160,
+  0x8b: 0x2039, 0x8c: 0x0152, 0x8e: 0x017d, 0x91: 0x2018, 0x92: 0x2019,
+  0x93: 0x201c, 0x94: 0x201d, 0x95: 0x2022, 0x96: 0x2013, 0x97: 0x2014,
+  0x98: 0x02dc, 0x99: 0x2122, 0x9a: 0x0161, 0x9b: 0x203a, 0x9c: 0x0153,
+  0x9e: 0x017e, 0x9f: 0x0178,
+};
+
+// The trailing `;` is OPTIONAL on the named arm, because a browser decodes a
+// legacy semicolon-less reference too. The callback decides which of the two
+// forms it has; see `decodeNamed`.
+const CHAR_REF = /&(?:#(\d+);?|#[xX]([0-9a-fA-F]+);?|([a-zA-Z][a-zA-Z0-9]*)(;?))/g;
+
+// A Map, not the imported object, so a name that collides with something on
+// `Object.prototype` misses instead of returning a function. See `decodeNamed`.
+const NAMED = new Map(Object.entries(NAMED_ENTITIES));
+const LEGACY = new Set(LEGACY_NAMES);
+
 /**
- * Reverse `escapeAttr` on a server-side attribute value. Needed
- * because `parseAttrs` returns the literal characters between the
- * quote marks; HTML entities are not decoded by the regex. The
- * browser handles this automatically, so client-side reads via
- * `getAttribute()` do not need the same step.
+ * Decode HTML character references in an attribute value.
+ *
+ * `parseAttrs` hands back the literal characters between the quote marks, so
+ * nothing has decoded them yet, while a browser decodes EVERY reference before
+ * any reader sees the value. This closes that gap (#1341): the full WHATWG
+ * named table plus decimal and hexadecimal numeric references, with the
+ * tokenizer's own numeric fix-ups (null, a surrogate, and anything past
+ * U+10FFFF become U+FFFD; the C1 range maps through windows-1252). It replaced
+ * a three-entity `unescapeAttr`, which left a `String`-typed prop undecoded
+ * entirely and turned `&lt;script&gt;` into the half-decoded `<script&gt;`.
+ *
+ * SINGLE PASS on purpose. A replacement is never rescanned, so `&amp;lt;`
+ * decodes to the literal `&lt;` and never to `<`. The old function got that
+ * from replacing `&amp;` last, which does not generalise past three entities.
+ *
+ * The 106 legacy semicolon-LESS names are covered too, because a browser really
+ * does decode them and measurably: Chromium, Firefox, and WebKit all hand a
+ * reader U+00A0 for `s="&nbsp"`. Leaving them literal would have been a value
+ * divergence of exactly the kind this function exists to remove, not a
+ * harmless non-goal. The rule that governs them, in an ATTRIBUTE value, is a
+ * one-character LOOKAHEAD rather than deep tokenizer state, which is why it is
+ * implementable here. `decodeNamed` carries the rule and the reason it takes
+ * the shape it does; the short version is that `&nbsp` at the end of a value
+ * decodes while `&nbspx`, `&nbsp=x`, and `&notin` stay literal, all three
+ * verified against the three engines.
+ *
+ * The same function also decodes `data-webjs-fallback`, which is MARKUP, where
+ * the tokenizer applies no such carve-out. Using the attribute rule there is
+ * deliberate and strictly conservative: that payload is written by
+ * `escapeAttr`, which emits only `&amp;` / `&quot;` / `&lt;`, so every
+ * reference in it is semicolon-terminated and never reaches this path.
  *
  * @param {string} s
+ * @returns {string}
  */
-function unescapeAttr(s) {
-  return s
-    .replace(/&lt;/g, '<')
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, '&');
+function decodeAttrEntities(s) {
+  // Load bearing, not a micro-optimisation: skipping the scan for the common
+  // no-`&` value is what makes this cheaper per attribute than the three
+  // chained `replace` calls it replaced, which paid for three passes always.
+  if (s.indexOf('&') === -1) return s;
+  return s.replace(CHAR_REF, (match, dec, hex, name, semi, offset) => {
+    if (dec !== undefined) return fromCodePoint(parseInt(dec, 10));
+    if (hex !== undefined) return fromCodePoint(parseInt(hex, 16));
+    return decodeNamed(match, name, semi === ';', s[offset + match.length]);
+  });
+}
+
+/**
+ * Resolve one named reference, semicolon-terminated or legacy.
+ *
+ * The table is read through a `Map` rather than by indexing the imported
+ * object. An object-literal lookup resolves through `Object.prototype`, so
+ * `&constructor;` / `&toString;` / `&hasOwnProperty;` and four more returned a
+ * FUNCTION instead of `undefined` and threw on the spread in
+ * `codePointsToString`, a path `seedServerAttrs` reaches for every attribute of
+ * every custom element, which rendered the whole component as an SSR error box.
+ * A browser leaves those literal, since they are not named references, so the
+ * throw was a divergence of exactly the kind this file exists to remove. A
+ * `Map` has no prototype chain to fall through, which closes the shape rather
+ * than guarding one call site.
+ *
+ * WHY THERE IS NO LONGEST-PREFIX LOOP. The tokenizer consumes the longest name
+ * in the table, so `&notin` is `&not` followed by `in`. Here that always
+ * collapses to the whole name: `CHAR_REF` captures `[a-zA-Z][a-zA-Z0-9]*`, so a
+ * prefix SHORTER than the name is by construction followed by an ASCII
+ * alphanumeric, which is precisely when the attribute carve-out declines to
+ * decode. A loop over shorter prefixes could therefore only ever return
+ * `match`, which is what falling through to the end already does. `&notin`
+ * stays literal either way, verified against the three engines, though note it
+ * gets there by not being a legacy name rather than by the carve-out.
+ *
+ * That same greediness means an ASCII alphanumeric character can never follow
+ * the match: whatever follows is by construction not `[a-zA-Z0-9]`, or the
+ * capture would have eaten it. So only the `=` check is needed for the
+ * attribute carve-out. `&nbspx` is literal because `nbspx` is not a legacy
+ * name, NOT because of the lookahead; `&nbsp=x` is the shape the lookahead
+ * actually decides.
+ *
+ * @param {string} match  the whole matched reference, returned unchanged when nothing decodes
+ * @param {string} name   the name, with no `&` and no `;`
+ * @param {boolean} hadSemi
+ * @param {string|undefined} nextChar  the character after the match, if any
+ * @returns {string}
+ */
+function decodeNamed(match, name, hadSemi, nextChar) {
+  if (hadSemi) {
+    const cp = NAMED.get(name);
+    return cp === undefined ? match : codePointsToString(cp);
+  }
+  if (!LEGACY.has(name)) return match;
+  // The attribute carve-out: a legacy name decodes only when what follows is
+  // neither `=` nor an ASCII alphanumeric. Nothing following at all (the end of
+  // the value) decodes, which is the common `s="&nbsp"` shape. Because CHAR_REF
+  // captures greedily, what follows is never an ASCII alphanumeric, so only `=`
+  // needs to be checked here.
+  if (nextChar === '=') return match;
+  // Every legacy name is in the table under the same name, asserted by a test
+  // rather than left to trust, so this cannot miss.
+  return codePointsToString(NAMED.get(name));
+}
+
+/** @param {number|number[]} cp */
+function codePointsToString(cp) {
+  return typeof cp === 'number' ? String.fromCodePoint(cp) : String.fromCodePoint(...cp);
+}
+
+/**
+ * The tokenizer's numeric character reference fix-ups.
+ * @param {number} n
+ * @returns {string}
+ */
+function fromCodePoint(n) {
+  if (n === 0 || n > 0x10ffff || (n >= 0xd800 && n <= 0xdfff)) return '\uFFFD';
+  if (C1_REPLACEMENTS[n] !== undefined) return String.fromCodePoint(C1_REPLACEMENTS[n]);
+  return String.fromCodePoint(n);
 }
 
 /**
@@ -1818,7 +1912,7 @@ function consumePropAttrs(attrs) {
     if (!key.startsWith('data-webjs-prop-')) continue;
     const propName = camelCase(key.slice('data-webjs-prop-'.length));
     try {
-      props[propName] = parse(unescapeAttr(attrs[key]));
+      props[propName] = parse(decodeAttrEntities(attrs[key]));
     } catch {
       // Malformed payload. Skip silently so the rest of the component
       // can still render. The client-side hydration will also try and
@@ -1891,29 +1985,28 @@ export function renderToStream(value, opts = { ssr: true }) {
  * @param {unknown} value
  * @param {SuspenseCtx} [ctx]
  * @param {ReadableStreamDefaultController<string>} controller
- * @param {'none'|'unbound'|'bound'|'unknown'} [formScope] enclosing form scope, as seen from THIS scan
  */
-async function streamRender(value, ctx, controller, formScope = 'none') {
+async function streamRender(value, ctx, controller) {
   if (value == null || value === false || value === true) return;
   if (value && typeof /** @type any */ (value).then === 'function') {
     value = await value;
-    return streamRender(value, ctx, controller, formScope);
+    return streamRender(value, ctx, controller);
   }
   if (isUnsafeHTML(value)) {
     controller.enqueue(String(/** @type any */ (value).value ?? ''));
     return;
   }
   if (isLive(value)) {
-    return streamRender(/** @type any */ (value).value, ctx, controller, formScope);
+    return streamRender(/** @type any */ (value).value, ctx, controller);
   }
   if (isWatch(value)) {
-    return streamRender(/** @type any */ (value).signal.get(), ctx, controller, formScope);
+    return streamRender(/** @type any */ (value).signal.get(), ctx, controller);
   }
   if (isKeyed(value)) {
-    return streamRender(/** @type any */ (value).value, ctx, controller, formScope);
+    return streamRender(/** @type any */ (value).value, ctx, controller);
   }
   if (isGuard(value)) {
-    return streamRender(/** @type any */ (value).fn(), ctx, controller, formScope);
+    return streamRender(/** @type any */ (value).fn(), ctx, controller);
   }
   if (isTemplateContent(value)) {
     const tpl = /** @type any */ (value).template;
@@ -1924,19 +2017,19 @@ async function streamRender(value, ctx, controller, formScope = 'none') {
     return;
   }
   if (isCache(value)) {
-    return streamRender(/** @type any */ (value).value, ctx, controller, formScope);
+    return streamRender(/** @type any */ (value).value, ctx, controller);
   }
   if (isUntil(value)) {
     const args = /** @type any */ (value).args;
     for (const a of args) {
       if (!a || typeof (/** @type any */ (a).then) !== 'function') {
-        return streamRender(a, ctx, controller, formScope);
+        return streamRender(a, ctx, controller);
       }
     }
     if (args.length > 0) {
       try {
         const winner = await Promise.race(args.map((p) => Promise.resolve(p).catch(() => undefined)));
-        return streamRender(winner, ctx, controller, formScope);
+        return streamRender(winner, ctx, controller);
       } catch {
         return;
       }
@@ -1947,13 +2040,13 @@ async function streamRender(value, ctx, controller, formScope = 'none') {
     return;
   }
   if (Array.isArray(value)) {
-    for (const v of value) await streamRender(v, ctx, controller, formScope);
+    for (const v of value) await streamRender(v, ctx, controller);
     return;
   }
   if (isRepeat(value)) {
     const r = /** @type any */ (value);
     for (let i = 0; i < r.items.length; i++) {
-      await streamRender(r.templateFn(r.items[i], i), ctx, controller, formScope);
+      await streamRender(r.templateFn(r.items[i], i), ctx, controller);
     }
     return;
   }
@@ -1962,16 +2055,16 @@ async function streamRender(value, ctx, controller, formScope = 'none') {
     if (ctx) {
       const id = `s${ctx.nextId++}`;
       controller.enqueue(`<webjs-boundary id="${id}">`);
-      await streamRender(s.fallback, ctx, controller, formScope);
+      await streamRender(s.fallback, ctx, controller);
       controller.enqueue(`</webjs-boundary>`);
-      ctx.pending.push({ id, promise: Promise.resolve(s.children), formScope });
+      ctx.pending.push({ id, promise: Promise.resolve(s.children) });
     } else {
-      await streamRender(s.fallback, ctx, controller, formScope);
+      await streamRender(s.fallback, ctx, controller);
     }
     return;
   }
   if (isTemplate(value)) {
-    await streamTemplate(/** @type any */ (value), ctx, controller, formScope);
+    await streamTemplate(/** @type any */ (value), ctx, controller);
     return;
   }
   controller.enqueue(escapeText(String(value)));
@@ -1984,9 +2077,8 @@ async function streamRender(value, ctx, controller, formScope = 'none') {
  * @param {import('./html.js').TemplateResult} tr
  * @param {SuspenseCtx} [ctx]
  * @param {ReadableStreamDefaultController<string>} controller
- * @param {'none'|'unbound'|'bound'|'unknown'} [formScopeAtStart]
  */
-async function streamTemplate(tr, ctx, controller, formScopeAtStart = 'none') {
+async function streamTemplate(tr, ctx, controller) {
   const { strings, values } = tr;
   let state = 'text';
   let attrName = '';
@@ -2012,7 +2104,6 @@ async function streamTemplate(tr, ctx, controller, formScopeAtStart = 'none') {
   let pendingSubmitterTag = null;  // tag of a bound submitter, until it closes
   // See the buffered machine: seeded from the caller so a nested template
   // rendered into a bound form's children knows it is inside one.
-  let formScope = formScopeAtStart;
   let isCloseTag = false;
 
   // See the buffered machine for why this runs at the `>` rather than at the
@@ -2034,17 +2125,12 @@ async function streamTemplate(tr, ctx, controller, formScopeAtStart = 'none') {
       const bound = bindFormActionStartTag(buf.slice(tagStart), pendingActionId);
       buf = buf.slice(0, tagStart) + bound.tag + bound.hidden;
       pendingActionId = null;
-      formScope = 'bound';
     }
-    // A form that opened and bound NOTHING still opens a scope: a submitter
-    // inside it must be refused, which is a different answer from 'none'.
-    if (!isCloseTag && currentTag === 'form' && formScope !== 'bound') formScope = 'unbound';
     if (submitterTag != null) {
-      assertSubmitterStartTag(buf.slice(tagStart), submitterTag, { bound: true, duplicateAction, propAttrs: submitterProps });
-    } else if (formScope === 'bound' && !isCloseTag && (currentTag === 'button' || currentTag === 'input')) {
-      // Part B (#1207), the SAME sweep as the buffered machine, through the
-      // same helper, so this second state machine cannot drift from it.
-      assertSubmitterStartTag(buf.slice(tagStart), currentTag, { bound: false, propAttrs: submitterProps });
+      // #1307, the SAME injection as the buffered machine, through the same
+      // helper, so this second state machine cannot drift from it.
+      buf = buf.slice(0, tagStart)
+        + bindSubmitterStartTag(buf.slice(tagStart), submitterTag, { duplicateAction, propAttrs: submitterProps });
     }
   };
   // #1155: a `.method` / `.enctype` / `.encoding` prop on a form is dropped
@@ -2080,14 +2166,6 @@ async function streamTemplate(tr, ctx, controller, formScopeAtStart = 'none') {
   // tag ending on a bare or unquoted attribute must keep escaping its body.
   const handleTagEnd = (allowRawtext) => {
     closeBoundFormTag();
-    if (isCloseTag && currentTag === 'form') {
-      // Back to the scope this scan STARTED in, not a flat 'none'. Under an
-      // 'unknown' seed (the component pass) the scan never learned whether the
-      // host page has a bound form, and closing a form of its own teaches it
-      // nothing about that, so asserting 'none' here would downgrade a
-      // cannot-tell into a conclusive refusal.
-      formScope = formScopeAtStart === 'unknown' ? 'unknown' : 'none';
-    }
     isCloseTag = false;
     state = allowRawtext && isRawtextTag(currentTag) ? 'rawtext' : 'text';
     if (state === 'rawtext') rawTail = '';
@@ -2191,7 +2269,7 @@ async function streamTemplate(tr, ctx, controller, formScopeAtStart = 'none') {
       } else if (state === 'text') {
         // Flush the buffered static content before streaming the value.
         if (buf) { controller.enqueue(buf); buf = ''; }
-        await streamRender(val, ctx, controller, formScope);
+        await streamRender(val, ctx, controller);
       } else if (state === 'after-eq') {
         const prefix = attrName[0];
         const name = attrName.slice(1);
@@ -2248,11 +2326,6 @@ async function streamTemplate(tr, ctx, controller, formScopeAtStart = 'none') {
             buf = buf.slice(0, attrStart).replace(/\s+$/, '');
           } else {
             assertSingleSubmitterAction(pendingSubmitterTag != null, currentTag);
-            // Only 'unknown' defers: a component renders its own template in a
-            // separate pass that cannot see the enclosing form, so the question
-            // is not this scan's to answer. 'none' and 'unbound' are known
-            // answers and are still refused.
-            if (formScope !== 'unknown') assertSubmitterFormIsBound(formScope === 'bound', currentTag);
             const attrs = parseStartTagAttrs(buf.slice(tagStart));
             if (attrs.has('name')) assertSubmitterHasNoName(attrs.get('name') || '', currentTag, false);
             if (attrs.has('value')) assertSubmitterHasNoValue(currentTag);
@@ -2308,10 +2381,10 @@ async function streamSuspenseBoundaries(ctx, controller, dev) {
   while (ctx.pending.length) {
     const batch = ctx.pending.splice(0);
     await Promise.all(
-      batch.map(async ({ id, promise, formScope }) => {
+      batch.map(async ({ id, promise }) => {
         try {
           const resolved = await promise;
-          const html = await render(resolved, ctx, formScope);
+          const html = await render(resolved, ctx);
           const full = await injectDSD(html, ctx, [], dev);
           controller.enqueue(
             `<template data-webjs-resolve="${id}">${full}</template>` +

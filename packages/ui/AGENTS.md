@@ -166,7 +166,7 @@ tracked source, the standard shadcn "you own it" pattern.
 | 1a | `checkbox` | `checkboxClass`, native `<input type="checkbox">` with SVG check on `:checked`. REQUIRES `data-slot="checkbox"` on the input for the check to render. |
 | 1a | `radio-group` | `radioGroupClass`, `radioClass`, native `<input type="radio">`. REQUIRES `data-slot="radio"` on the input for the dot to render. |
 | 1a | `switch` | `switchInputClass`, `switchTrackClass({ size })`, hidden native checkbox + visible track |
-| 1a | `native-select` | `nativeSelectWrapperClass`, `nativeSelectClass`, `nativeSelectIconClass`, `nativeSelectOptionClass`, `nativeSelectOptGroupClass` |
+| 1a | `native-select` | `nativeSelectWrapperClass`, `nativeSelectClass`, `nativeSelectIconClass`, `nativeSelectOptionClass`, `nativeSelectOptGroupClass`. The `<option>` / `<optgroup>` colours come from the theme block's `select option, select optgroup` rule, NOT from importing the module (#1320), so they are in the first paint and hold with JavaScript off. |
 | 1a | `avatar` | `avatarClass`, `avatarImageClass`, `avatarFallbackClass`, `avatarBadgeClass`, `avatarGroupClass`, `avatarGroupCountClass` |
 | 1a | `separator` | `separatorClass({ orientation })` |
 | 1a | `skeleton` | `skeletonClass` |
@@ -263,7 +263,8 @@ obligations:
 - `pagination` / `breadcrumb`: a labelled `<nav>`, `aria-current="page"`, and hidden separators / icon-only control names.
 - `progress`: an `aria-label` (the native element supplies the role + value).
 - **form controls** (`input` / `textarea` / `native-select` / `checkbox` / `radio-group` / `switch`): a real `<label for>` (or a wrapping `<label>`) is the accessible name, and a `placeholder` is not one. On failure, `aria-invalid="true"` plus an `aria-describedby` pointing at error text that EXISTS on the page. A standalone switch needs `aria-label`, since its visible track is a `<span>` and the real input is `sr-only`. Group radios by a shared `name` and NAME the group (`aria-labelledby` on the `role="radiogroup"`, or `<fieldset>` + `<legend>`).
-- **`checkbox` / `radio-group` also need `data-slot`** on the input (`data-slot="checkbox"` / `data-slot="radio"`). The injected stylesheet keys the checkmark and the radio dot on it, and neither class carries a fallback fill, so without it the checked state reads as colour alone (WCAG 1.4.1). Source tests assert the examples keep the pairing.
+- **`checkbox` / `radio-group` also need `data-slot`** on the input (`data-slot="checkbox"` / `data-slot="radio"`). The injected stylesheet keys the checkmark and the radio dot on it, and neither class carries a fallback fill, so without it the checked state reads as colour alone (WCAG 1.4.1). Source tests assert the examples keep the pairing. These two are the only Tier-1 parts whose appearance needs JavaScript, because they are the only ones whose stylesheet is injected rather than shipped in the theme block. `dialog` and `alert-dialog` inject one too, but from a lifecycle hook on a Tier-2 element that needs JavaScript regardless.
+- **`native-select`'s `<option>` colours come from the theme block**, not from importing the module (#1320). A bare `<option>` paints transparent over the browser popup, so in dark mode the unselected options disappear, and the `select option, select optgroup` rule in `@layer base` forces Canvas / CanvasText back. An app whose theme block predates that rule keeps the browser default until it re-runs `init` or adds the rule by hand, since `ensureTheme` never rewrites an existing block. It is two ELEMENT selectors (specificity 0,0,2) with no wrapper requirement, so a bare `<select class=${nativeSelectClass()}>` is covered and any single class overrides it.
 - `popover`: the biggest Tier-1 obligation, because the panel is a bare `<div popover>` with no role and no name. Supply `role="dialog"` + `aria-labelledby` to the `popoverTitleClass()` heading, `aria-haspopup="dialog"` + a `toggle`-event-synced `aria-expanded` on the trigger, and prefer `popover` (auto) over `popover="manual"` so the platform still gives you light-dismiss, Escape, and focus restoration.
 - `card`: use a REAL heading for `cardTitleClass()`, at the level the surrounding document wants, and never wrap a whole card in one `<a>`.
 - `kbd`: a symbol-only key (`⌘`) needs a spoken name, but NOT via `aria-label` on the `<kbd>`: that maps to `role=generic`, where a name is prohibited and ignored. Hide the glyph (`aria-hidden`) and put the spoken form in an `sr-only` sibling. For a chord, wrap the group in `role="img"` + `aria-label`, which supports a name AND makes children presentational, so it is announced once.
@@ -333,7 +334,7 @@ when the caller passes an explicit custom `--registry <url>`.
   lives in its module-JSDoc `@example` block. That worked example is build-time
   guidance, so `add` STRIPS it from the copied file and leaves a one-line pointer
   (`example.js` `pointerLine`, the explicit `npx @webjsdev/ui view <name>` form
-  so it resolves whether or not the bin is a direct dep); the full snippet is
+  every printed hint uses, per invariant 8); the full snippet is
   served on demand by `webjsui view` and the MCP `ui` tool. Tier-2
   custom-element files are left whole (the element IS the component). A
   version-skew note: local-first pins `add`/`view` to the INSTALLED ui version,
@@ -410,6 +411,29 @@ when the caller passes an explicit custom `--registry <url>`.
    about thirty lines of defaults in exchange for a cross-framework promise
    the rest of the package does not keep.
 
+8. **A command a reader is told to RUN names `npx @webjsdev/ui <cmd>`, never a
+   bare `webjsui <cmd>` (#1264).** `webjsui` is a bin declared inside this
+   package, not a published package name, and the registry 404s on it, so `npx
+   webjsui` resolves through a `node_modules/.bin/webjsui` link or not at all.
+   Whether that link is where npx looks depends on the reader's tree, and the
+   layouts vary (a global-only install with nothing local, a nested layout
+   where the kit sits under `@webjsdev/cli`'s own `node_modules`). Do not try
+   to enumerate them, which is how this invariant was wrong twice. The point is
+   that a printed hint cannot know, while `npx @webjsdev/ui <cmd>` names a real
+   published package and resolves either way. Every hint `init`, `add`, `diff`,
+   `info`, and the registry fetcher print does this, asserted one per site in
+   `init-command.test.js`, `add-command.test.js`, `diff-command.test.js`,
+   `list-view-info.test.js`, and `local-registry.test.js`.
+
+   The rule reaches an instruction, not a mention, so a line that NAMES the
+   binary without telling anyone to type it keeps the bare form:
+   `.name('webjsui')` in `index.js`, which is the bin's real identifier and
+   what the commander banner echoes, the command tables here and in
+   `README.md`, and prose describing what a command does. An instruction
+   directly under an install that supplies the bin is the one place the bare
+   form is still an instruction and still correct, as in `README.md`'s Option B
+   and the root `README.md`'s UI bullet.
+
 ## Component tag convention (Tier 2)
 
 Single `ui-` prefix; sub-components hyphenated. Matches shadcn's React tag
@@ -428,13 +452,50 @@ names mechanically:
 - All `.ts` files in `components/` export named functions. No default exports.
 - Use `cn()` from `'../lib/utils.ts'` to merge a helper's output with
   user-supplied classes when needed: `<button class=${cn(buttonClass(), 'rounded-full')}>`.
+- **A registry module does NO work at module scope.** Not a call, not a `new`,
+  not a `document` reference. The elision analyser reads any of those as client
+  work, so the module pins every page that reaches it on a component-free path,
+  and a Tier-1 helper registers no element, so the path-aware carve-out (#963)
+  cannot save it. Because `cn` sits under essentially every helper, one such
+  line costs page elision in every app that runs `webjsui init`. Two shapes
+  caused it (#1320). A `...borderGroups()` spread inside a module-scope table is
+  a real top-level call, fixed by memoising the table behind a function
+  (`let _groups; function GROUPS() { return (_groups ??= [...]) }`). An
+  `if (typeof document !== 'undefined') installFooStyles()` stylesheet
+  injection is both a call and a browser-global reference, fixed by putting the
+  CSS in the theme block instead, which also puts it in the first paint and
+  makes it work with JavaScript off. `packages/ui/test/utils-purity.test.js`
+  pins the flagged set as an EQUALITY, so a new offender fails immediately and
+  the remaining entries can only be removed deliberately. Six are still on that
+  list and DO pin an importing page today: `checkbox` and `radio-group` inject a
+  stylesheet for real, and `pagination`, `progress`, `sonner` and `tabs` are an
+  analyser precision gap, since an arrow with an expression body puts its call
+  at brace depth 0 and reads as a top-level statement. The page ships either
+  way, so do not treat the second group as harmless.
+- **The kit is copy-on-add, so fixing the registry does not fix an app.** An
+  existing app holds its own copy of every component and of `lib/utils/cn.ts`,
+  and `npx @webjsdev/ui diff` is the discovery channel for the drift. The theme
+  block is worse: `ensureTheme` keys the whole block on its `@webjsdev/ui theme`
+  marker and returns early when it is present, so a later `add`, and even
+  `init --overwrite` (whose overwrite flag reaches only `writeLibUtils`), leaves
+  an existing block exactly as it was. An app that already ran `init` therefore
+  does NOT receive a rule added to the theme, and the only routes are editing
+  its stylesheet by hand or deleting the marker line and re-running `init`. A
+  freshly scaffolded app is fine, since `webjs create` copies `themes/index.css`
+  verbatim. Weigh that gap before moving CSS into the theme block: for the
+  native `<option>` colours the app degrades to the browser default, which is a
+  worse read rather than a broken control, and that asymmetry is why the
+  checkbox and radio-group injections were left where they are.
 - **A `cn()` conflict group is one CSS PROPERTY, never one class prefix.**
   Utilities that merely share a prefix must land in different groups, or the
   merger silently drops one of them. Two defects came from getting this wrong:
   `^flex(-|$)` lumped the `flex` DISPLAY value in with `flex-1` / `flex-row` /
   `flex-wrap` and dropped `display:flex` (#1072), and border colour had no
   group at all, so an override's winner was decided by compiled stylesheet
-  order rather than class order (#1065). When a value can mean two properties
+  order rather than class order (#1065). `bg-`, `shadow-` and `text-shadow-`
+  then repeated it: `bg-clip-*` / `bg-origin-*` / `bg-blend-*` sat in
+  `bg-color`, and a shadow size shared one group with its colour, so each pair
+  evicted the other (#1265). When a value can mean two properties
   under one prefix, classify by parsing the VALUE (`border-[3px]` is a width,
   `border-[#fff]` is a colour), and give each side its own group with the
   shorthand subsumption declared in `CONFLICTS`, the way padding does.
@@ -452,11 +513,16 @@ names mechanically:
   cover. Which sources a given generator reads, and when it goes to the
   network, is the registry-resolution question, answered by the LOCAL-FIRST
   section above, so do not restate it here.
-- A variant prefix is split on the last colon OUTSIDE square brackets, because
-  an arbitrary value carries colons of its own (`border-[length:2px]`,
-  `bg-[url(https://x/y.png)]`). Splitting on the last colon anywhere hands the
-  group matcher a fragment like `2px]`, so the utility silently stops deduping.
-- Once a bracketed value reaches the matcher, its TYPE HINT names the property
+- A variant prefix is split on the last colon at TOP LEVEL, meaning outside
+  both square brackets and parentheses, because an arbitrary value carries
+  colons of its own in either delimiter (`border-[length:2px]`,
+  `bg-[url(https://x/y.png)]`, `shadow-(color:--x)`). Splitting on the last
+  colon anywhere hands the group matcher a fragment like `2px]` or `--x)`, so
+  the utility silently stops deduping. The two delimiters get SEPARATE
+  counters; see the paren-spelling bullet below for why one shared counter is
+  wrong.
+- Once an arbitrary value reaches the matcher, in either spelling, its TYPE
+  HINT names the property
   and picks the group, since the prefix alone cannot: `text-[length:14px]` is a
   font size and `bg-[url(...)]` is an image, so routing either by prefix would
   collapse it against a colour. That lives in `hintedGroup()` and the
@@ -468,10 +534,44 @@ names mechanically:
   identical prefix and never with the prefix's default, which is the safe
   direction to fail (an extra class renders, a dropped one does not).
 - The merger is coarse by design and does NOT claim full `tailwind-merge`
-  fidelity. Some prefixes are still grouped by prefix alone (`bg-clip-*` and
-  `bg-origin-*` sit in `bg-color`; `shadow-lg` and `shadow-red-500` share
-  `shadow`), so a less common pair can still collide. Say that plainly in any
-  doc you write about it rather than stating the property rule as absolute.
+  fidelity, in two distinct ways, and BOTH belong in any doc you write about
+  it rather than stating the property rule as absolute.
+  - A neighbouring prefix it does not enumerate (`inset-shadow-*`,
+    `drop-shadow-*`, `ring-*`, `inset-ring-*`, `mix-blend-*`) has no group at
+    all, so both classes are emitted and the winner is left to compiled
+    stylesheet order. That is the SAFE direction to fail: ungrouped never
+    evicts.
+  - Where one prefix carries two properties, the value is read against
+    Tailwind's DEFAULT scales, so a `@theme`-extended name is invisible to it
+    and can be misread. A custom `--shadow-card` makes `shadow-card` a
+    box-shadow, but the table sees an unfamiliar bare name under a prefix
+    whose bare names are usually colours and routes it to `shadow-color`, so
+    it evicts a colour and is evicted by one. That is the UNSAFE direction,
+    and it is the price of a table that cannot read the project's theme.
+    Prefer the arbitrary form (`shadow-[var(--shadow-card)]`), which the table
+    does classify correctly.
+- When you DO add a group, split it by property from the start (a prefix-keyed
+  group is the #1265 defect), and pick the catch-all's direction from what the
+  prefix's values actually look like in real code rather than by analogy with
+  another prefix: `border-[var(--x)]` is usually a colour, `shadow-[var(--x)]`
+  is usually a shadow, so the same shape resolves opposite ways.
+- A PAREN-hinted arbitrary value (`shadow-(color:--x)`, `bg-(image:--g)`, the
+  Tailwind v4 shorthand for the bracket form) classifies exactly like its
+  bracket sibling (#1338), because both spellings produce the identical
+  `<prefix>:<hint>` key that `HINTED_GROUPS` is keyed on, so the map carries
+  no paren-specific entries. Three pieces make that work, and all three are
+  load-bearing. `variantPrefix` counts brackets and parens in SEPARATE
+  counters and splits only where both are zero, never one shared counter: a
+  shared one lets a stray `)` cancel a live `[` and reads `x-[y)-z:w` as
+  having a top-level colon, which is the fragment bug it exists to prevent.
+  `hintedGroup()`'s regex accepts `-(` alongside `-[`. And `borderGroups()`'s
+  width fragment reads the length hint in both spellings. Teaching
+  `variantPrefix` paren depth ALONE is actively harmful rather than a partial
+  win: it hands an intact `bg-(image:--g)` to a matcher that cannot read the
+  hint, which falls through to the `^bg-` catch-all and evicts a real
+  background colour, the #1065 defect class. The closing delimiter is not
+  validated, in either spelling, because the hint names the property and how
+  the value terminates cannot change which property that is.
 
 ## Layout + typography helpers (the design system)
 

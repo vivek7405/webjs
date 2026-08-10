@@ -646,33 +646,50 @@ test('a detached submitter still refuses what the template alone decides', () =>
   );
 });
 
-test('a submitter whose enclosing form is resolvable and UNBOUND is still refused', () => {
-  // The skip is narrow: it applies when there is no form to ask, not when the
-  // answer is no. An inline submitter can always reach its form.
+test('a submitter whose enclosing form is UNBOUND now binds, carrying its own submission', () => {
+  // The client used to ask "is my enclosing form bound" and refuse when it could
+  // reach the form and the answer was no. #1307 removed the question: the button
+  // supplies `formmethod` / `formenctype` itself, so the form is irrelevant.
   const rowAction = HOISTED();
   const host = document.createElement('div');
-  assert.throws(
-    () => render(html`<form method="post"><button formaction=${rowAction}>x</button></form>`, host),
-    /requires the enclosing <form> to also be bound/,
-  );
+  render(html`<form method="post"><button formaction=${rowAction}>x</button></form>`, host);
+  const btn = host.querySelector('button');
+  assert.equal(btn.getAttribute('name'), '__webjs_action');
+  assert.equal(btn.getAttribute('formmethod'), 'post');
+  assert.equal(btn.getAttribute('formenctype'), 'multipart/form-data');
+  assert.equal(btn.hasAttribute('formaction'), false, 'no url is emitted');
 });
 
 // ---------------------------------------------------------------------------
-// #1207 Part B on the client, so a component-only page (never SSR'd) gets the
-// same answer the server would have given.
+// The same-element rule on the client, so a component-only page (never SSR'd)
+// gets the same answer the server would have given.
 // ---------------------------------------------------------------------------
 
-test('the client refuses an unparseable submitter enctype inside a bound form', () => {
-  const formAction = HOISTED();
+test('the client refuses a BOUND submitter contradicting its own binding', () => {
+  const rowAction = HOISTED();
   const host = document.createElement('div');
   assert.throws(
-    () => render(html`<form action=${formAction}><button formenctype="text/plain">Save</button></form>`, host),
+    () => render(html`<button formaction=${rowAction} formenctype="text/plain">Save</button>`, host),
     /formenctype=/,
   );
   assert.throws(
-    () => render(html`<form action=${formAction}><button formmethod="get">Save</button></form>`, host),
+    () => render(html`<button formaction=${rowAction} formmethod="get">Save</button>`, host),
     /formmethod=/,
   );
+});
+
+test('the client leaves a PLAIN submitter\'s own override alone, matching SSR', () => {
+  // #1207's Part B refused these on both renderers. #1307 allows them on both,
+  // which is the half that keeps the two in step.
+  const formAction = HOISTED();
+  const host = document.createElement('div');
+  render(
+    html`<form action=${formAction}><button formenctype="text/plain">a</button><button formmethod="get">b</button></form>`,
+    host,
+  );
+  const [a, b] = host.querySelectorAll('button');
+  assert.equal(a.getAttribute('formenctype'), 'text/plain');
+  assert.equal(b.getAttribute('formmethod'), 'get');
 });
 
 test('the client leaves dialog and retargeted submitters alone', () => {
@@ -831,12 +848,17 @@ test('a value HOLE is judged by what SSR would emit, exactly as a name hole is',
   );
 });
 
-test('the enclosing-form verdict does not change between renders', () => {
-  // Whether `enclosingForm` resolves depends on whether the element happened to
-  // be in the tree when it reconciled: not on a first render (the fragment is
-  // detached) and yes on an update. Re-asking made the SAME template with the
-  // SAME values bind at first paint and then throw on an arbitrary later
-  // re-render, which is far worse to diagnose than refusing at first paint.
+test('a bound submitter binds identically on a first render and an update', () => {
+  // This used to guard an enclosing-form verdict whose answer depended on
+  // whether the element happened to be in the tree when it reconciled: no on a
+  // first render (the fragment is still detached) and yes on an update. That
+  // asymmetry made the SAME template with the SAME values bind at first paint
+  // and throw on an arbitrary later re-render.
+  //
+  // #1307 deleted the question, so the property now holds for a much better
+  // reason than a carefully-placed cache: there is nothing left to ask. Kept as
+  // a regression guard, because any future rule that reads OUTSIDE the element
+  // reintroduces exactly this first-render-versus-update split.
   const buttonAction = HOISTED();
   const outer = document.createElement('form');
   outer.setAttribute('method', 'post');
@@ -850,6 +872,40 @@ test('the enclosing-form verdict does not change between renders', () => {
     assert.equal(host.querySelector('button').getAttribute('name'), '__webjs_action',
       'the verdict is stable across passes');
   } finally { outer.remove(); }
+});
+
+test('releasing a submitter takes back the framework attrs, never the author\'s (#1307)', () => {
+  // Both halves matter. A released button that keeps `formmethod="post"` no
+  // longer matches what SSR emits for the same template, and one that loses an
+  // author's own value has had its markup destroyed by a framework that should
+  // never have owned it.
+  //
+  // Which attribute is whose is RECOMPUTED, not remembered from the bind: it is
+  // the framework's exactly when the template supplies nothing for it on this
+  // pass. That is why there is no bookkeeping here to go stale.
+  const act = HOISTED();
+
+  const host = document.createElement('div');
+  const framework = (v) => html`<button formaction=${v}>Go</button>`;
+  render(framework(act), host);
+  let btn = host.querySelector('button');
+  assert.equal(btn.getAttribute('formmethod'), 'post');
+  assert.equal(btn.getAttribute('formenctype'), 'multipart/form-data');
+
+  render(framework('/plain-url'), host);
+  btn = host.querySelector('button');
+  assert.equal(btn.getAttribute('name'), null, 'the identity is released');
+  assert.equal(btn.getAttribute('formmethod'), null, 'and the supplied method with it');
+  assert.equal(btn.getAttribute('formenctype'), null, 'and the supplied enctype');
+
+  const host2 = document.createElement('div');
+  const authored = (v) => html`<button formaction=${v} formmethod="post">Go</button>`;
+  render(authored(act), host2);
+  render(authored('/plain-url'), host2);
+  const btn2 = host2.querySelector('button');
+  assert.equal(btn2.getAttribute('name'), null, 'the identity is still released');
+  assert.equal(btn2.getAttribute('formmethod'), 'post', "the AUTHOR's own value survives");
+  assert.equal(btn2.getAttribute('formenctype'), null, 'only the supplied one is taken back');
 });
 
 test('a bound form still binds its submitter on every re-render', () => {

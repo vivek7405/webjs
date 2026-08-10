@@ -81,21 +81,32 @@ webjs routes --help     # one command's help (flag form)</code-block>
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
     "strict": true,
     "noEmit": true,
-    "checkJs": true,
-    "allowJs": true,
     "allowImportingTsExtensions": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "erasableSyntaxOnly": true,
+    "plugins": [{ "name": "@webjsdev/intellisense" }]
   },
-  "include": ["app/**/*", "components/**/*", "modules/**/*", "lib/**/*"],
-  "exclude": ["node_modules", ".webjs"]
+  "include": [
+    "app/**/*",
+    "components/**/*",
+    "modules/**/*",
+    "lib/**/*",
+    "test/**/*",
+    "middleware.js",
+    "middleware.ts",
+    ".webjs/routes.d.ts"
+  ],
+  "exclude": ["node_modules", ".webjs/vendor", "db/migrations"]
 }</code-block>
     <p>Key settings:</p>
     <ul>
       <li><code>noEmit</code>: type-check only, no compiled output (preserves no-build)</li>
       <li><code>allowImportingTsExtensions</code>: needed for explicit <code>.ts</code> in imports</li>
-      <li><code>checkJs</code>: type-check <code>.js</code> files too (for mixed codebases)</li>
+      <li><code>erasableSyntaxOnly</code>: rejects the TypeScript syntax Node's built-in stripper cannot erase</li>
+      <li><code>include</code> covers <code>test/</code>, so <code>npm run typecheck</code> reads the tests you write and a type error there fails the same one command</li>
     </ul>
 
     <h2>webjs check: correctness, not config</h2>
@@ -129,11 +140,30 @@ webjs routes --help     # one command's help (flag form)</code-block>
     <p>The client router is automatic: it auto-enables in the browser whenever <code>@webjsdev/core</code> loads (any page that ships a component), so SPA-style navigation needs no import or setup. To opt the whole app out and use plain full-page (multi-page) navigation instead, set <code>webjs.clientRouter</code> to <code>false</code>. Components still hydrate and stay interactive; only the link and form interception is disabled, so every navigation is a full browser load. The default (and any value other than <code>false</code>) keeps the router on. See <a href="/docs/client-router">Client Router</a> for the runtime <code>disableClientRouter()</code> / <code>enableClientRouter()</code> escape hatches.</p>
     <code-block>&#123; "webjs": &#123; "clientRouter": false &#125; &#125;</code-block>
 
+    <h2>SSR action seeding</h2>
+    <p>Each <code>'use server'</code> action result invoked during a buffered SSR render is serialized into the page, and the generated RPC stub reads that seed on its first client call, so a shipping async component does not re-issue the request on hydration. It is on by default and needs no code. Turn it off with <code>webjs.seed</code> in <code>package.json</code> or <code>WEBJS_SEED=0</code>, in which case the client re-fetches on hydration exactly as it did before the feature.</p>
+    <code-block>&#123; "webjs": &#123; "seed": false &#125; &#125;</code-block>
+    <p><strong>Seeing whether it works.</strong> A seed miss is invisible from the outside: the page still renders correctly, it just pays a network round-trip per async component on every first load. So in development (and only there) every page response carries an <code>X-Webjs-Seed</code> header, also folded into the access-log line as a <code>seed</code> field. Its value is <code>off</code> when seeding is disabled, <code>html-cache</code> when the cached-HTML path answered, <code>collected=&lt;m&gt;, emitted=&lt;n&gt;</code> on a normal render, and <code>collected=&lt;m&gt;, emitted=0, streamed</code> on a page carrying a <code>Suspense</code> or <code>&lt;webjs-suspense&gt;</code> boundary (a streamed render emits no seeds, because its deferred regions resolve after the first flush). A <code>collected</code> above <code>emitted</code> means the serializer could not encode a returned value and the whole block was dropped.</p>
+    <p>The browser logs one warning per page view when a hydration call missed its seed AND the cause is provable, naming which applies; it stays silent otherwise, including on a page that emitted no seeds, where the header is the reliable signal. Development also warns once per action function when a single render returns two different results for the same arguments, the one case where a seed can disagree with the paint the user is looking at. None of this reaches production: no header, no marker, and prod HTML is byte-identical.</p>
+
+    <h2>Display-only elision</h2>
+    <p>WebJs never downloads a component module that does no client work: the import is stripped from the served source and the module, its <code>modulepreload</code> hint, and any vendor reachable only through it are pruned. This is on by default and biased toward shipping, so anything ambiguous keeps its JavaScript. Set <code>webjs.elide</code> to <code>false</code> to turn it off app-wide, which makes every module ship.</p>
+    <code-block>&#123; "webjs": &#123; "elide": false &#125; &#125;</code-block>
+    <p>The <code>WEBJS_ELIDE</code> environment variable overrides the config key per run (<code>0</code> / <code>false</code> / <code>off</code> / <code>no</code> force it off, <code>1</code> / <code>true</code> / <code>on</code> / <code>yes</code> force it on). That override is also the seam <code>webjs elision --verify</code> uses to render one app both ways in a single process.</p>
+    <code-block>WEBJS_ELIDE=0 npm run start</code-block>
+    <p>Reach for the switch to isolate a bug, not as a permanent setting: everything it turns off is JavaScript your users would otherwise never download. To see WHAT is being dropped and why, run <code>webjs elision</code>. See <a href="/docs/elision">Display-Only Elision</a>.</p>
+
     <h2>Request limits &amp; server timeouts</h2>
     <p>The server caps inbound request bodies and bounds connection lifetimes by default, so an uncapped body is not a memory-exhaustion vector and a slow connection is not a slowloris vector. Both apply with secure defaults when unset and are configurable in <code>package.json</code> (env overrides win, and a value of <code>0</code> disables that limit / timeout).</p>
     <p><strong>Body-size limit (413).</strong> Every request body the server reads (the action RPC endpoint, <code>route.&#123;js,ts&#125;</code> handlers via <code>readBody</code>, and the no-JS form-action dispatch path) is capped. A JSON / RPC body defaults to 1 MiB (<code>webjs.maxBodyBytes</code> or <code>WEBJS_MAX_BODY_BYTES</code>); a form / multipart body defaults to 10 MiB (<code>webjs.maxMultipartBytes</code> or <code>WEBJS_MAX_MULTIPART_BYTES</code>). An over-limit body responds <code>413 Payload Too Large</code> and is never buffered whole: a <code>Content-Length</code> over the cap is rejected before the body is read, and a chunked body with no declared length is abandoned the instant it crosses the cap.</p>
     <p><strong>Server timeouts.</strong> The production server sets three node:http built-ins: <code>requestTimeout</code> (30s, <code>webjs.requestTimeoutMs</code> / <code>WEBJS_REQUEST_TIMEOUT_MS</code>) bounds the time to receive the whole request, <code>headersTimeout</code> (20s, <code>webjs.headersTimeoutMs</code> / <code>WEBJS_HEADERS_TIMEOUT_MS</code>) the time to receive just the headers, and <code>keepAliveTimeout</code> (5s, <code>webjs.keepAliveTimeoutMs</code> / <code>WEBJS_KEEP_ALIVE_TIMEOUT_MS</code>) the idle window before a kept-alive socket is closed. Per node semantics <code>headersTimeout</code> must be under <code>requestTimeout</code> to fire, so an inconsistent config is clamped automatically.</p>
     <code-block>&#123; "webjs": &#123; "maxBodyBytes": 262144, "maxMultipartBytes": 5242880, "requestTimeoutMs": 30000 &#125; &#125;</code-block>
+
+    <h2>Config typos are reported at boot</h2>
+    <p>Every key in the <code>webjs</code> block is optional, which means an unknown one has no way to announce itself: write <code>"redirect"</code> for <code>"redirects"</code> and the key is simply never read, the feature sits at its default, and the app looks configured. So WebJs validates the block against its published JSON Schema once per boot, in development and in production alike, and prints a single warning naming what it ignored.</p>
+    <p>It is a <strong>warning, never a failure</strong>. A typo costs one feature its setting, and refusing to boot over that would cost the whole app, usually mid-deploy.</p>
+    <p><strong>What it catches, and what it does not.</strong> It reports any unknown top-level key, whatever it is called. It also checks the value of 9 of the 17 known keys: one against an allowed set (<code>trailingSlash</code>), and eight against a boolean or whole-number type (<code>elide</code>, <code>seed</code>, <code>clientRouter</code>, <code>maxBodyBytes</code>, <code>maxMultipartBytes</code>, and the three timeouts). It does not descend into nested objects, so a key misspelled inside <code>webjs.dev</code> or <code>webjs.start</code> is missed, and it does not check the type of the other 8 (<code>headers</code>, <code>redirects</code>, <code>basePath</code>, <code>allowedOrigins</code>, <code>csp</code>, <code>dev</code>, <code>start</code>, <code>doctor</code>), whose schemas are the free-form ones a blunt check would start rejecting working configs over. Give one of those the wrong type outright, as in <code>"headers": "x"</code>, and it passes this check. Whether anything downstream then says so is up to that key's own reader, and the two array-valued ones do: <code>webjs.headers</code> and <code>webjs.redirects</code> each warn when the key is present but not an array, and again for every individual rule or entry they drop, naming what was ignored. An absent key is the default and says nothing.</p>
+    <p>Editors catch more of this earlier still: a scaffolded app wires the schema into <code>.vscode/settings.json</code>, and the <code>WebjsConfig</code> type from <code>@webjsdev/core</code> types the block while you author it. And <code>webjs.doctor</code> is checked by a different tool entirely: the server never reads it, and <code>webjs doctor</code> exits non-zero on a malformed one, because a silently ignored gate would leave CI un-gated while looking gated.</p>
 
     <h2>Environment Variables</h2>
     <p>Use <code>process.env</code> in server-side code (pages, actions, route handlers, middleware). WebJs auto-loads <code>&lt;appDir&gt;/.env</code> into <code>process.env</code> once at boot using Node 24+'s built-in <code>process.loadEnvFile</code>, so a scaffolded app with a committed <code>.env.example</code> and a developer-copied <code>.env</code> just works without installing <code>dotenv</code> or wiring up the file path. The auto-load fires before any server-only module is imported, which matters for code that reads <code>process.env</code> at module-init time (e.g. <code>createAuth({ secret: process.env.AUTH_SECRET })</code>).</p>

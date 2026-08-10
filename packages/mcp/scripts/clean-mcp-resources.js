@@ -24,6 +24,8 @@ import { fileURLToPath } from 'node:url';
  * @returns {void}
  */
 export function cleanBundle(destRoot) {
+  // Recursive, so the `corpus.json` build stamp (#1319) goes with the tree. No
+  // separate unlink is owed for it, or for anything else added to the bundle.
   rmSync(destRoot, { recursive: true, force: true });
 }
 

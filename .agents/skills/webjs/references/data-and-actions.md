@@ -135,7 +135,7 @@ import { createPost } from '#modules/posts/actions/create-post.server.ts';
 html`<form action=${createPost}><input name="title"></form>`;
 ```
 
-The renderer omits the `action` attribute so the form posts to the page's own url, supplies `method="post"` and an enctype, and emits a hidden `__webjs_action` field carrying the action's `<hash>/<fn>` identity, the same identity the RPC endpoint resolves. Nothing about the action's source reaches the browser. With JS off this is an ordinary HTML submission; with JS the client router posts the same body to the same url, so the two paths are identical by construction.
+The renderer omits the `action` attribute so the form posts to the page's own url, supplies `method="post"` and an enctype, and emits a hidden `__webjs_action` field carrying the action's `<hash>/<fn>` identity, the same identity the RPC endpoint resolves. Nothing about the action's source reaches the browser. With JS off this is an ordinary HTML submission; with JS the client router posts the same body to the same url, encoded per the declared `enctype` (#1307: multipart stays `FormData`, urlencoded, which is the HTML default, is sent as `URLSearchParams`), so the two paths are identical by construction.
 
 **A form-bound action always receives the `FormData`**, which is where it differs from the same function called over RPC (rich arguments) or server-to-server. `validate` is the typing seam: it takes the `FormData` and its transform-return becomes the action's typed input.
 
@@ -152,9 +152,34 @@ The response drives the page: a success is a `303` PRG (to `result.redirect` whe
 
 A streamed return (#489) is refused from a form-bound action: the RPC stub decodes frames, but a submission is answered with a redirect or a page, and with JS off there is no consumer at all. Stream from a programmatic call instead.
 
-## HTTP-verb config exports
+## HTTP-verb config exports & decision guide
 
 A `'use server'` action is a POST by default. Reserved sibling exports, read statically (the same way a page reads `export const revalidate`), change its HTTP semantics WITHOUT changing the call site (you still write `await getUser(7)`).
+
+### HTTP Verbs Decision Guide
+
+| Action Kind | Target Verb | Example Declaration | HTTP Semantics & Features |
+|---|---|---|---|
+| **Form-Bound Action** (`<form action=${fn}>`) | **POST** (default) | *(no export or `export const method = 'POST'`) | Standard HTML form submission. Enforces `POST` + `multipart/form-data` or `urlencoded`. **Never export `method = 'GET'`** (triggers 405 refusal & `webjs check` violation). |
+| **RPC Read Action (Query)** | **GET** | `export const method = 'GET'` | Read-only RPC calls (`await getTodos()`). Args ride URL query params (with POST fallback over 4KB). CSRF-exempt, supports ETags, 304 revalidation, and `export const cache`. |
+| **RPC Write Action (Mutation)** | **POST** / **PUT** / **PATCH** / **DELETE** | Default or `export const method = 'DELETE'` | Data-modifying RPC calls (`await deleteUser(4)`). Carries CSRF protection, serialized payload body, and evicts cached query tags via `export const invalidates`. |
+
+### Choosing the right HTTP verb
+
+1. **Form-Bound Actions (`<form action=${fn}>` / `<button formaction=${fn}>`):**
+   - **MUST be POST.** Leave unannotated (default) or export `export const method = 'POST'`.
+   - **NEVER export `export const method = 'GET'` for form actions.** The HTML renderer automatically emits `method="post"` and `formenctype` for form actions. Binding a `method = 'GET'` action to a form returns a `405 Method Not Allowed` at runtime and triggers a `webjs check` error (`form-action-not-a-get-action`).
+   - **NEVER add `method="get"` to a bound `<form action=${fn}>`.** WebJs manages form submission semantics automatically; adding `method="get"` causes a `WEBJS_FORM_SUBMITTED_AS_GET` diagnostic warning.
+
+2. **Programmatic / RPC Read Actions (Queries):**
+   - **ALWAYS export `export const method = 'GET'` for read-only queries.**
+   - When an action only fetches data (`await getUser(id)`), exporting `method = 'GET'` instructs the client RPC stub to issue an HTTP GET request with arguments encoded in query parameters.
+   - Enables browser/CDN caching, weak ETags (returning 304 Not Modified on cache hit), and HTTP `Cache-Control` header generation when paired with `export const cache = ...`.
+
+3. **Programmatic / RPC Write Actions (Mutations):**
+   - **Use POST, PUT, PATCH, or DELETE for writes.**
+   - Use default `POST` or explicitly export `PUT`/`PATCH`/`DELETE` for RESTful RPC calls (`await removeUser(id)`).
+   - Pair mutating actions with `export const invalidates = (args...) => ['tag']` to evict cached reads matching those tags upon completion.
 
 ```ts
 // modules/users/queries/get-user.server.ts: a cached, tagged GET read
@@ -166,8 +191,9 @@ export async function getUser(id: number) { return db.query.users.findFirst({ wh
 ```
 
 ```ts
-// a mutation evicts the tags it touches
+// modules/users/actions/update-user.server.ts: a mutation evicting matching tags
 'use server';
+export const method = 'PATCH';                     // explicit verb
 export const invalidates = (id: number) => ['user:' + id];
 export const middleware = [requireAuth];           // async (ctx, next) => result; read ctx via actionContext()
 export async function updateUser(id: number, patch: Partial<User>) { /* ... */ }
@@ -237,3 +263,55 @@ import { posts } from '#db/schema.server.ts';
 ```
 
 Keep the wire shape in a browser-safe `modules/<feature>/types.ts` with NO runtime import from a `.server.ts` file or from `db/`. Define a hand-written DTO, or a type-only derivation (`import type { Post } ...; export type PostFormatted = Omit<Post, 'createdAt'> & { createdAt: string }`). Never `export *` or a value re-export from a `.server.ts` in `types.ts`; that carries the runtime table bindings and breaks any component importing the types. Full reference at https://webjs.dev/docs.
+
+## SSR action seeding, and how to tell it is working
+
+When a shipping component's `async render()` awaits an action during SSR, WebJs serializes that result into the page and the generated RPC stub reads it on its FIRST client call. So `const u = await getUser(this.id)` runs once, on the server, and hydration reuses the result with no network round-trip.
+
+**You write nothing for this.** It is automatic, on by default, and there is no API to call. The only thing you can do is break it, so the section below is about noticing when you have.
+
+### The correctness boundary
+
+A seed hit returns the value the SSR render that produced this page computed for exactly this action, function, and argument list, so a hit cannot show the user something different from the HTML they are already looking at. A page navigation evicts whatever the outgoing page left unconsumed, both the block still in the DOM and anything already ingested from it, so a departed render's value is never served. On an HTML-cached page (`export const revalidate`) the seed rides inside the cached bytes, so it is exactly as fresh as the HTML it came with. A miss simply re-fetches.
+
+There is one shape where a hit can differ from the paint, and WebJs warns about it in dev: **an action that returns a DIFFERENT result for the SAME arguments twice in one render.** The seed carries the last result while the first component painted the first one. So keep an action deterministic for a given argument list. A counter, a `Math.random()`, a `new Date()` in the return value, or a read of mutable module state all break that rule, and dev prints:
+
+```
+[webjs] SSR action seeding: "getUser" returned two DIFFERENT results for the SAME arguments during one render. ...
+```
+
+The fix is to make the action deterministic, or to move the varying part into an argument so the two calls get different keys.
+
+### Reading the dev diagnostics
+
+A miss is invisible from the outside: the page still renders correctly, it just pays a round-trip per async component on every first load. Two channels make it visible in dev, and neither exists in production.
+
+**Server side, per request.** The `X-Webjs-Seed` response header, also folded into the dev access-log line as a `seed` field:
+
+| Value | What it means |
+|---|---|
+| `off` | Seeding is switched off (`"webjs": { "seed": false }` or `WEBJS_SEED=0`). Not a defect. |
+| `html-cache` | The #241 HTML response cache answered. The seeds rode inside the cached bytes. |
+| `collected=3, emitted=3` | Healthy. Three action results were captured and all three reached the page. |
+| `collected=3, emitted=0` | The serializer threw and dropped the whole block. Something in a returned value is not serializer-safe. |
+| `collected=3, emitted=0, streamed` | The page streams, so nothing could be emitted (see below). |
+
+Check it with `curl -sSI localhost:3000/` or in the network tab.
+
+**Browser side, per page view.** One `console.warn` at the first idle after hydration, and only when a call missed AND the client can be certain why. It stays silent otherwise, including on a page that emitted no seeds at all: every action call routes through the seed lookup, including ones that were never SSR-invoked and never could have been seeded (a mutation, a `Task` autorun, a `connectedCallback` read), so a miss there is not evidence of a defect. That case is the server header's job, where `collected=0` is unambiguous. The line names one of these:
+
+- *"This page streams"*, so no seeds could be emitted. Expected, not a bug (see below).
+- *"The page's seeds could not be serialized."* Something an action returned is not serializer-safe, so the whole block was dropped. The response header shows `collected` above `emitted` for the same reason.
+- *"The page seeded these actions under DIFFERENT arguments."* The key is `hash(action file) / function name / serialized arguments`, so the client asked with an argument the SSR render never used. Common cause: the component computes its argument from browser-only state (a `localStorage` read, a `connectedCallback` assignment), which the server render could not have known. A miss on an action the page never seeded at all is NOT reported, because a mutation or a client-only read routes through the same lookup and could never have been seeded.
+
+A miss AFTER hydration is correct and is not reported: the seed is consume-once, so a deliberate refetch or an argument change is supposed to go to the network.
+
+`seedStats()` from `@webjsdev/core` returns `{ ingested, replaced, hits, misses, keyMisses, pending }` (`keyMisses` being the provable subset of `misses`, a call for an action the page seeded under other arguments) if you want to assert this in a browser test or read it from the console. A non-zero `pending` at rest usually means the seeding component ELIDED, so its module never shipped and nothing on the client was ever going to consume the seed. `pending` covers the page you are on: a page navigation evicts whatever the outgoing page left unconsumed, both the block still sitting in the DOM and anything already ingested from it, since those values belong to a render no longer on screen.
+
+### The streamed-page exception
+
+A page carrying a `Suspense` or `<webjs-suspense>` boundary emits NO seed block at all, not just none for the streamed region: a streamed render's deferred boundaries resolve after the first flush, so their results cannot ride the block. Every action call on that page goes to the network on hydration. That is a real trade, so make it deliberately: reach for a streaming boundary when a slow region would otherwise block the first byte, and leave a fast page buffered so it seeds.
+
+### Switching it off
+
+`"webjs": { "seed": false }` in `package.json`, or `WEBJS_SEED=0`. The client then re-fetches on hydration exactly as it did before the feature, and stale-while-revalidate hides the flicker. Turn it off only to isolate a problem; there is no reason to ship with it off.

@@ -58,7 +58,7 @@ Three properties are what let me leave it on and stop thinking about it:
 
 - It is keyed by the action hash, the function name, and the serialized arguments. The seed for `getUser(7)` is never handed to `getUser(9)`. The arguments have to match exactly.
 - It is consume-once. The seed answers the first call and then it is spent. A later refetch, or a call with different arguments, goes to the network like any other request. Seeding removes the redundant hydration fetch, not your real fetches.
-- It fails open. If a seed is missing for any reason, the stub just makes a normal RPC call. A miss costs you one network request, never wrong data. There is no path where a stale or mismatched seed gets served.
+- It fails open. If a seed is missing for any reason, the stub just makes a normal RPC call. A miss costs you one network request, never wrong data. A mismatched key simply misses, and a navigation evicts whatever the previous page left unconsumed, so a departed render's value is never served.
 
 The capture is the part I am happiest with, because it is exactly where a build-based framework would reach for a code transform. WebJs captures the seed through a transparent server-side `'use server'` facade that sits at the action boundary at runtime and records what SSR computed. No source transform, no build step. The file on disk is unchanged and the source in the browser network tab is unchanged. Nothing rewrites your code to inject an initial-data payload. It runs on Bun the same as on Node.
 

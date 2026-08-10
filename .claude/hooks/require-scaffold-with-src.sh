@@ -79,10 +79,11 @@ src_touched=$(printf '%s\n' "$staged" | grep -E '^packages/(core|server|cli)/src
 if [ -z "$src_touched" ]; then exit 0; fi
 
 # Any scaffold teaching surface staged in the same commit? Either the scaffold
-# templates/generators (the gallery, runnable but disposable via gallery:clear)
-# OR the agent skill at .agents/skills/webjs/ (the durable teacher bundled into
-# every scaffold, the only surface that survives gallery:clear).
-scaffold_staged=$(printf '%s\n' "$staged" | grep -E '^packages/cli/(templates|lib)/|^\.agents/skills/webjs/' || true)
+# templates/generators, or the canonical repo-root gallery/ app (the gallery is
+# runnable but disposable via gallery:clear, and prepack bundles it into the CLI
+# tarball), OR the agent skill at .agents/skills/webjs/ (the durable teacher
+# bundled into every scaffold, the only surface that survives gallery:clear).
+scaffold_staged=$(printf '%s\n' "$staged" | grep -E '^packages/cli/(templates|lib)/|^gallery/|^\.agents/skills/webjs/' || true)
 if [ -n "$scaffold_staged" ]; then exit 0; fi
 
 cat >&2 <<'EOF'
@@ -100,7 +101,8 @@ capability, a config key, a CLI behaviour), invoke the `webjs-scaffold-sync`
 skill, then `git add` the teaching surface(s) and commit again:
   `.agents/skills/webjs/`                  the DURABLE teacher (SKILL.md + references/),
                                           survives `gallery:clear` so it MUST teach the feature
-  packages/cli/templates/gallery/         a UI feature-gallery demo (runnable, disposable)
+  gallery/                                a UI feature-gallery demo (runnable, disposable).
+                                          The canonical root app; prepack bundles it into the CLI
   packages/cli/lib/api-gallery.js         an api backend-showcase endpoint
   packages/cli/lib/{create,saas-template}.js  the generators (home, theme, schema, wiring)
   packages/cli/templates/ (AGENTS/CONVENTIONS/.cursorrules/...)  scaffold rules in lockstep

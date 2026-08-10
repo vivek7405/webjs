@@ -81,7 +81,8 @@ export function connectWS(url, opts = {}) {
 
   return {
     /** Send a message. Objects are JSON-stringified; strings and binary pass through.
-     *  If the socket isn't open yet, the message is queued until it is. */
+     *  If the socket isn't open yet, the message is queued until it is.
+     *  @param {string | ArrayBuffer | ArrayBufferView | object} data */
     send(data) {
       const payload =
         typeof data === 'string' || data instanceof ArrayBuffer || ArrayBuffer.isView(data)
@@ -90,7 +91,9 @@ export function connectWS(url, opts = {}) {
       if (ws && ws.readyState === WebSocket.OPEN) ws.send(/** @type any */ (payload));
       else queue.push(payload);
     },
-    /** Permanently close the socket. Disables reconnect. */
+    /** Permanently close the socket. Disables reconnect.
+     *  @param {number} [code]
+     *  @param {string} [reason] */
     close(code, reason) {
       stopped = true;
       try { ws?.close(code, reason); } catch {}

@@ -13,6 +13,6 @@
     "skipLibCheck": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["app/**/*", "components/**/*", "lib/**/*", "modules/**/*"],
+  "include": ["app/**/*", "components/**/*", "lib/**/*", "modules/**/*", "test/**/*"],
   "exclude": ["node_modules", ".webjs"]
 }

@@ -8,6 +8,7 @@ import './webjs-frame.js';
 // live-channel `connectWS` handler.
 import './webjs-stream.js';
 import { renderStream } from './webjs-stream.js';
+import { FORM_ACTION_FIELD } from './form-action.js';
 // Register <webjs-suspense> (the element-level streaming boundary, #471) so it
 // is layout-neutral and available for the progressive soft-nav streaming apply.
 import './webjs-suspense.js';
@@ -24,7 +25,6 @@ import {
   SLOT_STATE, LIGHT_SLOT_ATTR, PROJECTION_ATTR, PROJECTION_ACTUAL,
   projectAuthored, keyOfName, isAuthoredContentSlot,
 } from './slot.js';
-import { FORM_ACTION_FIELD } from './form-action.js';
 
 /** The content type a content-negotiated stream-action response carries (#248). */
 const STREAM_MIME = 'text/vnd.webjs-stream.html';
@@ -302,6 +302,284 @@ let currentPageUrl = null;
  */
 let prevScrollRestoration = null;
 
+/**
+ * Hard ceiling on the restore window (#1310). The revalidation is a
+ * same-origin GET of a page the browser rendered moments ago, so this is
+ * generously past its p99. It exists only so a hung or never-settling fetch
+ * can never leave scroll anchoring suppressed for the life of the page.
+ */
+const ANCHOR_SUPPRESS_CEILING_MS = 2000;
+
+/**
+ * Floor on the restore window (#1310). The window's other closer is the
+ * revalidation settling, which is only long enough while the revalidation is
+ * SLOWER than the restored page's own upgrade-and-render. That holds on a
+ * deployed site (measured: growth ~65ms after the swap, the revalidation's swap
+ * ~300ms after that) but it is a property of one deployment, not a guarantee: a
+ * local server, a 304, or a warm cache answers in single-digit milliseconds and
+ * would otherwise close the window before the growth it exists to absorb.
+ *
+ * So the window lasts at least this long whatever the network does. The value
+ * clears the measured revalidation swap with margin and stays well under the
+ * ceiling. It is a floor, not a delay: a real user input still closes the
+ * window immediately, which is the case that actually matters for not holding
+ * anchoring off longer than a reader would want.
+ */
+const ANCHOR_SUPPRESS_FLOOR_MS = 500;
+
+/**
+ * Inputs that mean the reader has taken over the viewport, so the restore is
+ * over and the browser's own anchoring should resume.
+ *
+ * NOT `scroll`. The router's own `scrollTo` and anchoring itself both fire
+ * `scroll`, so it cannot tell a reader apart from the restore it is guarding,
+ * and no threshold makes it able to. These are input events, so there is
+ * nothing to threshold out and the FIRST one closes the window. `keydown` is
+ * deliberately not narrowed to scrolling keys: any keypress means interaction,
+ * and closing early only restores the browser default, which is the safe
+ * direction to err in.
+ *
+ * @type {string[]}
+ */
+const ANCHOR_RELEASE_EVENTS = ['wheel', 'touchmove', 'keydown', 'pointerdown'];
+
+/**
+ * Closes the currently open restore window, or null when none is open.
+ * @type {(() => void) | null}
+ */
+let releaseScrollAnchor = null;
+
+/**
+ * Suppress the browser's scroll anchoring for the duration of a back/forward
+ * scroll restore (#1310).
+ *
+ * A snapshot's `scrollY` is recorded against the page at its SETTLED height.
+ * The restore replays that number onto a document that has only just been
+ * swapped in and is still shorter, because the components in the restored
+ * markup have not upgraded and re-rendered yet. When they do, content grows
+ * ABOVE the viewport, and scroll anchoring (`overflow-anchor: auto`, the UA
+ * default) holds the VISUAL position by adding that growth to `scrollY`. The
+ * offset is counted twice. On webjs.dev's `/ui/button` that lands the reader
+ * 763px too low, exactly the settled-minus-swapped height delta.
+ *
+ * Anchoring is right for a reader on a live page and wrong for exactly this
+ * window, where the restored number already accounts for the growth. So the
+ * window suppresses it rather than re-scrolling afterwards. A re-assert would
+ * have to fire on every growth, and a settling restore cannot be told apart
+ * from a `<webjs-suspense>` boundary streaming in (#471 / #473). Suppression
+ * never MOVES the viewport, it only withholds a correction, so it also cannot
+ * yank a reader who has already started scrolling.
+ *
+ * Chromium, Firefox, and WebKit all implement scroll anchoring, and all three
+ * honour `overflow-anchor: none` identically whether it sits on the root
+ * scroller or on `<body>`, so there is no engine-specific path here.
+ *
+ * It goes on the ROOT, and `<body>` is not an alternative even though it looks
+ * like the tidier one. Suppressing on `<body>` works identically on all three
+ * engines (the property excludes an element and its subtree from being chosen
+ * as the anchor, and every candidate lives under `<body>`), and it would avoid
+ * writing to the root at all, which is worth wanting: toggling something on the
+ * root re-runs global style resolution, and on WebKit that re-resolves
+ * `oklch()` token values and repaints them for a frame, which is the #610 flash
+ * that made `data-navigating` opt-in.
+ *
+ * It is disqualified by the RELEASE, not the suppression. On WebKit, anchoring
+ * never resumes once it has been suppressed on `<body>`: removing the property,
+ * setting it back to `auto`, and both in sequence were each measured, and after
+ * every one the next growth above the viewport still failed to move `scrollY`.
+ * Suppressing on the root resumes correctly on all three. Since the whole point
+ * is that suppression is TEMPORARY, a placement that cannot be undone would
+ * leave every WebKit reader, so every iOS browser, with scroll anchoring off
+ * for the life of the page after their first Back. That is a far worse trade
+ * than one repaint, so the root it is.
+ *
+ * @returns {() => void} Idempotent release. Safe to call after the window has
+ *   already closed on user input or the ceiling.
+ */
+function suppressScrollAnchoring() {
+  if (typeof document === 'undefined' || !document.documentElement) return () => {};
+  // A second restore inside an open window supersedes the first.
+  if (releaseScrollAnchor) releaseScrollAnchor();
+  const root = document.documentElement;
+  // Save and restore the author's own inline value rather than blanking it,
+  // the same contract `prevScrollRestoration` keeps above.
+  const prev = root.style.getPropertyValue('overflow-anchor');
+  root.style.setProperty('overflow-anchor', 'none');
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let timer = null;
+  const release = () => {
+    // Only the window that installed this release may close it.
+    if (releaseScrollAnchor !== release) return;
+    releaseScrollAnchor = null;
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (typeof window !== 'undefined') {
+      for (const ev of ANCHOR_RELEASE_EVENTS) {
+        window.removeEventListener(ev, release, /** @type {any} */ ({ capture: true }));
+      }
+    }
+    if (prev) root.style.setProperty('overflow-anchor', prev);
+    else root.style.removeProperty('overflow-anchor');
+  };
+  releaseScrollAnchor = release;
+  timer = setTimeout(release, ANCHOR_SUPPRESS_CEILING_MS);
+  if (typeof window !== 'undefined') {
+    for (const ev of ANCHOR_RELEASE_EVENTS) {
+      window.addEventListener(ev, release, { capture: true, passive: true });
+    }
+  }
+  return release;
+}
+
+/**
+ * Cancels an in-flight catch-up, or null when none is running.
+ * @type {(() => void) | null}
+ */
+let cancelScrollCatchUp = null;
+
+/**
+ * Bumped wherever a restore is superseded (#1310), and read by the one restore
+ * path that outlives the call scheduling it. That means a PAGE navigation, a
+ * PAGE-level submission, and disabling the router. A frame-targeted nav or
+ * submission swaps one region and leaves the page, so it is excluded, exactly
+ * like the `loadFrame` case below.
+ *
+ * Deliberately NOT `currentNavigationToken`, which is the obvious choice and the
+ * wrong one: `loadFrame` bumps that too, and its own contract says a frame
+ * self-load is not a page navigation. An eager `<webjs-frame src>` inside a
+ * RESTORED snapshot loads during the swap, so keying on the nav token would
+ * read a routine frame load as a supersede and drop the entire restore, leaving
+ * the reader at the outgoing page's offset. That is worse than the defect this
+ * whole change fixes. This counter moves only for the three things that really
+ * do end a restore.
+ */
+let restoreGeneration = 0;
+
+/**
+ * Chase a restored scroll offset the document was too SHORT to reach (#1310).
+ *
+ * The sibling of `suppressScrollAnchoring`, for the case that one deliberately
+ * declines. When the recorded offset is past the un-grown document's maximum,
+ * the browser clamps, and anchoring then adds the growth back as the page
+ * settles. That lands a reader who left at the very bottom back at the bottom,
+ * because there the shortfall and the growth are the same number. It is wrong
+ * for everyone else: anchoring adds the FULL growth whatever the shortfall was,
+ * so a reader who left 100px above the bottom is carried 100px too far.
+ *
+ * This re-asserts the recorded offset once the document can actually hold it,
+ * which is the only moment the number becomes reachable, and then stops.
+ *
+ * It is deliberately narrow, because #1310 rejected re-asserting the scroll in
+ * the general case and that reasoning still holds. The difference is that this
+ * knows exactly where it is going and can tell when it has arrived: it runs
+ * ONLY on the clamped path, only while the offset is still out of reach, writes
+ * once, and stops on the first real input.
+ *
+ * It does NOT escape the settling-versus-streaming question, and it is worth
+ * being exact about that rather than claiming otherwise. It cannot tell the
+ * restore settling apart from any other growth, so the guard is its WINDOW: it
+ * lives for `ANCHOR_SUPPRESS_FLOOR_MS` from the RESTORE and no longer. That is
+ * tighter than the window a landed restore gets, which runs to the later of the
+ * floor and the revalidation and is capped by the ceiling, and deliberately so,
+ * because this path WRITES scroll. The suppression this path installs once the
+ * chase lands is part of the same window, not a second one: it shares this
+ * deadline, so the whole clamped path is bounded by one floor measured from the
+ * restore however late the landing happens.
+ *
+ * Be precise about what the bound does and does not buy, since it is easy to
+ * overclaim in both directions. WHILE the window is open the reader is
+ * protected: until the offset is reachable there is nothing to protect, and
+ * from the moment the chase lands on it, suppression holds it against the rest
+ * of the growth. AFTER the window closes, both halves stop: the router writes
+ * no more scroll, and anchoring is back on, so any growth still arriving is
+ * added to `scrollY` and carries the reader down toward the bottom, which is
+ * main's behaviour. So the cost of a component that settles later than the
+ * window is that the reader drifts below the offset, not that they sit at the
+ * clamp.
+ *
+ * @param {number} targetY  The recorded offset to reach.
+ * @param {number} targetX
+ */
+function catchUpToRestoredScroll(targetY, targetX) {
+  if (typeof window === 'undefined' || typeof requestAnimationFrame !== 'function') return;
+  if (cancelScrollCatchUp) cancelScrollCatchUp();
+  let rafId = 0;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let timer = null;
+  /** Release for the suppression installed once the offset is reached. */
+  let releaseLanded = null;
+  const stop = () => {
+    if (cancelScrollCatchUp !== stop) return;
+    cancelScrollCatchUp = null;
+    if (rafId) cancelAnimationFrame(rafId);
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (releaseLanded) { releaseLanded(); releaseLanded = null; }
+    for (const ev of ANCHOR_RELEASE_EVENTS) {
+      window.removeEventListener(ev, stop, /** @type {any} */ ({ capture: true }));
+    }
+  };
+  const tick = () => {
+    if (cancelScrollCatchUp !== stop) return;
+    const maxY = document.documentElement.scrollHeight - window.innerHeight;
+    if (maxY >= targetY) {
+      // Reachable at last. Land the reader on the recorded offset.
+      window.scrollTo({ left: targetX, top: targetY, behavior: 'instant' });
+      // And then protect it, because landing is not the end of the story. The
+      // growth that made the offset reachable is rarely all of it: the real
+      // cause is components upgrading one at a time, so more arrives after
+      // this. Anchoring is still on here, deliberately, so every later stage
+      // would be added on top of the offset just written and carry the reader
+      // below it again. Measured on a two-stage fixture, an offset of 4000
+      // ended at 5000.
+      //
+      // Once the reader IS on the recorded offset the situation is identical to
+      // a restore that landed on its first try, so it gets that case's
+      // protection for what remains.
+      //
+      // It shares THIS chase's deadline rather than starting one of its own,
+      // which matters: a fresh floor-length timer here would start at landing
+      // rather than at the restore, so the clamped path could hold anchoring
+      // off for nearly twice the floor and stop being the tighter of the two
+      // windows, which is the whole reason for the bound. `stop` owns the
+      // release, so the existing timer and the input listeners close it.
+      releaseLanded = suppressScrollAnchoring();
+      // Deliberately NOT `stop()`: the window has to outlive the landing, up to
+      // the deadline already running.
+      if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+      return;
+    }
+    rafId = requestAnimationFrame(tick);
+  };
+  cancelScrollCatchUp = stop;
+  // Same inputs that close a suppression window: the reader has taken over.
+  for (const ev of ANCHOR_RELEASE_EVENTS) {
+    window.addEventListener(ev, stop, { capture: true, passive: true });
+  }
+  // Bounded by the FLOOR, not the ceiling. The ceiling is a backstop for a hung
+  // fetch; this is a scroll WRITE, so its window is the one thing that decides
+  // whether a reader can be moved without asking. Any growth past the target
+  // fires it, and growth is not exclusively the restore settling: a
+  // <webjs-suspense> boundary resolving, a lazy component entering, or a late
+  // image would all qualify. Holding it open for the full ceiling would mean a
+  // reader who landed and started READING, and so generates no input to cancel
+  // it, could be scrolled up to two seconds after pressing Back. The floor
+  // covers the restore's own settling, which is what it is for, and is measured
+  // in a few hundred milliseconds rather than seconds.
+  timer = setTimeout(stop, ANCHOR_SUPPRESS_FLOOR_MS);
+  rafId = requestAnimationFrame(tick);
+}
+
+/**
+ * Run `fn` after two animation frames, so a just-applied DOM has laid out
+ * before it reads or acts. Falls back to a macrotask where
+ * `requestAnimationFrame` is absent (the linkedom-backed node test harness).
+ *
+ * @param {() => void} fn
+ */
+function afterTwoFrames(fn) {
+  if (typeof requestAnimationFrame !== 'function') { setTimeout(fn, 0); return; }
+  requestAnimationFrame(() => requestAnimationFrame(fn));
+}
+
 /** Enable the client router. Idempotent. */
 export function enableClientRouter() {
   if (enabled || typeof document === 'undefined') return;
@@ -372,6 +650,11 @@ export function disableClientRouter() {
     history.scrollRestoration = prevScrollRestoration;
     prevScrollRestoration = null;
   }
+  // Never leave a restore window open on <html>, nor a catch-up chasing a
+  // scroll offset after the router is gone (#1310).
+  restoreGeneration += 1;
+  if (releaseScrollAnchor) releaseScrollAnchor();
+  if (cancelScrollCatchUp) cancelScrollCatchUp();
   currentPageUrl = null;
 }
 
@@ -576,13 +859,20 @@ function onSubmit(e) {
   const submitter = /** @type {HTMLElement | null} */ (e.submitter ?? null);
   if (submitter && submitter.hasAttribute('data-no-router')) return;
 
-  const target = (submitter && submitter.getAttribute('formtarget'))
-    || form.getAttribute('target')
-    || '';
+  // Presence, not truthiness, exactly as `getSubmitAction` resolves the action
+  // (#1322). The form-submission algorithm asks whether the submitter HAS a
+  // `formtarget`, so a present-but-empty one overrides the form and then means
+  // the current browsing context, per the rules for choosing a navigable.
+  const target = (submitter && submitter.hasAttribute('formtarget'))
+    ? (submitter.getAttribute('formtarget') || '')
+    : (form.getAttribute('target') || '');
   if (target && target !== '_self') return;
 
   const method = getSubmitMethod(form, submitter);
   if (method === 'dialog') return;
+
+  const enctype = getSubmitEnctype(form, submitter);
+  const isSafeMethod = method === 'get' || method === 'head';
 
   const action = getSubmitAction(form, submitter);
   /** @type {URL} */ let url;
@@ -591,12 +881,27 @@ function onSubmit(e) {
   if (url.origin !== location.origin) return;
   if (NON_HTML_EXTENSIONS.test(url.pathname)) return;
 
-  const body = buildSubmitFormData(form, submitter);
+  // Built once, after the cheap bails (a submission the router ignores should
+  // not pay for a FormData) and BEFORE the text/plain bail below. That order
+  // matters for the dev report: `text/plain` is precisely the case where the
+  // router declines the submission, so reporting after the bail would be dead
+  // code for the one shape that most needs it, since both paths are then
+  // answered with a 405 and the author gets no other signal.
+  const rawBody = buildSubmitFormData(form, submitter);
+  // Observational, and silent in production. Runs before `preventDefault`.
+  warnIfActionSubmissionCannotDeliver(form, submitter, method, rawBody);
 
-  // After the body is built (that is where the identity becomes answerable) and
-  // before `preventDefault`, so it observes the submission the browser was
-  // about to make and changes nothing about it.
-  warnIfActionSubmissionCannotDeliver(form, submitter, method, body);
+  // #1307: `text/plain` is a legal native encoding the server cannot parse
+  // (`looksLikeFormSubmission` accepts multipart and urlencoded only), and
+  // there is no honest way to send it over `fetch` and have the response mean
+  // anything. Bail to the browser so BOTH paths do the same thing, rather than
+  // silently sending multipart, which is what made the same form behave one
+  // way with JS and another way without it. Turbo enumerates this encoding and
+  // then sends FormData anyway, which is the divergence being avoided here. A
+  // safe method ignores the enctype entirely, per the submission algorithm.
+  if (!isSafeMethod && enctype === 'text/plain') return;
+
+  const body = encodeSubmitBody(rawBody, enctype);
 
   e.preventDefault();
   // Resolve the target frame for the submit, same precedence as a link:
@@ -610,14 +915,21 @@ function onSubmit(e) {
  * Method resolution: submitter's `formmethod` wins over form's `method`.
  * Returns lowercase.
  *
+ * Resolved on PRESENCE, not truthiness (#1322), the same way `getSubmitAction`
+ * below resolves the action. The form-submission algorithm reads the
+ * submitter's `formmethod` if the submitter HAS one, so a present-but-empty
+ * `formmethod=""` overrides the form and then falls to its own invalid-value
+ * default, GET. Resolving with `||` instead sent a multipart POST for a button
+ * every engine submits as `GET`, which is a JS-on versus JS-off divergence.
+ *
  * @param {HTMLFormElement} form
  * @param {HTMLElement | null} submitter
  */
 function getSubmitMethod(form, submitter) {
-  const v = (submitter && submitter.getAttribute('formmethod'))
-    || form.getAttribute('method')
-    || 'get';
-  return v.toLowerCase();
+  const v = (submitter && submitter.hasAttribute('formmethod'))
+    ? (submitter.getAttribute('formmethod') || '')
+    : (form.getAttribute('method') || '');
+  return (v || 'get').toLowerCase();
 }
 
 /**
@@ -632,6 +944,83 @@ function getSubmitAction(form, submitter) {
     return submitter.getAttribute('formaction') || '';
   }
   return form.getAttribute('action') || form.action || location.href;
+}
+
+/**
+ * The three `enctype` keywords, plus the normalization a browser applies.
+ *
+ * Both the missing-value AND the invalid-value default of the `enctype`
+ * enumerated attribute are `application/x-www-form-urlencoded`, so
+ * `enctype="nonsense"` really does mean urlencoded and has to be sent as such.
+ * Only an exact, ASCII-case-insensitive match on one of the other two keywords
+ * means anything else.
+ *
+ * @param {string | null | undefined} raw
+ * @returns {'application/x-www-form-urlencoded' | 'multipart/form-data' | 'text/plain'}
+ */
+function normalizeEnctype(raw) {
+  // Compared UNTRIMMED, the same rule `assertSubmittableForm` applies in
+  // `form-action.js`. An enumerated attribute is matched against exact
+  // keywords with no whitespace stripping, so `enctype=" multipart/form-data "`
+  // falls to the invalid-value default and a BROWSER sends urlencoded for it.
+  // Trimming here would send multipart, so the router would disagree with the
+  // no-JS path on exactly the shape this function exists to keep in step.
+  const v = String(raw || '').toLowerCase();
+  if (v === 'multipart/form-data') return 'multipart/form-data';
+  if (v === 'text/plain') return 'text/plain';
+  return 'application/x-www-form-urlencoded';
+}
+
+/**
+ * Enctype resolution: the submitter's `formenctype` wins over the form's
+ * `enctype`, exactly as `getSubmitMethod` resolves the method (#1307). Turbo
+ * resolves it the same way, in `core/drive/form_submission.js`.
+ *
+ * On PRESENCE, not truthiness (#1322), for the reason spelled out on
+ * `getSubmitMethod`: a present-but-empty `formenctype=""` overrides the form
+ * and normalizes to urlencoded, its own invalid-value default, so a button on
+ * a multipart form sends urlencoded with JS on exactly as it does with JS off.
+ *
+ * @param {HTMLFormElement} form
+ * @param {HTMLElement | null} submitter
+ */
+function getSubmitEnctype(form, submitter) {
+  return normalizeEnctype(
+    (submitter && submitter.hasAttribute('formenctype'))
+      ? submitter.getAttribute('formenctype')
+      : form.getAttribute('enctype'),
+  );
+}
+
+/**
+ * Encode a submission body the way the DECLARED enctype says to (#1307).
+ *
+ * The router used to build a `FormData` and send it with no explicit content
+ * type, so `fetch` always derived `multipart/form-data` and the authored
+ * `enctype` was never read at all. An author writing
+ * `enctype="application/x-www-form-urlencoded"`, which is also the HTML
+ * DEFAULT and therefore what a plain `<form method="post">` means, got
+ * urlencoded with JS off and multipart with JS on. Same form, two different
+ * request bodies, which is exactly what progressive enhancement rules out.
+ *
+ * A `File` entry serializes as its NAME under urlencoded, which is what the
+ * platform's own urlencoded serializer does. (Turbo drops file entries here
+ * entirely, in `http/fetch_request.js`, which loses a field the no-JS path
+ * sends.)
+ *
+ * A bound form is unaffected: it carries an explicit
+ * `enctype="multipart/form-data"`, and since #1307 a bound submitter carries
+ * `formenctype="multipart/form-data"`, so both resolve to multipart as before.
+ *
+ * @param {FormData} formData
+ * @param {'application/x-www-form-urlencoded' | 'multipart/form-data' | 'text/plain'} enctype
+ * @returns {FormData | URLSearchParams}
+ */
+function encodeSubmitBody(formData, enctype) {
+  if (enctype === 'multipart/form-data') return formData;
+  const params = new URLSearchParams();
+  for (const [k, v] of formData) params.append(k, typeof v === 'string' ? v : v.name);
+  return params;
 }
 
 /**
@@ -774,18 +1163,90 @@ function resolveTargetFrameId(trigger) {
  * @type {Set<string>}
  */
 const warnedKeys = new Set();
-/**
- * @param {string} key
- * @param {string} message
- * @param {'warn' | 'error'} [level] `'error'` for a BROKEN path, which is a
- *   different severity from a correct-but-suboptimal degradation. The dev
- *   overlay hooks neither, so raising the level pops nothing.
- */
+/** @param {string} key @param {string} message */
 function warnOnce(key, message, level = 'warn') {
   if (warnedKeys.has(key)) return;
   warnedKeys.add(key);
-  const sink = typeof console !== 'undefined' ? console[level] : null;
-  if (sink) sink(message);
+  if (typeof console === 'undefined') return;
+  const fn = level === 'error' ? console.error : console.warn;
+  if (fn) fn.call(console, message);
+}
+
+/**
+ * DEV-ONLY: report at submit time when a submission is carrying a bound
+ * action's identity it cannot actually deliver (#1307).
+ *
+ * This is the backstop for the shapes the renderer deliberately stopped
+ * refusing. A PLAIN `<button formmethod="get">` inside a bound form is a legal
+ * native override, so it renders, and the form's action then simply does not
+ * run. That is what the author asked for, but it is also what a mistake looks
+ * like, and submit time is the only moment the whole picture (the resolved
+ * method, the resolved enctype, and whether a bound identity is actually in
+ * the body) exists in one place.
+ *
+ * Observational: it runs BEFORE `preventDefault` and changes nothing about the
+ * submission. Silent in production, where a console error would be noise the
+ * visitor cannot act on; the server-side `onError` telemetry covers that side.
+ *
+ * @param {HTMLFormElement} form
+ * @param {HTMLElement | null} submitter
+ * @param {string} method lowercased, already resolved with native precedence
+ * @param {FormData} body
+ */
+function warnIfActionSubmissionCannotDeliver(form, submitter, method, body) {
+  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production') return;
+  // No identity in the body: an ordinary form with nothing to deliver.
+  if (!body.has(FORM_ACTION_FIELD)) return;
+  let path = '';
+  try { path = new URL(form.getAttribute('action') || location.href, location.href).pathname; }
+  catch { path = location.pathname; }
+  if (method !== 'post') {
+    warnOnce(
+      `submit-nowhere:${path}:${method}`,
+      `[webjs] this submission carries a bound server action's identity but submits as ${method.toUpperCase()}, which sends no body, so the identity rides the query string and the action never runs. A submitter's own formmethod overrides the form's, and WebJs honours it rather than refusing it, so check for a formmethod on the button that was pressed.`,
+      'error',
+    );
+    return;
+  }
+  const enctype = (submitter && submitter.getAttribute('formenctype'))
+    || form.getAttribute('enctype')
+    || 'application/x-www-form-urlencoded';
+  // `text/plain` ONLY, not the renderer's parseable-enctype allowlist.
+  // `enctype` is an enumerated attribute whose missing AND invalid value
+  // defaults are both `application/x-www-form-urlencoded`, so
+  // `enctype="nonsense"` submits a perfectly parseable body and the action
+  // runs. Testing against the allowlist would report that working form as
+  // broken.
+  if (enctype.toLowerCase() === 'text/plain') {
+    warnOnce(
+      `submit-nowhere:${path}:${enctype}`,
+      `[webjs] this submission carries a bound server action's identity but declares enctype="${enctype}", which the server cannot parse. The router declines to send it so both paths behave the same way, and both are answered with a 405. Drop the enctype and let the binding supply it.`,
+      'error',
+    );
+    return;
+  }
+  // The identity is going somewhere OTHER than this page (#1307). A bound
+  // submitter emits no `formaction` url, so the submission targets whatever the
+  // FORM targets, and a form declaring its own `action="/x"` sends its buttons
+  // to `/x` by ordinary native precedence.
+  //
+  // This is the one shape the redesign left both unrefused and, until here,
+  // unreported. The renderer used to throw for it, but only where it could SEE
+  // the form, which is exactly the cross-element judgement that could not be
+  // made from inside a component. So it is reported at submit time instead,
+  // where the resolved target is a fact rather than an inference.
+  //
+  // A warning rather than an error, because it is not necessarily wrong: if
+  // `/x` is a PAGE route the action really does run there, and the 422
+  // re-render simply lands on that page. It is only dead if `/x` is a
+  // `route.ts`, another origin, or nothing at all, and the client cannot tell
+  // which from here.
+  if (path && path !== location.pathname) {
+    warnOnce(
+      `submit-elsewhere:${path}`,
+      `[webjs] this submission carries a bound server action's identity but posts to "${path}" rather than this page, because the enclosing <form> declares its own action. A bound submitter emits no formaction, so the form's target wins, which is what native HTML does. The action runs only if "${path}" is a page route; against a route.ts or another origin the identity is ignored and nothing runs. Drop the form's action attribute to keep the submission on this page.`,
+    );
+  }
 }
 
 /**
@@ -980,65 +1441,6 @@ function reportFallback(cause, href, willReload = true) {
 }
 
 /**
- * Dev-only, fire-once hint: this submission carries a bound action's identity
- * but cannot deliver it on at least one path, and nothing else will say so
- * (#1307).
- *
- * The two branches differ in reach, so the messages do too. A non-POST method
- * loses the identity to the query string on BOTH paths. An `enctype="text/plain"`
- * breaks only the no-JS path, because with JS the router posts `FormData` and
- * ignores the attribute entirely.
- *
- * Reachable through the cannot-tell fallback: a submitter bound inside a
- * component whose host form is unbound. The client cannot answer that at
- * reconcile time (the question is skipped while the fragment is detached), but
- * by submit time both the form and the body are in hand, so the answer is
- * always available here.
- *
- * Logs, never throws. This runs in a delegated document-level listener, so a
- * throw would escape uncaught AND abort before `preventDefault` and
- * `performSubmission`, making dev behave differently from production.
- *
- * @param {HTMLFormElement} form
- * @param {HTMLElement | null} submitter
- * @param {string} method the resolved lowercase submission method
- * @param {FormData} body the body the submission will actually carry
- */
-function warnIfActionSubmissionCannotDeliver(form, submitter, method, body) {
-  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production') return;
-  // No identity in the body: an ordinary form with nothing to deliver.
-  if (!body.has(FORM_ACTION_FIELD)) return;
-  let path = '';
-  try { path = new URL(form.getAttribute('action') || location.href, location.href).pathname; }
-  catch { path = location.pathname; }
-  if (method !== 'post') {
-    warnOnce(
-      `submit-nowhere:${path}:${method}`,
-      `[webjs] this form carries a bound server action but submits as ${method.toUpperCase()}, which sends no body, so the identity rides the query string and the action never runs. Bind the enclosing <form> (<form action=\${formAction}>), which is what supplies method="post" at form start.`,
-      'error',
-    );
-    return;
-  }
-  const enctype = (submitter && submitter.getAttribute('formenctype'))
-    || form.getAttribute('enctype')
-    || 'application/x-www-form-urlencoded';
-  // `text/plain` ONLY, not the renderer's allowlist. `enctype` is an enumerated
-  // attribute whose missing AND invalid value defaults are both
-  // `application/x-www-form-urlencoded`, so `enctype="nonsense"` submits a
-  // parseable body and the action runs. Testing against the allowlist reported
-  // that working form as broken, which is the inversion `js-scan.js` documents
-  // and the check rule deliberately avoids; the two halves of one feature must
-  // not disagree on the same input.
-  if (enctype.toLowerCase() === 'text/plain') {
-    warnOnce(
-      `submit-nowhere:${path}:${enctype}`,
-      `[webjs] this form carries a bound server action but declares enctype="${enctype}", which the server cannot parse. With JavaScript on the router posts FormData and the action still runs, so this breaks only the no-JS path, where the submission is a 405. Drop the enctype and let the binding supply it.`,
-      'error',
-    );
-  }
-}
-
-/**
  * Dev-only, fire-once-per-id hint: a streamed Suspense resolution arrived but
  * its boundary placeholder was not in the DOM, so it was dropped (#1051). This
  * is benign when the navigation was superseded, degraded to a full load, or
@@ -1153,7 +1555,7 @@ function setNavigating(on) {
  * @returns {Map<string, { routeKey: string, start: Comment, end: Comment }> | null}
  *   The boundary map, or null when the tree's boundaries are malformed.
  */
-export function collectBoundaries(root) {
+function collectBoundaries(root) {
   /** @type {Map<string, { routeKey: string, start: Comment, end: Comment }>} */
   const out = new Map();
   /** @type {{ segment: string, routeKey: string, start: Comment }[]} */
@@ -1270,7 +1672,7 @@ export function collectBoundaries(root) {
  *   live: { routeKey: string, start: Comment, end: Comment },
  *   incoming: { routeKey: string, start: Comment, end: Comment } } | null}
  */
-export function planBoundarySwap(here, there) {
+function planBoundarySwap(here, there) {
   // Shared segments, shallowest first (a nested path prefix is shorter).
   const shared = [...here.keys()].filter((s) => there.has(s)).sort((a, b) => a.length - b.length);
   if (shared.length === 0) return null;
@@ -1407,6 +1809,33 @@ async function performNavigation(href, isPopState, frameId) {
   // Bump nav generation. Captured below + by anything we await into.
   const myToken = ++currentNavigationToken;
 
+  // A new navigation ends any restore window still open from an earlier one
+  // (#1310). The window outlives its own restore by design (a floor, then a
+  // ceiling), so without this a second navigation inside that span inherits
+  // suppressed anchoring: a Back that CLAMPS opens no window of its own, so it
+  // would run the whole growth under the previous restore's suppression and
+  // freeze its clamp, and a forward nav would carry it onto a different page
+  // entirely. Reopening for this navigation, if it earns one, happens below.
+  // The clamped path's catch-up is cancelled for the same reason: it chases an
+  // offset recorded for the page being navigated away from.
+  //
+  // A FRAME-targeted nav is excluded, for the same reason `loadFrame` is: it
+  // swaps one region and leaves the page, and so the restored scroll offset,
+  // intact. The codebase already treats a click-driven frame nav and a `src`
+  // self-load as the same thing, so exempting one and not the other would be
+  // the split this rule exists to avoid.
+  //
+  // All THREE move together. Exempting only the counter while still closing
+  // the window and aborting the catch-up would leave the split exactly where
+  // it was, one line further down: a form inside a frame, submitted by a
+  // component upgrading in the just-restored page, would hand anchoring back
+  // mid-restore and bring the whole double-count back.
+  if (!frameId) {
+    restoreGeneration += 1;
+    if (releaseScrollAnchor) releaseScrollAnchor();
+    if (cancelScrollCatchUp) cancelScrollCatchUp();
+  }
+
   // Snapshot the page the user is LEAVING (with its scroll position)
   // so back/forward navigation can restore it. We key under
   // `currentPageUrl` rather than `location.href` because on popstate
@@ -1441,14 +1870,98 @@ async function performNavigation(href, isPopState, frameId) {
           // Restore window scroll to where the user left it. Use
           // behavior:'instant' so an app-level `scroll-behavior: smooth`
           // stylesheet does not animate the restore (native nav jumps).
+          //
+          // `cached.scrollY` was recorded at the page's SETTLED height, and the
+          // DOM just swapped in is still shorter until its components upgrade
+          // and re-render. Suppress scroll anchoring across the restore, or the
+          // browser adds that late growth to the restored offset and the reader
+          // lands below where they left (#1310).
+          let releaseAnchor = () => {};
           if (typeof window !== 'undefined') {
-            window.scrollTo({ left: cached.scrollX, top: cached.scrollY, behavior: 'instant' });
+            // Restore the scroll, then decide whether to suppress anchoring.
+            //
+            // Suppress ONLY when the recorded offset was actually reached. A
+            // document that has not grown yet can be too SHORT to scroll that
+            // far, and the browser clamps to its current maximum. A reader at
+            // the bottom of the settled page is the clear case: the shortfall is
+            // then exactly the growth still to come, and anchoring ADDING that
+            // growth is what carries them back to the bottom. Suppressing there
+            // freezes the clamp instead and strands them a full page-growth
+            // ABOVE where they left, which is this bug's own mirror image. The
+            // two situations want opposite things and are told apart by the one
+            // question that separates them: did the scroll land.
+            //
+            // Both halves must read the SAME layout, and the scroll must be
+            // written against the page being restored. That is why this is
+            // ordered rather than simply inlined, and why the ordering differs
+            // by path.
+            const restoreScroll = () => {
+              window.scrollTo({ left: cached.scrollX, top: cached.scrollY, behavior: 'instant' });
+              if (window.scrollY >= cached.scrollY - 1) {
+                releaseAnchor = suppressScrollAnchoring();
+              } else {
+                // Clamped. Anchoring is left on, since it is what carries the
+                // reader back down, but it adds the FULL growth regardless of
+                // how far short the clamp fell, so on its own it only lands a
+                // reader who left at the very bottom. Chase the recorded offset
+                // instead, once the page is tall enough to hold it.
+                catchUpToRestoredScroll(cached.scrollY, cached.scrollX);
+              }
+            };
+            if (viewTransitionsEnabled() && typeof (/** @type any */ (document)).startViewTransition === 'function') {
+              // Under a view transition `applySwap` defers its DOM mutation a
+              // frame, so running now would write and measure against the
+              // OUTGOING page. Measured with a 60000px outgoing page and a
+              // 3000px restored one: the scroll "landed" at 20000, suppression
+              // opened, and the restored page then clamped to 2416 with
+              // anchoring held off, which is precisely the stranding the
+              // conditional exists to prevent. Wait for the swap to commit.
+              //
+              // Guarded, because this is the one path where the restore
+              // outlives the call that scheduled it. Every cancel site in this
+              // feature (performNavigation, performSubmission,
+              // disableClientRouter) runs at the START of the next thing, so a
+              // navigation, submission, or disable arriving inside the deferred
+              // frame would close the window and then have this reopen it,
+              // scrolling a page it was never meant for to an offset recorded
+              // for the previous history entry. The synchronous branch below
+              // cannot outlive anything and so needs no guard.
+              const myRestore = restoreGeneration;
+              _swapCommit.then(() => {
+                if (myRestore !== restoreGeneration || !enabled) return;
+                restoreScroll();
+              }).catch(() => {});
+            } else {
+              // The synchronous path, and the read must STAY synchronous here.
+              // Deferring it even by a microtask breaks the fix outright: by
+              // then the restored components' renders have been applied, and
+              // reading `scrollY` forces the layout that flushes them, so
+              // anchoring runs DURING the read and hands back the
+              // already-shifted offset. Measured on /ui/button, the suppression
+              // landed 19ms late with `scrollY` already 800 -> 1563. What makes
+              // it correct is not which document it sees but that it sees the
+              // same layout the scroll just landed in.
+              restoreScroll();
+            }
           }
           // Fire-and-forget revalidation. Uses a fresh AbortController
           // since this background fetch is allowed to overlap with the
           // next foreground nav (it'll get aborted if a new nav lands).
-          fetchAndApply(href, frameId, /* recordHistory */ false, optimisticState, 'GET', null, signal, myToken, /* revalidating */ true)
+          //
+          // Closing the anchoring window on THIS revalidation's settle (plus two
+          // frames for the re-applied DOM to lay out) is what keeps the window
+          // tied to one restore. A height observer could not tell a settling
+          // restore from a streaming <webjs-suspense> boundary (#471 / #473).
+          //
+          // The floor is what makes that safe. Waiting on the revalidation ALONE
+          // ties the window's length to network latency rather than to the
+          // growth it guards, so a server that answers faster than the restored
+          // page renders closes it early and the reader lands low again, which
+          // is the whole defect.
+          const revalidated = fetchAndApply(href, frameId, /* recordHistory */ false, optimisticState, 'GET', null, signal, myToken, /* revalidating */ true)
             .catch(() => {});
+          const floor = new Promise((r) => setTimeout(r, ANCHOR_SUPPRESS_FLOOR_MS));
+          Promise.all([revalidated, floor]).then(() => afterTwoFrames(releaseAnchor));
           return;
         }
       }
@@ -1505,7 +2018,11 @@ async function performNavigation(href, isPopState, frameId) {
  *
  * @param {string} href     Absolute target URL.
  * @param {string} method   Lowercased HTTP verb.
- * @param {FormData} body
+ * @param {FormData | URLSearchParams} body  Encoded per the declared enctype
+ *   (#1307): `FormData` for multipart, `URLSearchParams` for urlencoded. Both
+ *   iterate as `[name, value]` pairs, which is all the safe-method query-string
+ *   promotion below needs, and `fetch` derives the right content type from
+ *   either without an explicit header.
  * @param {string | null} frameId
  * @param {HTMLFormElement | null} [form]  The submitted form, for busy + events.
  */
@@ -1514,6 +2031,15 @@ async function performSubmission(href, method, body, frameId, form) {
   activeAbortController = new AbortController();
   const signal = activeAbortController.signal;
   const myToken = ++currentNavigationToken;
+  // Same reasoning as performNavigation: a submission is a navigation, so it
+  // ends any restore window a recent Back left open (#1310), and cancels a
+  // clamped restore's catch-up. Frame-targeted submissions are excluded on the
+  // same reasoning as the frame navs above.
+  if (!frameId) {
+    restoreGeneration += 1;
+    if (releaseScrollAnchor) releaseScrollAnchor();
+    if (cancelScrollCatchUp) cancelScrollCatchUp();
+  }
 
   const isSafe = method === 'get' || method === 'head';
   let url = new URL(href, location.href);
@@ -3030,12 +3556,28 @@ function upgradeCustomElementsInRange(range) {
 let _swapCommit = Promise.resolve();
 
 function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc) {
-  // SSR action seeding (#472): ingest any seed payload the incoming page
-  // carries BEFORE its components are grafted into the live DOM and upgrade, so
-  // a soft-navigated async component resolves from the seed instead of
-  // re-fetching. Scanning `doc` (the detached parse) also strips the seed
-  // carriers, so the inert payload never lands in the live document.
-  try { scanSeeds(doc); } catch { /* seeding is best-effort */ }
+  // SSR action seeding (#472): ingest the incoming page's seed payload BEFORE
+  // its components are grafted into the live DOM and upgrade, so a
+  // soft-navigated async component resolves from the seed instead of
+  // re-fetching. Scanning `doc` (the detached parse) also strips the carriers,
+  // so the inert payload never lands in the live document.
+  //
+  // Called at each COMMIT point rather than once up front, because this function
+  // can still decide to throw the response away after parsing it (a hard
+  // navigate, or a background revalidation with no trustworthy boundary plan).
+  // Scanning eagerly would clear the visible page's own unconsumed seeds and
+  // ingest a render that is never painted, so the next `async render()` would
+  // hit on data that disagrees with the HTML on screen. That is the same hole
+  // the frame ID-MISSING case closes, reached through a different discard.
+  //
+  // A frame swap is NOT a page navigation, so say so: the consumer must leave
+  // the surrounding page's state alone (see `scanSeeds`).
+  let seedsScanned = false;
+  const ingestSeeds = () => {
+    if (seedsScanned) return;
+    seedsScanned = true;
+    try { scanSeeds(doc, { frame: !!frameId }); } catch { /* seeding is best-effort */ }
+  };
 
   // Every host in this parsed doc is FRAMEWORK-SERIALIZED markup (an SSR
   // fragment or a back/forward snapshot of post-hydration HTML), never
@@ -3195,6 +3737,9 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
 
   // 1. webjs-frame escape hatch.
   if (frameId) {
+    // Both outcomes here (a successful subtree swap, or frame-missing) discard
+    // whatever the parse carried, so this is safe wherever it lands.
+    ingestSeeds();
     const target = document.querySelector(`webjs-frame#${CSS.escape(frameId)}`);
     const source = doc.querySelector(`webjs-frame#${CSS.escape(frameId)}`);
     if (target && source) {
@@ -3250,6 +3795,9 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
   const plan = here && there ? planBoundarySwap(here, there) : null;
 
   if (plan) {
+    // Committed: this response is being applied, so its seeds are the ones the
+    // user is about to look at.
+    ingestSeeds();
     const { mode, live, incoming } = plan;
     // ADD-ONLY head merge: the outer layout stays mounted, so its head-bound
     // runtime state (Tailwind injection, etc.) must not be invalidated.
@@ -3312,6 +3860,7 @@ function applySwap(doc, frameId, revalidating, href, incomingBuild, incomingSrc)
   // because the user is already viewing the page). Full head merge;
   // `mergeHead` PRESERVES stylesheets and `<style>` unconditionally
   // (#936) so the swap can never leave the page unstyled.
+  ingestSeeds();   // committed: past both discard branches above
   mergeHead(doc.head);
   // Persist permanent elements by node identity across the full-body
   // swap: move each live [data-webjs-permanent][id] node into the matching
@@ -4762,6 +5311,8 @@ export {
   getSubmitMethod as _getSubmitMethod,
   getSubmitAction as _getSubmitAction,
   buildSubmitFormData as _buildSubmitFormData,
+  getSubmitEnctype as _getSubmitEnctype,
+  encodeSubmitBody as _encodeSubmitBody,
   restoreOptimistic as _restoreOptimistic,
   eligibleAnchorHref as _eligibleAnchorHref,
   viewTransitionsEnabled as _viewTransitionsEnabled,

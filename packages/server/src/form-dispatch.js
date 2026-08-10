@@ -318,11 +318,18 @@ export function reportFormActionMissing(url, req, formData, onError, logger, dev
 
 /**
  * A page GET carrying `__webjs_action` in the QUERY STRING (#1307). Nothing in
- * this framework ever puts the reserved field in a url, so this can only be a
- * bound submitter submitted through an UNBOUND form: the form defaulted to GET,
- * the browser (or `performSubmission`, which promotes a safe-method body to the
- * query string) put the identity in the url, and the page is about to render as
- * if nothing was submitted.
+ * this framework ever puts the reserved field in a url, so a submission
+ * carrying a bound action's identity went out as a GET: the identity rode the
+ * query string (a browser does this natively, and `performSubmission` promotes
+ * a safe-method body the same way), no action ran, and the page is about to
+ * render as if nothing was submitted.
+ *
+ * A bound submitter no longer produces this by accident, because it carries its
+ * own `formmethod="post"`. What reaches here now is an explicit override the
+ * author wrote and the renderer deliberately honours: a `formmethod="get"` on
+ * the pressed button, or on the form, wins by native precedence. This is the
+ * production counterpart to the dev-time client guard, which reports the same
+ * shape at submit time.
  *
  * DETECTS ONLY. The GET keeps rendering its 200 page, because answering
  * differently on a query parameter would hand any visitor a way to turn any
@@ -347,7 +354,7 @@ export function reportFormSubmittedAsGet(url, req, onError, logger, dev, route) 
   if (!firstSighting(`WEBJS_FORM_SUBMITTED_AS_GET ${req.method} ${routeKeyOf(route, url)}`)) return;
   if (willLog) {
     logger.warn(
-      `[webjs] ${url.pathname} was requested with \`${FORM_ACTION_FIELD}\` in the query string, which only a bound submitter inside an UNBOUND <form> produces. The form had no method, so the browser submitted it as a GET, the action never ran, and this page is simply re-rendering. Bind the enclosing form: <form action=\${yourAction}>. The submitter-needs-bound-form rule finds these statically.`,
+      `[webjs] ${url.pathname} was requested with \`${FORM_ACTION_FIELD}\` in the query string, which means a submission carrying a bound action's identity went out as a GET. A GET sends no body, so the identity rode the url, the action never ran, and this page is simply re-rendering. Look for a formmethod="get" on the button that was pressed, or a method="get" on its form: a submitter's own formmethod wins by native precedence and WebJs honours it rather than refusing it.`,
     );
   }
   if (!willReport) return;

@@ -645,8 +645,8 @@ export function matchClosingParenthesis(s, start) {
  * version incremented the outer depth at `${` and then never decremented it
  * (the closing `}` arrived while still in template state), so depth could
  * never return to zero and a class body holding `` html`…${x}…` `` was
- * unmatchable. Every caller passed a masked source in which holes are already
- * blanked, so the bug was invisible until one passed raw source (#1307).
+ * unmatchable. Every caller passes a masked source in which holes are already
+ * blanked, so the bug is invisible until one passes raw source (#1307).
  *
  * @param {string} s
  * @param {number} start

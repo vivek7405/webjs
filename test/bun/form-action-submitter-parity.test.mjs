@@ -1,5 +1,11 @@
 /**
- * Cross-runtime parity test for per-submitter `formaction=${action}` (#1207).
+ * Cross-runtime parity test for per-submitter `formaction=${action}` (#1207),
+ * and for the submission attributes a bound submitter carries itself (#1307).
+ *
+ * SSR is runtime-sensitive, so the emission has to be proven on Bun as well as
+ * Node: the whole point of #1307 is that the button ships `formmethod="post"`
+ * and an enctype in the served HTML, and a runtime that emitted one and not the
+ * other would produce a form that silently posts nowhere with JS off.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,15 +26,46 @@ test('SSR: formaction=${fn} on submitter inside bound form emits submitter name=
   `;
   const out = await renderToString(tpl, { ssr: true });
   assert.match(out, /<input type="hidden" name="__webjs_action" value="hash\/saveAction">/);
-  assert.match(out, /<button name="__webjs_action" value="hash\/deleteAction">Delete<\/button>/);
+  assert.match(
+    out,
+    /<button name="__webjs_action" value="hash\/deleteAction" formmethod="post" formenctype="multipart\/form-data">Delete<\/button>/,
+  );
 });
 
-test('SSR: formaction=${fn} on unbound button throws actionable refusal', async () => {
-  const tpl = html`<button formaction=${deleteAction}>Delete</button>`;
-  await assert.rejects(
-    () => renderToString(tpl, { ssr: true }),
-    /requires the enclosing <form> to also be bound/,
+test('SSR: a bound submitter is self-sufficient on this runtime (#1307)', async () => {
+  // The headline of #1307, asserted cross-runtime: a form that binds nothing and
+  // declares no method, whose button still submits a POST the action can read.
+  // This threw before the change, on both runtimes.
+  for (const tpl of [
+    html`<form><button formaction=${deleteAction}>Delete</button></form>`,
+    html`<button formaction=${deleteAction}>Delete</button>`,
+    html`<form method="get"><button formaction=${deleteAction}>Delete</button></form>`,
+  ]) {
+    const out = await renderToString(tpl, { ssr: true });
+    assert.match(out, /name="__webjs_action" value="hash\/deleteAction"/);
+    assert.match(out, /formmethod="post"/, 'the button supplies its own method');
+    assert.match(out, /formenctype="multipart\/form-data"/, 'and its own enctype');
+  }
+});
+
+test('SSR: a bound submitter contradicting its own binding refuses on this runtime', async () => {
+  for (const [tpl, expected] of [
+    [html`<button formaction=${deleteAction} formmethod="get">D</button>`, /formmethod=/],
+    [html`<button formaction=${deleteAction} formenctype="text/plain">D</button>`, /formenctype=/],
+    [html`<button formaction=${deleteAction} formmethod="dialog">D</button>`, /dialog/],
+  ]) {
+    await assert.rejects(() => renderToString(tpl, { ssr: true }), expected);
+  }
+});
+
+test("SSR: a PLAIN submitter's own override is left alone on this runtime", async () => {
+  // #1307 reverses #1207's Part B, and the reversal has to be identical on both
+  // runtimes or the same markup would refuse on one and render on the other.
+  const out = await renderToString(
+    html`<form action=${saveAction}><button formmethod="get">Search</button></form>`,
+    { ssr: true },
   );
+  assert.match(out, /formmethod="get"/);
 });
 
 test('SSR: formaction=${fn} on submitter with name attribute throws refusal', async () => {
@@ -72,17 +109,36 @@ test('SSR: nested submitter templates keep the enclosing form binding', async ()
 // runtime and not the other would ship a page that works in dev and 405s in
 // production, which is the same works-one-way-only failure Part B exists to
 // close.
-test('SSR: Part B refuses an unparseable submitter enctype on both runtimes', async () => {
+test('SSR: a BOUND submitter\'s own contradictions refuse on both runtimes', async () => {
+  // Was "Part B refuses ...". #1307 scoped every row here to a submitter that
+  // BINDS: the author attached an action to this button and then told this same
+  // button to submit in a way that action could never read. The rows about a
+  // PLAIN button's override moved to the carve-out test below, because native
+  // HTML defines that outcome and the renderer now honours it.
   const refused = [
-    ['plain formenctype', html`<form action=${saveAction}><button formenctype="text/plain">Save</button></form>`],
-    ['plain formmethod', html`<form action=${saveAction}><button formmethod="get">Save</button></form>`],
-    ['padded formmethod', html`<form action=${saveAction}><button formmethod=" post ">Save</button></form>`],
-    ['submit input', html`<form action=${saveAction}><input type="submit" formenctype="text/plain"></form>`],
-    ['nested template', html`<form action=${saveAction}>${html`<button formmethod="get">Save</button>`}</form>`],
+    ['bound formenctype', html`<button formaction=${deleteAction} formenctype="text/plain">Save</button>`],
+    ['bound formmethod', html`<button formaction=${deleteAction} formmethod="get">Save</button>`],
+    ['bound padded formmethod', html`<button formaction=${deleteAction} formmethod=" post ">Save</button>`],
     ['bound plus dialog', html`<form action=${saveAction}><button formmethod="dialog" formaction=${deleteAction}>x</button></form>`],
   ];
   for (const [label, tpl] of refused) {
     await assert.rejects(() => renderToString(tpl, { ssr: true }), /formenctype=|formmethod=|dialog/, label);
+  }
+});
+
+test("SSR: a PLAIN submitter's overrides render untouched on both runtimes", async () => {
+  // Every row here refused before #1307. The reversal has to be identical on
+  // Node and Bun, or the same markup would refuse on one runtime and render on
+  // the other, which is the precise class of bug this file exists to catch.
+  const allowed = [
+    ['plain formenctype', html`<form action=${saveAction}><button formenctype="text/plain">Save</button></form>`, /formenctype="text\/plain"/],
+    ['plain formmethod', html`<form action=${saveAction}><button formmethod="get">Save</button></form>`, /formmethod="get"/],
+    ['submit input', html`<form action=${saveAction}><input type="submit" formenctype="text/plain">`, /formenctype="text\/plain"/],
+    ['nested template', html`<form action=${saveAction}>${html`<button formmethod="get">Save</button>`}</form>`, /formmethod="get"/],
+  ];
+  for (const [label, tpl, expected] of allowed) {
+    const out = await renderToString(tpl, { ssr: true });
+    assert.match(out, expected, label);
   }
 });
 

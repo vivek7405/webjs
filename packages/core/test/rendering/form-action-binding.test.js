@@ -258,10 +258,10 @@ test('binding is scoped to <form> and bound submitters: non-action shapes refuse
     assert.match(msg, /function was interpolated into/, 'refused as a stringify, not bound');
     assert.doesNotMatch(msg, /SECRET/);
   }
-  // Standalone submitter outside a bound form throws the form-binding requirement error:
-  let unboundMsg = '';
-  try { await renderToString(html`<button formaction=${submitFeedback}></button>`, { ssr: true }); } catch (e) { unboundMsg = String(e.message); }
-  assert.match(unboundMsg, /requires the enclosing <form> to also be bound/);
+  // A standalone submitter is NOT a non-action shape. Since #1307 it binds and
+  // carries its own submission, so it belongs in neither refusal above.
+  const standalone = await renderToString(html`<button formaction=${submitFeedback}></button>`, { ssr: true });
+  assert.match(standalone, /name="__webjs_action"/);
 });
 
 test('formaction=${fn} on submitter inside a bound form emits submitter action identity', async () => {
@@ -270,7 +270,51 @@ test('formaction=${fn} on submitter inside a bound form emits submitter action i
     html`<form action=${submitFeedback}><button formaction=${submitFeedback}>Save</button></form>`,
     { ssr: true }
   );
-  assert.match(out, /<button name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback">Save<\/button>/);
+  assert.match(
+    out,
+    /<button name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback" formmethod="post" formenctype="multipart\/form-data">Save<\/button>/,
+  );
+});
+
+test('a bound submitter is SELF-SUFFICIENT: it needs nothing from its form (#1307)', async () => {
+  withResolver();
+  // The shape #1307 was filed about: a form that binds nothing and declares no
+  // method. Before this change SSR refused it where it could see the form, and
+  // bound it silently where it could not, producing a GET that ran no action.
+  const bare = await renderToString(
+    html`<form><button formaction=${submitFeedback}>Go</button></form>`, { ssr: true });
+  assert.match(bare, /formmethod="post"/, 'the button supplies its own method');
+  assert.match(bare, /formenctype="multipart\/form-data"/, 'and its own enctype');
+  assert.match(bare, /name="__webjs_action"/);
+  // No enclosing form at all, and a form that explicitly declares GET. The
+  // button overrides both, exactly as native HTML says a submitter does.
+  for (const tpl of [
+    html`<button formaction=${submitFeedback}>Go</button>`,
+    html`<form method="get"><button formaction=${submitFeedback}>Go</button></form>`,
+  ]) {
+    const out = await renderToString(tpl, { ssr: true });
+    assert.match(out, /formmethod="post"/);
+    assert.match(out, /formenctype="multipart\/form-data"/);
+  }
+  // COUNTERFACTUAL: delete the two injections in `bindSubmitterStartTag` and
+  // every assertion above fails, because the button falls back to whatever the
+  // enclosing form declares, which here is a GET carrying no body.
+});
+
+test('the author\'s own formmethod / formenctype wins; only the missing one is injected', async () => {
+  withResolver();
+  const ownMethod = await renderToString(
+    html`<button formaction=${submitFeedback} formmethod="post">Go</button>`, { ssr: true });
+  assert.equal(ownMethod.match(/formmethod=/g).length, 1, 'not duplicated');
+  assert.match(ownMethod, /formenctype="multipart\/form-data"/, 'the missing one is still supplied');
+
+  const ownEnctype = await renderToString(
+    html`<button formaction=${submitFeedback} formenctype="application/x-www-form-urlencoded">Go</button>`,
+    { ssr: true },
+  );
+  assert.equal(ownEnctype.match(/formenctype=/g).length, 1);
+  assert.match(ownEnctype, /formenctype="application\/x-www-form-urlencoded"/, 'the author\'s value survives');
+  assert.match(ownEnctype, /formmethod="post"/);
 });
 
 test('a bound form nested among siblings does not disturb them', async () => {
@@ -380,10 +424,10 @@ test('formaction=${fn} submitter refusals: name attribute, input type=image, unp
 });
 
 test('a formaction binding on <input type="submit"> is refused for its label', async () => {
-  // `<input type="submit">` IS a submitter, so Part B still judges it, but the
-  // identity has to occupy `value`, which on this control is also the visible
-  // caption. Binding would render a button captioned with the action id, and
-  // the only fix (`value="Publish"`) is the channel the identity needs.
+  // `<input type="submit">` IS a submitter, but the identity has to occupy
+  // `value`, which on this control is also the visible caption. Binding would
+  // render a button captioned with the action id, and the only fix
+  // (`value="Publish"`) is the channel the identity needs.
   withResolver();
   await assert.rejects(
     () => renderToString(
@@ -392,13 +436,15 @@ test('a formaction binding on <input type="submit"> is refused for its label', a
     ),
     /also its visible label/,
   );
-  // Part B still reaches it, so the control is not simply ignored.
+  // The label refusal fires FIRST, before any submission attribute is looked
+  // at, so a bound `<input type="submit">` reports the label conflict whatever
+  // else it carries.
   await assert.rejects(
     () => renderToString(
-      html`<form action=${submitFeedback}><input type="submit" formmethod="get"></form>`,
+      html`<form action=${submitFeedback}><input type="submit" formaction=${submitFeedback} formmethod="get"></form>`,
       { ssr: true },
     ),
-    /formmethod=/,
+    /also its visible label/,
   );
   // And a plain labelled one renders untouched.
   const ok = await renderToString(
@@ -459,7 +505,7 @@ test('formaction submitters work when rendered by a nested template', async () =
   withResolver();
   const buttons = () => html`<button formaction=${submitFeedback}>Delete</button>`;
   const out = await renderToString(html`<form action=${submitFeedback}>${buttons()}</form>`, { ssr: true });
-  assert.match(out, /<button name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback">Delete<\/button>/);
+  assert.match(out, /<button name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback" formmethod="post" formenctype="multipart\/form-data">Delete<\/button>/);
 });
 
 test('two action holes are refused whichever position the bound one is in', async () => {
@@ -473,60 +519,86 @@ test('two action holes are refused whichever position the bound one is in', asyn
 });
 
 // ---------------------------------------------------------------------------
-// #1207 Part B: a submitter's own `formmethod` / `formenctype` can defeat a
-// bound form WITHOUT the button binding an action of its own, and neither
-// renderer used to look at them. `<form action=${fn}><button
-// formenctype="text/plain">` submitted fine under JS (the router posts
-// FormData, ignoring formenctype) and was a bare 405 without it, which is the
-// works-one-way-only near-miss refused everywhere else in this module. So the
-// sweep runs for EVERY submitter inside a bound form, not only a bound one.
+// #1307 REVERSES #1207's Part B.
+//
+// Part B refused a `formmethod` / `formenctype` on EVERY submitter inside a
+// bound form, binding or not, on the stated grounds that either "works under JS
+// (the router posts FormData) and is a bare 405 without it". That reasoning was
+// only ever true of `formenctype`. For `formmethod` the router already honours
+// the submitter's override with native precedence and promotes a safe-method
+// body to the query string, so both paths lose the identity identically and
+// there was never a works-one-way-only half to refuse.
+//
+// The rule now is same-element only: a BOUND submitter's own contradictory
+// value refuses, and a PLAIN submitter's override is a legal native
+// instruction that renders untouched. The dev-time client guard reports at
+// submit time when a submission holds an identity it cannot deliver.
 // ---------------------------------------------------------------------------
 
-test('an unparseable formenctype on a plain submitter inside a bound form is refused', async () => {
+test('a PLAIN submitter\'s own formenctype inside a bound form renders untouched', async () => {
+  // #1207 refused every one of these. Native HTML says the submitter's override
+  // wins, the author typed it deliberately, and the form's action simply does
+  // not run, which is what the same markup does in any other framework.
   withResolver();
-  // The exact shape #1207 opened with: no formaction hole anywhere on the
-  // button, so nothing about the BINDING brings the renderer to this tag.
   for (const tpl of [
     html`<form action=${submitFeedback}><button formenctype="text/plain">Save</button></form>`,
     html`<form action=${submitFeedback}><input type="submit" formenctype="text/plain"></form>`,
     html`<form action=${submitFeedback}><button formenctype="TEXT/PLAIN">Save</button></form>`,
   ]) {
-    await assert.rejects(() => renderToString(tpl, { ssr: true }), /formenctype=/);
+    const out = await renderToString(tpl, { ssr: true });
+    assert.match(out, /formenctype="(text\/plain|TEXT\/PLAIN)"/, 'left exactly as written');
   }
 });
 
-test('a non-POST formmethod on a plain submitter inside a bound form is refused', async () => {
+test('a PLAIN submitter\'s own formmethod inside a bound form renders untouched', async () => {
   withResolver();
   for (const tpl of [
     html`<form action=${submitFeedback}><button formmethod="get">Save</button></form>`,
     html`<form action=${submitFeedback}><button formmethod="GET">Save</button></form>`,
     html`<form action=${submitFeedback}><input type="submit" formmethod="get"></form>`,
+    html`<form action=${submitFeedback}><button formmethod=" post ">Save</button></form>`,
   ]) {
-    await assert.rejects(() => renderToString(tpl, { ssr: true }), /formmethod=/);
+    const out = await renderToString(tpl, { ssr: true });
+    assert.match(out, /formmethod=/, 'left exactly as written');
   }
 });
 
-test('a padded formmethod is refused, matching the form-level untrimmed rule', async () => {
+test('a padded formmethod on a BOUND submitter is refused, matching the form-level untrimmed rule', async () => {
   // `formmethod` is an enumerated attribute matched against exact keywords with
   // no whitespace stripping, so `" post "` falls to the invalid-value default
   // and the button submits as a GET. Trimming here would accept it and ship the
-  // silently-posts-nowhere submitter the refusal exists to prevent.
+  // silently-posts-nowhere submitter the refusal exists to prevent. Scoped to a
+  // BOUND submitter now: on a plain one the author owns the consequence.
   withResolver();
   await assert.rejects(
     () => renderToString(
-      html`<form action=${submitFeedback}><button formmethod=" post ">Save</button></form>`,
+      html`<button formaction=${submitFeedback} formmethod=" post ">Save</button>`,
       { ssr: true },
     ),
     /formmethod=" post "/,
   );
 });
 
+test('a BOUND submitter contradicting its own binding is still refused', async () => {
+  // The surviving half of Part B, and the whole of the new rule: the author
+  // bound an action to THIS button and then told THIS button to submit in a way
+  // that action could never read.
+  withResolver();
+  for (const [tpl, pattern] of [
+    [html`<button formaction=${submitFeedback} formmethod="get">x</button>`, /formmethod=/],
+    [html`<button formaction=${submitFeedback} formmethod="PATCH">x</button>`, /formmethod=/],
+    [html`<button formaction=${submitFeedback} formenctype="text/plain">x</button>`, /formenctype=/],
+  ]) {
+    await assert.rejects(() => renderToString(tpl, { ssr: true }), pattern);
+  }
+});
+
 test('parseable submitter enctypes stay fully supported', async () => {
-  // Part B refuses VALUES that cannot work, never the attribute itself.
+  // The rule refuses VALUES that cannot work, never the attribute itself.
   withResolver();
   for (const enc of ['multipart/form-data', 'application/x-www-form-urlencoded']) {
     const out = await renderToString(
-      html`<form action=${submitFeedback}><button formenctype="${enc}">Save</button></form>`,
+      html`<form action=${submitFeedback}><button formaction=${submitFeedback} formenctype="${enc}">Save</button></form>`,
       { ssr: true },
     );
     assert.match(out, new RegExp(`formenctype="${enc.replace(/[/]/g, '\\/')}"`));
@@ -572,9 +644,9 @@ test('a submitter retargeted by a static formaction keeps its own method', async
   assert.match(out, /formmethod="get"/);
 });
 
-test('Part B ignores controls that do not submit', async () => {
-  // `formmethod` / `formenctype` are inert on anything that is not a submitter,
-  // so flagging them there would be a false positive on valid markup.
+test('formmethod / formenctype on a non-submitting control are inert and untouched', async () => {
+  // Inert on anything that is not a submitter, so touching them there would be a
+  // false positive on valid markup.
   withResolver();
   const out = await renderToString(
     html`<form action=${submitFeedback}><input type="text" name="q" formenctype="text/plain"><button type="button" formmethod="get">x</button></form>`,
@@ -583,8 +655,7 @@ test('Part B ignores controls that do not submit', async () => {
   assert.match(out, /name="q"/);
 });
 
-test('Part B applies only INSIDE a bound form', async () => {
-  // An ordinary hand-written form is not this module's business.
+test('an ordinary hand-written form is not this module\'s business', async () => {
   withResolver();
   const out = await renderToString(
     html`<form method="post"><button formenctype="text/plain">Save</button></form>`,
@@ -593,9 +664,10 @@ test('Part B applies only INSIDE a bound form', async () => {
   assert.match(out, /formenctype="text\/plain"/);
 });
 
-test('the bound-form scope closes at </form>', async () => {
-  // `insideBoundForm` is scoped by the tag stream, so a submitter written after
-  // the bound form has closed is outside it and judged by nothing.
+test('a plain submitter after a bound form closes is untouched', async () => {
+  // There is no enclosing-form scope left to leak (#1307 deleted it), so this
+  // pins the absence: a plain button anywhere keeps whatever it was written
+  // with, before or after any form.
   withResolver();
   const out = await renderToString(
     html`<form action=${submitFeedback}><button>Save</button></form><form method="post"><button formmethod="get">Later</button></form>`,
@@ -604,35 +676,37 @@ test('the bound-form scope closes at </form>', async () => {
   assert.match(out, /formmethod="get"/);
 });
 
-test('Part B reaches a submitter arriving through a nested template', async () => {
-  // The flag is threaded into nested renders, so a button rendered by a child
-  // template inside a bound form is judged exactly like an inline one.
+test('a plain submitter arriving through a nested template is untouched too', async () => {
+  // Nothing is threaded into nested renders any more, which is the point: the
+  // verdict does not depend on how the button reached the page.
   withResolver();
   const row = () => html`<button formenctype="text/plain">Save</button>`;
-  await assert.rejects(
-    () => renderToString(html`<form action=${submitFeedback}>${row()}</form>`, { ssr: true }),
-    /formenctype=/,
-  );
+  const out = await renderToString(html`<form action=${submitFeedback}>${row()}</form>`, { ssr: true });
+  assert.match(out, /formenctype="text\/plain"/);
 });
 
-test('the streaming machine applies Part B identically', async () => {
+test('the streaming machine judges a BOUND submitter identically', async () => {
   // `streamTemplate` is a SEPARATE state machine that inherits nothing, and
   // #1154 already shipped a guard in one machine and not the other once.
   withResolver();
   await assert.rejects(
     () => drain(renderToStream(
-      html`<form action=${submitFeedback}><button formenctype="text/plain">Save</button></form>`,
+      html`<button formaction=${submitFeedback} formenctype="text/plain">Save</button>`,
       { ssr: false },
     )),
     /formenctype=/,
   );
   await assert.rejects(
     () => drain(renderToStream(
-      html`<form action=${submitFeedback}><button formmethod="get">Save</button></form>`,
+      html`<button formaction=${submitFeedback} formmethod="get">Save</button>`,
       { ssr: false },
     )),
     /formmethod=/,
   );
+  // And INJECTS identically, which is the half a refusal-only test would miss.
+  const bound = await drain(renderToStream(
+    html`<form><button formaction=${submitFeedback}>Save</button></form>`, { ssr: false }));
+  assert.match(bound, /formmethod="post" formenctype="multipart\/form-data"/);
   const ok = await drain(renderToStream(
     html`<form action=${submitFeedback}><button formmethod="dialog">Close</button></form>`,
     { ssr: false },
@@ -664,83 +738,37 @@ test('a submitter rendered by a component inside a bound form binds', async () =
     html`<form action=${submitFeedback}><row-actions-bind></row-actions-bind></form>`,
     { ssr: true, dev: false },
   );
-  assert.match(out, /<button name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback">Delete<\/button>/,
+  assert.match(out, /<button name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback" formmethod="post" formenctype="multipart\/form-data">Delete<\/button>/,
     'the component-rendered button carries the identity');
   assert.ok(!out.includes('data-webjs-error'), 'and the component did not fail to render');
 });
 
-test('a conclusively form-less submitter is still refused', async () => {
-  // The skip is narrow. Where the scan really can see there is no form, the
-  // answer is known and the refusal stands.
+test('a form-less submitter BINDS now, which is the whole of #1307', async () => {
+  // This block used to prove the opposite. SSR distinguished cannot-tell from
+  // conclusively-none and refused the latter, because a submitter could not
+  // supply `method="post"` for itself. It can now, so every shape below binds.
   withResolver();
-  await assert.rejects(
-    () => renderToString(html`<button formaction=${submitFeedback}>x</button>`, { ssr: true }),
-    /requires the enclosing <form> to also be bound/,
-  );
-  await assert.rejects(
-    () => renderToString(
-      html`<form action=${submitFeedback}><button>a</button></form><button formaction=${submitFeedback}>x</button>`,
-      { ssr: true },
-    ),
-    /requires the enclosing <form> to also be bound/,
-    'and the scope really does close at </form>',
-  );
+  for (const tpl of [
+    html`<button formaction=${submitFeedback}>x</button>`,
+    html`<form action=${submitFeedback}><button>a</button></form><button formaction=${submitFeedback}>x</button>`,
+    html`<form method="post"><button formaction=${submitFeedback}>x</button></form>`,
+    html`<form><button formaction=${submitFeedback}>x</button></form>`,
+  ]) {
+    const out = await renderToString(tpl, { ssr: true });
+    assert.match(out, /formmethod="post"/);
+    assert.match(out, /formenctype="multipart\/form-data"/);
+  }
 });
 
-test('an UNBOUND form is refused, which is a different answer from cannot-tell', async () => {
-  withResolver();
-  await assert.rejects(
-    () => renderToString(
-      html`<form method="post"><button formaction=${submitFeedback}>x</button></form>`,
-      { ssr: true },
-    ),
-    /requires the enclosing <form> to also be bound/,
-  );
-});
-
-test('the STREAMING renderer refuses both knowable submitter shapes too', async () => {
-  // The streamed state machine is a second implementation of the same scan, so
-  // the shapes both machines DO express have to be asserted through both entry
-  // points, or a change to one could pass on the other's coverage.
+test("a component's own unbound form no longer swallows its submitter", async () => {
+  // The #1307 failure in its purest form. A component renders in a SEPARATE SSR
+  // pass with no view of the host page, so the old scan seeded 'unknown' and
+  // could not judge the enclosing form. Where it thought it COULD judge (the
+  // component's own form), it refused, and because a component's SSR error is
+  // ISOLATED the button silently vanished from a page that still returned 200.
   //
-  // Only the two knowable answers can be pinned here. A cannot-tell cannot even
-  // arise inside `streamTemplate`: the component pass that seeds 'unknown'
-  // lives in `injectDSD`, which is shared by both entry points and is not
-  // reached by `{ ssr: false }`.
-  withResolver();
-  await assert.rejects(
-    () => drain(renderToStream(html`<button formaction=${submitFeedback}>x</button>`, { ssr: false })),
-    /requires the enclosing <form> to also be bound/,
-    "'none': the scan can see there is no form at all",
-  );
-  await assert.rejects(
-    () => drain(renderToStream(
-      html`<form method="post"><button formaction=${submitFeedback}>x</button></form>`,
-      { ssr: false },
-    )),
-    /requires the enclosing <form> to also be bound/,
-    "'unbound': the form is right there and binds nothing",
-  );
-  // And the bound shape still streams, so the refusals above are discriminating
-  // rather than a blanket rejection of every submitter.
-  const ok = await drain(renderToStream(
-    html`<form action=${submitFeedback}><button formaction=${submitFeedback}>x</button></form>`,
-    { ssr: false },
-  ));
-  assert.equal((ok.match(/name="__webjs_action"/g) || []).length, 2,
-    'the form identity and the submitter identity both stream');
-});
-
-test("the 'unbound' state is what refuses inside a COMPONENT's own form", async () => {
-  // The test above cannot observe the 'unbound' transition: a top-level scan
-  // starts at 'none', so that template is refused either way, and deleting the
-  // transition left the whole suite green. 'unbound' differs from 'none' only
-  // under an 'unknown' seed, which is the component pass.
-  //
-  // Without it, a component's own GET-defaulting form would happily bind a
-  // submitter inside it, which is the silently-posts-nowhere shape the guard
-  // exists to prevent. The component's SSR error is isolated, so the proof is
-  // that the component renders EMPTY rather than emitting the identity.
+  // Both halves are fixed by the same change: nothing is judged, so nothing is
+  // isolated away.
   withResolver();
   const { WebComponent } = await import('../../src/component.js');
   class OwnUnbound extends WebComponent({}) {
@@ -751,16 +779,12 @@ test("the 'unbound' state is what refuses inside a COMPONENT's own form", async 
     html`<form action=${submitFeedback}><own-unbound-form></own-unbound-form></form>`,
     { ssr: true, dev: false },
   );
-  assert.equal((out.match(/name="__webjs_action"/g) || []).length, 1,
-    "only the page form's identity is emitted; the component's submitter never bound");
-  assert.ok(!out.includes('<button'), 'the refusal was isolated to the component');
+  assert.match(out, /<button name="__webjs_action"/, 'the component\'s submitter bound');
+  assert.match(out, /formmethod="post"/);
+  assert.ok(!out.includes('data-webjs-error'), 'and nothing was isolated away');
 });
 
-test("a component that CLOSES its own form keeps deferring, rather than downgrading", async () => {
-  // `</form>` used to hard-reset the scope to 'none', which asserted a fact the
-  // component scan cannot know: closing a form of its own teaches it nothing
-  // about the host page. A bound submitter written after it was then refused
-  // and, being isolated, vanished from a 200.
+test('a component that closes its own form still binds a later submitter', async () => {
   withResolver();
   const { WebComponent } = await import('../../src/component.js');
   class ClosesOwnForm extends WebComponent({}) {
@@ -773,16 +797,20 @@ test("a component that CLOSES its own form keeps deferring, rather than downgrad
     html`<form action=${submitFeedback}><closes-own-form></closes-own-form></form>`,
     { ssr: true, dev: false },
   );
-  assert.match(out, /<button name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback">P<\/button>/);
+  assert.match(out, /<button name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback" formmethod="post" formenctype="multipart\/form-data">P<\/button>/);
   assert.ok(!out.includes('data-webjs-error'), 'and the component did not fail to render');
 });
 
 // ---------------------------------------------------------------------------
-// Suspense (#1207). The page pipeline in @webjsdev/server drains `ctx.pending`
-// ITSELF and re-renders each resolved child through `renderToString`, which is
-// a fresh scan with no view of the shell. Without the recorded scope a bound
-// form's boundary content read as form-less, was refused, and the drain's catch
-// turned that into an EMPTY boundary on a page that still returned 200.
+// Suspense (#1207, #1307). The page pipeline in @webjsdev/server drains
+// `ctx.pending` ITSELF and re-renders each resolved child through
+// `renderToString`, which is a fresh scan with no view of the shell. That used
+// to need the enclosing form scope threaded back in, or a bound form's boundary
+// content read as form-less, was refused, and the drain's catch turned it into
+// an EMPTY boundary on a page that still returned 200.
+//
+// #1307 removed the need: a bound submitter carries its own submission, so a
+// fresh scan with no view of the shell has nothing left to be told.
 // ---------------------------------------------------------------------------
 
 async function drainSuspense(tpl) {
@@ -791,10 +819,9 @@ async function drainSuspense(tpl) {
   const parts = [];
   for (const p of ctx.pending) {
     const sub = { pending: [], nextId: ctx.nextId, dev: false };
-    // Mirrors ssr.js's drain, including how it carries the scope forward.
-    parts.push(await renderToString(await p.promise, {
-      ssr: true, suspenseCtx: sub, formScope: p.formScope || 'unknown',
-    }));
+    // Mirrors ssr.js's drain. Nothing about the shell is carried forward, which
+    // is exactly what this suite now pins.
+    parts.push(await renderToString(await p.promise, { ssr: true, suspenseCtx: sub }));
   }
   return { shell, parts, pending: ctx.pending };
 }
@@ -807,20 +834,23 @@ test('a submitter inside a bound form\'s Suspense boundary binds', async () => {
     children: Promise.resolve(html`<button formaction=${submitFeedback}>Publish</button>`),
   })}</form>`);
   assert.match(shell, /<webjs-boundary id="s1"><p>loading<\/p><\/webjs-boundary>/);
-  assert.equal(pending[0].formScope, 'bound', 'the shell records the scope');
-  assert.match(parts[0], /<button name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback">Publish<\/button>/,
-    'and the resolved content is rendered with it');
+  assert.equal(pending[0].formScope, undefined, 'no scope is recorded, because none is needed');
+  assert.match(parts[0], /<button name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback" formmethod="post" formenctype="multipart\/form-data">Publish<\/button>/,
+    'and the resolved content binds on its own');
 });
 
-test('a Suspense boundary outside a bound form still refuses a submitter', async () => {
-  // The counterfactual: carrying the scope must not become a blanket amnesty.
+test('a Suspense boundary outside a bound form binds its submitter too', async () => {
+  // This asserted a refusal, as the counterfactual proving the carried scope was
+  // not a blanket amnesty. There is no scope and nothing to amnesty: the button
+  // is self-sufficient wherever the boundary sits.
   withResolver();
   const { Suspense } = await import('../../src/suspense.js');
   for (const shell of [
     html`<div>${Suspense({ fallback: html`<p>l</p>`, children: Promise.resolve(html`<button formaction=${submitFeedback}>P</button>`) })}</div>`,
     html`<form method="post">${Suspense({ fallback: html`<p>l</p>`, children: Promise.resolve(html`<button formaction=${submitFeedback}>P</button>`) })}</form>`,
   ]) {
-    await assert.rejects(() => drainSuspense(shell), /requires the enclosing <form> to also be bound/);
+    const { parts } = await drainSuspense(shell);
+    assert.match(parts[0], /formmethod="post" formenctype="multipart\/form-data"/);
   }
 });
 
@@ -834,11 +864,17 @@ test('a Suspense boundary outside a bound form still refuses a submitter', async
 
 test('a reflected .prop on a submitter is refused, in both machines', async () => {
   withResolver();
+  // Every row binds its own action (#1307). The rule is same-element: a `.prop`
+  // on a button the author bound is refused, because SSR drops it and the
+  // browser reflects it, so the SAME button would submit differently with JS
+  // than without. On a PLAIN button it is an ordinary native property and is
+  // left alone, which is the row below this test.
   const refused = [
-    html`<form action=${submitFeedback}><button .name=${'intent'} formaction=${submitFeedback}>x</button></form>`,
-    html`<form action=${submitFeedback}><button .value=${'v'} formaction=${submitFeedback}>x</button></form>`,
-    html`<form action=${submitFeedback}><button .formMethod=${'get'}>x</button></form>`,
-    html`<form action=${submitFeedback}><button .formEnctype=${'text/plain'}>x</button></form>`,
+    html`<button .name=${'intent'} formaction=${submitFeedback}>x</button>`,
+    html`<button .value=${'v'} formaction=${submitFeedback}>x</button>`,
+    html`<button .formMethod=${'get'} formaction=${submitFeedback}>x</button>`,
+    html`<button .formEnctype=${'text/plain'} formaction=${submitFeedback}>x</button>`,
+    html`<button .formAction=${'/elsewhere'} formaction=${submitFeedback}>x</button>`,
   ];
   for (const tpl of refused) {
     await assert.rejects(() => renderToString(tpl, { ssr: true }), /reflected IDL attribute/);
@@ -872,23 +908,29 @@ test('an empty author name after the hole is refused, not shipped as a duplicate
   }
 });
 
-test('a .formAction prop is refused on a submitter that binds nothing', async () => {
-  // The narrowing that spares `.name` / `.value` on a non-binding submitter must
-  // NOT spare `.formAction`. SSR drops the prop, so with JS off the button
-  // submits to the page and runs the bound action; a browser reflects it, so
-  // with JS on the button posts elsewhere and the action never runs. That is the
-  // works-one-way-only shape, and it is why the STATIC `formaction="/url"` stays
-  // fine: both renderers see that one and agree.
+test('a .prop on a submitter that binds NOTHING is an ordinary native property', async () => {
+  // #1307 narrowed this. `.formMethod` / `.formEnctype` / `.formAction` on a
+  // button that binds no action used to be refused, on the grounds that they
+  // could defeat the enclosing form's binding. That is a rule about the
+  // author's OTHER element, and the ordinary native-property behaviour (SSR
+  // drops a `.prop`, the browser reflects it) is what this codebase already
+  // accepts everywhere else, including for an unbound form's own `.method`.
   withResolver();
-  const tpl = html`<form action=${submitFeedback}><button .formAction=${'/elsewhere'}>Save</button></form>`;
-  await assert.rejects(() => renderToString(tpl, { ssr: true }), /reflected IDL attribute/);
-  await assert.rejects(() => drain(renderToStream(tpl, { ssr: false })), /reflected IDL attribute/);
+  for (const tpl of [
+    html`<form action=${submitFeedback}><button .formAction=${'/elsewhere'}>Save</button></form>`,
+    html`<form action=${submitFeedback}><button .formMethod=${'get'}>Save</button></form>`,
+    html`<form action=${submitFeedback}><button .formEnctype=${'text/plain'}>Save</button></form>`,
+  ]) {
+    const out = await renderToString(tpl, { ssr: true });
+    assert.match(out, /<button\s*>Save<\/button>/, 'the prop is dropped at SSR, as every native prop is');
+    assert.ok(!/formaction|formmethod|formenctype/.test(out), 'and nothing is invented for it');
+  }
 
   const ok = await renderToString(
     html`<form action=${submitFeedback}><button formaction="/search" formmethod="get">Go</button></form>`,
     { ssr: true },
   );
-  assert.match(ok, /formaction="\/search"/, 'the static retarget is still allowed');
+  assert.match(ok, /formaction="\/search"/, 'a static retarget is still allowed');
 });
 
 test('a falsy boolean name hole leaves the identity channel free', async () => {
@@ -899,7 +941,7 @@ test('a falsy boolean name hole leaves the identity channel free', async () => {
     html`<form action=${submitFeedback}><button ?name=${false} formaction=${submitFeedback}>x</button></form>`,
     { ssr: true },
   );
-  assert.match(out, /<button\s+name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback">x<\/button>/);
+  assert.match(out, /<button\s+name="__webjs_action" value="[0-9a-f]{10}\/submitFeedback" formmethod="post" formenctype="multipart\/form-data">x<\/button>/);
   // Truthy emits `name=""`, which collides with the identity.
   await assert.rejects(
     () => renderToString(

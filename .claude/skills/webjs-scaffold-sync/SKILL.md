@@ -32,9 +32,13 @@ surfaces that must stay in sync with the framework:
    so the skill is the ONLY teaching surface that SURVIVES, and after a clear it
    is the agent's sole reference. A feature the skill does not teach is lost the
    moment an agent clears the gallery.
-2. **The gallery** (`packages/cli/templates/gallery/**`): runnable, densely
+2. **The gallery** (the repo-root `gallery/**` app): runnable, densely
    commented demos an agent learns the idioms from by reading and running, then
    adapts. It is DISPOSABLE (removed by `gallery:clear` before real work begins).
+   It lives ONCE, at the repo root, as a live workspace app you can boot and
+   test (`npm run dev:gallery`, `npm test --workspace=@webjsdev/gallery`).
+   `packages/cli/prepack` bundles it into `packages/cli/templates/gallery/` for
+   the tarball and `postpack` deletes that copy, so never edit or commit there.
 
 So a change to a WebJs FEATURE usually needs BOTH: the skill updated (the durable
 pattern) AND a gallery demo (the runnable illustration). A change to what
@@ -112,7 +116,7 @@ it applies, then update or consciously skip each.
      theme block, db/schema, the full-stack gallery wiring, the per-template
      gates like `isApi` / `isFullStack` / `!isApi`).
    - `packages/cli/lib/api-gallery.js` (the api backend-features showcase). Auth
-     is a full-stack GALLERY card now (`templates/gallery/{app/features/auth,
+     is a full-stack GALLERY card now (`gallery/{app/features/auth,
      modules/auth}`), pruned by `gallery:clear`, not a separate template.
    - **The `gallery:clear` reset scripts (BOTH templates, MANDATORY parity).**
      `packages/cli/templates/scripts/clear-gallery.mjs` (full-stack) strips the
@@ -131,8 +135,12 @@ it applies, then update or consciously skip each.
      them after any gallery change.
    - Any future `*-template.js` / `*-gallery.js` split out for escaping sanity.
 3. **The verbatim template files** copied into every app:
-   - `packages/cli/templates/gallery/**` (the UI feature gallery + example app,
-     shipped in full-stack AND saas).
+   - The repo-root `gallery/**` app (the UI feature gallery + example app). Its
+     own shell (`app/layout.ts`, `app/page.ts`, `components/theme-toggle.ts`,
+     `lib/utils/cn.ts`) is NOT payload: the generator writes those itself, so
+     both the copy and the prepack bundle filter them via
+     `packages/cli/lib/gallery-shell-files.js`. Add a file there if the gallery
+     ever needs another app-only shell file.
    - `packages/cli/templates/**` (everything else copied per app: `lib/utils/ui.ts`,
      `public/`, `tsconfig.json`, `gitignore`, `.hooks/`, the metadata/route stubs).
 4. **The per-agent rule files** (LOCKSTEP: all carry the SAME rules in each

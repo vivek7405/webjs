@@ -701,8 +701,14 @@ test('component with no parseable WebComponent body ships', () => {
 });
 
 test('an @event in a JS comment, not a template, does not falsely relax', () => {
-  // The analyser scans raw source, so a stray marker in a comment only
-  // ever over-detects (ships). This pins that direction.
+  // The leaf masks comments for MOST signals (the class-body scan and the
+  // import scans redact internally), but the four template-marker regexes
+  // (@event, the handler property, the dynamic slot surface, the client
+  // global) run on RAW src, so a marker in a comment reaches them. That can
+  // only ever over-detect (ship), which is the verdict-safe direction this
+  // pins. The PIPELINE masks first (#179), so in a real analysis the comment
+  // is blanked before it gets here; `comment-false-signals.test.js` pins
+  // that end.
   const src = DISPLAY_ONLY.replace('render()', '// uses @click=${} elsewhere\n  render()');
   assert.equal(analyzeComponentSource(src).interactive, true);
 });

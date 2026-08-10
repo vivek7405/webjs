@@ -411,6 +411,39 @@ suite('SSR/client parity: form actions (#1155)', () => {
     'inert encoding= attribute': () => html`<form action=${boundAction()} encoding=${'application/x-www-form-urlencoded'}></form>`,
     'inert encoding= with an unsubmittable value': () => html`<form action=${boundAction()} encoding=${'text/plain'}></form>`,
     'submitter formaction inside bound form': () => html`<form action=${boundAction()}><button formaction=${boundAction()}>Save</button></form>`,
+    // #1307: a bound submitter carries its whole submission, so none of these
+    // depend on the form around it. Each moved here from a refusal table, and
+    // each must render IDENTICALLY on both renderers, which is what proves the
+    // two inject the same `formmethod` / `formenctype` pair in the same order.
+    'submitter with no form at all': () => html`<button formaction=${boundAction()}>Save</button>`,
+    'submitter inside an unbound form': () => html`<form method="post"><button formaction=${boundAction()}>Save</button></form>`,
+    'submitter inside a form with no method at all': () => html`<form><button formaction=${boundAction()}>Save</button></form>`,
+    'submitter inside a method=get form': () => html`<form method="get"><button formaction=${boundAction()}>Save</button></form>`,
+    // The author's own value wins; only the attribute they did NOT supply is
+    // injected. Both renderers make that call through `resolveBoundSubmitterAttrs`.
+    'bound submitter supplying its own formmethod': () => html`<button formaction=${boundAction()} formmethod="post">Save</button>`,
+    'bound submitter supplying its own formenctype': () => html`<button formaction=${boundAction()} formenctype="application/x-www-form-urlencoded">Save</button>`,
+    // HOLE-provided, not static. These are the rows that catch a client record
+    // which files a submitter's `formmethod` hole under the wrong attribute:
+    // SSR reads the emitted start tag and is unaffected, so only a DIFFERENTIAL
+    // row sees it. The first spelling shipped broken and threw
+    // `formenctype="post"` on hydration for a template SSR renders happily.
+    'bound submitter with a HOLE-provided formmethod': () => html`<button formaction=${boundAction()} formmethod=${'post'}>Save</button>`,
+    'bound submitter with a HOLE-provided formenctype': () => html`<button formaction=${boundAction()} formenctype=${'application/x-www-form-urlencoded'}>Save</button>`,
+    'bound submitter with BOTH provided by holes': () => html`<button formaction=${boundAction()} formmethod=${'post'} formenctype=${'multipart/form-data'}>Save</button>`,
+    // The awkward hole KINDS, which resolve through different commit branches
+    // than a plain `attr` hole. An `attr-mixed` value is assembled from statics
+    // plus values, and a FALSY boolean hole emits nothing at all, so the
+    // framework supplies the attribute exactly as if the template were silent.
+    // Each is a separate path through `effectiveFormAttr`, and a plain `attr`
+    // row does not exercise any of them.
+    'bound submitter with an attr-mixed formmethod': () => html`<button formaction=${boundAction()} formmethod="${'po'}${'st'}">Save</button>`,
+    'bound submitter with a FALSY boolean formmethod hole': () => html`<button formaction=${boundAction()} ?formmethod=${false}>Save</button>`,
+    'bound submitter with a FALSY boolean formenctype hole': () => html`<button formaction=${boundAction()} ?formenctype=${false}>Save</button>`,
+    // #1307 reverses #1207's Part B: a PLAIN button's own override is a legal
+    // native instruction, so both renderers leave it exactly as written.
+    'plain submitter formmethod=get inside a bound form': () => html`<form action=${boundAction()}><button formmethod="get">Save</button></form>`,
+    'plain submitter formenctype=text/plain inside a bound form': () => html`<form action=${boundAction()}><button formenctype="text/plain">Save</button></form>`,
   };
 
   for (const [name, tpl] of Object.entries(ACCEPTS)) {
@@ -434,12 +467,6 @@ suite('SSR/client parity: form actions (#1155)', () => {
     'quoted action hole is a stringify': [() => html`<form action="${boundAction()}"></form>`, /interpolated into/],
     'array-wrapped action': [() => html`<form action=${[boundAction()]}></form>`, /interpolated into/],
     'action off a form': [() => html`<div action=${boundAction()}></div>`, /interpolated into/],
-    // #1207: the submitter's form is RIGHT THERE in the same template, so both
-    // renderers can see it is unbound and both must say so.
-    'submitter inside an unbound form': [
-      () => html`<form method="post"><button formaction=${boundAction()}></button></form>`,
-      /requires the enclosing <form> to also be bound/,
-    ],
     'submitter that is not a submit control': [
       () => html`<form action=${boundAction()}><button type="button" formaction=${boundAction()}></button></form>`,
       /submitter control/,
@@ -448,15 +475,37 @@ suite('SSR/client parity: form actions (#1155)', () => {
       () => html`<form action=${boundAction()}><button name="intent" formaction=${boundAction()}></button></form>`,
       /already carries a "name" attribute/,
     ],
-    // #1207 Part B: a submitter that binds nothing, whose own formenctype would
-    // still defeat the bound form it sits in.
-    'unparseable submitter enctype': [
-      () => html`<form action=${boundAction()}><button formenctype="text/plain"></button></form>`,
+    // #1307: same-element contradictions on a BOUND submitter. These replace
+    // #1207's Part B rows, which asked about the button's NEIGHBOUR and are now
+    // in ACCEPTS. Here the author bound an action to this very button and then
+    // told the same button to submit in a way that action could never read.
+    'unparseable enctype on a BOUND submitter': [
+      () => html`<button formaction=${boundAction()} formenctype="text/plain"></button>`,
       /formenctype=/,
     ],
-    'non-POST submitter method': [
-      () => html`<form action=${boundAction()}><button formmethod="get"></button></form>`,
+    'non-POST method on a BOUND submitter': [
+      () => html`<button formaction=${boundAction()} formmethod="get"></button>`,
       /formmethod=/,
+    ],
+    'dialog method on a BOUND submitter': [
+      () => html`<button formaction=${boundAction()} formmethod="dialog"></button>`,
+      /formmethod="dialog"/,
+    ],
+    // A TRUTHY boolean hole emits `formmethod=""`, an empty enumerated value
+    // that cannot submit, so it must refuse rather than be treated as absent
+    // and quietly supplied. This is the submitter twin of the form-level
+    // `?enctype=${true}` row above.
+    'truthy boolean formmethod hole on a BOUND submitter': [
+      () => html`<button formaction=${boundAction()} ?formmethod=${true}></button>`,
+      /cannot work/,
+    ],
+    'padded formmethod on a BOUND submitter': [
+      () => html`<button formaction=${boundAction()} formmethod=${' post '}></button>`,
+      /cannot work/,
+    ],
+    'prop binding on a BOUND submitter': [
+      () => html`<button formaction=${boundAction()} .formMethod=${'get'}></button>`,
+      /reflected IDL attribute/,
     ],
     'a function that is not an action': [() => html`<form action=${async () => {}}></form>`, /is not a server action/],
     'prop binding on a bound form': [() => html`<form action=${boundAction()} .method=${'get'}></form>`, /also binds \./],
@@ -488,41 +537,25 @@ suite('SSR/client parity: form actions (#1155)', () => {
   }
 
   /**
-   * The ONE asymmetry in #1207, stated here rather than left to be discovered.
+   * There is deliberately NO third table here any more.
    *
-   * "Is my enclosing form bound" is a question SSR always answers and the client
-   * sometimes cannot. SSR reads a linear byte stream, so an open `<form>` either
-   * bound an action or did not. The client reconciles a template whose root may
-   * be a DocumentFragment that is not in the tree yet, and a submitter with no
-   * form ABOVE IT IN ITS OWN TEMPLATE is genuinely ambiguous there: it looks
-   * identical whether it is a stray button or a list row about to be inserted
-   * into a bound form by its parent. Those two are indistinguishable at that
-   * moment, and the list row is the shape the whole feature exists for.
+   * #1207 had one, holding a single row: a `formaction=${fn}` submitter with no
+   * enclosing form. "Is my enclosing form bound" was a question SSR always
+   * answered and the client sometimes could not, because the client reconciles
+   * a template whose root may be a DocumentFragment not yet in the tree, where a
+   * stray button and a list row about to be inserted into a bound form look
+   * identical. So SSR refused and the client deferred, and that asymmetry was
+   * documented here as permanent.
    *
-   * So the client BINDS when it cannot tell, and SSR refuses. The asymmetry is
-   * safe in that direction and only in that direction: the server renders every
-   * page, so a genuinely form-less submitter is still refused loudly before
-   * anything ships. The reverse (client refuses, SSR accepts) is what would
-   * render a page on the server and crash it on hydration.
+   * #1307 removed the question rather than the asymmetry. A bound submitter now
+   * carries its own `formmethod` and `formenctype`, so no renderer needs to know
+   * what encloses it, and the row moved to ACCEPTS where both renderers must now
+   * produce identical bytes for it.
+   *
+   * Keep this table absent. A new "SSR refuses, client defers" entry is a signal
+   * that a cross-element rule has crept back in, which is exactly the shape both
+   * issues concluded cannot be enforced honestly.
    */
-  const SSR_ONLY_REFUSES = {
-    'submitter with no form at all': [
-      () => html`<button formaction=${boundAction()}></button>`,
-      /requires the enclosing <form> to also be bound/,
-    ],
-  };
-
-  for (const [name, [tpl, pattern]] of Object.entries(SSR_ONLY_REFUSES)) {
-    test(`SSR refuses, client defers: ${name}`, async () => {
-      const r = await bothWays(tpl);
-      assert.ok(r.ssrErr, `SSR must refuse: ${name}`);
-      assert.ok(pattern.test(r.ssrErr), `SSR reason (${r.ssrErr})`);
-      assert.ok(!r.clientErr, `client must NOT refuse what it cannot know: ${name} (${r.clientErr})`);
-      // Deferring the question must not defer the LEAK guard: the client still
-      // binds an identity rather than stringifying the function.
-      assert.ok(!/PARITY_SECRET/.test(String(r.ssrErr) + String(r.client)), 'no source on either path');
-    });
-  }
 
   test('the identity field is submitted, which is what all of this is for', () => {
     // The end state, read the way a browser reads it: `new FormData(form)` is
@@ -542,5 +575,209 @@ suite('SSR/client parity: form actions (#1155)', () => {
     const a = canonicalForms('<form method="post"><input name="x"></form>');
     const b = canonicalForms('<form method="get"><input name="x"></form>');
     assert.notEqual(a, b, 'differing method must be visible to the comparison');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The SSR and client attribute readers see the same attribute SET (#1341).
+//
+// The suites above compare RENDER output for inputs both readers agree on.
+// These four cases are the ones they did NOT agree on: for each, one reader
+// consumed an attribute the other never saw, so the SSR'd first paint held one
+// value and the upgraded element held another with nothing erroring.
+//
+// Each test goes through a REAL element upgrade rather than a hand-called
+// `attributeChangedCallback`, because the divergence lives on the platform's
+// own path: the HTML parser lowercases every attribute name and decodes every
+// character reference before any reader is called, and `observedAttributes`
+// filters which names are delivered at all. A hand-called reader reproduces
+// none of that. The same markup then goes through `renderToString` and the two
+// values are compared, so a future change that moves one side without the other
+// fails here.
+
+/** Mount source markup, wait for the upgrade, and return the live element. */
+async function upgrade(tag, markup, keep) {
+  const host = document.createElement('div');
+  host.innerHTML = markup;
+  document.body.appendChild(host);
+  keep.push(host);
+  const el = host.firstElementChild;
+  await customElements.whenDefined(tag);
+  await el.updateComplete;
+  return el;
+}
+
+suite('the SSR and client attribute readers see the same attribute set (#1341)', () => {
+  const mounted = [];
+  teardown(() => {
+    for (const host of mounted.splice(0)) host.remove();
+  });
+
+  class EntEl extends WebComponent({ cfg: prop(Object) }) {
+    constructor() { super(); this.cfg = null; }
+    render() { return html`<i>val=${JSON.stringify(this.cfg)}</i>`; }
+  }
+  EntEl.register('parity-ent-el');
+
+  class StateObj extends WebComponent({ cfg: prop(Object, { state: true }) }) {
+    constructor() { super(); this.cfg = { fromCtor: true }; }
+    render() { return html`<i>val=${JSON.stringify(this.cfg)}</i>`; }
+  }
+  StateObj.register('parity-state-obj');
+
+  class CamelEl extends WebComponent({ cfgData: prop(String) }) {
+    constructor() { super(); this.cfgData = 'CTOR'; }
+    render() { return html`<i>val=${String(this.cfgData)}</i>`; }
+  }
+  CamelEl.register('parity-camel-el');
+
+  class StrEl extends WebComponent({ s: prop(String) }) {
+    constructor() { super(); this.s = ''; }
+    render() { return html`<i>val=${String(this.s)}</i>`; }
+  }
+  StrEl.register('parity-str-el');
+
+  test('an entity-encoded JSON attribute parses to the same object on both sides', async () => {
+    // The browser decodes `&#123;&quot;a&quot;:1&#125;` before the reader sees
+    // it, so it always parsed. SSR reversed three entities and got `null`.
+    const markup = '<parity-ent-el cfg="&#123;&quot;a&quot;:1&#125;"></parity-ent-el>';
+    const el = await upgrade('parity-ent-el', markup, mounted);
+
+    assert.deepEqual(el.cfg, { a: 1 }, 'the platform decodes this before any reader runs');
+    const ssr = await renderToString(html([markup]));
+    assert.ok(ssr.includes('val={"a":1}'), `the SSR reader disagreed with the client: ${ssr}`);
+  });
+
+  test('a state:true attribute leaves the constructor value on both sides', async () => {
+    // `observedAttributes` excludes state props, so the browser never calls the
+    // reader for this name at all. SSR had no such filter and read it.
+    const markup = '<parity-state-obj cfg="oops"></parity-state-obj>';
+    const el = await upgrade('parity-state-obj', markup, mounted);
+
+    assert.ok(
+      !StateObj.observedAttributes.includes('cfg'),
+      'the platform fact this rests on: a state prop is not observed',
+    );
+    assert.deepEqual(el.cfg, { fromCtor: true }, 'the browser never delivered the attribute');
+    const ssr = await renderToString(html([markup]));
+    assert.ok(ssr.includes('val={"fromCtor":true}'), `the SSR reader disagreed with the client: ${ssr}`);
+  });
+
+  test('a camelCase attribute name resolves to nothing on both sides', async () => {
+    // The parser lowercases the name, so it can never match `cfg-data` in
+    // `observedAttributes`. SSR matched the SOURCE case and did read it.
+    const markup = '<parity-camel-el cfgData="oops"></parity-camel-el>';
+    const el = await upgrade('parity-camel-el', markup, mounted);
+
+    const names = el.getAttributeNames();
+    assert.ok(names.includes('cfgdata'), `the parser lowercased the name: ${names.join(', ')}`);
+    assert.ok(!names.includes('cfgData'), `the source case did not survive parsing: ${names.join(', ')}`);
+    assert.equal(el.cfgData, 'CTOR', 'the browser resolved the lowercased name to nothing');
+
+    const ssr = await renderToString(html([markup]));
+    assert.ok(ssr.includes('val=CTOR'), `the SSR reader disagreed with the client: ${ssr}`);
+  });
+
+  test('a named character reference in a String attribute decodes on both sides', async () => {
+    // The most reachable case of the four: every hand-written entity in a plain
+    // string attribute hit it, because SSR decoded only on the JSON branch.
+    const markup = '<parity-str-el s="a&hellip;b"></parity-str-el>';
+    const el = await upgrade('parity-str-el', markup, mounted);
+
+    assert.equal(el.getAttribute('s'), 'a…b', 'the platform decodes before any reader runs');
+    assert.equal(el.s, 'a…b');
+
+    const ssr = await renderToString(html([markup]));
+    assert.ok(ssr.includes('val=a…b'), `the SSR reader disagreed with the client: ${ssr}`);
+  });
+
+  test('a legacy semicolon-less reference decodes on both sides, with the carve-out', async () => {
+    // Not a non-goal: a browser really does decode `&nbsp` in an attribute
+    // value, and the rule that governs it is a one-character lookahead, so it
+    // is reproducible. The three literal rows below are what keeps the rule a
+    // rule rather than "decode a legacy name wherever you see one", though they
+    // do not all get there the same way: `&nbsp=x` is the lookahead, while
+    // `&nbspx` and `&notin` are simply not legacy names once the whole
+    // alphanumeric run is taken. A browser reaches the same answers by longest
+    // match plus the same lookahead, which is the agreement being pinned.
+    for (const [source, expected] of [
+      ['&nbsp', ' '],
+      ['&copy', '©'],
+      ['&nbspx', '&nbspx'],
+      ['&nbsp=x', '&nbsp=x'],
+      ['&notin', '&notin'],
+    ]) {
+      const markup = `<parity-str-el s="${source}"></parity-str-el>`;
+      const el = await upgrade('parity-str-el', markup, mounted);
+      assert.equal(el.getAttribute('s'), expected, `the platform's own answer for ${source}`);
+
+      const out = await renderToString(html([markup]));
+      const m = /val=([^<]*)</.exec(out);
+      const rendered = m[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      assert.equal(rendered, expected, `the SSR reader disagreed with the client for ${source}`);
+    }
+  });
+
+  test('a name colliding with Object.prototype is literal on both sides', async () => {
+    // These are not named references, so a browser leaves them alone. The SSR
+    // decoder read its table by indexing an object literal, which resolves
+    // through `Object.prototype`, so each of these returned a function and threw
+    // out of the decoder instead. Measured here rather than reasoned about,
+    // because every other entity claim in this suite is measured.
+    for (const name of [
+      'constructor', 'toString', 'valueOf', 'hasOwnProperty',
+      'isPrototypeOf', 'propertyIsEnumerable', 'toLocaleString', '__proto__',
+    ]) {
+      const markup = `<parity-str-el s="&${name};"></parity-str-el>`;
+      const el = await upgrade('parity-str-el', markup, mounted);
+      assert.equal(el.getAttribute('s'), `&${name};`, `the platform's own answer for &${name};`);
+
+      const out = await renderToString(html([markup]));
+      assert.ok(!out.includes('data-webjs-error'), `the SSR decoder threw on &${name};: ${out}`);
+      const m = /val=([^<]*)</.exec(out);
+      const rendered = m[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      assert.equal(rendered, `&${name};`, `the SSR reader disagreed with the client for &${name};`);
+    }
+  });
+
+  test('a custom-attribute prop answers to its declared name and nothing else', async () => {
+    // `observedAttributes` holds the DECLARED attribute alone, so a browser
+    // never delivers the property name to any reader. A `props[name]` fallback
+    // in the resolver used to make SSR read it anyway, which SSR'd `true` and
+    // upgraded to the constructor value.
+    class CustomAttr extends WebComponent({ open: prop(Boolean, { attribute: 'is-open' }) }) {
+      constructor() { super(); this.open = false; }
+      render() { return html`<i>open=${String(this.open)}</i>`; }
+    }
+    CustomAttr.register('parity-custom-attr');
+
+    assert.deepEqual(CustomAttr.observedAttributes, ['is-open'], 'the platform fact this rests on');
+
+    const byProp = await upgrade('parity-custom-attr', '<parity-custom-attr open></parity-custom-attr>', mounted);
+    assert.equal(byProp.open, false, 'the browser never delivered the property name');
+    const ssrByProp = await renderToString(html(['<parity-custom-attr open></parity-custom-attr>']));
+    assert.ok(ssrByProp.includes('open=false'), `the SSR reader disagreed with the client: ${ssrByProp}`);
+
+    const byAttr = await upgrade('parity-custom-attr', '<parity-custom-attr is-open></parity-custom-attr>', mounted);
+    assert.equal(byAttr.open, true, 'the declared attribute must still resolve');
+    const ssrByAttr = await renderToString(html(['<parity-custom-attr is-open></parity-custom-attr>']));
+    assert.ok(ssrByAttr.includes('open=true'), `the declared attribute stopped resolving at SSR: ${ssrByAttr}`);
+  });
+
+  test('and the SSR instance getAttribute() returns the same decoded string', async () => {
+    // `seedServerAttrs` shares the decoder, so a `this.getAttribute(name)` read
+    // during SSR returns what the browser's own getAttribute returns above.
+    class SeedProbe extends WebComponent({ s: prop(String) }) {
+      constructor() { super(); this.s = ''; }
+      render() { return html`<i>attr=${String(this.getAttribute('s'))}</i>`; }
+    }
+    SeedProbe.register('parity-seed-probe');
+
+    const markup = '<parity-seed-probe s="a&hellip;b"></parity-seed-probe>';
+    const el = await upgrade('parity-seed-probe', markup, mounted);
+    assert.equal(el.getAttribute('s'), 'a…b');
+
+    const ssr = await renderToString(html([markup]));
+    assert.ok(ssr.includes('attr=a…b'), `the SSR element shim disagreed with the browser: ${ssr}`);
   });
 });

@@ -26,6 +26,7 @@ import { spawn } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:net';
+import { assertBlogSeeded } from '../fixtures/blog-seeded.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..', '..');
@@ -140,6 +141,10 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
     const port = await freePort();
     baseUrl = `http://localhost:${port}`;
     serverProcess = await startBlog(port);
+    // Before launching Chromium, so an unseeded worktree fails in a second
+    // with the remedy rather than after a browser launch on three assertions
+    // that never mention the database (#1323).
+    assertBlogSeeded(await (await fetch(`${baseUrl}/`)).text());
 
     browser = await puppeteer.launch({
       executablePath: chromium,
@@ -1869,6 +1874,43 @@ describe('E2E: Blog example', { skip: !process.env.WEBJS_E2E && 'set WEBJS_E2E=1
       'an observed display-only component module MUST be downloaded (forced to ship)');
   });
 
+  test('static interactive = true forces a display-only module onto the wire (#1308)', async () => {
+    // The OTHER route to a ship, on the same page as the observation probe.
+    // <forced-badge> is display-only in every respect (static markup, no
+    // events, no reactive props, no lifecycle hook, light DOM); the one thing
+    // keeping it on the wire is the author's `static interactive = true`.
+    // Until now that override's only coverage stopped at the analyser
+    // returning a boolean, and nothing proved the boot script honours it.
+    //
+    // build-stamp on the SAME run is the negative control: without it this
+    // assertion would also pass if elision had stopped working entirely.
+    /** @type {string[]} */
+    const requested = [];
+    const onRequest = (req) => requested.push(req.url());
+    page.on('request', onRequest);
+    try {
+      await page.setCacheEnabled(false);
+      await page.goto(`${baseUrl}/observed`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await sleep(3000);
+    } finally {
+      page.off('request', onRequest);
+      await page.setCacheEnabled(true);
+    }
+
+    const forcedFetched = requested.some((u) => /\/components\/forced-badge\.(ts|js)/.test(u));
+    const stampFetched = requested.some((u) => /\/components\/build-stamp\.(ts|js)/.test(u));
+    const forcedText = await page.evaluate(
+      () => document.querySelector('forced-badge')?.textContent?.trim() || '',
+    );
+
+    // The progressive-enhancement half: the markup is in the first paint.
+    assert.match(forcedText, /forced badge/i, 'forced-badge SSR content is present');
+    assert.equal(forcedFetched, true,
+      'static interactive = true MUST keep the module on the wire');
+    assert.equal(stampFetched, false,
+      'negative control: an unoverridden display-only module is still elided on this run');
+  });
+
   test('willUpdate-derived state and reflected props are in the SSR HTML before JS (#217)', async () => {
     // <ssr-derived-badge seed="42"> derives its text in willUpdate and flips a
     // reflect:true `ready` boolean there. The SSR walker now runs willUpdate
@@ -3426,42 +3468,76 @@ describe('E2E: form actions (no-JS + enhanced)', { skip: !process.env.WEBJS_E2E 
     } finally { await p.close(); }
   });
 
-  test('JS DISABLED: a component-rendered submitter still carries its identity (#1307)', async () => {
-    // `/feedback/triage-split` is the CANNOT-TELL shape: the form is bound in
-    // the page and the submitter is bound one module over, inside a component
-    // that renders in its own pass with no view of the host page. SSR cannot
-    // resolve boundness there, so it binds on faith.
+  test('JS DISABLED: a bound submitter runs its action inside a COMPLETELY UNBOUND form (#1307)', async () => {
+    // THE headline assertion of #1307, and the one-line proof the whole change
+    // works. `/feedback/triage-split` renders a `<form>` with NO action and NO
+    // method, so a browser defaults it to GET. Both of its buttons bind their
+    // own action, and "Publish" is rendered by a COMPONENT, which SSR renders
+    // in a separate pass that cannot see this page at all.
     //
-    // This is the counterfactual for that decision. If the fallback were ever
-    // made to refuse, the component would render EMPTY (an SSR component error
-    // is isolated) and the button would not be in the DOM at all, so both
-    // assertions here would fail on a page that still returned 200.
+    // Before the change this submitted as a GET: the identity rode the query
+    // string, the page re-rendered, and nothing ran. A 200 with no log, which
+    // is exactly why detection was the original plan and making it WORK is the
+    // better one.
+    //
+    // COUNTERFACTUAL: delete the `formmethod` / `formenctype` injection from
+    // `bindSubmitterStartTag` and this test goes red, because the button falls
+    // back to the form's GET default and the action never runs.
     const p = await paBrowser.newPage();
     await p.setJavaScriptEnabled(false);
     try {
       await p.goto(`${paBase}/feedback/triage-split`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+
+      // The served markup carries the whole submission on the button itself.
       const shape = await p.evaluate(() => {
-        const publish = document.getElementById('publish');
+        const btn = document.getElementById('publish');
+        const form = btn.closest('form');
         return {
-          present: !!publish,
-          name: publish?.getAttribute('name') || null,
-          value: publish?.getAttribute('value') || null,
-          hasFormAction: publish ? publish.hasAttribute('formaction') : null,
+          formMethodAttr: form.getAttribute('method'),
+          formActionAttr: form.getAttribute('action'),
+          name: btn.getAttribute('name'),
+          value: btn.getAttribute('value'),
+          formmethod: btn.getAttribute('formmethod'),
+          formenctype: btn.getAttribute('formenctype'),
+          formaction: btn.getAttribute('formaction'),
         };
       });
-      assert.ok(shape.present, 'the component-rendered submitter must be in the served markup');
-      assert.equal(shape.name, '__webjs_action', 'the cannot-tell fallback binds, so the identity is emitted');
-      assert.ok(/^[0-9a-f]{10}\/publishDraft$/.test(shape.value || ''),
-        `the submitter value must name publishDraft, got ${shape.value}`);
-      assert.equal(shape.hasFormAction, false, 'no formaction url is emitted, so it posts to this page');
+      assert.equal(shape.formMethodAttr, null, 'the host form declares no method');
+      assert.equal(shape.formActionAttr, null, 'and binds no action');
+      assert.equal(shape.name, '__webjs_action', 'the component-rendered button carries the identity');
+      assert.ok(/\/publishDraft$/.test(shape.value || ''), `identity value, got "${shape.value}"`);
+      assert.equal(shape.formmethod, 'post', 'and supplies its own method');
+      assert.equal(shape.formenctype, 'multipart/form-data', 'and its own enctype');
+      assert.equal(shape.formaction, null, 'no formaction url is emitted');
 
+      // And it actually RUNS, which is the part markup alone cannot prove.
       await p.type('#note', 'ship it');
       await Promise.all([
         p.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
         p.click('#publish'),
       ]);
       const ran = await p.evaluate(() => document.getElementById('ran')?.textContent || '');
-      assert.equal(ran, 'publishDraft', `the component's action must run with JS off, got "${ran}"`);
+      assert.equal(ran, 'publishDraft',
+        `the action must RUN from an unbound form, got "${ran}"`);
+    } finally { await p.close(); }
+  });
+
+  test('JS DISABLED: the INLINE bound submitter in the same unbound form runs too', async () => {
+    // The sibling path. "Save draft" is written inline in the page template, so
+    // SSR sees it in the same scan as the form and knew that form was unbound.
+    // That is the case the renderer used to REFUSE outright, as distinct from
+    // the component case it bound anyway. Both now bind and both work.
+    const p = await paBrowser.newPage();
+    await p.setJavaScriptEnabled(false);
+    try {
+      await p.goto(`${paBase}/feedback/triage-split`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+      await p.type('#note', 'later');
+      await Promise.all([
+        p.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }),
+        p.click('#save'),
+      ]);
+      const ran = await p.evaluate(() => document.getElementById('ran')?.textContent || '');
+      assert.equal(ran, 'saveDraft', `the inline submitter's action must run, got "${ran}"`);
     } finally { await p.close(); }
   });
 

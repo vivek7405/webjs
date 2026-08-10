@@ -120,9 +120,10 @@ test('cn: every display keyword shares one group, so a repeated one collapses', 
 });
 
 test('cn: an arbitrary value may contain a colon without losing its group', () => {
-  // variantPrefix() splits on the last colon OUTSIDE brackets. Splitting on the
-  // last colon anywhere hands the matcher a fragment like `2px]`, which matches
-  // nothing, so the utility silently stops deduping against its own property.
+  // variantPrefix() splits on the last colon OUTSIDE brackets AND parentheses.
+  // Splitting on the last colon anywhere hands the matcher a fragment like
+  // `2px]`, which matches nothing, so the utility silently stops deduping
+  // against its own property. The paren half is covered by the #1338 test.
   assert.equal(cn('border-[length:2px]', 'border-4'), 'border-4');
   assert.equal(cn('border-2', 'border-[length:var(--w)]'), 'border-[length:var(--w)]');
   assert.equal(cn('border-[length:2px]', 'border-primary'), 'border-[length:2px] border-primary');
@@ -138,7 +139,8 @@ test('cn: an arbitrary value may contain a colon without losing its group', () =
 });
 
 test('cn: an arbitrary value type hint names the property, so it picks the group', () => {
-  // Once a bracketed value reaches the matcher, the prefix alone is not enough
+  // Once an arbitrary value reaches the matcher, in either the bracket or the
+  // v4 paren spelling, the prefix alone is not enough
   // to say which property it sets: `text-[length:14px]` is a font SIZE, not a
   // colour, and `bg-[url(...)]` is an image, not a background colour. Routing
   // by prefix would collapse a size against a colour, which is the exact
@@ -239,6 +241,229 @@ test('cn: rounded variants collapse to last', () => {
   assert.equal(cn('rounded', 'rounded-full'), 'rounded-full');
 });
 
+// A conflict group is one CSS PROPERTY, never one class prefix. `bg-`, `shadow-`
+// and `text-shadow-` were still keyed by prefix, so an unrelated utility that
+// merely shared the prefix evicted a real one: the gradient-text idiom
+// `bg-linear-to-r bg-clip-text text-transparent` lost its clip the moment any
+// later `bg-*` colour landed on the same element (#1265).
+test('cn: background sub-properties are separate groups (#1265)', () => {
+  // Clip, origin, and blend mode each sat in bg-color, so each evicted a colour.
+  assert.equal(cn('bg-clip-text', 'bg-primary'), 'bg-clip-text bg-primary');
+  assert.equal(cn('bg-primary', 'bg-clip-text'), 'bg-primary bg-clip-text');
+  assert.equal(cn('bg-origin-border', 'bg-primary'), 'bg-origin-border bg-primary');
+  assert.equal(cn('bg-primary', 'bg-origin-border'), 'bg-primary bg-origin-border');
+  assert.equal(cn('bg-blend-multiply', 'bg-primary'), 'bg-blend-multiply bg-primary');
+  assert.equal(cn('bg-primary', 'bg-blend-multiply'), 'bg-primary bg-blend-multiply');
+  // The compound position keywords and the v4 functional spellings were missed
+  // by the anchored alternations and fell into the colour catch-all too.
+  assert.equal(cn('bg-top-left', 'bg-primary'), 'bg-top-left bg-primary');
+  assert.equal(cn('bg-size-[auto_100px]', 'bg-primary'), 'bg-size-[auto_100px] bg-primary');
+  assert.equal(cn('bg-position-[center_top]', 'bg-primary'), 'bg-position-[center_top] bg-primary');
+  // Every neighbouring background property keeps both.
+  assert.equal(cn('bg-linear-to-r', 'bg-clip-text'), 'bg-linear-to-r bg-clip-text');
+  assert.equal(cn('bg-clip-text', 'bg-origin-border'), 'bg-clip-text bg-origin-border');
+  assert.equal(cn('bg-origin-border', 'bg-blend-multiply'), 'bg-origin-border bg-blend-multiply');
+  assert.equal(cn('bg-blend-multiply', 'bg-cover'), 'bg-blend-multiply bg-cover');
+  assert.equal(cn('bg-cover', 'bg-center'), 'bg-cover bg-center');
+  assert.equal(cn('bg-center', 'bg-no-repeat'), 'bg-center bg-no-repeat');
+  assert.equal(cn('bg-no-repeat', 'bg-fixed'), 'bg-no-repeat bg-fixed');
+  assert.equal(cn('bg-fixed', 'bg-primary'), 'bg-fixed bg-primary');
+  assert.equal(cn('bg-none', 'bg-primary'), 'bg-none bg-primary');
+  assert.equal(cn('bg-[url(/a.png)]', 'bg-primary'), 'bg-[url(/a.png)] bg-primary');
+  assert.equal(cn('bg-[#fff]', 'bg-clip-text'), 'bg-[#fff] bg-clip-text');
+  // Within one property the later class still wins.
+  assert.equal(cn('bg-clip-text', 'bg-clip-border'), 'bg-clip-border');
+  assert.equal(cn('bg-clip-padding', 'bg-clip-content'), 'bg-clip-content');
+  assert.equal(cn('bg-origin-border', 'bg-origin-content'), 'bg-origin-content');
+  assert.equal(cn('bg-origin-padding', 'bg-origin-border'), 'bg-origin-border');
+  assert.equal(cn('bg-blend-multiply', 'bg-blend-screen'), 'bg-blend-screen');
+  assert.equal(cn('bg-blend-luminosity', 'bg-blend-normal'), 'bg-blend-normal');
+  assert.equal(cn('bg-auto', 'bg-cover'), 'bg-cover');
+  assert.equal(cn('bg-cover', 'bg-size-[auto_100px]'), 'bg-size-[auto_100px]');
+  assert.equal(cn('bg-top-left', 'bg-center'), 'bg-center');
+  assert.equal(cn('bg-bottom-right', 'bg-top'), 'bg-top');
+  assert.equal(cn('bg-center', 'bg-position-[center_top]'), 'bg-position-[center_top]');
+  assert.equal(cn('bg-repeat', 'bg-no-repeat'), 'bg-no-repeat');
+  assert.equal(cn('bg-repeat-x', 'bg-repeat-space'), 'bg-repeat-space');
+  assert.equal(cn('bg-fixed', 'bg-scroll'), 'bg-scroll');
+  assert.equal(cn('bg-none', 'bg-linear-to-r'), 'bg-linear-to-r');
+  assert.equal(cn('bg-linear-to-r', 'bg-radial'), 'bg-radial');
+  assert.equal(cn('bg-conic-180', 'bg-none'), 'bg-none');
+  assert.equal(cn('bg-red-500', 'bg-blue-500'), 'bg-blue-500');
+});
+
+test('cn: box-shadow size and box-shadow colour are SEPARATE groups (#1265)', () => {
+  assert.equal(cn('shadow-lg', 'shadow-red-500'), 'shadow-lg shadow-red-500');
+  assert.equal(cn('shadow-red-500', 'shadow-lg'), 'shadow-red-500 shadow-lg');
+  // `shadow-none` sets box-shadow while `shadow-inherit` / `shadow-initial` set
+  // the shadow colour, so each has to land on its own side of the split.
+  assert.equal(cn('shadow-none', 'shadow-red-500'), 'shadow-none shadow-red-500');
+  assert.equal(cn('shadow-inner', 'shadow-red-500'), 'shadow-inner shadow-red-500');
+  assert.equal(cn('shadow', 'shadow-primary'), 'shadow shadow-primary');
+  assert.equal(cn('shadow-[0_0_10px_red]', 'shadow-blue-500'), 'shadow-[0_0_10px_red] shadow-blue-500');
+  assert.equal(cn('shadow-lg/25', 'shadow-red-500/50'), 'shadow-lg/25 shadow-red-500/50');
+  // The size side collapses together, alpha modifier and unhinted arbitrary
+  // offset lists included. Tailwind accepts `/25` on a size as well as on a
+  // colour, so dropping the modifier tail would push `shadow-lg/25` to colour.
+  assert.equal(cn('shadow', 'shadow-lg'), 'shadow-lg');
+  assert.equal(cn('shadow-2xs', 'shadow-2xl'), 'shadow-2xl');
+  assert.equal(cn('shadow-sm', 'shadow-lg'), 'shadow-lg');
+  assert.equal(cn('shadow-lg', 'shadow-none'), 'shadow-none');
+  assert.equal(cn('shadow-lg', 'shadow-inner'), 'shadow-inner');
+  assert.equal(cn('shadow-lg', 'shadow-[0_0_10px_red]'), 'shadow-[0_0_10px_red]');
+  assert.equal(cn('shadow-lg', 'shadow-[inset_0_2px_4px_#000]'), 'shadow-[inset_0_2px_4px_#000]');
+  assert.equal(cn('shadow-lg', 'shadow-[-2px_0_4px_red]'), 'shadow-[-2px_0_4px_red]');
+  assert.equal(cn('shadow-sm', 'shadow-lg/25'), 'shadow-lg/25');
+  assert.equal(cn('shadow-lg/25', 'shadow-xl/[0.5]'), 'shadow-xl/[0.5]');
+  // The colour side collapses together, including the hinted spelling, which
+  // now has a named group to join instead of an isolated bucket of its own.
+  assert.equal(cn('shadow-red-500', 'shadow-blue-500'), 'shadow-blue-500');
+  assert.equal(cn('shadow-red-500', 'shadow-inherit'), 'shadow-inherit');
+  assert.equal(cn('shadow-red-500', 'shadow-initial'), 'shadow-initial');
+  assert.equal(cn('shadow-red-500', 'shadow-current'), 'shadow-current');
+  assert.equal(cn('shadow-red-500', 'shadow-transparent'), 'shadow-transparent');
+  assert.equal(cn('shadow-red-500', 'shadow-[#fff]'), 'shadow-[#fff]');
+  assert.equal(cn('shadow-red-500/50', 'shadow-primary'), 'shadow-primary');
+  assert.equal(cn('shadow-red-500', 'shadow-[color:red]'), 'shadow-[color:red]');
+  assert.equal(cn('shadow-[color:red]', 'shadow-blue-500'), 'shadow-blue-500');
+  // A hinted colour still never evicts a size.
+  assert.equal(cn('shadow-lg', 'shadow-[color:red]'), 'shadow-lg shadow-[color:red]');
+  assert.equal(cn('shadow-[color:red]', 'shadow-lg'), 'shadow-[color:red] shadow-lg');
+  // An unhinted `var()` shadow is a SIZE, not a colour. Tailwind resolves an
+  // ambiguous arbitrary shadow to box-shadow unless the value is provably a
+  // colour, and this is how a design-token shadow is written: every
+  // `shadow-[var(...)]` in this repo names a `--shadow*` token. Routing it to
+  // colour made `cn('shadow-lg', 'shadow-[var(--shadow-glow)]')` emit both and
+  // hand the winner to stylesheet order, which is a regression on the single
+  // coarse `shadow` group this change replaced.
+  assert.equal(cn('shadow-lg', 'shadow-[var(--shadow-glow)]'), 'shadow-[var(--shadow-glow)]');
+  assert.equal(cn('shadow-[var(--shadow-sm)]', 'shadow-xl'), 'shadow-xl');
+  assert.equal(cn('shadow-[var(--shadow)]', 'shadow-red-500'), 'shadow-[var(--shadow)] shadow-red-500');
+  assert.equal(cn('shadow-red-500', 'shadow-[var(--x)]'), 'shadow-red-500 shadow-[var(--x)]');
+  // The v4 `(--x)` variable shorthand is the same value in a shorter spelling,
+  // so it classifies the same way. `hintedGroup()` never sees it, since that
+  // reads only the `-[hint:` form, so GROUPS is what classifies it.
+  assert.equal(cn('shadow-lg', 'shadow-(--shadow-glow)'), 'shadow-(--shadow-glow)');
+  assert.equal(cn('shadow-(--shadow-glow)', 'shadow-red-500'), 'shadow-(--shadow-glow) shadow-red-500');
+  // Its HINTED sibling `shadow-(color:--x)` classifies identically now that
+  // `variantPrefix` counts parens as well as brackets and `hintedGroup()`
+  // reads both spellings, so the v4 paren hint joins the same group its
+  // bracket form has always landed in.
+  assert.equal(cn('shadow-red-500', 'shadow-(color:--x)'), 'shadow-(color:--x)');
+  assert.equal(cn('shadow-(color:--x)', 'shadow-(color:--y)'), 'shadow-(color:--y)');
+  // Conflicts stay scoped to their variant.
+  assert.equal(cn('hover:shadow-lg', 'hover:shadow-red-500'), 'hover:shadow-lg hover:shadow-red-500');
+});
+
+test('cn: text-shadow, alignment, wrapping and overflow are their own properties (#1265)', () => {
+  // text-shadow-* used to fall into text-color, so a shadow ate a text colour.
+  assert.equal(cn('text-primary', 'text-shadow-lg'), 'text-primary text-shadow-lg');
+  assert.equal(cn('text-shadow-lg', 'text-primary'), 'text-shadow-lg text-primary');
+  assert.equal(cn('text-shadow-sm', 'text-primary'), 'text-shadow-sm text-primary');
+  assert.equal(cn('text-primary', 'text-shadow-sm'), 'text-primary text-shadow-sm');
+  assert.equal(cn('text-lg', 'text-shadow-lg'), 'text-lg text-shadow-lg');
+  assert.equal(cn('text-shadow-lg', 'text-lg'), 'text-shadow-lg text-lg');
+  // The same size / colour split as box-shadow.
+  assert.equal(cn('text-shadow-lg', 'text-shadow-red-500'), 'text-shadow-lg text-shadow-red-500');
+  assert.equal(cn('text-shadow-red-500', 'text-shadow-lg'), 'text-shadow-red-500 text-shadow-lg');
+  assert.equal(cn('text-shadow-lg', 'text-shadow-[color:red]'), 'text-shadow-lg text-shadow-[color:red]');
+  assert.equal(cn('text-shadow-red-500', 'text-primary'), 'text-shadow-red-500 text-primary');
+  assert.equal(cn('text-shadow-2xs', 'text-shadow-lg'), 'text-shadow-lg');
+  assert.equal(cn('text-shadow-sm', 'text-shadow-none'), 'text-shadow-none');
+  assert.equal(cn('text-shadow-lg', 'text-shadow-[0_1px_2px_red]'), 'text-shadow-[0_1px_2px_red]');
+  assert.equal(cn('text-shadow-sm', 'text-shadow-lg/25'), 'text-shadow-lg/25');
+  assert.equal(cn('text-shadow-red-500', 'text-shadow-blue-500'), 'text-shadow-blue-500');
+  assert.equal(cn('text-shadow-red-500', 'text-shadow-initial'), 'text-shadow-initial');
+  assert.equal(cn('text-shadow-red-500', 'text-shadow-inherit'), 'text-shadow-inherit');
+  assert.equal(cn('text-shadow-red-500', 'text-shadow-[#fff]'), 'text-shadow-[#fff]');
+  assert.equal(cn('text-shadow-red-500', 'text-shadow-[color:red]'), 'text-shadow-[color:red]');
+  assert.equal(cn('text-shadow-lg', 'text-shadow-[var(--x)]'), 'text-shadow-[var(--x)]');
+  assert.equal(cn('text-shadow-lg', 'text-shadow-(--x)'), 'text-shadow-(--x)');
+  assert.equal(cn('text-shadow-[var(--x)]', 'text-shadow-red-500'), 'text-shadow-[var(--x)] text-shadow-red-500');
+  // Alignment, wrapping, and overflow had no group at all, so both classes were
+  // emitted and the winner was decided by compiled stylesheet order.
+  assert.equal(cn('text-left', 'text-center'), 'text-center');
+  assert.equal(cn('text-justify', 'text-end'), 'text-end');
+  assert.equal(cn('text-wrap', 'text-nowrap'), 'text-nowrap');
+  assert.equal(cn('text-balance', 'text-pretty'), 'text-pretty');
+  assert.equal(cn('text-ellipsis', 'text-clip'), 'text-clip');
+  // Dropping the old negative lookahead must not merge those back into colour.
+  assert.equal(cn('text-left', 'text-primary'), 'text-left text-primary');
+  assert.equal(cn('text-left', 'text-sm'), 'text-left text-sm');
+  assert.equal(cn('text-nowrap', 'text-primary'), 'text-nowrap text-primary');
+  assert.equal(cn('text-clip', 'text-primary'), 'text-clip text-primary');
+  assert.equal(cn('text-clip', 'text-nowrap'), 'text-clip text-nowrap');
+  assert.equal(cn('text-2xl', 'text-primary'), 'text-2xl text-primary');
+  assert.equal(cn('text-[length:14px]', 'text-primary'), 'text-[length:14px] text-primary');
+  assert.equal(cn('text-[color:red]', 'text-lg'), 'text-[color:red] text-lg');
+  assert.equal(cn('text-sm', 'text-lg'), 'text-lg');
+  assert.equal(cn('text-9xl', 'text-4xl'), 'text-4xl');
+  assert.equal(cn('text-primary', 'text-foreground'), 'text-foreground');
+});
+
+test('cn: the neighbouring shadow and ring prefixes stay ungrouped (#1265)', () => {
+  // Ungrouped means they never evict anything, which is the safe direction to
+  // fail. Splitting the shadow groups must not accidentally capture them.
+  assert.equal(cn('inset-shadow-sm', 'inset-shadow-red-500'), 'inset-shadow-sm inset-shadow-red-500');
+  assert.equal(cn('drop-shadow-lg', 'drop-shadow-red-500'), 'drop-shadow-lg drop-shadow-red-500');
+  assert.equal(cn('ring-2', 'ring-red-500'), 'ring-2 ring-red-500');
+  assert.equal(cn('inset-ring-2', 'inset-ring-red-500'), 'inset-ring-2 inset-ring-red-500');
+});
+
+test('cn: the v4 paren type hint classifies like its bracket sibling (#1338)', () => {
+  // Same hint under the same prefix collapses.
+  assert.equal(cn('bg-(image:--g)', 'bg-(image:--h)'), 'bg-(image:--h)');
+  assert.equal(cn('text-(length:--a)', 'text-(length:--b)'), 'text-(length:--b)');
+  assert.equal(cn('text-shadow-(color:--x)', 'text-shadow-(color:--y)'), 'text-shadow-(color:--y)');
+  // The two spellings share one group, in both orders.
+  assert.equal(cn('bg-[image:var(--g)]', 'bg-(image:--h)'), 'bg-(image:--h)');
+  assert.equal(cn('bg-(image:--g)', 'bg-[image:var(--h)]'), 'bg-[image:var(--h)]');
+  assert.equal(cn('shadow-[color:red]', 'shadow-(color:--x)'), 'shadow-(color:--x)');
+  // The hint keeps it OUT of the prefix's default group, which is what a
+  // variantPrefix-only fix got wrong (#1065 class: it dropped these).
+  assert.equal(cn('bg-(image:--g)', 'bg-primary'), 'bg-(image:--g) bg-primary');
+  assert.equal(cn('bg-primary', 'bg-(image:--g)'), 'bg-primary bg-(image:--g)');
+  assert.equal(cn('text-(length:--s)', 'text-primary'), 'text-(length:--s) text-primary');
+  assert.equal(cn('text-primary', 'text-(length:--s)'), 'text-primary text-(length:--s)');
+  assert.equal(cn('shadow-(color:--x)', 'shadow-lg'), 'shadow-(color:--x) shadow-lg');
+  assert.equal(cn('shadow-lg', 'shadow-(color:--x)'), 'shadow-lg shadow-(color:--x)');
+  // A hint naming the prefix's OWN default property falls through to GROUPS
+  // and collapses against a plain value, exactly as the bracket form does.
+  assert.equal(cn('bg-primary', 'bg-(color:--c)'), 'bg-(color:--c)');
+  assert.equal(cn('text-primary', 'text-(color:--c)'), 'text-(color:--c)');
+  assert.equal(cn('bg-cover', 'bg-(size:--s)'), 'bg-(size:--s)');
+  // Border delegates to borderGroups()'s value parser, which reads the length
+  // hint in both spellings. Without the width-fragment half, the first two
+  // lines DROP the width.
+  assert.equal(cn('border-(length:--w)', 'border-primary'), 'border-(length:--w) border-primary');
+  assert.equal(cn('border-t-(length:--w)', 'border-t-primary'), 'border-t-(length:--w) border-t-primary');
+  assert.equal(cn('border-(length:--w)', 'border-2'), 'border-2');
+  assert.equal(cn('border-2', 'border-(length:--w)'), 'border-(length:--w)');
+  assert.equal(cn('border-(color:--c)', 'border-2'), 'border-(color:--c) border-2');
+  assert.equal(cn('border-primary', 'border-(color:--c)'), 'border-(color:--c)');
+  // A bare paren variable carries no hint, so it stays ambiguous and resolves
+  // the way the prefix's convention says (colour for border, size for shadow).
+  assert.equal(cn('border-(--x)', 'border-primary'), 'border-primary');
+  assert.equal(cn('shadow-(--shadow-glow)', 'shadow-lg'), 'shadow-lg');
+  // A real variant still splits, and a paren inside a variant is untouched.
+  assert.equal(cn('hover:shadow-(color:--x)', 'shadow-(color:--y)'),
+    'hover:shadow-(color:--x) shadow-(color:--y)');
+  assert.equal(cn('hover:bg-primary', 'hover:bg-accent'), 'hover:bg-accent');
+  assert.equal(cn('supports-(--foo):flex', 'supports-(--foo):grid'), 'supports-(--foo):grid');
+  // The URL token stays protected: its parens are nested inside brackets, so
+  // both depths are non-zero at the `://` colon.
+  assert.equal(cn('bg-[url(https://x/y.png)]', 'bg-primary'),
+    'bg-[url(https://x/y.png)] bg-primary');
+  assert.equal(cn('bg-[url(https://x/y.png)]', 'bg-[linear-gradient(red,blue)]'),
+    'bg-[linear-gradient(red,blue)]');
+  // A paren that is not a hint must not be read as one.
+  assert.equal(cn('grid-cols-[repeat(2,minmax(0,1fr))]', 'grid-cols-3'), 'grid-cols-3');
+  assert.equal(cn('w-[calc(100%-1rem)]', 'w-8'), 'w-8');
+  // An unlisted <prefix>:<hint> pair still gets its own bucket, so it can only
+  // ever collide with itself. Safe direction, unchanged by this issue.
+  assert.equal(cn('mask-(image:--m)', 'mask-none'), 'mask-(image:--m) mask-none');
+});
+
 // The old `Base` / `defineElement` HTMLElement-era helpers were removed in #819
 // (the registry components extend `WebComponent` from `@webjsdev/core` now, and
 // keeping them referenced `HTMLElement` / `customElements` at module scope, which
@@ -248,4 +473,32 @@ test('Base and defineElement are no longer exported (removed in #819)', async ()
   const utils = await import(pathToFileURL(file).href);
   assert.equal(utils.Base, undefined, 'Base was removed');
   assert.equal(utils.defineElement, undefined, 'defineElement was removed');
+});
+
+// The conflict table is built on FIRST CALL rather than at module load (#1320),
+// so the order-dependent behaviour is worth pinning explicitly: a memo that
+// rebuilt per call, or one that captured a half-built table, would show up here
+// as a directional case flipping.
+test('cn: directional conflicts survive the memoised table (#1320)', () => {
+  for (const [args, expected] of [
+    [['px-4', 'py-2', 'p-0'], 'p-0'],                              // shorthand subsumes both axes
+    [['p-2', 'px-4'], 'p-2 px-4'],                                 // an axis only refines: both survive
+    [['p-2', 'px-4', 'p-0'], 'p-0'],
+    [['w-8', 'h-9', 'size-4'], 'size-4'],                          // size vs width/height
+    [['border-2', 'border-primary'], 'border-2 border-primary'],   // width vs colour
+    [['border-border', 'border-accent'], 'border-accent'],         // later colour wins
+    [['flex', 'flex-1'], 'flex flex-1'],                           // display vs grow
+    [['text-sm', 'text-primary'], 'text-sm text-primary'],         // size vs colour
+    [['bg-clip-text', 'bg-primary'], 'bg-clip-text bg-primary'],
+  ]) {
+    assert.equal(cn(...args), expected, JSON.stringify(args));
+  }
+});
+
+test('cn: the memoised table is built once (#1320)', () => {
+  // `??=` is what makes the table build once, and it is also what keeps the
+  // module free of module-scope work, so pin the shape as well as the result.
+  assert.match(readFileSync(UTILS_SRC, 'utf8'), /_groups \?\?= \[/);
+  assert.equal(cn('p-2', 'px-4'), cn('p-2', 'px-4'));
+  assert.equal(cn('border-border', 'border-accent'), cn('border-border', 'border-accent'));
 });

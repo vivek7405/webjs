@@ -8,9 +8,10 @@
  * Stripped:
  *   - `renderToString`, `renderToStream` (server SSR pipeline; reach
  *     for `@webjsdev/core/server` if you need them in a Node test).
- *   - `setCspNonceProvider` (server-side wiring called by
- *     `@webjsdev/server`'s context module; `cspNonce()` stays
- *     because layouts can call it).
+ *   - `setCspNonceProvider`, `setAssetUrlProvider` and
+ *     `setFormActionResolver` (server-side wiring called by
+ *     `@webjsdev/server`; the reader halves stay, because a layout
+ *     can call `cspNonce()` / `asset()`).
  *
  * The framework's own SSR pipeline runs on Node and resolves the
  * package via the package.json `"default"` condition, which still
@@ -52,7 +53,14 @@ export {
 // the re-export still also evaluates the module, so the two are belt-and-
 // suspenders, not a double-enable (ESM evaluates once, enable is idempotent).
 import './src/router-client.js';
-export { enableClientRouter, disableClientRouter, navigate, revalidate } from './src/router-client.js';
+// `loadFrame` is here (and in `./index.js`, keeping the two symmetric) because
+// `@webjsdev/core/client-router`'s `default` condition points at THIS bundle, so
+// in dist mode the subpath resolves here while its published `types`
+// (`src/router-client.d.ts`) declare all five public router functions. Without
+// it, `import { loadFrame } from '@webjsdev/core/client-router'` type-checks,
+// works in dev (where the subpath maps to `src/router-client.js`) and is
+// `undefined` in production.
+export { enableClientRouter, disableClientRouter, navigate, revalidate, loadFrame } from './src/router-client.js';
 export { WebjsFrame } from './src/webjs-frame.js';
 export { WebjsStream, renderStream } from './src/webjs-stream.js';
 
@@ -64,7 +72,7 @@ export { optimistic } from './src/optimistic.js';
 
 // SSR action-seed consumer (#472): the generated RPC stub reads a seed on its
 // first call so async-render hydration does not re-fetch the SSR'd data.
-export { takeSeed, scanSeeds, SEED_MISS } from './src/action-seed-client.js';
+export { takeSeed, scanSeeds, seedStats, SEED_MISS } from './src/action-seed-client.js';
 // Client tag-cache coordinator for HTTP-verb actions (#488): tag-based
 // browser-cache eviction after a mutation. Inert server-side.
 export { markStale, registerKeyTags, consumeStale, parseTagHeader, fetchMark } from './src/action-cache-client.js';

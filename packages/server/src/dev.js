@@ -91,6 +91,7 @@ function shouldAccessLog(pathname) {
 }
 import { setVendorEntries, setCoreInstall, publishBuildId, setAppSourceId, setBasePath, basePath, setImportAliasEntries, importAliasBrowserEntries } from './importmap.js';
 import { readBasePath, stripBasePath, withBasePath } from './base-path.js';
+import { validateAppWebjsConfig } from './webjs-config-validate.js';
 import { propagateTrustedRemoteIp } from './rate-limit.js';
 import { readAllowedOrigins } from './csrf.js';
 import { setAssetUrlProvider, setFormActionResolver } from '@webjsdev/core';
@@ -371,6 +372,34 @@ export async function readBasePathFromApp(appDir) {
 }
 
 /**
+ * Read the app package.json and warn once about anything wrong with its `webjs`
+ * block (#1300). One aggregated warning, listing every problem, so a config with
+ * three typos does not produce three log lines.
+ *
+ * Never throws and never exits. See `webjs-config-validate.js` for why warning
+ * is the ruling and why this does not replace the CLI's `doctor.gate` check.
+ *
+ * @param {string} appDir
+ * @param {{ warn?: (...args: any[]) => void }} logger
+ * @returns {Promise<void>}
+ */
+export async function warnOnInvalidWebjsConfig(appDir, logger) {
+  let problems;
+  try {
+    const pkg = JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8'));
+    problems = validateAppWebjsConfig(pkg);
+  } catch {
+    return;
+  }
+  if (!problems.length) return;
+  logger?.warn?.(
+    `[webjs] the "webjs" block in package.json has ${problems.length} problem(s), ` +
+      `each ignored at its default: ${problems.join('; ')}. ` +
+      `See https://webjs.dev/docs/configuration`,
+  );
+}
+
+/**
  * Read the cross-origin allowlist (`webjs.allowedOrigins`) from the app's
  * package.json. These hosts / origins are accepted by the action CSRF check
  * even when cross-site (reverse-proxy / multi-domain setups). A missing or
@@ -532,6 +561,17 @@ export async function createRequestHandler(opts) {
   await applyEnvValidation(appDir, { dev: !!opts.dev });
   const dev = !!opts.dev;
   const logger = opts.logger || defaultLogger({ dev });
+  // Boot-time `webjs` config validation (#1300). The published JSON Schema used
+  // to reach users only through the scaffold's .vscode `$ref`, so a typo'd key
+  // was caught in an editor and nowhere else: the key was dropped, the feature
+  // stayed at its default, and nothing said so. This runs it once per boot, from
+  // the one entry point dev, prod, and an embedded host all share.
+  //
+  // It WARNS and continues, never throws. A typo costs one feature sitting at
+  // its default; a hard boot failure over a schema quibble costs the whole app.
+  // A missing / unreadable / unparseable package.json is a silent no-op, like
+  // every other `webjs.*` reader in this file.
+  await warnOnInvalidWebjsConfig(appDir, logger);
   // Boot-time instrumentation hook (#848): run the optional app-root
   // instrumentation.{js,ts} register() ONCE, after env validation and before
   // the route table / action index are built, so observability plumbing starts
@@ -650,7 +690,7 @@ export async function createRequestHandler(opts) {
   // `webjs.seed` switch. Action identity (#1155) rides the same hook, and it is
   // what a bound `<form action=${action}>` resolves through, so gating the hook
   // on seeding would mean `webjs.seed: false` silently broke every no-JS form.
-  await registerActionHooks({ seed: await readSeedEnabled(appDir) });
+  await registerActionHooks({ seed: await readSeedEnabled(appDir), dev });
 
 
   // When an app commits a vendor pin (.webjs/vendor/importmap.json) it carries a
@@ -909,10 +949,14 @@ export async function createRequestHandler(opts) {
             // Client-router opt-out (#629): re-read each pass so toggling
             // `webjs.clientRouter` takes effect on rebuild without a restart.
             setClientRouterEnabled(await readClientRouterEnabled(appDir));
-            const r = (await readElideEnabled(appDir))
+            // Read the switch ONCE: the dev summary below reports it too, and
+            // calling readElideEnabled twice per warm re-reads package.json.
+            const elideOn = await readElideEnabled(appDir);
+            const r = elideOn
               ? await analyzeElision(components, collectRouteModules(state.routeTable),
                   state.moduleGraph, (f) => readFile(f, 'utf8'), appDir)
-              : { elidableComponents: new Set(), inertRouteModules: new Set(), importOnlyRouteModules: new Map() };
+              : { elidableComponents: new Set(), inertRouteModules: new Set(), importOnlyRouteModules: new Map(),
+                  shippedRouteModules: new Map(), componentVerdicts: new Map() };
             state.elidableComponents = r.elidableComponents;
             state.inertRouteModules = r.inertRouteModules;
             state.importOnlyRouteModules = r.importOnlyRouteModules;
@@ -982,12 +1026,40 @@ export async function createRequestHandler(opts) {
             }
             t.elision = now() - m;
             if (dev) {
+              // An orphan is EITHER shape `findOrphanComponents` reports: no
+              // registration call at all, or one whose tag is computed. The
+              // scanner matches only a literal tag, so it sees neither, and
+              // what is ALWAYS lost is the verdict, the registry entry, and the
+              // preload hint. The upgrade is the part that differs, and a
+              // computed tag only survives when its importer ships WHOLE (see
+              // findOrphanComponents for why that is the exception). The doctor
+              // check and `webjs elision` say the same thing.
               for (const { className, file } of await findOrphanComponents(appDir)) {
                 logger.warn?.(
-                  `[webjs] ${className} extends WebComponent but has no customElements.define(...) call in ${file}. ` +
-                    `Add \`customElements.define('<tag-name>', ${className});\` or <${kebab(className)}> tags won't upgrade.`,
+                  `[webjs] ${className} extends WebComponent but is never registered with a literal tag in ${file} ` +
+                    `(either there is no registration call, or its tag is computed), so the scanner cannot see it: ` +
+                    `no elision verdict, no registry entry, no preload hint. ` +
+                    `<${kebab(className)}> tags never upgrade with no registration call, and a computed tag ` +
+                    `upgrades only while its importing module ships whole. ` +
+                    `Add \`${className}.register('<tag-name>');\` with a literal tag.`,
                 );
               }
+              // The elision summary (#1308), one server-console line. NOT a
+              // browser push: an inert route ships zero application JS, and the
+              // most useful manual check an author has is opening the network
+              // tab on that route and seeing nothing, which a dev-only boot
+              // script would corrupt on exactly the pages this proves. The fact
+              // is also app-wide while a browser channel is per-tab, and the
+              // per-page detail already has a home in `webjs elision`.
+              // Re-emitted after each fs.watch rebuild, because doRebuild sets
+              // analysisDone = false and this sits inside that stage.
+              logger.info?.(
+                elideOn
+                  ? `[webjs] elision: ${r.elidableComponents.size}/${new Set(components.map((c) => c.file)).size} components elided, ` +
+                    `${r.inertRouteModules.size} route modules inert, ${r.importOnlyRouteModules.size} import-only, ` +
+                    `${r.shippedRouteModules.size} ship whole. Run \`webjs elision\` for the per-module verdict.`
+                  : `[webjs] elision: disabled (WEBJS_ELIDE / webjs.elide), every module ships.`,
+              );
             }
             analysisDone = true;
             ranAnalysis = true;
@@ -1316,12 +1388,18 @@ export async function createRequestHandler(opts) {
       // root-mounted `/__webjs/*`. The logged `path` stays the RAW client URL.
       if (shouldAccessLog(headerPathname)) {
         try {
+          // #1309: fold the dev-only seeding counters into the ONE access-log
+          // line rather than adding a second one. Present only on a response
+          // that carried the header, so only page renders gain the field and
+          // production is unchanged.
+          const seed = dev ? conditioned.headers.get('x-webjs-seed') : null;
           logger.info?.('request', {
             requestId: reqId,
             method: req.method,
             path: pathname,
             status: conditioned.status,
             durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
+            ...(seed ? { seed } : {}),
           });
         } catch { /* never let logging crash the response */ }
       }
@@ -1479,7 +1557,7 @@ export async function createRequestHandler(opts) {
       // Build all whole-app analysis on the first request (memoized), before
       // any SSR, module serve, gate check, action dispatch, or middleware runs.
       await ensureReady();
-      const next = () => handleCore(req, { state, appDir, coreDir, dev, logger, reportError, hasOnError, reportDevError, cspEnabled: cspConfig.enabled, allowedOrigins: allowedOriginsValue });
+      const next = () => handleCore(req, { state, appDir, coreDir, dev, reportError, reportDevError, hasOnError, logger, cspEnabled: cspConfig.enabled, allowedOrigins: allowedOriginsValue });
       if (state.middleware) {
         try {
           return await state.middleware(req, next);
@@ -1976,7 +2054,7 @@ async function tryServeFrameworkStatic(path, method, ctx) {
 }
 
 async function handleCore(req, ctx) {
-  const { state, appDir, coreDir, dev, logger, reportError, hasOnError, reportDevError, cspEnabled, allowedOrigins } = ctx;
+  const { state, appDir, coreDir, dev, reportError, reportDevError, hasOnError, logger, cspEnabled, allowedOrigins } = ctx;
   const url = new URL(req.url);
   // Decode percent-encoded characters so filesystem lookups match real
   // filenames. Dynamic route segments like `[slug]` and route groups like
@@ -2252,12 +2330,12 @@ async function handleCore(req, ctx) {
           : undefined,
       };
       if (method === 'GET' || method === 'HEAD') {
-        // #1307: `__webjs_action` in the QUERY STRING is the fingerprint of a
-        // bound submitter submitted through an UNBOUND form. Nothing else in
-        // the framework ever puts that reserved field in a url. Detect only, so
-        // the render below is unchanged: answering a GET differently because of
-        // a query parameter would hand any visitor a way to turn any page into
-        // an error.
+        // #1307: `__webjs_action` in the QUERY STRING means a submission
+        // carrying a bound action's identity went out as a GET, so the action
+        // never ran. Nothing else in the framework puts that reserved field in
+        // a url. Detect only, so the render below is unchanged: answering a GET
+        // differently because of a query parameter would hand any visitor a way
+        // to turn any page into an error.
         reportFormSubmittedAsGet(
           url, req,
           // Gated on hasOnError, not on `reportError`: that is always a

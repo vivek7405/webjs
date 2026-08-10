@@ -69,6 +69,8 @@ Thumbs.db
 # every contributor / agent gets the same PreToolUse rules.
 .claude/*
 !.claude/settings.json
+!.claude/gh-budget.md
+!.claude/gh-ids.env
 !.claude/hooks/
 !.claude/hooks/**
 !.claude/skills/
@@ -89,6 +91,11 @@ packages/mcp/resources/
 # Generated at prepack from the canonical .agents/skills/webjs/ (see
 # scripts/sync-scaffold-skill.mjs). Never commit this bundle.
 packages/cli/templates/.agents/skills/webjs/
+
+# Generated at prepack from the canonical repo-root gallery/ app (see
+# scripts/sync-scaffold-gallery.mjs). Never commit this bundle: the gallery
+# lives ONCE at gallery/, and a committed copy here would silently drift.
+packages/cli/templates/gallery/
 
 # A machine-local symlink into ~/.local/share (an omarchy skill). Kept on disk
 # so the local setup keeps resolving it, untracked so it does not dangle in

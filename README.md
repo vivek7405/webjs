@@ -57,7 +57,7 @@ older, unrelated Java framework also used the name WebJS.
 - **Metadata routes are functions rather than static files.** `sitemap.ts`, `robots.ts`, `manifest.ts`, `icon.ts`, and `opengraph-image.ts` generate SEO and PWA metadata dynamically.
 - **REST endpoints come from `route.ts`.** Expose a server action over HTTP by importing it into a `route.ts` handler, or reach for the one-line `route(action)` adapter from `@webjsdev/server`. Input validation is optional.
 - **WebJs is production ready.** CSRF protection, gzip and brotli, HTTP/2, 103 Early Hints, CSP nonces, modulepreload, rate limiting, health probes, graceful shutdown, and streaming Suspense all ship with the framework.
-- **WebJs UI is the matching AI-first component library.** Its 32 primitives at [webjs.dev/ui](https://webjs.dev/ui) are written for AI agents, in two tiers: pure class-helper functions (`buttonClass`, `cardClass`, `inputClass`) for visual primitives, plus a small set of stateful custom elements (`<ui-dialog>`, `<ui-tabs>`, `<ui-popover>`) for the cases where state matters. Running `webjs ui add button card dialog` copies the source into your project, so you own it and can edit it. It is auto-installed with `@webjsdev/cli`, and projects outside WebJs can use `npx webjsui add button card dialog`.
+- **WebJs UI is the matching AI-first component library.** Its 32 primitives at [webjs.dev/ui](https://webjs.dev/ui) are written for AI agents, in two tiers: pure class-helper functions (`buttonClass`, `cardClass`, `inputClass`) for visual primitives, plus a small set of stateful custom elements (`<ui-dialog>`, `<ui-tabs>`, `<ui-popover>`) for the cases where state matters. Running `webjs ui add button card dialog` copies the source into your project, so you own it and can edit it. It ships as a hard dependency of `@webjsdev/cli`, so a WebJs app that installed the CLI needs no separate install, and a WebJs app that skipped the global install runs `npm install -D @webjsdev/ui` and `npm install @webjsdev/core` first, then `npx webjsui init` and `npx webjsui add button card dialog`.
 
 ## Quickstart
 
@@ -132,6 +132,7 @@ packages/
   webjsdev/         # unscoped npm name for @webjsdev/cli (so `npm i -g webjsdev` works without a scope)
 examples/
   blog/             # full-featured reference app (auth, posts, comments, chat)
+gallery/            # the feature gallery every scaffolded app ships, as a live app
 website/            # landing site AND the documentation at /docs and gallery at /ui
 AGENTS.md           # AI-agent contract for the framework
 CLAUDE.md           # Claude Code quick-reference
@@ -149,7 +150,7 @@ the Tailwind stylesheet is recompiled on request when a source changes
 
 ```sh
 npm install                          # once, from the repo root (installs every workspace)
-npm run dev                          # both apps at once
+npm run dev                          # all three apps at once
 ```
 
 Default ports (port 5000 is skipped because macOS reserves it for the
@@ -159,6 +160,7 @@ AirPlay Receiver / Control Center):
 |---|---|---|---|
 | Landing site, docs, UI gallery | `website/` | 5001 | `WEBSITE_PORT` |
 | Example blog | `examples/blog/` | 5004 | `BLOG_PORT` |
+| Feature gallery | `gallery/` | 5005 | `GALLERY_PORT` |
 
 **Run a single app** (from its directory). Each honors a `PORT` env var:
 
@@ -167,10 +169,10 @@ cd website && npm run dev            # landing site + docs on 5001
 PORT=8080 npm run dev                # ...or on 8080
 ```
 
-**Override ports when running both** via the per-app env vars:
+**Override ports when running all three** via the per-app env vars:
 
 ```sh
-WEBSITE_PORT=8001 BLOG_PORT=8004 npm run dev
+WEBSITE_PORT=8001 BLOG_PORT=8004 GALLERY_PORT=8005 npm run dev
 ```
 
 > Use the `PORT` / `*_PORT` env vars, **not** a `--port` flag. `npm run dev

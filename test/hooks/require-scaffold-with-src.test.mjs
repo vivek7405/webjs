@@ -30,7 +30,7 @@ function makeRepo() {
   git('config', 'user.name', 't');
   for (const d of [
     'packages/core/src', 'packages/server/src', 'packages/cli/src',
-    'packages/cli/lib', 'packages/cli/templates/gallery/app/features/x',
+    'packages/cli/lib', 'gallery/app/features/x',
     'packages/editors/vscode/src', '.agents/skills/webjs/references',
   ]) mkdirSync(join(dir, d), { recursive: true });
   writeFileSync(join(dir, 'packages/core/src/x.js'), 'v1\n');
@@ -60,11 +60,14 @@ test('blocks a feature-src commit that stages no scaffold surface', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+// The gallery is the canonical repo-root `gallery/` app since #1370, not the
+// old `packages/cli/templates/gallery/` copy (which prepack now generates and
+// postpack deletes), so the gate has to recognise a demo at the new path.
 test('allows a feature-src commit that also stages a gallery demo', () => {
   const { dir, git } = makeRepo();
   try {
     writeFileSync(join(dir, 'packages/server/src/y.js'), 'v2\n');
-    writeFileSync(join(dir, 'packages/cli/templates/gallery/app/features/x/page.ts'), 'demo\n');
+    writeFileSync(join(dir, 'gallery/app/features/x/page.ts'), 'demo\n');
     git('add', '-A');
     assert.equal(runHook(dir), 0);
   } finally { rmSync(dir, { recursive: true, force: true }); }

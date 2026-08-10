@@ -81,7 +81,7 @@ export { repeat, isRepeat } from './src/repeat.js';
 export { Suspense, isSuspense } from './src/suspense.js';
 export { connectWS } from './src/websocket-client.js';
 export { richFetch } from './src/rich-fetch.js';
-export { enableClientRouter, disableClientRouter, revalidate } from './src/router-client.js';
+export { enableClientRouter, disableClientRouter, revalidate, loadFrame } from './src/router-client.js';
 
 // `navigate` is typed against the generated `Route` union (#258) rather than
 // the JSDoc `string`. Until an app runs `webjs types`, `Route` resolves to
@@ -108,7 +108,7 @@ export { signal, computed, effect, batch, isSignal, Signal } from './src/signal.
 export { cspNonce, setCspNonceProvider } from './src/csp-nonce.js';
 export { asset, setAssetUrlProvider } from './src/asset-url.js';
 export { FORM_ACTION_FIELD, FORM_ACTION_ID_KEY, setFormActionResolver } from './src/form-action.js';
-export { takeSeed, scanSeeds, SEED_MISS } from './src/action-seed-client.js';
+export { takeSeed, scanSeeds, seedStats, SEED_MISS } from './src/action-seed-client.js';
 export { markStale, registerKeyTags, consumeStale, parseTagHeader, fetchMark } from './src/action-cache-client.js';
 // Client action-abort plumbing (#492): a superseded async render aborts its
 // in-flight action fetches. Inert server-side.

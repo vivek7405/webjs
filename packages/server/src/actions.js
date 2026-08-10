@@ -245,7 +245,7 @@ export async function isServerAction(file) {
 
 /**
  * @param {ActionIndex} idx
- * @param {string} urlPath - a browser-visible URL path like `/actions/foo.server.js`
+ * @param {string} urlPath A browser-visible URL path like `/actions/foo.server.js`
  */
 export function resolveServerModule(idx, urlPath) {
   const abs = join(idx.appDir, urlPath.split('/').join(sep));

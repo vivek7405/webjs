@@ -28,7 +28,7 @@ export {
   stringify, parse,
   serialize, deserialize,
 } from './src/serialize.js';
-export { enableClientRouter, disableClientRouter, navigate, revalidate } from './src/router-client.js';
+export { enableClientRouter, disableClientRouter, navigate, revalidate, loadFrame } from './src/router-client.js';
 export { WebjsFrame } from './src/webjs-frame.js';
 export { WebjsStream, renderStream } from './src/webjs-stream.js';
 
@@ -40,7 +40,7 @@ export { optimistic } from './src/optimistic.js';
 
 // SSR action-seed consumer (#472): the generated RPC stub reads a seed on its
 // first call so async-render hydration does not re-fetch. Inert server-side.
-export { takeSeed, scanSeeds, SEED_MISS } from './src/action-seed-client.js';
+export { takeSeed, scanSeeds, seedStats, SEED_MISS } from './src/action-seed-client.js';
 // Client tag-cache coordinator for HTTP-verb actions (#488): tag-based
 // browser-cache eviction after a mutation. Inert server-side.
 export { markStale, registerKeyTags, consumeStale, parseTagHeader, fetchMark } from './src/action-cache-client.js';

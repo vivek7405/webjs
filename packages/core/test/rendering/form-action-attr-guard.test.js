@@ -152,16 +152,19 @@ test('mixed hole action="/x/${fn}" throws', async () => {
 });
 
 test('formaction=${fn} on a submit button inside an unbound form throws', async () => {
+  // The enclosing form no longer decides anything (#1307). What still refuses is
+  // the LEAK guard: `leaky` is not a registered action, so it has no identity to
+  // bind and stringifying it would write the function's source into the HTML.
   await assert.rejects(
     () => renderToString(html`<form method="post"><button formaction=${leaky}>Go</button></form>`, { ssr: true }),
-    /requires the enclosing <form> to also be bound/,
+    NOT_AN_ACTION,
   );
 });
 
 test('camelCase formAction=${fn} throws on an unbound form (React spells it this way)', async () => {
   await assert.rejects(
     () => renderToString(html`<form method="post"><button formAction=${leaky}>Go</button></form>`, { ssr: true }),
-    /requires the enclosing <form> to also be bound/,
+    NOT_AN_ACTION,
   );
   await assert.rejects(
     () => renderToString(html`<form action=${'/x'}><button formAction="${leaky}">Go</button></form>`, { ssr: true }),
@@ -188,7 +191,7 @@ test('a quoted mixed-case Action="${fn}" throws (sigil strip and case-fold compo
 test('the streaming renderer folds case too', async () => {
   await assert.rejects(
     () => drain(renderToStream(html`<button formAction=${leaky}></button>`, { ssr: false })),
-    /requires the enclosing <form> to also be bound/,
+    NOT_AN_ACTION,
   );
 });
 
@@ -273,10 +276,10 @@ test('the streaming renderer refuses a mixed hole', async () => {
   );
 });
 
-test('the streaming renderer refuses formaction on an unbound button', async () => {
+test('the streaming renderer refuses a formaction that is not an action', async () => {
   await assert.rejects(
     () => drain(renderToStream(html`<button formaction=${leaky}></button>`, { ssr: false })),
-    /requires the enclosing <form> to also be bound/,
+    NOT_AN_ACTION,
   );
   await assert.rejects(
     () => drain(renderToStream(html`<form action=${'/x'}><button formaction="${leaky}"></button></form>`, { ssr: false })),

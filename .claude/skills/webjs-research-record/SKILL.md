@@ -55,31 +55,48 @@ Extract from the user's request:
 
 ## Steps
 
+Every `gh issue *` call below is REST (`gh api`), because that porcelain goes
+through GraphQL, whose point budget is routinely spent here, and writing the
+record IS this skill's whole deliverable, so it must not be the thing a spent
+budget blocks. The one porcelain call kept is `gh label create` in step 1, which
+is already REST underneath (see the note there). See `.claude/gh-budget.md`.
+Build every body payload with `jq -n --rawfile` so backticks and `$` in the prose
+never reach the shell.
+
 1. **Ensure the `research` label exists** (one-time):
    ```sh
-   gh label list --repo webjsdev/webjs --search research
-   # if absent:
+   gh api "repos/webjsdev/webjs/labels?per_page=100" --jq '[.[].name] | index("research")'
+   # if that prints null:
    gh label create research --repo webjsdev/webjs --color 5319e7 \
      --description "Research/design/decision record (no code); filter these to read design history"
    ```
+
+   The read is REST because `gh label list` goes through GraphQL. The create
+   stays on the porcelain because `gh label create` does NOT: it issues a plain
+   `POST /repos/{owner}/{repo}/labels`, so there is nothing to save by rewriting
+   it and the shorter form is easier to read.
 2. **Find or create the issue.** If a backlog `research` issue already exists for this question, use it. Otherwise create one:
    ```sh
-   gh issue create --repo webjsdev/webjs --label research \
-     --title "research: <question or decision>" --body-file /tmp/research-record.md
+   jq -n --rawfile b /tmp/research-record.md \
+     '{title:"research: <question or decision>", body:$b, labels:["research"]}' > /tmp/rec.json
+   gh api -X POST repos/webjsdev/webjs/issues --input /tmp/rec.json --jq '"\(.number) \(.html_url)"'
    ```
    When appending to an existing backlog issue, also curate the final conclusion into its body so the answer is readable without the whole thread:
    ```sh
-   gh issue edit <n> --repo webjsdev/webjs --body-file /tmp/research-record.md
-   # confirm the label is present:
-   gh issue edit <n> --repo webjsdev/webjs --add-label research
+   jq -n --rawfile b /tmp/research-record.md '{body:$b}' > /tmp/rec-body.json
+   gh api -X PATCH repos/webjsdev/webjs/issues/<n> --input /tmp/rec-body.json --jq .number
+   # confirm the label is present (adding one already on the issue is a no-op):
+   gh api -X POST repos/webjsdev/webjs/issues/<n>/labels -f 'labels[]=research' --jq '[.[].name]|join(",")'
    ```
 3. **Add deep-dive comments** for the threaded detail:
    ```sh
-   gh issue comment <n> --repo webjsdev/webjs --body-file /tmp/deep-dive.md
+   jq -n --rawfile b /tmp/deep-dive.md '{body:$b}' > /tmp/rec-comment.json
+   gh api -X POST repos/webjsdev/webjs/issues/<n>/comments --input /tmp/rec-comment.json --jq .html_url
    ```
 4. **Close the issue as completed** (it is a record, not open work):
    ```sh
-   gh issue close <n> --repo webjsdev/webjs --reason completed
+   gh api -X PATCH repos/webjsdev/webjs/issues/<n> -f state=closed -f state_reason=completed \
+     --jq '"\(.state)/\(.state_reason)"'
    ```
 5. **Report** the issue number and confirm it carries the `research` label.
 
@@ -91,5 +108,11 @@ The actual implementation that the research points to is **separate tracked work
 
 ```sh
 # All research records, filterable by the label:
-gh issue list --repo webjsdev/webjs --label research --state all
+gh api "repos/webjsdev/webjs/issues?labels=research&state=all&per_page=100" \
+  --jq '.[] | select(has("pull_request") | not) | "#\(.number) \(.title)"'
 ```
+
+REST rather than `gh issue list`, which goes through GraphQL. See
+`.claude/gh-budget.md` for the rule and the full substitution table. The
+`pull_request` filter is not optional: the REST issues endpoint returns PRs
+alongside issues.

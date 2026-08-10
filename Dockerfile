@@ -51,6 +51,7 @@ COPY packages/editors/intellisense/package.json         ./packages/editors/intel
 COPY packages/ui/package.json                        ./packages/ui/
 COPY packages/ui/packages/registry/package.json      ./packages/ui/packages/registry/
 COPY examples/blog/package.json                      ./examples/blog/
+COPY gallery/package.json                            ./gallery/
 COPY website/package.json                            ./website/
 
 # Copy the CLI's bin/ before install so npm can symlink it into
@@ -64,6 +65,7 @@ RUN npm install --no-audit --no-fund
 # --- 2. Copy source -----------------------------------------------------
 COPY packages  ./packages
 COPY examples  ./examples
+COPY gallery   ./gallery
 COPY website   ./website
 # scripts/build-framework-dist.js is invoked by the step-3
 # `npm run build:dist --workspace=@webjsdev/core` line, so the
@@ -124,7 +126,8 @@ RUN cd website && node scripts/copy-registry.mjs
 # to be ready in the image. Keep this list in sync with the apps that
 # have a public/input.css and a `css:build` script in their package.json.
 RUN npx tailwindcss -i website/public/input.css                       -o website/public/tailwind.css                       --minify \
- && npx tailwindcss -i examples/blog/public/input.css                 -o examples/blog/public/tailwind.css                 --minify
+ && npx tailwindcss -i examples/blog/public/input.css                 -o examples/blog/public/tailwind.css                 --minify \
+ && npx tailwindcss -i gallery/public/input.css                       -o gallery/public/tailwind.css                       --minify
 
 # Default env vars. Railway / compose set their own per service.
 ENV NODE_ENV=production

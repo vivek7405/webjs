@@ -2,6 +2,7 @@
 
 ## What This Covers
 
+- What a component owns (markup, state, listeners, styling), and the rules that follow from it: refs over selectors, no state on `<body>`, ARIA derived in `render()`
 - Declaring reactive properties through the `WebComponent({ ... })` factory and `prop()`, with options (`reflect`, `state`, `attribute`, `default`, `converter`, `hasChanged`)
 - Signals as the default state primitive for component-local and shared state, plus `effect` / `batch`
 - The Lit-aligned lifecycle and exactly which hooks SSR runs versus skips
@@ -14,6 +15,91 @@
 - Inherited members app code must NOT shadow (`title`, `remove`, `render`, ...)
 
 Read this when you are authoring or reviewing a `WebComponent`. For styling a component (Tailwind, the tag-prefix rule, host sizing) see `styling.md`. For streaming a slow region or programmatic navigation see `client-router-and-streaming.md`. For Lit habits that break WebJs see `muscle-memory-gotchas.md`.
+
+## Ownership: what a component owns
+
+A component owns four things together: its markup, its state, its listeners, and its styling. The moment one of them lives in a different file from the rest, the feature can no longer be read, tested, or deleted as a unit, and the parts drift apart. These are CONVENTIONS, judged by a reader. `webjs check` has no rule for any of them, and adding one would be wrong, because a sensible app can legitimately want a delegated listener to pass.
+
+Most of what follows restates widely held component-model advice, ported. Lit's base class exists to hold reactive state, scoped styles, and a declarative template TOGETHER (the `lit` package README), and Lit documents a ref's value as `undefined` once the node "is no longer rendered", which is precisely the signal a selector lookup cannot give you. React frames the same ideas as lifting state to the closest common owner (react.dev, "Sharing State Between Components") and treating a ref as an escape hatch rather than the normal way to reach a node (react.dev, "Escape Hatches"). Where WebJs moves the boundary, the rule that needs it says so inline and names the mechanism.
+
+**1. Markup and the code that drives it live in the same component.** A class selector is not an interface. `document.querySelector('.nav-toggle')` keeps compiling, keeps type-checking, and keeps passing `webjs check` after someone renames the class in the other file. It just starts returning `null` at runtime. If you are writing a selector to find markup that another file rendered, write the component that renders it instead. Where a value genuinely has to exist in two places (a layout's pre-paint inline script cannot import), the second place READS the first declaration rather than restating it.
+
+**2. Reach your own rendered node with a ref, never with a selector.** `render()` already owns the node, so let the handle flow out of the template with `ref()` / `createRef()` from `@webjsdev/core/directives` (the directives table below carries the one-line summary). A ref is scoped to the component, so it cannot match a node some other component rendered, and it goes `undefined` when the node stops being rendered, which makes a stale handle visible instead of silent. Two reads a ref cannot express stay vanilla: `this.closest('parent-tag')` for compound-component ancestor lookup, and `assignedNodes()` for slotted content.
+
+**3. State lives on the component, never on `<body>` or `<html>`.** The client router swaps a range INSIDE the document, so the document shell sits outside every swap. An open flag parked on `<body>` therefore survives a navigation that removed the markup it described, and it re-opens a panel over the next page or leaves scrolling locked on a page with nothing open. State held in a reactive property or an INSTANCE signal dies with the element, which is the behaviour you wanted in the first place. A module-scope signal deliberately outlives it, which is what rule 7 reaches for, so it is the right home for state genuinely shared between components and the wrong one for one element's own open flag. The carve-out is a document-level EFFECT rather than one component's state, and it comes in two shapes. A TRANSIENT effect, a scroll lock being the usual case, belongs to the element that opened it and must be released in `disconnectedCallback`. A PERSISTENT one is a document-wide SETTING, the theme being the case the framework itself ships: the scaffold's theme toggle writes `data-theme` on `<html>` and persists it, deliberately without releasing it on disconnect, because it describes the document rather than the element (`styling.md` carries that pattern). What the rule forbids is neither of those. It is one component's own open / selected / active flag parked on the shell because that was the convenient place to reach it from.
+
+**4. ARIA state is a hole in `render()`, derived from the same state that drives behaviour.** `aria-expanded=${this.open ? 'true' : 'false'}` cannot disagree with `this.open`. A second function that re-finds the button and calls `setAttribute` can, and does, the first time someone adds a close path that forgets to call it. The same holds for `class`, `?disabled`, and any `.prop`. Two caveats ride this rule:
+
+- Write the string explicitly for a tri-state ARIA attribute. A plain-attribute hole holding `false` serves `aria-expanded="false"` from the server and hydrates to NO attribute, because the client removes an attribute for `null` / `undefined` / `false` while the server stringifies it. `?attr=${bool}` is not a substitute, since a boolean binding omits the attribute in BOTH renderers.
+- A hole commits on the next render, one microtask later. The one place a direct write is still correct is a synchronous snapshot read such as `webjs:before-cache`, where the router reads `outerHTML` in the same task. That is a documented exception, not the normal path.
+
+**5. Behaviour needs an importable surface, or its test is a copy of it.** An inline `<script>` in a layout has no module identity, so a browser test cannot import it. It can only transcribe the listener into the test file and assert against the transcription, which then needs a SECOND test to grep the original for drift. Two tests, neither running shipping code. A component is importable, so its browser test mounts the real element and drives real events. A page or layout may still carry an inline `<script>`, but only for pre-paint boot work no module can do: reading a stored theme before first paint so the wrong palette never flashes, or measuring the header height into a CSS custom property. It must not be interactivity, and WHERE it sits decides how often it runs. The ROOT layout's markup sits OUTSIDE every swap range, so a soft navigation does not re-run its script, which is what makes it the right home for boot work and the wrong home for anything that has to respond to a later navigation. A page or a NESTED layout sits inside the swap range instead, so its script re-executes on every navigation that swaps that range (#1102), which means it has to be idempotent or guard on a flag it sets the first time. Neither shape gives you a listener that simply works, which is what a custom element is for. Under an opt-in CSP the script also needs the nonce from `cspNonce()`. `client-router-and-streaming.md` carries the full re-execution rule.
+
+**6. Listening on `document` is legitimate. Querying `document` usually is not.** An outside-click dismissal or an Escape handler has no choice, because the event happens outside the element, so the listener has to be global. What decides whether that is ownership or a reach across the app is what the handler then READS. `this.contains(e.target)` is a decision about the component's own subtree. `document.querySelector('.other-thing')` is a decision about someone else's markup. Add the listener in `connectedCallback`, remove it in `disconnectedCallback`, and store the handler in a field so `removeEventListener` gets the same reference back (a function created inline at add time can never be removed).
+
+**7. Talk to an ancestor with an event, and to a stranger with a module-scope signal.** A child telling its own ancestor something dispatches a `CustomEvent` with `bubbles: true`, and the ancestor binds `@my-event=${...}` in the template that rendered it. Add `composed: true` as well when the component sets `static shadow = true`, or the event stops at the shadow boundary. Two components with NO ancestor relationship share a module-scope `signal` that both import, which is typed, greppable, and owned by a module. What neither case is: a made-up event name on `document` used as a global bus, which is a global variable with extra steps. Framework events such as `webjs:navigate` ride `document` because the router has no element to dispatch from, and that is not a licence to add your own.
+
+The shape to fix, all four pieces in different places:
+
+```js
+// In a layout's inline script, driving markup that another file rendered.
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.nav-toggle')) document.body.toggleAttribute('data-nav-open');
+});
+function syncNav() {
+  const btn = document.querySelector('.nav-toggle');   // another file's markup
+  const open = document.body.hasAttribute('data-nav-open');  // outlives the markup
+  if (btn) btn.setAttribute('aria-expanded', String(open));  // a second home for the state
+}
+```
+
+The shape to write, one component owning all four:
+
+```ts
+import { WebComponent, prop, html } from '@webjsdev/core';
+import { createRef, ref } from '@webjsdev/core/directives';
+
+class NavDrawer extends WebComponent({ open: prop(Boolean, { reflect: true }) }) {
+  private toggleRef = createRef<HTMLButtonElement>();
+  // Stored in a field, so removeEventListener gets the same reference back.
+  private onDocClick = (e: MouseEvent) => {
+    if (!this.contains(e.target as Node)) this.open = false;   // reads its OWN subtree
+  };
+  private onDocKeydown = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape' || !this.open) return;
+    this.open = false;
+    // The ref lands after the FIRST client commit, and `ref()` is a no-op at
+    // SSR, so read `.value` from a handler or `firstUpdated`, never from the
+    // constructor. This is the reach a selector would otherwise have done.
+    this.toggleRef.value?.focus();
+  };
+
+  constructor() { super(); this.open = false; }                // SSR runs the constructor
+
+  connectedCallback() {
+    super.connectedCallback();
+    document.addEventListener('click', this.onDocClick);       // listening globally is fine
+    document.addEventListener('keydown', this.onDocKeydown);
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    document.removeEventListener('click', this.onDocClick);    // the state dies with the element
+    document.removeEventListener('keydown', this.onDocKeydown);
+  }
+
+  render() {
+    return html`
+      <button ${ref(this.toggleRef)}
+        aria-expanded=${this.open ? 'true' : 'false'}
+        @click=${() => { this.open = !this.open; }}>Menu</button>
+      <nav ?hidden=${!this.open}><slot></slot></nav>
+    `;
+  }
+}
+NavDrawer.register('nav-drawer');
+```
+
+This repo's own website is the worked example. Before commit `b80de906` the docs drawer and the header menu were exactly the first shape, and every accessibility bug their tests now pin came out of the split. `website/components/docs-drawer.ts` and `website/components/site-nav-menu.ts` are the second shape, and `website/AGENTS.md` records the app-level version of these rules under "What stays inline script in the root layout".
 
 ## Reactive properties: the base-class factory
 
@@ -48,16 +134,22 @@ The bare form is shorthand: `count: Number` means `prop(Number)`. Use `prop()` t
 | Option | Default | Meaning |
 |---|---|---|
 | `type` | `String` | Constructor feeding the default attribute converter |
-| `reflect` | `false` | Property changes write back to the HTML attribute (a function value removes it instead, see below) |
-| `state` | `false` | Internal-only. No attribute, not observed |
+| `reflect` | `false` | Property changes write back to the HTML attribute (a value with no attribute representation removes it instead, see below) |
+| `state` | `false` | Internal-only. No attribute, not observed, and never read from one at SSR either |
 | `attribute` | derived from name | The HTML attribute name the property rides |
 | `default` | none | Declarative initial value (a function runs per instance for a fresh object / array) |
 | `hasChanged` | strict `!==` | Custom change detection |
-| `converter` | type-based | Custom attribute-to-property serialization |
+| `converter` | type-based | Custom attribute-to-property serialization. `fromAttribute` runs on BOTH readers (the client upgrade and SSR), ahead of type coercion |
 
 For an array-typed prop pass `Array`, not `Object` (`array-prop-uses-array-type` flags the `Object` form). For anything the built-in converters cannot parse (Date, Map, Set) supply a `converter`.
 
+**A `converter.fromAttribute` runs SERVER-SIDE too.** Both attribute readers go through one shared implementation, so the converter fires during SSR as well as on the client upgrade, and it wins over the declared `type` on both. So keep it free of browser globals (`document`, `window`, `navigator`), since SSR has no DOM and touching one throws where the same code worked in the browser. A converter that THROWS is not caught by either reader, because an author who writes one owns the conversion: at SSR the throw lands in per-component error isolation (an error box in dev, an empty element at a 200 in production, with the cause in the server log) while sibling components still render, and on the client it escapes `attributeChangedCallback` during upgrade. Both readers hand the converter DECODED attribute text, so a converter that parses its input (`JSON.parse` for a Map or a Set, `new Date(...)`) sees the same string on both sides even when the attribute carries `&quot;` or `&amp;`.
+
 **A `reflect: true` property holding a FUNCTION drops its attribute instead of writing one, and so does one holding an array that carries a function, unless the prop is `Object` or `Array` typed.** A function has no HTML attribute representation, and the serializations it would otherwise get are both useless and dangerous. `String(fn)` is the function's SOURCE, so a reflected `'use server'` action would ship its whole body, closure secrets included, to every visitor, and `JSON.stringify(fn)` is `undefined`, which lands in the attribute as the literal four-character string. So the reflection path treats a function like `null`, removes the attribute, and warns naming the property, the tag, and the attribute. This holds on both sides, since SSR and the client-side setter run the same path, and it holds for every property name (the leak was never specific to one called `action`). Two exceptions. A property with a custom `converter.toAttribute` runs that converter first and is left alone, because an author who writes one has taken responsibility for serializing whatever they are handed. And an `Object` or `Array` typed property CARRYING a function keeps its data, because `JSON.stringify` drops the function to `null` and omits the key, so `[1, 2, fn]` reflects as `[1,2,null]` with no source and nothing else lost. If you need a function on a component, use a plain property or a signal and do not mark it `reflect`.
+
+**An `Object` or `Array` typed reflected property whose value `JSON.stringify` cannot serialize AT ALL drops its attribute the same way, and warns.** Three shapes do this: a cycle (an object or array that reaches itself, which arrives from a parent/child graph, a linked node, a memo table, or anything a library hands back with a back-reference), a `BigInt` anywhere inside the value, and an author `toJSON()` that throws. The line to keep straight is that a value which serializes WITH A GAP in it keeps its data (the carried-function case above), while one that does not serialize at all has no string to put in the attribute and so has no attribute representation, exactly like a function. The property itself is untouched and still holds the value; only the attribute goes. Before this guard the throw escaped reflection entirely, which meant a client upgrade threw before the component's first render, and an SSR render was swallowed by per-component error isolation, which shows an error box in dev and renders the component EMPTY on a page that still returned 200 in production. To reflect something about a graph-shaped value, reflect a derived scalar (an id, a count) and keep the graph on a non-reflected property. On the read side an attribute that is PRESENT but not parseable JSON reads back as `null` rather than as the raw string, on both the SSR and the client reader. An ABSENT attribute is a different case: neither reader sees it, so the property keeps its constructor value. The two readers also see the same attribute SET, not merely the same fallback: a `state: true` prop, a camelCase attribute name, and an attribute matching no declared property are all ignored by both, and both are handed a value whose HTML character references are already decoded.
+
+**Writing attributes in markup.** Names are case-insensitive and the browser lowercases them while parsing, so write kebab-case (`user-name`); a camelCase attribute (`userName="…"`) reaches no property on either side. A prop that renames its attribute answers to the new name ONLY, so `open: prop(Boolean, { attribute: 'is-open' })` is written `<my-el is-open>` and `<my-el open>` reaches nothing. Character references are decoded before the value is coerced, so `cfg="&#123;&quot;a&quot;:1&#125;"` parses as the object it spells and `label="Tom &amp; Jerry"` is `Tom & Jerry`; the legacy semicolon-less forms decode exactly where a browser decodes them (`&nbsp` at the end of a value is a non-breaking space, `&nbspx` and `&nbsp=x` stay literal), and writing the semicolon avoids the question. A `state: true` prop takes an SSR value only through a `.prop=${value}` binding from the parent template, never from an attribute.
 
 **Never use a class-field declaration OR initializer** (`count = 0`, `student: Student = {...}`, `todos!: Todo[]`). Under `useDefineForClassFields` even a type-only `todos!: Todo[]` compiles to define an own property after `super()`, which clobbers the prototype's reactive accessor and silently breaks reactivity. Only declare props in the factory and read/write them off `this`. The `reactive-props-no-class-field` rule catches this.
 
@@ -264,7 +356,56 @@ A component that does no client-side work renders the same SSR'd HTML with or wi
 - the dynamic slot READ surface (`slotchange`, `assignedNodes` / `assignedElements` / `assignedSlot`); merely RENDERING a `<slot>` does not ship (the SSR output carries the placed children, so a display-only slotted wrapper is byte-identical without its JS; native-write liveness is consumer-driven and the consumer's tag reference forces the ship)
 - being rendered by a component that itself ships
 
-A bare `async render()` (no other signal, light DOM) is elided too: the SSR'd data is the complete first paint. Force shipping with `static interactive = true` when interactivity is invisible to static analysis (a dynamically-built tag string, a `:defined` rule in an external stylesheet). `static shadow = true` always ships (Declarative Shadow DOM re-attaches only during parsing). Turn elision off app-wide with `{ "webjs": { "elide": false } }` or `WEBJS_ELIDE=0`.
+A bare `async render()` (no other signal, light DOM) is elided too: the SSR'd data is the complete first paint. Force shipping with `static interactive = true` when interactivity is invisible to static analysis. `static shadow = true` always ships (Declarative Shadow DOM re-attaches only during parsing). Turn elision off app-wide with `{ "webjs": { "elide": false } }` or `WEBJS_ELIDE=0`.
+
+### What `static interactive = true` does and does not rescue
+
+The analyser reads source lexically, so a few real shapes escape it. The override covers them:
+
+- **An OBSERVER that computes the tag it waits for.** `customElements.whenDefined(TAG)` where `TAG` is a variable does not name a tag the analyser can resolve, so the observed component is elided, its `register` never runs, and the `await` never settles. Put `static interactive = true` on the OBSERVED component.
+- **A `:defined` rule in an external stylesheet.** `public/app.css` is not in the module graph, so a `my-badge:defined { … }` rule is invisible. Same fix, on the component the rule names.
+- **A consumer that reaches the element through a string selector.** The analyser matches `whenDefined` / `:defined` / `instanceof`, so a `document.querySelector('my-wrapper')` consumer escapes all three. Same fix, on the component being reached.
+
+**It does NOT rescue a component whose OWN registration tag is computed.** `Badge.register(TAG)` is not a registration the scanner recognises (invariant 3 requires a literal tag), so that component is never in the component set at all: it gets no verdict, nothing consults the analyser for it, and the override has nothing to attach to. The registration still runs if the module reaches the browser, so what you ALWAYS lose is the verdict, the tag-to-module registry entry, and the preload hint. Whether the element upgrades depends on one thing: the importing module has to ship WHOLE. An inert, import-only, or elided importer is dropped from the boot and takes the import with it, and then the element never registers at all. A page rendering a real component alongside the orphan is import-only unless it ALSO does its own client work, so shipping whole is the narrower case: assume the element does not upgrade. Always pass a literal: `Badge.register('my-badge')`.
+
+`webjs dev` warns, and `webjs elision` / `webjs doctor` report it, as an **orphan**. That name covers TWO shapes and they fail differently, so read the warning carefully: a computed tag is the case above, while a class with NO registration call anywhere in the app is the plainer one (someone forgot to register it), and that element never upgrades. The check is app-wide, so registering the class from a sibling module is fine and is not reported. Both lose the verdict, the registry entry, and the preload hint.
+
+### Inspecting and proving the verdict
+
+Elision is the one thing WebJs decides about your code that you did not write down, so it is inspectable rather than something to reason about from the rules above.
+
+```sh
+webjs elision                      # per-module verdict, and the evidence behind every ship
+webjs elision --json               # the same object, for a tool or an agent
+webjs elision --verify             # prove elision changed nothing your app serves
+webjs elision --verify --routes /,/blog/hello   # add paths (the only way to cover a dynamic route)
+```
+
+**Reading the report.** Every component is `elided` or `shipped`. A shipped one carries the `evidence` that forced it, first match wins:
+
+| `evidence` | Means | `by` |
+|---|---|---|
+| `own` | its own source carries a signal; `reason` is the exact one | null |
+| `observed` | another module observes its registration (`whenDefined` / `:defined` / `instanceof`) | the observer |
+| `closure` | something it imports does client work | the import |
+| `render` | a shipping component can render its tag | that component |
+| `import` | a shipping component imports it | that component |
+| `unreadable` | its source could not be read, so it ships conservatively | null |
+
+An elided row carries no reason on purpose: elision is the ABSENCE of every signal, so there is no positive fact to report.
+
+**What to do with each verdict.** `elided` on a component you believe is interactive is the one result worth acting on: find the signal it is missing (the list above), and if the interactivity is genuinely invisible to static analysis, add `static interactive = true`. `shipped` with an `evidence` you did not expect is usually a `closure` row, and the fix is to move the client-effecting import out of that component's path. An `orphans` row is always a bug, and the fix depends on which shape it is: give the class a literal registration tag if its tag is computed, or add the missing `Class.register('my-tag')` call if there is none at all (delete the class instead if nothing uses it).
+
+**What `--verify` proves.** It renders every static page route with elision on and off and diffs the bytes with the JS-loaded set masked out, which is the framework's own guard pointed at your app. So it proves elision did not change what your app SERVES. It does not prove post-hydration behaviour, because a wrongly dropped module shows up as a dead click, not as different bytes. Cover that half by running your own browser or e2e suite twice:
+
+```sh
+WEBJS_ELIDE=1 npm run test:e2e
+WEBJS_ELIDE=0 npm run test:e2e
+```
+
+It exits non-zero on a divergence AND on a corpus where nothing could be compared, so it is safe to put in CI. The ON side is forced on rather than read from your config, so the comparison is a real one even in an app that has elision switched off, and the run reports how many modules elision actually dropped so a trivially-true pass is visible. Dynamic routes are skipped by name (rendering one would mean inventing param values); pass real ones with `--routes`. A route whose two same-side renders already differ is reported as nondeterministic and excluded, since a differential over live data proves nothing.
+
+`webjs doctor` carries the same verdict as a one-line inventory, and warns only on an orphan.
 
 ## Members app code must not shadow
 

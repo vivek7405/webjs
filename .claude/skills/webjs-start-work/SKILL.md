@@ -28,9 +28,13 @@ This skill picks up from an EXISTING issue. Before running any step below, confi
 If you are unsure whether an issue already exists, search before filing:
 
 ```sh
-gh issue list --repo webjsdev/webjs --search "<keywords>" --state all
-gh project item-list 1 --owner webjsdev --format json --limit 20000
+gh api "search/issues?q=repo:webjsdev/webjs+is:issue+<keywords>&per_page=20" \
+  --jq '.items[] | "#\(.number) [\(.state)] \(.title)"'
 ```
+
+Search the ISSUES over REST rather than dumping the board. It matches bodies as
+well as titles, so it is the better duplicate check, and it costs nothing from
+the GraphQL budget. See `.claude/gh-budget.md`.
 
 When in doubt, file it. A duplicate is cheap to close; untracked work is the expensive failure. Only once an issue number exists do you continue to Inputs below.
 
@@ -39,29 +43,46 @@ When in doubt, file it. A duplicate is cheap to close; untracked work is the exp
 The user's request typically names an issue by number (e.g. `#112`) or by description (e.g. "the dist issue"). Resolve the number first:
 
 - If the user said `#N` explicitly, use N.
-- If they described the issue by topic, run `gh project item-list 1 --owner webjsdev --format json --limit 20000` and match against item titles. If multiple match, ask the user to disambiguate.
+- If they described the issue by topic, search the issues over REST and match against titles. If multiple match, ask the user to disambiguate.
+
+  ```sh
+  gh api "search/issues?q=repo:webjsdev/webjs+is:issue+is:open+<topic>&per_page=20" \
+    --jq '.items[] | "#\(.number) \(.title)"'
+  ```
+
+  Do not dump the board for this. Searching issues costs nothing from the GraphQL budget and matches bodies too, so it resolves a vague description better than a title scan would.
 
 ## Steps
 
 1. **Verify the issue exists and is open. Assign it to vivek7405 if not already.**
 
    ```sh
-   gh issue view <N> --repo webjsdev/webjs --json title,number,state,labels,assignees
+   gh api repos/webjsdev/webjs/issues/<N> \
+     --jq '{number,state,title,labels:[.labels[].name],assignees:[.assignees[].login]}'
    ```
 
-   If `state` is CLOSED, ask the user whether to reopen it or pick a different one. Otherwise note the title for the branch slug. If `assignees` is empty (an issue filed by drive-by contributor), assign to vivek7405:
+   REST rather than `gh issue view`, which goes through GraphQL. See `.claude/gh-budget.md`.
+
+   If `state` is CLOSED, ask the user whether to reopen it or pick a different one. Otherwise note the title for the branch slug, and the labels for the branch prefix. If `assignees` is empty (an issue filed by drive-by contributor), assign to vivek7405:
 
    ```sh
-   gh issue edit <N> --repo webjsdev/webjs --add-assignee vivek7405
+   gh api -X POST repos/webjsdev/webjs/issues/<N>/assignees -f 'assignees[]=vivek7405'
    ```
 
-2. **Confirm the issue is on the project board.**
+2. **Confirm the issue is on the project board, and get its item id.**
+
+   Ask the ISSUE, not the board. This is a single node lookup that also returns the id step 5 needs and the card's current Status, so one call replaces both the membership check here and the id hunt later:
 
    ```sh
-   gh project item-list 1 --owner webjsdev --format json --limit 20000 --jq ".items[] | select(.content.number == <N>)"
+   gh api graphql -f query='query($n:Int!){repository(owner:"webjsdev",name:"webjs"){
+     issue(number:$n){projectItems(first:5){nodes{id project{number}
+     fieldValueByName(name:"Status"){...on ProjectV2ItemFieldSingleSelectValue{name}}}}}}}' \
+     -F n=<N> --jq '.data.repository.issue.projectItems.nodes[] | select(.project.number == 1)'
    ```
 
-   If not present, add it: `gh project item-add 1 --owner webjsdev --url https://github.com/webjsdev/webjs/issues/<N>`.
+   An empty result means the issue is not on the board. Add it with `gh project item-add 1 --owner webjsdev --url https://github.com/webjsdev/webjs/issues/<N>`, then re-run the lookup to get the new item id.
+
+   **Do NOT dump the whole board to answer this.** That query paginates every item (past 500 today) with nested field values, costing several hundred points of the 5000-point hourly GraphQL budget, to find one id this call returns directly. Projects V2 is GraphQL-only, so these points are the ones genuinely worth protecting.
 
 3. **Fetch, and leave the primary checkout alone.** `git fetch origin`. The task's worktree cuts from `origin/main`, so a dirty or mid-something primary checkout neither blocks starting nor gets "fixed"; it is never edited at all (enforced by `.claude/hooks/require-worktree-for-edits.sh`, which blocks tracked-file edits in a primary checkout).
 
@@ -74,18 +95,18 @@ The user's request typically names an issue by number (e.g. `#112`) or by descri
 
    ALL work for the task happens inside that worktree, by absolute path when the session's cwd resets. A fresh worktree has NO `node_modules`; see AGENTS.md for the symlink remedy (#954). Cleanup after merge is automatic (`cleanup-merged-worktree.sh`). After this step, ALSO push after every subsequent commit (`git push` is cheap and is the safety net against losing work). Do not batch multiple commits before pushing.
 
-5. **Move the project card from Todo to In progress.** Resolve the four IDs and call `item-edit`:
+5. **Move the project card from Todo to In progress.** The item id came from step 2; the other three ids are constants, so source them instead of rediscovering them:
 
    ```sh
-   N=<issue-number>
-   PROJECT_ID=$(gh project view 1 --owner webjsdev --format json --jq '.id')
-   ITEM_ID=$(gh project item-list 1 --owner webjsdev --format json --limit 20000 --jq ".items[] | select(.content.number == $N) | .id")
-   STATUS_FIELD_ID=$(gh project field-list 1 --owner webjsdev --format json --jq '.fields[] | select(.name == "Status") | .id')
-   IN_PROGRESS_OPT_ID=$(gh project field-list 1 --owner webjsdev --format json --jq '.fields[] | select(.name == "Status") | .options[] | select(.name == "In progress") | .id')
-   gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" --field-id "$STATUS_FIELD_ID" --single-select-option-id "$IN_PROGRESS_OPT_ID"
+   source .claude/gh-ids.env    # PROJECT_ID, STATUS_FIELD_ID, STATUS_IN_PROGRESS
+   ITEM_ID=<the id step 2 returned>
+   gh project item-edit --project-id "$PROJECT_ID" --id "$ITEM_ID" \
+     --field-id "$STATUS_FIELD_ID" --single-select-option-id "$STATUS_IN_PROGRESS"
    ```
 
-   The `--limit 20000` on `item-list` is load-bearing, not defensive. The board is well past 200 items and the default page is 30, so without it the `select(.content.number == $N)` filter matches nothing for almost every issue, `ITEM_ID` comes back empty, and `item-edit` fails on an empty `--id`. The same truncation makes step 2 report a card as missing when it is already on the board.
+   The project id, the Status field id, and its option ids never change, so re-resolving them cost three GraphQL round trips per run for constants. `.claude/gh-ids.env` carries them, with the refresh command in its header for the rare case the board schema moves.
+
+   If `ITEM_ID` is empty, step 2 did not find the card. Go back and add it rather than passing an empty `--id`, which fails.
 
 6. **Open a DRAFT PR immediately, BEFORE writing any code.** This is the single most important ordering rule and it is NOT optional: the PR is opened at the START of the work, not the end. The whole point of the PR is to be the durable, append-only record of the change AS IT HAPPENS: every per-logical-unit commit lands on it, every design-rationale / decision / follow-up context comment is posted to it the moment that discussion happens, and every review round is posted to it. NONE of that is possible if the PR does not exist yet, which is exactly the failure a late `gh pr create` causes. So open it now, empty branch and all (the branch was already pushed in step 4).
 
@@ -142,9 +163,9 @@ Doc drift is the #1 way a framework rots. Documentation MUST stay in sync with c
    - `CLAUDE.md` (only if a Claude Code rule is specifically added; framework conventions go in AGENTS.md).
    - `.github/*.md` (issue templates, PR templates, contributing) when a workflow rule shifts.
 3. **User-facing docs site** under `website/app/docs/<topic>/page.ts` (these are `.ts` files, not markdown, so they're excluded by the markdown query but they're the canonical user-facing reference). If the change is visible to a user reading the docs site, update the matching topic page. Add a new page if the surface is new and there's no obvious home.
-4. **Scaffold templates** under `packages/cli/templates/` and the generators `packages/cli/lib/{create,api-gallery}.js`. Update if the change affects what `webjs create` generates. The scaffold ships a gallery index home + layout + db wiring, a densely-commented feature gallery (`packages/cli/templates/gallery/**`, demos under `app/features/` plus `app/examples/todo`) and the api showcase (`api-gallery.js`), plus one cross-agent skill at `.agents/skills/webjs/` (SKILL.md + references) that the agent grows in place; there are no per-agent rule files. A feature change that agents should know about lands in the skill; a generated-code change lands in the generators, verified with `generate + boot + webjs check`.
+4. **Scaffold templates** under `packages/cli/templates/` and the generators `packages/cli/lib/{create,api-gallery}.js`. Update if the change affects what `webjs create` generates. The scaffold ships a gallery index home + layout + db wiring, a densely-commented feature gallery (the repo-root `gallery/**` app, demos under `app/features/` plus `app/examples/todo`, bundled into the CLI at prepack) and the api showcase (`api-gallery.js`), plus one cross-agent skill at `.agents/skills/webjs/` (SKILL.md + references) that the agent grows in place; there are no per-agent rule files. A feature change that agents should know about lands in the skill; a generated-code change lands in the generators, verified with `generate + boot + webjs check`.
 5. **The MCP server** (the standalone `@webjsdev/mcp` package, `packages/mcp/src/{mcp,mcp-docs,mcp-source}.js`, extracted from the CLI in #415; `webjs mcp` and `npx @webjsdev/mcp` both run it). The MCP is how AI agents learn and introspect webjs, so it must stay in lockstep with the surfaces it exposes. Update it whenever the change touches what it serves:
-   - **Introspection tools** (`list_routes` / `list_actions` / `list_components` / `check`): if you change the route table shape, the action/RPC-hash scheme, component registration, or a `webjs check` rule, update the matching tool projection so the MCP reports reality.
+   - **Introspection tools** (`list_routes` / `list_actions` / `list_components` / `list_elision` / `check`): if you change the route table shape, the action/RPC-hash scheme, component registration, or a `webjs check` rule, update the matching tool projection so the MCP reports reality.
    - **Knowledge layer** (resources + `init` + `docs` + prompts): the resources are the skill at `.agents/skills/webjs/` (SKILL.md + references/) + `AGENTS.md`, so a docs change is picked up automatically (it is bundled at `prepack`). But if you add or rename a skill reference file, ADD A NEW INVARIANT, change the execution model, or add an authoring concept an agent should know, also: (a) confirm the `init` primer still pulls the right `AGENTS.md` sections (it sources the Execution-model + Invariants headings, so a heading rename breaks it), and (b) add a guided-workflow PROMPT for any new common recipe (a new page/route/action/component-shaped task). New recipes without a prompt are a silent gap.
    - **Heuristic:** if your change would make an agent reading only the old MCP output write WRONG webjs code, the MCP is part of your change. Update it on this PR, with a test in `packages/mcp/test/*.test.mjs`, or write "N/A because <reason>" in the PR body.
 6. **The editor plugins** (epic #381, now under `packages/editors/` after the #402 reorg; the suite overview that maps all three + the full dev/publish flow is `packages/editors/AGENTS.md`): the all-in-one `webjs` VS Code extension (`packages/editors/vscode`), `webjs.nvim` (`packages/editors/nvim`), and the shared language service `@webjsdev/intellisense` (`packages/editors/intellisense`, renamed from `@webjsdev/ts-plugin` in #416/#420) that BOTH editor plugins bundle. Note `webjs.nvim` is developed here but installed by users from a SEPARATE repo `webjsdev/webjs.nvim` (a git-subtree split of `packages/editors/nvim`), so nvim changes are not live until that split is re-pushed on release (`packages/editors/nvim/PUBLISHING.md`). They are how a developer's editor understands webjs, so they must stay in lockstep with the surfaces they expose. Update them whenever the change touches what they project. Do this automatically when the task demands it; never make the user ask:
@@ -237,7 +258,7 @@ All four are written in the owner's voice (first person, plain, no AI/agent fram
 
 ## Pre-merge review cycle (MUST run before reporting "ready for merge")
 
-Saying "ready for merge" before the review cycle completes is the single biggest source of low-quality PRs. The recurring pattern to AVOID: claim ready-for-merge, the user requests a review, find issues, fix them, claim ready-for-merge again, repeat 4-5 times before a review comes back clean. The cure is to run that cycle internally BEFORE the first "ready" signal. The user should only hear "ready to merge" after the cycle has finished AND the suites it deferred have run AND CI has been read green.
+Saying "ready for merge" before the review cycle completes is the single biggest source of low-quality PRs. The recurring pattern to AVOID: claim ready-for-merge, the user requests a review, find issues, fix them, claim ready-for-merge again, repeat 4-5 times before a review comes back clean. The cure is to run that cycle internally BEFORE the first "ready" signal. The user should only hear "ready to merge" after the cycle has finished AND the suites it deferred have run.
 
 ### Every PR review is posted ON the PR (summary + per-line comments)
 
@@ -344,7 +365,7 @@ So a clean or minor-only round 1 finishes the cycle with ONE review. That is the
 
 **Do not tell it what to look for.** The prompt sets the SCOPE (which diff) and nothing else: no list of defect classes, no "specifically check for X and Y", no ranking of what matters, however sure you are about where the risk sits. A checklist narrows a fresh reviewer to what you already suspect, which is the bias it exists to escape, and everything outside your list becomes what it does not look at. The one exception is a REFUTER, whose whole job is the single claim it is handed. Naming the touched files is scope; naming the bugs to hunt is steering.
 
-**Keep the cycle fast.** After a fix, run only the test file(s) covering the line you changed, with the counterfactual toggle the Definition of done mandates (a fix can make an older test non-discriminating without failing it). The e2e, full Node, browser, and Bun suites and the two-app dogfood check run ONCE, after the cycle ends. Never wait on CI between rounds; read it once at the end. Both rules change WHEN work happens, never WHETHER.
+**Keep the cycle fast.** After a fix, run only the test file(s) covering the line you changed, with the counterfactual toggle the Definition of done mandates (a fix can make an older test non-discriminating without failing it). The e2e, full Node, browser, and Bun suites and the two-app dogfood check run ONCE, after the cycle ends. CI is not read during the cycle at all, and not at the end of it either. It is read once, at merge, under the merge gate below. Both rules change WHEN work happens, never WHETHER.
 
 **Do not restore what this replaced.** This cycle used to run a 16-agent fleet with a scout, parallel lenses, and a jury, pick round 1's shape by a path check, sort findings into two tiers, cap itself at five rounds, and poll a file to watch each spawn. Almost all of it is gone on purpose: termination is mostly structural now (only a fix buys a round, delta rounds narrow the question, the minor call stops wording from buying rounds, the final review plus one fix-check is a hard end). Reviews are async, so the harness completion notification is the signal, with at most an optional background progress check that never kills anything. The one exception to the removals is the round cap, which came back in a narrower form, because structure alone cannot bound a chain where every fix produces the next round's finding: it now bounds ONLY that case, at five delta rounds, instead of counting every round of the cycle.
 
@@ -375,7 +396,7 @@ Each round must:
 
    **Record every finding ON THE PR**, through the mechanics in `### Every PR review is posted ON the PR` and `### Follow the real review flow`, which are authoritative: one review object per round carrying the summary plus every inline `file:line` finding, each stating the problem only, with the disposition (`fixed in <sha>` / `rejected because <reason>` / `deferred as out of scope because <reason>`) in a threaded reply, then the thread resolved. Post rejections and false positives too, so the reasoning is auditable. A round that found nothing posts a short summary saying so. Build the review JSON with a real serializer, never by interpolating into a shell string: a review on #1115 lost every code reference to shell command substitution and had to be reposted.
 
-**When the cycle FINISHES, run everything it deferred:** the full suites for every layer the change touches (e2e, Node, browser, Bun matrix, the two-app dogfood boot check, per the Definition of done), and only now read CI. Launch them as parallel background tasks in one batch, plus a background CI watch, and collect EVERY result before reporting: a task you forget to collect is a silently skipped layer. A cycle that STOPPED unfinished runs none of this and says so in the report, because these gate the flip to ready for review and that flip is not happening.
+**When the cycle FINISHES, run everything it deferred:** the full suites for every layer the change touches (e2e, Node, browser, Bun matrix, the two-app dogfood boot check, per the Definition of done). Launch them as parallel background tasks in one batch and collect EVERY result before reporting: a task you forget to collect is a silently skipped layer. A cycle that STOPPED unfinished runs none of this and says so in the report, because these gate the flip to ready for review and that flip is not happening.
 
 **A fix is never the end.** A fix changes the branch, so the changed branch needs its own round; that is what the delta rounds are, and why a round with no fixes still buys the final review. Never report "fixed it" or "ready to merge" off a round that found something must-fix, however obviously correct the fix looks. On #1159 three consecutive rounds each found problems introduced by the previous round's fix, which is what a re-used reviewer, already invested in that fix, is worst at seeing.
 
@@ -387,7 +408,7 @@ Skip only for PRs that change a single line of trivially-correct content (a doc 
 
 ### Reporting after the cycle
 
-After the final review (and its fix-check, if it had one), the deferred suites, and the CI read, report exactly this shape:
+After the final review (and its fix-check, if it had one) and the deferred suites, report exactly this shape:
 
 > PR #<N> is up at <URL>. Reviewed it over <K> rounds plus a final pass over the whole diff; nothing must-fix is left open. Issues found and fixed: <one-line list, or "none">. Out-of-scope findings, recorded on the PR and awaiting your call on filing: <one-line list, or "none">. Ready to merge.
 
@@ -397,23 +418,31 @@ When anything was deferred, expand each one right there (the finding, its one-se
 
 If you cannot honestly say the final review left nothing must-fix open, you cannot say "ready to merge". Mention any finding you rejected as a false positive so the user can second-guess it. Every finding must be accounted for here as fixed, rejected-with-reason, or deferred, and must also appear on the PR, so the report and the PR agree; a deferred finding missing from its thread, this report, or the ledger is a dropped finding.
 
-**Merge is gated on green CI, enforced at the branch level, not by trust.** A PR must not merge until all CI checks pass. `main` branch protection requires the five `ci.yml` checks (Conventions, Unit+integration, Browser, E2E, Build) before any merge; if `gh api repos/webjsdev/webjs/branches/main/protection` shows `required_status_checks: null`, run `bash scripts/protect-main.sh` once (needs repo admin) to restore it. Do not work around a red or pending check; wait for green.
+**Merge is gated on green CI, enforced at the branch level, not by trust.** A PR must not merge until all CI checks pass. `main` branch protection requires the five `ci.yml` checks (Conventions, Unit+integration, Browser, E2E, Build) before any merge; if `gh api repos/webjsdev/webjs/branches/main/protection` shows `required_status_checks: null`, run `bash scripts/protect-main.sh` once (needs repo admin) to restore it. Do not work around a red or pending check. Wait for green, and fix whatever is red before merging.
+
+**This is the ONLY place CI is read, on purpose. Do not add one back to the end of the review cycle.** An end-of-cycle read was removed because it was redundant against this gate, which reads EVERY check and fixes what is red before merging, so a failure gets caught here whatever the ready-to-merge report claimed, and reading it earlier only parks the finished cycle on a multi-minute CI run. Be precise about what enforces that, because the two halves are not equally strong. Branch protection MECHANICALLY refuses the merge for the required contexts only, and `ci.yml` defines roughly twice as many jobs as `main` requires, so the rest are held by the INSTRUCTION above to read every check rather than by anything that can refuse a merge. Removing the end-of-cycle read did not weaken that, since the removed read was an instruction too and branch protection covered the same subset before and after. It does mean a green REQUIRED set is not the same as green CI, so read `gh pr checks` in full rather than trusting the merge button to have judged for you. What that costs is worth stating plainly, because it looks like a gap. Every `ci.yml` job with no counterpart in the deferred local suites now fails for the first time at merge rather than before the ready signal. That is a CLASS, not a list. Its membership moves as jobs are added and as the local suites grow to cover them, so derive it when you need it, by reading `.github/workflows/ci.yml` against the deferred set named above. Do NOT write the membership down here.
+
+That instruction is load-bearing and was expensive to learn. Three attempts to write the membership into this paragraph were each wrong, some by naming a job the local suites already cover, some by reading complete while omitting one they do not, and every one of them was caught by review rather than by the author. The reason the error keeps recurring is structural: deciding membership means holding `ci.yml` and the deferred set side by side and checking a non-obvious local counterpart for each job, which is a derivation, and a derivation frozen into prose is wrong the moment either side moves. So derive it, and do not leave the answer here for the next reader to trust.
+
+The class is real and not small, and what it costs is the same work done later rather than work skipped, which is the trade that was chosen. It is a real cost rather than a free one. The local suites the Definition of done demands still run at the end of the cycle and still gate the flip to ready for review, so only the CI read moved.
 
 **NEVER use `gh pr merge --admin` to bypass a FAILING check.** `--admin` skips ALL branch-protection gates, not only the review requirement, so a red check merges silently and lands broken code on `main`. This has happened (a Unit-test failure was admin-merged, breaking `main`). It is acceptable ONLY to bypass a required-review gate on a PR whose CI is confirmed all-green, so re-run `gh pr checks <N>` first and confirm EVERY check reads `pass` (a `BLOCKED` state can mean review-required OR a failing check, so never assume which).
 
 ### Subagent prompt template
+
+**The template fetches the diff and metadata over REST on purpose.** The porcelain equivalents go through GraphQL, and this template is pasted into EVERY reviewer in every round, so it was the single largest consumer of that budget in this skill. REST is a separate budget and returns the same bytes. Both are reads, so the read-only git constraint in the template is unaffected. See `.claude/gh-budget.md`.
 
 One template serves every reviewer in the cycle: round 1, each delta round, the final whole-diff review, the final review's fix-check, and a refuter. Only the question in its numbered step 5 changes.
 
 ```
 Review PR #<N> (branch `<branch>`) at https://github.com/webjsdev/webjs/pull/<N> for anything genuinely wrong with it, judged against the project's AGENTS.md and CONVENTIONS.md (root + per-package).
 
-HARD CONSTRAINT, read first: you are running against a repository the main session is actively using, and every worktree of it shares ONE `.git` directory, so a git write here reaches the main session's checkout even from an isolated worktree. You are a READ-ONLY reviewer. Do NOT run any command that changes git branch, HEAD, the index, or the working tree: no `git checkout`, `git switch`, `git reset`, `git restore`, `git stash`, `git pull`, `git fetch` that moves refs, `git merge`, `git rebase`, `git clean`, `git branch -f`, or `git worktree`. Any of these silently corrupts the main session's checkout (it moved HEAD off the branch and looked like lost work, and a stray worktree op once flipped the shared repo's `core.bare` to `true`). You do NOT need to switch branches to review. Use `gh pr diff <N>` and `gh pr view <N>` for the diff and metadata, and read any file at its PR-branch state with `gh api repos/<owner>/<repo>/contents/<path>?ref=<branch> --jq .content | base64 -d`. All of those read from GitHub, so they work whether or not the branch exists locally, which matters because a PR you were asked to review may not be checked out here at all. If the branch does happen to be the one checked out, reading files in place is fine too. The only git you may run is read-only inspection (`git log`, `git show`, `git diff` WITHOUT changing state, `git status`, `git blame`). If you think you need to change git state to do the review, you are wrong; report what you found instead.
+HARD CONSTRAINT, read first: you are running against a repository the main session is actively using, and every worktree of it shares ONE `.git` directory, so a git write here reaches the main session's checkout even from an isolated worktree. You are a READ-ONLY reviewer. Do NOT run any command that changes git branch, HEAD, the index, or the working tree: no `git checkout`, `git switch`, `git reset`, `git restore`, `git stash`, `git pull`, `git fetch` that moves refs, `git merge`, `git rebase`, `git clean`, `git branch -f`, or `git worktree`. Any of these silently corrupts the main session's checkout (it moved HEAD off the branch and looked like lost work, and a stray worktree op once flipped the shared repo's `core.bare` to `true`). You do NOT need to switch branches to review. Use `gh api repos/<owner>/<repo>/pulls/<N> -H "Accept: application/vnd.github.diff"` for the diff and `gh api repos/<owner>/<repo>/pulls/<N>` for metadata, and read any file at its PR-branch state with `gh api repos/<owner>/<repo>/contents/<path>?ref=<branch> --jq .content | base64 -d`. All of those read from GitHub, so they work whether or not the branch exists locally, which matters because a PR you were asked to review may not be checked out here at all. If the branch does happen to be the one checked out, reading files in place is fine too. The only git you may run is read-only inspection (`git log`, `git show`, `git diff` WITHOUT changing state, `git status`, `git blame`). If you think you need to change git state to do the review, you are wrong; report what you found instead.
 
 You start with no prior context on this PR. Steps:
 
-1. Run `gh pr diff <N> --repo webjsdev/webjs` to see the full diff.
-2. Run `gh pr view <N> --repo webjsdev/webjs --json title,body` to see what the author claims it does.
+1. Run `gh api repos/webjsdev/webjs/pulls/<N> -H "Accept: application/vnd.github.diff"` to see the full diff.
+2. Run `gh api repos/webjsdev/webjs/pulls/<N> --jq '.title, .body'` to see what the author claims it does.
 3. Read every file the diff touches in its current state (not just the diff hunks) so you see edits in context.
 4. Read root AGENTS.md, the per-package AGENTS.md for each touched package, and CONVENTIONS.md if a scaffolded template was touched.
 5. The question for this round is a SCOPE, not a checklist: <Round 1 and the final review: the whole diff. A delta round or a fix-check: the fix commits' diff, and trace their blast radius, grepping every symbol, rule, or concept the fix touches across the whole PR surface and comparing each other occurrence, since a small fix can break something far from its own hunk. A refuter: DISPROVE this claim, <the finding>.> Review it as a whole and report whatever is actually wrong.

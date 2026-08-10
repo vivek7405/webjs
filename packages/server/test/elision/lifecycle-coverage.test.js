@@ -22,10 +22,12 @@ import * as directives from '../../../core/src/directives.js';
 import * as taskMod from '../../../core/src/task.js';
 import * as contextMod from '../../../core/src/context.js';
 import * as core from '../../../core/index.js';
+import * as routerClient from '../../../core/src/router-client.js';
 import {
   analyzeComponentSource,
   CLIENT_LIFECYCLE_HOOKS,
   CLIENT_METHOD_CALLS,
+  CLIENT_ROUTER_IMPORTS,
   REACTIVE_IMPORTS,
 } from '../../src/component-elision.js';
 
@@ -186,5 +188,40 @@ test('no REACTIVE_IMPORTS entry is stale (each is a real @webjsdev/core export)'
   ]);
   for (const name of REACTIVE_IMPORTS) {
     assert.ok(exported.has(name), `${name} is in REACTIVE_IMPORTS but no longer exported by core (rename/removal?)`);
+  }
+});
+
+/**
+ * The router half of the same staleness contract (#1291). `CLIENT_ROUTER_IMPORTS`
+ * is how a NAMED import off the bare `@webjsdev/core` entry is recognized as
+ * client work (the `@webjsdev/core/client-router` subpath is caught earlier, by
+ * specifier). An omission here does not fail loudly: the component is simply not
+ * seen as interactive and gets ELIDED, so its router call never runs in the
+ * browser. `loadFrame` was missing from this list.
+ */
+const barrelRouterApis = Object.keys(routerClient)
+  .filter((n) => !n.startsWith('_') && n !== 'default' && typeof routerClient[n] === 'function')
+  .filter((n) => n in core);
+
+test('the barrel re-exports a non-empty router surface (anti-vacuum)', () => {
+  assert.ok(
+    barrelRouterApis.length >= 5,
+    `expected >= 5 router APIs reachable from the @webjsdev/core barrel, got ${barrelRouterApis.length}`,
+  );
+});
+
+test('every router API reachable from the bare core entry is in CLIENT_ROUTER_IMPORTS', () => {
+  const missing = barrelRouterApis.filter((n) => !CLIENT_ROUTER_IMPORTS.includes(n));
+  assert.deepEqual(
+    missing,
+    [],
+    `these router functions are importable from '@webjsdev/core' but absent from CLIENT_ROUTER_IMPORTS, ` +
+      `so a component importing one is not seen as interactive and is wrongly elided: ${missing.join(', ')}`,
+  );
+});
+
+test('no CLIENT_ROUTER_IMPORTS entry is stale (each is a real @webjsdev/core export)', () => {
+  for (const name of CLIENT_ROUTER_IMPORTS) {
+    assert.ok(name in core, `${name} is in CLIENT_ROUTER_IMPORTS but no longer exported by core (rename/removal?)`);
   }
 });

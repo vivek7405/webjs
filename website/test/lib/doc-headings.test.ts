@@ -1,0 +1,92 @@
+/**
+ * Unit tests for the docs search index's heading extraction
+ * (lib/utils/doc-headings.ts).
+ *
+ * The extractor exists because the docs corpus is full of code samples that
+ * open a line with `#`: a shell comment, or a JavaScript private class
+ * field. Scored as headings they earn +5 each in `app/api/search/route.ts`,
+ * accumulating per match, which is how a query for `localhost` ranked
+ * /docs/backend-only at 16 off three `# → http://localhost:8080` comments.
+ *
+ * Two levels of coverage here, on purpose. The fixture pins the rule in
+ * isolation, and the corpus test pins that the rule still holds against the
+ * real docs, where the samples that motivated it actually live.
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { extractHeadings } from '#lib/utils/doc-headings.ts';
+import { getDocPages, type DocPage } from '#lib/docs-llms.server.ts';
+
+const FIXTURE = [
+  '# Getting Started',
+  '',
+  'Some prose.',
+  '',
+  '## Quick Start',
+  '',
+  '```',
+  '# not a heading',
+  'npm create webjs@latest my-app',
+  // Column 0, the shape the real corpus has: /docs/context and /docs/task
+  // both open a sample on a private field, dedented out of its class body.
+  '#theme = new ContextConsumer(this, {',
+  '## nor is this a heading',
+  '```',
+  '',
+  '### Manual setup',
+  '',
+  '#### package.json',
+  '',
+  '  ```',
+  // Column 0 inside an INDENTED fence. Drop trimStart() from the predicate
+  // and the fence stops toggling, so this line becomes a heading.
+  '#not a heading either, the fence around it is indented',
+  '  ```',
+  '',
+  '## Next Steps',
+].join('\n');
+
+test('a hash line inside a fence is not a heading, at any nesting', () => {
+  assert.deepEqual(extractHeadings(FIXTURE), [
+    'Getting Started',
+    'Quick Start',
+    'Manual setup',
+    'package.json',
+    'Next Steps',
+  ]);
+});
+
+test('both fence scans use the same predicate, so they cannot drift apart', () => {
+  // This helper stays import-free: lib/utils is the browser-safe shelf and
+  // docs-llms.server.ts is server-only, so the predicate is a hand-kept
+  // duplicate rather than a shared export. That is only safe if something
+  // pins the two copies together, which is this test. Editing one scan's
+  // idea of where a fence starts and not the other's reds here.
+  const PREDICATE = "line.trimStart().startsWith('```')";
+  for (const rel of ['../../lib/utils/doc-headings.ts', '../../lib/docs-llms.server.ts']) {
+    const src = readFileSync(new URL(rel, import.meta.url), 'utf8');
+    assert.ok(src.includes(PREDICATE), `${rel} no longer uses the shared fence predicate`);
+  }
+});
+
+test('the real corpus keeps its headings and drops the shell comments', async () => {
+  const pages = await getDocPages();
+  const page = pages.find((p: DocPage) => p.path === '/docs/getting-started');
+  assert.ok(page, 'expected /docs/getting-started in the corpus');
+  const headings = extractHeadings(page.markdown);
+
+  // A real heading survives at more than one level (## and ###).
+  assert.ok(headings.includes('Quick Start'), 'an h2 survives');
+  assert.ok(headings.includes('Using the scaffold'), 'an h3 survives');
+
+  // Authored as a `# ` shell comment in app/docs/getting-started/page.ts.
+  assert.ok(
+    !headings.includes('scaffold a new app (no global install needed)'),
+    'a shell comment inside a sample is not a heading',
+  );
+
+  // The floor is what stops an empty list passing the exclusion above, which
+  // is the trap an absence-only assertion falls into. 13 today.
+  assert.ok(headings.length >= 10, `expected the page's real headings, found ${headings.length}`);
+});

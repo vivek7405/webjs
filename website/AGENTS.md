@@ -121,7 +121,59 @@ website/
                        path `webjs ui add` writes them to in a real app
     links.ts           cross-app URLs + in-app paths for the header and footer
     samples.ts         the code samples shown on the marketing pages
-    docs-llms.server.ts  enumerates the doc pages on disk (sitemap, llms.txt)
+    docs-llms.server.ts  enumerates the doc pages on disk (sitemap, llms.txt).
+                       Strips tags at every stage and decodes entities exactly
+                       ONCE, at the end. Decoding earlier puts a bare `<` in
+                       front of a later tag strip, which then matches to the
+                       next `>` anywhere in the document and deletes
+                       everything between the two. That once cost
+                       `/docs/metadata-routes` 5 of its 9 code samples and
+                       deleted an escaped tag from 253 prose lines across the
+                       corpus. It also keeps the template holes a reader
+                       actually sees: `\${x}` is ESCAPED (literal text, not an
+                       interpolation) and `${"lit"}` interpolates a known
+                       literal, so both are preserved, while only a bare
+                       `${x}` is render-time and gets dropped. Treating all
+                       three alike printed `<form action=\>` on 12 corpus
+                       lines, teaching an LLM the one shape invariant 12
+                       exists to rule out. Everything it takes from a docs
+                       page is copied out of page SOURCE, which is a JS
+                       template literal, so all four paths fold their
+                       backslash escapes: a fenced sample at capture, a kept
+                       hole as it parks, ordinary prose in one pass once the
+                       hole passes have run, and a description inside
+                       `plainText` (which is where it belongs rather than at
+                       a call site, because only 8 of 44 pages declare
+                       `metadata.description` and the other 36 fall back to
+                       their first `<p>`, so both sites need it). Those three
+                       all fold BEFORE their single entity decode, which is
+                       the browser's own order, since JS cooks the literal
+                       first and the HTML parser only ever sees cooked text.
+                       A title is the exception that proves it: it folds at
+                       its call site because it never passes through
+                       `plainText`, and it decodes nothing at all, since it
+                       is read from a quoted metadata string rather than out
+                       of markup. The prose fold runs AFTER the hole passes
+                       because those are what tell `\${x}` (literal text)
+                       from `${x}` (render-time, and dropped), so folding
+                       first would drop the literal. Fold exactly once per
+                       path: a second fold eats an authored `\\`, which is
+                       why no `plainText` call site folds and a test reads
+                       the call sites to keep it that way. Only the hole
+                       half existed, which is why the corpus printed
+                       `<form action=\${createPost}>` on 5 lines and
+                       ``html\`...\` `` on 23 more, where the rendered page
+                       shows `<form action=${createPost}>` and a plain
+                       backtick. A backslash now surviving out of a DOCS PAGE
+                       is one an author WROTE as `\\`, so a page escaping a
+                       letter (`/\s+/g`, which cooks to `/s+/g` and rendered
+                       that way live on two pages) is a page bug, guarded by
+                       a test rather than by convention. That says nothing
+                       about the rest of /llms-full.txt: `renderLlmsFull`
+                       appends the repo-root skill markdown verbatim, never
+                       through `bodyToMarkdown`, and those `.md` files are
+                       not template literals, so their single `\` is correct
+                       at source and reaches the corpus unfolded.
   modules/
     ui/components/     GITIGNORED mirror of the @webjsdev/ui registry sources,
                        written by scripts/copy-registry.mjs. NEVER hand-write
@@ -379,6 +431,16 @@ calling an action), re-enable it and delete the assertion in
   template text with `&lt;` and `&#123;` escapes and so give the server no
   string to tokenize. There used to be a second ES5 copy served out of
   `public/`, kept in sync by hand, and it drifted. Do not add another.
+- **Container tags must balance in every source file that authors markup.**
+  `test/repo-health/site-pages-well-formed.test.mjs` counts opens against
+  closes for `<pre>`, `<code-block>`, `<div>`, `<ul>`, `<ol>`, and `<table>`
+  across all of `website/`, not just `app/docs/`, so the shared chrome under
+  `lib/ui/`, `components/`, and `lib/design/` is covered too (every page
+  renders through it). The generated mirrors under `modules/ui/components/`
+  and `components/ui/`, plus `test/` and `scripts/`, are deliberately outside
+  it. An unbalanced container swallows the client router's
+  `<!--/wj:children-->` marker into the unclosed tag, and the next navigation
+  throws `NotFoundError` from `insertBefore`.
 
 ## Run
 
@@ -395,16 +457,30 @@ script, so a type break reds the build instead of riding onto `main` unnoticed
 (#1260).
 
 What it covers is exactly the tsconfig `include`: `app/`, `components/`,
-`lib/`, and `modules/`. **`test/` is deliberately outside it.** Adding
-`test/**/*` surfaces 17 pre-existing errors across 5 of its 25 TypeScript
-files (a `never` argument in the sitemap test, `LayoutProps` calls missing
-`params` / `searchParams` / `url`, and an `unknown` not assignable to
-`TemplateResult` in the determinism test), so including it would red the gate
-on day one. Fixing those is its own task.
+`lib/`, `modules/`, and **`test/`** (#1299). A type error in a test file is a
+gate failure here, not something a reviewer has to catch by eye, which is how
+an implicitly-`any` parameter once reached review in `test/ssr/docs-links.test.ts`.
 
-Across apps the gate covers `website/` only, which is a SCOPE decision rather
-than a claim about the other. Measured: `examples/blog` is genuinely red (13
-errors), so gating it is a small, separate change and not a blocked one.
+Two things about the test half are worth knowing before you edit it.
+
+The `.js` files under `test/` enter the include **parsed but not checked**,
+because this app sets `checkJs: false`. There are 9 of them: the 8 browser
+tests under `test/components/browser/`, plus the `test/fixtures/` markup
+fixture. That is the status quo for every other `.js` file here, so including
+`test/` did not widen into them. The rationale lives in this file rather than in the config, because
+`tsconfig.json` is strict JSON that the scaffold emits with `JSON.stringify`
+and the scaffold tests read back with `JSON.parse`, so it cannot carry a
+comment at all.
+
+And a test that renders the root layout calls `RootLayout(layoutProps(children))`,
+not `RootLayout({ children })`. `LayoutProps` requires `params`,
+`searchParams`, and `url` because the server really does pass all four, so
+`test/helpers/layout-props.ts` builds a complete props object. Do not reach for
+the other fix and make those fields optional on the public type: a layout that
+forgets to accept them would stop being an error for every WebJs app.
+
+Both in-repo apps are gated. `examples/blog` has its own `npm run typecheck`
+and its own CI step alongside this one.
 
 `npm run dev` and `webjs dev` behave identically (#550): `webjs.dev.before`
 mirrors the kit sources in and compiles `public/tailwind.css`, and

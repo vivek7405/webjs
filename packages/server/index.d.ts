@@ -478,25 +478,114 @@ export declare function primeComponentRegistry(
 ): Promise<{ count: number }>;
 /** Extract `{ className, tag }` pairs from a component module's source. */
 export declare function extractComponents(src: string): Array<{ className: string; tag: string }>;
-/** Find component classes that no page / component imports (orphans). */
+/**
+ * Find ORPHAN component classes: a `class X extends WebComponent` that its own
+ * file declares and NOTHING in the app registers with a LITERAL tag, either
+ * because there is no registration call anywhere or because the tag is
+ * computed. The registration cross-reference is app-wide, so a class a sibling
+ * module registers is not an orphan. Neither is visible to the
+ * scanner, so both always lose the elision verdict, the tag-to-module registry
+ * entry, and the preload hint; assume the element does not upgrade either.
+ * This is about REGISTRATION, never about import reachability. The full
+ * semantics, including the one case where a computed tag still upgrades, live
+ * on `findOrphanComponents` in `src/component-scanner.js`.
+ */
 export declare function findOrphanComponents(
   appDir: string,
 ): Promise<Array<{ className: string; file: string }>>;
 
 // ---------------------------------------------------------------------------
-// elision-report.js (#646)
+// elision-report.js (#646, #1308)
+// ---------------------------------------------------------------------------
+
+/** Which rule in the analyser forced a component to ship. First match wins. */
+export type ElisionEvidence = 'own' | 'observed' | 'closure' | 'render' | 'import' | 'unreadable';
+
+/** One component module's verdict. `evidence` / `reason` / `by` are null when elided. */
+export interface ElisionComponentRow {
+  /** App-relative path of the component module. */
+  file: string;
+  /** Every tag this file registers, sorted. */
+  tags: string[];
+  verdict: 'elided' | 'shipped';
+  evidence: ElisionEvidence | null;
+  reason: string | null;
+  /** App-relative path of the module that forced the ship, where one did. */
+  by: string | null;
+}
+
+/** One page/layout route module's verdict. */
+export interface ElisionRouteModuleRow {
+  file: string;
+  verdict: 'inert' | 'import-only' | 'shipped';
+  /** For `import-only`: the component modules the boot emits in its place. */
+  emits: string[];
+  /** For `shipped`: the first client-effecting blocker, or null when its own code is the cause. */
+  blocker: string | null;
+  reason: string | null;
+}
+
+/** A `class X extends WebComponent` with no literal-tag registration. */
+export interface ElisionOrphanRow {
+  file: string;
+  className: string;
+}
+
+export interface ElisionSummary {
+  components: number;
+  elided: number;
+  shipped: number;
+  routeModules: number;
+  inert: number;
+  importOnly: number;
+  shippedWhole: number;
+  orphans: number;
+}
+
+/** The whole app-level elision verdict. Every path is app-relative; every array is sorted by `file`. */
+export interface ElisionReport {
+  analysed: boolean;
+  /** Why nothing was analysed, when `analysed` is false. */
+  skipped: 'no-app' | 'elide-off' | 'unanalysable' | null;
+  components: ElisionComponentRow[];
+  routeModules: ElisionRouteModuleRow[];
+  orphans: ElisionOrphanRow[];
+  summary: ElisionSummary;
+}
+
+/**
+ * App-level elision report, BOTH directions (#646, #1308): every component
+ * module as elided or shipped (a shipped one naming the evidence and the module
+ * that forced it), every page/layout as inert / import-only / shipped (a
+ * shipped one naming the first client-effecting blocker), and every orphan
+ * component class that gets no verdict at all. A reporting layer over
+ * `analyzeElision`, never a second analysis and never a build artifact.
+ * Consumed by `webjs elision`, the MCP `list_elision` tool, and both `webjs
+ * doctor` elision checks.
+ */
+export declare function analyzeAppElision(appDir: string): Promise<ElisionReport>;
+
+// ---------------------------------------------------------------------------
+// elision-differential.js (#1308)
 // ---------------------------------------------------------------------------
 
 /**
- * App-level elision report: the page/layout route modules that SHIP WHOLE to
- * the browser instead of being elided as carriers, each with the first
- * client-effecting blocker that pins it (or `null` when the module's own code
- * is the cause) plus a human reason. A reporting layer over `analyzeElision`,
- * consumed by the `webjs doctor` carrier-hygiene advisory (#646).
+ * Mask the JS-loaded set (importmap, boot script, modulepreload hints, vendor
+ * connection hints, content stamps) out of an SSR response so a diff sees only
+ * observable output. The ONE definition shared by the framework's own
+ * differential guard and `webjs elision --verify`, so an app can diff its own
+ * two captures with exactly the framework's comparator.
  */
-export declare function analyzeAppElision(
-  appDir: string,
-): Promise<{ analysed: boolean; shipped: Array<{ file: string; blocker: string | null; reason: string }> }>;
+export declare function maskJsSet(html: string): string;
+
+/**
+ * The URL paths of every STATIC page route in a `buildRouteTable` result,
+ * sorted and deduped. Dynamic routes are excluded (rendering one would mean
+ * inventing param values).
+ */
+export declare function staticPageRoutes(table: {
+  pages?: Array<{ routeDir?: string; paramNames?: string[] }>;
+}): string[];
 
 // ---------------------------------------------------------------------------
 // context.js (per-request context helpers)

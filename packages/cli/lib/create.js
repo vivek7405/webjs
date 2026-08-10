@@ -12,13 +12,14 @@
  */
 
 import { mkdir, writeFile, readFile, cp } from 'node:fs/promises';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { bunifyProse, bunifyDockerfile, bunifyCompose, bunifyCi } from './runtime-rewrite.js';
-import { assertValidAppName } from './app-name.js';
+import { assertValidAppName, toDatabaseName } from './app-name.js';
+import { isGalleryAppShellFile } from './gallery-shell-files.js';
 
 /**
  * Detect which package manager invoked us. Reads `npm_config_user_agent`,
@@ -116,13 +117,20 @@ const UI_REGISTRY_ROOT = resolveUiRegistryRoot();
  * Ships verbatim (no `{{APP_NAME}}` substitution): the examples are self-
  * contained and reference only `@webjsdev/*`, drizzle, `#db/*`, and each other.
  * The scaffold's own `app/page.ts` / `app/layout.ts` are written AFTER this and
- * the gallery ships neither, so there is no clobber. `cp` merges into existing
- * `app/` and `modules/` dirs rather than replacing them.
+ * are filtered out of the copy here (see GALLERY_APP_SHELL_FILES), so there is
+ * no clobber. `cp` merges into existing `app/` and `modules/` dirs rather than
+ * replacing them.
+ *
+ * The source is the canonical repo-root `gallery/` app in monorepo dev, and the
+ * `templates/gallery/` copy `prepack` bundles into the tarball when installed
+ * from npm. Both are filtered identically, so the two modes emit the same app.
  *
  * @param {string} appDir
  */
 async function copyGallery(appDir) {
-  const galleryDir = join(TEMPLATES, 'gallery');
+  const bundledGallery = join(TEMPLATES, 'gallery');
+  const repoRootGallery = resolve(__dirname, '..', '..', '..', 'gallery');
+  const galleryDir = existsSync(bundledGallery) ? bundledGallery : repoRootGallery;
   // `test` carries the auth card's real request-pipeline test (test/auth); it
   // ships with the gallery and is pruned by gallery:clear alongside the card.
   // `components` carries the gallery's EXAMPLE design system (components/ui/ class
@@ -135,7 +143,15 @@ async function copyGallery(appDir) {
   // the ui bootstrap's cn.ts/dom.ts (written earlier); gallery:clear removes just
   // ui.ts. cp is recursive-merge, so the pre-written lib/utils/ files are kept.
   for (const sub of ['app', 'modules', 'test', 'components', 'lib']) {
-    await cp(join(galleryDir, sub), join(appDir, sub), { recursive: true });
+    const srcSub = join(galleryDir, sub);
+    if (!existsSync(srcSub)) continue;
+    await cp(srcSub, join(appDir, sub), {
+      recursive: true,
+      // Skip the gallery's own app shell (root layout, home page, theme toggle,
+      // cn.ts). Those exist because gallery/ is a live app; the scaffold writes
+      // its own, with the app's displayName and the ui-registry cn.ts.
+      filter: (src) => !isGalleryAppShellFile(relative(galleryDir, src)),
+    });
   }
 }
 
@@ -541,6 +557,11 @@ export async function scaffoldApp(name, cwd, opts = {}) {
         { name: '@webjsdev/intellisense' },
       ],
     },
+    // `test/**/*` is in so `webjs typecheck` reads the tests you write, the
+    // same way Next / Remix / Astro's generated configs do (#1299). A type
+    // error in a test is then a gate failure rather than something a reviewer
+    // has to catch by eye, and it needs no second config to remember to run.
+    //
     // `.webjs/routes.d.ts` is the OPT-IN generated route-types overlay (#258):
     // run `webjs types` (or `webjs dev`, which emits it) to narrow the
     // @webjsdev/core `Route` href union + per-route `params`. Listed in
@@ -552,6 +573,7 @@ export async function scaffoldApp(name, cwd, opts = {}) {
       'components/**/*',
       'modules/**/*',
       'lib/**/*',
+      'test/**/*',
       'middleware.js',
       'middleware.ts',
       '.webjs/routes.d.ts',
@@ -562,26 +584,12 @@ export async function scaffoldApp(name, cwd, opts = {}) {
   // --- Templates (AGENTS.md, CONVENTIONS.md, CLAUDE.md, test files, Claude hooks) ---
 
   const templateFiles = [
-    // Single cross-agent source: a thin AGENTS.md points at the skill; the
+    // Single cross-agent source: AGENTS.md points at .agents/skills/webjs/; the
     // .agents/rules workflow rules and the Claude enforcement hooks back it up.
     'AGENTS.md',
     'CONVENTIONS.md',
     '.agents/rules/workflow.md',
-    // Per-agent files. Content is single-source (AGENTS.md + the skill); these
-    // are thin bridges plus each tool's own config and commit-nudge hook. Claude
-    // Code (CLAUDE.md @-imports AGENTS.md), Gemini CLI (GEMINI.md), Copilot in VS
-    // Code (copilot-instructions.md). Cursor / opencode / Antigravity read
-    // AGENTS.md natively; Cursor also gets a .cursorrules bridge, and each of
-    // Cursor / Gemini / opencode ships a "commit often" nudge hook.
     'CLAUDE.md',
-    'GEMINI.md',
-    '.github/copilot-instructions.md',
-    '.cursorrules',
-    '.cursor/hooks.json',
-    '.cursor/hooks/nudge-uncommitted.sh',
-    '.gemini/settings.json',
-    '.gemini/hooks/nudge-uncommitted.sh',
-    '.opencode/plugins/nudge-uncommitted.ts',
     // Claude Code config + the protective enforcement hooks (no design ceremony).
     '.claude.json',
     '.claude/settings.json',
@@ -623,7 +631,7 @@ export async function scaffoldApp(name, cwd, opts = {}) {
   // rewrites; the three infra files get their file-specific transform. On Node,
   // every file is copied byte-identical (the map is empty).
   const PROSE_REWRITE = new Set([
-    'AGENTS.md', 'CLAUDE.md', 'CONVENTIONS.md', '.cursorrules',
+    'AGENTS.md', 'CLAUDE.md', 'CONVENTIONS.md',
     '.agents/rules/workflow.md',
     'test/hello/browser/hello.test.js', 'test/hello/e2e/hello.test.ts',
   ]);
@@ -877,9 +885,14 @@ export default defineConfig({
 `);
 
   // Env vars: append DATABASE_URL to the .env.example the template already
-  // copied (if present), idempotently.
+  // copied (if present), idempotently. The database segment is the app name
+  // normalized to a fold-stable PostgreSQL identifier, so the emitted URL
+  // names the same database whether the user runs `createdb` or types
+  // `CREATE DATABASE`. Hoisted because the post-scaffold guidance below names
+  // the same value, and the two must not be able to drift.
+  const dbName = toDatabaseName(name);
   const dbUrlLine = dialect === 'postgres'
-    ? 'DATABASE_URL=postgres://user:password@localhost:5432/' + name.replace(/[^a-z0-9_]/gi, '_')
+    ? 'DATABASE_URL=postgres://user:password@localhost:5432/' + dbName
     : 'DATABASE_URL=file:./db/dev.db';
   const envExample = join(appDir, '.env.example');
   if (existsSync(envExample)) {
@@ -1365,13 +1378,16 @@ import { cardClass } from '#components/ui/card.ts';
 import { badgeClass } from '#components/ui/badge.ts';
 // The demo index is defined once in modules/gallery/nav.ts (the same source the
 // left sidebar reads), so the home cards and the sidebar can never drift.
-import { FEATURES, EXAMPLES } from '#modules/gallery/nav.ts';
+import { featureList, EXAMPLES } from '#modules/gallery/nav.ts';
 
 export const metadata = {
   title: '${displayName}',
 };
 
 export default function Home() {
+  // Flattened HERE rather than at module scope. A top-level call is a module
+  // side effect, which would ship this page to the browser for nothing.
+  const FEATURES = featureList();
   return html\`
     <div class="py-8 flex flex-col items-center gap-16">
       <!-- Hero -->
@@ -1596,7 +1612,7 @@ ThemeToggle.register('theme-toggle');
   // local file with no .env). Point it at a running database; `dev` / `start`
   // then apply pending migrations via webjs.*.before.
   const pgNote = dialect === 'postgres'
-    ? `\nPostgres: copy .env.example to .env and set DATABASE_URL to a running database before \`${pm} run dev\`.\n`
+    ? `\nPostgres: copy .env.example to .env and set DATABASE_URL to a running database before \`${pm} run dev\`.\nThe example URL names the database \`${dbName}\`. Create that database or edit the URL.\n`
     : '';
   // Use `npx webjsdev ui ...` here, not `npx webjs ui ...`. The bare
   // `webjs` npm name is owned by an unrelated package; `npx webjs

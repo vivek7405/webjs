@@ -160,9 +160,13 @@ interface WebComponentStatics {
   /**
    * Force this component to ship (hydrate) even when the elision analyser would
    * drop it as display-only. The escape hatch for interactivity the analyser
-   * cannot see statically: a dynamically-computed tag string, or a `:defined`
-   * rule in an external stylesheet outside the module graph. Leave unset for
-   * the automatic verdict.
+   * cannot see statically: an OBSERVER that computes the tag it waits for, a
+   * `:defined` rule in an external stylesheet outside the module graph, or a
+   * consumer reaching the element through a string selector. It
+   * cannot rescue a component whose OWN registration tag is computed, since
+   * the scanner requires a literal tag (invariant 3) and never sees that
+   * component at all. Leave unset for the automatic verdict; inspect it with
+   * `webjs elision`.
    */
   interactive?: boolean;
   register(tag: string): void;
@@ -209,3 +213,13 @@ export declare function prop<T>(
 export declare function prop<T = string>(
   opts?: PropertyDeclaration<T>
 ): PropertyDeclaration<T>;
+
+// The shared attribute reader (`resolveAttributeProperty`, #1341) is NOT here,
+// and nothing about it belongs here. It lives in `src/attribute-reader.js`,
+// which has no `exports` entry, because two guards bracket every mapped entry
+// and `./component` is one: #388 forces every runtime named export of
+// `component.js` to be declared in this file, and #1031 forces every
+// declaration reachable from `index.d.ts` (which re-exports this file with
+// `export *`) to exist on `index.js` at runtime. Together they leave no way to
+// add an INTERNAL named export to `component.js`. That module's header carries
+// the full reasoning.

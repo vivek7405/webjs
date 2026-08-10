@@ -97,7 +97,7 @@ export class ChatBox extends WebComponent {
                   ? html`<p class="m-0 mb-2 text-foreground"><em class="font-mono text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground/70 not-italic">${l.text}</em></p>`
                   : html`<p class="m-0 mb-2 text-foreground">${l.text}</p>`)}
         </div>
-        <form class="flex gap-2 px-4 py-3 border-t border-border bg-muted" @submit=${(e) => this.onSubmit(e)}>
+        <form class="flex gap-2 px-4 py-3 border-t border-border bg-muted" @submit=${(e: SubmitEvent) => this.onSubmit(e)}>
           <input name="message" class="${inputClass()} flex-1"
                  placeholder=${placeholder}
                  ?disabled=${!live} autocomplete="off">

@@ -225,7 +225,13 @@ test('DEV vs PROD HTML differs ONLY by the ?v query (dev is the un-fingerprinted
     .replace(/data-webjs-build="[^"]*"/g, 'BUILD') // per-deploy build id
     .replace(/ ?data-webjs-src="[^"]*"/g, 'SRC') // app-source deploy signal (#899)
     .replace(/"NODE_ENV":"(development|production)"/g, '"NODE_ENV":"ENV"') // dev vs prod env shim
-    .replace(/<script type="module"[^>]*src="[^"]*reload[^"]*"[^>]*><\/script>/g, ''); // dev-only reload script
+    .replace(/<script type="module"[^>]*src="[^"]*reload[^"]*"[^>]*><\/script>/g, '') // dev-only reload script
+    // #1309: in DEV the seed block is emitted even when the collector is empty,
+    // carrying only the `data-webjs-dev` marker, which is the sole dev signal
+    // the browser gets (a NODE_ENV gate is a compile-time constant in the built
+    // core bundle). Prod emits nothing for an empty collector, so this is a
+    // dev-only artifact in the same class as the reload script above.
+    .replace(/<script type="application\/json" id="__webjs-seeds" data-webjs-dev="[^"]*">\{\}<\/script>/g, '');
 
   assert.equal(norm(devHtml), norm(prodHtml), 'dev and prod bodies match once the ?v is stripped');
 });

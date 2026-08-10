@@ -59,7 +59,7 @@
  */
 import { existsSync, lstatSync, mkdirSync, readdirSync, symlinkSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 
 /** Directory names never worth descending into when hunting for nested trees. */
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.webjs', 'coverage']);
@@ -121,6 +121,107 @@ function defaultPrimary() {
   return resolve(dirname(common));
 }
 
+/**
+ * Where the blog's SQLite file lives, resolved the way the blog itself resolves
+ * it.
+ *
+ * `examples/blog/db/connection.server.ts` and `examples/blog/drizzle.config.ts`
+ * both read `DATABASE_URL` and fall back to `db/dev.db`, and `db:migrate` /
+ * `db:seed` inherit this process's env, so probing a hardcoded `db/dev.db`
+ * would check a different file than the one those commands write whenever
+ * `DATABASE_URL` is set. The probe would then always miss, and the
+ * already-seeded fast path below could never fire.
+ *
+ * @param {string} blogDir absolute path to `examples/blog`
+ * @returns {string} absolute path of the database file
+ */
+function blogDbPath(blogDir) {
+  const fromEnv = process.env.DATABASE_URL?.replace(/^file:/, '');
+  return resolve(blogDir, fromEnv || join('db', 'dev.db'));
+}
+
+/**
+ * How many rows the blog's `posts` table has, or `null` when the table or the
+ * database file is not there yet.
+ *
+ * Read-only and dependency-free. `node:sqlite` is built in on this repo's Node
+ * 24+ floor, and `examples/blog/db/connection.server.ts` already opens the same
+ * database through it, so this adds nothing to install and nothing to resolve.
+ *
+ * @param {string} dbPath
+ * @returns {Promise<number|null>}
+ */
+async function countBlogPosts(dbPath) {
+  if (!existsSync(dbPath)) return null;
+  let db;
+  try {
+    const { DatabaseSync } = await import('node:sqlite');
+    db = new DatabaseSync(dbPath, { readOnly: true });
+    const row = /** @type {{ n: number }} */ (db.prepare('select count(*) as n from posts').get());
+    return Number(row.n);
+  } catch {
+    // A missing `posts` table (a file created by `webjs db migrate` before the
+    // migrations ran, or a half-written one) reads the same as no rows for our
+    // purposes: the blog has nothing to serve.
+    return null;
+  } finally {
+    try { db?.close(); } catch { /* already closed */ }
+  }
+}
+
+/**
+ * Bring `examples/blog`'s SQLite database up to a state the blog tests can use.
+ *
+ * `examples/blog/db/dev.db` is gitignored, so a worktree starts with none and
+ * three blog tests plus their enclosing suite fail on an empty `posts` table
+ * with nothing in the output naming the database (#1323). CI never sees it,
+ * because all four jobs that boot the blog run `db:migrate` + `db:seed` first.
+ *
+ * The guard is "the blog has no posts", NOT "the database file is missing".
+ * `examples/blog/package.json` runs `webjs db migrate` as both a
+ * `webjs.dev.before` and a `webjs.start.before` step, so booting the blog once
+ * creates the file with an empty `posts` table and a file-existence guard would
+ * skip forever. Rails' `db:prepare` has the same shape (seed only an
+ * uninitialized database); only the probe differs, because there nothing but
+ * `db:prepare` creates the file and here two other commands do.
+ *
+ * Never destructive. `webjs db migrate` only applies pending migrations, and
+ * `db/seed.server.ts` is insert-or-skip on `users.email` / `posts.slug`, so a
+ * database that already has rows is left exactly as it was.
+ *
+ * @param {string} blogDir absolute path to this worktree's `examples/blog`
+ * @returns {Promise<void>}
+ */
+async function seedBlogDatabase(blogDir) {
+  // The synthetic checkouts in the repo-health tests have no blog, and neither
+  // would a future repo layout that moved it. Nothing to do either way.
+  if (!existsSync(join(blogDir, 'package.json'))) return;
+
+  const posts = await countBlogPosts(blogDbPath(blogDir));
+  if (posts !== null && posts > 0) {
+    console.log(`[link-worktree-deps] blog database already has ${posts} posts, leaving it alone.`);
+    return;
+  }
+
+  console.log('[link-worktree-deps] seeding the blog database (examples/blog)...');
+  for (const script of ['db:migrate', 'db:seed']) {
+    // `shell` on Windows, where npm is `npm.cmd` and Node has refused to spawn
+    // a `.cmd` without one since the CVE-2024-27980 fix. Both arguments are
+    // literals from the array above, so there is nothing for a shell to expand.
+    const r = spawnSync('npm', ['run', script], {
+      cwd: blogDir,
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    });
+    if (r.status === 0) continue;
+    const why = r.error ? r.error.message : (r.status === null ? `signal ${r.signal}` : `exit ${r.status}`);
+    console.error(`[link-worktree-deps] WARNING: npm run ${script} failed in examples/blog (${why}).`);
+    console.error('[link-worktree-deps] Linking succeeded. Three blog tests and their enclosing suite will fail until you run, from examples/blog, npm run db:migrate then npm run db:seed.');
+    return;
+  }
+  console.log('[link-worktree-deps] blog database seeded.');
+}
+
 const here = process.cwd();
 const primary = resolve(process.argv[2] || defaultPrimary());
 
@@ -152,3 +253,19 @@ for (const rel of ['packages/core/dist']) {
 }
 
 console.log(`[link-worktree-deps] ${linked} linked, ${skipped} already present.`);
+
+// LAST, after the links: `npm run db:migrate` resolves the `webjs` bin through
+// the root `node_modules/.bin` the loops above just linked, so this cannot run
+// earlier. Being below the `primary === here` guard keeps it out of the primary
+// checkout, but that guard is NOT what keeps it out of the test suite: the
+// `defaultPrimary()` test in `test/repo-health/link-worktree-deps.test.mjs`
+// runs this script bare against its own cwd, and from a linked worktree (the
+// mandated workflow) that cwd is a worktree, so the guard does not fire. That
+// test sets `WEBJS_NO_WORKTREE_SEED=1` for exactly this reason. Without it,
+// `npm test` would migrate and seed the blog database as a side effect, racing
+// `test/integration/blog-http.test.mjs`, which reads the same file in parallel.
+if (process.env.WEBJS_NO_WORKTREE_SEED === '1') {
+  console.log('[link-worktree-deps] blog database seeding skipped (WEBJS_NO_WORKTREE_SEED=1).');
+} else {
+  await seedBlogDatabase(join(here, 'examples', 'blog'));
+}

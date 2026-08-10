@@ -29,7 +29,8 @@ let _collect, _plan, _keyOf, _diffEl, _reconcile,
   _reactivateScripts, _activateSwappedRange, _findAnchorInPath, _activeFrameId, _resolveTargetFrameId, _onPopState,
   _applySwap, _prefetchCache,
   _snapshotCache, _LIVE_ATTRS, _blurOutgoingFocus,
-  _onSubmit, _getSubmitMethod, _getSubmitAction, _buildSubmitFormData,
+  _getSubmitMethod, _getSubmitAction, _buildSubmitFormData,
+  _getSubmitEnctype, _encodeSubmitBody,
   _restoreOptimistic, _navToken, _bumpNavToken,
   _currentPageUrl, _setCurrentPageUrl, _resetWarnOnce,
   _eligibleAnchorHref, _prefetchSuppressed, _prefetchMode, _prefetchHasHoverPointer, _prefetch, _prefetchTake, _prefetchAnchor,
@@ -97,10 +98,11 @@ before(async () => {
     _snapshotCache,
     _LIVE_ATTRS,
     _blurOutgoingFocus,
-    _onSubmit,
     _getSubmitMethod,
     _getSubmitAction,
     _buildSubmitFormData,
+    _getSubmitEnctype,
+    _encodeSubmitBody,
     _restoreOptimistic,
     _navToken,
     _bumpNavToken,
@@ -2047,6 +2049,185 @@ test('popstate cache restore scrolls instantly, not animated (#601)', async () =
   }
 });
 
+test('popstate cache restore suppresses scroll anchoring across the window (#1310)', async () => {
+  // The saved scrollY was recorded at the page's SETTLED height. The restored
+  // DOM lays out shorter until its components upgrade, and the browser's
+  // scroll anchoring then adds that late growth to the restored offset, so
+  // the reader lands below where they left. The restore suppresses anchoring
+  // for its duration instead of re-scrolling afterwards.
+  const origLoc = globalThis.location;
+  const origFetch = globalThis.fetch;
+  const prevPageUrl = _currentPageUrl();
+  const root = document.documentElement;
+  _snapshotCache.set('/anchor-here', {
+    html: '<!doctype html><html><head></head><body><!--wj:children:/:/-->cached<!--/wj:children:/--></body></html>',
+    scrollX: 0,
+    scrollY: 800,
+  });
+  globalThis.location = /** @type any */ ({
+    href: 'http://localhost/anchor-here',
+    pathname: '/anchor-here', origin: 'http://localhost', search: '', hash: '',
+  });
+  _setCurrentPageUrl('http://localhost/elsewhere');
+  globalThis.fetch = async () => new Response('<html></html>', {
+    status: 200, headers: { 'content-type': 'text/html' },
+  });
+  const origWinScrollTo = globalThis.window?.scrollTo;
+  const origGlobalScrollTo = globalThis.scrollTo;
+  const origScrollY = globalThis.window?.scrollY;
+  // linkedom has no layout, so the stub has to move `scrollY` itself. The
+  // restore READS it back to tell a landed scroll from one the browser clamped
+  // against a document that has not grown yet, and only the landed case
+  // suppresses anchoring.
+  const land = /** @type any */ ((o) => { if (globalThis.window) globalThis.window.scrollY = o && o.top; });
+  globalThis.scrollTo = land;
+  if (globalThis.window) globalThis.window.scrollTo = land;
+  document.head.innerHTML = '';
+  document.body.innerHTML = '<!--wj:children:/:/-->before-pop<!--/wj:children:/-->';
+  try {
+    // The cache-hit popstate branch runs synchronously through the restore,
+    // so the window is already open when _onPopState returns.
+    _onPopState({});
+    assert.equal(root.style.getPropertyValue('overflow-anchor'), 'none',
+      'the restore opens the window, so the browser cannot add late growth ' +
+      'to the offset it just replayed');
+    // The revalidation settles immediately here, and that alone must NOT close
+    // the window: tying its length to network latency rather than to the growth
+    // it guards is what let a fast server close it early.
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(root.style.getPropertyValue('overflow-anchor'), 'none',
+      'an instant revalidation does not close the window on its own');
+    // The floor is the other half of the close.
+    await new Promise((r) => setTimeout(r, 700));
+    assert.ok(!root.style.getPropertyValue('overflow-anchor'),
+      'the window closes once the restore is over, leaving no residue ' +
+      'on <html>');
+  } finally {
+    _snapshotCache.delete('/anchor-here');
+    _setCurrentPageUrl(prevPageUrl);
+    globalThis.location = origLoc;
+    globalThis.fetch = origFetch;
+    globalThis.scrollTo = origGlobalScrollTo;
+    if (globalThis.window) globalThis.window.scrollTo = origWinScrollTo;
+    if (globalThis.window) globalThis.window.scrollY = origScrollY;
+    root.style.removeProperty('overflow-anchor');
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+  }
+});
+
+test('a second navigation closes an open scroll-anchor window (#1310)', async () => {
+  // The window outlives its own restore on purpose (a floor, then a ceiling),
+  // so a PAGE navigation starting inside that span has to end it. Otherwise a
+  // Back that CLAMPS, which opens no window of its own, would run its whole
+  // growth under the previous restore's suppression and freeze its clamp, and a
+  // forward nav would carry the suppression onto an unrelated page. A
+  // frame-targeted navigation is exempt, since it swaps one region and leaves
+  // the restored offset meaningful; the browser suite covers that side.
+  const origLoc = globalThis.location;
+  const origFetch = globalThis.fetch;
+  const prevPageUrl = _currentPageUrl();
+  const root = document.documentElement;
+  _snapshotCache.set('/anchor-second-nav', {
+    html: '<!doctype html><html><head></head><body><!--wj:children:/:/-->cached<!--/wj:children:/--></body></html>',
+    scrollX: 0,
+    scrollY: 800,
+  });
+  globalThis.location = /** @type any */ ({
+    href: 'http://localhost/anchor-second-nav',
+    pathname: '/anchor-second-nav', origin: 'http://localhost', search: '', hash: '',
+  });
+  _setCurrentPageUrl('http://localhost/elsewhere');
+  globalThis.fetch = async () => new Response('<html></html>', {
+    status: 200, headers: { 'content-type': 'text/html' },
+  });
+  const origWinScrollTo = globalThis.window?.scrollTo;
+  const origGlobalScrollTo = globalThis.scrollTo;
+  const origScrollY = globalThis.window?.scrollY;
+  const land = /** @type any */ ((o) => { if (globalThis.window) globalThis.window.scrollY = o && o.top; });
+  globalThis.scrollTo = land;
+  if (globalThis.window) globalThis.window.scrollTo = land;
+  document.head.innerHTML = '';
+  document.body.innerHTML = '<!--wj:children:/:/-->before-pop<!--/wj:children:/-->';
+  try {
+    _onPopState({});
+    assert.equal(root.style.getPropertyValue('overflow-anchor'), 'none',
+      'precondition: the restore opened a window');
+    // A forward navigation, started well inside the floor. Not awaited: the
+    // close happens as the navigation STARTS, and awaiting would also run the
+    // whole fetch-and-apply pipeline, which is not what this asserts.
+    navigate('http://localhost/somewhere-else').catch(() => {});
+    assert.ok(!root.style.getPropertyValue('overflow-anchor'),
+      'starting another navigation ends the previous restore\'s window');
+    await new Promise((r) => setTimeout(r, 20));
+  } finally {
+    _snapshotCache.delete('/anchor-second-nav');
+    _setCurrentPageUrl(prevPageUrl);
+    globalThis.location = origLoc;
+    globalThis.fetch = origFetch;
+    globalThis.scrollTo = origGlobalScrollTo;
+    if (globalThis.window) globalThis.window.scrollTo = origWinScrollTo;
+    if (globalThis.window) globalThis.window.scrollY = origScrollY;
+    root.style.removeProperty('overflow-anchor');
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+  }
+});
+
+test('disableClientRouter closes an open scroll-anchor window (#1310)', async () => {
+  // The router must leave nothing of its own on <html> after it is disabled.
+  const origLoc = globalThis.location;
+  const origFetch = globalThis.fetch;
+  const prevPageUrl = _currentPageUrl();
+  const root = document.documentElement;
+  _snapshotCache.set('/anchor-disable', {
+    html: '<!doctype html><html><head></head><body><!--wj:children:/:/-->cached<!--/wj:children:/--></body></html>',
+    scrollX: 0,
+    scrollY: 800,
+  });
+  globalThis.location = /** @type any */ ({
+    href: 'http://localhost/anchor-disable',
+    pathname: '/anchor-disable', origin: 'http://localhost', search: '', hash: '',
+  });
+  _setCurrentPageUrl('http://localhost/elsewhere');
+  globalThis.fetch = async () => new Response('<html></html>', {
+    status: 200, headers: { 'content-type': 'text/html' },
+  });
+  const origWinScrollTo = globalThis.window?.scrollTo;
+  const origGlobalScrollTo = globalThis.scrollTo;
+  const origScrollY = globalThis.window?.scrollY;
+  // linkedom has no layout, so the stub has to move `scrollY` itself. The
+  // restore READS it back to tell a landed scroll from one the browser clamped
+  // against a document that has not grown yet, and only the landed case
+  // suppresses anchoring.
+  const land = /** @type any */ ((o) => { if (globalThis.window) globalThis.window.scrollY = o && o.top; });
+  globalThis.scrollTo = land;
+  if (globalThis.window) globalThis.window.scrollTo = land;
+  document.head.innerHTML = '';
+  document.body.innerHTML = '<!--wj:children:/:/-->before-pop<!--/wj:children:/-->';
+  try {
+    _onPopState({});
+    assert.equal(root.style.getPropertyValue('overflow-anchor'), 'none');
+    disableClientRouter();
+    assert.ok(!root.style.getPropertyValue('overflow-anchor'),
+      'disabling the router closes any window it left open');
+    // Let the background revalidation settle (avoid an unhandled rejection).
+    await new Promise((r) => setTimeout(r, 20));
+  } finally {
+    _snapshotCache.delete('/anchor-disable');
+    _setCurrentPageUrl(prevPageUrl);
+    globalThis.location = origLoc;
+    globalThis.fetch = origFetch;
+    globalThis.scrollTo = origGlobalScrollTo;
+    if (globalThis.window) globalThis.window.scrollTo = origWinScrollTo;
+    if (globalThis.window) globalThis.window.scrollY = origScrollY;
+    root.style.removeProperty('overflow-anchor');
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+    enableClientRouter(); // re-enable for subsequent tests
+  }
+});
+
 test('navigate: forward-nav scroll-to-top is instant, not animated (#601)', async () => {
   document.body.innerHTML = '<!--wj:children:/:/-->before<!--/wj:children:/-->';
   const { restore } = installNavigationMocks({
@@ -2795,7 +2976,26 @@ test('blurOutgoingFocus: no-op when active element has no blur() method', () => 
 });
 
 /* ====================================================================
- * Form submission: getSubmitMethod / getSubmitAction
+ * Form submission: the RESOLVERS only.
+ *
+ * The `onSubmit` BAIL LADDER is deliberately not tested in this file. It
+ * lives in `packages/core/test/routing/browser/submit-bail-ladder.test.js`,
+ * against a real browser (#1322).
+ *
+ * Why it cannot live here: this harness is linkedom with no `location`
+ * global, so `onSubmit` throws a ReferenceError at its `new URL(action,
+ * location.href)` line and the bare `catch` swallows it, returning before any
+ * later rung is reached. Stub `location` and the next wall is
+ * `new FormData(formElement)`, which throws under linkedom because the
+ * constructor's WebIDL brand check rejects a linkedom element. Either way
+ * `preventDefault()` is unreachable, so an ordinary same-origin POST that the
+ * router DOES intercept looks exactly like a bail, there is no possible
+ * positive control, and no change to any rung could red a test here. Nine
+ * tests that claimed to pin a bail used to sit below; deleting the
+ * `data-no-router` rung outright left every one of them green.
+ *
+ * The resolvers below are pure functions over attributes, so they are
+ * genuinely unit-testable and stay.
  * ==================================================================== */
 
 /** Build a form element in the test document for inspection. */
@@ -2827,6 +3027,86 @@ test('getSubmitMethod: tolerates null submitter (programmatic submit)', () => {
   assert.equal(_getSubmitMethod(form, null), 'post');
 });
 
+test('getSubmitMethod: a PRESENT-but-empty formmethod wins, and means GET (#1322)', () => {
+  // The form-submission algorithm asks whether the submitter HAS a
+  // `formmethod`, never whether the value is truthy, and `formmethod` is an
+  // enumerated attribute whose invalid-value default is GET. So this button
+  // submits as a GET on every engine, while the old `||` chain resolved it to
+  // the form's `post`: same template, two different requests with JS on and
+  // off, which is the divergence #1307 exists to rule out.
+  const form = formFrom('<form method="post"><button formmethod="">x</button></form>');
+  assert.equal(_getSubmitMethod(form, form.querySelector('button')), 'get');
+});
+
+test('getSubmitEnctype: a PRESENT-but-empty formenctype wins, and means urlencoded (#1322)', () => {
+  // Same presence rule, landing on `enctype`'s own invalid-value default.
+  const form = formFrom('<form method="post" enctype="multipart/form-data"><button formenctype="">x</button></form>');
+  assert.equal(
+    _getSubmitEnctype(form, form.querySelector('button')),
+    'application/x-www-form-urlencoded',
+  );
+});
+
+test('getSubmitEnctype: submitter formenctype overrides form enctype', () => {
+  // Native precedence, the same rule `getSubmitMethod` follows one line up.
+  const form = formFrom('<form enctype="application/x-www-form-urlencoded"><button formenctype="multipart/form-data">x</button></form>');
+  assert.equal(_getSubmitEnctype(form, form.querySelector('button')), 'multipart/form-data');
+});
+
+test('getSubmitEnctype: the missing-value default is urlencoded, per HTML', () => {
+  // This is the case that mattered (#1307). A plain `<form method="post">`
+  // MEANS urlencoded, and the router used to send multipart for it, so the
+  // same form produced a different request body with JS on than with JS off.
+  const form = formFrom('<form method="post"><button>x</button></form>');
+  assert.equal(_getSubmitEnctype(form, form.querySelector('button')), 'application/x-www-form-urlencoded');
+});
+
+test('getSubmitEnctype: an INVALID value is urlencoded too, not passed through', () => {
+  // `enctype` is an enumerated attribute whose invalid-value default is also
+  // urlencoded, so `nonsense` really does mean urlencoded. Treating an
+  // unrecognised value as text/plain would bail a form that submits perfectly.
+  for (const raw of ['nonsense', 'TEXT/HTML', '', ' multipart/form-data ']) {
+    const form = formFrom(`<form method="post" enctype="${raw}"><button>x</button></form>`);
+    assert.equal(
+      _getSubmitEnctype(form, form.querySelector('button')),
+      'application/x-www-form-urlencoded',
+      `${raw || '(empty)'} normalizes to the invalid-value default`,
+    );
+  }
+});
+
+test('getSubmitEnctype: the two other keywords are matched case-insensitively', () => {
+  for (const [raw, want] of [
+    ['MULTIPART/FORM-DATA', 'multipart/form-data'],
+    ['Text/Plain', 'text/plain'],
+  ]) {
+    const form = formFrom(`<form method="post" enctype="${raw}"><button>x</button></form>`);
+    assert.equal(_getSubmitEnctype(form, form.querySelector('button')), want);
+  }
+});
+
+test('encodeSubmitBody: urlencoded sends URLSearchParams, multipart sends FormData', () => {
+  const fd = new FormData();
+  fd.append('email', 'a@b.com');
+  fd.append('note', 'hi there');
+  const params = _encodeSubmitBody(fd, 'application/x-www-form-urlencoded');
+  assert.ok(params instanceof URLSearchParams, 'urlencoded must not send FormData');
+  assert.equal(params.get('email'), 'a@b.com');
+  assert.equal(params.get('note'), 'hi there');
+  assert.equal(_encodeSubmitBody(fd, 'multipart/form-data'), fd, 'multipart passes the FormData through');
+});
+
+test('encodeSubmitBody: a File under urlencoded is sent as its NAME, matching the platform', () => {
+  // The platform's urlencoded serializer writes the file's name. Turbo drops
+  // file entries entirely here, which loses a field the no-JS path sends.
+  const fd = new FormData();
+  fd.append('avatar', new File(['x'], 'portrait.png', { type: 'image/png' }));
+  fd.append('email', 'a@b.com');
+  const params = _encodeSubmitBody(fd, 'application/x-www-form-urlencoded');
+  assert.equal(params.get('avatar'), 'portrait.png');
+  assert.equal(params.get('email'), 'a@b.com', 'and the sibling text field survives');
+});
+
 test('getSubmitAction: submitter formaction overrides form action', () => {
   const form = formFrom('<form action="/a"><button formaction="/b">x</button></form>');
   const submitter = form.querySelector('button');
@@ -2846,80 +3126,6 @@ test('getSubmitAction: empty submitter formaction is honored (means submit-to-se
   const form = formFrom('<form action="/elsewhere"><button formaction="">x</button></form>');
   const submitter = form.querySelector('button');
   assert.equal(_getSubmitAction(form, submitter), '');
-});
-
-/* ====================================================================
- * Form submission: onSubmit filter rules
- * ==================================================================== */
-
-/**
- * Construct a fake SubmitEvent for the given form. We can't use a real
- * SubmitEvent in linkedom (it's undefined there), but onSubmit only
- * reads `defaultPrevented`, `target`, `submitter`, and `preventDefault`
- * - easy to fake.
- */
-function fakeSubmitEvent(form, submitter) {
-  let prevented = false;
-  return {
-    defaultPrevented: false,
-    target: form,
-    submitter: submitter || null,
-    preventDefault() { prevented = true; this.defaultPrevented = true; },
-    _wasPrevented() { return prevented; },
-  };
-}
-
-test('onSubmit: ignores forms with data-no-router (lets browser submit)', () => {
-  const form = formFrom('<form action="/x" method="post" data-no-router></form>');
-  const e = fakeSubmitEvent(form);
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false,
-    "data-no-router form is NOT intercepted; browser handles it natively");
-});
-
-test('onSubmit: ignores forms with target=_blank (popup)', () => {
-  const form = formFrom('<form action="/x" method="post" target="_blank"></form>');
-  const e = fakeSubmitEvent(form);
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false, 'popup target left to browser');
-});
-
-test('onSubmit: ignores submissions with method="dialog"', () => {
-  const form = formFrom('<form action="/x" method="dialog"></form>');
-  const e = fakeSubmitEvent(form);
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false, 'native dialog dismissal not routed');
-});
-
-test('onSubmit: ignores cross-origin actions', () => {
-  const form = formFrom('<form action="https://other.example.com/x" method="post"></form>');
-  const e = fakeSubmitEvent(form);
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false, 'cross-origin → full browser submit');
-});
-
-test('onSubmit: ignores file-download actions (non-HTML extensions)', () => {
-  const form = formFrom('<form action="/data.pdf" method="get"></form>');
-  const e = fakeSubmitEvent(form);
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false, 'PDF action → browser handles download');
-});
-
-test('onSubmit: ignores already-prevented events (server-action RPC stub got first)', () => {
-  const form = formFrom('<form action="/x" method="post"></form>');
-  const e = fakeSubmitEvent(form);
-  e.defaultPrevented = true; // simulate a user @submit handler already running
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false,
-    "router does not double-prevent: user handler owns the event");
-});
-
-test('onSubmit: ignores submitter with data-no-router (per-button escape)', () => {
-  const form = formFrom('<form action="/x" method="post"><button data-no-router>x</button></form>');
-  const submitter = form.querySelector('button');
-  const e = fakeSubmitEvent(form, submitter);
-  _onSubmit(e);
-  assert.equal(e._wasPrevented(), false, 'submitter-level opt-out');
 });
 
 /* ====================================================================
@@ -4523,5 +4729,54 @@ test('#1118: the report is once per DOCUMENT, not once per enable', () => {
     else delete (/** @type any */ (globalThis.document)).referrer;
     globalThis.location = savedLocation;
     globalThis.sessionStorage.clear();
+  }
+});
+
+test('applySwap: a DISCARDED background revalidation never ingests its seeds (#1309)', async () => {
+  // The scan used to run as applySwap's first statement, before this function
+  // can still decide to throw the response away. That cleared the visible
+  // page's own unconsumed seeds and ingested a render that is never painted,
+  // keyed for the same actions and args the visible page uses (it is a
+  // revalidation of that same URL), so the next `async render()` on the page
+  // still on screen hit on data disagreeing with the HTML.
+  const { takeSeed, scanSeeds, SEED_MISS, __resetSeeds } = await import('../../src/action-seed-client.js');
+  const { stringify } = await import('../../src/serialize.js');
+  const savedBody = globalThis.document.body.innerHTML;
+  const savedHead = globalThis.document.head.innerHTML;
+  const savedLocation = globalThis.location;
+  try {
+    __resetSeeds();
+    globalThis.document.head.innerHTML = '';
+    globalThis.location = /** @type any */ ({ get href() { return 'http://x/current'; }, set href(v) {} });
+    globalThis.sessionStorage.clear();
+    globalThis.document.body.innerHTML =
+      '<!--wj:children:/:/--><main id="fb-seed">old</main><!--/wj:children:/-->';
+
+    // The page on screen holds a seed the user's next render will ask for.
+    const liveBlock = globalThis.document.createElement('script');
+    liveBlock.setAttribute('type', 'application/json');
+    liveBlock.setAttribute('id', '__webjs-seeds');
+    liveBlock.textContent = await stringify({ 'h/getUser/[1]': 'ON-SCREEN' });
+    globalThis.document.body.appendChild(liveBlock);
+    scanSeeds(globalThis.document);
+
+    // A background revalidation whose boundaries do not line up, so applySwap
+    // discards it. Its payload names the SAME key with a different value.
+    const incoming = new globalThis.DOMParser().parseFromString(
+      '<!doctype html><html><head></head><body><!--wj:children:/:/--><main>new</main>'
+      + `<script type="application/json" id="__webjs-seeds">${await stringify({ 'h/getUser/[1]': 'NEVER-PAINTED' })}</script>`
+      + '</body></html>', 'text/html');
+    const outcome = _applySwap(incoming, null, true, 'http://x/blog');
+    assert.equal(outcome, 'discard', 'precondition: this response really was thrown away');
+
+    assert.equal(
+      takeSeed('h', 'getUser', '[1]'), 'ON-SCREEN',
+      'the page still on screen keeps its own seed; a discarded response never supplies one',
+    );
+    assert.equal(takeSeed('h', 'getUser', '[1]'), SEED_MISS, 'and it was consumed once, as always');
+  } finally {
+    globalThis.location = savedLocation;
+    globalThis.document.head.innerHTML = savedHead;
+    globalThis.document.body.innerHTML = savedBody;
   }
 });

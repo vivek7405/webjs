@@ -118,7 +118,7 @@ test('form GET: body is promoted to query string and response is applied', async
   }
 });
 
-test('form POST: FormData body is sent, response applied, snapshot cache cleared', async () => {
+test('form POST: an urlencoded body is sent, response applied, snapshot cache cleared', async () => {
   await ensureServer();
   const browser = await chromium.launch();
   const page = await (await browser.newContext()).newPage();
@@ -176,15 +176,71 @@ test('form POST: FormData body is sent, response applied, snapshot cache cleared
     assert.equal(r.method, 'POST');
     assert.ok(r.postData && r.postData.length > 0,
       'POST request carries a body');
-    // FormData is sent multipart by default in browsers; the boundary
-    // varies but the body must contain the field name + value.
-    assert.match(r.postData, /title/,
-      'FormData body contains the input name');
-    assert.match(r.postData, /Hello World/,
-      'FormData body contains the input value');
+    // URLENCODED, because this form declares no `enctype` and the HTML
+    // missing-value default for that attribute is
+    // `application/x-www-form-urlencoded` (#1307). The comment here used to say
+    // "FormData is sent multipart by default in browsers", which is backwards:
+    // a BROWSER defaults to urlencoded, and multipart is what `fetch` derives
+    // from a `FormData` object. The router used to build a FormData for every
+    // submission regardless, so this same form sent urlencoded with JS off and
+    // multipart with JS on. Asserting the urlencoded shape is what pins the two
+    // paths together.
+    assert.match(r.postData, /title/, 'body carries the input name');
+    assert.match(r.postData, /title=Hello\+World|title=Hello%20World/,
+      `body must be urlencoded, matching what the browser sends with JS off; got: ${r.postData}`);
+    assert.doesNotMatch(r.postData, /Content-Disposition/,
+      'an undeclared enctype must NOT be promoted to multipart');
 
     const probe = await page.locator('#probe').textContent();
     assert.equal(probe, 'arrived-from-post');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('form POST: a DECLARED multipart enctype is still sent as multipart (#1307)', async () => {
+  // The other half of the encoding rule, and the reason the test above is not
+  // simply "always urlencoded". The router honours what the form DECLARES, so a
+  // form that asks for multipart gets multipart. Without this row, someone
+  // could make the previous test pass by hardcoding urlencoded and break every
+  // file upload on the no-JS path.
+  await ensureServer();
+  const browser = await chromium.launch();
+  const page = await (await browser.newContext()).newPage();
+  try {
+    /** @type {{ postData: string | null }[]} */
+    const requests = [];
+    await page.route('**/test-form-multipart', (route) => {
+      requests.push({ postData: route.request().postData() });
+      route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+        body: mockResponseBody('arrived-multipart'),
+      });
+    });
+
+    await page.goto(`${BASE}/ui/button`);
+    await page.waitForLoadState('domcontentloaded');
+    await page.evaluate(() => {
+      const f = document.createElement('form');
+      f.action = '/test-form-multipart';
+      f.method = 'POST';
+      f.enctype = 'multipart/form-data';
+      f.id = 'mform';
+      f.innerHTML =
+        '<input name="title" value="Hello World">' +
+        '<button type="submit">Save</button>';
+      document.body.appendChild(f);
+    });
+    await page.locator('#mform button').click();
+    await page.waitForFunction(() => !!document.getElementById('probe'), { timeout: 4000 });
+
+    const r = requests[0];
+    assert.ok(r, 'router intercepted the submit and fetched');
+    assert.match(r.postData || '', /Content-Disposition: form-data; name="title"/,
+      `a declared multipart enctype must stay multipart; got: ${r.postData}`);
+    assert.match(r.postData || '', /Hello World/,
+      'and multipart carries the value unescaped');
   } finally {
     await browser.close();
   }
@@ -375,24 +431,12 @@ test('scroll restoration: back-button restores window scroll position', async ()
   const browser = await chromium.launch();
   const page = await (await browser.newContext()).newPage();
   try {
-    // This one block runs against /docs rather than /ui, and the reason is a
-    // real finding rather than convenience. The router restores window scroll
-    // correctly on /docs/* (set 800, back returns 800), but on a /ui/<name>
-    // gallery page it consistently lands on 1563 instead, reproducibly and
-    // independently of timing. That is a live website behaviour, unrelated to
-    // the router assertion this test exists to make, so the test makes its
-    // assertion on the page where nothing else is moving the scroll.
-    await page.goto(`${BASE}/docs/routing`);
+    // A /ui/<name> gallery page is the harder case on purpose: its component
+    // previews settle taller AFTER the swap, which is what used to carry the
+    // restore 763px past where the reader left (#1310). A /docs page does not
+    // grow, so asserting there proves much less.
+    await page.goto(`${BASE}/ui/button`);
     await page.waitForLoadState('domcontentloaded');
-    // Make sure the page is tall enough to actually scroll.
-    await page.evaluate(() => {
-      // The docs pages are typically tall; nudge with a spacer if not.
-      if (document.documentElement.scrollHeight < window.innerHeight + 500) {
-        const sp = document.createElement('div');
-        sp.style.height = '2000px';
-        document.body.appendChild(sp);
-      }
-    });
 
     // Scroll partway down.
     await page.evaluate(() => window.scrollTo(0, 800));
@@ -406,17 +450,20 @@ test('scroll restoration: back-button restores window scroll position', async ()
     // so a link below the fold would move the window before the router
     // recorded its position, and the router would then be asserted against a
     // scroll it restored correctly.
-    await page.locator('.docs-sidebar a:has-text("Components")').first()
+    await page.locator('a[href="/ui/card"]').first()
       .evaluate((el) => /** @type {HTMLElement} */ (el).click());
-    await page.waitForFunction(() => location.pathname.endsWith('/components'),
+    await page.waitForFunction(() => location.pathname.endsWith('/ui/card'),
       { timeout: 4000 });
 
     // Back. Scroll should restore.
     await page.goBack();
-    await page.waitForFunction(() => location.pathname.endsWith('/routing'),
+    await page.waitForFunction(() => location.pathname.endsWith('/ui/button'),
       { timeout: 4000 });
-    // Give the cached-restore path a frame to run.
-    await page.waitForTimeout(80);
+    // Let the restored page finish growing AND revalidating. A frame is not
+    // enough: the growth lands ~65ms after the swap and the revalidation's own
+    // swap ~300ms after it, and a restore that is correct at 80ms and wrong at
+    // 1200ms is exactly the defect (#1310).
+    await page.waitForTimeout(1200);
 
     const afterBackScroll = await page.evaluate(() => window.scrollY);
     // Allow a small tolerance: browser may round, sub-pixel layout etc.

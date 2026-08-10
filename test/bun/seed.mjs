@@ -2,7 +2,8 @@
  * Cross-runtime SSR action-result seeding test (#472, #529): boot a minimal app
  * whose shipping async component awaits a `'use server'` action during SSR, and
  * assert the resolved result is SEEDED into the page (the `#__webjs-seeds`
- * block), under WHICHEVER runtime executes this file. Run it under both:
+ * block) and that a dev render REPORTS its seed counts (#1309), under WHICHEVER
+ * runtime executes this file. Run it under both:
  *
  *   node test/bun/seed.mjs
  *   bun  test/bun/seed.mjs
@@ -76,7 +77,26 @@ try {
   assert.equal(actionMod.BRAND, 'acme-co', 'a regex-missed export flows through the export* catch-all (fail-open)');
   assert.equal(typeof actionMod.getThing, 'function', 'the enumerated export stays usable');
 
-  console.log(`OK  SSR action seeding emits the seed block + is fail-open on a missed export on ${runtime} (#472, #529, #535)`);
+  // 4. Dev observability (#1309). The COUNT is a direct function of whether the
+  //    facade ran, and the facade INSTALLS differently per runtime (Node's
+  //    `module.registerHooks` vs a `Bun.plugin` `onLoad`), so a regression on
+  //    one runtime otherwise leaves the other green. A Bun-side facade
+  //    regression reads `collected=0` here while Node still reads `collected=1`.
+  const devApp = await createRequestHandler({ appDir: dir, dev: true });
+  if (devApp.warmup) await devApp.warmup();
+  const devRes = await devApp.handle(new Request('http://localhost/'));
+  assert.equal(devRes.status, 200, 'GET / in dev should be 200');
+  assert.equal(
+    devRes.headers.get('x-webjs-seed'), 'collected=1, emitted=1',
+    `the dev seed header must report one collected and one emitted seed on ${runtime}`,
+  );
+  const devHtml = await devRes.text();
+  assert.match(
+    devHtml, /id="__webjs-seeds" data-webjs-dev="ok"/,
+    'the dev marker (the client\'s only dev gate) must ride the block on both runtimes',
+  );
+
+  console.log(`OK  SSR action seeding emits the seed block + is fail-open on a missed export + reports its dev counts on ${runtime} (#472, #529, #535, #1309)`);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

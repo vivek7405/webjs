@@ -1,6 +1,6 @@
 # Framework development (editing WebJs itself)
 
-Read this only when editing the WebJs monorepo (this repo), not a scaffolded app. The repo is buildless: `packages/` is plain `.js` with JSDoc (never add `.ts` there); TypeScript is fine in `examples/` and `website/`. Each in-repo app (`website/`, which serves the docs at `/docs` and the gallery at `/ui`, plus `examples/blog/`) is run from its OWN dir via `npm run dev` / `npm start`; as of #550 a bare `webjs dev` / `webjs start` is equivalent (each app's per-environment orchestration, the Tailwind watcher, `webjs db migrate`, the registry copy, moved into its `webjs.dev` / `webjs.start` tasks config, which `webjs dev`/`start` run). The sections below cover the repo-health git config, the changelog flow, and the dev error overlay.
+Read this only when editing the WebJs monorepo (this repo), not a scaffolded app. The repo is buildless: `packages/` is plain `.js` with JSDoc (never add `.ts` there); TypeScript is fine in `examples/`, `gallery/`, and `website/`. Each in-repo app (`website/`, which serves the docs at `/docs` and the component gallery at `/ui`, plus `examples/blog/` and the feature `gallery/`) is run from its OWN dir via `npm run dev` / `npm start`; as of #550 a bare `webjs dev` / `webjs start` is equivalent (each app's per-environment orchestration, the Tailwind watcher, `webjs db migrate`, the registry copy, moved into its `webjs.dev` / `webjs.start` tasks config, which `webjs dev`/`start` run). The sections below cover the repo-health git config, the changelog flow, and the dev error overlay.
 
 ---
 
@@ -95,6 +95,33 @@ This repo uses git worktrees (the review subagents spawn throwaway ones under `.
 
 Because the pin lives in the main worktree's `config.worktree`, `git worktree add` copies it into each linked worktree, so a commit made inside a throwaway review worktree also runs the framework `.hooks/pre-commit`. That is harmless (the hook only blocks main and auto-generates a changelog on a version bump), and review subagents are read-only so they do not commit; the inheritance is noted here only so the behavior is not surprising.
 
+### Fresh worktree bootstrap seeds the blog database (#1323)
+
+`npm run worktree:link` (`scripts/link-worktree-deps.mjs`) links the dependency trees AGENTS.md describes, and as its last step brings `examples/blog`'s SQLite database up to a usable state. `db/dev.db` is gitignored, so a worktree starts with none, and an empty `posts` table fails three blog tests plus their enclosing progressive-enhancement suite with nothing in the output naming the cause. CI never sees this because all four jobs that boot the blog run `db:migrate` + `db:seed` first.
+
+The guard is the row count, not the file. `examples/blog/package.json` runs `webjs db migrate` as a `dev.before` and a `start.before` step, so booting the blog once creates the file with an empty table and a file-existence check would skip forever after. The probe is a read-only `node:sqlite` open, which needs nothing installed. Rails' `db:prepare` has the same shape (seed an uninitialized database, leave an initialized one alone) and differs only in the probe, because there nothing but `db:prepare` creates the file.
+
+It costs about two and a half seconds on a cold worktree and nothing once there are rows. The database path is resolved the way the blog resolves it (`DATABASE_URL`, falling back to `db/dev.db`), so the probe and the two commands always agree on which file they mean. A failure WARNS and leaves the link successful. Escape hatch: `WEBJS_NO_WORKTREE_SEED=1`. Regression test: `test/repo-health/link-worktree-deps.test.mjs`.
+
+It runs below the primary-checkout guard, so `worktree:link` in the primary stays a no-op. That guard is not what keeps seeding out of the test suite, though. The `defaultPrimary()` repo-health test runs the script bare against its own cwd, and from a linked worktree (the mandated workflow) the guard does not fire, so the script would seed that worktree's blog database as a side effect of `npm test`, racing `test/integration/blog-http.test.mjs` reading the same file in parallel. That test therefore sets `WEBJS_NO_WORKTREE_SEED=1` explicitly, and the helpers in that file strip the variable from the ambient env so an exported opt-out cannot invert the seed assertions.
+
+### `webjs check` runs per app, and the repo root refuses (#1301)
+
+`webjs check` is an APP-level tool: every rule assumes one application, meaning one module graph, one custom-element registry, one runtime. This repo's root is none of those, it is a workspace holding two apps plus every package's test suite plus editor fixtures plus the scaffold templates, so a root-level run used to walk all of it and report 67 collisions that no single runtime ever sees. `my-counter`, for instance, was reported as duplicated across a blog component, an editor-plugin fixture, two unit tests, and a type fixture, five files that never load together.
+
+So the command now refuses in any directory with no `app/`, exits 1, and names the member apps to run instead. The two in-repo apps are `examples/blog` and `website`:
+
+```sh
+( cd examples/blog && npx webjs check )
+( cd website && npx webjs check )
+```
+
+Under `--json` the refusal is emitted as JSON rather than prose, `{ error: { code: 'NOT_AN_APP', message, cwd, apps } }`, so an agent's parser does not choke. It carries neither `violations` nor `summary` on purpose: a consumer that ignores the exit code and reads `report.violations.length` should throw rather than be told a workspace is clean.
+
+That is what `.github/workflows/ci.yml` has always done (it `cd`s per app), which is why CI was green while the root-level run looked catastrophic. `test/cli/check-target.test.mjs` pins the two together: it parses the app list out of the `for app in ...; do` loop in the `webjs check` step and asserts set equality with the list the refusal derives from the root `package.json` `workspaces` globs. A third app added to CI is picked up automatically; one dropped from CI reds the test. That drift guard is what a `--workspaces` flag was rejected in favour of.
+
+`webjs doctor` is deliberately NOT gated the same way. It already degrades correctly at the root (the elision and asset checks report "no app to analyse") and its toolchain checks are meaningful in a workspace.
+
 ### Merged worktrees are auto-removed (`cleanup-merged-worktree.sh`)
 
 Per-task worktrees pile up when a session merges its PR but never runs `git worktree remove` (a skipped step, or a crash mid-task). The `.claude/hooks/cleanup-merged-worktree.sh` PostToolUse hook (matcher `Bash`, wired in `.claude/settings.json`) closes that gap: after any `gh pr merge`, it sweeps every linked worktree and removes the ones that are safe to drop, so cleanup is deterministic rather than a thing an agent has to remember.
@@ -103,11 +130,38 @@ It is conservative. A worktree is removed ONLY when it is a linked (non-primary)
 
 The fix only repairs the LOCAL checkout. Commits and branches are always safe on GitHub regardless.
 
+### Agent config in this repo: `.claude/` is canonical, `.agents/` mirrors it
+
+Workflow skills live once at `.claude/skills/<name>/SKILL.md`. Antigravity reads
+`<workspace-root>/.agents/skills/<folder>/SKILL.md`, so each one is mirrored as a
+RELATIVE symlink `.agents/skills/<name> -> ../../.claude/skills/<name>`. Adding a
+skill means adding the directory, the symlink, and a bullet in
+`.agents/rules/workflow.md`; `test/repo-health/agent-skill-parity.test.mjs`
+fails when the three drift apart. Create the link with `ln -s` so git records
+mode `120000`, and keep the target relative, or
+`test/repo-health/no-committed-symlinks.test.mjs` rejects it.
+
+Two entries under `.agents/skills/` are not mirrors. `webjs/` is the real
+committed teaching skill (`scripts/sync-scaffold-skill.mjs` bundles it into the
+CLI at prepack), and `omarchy` is a machine-local absolute symlink kept
+untracked by `.gitignore:98`.
+
+Lifecycle HOOKS stay Claude-only on purpose. Antigravity supports a workspace
+`.agents/hooks.json`, but its blocking protocol (stdout `{"decision":"deny"}`),
+its context-injection shape (`injectSteps`), and its tool vocabulary all differ
+from Claude Code's, so a mirror is a protocol port rather than a config copy, and
+a generated copy would be the duplicated rule set root `AGENTS.md` rules out. The
+gates that bind every agent are `.hooks/pre-commit` and CI (#1372).
+
 ---
 
 ### Scaffold teaching-coverage gate (`gallery-coverage.test.js`)
 
-The scaffold is webjs's primary teaching surface for AI agents, so a new framework feature must ship a runnable gallery demo, not just a doc bullet. Enforcement is two tiers, mirroring how tests are enforced:
+The scaffold is webjs's primary teaching surface for AI agents, so a new framework feature must ship a runnable gallery demo, not just a doc bullet.
+
+**The gallery lives ONCE, at the repo root `gallery/`,** as a live workspace app you boot (`npm run dev:gallery`, port 5005) and test (`npm test --workspace=@webjsdev/gallery`) like `website` and `examples/blog`, so a framework change is validated against the demos instead of rotting in un-executed template files. `packages/cli`'s `prepack` bundles it into `packages/cli/templates/gallery/` for the npm tarball (`scripts/sync-scaffold-gallery.mjs`) and `postpack` deletes that copy, which is gitignored: never edit or commit it. Four files in `gallery/` exist only because it is a runnable app (`app/layout.ts`, `app/page.ts`, `components/theme-toggle.ts`, `lib/utils/cn.ts`); the generator writes its own, so both the copy and the bundle filter them through `packages/cli/lib/gallery-shell-files.js`.
+
+Enforcement is two tiers, mirroring how tests are enforced:
 
 - **Tier 1 (commit floor):** `.claude/hooks/require-scaffold-with-src.sh` blocks a commit that stages `packages/(core|server|cli)/src` with no scaffold surface. It only proves you touched a scaffold file, so a documented-but-undemoed feature can still pass (this is exactly how #848 shipped `forbidden()` / `unauthorized()` with app-tree bullets and no demo).
 
@@ -119,7 +173,7 @@ The scaffold gate is one of a FAMILY of tier-2 coverage gates that keep the fram
 
 - **Knowledge coverage** (`test/knowledge/knowledge-coverage.test.js`): reconciles the live `webjs check` `RULES` against the troubleshooting page + gotcha docs (a new rule must be explained in a symptom-keyed surface or exempted in `knowledge-coverage.json`), and asserts the AGENTS.md headings the MCP `init` primer sources (DERIVED from the `sectionByHeading(agents, /.../)` calls in `packages/mcp/src/mcp-docs.js`) still exist, so a heading rename cannot silently empty the primer.
 - **API docs + test coverage** (`test/api-coverage/api-coverage.test.js`): every agent-facing `@webjsdev/core` + `@webjsdev/server` export (NON-internal per the scaffold manifest, the single source of truth) must be referenced in the docs corpus (AGENTS.md + the skill + docs site) AND in a test. A new public export that ships undocumented or untested turns CI red.
-- **Types** round out the family and keep the hand-written `.d.ts` overlays (the `@webjsdev/core` and `@webjsdev/server` type surface VSCode / Neovim show) honest from three angles, per published `exports` entry (the overlay `types` for `.` plus every subpath, mapped to its sibling `.js`): `dts-export-coverage.test.mjs` proves every runtime export HAS a declaration (#388, forward direction); `dts-no-phantom-exports.test.mjs` proves the REVERSE, that every VALUE export an overlay declares EXISTS in its NODE runtime sibling, so a type-checking `import { x }` cannot crash with `x` undefined on that surface (#1031). It maps each overlay to its runtime `.js` by SIBLING (`foo.d.ts` overlays `foo.js`), not a `source` field (most entries have none), enforces a per-package entry-count floor, and asserts it still detects a KNOWN phantom on the real package, so a resolution break degrades to a loud failure, never a vacuous pass. The `@webjsdev/core` `.` overlay is DUAL-surface, so it is checked against BOTH runtimes: the Node sibling `index.js` and the browser entry `index-browser.js` (read from the server importmap), the latter allowlisting the three intentional server-only strips (`renderToString` / `renderToStream` / `setCspNonceProvider`) with a positive control that they stay stripped, so a NEW value the overlay declares that the browser bundle drops is caught as a browser phantom (#1035). Third, `complex-export-signatures.test-d.ts` (via the `type-fixtures.test.mjs` runner) pins the signatures of the complex exports (`WebComponent`, `Task`, `ref`, `repeat`, context) positively, because those overlays are deliberately richer than the loose JSDoc and an automatic shape-diff is all false positives on them. A KNOWN-real phantom deferred to a follow-up sits in `KNOWN_PHANTOMS` with its issue link and is deleted when that fix lands. `server-types.test.mjs`, **elision** (`packages/server/test/elision/lifecycle-coverage.test.js`), and **llms.txt** (`test/docs/llms.test.mjs`) complete the family. Each reads its live surface dynamically so it cannot go stale.
+- **Types** round out the family and keep the hand-written `.d.ts` overlays (the `@webjsdev/core` and `@webjsdev/server` type surface VSCode / Neovim show) honest from three angles, per published `exports` entry (the overlay `types` for `.` plus every subpath, mapped to its sibling `.js`): `dts-export-coverage.test.mjs` proves every runtime export HAS a declaration (#388, forward direction). It READS the entry list from each package's own `exports` (#1291), so a new subpath is forward-checked with no edit to the test; before that it ran over a hardcoded three-element array while fifteen overlays existed, leaving twelve subpaths unguarded in this direction. Each overlay is checked against its sibling `.js`, never the bare package specifier: Node resolves a bare specifier through the `default` condition, and four core subpaths (`./directives`, `./context`, `./task`, `./client-router`) all collapse onto `dist/webjs-core-browser.js`, so a bare import judged each of those overlays against the whole bundle's 101 names rather than its own module's surface, and the guard could not run at all until `dist` was built. A leading `_` is exempt as a test-only seam (the `Internal exports for unit testing` block in `src/router-client.js` is 63 such names), written as a rule rather than an ignore list that would rot with every new unit test. Three floors keep the widened guard from passing vacuously: a per-package entry count matching the reverse guard's, at least one checked name per entry, and a per-package checked-name total, which catches an entry that still resolves but to a smaller module than intended. `dts-no-phantom-exports.test.mjs` proves the REVERSE, that every VALUE export an overlay declares EXISTS in its NODE runtime sibling, so a type-checking `import { x }` cannot crash with `x` undefined on that surface (#1031). It maps each overlay to its runtime `.js` by SIBLING (`foo.d.ts` overlays `foo.js`), not a `source` field (most entries have none), enforces a per-package entry-count floor, and asserts it still detects a KNOWN phantom on the real package, so a resolution break degrades to a loud failure, never a vacuous pass. The `@webjsdev/core` `.` overlay is DUAL-surface, so it is checked against BOTH runtimes: the Node sibling `index.js` and the browser entry `index-browser.js` (read from the server importmap), the latter allowlisting the five intentional server-only strips (`renderToString` / `renderToStream` / `setCspNonceProvider` / `setAssetUrlProvider` / `setFormActionResolver`) with a positive control that they stay stripped, so a NEW value the overlay declares that the browser bundle drops is caught as a browser phantom (#1035). Third, `complex-export-signatures.test-d.ts` (via the `type-fixtures.test.mjs` runner) pins the signatures of the complex exports (`WebComponent`, `Task`, `ref`, `repeat`, context) positively, because those overlays are deliberately richer than the loose JSDoc and an automatic shape-diff is all false positives on them. A KNOWN-real phantom deferred to a follow-up sits in `KNOWN_PHANTOMS` with its issue link and is deleted when that fix lands. `server-types.test.mjs`, **elision** (`packages/server/test/elision/lifecycle-coverage.test.js`), and **llms.txt** (`test/docs/llms.test.mjs`) complete the family. Each reads its live surface dynamically so it cannot go stale.
 
 ---
 

@@ -57,7 +57,15 @@ suite('Client router: bound form submissions (#1155)', () => {
       return Promise.resolve(responder(String(url), init || {}));
     };
   }
-  function teardown() {
+  async function teardown() {
+    // Settle before dismantling. A routed submission's swap is async, so
+    // pulling the boundary comments out from under one still in flight makes
+    // it degrade AFTER `navGuard.remove()` has restored the real hard-navigate
+    // seam, and that is a genuine page reload, which aborts the whole
+    // web-test-runner session. It surfaced on Firefox once the `text/plain`
+    // bail moved out to the ladder file (#1322), because that test's own tick
+    // had been acting as an accidental buffer between the two neighbours.
+    await tick();
     navGuard.remove();
     window.fetch = origFetch;
     container.remove();
@@ -92,7 +100,7 @@ suite('Client router: bound form submissions (#1155)', () => {
       assert.equal(post.init.body.get('email'), 'a@b.com', 'FormData carries the field');
       assert.equal(post.init.body.get('__webjs_action'), 'a1b2c3d4e5/signup',
         'and the identity, without which the server has nothing to dispatch on');
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test("a submit button's own name/value rides along with the identity", async () => {
@@ -114,7 +122,7 @@ suite('Client router: bound form submissions (#1155)', () => {
       const body = calls[0].init.body;
       assert.equal(body.get('intent'), 'publish', "the submitter's name/value is submitted");
       assert.equal(body.get('__webjs_action'), 'a1b2c3d4e5/act', 'alongside the identity');
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test('a 422 HTML response is applied in place, not via a full reload', async () => {
@@ -152,7 +160,7 @@ suite('Client router: bound form submissions (#1155)', () => {
       // The 422 body was actually applied to the live DOM (the field error is
       // now present), which a full reload would never achieve from a fetch stub.
       assert.ok(document.getElementById(marker), 'the 422 re-render body was applied in place');
-    } finally { teardown(); }
+    } finally { await teardown(); }
   });
 
   test('a 303-redirected success records the FINAL url in history (PRG)', async () => {
@@ -182,107 +190,255 @@ suite('Client router: bound form submissions (#1155)', () => {
     } finally {
       // Restore history so later tests start clean.
       history.replaceState(null, '', before);
-      teardown();
+      await teardown();
     }
   });
-  /**
-   * #1307. A submitter bound inside a component whose host form is unbound
-   * reaches the browser through the renderer's cannot-tell fallback, and the
-   * submission it produces cannot deliver the identity. The client cannot
-   * answer that at reconcile time, but by submit time both the form and the
-   * body are in hand, so the guard fires here.
-   */
-  test('a submission that cannot deliver its action logs once, and still submits', async () => {
-    // A response carrying the SAME keyed boundary the container is bracketed
-    // with, so the router morphs in place. Without it the nav degrades to a
-    // full page load, which is the real production behaviour here but would
-    // reload the test page out from under the runner.
-    setup(() => new Response(
-      '<!--wj:children:/:/--><p>ok</p><!--/wj:children:/-->',
-      { status: 200, headers: { 'content-type': 'text/html', 'x-webjs-build': '' } },
-    ));
-    const errors = [];
-    const origError = console.error;
-    console.error = (...a) => { errors.push(a.join(' ')); };
-    const before = location.pathname + location.search;
+
+  // -------------------------------------------------------------------------
+  // #1307: the router honours the DECLARED enctype.
+  //
+  // It used to build a `FormData` for every submission and send it with no
+  // explicit content type, so `fetch` always derived `multipart/form-data` and
+  // the authored `enctype` was never read at all. A plain `<form method="post">`
+  // MEANS `application/x-www-form-urlencoded` in HTML, so the same form sent a
+  // urlencoded body with JS off and a multipart body with JS on. Two different
+  // requests from one template is exactly what progressive enhancement rules
+  // out, and it is why these assertions read the real RequestInit rather than
+  // trusting the resolver in isolation.
+  // -------------------------------------------------------------------------
+
+  const okHtml = () => new Response(
+    '<!--wj:children:/:/--><p>ok</p><!--/wj:children:/-->',
+    { headers: { 'content-type': 'text/html', 'x-webjs-build': '' } },
+  );
+
+  test('a form declaring no enctype sends URLENCODED, the HTML default (#1307)', async () => {
+    setup(okHtml);
     try {
-      // An UNBOUND form (no method) holding a bound submitter: exactly what the
-      // cannot-tell fallback emits when the button lives in a component.
       render(html`
-        <form>
-          <button type="submit" name="__webjs_action" value="a1b2c3d4e5/publish">go</button>
+        <form method="post">
+          <input name="email" value="a@b.com">
+          <button type="submit">go</button>
         </form>
       `, container);
-      // A DISPATCHED submit event, not a click. The router handles it exactly
-      // the same way, but a synthetic event never triggers the browser's own
-      // submission, so a GET promotion cannot navigate the runner page away.
-      const fire = () => {
-        const btn = container.querySelector('button');
-        container.querySelector('form').dispatchEvent(
-          new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: btn }),
-        );
-      };
-      fire();
+      container.querySelector('button').click();
       await tick();
-
-      assert.equal(errors.length, 1, 'exactly one console error');
-      assert.ok(errors[0].includes('[webjs]'), 'the message is framework-prefixed');
-      assert.ok(errors[0].includes('<form action='), 'and it names the fix');
-      // The guard observes; it must not change what the submission does.
-      assert.ok(calls.length, 'the submission still went through');
-
-      // Fire-once per shape, so a repeated misconfiguration does not spam.
-      fire();
-      await tick();
-      assert.equal(errors.length, 1, 'still one after a second submit');
-    } finally {
-      console.error = origError;
-      history.replaceState(null, '', before);
-      teardown();
-    }
+      const post = calls[0];
+      assert.ok(post, 'router issued the submission fetch');
+      assert.ok(post.init.body instanceof URLSearchParams,
+        'a form with no enctype must NOT be sent as multipart');
+      assert.equal(post.init.body.get('email'), 'a@b.com', 'and the field survives the encoding');
+      // COUNTERFACTUAL: revert `encodeSubmitBody` to return the FormData
+      // unconditionally and this goes red, which is what pins the fix.
+    } finally { await teardown(); }
   });
-  /**
-   * #1307, the enctype branch. It is a one-keyword DENYLIST, not the renderer's
-   * allowlist: `enctype` is an enumerated attribute whose missing AND invalid
-   * value defaults are both `application/x-www-form-urlencoded`, so
-   * `enctype="nonsense"` submits a parseable body and the action runs. Warning
-   * there would report a working form as broken, which is the inversion the
-   * check rule deliberately avoids, and the two halves of one feature must not
-   * disagree on the same input.
-   */
-  test('the enctype warning fires for text/plain and NOT for an invalid value', async () => {
-    for (const [enctype, shouldWarn] of [['text/plain', true], ['nonsense', false], ['multipart/form-data', false]]) {
-      setup(() => new Response(
-        '<!--wj:children:/:/--><p>ok</p><!--/wj:children:/-->',
-        { status: 200, headers: { 'content-type': 'text/html', 'x-webjs-build': '' } },
-      ));
-      const errors = [];
-      const origError = console.error;
-      console.error = (...a) => { errors.push(a.join(' ')); };
-      const before = location.pathname + location.search;
-      try {
+
+  test('a form declaring multipart still sends FormData', async () => {
+    setup(okHtml);
+    try {
+      render(html`
+        <form method="post" enctype="multipart/form-data">
+          <input name="email" value="a@b.com">
+          <button type="submit">go</button>
+        </form>
+      `, container);
+      container.querySelector('button').click();
+      await tick();
+      assert.ok(calls[0].init.body instanceof FormData, 'multipart is still FormData');
+    } finally { await teardown(); }
+  });
+
+  test("a submitter's formenctype overrides the form's, as native precedence says", async () => {
+    setup(okHtml);
+    try {
+      render(html`
+        <form method="post" enctype="multipart/form-data">
+          <input name="email" value="a@b.com">
+          <button type="submit" formenctype="application/x-www-form-urlencoded">go</button>
+        </form>
+      `, container);
+      container.querySelector('button').click();
+      await tick();
+      assert.ok(calls[0].init.body instanceof URLSearchParams,
+        "the button's own formenctype decides the encoding");
+    } finally { await teardown(); }
+  });
+
+  test('an invalid enctype is urlencoded, not passed through or treated as text/plain', async () => {
+    // `enctype` is an enumerated attribute whose invalid-value default is
+    // urlencoded, so a browser sends urlencoded for this and so must the router.
+    setup(okHtml);
+    try {
+      render(html`
+        <form method="post" enctype="nonsense">
+          <input name="email" value="a@b.com">
+          <button type="submit">go</button>
+        </form>
+      `, container);
+      container.querySelector('button').click();
+      await tick();
+      assert.ok(calls[0], 'the submission was still routed, not bailed');
+      assert.ok(calls[0].init.body instanceof URLSearchParams);
+    } finally { await teardown(); }
+  });
+
+  // The `text/plain` BAIL that used to sit here moved to
+  // `submit-bail-ladder.test.js` (#1322), where it is one rung of the ladder
+  // and is paired with a near-miss control. On its own it asserted only that no
+  // fetch was issued, which cannot tell a bail apart from a submission that
+  // never happened. The tests above are about ENCODING, which is this file's
+  // subject, and they stay.
+
+  // -------------------------------------------------------------------------
+  // #1307: the dev-time submit guard.
+  //
+  // The renderer deliberately stopped refusing a PLAIN submitter's own
+  // `formmethod` / `formenctype`, because native HTML defines what those mean
+  // and the author wrote them on purpose. That leaves one honest gap: the
+  // shape is also what a mistake looks like. Submit time is the only moment
+  // the resolved method, the resolved enctype, and whether a bound identity is
+  // actually in the body all exist together, so the report happens there.
+  //
+  // Observational by construction: it runs before `preventDefault` and changes
+  // nothing about the submission.
+  // -------------------------------------------------------------------------
+
+  function captureWarnings(fn) {
+    const orig = console.warn;
+    const seen = [];
+    console.warn = (...a) => { seen.push(a.join(' ')); };
+    try { return fn(seen); } finally { console.warn = orig; }
+  }
+
+  function captureErrors(fn) {
+    const orig = console.error;
+    const seen = [];
+    console.error = (...a) => { seen.push(a.join(' ')); };
+    try { return fn(seen); } finally { console.error = orig; }
+  }
+
+  test('a bound identity submitted as GET logs once, and still submits', async () => {
+    setup(okHtml);
+    try {
+      await captureErrors(async (seen) => {
         render(html`
-          <form method="post" enctype=${enctype}>
-            <button type="submit" name="__webjs_action" value="a1b2c3d4e5/publish">go</button>
+          <form method="post">
+            <input type="hidden" name="__webjs_action" value="a1b2c3d4e5/act">
+            <button type="submit" formmethod="get">go</button>
           </form>
         `, container);
-        const btn = container.querySelector('button');
-        container.querySelector('form').dispatchEvent(
-          new SubmitEvent('submit', { bubbles: true, cancelable: true, submitter: btn }),
-        );
+        container.querySelector('button').click();
         await tick();
-        const hit = errors.filter((e) => e.includes('enctype'));
-        assert.equal(hit.length, shouldWarn ? 1 : 0, `enctype="${enctype}" should ${shouldWarn ? '' : 'not '}warn`);
-        if (shouldWarn) {
-          // The message must not claim a 405 for the JS path, where the router
-          // posts FormData and the action still runs.
-          assert.ok(hit[0].includes('no-JS'), 'the message scopes the breakage to the no-JS path');
-        }
-      } finally {
-        console.error = origError;
-        history.replaceState(null, '', before);
-        teardown();
-      }
-    }
+        assert.ok(
+          seen.some((m) => /never runs/.test(m)),
+          `expected a submit-time console.error, saw: ${JSON.stringify(seen)}`,
+        );
+      });
+    } finally { await teardown(); }
+  });
+
+  test('a bound identity posting to ANOTHER url is reported (#1307)', async () => {
+    // The one shape the redesign left unrefused. A bound submitter emits no
+    // `formaction`, so a form declaring its own action sends the identity
+    // there by native precedence. The renderer used to throw, but only where
+    // it could SEE the form, which is the cross-element judgement it cannot
+    // make from inside a component. Reported here, where the resolved target
+    // is a fact rather than an inference.
+    setup(okHtml);
+    try {
+      await captureWarnings(async (seen) => {
+        render(html`
+          <form method="post" action="/somewhere-else">
+            <input type="hidden" name="__webjs_action" value="a1b2c3d4e5/act">
+            <button type="submit">go</button>
+          </form>
+        `, container);
+        container.querySelector('button').click();
+        await tick();
+        assert.ok(
+          seen.some((m) => /posts to "\/somewhere-else"/.test(m)),
+          `expected the submit-elsewhere report, saw: ${JSON.stringify(seen)}`,
+        );
+      });
+    } finally { await teardown(); }
+  });
+
+  test('the submit-elsewhere guard stays silent for a form posting to its own page', async () => {
+    // The counterfactual. A bound FORM has its action stripped by the renderer,
+    // so it always posts to the page and must never trip this. Without this
+    // row the guard could be written to fire on every submission and the test
+    // above would still pass.
+    setup(okHtml);
+    try {
+      await captureWarnings(async (seen) => {
+        render(html`
+          <form method="post">
+            <input type="hidden" name="__webjs_action" value="a1b2c3d4e5/act">
+            <button type="submit">go</button>
+          </form>
+        `, container);
+        container.querySelector('button').click();
+        await tick();
+        assert.equal(seen.length, 0, `expected silence, saw: ${JSON.stringify(seen)}`);
+      });
+    } finally { await teardown(); }
+  });
+
+  test('the guard stays silent for a form carrying no bound identity', async () => {
+    // An ordinary hand-written form is not this feature's business, and a
+    // console error on every plain GET form would be pure noise.
+    setup(okHtml);
+    try {
+      await captureErrors(async (seen) => {
+        render(html`
+          <form method="get" action="/search">
+            <input name="q" value="x">
+            <button type="submit">go</button>
+          </form>
+        `, container);
+        container.querySelector('button').click();
+        await tick();
+        assert.equal(seen.length, 0, `expected silence, saw: ${JSON.stringify(seen)}`);
+      });
+    } finally { await teardown(); }
+  });
+
+  test('the guard fires for text/plain but NOT for an invalid enctype', async () => {
+    // `enctype` is an enumerated attribute whose invalid-value default is
+    // urlencoded, so `nonsense` submits a perfectly parseable body and the
+    // action runs. Testing against the renderer's parseable-enctype allowlist
+    // instead of `text/plain` alone would report that working form as broken.
+    setup(okHtml);
+    try {
+      await captureErrors(async (seen) => {
+        render(html`
+          <form method="post" enctype="nonsense">
+            <input type="hidden" name="__webjs_action" value="a1b2c3d4e5/act">
+            <button type="submit">go</button>
+          </form>
+        `, container);
+        container.querySelector('button').click();
+        await tick();
+        assert.equal(seen.length, 0, `an invalid enctype is urlencoded and works, saw: ${JSON.stringify(seen)}`);
+      });
+    } finally { await teardown(); }
+
+    setup(okHtml);
+    try {
+      await captureErrors(async (seen) => {
+        render(html`
+          <form method="post" enctype="text/plain" action="/never">
+            <input type="hidden" name="__webjs_action" value="a1b2c3d4e5/act">
+            <button type="submit">go</button>
+          </form>
+        `, container);
+        container.querySelector('button').click();
+        await tick();
+        assert.ok(
+          seen.some((m) => /cannot parse/.test(m)),
+          `expected the text/plain report, saw: ${JSON.stringify(seen)}`,
+        );
+      });
+    } finally { await teardown(); }
   });
 });

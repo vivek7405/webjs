@@ -68,12 +68,34 @@ test('attributeChangedCallback coerces String / Number / Boolean / Object / Arra
   assert.deepEqual(el.a, [1, 2]);
 });
 
-test('attributeChangedCallback falls back to raw string on malformed JSON', () => {
+test('attributeChangedCallback resolves malformed JSON to null, not the raw string (#1253)', () => {
+  // A string is never a valid value for a property declared Object, whatever
+  // put it there, so the reader hands back null. Matches lit's
+  // defaultConverter.fromAttribute.
+  //
+  // The second half is a REMOVAL, not an absence. Removing an attribute fires
+  // this callback with a null value; an attribute that was never there fires
+  // nothing at all and leaves the property at its constructor value. Only the
+  // removal is assertable here, and the two are worth keeping distinct because
+  // a doc surface once said otherwise.
+  //
+  // What this asserts is the observable CONTRACT (a removal reads back as
+  // null), not which line produces it. Nothing can assert the latter: the
+  // branch's `value == null` arm is unobservable here, because `JSON.parse`
+  // coerces `null` to the string "null" and returns null anyway, so deleting
+  // that arm changes no result on this path. Starting the removal from a
+  // PARSED value at least makes the transition real rather than null -> null,
+  // which the setter would skip on inequality.
   class C extends WebComponent({ o: Object }) {}
   C.register('malformed-json');
   const el = document.createElement('malformed-json');
   el.attributeChangedCallback('o', null, 'not-json');
-  assert.equal(el.o, 'not-json');
+  assert.equal(el.o, null);
+
+  el.attributeChangedCallback('o', 'not-json', '{"a":1}');
+  assert.deepEqual(el.o, { a: 1 }, 'a parseable value still round-trips');
+  el.attributeChangedCallback('o', '{"a":1}', null);
+  assert.equal(el.o, null, 'and REMOVING the attribute resets it to null');
 });
 
 test('custom converter.fromAttribute overrides type-based coercion', () => {
@@ -84,6 +106,51 @@ test('custom converter.fromAttribute overrides type-based coercion', () => {
   const el = document.createElement('custom-from');
   el.attributeChangedCallback('v', null, 'abc');
   assert.deepEqual(el.v, { raw: 'abc' });
+});
+
+test('a throwing converter.fromAttribute propagates out of attributeChangedCallback', () => {
+  // Pins the client half of the #1340 decision: an author who supplies a
+  // converter owns the read, so neither reader catches a throw from it. The SSR
+  // half is pinned in `packages/core/test/rendering/ssr-prop-options.test.js`.
+  // A well-meaning try/catch added to either side reds one of the two rather
+  // than silently making the sides disagree.
+  class C extends WebComponent({
+    v: prop(String, { converter: { fromAttribute: () => { throw new Error('converter blew up'); } } }),
+  }) {}
+  C.register('custom-from-throws');
+  const el = document.createElement('custom-from-throws');
+  assert.throws(() => el.attributeChangedCallback('v', null, 'abc'), /converter blew up/);
+});
+
+test('attributeChangedCallback ignores a state:true prop (#1341)', () => {
+  // The client-visible consequence of routing both readers through the one
+  // `resolveAttributeProperty`: it skips `state: true` props, so a HAND-CALLED
+  // `attributeChangedCallback` for one is now a no-op. The browser would never
+  // make that call, because `observedAttributes` excludes the name (asserted
+  // above), so this only removes a way to reach the reader that the platform
+  // never had. It is what makes the SSR skip a shared rule rather than a second
+  // copy of one.
+  class C extends WebComponent({ cfg: prop(Object, { state: true }) }) {
+    constructor() { super(); this.cfg = { fromCtor: true }; }
+  }
+  C.register('state-attr-noop');
+  const el = document.createElement('state-attr-noop');
+  el.attributeChangedCallback('cfg', null, 'oops');
+  assert.deepEqual(el.cfg, { fromCtor: true }, 'a state prop was populated from an attribute');
+});
+
+test('attributeChangedCallback ignores an attribute matching no property (#1341)', () => {
+  // The parity target the SSR reader now matches: an unmapped attribute is
+  // IGNORED, never assigned as an instance property.
+  class C extends WebComponent({ known: String }) {}
+  C.register('unmapped-attr');
+  const el = document.createElement('unmapped-attr');
+  el.attributeChangedCallback('nothing-declares-this', null, 'x');
+  assert.ok(
+    !Object.prototype.hasOwnProperty.call(el, 'nothingDeclaresThis'),
+    'an unmapped attribute became an own property',
+  );
+  assert.equal(el.nothingDeclaresThis, undefined);
 });
 
 test('attributeChangedCallback sets property when called with new value', () => {

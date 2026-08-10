@@ -47,22 +47,33 @@ If the user's description is very thin (e.g. "track adding dark mode as a todo")
 
 2. **Create the issue AND assign it to vivek7405.** Every WebJs issue is assigned to the owner (vivek7405) at creation so the project board shows ownership at a glance.
 
-   Write the grounded body to a scratch file first, then pass it with
-   `--body-file`. Do NOT pass it as `--body "..."`: an issue body is full of
-   backticks and `$` characters, and an unquoted shell string runs them as
-   command substitution, silently eating whatever they contained. This has
-   already bitten this repo through a sibling flag: a review posted with
-   `gh api -f body=` lost every code reference in it and had to be deleted
-   and reposted. Same mechanism, different flag.
+   Write the grounded body to a scratch file first, then read it into the
+   request with `jq -n --rawfile` so it never passes through the shell at all.
+   Do NOT interpolate it into a shell string: an issue body is full of backticks
+   and `$` characters, and an unquoted string runs them as command substitution,
+   silently eating whatever they contained. This has already bitten this repo:
+   a review posted with `gh api -f body=` lost every code reference in it and
+   had to be deleted and reposted.
 
    ```sh
-   # write the body to a scratch path first (any disposable location)
-   gh issue create --repo webjsdev/webjs \
-     --title 'dogfood: the router drops the second click' \
-     --label bug \
-     --assignee vivek7405 \
-     --body-file /tmp/issue-body.md
+   # write the body to a scratch path first (any disposable location), then
+   # build the request with jq so nothing is interpolated into a shell string
+   jq -n --rawfile body /tmp/issue-body.md \
+     '{title:"dogfood: the router drops the second click", body:$body,
+       labels:["bug"], assignees:["vivek7405"]}' > /tmp/issue.json
+   gh api -X POST repos/webjsdev/webjs/issues --input /tmp/issue.json \
+     --jq '"\(.number) \(.html_url)"'
    ```
+
+   REST rather than `gh issue create`, which goes through GraphQL. This is not
+   theoretical: filing #1339 failed on `gh issue create` with
+   `API rate limit already exceeded` and went through over REST unchanged. The
+   skill that files the work must not be the thing a spent budget blocks. See
+   `.claude/gh-budget.md`.
+
+   Building the payload with `jq -n --rawfile` also settles the quoting problem
+   the paragraph above describes, since the body never passes through the shell
+   at all.
 
    A file path is used here rather than a heredoc on purpose. A heredoc whose
    `EOF` terminator is indented (which it will be, pasted from any nested
@@ -130,6 +141,11 @@ For a thin placeholder (user just wants the line item tracked, explicitly deferr
 
 ## Failure handling
 
-- If `gh issue create` fails (auth, label missing, network): surface the error and offer to retry with adjusted args.
-- If `gh project item-add` fails after the issue was created: report the partial state ("issue #N created but not on board yet") and offer to add it manually.
-- If the user's description seems to duplicate an existing open issue: search the board first with `gh project item-list 1 --owner webjsdev --format json --limit 20000` and ask whether to file anyway or use the existing one.
+- If the create call fails (auth, label missing, network): surface the error and offer to retry with adjusted args.
+- If `gh project item-add` fails after the issue was created: report the partial state ("issue #N created but not on board yet") and offer to add it manually. Projects V2 is GraphQL-only, so this is the one step here a spent GraphQL budget can genuinely block; check `gh api rate_limit` (free) and report the reset time rather than leaving the issue silently off the board.
+- If the user's description seems to duplicate an existing open issue: search over REST and ask whether to file anyway or use the existing one. Search the ISSUES, not the board: it matches bodies as well as titles, so it is the better dedupe, and it costs nothing from the GraphQL budget.
+
+  ```sh
+  gh api "search/issues?q=repo:webjsdev/webjs+is:issue+<keywords>&per_page=10" \
+    --jq '.items[] | "#\(.number) [\(.state)] \(.title)"'
+  ```

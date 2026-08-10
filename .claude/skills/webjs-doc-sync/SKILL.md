@@ -61,8 +61,9 @@ applies, then update or consciously skip each.
    change to how apps are AUTHORED lands in the skill. When the change is to what
    `webjs create` GENERATES (a gallery/showcase demo, a template, the generated
    layout/home/theme/schema, a scaffold convention), this surface has more parts
-   (the `packages/cli/lib/*` generators, the `packages/cli/templates/gallery/**`
-   demos, the scaffold tests, the framework template-matrix docs, the preview
+   (the `packages/cli/lib/*` generators, the repo-root `gallery/**` app whose
+   demos prepack bundles into the CLI, the scaffold tests, the framework
+   template-matrix docs, the preview
    apps) and a mandatory `generate + boot + webjs check` step: use the dedicated
    **`webjs-scaffold-sync`** skill for those, and treat this doc-sync entry as the
    docs-only slice. The CLI help text in `packages/cli/` is part of this surface

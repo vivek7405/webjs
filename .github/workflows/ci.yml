@@ -32,9 +32,9 @@ jobs:
           cache: npm
       - run: npm ci
       # Dogfood the framework's own correctness checks on the in-repo apps.
-      - name: webjs check (blog, website)
+      - name: webjs check (blog, gallery, website)
         run: |
-          for app in examples/blog website; do
+          for app in examples/blog gallery website; do
             echo "::group::webjs check $app"
             ( cd "$app" && node "$GITHUB_WORKSPACE/packages/cli/bin/webjs.js" check )
             echo "::endgroup::"
@@ -48,9 +48,9 @@ jobs:
       # and cannot red this job. Deliberately NOT --strict:
       # the git-hook, env-drift, vendor-pin, and framework-resolve checks are
       # environment-shaped and would fail a perfectly healthy runner.
-      - name: webjs doctor (blog, website)
+      - name: webjs doctor (blog, gallery, website)
         run: |
-          for app in examples/blog website; do
+          for app in examples/blog gallery website; do
             echo "::group::webjs doctor $app"
             ( cd "$app" && node "$GITHUB_WORKSPACE/packages/cli/bin/webjs.js" doctor )
             echo "::endgroup::"
@@ -272,6 +272,14 @@ jobs:
       # needs its own step rather than riding the Node suite.
       - name: Root middleware resolution on Bun
         run: bun test/bun/root-middleware.mjs
+      # Boot-time config validation on Bun (#1300). It runs inside
+      # createRequestHandler, the boot path both the node:http shell and the
+      # Bun.serve shell go through, and it reads the packaged JSON Schema off
+      # disk relative to import.meta.url. This asserts a typo'd key warns exactly
+      # once and the app still boots and serves, so a runtime difference cannot
+      # turn a warning into a dead app.
+      - name: Config validation warns and boots on Bun
+        run: bun test/bun/webjs-config-validate.mjs
       # Light-DOM slot SSR projection on Bun (#1021): slot substitution
       # (injectDSD / substituteSlotsInRender) is on the SSR hot path, so the
       # projection must be byte-consistent across runtimes: authored children
@@ -388,6 +396,59 @@ jobs:
         env:
           WEBJS_E2E: '1'
         run: node --test test/e2e/dev-overlay-nav.test.mjs
+      # Dev observability for SSR action seeding (#1309): spawns `webjs dev`
+      # against a fixture app and drives a real browser, because the headline
+      # criterion is a browser fact. Whether a hydrating component re-issued the
+      # RPC is a network observation, and the console line fires on an idle
+      # callback after a real hydration pass; neither is reachable from a unit
+      # test.
+      - name: Run dev-seed-observability e2e (#1309)
+        env:
+          WEBJS_E2E: '1'
+        run: node --test test/e2e/dev-seed-observability.test.mjs
+      # Form-submission, concurrent-nav and scroll-restoration e2e (#1310). This
+      # one runs against the WEBSITE rather than the blog, because the scroll
+      # case needs a page whose content settles taller after the swap, which is
+      # what a /ui/<name> gallery page does and a blog page does not. It was
+      # outside CI entirely until now, so the one assertion covering a Back
+      # restore on a real growing page never ran on a PR.
+      #
+      # `webjs dev` runs the website's own `webjs.dev.before` tasks (the registry
+      # copy and the Tailwind build), so no extra setup step is needed here.
+      - name: Run form-submission + scroll-restoration e2e (#1310)
+        env:
+          WEBJS_E2E: '1'
+        run: |
+          # Redirected to a FILE, not left on the step's stdout. A background
+          # child that keeps the log pipe open outlives the script and stalls
+          # the step: run locally, the identical script hung for ten minutes
+          # after the tests had already passed, with the server still listening.
+          setsid npm run dev --workspace=@webjsdev/website > /tmp/website-dev.log 2>&1 &
+          server_pid=$!
+          # Stop the server however this step ends. `trap ... EXIT` keeps the
+          # test's exit code, which a trailing `kill` would not: the step runs
+          # under `bash -e`, so a failing test aborts the script before any
+          # cleanup line placed after it could run. The pid is captured into a
+          # variable rather than read as `$!` inside the trap, which would
+          # resolve at FIRE time against whatever job was most recent then.
+          # `setsid` puts the server in its own process GROUP and the trap
+          # signals the whole group. `webjs dev` spawns a watcher which spawns
+          # the listener, so killing only the npm pid leaves the port held; that
+          # was measured, the step exited cleanly and :5001 stayed up.
+          # On any failure the server log goes BACK to the step log. This is a
+          # required check and the server runs the website's own before-tasks
+          # (registry copy, Tailwind build), so a boot failure, a build failure
+          # or a 500 on /ui/button must not fail the check with its cause in a
+          # file nobody reads. `$?` is captured first, since the trap body would
+          # otherwise clobber it.
+          trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "--- website dev server log ---"; tail -n 200 /tmp/website-dev.log || true; fi; kill -- -"$server_pid" 2>/dev/null || true; exit "$rc"' EXIT
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:5001/ui/button && break
+            sleep 2
+          done
+          curl -sf -o /dev/null http://localhost:5001/ui/button \
+            || { echo "website dev server never came up"; exit 1; }
+          node --test test/e2e/form-submission-and-race.test.mjs
       # Touch-emulation e2e for interactive Tier-2 ui components (#745/#747):
       # boots the site serving the gallery and taps hover-card / dropdown-submenu / sonner
       # under a Chromium iPhone context (faithful touch events, no real device).
@@ -453,7 +514,7 @@ jobs:
       - run: npm run build:dist --workspace=@webjsdev/core
 
   apps:
-    name: In-repo app tests (website + blog)
+    name: In-repo app tests (website + blog + gallery)
     runs-on: ubuntu-latest
     # The framework jobs above cover packages/* and the root cross-package
     # suite. This job runs each IN-REPO app's OWN test suite (its `webjs test`
@@ -474,7 +535,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - name: Install Playwright Chromium (for the website browser tests)
+      - name: Install Playwright Chromium (for the website + gallery browser tests)
         run: npx playwright install --with-deps chromium
       - name: Prepare the blog example database
         working-directory: examples/blog
@@ -482,21 +543,39 @@ jobs:
           cp .env.example .env
           npm run db:migrate
           npm run db:seed
+      # The gallery's auth card queries a real users table, and its test skips
+      # itself (rather than failing) when the table is missing, so an unmigrated
+      # database would turn the whole card green vacuously.
+      - name: Prepare the gallery database
+        working-directory: gallery
+        run: |
+          cp .env.example .env
+          npm run db:migrate
       # Nothing in the pipeline typechecked the website before, so a type
       # break landed on main and every branch cut from it inherited a red
       # tsc (#1260). It runs before the tests so a type break names itself
-      # rather than surfacing as a test failure. Two deliberate limits. It
-      # covers the website's tsconfig include (app, components, lib, modules)
-      # and NOT test/, which would add 17 pre-existing errors across 5 of its
-      # 25 .ts files. And it gates website/ only, which is a scope call rather
-      # than a claim about the other: examples/blog is genuinely red today, so
-      # adding it is a small separate change of its own.
+      # rather than surfacing as a test failure. Both apps are gated, and both
+      # tsconfig includes now cover test/ as well as app / components / lib /
+      # modules (#1299), so a type error in a test file fails here instead of
+      # waiting for a reviewer to read the line. The website's .js files under
+      # test/ enter its include parsed-but-unchecked, since that app sets
+      # checkJs: false; see website/AGENTS.md.
       - name: website typecheck
         run: npm run typecheck --workspace=@webjsdev/website
+      - name: blog typecheck
+        run: npm run typecheck --workspace=@webjsdev/example-blog
+      - name: gallery typecheck
+        run: npm run typecheck --workspace=@webjsdev/gallery
       - name: website tests (node + browser)
         run: npm test --workspace=@webjsdev/website
       - name: blog tests (node)
         run: npm test --workspace=@webjsdev/example-blog
+      # The gallery is the canonical source of everything `webjs create` ships,
+      # so its suite is the one that catches a demo breaking against a framework
+      # change. Before #1370 those files sat un-executed under templates/, which
+      # is exactly the rot this job now closes. `webjs test` runs node + browser.
+      - name: gallery tests (node + browser)
+        run: npm test --workspace=@webjsdev/gallery
       # Boot the website on Node and assert it serves real routes with no
       # broken modulepreload, covering its /docs (#1098) and /ui (#1099)
       # routes. Runs the app's `webjs.start.before` presteps first (the ui

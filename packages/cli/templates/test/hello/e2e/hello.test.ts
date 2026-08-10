@@ -20,6 +20,13 @@ import { createServer } from 'node:net';
 // minimal structural types keep the file typed in the meantime; swap them for
 // the real imports once puppeteer-core is in package.json. Reaching for `any`
 // here would silently un-type every call below.
+//
+// They also stay in force when the package IS present, which is the case a
+// generated app usually hits, since @web/test-runner pulls puppeteer-core in
+// transitively. The real Page / Browser are far richer than these, so letting
+// them flow in would fail against the narrow shapes here for the goto return
+// type and the event-handler signature. The single import below is the one
+// boundary where that is resolved, and it is the only suppressed line.
 type Page = {
   // goto resolves an HTTPResponse this file never reads, and modelling that
   // type would mean re-declaring puppeteer's. Returning void is the honest
@@ -30,6 +37,10 @@ type Page = {
   removeAllListeners(event: string): void;
 };
 type Browser = { newPage(): Promise<Page>; close(): Promise<void> };
+// The module's own default export, narrowed to the one call this file makes.
+type Puppeteer = {
+  launch(opts: { executablePath?: string; headless?: boolean; args?: string[] }): Promise<Browser>;
+};
 
 let browser: Browser, page: Page, serverProcess: ChildProcess, baseUrl: string;
 
@@ -46,9 +57,23 @@ function freePort(): Promise<number> {
 }
 
 before(async () => {
-  let puppeteer;
+  let puppeteer: Puppeteer | undefined;
+  // The next line is where the optional dependency enters, and what it reports
+  // depends on whether puppeteer-core is installed: an unresolved specifier
+  // when it is absent, a type mismatch against the structural shapes above
+  // when it is present. Suppressing it keeps the rest of the file checked
+  // against those shapes either way.
+  //
+  // It is deliberately ts-ignore rather than the expect-error directive, whose
+  // name is spelled out here rather than written, because a comment line
+  // starting with that token IS a live directive to tsc even inside prose. The
+  // expect-error form is wrong on its own merits too: it errors when there is
+  // nothing to suppress, so it would break whenever the package resolves
+  // cleanly.
+  // @ts-ignore
   try { puppeteer = (await import('puppeteer-core')).default; }
   catch { console.log('# Skipping: puppeteer-core not installed'); return; }
+  if (!puppeteer) return;
 
   const port = await freePort();
   baseUrl = `http://localhost:${port}`;

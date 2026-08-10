@@ -231,16 +231,27 @@ const ALLOWED_STATUS = new Set([301, 302, 303, 307, 308]);
  * @returns {Array<{ pattern: URLPattern, destination: string, status: number }>}
  */
 export function compileRedirectRules(pkg) {
-  const raw =
-    pkg &&
-    typeof pkg === 'object' &&
-    /** @type {any} */ (pkg).webjs &&
-    /** @type {any} */ (pkg).webjs.redirects;
-  if (!Array.isArray(raw)) return [];
+  // Read the block explicitly, not off an `&&` chain, for the reason spelled
+  // out in `headers.js`: a chain short-circuits to whatever link failed, so
+  // deciding key presence from it warns about a `redirects` nobody wrote.
+  const block = pkg && typeof pkg === 'object' ? /** @type {any} */ (pkg).webjs : undefined;
+  const hasBlock = !!block && typeof block === 'object' && !Array.isArray(block);
+  const raw = hasBlock ? block.redirects : undefined;
+  if (!Array.isArray(raw)) {
+    // An ABSENT key is the default and says nothing. A PRESENT one of the wrong
+    // type discards the whole config, so it says so, matching `headers.js`.
+    // Nothing else reports it: the schema types this key `array` and the boot
+    // config check inspects only scalar leaves.
+    if (hasBlock && 'redirects' in block) warnDrop('redirects must be an array', raw);
+    return [];
+  }
   /** @type {Array<{ pattern: URLPattern, destination: string, status: number }>} */
   const rules = [];
   for (const entry of raw) {
-    if (!entry || typeof entry !== 'object') continue;
+    if (!entry || typeof entry !== 'object') {
+      warnDrop('entry must be an object', entry);
+      continue;
+    }
     const source = /** @type {any} */ (entry).source;
     const destination = /** @type {any} */ (entry).destination;
     if (typeof source !== 'string' || !source) {
@@ -294,7 +305,7 @@ function resolveStatus(entry) {
 /** @param {string} reason @param {unknown} entry */
 function warnDrop(reason, entry) {
   // eslint-disable-next-line no-console
-  console.warn(`[webjs] dropping invalid webjs.redirects entry (${reason}):`, entry);
+  console.warn(`[webjs] dropping invalid webjs.redirects config (${reason}):`, entry);
 }
 
 /**

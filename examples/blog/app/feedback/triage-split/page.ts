@@ -3,21 +3,31 @@ import { saveDraft } from '#modules/feedback/actions/save-draft.server.ts';
 import '#modules/feedback/components/publish-button.ts';
 
 /**
- * The same page as `/feedback/triage`, with the Publish button moved into a
- * component (#1307).
+ * The #1307 shape, as an e2e fixture: a COMPLETELY UNBOUND form whose buttons
+ * each bind their own action.
  *
- * `/feedback/triage` keeps the form and the submitter in ONE template, so the
- * renderer resolves boundness in a single scan and the cannot-tell path is
- * never taken. This route is the other half: the form is bound here and the
- * submitter is bound one module over, which is the shape SSR cannot judge in
- * one pass and therefore binds on faith.
+ * Note what this `<form>` does NOT have. No `action=${...}`, so it binds
+ * nothing. No `method`, so a browser would default it to GET. Before #1307
+ * that was the silent failure: the renderer refused a bound submitter where it
+ * could see the form was unbound, and bound one anyway where it could not see
+ * (a button inside a component, which is the ordinary shape). The latter
+ * submitted as a GET, put the identity in the query string, re-rendered this
+ * page, and ran nothing. A 200 with no log and no visible symptom.
  *
- * It is dogfood coverage and an e2e fixture at once. With JavaScript off the
- * served markup must still carry the component-rendered button's
- * `name="__webjs_action"` and its `<hash>/publishDraft` value, and a native
- * submit must run the action. If the cannot-tell fallback were ever made to
- * refuse, the component would render empty (SSR component errors are isolated),
- * the button would not be in the DOM at all, and that e2e would fail.
+ * It works now because a bound submitter carries its whole submission: the
+ * renderer puts `formmethod="post"` and `formenctype="multipart/form-data"` on
+ * the button itself, alongside the identity, so the button needs nothing from
+ * the form around it.
+ *
+ * Both shapes are here on purpose, because they exercise different renderer
+ * paths. "Save draft" is written INLINE in this page's template, which SSR
+ * scans in one pass. "Publish" is rendered by `<publish-button>`, a COMPONENT,
+ * whose template SSR renders in a separate pass with no view of this page.
+ * That second one is the case no scan could ever resolve, and it is why the
+ * fix had to remove the question rather than answer it better.
+ *
+ * `/feedback/triage` keeps the bound-form-plus-bound-submitter shape, so the
+ * two routes together cover a bound and an unbound host form.
  */
 
 type PageCtx = {
@@ -32,14 +42,14 @@ export default function TriageSplitPage({ actionData }: PageCtx) {
   return html`
     <div class="max-w-[460px] mt-6 mx-auto">
       <h1 class="font-serif text-2xl font-bold mb-4">Triage a note (split)</h1>
-      <form action=${saveDraft} class="flex flex-col gap-3">
+      <form class="flex flex-col gap-3">
         <label class="flex flex-col gap-1">
           <span>Note</span>
           <input id="note" name="note" type="text" value=${val} class="border rounded px-2 py-1">
         </label>
         ${err ? html`<p id="note-error" class="text-sm text-red-600">${err}</p>` : ''}
         <div class="flex gap-2">
-          <button id="save" class="border rounded px-3 py-1">Save draft</button>
+          <button id="save" formaction=${saveDraft} class="border rounded px-3 py-1">Save draft</button>
           <publish-button></publish-button>
         </div>
       </form>

@@ -9,12 +9,15 @@
  *
  * Pinned to drizzle-orm 1.0.0-rc.3. See research #562 for the full rationale.
  */
-import { sqliteTableCreator, integer, index as _index } from 'drizzle-orm/sqlite-core';
+import { sqliteTableCreator, integer, text, real, blob, index as _index } from 'drizzle-orm/sqlite-core';
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { getTableName, type Table } from 'drizzle-orm';
 
 // Raw drizzle builders, re-exported (identical call sites on both dialects).
-export { text, integer, real, blob } from 'drizzle-orm/sqlite-core';
+// Re-export the LOCAL bindings, not a second `export ... from`: that form
+// creates no local binding, so uuidPk() and uuid() below would call an
+// undefined `text` and throw at runtime.
+export { text, integer, real, blob };
 
 /** Table factory: column keys map to snake_case SQL names (casing lives here in rc.3). */
 export const table = sqliteTableCreator((name) => name, 'snake_case');

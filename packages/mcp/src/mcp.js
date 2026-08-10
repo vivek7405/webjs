@@ -50,25 +50,46 @@ const RESERVED_CONFIG = new Set(['method', 'cache', 'tags', 'invalidates', 'vali
  * into an agent-friendly shape. Descriptions are crisp so a model picks the
  * right tool without reading source.
  */
+/**
+ * The `appDir` property, shared by every tool that is scoped to one app.
+ *
+ * `init` and `docs` carry it too, not just the introspection tools: the docs
+ * corpus is resolved from the app being asked about (#1319), so a tool that did
+ * not ADVERTISE `appDir` could never receive one from a conforming client, and
+ * the app-corpus rung would be reachable only from hand-written JSON-RPC.
+ */
+const APPDIR_PROP = {
+  type: 'string',
+  description: 'App directory to introspect. Defaults to the server cwd.',
+};
+
 /** The shared input schema for the introspection tools: an optional appDir override. */
 const APPDIR_SCHEMA = {
   type: 'object',
+  properties: { appDir: { ...APPDIR_PROP } },
+  required: [],
+};
+
+/** `init` takes only the optional appDir, which selects whose docs corpus it reports. */
+const INIT_SCHEMA = {
+  type: 'object',
   properties: {
     appDir: {
-      type: 'string',
-      description: 'App directory to introspect. Defaults to the server cwd.',
+      ...APPDIR_PROP,
+      description: "App directory whose docs corpus to read. Defaults to the server cwd.",
     },
   },
   required: [],
 };
 
-/** `init` takes no input. */
-const INIT_SCHEMA = { type: 'object', properties: {}, required: [] };
-
-/** `docs` takes an optional topic OR a free-text query. */
+/** `docs` takes an optional topic OR a free-text query, plus the optional appDir. */
 const DOCS_SCHEMA = {
   type: 'object',
   properties: {
+    appDir: {
+      ...APPDIR_PROP,
+      description: "App directory whose docs corpus to read. Defaults to the server cwd.",
+    },
     topic: {
       type: 'string',
       description: 'A doc name (e.g. components, recipes, lit-muscle-memory-gotchas, AGENTS). Returns the full doc.',
@@ -161,6 +182,12 @@ const TOOL_DEFS = [
     name: 'list_components',
     description:
       'List registered custom-element tags: tag name, defining file, and class name. Read-only.',
+    inputSchema: APPDIR_SCHEMA,
+  },
+  {
+    name: 'list_elision',
+    description:
+      'Report the display-only elision verdict: every component module with whether it is elided (the browser never downloads it) or shipped plus the evidence that produced the verdict, every page/layout route module as inert / import-only / shipped (with the first client-effecting blocker that pins it), and any ORPHAN component class, one that either has no registration call at all or registers a computed tag, which the scanner cannot see either way, so it always loses its elision verdict, its tag-to-module registry entry, and its preload hint (and never upgrades at all with no registration call, or when a computed-tag class has no importer that ships whole). Identical to `webjs elision --json`. Read-only.',
     inputSchema: APPDIR_SCHEMA,
   },
   {
@@ -298,7 +325,7 @@ export function extractActionConfig(src) {
  * JSON-serialisable projection of an existing server data function. All are
  * read-only.
  *
- * @param {{ buildRouteTable: Function, buildActionIndex: Function, hashFile: Function, scanComponents: Function, checkConventions: Function, projectCheck: Function, readFile: Function }} deps
+ * @param {{ buildRouteTable: Function, buildActionIndex: Function, hashFile: Function, scanComponents: Function, analyzeAppElision: Function, checkConventions: Function, projectCheck: Function, readFile: Function }} deps
  */
 export function makeToolRunners(deps) {
   const {
@@ -306,6 +333,7 @@ export function makeToolRunners(deps) {
     buildActionIndex,
     hashFile,
     scanComponents,
+    analyzeAppElision,
     checkConventions,
     projectCheck,
     readFile,
@@ -367,6 +395,15 @@ export function makeToolRunners(deps) {
           className: c.className,
         }))
         .sort((a, b) => a.tag.localeCompare(b.tag));
+    },
+
+    async list_elision(appDir) {
+      // The whole report IS the contract: `analyzeAppElision` already returns
+      // an app-relative, sorted, JSON-serializable object, so unlike
+      // `list_routes` there is no projector leaf here and nothing to keep in
+      // sync. `webjs elision --json` prints this same object, and a drift test
+      // asserts the two are equal.
+      return analyzeAppElision(appDir);
     },
 
     async check(appDir) {
@@ -475,6 +512,7 @@ export async function runMcpServer(opts) {
       buildActionIndex: server.buildActionIndex,
       hashFile: server.hashFile,
       scanComponents: server.scanComponents,
+      analyzeAppElision: server.analyzeAppElision,
       checkConventions: check.checkConventions,
       projectCheck,
       readFile,
@@ -483,22 +521,46 @@ export async function runMcpServer(opts) {
   const runners = makeToolRunners(deps);
 
   // The docs corpus deps for the knowledge layer (#376): resources / prompts /
-  // init / docs. Injectable for tests; otherwise resolved from the bundled
-  // (published) or repo-root (dev) docs and node fs.
-  let docsDeps = opts.docsDeps;
-  if (!docsDeps) {
-    const loc = resolveDocsLocation(import.meta.url);
+  // init / docs. Injectable for tests; otherwise resolved from the app's own
+  // installed corpus, the bundled (published) snapshot, or the repo-root (dev)
+  // docs, plus node fs.
+  //
+  // Resolved PER CALL and memoized by appDir (#1319), not once at boot. `appDir`
+  // is a per-call tool argument, so a boot-time resolution would pin the corpus
+  // to the launch directory forever and defeat the app-corpus rung for any host
+  // that overrides it. `resources/list` and `resources/read` carry no appDir in
+  // the MCP protocol, so they resolve from `cwd`, which is the same value a
+  // `tools/call` with no `appDir` argument defaults to; the surfaces can only
+  // diverge when a caller deliberately asks about a different app.
+  let docsFs = null;
+  if (!opts.docsDeps) {
     const { readFile } = await import('node:fs/promises');
     const { readdirSync, existsSync } = await import('node:fs');
-    docsDeps = {
-      docsDir: loc.docsDir,
-      agentsPath: loc.agentsPath,
-      skillPath: loc.skillPath,
-      listDir: readdirSync,
-      exists: existsSync,
-      readFile,
-    };
+    docsFs = { listDir: readdirSync, exists: existsSync, readFile };
   }
+  /** @type {Map<string, object>} */
+  const docsDepsCache = new Map();
+  /** The docs deps for one appDir. An injected `opts.docsDeps` wins for every appDir. */
+  const docsDepsFor = (dir) => {
+    if (opts.docsDeps) return opts.docsDeps;
+    const key = typeof dir === 'string' ? dir : '';
+    let built = docsDepsCache.get(key);
+    if (!built) {
+      const loc = resolveDocsLocation(import.meta.url, key);
+      built = {
+        docsDir: loc.docsDir,
+        agentsPath: loc.agentsPath,
+        skillPath: loc.skillPath,
+        corpusPath: loc.corpusPath,
+        corpusSource: loc.corpusSource,
+        appDir: key,
+        serverVersion: version,
+        ...docsFs,
+      };
+      docsDepsCache.set(key, built);
+    }
+    return built;
+  };
 
   // The `source` tool (#378): read the framework's own source from
   // node_modules/@webjsdev/*/src (no-build, so it is the real JSDoc). Roots are
@@ -564,12 +626,12 @@ export async function runMcpServer(opts) {
 
     // Knowledge layer (#376): the framework docs as MCP resources.
     if (method === 'resources/list') {
-      return rpcResult(id, { resources: listResources(docsDeps) });
+      return rpcResult(id, { resources: listResources(docsDepsFor(cwd)) });
     }
     if (method === 'resources/read') {
       const uri = ((msg && msg.params) || {}).uri;
       try {
-        const r = await readResource(docsDeps, uri);
+        const r = await readResource(docsDepsFor(cwd), uri);
         return rpcResult(id, { contents: [r] });
       } catch (e) {
         return rpcError(id, -32602, e && e.message ? e.message : String(e));
@@ -604,9 +666,9 @@ export async function runMcpServer(opts) {
       try {
         const result = isKnowledgeTool
           ? name === 'init'
-            ? await initText(docsDeps)
+            ? await initText(docsDepsFor(appDir))
             : name === 'docs'
-              ? await searchDocs(docsDeps, args)
+              ? await searchDocs(docsDepsFor(appDir), args)
               : await runSourceTool(sourceDeps, args)
           : isUiTool
             ? runUiTool(uiDeps, args)

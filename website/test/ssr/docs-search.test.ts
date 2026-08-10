@@ -51,6 +51,24 @@ test('a title match outranks a passing mention in the body', async () => {
   assert.equal(hits[0].path, '/docs/middleware', 'the page ABOUT the term wins');
 });
 
+test('a term that only appears in shell comments scores at the body floor', async () => {
+  // `localhost` reaches this corpus only through `# → http://localhost:8080`
+  // sample comments. Before the heading scan tracked fences those counted as
+  // headings at +5 each, and they accumulate, so /docs/backend-only scored 16
+  // for the term and /docs/getting-started 11, both off comment lines alone.
+  //
+  // If a future doc page grows a REAL heading containing `localhost`, that
+  // page legitimately scores above 1 and this expectation should change with
+  // it rather than be worked around.
+  const hits = await search('localhost');
+  assert.ok(hits.length > 0, 'the term still matches, at body weight');
+  assert.deepEqual(
+    hits.filter((h: Hit) => h.score !== 1).map((h: Hit) => `${h.path}=${h.score}`),
+    [],
+    'no page is promoted above the body floor by a sample comment',
+  );
+});
+
 test('a query shorter than two characters returns nothing', async () => {
   assert.deepEqual(await search('r'), []);
   assert.deepEqual(await search(''), []);

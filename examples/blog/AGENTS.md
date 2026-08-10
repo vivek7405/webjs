@@ -127,9 +127,12 @@ Root `app/layout.ts` exports `generateMetadata(ctx)` that derives an absolute `o
 The app carries display-only and inert-route fixtures so the network
 probes in `test/e2e/e2e.test.mjs` can assert that no dead JS ships.
 
-- `components/build-stamp.ts` (rendered on `/`): a display-only
-  component whose module is stripped from the served page source, so the
-  browser never downloads it.
+- `components/build-stamp.ts` (rendered on `/` AND on `/observed`): a
+  display-only component whose module is stripped from the served page
+  source, so the browser never downloads it. It is the NEGATIVE CONTROL on
+  both routes: a probe asserting some other module IS downloaded needs a
+  module that is still elided on the same run, or the probe would also pass
+  if elision had stopped working altogether.
 - `components/vendor-badge.ts` (rendered on `/`): a display-only
   component whose only non-core dependency is `dayjs` (a binding import,
   not an interactivity signal). Because the component is elided, the
@@ -145,6 +148,13 @@ probes in `test/e2e/e2e.test.mjs` can assert that no dead JS ships.
   The observation forces the badge to ship, so the probe asserts its module
   IS downloaded (the cross-module-registration fix, #169). The unobserved
   `build-stamp` is the negative control.
+- `components/forced-badge.ts` (rendered on `/observed`): display-only in
+  every respect (static markup, no events, no reactive props, no lifecycle
+  hook, light DOM) EXCEPT `static interactive = true`, the explicit author
+  override. It pins that override end to end (#1308): before it, the only
+  coverage stopped at the analyser returning a boolean, and nothing proved
+  the boot script actually keeps the module. The probe asserts its module is
+  downloaded on a run where `build-stamp` on the same page still is not.
 
 ### Client-router script reactivation (#1102)
 `app/script-swap/` exists ONLY as an e2e fixture. Its layout emits two inline
@@ -240,6 +250,13 @@ framework's root `npm test`; CI runs them in the dedicated **In-repo app tests
 e2e job does. The separate root-level `test/e2e/e2e.test.mjs` exercises the blog
 in a real browser (the framework's `e2e` CI job), and `test/examples/blog/`
 holds its smoke + browser probes.
+
+`npm run typecheck` is the other gate, and the same CI job runs it (#1299). Its
+tsconfig `include` covers `test/` alongside `app/`, `components/`, `lib/`, and
+`modules/`, so a type error in a test reds the build. This app sets
+`checkJs: true` and has no `.js` of its own, so the flag reaches framework
+source through the workspace symlink; keep the JSDoc there honest rather than
+turning the flag off.
 
 ## Conventions
 

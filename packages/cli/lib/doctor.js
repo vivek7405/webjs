@@ -52,7 +52,7 @@
 
 import { existsSync, statSync, readdirSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { createRequire } from 'node:module';
 import { checkNodeInline } from './node-preflight.js';
 
@@ -103,6 +103,7 @@ export const DOCTOR_CODES = {
   'importmap-coherence': 'IMPORTMAP_COHERENCE',
   'git-hook': 'GIT_HOOK',
   'Page/layout elision (carrier hygiene)': 'ELISION_CARRIERS',
+  'Component elision (what the browser drops)': 'ELISION_COMPONENTS',
   'Static build outputs (dev.regenerate freshness)': 'STATIC_ASSET_FRESHNESS',
   'Asset urls (unmarked stylesheet links)': 'UNMARKED_ASSET_LINKS',
 };
@@ -837,12 +838,86 @@ async function checkImportmapCoherence(appDir, opts) {
 }
 
 /**
+ * Read a dependency's INSTALLED version as resolved FROM `appDir`, or null when
+ * it does not resolve there at all.
+ *
+ * Node's own resolver is the ground truth here, not a directory read. The check
+ * this serves asks "would this app resolve this dependency at runtime, and at
+ * what version", and Node's resolution algorithm IS that question's definition,
+ * so anything re-implementing it can only be a worse approximation. Asking Node
+ * handles workspace hoisting (the bug this fixes: under npm workspaces the
+ * `@webjsdev/*` deps hoist to the ROOT node_modules, so an app subdirectory has
+ * no local copy and a per-app `node_modules/<dep>/package.json` read reported
+ * every declared dep missing on a healthy install), symlinked workspace links,
+ * nested non-hoisted trees, and `package.json` `imports`, for free and for ever.
+ *
+ * The direct `<dep>/package.json` resolve is attempted FIRST because a package
+ * may declare no main entry at all: `@webjsdev/cli` is bin-only (no `main`, no
+ * `exports`), so `require.resolve('@webjsdev/cli')` throws MODULE_NOT_FOUND.
+ * The ERR_PACKAGE_PATH_NOT_EXPORTED fallback exists because a package may lock
+ * its manifest out of its `exports` map: `@webjsdev/server` exports only `.`,
+ * `./check`, `./testing`, and `./webjs-config.schema.json`, so the direct
+ * manifest resolve is refused and the main entry plus a bounded walk up to the
+ * package root is the way in. Neither strategy alone resolves all four
+ * `@webjsdev/*` packages; both halves are required.
+ *
+ * Local rather than `getPackageVersion` from `@webjsdev/server` for two reasons.
+ * Doctor must stay usable when the framework does not resolve from the app dir
+ * at all, which is the #954 fresh-worktree case doctor exists to diagnose, so
+ * this check cannot import the server (the same argument `frameworkResolves`
+ * below already follows). And `getPackageVersion` resolves the main entry only,
+ * so it returns null for a bin-only package, which would leave `@webjsdev/cli`
+ * reported missing: the same false positive with more machinery.
+ *
+ * Pinned by the workspace, bin-only, and exports-locked fixtures in
+ * `test/cli/doctor.test.mjs`.
+ * @param {string} dep package name, e.g. `@webjsdev/server`
+ * @param {string} appDir directory to anchor resolution at
+ * @returns {Promise<string|null>} the installed version, or null when unresolvable
+ */
+async function readInstalledVersion(dep, appDir) {
+  // The base file need not exist; createRequire only uses it to anchor the
+  // node_modules lookup at appDir.
+  const require = createRequire(join(appDir, '__webjs_resolve_probe__.js'));
+  let manifestPath = null;
+  try {
+    manifestPath = require.resolve(dep + '/package.json');
+  } catch (err) {
+    if (err?.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') return null;
+    let entry;
+    try {
+      entry = require.resolve(dep);
+    } catch {
+      return null;
+    }
+    let dir = dirname(entry);
+    for (let i = 0; i < 12; i++) {
+      const candidate = join(dir, 'package.json');
+      if (existsSync(candidate)) {
+        manifestPath = candidate;
+        break;
+      }
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    if (!manifestPath) return null;
+  }
+  try {
+    return JSON.parse(await readFile(manifestPath, 'utf8')).version || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * CHECK 5, @webjsdev/* version coherence. WARN-level only (a version drift is
  * not a crash). Reads the app package.json `@webjsdev/*` ranges across
- * dependencies + devDependencies, then for each reads the INSTALLED version from
- * `node_modules/@webjsdev/<pkg>/package.json` and checks it satisfies the
- * declared range. PASS when every @webjsdev dep is present + satisfied; WARN on
- * a missing install or a range drift.
+ * dependencies + devDependencies, then for each resolves the INSTALLED version
+ * through Node's own resolver anchored at the app dir (see
+ * `readInstalledVersion`, which is why a workspace-hoisted install resolves)
+ * and checks it satisfies the declared range. PASS when every @webjsdev dep is
+ * present + satisfied; WARN on a missing install or a range drift.
  * @param {string} appDir
  * @returns {Promise<DoctorResult>}
  */
@@ -880,15 +955,8 @@ async function checkWebjsVersions(appDir) {
   const missing = [];
   const drift = [];
   for (const dep of webjsDeps) {
-    const installedPkg = join(appDir, 'node_modules', dep, 'package.json');
-    if (!existsSync(installedPkg)) {
-      missing.push(dep);
-      continue;
-    }
-    let installedVersion = '';
-    try {
-      installedVersion = JSON.parse(await readFile(installedPkg, 'utf8')).version || '';
-    } catch {
+    const installedVersion = await readInstalledVersion(dep, appDir);
+    if (!installedVersion) {
       missing.push(dep);
       continue;
     }
@@ -1002,40 +1070,101 @@ function checkGitHook(appDir) {
  * named line. WARN only: a page legitimately MAY ship, and the analyser is
  * biased toward shipping by design (server AGENTS invariant 7), so this is a
  * "you may not have intended this" hint, never a hard fail.
- * @param {string} appDir
+ * @param {Promise<any|null>} elisionPromise  the ONE shared report (#1308)
  * @returns {Promise<DoctorResult>}
  */
-async function checkElisionCarriers(appDir) {
+async function checkElisionCarriers(elisionPromise) {
   const name = 'Page/layout elision (carrier hygiene)';
-  let report;
-  try {
-    const { analyzeAppElision } = await import('@webjsdev/server');
-    report = await analyzeAppElision(appDir);
-  } catch {
+  const report = await elisionPromise;
+  if (!report) {
     // Analysis unavailable (no app, malformed, server import failed): no advice.
     return { name, status: 'pass', message: 'not analysed (no routable app or analysis unavailable)' };
   }
   if (!report.analysed) {
     return { name, status: 'pass', message: 'not analysed (no routable app, or elision is disabled)' };
   }
-  if (report.shipped.length === 0) {
+  // Paths and reasons arrive app-relative from `analyzeAppElision` (#1308).
+  const shipped = report.routeModules.filter((r) => r.verdict === 'shipped');
+  if (shipped.length === 0) {
     return { name, status: 'pass', message: 'every page/layout is elided (a pure import-only or inert carrier)' };
   }
-  const rel = (f) => relative(appDir, f) || f;
   // Name the FIRST client-effecting blocker (there may be more than one; the
   // module stays shipped until every such blocker is moved out).
-  const lines = report.shipped.map(({ file, blocker, reason }) =>
+  const lines = shipped.map(({ file, blocker, reason }) =>
     blocker
-      ? `${rel(file)} ships whole. Its first client-effecting blocker is ${rel(blocker)}, which ${reason} and is not a component`
-      : `${rel(file)} ships whole because it ${reason}`,
+      ? `${file} ships whole. Its first client-effecting blocker is ${blocker}, which ${reason} and is not a component`
+      : `${file} ships whole because it ${reason}`,
   );
   return {
     name,
     status: 'warn',
     message:
-      `${report.shipped.length} page/layout module(s) ship to the browser instead of being elided:\n` +
+      `${shipped.length} page/layout module(s) ship to the browser instead of being elided:\n` +
       lines.map((l) => `    ${l}`).join('\n'),
     fix: 'Move the client work out of the page/layout closure (into a component, or a .server module reached through an action) so the carrier can be elided, or accept that it ships. See references/components.md in the skill.',
+  };
+}
+
+/**
+ * The OTHER direction of the elision verdict (#1308): which COMPONENT modules
+ * the browser never downloads. `checkElisionCarriers` above reports the benign
+ * over-ship direction; this one reports what was DROPPED, which is where a
+ * wrong verdict silently costs an app its interactivity.
+ *
+ * Pass-only except for orphans, deliberately. An elided component is the
+ * DESIRED outcome, so warning on one would fire on every healthy app and train
+ * the reader to skip doctor output. The passing message carries the elided
+ * inventory instead, which makes it the discovery surface, while `webjs
+ * elision` is the detail surface. The one always-wrong condition is an ORPHAN:
+ * a `class X extends WebComponent` with no literal-tag registration is
+ * invisible to the scanner, so it gets no verdict at all and `static
+ * interactive = true` cannot rescue it (nothing consults the component
+ * analyser for a component the scanner never saw). Never `fail`:
+ * an app that wants an orphan to break CI gates `ELISION_COMPONENTS` to
+ * `error` via `webjs.doctor.gate`.
+ *
+ * @param {Promise<any|null>} elisionPromise  the ONE shared report
+ * @returns {Promise<DoctorResult>}
+ */
+async function checkElisionComponents(elisionPromise) {
+  const name = 'Component elision (what the browser drops)';
+  const report = await elisionPromise;
+  const notAnalysed = { name, status: /** @type {const} */ ('pass'), message: 'not analysed (no routable app or analysis unavailable)' };
+  if (!report) return notAnalysed;
+  if (!report.analysed) {
+    return report.skipped === 'elide-off'
+      ? { name, status: 'pass', message: 'elision is disabled (webjs.elide false or WEBJS_ELIDE), so every component module ships' }
+      : notAnalysed;
+  }
+  if (report.orphans.length > 0) {
+    const lines = report.orphans.map(({ file, className }) =>
+      `${className} in ${file} is never registered with a literal tag`,
+    );
+    return {
+      name,
+      status: 'warn',
+      message:
+        `${report.orphans.length} component class(es) get NO elision verdict:\n` +
+        lines.map((l) => `    ${l}`).join('\n') +
+        '\n    Either it has no registration call at all, or it registers a computed tag. The component '
+        + 'scanner matches only a literal tag, so either way it never sees the class: no elision verdict, no '
+        + 'registry entry, no preload hint, and `static interactive = true` cannot rescue it. With no '
+        + 'registration call the element never upgrades at all; with a computed tag it upgrades only while '
+        + 'its module still reaches the browser through an importer that ships.',
+      fix: 'Register it with a literal tag, Class.register(\'my-tag\') (invariant 3 already requires one), or delete the class if nothing uses it.',
+    };
+  }
+  const elided = report.components.filter((c) => c.verdict === 'elided');
+  const tags = elided.flatMap((c) => c.tags);
+  const shown = tags.slice(0, 8).join(', ');
+  const tail = tags.length > 8 ? `, +${tags.length - 8} more` : '';
+  return {
+    name,
+    status: 'pass',
+    message:
+      `${report.summary.elided} of ${report.summary.components} component module(s) are elided (never downloaded)` +
+      (tags.length ? `: ${shown}${tail}` : '') +
+      '. Run `webjs elision` for the full verdict.',
   };
 }
 
@@ -1267,11 +1396,19 @@ function unmarkedStylesheetHref(tag, basePath = '') {
  * Ported rather than imported because that helper is not on `@webjsdev/server`'s
  * public surface, and because doctor must stay usable when the framework does
  * not resolve from the app dir at all (the #954 fresh-worktree case this same
- * command exists to diagnose). `test/cli/doctor.test.mjs` pins the forms.
+ * command exists to diagnose). The port is intentional and stays. What makes it
+ * safe is that the drift is tested rather than trusted.
+ *
+ * `test/cli/base-path-parity.test.mjs` feeds one input table through BOTH this
+ * function and the server's `readBasePath`, asserting they agree with each other
+ * and with the expected value. Change either side without the other and it reds.
+ * So edit this body only alongside `packages/server/src/base-path.js`, and run
+ * that test. (`test/cli/doctor.test.mjs` covers the check that consumes this,
+ * not the normalization forms themselves.)
  * @param {string} appDir
  * @returns {Promise<string>}
  */
-async function readAppBasePath(appDir) {
+export async function readAppBasePath(appDir) {
   let raw;
   try {
     const pkg = JSON.parse(await readFile(join(appDir, 'package.json'), 'utf8'));
@@ -1517,6 +1654,16 @@ export function checkFrameworkResolves(appDir) {
 
 export async function runDoctorChecks(appDir, opts = {}) {
   const cliDir = opts.cliDir || new URL('.', import.meta.url).pathname;
+  // ONE elision report for BOTH elision checks (#1308). Started before the
+  // batch and awaited inside each check, so the module graph is built once per
+  // doctor run and the two checks still run in parallel with everything else.
+  // Fails soft to null, exactly as the carrier check's own try/catch did.
+  const elision = (async () => {
+    try {
+      const { analyzeAppElision } = await import('@webjsdev/server');
+      return await analyzeAppElision(appDir);
+    } catch { return null; }
+  })();
   const results = await Promise.all([
     checkNode(cliDir, opts),
     checkTsconfig(appDir),
@@ -1527,7 +1674,8 @@ export async function runDoctorChecks(appDir, opts = {}) {
     Promise.resolve(checkFrameworkResolves(appDir)),
     checkImportmapCoherence(appDir, opts),
     Promise.resolve(checkGitHook(appDir)),
-    checkElisionCarriers(appDir),
+    checkElisionCarriers(elision),
+    checkElisionComponents(elision),
     checkStaticAssetFreshness(appDir),
     checkUnmarkedAssetLinks(appDir),
   ]);

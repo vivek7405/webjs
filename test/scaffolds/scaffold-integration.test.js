@@ -47,6 +47,28 @@ function muteConsole() {
   };
 }
 
+/**
+ * Like `muteConsole`, but keeps what was printed so a test can assert on the
+ * post-scaffold guidance. A sibling rather than a flag on `muteConsole` so
+ * every existing caller stays untouched.
+ * @returns {{ restore: () => void, output: () => string }}
+ */
+function captureConsole() {
+  const origLog = console.log;
+  const origError = console.error;
+  /** @type {string[]} */
+  const lines = [];
+  console.log = (...args) => { lines.push(args.join(' ')); };
+  console.error = (...args) => { lines.push(args.join(' ')); };
+  return {
+    restore: () => {
+      console.log = origLog;
+      console.error = origError;
+    },
+    output: () => lines.join('\n'),
+  };
+}
+
 test('scaffoldApp full-stack: writes the canonical full-stack app layout', async () => {
   const cwd = await tempCwd();
   const restore = muteConsole();
@@ -65,19 +87,16 @@ test('scaffoldApp full-stack: writes the canonical full-stack app layout', async
     assert.ok(existsSync(join(appDir, 'tsconfig.json')));
 
     // Single cross-agent source (AGENTS.md + the one skill + the .agents workflow
-    // rules), with a per-agent file for each tool: thin bridges for the ones that
-    // do not read AGENTS.md natively (CLAUDE.md, GEMINI.md, copilot), a .cursorrules
-    // bridge, CONVENTIONS.md, and a commit-nudge hook for Cursor / Gemini / opencode.
-    for (const f of ['AGENTS.md', '.agents/skills/webjs/SKILL.md', '.agents/rules/workflow.md', 'CLAUDE.md', 'GEMINI.md', '.github/copilot-instructions.md', 'CONVENTIONS.md', '.cursorrules', '.cursor/hooks/nudge-uncommitted.sh', '.gemini/hooks/nudge-uncommitted.sh', '.opencode/plugins/nudge-uncommitted.ts', '.claude/settings.json', '.editorconfig']) {
+    // rules), CONVENTIONS.md, CLAUDE.md bridge, and Claude protective hooks.
+    for (const f of ['AGENTS.md', '.agents/skills/webjs/SKILL.md', '.agents/rules/workflow.md', 'CLAUDE.md', 'CONVENTIONS.md', '.claude/settings.json', '.editorconfig']) {
       assert.ok(existsSync(join(appDir, f)), `${f} should exist`);
     }
-    // No design-distinctness ceremony (retired: gallery:clear does the reset job).
-    for (const f of ['LAYOUT-REFERENCE.md', '.claude/hooks/design-review-before-stop.sh', '.claude/skills/webjs-design-review']) {
+    // Per-agent files and design-distinctness ceremony removed.
+    for (const f of ['GEMINI.md', '.github/copilot-instructions.md', '.cursorrules', 'LAYOUT-REFERENCE.md', '.claude/hooks/design-review-before-stop.sh', '.claude/skills/webjs-design-review']) {
       assert.ok(!existsSync(join(appDir, f)), `${f} should NOT exist in the scaffold`);
     }
-    // The rule bridges are THIN (pointers to AGENTS.md / the skill), not full
-    // duplicates. .cursorrules + CONVENTIONS.md point at the skill.
-    for (const f of ['CLAUDE.md', 'GEMINI.md', '.github/copilot-instructions.md', '.cursorrules', 'CONVENTIONS.md']) {
+    // Thin bridges (pointers to AGENTS.md / the skill).
+    for (const f of ['CLAUDE.md', 'CONVENTIONS.md']) {
       const src = readFileSync(join(appDir, f), 'utf8');
       assert.ok(src.length < 2200, `${f} is a thin bridge, not a full rule duplicate`);
       assert.match(src, /AGENTS\.md|\.agents\/skills\/webjs/, `${f} points at AGENTS.md or the skill`);
@@ -342,6 +361,8 @@ test('scaffoldApp full-stack: writes the canonical full-stack app layout', async
     assert.deepEqual(tsconfig.compilerOptions.types, ['node'], 'tsconfig enables node: builtin types for .server.ts files');
     assert.ok(!pluginNames.includes('ts-lit-plugin'), 'no separate ts-lit-plugin entry (standalone, #386)');
     assert.ok(!pkg.devDependencies['ts-lit-plugin'] && !pkg.dependencies['ts-lit-plugin'], 'scaffold pulls no ts-lit-plugin');
+    assert.ok(tsconfig.include.includes('test/**/*'),
+      'generated tsconfig type-checks the app test directory (#1299)');
 
     // {{APP_NAME}} placeholder substituted in template files
     const agents = readFileSync(join(appDir, 'AGENTS.md'), 'utf8');
@@ -655,6 +676,48 @@ test('scaffoldApp --db postgres: json<T>() helper maps to jsonb, one schema both
   }
 });
 
+test('scaffoldApp --db postgres: the DATABASE_URL names a fold-stable database', async () => {
+  const cwd = await tempCwd();
+  const cap = captureConsole();
+  try {
+    // A mixed-case name used to keep its capitals in the emitted URL, while
+    // `CREATE DATABASE MyPgApp;` folds to `mypgapp`, so the URL named a
+    // database that did not exist. Anchored and exact: a loose /mypgapp/ would
+    // still pass on a URL that carried the capitals somewhere else.
+    await scaffoldApp('MyPgApp', cwd, { template: 'full-stack', db: 'postgres' });
+    const envExample = readFileSync(join(cwd, 'MyPgApp', '.env.example'), 'utf8');
+    assert.match(
+      envExample,
+      /^DATABASE_URL=postgres:\/\/user:password@localhost:5432\/mypgapp$/m,
+      'the postgres DATABASE_URL names the lowercased database',
+    );
+    // The user has to create that database, so the guidance has to name it.
+    assert.match(cap.output(), /mypgapp/, 'the post-scaffold guidance names the derived database');
+  } finally {
+    cap.restore();
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test('scaffoldApp --db postgres: an already-lowercase name is unchanged', async () => {
+  const cwd = await tempCwd();
+  const restore = muteConsole();
+  try {
+    // Byte-identical to the output before the fold landed: the no-regression
+    // half of the counterfactual.
+    await scaffoldApp('my-pg', cwd, { template: 'full-stack', db: 'postgres' });
+    const envExample = readFileSync(join(cwd, 'my-pg', '.env.example'), 'utf8');
+    assert.match(
+      envExample,
+      /^DATABASE_URL=postgres:\/\/user:password@localhost:5432\/my_pg$/m,
+      'a lowercase name still emits the same URL it always did',
+    );
+  } finally {
+    restore();
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
 // AGENTS.md carries a template-SPECIFIC build playbook (#1076): the full-stack
 // scaffold teaches the UI playbook (design tokens, the UI kit, an MPA), the api
 // scaffold teaches the backend playbook (route handlers, endpoint security), and
@@ -715,8 +778,7 @@ test('scaffoldApp: AGENTS.md build playbook is template-specific (#1076)', async
     // and they must acknowledge the api showcase rather than only the UI gallery.
     const apiConv = readFileSync(join(cwd, 'api-app', 'CONVENTIONS.md'), 'utf8');
     const apiFlow = readFileSync(join(cwd, 'api-app', '.agents/rules/workflow.md'), 'utf8');
-    const apiCursor = readFileSync(join(cwd, 'api-app', '.cursorrules'), 'utf8');
-    for (const [label, md] of [['CONVENTIONS.md', apiConv], ['workflow.md', apiFlow], ['.cursorrules', apiCursor]]) {
+    for (const [label, md] of [['CONVENTIONS.md', apiConv], ['workflow.md', apiFlow]]) {
       assert.doesNotMatch(md, /only while exploring|do not have to read|only (if|when) a task needs/i,
         `api ${label}: no opt-out phrasing`);
     }

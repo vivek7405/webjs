@@ -112,15 +112,16 @@ test('mcp: tools/list returns the introspection + knowledge tools with inputSche
   ]);
   const tools = frames[0].result.tools;
   const names = tools.map((t) => t.name).sort();
-  assert.deepEqual(names, ['check', 'docs', 'init', 'list_actions', 'list_components', 'list_routes', 'source', 'ui']);
+  assert.deepEqual(names, ['check', 'docs', 'init', 'list_actions', 'list_components', 'list_elision', 'list_routes', 'source', 'ui']);
   for (const t of tools) {
     assert.equal(typeof t.description, 'string');
     assert.equal(t.inputSchema.type, 'object');
   }
-  // The introspection tools take appDir; init takes nothing; docs takes topic/query.
+  // The introspection tools take appDir, and so do init + docs, whose corpus is
+  // resolved from the app being asked about; docs also takes topic/query.
   const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
   assert.ok(byName.list_routes.inputSchema.properties.appDir, 'introspection tool declares appDir');
-  assert.deepEqual(byName.init.inputSchema.properties, {}, 'init takes no args');
+  assert.deepEqual(Object.keys(byName.init.inputSchema.properties), ['appDir'], 'init takes only appDir');
   assert.ok(byName.docs.inputSchema.properties.topic && byName.docs.inputSchema.properties.query, 'docs takes topic/query');
   assert.ok(byName.source.inputSchema.properties.path && byName.source.inputSchema.properties.query, 'source takes path/query/package');
   assert.ok(byName.ui.inputSchema.properties.name, 'ui takes an optional component name');
@@ -227,6 +228,47 @@ test('mcp: tools/call list_components reports tag + file + className', async () 
   assert.ok(c, 'my-thing component listed');
   assert.equal(c.className, 'MyThing');
   assert.match(c.file, /my-thing\.ts$/);
+});
+
+test('mcp: list_elision output equals analyzeAppElision (no drift with the CLI)', async () => {
+  // `list_elision` returns the report VERBATIM, and `webjs elision --json`
+  // prints the same object, so the two surfaces cannot disagree about an app.
+  // Unlike list_routes there is no projector leaf to delegate to, which makes
+  // this equality the only thing holding the contract together.
+  const { analyzeAppElision } = await import('@webjsdev/server');
+  const dir = tmpDir();
+  write(dir, 'package.json', JSON.stringify({ name: 'x', type: 'module' }));
+  write(dir, 'components/badge.ts',
+    `import { WebComponent, html } from '@webjsdev/core';\n` +
+    `export class Badge extends WebComponent { render() { return html\`<span>x</span>\`; } }\n` +
+    `Badge.register('my-badge');\n`);
+  write(dir, 'app/page.ts',
+    `import { html } from '@webjsdev/core';\nimport '../components/badge.ts';\nexport default () => html\`<my-badge></my-badge>\`;\n`);
+
+  const { frames } = await driveMcp(dir, [
+    { jsonrpc: '2.0', id: 20, method: 'tools/call', params: { name: 'list_elision', arguments: {} } },
+  ]);
+  const toolOut = JSON.parse(frames[0].result.content[0].text);
+  assert.deepEqual(toolOut, JSON.parse(JSON.stringify(await analyzeAppElision(dir))));
+  const badge = toolOut.components.find((c) => c.file.includes('badge'));
+  assert.equal(badge.verdict, 'elided', 'the display-only badge is never downloaded');
+});
+
+test('mcp: list_components stays a cheap lexical inventory (no elision fields)', async () => {
+  // The guard for the rejected alternative: growing an `elided` flag onto
+  // list_components would silently turn a scan that loads no module and builds
+  // no graph into one that does both, and it still could not carry the route
+  // verdicts or the orphans. The elision verdict lives in its own tool.
+  const dir = tmpDir();
+  write(dir, 'components/my-thing.ts',
+    `import { WebComponent, html } from '@webjsdev/core';\n` +
+    `export class MyThing extends WebComponent { render() { return html\`<p>x</p>\`; } }\n` +
+    `MyThing.register('my-thing');\n`);
+  const { frames } = await driveMcp(dir, [
+    { jsonrpc: '2.0', id: 21, method: 'tools/call', params: { name: 'list_components', arguments: {} } },
+  ]);
+  const comps = JSON.parse(frames[0].result.content[0].text);
+  assert.deepEqual(Object.keys(comps[0]).sort(), ['className', 'file', 'tag']);
 });
 
 test('mcp: unknown method -> JSON-RPC -32601', async () => {
@@ -483,6 +525,117 @@ test('mcp: resources/list + resources/read serve the framework docs; unknown uri
   ]));
   assert.equal(frames[0].error.code, -32602, 'unknown resource is a -32602');
   assert.ok(frames[1].result.resources, 'the loop kept serving after the error');
+});
+
+/** An app dir carrying its own installed @webjsdev/mcp corpus, stamped and seeded. */
+function appWithCorpus(sentinel, version) {
+  const dir = tmpDir();
+  const res = join('node_modules', '@webjsdev', 'mcp', 'resources');
+  write(dir, join(res, 'references', 'components.md'), `# Components\n\n${sentinel}\n`);
+  write(dir, join(res, 'AGENTS.md'), `# AGENTS\n\n## Execution model\n\n${sentinel}\n\n## Invariants\n\n1. ${sentinel}\n`);
+  write(dir, join(res, 'SKILL.md'), `# SKILL\n\n${sentinel}\n`);
+  write(dir, join(res, 'corpus.json'), JSON.stringify({ package: '@webjsdev/mcp', version, sha: null, copiedAt: '2026-08-08T00:00:00.000Z' }));
+  write(dir, join('node_modules', '@webjsdev', 'mcp', 'package.json'), JSON.stringify({ name: '@webjsdev/mcp', version }));
+  return dir;
+}
+
+test('mcp: every app-scoped tool ADVERTISES appDir, so a conforming client can actually send one', async () => {
+  // The corpus follows appDir, so a tool whose inputSchema omits it could never
+  // receive one from a model driving tools/call, and the app-corpus rung would
+  // be reachable only from hand-written JSON-RPC.
+  const { frames } = await driveMcp(tmpDir(), [{ jsonrpc: '2.0', id: 87, method: 'tools/list' }]);
+  const byName = Object.fromEntries(frames[0].result.tools.map((t) => [t.name, t]));
+  for (const name of ['init', 'docs', 'list_routes', 'list_actions', 'list_components', 'list_elision', 'check']) {
+    assert.ok(byName[name], `${name} is advertised`);
+    assert.equal(typeof byName[name].inputSchema.properties.appDir, 'object', `${name} advertises appDir`);
+    assert.equal(byName[name].inputSchema.properties.appDir.type, 'string', `${name}'s appDir is a string`);
+  }
+  // `ui` is kit-scoped and `source` resolves from the server cwd, so neither takes one.
+  for (const name of ['ui', 'source']) {
+    assert.ok(!byName[name].inputSchema.properties.appDir, `${name} is not app-scoped`);
+  }
+});
+
+test("mcp: the docs corpus follows appDir, so an app's own installed copy wins over the server's", async () => {
+  // The #1319 incident: a global server keeps serving the snapshot it was
+  // published with, and contradicts the corpus sitting in the app's own
+  // node_modules. The app's copy is version-matched to the framework the agent
+  // is editing, so it is the one that can be right about that app.
+  const other = appWithCorpus('SENTINEL_OTHER_APP', '9.9.9');
+  const here = appWithCorpus('SENTINEL_CWD_APP', '9.9.9');
+
+  let { frames } = await driveMcp(here, [
+    { jsonrpc: '2.0', id: 80, method: 'tools/call', params: { name: 'docs', arguments: { topic: 'components', appDir: other } } },
+    { jsonrpc: '2.0', id: 81, method: 'tools/call', params: { name: 'docs', arguments: { topic: 'components' } } },
+  ]);
+  assert.match(frames[0].result.content[0].text, /SENTINEL_OTHER_APP/, 'an explicit appDir reads that app');
+  assert.match(frames[1].result.content[0].text, /SENTINEL_CWD_APP/, 'no appDir defaults to cwd');
+
+  // resources/* carry no appDir in the MCP protocol, so they resolve from cwd,
+  // which is exactly what a no-appDir tools/call defaults to. The two surfaces
+  // therefore agree whenever appDir does.
+  ({ frames } = await driveMcp(here, [
+    { jsonrpc: '2.0', id: 82, method: 'resources/read', params: { uri: 'webjs-docs://components' } },
+  ]));
+  assert.match(frames[0].result.contents[0].text, /SENTINEL_CWD_APP/, 'resources/read reads the cwd corpus');
+
+  // init reports which corpus it served, and its body comes from that same one.
+  ({ frames } = await driveMcp(here, [
+    { jsonrpc: '2.0', id: 83, method: 'tools/call', params: { name: 'init', arguments: {} } },
+  ]));
+  const primer = frames[0].result.content[0].text;
+  assert.match(primer, /Docs corpus: @webjsdev\/mcp@9\.9\.9, copied on 2026-08-08\./, 'names the corpus it served');
+  assert.match(primer, /SENTINEL_CWD_APP/, 'and the primer body came from that same corpus');
+  // App and server are both 9.9.9 here, so there is nothing to warn about.
+  assert.ok(!/Warning:/.test(primer), 'equal versions stay silent');
+});
+
+test('mcp: init warns when the app has a newer @webjsdev/mcp than the running server', async () => {
+  // driveMcp pins the server at 9.9.9, so an app on 10.0.0 is the stale-server case.
+  const newer = appWithCorpus('SENTINEL_NEWER', '10.0.0');
+  const { frames } = await driveMcp(newer, [
+    { jsonrpc: '2.0', id: 84, method: 'tools/call', params: { name: 'init', arguments: {} } },
+  ]);
+  const primer = frames[0].result.content[0].text;
+  assert.match(primer, /Warning: this MCP server is @webjsdev\/mcp@9\.9\.9, but this app has @webjsdev\/mcp@10\.0\.0, so the server may be stale\./);
+  assert.match(primer, /npm i -g @webjsdev\/mcp@latest/, 'says how to fix the stale install');
+  // This app HAS its own resources/, so rung 1 served them and the warning must
+  // say so. Asserting the served clause end to end is what makes the
+  // `corpusSource` hand-off from resolveDocsLocation to the warning testable:
+  // drop it in mcp.js and the clause degrades, reddening this line.
+  assert.match(primer, /The docs below come from this app's own copy, so they match it/, 'names the corpus it actually served');
+  // Advisory, never a refusal: the corpus rung already pointed at the app's docs.
+  assert.match(primer, /SENTINEL_NEWER/, 'still answers, with the app corpus');
+});
+
+test('mcp: an injected docsDeps still wins for every appDir', async () => {
+  // The seam every pre-existing knowledge-layer test relies on: injection must
+  // short-circuit the per-appDir resolution entirely.
+  const stdin = new PassThrough();
+  const stdout = new PassThrough();
+  const stderr = new PassThrough();
+  let out = '';
+  stdout.on('data', (c) => { out += c.toString(); });
+  const docsDeps = {
+    docsDir: '/docs',
+    agentsPath: '/AGENTS.md',
+    skillPath: '/SKILL.md',
+    corpusPath: null,
+    listDir: (d) => (d === '/docs' ? ['components.md'] : []),
+    exists: (p) => p === '/AGENTS.md' || p === '/docs',
+    readFile: async () => '# injected\n\nSENTINEL_INJECTED\n',
+  };
+  const app = appWithCorpus('SENTINEL_ON_DISK', '10.0.0');
+  const done = runMcpServer({ stdin, stdout, stderr, cwd: app, version: '9.9.9', docsDeps });
+  stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 85, method: 'tools/call', params: { name: 'docs', arguments: { topic: 'components', appDir: app } } }) + '\n');
+  stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 86, method: 'resources/read', params: { uri: 'webjs-docs://components' } }) + '\n');
+  stdin.end();
+  await done;
+
+  const frames = out.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
+  assert.match(frames[0].result.content[0].text, /SENTINEL_INJECTED/, 'injection beats an explicit appDir');
+  assert.match(frames[1].result.contents[0].text, /SENTINEL_INJECTED/, 'and beats the cwd resolution too');
+  assert.ok(!/SENTINEL_ON_DISK/.test(out), 'the on-disk corpus was never consulted');
 });
 
 test('mcp: prompts/list + prompts/get serve the recipe workflows; unknown prompt errors cleanly', async () => {

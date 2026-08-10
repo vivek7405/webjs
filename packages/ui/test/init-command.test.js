@@ -388,3 +388,25 @@ test('init: a partial alias map is filled from the defaults, not left undefined'
     rmSync(d, { recursive: true });
   }
 });
+
+// The printed hint has to name a command the reader can actually run. `webjsui`
+// is a bin declared inside `@webjsdev/ui`, not a published package, so `npx
+// webjsui` resolves through a local `.bin` link or not at all, and the hint
+// cannot know the reader's tree. See invariant 8 in packages/ui/AGENTS.md.
+test('init: the success hint prints a command that resolves without a prior install (#1264)', async () => {
+  stubFetch();
+  const d = tmp();
+  const origLog = console.log;
+  const out = [];
+  console.log = (...args) => out.push(args.join(' '));
+  try {
+    await init.parseAsync(['--yes', '--cwd', d, '--registry', 'http://test/r'], { from: 'user' });
+  } finally {
+    console.log = origLog;
+    globalThis.fetch = origFetch;
+    rmSync(d, { recursive: true });
+  }
+  const text = out.join('\n');
+  assert.match(text, /npx @webjsdev\/ui add/);
+  assert.doesNotMatch(text, /npx webjsui/, 'the bare bin name is not resolvable from every reader tree');
+});
