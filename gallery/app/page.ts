@@ -57,12 +57,6 @@ export default function Home() {
               <p class="text-xs text-muted-foreground leading-relaxed m-0 flex-1">
                 ${f.blurb}
               </p>
-              <div class="flex items-center gap-1 text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors mt-1">
-                <span>View demo</span>
-                <svg class="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
             </a>
           `)}
         </div>
