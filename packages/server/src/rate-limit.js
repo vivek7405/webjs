@@ -40,6 +40,7 @@ let warnedProxyOverride = false;
  *   message?: string,
  *   store?: import('./cache.js').CacheStore,
  *   trustProxy?: boolean,
+ *   clientIpHeader?: string,
  * }} opts
  * @returns {(req: Request, next: () => Promise<Response>) => Promise<Response>}
  */
@@ -50,13 +51,17 @@ export function rateLimit(opts = {}) {
   const keyPrefix = typeof opts.key === 'string' ? opts.key : '';
   const message = opts.message ?? 'Too Many Requests';
   const trustProxy = opts.trustProxy === true;
+  // The header carrying the visitor, when the app knows which one that is.
+  // Inert without `trustProxy: true`, since naming a wire header to trust IS
+  // the trust decision and must not be grantable by a second option.
+  const header = typeof opts.clientIpHeader === 'string' ? opts.clientIpHeader : undefined;
   // Use the provided store, or fall back to the global cache store.
   // Whatever was set via `setStore()` at app startup (in-memory by default).
   const store = opts.store || null;
 
   return async function rateLimitMiddleware(req, next) {
     const s = store || getStore();
-    const raw = keyFn ? await keyFn(req) : clientIp(req, { trustProxy });
+    const raw = keyFn ? await keyFn(req) : clientIp(req, { trustProxy, header });
     const key = `rl:${keyPrefix}${raw}`;
 
     const count = await s.increment(key, windowMs);
@@ -185,10 +190,42 @@ export function propagateTrustedRemoteIp(src, dst) {
  * leaving them in disagreement buckets every visitor behind that proxy onto
  * one key.
  *
+ * `header` names the ONE forwarded header to trust, and it is the option a
+ * CDN deployment needs (#1389). The default chain reads the leftmost
+ * `X-Forwarded-For` entry first, which behind Cloudflare is CLOUDFLARE'S
+ * EGRESS address rather than the visitor: Cloudflare pins an egress IP per
+ * connection, so a limiter keyed on it gives one bucket per connection, which
+ * counts down convincingly and limits nobody. The visitor is in
+ * `CF-Connecting-IP`, and naming it here is how the app says so.
+ *
+ * The framework does NOT reorder the default chain to prefer that header,
+ * because which header is trustworthy is a property of the TOPOLOGY, not of
+ * the framework. Cloudflare overwrites `CF-Connecting-IP`, so it is
+ * unforgeable behind Cloudflare and forgeable everywhere else; preferring it
+ * globally would let a client on an nginx or bare-Railway deploy outrank the
+ * `X-Forwarded-For` the real proxy set. So the app names its header and owns
+ * the claim. When `header` is set it is the only forwarded header consulted,
+ * falling back to the stamped peer and then `_anon_`, and a blank value falls
+ * through rather than becoming a shared literal key.
+ *
  * @param {Request} req
- * @param {{ trustProxy?: boolean }} [opts]
+ * @param {{ trustProxy?: boolean, header?: string }} [opts]
  * @returns {string}
  */
+/**
+ * First entry of a forwarded-IP header, trimmed, or `''` when there is nothing
+ * usable. A blank value must FALL THROUGH rather than resolve: an empty string
+ * as a bucket key is one key shared by every visitor whose proxy sent the
+ * header empty, which is a limiter that throttles strangers together.
+ *
+ * @param {string | null | undefined} raw
+ * @returns {string}
+ */
+function firstForwardedEntry(raw) {
+  if (!raw) return '';
+  return raw.split(',')[0].trim();
+}
+
 export function clientIp(req, opts = {}) {
   if (opts.trustProxy === true && !proxyIsTrusted() && !warnedProxyOverride) {
     warnedProxyOverride = true;
@@ -201,10 +238,18 @@ export function clientIp(req, opts = {}) {
     );
   }
   if (opts.trustProxy === true && proxyIsTrusted()) {
+    if (opts.header) {
+      // One named header, and nothing else from the wire. A chain is still
+      // split on the comma so a proxy that appends to the named header cannot
+      // turn the key into a growing string, which would mint a fresh bucket per
+      // hop and reproduce the very failure this option exists to fix.
+      const named = req.headers.get(String(opts.header).toLowerCase());
+      return firstForwardedEntry(named) || trustedRemoteIp(req) || '_anon_';
+    }
     return (
-      req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
-      req.headers.get('cf-connecting-ip') ||
-      req.headers.get('x-real-ip') ||
+      firstForwardedEntry(req.headers.get('x-forwarded-for')) ||
+      req.headers.get('cf-connecting-ip')?.trim() ||
+      req.headers.get('x-real-ip')?.trim() ||
       trustedRemoteIp(req) ||
       '_anon_'
     );

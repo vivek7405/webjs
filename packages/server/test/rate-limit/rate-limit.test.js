@@ -385,3 +385,86 @@ test('WEBJS_NO_TRUST_PROXY=1: the default path (no option) is unchanged (#1254)'
     assert.equal(clientIp(req), '9.9.9.9', 'the default path must still read only the stamped peer');
   });
 });
+
+/* ------------------ clientIpHeader: naming the visitor's header ------------------ */
+
+test('clientIpHeader reads ONLY the named header (#1389)', async () => {
+  const { clientIp } = await import('../../src/rate-limit.js');
+  // The shape a Cloudflare deploy actually receives: XFF's leftmost entry is
+  // the CDN's own egress address, and the visitor is in CF-Connecting-IP. The
+  // default chain takes the wrong one of the two, which is the whole bug.
+  const req = new Request('http://x/', {
+    headers: {
+      'x-forwarded-for': '172.68.1.9, 100.64.0.3',
+      'cf-connecting-ip': '203.0.113.44',
+      'x-webjs-remote-ip': '100.64.0.3',
+    },
+  });
+  assert.equal(clientIp(req, { trustProxy: true }), '172.68.1.9', 'default chain still prefers XFF leftmost');
+  assert.equal(
+    clientIp(req, { trustProxy: true, header: 'cf-connecting-ip' }),
+    '203.0.113.44',
+    'the named header wins over XFF',
+  );
+});
+
+test('clientIpHeader is matched case-insensitively and splits a chain', async () => {
+  const { clientIp } = await import('../../src/rate-limit.js');
+  const req = new Request('http://x/', {
+    headers: { 'cf-connecting-ip': ' 203.0.113.44 , 10.0.0.1 ', 'x-webjs-remote-ip': '100.64.0.3' },
+  });
+  // A proxy that APPENDS to the named header must not mint a new bucket per
+  // hop, which is the failure mode the option exists to end.
+  assert.equal(clientIp(req, { trustProxy: true, header: 'CF-Connecting-IP' }), '203.0.113.44');
+});
+
+test('a missing or blank named header falls back to the peer, never to a shared key', async () => {
+  const { clientIp } = await import('../../src/rate-limit.js');
+  const missing = new Request('http://x/', { headers: { 'x-webjs-remote-ip': '100.64.0.3' } });
+  assert.equal(clientIp(missing, { trustProxy: true, header: 'cf-connecting-ip' }), '100.64.0.3');
+
+  // A blank value resolving to '' would be ONE key shared by every visitor
+  // whose proxy sent the header empty, throttling strangers together.
+  const blank = new Request('http://x/', {
+    headers: { 'cf-connecting-ip': '   ', 'x-webjs-remote-ip': '100.64.0.3' },
+  });
+  assert.equal(clientIp(blank, { trustProxy: true, header: 'cf-connecting-ip' }), '100.64.0.3');
+
+  const nothing = new Request('http://x/', { headers: { 'cf-connecting-ip': '' } });
+  assert.equal(clientIp(nothing, { trustProxy: true, header: 'cf-connecting-ip' }), '_anon_');
+});
+
+test('clientIpHeader is inert without trustProxy, and under WEBJS_NO_TRUST_PROXY=1', async () => {
+  const { clientIp } = await import('../../src/rate-limit.js');
+  const req = new Request('http://x/', {
+    headers: { 'cf-connecting-ip': '203.0.113.44', 'x-webjs-remote-ip': '100.64.0.3' },
+  });
+  // Naming a wire header to trust IS the trust decision, so it must not be
+  // grantable by a second option that skips the first.
+  assert.equal(clientIp(req, { header: 'cf-connecting-ip' }), '100.64.0.3');
+  await withNoTrustProxy('1', () => {
+    assert.equal(clientIp(req, { trustProxy: true, header: 'cf-connecting-ip' }), '100.64.0.3');
+  });
+});
+
+test('rateLimit buckets by the named header, not by the CDN egress address', async () => {
+  const mw = rateLimit({ window: '1s', max: 1, trustProxy: true, clientIpHeader: 'cf-connecting-ip' });
+  // Two requests from ONE visitor that arrive through DIFFERENT CDN egress
+  // addresses, which is what a fresh connection produces. They must share a
+  // bucket; keyed on XFF they would not, and the visitor would never be limited.
+  const first = new Request('http://x/', {
+    headers: { 'x-forwarded-for': '172.68.1.9', 'cf-connecting-ip': '203.0.113.44' },
+  });
+  const second = new Request('http://x/', {
+    headers: { 'x-forwarded-for': '172.69.7.2', 'cf-connecting-ip': '203.0.113.44' },
+  });
+  assert.equal((await mw(first, async () => new Response('ok'))).status, 200);
+  assert.equal((await mw(second, async () => new Response('ok'))).status, 429, 'same visitor, second egress');
+
+  // And a genuinely different visitor arriving through the SAME egress keeps
+  // their own window, which is the other half of bucketing correctly.
+  const other = new Request('http://x/', {
+    headers: { 'x-forwarded-for': '172.68.1.9', 'cf-connecting-ip': '198.51.100.7' },
+  });
+  assert.equal((await mw(other, async () => new Response('ok'))).status, 200);
+});
