@@ -168,37 +168,73 @@ function getNonce(req) {
   return undefined;
 }
 
-function cachedHtmlResponse(body, req, url) {
-  return htmlResponse(body, 200, req, url);
+function cachedHtmlResponse(rec, req, url) {
+  const headers = new Headers({ 'content-type': rec.contentType || 'text/html; charset=utf-8' });
+  headers.set('cache-control', rec.cacheControl || 'no-store');
+  headers.set('x-webjs-build', publishedBuildId());
+  headers.set('x-webjs-src', appSourceId());
+  headers.set(BUFFERED_MARKER, '1');
+  return new Response(rec.body || rec, { status: rec.status || 200, headers });
 }
 
-function htmlResponse(body, status, req, url) {
-  const headers = { 'content-type': 'text/html; charset=utf-8', [BUFFERED_MARKER]: '1' };
-  return new Response(body, { status, headers });
+function htmlResponse(html, status, req, url, metadata) {
+  const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
+  headers.set('cache-control', metadata?.cacheControl || 'no-store');
+  headers.set('x-webjs-build', publishedBuildId());
+  headers.set('x-webjs-src', appSourceId());
+  headers.set(BUFFERED_MARKER, '1');
+  return new Response(html, { status, headers });
 }
 
-function streamingHtmlResponse(prefix, body, closer, suspenseCtx, status, req, url, metadata, nonce, dev) {
-  const headers = { 'content-type': 'text/html; charset=utf-8', [STREAM_MARKER]: '1' };
-  if (suspenseCtx.pending.length === 0) {
-    return new Response(prefix + body + closer, { status, headers });
+function streamingHtmlResponse(prefix, bodyHtml, closer, ctx, status, req, url, metadata, nonce, dev) {
+  const encoder = new TextEncoder();
+  const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
+  headers.set('cache-control', status === 200 ? (metadata?.cacheControl || 'no-store') : 'no-store');
+  headers.set('x-webjs-build', publishedBuildId());
+  headers.set('x-webjs-src', appSourceId());
+
+  if (!ctx.pending.length) {
+    headers.set(BUFFERED_MARKER, '1');
+    return new Response(prefix + bodyHtml + closer, { status, headers });
   }
+
+  headers.set(STREAM_MARKER, '1');
+
   const stream = new ReadableStream({
     async start(controller) {
-      const enc = new TextEncoder();
-      controller.enqueue(enc.encode(prefix + body));
-      for (const p of suspenseCtx.pending) {
-        try {
-          const resolved = await p.promise;
-          const html = await renderToString(resolved, { ssr: true, dev });
-          const tmpl = `<template data-webjs-resolve="${p.id}">${html}</template><script>window.__webjsResolve&&window.__webjsResolve(${p.id});</script>`;
-          controller.enqueue(enc.encode(tmpl));
-        } catch (e) {
-          const tmpl = `<template data-webjs-resolve="${p.id}"><div>Error rendering component</div></template><script>window.__webjsResolve&&window.__webjsResolve(${p.id});</script>`;
-          controller.enqueue(enc.encode(tmpl));
+      controller.enqueue(encoder.encode(prefix + bodyHtml + '<!--wj-stream-shell-->'));
+      try {
+        while (ctx.pending.length) {
+          const batch = ctx.pending.slice();
+          ctx.pending.length = 0;
+          const settled = await Promise.all(
+            batch.map(async (p) => {
+              try {
+                const resolved = await p.promise;
+                const sub = { pending: [], nextId: ctx.nextId, dev: ctx.dev };
+                const html = await renderToString(resolved, { ssr: true, suspenseCtx: sub });
+                ctx.nextId = sub.nextId;
+                for (const n of sub.pending) ctx.pending.push(n);
+                return { id: p.id, html };
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                const html = dev ? `<p>error: ${escapeHtml(msg)}</p>` : '';
+                return { id: p.id, html };
+              }
+            })
+          );
+          for (const r of settled) {
+            const scriptNonce = nonce ? ` nonce="${escapeAttr(nonce)}"` : '';
+            const chunk =
+              `<template data-webjs-resolve="${r.id}">${r.html}</template>` +
+              `<script${scriptNonce}>window.__webjsResolve&&__webjsResolve("${r.id}")</script>`;
+            controller.enqueue(encoder.encode(chunk));
+          }
         }
+      } finally {
+        controller.enqueue(encoder.encode(closer));
+        controller.close();
       }
-      controller.enqueue(enc.encode(closer));
-      controller.close();
     },
   });
   return new Response(stream, { status, headers });
@@ -502,44 +538,71 @@ function wrapHead(opts) {
   );
 }
 
+function loadingSegmentPath(loadingFile) {
+  const p = loadingFile
+    .replace(/^.*\/app\//, '')
+    .replace(/\/?loading\.[jt]sx?$/, '');
+  return p === '' ? '/' : '/' + p;
+}
+
+async function loadingTemplates(route, ctx, dev) {
+  if (!route.loadings || route.loadings.length === 0) return '';
+  const parts = [];
+  for (const file of route.loadings) {
+    try {
+      const mod = await loadModule(file, dev);
+      if (!mod.default) continue;
+      const tree = await mod.default(ctx);
+      const html = await renderToString(tree, { ssr: true, dev });
+      const segmentPath = loadingSegmentPath(file);
+      parts.push(`<template id="wj-loading:${segmentPath}">${html}</template>`);
+    } catch { /* skip broken loading file */ }
+  }
+  return parts.join('');
+}
+
 async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
-  let curr = null;
+  const page = pageModule || await loadModule(route.file, dev);
+  if (!page.default) throw new Error(`Page ${route.file} must have a default export`);
+  let tree = await page.default(ctx);
 
-  try {
-    const pageMod = pageModule || (await loadModule(route.file, dev));
-    if (!pageMod.default) throw new Error(`Page ${route.file} has no default export`);
-    const pageTree = await pageMod.default(ctx);
-
-    const pageSeg = pageSegmentPath(route.file);
-    curr = wrapWithChildrenMarker(pageTree, pageSeg, ctx.params);
-
-    for (let i = route.layouts.length - 1; i >= 0; i--) {
-      const layoutFile = route.layouts[i];
-      const seg = layoutSegmentPath(layoutFile);
-
-      if (have) {
-        const heldKey = have.get(seg);
-        if (heldKey) {
-          const currentKey = regionRouteKey(seg, ctx.params);
-          if (heldKey === currentKey) {
-            const html = await renderToString(curr, { ssr: true, dev, suspense: suspenseCtx });
-            return { html, reduced: true };
-          }
-        }
+  if (route.loadings && route.loadings.length > 0) {
+    const loadingFile = route.loadings[route.loadings.length - 1];
+    try {
+      const loadingMod = await loadModule(loadingFile, dev);
+      if (loadingMod.default) {
+        const { Suspense } = await import('@webjsdev/core');
+        const fallback = await loadingMod.default(ctx);
+        tree = Suspense({ fallback, children: Promise.resolve(tree) });
       }
-
-      const mod = await loadModule(layoutFile, dev);
-      if (mod.default) {
-        const layoutTree = await mod.default({ ...ctx, children: curr });
-        curr = wrapWithChildrenMarker(layoutTree, seg, ctx.params);
-      }
-    }
-  } catch (err) {
-    throw err;
+    } catch { /* loading file failed: skip */ }
   }
 
-  const html = await renderToString(curr, { ssr: true, dev, suspense: suspenseCtx });
-  return { html, reduced: false };
+  const params = { ...(/** @type {Record<string,string>} */ (ctx.params) || {}) };
+  const pageSeg = pageSegmentPath(route.file);
+  const innermostLayoutSeg = route.layouts && route.layouts.length
+    ? layoutSegmentPath(route.layouts[route.layouts.length - 1])
+    : null;
+  if (pageSeg !== innermostLayoutSeg) {
+    tree = wrapWithChildrenMarker(tree, pageSeg, params);
+  }
+
+  for (let i = route.layouts.length - 1; i >= 0; i--) {
+    const segmentPath = layoutSegmentPath(route.layouts[i]);
+    if (have && have.get(segmentPath) === regionRouteKey(segmentPath, params)) {
+      tree = wrapWithChildrenMarker(tree, segmentPath, params);
+      const body = await renderToString(tree, { ssr: true, suspenseCtx });
+      return { html: body + (await loadingTemplates(route, ctx, dev)), reduced: true };
+    }
+    const mod = await loadModule(route.layouts[i], dev);
+    if (!mod.default) continue;
+    tree = await mod.default({
+      ...ctx,
+      children: wrapWithChildrenMarker(tree, segmentPath, params),
+    });
+  }
+  const body = await renderToString(tree, { ssr: true, suspenseCtx });
+  return { html: body + (await loadingTemplates(route, ctx, dev)), reduced: false };
 }
 
 async function ssrBoundaryHtml(file, defaultTitle, opts) {
@@ -551,15 +614,17 @@ async function ssrBoundaryHtml(file, defaultTitle, opts) {
         const body = await renderToString(tree, { ssr: true, dev: opts.dev });
         return wrapInDocument(body, { metadata: { title: defaultTitle }, moduleUrls: [], dev: opts.dev, nonce: opts.req ? getNonce(opts.req) : undefined });
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      const msg = err instanceof Error ? err.stack || err.message : String(err);
+      const body = `<h1>${escapeHtml(defaultTitle)}</h1><pre style="white-space:pre-wrap">${escapeHtml(msg)}</pre>`;
+      return wrapInDocument(body, { metadata: { title: defaultTitle }, moduleUrls: [], dev: opts?.dev, nonce: opts?.req ? getNonce(opts.req) : undefined });
     }
   }
   return wrapInDocument(`<h1>${escapeHtml(defaultTitle)}</h1>`, { metadata: { title: defaultTitle }, moduleUrls: [], dev: opts.dev, nonce: opts.req ? getNonce(opts.req) : undefined });
 }
 
 async function ssrNotFoundHtml(notFoundFile, opts) {
-  return ssrBoundaryHtml(notFoundFile, '404: Not Found', opts);
+  return ssrBoundaryHtml(notFoundFile, '404: Not found', opts);
 }
 
 export async function ssrPage(route, params, url, opts) {
@@ -742,7 +807,7 @@ export async function ssrPage(route, params, url, opts) {
     }
     if (isNotFound(err)) {
       const html = await ssrNotFoundHtml(nearest(route.notFounds) || opts.globalNotFound || null, opts);
-      return htmlResponse(html, 404, opts.req, url);
+      return htmlResponse(html, 404, opts.req, url, metadata);
     }
     if (isForbidden(err)) return ssrForbidden(route, { ...opts, url });
     if (isUnauthorized(err)) return ssrUnauthorized(route, { ...opts, url });
@@ -774,7 +839,7 @@ export async function ssrPage(route, params, url, opts) {
           }
         }
         const html = wrapInDocument(body, { metadata, moduleUrls: errModuleUrls, dev: opts.dev, nonce: errNonce });
-        return htmlResponse(html, 500, opts.req, url);
+        return htmlResponse(html, 500, opts.req, url, metadata);
       } catch (nested) {
         // fall through
       }

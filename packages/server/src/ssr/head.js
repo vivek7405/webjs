@@ -291,6 +291,162 @@ export function wrapHead(opts) {
     }
   }
 
+  if (m.other && typeof m.other === 'object') {
+    for (const [name, v] of Object.entries(m.other)) {
+      const list = Array.isArray(v) ? v : [v];
+      for (const item of list) {
+        if (item == null) continue;
+        metaTags.push(`<meta name="${escapeAttr(name)}" content="${escapeAttr(String(item))}">`);
+      }
+    }
+  }
+
+  if (m.verification && typeof m.verification === 'object') {
+    const verifyKeys = {
+      google: 'google-site-verification',
+      yandex: 'yandex-verification',
+      yahoo: 'y_key',
+      me: 'me',
+    };
+    for (const [field, metaName] of Object.entries(verifyKeys)) {
+      const v = m.verification[field];
+      if (!v) continue;
+      const list = Array.isArray(v) ? v : [v];
+      for (const item of list) {
+        metaTags.push(`<meta name="${metaName}" content="${escapeAttr(String(item))}">`);
+      }
+    }
+    if (m.verification.other && typeof m.verification.other === 'object') {
+      for (const [name, v] of Object.entries(m.verification.other)) {
+        const list = Array.isArray(v) ? v : [v];
+        for (const item of list) {
+          metaTags.push(`<meta name="${escapeAttr(name)}" content="${escapeAttr(String(item))}">`);
+        }
+      }
+    }
+  }
+
+  if (m.openGraph && typeof m.openGraph === 'object') {
+    for (const [k, v] of Object.entries(m.openGraph)) {
+      const out = k === 'image' || k === 'url' ? absUrl(v) : String(v);
+      metaTags.push(`<meta property="og:${escapeAttr(k)}" content="${escapeAttr(out)}">`);
+    }
+  }
+
+  if (m.twitter && typeof m.twitter === 'object') {
+    for (const [k, v] of Object.entries(m.twitter)) {
+      const out = k === 'image' ? absUrl(v) : String(v);
+      metaTags.push(`<meta name="twitter:${escapeAttr(k)}" content="${escapeAttr(out)}">`);
+    }
+  }
+
+  const declaredPreconnectOrigins = new Set();
+  const normalizeHint = (h) => {
+    if (!h) return null;
+    if (typeof h === 'string') return { url: h };
+    if (typeof h === 'object' && h.url) return h;
+    return null;
+  };
+  const toHints = (value) => {
+    if (value == null) return [];
+    const list = Array.isArray(value) ? value : [value];
+    const out = [];
+    for (const h of list) {
+      const n = normalizeHint(h);
+      if (n) out.push(n);
+    }
+    return out;
+  };
+  const crossoriginAttr = (co) => {
+    if (co === undefined || co === false) return '';
+    if (co === true || co === '') return ' crossorigin';
+    return ` crossorigin="${escapeAttr(String(co))}"`;
+  };
+  for (const h of toHints(m.preconnect)) {
+    try { declaredPreconnectOrigins.add(new URL(h.url).origin); } catch { declaredPreconnectOrigins.add(h.url); }
+    linkTags.push(`<link rel="preconnect" href="${escapeAttr(h.url)}"${crossoriginAttr(h.crossorigin)}>`);
+  }
+  for (const h of toHints(m.dnsPrefetch)) {
+    linkTags.push(`<link rel="dns-prefetch" href="${escapeAttr(h.url)}">`);
+  }
+  for (const origin of vendorPreconnectOrigins()) {
+    if (declaredPreconnectOrigins.has(origin)) continue;
+    linkTags.push(`<link rel="preconnect" href="${escapeAttr(origin)}" crossorigin>`);
+  }
+
+  if (m.icons) {
+    const buckets = typeof m.icons === 'string' || Array.isArray(m.icons)
+      ? { icon: m.icons }
+      : m.icons;
+    const pushIcon = (rel, entry) => {
+      if (!entry) return;
+      const items = Array.isArray(entry) ? entry : [entry];
+      for (const it of items) {
+        if (!it) continue;
+        if (typeof it === 'string') {
+          linkTags.push(`<link rel="${rel}" href="${escapeAttr(absUrl(it))}">`);
+        } else if (typeof it === 'object' && it.url) {
+          const parts = [`rel="${rel}"`, `href="${escapeAttr(absUrl(it.url))}"`];
+          if (it.sizes) parts.push(`sizes="${escapeAttr(it.sizes)}"`);
+          if (it.type) parts.push(`type="${escapeAttr(it.type)}"`);
+          linkTags.push(`<link ${parts.join(' ')}>`);
+        }
+      }
+    };
+    pushIcon('icon', buckets.icon);
+    pushIcon('apple-touch-icon', buckets.apple);
+    pushIcon('shortcut icon', buckets.shortcut);
+    if (buckets.other) {
+      const others = Array.isArray(buckets.other) ? buckets.other : [buckets.other];
+      for (const o of others) {
+        if (!o || !o.rel || !o.url) continue;
+        const parts = [`rel="${escapeAttr(o.rel)}"`, `href="${escapeAttr(absUrl(o.url))}"`];
+        if (o.sizes) parts.push(`sizes="${escapeAttr(o.sizes)}"`);
+        if (o.type) parts.push(`type="${escapeAttr(o.type)}"`);
+        linkTags.push(`<link ${parts.join(' ')}>`);
+      }
+    }
+  }
+
+  if (typeof m.manifest === 'string') {
+    linkTags.push(`<link rel="manifest" href="${escapeAttr(absUrl(m.manifest))}">`);
+  }
+
+  if (m.alternates && typeof m.alternates === 'object') {
+    if (m.alternates.canonical) {
+      linkTags.push(`<link rel="canonical" href="${escapeAttr(absUrl(m.alternates.canonical))}">`);
+    }
+    if (m.alternates.languages && typeof m.alternates.languages === 'object') {
+      for (const [hreflang, href] of Object.entries(m.alternates.languages)) {
+        linkTags.push(
+          `<link rel="alternate" hreflang="${escapeAttr(hreflang)}" href="${escapeAttr(absUrl(href))}">`,
+        );
+      }
+    }
+    if (m.alternates.media && typeof m.alternates.media === 'object') {
+      for (const [media, href] of Object.entries(m.alternates.media)) {
+        linkTags.push(
+          `<link rel="alternate" media="${escapeAttr(media)}" href="${escapeAttr(absUrl(href))}">`,
+        );
+      }
+    }
+    if (m.alternates.types && typeof m.alternates.types === 'object') {
+      for (const [type, href] of Object.entries(m.alternates.types)) {
+        linkTags.push(
+          `<link rel="alternate" type="${escapeAttr(type)}" href="${escapeAttr(absUrl(href))}">`,
+        );
+      }
+    }
+  }
+
+  if (m.jsonLd != null) {
+    const list = Array.isArray(m.jsonLd) ? m.jsonLd : [m.jsonLd];
+    for (const obj of list) {
+      const tag = jsonLdScript(obj);
+      if (tag) scriptTags.push(tag);
+    }
+  }
+
   const noncePreload = opts.nonce ? ` nonce="${escapeAttr(opts.nonce)}"` : '';
   if (opts.moduleUrls.length || lazyEntries) {
     const coreMap = buildImportMap();
@@ -341,14 +497,6 @@ export function wrapHead(opts) {
     }
   }
 
-  if (m.jsonLd) {
-    const list = Array.isArray(m.jsonLd) ? m.jsonLd : [m.jsonLd];
-    for (const item of list) {
-      const tag = jsonLdScript(item);
-      if (tag) scriptTags.push(tag);
-    }
-  }
-
   const title = m.title ? `<title>${escapeHtml(m.title)}</title>` : '<title>App</title>';
   const hostStyle = `<style${n}>@layer webjs-host{:where([data-wj-host]){display:block}:where([data-wj-host][hidden]:not([hidden='until-found'])){display:none}}</style>`;
   const envShim = publicEnvShim(opts);
@@ -357,7 +505,7 @@ export function wrapHead(opts) {
     `<!doctype html>\n<html lang="en">\n<head>\n` +
     `<meta charset="utf-8">\n` +
     `${hostStyle}\n` +
-    `${opts.nonce ? `<meta name="csp-nonce" content="${escapeAttr(opts.nonce)}">` : ''}\n` +
+    `${opts.nonce ? `<meta name="csp-nonce" content="${escapeAttr(opts.nonce)}">\n` : ''}` +
     (metaTags.length ? metaTags.join('\n') + '\n' : '') +
     `${title}\n` +
     `${envShim}${clientRouterEnabled() ? '' : `\n<script${n}>window.__WEBJS_CLIENT_ROUTER__=false;</script>`}\n` +
