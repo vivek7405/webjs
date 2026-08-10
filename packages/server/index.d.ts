@@ -635,6 +635,21 @@ export declare function rateLimit(opts?: {
    * that STRIPS inbound `X-Forwarded-For` before adding its own.
    */
   trustProxy?: boolean;
+  /**
+   * Name the ONE forwarded header that carries the visitor, e.g.
+   * `'cf-connecting-ip'` behind Cloudflare. Requires `trustProxy: true`, and
+   * when set it is the only wire header consulted (falling back to the stamped
+   * peer, then `_anon_`).
+   *
+   * Behind a CDN this is usually required for the limiter to work at all. The
+   * default chain takes the leftmost `X-Forwarded-For` entry, which behind
+   * Cloudflare is Cloudflare's EGRESS address, not the visitor, and since that
+   * is pinned per connection the limiter hands out one bucket per connection.
+   * The framework will not prefer `CF-Connecting-IP` on its own: Cloudflare
+   * overwrites it, so it is unforgeable behind Cloudflare and forgeable
+   * anywhere else, which makes the right choice a property of your topology.
+   */
+  clientIpHeader?: string;
 }): Middleware;
 /** Parse a window string (`'1m'`, `'30s'`) to milliseconds. */
 export declare function parseWindow(w: number | string): number;
@@ -645,8 +660,17 @@ export declare function parseWindow(w: number | string): number;
  * `trustProxy: true` reads the forwarded-IP headers instead, UNLESS
  * `WEBJS_NO_TRUST_PROXY=1` is set, which overrides the option back to the
  * stamped peer and logs once per process.
+ *
+ * `header` names the one forwarded header to trust (`'cf-connecting-ip'`
+ * behind Cloudflare) and, when given, is the only wire header read. Use it
+ * whenever a CDN sits in front: the default chain's leftmost
+ * `X-Forwarded-For` entry is then the CDN's egress address rather than the
+ * visitor.
  */
-export declare function clientIp(req: Request, opts?: { trustProxy?: boolean }): string;
+export declare function clientIp(
+  req: Request,
+  opts?: { trustProxy?: boolean; header?: string },
+): string;
 /** Stamp the socket remote address onto a request for `clientIp` to read. */
 export declare function stampRemoteIp(req: Request, remoteAddress: string): void;
 

@@ -16,7 +16,15 @@ export async function GET(req: Request) {
   return json({
     ok: true,
     at: new Date(), // a real Date; richFetch decodes it back to a Date, not a string
+    // Two addresses, because behind a proxy they are NOT the same and the
+    // difference is invisible until something depends on it (a rate limiter
+    // did, and bucketed proxies instead of visitors). `ip` is the socket peer,
+    // which is the visitor only when the browser connects to you directly.
+    // `forwardedIp` is what the visitor's own CDN header says, which is what a
+    // limiter or an audit log wants. Deployed behind Cloudflare and Railway,
+    // `ip` is a rotating 100.64.x.x router address while `forwardedIp` is you.
     ip: clientIp(req),
+    forwardedIp: clientIp(req, { trustProxy: true, header: 'cf-connecting-ip' }),
     requestId: requestId(),
     userAgent: headers().get('user-agent') ?? 'unknown',
     // cookies() reads the REQUEST cookies. Report how many are present (a
