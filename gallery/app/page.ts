@@ -1,14 +1,21 @@
 import { html } from '@webjsdev/core';
 import { cardClass } from '#components/ui/card.ts';
 import { badgeClass } from '#components/ui/badge.ts';
-import { FEATURES, EXAMPLES } from '#modules/gallery/nav.ts';
+import { FEATURE_GROUPS, EXAMPLES } from '#modules/gallery/nav.ts';
 
 export const metadata = {
   title: 'WebJs Gallery',
   description: 'Explore WebJs features, interactive components, and real working examples.',
 };
 
+// The hover affordance for a whole-card link. cardClass() takes the panel's own
+// extra classes as a string, so the hover state composes with the base surface.
+const CARD_LINK = cardClass('transition-colors hover:border-border-strong');
+
 export default function Home() {
+  // Flatten the groups here rather than at module scope, so the card can label
+  // itself with the group it came from (NavItem itself carries no category).
+  const features = FEATURE_GROUPS.flatMap((g) => g.items.map((item) => ({ ...item, category: g.label })));
   return html`
     <div class="py-8 flex flex-col items-center gap-16">
       <!-- Hero -->
@@ -28,13 +35,13 @@ export default function Home() {
             Feature Cards
           </h2>
           <span class="text-xs text-muted-foreground font-mono">
-            ${FEATURES.length} single-concept demos
+            ${features.length} single-concept demos
           </span>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          ${FEATURES.map(f => html`
-            <a href=${f.href} class="${cardClass({ interactive: true })} p-5 flex flex-col gap-3 group no-underline text-inherit">
+          ${features.map(f => html`
+            <a href=${f.href} class="${CARD_LINK} p-5 flex flex-col gap-3 group no-underline text-inherit">
               <div class="flex items-start justify-between gap-2">
                 <span class="font-bold text-base group-hover:text-foreground transition-colors" style="font-family: var(--font-display)">
                   ${f.title}
@@ -44,7 +51,7 @@ export default function Home() {
                 </span>
               </div>
               <p class="text-xs text-muted-foreground leading-relaxed m-0 flex-1">
-                ${f.description}
+                ${f.blurb}
               </p>
               <div class="flex items-center gap-1 text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors mt-1">
                 <span>View demo</span>
@@ -71,17 +78,17 @@ export default function Home() {
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             ${EXAMPLES.map(e => html`
-              <a href=${e.href} class="${cardClass({ interactive: true })} p-6 flex flex-col gap-3 group no-underline text-inherit">
+              <a href=${e.href} class="${CARD_LINK} p-6 flex flex-col gap-3 group no-underline text-inherit">
                 <div class="flex items-start justify-between gap-2">
                   <span class="font-bold text-lg group-hover:text-foreground transition-colors" style="font-family: var(--font-display)">
                     ${e.title}
                   </span>
-                  <span class="${badgeClass({ variant: 'secondary' })} font-mono text-xs">
+                  <span class="${badgeClass()} font-mono text-xs">
                     Full App
                   </span>
                 </div>
                 <p class="text-sm text-muted-foreground leading-relaxed m-0 flex-1">
-                  ${e.description}
+                  ${e.blurb}
                 </p>
                 <div class="flex items-center gap-1 text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors mt-2">
                   <span>Open app</span>

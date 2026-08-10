@@ -258,10 +258,13 @@ function hintedGroup(bare: string): string | null | undefined {
   return `hint:${key}`;
 }
 
-// Directional shorthand conflicts (the tailwind-merge model): a shorthand
-// utility invalidates the axis/side utilities it SUBSUMES (`p-0` beats an earlier
-// `px-4 py-2`), but a later axis only refines a shorthand (both survive). Keyed
-// by the group of a newly-seen token; the value lists the EARLIER groups it removes.
+// Directional shorthand conflicts (the tailwind-merge model). A shorthand
+// utility invalidates the axis / side utilities it SUBSUMES, because Tailwind's
+// cascade makes the shorthand win: `p-0` after `px-4 py-2` drops both, but
+// `px-4` after `p-2` refines only the x-axis so BOTH survive (the conflict is
+// directional, not symmetric). Keyed by the group a NEWLY-seen token belongs to;
+// the value lists the EARLIER groups whose survivors it removes (its own group
+// is always removed too, handled below).
 const CONFLICTS: Record<string, string[]> = {
   p: ['px', 'py', 'pt', 'pr', 'pb', 'pl'],
   px: ['pl', 'pr'],
@@ -328,9 +331,9 @@ function variantPrefix(token: string): string {
   // TWO counters, both required to be zero, rather than one shared counter.
   // Tailwind's own top-level splitter (`segment()`, in the upstream
   // tailwindlabs/tailwindcss repo at packages/tailwindcss/src/utils/segment.ts,
-  // NOT a path in this repo) is a MATCHED-PAIR stack, so a stray
-  // closer never cancels a live opener of the other kind. A single shared
-  // counter would let `)` cancel `[` and read `x-[y)-z:w` as having a
+  // NOT a path in this repo) is a MATCHED-PAIR stack, so a
+  // stray closer never cancels a live opener of the other kind. A single
+  // shared counter would let `)` cancel `[` and read `x-[y)-z:w` as having a
   // top-level colon, which is the fragment bug above wearing a different hat.
   let bracketDepth = 0;
   let parenDepth = 0;
@@ -345,6 +348,40 @@ function variantPrefix(token: string): string {
   }
   return i === -1 ? '' : token.slice(0, i + 1);
 }
+
+// ---------------------------------------------------------------------------
+// Stable DOM ids for wiring ARIA relationships (aria-controls /
+// aria-labelledby / aria-describedby) between sibling light-DOM nodes.
+// A monotonic counter is fine for uniqueness within a document: the id is
+// only consumed as an attribute value, never persisted. When SSR emits an
+// id on a host element, the upgraded element reuses it (ensureId is a no-op
+// when an id is already present), so the server and client agree.
+// ---------------------------------------------------------------------------
+
+let _idSeq = 0;
+
+/** A fresh, document-unique id string with a readable prefix. */
+export function domId(prefix = 'ui'): string {
+  _idSeq += 1;
+  return `${prefix}-${_idSeq}`;
+}
+
+/**
+ * Returns `el.id`, assigning a generated one (prefix-based) when absent.
+ * Idempotent, so an id already present (author-set, or carried over from
+ * SSR) is reused unchanged.
+ */
+export function ensureId(el: { id: string }, prefix = 'ui'): string {
+  if (!el.id) el.id = domId(prefix);
+  return el.id;
+}
+
+// NOTE: the old `HTMLElement`-era `Base` / `defineElement` / SSR-stub helpers
+// were removed. The ui registry components extend `WebComponent` from
+// `@webjsdev/core` now, so those helpers were dead code, and referencing
+// `HTMLElement` / `customElements` at module scope marked this util (and any
+// page that imports `cn`) as client-effecting. Everything below is pure or
+// SSR-safe, so importing `cn` no longer pins a page to the browser (#819).
 
 // ---------------------------------------------------------------------------
 // Layout helpers: encode the design-system rhythm (spacing between label /
