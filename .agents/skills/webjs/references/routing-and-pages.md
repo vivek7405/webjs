@@ -192,7 +192,28 @@ Refusals worth knowing: `formaction=${fn}` is supported on a `<button>` anywhere
 
 Metadata routes (`sitemap.ts`, `robots.ts`, `manifest.ts`, `icon.ts`, `apple-icon.ts`, `opengraph-image.ts`, `twitter-image.ts`) live at app root or static segments and default-export a possibly-async function; `sitemap()` / `sitemapIndex()` from `@webjsdev/server` serialize spec-valid XML.
 
-The IMAGE metadata routes (`icon`, `apple-icon`, `opengraph-image`, `twitter-image`) default-export a function returning a `Response` with an explicit `content-type`, so an inline SVG needs no asset file (buildless). Then point `metadata` at the route via `openGraph.images` / `twitter.images` / `icons` (or drop a static file in `public/` instead).
+The IMAGE metadata routes (`icon`, `apple-icon`, `opengraph-image`, `twitter-image`) default-export a function returning a `Response` with an explicit `content-type`, so an inline SVG needs no asset file (buildless).
+
+**`icon` and `apple-icon` are LINKED for you.** An app that declares no `metadata.icons` gets `<link rel="icon" href="/icon">` and `<link rel="apple-touch-icon" href="/apple-icon">` in the head automatically, for whichever of the two routes it defines (base-path prefixed, since that is where the route answers). No `type` or `sizes` is asserted, because the route picks its content type at request time and the browser sniffs the served one.
+
+Declaring `metadata.icons` **suppresses** the routes rather than merging with them, which is what Next does with its static icon files. So an app that outgrows a placeholder `app/icon.ts` names its real icons and the route stops being linked without having to be deleted:
+
+```ts
+// app/layout.ts  ->  these win; /icon and /apple-icon are no longer linked
+export const metadata = {
+  icons: {
+    icon: [
+      { url: '/public/favicon-192.png', type: 'image/png', sizes: '192x192' },
+      { url: '/public/favicon.svg', type: 'image/svg+xml', sizes: 'any' },
+    ],
+    apple: { url: '/public/apple-touch-icon.png', sizes: '180x180' },
+  },
+};
+```
+
+Declare a favicon through `metadata.icons` (or a metadata route), never as a hand-written `<link rel="icon">`: only the root layout may write a shell at all (invariant 8), so a hand-written tag is unavailable to every other layout. A `public/favicon.ico` needs no declaration either way, since the framework serves it at the origin root for crawlers that read no markup.
+
+`opengraph-image` and `twitter-image` are NOT auto-linked (a preview image is a per-page editorial choice, not a site-wide default). Point `metadata` at those via `openGraph.images` / `twitter.images`.
 
 ```ts
 // app/opengraph-image.ts  (OG is 1200x630; apple-icon 180x180)

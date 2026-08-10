@@ -14,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { buildRouteTable, matchPage, matchApi } from './router.js';
 import { generateRouteTypes } from './route-types.js';
-import { ssrPage, ssrNotFound, setClientRouterEnabled } from './ssr.js';
+import { ssrPage, ssrNotFound, setClientRouterEnabled, setMetadataIconRoutes } from './ssr.js';
 import { runFormAction, reportFormSubmittedAsGet } from './form-dispatch.js';
 import { handleApi } from './api.js';
 import {
@@ -742,6 +742,12 @@ export async function createRequestHandler(opts) {
   // like env.js / readiness.js), not a router stem. Resolve it once and stash it
   // on the route table so ssrOpts + the browser-servable gate reach it uniformly.
   routeTable.instrumentationClient = await findInstrumentationClient(appDir);
+  // Auto-linked favicons: tell the head builder which icon metadata routes
+  // exist, so `app/icon.*` is linked when the app declares no metadata.icons.
+  // Bound here rather than threaded through ssrOpts, matching
+  // setClientRouterEnabled; re-bound in doRebuild so adding or deleting the
+  // file takes effect without a restart.
+  setMetadataIconRoutes(routeTable.metadataRoutes);
 
   // Emit `.webjs/routes.d.ts` (typed Route union + per-route params, #258) in
   // dev so an editor's tsserver always has up-to-date route types without the
@@ -1207,6 +1213,8 @@ export async function createRequestHandler(opts) {
     // it so routing reflects added/removed route files immediately.
     state.routeTable = await buildRouteTable(appDir);
     state.routeTable.instrumentationClient = await findInstrumentationClient(appDir);
+    // Adding or deleting app/icon.* changes whether the head auto-links it.
+    setMetadataIconRoutes(state.routeTable.metadataRoutes);
     // Refresh the generated route types (#258) so adding/removing a route file
     // updates `.webjs/routes.d.ts` without a manual `webjs types`. Dev only,
     // best-effort (see emitRouteTypes).
