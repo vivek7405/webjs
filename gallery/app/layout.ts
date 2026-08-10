@@ -109,6 +109,15 @@ export default function RootLayout({ children }: { children: unknown }) {
           --border-strong:      light-dark(oklch(0.78 0.014 70 / 0.95), oklch(0.36 0.02 60 / 0.95));
           --input:              light-dark(oklch(0.88 0.012 70 / 0.9), oklch(0.24 0.015 60 / 0.9));
           --ring:               light-dark(oklch(0.63 0.17 50), oklch(0.78 0.18 58));
+          /* public/input.css maps --color-destructive, and 20 call sites across
+             the demos use text-destructive / bg-destructive for validation
+             errors, but nothing ever DEFINED it. An undefined var() left every
+             error message painting in the ordinary foreground colour and the
+             destructive button variant with no fill at all. Values follow the
+             @webjsdev/ui registry theme, warmed a few degrees of hue to sit in
+             this palette rather than beside it. */
+          --destructive:            light-dark(oklch(0.58 0.22 27), oklch(0.70 0.19 22));
+          --destructive-foreground: light-dark(oklch(0.99 0.005 60), oklch(0.14 0.015 60));
 
           --primary-tint:   color-mix(in oklch, var(--ring) 22%, transparent);
           --accent-tint:    color-mix(in oklch, var(--ring) 14%, transparent);

@@ -109,7 +109,18 @@ The default stack is a static compiled Tailwind stylesheet (`css:build` compiles
 
 **Two halves.** (1) `public/input.css` MAPS token names into Tailwind with `@theme inline` (`--color-background: var(--background)`), so `bg-background` resolves to `var(--background)`. That is infrastructure; leave it. (2) The root layout (`app/layout.ts`) DEFINES the values as plain CSS custom properties in a `<style>` block. That is your palette; make it your own. A freshly cleared app (after `npm run gallery:clear`) ships only the OS system-colour base (`Canvas` / `CanvasText`) with NO tokens, so building this palette is your first styling step.
 
-**A token that raw CSS reads must come from a plain `@theme`, not `@theme inline`.** The two are not interchangeable and the difference is silent. A plain `@theme { --color-ring: var(--ring) }` emits `--color-ring` as a real custom property on `:root`, so anything can inherit it; `@theme inline` emits no custom property at all and instead substitutes the value directly into each compiled utility. Utilities work either way, which is why the mistake hides. It bites where Tailwind cannot see the CSS: a shadow-DOM component's `static styles` is outside the scanned source, so a `var(--color-ring)` written there resolves against whatever the shadow tree inherits, and under `inline` that is nothing, leaving the rule at its initial value (a border or outline silently falls back to `currentColor`). So if any shadow component reads a token by name, map that token with a plain `@theme`. A raw `var(--color-x)` written in the SAME stylesheet forces emission even under `inline`, which is why the `@webjsdev/ui` kit theme works despite using `inline`.
+**`@theme` and `@theme inline` differ in whether the token reaches `:root`, and the difference is silent.** Measured on `tailwindcss@4.3.0`, a token mapped in a theme block is emitted as a real `:root` custom property when:
+
+| block | token used only through a utility (`border-border`) | token written as a raw `var(--color-x)` in any SCANNED file | token unused |
+|---|---|---|---|
+| `@theme` | emitted | emitted | not emitted |
+| `@theme inline` | NOT emitted (the value is substituted into the utility) | emitted | not emitted |
+
+The one cell that bites is `inline` plus utility-only usage. Nothing on the page can then inherit `--color-x`, so a raw `var(--color-x)` written somewhere Tailwind never scanned resolves to nothing and the declaration falls back to its initial value (a border or outline silently becomes `currentColor`).
+
+"Scanned" is wider than it looks, and this is the part worth knowing: Tailwind scans source files as raw text, so a `var(--color-ring)` inside a component's `static styles` template DOES count and forces emission, exactly like one in the stylesheet. That is why the `@webjsdev/ui` kit theme works despite using `inline`. So the rule is not "shadow components need a plain `@theme`". It is: **if a token is only ever used through utilities, and something outside the scanned source needs to inherit it, map that token with a plain `@theme`.** Anything under a configured `@source` is scanned and needs no special handling.
+
+Whichever form you use, a token nothing references is dropped in both, so an unused mapping is dead configuration rather than a safety net.
 
 **Light and dark, defined once (DRY).** Write each colour token ONE time with the native CSS `light-dark(LIGHT, DARK)` function and let `color-scheme` pick the side. The default `color-scheme: light dark` follows the OS; a `[data-theme]` attribute forces one. No duplicated light/dark blocks:
 

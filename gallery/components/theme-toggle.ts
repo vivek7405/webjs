@@ -35,10 +35,13 @@ export class ThemeToggle extends WebComponent {
     // everything this app actually reads: the palette blocks in app/layout.ts
     // and the @custom-variant dark in public/input.css, which is keyed off
     // [data-theme] so the logo swap still works with JavaScript off. The .dark
-    // class is inert HERE (this app imports only tailwindcss, never the kit
-    // theme CSS that defines the &:is(.dark *) form), and is kept because it is
-    // the signal @webjsdev/ui components read, so a demo that adds one works
-    // without having to remember this line.
+    // class is inert HERE, since this app imports only tailwindcss and never
+    // the kit theme CSS that defines the &:is(.dark *) form. Kept only so the
+    // two signals do not visibly disagree while the reader is clicking. It is
+    // NOT a working kit-compatibility path: this runs only on a click, the
+    // bootstrap in app/layout.ts writes data-theme alone, so on every page load
+    // the class is absent whatever the stored theme is. A demo that adds a kit
+    // component needs the class written at bootstrap too.
     const osLight = window.matchMedia('(prefers-color-scheme: light)').matches;
     const dark = next === 'dark' || (next === 'system' && !osLight);
     document.documentElement.classList.toggle('dark', dark);

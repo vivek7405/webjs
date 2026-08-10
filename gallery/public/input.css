@@ -57,14 +57,9 @@
   --color-input:                  var(--input);
   --color-ring:                   var(--ring);
 
-  /* A translucent brand tint derived from --primary (the same pattern the
-     scaffold's --primary-tint uses), for focus rings and the logo glow. */
+  /* A translucent brand tint for focus rings, derived from --ring in
+     app/layout.ts so the ring and its halo are the same hue. */
   --color-primary-tint:           var(--primary-tint);
-
-  /* One extra semantic shadcn does not ship: success (a couple of status
-     affordances use it). Added the canonical @theme way, not a parallel
-     vocabulary. */
-  --color-success:                var(--success);
 
   --font-display: var(--font-display);
   --font-sans:  var(--font-sans);
