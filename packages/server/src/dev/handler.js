@@ -569,14 +569,27 @@ export async function createRequestHandler(opts) {
       }
       const newUrl = new URL(req.url);
       newUrl.pathname = stripped;
+      // SECURITY (#756): this is a fresh Request object, so it is NOT in the
+      // listener's out-of-band trusted-IP WeakMap (the Bun shell stamps the IP
+      // there instead of cloning the Request to set the header). Without
+      // carrying it forward, `clientIp` would fall back to the inbound
+      // `x-webjs-remote-ip` header that the copied `req.headers` still carries,
+      // which a client can spoof. So strip that header on the rebuild and
+      // propagate the framework-trusted IP across the new object, the same
+      // pattern form-dispatch.js uses.
       const headers = new Headers(req.headers);
-      propagateTrustedRemoteIp(req, headers);
-      req = new Request(newUrl, {
+      headers.delete('x-webjs-remote-ip');
+      const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
+      const next = new Request(newUrl, /** @type {any} */ ({
         method: req.method,
         headers,
-        body: req.body,
-        duplex: 'half',
-      });
+        body: hasBody ? req.body : undefined,
+        duplex: hasBody ? 'half' : undefined,
+        redirect: req.redirect,
+        signal: req.signal,
+      }));
+      propagateTrustedRemoteIp(req, next);
+      req = next;
     }
 
     if (redirectRules.length) {
