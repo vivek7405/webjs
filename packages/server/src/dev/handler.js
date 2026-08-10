@@ -40,10 +40,11 @@ import { setVendorEntries, setCoreInstall, publishBuildId, setAppSourceId, setBa
 import { stripBasePath, withBasePath } from '../base-path.js';
 import { setAssetUrlProvider, setFormActionResolver } from '@webjsdev/core';
 import { resolveActionIdentity } from '../form-action-identity.js';
-import { setAssetRoots, clearAssetHashCache, setElisionFingerprint, assetHashFor, versionModuleImports, resolveAssetUrl } from '../asset-hash.js';
+import { setAssetRoots, clearAssetHashCache, setElisionFingerprint, withAssetHash, assetHashFor, versionModuleImports, resolveAssetUrl } from '../asset-hash.js';
 import { applySecurityHeaders, webRequestIsHttps } from '../headers.js';
 import {
   applyRedirects,
+  applyTrailingSlash,
 } from '../redirects.js';
 import { applyConditionalGet, BUFFERED_MARKER } from '../conditional-get.js';
 import { commitHtmlCache, setAppSourceFingerprint } from '../html-cache.js';
@@ -490,10 +491,10 @@ export async function createRequestHandler(opts) {
             method: req.method,
             path: pathname,
             status: conditioned.status,
-            ms: Math.round(performance.now() - startedAt),
+            durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
             ...(seed ? { seed } : {}),
           });
-        } catch { /* ignore */ }
+        } catch { /* never let logging crash the response */ }
       }
       return conditioned;
     });
@@ -533,31 +534,57 @@ export async function createRequestHandler(opts) {
     let path;
     try { path = decodeURIComponent(url.pathname); } catch { path = url.pathname; }
 
+    // Health and readiness probes are answered BEFORE ensureReady so a probe
+    // never blocks on the analysis. `/__webjs/health` is liveness (the
+    // process is up and accepting connections). `/__webjs/ready` is 503 until
+    // the instance is FULLY warm (the deterministic analysis AND the first
+    // vendor attempt have both completed, so the importmap build id is
+    // settled), then 200 unless an optional app readiness check
+    // (readiness.{js,ts}) reports a dependency down. So a readinessProbe holds
+    // traffic off a not-yet-warm or dependency-unhealthy instance, and admits
+    // it only once the build id is stable, never mid vendor-resolution.
+    // Probing `/__webjs/ready` also kicks off the warm in the background, so
+    // an embedder that never called warmup() still warms. The first vendor
+    // attempt is bounded (the jspm fetch timeout), so a vendor CDN failure
+    // delays readiness only briefly and then admits the instance (degraded but
+    // reload-safe); a transient failure is re-attempted on the next request.
     if (path === '/__webjs/health') {
-      return new Response('ok', { status: 200, headers: { 'content-type': 'text/plain' } });
+      return Response.json({ status: 'ok' }, { headers: { 'cache-control': 'no-store' } });
+    }
+
+    // Build-info probe (issue #239): which build is live? Answered before
+    // ensureReady like the other probes (it depends only on the package
+    // version + already-published build id + process info, never the app
+    // analysis). No secrets.
+    if (path === '/__webjs/version') {
+      return buildInfoResponse();
     }
 
     if (path === '/__webjs/ready') {
+      const noStore = { 'cache-control': 'no-store' };
       if (!readyDone) {
-        return Response.json({ ready: false, reason: 'warmup in progress' }, { status: 503 });
+        ensureReady().catch(() => {}); // drive the warm; never block the probe
+        const body = readyError
+          ? { status: 'error', error: String((readyError && readyError.message) || readyError) }
+          : { status: 'pending' };
+        return Response.json(body, { status: 503, headers: noStore });
       }
-      if (readyError) {
-        return Response.json({ ready: false, reason: String(readyError) }, { status: 503 });
-      }
-      const customCheck = await getReadinessCheck();
-      if (customCheck) {
+      // Analysis is warm. Consult the optional app readiness check (live
+      // dependency health, e.g. a DB ping) if the app provides one.
+      const check = await getReadinessCheck();
+      if (check) {
         try {
-          const ok = await customCheck();
-          if (!ok) return Response.json({ ready: false, reason: 'readiness.js returned false' }, { status: 503 });
+          if ((await check()) === false) {
+            return Response.json({ status: 'unready' }, { status: 503, headers: noStore });
+          }
         } catch (e) {
-          return Response.json({ ready: false, reason: String(e) }, { status: 503 });
+          return Response.json(
+            { status: 'unready', error: String((e && e.message) || e) },
+            { status: 503, headers: noStore },
+          );
         }
       }
-      return Response.json({ ready: true }, { status: 200 });
-    }
-
-    if (path === '/__webjs/version') {
-      return buildInfoResponse();
+      return Response.json({ status: 'ok' }, { headers: noStore });
     }
 
     if (dev && path === '/__webjs/reload.js') {
@@ -577,9 +604,11 @@ export async function createRequestHandler(opts) {
     const earlyStatic = await tryServeFrameworkStatic(path, req.method.toUpperCase(), { coreDir, appDir, dev, versioned: url.searchParams.has('v') });
     if (earlyStatic) return earlyStatic;
 
+    // Build all whole-app analysis on the first request (memoized), before
+    // any SSR, module serve, gate check, action dispatch, or middleware runs.
     await ensureReady();
 
-    return handleCore(req, {
+    const next = () => handleCore(req, {
       state,
       appDir,
       coreDir,
@@ -591,6 +620,17 @@ export async function createRequestHandler(opts) {
       cspEnabled: cspConfig.enabled,
       allowedOrigins: allowedOriginsValue,
     });
+
+    if (state.middleware) {
+      try {
+        return await state.middleware(req, next);
+      } catch (e) {
+        reportError(e, req, 'middleware');
+        logger.error('middleware threw', { err: String(e), requestId: getRequestId() });
+        return new Response('Server error', { status: 500 });
+      }
+    }
+    return next();
   }
 
   function routeFor(pathname) {

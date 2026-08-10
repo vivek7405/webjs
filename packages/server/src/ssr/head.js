@@ -497,24 +497,29 @@ export function wrapHead(opts) {
     }
   }
 
-  const title = m.title ? `<title>${escapeHtml(m.title)}</title>` : '<title>App</title>';
-  const hostStyle = `<style${n}>@layer webjs-host{:where([data-wj-host]){display:block}:where([data-wj-host][hidden]:not([hidden='until-found'])){display:none}}</style>`;
-  const envShim = publicEnvShim(opts);
+  // Byte-identical to the pre-split template. Every hole is unconditional
+  // and carries its own newline, INCLUDING the csp-nonce meta, which renders
+  // as an EMPTY line when there is no nonce. Collapsing that into a
+  // conditional line makes the CSP-off document one newline shorter than the
+  // CSP-on one, and the framework guarantees the two render identically
+  // apart from the nonce itself.
+  const title = m.title || 'webjs app';
 
-  return (
-    `<!doctype html>\n<html lang="en">\n<head>\n` +
-    `<meta charset="utf-8">\n` +
-    `${hostStyle}\n` +
-    `${opts.nonce ? `<meta name="csp-nonce" content="${escapeAttr(opts.nonce)}">\n` : ''}` +
-    (metaTags.length ? metaTags.join('\n') + '\n' : '') +
-    `${title}\n` +
-    `${envShim}${clientRouterEnabled() ? '' : `\n<script${n}>window.__WEBJS_CLIENT_ROUTER__=false;</script>`}\n` +
-    `${importMapTag({ nonce: opts.nonce })}\n` +
-    (linkTags.length ? linkTags.join('\n') + '\n' : '') +
-    (scriptTags.length ? scriptTags.join('\n') + '\n' : '') +
-    `${boot}\n` +
-    `${reload}\n` +
-    `${suspenseBoot}\n` +
-    `</head>\n<body>\n`
-  );
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style${n}>@layer webjs-host{:where([data-wj-host]){display:block}:where([data-wj-host][hidden]:not([hidden='until-found'])){display:none}}</style>
+${opts.nonce ? `<meta name="csp-nonce" content="${escapeAttr(opts.nonce)}">` : ''}
+${metaTags.join('\n')}
+<title>${escapeHtml(title)}</title>
+${publicEnvShim({ dev: opts.dev, nonce: opts.nonce })}${clientRouterEnabled() ? '' : `\n<script${n}>window.__WEBJS_CLIENT_ROUTER__=false;</script>`}
+${importMapTag({ nonce: opts.nonce })}
+${linkTags.join('\n')}
+${scriptTags.length ? scriptTags.join('\n') + '\n' : ''}${boot}
+${reload}
+${suspenseBoot}
+</head>
+<body>
+`;
 }

@@ -10,6 +10,7 @@ import { propagateTrustedRemoteIp } from '../rate-limit.js';
 import { isRegenerateOutputPath } from '../dev-regenerate.js';
 import { stripBasePath } from '../base-path.js';
 import { basePath } from '../importmap.js';
+import { attachWebSocket } from '../websocket.js';
 import { toWebRequest, sendWebResponse } from './helpers.js';
 
 function debounce(fn, ms) {

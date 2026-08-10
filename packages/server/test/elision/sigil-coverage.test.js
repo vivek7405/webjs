@@ -22,7 +22,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 
 /** The closed evidence set the report contract promises (#1308). */
 const EVIDENCE = ['own', 'observed', 'closure', 'render', 'import', 'unreadable'];
@@ -114,8 +114,18 @@ test('the renderers route binding recognition through BINDING_PREFIXES (no stray
   // Both renderers must consume the shared set, not re-hardcode a prefix. A
   // future hand-added `prefix === '<sigil>'` branch would bypass the single
   // source of truth and dodge the partition guard, so forbid it.
+  // Each renderer is a barrel over a sibling directory, so read the barrel AND
+  // every module under it: the import and any stray literal now live in the
+  // sub-modules, and scanning only the barrel would make this guard vacuous.
   for (const file of ['render-client.js', 'render-server.js']) {
-    const src = readFileSync(resolve(coreSrc, file), 'utf8');
+    const dir = resolve(coreSrc, file.replace(/\.js$/, ''));
+    const parts = [resolve(coreSrc, file)];
+    if (existsSync(dir)) {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isFile() && e.name.endsWith('.js')) parts.push(resolve(dir, e.name));
+      }
+    }
+    const src = parts.map((p) => readFileSync(p, 'utf8')).join('\n');
     assert.match(src, /binding-prefixes\.js/, `${file} must import the shared BINDING_PREFIXES`);
     for (const p of Object.keys(BINDING_PREFIXES)) {
       const lit = `['"\`]\\${p}['"\`]`;

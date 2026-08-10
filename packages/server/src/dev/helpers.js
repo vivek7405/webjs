@@ -173,8 +173,14 @@ export function locateCoreDir(appDir) {
     const pkgPath = require.resolve('@webjsdev/core/package.json');
     return dirname(pkgPath);
   } catch {}
+  // Workspace fallback when the app dir cannot resolve `@webjsdev/core`.
+  // This file lives at `packages/server/src/dev/helpers.js`, one directory
+  // deeper than the pre-split `packages/server/src/dev.js`, so the walk up to
+  // `packages/` needs FOUR steps, not three. Getting this wrong resolves to
+  // `packages/server/core`, which does not exist, and every `/__webjs/core/*`
+  // request 404s while the importmap still points at it.
   const here = fileURLToPath(import.meta.url);
-  return resolve(here, '..', '..', '..', 'core');
+  return resolve(here, '..', '..', '..', '..', 'core');
 }
 
 export function locatePackageDir(appDir, pkgName) {
