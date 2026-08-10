@@ -28,4 +28,5 @@ export {
   _jsonLdScript,
   preloadCrossOriginAttr,
   integrityAttr,
+  setMetadataIconRoutes,
 } from './ssr/head.js';

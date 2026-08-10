@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 
 import { buildRouteTable, matchPage, matchApi } from '../router.js';
 import { generateRouteTypes } from '../route-types.js';
-import { ssrPage, ssrNotFound, setClientRouterEnabled } from '../ssr.js';
+import { ssrPage, ssrNotFound, setClientRouterEnabled, setMetadataIconRoutes } from '../ssr.js';
 import { runFormAction, reportFormSubmittedAsGet } from '../form-dispatch.js';
 import { handleApi } from '../api.js';
 import {
@@ -164,6 +164,12 @@ export async function createRequestHandler(opts) {
 
   const routeTable = await buildRouteTable(appDir);
   routeTable.instrumentationClient = await findInstrumentationClient(appDir);
+  // Auto-linked favicons: tell the head builder which icon metadata routes
+  // exist, so `app/icon.*` is linked when the app declares no metadata.icons.
+  // Bound here rather than threaded through ssrOpts, matching
+  // setClientRouterEnabled; re-bound in doRebuild so adding or deleting the
+  // file takes effect without a restart.
+  setMetadataIconRoutes(routeTable.metadataRoutes);
 
   async function emitRouteTypes() {
     try {
@@ -401,6 +407,8 @@ export async function createRequestHandler(opts) {
   async function doRebuild() {
     state.routeTable = await buildRouteTable(appDir);
     state.routeTable.instrumentationClient = await findInstrumentationClient(appDir);
+    // Adding or deleting app/icon.* changes whether the head auto-links it.
+    setMetadataIconRoutes(state.routeTable.metadataRoutes);
     if (dev) void emitRouteTypes();
     clearVendorCache();
     clearAssetHashCache();

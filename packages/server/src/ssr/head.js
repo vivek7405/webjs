@@ -6,6 +6,58 @@ import { vendorIntegrityFor } from '../importmap.js';
 import { publicEnvShim } from './document.js';
 import { clientRouterEnabled } from './render.js';
 
+// Which icon metadata ROUTES the app has (`app/icon.*`, `app/apple-icon.*`).
+// Set at boot and on each route rebuild from the route table, the same shape
+// as setClientRouterEnabled, so no opt has to thread through every render
+// path. Empty by default, which keeps an app that declares its icons (or has
+// neither route) byte-identical.
+//
+// This sits in head.js rather than beside `_clientRouterEnabled` in render.js,
+// where the pre-split file happened to put it: `wrapHead` is the only reader,
+// and module state belongs with the code that uses and writes it.
+/** @type {{ icon: boolean, apple: boolean }} */
+let _metadataIconRoutes = { icon: false, apple: false };
+
+/**
+ * Record the icon metadata routes the app defines.
+ *
+ * @param {Iterable<{ stem: string }> | null | undefined} metadataRoutes
+ *   The route table's `metadataRoutes`, or nullish to clear.
+ */
+export function setMetadataIconRoutes(metadataRoutes) {
+  const stems = new Set();
+  for (const r of metadataRoutes || []) if (r && r.stem) stems.add(r.stem);
+  _metadataIconRoutes = { icon: stems.has('icon'), apple: stems.has('apple-icon') };
+}
+
+/**
+ * The implicit `metadata.icons` an app's icon routes stand for, or null when
+ * it has none. Base-path prefixed, because that is where the routes are
+ * SERVED: the listener strips the base path before matching, so under
+ * `webjs.basePath` the route answers at `<basePath>/icon`. A user-authored
+ * `icons` URL is deliberately left alone (it may be cross-origin, and the
+ * author writes the path they mean), so only these framework-emitted ones
+ * are prefixed.
+ *
+ * No `type` or `sizes` is emitted. A metadata route picks its own content
+ * type at request time, which is the reason to use one, so declaring a type
+ * here could contradict the bytes; and `sizes` is unknowable without reading
+ * the response. Both are optional in HTML, and a browser sniffs the served
+ * content type.
+ *
+ * @returns {{ icon?: string, apple?: string } | null}
+ */
+function autoMetadataRouteIcons() {
+  const { icon, apple } = _metadataIconRoutes;
+  if (!icon && !apple) return null;
+  const bp = basePath();
+  /** @type {{ icon?: string, apple?: string }} */
+  const out = {};
+  if (icon) out.icon = withBasePath('/icon', bp);
+  if (apple) out.apple = withBasePath('/apple-icon', bp);
+  return out;
+}
+
 export function escapeJsonLd(str) {
   return String(str)
     .replace(/</g, '\\u003c')
@@ -446,10 +498,21 @@ export function wrapHead(opts) {
     linkTags.push(`<link rel="preconnect" href="${escapeAttr(origin)}" crossorigin>`);
   }
 
-  if (m.icons) {
-    const buckets = typeof m.icons === 'string' || Array.isArray(m.icons)
-      ? { icon: m.icons }
-      : m.icons;
+  //
+  // With no `icons` declared, an `app/icon.*` / `app/apple-icon.*` metadata
+  // ROUTE is linked automatically (Next parity). Those routes served their
+  // bytes and nothing referenced them before, so writing the file that every
+  // other framework treats as "this is my favicon" produced a blank tab and no
+  // diagnostic. A declared `icons` SUPPRESSES the routes rather than merging
+  // with them, which is also what Next does: it merges static icon files only
+  // when the resolved metadata has no `icons` of its own. Suppressing matters
+  // here because the file is frequently a placeholder an app has outgrown, and
+  // an author who names their icons has said which ones they want.
+  const declaredOrRouteIcons = m.icons || autoMetadataRouteIcons();
+  if (declaredOrRouteIcons) {
+    const buckets = typeof declaredOrRouteIcons === 'string' || Array.isArray(declaredOrRouteIcons)
+      ? { icon: declaredOrRouteIcons }
+      : declaredOrRouteIcons;
     const pushIcon = (rel, entry) => {
       if (!entry) return;
       const items = Array.isArray(entry) ? entry : [entry];
