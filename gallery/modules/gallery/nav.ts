@@ -63,7 +63,7 @@ export const FEATURE_GROUPS: NavGroup[] = [
     items: [
       { href: '/features/caching', title: 'Caching', blurb: 'export const revalidate caches the page HTML per URL, with the safety rule for when a shared cache is allowed.' },
       { href: '/features/env', title: 'Env vars', blurb: 'The server-only vs WEBJS_PUBLIC_ boundary, read during SSR so secrets never reach the browser.' },
-      { href: '/features/rate-limit', title: 'Rate limiting', blurb: 'The rateLimit() middleware scoped to one endpoint, returning a 429 with Retry-After past the window.' },
+      { href: '/features/rate-limit', title: 'Rate limiting', blurb: 'The rateLimit() middleware scoped to one endpoint, returning a 429 with Retry-After once the interval resets.' },
       { href: '/features/file-storage', title: 'File storage', blurb: 'A no-JS multipart upload streamed into the FileStore, then served back through a streaming route.' },
       { href: '/features/service-worker', title: 'Service worker', blurb: 'The opt-in offline enhancement, registered from a browser-only lifecycle hook (never a page or layout).' },
     ],
@@ -75,5 +75,14 @@ export const EXAMPLES: NavItem[] = [
   { href: '/examples/todo', title: 'Optimistic todo', blurb: 'A whole app composing several features: the declarative optimistic() list API, progressive-enhancement forms, accessible labels, the modules split, and SQLite.' },
 ];
 
-/** Flattened single-feature list (for the home card grid). */
-export const FEATURES: NavItem[] = FEATURE_GROUPS.flatMap((g) => g.items);
+/**
+ * Flattened single-feature list (for the home card grid).
+ *
+ * This is a function, not a `const` initialised by a top-level `.flatMap()`
+ * call. A top-level call is a module side effect, so the const form pinned
+ * every page importing this module into the browser bundle, even a home page
+ * with no client behaviour at all. Call it inside the render function.
+ */
+export function featureList(): NavItem[] {
+  return FEATURE_GROUPS.flatMap((g) => g.items);
+}

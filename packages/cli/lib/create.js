@@ -1378,13 +1378,16 @@ import { cardClass } from '#components/ui/card.ts';
 import { badgeClass } from '#components/ui/badge.ts';
 // The demo index is defined once in modules/gallery/nav.ts (the same source the
 // left sidebar reads), so the home cards and the sidebar can never drift.
-import { FEATURES, EXAMPLES } from '#modules/gallery/nav.ts';
+import { featureList, EXAMPLES } from '#modules/gallery/nav.ts';
 
 export const metadata = {
   title: '${displayName}',
 };
 
 export default function Home() {
+  // Flattened HERE rather than at module scope. A top-level call is a module
+  // side effect, which would ship this page to the browser for nothing.
+  const FEATURES = featureList();
   return html\`
     <div class="py-8 flex flex-col items-center gap-16">
       <!-- Hero -->
