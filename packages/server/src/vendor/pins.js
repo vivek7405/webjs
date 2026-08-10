@@ -453,6 +453,16 @@ async function fetchIntegrity(url) {
   }
 }
 
+/**
+ * After writing the new pin output, delete any file in the pin
+ * directory that doesn't belong. Handles three orphan scenarios
+ * uniformly: version-bump leftovers, removed packages, and mode
+ * switches (default <-> download).
+ *
+ * @param {string} appDir
+ * @param {Set<string>} expected  filenames that should remain
+ * @returns {Promise<string[]>}   list of pruned filenames
+ */
 async function pruneOrphans(appDir, expected) {
   const dir = pinDir(appDir);
   let files;
@@ -825,6 +835,15 @@ export async function pinAll(appDir, opts = {}) {
     : { pins, pruned, downloaded, provider: from };
 }
 
+/**
+ * Remove a single package from the committed pin output. Deletes the
+ * package's entry from `importmap.json`, and (if a bundle file
+ * exists for it) deletes that file too.
+ *
+ * @param {string} appDir
+ * @param {string} pkg
+ * @returns {Promise<{ removed: boolean, deletedFile?: string }>}
+ */
 export async function unpinPackage(appDir, pkg) {
   const file = await readPinFile(appDir);
   if (!file || !(pkg in file.imports)) return { removed: false };
@@ -849,6 +868,13 @@ export async function unpinPackage(appDir, pkg) {
   return { removed: true, deletedFile };
 }
 
+/**
+ * List entries from the committed pin file. Parses the package
+ * version from the URL (jspm.io URL or the local file's @version).
+ *
+ * @param {string} appDir
+ * @returns {Promise<Array<{ pkg: string, version: string, url: string, bytes?: number }>>}
+ */
 export async function listPinned(appDir) {
   const file = await readPinFile(appDir);
   if (!file) return [];

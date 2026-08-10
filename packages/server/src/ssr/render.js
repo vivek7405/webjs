@@ -129,6 +129,13 @@ async function loadModule(file, dev) {
   return import(url + bust);
 }
 
+/**
+ * Nearest-wins boundary file from a chain projected outermost -> innermost
+ * (the router builds these arrays via chainOf). The innermost (last) wins, the
+ * same "nearest boundary" rule error.js uses. Returns null for an empty chain.
+ * @param {string[] | undefined} files
+ * @returns {string | null}
+ */
 function nearest(arr) {
   return arr && arr.length ? arr[arr.length - 1] : null;
 }
@@ -148,6 +155,10 @@ function escapeHtml(s) {
     .replace(/>/g, '&gt;');
 }
 
+/**
+ * @param {string} file
+ * @param {string} appDir
+ */
 function toUrlPath(file, appDir) {
   let rel = file.startsWith(appDir) ? file.slice(appDir.length) : file;
   return rel.split('\\').join('/').replace(/^\/?/, '/');
@@ -325,6 +336,23 @@ function reachedVendorSpecifiers(graph, entryFiles, componentUrls, appDir, elida
   return specs;
 }
 
+/**
+ * The CSP nonce for the in-flight request, or undefined if none is in
+ * scope. Delegates to `cspNonce()`, which returns the per-request nonce
+ * the handler MINTED when CSP is enabled (issue #233), or, as a fallback,
+ * the nonce parsed from an inbound `Content-Security-Policy` request
+ * header (the legacy consume-only path). Using the same source as the
+ * `Content-Security-Policy` response header is what guarantees the inline
+ * boot script, the importmap, the modulepreload hints, and the header all
+ * carry the EXACT same nonce: one minted value, no drift.
+ *
+ * `req` is accepted (and ignored) so existing call sites stay unchanged;
+ * the value comes from the request-scoped AsyncLocalStorage store, not
+ * the argument.
+ *
+ * @param {Request} [_req]
+ * @returns {string | undefined}
+ */
 function getNonce(req) {
   const n = cspNonce();
   if (n) return n;
@@ -333,6 +361,21 @@ function getNonce(req) {
   return undefined;
 }
 
+/**
+ * Rebuild a Response from a cached HTML record (#241). The stored body is
+ * the stable per-page HTML; the per-response varying bits are re-minted
+ * here so a new visitor still gets them: the published build id is re-read so
+ * a post-deploy client sees the current id. No cookie is set (action CSRF is
+ * an Origin / Sec-Fetch-Site check), which is what keeps a cached page
+ * cookieless and shareable. The BUFFERED marker opts the cached body into
+ * the conditional-GET funnel exactly as a fresh render does, so a cached
+ * PUBLIC-cacheable page still 304s. Output is observably identical to the
+ * fresh render of the same route within the window.
+ *
+ * @param {{ body: string, contentType: string, cacheControl: string, status: number }} rec
+ * @param {Request | undefined} req
+ * @param {URL | undefined} url
+ */
 function cachedHtmlResponse(rec, req, url) {
   const headers = new Headers({ 'content-type': rec.contentType || 'text/html; charset=utf-8' });
   headers.set('cache-control', rec.cacheControl || 'no-store');
@@ -900,6 +943,15 @@ async function renderChain(route, ctx, dev, suspenseCtx, have, pageModule) {
   return { html: body + (await loadingTemplates(route, ctx, dev)), reduced: false };
 }
 
+/**
+ * Render a simple boundary page (forbidden / unauthorized, #848) at the given
+ * default heading. Loads the nearest boundary module when one exists (its
+ * default export receives no props, like not-found), else emits the default
+ * heading. Mirrors ssrNotFoundHtml.
+ * @param {string | null} file
+ * @param {string} heading  e.g. '403: Forbidden'
+ * @param {{ dev: boolean, appDir: string, req?: Request }} opts
+ */
 async function ssrBoundaryHtml(file, defaultTitle, opts) {
   if (file) {
     try {
@@ -922,6 +974,23 @@ async function ssrNotFoundHtml(notFoundFile, opts) {
   return ssrBoundaryHtml(notFoundFile, '404: Not found', opts);
 }
 
+/**
+ * SSR a matched page route to a Response.
+ *
+ * Mirrors NextJs semantics:
+ *   - Page + layout default exports can be async.
+ *   - `metadata` named export on layouts/pages is merged (page > innermost layout > … > root).
+ *   - `notFound()` and `redirect()` thrown anywhere in the chain are caught
+ *     and converted to 404 or 3xx responses.
+ *   - On a render error we walk up the chain looking for the nearest `error.js`
+ *     and render that instead (falls back to a plain error page).
+ *
+ * @param {import('./router.js').PageRoute} route
+ * @param {Record<string,string>} params
+ * @param {URL} url
+ * @param {{ dev: boolean, appDir: string, req?: Request, moduleGraph?: import('./module-graph.js').ModuleGraph, serverFiles?: Map<string,string> | Set<string>, actionData?: unknown, status?: number, pageModule?: Record<string, unknown>, cspEnabled?: boolean }} opts
+ * @returns {Promise<Response>}
+ */
 export async function ssrPage(route, params, url, opts) {
   const cacheEligible =
     !opts.actionData &&

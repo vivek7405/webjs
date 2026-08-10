@@ -170,6 +170,16 @@ export function resolveRequestId(req) {
   return crypto.randomUUID();
 }
 
+/**
+ * Whether a path should be access-logged (issue #239). The framework's own
+ * `/__webjs/*` probes, static runtime assets, and the dev SSE reload stream
+ * are high-frequency infrastructure traffic, not app requests, so logging them
+ * would just spam the access log. App routes (including app-authored
+ * `/api/*`) are logged.
+ *
+ * @param {string} pathname
+ * @returns {boolean}
+ */
 export function shouldAccessLog(pathname) {
   return !pathname.startsWith('/__webjs/');
 }
@@ -313,6 +323,11 @@ export function appTopLevelDirs(appDir) {
   }
 }
 
+/**
+ * Find the absolute directory of the `@webjsdev/core` package, regardless of
+ * whether we're running from the monorepo or an installed copy.
+ * @param {string} appDir
+ */
 export function locateCoreDir(appDir) {
   try {
     const require = createRequire(join(appDir, 'package.json'));
@@ -358,6 +373,14 @@ const DEV_OVERLAY_SRC = readFileSync(new URL('../dev-overlay.js', import.meta.ur
 const RELOAD_WORKER_SRC = readFileSync(new URL('../dev-reload-worker.js', import.meta.url), 'utf8')
   .replace(/^export /gm, '');
 
+/**
+ * The dev live-reload client. The `EventSource` URL is a framework-emitted
+ * same-origin path, so it must carry the base path under a sub-path deploy
+ * (#256), like the importmap targets and the RPC stub. No-op when basePath
+ * is empty.
+ * @param {string} bp the normalized base path (`''` = no-op)
+ * @returns {string}
+ */
 export function reloadClientJs(bp) {
   // The overlay renderer uses textContent throughout (never innerHTML), so the
   // error message / code frame can never inject markup (#264). Served only in

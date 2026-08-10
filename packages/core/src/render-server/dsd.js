@@ -1302,6 +1302,15 @@ export function fromCodePoint(n) {
   return String.fromCodePoint(n);
 }
 
+/**
+ * Decode `data-webjs-prop-<kebab>` attributes from a parsed attribute
+ * map, returning a map of camelCase property name to decoded value.
+ * Mutates `attrs` by deleting the consumed entries so they do not
+ * appear in the rendered output a second time.
+ *
+ * @param {Record<string,string>} attrs
+ * @returns {Record<string, unknown>}
+ */
 export function consumePropAttrs(attrs) {
   const props = {};
   for (const key of Object.keys(attrs)) {

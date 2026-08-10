@@ -197,6 +197,16 @@ function startNodeListener(ctx) {
   };
 }
 
+/**
+ * @param {{
+ *   appDir: string,
+ *   port?: number,
+ *   dev?: boolean,
+ *   compress?: boolean,
+ *   logger?: import('./logger.js').Logger,
+ *   onError?: (error: unknown, ctx: { request: Request, requestId: string|null, phase: string }) => void,
+ * }} opts
+ */
 export async function startServer(opts) {
   const dev = !!opts.dev;
   const port = opts.port ?? 8080;

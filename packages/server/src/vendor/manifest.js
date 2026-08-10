@@ -2,6 +2,14 @@ import { readFileSync, existsSync, realpathSync } from 'node:fs';
 import { join, dirname, sep } from 'node:path';
 import { createRequire } from 'node:module';
 
+/**
+ * Resolve a package's installed directory on disk, handling both direct
+ * installation and npm workspace hoisting.
+ *
+ * @param {string} pkgName
+ * @param {string} appDir
+ * @returns {string | null}
+ */
 function resolvePackageDir(pkgName, appDir) {
   let entry;
   try {

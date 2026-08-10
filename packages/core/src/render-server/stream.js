@@ -43,6 +43,23 @@ export async function renderToString(value, opts = { ssr: true }) {
   return opts && opts.ssr === false ? html : await injectDSD(html, ctx, [], dev);
 }
 
+/**
+ * Render a TemplateResult (or any renderable value) to a `ReadableStream`
+ * that yields HTML chunks as strings.
+ *
+ * Works identically to {@link renderToString} but streams partial HTML as
+ * it is rendered: avoiding buffering the entire page in memory. For
+ * Suspense boundaries, the fallback is yielded immediately and resolved
+ * content is streamed afterwards at the end of the response.
+ *
+ * **AI hint:** Use `renderToStream` when you want to pipe SSR output
+ * directly into a `Response` for streaming delivery (e.g. HTTP chunked
+ * transfer). It accepts the same arguments as `renderToString`.
+ *
+ * @param {unknown} value  A TemplateResult, string, array, or any renderable.
+ * @param {{ ssr?: boolean, suspenseCtx?: SuspenseCtx }} [opts]
+ * @returns {ReadableStream<string>}
+ */
 export function renderToStream(value, opts = { ssr: true }) {
   const ctx = opts && opts.suspenseCtx;
   const dev = opts && opts.dev !== undefined ? opts.dev : ctx && ctx.dev;

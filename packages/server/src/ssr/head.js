@@ -58,6 +58,26 @@ function autoMetadataRouteIcons() {
   return out;
 }
 
+/**
+ * HTML-safe-escape a JSON string for embedding inside a
+ * `<script type="application/ld+json">` element.
+ *
+ * This is NOT the HTML-entity escaper (escapeHtml / escapeAttr). A
+ * JSON parser reads the raw character, so turning `<` into `&lt;`
+ * would CORRUPT the JSON. Instead we emit the Unicode escape form
+ * (`<`), which a JSON parser decodes back to the original
+ * character while making the literal byte sequence `</script>`
+ * impossible to form in the served HTML. So the embedded data parses
+ * back to the author's exact object, AND a value containing
+ * `</script><img onerror=...>` can never break out of the script tag.
+ *
+ * U+2028 / U+2029 are escaped too: they are valid inside a JSON
+ * string but are line terminators in HTML/JS contexts, and some
+ * consumers choke on them. Escaping keeps the block robust.
+ *
+ * @param {string} json  the `JSON.stringify` output
+ * @returns {string}
+ */
 export function escapeJsonLd(str) {
   return String(str)
     .replace(/</g, '\\u003c')
@@ -67,6 +87,16 @@ export function escapeJsonLd(str) {
     .replace(/\u2029/g, '\\u2029');
 }
 
+/**
+ * Serialize one schema.org object into a `<script type="application/ld+json">`
+ * block, HTML-safe-escaped via escapeJsonLd. Fails SAFE: a non-object
+ * input, or a circular reference that makes JSON.stringify throw, is
+ * skipped (returns the empty string) with a one-line warn, never breaking
+ * the whole render.
+ *
+ * @param {unknown} obj
+ * @returns {string}  the script tag, or '' to skip this element
+ */
 export function jsonLdScript(obj) {
   if (!obj || typeof obj !== 'object') return '';
   try {
@@ -184,6 +214,17 @@ export function collectHoistedHeadTags(bodyHtml) {
   return { tags, body };
 }
 
+/**
+ * Extract leading `<script>`, `<style>`, and `<link>` tags from the body
+ * HTML and hoist them into `<head>`. Ensures blocking scripts (e.g.
+ * Tailwind runtime, theme bootstrap) run before any body content renders,
+ * and that `<link rel="icon">` / `<link rel="stylesheet">` land where
+ * browsers reliably honour them.
+ *
+ * @param {string} headHtml
+ * @param {string} bodyHtml
+ * @returns {{ head: string, body: string }}
+ */
 export function hoistHeadTags(headHtml, bodyHtml) {
   const { tags: hoisted, body: remaining } = collectHoistedHeadTags(bodyHtml);
   if (!hoisted.length) return { head: headHtml, body: bodyHtml };

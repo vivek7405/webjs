@@ -190,6 +190,11 @@ export function bindPart(p, root) {
   throw new Error(`unknown part kind ${/** @type any */(p).kind}`);
 }
 
+/**
+ * @param {BoundPart} part
+ * @param {unknown} value
+ * @param {unknown} _prev
+ */
 export function applyPart(part, value, _prev, allValues, reconcileFormActionsCb) {
   if (isLive(value)) {
     const liveVal = /** @type any */ (value).value;
@@ -321,6 +326,16 @@ export function isInShadowRootEl(el) {
   return false;
 }
 
+/**
+ * Apply a value at an element-position part (`<tag ${expr}>`). The
+ * sole supported directive here is `ref(refOrCallback)` and
+ * `createRef()`. Other values are ignored so a stray non-ref hole
+ * doesn't crash. Tracks the prior target so a change from one ref to
+ * another correctly unsets the old target before binding the new one.
+ *
+ * @param {Extract<BoundPart, {kind:'element'}>} part
+ * @param {unknown} value
+ */
 export function applyElement(part, value) {
   const partAny = /** @type any */ (part);
   const nextTarget = isRef(value) ? /** @type any */ (value).target : undefined;
@@ -357,12 +372,26 @@ export function applyChild(part, value, reconcileFormActionsCb) {
   return applyChildInner(part, value, reconcileFormActionsCb);
 }
 
+/**
+ * Internal dispatch. Used both by `applyChild` (which first clears
+ * stale per-part directive state) and by directive handlers that
+ * recurse with a different value at the same part. Recursing via
+ * `applyChild` would clear the directive state that was just set,
+ * because the inner value almost always isn't itself a directive.
+ *
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {unknown} value
+ */
 export function applyChildInner(part, value, reconcileFormActionsCb) {
   return commitInto(part.marker && part.marker.parentNode, () =>
     applyChildInnerRaw(part, value, reconcileFormActionsCb),
   );
 }
 
+/**
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {unknown} value
+ */
 export function applyChildInnerRaw(part, value, reconcileFormActionsCb) {
   const marker = part.marker;
 
@@ -603,6 +632,12 @@ export function nodesToFrag(nodes) {
   return frag;
 }
 
+/**
+ * Build a TemplateInstance whose nodes (including bookends) live in a
+ * document fragment that the caller will insert wherever it wants.
+ * @param {import('./html.js').TemplateResult} tr
+ * @returns {{ inst: TemplateInstance, frag: DocumentFragment }}
+ */
 export function buildDetached(tr, reconcileFormActionsCb) {
   const { templateEl, parts, formActions } = compile(tr);
   const frag = /** @type DocumentFragment */ (templateEl.content.cloneNode(true));
@@ -646,6 +681,14 @@ export function disposeInstance(inst) {
   }
 }
 
+/**
+ * Initial fresh render of a repeat directive. Inserts all items' nodes
+ * immediately before the part's marker comment.
+ *
+ * @param {Comment} marker
+ * @param {{ kind: 'repeat', map: Map<any, TemplateInstance> }} state
+ * @param {any} value
+ */
 function applyRepeatFresh(marker, state, value, reconcileFormActionsCb) {
   const { items, keyFn, templateFn } = value;
   const parent = marker.parentNode;
@@ -662,6 +705,16 @@ function applyRepeatFresh(marker, state, value, reconcileFormActionsCb) {
   parent.insertBefore(bulk, marker);
 }
 
+/**
+ * Keyed reconciliation. For each key in the new list:
+ *   - hit: update the existing instance in place (if template shape matches),
+ *     then move its nodes into position
+ *   - miss: build a new instance and insert
+ * Finally drop instances whose keys aren't in the new list.
+ *
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {any} value
+ */
 function reconcileRepeat(part, value, reconcileFormActionsCb) {
   const marker = part.marker;
   const parent = marker.parentNode;
@@ -753,6 +806,13 @@ function removeArrayItem(item) {
   }
 }
 
+/**
+ * Build the slot for one array element, plus the fragment to insert (null
+ * for an empty slot). A TemplateResult becomes a detached instance, a
+ * primitive becomes a text node, and nullish / boolean renders nothing.
+ * @param {unknown} v
+ * @returns {{ item: ArrayItem, frag: Node | null }}
+ */
 function buildArrayItem(v, reconcileFormActionsCb) {
   if (isTemplate(v)) {
     const { inst, frag } = buildDetached(/** @type any */ (v), reconcileFormActionsCb);
@@ -765,6 +825,12 @@ function buildArrayItem(v, reconcileFormActionsCb) {
   return { item: { type: 'empty' }, frag: null };
 }
 
+/**
+ * Initial render of a plain array: insert every slot's nodes before the marker.
+ * @param {Comment} marker
+ * @param {{ kind: 'array', items: ArrayItem[] }} state
+ * @param {unknown[]} value
+ */
 function applyArrayFresh(marker, state, value, reconcileFormActionsCb) {
   const parent = marker.parentNode;
   if (!parent) return;
@@ -779,6 +845,15 @@ function applyArrayFresh(marker, state, value, reconcileFormActionsCb) {
   state.items = items;
 }
 
+/**
+ * Positional (non-keyed) reconciliation. For each index, update the slot
+ * in place when its shape is unchanged (preserving DOM node identity),
+ * otherwise replace it; grow or shrink at the tail. There is no key
+ * matching, so a reorder reduces to a series of in-place value updates;
+ * reach for `repeat()` when element identity must follow a moved key.
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {unknown[]} value
+ */
 function reconcileArray(part, value, reconcileFormActionsCb) {
   const marker = part.marker;
   const parent = marker.parentNode;
@@ -958,6 +1033,22 @@ export function clearStaleDirectiveState(part, value) {
  * toggling between sub-templates preserves their DOM state.
  * ================================================================ */
 
+/**
+ * Apply the `cache` directive at a child position. The cache is stored
+ * on the part as `__cacheMap: Map<strings, { inst, holderFrag }>`.
+ *
+ * When the new inner value is a template whose `strings` already lives
+ * in the cache map, re-attach the stashed nodes before the marker and
+ * reconcile values against the new template. When the new inner is a
+ * template whose strings aren't cached, stash the currently-attached
+ * instance (if any) into the cache map before rendering the new one.
+ *
+ * Non-template inner values fall through to the generic applyChild path
+ * (after first stashing any currently-attached cached instance).
+ *
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {unknown} inner
+ */
 function applyCache(part, inner, reconcileFormActionsCb) {
   const marker = part.marker;
   const partAny = /** @type any */ (part);
@@ -1018,6 +1109,24 @@ function applyCache(part, inner, reconcileFormActionsCb) {
   applyChildInner(part, inner, reconcileFormActionsCb);
 }
 
+/**
+ * Apply the `until` directive at a child position.
+ *
+ * Priority is left-to-right: args[0] has the highest priority. The
+ * highest-priority synchronous candidate (if any) renders immediately.
+ * Strictly-higher-priority Promises are awaited in the background; when
+ * one resolves AND no higher-priority Promise has already resolved, its
+ * result becomes the rendered value.
+ *
+ * The directive's state lives on `part.__untilState` (a stable slot
+ * that survives `applyChild`'s overwrites of `part.child`). When a new
+ * render replaces the directive, the prior state's `aborted` flag flips
+ * to `true` so any in-flight Promise resolutions short-circuit instead
+ * of overwriting newer DOM.
+ *
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {readonly unknown[]} args
+ */
 function applyUntil(part, args, reconcileFormActionsCb) {
   const partAny = /** @type any */ (part);
   if (currentRenderRoot) partAny.__commitOwner = boundaryOwnerOf(currentRenderRoot);
@@ -1129,6 +1238,22 @@ export function reportOutOfBandCommitError(part, error) {
   throw err;
 }
 
+/**
+ * Bind a child part to a signal. Reads the signal once and writes its
+ * value into the part. Installs a per-part `Signal.subtle.Watcher`
+ * that, on signal change, re-reads and re-applies the value WITHOUT
+ * re-running the host component's render(). When the part is torn
+ * down (teardownChild) the watcher is disposed.
+ *
+ * The signal read happens inside the watcher's `observe()`, so the
+ * dependency edge connects the signal to THIS watcher. The host's
+ * own render watcher is outside the active stack here, so the host
+ * does not also subscribe to the signal (which would double-fire as
+ * both a full re-render and a watch update).
+ *
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {{ get: () => unknown, __isSignal: true }} sig
+ */
 function applyWatch(part, sig, reconcileFormActionsCb) {
   const partAny = /** @type any */ (part);
   if (currentRenderRoot) partAny.__commitOwner = boundaryOwnerOf(currentRenderRoot);
@@ -1179,6 +1304,17 @@ function teardownWatch(partAny) {
  * asyncAppend / asyncReplace: stream from AsyncIterable.
  * ================================================================ */
 
+/**
+ * Apply `asyncAppend(iterable, mapper?)` at a child position.
+ *
+ * Iterates the AsyncIterable in the background. Each yielded value is
+ * mapped (optional) and rendered as a node group, appended before the
+ * marker. The state is stored on `part.child` so `teardownChild` can
+ * abort the iteration when the part is reset.
+ *
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {{ iterable: AsyncIterable<unknown>, mapper?: (v: unknown, i: number) => unknown }} dir
+ */
 function applyAsyncAppend(part, dir, reconcileFormActionsCb) {
   const partAny = /** @type any */ (part);
   if (currentRenderRoot) partAny.__commitOwner = boundaryOwnerOf(currentRenderRoot);
@@ -1207,6 +1343,13 @@ function applyAsyncAppend(part, dir, reconcileFormActionsCb) {
   consumeAsyncStream(state, part, dir, reconcileFormActionsCb);
 }
 
+/**
+ * Apply `asyncReplace(iterable, mapper?)` at a child position. Same as
+ * `applyAsyncAppend` but each new value replaces the previous content.
+ *
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {{ iterable: AsyncIterable<unknown>, mapper?: (v: unknown, i: number) => unknown }} dir
+ */
 function applyAsyncReplace(part, dir, reconcileFormActionsCb) {
   const partAny = /** @type any */ (part);
   if (currentRenderRoot) partAny.__commitOwner = boundaryOwnerOf(currentRenderRoot);
@@ -1235,6 +1378,35 @@ function applyAsyncReplace(part, dir, reconcileFormActionsCb) {
   consumeAsyncStream(state, part, dir, reconcileFormActionsCb);
 }
 
+/**
+ * Consume an AsyncIterable for `asyncAppend` / `asyncReplace`. Drives
+ * the iterator with an explicit `.next()` loop (rather than `for await`)
+ * so that `teardownAsyncStream` can call `iterator.return()` to break
+ * a generator parked on an `await`. The `aborted` flag is also checked
+ * after every `next()` resolve to short-circuit if abortion happened
+ * while the iterator was suspended.
+ *
+ * Each pass carries TWO try spans, and which failure lands in which is the
+ * load-bearing part. SPAN A is the author's own code, the iterable AND the
+ * `mapper` it was given, and a throw from either is logged to the console and
+ * ends the stream, on the long-standing reasoning that an author's iterable
+ * should handle its own errors. SPAN B is the chunk COMMIT, which is a render
+ * failure of the component whose template holds the binding, so it routes to
+ * that component's `renderError()` and stops the stream.
+ *
+ * Scope note: only a throw from the COMMIT can stop the stream from here. A
+ * directive nested INSIDE a committed chunk (a `watch` whose signal changes
+ * later) throws from its own handler, outside this loop entirely, so it
+ * reaches the boundary but this loop knows nothing about it and keeps
+ * pulling. That is the same for any directive nested anywhere else. lit is no authority
+ * either way here (it has no per-component boundary, and both failures become
+ * unhandled rejections at the window), so this follows the
+ * per-component error isolation WebJs has instead.
+ *
+ * @param {AsyncStreamState} state
+ * @param {Extract<BoundPart, {kind:'child'}>} part
+ * @param {{ iterable: AsyncIterable<unknown>, mapper?: (v: unknown, i: number) => unknown }} dir
+ */
 async function consumeAsyncStream(state, part, dir, reconcileFormActionsCb) {
   const marker = part.marker;
   let i = 0;
@@ -1280,6 +1452,12 @@ async function consumeAsyncStream(state, part, dir, reconcileFormActionsCb) {
   }
 }
 
+/**
+ * Render a single value into a flat list of DOM nodes for insertion via
+ * insertBefore. Handles strings, numbers, TemplateResult, and arrays.
+ * @param {unknown} value
+ * @returns {ChildNode[]}
+ */
 function renderToNodes(value, reconcileFormActionsCb) {
   if (value == null || value === false || value === true) return [];
   if (isTemplate(value)) {
@@ -1304,6 +1482,14 @@ function renderToNodes(value, reconcileFormActionsCb) {
   return [document.createTextNode(String(value))];
 }
 
+/**
+ * Abort an async-stream directive. Sets `aborted = true` (so the next
+ * `await iterator.next()` resolution short-circuits), removes all nodes
+ * rendered so far, and explicitly calls `iterator.return()` so a
+ * generator parked on `await` can unwind via its `finally` blocks
+ * instead of leaking.
+ * @param {AsyncStreamState} state
+ */
 function teardownAsyncStream(state) {
   state.aborted = true;
   for (const n of state.nodes) {

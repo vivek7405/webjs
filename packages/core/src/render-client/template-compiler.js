@@ -323,6 +323,14 @@ function discoverSlots(root, parts) {
   // time, lets a single cached template serve both DOM modes.
 }
 
+/**
+ * Walk the template fragment and record the path (chain of child indices) to
+ * each part's anchor node. We use marker comments for child parts and sentinel
+ * attributes for everything else.
+ *
+ * @param {DocumentFragment} root
+ * @param {PartDescriptor[]} parts
+ */
 function assignPaths(root, parts) {
   /** @type {number[]} */
   const path = [];

@@ -82,6 +82,16 @@ async function exists(p) {
   try { await stat(p); return true; } catch { return false; }
 }
 
+/**
+ * A short content digest of a single file's bytes for the app-source deploy
+ * signal (#899). Raw `sha256(bytes)`, deliberately independent of `assetHashFor`
+ * (which folds the elision fingerprint and memoizes for `?v` emission): the
+ * signal only needs "did the source bytes change", and server-only files never
+ * enter the asset-hash memo anyway. Returns `''` on a read failure, so a
+ * transient error degrades the id rather than throwing during analysis.
+ * @param {string} abs
+ * @returns {string}
+ */
 async function fileByteHash(abs) {
   try {
     const data = await readFile(abs);
@@ -92,6 +102,12 @@ async function fileByteHash(abs) {
 }
 
 let cachedServerVersion = null;
+/**
+ * The installed `@webjsdev/server` version (this package). Folded into the
+ * app-source deploy signal so a server-framework release (which alters SSR
+ * output but ships no new browser module) turns over the client's stale caches.
+ * @returns {string}
+ */
 function frameworkServerVersion() {
   if (cachedServerVersion) return cachedServerVersion;
   try {
@@ -103,6 +119,21 @@ function frameworkServerVersion() {
   return cachedServerVersion;
 }
 
+/**
+ * Create a reusable, framework-agnostic request handler for a WebJs app.
+ * The returned `handle(req)` takes a standard `Request` and resolves to a
+ * standard `Response`: suitable for Node http, Deno, Bun, Cloudflare Workers,
+ * or embedding inside an Express/Fastify app.
+ *
+ * @param {{
+ *   appDir: string,
+ *   dev?: boolean,
+ *   logger?: import('./logger.js').Logger,
+ *   onError?: (error: unknown, ctx: { request: Request, requestId: string|null, phase: string }) => void,
+ *   onReload?: () => void,
+ *   onDevError?: (frame: object) => void,
+ * }} opts
+ */
 export async function createRequestHandler(opts) {
   assertNodeVersion({ onFail: 'throw' });
   await ensureStripper();
@@ -116,6 +147,13 @@ export async function createRequestHandler(opts) {
   const onErrorSinks = [opts.onError, instrumentationOnError].filter((f) => typeof f === 'function');
   const hasOnError = onErrorSinks.length > 0;
 
+  /**
+   * Invoke every registered onError sink defensively. The phase is a coarse
+   * label of where the pipeline caught the error, for the sink's own grouping.
+   * @param {unknown} error
+   * @param {Request} request
+   * @param {string} phase
+   */
   function reportError(error, request, phase) {
     if (!hasOnError) return;
     const ctx = { request, requestId: getRequestId(), phase };
@@ -212,6 +250,19 @@ export async function createRequestHandler(opts) {
 
   setFormActionResolver((fn) => (state.actionIndex ? resolveActionIdentity(state.actionIndex, fn) : null));
 
+  /**
+   * Report a dev error (#264): build a frame and push it to the open tab via
+   * the SSE overlay channel. DEV-ONLY and best-effort, so it can never affect a
+   * response or crash the server (a frame-build failure is swallowed). No file
+   * path or source is ever built in prod (the early return), so nothing leaks.
+   *
+   * `info.url` stamps a `render` frame with the URL that produced it (#1047), so
+   * the browser overlay can refuse a frame for a page the tab is not viewing.
+   * A `ts-strip` / `rebuild` frame passes none and stays unscoped.
+   *
+   * @param {unknown} error
+   * @param {{ kind?: 'render'|'ts-strip'|'rebuild', file?: string, line?: number, column?: number, hint?: string, url?: string }} [info]
+   */
   function reportDevError(error, info = {}) {
     if (!dev) return;
     try {
@@ -641,6 +692,19 @@ export async function createRequestHandler(opts) {
     return next();
   }
 
+  /**
+   * Lightweight lookup used by the HTTP layer to emit 103 Early Hints
+   * BEFORE running SSR: resolves a pathname to its page-route module URLs
+   * without loading them. Returns null for non-page paths.
+   *
+   * Sub-path deployment (issue #256): the HTTP layer passes the RAW request
+   * pathname (still carrying the base path, since the ingress strip happens
+   * inside `produce`, not here), so strip it for route matching and prefix
+   * the emitted module URLs so the early-hint preloads resolve under the
+   * prefix. A path not under the base path yields null (no hints).
+   *
+   * @param {string} pathname
+   */
   function routeFor(pathname) {
     const matchPathname = basePathValue
       ? stripBasePath(pathname, basePathValue)
@@ -669,9 +733,30 @@ export async function createRequestHandler(opts) {
     handle,
     rebuild,
     routeFor,
+    /**
+     * Proactively run the first-request analysis (module graph, component
+     * scan, gate, action index, middleware, elision, vendor map) in the
+     * background, so a real first request finds it already memoized. Safe to
+     * call any number of times and concurrently: the work is single-flighted,
+     * so this never duplicates it or races a real request. It is a single
+     * best-effort kick: errors are caught and logged rather than thrown (a
+     * background warm-up must not crash the process), and whatever failed simply
+     * re-runs on the next request or readiness probe (the platform's traffic and
+     * probes are the retry loop, so there is no internal backoff). `startServer`
+     * calls this once the HTTP server is listening; embedders can call it after
+     * their own listen.
+     * @returns {Promise<void>}
+     */
     warmup: () => ensureReady().catch((e) => logger.error?.(`[webjs] background warm-up failed (will retry on the next request):`, e)),
     getRouteTable: () => state.routeTable,
+    /** Current unresolved dev error frame (#264), or null. Replayed by
+     * startServer to a freshly-connected SSE client so the overlay shows even
+     * after a navigation, not only on the breaking edit. Always null in prod. */
     getLastDevError: () => state.lastDevError,
+    /** Whether a dev-watcher filename is a `webjs.dev.regenerate` OUTPUT (#967),
+     * so `startServer`'s file watcher (a different scope, with no access to
+     * `state`) can skip a build product the server itself writes and avoid a
+     * spurious reload. Reads the live, rebuild-refreshed rules. */
     isRegenerateOutput: (filename) => isRegenerateOutputPath(filename, state.regenerateRules),
     appDir,
     dev,
@@ -680,6 +765,29 @@ export async function createRequestHandler(opts) {
   };
 }
 
+/**
+ * Serve framework-internal static assets that depend on NEITHER the whole-app
+ * analysis NOR the vendor importmap: the `@webjsdev/core` runtime files, the
+ * dev reload client, and (in `--download` pin mode) the committed vendor
+ * bundles. `handle()` calls this BEFORE `ensureReady()`, so a cold instance
+ * returns them immediately instead of blocking on the first vendor resolve
+ * (issue #190). The core bundle is on every page's boot path, so coupling it
+ * to the jspm resolve stalled first interactivity site-wide on a cold instance.
+ *
+ * Like the health / readiness probes (also answered pre-`ensureReady`), these
+ * bypass app middleware. That is correct: they are framework infrastructure the
+ * app needs to function, not app routes, and `state.middleware` is not even
+ * loaded until `ensureReady()` completes.
+ *
+ * @param {string} path decoded pathname
+ * @param {string} method upper-cased HTTP method
+ * @param {{ coreDir: string, appDir: string, dev: boolean, versioned?: boolean }} ctx
+ *   `versioned` is true when the request carried a `?v=` query (a
+ *   content-hash-fingerprinted url, issue #243); the core module is then served
+ *   `immutable` (1 year) instead of the 1h fallback, since the hash in the url
+ *   busts the cache on the next deploy.
+ * @returns {Promise<Response|null>} a Response, or null when path is not one of these assets
+ */
 async function tryServeFrameworkStatic(path, method, { coreDir, appDir, dev, versioned }) {
   if (path.startsWith('/__webjs/core/')) {
     const rel = path.slice('/__webjs/core/'.length);

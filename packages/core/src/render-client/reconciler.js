@@ -14,6 +14,12 @@ import {
   applyPart, bindPart, currentRenderRoot, setCurrentRenderRoot,
 } from './parts.js';
 
+/**
+ * Render a value into a container, reusing DOM where possible.
+ *
+ * @param {unknown} value
+ * @param {Element | DocumentFragment | ShadowRoot} container
+ */
 export function render(value, container) {
   const host = /** @type any */ (container);
   const prevRendering = host[RENDERING];
@@ -270,6 +276,10 @@ function resolveHoleValue(v) {
   return isLive(v) ? /** @type any */ (v).value : v;
 }
 
+/**
+ * @param {import('./html.js').TemplateResult} tr
+ * @param {Element | DocumentFragment | ShadowRoot} container
+ */
 function createInstance(tr, container) {
   const { templateEl, parts, formActions } = compile(tr);
   const frag = /** @type DocumentFragment */ (templateEl.content.cloneNode(true));
@@ -339,6 +349,10 @@ function updateInstance(inst, values) {
   reconcileFormActions(templateCache.get(inst.strings)?.formActions ?? null, inst.bound, values);
 }
 
+/**
+ * @param {TemplateInstance} inst
+ * @param {Element | DocumentFragment | ShadowRoot} container
+ */
 function clearInstance(inst, container) {
   for (const p of inst.bound) {
     if (p.kind === 'event') p.el.removeEventListener(p.name, p.dispatcher);

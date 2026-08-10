@@ -128,6 +128,33 @@ export function regionRouteKey(segmentPath, params) {
   return '/' + out.join('/');
 }
 
+/**
+ * Wrap a TemplateResult-or-renderable child in a KEYED partial-nav boundary
+ * comment pair (#1015). Returns a synthetic TemplateResult: server
+ * `renderToString` walks `.strings` and `.values` exactly the same way as for
+ * the `html` tag.
+ *
+ * Format:
+ *   open   <!--wj:children:<segment>:<route-key>-->
+ *   close  <!--/wj:children:<segment>-->
+ *
+ * The close carries the SEGMENT, so client-side pairing is deterministic
+ * id-matching instead of the LIFO reconstruction that produced the #994 class
+ * of silent mispair. The open additionally carries the resolved ROUTE-KEY
+ * (param values encoded, see `regionRouteKey`), which drives the client's
+ * two-tier swap decision: key changed -> wholesale replace (Next remount
+ * parity), key same -> bounded morph (hydrated state preserved). A comment is
+ * invisible to structural CSS (`>`, `:nth-child`, flex/grid item enumeration),
+ * so unlike a wrapper element this boundary is layout-free by construction.
+ *
+ * The marker text lives in `strings` (static template parts), NOT in
+ * `values`: `values` get HTML-escaped on render, comments wouldn't survive.
+ *
+ * @param {unknown} tree  A TemplateResult, string, array, or Promise.
+ * @param {string} segmentPath  The boundary's segment pattern (pairing id).
+ * @param {Record<string,string>} params  Resolved route params for the key.
+ * @returns {{ _$webjs: 'template', strings: string[], values: unknown[] }}
+ */
 export function wrapWithChildrenMarker(tree, segmentPath, params) {
   const routeKey = regionRouteKey(segmentPath, params);
   return {
@@ -145,6 +172,29 @@ export const _pageSegmentPath = pageSegmentPath;
 export const _regionRouteKey = regionRouteKey;
 export const _wrapWithChildrenMarker = wrapWithChildrenMarker;
 
+/**
+ * Detect a user-supplied <!doctype><html>…</html> shell at the top of
+ * `body`. Returns the parsed parts when present; otherwise null.
+ *
+ * The framework owns the shell by default: it auto-emits
+ * `<!doctype><html lang="en"><head>…</head><body>` around every page.
+ * But the *root layout* (only) may write its own shell to set
+ * `<html lang>`, `<html dir>`, `<html data-*>`, `<body class>`, etc.
+ * When that happens we keep the user's shell verbatim and splice the
+ * framework's required `<head>` tags (importmap, modulepreload, title,
+ * meta, og/twitter) into the user's `<head>`. Non-root layouts that
+ * try this would produce nested-shell garbage; `webjs check` flags
+ * them via the `shell-in-non-root-layout` rule.
+ *
+ * @param {string} body
+ * @returns {{
+ *   htmlAttrs: string,
+ *   headAttrs: string,
+ *   userHead: string,
+ *   bodyAttrs: string,
+ *   userBody: string,
+ * } | null}
+ */
 export function extractUserShell(body) {
   const htmlOpen = /^\s*(?:<!doctype[^>]*>\s*)?<html\b([^>]*)>\s*([\s\S]*)<\/html>\s*$/i;
   const m = body.match(htmlOpen);
@@ -191,6 +241,25 @@ function buildHeadInner(opts) {
   return full.slice(start + '<head>'.length, end).trim();
 }
 
+/**
+ * Build the prefix/body/closer triple for a rendered layout's body. Single
+ * source of truth used by both the buffered (`wrapInDocument`) and
+ * streaming (`streamingHtmlResponse`) paths.
+ *
+ * If `body` starts with a user-supplied <!doctype><html>…</html> shell:
+ *   - `prefix` opens with the user's `<!doctype><html><head>` (with their
+ *     attributes), splices the framework's required tags + the user's
+ *     own head content + auto-hoisted body-positioned head-bound tags,
+ *     then closes `</head>` and opens `<body>` (with user attributes).
+ *   - `streamBody` is the user's body content (head-hoist already stripped).
+ *   - `closer` is `</body></html>`.
+ *
+ * Otherwise (no user shell): use the framework's auto-emitted shell.
+ *
+ * @param {string} body
+ * @param {Parameters<typeof wrapHead>[0]} wrapOpts
+ * @returns {{ prefix: string, streamBody: string, closer: string }}
+ */
 export function buildDocumentParts(body, wrapOpts) {
   const shell = extractUserShell(body);
   if (shell) {
@@ -223,6 +292,27 @@ export function wrapInDocument(body, opts) {
   return prefix + streamBody + closer;
 }
 
+/**
+ * Build an inline `<script>` that exposes server-side environment
+ * variables to the browser via `window.process.env`. Two purposes:
+ *
+ *   1. App code can read `process.env.WEBJS_PUBLIC_X` directly in
+ *      components (counterpart of Next.js's `NEXT_PUBLIC_` prefix,
+ *      but without a build step).
+ *   2. `process.env.NODE_ENV` is defined for vendor bundles that
+ *      probe it (lit, react, etc.) so they do not throw
+ *      ReferenceError in the browser.
+ *
+ * Only variables whose name starts with `WEBJS_PUBLIC_` are exposed.
+ * Other server env vars stay on the server.
+ *
+ * `</...` sequences in stringified values are escaped so an env value
+ * containing `</script>` cannot terminate the inline script tag.
+ *
+ * @param {{ dev: boolean, nonce?: string, env?: Record<string, string|undefined> }} opts
+ *   `env` defaults to `process.env`. Override for tests.
+ * @returns {string}
+ */
 export function publicEnvShim(opts) {
   const source = opts?.env || process.env;
   /** @type {Record<string, string>} */

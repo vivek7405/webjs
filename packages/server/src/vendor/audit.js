@@ -153,6 +153,17 @@ export async function auditPinned(appDir) {
   return { vulnerable, totalChecked };
 }
 
+/**
+ * Find pinned packages that have a newer version available on npm.
+ * Queries `registry.npmjs.org/<pkg>` per pinned package, compares the
+ * pinned version against `dist-tags.latest` with semver-shaped string
+ * ordering (regex parse, then numeric compare per segment).
+ *
+ * Mirrors importmap-rails's `bin/importmap outdated`.
+ *
+ * @param {string} appDir
+ * @returns {Promise<Array<{ pkg: string, current: string, latest: string }>>}
+ */
 export async function findOutdated(appDir) {
   const entries = await listPinned(appDir);
   if (!entries.length) return [];
