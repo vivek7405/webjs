@@ -106,6 +106,21 @@ test('the gallery serves the same brand mark as the website', async () => {
   );
 });
 
+test('the gallery does not link its app/icon.ts demo route', async () => {
+  // app/icon.ts is the metadata-route DEMO, generating a placeholder grey "w".
+  // It is auto-linked in an app that declares no metadata.icons, so the ONLY
+  // thing keeping the brand mark on gallery.webjs.dev is the precedence rule
+  // that a declaration suppresses the routes. Break that and the gallery
+  // silently reverts to the placeholder, which is the exact defect this file
+  // was written for, so assert the suppression rather than infer it.
+  const app = await makeHandler();
+  const paths = await declaredIconPaths(app.handle);
+  assert.ok(!paths.includes('/icon'), '/icon is not linked');
+  assert.ok(!paths.includes('/apple-icon'), '/apple-icon is not linked');
+  // Both still SERVE; they are browsable demos, just not this app's favicon.
+  assert.equal((await app.handle(new Request('http://localhost/icon'))).status, 200);
+});
+
 test('the gallery declares the raster icon ahead of the SVG', async () => {
   // Same rule the website follows: Google's favicon crawler takes the first
   // usable icon and renders raster reliably. metadata.icons emits array order,
