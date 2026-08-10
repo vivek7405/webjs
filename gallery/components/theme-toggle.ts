@@ -3,7 +3,7 @@ import { WebComponent, html, signal } from '@webjsdev/core';
 /**
  * `<theme-toggle>`: three-state theme switcher: system → light → dark → system.
  *
- * State is mirrored to localStorage (`theme`) and reflected as
+ * State is mirrored to localStorage (`webjs_theme`) and reflected as
  * `<html data-theme>`. The initial theme is set by the synchronous bootstrap
  * script in layout.js so there's no FOUC on page load.
  */
@@ -15,7 +15,7 @@ export class ThemeToggle extends WebComponent {
   connectedCallback() {
     super.connectedCallback();
     let saved: string | null = null;
-    try { saved = localStorage.getItem('theme'); } catch {}
+    try { saved = localStorage.getItem('webjs_theme'); } catch {}
     this.theme.set(saved === 'light' || saved === 'dark' ? saved : 'system');
   }
 
@@ -26,14 +26,19 @@ export class ThemeToggle extends WebComponent {
       : t === 'light' ? 'dark' : 'system';
     this.theme.set(next);
     try {
-      if (next === 'system') localStorage.removeItem('theme');
-      else localStorage.setItem('theme', next);
+      if (next === 'system') localStorage.removeItem('webjs_theme');
+      else localStorage.setItem('webjs_theme', next);
     } catch {}
     if (next === 'system') delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = next;
-    // Mirror the effective theme onto the .dark class too. data-theme drives the
-    // app palette blocks; the .dark class is what the @webjsdev/ui kit's dark:
-    // variants read, so both signals must move together (see the skill's references/styling.md).
+    // Mirror the effective theme onto the .dark class too. data-theme drives
+    // everything this app actually reads: the palette blocks in app/layout.ts
+    // and the @custom-variant dark in public/input.css, which is keyed off
+    // [data-theme] so the logo swap still works with JavaScript off. The .dark
+    // class is inert HERE (this app imports only tailwindcss, never the kit
+    // theme CSS that defines the &:is(.dark *) form), and is kept because it is
+    // the signal @webjsdev/ui components read, so a demo that adds one works
+    // without having to remember this line.
     const osLight = window.matchMedia('(prefers-color-scheme: light)').matches;
     const dark = next === 'dark' || (next === 'system' && !osLight);
     document.documentElement.classList.toggle('dark', dark);

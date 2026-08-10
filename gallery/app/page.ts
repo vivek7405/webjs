@@ -41,7 +41,7 @@ export default function Home() {
       <section class="w-full flex flex-col gap-6">
         <div class="flex items-center justify-between gap-4 border-b border-border pb-3">
           <h2 class="text-xl font-bold tracking-tight m-0" style="font-family: var(--font-display)">
-            Feature Cards
+            Feature Demos
           </h2>
           <span class="text-xs text-muted-foreground font-mono">
             ${features.length} single-concept demos

@@ -61,15 +61,6 @@
      scaffold's --primary-tint uses), for focus rings and the logo glow. */
   --color-primary-tint:           var(--primary-tint);
 
-  /* Brand tokens the gallery shell uses and the shadcn set has no name for.
-     Plain @theme, like everything above it, because the shadow-DOM demo in
-     modules/components/ reads var(--color-*) from inside its shadow root and
-     Tailwind cannot see a component's static styles, so these have to exist as
-     real custom properties on :root for that tree to inherit them. */
-  --color-accent-tint:            var(--accent-tint);
-  --color-hover-surface:          var(--hover-surface);
-  --color-glow-a:                 var(--glow-a);
-
   /* One extra semantic shadcn does not ship: success (a couple of status
      affordances use it). Added the canonical @theme way, not a parallel
      vocabulary. */
@@ -98,10 +89,9 @@
  * means every used weight resolves from a single download. No Google Fonts
  * CDN: no render-blocking third-party stylesheet and no third-party request.
  * font-display:swap paints immediately with the fallback, then swaps.
- * app/layout.ts preloads the two critical faces with BARE paths and never
- * wraps them in asset(), because these bytes are fetched by the url() below,
- * so a hashed preload could not match the request and the file would download
- * twice.
+ * app/layout.ts preloads all three with BARE paths and never wraps them in
+ * asset(), because these bytes are fetched by the url() below, so a hashed
+ * preload could not match the request and the file would download twice.
  */
 @font-face{font-family:'Inter Tight';font-style:normal;font-weight:100 900;font-display:swap;src:url('/public/fonts/inter-tight.woff2') format('woff2');}
 @font-face{font-family:'Inter';font-style:normal;font-weight:100 900;font-display:swap;src:url('/public/fonts/inter.woff2') format('woff2');}

@@ -36,7 +36,7 @@ export default function RootLayout({ children }: { children: unknown }) {
       <script>
         (function(){
           try {
-            var t = localStorage.getItem('theme');
+            var t = localStorage.getItem('webjs_theme');
             if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
           } catch (_) {}
         })();
@@ -58,8 +58,10 @@ export default function RootLayout({ children }: { children: unknown }) {
       </script>
       <meta name="color-scheme" content="light dark">
       <!-- Self-hosted fonts, declared via @font-face in public/input.css.
-           Preloaded so the two critical faces are requested with the document
-           rather than discovered late through the stylesheet. Bare paths, and
+           All three are preloaded so they are requested with the document
+           rather than discovered late through the stylesheet. Mono earns its
+           slot here because the gallery puts it above the fold: the demo count
+           and every card badge are monospace on the home page. Bare paths, and
            deliberately NOT asset(): the bytes are fetched by a CSS url(), so a
            hashed preload could never match the request and each file would be
            downloaded twice. -->
@@ -110,25 +112,18 @@ export default function RootLayout({ children }: { children: unknown }) {
 
           --primary-tint:   color-mix(in oklch, var(--ring) 22%, transparent);
           --accent-tint:    color-mix(in oklch, var(--ring) 14%, transparent);
-          --hover-surface:  light-dark(oklch(0 0 0 / 0.055), oklch(1 0 0 / 0.09));
-          --shadow-sm:      0 1px 2px light-dark(oklch(0.5 0.06 55 / 0.08), oklch(0 0 0 / 0.4));
-          --shadow-cast:    light-dark(oklch(0.5 0.08 55 / 0.10), oklch(0 0 0 / 0.5));
-          --shadow-ambient: light-dark(oklch(0.5 0.06 55 / 0.06), oklch(0 0 0 / 0.35));
-          --shadow-spread:  0 8px 30px;
-          --shadow:         var(--shadow-spread) var(--shadow-cast), 0 2px 6px var(--shadow-ambient);
           --glow-a:         light-dark(oklch(0.63 0.17 44), oklch(0.78 0.18 58));
           --glow-strength:  0.16;
         }
         :root[data-theme='light'] { color-scheme: light; }
         :root[data-theme='dark']  { color-scheme: dark; }
-        /* --glow-strength and --shadow-spread are NUMBERS, and light-dark()
-           carries colours only, so these two are the only tokens that need an
-           explicit per-theme pair. Every colour above already resolves through
-           color-scheme. */
+        /* --glow-strength is a NUMBER and light-dark() carries colours only, so
+           it is the one token here that needs an explicit per-theme pair. Every
+           colour above already resolves through color-scheme. */
         @media (prefers-color-scheme: dark) {
-          :root:not([data-theme='light']) { --glow-strength: 0.08; --shadow-spread: 0 10px 40px; }
+          :root:not([data-theme='light']) { --glow-strength: 0.08; }
         }
-        :root[data-theme='dark'] { --glow-strength: 0.08; --shadow-spread: 0 10px 40px; }
+        :root[data-theme='dark'] { --glow-strength: 0.08; }
         html, body { margin: 0; }
         body {
           padding-top: var(--header-h);
