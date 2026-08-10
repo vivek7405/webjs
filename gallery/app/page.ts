@@ -24,7 +24,12 @@ export default function Home() {
     <div class="py-8 flex flex-col items-center gap-16">
       <!-- Hero -->
       <section class="flex flex-col items-center text-center gap-5">
-        <h1 class="text-5xl sm:text-6xl font-bold tracking-tight leading-none m-0 break-words bg-gradient-to-b from-foreground to-muted-foreground bg-clip-text text-transparent" style="font-family: var(--font-display); letter-spacing: -0.02em;">
+        <!-- leading-[1.15] and the padding are load-bearing, not spacing taste.
+             bg-clip-text paints the gradient only inside the element box, so
+             with leading-none the box is exactly the font size and Inter Tight's
+             descenders (the g and the y) fall outside it and render as nothing.
+             The line box has to contain them. -->
+        <h1 class="text-5xl sm:text-6xl font-bold tracking-tight leading-[1.15] pb-[0.08em] m-0 break-words bg-gradient-to-b from-foreground to-[var(--ring)] bg-clip-text text-transparent" style="font-family: var(--font-display); letter-spacing: -0.02em;">
           Explore the gallery
         </h1>
         <p class="text-base sm:text-lg text-muted-foreground max-w-lg leading-relaxed m-0">
@@ -36,7 +41,7 @@ export default function Home() {
       <section class="w-full flex flex-col gap-6">
         <div class="flex items-center justify-between gap-4 border-b border-border pb-3">
           <h2 class="text-xl font-bold tracking-tight m-0" style="font-family: var(--font-display)">
-            Feature Cards
+            Feature Demos
           </h2>
           <span class="text-xs text-muted-foreground font-mono">
             ${features.length} single-concept demos

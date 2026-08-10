@@ -31,9 +31,17 @@ export class ThemeToggle extends WebComponent {
     } catch {}
     if (next === 'system') delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = next;
-    // Mirror the effective theme onto the .dark class too. data-theme drives the
-    // app palette blocks; the .dark class is what the @webjsdev/ui kit's dark:
-    // variants read, so both signals must move together (see the skill's references/styling.md).
+    // Mirror the effective theme onto the .dark class too. data-theme drives
+    // everything this app actually reads: the palette blocks in app/layout.ts
+    // and the @custom-variant dark in public/input.css, which is keyed off
+    // [data-theme] so the logo swap still works with JavaScript off. The .dark
+    // class is inert HERE, since this app imports only tailwindcss and never
+    // the kit theme CSS that defines the &:is(.dark *) form. Kept only so the
+    // two signals do not visibly disagree while the reader is clicking. It is
+    // NOT a working kit-compatibility path: this runs only on a click, the
+    // bootstrap in app/layout.ts writes data-theme alone, so on every page load
+    // the class is absent whatever the stored theme is. A demo that adds a kit
+    // component needs the class written at bootstrap too.
     const osLight = window.matchMedia('(prefers-color-scheme: light)').matches;
     const dark = next === 'dark' || (next === 'system' && !osLight);
     document.documentElement.classList.toggle('dark', dark);
@@ -45,7 +53,7 @@ export class ThemeToggle extends WebComponent {
     const icon = t === 'light' ? ICONS.sun : t === 'dark' ? ICONS.moon : ICONS.system;
     return html`
       <button
-        class="inline-flex items-center justify-center w-9 h-9 p-0 border border-border rounded-full bg-card text-muted-foreground cursor-pointer transition-all duration-150 hover:text-foreground hover:border-border active:scale-[0.94] focus-visible:outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-primary-tint"
+        class="inline-flex items-center justify-center w-9 h-9 p-0 border border-border rounded-full bg-card text-muted-foreground cursor-pointer transition-all duration-150 hover:text-foreground hover:border-border-strong active:scale-[0.94] focus-visible:outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-primary-tint"
         @click=${() => this.cycle()}
         aria-label="Cycle theme (currently ${label})"
         title="Theme: ${label.toLowerCase()}"
