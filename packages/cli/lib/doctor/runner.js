@@ -16,6 +16,27 @@ import { checkFrameworkResolves } from './probes/framework-resolves.js';
  * @typedef {import('./codes.js').DoctorResult} DoctorResult
  */
 
+/**
+ * Run every doctor check against `appDir` and return the results. PURE: no
+ * printing, no `process.exit`; the CLI renders + decides the exit code.
+ *
+ * @param {string} appDir  the app directory to check (usually `process.cwd()`)
+ * @param {{
+ *   nodeVersion?: string,
+ *   cliDir?: string,
+ *   vendor?: { hasVendorPin: (d: string) => boolean, findOutdated: (d: string) => Promise<Array<{ pkg: string, current: string, latest: string }>> },
+ * }} [opts]  test-injection seams:
+ *   - `nodeVersion`: override the running Node version (asserts the fail case
+ *     without being on old Node);
+ *   - `cliDir`: directory of the CLI package whose `engines.node` sources the
+ *     required major (defaults to THIS module's package);
+ *   - `vendor`: inject the `{ hasVendorPin, findOutdated }` pair so the pin check
+ *     runs against a stub instead of a real network call.
+ *   - `coherence`: inject `{ liveImports, vendoredImports, getManifest, check }`
+ *     so the importmap-coherence check runs against stub importmaps + metadata
+ *     instead of a real live resolve / node_modules read.
+ * @returns {Promise<DoctorResult[]>}
+ */
 export async function runDoctorChecks(appDir, opts = {}) {
   const cliDir = opts.cliDir || new URL('.', import.meta.url).pathname;
   // ONE elision report for BOTH elision checks (#1308). Started before the
