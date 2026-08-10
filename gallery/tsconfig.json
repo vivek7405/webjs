@@ -30,6 +30,13 @@
     "components/**/*",
     "lib/**/*",
     "modules/**/*",
-    "test/**/*"
+    "test/**/*",
+    ".webjs/routes.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".webjs/vendor",
+    "db/migrations",
+    "**/browser/**"
   ]
 }

@@ -14,8 +14,8 @@
     "db:migrate": "webjs db migrate",
     "db:seed": "webjs db seed",
     "typecheck": "webjs typecheck",
-    "test": "webjs test --server",
-    "test:browser": "wtr"
+    "test": "webjs test",
+    "test:browser": "webjs test --browser"
   },
   "webjs": {
     "dev": {
@@ -53,8 +53,11 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@web/test-runner": "^0.20.0",
+    "@web/test-runner-playwright": "^0.11.0",
     "@webjsdev/intellisense": "^0.5.0",
     "drizzle-kit": "^1.0.0-rc.3",
+    "playwright": "^1.59.0",
     "typescript": "^6.0.3"
   },
   "engines": {
