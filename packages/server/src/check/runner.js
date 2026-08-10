@@ -910,8 +910,7 @@ export async function checkConventions(appDir) {
         // (#1155) and `formaction=` on a `<button>` / `<input>` submitter
         // (#1207) each put the named action behind a form submission, and a
         // GET-declared action cannot serve either. `classifyActionHole` owns
-        // the tag-and-attribute pairing (js-scan.js), shared with
-        // `submitter-needs-bound-form`.
+        // the tag-and-attribute pairing (js-scan.js).
         const bound = new Set();
         for (const m of redacted.matchAll(/__STR_(\d+)__\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g)) {
           if (!classifyActionHole(literals[Number(m[1])] || '')) continue;
