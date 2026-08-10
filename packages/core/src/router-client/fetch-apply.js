@@ -1,0 +1,290 @@
+/**
+ * Client router: fetch-apply.
+ *
+ * Moved verbatim out of the pre-split `router-client.js`; that barrel holds
+ * the router's full contract and the public entry points.
+ *
+ * @module
+ */
+import { markStale, parseTagHeader } from '../action-cache-client.js';
+import { renderStream } from '../webjs-stream.js';
+import { STREAM_MIME } from './constants.js';
+import { warnIfSmoothScrollOnHtml } from './diagnostics.js';
+import { restoreOptimistic } from './dom-differ.js';
+import { parseHTML } from './dom-parse.js';
+import { clearFrameBusy, markFrameBusy } from './frames.js';
+import { handleNavigationError } from './nav-error.js';
+import { buildHaveHeader, navigate, performNavigation } from './navigator.js';
+import { prefetch, prefetchTake } from './prefetch.js';
+import { currentNavigationToken } from './state.js';
+import { readStreamedShell, streamBoundariesProgressively } from './stream.js';
+import { _swapCommit, applySwap } from './swap.js';
+
+/**
+ * Fetch the target URL and apply the swap.
+ *
+ * @param {string} href
+ * @param {string | null} frameId
+ * @param {boolean} recordHistory
+ * @param {{ slot: { start: Comment, end: Comment }, oldChildren: Node[], token: number } | null} optimisticState
+ * @param {string} [method]  HTTP verb (uppercase). Default 'GET'.
+ * @param {BodyInit | null} [body]  Request body for non-GET methods.
+ * @param {AbortSignal | null} [signal]  Abort signal. A newer nav cancels this fetch.
+ * @param {number} [token]  Nav-token captured at the caller's entry; stale → skip apply.
+ * @param {boolean} [revalidating]  True for the BACKGROUND refresh after a
+ *   snapshot restore: the user is already viewing a page, so a boundary
+ *   mismatch must degrade in place (never a jarring `location.href` load).
+ * @returns {Promise<{ ok: boolean, status: number | null, aborted: boolean }>}
+ *   The fetch outcome, so a caller (the form-submission busy/event lifecycle)
+ *   can report whether the submission settled as a success, an error, or an
+ *   abort. `ok` mirrors `response.ok` for an HTTP response (a 422 validation
+ *   re-render is `ok:false`), `false` for a transport/parse error, and `false`
+ *   for an abort (which also sets `aborted:true`). `status` is the HTTP status
+ *   or `null` when the request never produced one.
+ */
+export async function fetchAndApply(href, frameId, recordHistory, optimisticState, method, body, signal, token, revalidating) {
+  method = method || 'GET';
+  const myToken = typeof token === 'number' ? token : currentNavigationToken;
+  let html;
+  // Set when the response streams Suspense boundaries (#473): holds the open
+  // reader + leftover buffer so the boundaries apply progressively after the
+  // shell swap. Null for a buffered (non-streaming) or prefetched response.
+  let streamCtx = null;
+  let incomingBuild = null;
+  let incomingSrc = null;
+  /** @type {number | null} */
+  let respStatus = null;
+  /** @type {boolean} */
+  let respOk = false;
+  /** @type {string} */
+  let finalUrl = href;
+  // aria-busy lifecycle: when this nav targets a <webjs-frame>, mark the
+  // live frame busy for the duration of its fetch+apply so assistive tech
+  // can announce it and CSS can style `webjs-frame[aria-busy="true"]`. The
+  // outer try/finally guarantees the busy state is cleared on EVERY exit
+  // (success swap, frame-missing, an HTTP/transport error, an abort by a
+  // newer nav), never leaving a frame stuck busy.
+  const busyFrame = frameId ? markFrameBusy(frameId, myToken) : null;
+  try {
+  try {
+    // Warm-cache fast path: a hover/focus/viewport prefetch may already hold
+    // this page. Consume it instead of going to the network, so the click
+    // resolves with no round-trip. Only for plain GET navs without a frame
+    // target; form submissions and frame swaps always hit the server. The entry
+    // is single-use (prefetchTake removes it), TTL-guarded, and validated by its
+    // ANCHOR rather than by an identical X-Webjs-Have (#1114): a fragment
+    // applies wherever the boundary it starts at is still live, so an unrelated
+    // navigation between the prefetch and this click does not disqualify it.
+    // The optimistic skeleton has already deleted nested boundaries by now, so
+    // pass the view captured before it ran.
+    const prefetched = (method === 'GET' && !body && !frameId)
+      ? prefetchTake(href, optimisticState ? optimisticState.haveKeys : undefined)
+      : null;
+    if (prefetched) {
+      html = prefetched.html;
+      incomingBuild = prefetched.build;
+      incomingSrc = prefetched.src;
+      finalUrl = prefetched.finalUrl;
+      // A consumed prefetch is a successful 200 GET fragment.
+      respStatus = 200;
+      respOk = true;
+    } else {
+    const headers = { 'x-webjs-router': '1' };
+    const have = buildHaveHeader();
+    if (have) headers['x-webjs-have'] = have;
+    if (frameId) headers['x-webjs-frame'] = frameId;
+    // Content-negotiate a stream-action response on a write submission (a
+    // non-GET body). The server returns the stream MIME only when this Accept
+    // is present, so with JS off (no router, no Accept) the same form gets a
+    // normal render/redirect: the grammar is additive and PE-safe (#248).
+    if (body != null && method !== 'GET' && method !== 'HEAD') {
+      headers['accept'] = STREAM_MIME + ', text/html';
+    }
+
+    /** @type {RequestInit} */
+    // `no-cache` for the same reason as the prefetch fetch (#1131): applySwap
+    // hard-reloads on a build change it can only see if these headers are
+    // live, not replayed from the HTTP cache.
+    const init = { method, headers, credentials: 'same-origin', cache: 'no-cache' };
+    if (signal) init.signal = signal;
+    if (body != null && method !== 'GET' && method !== 'HEAD') init.body = body;
+
+    const resp = await fetch(href, init);
+    respStatus = resp.status;
+    respOk = resp.ok;
+    // `fetch` follows a 303 transparently and its headers are then unreadable,
+    // so this lands on a non-redirect response: the 422 failure re-render, or
+    // any form response that answers in place.
+    const invalidated = parseTagHeader(resp.headers.get('x-webjs-invalidate'));
+    if (invalidated.length) markStale(invalidated);
+    const ctype = resp.headers.get('content-type') || '';
+    const isHTML = /^text\/html\b/i.test(ctype);
+    const isStream = ctype.toLowerCase().indexOf(STREAM_MIME) === 0;
+    // Stream-action response (#248): the body is `<webjs-stream>` elements
+    // applied surgically to the live DOM, NOT a region swap. Apply them and
+    // return; do not parse the body as a page document (it has no shell). A
+    // stream body of any status is fine. This runs BEFORE the !isHTML branch
+    // so the non-text/html stream MIME is not treated as a navigation error.
+    if (isStream) {
+      const text = await resp.text();
+      if (myToken === currentNavigationToken) {
+        // Roll back any optimistic loading skeleton: a stream response patches
+        // the page in place, it does not swap the region the skeleton covered.
+        restoreOptimistic(optimisticState);
+        renderStream(text);
+      }
+      return { ok: respOk, status: respStatus, aborted: false };
+    }
+    // Server-side redirect (PRG, auth-gate, etc.): fetch followed it
+    // automatically. Record the FINAL URL in history, not the
+    // originally-requested one, so back/forward + bookmarking work.
+    if (resp.redirected && resp.url) finalUrl = resp.url;
+
+    // Empty-body status codes (204 No Content, 205 Reset Content):
+    // server-rendered "stay on current page" pattern. Don't try to
+    // swap an empty document over the live one. We DO still record
+    // history for the originating URL: same as a normal navigation
+    // that decided to short-circuit.
+    if (resp.status === 204 || resp.status === 205) {
+      if (myToken === currentNavigationToken && recordHistory) {
+        history.pushState(null, '', finalUrl);
+      }
+      return { ok: respOk, status: respStatus, aborted: false };
+    }
+
+    // Non-HTML response (JSON error, file download, opaque): can't be
+    // rendered as a page (a 500 returning `{"error": "..."}` is not an
+    // HTML page). Instead of abandoning the SPA with a full reload (which
+    // discards the partial-swap shell, scroll, and in-flight state, and
+    // eats a second round-trip that may itself fail), dispatch a
+    // cancelable `webjs:navigation-error` so the app can recover in place;
+    // by default render a minimal in-place error surface. The adjacent
+    // HTML-status branch below already renders 4xx/5xx HTML bodies in
+    // place; this closes the same gap for a non-HTML error body.
+    if (!isHTML) {
+      if (myToken === currentNavigationToken) {
+        // Roll back any optimistic loading skeleton FIRST, so a
+        // preventDefault()-ing app sees the page exactly as it was (the catch
+        // block below does the same for a transport failure).
+        restoreOptimistic(optimisticState);
+        handleNavigationError(href, resp.status, null);
+      }
+      return { ok: false, status: respStatus, aborted: false };
+    }
+
+    // HTML body of ANY status: 2xx, 4xx validation errors, 5xx error
+    // pages: is parsed and applied in place. Matches Turbo Drive's
+    // `formSubmissionFailedWithResponse` behavior
+    // (turbo/src/core/drive/navigator.js:92-107). Critical for the
+    // standard server-rendered validation pattern: 422 + re-rendered
+    // form with errors keeps the user's typed input and shows context.
+    // Capture the server's build hash header BEFORE reading the body.
+    // The header is set on every SSR response, including X-Webjs-Have
+    // partial responses where the body has no head and no importmap
+    // tag to compare. The applySwap importmap-mismatch guard reads
+    // this to detect deploys that bumped the vendor pin.
+    incomingBuild = resp.headers.get('x-webjs-build');
+    incomingSrc = resp.headers.get('x-webjs-src');
+    // Progressive streaming (#473): read only up to the first streamed Suspense
+    // boundary so the shell (with fallbacks) swaps in immediately; the rest
+    // streams in after the swap. A body with no boundaries reads to completion,
+    // so a non-streaming nav is identical to the old `resp.text()`.
+    const shellRead = await readStreamedShell(resp);
+    html = shellRead.shell;
+    if (shellRead.streaming) streamCtx = shellRead;
+    }
+  } catch (err) {
+    // Aborted by a newer navigation: let it run, don't fall back. An
+    // AbortError is a normal supersede, NOT a navigation error, so it must
+    // NEVER dispatch webjs:navigation-error (the key no-false-positive
+    // line).
+    if (err && /** @type any */ (err).name === 'AbortError') return { ok: false, status: null, aborted: true };
+    // Stale (a newer nav started before we got the network error): the
+    // newer nav owns the page now, so don't clobber it.
+    if (myToken !== currentNavigationToken) return { ok: false, status: null, aborted: true };
+    restoreOptimistic(optimisticState);
+    // Transport/parse failure (fetch rejected, e.g. offline / DNS / TLS).
+    // Surface a navigation-error so the app can recover in place instead
+    // of a destructive full reload.
+    handleNavigationError(href, null, err instanceof Error ? err : new Error(String(err)));
+    return { ok: false, status: null, aborted: false };
+  }
+
+  // A newer navigation started while we awaited the response body -
+  // bail before we overwrite its work.
+  if (myToken !== currentNavigationToken) {
+    if (streamCtx && streamCtx.reader) { try { streamCtx.reader.cancel(); } catch { /* ignore */ } }
+    return { ok: false, status: respStatus, aborted: true };
+  }
+
+  const doc = parseHTML(html);
+  // The body claimed text/html but didn't parse into a document (a
+  // malformed/empty HTML body). Surface a navigation-error so the app can
+  // recover in place rather than a destructive full reload.
+  if (!doc) { restoreOptimistic(optimisticState); handleNavigationError(href, null, new Error('navigation response did not parse as HTML')); return { ok: false, status: respStatus, aborted: false }; }
+
+  const disposition = applySwap(doc, frameId, !!revalidating, finalUrl, incomingBuild, incomingSrc);
+  // A discarded revalidation must be discarded OUTRIGHT: a streamed response's
+  // boundary templates must not splice into the restored snapshot afterward
+  // (boundary ids are per-render sequential, so a reduced render's numbering
+  // need not line up with the snapshot's). Cancel the reader and stop here.
+  if (disposition === 'discard') {
+    if (streamCtx && streamCtx.reader) { try { streamCtx.reader.cancel(); } catch { /* ignore */ } }
+    return { ok: respOk, status: respStatus, aborted: false };
+  }
+
+  if (recordHistory) history.pushState(null, '', finalUrl);
+
+  // Scroll only for foreground (history-recording) navigations. When
+  // `recordHistory` is false we're either:
+  //   (a) the background revalidation after a cached popstate restore
+  //       - performNavigation already set scroll from the cached
+  //       position; we must NOT clobber it here.
+  //   (b) a cache-miss popstate: modern browsers fire scroll-
+  //       restoration themselves before dispatching popstate, so
+  //       leaving scroll alone preserves the browser-native UX.
+  if (recordHistory) {
+    // Use the final URL (after any server-side redirect) so hash
+    // anchors point at the document we actually rendered.
+    const url = new URL(finalUrl);
+    if (url.hash) {
+      const t = document.getElementById(url.hash.slice(1));
+      // A hash anchor is the one nav scroll we DON'T force instant: a
+      // `#section` link is exactly where an app's `scroll-behavior: smooth`
+      // is wanted, and native browsers animate it too.
+      if (t) t.scrollIntoView();
+      else { warnIfSmoothScrollOnHtml(); window.scrollTo({ left: 0, top: 0, behavior: 'instant' }); }
+    } else {
+      // Scroll-to-top on a forward nav. behavior:'instant' so an app-level
+      // `scroll-behavior: smooth` does not animate it (match native nav).
+      warnIfSmoothScrollOnHtml();
+      window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+    }
+  }
+
+  // Progressive streaming (#473): the shell (with its Suspense fallbacks) is
+  // now live, so stream the resolved boundaries in fast-before-slow. Detached
+  // (fire-and-forget) so the URL advance + navigate event do not wait on the
+  // slow boundary; each apply is guarded by the nav token so a newer navigation
+  // stops it. Gated on the swap COMMIT (`_swapCommit`): under an async view
+  // transition the shell swap is deferred a frame, so applying a resolve before
+  // the placeholder is in the DOM dropped the boundary and stuck the skeleton
+  // (#1048). On the synchronous path `_swapCommit` is already resolved, so this
+  // is a same-microtask no-op there.
+  if (streamCtx && (streamCtx.reader || streamCtx.rest)) {
+    _swapCommit.then(() => streamBoundariesProgressively(
+      streamCtx.reader,
+      streamCtx.dec,
+      streamCtx.rest,
+      () => myToken === currentNavigationToken,
+    ));
+  }
+
+  document.dispatchEvent(new CustomEvent('webjs:navigate', { detail: { url: finalUrl, frameId, from: 'navigate' } }));
+  return { ok: respOk, status: respStatus, aborted: false };
+  } finally {
+    // Clear the frame's busy state on every exit path (the early returns
+    // above all unwind through here). No-op when this was not a frame nav.
+    if (busyFrame) clearFrameBusy(busyFrame, myToken);
+  }
+}
