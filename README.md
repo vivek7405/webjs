@@ -132,6 +132,7 @@ packages/
   webjsdev/         # unscoped npm name for @webjsdev/cli (so `npm i -g webjsdev` works without a scope)
 examples/
   blog/             # full-featured reference app (auth, posts, comments, chat)
+gallery/            # the feature gallery every scaffolded app ships, as a live app
 website/            # landing site AND the documentation at /docs and gallery at /ui
 AGENTS.md           # AI-agent contract for the framework
 CLAUDE.md           # Claude Code quick-reference
@@ -159,6 +160,7 @@ AirPlay Receiver / Control Center):
 |---|---|---|---|
 | Landing site, docs, UI gallery | `website/` | 5001 | `WEBSITE_PORT` |
 | Example blog | `examples/blog/` | 5004 | `BLOG_PORT` |
+| Feature gallery | `gallery/` | 5005 | `PORT` |
 
 **Run a single app** (from its directory). Each honors a `PORT` env var:
 

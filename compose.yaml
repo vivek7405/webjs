@@ -4,6 +4,7 @@
 #   docker compose up --build
 #     website    → http://localhost:15001  (serves /docs and /ui too)
 #     blog       → http://localhost:15004
+#     gallery    → http://localhost:15005  (the feature gallery, gallery.webjs.dev)
 #
 # docs.webjs.dev and ui.webjs.dev used to be two more services here. Both are
 # Cloudflare redirect rules now, so they have no origin and nothing to run.
@@ -51,5 +52,27 @@ services:
     volumes:
       - blog-data:/data
 
+  gallery:
+    image: webjs
+    build: .
+    working_dir: /app/gallery
+    # Same shape as the blog: the auth and todo cards are backed by real SQLite
+    # tables, so apply the migrations before serving.
+    command:
+      - sh
+      - -c
+      - |
+        bun /app/node_modules/@webjsdev/cli/bin/webjs.js db migrate && \
+        bun /app/node_modules/@webjsdev/cli/bin/webjs.js start
+    ports:
+      - "15005:5005"
+    environment:
+      PORT: "5005"
+      DATABASE_URL: file:/data/dev.db
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-at-least-32-characters-long!}
+    volumes:
+      - gallery-data:/data
+
 volumes:
   blog-data:
+  gallery-data:
