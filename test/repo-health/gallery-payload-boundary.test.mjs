@@ -36,7 +36,7 @@ import { join, resolve, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { scaffoldApp } from '../../packages/cli/lib/create.js';
-import { GALLERY_APP_SHELL_FILES } from '../../packages/cli/lib/gallery-shell-files.js';
+import { GALLERY_APP_SHELL_FILES, isGalleryAppShellFile } from '../../packages/cli/lib/gallery-shell-files.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const GALLERY = resolve(REPO_ROOT, 'gallery');
@@ -76,40 +76,62 @@ function subdirListOf(file) {
 }
 
 /**
- * `lib/utils/cn.ts` is in the shell list but cannot be asserted this way. The
- * gallery's copy and the generated one are BOTH read verbatim from the same
- * source, `packages/ui/packages/registry/lib/utils.ts` (confirmed byte-equal to
- * both), which is deliberate so that `webjs ui add` stays in lockstep with the
- * kit. So the two files are identical whether the filter runs or not, and an
- * equality check on it would be tautological rather than discriminating. The
- * other three carry generator-only content and do discriminate.
+ * What actually keeps the gallery's branded shell out of a generated app is the
+ * generator's WRITE ORDER, not `copyGallery()`'s filter. Measured on the tree
+ * this test was written against:
+ *
+ *   L1134  writeUiBootstrap()                    writes lib/utils/cn.ts
+ *   L1185  copyGallery()                         copies the gallery
+ *   L1187  writeFile(app/layout.ts)              overwrites
+ *   L1376  writeFile(app/page.ts)                overwrites
+ *   L1455  writeFile(components/theme-toggle.ts) overwrites
+ *
+ * Three of the four shell files are rewritten by the generator AFTER the copy,
+ * and the fourth is byte-identical to the gallery's (both are read verbatim
+ * from packages/ui/packages/registry/lib/utils.ts, deliberately, so that
+ * `webjs ui add` stays in lockstep with the kit). Neutering the filter
+ * therefore changes NOTHING about the generated output, which was confirmed by
+ * running that exact counterfactual: an equality check on the generated files
+ * stays green with the filter fully removed, so it is tautological rather than
+ * discriminating and is not worth having.
+ *
+ * The filter is real defence-in-depth (it keeps the shell out of the published
+ * `templates/gallery/` bundle) but it is not the load-bearing mechanism. So
+ * assert the mechanism that is: the three generator writes must follow the
+ * copy. Move `copyGallery()` below any of them and the gallery's branded shell
+ * wins, which is precisely the regression this file exists to catch.
  */
-const SHELL_FILES_WITH_DISTINCT_CONTENT = GALLERY_APP_SHELL_FILES.filter(
-  (rel) => rel !== 'lib/utils/cn.ts',
-);
+test('the generator writes its own app shell AFTER copying the gallery', () => {
+  const src = readFileSync(resolve(REPO_ROOT, 'packages/cli/lib/create.js'), 'utf8');
 
-test('the gallery app-shell files are not copied into a generated app', async () => {
+  const copyAt = src.indexOf('await copyGallery(appDir)');
+  assert.notEqual(copyAt, -1, 'create.js still calls copyGallery(appDir)');
+
+  // Each generator write, by the literal that starts its writeFile call.
+  const writes = [
+    ["app/layout.ts", "await writeFile(join(appDir, 'app', 'layout.ts')"],
+    ["app/page.ts", "await writeFile(join(appDir, 'app', 'page.ts')"],
+    ["components/theme-toggle.ts", "await writeFile(join(appDir, 'components', 'theme-toggle.ts')"],
+  ];
+
+  for (const [rel, needle] of writes) {
+    const at = src.indexOf(needle);
+    assert.notEqual(at, -1, `create.js still writes its own ${rel}`);
+    assert.ok(
+      at > copyAt,
+      `create.js writes its own ${rel} BEFORE copyGallery(), so the gallery's branded copy would overwrite it and ship into every generated app`,
+    );
+  }
+
+  // The predicate itself, so a shell entry cannot silently stop matching.
+  for (const rel of GALLERY_APP_SHELL_FILES) {
+    assert.ok(isGalleryAppShellFile(rel), `${rel} is recognised as a gallery-only shell file`);
+  }
   assert.equal(
-    SHELL_FILES_WITH_DISTINCT_CONTENT.length,
-    3,
-    'the shell list changed, so re-check which entries this assertion can discriminate',
+    isGalleryAppShellFile('app/global-error.ts'),
+    false,
+    'a payload file is NOT treated as gallery-only',
   );
-  await withGeneratedApp(async (appDir) => {
-    for (const rel of SHELL_FILES_WITH_DISTINCT_CONTENT) {
-      const generated = await readFile(join(appDir, rel)).catch(() => null);
-      // All three DO exist in a generated app, because the generator writes its
-      // own with things the gallery's copies cannot carry (the app's
-      // displayName, cspNonce() wiring, LayoutProps typing, metadata.icons). So
-      // byte INEQUALITY is what actually fires here; a missing file passes too.
-      if (generated === null) continue;
-      const galleryCopy = await readFile(join(GALLERY, rel));
-      assert.notEqual(
-        generated.equals(galleryCopy),
-        true,
-        `${rel} was copied from gallery/ into the generated app verbatim, so the shell filter is not filtering`,
-      );
-    }
-  });
 });
 
 test('no gallery-only branding reaches scaffold payload', async () => {
