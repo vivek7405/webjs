@@ -1,6 +1,6 @@
 # Framework development (editing WebJs itself)
 
-Read this only when editing the WebJs monorepo (this repo), not a scaffolded app. The repo is buildless: `packages/` is plain `.js` with JSDoc (never add `.ts` there); TypeScript is fine in `examples/` and `website/`. Each in-repo app (`website/`, which serves the docs at `/docs` and the gallery at `/ui`, plus `examples/blog/`) is run from its OWN dir via `npm run dev` / `npm start`; as of #550 a bare `webjs dev` / `webjs start` is equivalent (each app's per-environment orchestration, the Tailwind watcher, `webjs db migrate`, the registry copy, moved into its `webjs.dev` / `webjs.start` tasks config, which `webjs dev`/`start` run). The sections below cover the repo-health git config, the changelog flow, and the dev error overlay.
+Read this only when editing the WebJs monorepo (this repo), not a scaffolded app. The repo is buildless: `packages/` is plain `.js` with JSDoc (never add `.ts` there); TypeScript is fine in `examples/`, `gallery/`, and `website/`. Each in-repo app (`website/`, which serves the docs at `/docs` and the component gallery at `/ui`, plus `examples/blog/` and the feature `gallery/`) is run from its OWN dir via `npm run dev` / `npm start`; as of #550 a bare `webjs dev` / `webjs start` is equivalent (each app's per-environment orchestration, the Tailwind watcher, `webjs db migrate`, the registry copy, moved into its `webjs.dev` / `webjs.start` tasks config, which `webjs dev`/`start` run). The sections below cover the repo-health git config, the changelog flow, and the dev error overlay.
 
 ---
 
@@ -134,7 +134,11 @@ The fix only repairs the LOCAL checkout. Commits and branches are always safe on
 
 ### Scaffold teaching-coverage gate (`gallery-coverage.test.js`)
 
-The scaffold is webjs's primary teaching surface for AI agents, so a new framework feature must ship a runnable gallery demo, not just a doc bullet. Enforcement is two tiers, mirroring how tests are enforced:
+The scaffold is webjs's primary teaching surface for AI agents, so a new framework feature must ship a runnable gallery demo, not just a doc bullet.
+
+**The gallery lives ONCE, at the repo root `gallery/`,** as a live workspace app you boot (`npm run dev:gallery`, port 5005) and test (`npm test --workspace=@webjsdev/gallery`) like `website` and `examples/blog`, so a framework change is validated against the demos instead of rotting in un-executed template files. `packages/cli`'s `prepack` bundles it into `packages/cli/templates/gallery/` for the npm tarball (`scripts/sync-scaffold-gallery.mjs`) and `postpack` deletes that copy, which is gitignored: never edit or commit it. Four files in `gallery/` exist only because it is a runnable app (`app/layout.ts`, `app/page.ts`, `components/theme-toggle.ts`, `lib/utils/cn.ts`); the generator writes its own, so both the copy and the bundle filter them through `packages/cli/lib/gallery-shell-files.js`.
+
+Enforcement is two tiers, mirroring how tests are enforced:
 
 - **Tier 1 (commit floor):** `.claude/hooks/require-scaffold-with-src.sh` blocks a commit that stages `packages/(core|server|cli)/src` with no scaffold surface. It only proves you touched a scaffold file, so a documented-but-undemoed feature can still pass (this is exactly how #848 shipped `forbidden()` / `unauthorized()` with app-tree bullets and no demo).
 

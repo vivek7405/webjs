@@ -32,9 +32,9 @@ jobs:
           cache: npm
       - run: npm ci
       # Dogfood the framework's own correctness checks on the in-repo apps.
-      - name: webjs check (blog, website)
+      - name: webjs check (blog, gallery, website)
         run: |
-          for app in examples/blog website; do
+          for app in examples/blog gallery website; do
             echo "::group::webjs check $app"
             ( cd "$app" && node "$GITHUB_WORKSPACE/packages/cli/bin/webjs.js" check )
             echo "::endgroup::"
@@ -48,9 +48,9 @@ jobs:
       # and cannot red this job. Deliberately NOT --strict:
       # the git-hook, env-drift, vendor-pin, and framework-resolve checks are
       # environment-shaped and would fail a perfectly healthy runner.
-      - name: webjs doctor (blog, website)
+      - name: webjs doctor (blog, gallery, website)
         run: |
-          for app in examples/blog website; do
+          for app in examples/blog gallery website; do
             echo "::group::webjs doctor $app"
             ( cd "$app" && node "$GITHUB_WORKSPACE/packages/cli/bin/webjs.js" doctor )
             echo "::endgroup::"
@@ -514,7 +514,7 @@ jobs:
       - run: npm run build:dist --workspace=@webjsdev/core
 
   apps:
-    name: In-repo app tests (website + blog)
+    name: In-repo app tests (website + blog + gallery)
     runs-on: ubuntu-latest
     # The framework jobs above cover packages/* and the root cross-package
     # suite. This job runs each IN-REPO app's OWN test suite (its `webjs test`
@@ -535,7 +535,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - name: Install Playwright Chromium (for the website browser tests)
+      - name: Install Playwright Chromium (for the website + gallery browser tests)
         run: npx playwright install --with-deps chromium
       - name: Prepare the blog example database
         working-directory: examples/blog
@@ -543,6 +543,14 @@ jobs:
           cp .env.example .env
           npm run db:migrate
           npm run db:seed
+      # The gallery's auth card queries a real users table, and its test skips
+      # itself (rather than failing) when the table is missing, so an unmigrated
+      # database would turn the whole card green vacuously.
+      - name: Prepare the gallery database
+        working-directory: gallery
+        run: |
+          cp .env.example .env
+          npm run db:migrate
       # Nothing in the pipeline typechecked the website before, so a type
       # break landed on main and every branch cut from it inherited a red
       # tsc (#1260). It runs before the tests so a type break names itself
@@ -556,10 +564,18 @@ jobs:
         run: npm run typecheck --workspace=@webjsdev/website
       - name: blog typecheck
         run: npm run typecheck --workspace=@webjsdev/example-blog
+      - name: gallery typecheck
+        run: npm run typecheck --workspace=@webjsdev/gallery
       - name: website tests (node + browser)
         run: npm test --workspace=@webjsdev/website
       - name: blog tests (node)
         run: npm test --workspace=@webjsdev/example-blog
+      # The gallery is the canonical source of everything `webjs create` ships,
+      # so its suite is the one that catches a demo breaking against a framework
+      # change. Before #1370 those files sat un-executed under templates/, which
+      # is exactly the rot this job now closes. `webjs test` runs node + browser.
+      - name: gallery tests (node + browser)
+        run: npm test --workspace=@webjsdev/gallery
       # Boot the website on Node and assert it serves real routes with no
       # broken modulepreload, covering its /docs (#1098) and /ui (#1099)
       # routes. Runs the app's `webjs.start.before` presteps first (the ui

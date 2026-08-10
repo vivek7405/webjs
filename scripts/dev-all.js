@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * Starts the website and the example blog together.
- * One command, two servers (defaults):
+ * Starts the website, the example blog, and the feature gallery together.
+ * One command, three servers (defaults):
  *   - Website (landing, /docs, /ui)  → http://localhost:5001
  *   - Example blog                   → http://localhost:5004
+ *   - Feature gallery                → http://localhost:5005
  *
  * Ports sit in the 5001-5004 block on purpose: macOS reserves 5000 for
  * the AirPlay Receiver / Control Center, so a dev server there silently
@@ -12,9 +13,9 @@
  * an existing WEBSITE_PORT / BLOG_PORT habit still works.
  *
  * Override any port via its env var:
- *   WEBSITE_PORT=8080 BLOG_PORT=8081 npm run dev
+ *   WEBSITE_PORT=8080 BLOG_PORT=8081 GALLERY_PORT=8082 npm run dev
  *
- * Both are WebJs apps running in dev mode with file watching.
+ * All three are WebJs apps running in dev mode with file watching.
  * Ctrl-C stops all.
  */
 import { spawn } from 'node:child_process';
@@ -56,6 +57,7 @@ function start(name, cwd, cmd, args, extraEnv = {}) {
 const ports = {
   website: process.env.WEBSITE_PORT || '5001',
   blog:    process.env.BLOG_PORT    || '5004',
+  gallery: process.env.GALLERY_PORT || '5005',
 };
 
 // Use each workspace's `npm run dev` so the concurrently-spawned
@@ -77,6 +79,7 @@ const links = {
 // local equivalent to point SITE_URL at.
 start('website', resolve(root, 'website'), 'npm', ['run', 'dev'], { PORT: ports.website, ...links });
 start('blog',    resolve(root, 'examples', 'blog'), 'npm', ['run', 'dev'], { PORT: ports.blog, ...links });
+start('gallery', resolve(root, 'gallery'), 'npm', ['run', 'dev'], { PORT: ports.gallery, ...links });
 
 function cleanup() {
   console.log('\n▲ shutting down...');
@@ -94,7 +97,8 @@ console.log(`
   Docs        → http://localhost:${ports.website}/docs
   UI gallery  → http://localhost:${ports.website}/ui
   Demo        → http://localhost:${ports.blog}
+  Gallery     → http://localhost:${ports.gallery}
 
-  Override any port: WEBSITE_PORT / BLOG_PORT
+  Override any port: WEBSITE_PORT / BLOG_PORT / GALLERY_PORT
   Ctrl-C to stop all.
 `);

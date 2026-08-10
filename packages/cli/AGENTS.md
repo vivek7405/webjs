@@ -137,7 +137,7 @@ lib/
   api-gallery.js         Backend-features showcase for --template api:
                          JSON/HTTP endpoints under app/api/features/ (the
                          api counterpart of the UI gallery). Auth is a
-                         full-stack GALLERY card now (templates/gallery/
+                         full-stack GALLERY card now (gallery/
                          {app/features/auth,modules/auth}), not a template.
   runtime-rewrite.js     Pure transforms (#541) that DERIVE the bun-mode
                          variant of each canonical node template:

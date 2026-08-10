@@ -92,6 +92,11 @@ packages/mcp/resources/
 # scripts/sync-scaffold-skill.mjs). Never commit this bundle.
 packages/cli/templates/.agents/skills/webjs/
 
+# Generated at prepack from the canonical repo-root gallery/ app (see
+# scripts/sync-scaffold-gallery.mjs). Never commit this bundle: the gallery
+# lives ONCE at gallery/, and a committed copy here would silently drift.
+packages/cli/templates/gallery/
+
 # A machine-local symlink into ~/.local/share (an omarchy skill). Kept on disk
 # so the local setup keeps resolving it, untracked so it does not dangle in
 # every other clone. See test/repo-health/no-committed-symlinks.test.mjs.
