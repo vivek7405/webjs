@@ -6,12 +6,11 @@ import {
   redactToPlaceholders,
   extractWebComponentClassBodies,
   matchClosingBrace,
-  matchClosingParenthesis,
   parsePropEntries,
   classifyActionHole,
 } from './js-scan.js';
 import { buildModuleGraph, transitiveDeps, resolveImport } from './module-graph.js';
-import { scanComponents, extractComponents } from './component-scanner.js';
+import { scanComponents } from './component-scanner.js';
 import { buildRouteTable } from './router.js';
 import { analyzeElision } from './component-elision.js';
 import { RESERVED_CONFIG } from './action-config.js';

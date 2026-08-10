@@ -895,13 +895,20 @@ function isInlineStartTagHole(tagName, literalBefore) {
  * submitter action hole (`<button|input formaction=${...}>`) and each
  * custom-element start tag, the enclosing `<form>` scope at that point (#1307).
  *
+ * NOTE: this currently has NO production caller. It was written for the
+ * `submitter-needs-bound-form` check rule, which #1384 removed because its
+ * premise was false: a bound submitter is self-sufficient, so the enclosing
+ * form's boundness does not decide whether the action runs. The scan itself is
+ * correct about what it reports and is kept for a future consumer, but nothing
+ * reads it today, so treat it as unproven against real-world input.
+ *
  * Only an `html`-tagged literal is entered, so `const s = '<form>'` and a `css`
  * or `sql` template are never read as markup. That carve-out matters: the
  * framework's own website renders `<form action=${fn}>` as a code SAMPLE.
  *
  * A template nested inside a CHILD-position hole INHERITS the enclosing scope,
- * because that is what the renderer does (`render` threads `formScope` through
- * arrays, `repeat`, and nested templates).
+ * because that is where the renderer places it (through arrays, `repeat`, and
+ * nested templates).
  *
  * One in a START-TAG hole is `'handed'`: an attribute or property value whose
  * placement this scan cannot speak for. Worth being exact about why, because the
@@ -922,10 +929,10 @@ function isInlineStartTagHole(tagName, literalBefore) {
  * the scan started in, mirroring `handleTagEnd` in `render-server.js`.
  *
  * `opensForm` reports whether ANY `<form` start tag was seen anywhere in `src`.
- * A caller attributing a scope-`'none'` site to this file needs it: a fragment
- * built into a local and spliced into a form the same file opens inherits the
- * SPLICE point's scope, not the file's own call-site scope, so a file that
- * opens a form cannot have its `'none'` sites attributed safely.
+ * It exists for a caller that attributes a scope-`'none'` site to this file: a
+ * fragment built into a local and spliced into a form the same file opens
+ * inherits the SPLICE point's scope, not the file's own call-site scope, so a
+ * file that opens a form cannot have its `'none'` sites attributed safely.
  *
  * @param {string} src
  * @returns {{ submitters: FormScopeSite[], tagUses: FormScopeSite[], opensForm: boolean }}

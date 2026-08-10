@@ -182,23 +182,6 @@ async function renderTemplate(tr, ctx) {
   let pendingPropAttrs = [];
   /** @type {string[]} */
   let pendingSubmitterProps = [];
-  // Whether the tag stream is currently inside a form that BOUND an action
-  // (#1207), as THIS scan can see it. Three states, and the third is the point:
-  //   'bound'   an enclosing <form> opened here and bound an action
-  //   'unbound' an enclosing <form> opened here and bound nothing
-  //   'none'    there is conclusively no enclosing <form>
-  //   'unknown' there may be one, but this scan cannot see it
-  //
-  // The last two look alike and must not be merged, which is what a boolean did.
-  // A component's template is rendered by a SEPARATE pass (`injectDSD` calls
-  // `render` on it), so a `<button formaction=${fn}>` inside a component inside
-  // a bound form read as "no form", was refused, and in production vanished
-  // from a page that still returned 200. That pass now says 'unknown' and the
-  // boundness question is skipped, exactly as the client skips it when it
-  // cannot reach the form, so both renderers are best effort in the same place
-  // and for the same reason. A top-level scan that simply contains no form
-  // stays 'none' and is still refused, because there the answer IS known.
-  //
   let isCloseTag = false;
 
   // A bound `action=${fn}` is committed at its hole, but the edits it implies
@@ -1037,14 +1020,12 @@ async function injectDSD(html, ctx, ancestors = [], dev) {
       // Render the template to HTML. injectDSD recurses on the result so
       // nested custom elements (e.g. <theme-toggle> inside <blog-shell>)
       // get their own DSD pass.
-      // 'unknown' for the form scope (#1207): this is a SEPARATE render pass
-      // over one component's own template, driven by walking the already-emitted
-      // HTML, so it has no idea whether the host tag sits inside a bound
-      // `<form>`. Passing the default 'none' claimed there was no form at all,
-      // which refused a perfectly good `<button formaction=${fn}>` in a
-      // component inside a bound form and, because component SSR errors are
-      // isolated, made the button vanish from a page that still returned 200.
-      const rawInner = await render(tpl, ctx, 'unknown');
+      // This is a SEPARATE render pass over one component's own template,
+      // driven by walking the already-emitted HTML, so it has no idea whether
+      // the host tag sits inside a `<form>`. It does not need to: a bound
+      // submitter carries its whole submission (#1307), so nothing here asks
+      // about an enclosing form.
+      const rawInner = await render(tpl, ctx);
 
       if (isShadow) {
         // Shadow DOM: native <slot> stays as-is in the DSD template. The
