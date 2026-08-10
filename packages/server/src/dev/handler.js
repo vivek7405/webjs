@@ -593,11 +593,42 @@ export async function createRequestHandler(opts) {
     });
   }
 
+  function routeFor(pathname) {
+    const matchPathname = basePathValue
+      ? stripBasePath(pathname, basePathValue)
+      : pathname;
+    if (matchPathname === null) return null;
+    const page = matchPage(state.routeTable, matchPathname);
+    if (!page) return null;
+    const inert = state.inertRouteModules;
+    const importOnly = state.importOnlyRouteModules;
+    const files = [];
+    const seenFiles = new Set();
+    for (const f of [page.route.file, ...page.route.layouts]) {
+      if (inert && inert.has(f)) continue;
+      const emit = importOnly && importOnly.get(f);
+      for (const t of emit || [f]) if (!seenFiles.has(t)) { seenFiles.add(t); files.push(t); }
+    }
+    const moduleUrls = files.map((f) => {
+      let rel = f.startsWith(appDir) ? f.slice(appDir.length) : f;
+      const url = rel.split('\\').join('/').replace(/^\/?/, '/');
+      return withAssetHash(withBasePath(url, basePathValue), basePathValue);
+    });
+    return { moduleUrls };
+  }
+
   return {
     handle,
     rebuild,
-    state,
+    routeFor,
+    warmup: () => ensureReady().catch((e) => logger.error?.(`[webjs] background warm-up failed (will retry on the next request):`, e)),
+    getRouteTable: () => state.routeTable,
+    getLastDevError: () => state.lastDevError,
+    isRegenerateOutput: (filename) => isRegenerateOutputPath(filename, state.regenerateRules),
     appDir,
+    dev,
+    logger,
+    state,
   };
 }
 
