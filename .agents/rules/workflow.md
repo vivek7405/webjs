@@ -1,6 +1,6 @@
-# Translated Claude Code rules for Antigravity
+# Workspace rules for agents that read `.agents/rules/`
 
-These project-level rules are translated from the user's global Claude configuration (`~/.claude/CLAUDE.md` and `~/.claude/hooks/*`). They govern all operations inside this workspace.
+These project-level rules govern all operations inside this workspace. Antigravity loads every markdown file in `.agents/rules/`; the repo-root `AGENTS.md` remains the full contract and this file does not replace it.
 
 ## Commit Per Logical Unit, Do Not Batch
 - **Commit per logical unit as soon as it is complete.**
@@ -46,11 +46,25 @@ These project-level rules are translated from the user's global Claude configura
 - Before committing in a shared checkout, confirm `git branch --show-current` is still the branch you created. If it moved, switch to a worktree.
 
 ## Custom Skills Usage
-- The following skills have been translated and are available in `.agents/skills/`:
-  - `webjs-start-work`: Trigger when starting a tracked issue on the webjs project board.
-  - `webjs-doc-sync`: Trigger when documenting new public surfaces or finding doc gaps/drift.
+- These skills are symlinked into `.agents/skills/` from `.claude/skills/`, so both engines load one copy. Every entry here must have a matching symlink, and every symlink must have an entry here; `test/repo-health/agent-skill-parity.test.mjs` enforces both directions.
+  - `webjs-start-work`: Trigger when starting a tracked issue on the WebJs project board.
+  - `webjs-ready-for-dev`: Trigger when planning tracked issues into an implementable shape with verified plans.
   - `webjs-file-issue`: Trigger to file a grounded issue on the board.
   - `webjs-list-todos`: Trigger to check the list of TODOs.
   - `webjs-research-record`: Trigger to search and record findings.
+  - `webjs-doc-sync`: Trigger when documenting new public surfaces or finding doc gaps or drift.
+  - `webjs-scaffold-sync`: Trigger when changing the CLI generators, the scaffold templates, or the agent teaching skill.
+  - `webjs-blog-write`: Trigger when writing, drafting, or editing a WebJs blog post under `blog/`.
+  - `webjs-instagram-post`: Trigger when publishing an SEO post to the WebJs Instagram account.
   - `use-railway`: Trigger when interacting with Railway deploys.
+- The framework teaching skill at `.agents/skills/webjs/` is a real directory rather than a symlink, and is the reference for building WebJs apps rather than a workflow trigger.
 - Always use the `view_file` tool on the matched skill's `SKILL.md` before executing its tasks.
+
+## Enforcement gates
+
+The protective `PreToolUse` hooks under `.claude/hooks/` fire only inside Claude Code. Two gates bind every agent regardless of engine, and neither is optional.
+
+- `.hooks/pre-commit` runs on every commit. It blocks a direct commit to `main` or `master` and blocks a published-library version bump on any branch that is not `chore/release-*`. Never pass `git commit --no-verify`.
+- `.github/workflows/ci.yml` is the test gate (`conventions`, `unit`, and the Bun matrix), and branch protection blocks a merge until it is green. `.hooks/pre-commit` deliberately does not run the suite because CI does.
+
+Because the pre-tool gates do not fire here, self-check what they would have caught before every commit: stage tests alongside any `packages/*/src` change, stage the doc surfaces that change with it, keep the work inside its own worktree, and obey invariant 11 on prose punctuation and `WebJs` brand casing.
