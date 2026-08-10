@@ -4,6 +4,13 @@ import '#components/theme-toggle.ts';
 export const metadata = {
   title: 'WebJs Gallery',
   description: 'Interactive showcase and single-concept feature gallery for WebJs applications.',
+  // app/icon.ts SERVES the favicon at /icon, but a metadata route is not
+  // auto-linked: the framework emits `<link rel="icon">` only from
+  // metadata.icons. Without this the head pointed at nothing and the browser
+  // fell back to /favicon.ico, which the gallery does not ship, so the tab
+  // showed no mark at all. Declare it here, never as a hand-written <link>,
+  // so the URL stays in one place.
+  icons: { icon: { url: '/icon', type: 'image/svg+xml', sizes: 'any' } },
 };
 
 export default function RootLayout({ children }: { children: unknown }) {
