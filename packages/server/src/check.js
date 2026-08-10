@@ -6,10 +6,13 @@ import {
   redactToPlaceholders,
   extractWebComponentClassBodies,
   matchClosingBrace,
+  matchClosingParenthesis,
   parsePropEntries,
+  classifyActionHole,
+  scanHtmlFormScopes,
 } from './js-scan.js';
 import { buildModuleGraph, transitiveDeps, resolveImport } from './module-graph.js';
-import { scanComponents } from './component-scanner.js';
+import { scanComponents, extractComponents } from './component-scanner.js';
 import { buildRouteTable } from './router.js';
 import { analyzeElision } from './component-elision.js';
 import { RESERVED_CONFIG } from './action-config.js';
@@ -139,6 +142,11 @@ export const RULES = [
     name: 'form-action-not-a-get-action',
     description:
       'Flags `<form action=${someAction}>` bound to a `\'use server\'` action whose file declares `export const method = \'GET\'` (#488). A GET action is a READ: it is CSRF-exempt and rides its arguments in the url, while a form submission is a CSRF-checked POST carrying a body, so the two contracts contradict each other and the submission is answered with a 405 at runtime. The rule reads the imported action\'s own file, so it only fires when the binding really does resolve to a GET-declared action. Fix by dropping the `method` export (an action with no `method` is a POST, which is what a form wants) or by binding a different action; if the form really is a read, use a plain `<form method="get" action="/search">` with no bound action.',
+  },
+  {
+    name: 'submitter-needs-bound-form',
+    description:
+      'Flags a `<button formaction=${action}>` submitter (#1207) that a whole-app scan proves sits in a `<form>` which binds no action AND cannot carry the submitter\'s identity to the server. Those are two separate questions and only both together are a defect. An unbound `<form method="post">` still WORKS, because a submitter\'s identity rides its own `name`/`value` pair, which the browser submits for the pressed button alone, and the dispatcher takes the last `__webjs_action` entry it finds. What breaks is an unbound form that sends nothing readable: no `method` at all or `method="get"` (a GET carries the identity in the QUERY STRING, so the action never runs and the page simply re-renders with a 200, silently), or an enctype the server cannot parse (a 405). The renderers cannot catch the cross-module case alone. SSR reads one template at a time and a COMPONENT renders its own template in a separate pass with no view of the host page, so a submitter in a component is a cannot-tell, and cannot-tell has to bind (refusing there would drop an isolated component from a page that still returned 200). This rule has neither limit: it reads every template in the app at once. Deliberately conservative so it can never false-positive. A submitter whose enclosing form is UNBOUND in the SAME scan is flagged whatever its method, because the renderer refuses that shape outright. Across modules, a submitter with no enclosing form in its own scan is attributed to a component only when its file registers exactly one tag, declares exactly one WebComponent class, holds the submitter inside that class body, and opens no `<form>` of its own; every other shape (a bare `html` helper, a multi-component file, a file that could splice a fragment into its own form, a `formaction` hole that is not a PROVEN action binding (the scan is lexical while the renderer binds only a FUNCTION, so a url string, a url constant exported from a `.server` module, a factory-produced export, a namespace or default import, a barrel re-export, and any non-identifier expression are all left alone, which misses some real bindings but never misreports a working form), and a submitter or tag handed off in a START-TAG hole, which some other element receives and places, the one exception being `<webjs-suspense .fallback=${…}>`, which the renderer renders inline in the enclosing form and which IS therefore judged) is UNKNOWABLE and never flagged, because a fragment renders inside the CALLER\'s scan and inherits the caller\'s form scope. An attributed tag is then resolved across every call site, recursively and memoized: any call site that is bound, that is unbound but still delivering, that is unknowable, that has dynamic `method`/`enctype`, or that is part of a cycle makes the verdict unknowable, and a tag with no call site at all is unknowable too. The rule fires only when at least one call site exists and EVERY one places the tag in a form that cannot deliver. Fix by binding the enclosing form (`<form action=${formAction}>`), which is what supplies `method="post"` and the enctype at form start, too late to add from the button.',
   },
   {
     name: 'no-redirect-in-api-route',
@@ -1396,26 +1404,15 @@ export async function checkConventions(appDir) {
         // with no hole in it. That distinction is the whole carve-out: the
         // framework's own website renders this exact shape as a code sample.
         const { redacted, literals } = redactToPlaceholders(content);
-        // A hole binds an action when the literal segment IMMEDIATELY before it
-        // ends inside a start tag at the attribute that tag can really bind:
-        // `action=` on a `<form>` (#1155), or `formaction=` on a `<button>` /
-        // `<input>` submitter (#1207). Reading the segment rather than the whole
-        // template is what keeps `<div action=${x}>` out. The tag and the
-        // attribute are matched as a PAIR, so `<form formaction=${x}>` and
-        // `<button action=${x}>` stay out too: both are refused at render time,
-        // and neither is this rule's failure mode.
+        // Both binding shapes count the same here: `action=` on a `<form>`
+        // (#1155) and `formaction=` on a `<button>` / `<input>` submitter
+        // (#1207) each put the named action behind a form submission, and a
+        // GET-declared action cannot serve either. `classifyActionHole` owns
+        // the tag-and-attribute pairing (js-scan.js), shared with
+        // `submitter-needs-bound-form`.
         const bound = new Set();
         for (const m of redacted.matchAll(/__STR_(\d+)__\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g)) {
-          const before = literals[Number(m[1])] || '';
-          // The last `<` opens the tag the hole sits in. Requiring no `>`
-          // after it keeps the match inside that one start tag.
-          const tagAt = before.lastIndexOf('<');
-          if (tagAt < 0) continue;
-          const tag = before.slice(tagAt);
-          if (tag.includes('>')) continue;
-          const bindsForm = /^<form\b/i.test(tag) && /\saction=$/i.test(tag);
-          const bindsSubmitter = /^<(?:button|input)\b/i.test(tag) && /\sformaction=$/i.test(tag);
-          if (!bindsForm && !bindsSubmitter) continue;
+          if (!classifyActionHole(literals[Number(m[1])] || '')) continue;
           bound.add(m[2]);
         }
         if (!bound.size) continue;
@@ -1454,7 +1451,453 @@ export async function checkConventions(appDir) {
     }
   }
 
+  // --- Rule: submitter-needs-bound-form (#1307) ---
+  // A submitter bound in a component whose host form is unbound posts nowhere:
+  // the form defaults to GET, the identity rides the query string, and the page
+  // re-renders with the action never having run. Neither renderer can see it
+  // (each judges one template scan), so the whole-app scan is the only place
+  // the answer exists.
+  checkSubmitterNeedsBoundForm(files, violations, appDir);
+
   return violations;
+}
+
+/**
+ * Implements `submitter-needs-bound-form` (#1307). Factored out because it is
+ * whole-app: a submitter's enclosing form can live in a different module, so the
+ * verdict is a fixed point over every template in the app rather than a
+ * per-file scan.
+ *
+ * The tag-to-owner map comes from `extractComponents` over the `files` array the
+ * caller has already read, so there is no second directory walk. It does take
+ * `appDir`, because deciding whether a `formaction` hole is a real action
+ * binding means resolving the import to its target module and checking the
+ * export is callable; `resolveImport` needs the app root for that.
+ *
+ * @param {{ abs: string, rel: string, content: string, scan: string }[]} files
+ * @param {Violation[]} violations appended to in place
+ * @param {string} appDir
+ */
+function checkSubmitterNeedsBoundForm(files, violations, appDir) {
+  /**
+   * The FIX line is identical for every shape this rule reports, so it is
+   * written once.
+   */
+  const FIX = 'Bind the enclosing <form> too (`<form action=${formAction}>`), which is what supplies method="post" and the enctype at form start. A per-button action cannot retrofit them.';
+  /**
+   * Mirrors `scanComponents`'s own filter: a fixture or a spec in an app tree
+   * must not claim a tag, and a `.server.` module never renders to a browser.
+   * @param {string} rel
+   */
+  const isAppTemplateFile = (rel) =>
+    /\.m?[jt]sx?$/.test(rel)
+    && !/\.(test|spec)\.m?[jt]sx?$/.test(rel)
+    && !/\.server\.m?[jt]s$/.test(rel);
+
+  /** Every scanned file by absolute path, for resolving an import's target. */
+  const byAbs = new Map(files.map((f) => [f.abs, f]));
+
+  /**
+   * Is `name` exported from `scan` as something PROVABLY callable?
+   *
+   * The bias is the opposite of the sibling `'use server'` rules, and
+   * deliberately so. Those tolerate a false NEGATIVE, so anything ambiguous
+   * counts as possibly-callable. Here an ambiguous export firing the rule is a
+   * false POSITIVE on working code, so only a shape that must be a function
+   * counts: a function declaration, or a const bound to an arrow or a function
+   * expression. `export const ARCHIVE_URL = '/api/x'` is NOT callable, and a
+   * factory (`export const go = cache(fn)`) is not PROVABLE, so both stay
+   * silent.
+   *
+   * @param {string} scan fully-blanked view of the target module
+   * @param {string} name
+   * @returns {boolean}
+   */
+  const exportsCallable = (scan, name) => {
+    const n = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // `export [async] function NAME`.
+    if (new RegExp(`\\bexport\\s+(?:async\\s+)?function\\s+${n}\\b`).test(scan)) return true;
+    // A local declaration surfaced by a clause: `function NAME(){}; export { NAME }`.
+    // Only a clause with NO `from`, since a re-export would need another hop to
+    // the module that actually declares it.
+    const reClause = /\bexport\s*\{([^}]*)\}/g;
+    let cl;
+    while ((cl = reClause.exec(scan))) {
+      // A re-export needs another hop to the module that DECLARES the name, so
+      // it stays unknowable. Tested on the text after the clause rather than
+      // with a lookahead: `\s*(?!from)` can never reject, because `\s*`
+      // backtracks to zero width and the lookahead then reads the whitespace.
+      if (/^\s*from\b/.test(scan.slice(cl.index + cl[0].length))) continue;
+      const exported = cl[1].split(',').some((part) => {
+        const m = /([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?/.exec(part.trim());
+        return !!m && (m[2] || m[1]) === name;
+      });
+      if (!exported) continue;
+      const local = cl[1].split(',').map((part) => /([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?/.exec(part.trim()))
+        .filter((m) => m && (m[2] || m[1]) === name).map((m) => m[1])[0];
+      if (local && declaresCallable(scan, local)) return true;
+    }
+    return declaresCallable(scan, name, true);
+  };
+
+  /**
+   * Index just past the assignment `=` that follows a `const NAME`, or -1.
+   *
+   * A TypeScript annotation can itself contain `=>`
+   * (`const publishDraft: (fd: FormData) => Promise<void> = async (fd) => …`),
+   * which is the idiomatic spelling this repo's derive-the-type rule pushes
+   * authors toward. Skipping the annotation with a lazy regex group stopped at
+   * the FIRST `=`, which is the one inside the annotation's own arrow, so the
+   * scan resumed on `>` and every branch failed. Walking it with bracket depth
+   * and stepping over `=>` finds the real assignment.
+   *
+   * @param {string} scan
+   * @param {number} i index just after the declared name
+   * @returns {number}
+   */
+  function assignmentAfter(scan, i) {
+    let depth = 0;
+    while (i < scan.length) {
+      const c = scan[i];
+      // A `;` ENDS the declaration only at depth zero. TypeScript's canonical
+      // member separator is `;`, so an inline object type
+      // (`: ActionFn<{ id: string; title: string }>`) carries one INSIDE its
+      // brackets, and bailing there dropped the binding.
+      if (c === ';' && depth <= 0) return -1;
+      if (c === '=' && scan[i + 1] === '>') { i += 2; continue; }   // arrow in the annotation
+      if (c === '(' || c === '[' || c === '{' || c === '<') { depth++; i++; continue; }
+      if (c === ')' || c === ']' || c === '}' || c === '>') { depth--; i++; continue; }
+      // Reject `==` and `!=`, but NOT a preceding `<` or `>`: in annotation
+      // position those are brackets this same loop already consumed as such, so
+      // reading `Promise<void>=` as a `>=` comparison classified one character
+      // two contradictory ways.
+      //
+      // Two separate guards share this line, and only one of them is
+      // unpinnable. `depth <= 0` is live and reachable: a DEFAULT type
+      // parameter (`: <T = FormData>(fd: T) => …`) puts a bare `=` inside the
+      // annotation's brackets, and without the depth check that `=` is returned
+      // as the assignment. A row pins it.
+      //
+      // The `==` / `!=` rejection is the unpinnable half: no valid TypeScript
+      // puts a comparison between a declared name and its assignment, so no
+      // test can reach it. It is here because the input is a MASK of arbitrary
+      // source, which may be mid-edit and not valid at all.
+      //
+      // Do NOT restate here how many guards in this resolver are pinned. Two
+      // successive commits asserted an exact count and both were wrong within
+      // one commit of being written, because the count decays the moment
+      // anyone adds a guard. The durable statement is the rule, not the
+      // tally: a new guard needs a row in `submitter-needs-bound-form.test.js`
+      // that FAILS when the guard is broken, verified by breaking it.
+      if (depth <= 0 && c === '=' && scan[i + 1] !== '=' && !'=!'.includes(scan[i - 1] || '')) return i + 1;
+      i++;
+    }
+    return -1;
+  }
+
+  /**
+   * Is `name` DECLARED as something provably callable in `scan`?
+   *
+   * The arrow case must see the `=>`. An earlier version accepted a bare `(`
+   * after the `=`, which proves a parenthesized EXPRESSION and not a callable,
+   * so `export const ARCHIVE_URL = ('/api/x')` and the ordinary env-fallback
+   * spelling `= (process.env.X || '/api/x')` were read as actions. That is the
+   * exact false positive this whole resolver exists to prevent.
+   *
+   * @param {string} scan
+   * @param {string} name
+   * @param {boolean} [exported] require the declaration to carry `export`
+   * @returns {boolean}
+   */
+  function declaresCallable(scan, name, exported = false) {
+    const n = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const lead = exported ? '\\bexport\\s+' : '\\b';
+    if (!exported && new RegExp(`\\bfunction\\s+${n}\\b`).test(scan)) return true;
+    const re = new RegExp(`${lead}(?:const|let|var)\\s+${n}\\b`, 'g');
+    let m;
+    while ((m = re.exec(scan))) {
+      let i = assignmentAfter(scan, m.index + m[0].length);
+      if (i === -1) continue;
+      const skipWs = () => { while (i < scan.length && /\s/.test(scan[i])) i++; };
+      skipWs();
+      if (scan.startsWith('async', i) && /[\s(<]/.test(scan[i + 5] || '')) { i += 5; skipWs(); }
+      // `= [async] function ...`
+      if (/^function\b/.test(scan.slice(i, i + 9))) return true;
+      // `= [async] [<T>](params)[: ReturnType] => ...`, which must actually reach
+      // the arrow. Both the type-parameter list and the return type are optional
+      // and can carry their own brackets, so each is walked with depth rather
+      // than matched.
+      if (scan[i] === '<') {
+        let d2 = 0;
+        while (i < scan.length) {
+          const c = scan[i];
+          if (c === '=' && scan[i + 1] === '>') { i += 2; continue; }
+          if (c === '<') d2++;
+          else if (c === '>') { d2--; if (d2 <= 0) { i++; break; } }
+          i++;
+        }
+        skipWs();
+      }
+      if (scan[i] === '(') {
+        const close = matchClosingParenthesis(scan, i + 1);
+        if (close === -1) continue;
+        i = close + 1;
+        skipWs();
+        if (scan[i] === ':') {
+          let depth = 0;
+          i++;
+          while (i < scan.length) {
+            const c = scan[i];
+            // Depth-guarded, exactly like the declaration-side walk. A return
+            // type carries both separators INSIDE its brackets:
+            // `Promise<Record<string, string>>` is the `fieldErrors` shape the
+            // ActionResult envelope pushes authors toward, and an inline object
+            // return type uses `;`.
+            if ((c === ';' || c === ',') && depth <= 0) break;
+            // An arrow at depth zero ENDS the return type; a nested one is part
+            // of it and must be stepped over whole, or its `>` is eaten by the
+            // closer branch below and the depth skews. That is the same
+            // any-depth step the declaration walk makes.
+            if (c === '=' && scan[i + 1] === '>') {
+              if (depth <= 0) break;
+              i += 2;
+              continue;
+            }
+            if (c === '(' || c === '[' || c === '{' || c === '<') depth++;
+            else if (c === ')' || c === ']' || c === '}' || c === '>') depth--;
+            i++;
+          }
+          skipWs();
+        }
+        if (scan.startsWith('=>', i)) return true;
+        continue;
+      }
+      // `= [async] param => ...`, the single-parameter arrow with no parens.
+      const id = /^[A-Za-z_$][\w$]*/.exec(scan.slice(i));
+      if (id) {
+        i += id[0].length;
+        skipWs();
+        if (scan.startsWith('=>', i)) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Local names this file imports from a `.server.{js,ts}` module AND that the
+   * target really exports as a callable.
+   *
+   * The scan is LEXICAL, but the renderer binds only when the hole's value is a
+   * FUNCTION (`isBoundFormAction` in `form-action.js`), so `formaction=${'/api/'
+   * + id}` on a plain progressive-enhancement form, and equally a url CONSTANT
+   * exported from a `.server.ts` module, are ordinary url attributes that render
+   * and ship fine. Treating either as a binding reports a working form as
+   * broken.
+   *
+   * Only a plain named import is resolved. A namespace import
+   * (`import * as acts`), a default import, a barrel re-export, and any
+   * non-identifier expression (a member access, `this.act`) are all left
+   * UNKNOWABLE and therefore silent: they are real bindings the rule then
+   * misses, which is the safe direction and is listed with the rule's other
+   * silences.
+   *
+   * @param {string} content
+   * @param {string} abs
+   * @returns {Set<string>}
+   */
+  const serverImportedNames = (content, abs) => {
+    /** @type {Set<string>} */
+    const names = new Set();
+    const { redacted, literals } = redactToPlaceholders(content);
+    const reImport = /\bimport\s+([^'";]*?)\bfrom\s*(['"])/g;
+    let im;
+    while ((im = reImport.exec(redacted))) {
+      const tok = /__STR_(\d+)__/.exec(redacted.slice(reImport.lastIndex, reImport.lastIndex + 24));
+      if (!tok) continue;
+      const spec = literals[Number(tok[1])] || '';
+      if (!/\.server\.m?[jt]s$/.test(spec)) continue;
+      const target = resolveImport(spec, abs, appDir);
+      const targetFile = target ? byAbs.get(target) : null;
+      if (!targetFile) continue;   // unresolvable: unknowable, so silent
+      const targetScan = redactStringsAndTemplates(targetFile.content, true);
+      for (const { local, imported } of importedLocalNames(im[1])) {
+        if (exportsCallable(targetScan, imported)) names.add(local);
+      }
+    }
+    return names;
+  };
+
+  /** @type {{ rel: string, fileSites: ReturnType<typeof scanHtmlFormScopes>, ownerTag: string | null, bodySites: ReturnType<typeof scanHtmlFormScopes> | null }[]} */
+  const scanned = [];
+  for (const { abs, rel, content, scan } of files) {
+    if (!isAppTemplateFile(rel)) continue;
+    // Cheap bail: a file with neither a submitter binding nor a hyphenated tag
+    // can contribute neither a violation nor a call site.
+    if (!/formaction/i.test(content) && !/<[A-Za-z][A-Za-z0-9]*-/.test(content)) continue;
+    const fileSites = scanHtmlFormScopes(content);
+    if (!fileSites.submitters.length && !fileSites.tagUses.length) continue;
+    // Keep only the submitter holes that really bind an action. A `formaction`
+    // hole holding a url string is an ordinary attribute the renderer ships.
+    const bound = serverImportedNames(content, abs);
+    const isActionBinding = (site) => !!site.expr && /^[A-Za-z_$][\w$]*$/.test(site.expr) && bound.has(site.expr);
+    fileSites.submitters = fileSites.submitters.filter(isActionBinding);
+    // ATTRIBUTABLE: exactly one registered tag and exactly one WebComponent
+    // class, so a cannot-tell submitter in that class body belongs to that tag
+    // with no ambiguity. Anything else stays unknowable.
+    //
+    // The class body is located in the MASK and sliced out of the RAW source at
+    // the same offsets. The mask is position-preserving, and it is what every
+    // other `extractWebComponentClassBodies` caller passes, so the brace matcher
+    // is never asked to lex raw source (where an unlexed regex literal such as
+    // `static re = /[{]/` would truncate or lose the body, silently dropping
+    // this rule's cross-module half for that file). Slicing `content` then gives
+    // the body with its templates intact, which is what the scan needs.
+    const tags = new Set(extractComponents(content).map((c) => c.tag));
+    const bodies = extractWebComponentClassBodies(scan);
+    let ownerTag = null;
+    /** @type {ReturnType<typeof scanHtmlFormScopes> | null} */
+    let bodySites = null;
+    if (tags.size === 1 && bodies.length === 1) {
+      ownerTag = /** @type {string} */ ([...tags][0]);
+      bodySites = scanHtmlFormScopes(content.slice(bodies[0].bodyStart, bodies[0].bodyEnd));
+      bodySites.submitters = bodySites.submitters.filter(isActionBinding);
+    }
+    scanned.push({ rel, fileSites, ownerTag, bodySites });
+  }
+  if (!scanned.length) return;
+
+  // Every call site of every tag, as a scope. A 'none' site needs attribution
+  // before it means anything, so it is recorded with the component that renders
+  // it (or as unknowable when no single component owns it).
+  /** @type {Map<string, Array<{ scope: import('./js-scan.js').FormScope, delivers: boolean | null, via: string | null }>>} */
+  const callSites = new Map();
+  for (const { fileSites, ownerTag, bodySites } of scanned) {
+    // A 'none' use is attributed to this file's component ONLY when the
+    // class-body scan saw it too. One found only in the whole-file scan came
+    // from a bare `html` helper, which is rendered inside the CALLER's scan and
+    // inherits the caller's form scope, so it is unknowable.
+    //
+    // And only when this file opens NO form of its own, ANYWHERE. A fragment
+    // built into a local (`const rows = html`<todo-row>`;`) and spliced into a
+    // form the same file opens (`html`<form action=${save}>${rows}</form>``)
+    // inherits the SPLICE point's scope, not this component's call-site scope,
+    // and the two templates are separate scans so nothing here can tell them
+    // apart. That is the same reasoning the submitter half already applies to a
+    // bare helper.
+    //
+    // The test is the WHOLE-FILE scan, not the class body: a module-scope
+    // helper (`const shell = (inner) => html`<form action=${save}>${inner}</form>``)
+    // opens a form the class body never sees, and splicing into that is the same
+    // hole.
+    const attributable = ownerTag && bodySites && !fileSites.opensForm ? ownerTag : null;
+    /** @type {Map<string, number>} */
+    const bodyNoneByTag = new Map();
+    for (const u of attributable && bodySites ? bodySites.tagUses : []) {
+      if (u.scope !== 'none') continue;
+      bodyNoneByTag.set(u.tag, (bodyNoneByTag.get(u.tag) || 0) + 1);
+    }
+    for (const u of fileSites.tagUses) {
+      let via = null;
+      if (u.scope === 'none') {
+        const left = bodyNoneByTag.get(u.tag) || 0;
+        if (attributable && left > 0) {
+          bodyNoneByTag.set(u.tag, left - 1);
+          via = attributable;
+        }
+      }
+      const list = callSites.get(u.tag) || [];
+      list.push({ scope: u.scope, delivers: u.delivers, via });
+      callSites.set(u.tag, list);
+    }
+  }
+
+  /** @type {Map<string, 'undeliverable' | 'unknowable'>} */
+  const verdicts = new Map();
+  /** @type {Set<string>} */
+  const inProgress = new Set();
+  /**
+   * Does EVERY place this tag is rendered put it in a form that CANNOT deliver
+   * a submitter's action?
+   *
+   * The delivery question is what decides whether the shape is broken, and it is
+   * not the same as boundness. An unbound `<form method="post">` still carries a
+   * submitter's own `name`/`value` pair to the server, so the identity arrives
+   * and the action RUNS. What breaks is a form that sends nothing the server can
+   * read: no `method` (a GET, so the identity rides the query string), an
+   * explicit `method="get"`, or an enctype the server cannot parse. So a call
+   * site inside an unbound-but-delivering form is NOT a defect, and it makes the
+   * verdict unknowable like any other non-defect site.
+   *
+   * One delivering call site, one bound call site, one unknowable call site, a
+   * cycle, or no call site at all all answer `'unknowable'`, which is silent.
+   *
+   * The scope tests below are EXACT `'none'` on purpose. A `'handed'` site (a
+   * template sitting in a start-tag hole, so some other element received it and
+   * places it) must fall through to `'unknowable'`, and it does so only because
+   * nothing here treats it as a cannot-tell. Loosening these to a catch-all
+   * would resolve a handed-off template through this component's call sites,
+   * which is the wrong component's answer.
+   *
+   * @param {string} tag
+   * @returns {'undeliverable' | 'unknowable'}
+   */
+  function resolveTagScope(tag) {
+    const memo = verdicts.get(tag);
+    if (memo) return memo;
+    // A cycle teaches nothing about the host page, so it cannot be a verdict.
+    // Not memoized: the same tag may resolve conclusively on another path.
+    if (inProgress.has(tag)) return 'unknowable';
+    const sites = callSites.get(tag) || [];
+    if (!sites.length) {
+      // A tag no app template renders may still be rendered by markup this scan
+      // cannot see.
+      verdicts.set(tag, 'unknowable');
+      return 'unknowable';
+    }
+    inProgress.add(tag);
+    /** @type {'undeliverable' | 'unknowable'} */
+    let verdict = 'undeliverable';
+    for (const site of sites) {
+      if (site.scope === 'unbound' && site.delivers === false) continue;
+      if (site.scope === 'none' && site.via && resolveTagScope(site.via) === 'undeliverable') continue;
+      verdict = 'unknowable';
+      break;
+    }
+    inProgress.delete(tag);
+    verdicts.set(tag, verdict);
+    return verdict;
+  }
+
+  for (const { rel, fileSites, ownerTag, bodySites } of scanned) {
+    // The same-scan case: the form and the submitter are both in this template,
+    // so the answer needs no cross-module step. The renderer refuses this shape
+    // too, but only if that branch actually renders.
+    for (const s of fileSites.submitters) {
+      if (s.scope !== 'unbound') continue;
+      violations.push({
+        rule: 'submitter-needs-bound-form',
+        file: rel,
+        message: `Binds an action with \`formaction=\${…}\` on a <${s.tag}>, but the enclosing <form> in the SAME template carries no \`action=\${action}\` binding. Wherever the renderer sees both halves in one pass it refuses this shape outright, so the page throws at render rather than shipping it.`,
+        fix: FIX,
+      });
+    }
+    // The SAME `opensForm` guard the tag half uses, and for the same reason: a
+    // submitter fragment built into a local and spliced into a form this file
+    // opens is inside that form, not at the component's call site. The rule
+    // description states this condition, so the code has to hold it.
+    if (!ownerTag || !bodySites || fileSites.opensForm) continue;
+    const cannotTell = bodySites.submitters.filter((s) => s.scope === 'none');
+    if (!cannotTell.length) continue;
+    if (resolveTagScope(ownerTag) !== 'undeliverable') continue;
+    for (const s of cannotTell) {
+      violations.push({
+        rule: 'submitter-needs-bound-form',
+        file: rel,
+        message: `Binds an action with \`formaction=\${…}\` on a <${s.tag}>, but every place <${ownerTag}> is rendered puts it in a <form> that binds no action AND cannot carry the identity to the server (no \`method="post"\`, or an enctype the server cannot parse). Nothing throws: the submission goes out as a GET with the identity in the query string, the action never runs, and the page simply re-renders with a 200.`,
+        fix: FIX,
+      });
+    }
+  }
 }
 
 /**

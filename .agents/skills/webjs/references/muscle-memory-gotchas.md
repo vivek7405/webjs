@@ -110,6 +110,7 @@ The bound, refused, and allowed shapes in full. Every "no" row is a binding that
 | `action=${fn}` on any other tag | yes | `action` submits nothing off a `<form>`, so it is an ordinary attribute and the function would be stringified |
 | `action="${fn}"`, or a mixed `action="/x/${fn}"` | yes | quoting turns a binding hole back into a plain attribute |
 | `formaction=${fn}` unquoted, on a submitter, ANYWHERE | **no, it BINDS** | the second supported shape (#1207, #1307). A bound submitter carries its WHOLE submission: the identity rides the button's own `name`/`value` pair, the one channel a browser submits for the pressed button alone, and the renderer adds `formmethod="post"` and `formenctype="multipart/form-data"` to the button itself. So it works inside a bound form, an unbound form, a `method="get"` form, or a form with no method at all, and it asks NOTHING of the element around it. No `formaction` url is emitted, and the server takes the LAST `__webjs_action` entry |
+
 | `formaction=${fn}` on a submitter carrying its own `name` or `value` | yes | the identity IS that name/value pair, so both halves are already spoken for. Bind one action on the form and dispatch on `name="intent"` if you need the button's own value |
 | `formaction=${fn}` on a non-submit control, or `<input type="image">` | yes | `formaction` is inert on anything that does not submit, and an image submitter sends `name.x` / `name.y` coordinates instead of `name=value`, so the identity would never arrive |
 | `formaction=${fn}` on a submitter with `form="other"` | yes | it re-points the submitter at a different form owner, which may not be where the identity field it needs lives |
@@ -135,6 +136,28 @@ The bound, refused, and allowed shapes in full. Every "no" row is a binding that
 That last row is the one to remember: quoting a binding hole turns it back into a plain attribute, which is why invariant 4 requires `@`, `.` and `?` holes to be unquoted.
 
 `.action=${fn}` on a native form is refused during SSR too, even though the property is dropped there and nothing could leak, so a page cannot render clean on the server and then throw on hydration.
+
+**A submitter in a component whose host form is unbound AND cannot carry a body is the one failure the renderers cannot throw on.** It is the shape to check by hand whenever you split a form across modules:
+
+```ts
+// components/publish-button.ts   <- the submitter lives here
+class PublishButton extends WebComponent({}) {
+  render() { return html`<button formaction=${publishDraft}>Publish</button>`; }
+}
+PublishButton.register('publish-button');
+
+// app/triage/page.ts             <- the form lives here
+// WRONG: the form binds nothing, and NOTHING throws.
+html`<form><publish-button></publish-button></form>`;
+// RIGHT: bind the enclosing form too.
+html`<form action=${saveAll}><publish-button></publish-button></form>`;
+```
+
+The component renders its own template in a separate pass with no view of the host page, so the renderer sees a cannot-tell and binds anyway (refusing would drop an isolated component from a page that still returned 200, which is worse). What ships is a button carrying the reserved `__webjs_action` identity inside whatever form the page wrote. Whether that is broken depends on the form, and the distinction is easy to miss: one that still sends a parseable POST body WORKS, because the identity rides the button's own `name`/`value` pair into the body and the dispatcher runs the action. One with no `method` (or `method="get"`) submits a GET, so the identity rides the QUERY STRING, the action never runs, the page re-renders, the status is 200, and there is no throw, no log, and no 405. A silent write path is the whole failure mode, so treat the address bar growing a `?__webjs_action=` as the fingerprint.
+
+**Two runtime signals back the check up.** In dev, submitting a form that carries an action identity it cannot deliver logs one `console.error` naming the fix, once per shape; it never throws, so the submission behaves exactly as it does in production. In production, both server-visible fingerprints reach the `onError` hook (the programmatic `createRequestHandler({ onError })` option and any sink an `instrumentation.{js,ts}` installed) with a code to group on: `WEBJS_FORM_SUBMITTED_AS_GET` for a page GET carrying the reserved field in its query string, and `WEBJS_FORM_ACTION_MISSING` for a form body carrying no identity at all. Both are detect-only, so no status changes, and both carry the submitted field NAMES and never the values.
+
+**Run `webjs check` and it catches this for you.** The `submitter-needs-bound-form` rule reads every template in the app at once, which neither renderer can do, so it resolves the enclosing form across module boundaries and transitively through intermediate components (a page's form around `<todo-list>` around `<todo-row>` around the button). It is conservative by design and says nothing when it cannot be sure: a tag rendered in a bound form somewhere and an unbound one elsewhere, a tag whose host form is unbound but still DELIVERS (that shape works), a form whose `method` or `enctype` comes from a hole, a tag with no call site in the app, a submitter in a bare `html` helper rather than a component class body, a file registering more than one tag, a file that opens a form of its own, a submitter or tag handed to another element through a start-tag hole (`<my-thing .tpl=${html`…`}>`), a `formaction` hole that is not a proven action binding (a url string or CONSTANT, a factory-produced export, a namespace or default import, a barrel re-export, or a non-identifier expression like `acts.publishDraft`), or a reference cycle. The one start-tag hole it DOES judge is `<webjs-suspense .fallback=${html`…`}>`, because the renderer renders a fallback inline in the enclosing form rather than handing it off. Silence from the rule is therefore not proof the form is bound; a green check plus the shape above still deserves a look.
 
 **Inside a component you may never see the error.** Per-component SSR error isolation contains the throw, so development shows an error box in place of the component and production renders it empty with the page still returning 200. A form that has silently vanished in production is this bug wearing a disguise; the message is in the server log. Nothing leaks either way.
 

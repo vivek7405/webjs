@@ -470,7 +470,13 @@ export function extractWebComponentClassBodies(content) {
         bodies.push({
           body: content.slice(bodyStart, end),
           factoryProps,
-          factoryArg
+          factoryArg,
+          // Offsets into `content`. Callers pass the position-preserving MASK,
+          // so these index the RAW source identically, which is how a caller
+          // that needs the body's real template text gets it without asking
+          // this lexer to handle raw source (#1307).
+          bodyStart,
+          bodyEnd: end,
         });
       }
     }
@@ -640,7 +646,7 @@ export function matchClosingParenthesis(s, start) {
  * (the closing `}` arrived while still in template state), so depth could
  * never return to zero and a class body holding `` html`…${x}…` `` was
  * unmatchable. Every caller passes a masked source in which holes are already
- * blanked, so the bug is invisible until one passes raw source.
+ * blanked, so the bug is invisible until one passes raw source (#1307).
  *
  * @param {string} s
  * @param {number} start
@@ -715,5 +721,424 @@ export function matchClosingBrace(s, start) {
 export function redactToPlaceholders(src) {
   const { out, literals } = scanLiterals(src, { placeholder: true });
   return { redacted: out, literals };
+}
+
+/**
+ * The attribute position a template hole commits to, read from the literal
+ * segment immediately before it. Returns the attribute NAME only; a caller
+ * pairs it with the tag the hole sits in.
+ *
+ * @param {string} literalBefore
+ * @returns {'action' | 'formaction' | null}
+ */
+function trailingActionAttr(literalBefore) {
+  if (/\sformaction=$/i.test(literalBefore)) return 'formaction';
+  if (/\saction=$/i.test(literalBefore)) return 'action';
+  return null;
+}
+
+/**
+ * Classify a template hole by the start tag and attribute it commits: `'form'`
+ * for `<form action=` (#1155), `'submitter'` for `<button|input formaction=`
+ * (#1207), and `null` for anything else.
+ *
+ * Reading the segment immediately before the hole rather than the whole
+ * template is what keeps `<div action=${x}>` out. The tag and the attribute are
+ * matched as a PAIR, so `<form formaction=${x}>` and `<button action=${x}>`
+ * stay out too: both are refused at render time, and neither is a binding.
+ *
+ * @param {string} literalBefore the literal segment immediately before the hole
+ * @returns {'form' | 'submitter' | null}
+ */
+export function classifyActionHole(literalBefore) {
+  const attr = trailingActionAttr(literalBefore);
+  if (!attr) return null;
+  // The last `<` opens the tag the hole sits in. Requiring no `>` after it
+  // keeps the match inside that one start tag.
+  const tagAt = literalBefore.lastIndexOf('<');
+  if (tagAt < 0) return null;
+  const tag = literalBefore.slice(tagAt);
+  if (tag.includes('>')) return null;
+  if (attr === 'action' && /^<form\b/i.test(tag)) return 'form';
+  if (attr === 'formaction' && /^<(?:button|input)\b/i.test(tag)) return 'submitter';
+  return null;
+}
+
+/**
+ * The ONE `enctype` keyword that loses a form body the server could otherwise
+ * read.
+ *
+ * Stated as a denylist rather than an allowlist because `enctype` is an
+ * enumerated attribute whose missing value default AND invalid value default are
+ * both `application/x-www-form-urlencoded`. So `enctype="nonsense"` falls back to
+ * urlencoded and submits a perfectly parseable body; only the third valid
+ * keyword, `text/plain`, is a real loss. An allowlist inverts that and reports a
+ * working form as broken, which this rule must never do.
+ *
+ * The renderer's `PARSEABLE_ENCTYPES` (`form-action.js`) refuses the wider set,
+ * and that divergence is deliberate on BOTH sides rather than an inconsistency
+ * to unify. The two ask different questions. This rule asks whether the
+ * identity ARRIVES, and under an invalid enctype it does. The renderer asks
+ * whether the form will do what the author wrote, and there an invalid value is
+ * the dangerous case: `enctype="multipart/form-dat"` falls back to urlencoded,
+ * which silently drops every FILE from the submission, so throwing at render is
+ * the only way the author finds out. Unifying them would either make the
+ * renderer accept a typo that loses uploads, or make this rule report a working
+ * form as broken.
+ */
+const UNPARSEABLE_FORM_ENCTYPE = 'text/plain';
+
+/**
+ * Read one attribute's literal value out of a start tag's accumulated text.
+ * Returns null when absent, and the raw value otherwise (quoted or bare).
+ *
+ * @param {string} tagText
+ * @param {string} name
+ * @returns {string | null}
+ */
+function startTagAttr(tagText, name) {
+  const re = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i');
+  const m = re.exec(tagText);
+  if (!m) return null;
+  return m[1] ?? m[2] ?? m[3] ?? '';
+}
+
+/**
+ * Would an UNBOUND `<form>` still deliver a submitter's action identity?
+ *
+ * This is the difference between a broken write path and a working one, and it
+ * is not intuitive. A submitter carries its identity in its OWN `name`/`value`
+ * pair, which a browser submits for the pressed button alone, so an unbound
+ * form that still sends a parseable POST body delivers it and the action RUNS
+ * (the dispatcher takes the last `__webjs_action` entry it finds). What breaks
+ * is a form that sends no body the server can read: no `method` at all or
+ * `method="get"` (a GET puts the identity in the query string and the page just
+ * re-renders), or an enctype `parseFormBody` cannot parse (a 405).
+ *
+ * Both are enumerated attributes matched against exact keywords with no
+ * whitespace stripping, and their defaults pull in OPPOSITE directions, which is
+ * why they are tested differently. `method` defaults to GET, so anything that is
+ * not exactly `post` loses the body (a padded `method=" post "` included).
+ * `enctype` defaults to `application/x-www-form-urlencoded` for both a missing
+ * AND an invalid value, so only the `text/plain` keyword actually loses it.
+ *
+ * @param {string} tagText the form's start tag, from `<form` to just before `>`
+ * @returns {boolean}
+ */
+function unboundFormDelivers(tagText) {
+  const method = startTagAttr(tagText, 'method');
+  if (method === null || method.toLowerCase() !== 'post') return false;
+  const enctype = startTagAttr(tagText, 'enctype');
+  if (enctype !== null && enctype.toLowerCase() === UNPARSEABLE_FORM_ENCTYPE) return false;
+  return true;
+}
+
+/**
+ * The ONE start-tag hole the renderer renders INLINE, in the enclosing scan and
+ * with the enclosing form scope, rather than handing to the receiving element:
+ * `<webjs-suspense .fallback=${html`…`}>` (#471).
+ *
+ * A custom-element property applies only at HYDRATION, which is too late for a
+ * placeholder that has to be in the first flushed bytes, so `render-server.js`
+ * renders the fallback right there and carries the HTML as
+ * `data-webjs-fallback`. (The timing is the operative reason on its own. A
+ * serializable `TemplateResult` would otherwise ride as `data-webjs-prop-*`
+ * perfectly well; only one carrying a function fails to serialize.) That means a submitter in a fallback IS judged against
+ * the enclosing form, and the renderer really does throw for an unbound one.
+ * Treating it as handed off would make the same-scan half blind to the one shape
+ * it exists to pre-warn about.
+ *
+ * @param {string} tagName lowercased
+ * @param {string} literalBefore the literal segment immediately before the hole
+ * @returns {boolean}
+ */
+function isInlineStartTagHole(tagName, literalBefore) {
+  // The property name is a JS identifier, so it is case-SENSITIVE, unlike an
+  // attribute name.
+  return tagName === 'webjs-suspense' && /\.fallback=$/.test(literalBefore);
+}
+
+/**
+ * @typedef {'none'|'unbound'|'bound'|'handed'} FormScope
+ *
+ * `'none'` and `'handed'` are BOTH "no enclosing form in this scan", and they
+ * are deliberately separate values because a caller must treat them
+ * differently. `'none'` is a cannot-tell that the file's own component may
+ * legitimately own, so a caller may attribute it and resolve it against that
+ * component's call sites. `'handed'` is a template sitting in a start-tag hole,
+ * which is an attribute or property VALUE: some OTHER element received it and
+ * decides where it renders, so this file's call sites say nothing about it and
+ * it can never be attributed to anything. Collapsing the two makes a handed-off
+ * template resolve through the wrong component's call sites.
+ *
+ * @typedef {{
+ *   tag: string,
+ *   scope: FormScope,
+ *   delivers: boolean | null,
+ *   expr: string | null,
+ * }} FormScopeSite
+ *
+ * `expr` is the submitter hole's expression text, verbatim from the redacted
+ * source, and null for a tag use. A caller MUST look at it before treating the
+ * hole as an action binding: this scan is lexical, while the renderer binds only
+ * when the value is a FUNCTION (`isBoundFormAction`), so
+ * `formaction=${'/api/' + id}` is an ordinary url attribute that ships fine.
+ *
+ * `delivers` is meaningful only when `scope` is `'unbound'`: true when that
+ * form would still carry a submitter's identity to the server, false when it
+ * would not, and null when a hole in its start tag makes the answer dynamic and
+ * therefore unknowable.
+ */
+
+/**
+ * Walk every `` html`...` `` template literal in `src` and report, for each
+ * submitter action hole (`<button|input formaction=${...}>`) and each
+ * custom-element start tag, the enclosing `<form>` scope at that point (#1307).
+ *
+ * Only an `html`-tagged literal is entered, so `const s = '<form>'` and a `css`
+ * or `sql` template are never read as markup. That carve-out matters: the
+ * framework's own website renders `<form action=${fn}>` as a code SAMPLE.
+ *
+ * A template nested inside a CHILD-position hole INHERITS the enclosing scope,
+ * because that is what the renderer does (`render` threads `formScope` through
+ * arrays, `repeat`, and nested templates).
+ *
+ * One in a START-TAG hole is `'handed'`: an attribute or property value whose
+ * placement this scan cannot speak for. Worth being exact about why, because the
+ * obvious reason is not the operative one. SSR does NOT render such a template
+ * in place: a serializable value rides to the receiving element as
+ * `data-webjs-prop-*` and is applied at HYDRATION, and one carrying a function
+ * (a bound submitter, by definition) fails to serialize, so `render-server.js`
+ * DROPS the binding with a warning and emits nothing for it at all. Either way
+ * the element that receives the property decides where the content lands, in the
+ * browser, which is exactly what this scan cannot see.
+ *
+ * The single exception is `<webjs-suspense .fallback=${…}>`, which the renderer
+ * really does render inline with the enclosing scope (see
+ * `isInlineStartTagHole`), so that one inherits.
+ *
+ * A separate top-level template starts fresh at
+ * `'none'`, because it is its own scan there too. `</form>` returns to the scope
+ * the scan started in, mirroring `handleTagEnd` in `render-server.js`.
+ *
+ * `opensForm` reports whether ANY `<form` start tag was seen anywhere in `src`.
+ * A caller attributing a scope-`'none'` site to this file needs it: a fragment
+ * built into a local and spliced into a form the same file opens inherits the
+ * SPLICE point's scope, not the file's own call-site scope, so a file that
+ * opens a form cannot have its `'none'` sites attributed safely.
+ *
+ * @param {string} src
+ * @returns {{ submitters: FormScopeSite[], tagUses: FormScopeSite[], opensForm: boolean }}
+ */
+export function scanHtmlFormScopes(src) {
+  const { redacted, literals } = redactToPlaceholders(src);
+  /** @type {FormScopeSite[]} */
+  const submitters = [];
+  /** @type {FormScopeSite[]} */
+  const tagUses = [];
+  let opensForm = false;
+  const n = redacted.length;
+  // Sticky, so matching a literal placeholder at the cursor costs no slice.
+  const STR = /__STR_(\d+)__/y;
+
+  /**
+   * Walk code. In placeholder mode a comment body and a regex body are already
+   * blanked to spaces and a string body is one opaque token, so the only
+   * structure left to track is braces, quote delimiters, and backticks.
+   *
+   * @param {number} i
+   * @param {boolean} stopAtBrace return at the `}` closing the enclosing hole
+   * @param {FormScope} scope inherited by any template found here
+   * @param {boolean | null} delivers inherited alongside `scope`
+   * @returns {number}
+   */
+  function walkCode(i, stopAtBrace, scope, delivers) {
+    let brace = 0;
+    while (i < n) {
+      const c = redacted[i];
+      if (stopAtBrace && c === '}' && brace === 0) return i;
+      if (c === '{') { brace++; i++; continue; }
+      if (c === '}') { brace--; i++; continue; }
+      if (c === "'" || c === '"') {
+        i++;
+        while (i < n && redacted[i] !== c && redacted[i] !== '\n') i++;
+        if (i < n) i++;
+        continue;
+      }
+      if (c === '`') {
+        const before = redacted.slice(Math.max(0, i - 32), i);
+        const tagged = /([A-Za-z_$][\w$]*)\s*$/.exec(before);
+        i = walkTemplate(i + 1, !!tagged && tagged[1] === 'html', scope, delivers);
+        continue;
+      }
+      i++;
+    }
+    return i;
+  }
+
+  /**
+   * Walk one template literal from just after its opening backtick.
+   *
+   * @param {number} i
+   * @param {boolean} isHtml whether its markup should be read
+   * @param {FormScope} startScope
+   * @param {boolean | null} startDelivers
+   * @returns {number} the index just past the closing backtick
+   */
+  function walkTemplate(i, isHtml, startScope, startDelivers) {
+    /** @type {FormScope} */
+    let scope = startScope;
+    /** @type {boolean | null} */
+    let delivers = startDelivers;
+    /**
+     * The start tag currently open. It persists across literal segments AND
+     * across holes, because `<form action=${fn} class="x">` is one tag split
+     * into three pieces by the scan. `text` accumulates the tag's literal
+     * source so its attributes can be read at the `>`, and `dynamicAttrs`
+     * records that a hole other than the action binding landed in it, which
+     * makes those attributes unknowable.
+     * @type {null | { name: string, isClose: boolean, quote: string | null, formHole: boolean, submitterHole: boolean, submitterExpr: string | null, text: string, dynamicAttrs: boolean }}
+     */
+    let tag = null;
+    let inComment = false;
+    let lastLiteral = '';
+
+    const closeTag = () => {
+      const t = tag;
+      tag = null;
+      if (!t) return;
+      if (t.isClose) {
+        // Back to the scope this scan STARTED in, not a flat 'none': a nested
+        // template closing a form of its own learns nothing about the form its
+        // caller may have opened.
+        if (t.name === 'form') { scope = startScope; delivers = startDelivers; }
+        return;
+      }
+      if (t.name === 'form') {
+        opensForm = true;
+        // A form that opened and bound NOTHING still opens a scope: a submitter
+        // inside it is a different answer from one with no form at all. Whether
+        // that unbound form would still DELIVER a submitter's identity is a
+        // separate question, and the one that decides if the shape is broken.
+        scope = t.formHole ? 'bound' : 'unbound';
+        delivers = t.formHole ? null : (t.dynamicAttrs ? null : unboundFormDelivers(t.text));
+        return;
+      }
+      if (t.submitterHole) submitters.push({ tag: t.name, scope, delivers, expr: t.submitterExpr || null });
+      if (t.name.includes('-')) tagUses.push({ tag: t.name, scope, delivers, expr: null });
+    };
+
+    /** @param {string} text one literal segment, read as markup */
+    const consumeMarkup = (text) => {
+      let p = 0;
+      while (p < text.length) {
+        if (inComment) {
+          const end = text.indexOf('-->', p);
+          if (end < 0) return;
+          inComment = false;
+          p = end + 3;
+          continue;
+        }
+        if (tag) {
+          const ch = text[p];
+          if (tag.quote) {
+            if (ch === tag.quote) tag.quote = null;
+            tag.text += ch;
+            p++;
+            continue;
+          }
+          if (ch === '"' || ch === "'") { tag.quote = ch; tag.text += ch; p++; continue; }
+          if (ch === '>') { p++; closeTag(); continue; }
+          tag.text += ch;
+          p++;
+          continue;
+        }
+        const lt = text.indexOf('<', p);
+        if (lt < 0) return;
+        if (text.startsWith('<!--', lt)) { inComment = true; p = lt + 4; continue; }
+        const m = /^<(\/?)([A-Za-z][A-Za-z0-9-]*)/.exec(text.slice(lt));
+        if (!m) { p = lt + 1; continue; }
+        tag = {
+          name: m[2].toLowerCase(),
+          isClose: m[1] === '/',
+          quote: null,
+          formHole: false,
+          submitterHole: false,
+          submitterExpr: null,
+          text: m[0],
+          dynamicAttrs: false,
+        };
+        p = lt + m[0].length;
+      }
+    };
+
+    while (i < n) {
+      const c = redacted[i];
+      if (c === '`') return i + 1;
+      if (c === '$' && redacted[i + 1] === '{') {
+        let capturingSubmitter = false;
+        if (isHtml && tag && !tag.isClose) {
+          const attr = trailingActionAttr(lastLiteral);
+          if (attr === 'action' && tag.name === 'form') tag.formHole = true;
+          else if (attr === 'formaction' && (tag.name === 'button' || tag.name === 'input')) {
+            tag.submitterHole = true;
+            capturingSubmitter = true;
+          }
+          // Any OTHER hole in a form's start tag makes its `method` / `enctype`
+          // dynamic, so whether an unbound form would deliver becomes unknowable.
+          else if (tag.name === 'form') tag.dynamicAttrs = true;
+        }
+        // A hole inside a START TAG is USUALLY an attribute or property VALUE
+        // whose placement this scan cannot speak for, so it starts at 'handed'
+        // instead of inheriting. A hole in CHILD position is rendered inline by
+        // this scan and does inherit, and so does the one start-tag hole the
+        // renderer also renders inline (`isInlineStartTagHole`).
+        //
+        // Read the JSDoc on `scanHtmlFormScopes` for why 'handed' is right: SSR
+        // does NOT render such a template in place, so the receiving element
+        // decides where it lands, in the browser.
+        //
+        // Without the split, `<form method="post"><my-thing .tpl=${html`<button
+        // formaction=${del}>x</button>`}></my-thing></form>` scored the button
+        // 'unbound' from lexical nesting. Nothing renders that button at SSR at
+        // all (the binding carries a function, so it fails to serialize and is
+        // dropped), and where it ends up is `my-thing`'s decision at hydration,
+        // so a conclusive verdict here was never this scan's to give.
+        //
+        // 'handed' and NOT 'none', which is the subtle half: 'none' is the
+        // cannot-tell a caller attributes to this file's own component and
+        // resolves against ITS call sites, and a handed-off template belongs to
+        // whichever element received it instead. Using 'none' here silences the
+        // false positive on a page and recreates it in a component file.
+        const inlineHole = tag && !tag.isClose && isInlineStartTagHole(tag.name, lastLiteral);
+        const handOff = tag && !tag.isClose && !inlineHole;
+        const holeScope = handOff ? 'handed' : scope;
+        const holeDelivers = handOff ? null : delivers;
+        // Only the segment IMMEDIATELY before a hole can commit an attribute,
+        // so two adjacent holes leave nothing for the second to read.
+        lastLiteral = '';
+        const holeStart = i + 2;
+        i = walkCode(i + 2, true, holeScope, holeDelivers);
+        // The hole's expression, so a caller can require a real action binding.
+        if (capturingSubmitter && tag) tag.submitterExpr = redacted.slice(holeStart, i).trim();
+        if (i < n && redacted[i] === '}') i++;
+        continue;
+      }
+      STR.lastIndex = i;
+      const m = STR.exec(redacted);
+      if (m) {
+        const text = literals[Number(m[1])] || '';
+        lastLiteral = text;
+        if (isHtml) consumeMarkup(text);
+        i = STR.lastIndex;
+        continue;
+      }
+      i++;
+    }
+    return i;
+  }
+
+  walkCode(0, false, 'none', null);
+  return { submitters, tagUses, opensForm };
 }
 

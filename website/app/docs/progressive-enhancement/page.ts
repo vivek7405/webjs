@@ -173,7 +173,11 @@ export default function NewPost({ actionData }: {
     </p>
 
     <p>
-      A form that binds nothing gets a <code>405</code>: there is no page <code>action</code> export to catch a bare <code>&lt;form method="post"&gt;</code>. Multi-submitter forms can bind per-button actions using <code>formaction=\${action}</code> on submitter buttons inside a bound form, which work with JavaScript disabled via standard DOM submitter precedence.
+      A form that binds nothing gets a <code>405</code>: there is no page <code>action</code> export to catch a bare <code>&lt;form method="post"&gt;</code>. The quieter half of that is worth knowing too. A form with no <code>method</code> at all submits as a GET, so there is no body and no 405; the page simply re-renders with a 200. Multi-submitter forms can bind per-button actions using <code>formaction=\${action}</code> on submitter buttons inside a bound form, which work with JavaScript disabled via standard DOM submitter precedence.
+    </p>
+
+    <p>
+      <strong>A per-button action needs its enclosing form bound.</strong> <code>method="post"</code> and the enctype are supplied on the form's start tag, which is already emitted by the time the renderer reaches the button, so a submitter cannot retrofit them. An unbound host form the renderer can see is refused at render. One it CANNOT see is not: a submitter inside a component is a cannot-tell, because the component renders its own template in a separate pass with no view of the host page, and cannot-tell has to bind (refusing there would drop the component from a page that still returned 200). So a <code>formaction=\${action}</code> button in a component inside an unbound form ships. If that form still declares <code>method="post"</code> it works, because the identity rides the button's own <code>name</code>/<code>value</code> pair into the body; if it declares no method it submits as a GET, puts the reserved identity in the query string, and the action never runs. Run <code>webjs check</code>: the <code>submitter-needs-bound-form</code> rule reads every template in the app at once, so it resolves the enclosing form across modules and flags this at edit time.
     </p>
 
     <p>
