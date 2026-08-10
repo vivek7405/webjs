@@ -20,7 +20,7 @@ const WEBJS_MODULE_URL = pathToFileURL(
   resolve(__dirname, '../../packages/core/index.js')
 ).toString();
 
-let _hoistHeadTags, _extractUserShell, _buildDocumentParts, ssrPage, ssrNotFound;
+let _hoistHeadTags, _extractUserShell, _buildDocumentParts, ssrPage, ssrNotFound, setMetadataIconRoutes;
 let withRequest;
 let tmpDir;
 
@@ -31,6 +31,7 @@ before(async () => {
     _buildDocumentParts,
     ssrPage,
     ssrNotFound,
+    setMetadataIconRoutes,
   } = await import('../../packages/server/src/ssr.js'));
   // The CSP nonce now flows through the per-request AsyncLocalStorage store
   // (issue #233): `cspNonce()` reads the minted nonce there, or falls back
@@ -653,6 +654,66 @@ test('metadata.icons.other: arbitrary rel allowed', () => {
     },
   });
   assert.match(html, /<link rel="mask-icon" href="\/mask\.svg" type="image\/svg\+xml">/);
+});
+
+/* ------------ Auto-linked icon metadata routes ------------ */
+
+// `app/icon.*` served its bytes and nothing linked them, so the file every
+// other framework treats as "this is my favicon" produced a blank tab with no
+// diagnostic. Next links its static icon files; these pin the parity, and the
+// precedence rule that comes with it.
+//
+// setMetadataIconRoutes is module state (the setClientRouterEnabled shape), so
+// each test clears it rather than leaking a link into every later assertion.
+const withIconRoutes = (t, stems) => {
+  setMetadataIconRoutes(stems.map((stem) => ({ stem })));
+  t.after(() => setMetadataIconRoutes(null));
+};
+
+test('icon metadata route: linked automatically when no icons are declared', (t) => {
+  withIconRoutes(t, ['icon']);
+  assert.match(render({}), /<link rel="icon" href="\/icon">/);
+});
+
+test('apple-icon metadata route: linked as apple-touch-icon', (t) => {
+  withIconRoutes(t, ['icon', 'apple-icon']);
+  const html = render({});
+  assert.match(html, /<link rel="icon" href="\/icon">/);
+  assert.match(html, /<link rel="apple-touch-icon" href="\/apple-icon">/);
+});
+
+test('icon metadata route: no type or sizes is asserted for it', (t) => {
+  // The route picks its content type at request time, which is the reason to
+  // use one, so a declared type could contradict the bytes it serves.
+  withIconRoutes(t, ['icon']);
+  assert.match(render({}), /<link rel="icon" href="\/icon">/);
+  assert.doesNotMatch(render({}), /href="\/icon"[^>]*(type|sizes)=/);
+});
+
+test('a declared metadata.icons suppresses the icon route (Next precedence)', (t) => {
+  // Next merges its static icon files only when the resolved metadata has no
+  // `icons`. An author who names their icons has said which ones they want,
+  // and the route is often a placeholder the app has outgrown, which is
+  // exactly the gallery's case.
+  withIconRoutes(t, ['icon', 'apple-icon']);
+  const html = render({ icons: '/public/favicon.svg' });
+  assert.match(html, /<link rel="icon" href="\/public\/favicon\.svg">/);
+  assert.doesNotMatch(html, /href="\/icon"/);
+  assert.doesNotMatch(html, /href="\/apple-icon"/);
+});
+
+test('non-icon metadata routes never emit an icon link', (t) => {
+  // sitemap / robots / manifest / og-image share the metadata-route mechanism
+  // and are not favicons.
+  withIconRoutes(t, ['sitemap', 'robots', 'manifest', 'opengraph-image', 'twitter-image']);
+  assert.doesNotMatch(render({}), /<link rel="[^"]*icon/);
+});
+
+test('no icon route and no declared icons: no icon link at all', (t) => {
+  // The counterfactual for the whole feature. An app with neither must render
+  // byte-identically to before.
+  withIconRoutes(t, []);
+  assert.doesNotMatch(render({}), /<link rel="[^"]*icon/);
 });
 
 test('metadata.icons + metadataBase: relative URLs are absolutified', () => {

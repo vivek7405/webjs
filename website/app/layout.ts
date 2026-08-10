@@ -64,6 +64,29 @@ export function generateMetadata(ctx: { url: string }) {
     cacheControl: 'public, max-age=60, s-maxage=600, stale-while-revalidate=86400',
     title: TITLE,
     description: DESCRIPTION,
+    // Favicons, ordered raster first on purpose. Google's favicon crawler takes
+    // the first usable icon and wants a SQUARE raster whose side is a multiple
+    // of 48px. This once declared sizes="32x32" on an asset that is really
+    // 512x512: the claim was both wrong and under Google's 48px floor, which is
+    // why webjs.dev showed no icon in search results. 192 is used because it is
+    // a clean multiple of 48 (512 is not, 512 % 48 = 32).
+    //
+    // Declared here rather than hand-written into the shell below, which is the
+    // way the framework documents and the way every other app in the repo does
+    // it. A hand-written tag only works because this is the ROOT layout, the
+    // one layout allowed to write a shell at all (invariant 8), so it was a
+    // pattern no other layout could copy.
+    //
+    // /favicon.ico is absent on purpose: it is served from public/favicon.ico
+    // at the origin root and stays the fallback for crawlers that read no
+    // markup, so linking it would add a tag nothing reads.
+    icons: {
+      icon: [
+        { url: '/public/favicon-192.png', type: 'image/png', sizes: '192x192' },
+        { url: '/public/favicon.svg', type: 'image/svg+xml', sizes: 'any' },
+      ],
+      apple: { url: '/public/apple-touch-icon.png', sizes: '180x180' },
+    },
     openGraph: {
       type: 'website',
       title: TITLE,
@@ -85,17 +108,8 @@ const panelLink = 'text-fg-muted no-underline font-medium text-sm px-3 py-2.5 ro
 export default function RootLayout({ children }: LayoutProps) {
   const nonce = cspNonce();
   return html`
-    <!-- Favicons, ordered raster first on purpose. Google's favicon crawler takes
-         the first usable icon and wants a SQUARE raster whose side is a multiple
-         of 48px. This previously declared sizes="32x32" on an asset that is
-         really 512x512: the claim was both wrong and under Google's 48px floor,
-         which is why webjs.dev showed no icon in search results. 192 is used
-         because it is a clean multiple of 48 (512 is not, 512 % 48 = 32).
-         /favicon.ico is served from public/favicon.ico at the origin root and
-         stays as the fallback for crawlers that read no markup at all. -->
-    <link rel="icon" href="/public/favicon-192.png" type="image/png" sizes="192x192">
-    <link rel="icon" href="/public/favicon.svg" type="image/svg+xml" sizes="any">
-    <link rel="apple-touch-icon" sizes="180x180" href="/public/apple-touch-icon.png">
+    <!-- Favicons are declared in generateMetadata above (metadata.icons), not
+         written here. The framework splices them into <head>. -->
 
     <!-- Self-hosted fonts (declared via @font-face in input.css), preloaded so
          they fetch in parallel with the stylesheet instead of being discovered

@@ -96,6 +96,34 @@ export default function manifest() {
   };
 }</code-block>
 
+    <h2>icon.ts and apple-icon.ts</h2>
+    <p>These two are <strong>linked into the head for you</strong>. Writing the file is the whole wiring, with no <code>&lt;link&gt;</code> to add anywhere:</p>
+    <code-block>// app/icon.ts  ->  serves /icon AND emits the link
+export default function Icon() {
+  const svg = '&lt;svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"&gt;...&lt;/svg&gt;';
+  return new Response(svg, { headers: { 'content-type': 'image/svg+xml' } });
+}</code-block>
+    <code-block>&lt;!-- what lands in &lt;head&gt; --&gt;
+&lt;link rel="icon" href="/icon"&gt;
+&lt;link rel="apple-touch-icon" href="/apple-icon"&gt;</code-block>
+    <p>The href carries your <code>basePath</code>, because that is where the route answers. No <code>type</code> or <code>sizes</code> is asserted: a metadata route picks its content type at request time, which is the reason to use one, so declaring a type here could contradict the bytes it serves. Browsers sniff the served type.</p>
+    <p>Reach for a route when the mark must be computed per request (per theme, per tenant). For a favicon that never changes, a static file in <code>public/</code> declared through <code>metadata.icons</code> is simpler and cacheable.</p>
+
+    <h3>Declaring icons wins</h3>
+    <p>A <code>metadata.icons</code> declaration <strong>replaces</strong> the routes rather than merging with them, the same precedence Next applies to its static icon files. An app that outgrows a placeholder <code>app/icon.ts</code> names its real icons and the route stops being linked, without the file having to be deleted:</p>
+    <code-block>// app/layout.ts  ->  these win; /icon is no longer linked
+export const metadata = {
+  icons: {
+    icon: [
+      { url: '/public/favicon-192.png', type: 'image/png', sizes: '192x192' },
+      { url: '/public/favicon.svg', type: 'image/svg+xml', sizes: 'any' },
+    ],
+    apple: { url: '/public/apple-touch-icon.png', sizes: '180x180' },
+  },
+};</code-block>
+    <p>Declare a favicon one of those two ways, never as a hand-written <code>&lt;link rel="icon"&gt;</code>: only the root layout may write a document shell at all, so a hand-written tag is unavailable to every other layout. A <code>public/favicon.ico</code> needs no declaration either way, since it is served at the origin root for crawlers that read no markup.</p>
+    <p><code>opengraph-image.ts</code> and <code>twitter-image.ts</code> are <em>not</em> auto-linked, because a preview image is a per-page editorial choice rather than a site-wide default. Point <code>openGraph.images</code> / <code>twitter.images</code> at them.</p>
+
     <h2>Page-level metadata</h2>
     <p>For per-page title, description, and Open Graph tags, export a <code>metadata</code> object from any <code>page.ts</code>. Annotate it with the <code>Metadata</code> type (imported from <code>@webjsdev/core</code>) so a misspelled field or a wrong-typed value is a compile-time error:</p>
 

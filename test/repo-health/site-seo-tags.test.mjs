@@ -20,15 +20,24 @@
  * them. `docs.webjs.dev` still resolves, but as a Cloudflare redirect rule
  * with nothing indexable of its own, which is the point of the move.
  *
- * These are source-level assertions on the layout file rather than SSR
- * renders, because the three apps have different dependency trees and
- * importing all of them into one test process is not worth the coupling.
+ * The icon assertions RENDER the app rather than reading its layout source.
+ * They used to regex the layout for hand-written `<link>` markup, which
+ * pinned an authoring style the framework tells apps not to use: only a ROOT
+ * layout may write a shell at all (invariant 8), so a hand-written tag is a
+ * pattern no other layout can copy, and favicons are declared through
+ * `metadata.icons`. Rendering asserts what a browser actually receives, which
+ * is the thing that matters and is also the only way to see icons the
+ * framework splices in. The canonical check stays source-level: it asserts
+ * how the value is DERIVED (origin plus pathname, trailing slash stripped),
+ * which one rendered URL cannot show.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { createRequestHandler } from '@webjsdev/server';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -52,49 +61,88 @@ function pngSize(path) {
   return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
 }
 
-for (const app of APPS) {
-  test(`${app.name}: the declared favicon size matches the real asset`, () => {
-    const src = layoutOf(app.dir);
-    const m = src.match(/<link rel="icon" href="\/public\/([\w.-]+\.png)" type="image\/png" sizes="(\d+)x(\d+)"/);
-    assert.ok(m, 'declares a PNG icon with an explicit size');
+/**
+ * The icon `<link>` tags the app's home page actually serves, in head order.
+ *
+ * Rendering is what makes this honest: the tags may come from hand-written
+ * markup, from `metadata.icons`, or from an auto-linked `app/icon.*` metadata
+ * route, and a browser cannot tell the difference. Neither should this.
+ */
+async function renderedIconLinks(dir) {
+  const app = await createRequestHandler({ appDir: resolve(REPO_ROOT, dir), dev: true });
+  const res = await app.handle(new Request('http://localhost/'));
+  assert.equal(res.status, 200, `${dir} home page renders`);
+  // Browsers ignore a favicon <link> in <body>, so only the head counts.
+  const head = (await res.text()).split('</head>')[0];
+  return [...head.matchAll(/<link rel="[^"]*icon[^"]*"[^>]*>/g)].map((m) => m[0]);
+}
 
-    const [, file, w, h] = m;
-    const declared = Number(w);
+/** Pull an attribute off one rendered tag, order-independently. */
+const attr = (tag, name) => (tag.match(new RegExp(`${name}="([^"]*)"`)) || [])[1];
+
+for (const app of APPS) {
+  test(`${app.name}: the declared favicon size matches the real asset`, async () => {
+    const links = await renderedIconLinks(app.dir);
+    const png = links.find((l) => attr(l, 'type') === 'image/png');
+    assert.ok(png, 'serves a PNG icon with an explicit type');
+
+    const href = attr(png, 'href');
+    const sizes = attr(png, 'sizes');
+    assert.ok(sizes, 'the PNG icon declares a size');
+    const [w, h] = sizes.split('x');
+    assert.equal(w, h, 'declared as square');
+
+    const file = href.replace(/^\/public\//, '');
     const asset = publicFile(app.dir, file);
     assert.ok(existsSync(asset), `${file} exists in public/`);
 
     const real = pngSize(asset);
-    assert.equal(w, h, 'declared as square');
     assert.equal(real.width, real.height, 'the asset really is square');
     // The original bug in one assertion: the markup claimed 32 for a 512 file.
-    assert.equal(declared, real.width, 'the DECLARED size matches the real asset');
+    assert.equal(Number(w), real.width, 'the DECLARED size matches the real asset');
     // The second half: 32 was under the floor, and 512 would have failed too,
     // since 512 % 48 is 32. Hence the 192px asset.
-    assert.equal(declared % 48, 0, 'the size is a multiple of 48px, which Google requires');
+    assert.equal(Number(w) % 48, 0, 'the size is a multiple of 48px, which Google requires');
   });
 
-  test(`${app.name}: the raster icon is declared before the SVG`, () => {
+  test(`${app.name}: the raster icon is served before the SVG`, async () => {
     // Google's favicon crawler takes the first usable icon, and raster is what
     // search results reliably render. All three led with the SVG before.
-    const src = layoutOf(app.dir);
-    const png = src.indexOf('type="image/png"');
-    const svg = src.indexOf('/public/favicon.svg');
-    assert.ok(png > -1 && svg > -1, 'declares both a PNG and an SVG icon');
-    assert.ok(png < svg, 'the PNG is declared ahead of the SVG');
+    const links = await renderedIconLinks(app.dir);
+    const png = links.findIndex((l) => attr(l, 'type') === 'image/png');
+    const svg = links.findIndex((l) => attr(l, 'type') === 'image/svg+xml');
+    assert.ok(png > -1 && svg > -1, 'serves both a PNG and an SVG icon');
+    assert.ok(png < svg, 'the PNG comes first in the head');
   });
 
-  test(`${app.name}: the apple-touch icon points at a correctly sized asset`, () => {
-    const src = layoutOf(app.dir);
-    const m = src.match(/<link rel="apple-touch-icon" sizes="(\d+)x\d+" href="\/public\/([\w.-]+\.png)"/);
-    assert.ok(m, 'declares an apple-touch-icon with an explicit size');
-    const asset = publicFile(app.dir, m[2]);
-    assert.ok(existsSync(asset), `${m[2]} exists in public/`);
-    assert.equal(Number(m[1]), pngSize(asset).width, 'the declared size matches the real asset');
+  test(`${app.name}: the apple-touch icon points at a correctly sized asset`, async () => {
+    const links = await renderedIconLinks(app.dir);
+    const apple = links.find((l) => attr(l, 'rel') === 'apple-touch-icon');
+    assert.ok(apple, 'serves an apple-touch-icon');
+    const file = attr(apple, 'href').replace(/^\/public\//, '');
+    const asset = publicFile(app.dir, file);
+    assert.ok(existsSync(asset), `${file} exists in public/`);
+    assert.equal(Number(attr(apple, 'sizes').split('x')[0]), pngSize(asset).width,
+      'the declared size matches the real asset');
+  });
+
+  test(`${app.name}: every icon it links is actually served`, async () => {
+    // A head naming a URL nothing answers is the failure mode that took
+    // gallery.webjs.dev two PRs to shake out, so resolve each href rather than
+    // trusting the markup.
+    const application = await createRequestHandler({ appDir: resolve(REPO_ROOT, app.dir), dev: true });
+    for (const link of await renderedIconLinks(app.dir)) {
+      const href = attr(link, 'href');
+      const res = await application.handle(new Request(`http://localhost${href}`));
+      assert.equal(res.status, 200, `${href} is served, not a 404`);
+    }
   });
 
   test(`${app.name}: ships a root favicon.ico with a 48x48 entry`, () => {
     // The framework serves /favicon.ico from public/favicon.ico. All three
     // returned 404 for it before, so the no-markup crawler fallback was absent.
+    // Deliberately NOT a rendered assertion: nothing links it, which is the
+    // point (crawlers that parse no HTML fetch the path directly).
     const ico = publicFile(app.dir, 'favicon.ico');
     assert.ok(existsSync(ico), 'public/favicon.ico exists');
     const buf = readFileSync(ico);
@@ -103,6 +151,16 @@ for (const app of APPS) {
     const count = buf.readUInt16LE(4);
     const sizes = Array.from({ length: count }, (_, i) => buf[6 + i * 16] || 256);
     assert.ok(sizes.includes(48), `bundles a 48x48 entry, got ${sizes.join('/')}`);
+  });
+
+  test(`${app.name}: declares its favicons, rather than hand-writing the markup`, () => {
+    // The convention the framework documents, and what every other app in the
+    // repo does. A hand-written tag works ONLY in a root layout (invariant 8),
+    // so it is a pattern no other layout can copy, and the docs told readers
+    // not to write it while this app did.
+    const src = layoutOf(app.dir);
+    assert.match(src, /icons:\s*\{/, 'declares metadata.icons');
+    assert.doesNotMatch(src, /<link rel="[^"]*icon/, 'writes no icon <link> by hand');
   });
 
   test(`${app.name}: the root layout emits a canonical URL`, () => {
